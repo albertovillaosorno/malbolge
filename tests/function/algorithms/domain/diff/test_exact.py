@@ -177,6 +177,45 @@ def test_exact_materialization_rejects_changed_source_before_output(
     _expect(not staging.exists(), "rejected staging tree survived")
 
 
+def test_exact_materialization_rejects_linked_source_root_when_supported(
+    tmp_path: Path,
+) -> None:
+    """Materialization must not erase a source-root link before verification."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    linked = tmp_path / "linked-source"
+    try:
+        linked.symlink_to(source, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is unavailable on this host")
+    output = tmp_path / "result"
+
+    with pytest.raises(ExactTreeError, match="tree root must not be linked"):
+        materialize_exact_plan(linked, plan, output)
+    _expect(not output.exists(), "linked-source rejection published output")
+
+
+def test_exact_materialization_wraps_output_root_resolution_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep output-root resolution failures inside the exact-tree boundary."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "result"
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == output:
+            message = "blocked exact output"
+            raise PermissionError(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    with pytest.raises(ExactTreeError, match="output root resolution failed"):
+        materialize_exact_plan(source, plan, output)
+    _expect(not output.exists(), "output resolution failure published output")
+
+
 def test_exact_materialization_wraps_tree_path_resolution_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

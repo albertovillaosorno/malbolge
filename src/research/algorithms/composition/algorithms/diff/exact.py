@@ -674,6 +674,18 @@ def _populate_staging(
         raise ExactTreeError(message)
 
 
+def _resolved_output_root(output_root: Path) -> Path:
+    mode = _entry_mode(output_root, "output root")
+    if mode is not None and _is_redirect(output_root, mode):
+        message = f"output root must not be linked: {output_root}"
+        raise ExactTreeError(message)
+    try:
+        return output_root.resolve()
+    except OSError as error:
+        message = f"output root resolution failed: {output_root}: {error}"
+        raise ExactTreeError(message) from error
+
+
 def materialize_exact_plan(
     source_root: Path,
     plan: ExactAuthoringPlan,
@@ -684,8 +696,8 @@ def materialize_exact_plan(
     The candidate source must match the authoring snapshot exactly. Fuzzy
     admission belongs to later layers.
     """
-    resolved_source = source_root.resolve()
-    resolved_output = output_root.resolve()
+    resolved_source = _resolved_tree_root(source_root)
+    resolved_output = _resolved_output_root(output_root)
     _verify_source(resolved_source, plan)
     staging_root = _prepare_staging(resolved_output)
     try:
