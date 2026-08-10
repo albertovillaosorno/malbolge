@@ -64,7 +64,7 @@ _XLAT2_HEX_PARTS: Final = (
 )
 _XLAT2: Final = bytes.fromhex("".join(_XLAT2_HEX_PARTS))
 _CRAZY_TRIT: Final = ((1, 0, 0), (1, 0, 2), (2, 2, 1))
-_FIRST_INSTRUCTIONS: Final = (ord("<"), ord("/"))
+_FIRST_INSTRUCTIONS: Final = (ord("<"), ord("/"), ord("j"))
 _SECOND_INSTRUCTIONS: Final = tuple(b"ji*p</vo")
 _STATUS_CONTINUED: Final = "continued"
 _STATUS_HALTED: Final = "halted"
@@ -76,6 +76,7 @@ _ACCEPTED_STATUS: Final = frozenset({_STATUS_CONTINUED, _STATUS_HALTED})
 @dataclass(frozen=True, slots=True)
 class _PlanContext:
     data: int
+    data_pointer: int
     accumulator: int | None
 
 
@@ -139,7 +140,7 @@ def _base_plan(context: _PlanContext) -> _ReferencePlan:
     return _ReferencePlan(
         context.accumulator,
         1,
-        1,
+        context.data_pointer,
         input_dependent=context.accumulator is None,
     )
 
@@ -157,14 +158,20 @@ def _plan_jump_code(context: _PlanContext) -> _ReferencePlan:
     return _ReferencePlan(
         context.accumulator,
         context.data,
-        1,
+        context.data_pointer,
         input_dependent=context.accumulator is None,
     )
 
 
 def _plan_rotate(context: _PlanContext) -> _ReferencePlan:
     value = _rotate(context.data)
-    return _ReferencePlan(value, 1, 1, 1, value)
+    return _ReferencePlan(
+        value,
+        1,
+        context.data_pointer,
+        context.data_pointer,
+        value,
+    )
 
 
 def _plan_crazy(context: _PlanContext) -> _ReferencePlan:
@@ -173,24 +180,34 @@ def _plan_crazy(context: _PlanContext) -> _ReferencePlan:
         return _ReferencePlan(
             None,
             1,
-            1,
+            context.data_pointer,
             input_dependent=True,
             unresolved=True,
         )
     value = _crazy(context.data, accumulator)
-    return _ReferencePlan(value, 1, 1, 1, value)
+    return _ReferencePlan(
+        value,
+        1,
+        context.data_pointer,
+        context.data_pointer,
+        value,
+    )
 
 
 def _plan_input(context: _PlanContext) -> _ReferencePlan:
-    _ = context
-    return _ReferencePlan(None, 1, 1, input_dependent=True)
+    return _ReferencePlan(
+        None,
+        1,
+        context.data_pointer,
+        input_dependent=True,
+    )
 
 
 def _plan_halt(context: _PlanContext) -> _ReferencePlan:
     return _ReferencePlan(
         context.accumulator,
         1,
-        1,
+        context.data_pointer,
         input_dependent=context.accumulator is None,
         halted=True,
     )
@@ -209,9 +226,11 @@ _PLANNERS: Final[dict[int, Callable[[_PlanContext], _ReferencePlan]]] = {
 def _plan_second(
     decoded: int,
     data: int,
+    data_pointer: int,
+    *,
     accumulator: int | None,
 ) -> _ReferencePlan:
-    context = _PlanContext(data, accumulator)
+    context = _PlanContext(data, data_pointer, accumulator)
     planner = _PLANNERS.get(decoded, _base_plan)
     return planner(context)
 
@@ -229,8 +248,8 @@ def _terminal_expected(decoded: int, plan: _ReferencePlan) -> _ExpectedSecond:
         aliases_encryption=False,
         input_dependent=plan.input_dependent,
         accumulator=plan.accumulator,
-        code_pointer=None if plan.unresolved else 1,
-        data_pointer=None if plan.unresolved else 1,
+        code_pointer=None if plan.unresolved else plan.code_pointer,
+        data_pointer=None if plan.unresolved else plan.data_pointer,
         next_fetch=None,
     )
 
@@ -239,6 +258,8 @@ def _resolved_expected(
     source: tuple[int, int],
     decoded: int,
     plan: _ReferencePlan,
+    *,
+    initial_data_pointer: int,
 ) -> _ExpectedSecond:
     aliases = plan.write_address == plan.code_pointer
     if aliases and plan.write_value is not None:
@@ -258,7 +279,7 @@ def _resolved_expected(
             input_dependent=plan.input_dependent,
             accumulator=plan.accumulator,
             code_pointer=1,
-            data_pointer=1,
+            data_pointer=initial_data_pointer,
             next_fetch=None,
         )
     encryption_output = _XLAT2[encryption_input - _GRAPHICAL_START]
@@ -287,10 +308,22 @@ def _expected_second(
     source: tuple[int, int],
 ) -> _ExpectedSecond:
     accumulator = None if first == ord("/") else 0
-    plan = _plan_second(second, source[1], accumulator)
+    data_pointer = source[0] + 1 if first == ord("j") else 1
+    data = _initial_memory(source, data_pointer)
+    plan = _plan_second(
+        second,
+        data,
+        data_pointer,
+        accumulator=accumulator,
+    )
     if plan.halted or plan.unresolved:
         return _terminal_expected(second, plan)
-    return _resolved_expected(source, second, plan)
+    return _resolved_expected(
+        source,
+        second,
+        plan,
+        initial_data_pointer=data_pointer,
+    )
 
 
 def _report(
