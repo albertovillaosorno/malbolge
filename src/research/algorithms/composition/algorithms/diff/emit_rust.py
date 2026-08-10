@@ -37,6 +37,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from secrets import token_hex
+from stat import S_ISDIR
+from stat import S_ISLNK
+from stat import S_ISREG
 from typing import TYPE_CHECKING
 
 from algorithms.diff.protected import ProtectedExactPlan
@@ -254,6 +257,66 @@ def emit_rust_transform(
     return rendered.replace("\r\n", "\n")
 
 
+def _output_mode(path: Path, description: str) -> int | None:
+    try:
+        return path.lstat().st_mode
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        message = f"Rust output {description} status failed: {path}: {error}"
+        raise RustEmissionError(message) from error
+
+
+def _output_redirects(path: Path, mode: int) -> bool:
+    return S_ISLNK(mode) or path.is_junction()
+
+
+def _validate_output_leaf(output_path: Path) -> None:
+    mode = _output_mode(output_path, "file")
+    if mode is None:
+        return
+    if _output_redirects(output_path, mode) or not S_ISREG(mode):
+        message = (
+            f"Rust output path must be a regular non-linked file: {output_path}"
+        )
+        raise RustEmissionError(message)
+
+
+def _validate_output_parent(path: Path, mode: int | None) -> None:
+    if mode is None:
+        return
+    if _output_redirects(path, mode):
+        message = f"Rust output parent must not be linked: {path}"
+        raise RustEmissionError(message)
+    if not S_ISDIR(mode):
+        message = f"Rust output parent must be a directory: {path}"
+        raise RustEmissionError(message)
+
+
+def _validate_output_parent_chain(parent: Path) -> None:
+    candidate = parent
+    while True:
+        _validate_output_parent(candidate, _output_mode(candidate, "parent"))
+        ancestor = candidate.parent
+        if ancestor == candidate:
+            return
+        candidate = ancestor
+
+
+def _prepare_output_path(output_path: Path) -> Path:
+    _validate_output_leaf(output_path)
+    _validate_output_parent_chain(output_path.parent)
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        message = (
+            f"Rust output parent creation failed: {output_path.parent}: {error}"
+        )
+        raise RustEmissionError(message) from error
+    _validate_output_parent_chain(output_path.parent)
+    return output_path
+
+
 def _temporary_output_path(output_path: Path) -> Path:
     return output_path.with_name(f".{output_path.name}.{token_hex(8)}.tmp")
 
@@ -297,17 +360,16 @@ def write_rust_transform(
 ) -> None:
     """Write one generated transform atomically."""
     source = emit_rust_transform(plan, profile, output_path)
-    temporary = _temporary_output_path(output_path)
-    try:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-    except OSError as error:
-        _raise_publication_error(error)
+    prepared_output = _prepare_output_path(output_path)
+    temporary = _temporary_output_path(prepared_output)
     try:
         _claim_and_write_temporary(temporary, source)
     except OSError as error:
         _raise_publication_error(error)
     try:
-        _ = temporary.replace(output_path)
+        _validate_output_leaf(prepared_output)
+        _validate_output_parent_chain(prepared_output.parent)
+        _ = temporary.replace(prepared_output)
     except OSError as error:
         cleanup_error = _cleanup_owned_temporary(temporary)
         _raise_publication_error(error, cleanup_error=cleanup_error)

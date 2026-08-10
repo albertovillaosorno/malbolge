@@ -81,6 +81,7 @@ _BOUNDARY_HEADER = "// Boundary-Contract:"
 _LARGE_FILE_HEADER = "// Large file:\n//   - true"
 _LEGACY_TEMP = b"legacy-temp"
 _FOREIGN_TEMP = b"foreign-temp"
+_LINK_TARGET = b"link-target"
 _TEMP_COLLISION_ID = "collision-id"
 _SINGLE_CHUNK_NONCE_MARKER = (
     'const NONCE_HEX: &str = concat!("000000000000000000000000",);'
@@ -334,6 +335,77 @@ def test_emitter_wraps_absolute_display_path_resolution_failure(
         RustEmissionError, match="display path resolution failed"
     ):
         _ = emit_rust_transform(protected, _PROFILE, output)
+
+
+def test_writer_rejects_linked_output_file_when_supported(
+    tmp_path: Path,
+) -> None:
+    """Do not publish generated Rust through an output symlink."""
+    _, _, _, protected = _fixture(tmp_path)
+    target = tmp_path / "target.rs"
+    _ = target.write_bytes(_LINK_TARGET)
+    output = tmp_path / "generated.rs"
+    try:
+        output.symlink_to(target)
+    except OSError:
+        pytest.skip("symlink creation is unavailable on this host")
+
+    with pytest.raises(RustEmissionError, match="regular non-linked file"):
+        write_rust_transform(protected, _PROFILE, output)
+
+    assert target.read_bytes() == _LINK_TARGET
+    assert output.is_symlink()
+
+
+def test_writer_rejects_linked_output_parent_when_supported(
+    tmp_path: Path,
+) -> None:
+    """Do not traverse a linked parent while publishing generated Rust."""
+    _, _, _, protected = _fixture(tmp_path)
+    target_parent = tmp_path / "target-parent"
+    target_parent.mkdir()
+    linked_parent = tmp_path / "linked-parent"
+    try:
+        linked_parent.symlink_to(target_parent, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is unavailable on this host")
+    output = linked_parent / "generated.rs"
+
+    with pytest.raises(RustEmissionError, match="parent must not be linked"):
+        write_rust_transform(protected, _PROFILE, output)
+
+    assert not (target_parent / "generated.rs").exists()
+
+
+def test_writer_rejects_directory_output(tmp_path: Path) -> None:
+    """An existing output directory cannot be replaced as a generated file."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    output.mkdir()
+
+    with pytest.raises(RustEmissionError, match="regular non-linked file"):
+        write_rust_transform(protected, _PROFILE, output)
+
+    assert output.is_dir()
+
+
+def test_writer_wraps_output_status_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inaccessible output leaf stays inside RustEmissionError."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    original_lstat = Path.lstat
+
+    def fail_lstat(path: Path) -> object:
+        if path == output:
+            message = "blocked Rust output status"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(RustEmissionError, match="output file status failed"):
+        write_rust_transform(protected, _PROFILE, output)
 
 
 def test_writer_preserves_legacy_fixed_temporary_file(tmp_path: Path) -> None:
