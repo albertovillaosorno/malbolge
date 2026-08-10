@@ -60,6 +60,7 @@ _CALL_CHAIN_FAMILY: Final = "call-chain"
 _LINEAR_MIX_FAMILY: Final = "linear-mix"
 _MEMORY_WALK_FAMILY: Final = "memory-walk"
 _POINTER_WALK_FAMILY: Final = "pointer-walk"
+_ALIAS_WALK_FAMILY: Final = "alias-walk"
 _FAMILY_ALGORITHMS: Final = {
     _ARITHMETIC_DAG_FAMILY: "splitmix64-arithmetic-dag-v1",
     _BRANCH_MIX_FAMILY: "splitmix64-branch-mix-v1",
@@ -67,6 +68,7 @@ _FAMILY_ALGORITHMS: Final = {
     _LINEAR_MIX_FAMILY: "splitmix64-linear-mix-v1",
     _MEMORY_WALK_FAMILY: "splitmix64-memory-walk-v1",
     _POINTER_WALK_FAMILY: "splitmix64-pointer-walk-v1",
+    _ALIAS_WALK_FAMILY: "splitmix64-alias-walk-v1",
 }
 _FAMILIES: Final = frozenset(_FAMILY_ALGORITHMS)
 _VERSION: Final = 1
@@ -75,6 +77,7 @@ _CALL_CHAIN_SEED_SALT: Final = 0x4341_4C4C_4348_414E
 _LINEAR_MIX_SEED_SALT: Final = 0x4C49_4E45_4152_4D58
 _MEMORY_WALK_SEED_SALT: Final = 0x4D45_4D4F_5259_574B
 _POINTER_WALK_SEED_SALT: Final = 0x5054_5257_414C_4B31
+_ALIAS_WALK_SEED_SALT: Final = 0x414C_4941_5357_4B31
 _MEMORY_WALK_CELLS: Final = 8
 _MASK32: Final = (1 << 32) - 1
 _MASK64: Final = (1 << 64) - 1
@@ -541,6 +544,58 @@ def _pointer_walk_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     return source, oracle
 
 
+def _alias_walk_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _ALIAS_WALK_SEED_SALT)
+    cells = [rng.next_u32() for _index in range(_MEMORY_WALK_CELLS)]
+    initializer = ", ".join(f"UINT32_C({cell})" for cell in cells)
+    lines = [
+        "#include <stdint.h>",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t cells[{_MEMORY_WALK_CELLS}] = {{{initializer}}};",
+        "    uint32_t value = cells[0];",
+    ]
+    value = cells[0]
+    for index in range(identity.nodes):
+        left = value & (_MEMORY_WALK_CELLS - 1)
+        right = (value >> 3) & (_MEMORY_WALK_CELLS - 1)
+        addend = rng.next_u32()
+        mask = rng.next_u32()
+        lines.extend((
+            f"    uint32_t *left{index} = &cells[value & UINT32_C(7)];",
+            (
+                f"    uint32_t *right{index} = "
+                "&cells[(value >> UINT32_C(3)) & UINT32_C(7)];"
+            ),
+            (
+                f"    uint32_t mixed{index} = *left{index} + *right{index} + "
+                f"value + UINT32_C({addend});"
+            ),
+            f"    value = mixed{index} ^ UINT32_C({mask});",
+            f"    *left{index} = value;",
+            f"    *right{index} ^= value;",
+        ))
+        value = (
+            (cells[left] + cells[right] + value + addend) & _MASK32
+        ) ^ mask
+        cells[left] = value
+        cells[right] ^= value
+    lines.extend((
+        "    return value;",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ))
+    return (
+        chr(10).join(lines).encode(),
+        value.to_bytes(_ORACLE_BYTES, byteorder="little"),
+    )
+
+
 _PAYLOAD_RENDERERS: Final = {
     _ARITHMETIC_DAG_FAMILY: _arithmetic_dag_payload,
     _BRANCH_MIX_FAMILY: _branch_mix_payload,
@@ -548,6 +603,7 @@ _PAYLOAD_RENDERERS: Final = {
     _LINEAR_MIX_FAMILY: _linear_mix_payload,
     _MEMORY_WALK_FAMILY: _memory_walk_payload,
     _POINTER_WALK_FAMILY: _pointer_walk_payload,
+    _ALIAS_WALK_FAMILY: _alias_walk_payload,
 }
 
 
