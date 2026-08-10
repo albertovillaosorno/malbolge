@@ -44,11 +44,12 @@ _ENTRY_CONTINUED: Final = "continued"
 _ENTRY_HALTED: Final = "halted"
 _ENTRY_INVALID_ENCRYPTION: Final = "rejected-invalid-self-encryption"
 _CRAZY_TRIT: Final = ((1, 0, 0), (1, 0, 2), (2, 2, 1))
-_XLAT2: Final = bytes.fromhex(
-    "357a5d2667717479667224287765347b575029482d5a6e2c5b255c33644c2b51"
-    "3b3e5521704a53373246684f4131434236765e3d495f302f387c6a7362396d3c"
-    "2e545661636075592a4d4b27587e78446c7d52456f6b4e3a233f47226940"
+_XLAT2_HEX_PARTS = (
+    "357a5d2667717479667224287765347b575029482d5a6e2c5b255c33644c2b51",
+    "3b3e5521704a53373246684f4131434236765e3d495f302f387c6a7362396d3c",
+    "2e545661636075592a4d4b27587e78446c7d52456f6b4e3a233f47226940",
 )
+_XLAT2: Final = bytes.fromhex("".join(_XLAT2_HEX_PARTS))
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +76,7 @@ class EntryTransition:
 
     @property
     def accepted(self) -> bool:
-        """Return whether the bounded entry transition avoids static rejection."""
+        """Bounded entry-step acceptance status."""
         return self.status != _ENTRY_INVALID_ENCRYPTION
 
 

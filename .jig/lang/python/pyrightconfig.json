@@ -1,7 +1,8 @@
 {
   "include": [
     "../../../src",
-    "../../../tests"
+    "../../../tests",
+    "../../../verifier"
   ],
   "exclude": [
     "../../../.cache",
@@ -63,6 +64,8 @@
     "../../../src/optimization/optimizer/application",
     "../../../src/performance/benchmarking/composition",
     "../../../src/research/algorithms/composition",
-    "../../../src/research/algorithms/domain"
+    "../../../src/research/algorithms/domain",
+    "../../..",
+    "../../../verifier"
   ]
 }

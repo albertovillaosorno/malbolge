@@ -95,11 +95,12 @@ _TEST_XLAT1 = (
     b'+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA"lI'
     rb".v%{gJh4G\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha"
 )
-_TEST_XLAT2 = bytes.fromhex(
-    "357a5d2667717479667224287765347b575029482d5a6e2c5b255c33644c2b51"
-    "3b3e5521704a53373246684f4131434236765e3d495f302f387c6a7362396d3c"
-    "2e545661636075592a4d4b27587e78446c7d52456f6b4e3a233f47226940"
+_TEST_XLAT2_HEX_PARTS = (
+    "357a5d2667717479667224287765347b575029482d5a6e2c5b255c33644c2b51",
+    "3b3e5521704a53373246684f4131434236765e3d495f302f387c6a7362396d3c",
+    "2e545661636075592a4d4b27587e78446c7d52456f6b4e3a233f47226940",
 )
+_TEST_XLAT2 = bytes.fromhex("".join(_TEST_XLAT2_HEX_PARTS))
 
 
 class _Finding(Protocol):
@@ -606,7 +607,7 @@ def test_cli_rejects_statically_invalid_entry_transition(
     document = cast("dict[str, object]", json.loads(completed.stdout))
     assert document["admitted_initial_image"] is True
     transition = cast("dict[str, object]", document["entry_transition"])
-    assert transition["status"] == "rejected-invalid-self-encryption"
+    assert transition["status"] == _ENTRY_INVALID_ENCRYPTION
 
 
 def test_cli_rejected_image_returns_failure_with_report(
