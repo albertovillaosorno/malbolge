@@ -42,12 +42,14 @@ from typing import TYPE_CHECKING
 from typing import cast
 
 from algorithms.diff.admission import identity_tree
+from algorithms.diff.domain import DomainContractError
 from algorithms.diff.domain import load_diff_domain
 from algorithms.diff.emit_rust import write_rust_transform
 from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.protected import protect_exact_plan
+from algorithms.diff.provenance import SourcePinEvidence
 from algorithms.diff.source_binding import SourceBindingPolicy
 
 _MAX_SHARES = 255
@@ -265,7 +267,10 @@ def _preflight_domain(recipe: DiffRecipe) -> None:
         message = "domain preflight requires a domain module"
         raise DiffGeneratorUnavailableError(message)
     domain = load_diff_domain(recipe.domain_module)
-    _ = domain.validate_source_provenance(recipe.source_root)
+    evidence = domain.validate_source_provenance(recipe.source_root)
+    if type(evidence) is not SourcePinEvidence:
+        message = "domain source provenance hook must return SourcePinEvidence"
+        raise DomainContractError(message)
     domain.validate_authoring_oracle(recipe.oracle_root)
 
 

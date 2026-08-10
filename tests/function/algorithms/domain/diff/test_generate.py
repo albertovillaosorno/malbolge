@@ -39,6 +39,7 @@ import hashlib
 from pathlib import Path
 from typing import cast
 
+from algorithms.diff.domain import DomainContractError
 from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.generate import DiffGeneratorUnavailableError
 from algorithms.diff.generate import DiffRecipe
@@ -100,10 +101,13 @@ def _domain_module(tmp_path: Path) -> Path:
     module = tmp_path / "domain.py"
     _ = module.write_text(
         """\
+from algorithms.diff.provenance import SourcePinEvidence
+
+
 def validate_source_provenance(root):
     if (root / "reject-source").exists():
         raise RuntimeError("source pin rejected")
-    return None
+    return SourcePinEvidence(file_count=1, snapshot_sha256="0" * 64)
 
 
 def validate_authoring_oracle(root):
@@ -162,6 +166,26 @@ def test_compatible_mode_runs_domain_preflight_then_fails_emission(
         write_algorithm(recipe)
     _expect(
         not recipe.output_algorithm.exists(), "compatible mode wrote output"
+    )
+
+
+def test_domain_preflight_requires_source_pin_evidence(tmp_path: Path) -> None:
+    """Reject provenance callbacks that return no typed snapshot evidence."""
+    module = _domain_module(tmp_path)
+    text = module.read_text(encoding="utf-8")
+    valid = 'return SourcePinEvidence(file_count=1, snapshot_sha256="0" * 64)'
+    _ = module.write_text(
+        text.replace(valid, "return None", 1),
+        encoding="utf-8",
+        newline=chr(10),
+    )
+    recipe = _recipe(tmp_path, mode=TransformMode.COMPATIBLE)
+    recipe = replace(recipe, domain_module=module)
+
+    with pytest.raises(DomainContractError, match="return SourcePinEvidence"):
+        write_algorithm(recipe)
+    _expect(
+        not recipe.output_algorithm.exists(), "invalid provenance wrote output"
     )
 
 
