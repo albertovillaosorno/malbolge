@@ -62,6 +62,8 @@ import pytest
 if TYPE_CHECKING:
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.compatible import CompatibleAuthoringPlan
+    from algorithms.diff.compatible import Mapper
+    from algorithms.diff.compatible import Postcondition
 
 _TOKEN = re.compile(rb"[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[^\s]")
 _SOURCE_CODE = b"alpha = old ; omega"
@@ -225,6 +227,51 @@ def test_compatible_instruction_rejects_foreign_metadata() -> None:
             literal=cast("bytes", bytearray(b"created")),
         )
 
+
+
+def test_compatible_request_envelopes_reject_foreign_fields(
+    tmp_path: Path,
+) -> None:
+    """Reject malformed request fields before filesystem or admission work."""
+    source, oracle = _roots(tmp_path)
+    reference = _identity(source)
+    policy = _policy()
+    with pytest.raises(CompatiblePlanError, match="source root.*Path"):
+        _ = CompatibleBuildRequest(
+            source_root=cast("Path", "source"),
+            oracle_root=oracle,
+            reference_identity=reference,
+            admission_policy=policy,
+            mapper=_mapper,
+        )
+    with pytest.raises(CompatiblePlanError, match="mapper must be callable"):
+        _ = CompatibleBuildRequest(
+            source_root=source,
+            oracle_root=oracle,
+            reference_identity=reference,
+            admission_policy=policy,
+            mapper=cast("Mapper", object()),
+        )
+    with pytest.raises(CompatiblePlanError, match="exact boolean"):
+        _ = CompatibleBuildRequest(
+            source_root=source,
+            oracle_root=oracle,
+            reference_identity=reference,
+            admission_policy=policy,
+            mapper=_mapper,
+            preserve_candidate_only=cast("bool", 1),
+        )
+
+    plan = _plan(tmp_path / "materialize")
+    candidate = _candidate(tmp_path / "materialize")
+    output = tmp_path / "materialize" / "out"
+    request = _request(candidate, plan, output)
+    with pytest.raises(CompatiblePlanError, match="behavior evidence"):
+        _ = replace(request, behavior=cast("BehaviorEvidence", object()))
+    with pytest.raises(CompatiblePlanError, match="exact CompatibleAuthoringPlan"):
+        _ = replace(request, plan=cast("CompatibleAuthoringPlan", object()))
+    with pytest.raises(CompatiblePlanError, match="postcondition"):
+        _ = replace(request, postcondition=cast("Postcondition", object()))
 
 def test_compatible_public_apis_reject_foreign_request_records(
     tmp_path: Path,

@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING
 from algorithms.diff.admission import AdmissionPolicy
 from algorithms.diff.admission import IdentityTree
 from algorithms.diff.admission import evaluate_admission
+from algorithms.diff.behavior import BehaviorEvidence
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.exact import snapshot_tree
 from algorithms.diff.gate import require_transform_admission
@@ -60,7 +61,6 @@ from algorithms.diff.semantic import apply_semantic_plan
 from algorithms.diff.semantic import build_semantic_plan
 
 if TYPE_CHECKING:
-    from algorithms.diff.behavior import BehaviorEvidence
     from algorithms.diff.gate import TransformAdmissionEvidence
     from algorithms.diff.model import ExactAuthoringPlan
     from algorithms.diff.model import FileRecord
@@ -116,6 +116,10 @@ class CompatibleBuildRequest:
     mapper: Mapper
     preserve_candidate_only: bool = True
 
+    def __post_init__(self) -> None:
+        """Reject malformed compatible authoring request envelopes."""
+        _validate_build_request(self)
+
 
 @dataclass(frozen=True, slots=True)
 class CompatibleAuthoringPlan:
@@ -145,6 +149,10 @@ class CompatibleMaterializeRequest:
     output_root: Path
     postcondition: Postcondition | None = None
 
+    def __post_init__(self) -> None:
+        """Reject malformed compatible materialization request envelopes."""
+        _validate_materialize_request(self)
+
 
 @dataclass(frozen=True, slots=True)
 class _BuildContext:
@@ -157,6 +165,53 @@ class _BuildContext:
 class _MaterializeContext:
     candidate_root: Path
     mapper: Mapper
+
+
+def _validate_request_path(value: object, context: str) -> None:
+    if not isinstance(value, Path):
+        message = f"{context} must use pathlib Path"
+        raise CompatiblePlanError(message)
+
+
+def _validate_mapper(value: object) -> None:
+    if not callable(value):
+        message = "compatible mapper must be callable"
+        raise CompatiblePlanError(message)
+
+
+def _validate_build_request(request: CompatibleBuildRequest) -> None:
+    _validate_request_path(request.source_root, "compatible source root")
+    _validate_request_path(request.oracle_root, "compatible oracle root")
+    if type(request.reference_identity) is not IdentityTree:
+        message = "compatible reference identity must use exact IdentityTree"
+        raise CompatiblePlanError(message)
+    if type(request.admission_policy) is not AdmissionPolicy:
+        message = "compatible admission policy must use exact AdmissionPolicy"
+        raise CompatiblePlanError(message)
+    _validate_mapper(request.mapper)
+    if type(request.preserve_candidate_only) is not bool:
+        message = "compatible candidate-only policy must use an exact boolean"
+        raise CompatiblePlanError(message)
+
+
+def _validate_materialize_request(
+    request: CompatibleMaterializeRequest,
+) -> None:
+    _validate_request_path(request.candidate_root, "compatible candidate root")
+    _validate_request_path(request.output_root, "compatible output root")
+    if type(request.candidate_identity) is not IdentityTree:
+        message = "compatible candidate identity must use exact IdentityTree"
+        raise CompatiblePlanError(message)
+    if type(request.behavior) is not BehaviorEvidence:
+        message = "compatible behavior evidence must use exact BehaviorEvidence"
+        raise CompatiblePlanError(message)
+    if type(request.plan) is not CompatibleAuthoringPlan:
+        message = "compatible plan must use exact CompatibleAuthoringPlan"
+        raise CompatiblePlanError(message)
+    _validate_mapper(request.mapper)
+    if request.postcondition is not None and not callable(request.postcondition):
+        message = "compatible postcondition must be callable or None"
+        raise CompatiblePlanError(message)
 
 
 def _require_source(instruction: CompatibleInstruction) -> None:
