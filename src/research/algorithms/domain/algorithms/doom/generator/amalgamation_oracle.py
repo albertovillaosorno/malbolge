@@ -444,13 +444,17 @@ def write_amalgamation_oracle(
     data, stats = build_amalgamation(code_root)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = output_path.with_name(f".{output_path.name}.{token_hex(8)}.tmp")
+    owned_temporary = False
     try:
         with temporary.open("xb") as output_file:
+            owned_temporary = True
             _ = output_file.write(data)
             output_file.flush()
         _ = temporary.replace(output_path)
     except OSError as error:
-        cleanup_error = _cleanup_temporary(temporary)
+        cleanup_error = (
+            _cleanup_temporary(temporary) if owned_temporary else None
+        )
         message = f"DOOM amalgamation oracle publication failed: {error}"
         if cleanup_error is not None:
             message = f"{message}; temporary cleanup failed: {cleanup_error}"

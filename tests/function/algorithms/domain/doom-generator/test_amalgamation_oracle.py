@@ -50,6 +50,8 @@ SYSTEM_INCLUDE = "#include <stdint.h>"
 QUOTED_INCLUDE = '#include "'
 P_SPEC_ANIM = "__doom_tu_p_spec_anim_t"
 WI_STUFF_ANIM = "__doom_tu_wi_stuff_anim_t"
+_FOREIGN_TEMP = b"foreign-temp"
+_TEMP_COLLISION_ID = "collision-id"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -185,6 +187,29 @@ def test_oracle_write_preserves_foreign_legacy_temporary(
         legacy_temporary.read_bytes() == sentinel,
         "foreign legacy temporary was modified",
     )
+
+
+def test_oracle_write_preserves_unowned_temp_collision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An exclusive temp-name collision cannot delete another writer's file."""
+    code_root = tmp_path / "code"
+    _accepted_tree(code_root)
+    output = tmp_path / "oracle.c"
+    temporary = output.with_name(f".{output.name}.{_TEMP_COLLISION_ID}.tmp")
+    _ = temporary.write_bytes(_FOREIGN_TEMP)
+
+    def fixed_temporary_id(_: int | None = None) -> str:
+        return _TEMP_COLLISION_ID
+
+    monkeypatch.setattr(oracle, "token_hex", fixed_temporary_id)
+    with pytest.raises(
+        oracle.DoomAmalgamationError, match="publication failed"
+    ):
+        _ = oracle.write_amalgamation_oracle(code_root, output)
+
+    _expect(temporary.read_bytes() == _FOREIGN_TEMP, "foreign temp was deleted")
+    _expect(not output.exists(), "collision published oracle output")
 
 
 def test_build_amalgamation_rejects_missing_terminal_unit(
