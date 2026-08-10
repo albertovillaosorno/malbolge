@@ -65,6 +65,7 @@ _REMOVED = b"historical-remove"
 _CANDIDATE_ONLY = b"candidate-only"
 _CANDIDATE_CODE = b"extra ; alpha   = old ; omega tail"
 _EXPECTED_CODE = b"extra ; alpha   = new ; omega tail"
+_FOREIGN_STAGING = b"foreign-writer"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -292,6 +293,25 @@ def test_bug_routing_fails_closed_until_edits_are_named(tmp_path: Path) -> None:
 
 def _reject_postcondition(root: Path) -> bool:
     return not root.name
+
+
+def test_existing_compatible_staging_is_preserved(tmp_path: Path) -> None:
+    """Never delete a staging tree that may belong to another writer."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    staging = tmp_path / ".out.compatible-staging"
+    _write(staging, "owner.txt", _FOREIGN_STAGING)
+
+    with pytest.raises(
+        CompatiblePlanError, match="staging root already exists"
+    ):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    _expect(
+        (staging / "owner.txt").read_bytes() == _FOREIGN_STAGING,
+        "preexisting compatible staging was modified",
+    )
+    _expect(not output.exists(), "staging conflict published output")
 
 
 def test_postcondition_rejects_staging_before_publish(tmp_path: Path) -> None:

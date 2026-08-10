@@ -528,7 +528,8 @@ def _prepare_staging(output_root: Path) -> Path:
         raise CompatiblePlanError(message)
     staging = output_root.with_name(f".{output_root.name}{_STAGING_SUFFIX}")
     if staging.exists():
-        shutil.rmtree(staging)
+        message = f"compatible staging root already exists: {staging}"
+        raise CompatiblePlanError(message)
     staging.mkdir(parents=True)
     return staging
 

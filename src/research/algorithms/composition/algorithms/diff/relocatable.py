@@ -441,7 +441,8 @@ def _prepare_staging(output_root: Path) -> Path:
         raise RelocationError(message)
     staging = output_root.with_name(f".{output_root.name}{_STAGING_SUFFIX}")
     if staging.exists():
-        shutil.rmtree(staging)
+        message = f"relocatable staging root already exists: {staging}"
+        raise RelocationError(message)
     staging.mkdir(parents=True)
     return staging
 

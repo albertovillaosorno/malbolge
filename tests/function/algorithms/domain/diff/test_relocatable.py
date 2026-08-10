@@ -59,6 +59,7 @@ _BLOCKS = 64
 _INSERTION = b"candidate-insertion-preserved"
 _TARGET = b"TARGET-ONLY-CORRECTION"
 _CREATED = b"created-target"
+_FOREIGN_STAGING = b"foreign-writer"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -259,6 +260,26 @@ def test_relocatable_metadata_rejects_boolean_and_foreign_records() -> None:
             copy_candidate_file=False,
             segments=(cast("RelocatableSourceRange", object()),),
         )
+
+
+def test_existing_relocatable_staging_is_preserved(tmp_path: Path) -> None:
+    """Never delete a staging tree that may belong to another writer."""
+    source, oracle, base = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    output = tmp_path / "out"
+    staging = tmp_path / ".out.relocatable-staging"
+    _write(staging, "owner.txt", _FOREIGN_STAGING)
+
+    with pytest.raises(RelocationError, match="staging root already exists"):
+        materialize_relocatable_plan(candidate, plan, output)
+    _expect(
+        (staging / "owner.txt").read_bytes() == _FOREIGN_STAGING,
+        "preexisting relocatable staging was modified",
+    )
+    _expect(not output.exists(), "staging conflict published output")
 
 
 def test_relocatable_public_boundaries_reject_foreign_inputs(
