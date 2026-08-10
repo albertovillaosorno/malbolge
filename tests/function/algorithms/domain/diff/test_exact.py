@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -333,6 +334,36 @@ def test_exact_materialization_wraps_output_write_failure(
         materialize_exact_plan(source, plan, output)
     _expect(not output.exists(), "write failure published output")
     _expect(not (tmp_path / ".result.staging").exists(), "staging survived")
+
+
+def test_exact_cleanup_failure_is_reported_with_primary_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed staging cleanup cannot hide or replace the primary failure."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "result"
+    blocked = tmp_path / ".result.staging" / "created.txt"
+    original_write = Path.write_bytes
+
+    def fail_write(path: Path, data: bytes) -> int:
+        if path == blocked:
+            message = "blocked staging write"
+            raise PermissionError(message)
+        return original_write(path, data)
+
+    def fail_cleanup(path: Path) -> None:
+        _ = path
+        message = "blocked staging cleanup"
+        raise PermissionError(message)
+
+    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
+    with pytest.raises(
+        ExactTreeError,
+        match=r"instruction output write failed.*staging cleanup failed",
+    ):
+        materialize_exact_plan(source, plan, output)
 
 
 def test_exact_staging_status_failure_is_not_reported_missing(

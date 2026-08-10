@@ -799,6 +799,21 @@ def _resolved_output_root(output_root: Path) -> Path:
         raise ExactTreeError(message) from error
 
 
+def _cleanup_exact_staging(path: Path) -> str | None:
+    try:
+        shutil.rmtree(path)
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        return str(error)
+    return None
+
+
+def _raise_exact_cleanup_failure(error: Exception, cleanup_error: str) -> None:
+    message = f"{error}; staging cleanup failed: {cleanup_error}"
+    raise ExactTreeError(message) from error
+
+
 def _publish_exact_output(staging: Path, destination: Path) -> None:
     try:
         publish_directory_no_replace(staging, destination)
@@ -825,7 +840,8 @@ def materialize_exact_plan(
     try:
         _populate_staging(resolved_source, staging_root, plan)
         _publish_exact_output(staging_root, resolved_output)
-    except Exception:
-        if staging_root.exists():
-            shutil.rmtree(staging_root)
+    except Exception as error:
+        cleanup_error = _cleanup_exact_staging(staging_root)
+        if cleanup_error is not None:
+            _raise_exact_cleanup_failure(error, cleanup_error)
         raise
