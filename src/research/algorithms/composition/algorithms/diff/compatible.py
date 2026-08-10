@@ -43,6 +43,8 @@ from pathlib import PurePosixPath
 import shutil
 from typing import TYPE_CHECKING
 
+from algorithms.diff.admission import AdmissionPolicy
+from algorithms.diff.admission import IdentityTree
 from algorithms.diff.admission import evaluate_admission
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.exact import snapshot_tree
@@ -51,19 +53,17 @@ from algorithms.diff.mapped import MappedView
 from algorithms.diff.model import ExactInstruction
 from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
+from algorithms.diff.model import TreeSnapshot
 from algorithms.diff.publication import publish_directory_no_replace
 from algorithms.diff.semantic import SemanticAuthoringPlan
 from algorithms.diff.semantic import apply_semantic_plan
 from algorithms.diff.semantic import build_semantic_plan
 
 if TYPE_CHECKING:
-    from algorithms.diff.admission import AdmissionPolicy
-    from algorithms.diff.admission import IdentityTree
     from algorithms.diff.behavior import BehaviorEvidence
     from algorithms.diff.gate import TransformAdmissionEvidence
     from algorithms.diff.model import ExactAuthoringPlan
     from algorithms.diff.model import FileRecord
-    from algorithms.diff.model import TreeSnapshot
 
 _ONE = 1
 _STAGING_SUFFIX = ".compatible-staging"
@@ -127,6 +127,10 @@ class CompatibleAuthoringPlan:
     admission_policy: AdmissionPolicy
     instructions: tuple[CompatibleInstruction, ...]
     preserve_candidate_only: bool = True
+
+    def __post_init__(self) -> None:
+        """Require one self-consistent immutable compatible authoring plan."""
+        _validate_authoring_plan(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,6 +280,84 @@ def _validate_instruction(instruction: CompatibleInstruction) -> None:
         message = f"unknown compatible instruction kind: {instruction.kind}"
         raise CompatiblePlanError(message)
     validator(instruction)
+
+
+def _validate_plan_records(plan: CompatibleAuthoringPlan) -> None:
+    if type(plan.source) is not TreeSnapshot or type(plan.target) is not TreeSnapshot:
+        message = "compatible plan snapshots must use exact TreeSnapshot records"
+        raise CompatiblePlanError(message)
+    if type(plan.reference_identity) is not IdentityTree:
+        message = "compatible plan identity must use the exact IdentityTree type"
+        raise CompatiblePlanError(message)
+    if type(plan.admission_policy) is not AdmissionPolicy:
+        message = "compatible plan policy must use the exact AdmissionPolicy type"
+        raise CompatiblePlanError(message)
+    if type(plan.instructions) is not tuple or any(
+        type(item) is not CompatibleInstruction for item in plan.instructions
+    ):
+        message = "compatible plan instructions must be exact immutable records"
+        raise CompatiblePlanError(message)
+    if type(plan.preserve_candidate_only) is not bool:
+        message = "compatible candidate-only policy must use an exact boolean"
+        raise CompatiblePlanError(message)
+
+
+def _validate_plan_topology(plan: CompatibleAuthoringPlan) -> None:
+    target_paths = tuple(record.path for record in plan.target.files)
+    instruction_paths = tuple(item.output_path for item in plan.instructions)
+    if instruction_paths != target_paths:
+        message = "compatible plan instructions must exactly cover target paths"
+        raise CompatiblePlanError(message)
+
+
+def _validate_plan_instruction_binding(
+    instruction: CompatibleInstruction,
+    source_records: dict[str, FileRecord],
+    target_records: dict[str, FileRecord],
+) -> None:
+    source_record = (
+        None
+        if instruction.source_path is None
+        else source_records.get(instruction.source_path)
+    )
+    if instruction.source_path is not None and source_record is None:
+        message = "compatible instruction source path is absent from plan source"
+        raise CompatiblePlanError(message)
+    target_record = target_records[instruction.output_path]
+    if instruction.kind is CompatibleFileKind.EXACT_GATED:
+        if (
+            source_record is None
+            or instruction.source_sha256 != source_record.sha256
+        ):
+            message = "compatible exact gate does not match plan source hash"
+            raise CompatiblePlanError(message)
+        if (
+            instruction.exact is None
+            or instruction.exact.output_path != instruction.output_path
+            or instruction.exact.expected_sha256 != target_record.sha256
+        ):
+            message = "compatible exact gate does not match plan target evidence"
+            raise CompatiblePlanError(message)
+    if instruction.kind is CompatibleFileKind.CREATE_LITERAL:
+        if (
+            instruction.literal is None
+            or _sha256(instruction.literal) != target_record.sha256
+        ):
+            message = "compatible literal does not match plan target snapshot"
+            raise CompatiblePlanError(message)
+
+
+def _validate_authoring_plan(plan: CompatibleAuthoringPlan) -> None:
+    _validate_plan_records(plan)
+    _validate_plan_topology(plan)
+    source_records = {record.path: record for record in plan.source.files}
+    target_records = {record.path: record for record in plan.target.files}
+    for instruction in plan.instructions:
+        _validate_plan_instruction_binding(
+            instruction,
+            source_records,
+            target_records,
+        )
 
 
 def _record_map(snapshot: TreeSnapshot) -> dict[str, FileRecord]:

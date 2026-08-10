@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import re
 import shutil
@@ -243,6 +244,41 @@ def test_compatible_public_apis_reject_foreign_request_records(
         )
     _expect(not output.exists(), "foreign materialize request wrote output")
 
+
+
+def test_compatible_plan_rejects_forged_topology_and_bindings(
+    tmp_path: Path,
+) -> None:
+    """Keep target topology and exact evidence bound to plan snapshots."""
+    plan = _plan(tmp_path)
+    with pytest.raises(CompatiblePlanError, match="exactly cover target paths"):
+        _ = replace(plan, instructions=plan.instructions[:-1])
+    with pytest.raises(CompatiblePlanError, match="exact boolean"):
+        _ = replace(plan, preserve_candidate_only=cast("bool", 1))
+
+    exact_index = next(
+        index
+        for index, instruction in enumerate(plan.instructions)
+        if instruction.kind is CompatibleFileKind.EXACT_GATED
+    )
+    exact = plan.instructions[exact_index]
+    forged_exact = replace(exact, source_sha256="f" * 64)
+    forged_instructions = list(plan.instructions)
+    forged_instructions[exact_index] = forged_exact
+    with pytest.raises(CompatiblePlanError, match="plan source hash"):
+        _ = replace(plan, instructions=tuple(forged_instructions))
+
+    literal_index = next(
+        index
+        for index, instruction in enumerate(plan.instructions)
+        if instruction.kind is CompatibleFileKind.CREATE_LITERAL
+    )
+    literal = plan.instructions[literal_index]
+    forged_literal = replace(literal, literal=b"forged target")
+    forged_instructions = list(plan.instructions)
+    forged_instructions[literal_index] = forged_literal
+    with pytest.raises(CompatiblePlanError, match="target snapshot"):
+        _ = replace(plan, instructions=tuple(forged_instructions))
 
 def test_compatible_tree_preserves_candidate_and_target_topology(
     tmp_path: Path,
