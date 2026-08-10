@@ -135,7 +135,15 @@ def _display_path(output_path: Path) -> str:
     if not output_path.is_absolute():
         return output_path.as_posix()
     try:
-        return output_path.resolve().relative_to(_REPOSITORY_ROOT).as_posix()
+        resolved = output_path.resolve()
+    except OSError as error:
+        message = (
+            f"Rust output display path resolution failed: {output_path}: "
+            f"{error}"
+        )
+        raise RustEmissionError(message) from error
+    try:
+        return resolved.relative_to(_REPOSITORY_ROOT).as_posix()
     except ValueError:
         return output_path.name
 
@@ -193,6 +201,16 @@ def _generated_header(output_path: Path) -> str:
     ))
 
 
+def _runtime_template_text() -> str:
+    try:
+        return _RUNTIME_TEMPLATE.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        message = (
+            f"Rust runtime template read failed: {_RUNTIME_TEMPLATE}: {error}"
+        )
+        raise RustEmissionError(message) from error
+
+
 def emit_rust_transform(
     plan: ProtectedExactPlan,
     profile: str,
@@ -210,7 +228,7 @@ def emit_rust_transform(
     if not profile:
         message = "Rust transform profile must be non-empty"
         raise RustEmissionError(message)
-    template = _RUNTIME_TEMPLATE.read_text(encoding="utf-8")
+    template = _runtime_template_text()
     start = template.find(_BEGIN)
     end = template.find(_END)
     if start < 0 or end < start:

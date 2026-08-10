@@ -75,6 +75,7 @@ _PASSTHROUGH_AUTHORING = b"authoring-external"
 _PASSTHROUGH_RUNTIME = b"runtime-external"
 _MAX_GENERATED_LINE_LENGTH = 80
 _GENERATED_PATH = "generated/main.rs"
+_RUNTIME_TEMPLATE_NAME = "rust_runtime.rs"
 _BOUNDARY_HEADER = "// Boundary-Contract:"
 _LARGE_FILE_HEADER = "// Large file:\n//   - true"
 _LEGACY_TEMP = b"legacy-temp"
@@ -258,6 +259,56 @@ def test_emitted_rust_compiles_and_materializes_exact_tree(
     _expect(
         snapshot_tree(output) == snapshot_tree(oracle), "Rust output changed"
     )
+
+
+def test_emitter_wraps_runtime_template_read_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Template I/O failures remain inside RustEmissionError."""
+    _, _, _, protected = _fixture(tmp_path)
+    original_read = Path.read_text
+
+    def fail_template_read(
+        path: Path,
+        *,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> str:
+        if path.name == _RUNTIME_TEMPLATE_NAME:
+            message = "blocked runtime template"
+            raise PermissionError(message)
+        return original_read(
+            path,
+            encoding=encoding,
+            errors=errors,
+            newline=newline,
+        )
+
+    monkeypatch.setattr(Path, "read_text", fail_template_read)
+    with pytest.raises(RustEmissionError, match="runtime template read failed"):
+        _ = emit_rust_transform(protected, _PROFILE)
+
+
+def test_emitter_wraps_absolute_display_path_resolution_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Header path rendering cannot leak a host resolution exception."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated" / "transform.rs"
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == output:
+            message = "blocked generated display path"
+            raise PermissionError(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    with pytest.raises(
+        RustEmissionError, match="display path resolution failed"
+    ):
+        _ = emit_rust_transform(protected, _PROFILE, output)
 
 
 def test_writer_preserves_legacy_fixed_temporary_file(tmp_path: Path) -> None:
