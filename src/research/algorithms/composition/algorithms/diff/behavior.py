@@ -284,6 +284,69 @@ class BehaviorObservations:
         )
 
 
+def _require_evidence_similarity(value: object) -> float:
+    if type(value) is not float or not math.isfinite(value):
+        message = "behavior evidence similarity must use a finite exact float"
+        raise BehaviorPolicyError(message)
+    if value < _ZERO or value > _ONE:
+        message = "behavior evidence similarity must be in [0, 1]"
+        raise BehaviorPolicyError(message)
+    return value
+
+
+def _require_evidence_count(value: object, context: str, minimum: int) -> int:
+    if type(value) is not int or value < minimum:
+        message = f"{context} must use an exact integer >= {minimum}"
+        raise BehaviorPolicyError(message)
+    return value
+
+
+def _require_string_tuple(value: object, context: str) -> tuple[str, ...]:
+    if type(value) is not tuple:
+        message = f"{context} must use the exact immutable tuple type"
+        raise BehaviorPolicyError(message)
+    items = cast("tuple[object, ...]", value)
+    if any(type(item) is not str or not item for item in items):
+        message = f"{context} must contain non-empty exact strings"
+        raise BehaviorPolicyError(message)
+    return cast("tuple[str, ...]", value)
+
+
+def _validate_behavior_evidence(evidence: BehaviorEvidence) -> None:
+    similarity = _require_evidence_similarity(evidence.similarity)
+    matched = _require_evidence_count(
+        evidence.matched_identity_probes,
+        "matched identity probe count",
+        _ZERO,
+    )
+    total = _require_evidence_count(
+        evidence.total_identity_probes,
+        "total identity probe count",
+        _ONE,
+    )
+    if matched > total:
+        message = "matched identity probe count cannot exceed total"
+        raise BehaviorPolicyError(message)
+    if similarity != matched / total:
+        message = "behavior evidence similarity does not match probe counts"
+        raise BehaviorPolicyError(message)
+    apply = _require_string_tuple(
+        evidence.corrections_to_apply,
+        "corrections to apply",
+    )
+    skip = _require_string_tuple(
+        evidence.corrections_to_skip,
+        "corrections to skip",
+    )
+    if len(apply) != len(set(apply)) or len(skip) != len(set(skip)):
+        message = "behavior correction routes must not contain duplicates"
+        raise BehaviorPolicyError(message)
+    if set(apply) & set(skip):
+        message = "behavior correction routes must be disjoint"
+        raise BehaviorPolicyError(message)
+    _ = _require_string_tuple(evidence.reasons, "behavior evidence reasons")
+
+
 @dataclass(frozen=True, slots=True)
 class BehaviorEvidence:
     """Aggregated behavior admission plus bug-correction routing."""
@@ -294,6 +357,10 @@ class BehaviorEvidence:
     corrections_to_apply: tuple[str, ...]
     corrections_to_skip: tuple[str, ...]
     reasons: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Require internally coherent aggregated behavior evidence."""
+        _validate_behavior_evidence(self)
 
     @property
     def admitted(self) -> bool:

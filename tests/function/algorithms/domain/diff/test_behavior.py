@@ -36,6 +36,7 @@ import math
 from typing import cast
 
 from algorithms.diff.behavior import BehaviorAdmissionError
+from algorithms.diff.behavior import BehaviorEvidence
 from algorithms.diff.behavior import BehaviorObservations
 from algorithms.diff.behavior import BehaviorPolicyError
 from algorithms.diff.behavior import BehaviorProfile
@@ -94,6 +95,25 @@ def _observations(
         ),
         bugs=(BugObservation(probe_id="historical-bug", state=bug_state),),
     )
+
+
+def test_behavior_evidence_rejects_incoherent_direct_construction() -> None:
+    """Aggregated evidence cannot forge impossible local invariants."""
+    with pytest.raises(BehaviorPolicyError, match=r"similarity.*probe counts"):
+        _ = BehaviorEvidence(0.5, 1, 1, (), (), ())
+    with pytest.raises(BehaviorPolicyError, match="cannot exceed total"):
+        _ = BehaviorEvidence(1.0, 2, 1, (), (), ())
+    with pytest.raises(BehaviorPolicyError, match="disjoint"):
+        _ = BehaviorEvidence(1.0, 1, 1, ("fix",), ("fix",), ())
+    with pytest.raises(BehaviorPolicyError, match="immutable tuple"):
+        _ = BehaviorEvidence(
+            1.0,
+            1,
+            1,
+            cast("tuple[str, ...]", cast("object", ["fix"])),
+            (),
+            (),
+        )
 
 
 def test_present_bug_routes_correction_without_rejecting_source() -> None:
