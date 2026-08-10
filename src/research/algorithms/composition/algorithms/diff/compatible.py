@@ -50,6 +50,7 @@ from algorithms.diff.gate import require_transform_admission
 from algorithms.diff.mapped import MappedView
 from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
+from algorithms.diff.publication import publish_directory_no_replace
 from algorithms.diff.semantic import apply_semantic_plan
 from algorithms.diff.semantic import build_semantic_plan
 
@@ -646,6 +647,14 @@ def _admit(request: CompatibleMaterializeRequest) -> TransformAdmissionEvidence:
     return require_transform_admission(source_evidence, request.behavior)
 
 
+def _publish_compatible_output(staging: Path, destination: Path) -> None:
+    try:
+        publish_directory_no_replace(staging, destination)
+    except OSError as error:
+        message = f"compatible output publication failed: {error}"
+        raise CompatiblePlanError(message) from error
+
+
 def materialize_compatible_plan(
     request: CompatibleMaterializeRequest,
 ) -> TransformAdmissionEvidence:
@@ -664,7 +673,7 @@ def materialize_compatible_plan(
     try:
         _populate_staging(request, candidate, staging)
         _require_postcondition(request.postcondition, staging)
-        _ = staging.replace(request.output_root)
+        _publish_compatible_output(staging, request.output_root)
     except Exception:
         if staging.exists():
             shutil.rmtree(staging)
