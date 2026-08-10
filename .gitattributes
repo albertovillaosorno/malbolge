@@ -22,12 +22,6 @@
 *.editorconfig text eol=lf
 *.props text eol=lf
 
-# Exact generated source-bound transforms.
-# jig-ignore-next-line: indivisible reviewed identifier
-src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs linguist-generated=true
-# jig-ignore-next-line: indivisible reviewed identifier
-src/research/algorithms/composition/algorithms/doom/quality/main.rs linguist-generated=true
-
 # Binary families.
 *.png binary
 *.jpg binary
