@@ -30,4 +30,5 @@ but remain unavailable in the canonical libc authority until compiler-generated
 startup proves the heap bind before user code. `getchar`/`putchar` wrappers are
 also implemented over stable declaration-only byte intrinsics, but remain
 unavailable until downstream lowering proves those intrinsic identities execute
-selected-profile input/output. Formatting and transcendental math remain unavailable.
+selected-profile input/output. Formatting and transcendental math remain
+unavailable.

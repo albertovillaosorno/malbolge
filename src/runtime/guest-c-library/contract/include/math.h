@@ -24,7 +24,7 @@
 //   - Version-one deterministic binary64 math contract.
 // - Description:
 //   - Proved exact/sqrt routines execute as guest C; transcendental work is
-//   gated.
+//     gated.
 // - Usage:
 //   - Included by guest source; unavailable calls still fail preflight.
 // - Defaults:

@@ -18,7 +18,7 @@
 //   - Side effects: none.
 // - Split-When:
 //   - Another independently available inexact math family needs source
-//   evidence.
+//     evidence.
 // - Merge-When:
 //   - Guest libc positive fixtures own all proved binary64 math together.
 // - Summary:
