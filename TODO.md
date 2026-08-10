@@ -44,14 +44,6 @@ executable cells, and input-dependent cycles or hangs.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/verification/emitted-malbolge-static-analyzer.mdc](docs/todo/open/verification/emitted-malbolge-static-analyzer.mdc)
 
-### TODO - Required-profile diagnostics
-
-Emit deterministic diagnostics naming the required Malbolge profile/features,
-required memory or address capacity, and missing runtime capability.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/compatibility/required-profile-diagnostics.mdc](docs/todo/open/compatibility/required-profile-diagnostics.mdc)
-
 ### TODO - Parametric compiler challenge generator
 
 Build deterministic workload generators whose difficulty can grow continuously
@@ -60,7 +52,24 @@ instead of saturating at one application-specific threshold.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/applications/parametric-compiler-challenge-generator.mdc](docs/todo/open/applications/parametric-compiler-challenge-generator.mdc)
 
+### TODO - Required-profile diagnostics
+
+Emit deterministic diagnostics naming the required Malbolge profile/features,
+required memory or address capacity, and missing runtime capability.
+
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+[docs/todo/open/compatibility/required-profile-diagnostics.mdc](docs/todo/open/compatibility/required-profile-diagnostics.mdc)
+
 ## P2 — Compiler, runtime, and accelerator core
+
+### TODO - Guest runtime and allocator
+
+Implement startup, calling convention, frames, allocation, streams, integer
+helpers, strings, deterministic math helpers, scheduling primitives, and other
+runtime facilities as code that ultimately executes under Malbolge semantics.
+
+<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
+[docs/todo/open/c/guest-runtime-and-allocator.mdc](docs/todo/open/c/guest-runtime-and-allocator.mdc)
 
 ### TODO - Self-modification state-graph optimizer
 
@@ -94,15 +103,6 @@ metadata that the original loader ignores.
 
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 [docs/todo/open/compatibility/historical-interpreter-fallback-capsule.mdc](docs/todo/open/compatibility/historical-interpreter-fallback-capsule.mdc)
-
-### TODO - Guest runtime and allocator
-
-Implement startup, calling convention, frames, allocation, streams, integer
-helpers, strings, deterministic math helpers, scheduling primitives, and other
-runtime facilities as code that ultimately executes under Malbolge semantics.
-
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-[docs/todo/open/c/guest-runtime-and-allocator.mdc](docs/todo/open/c/guest-runtime-and-allocator.mdc)
 
 ### TODO - Multi-objective compiler algorithm evaluation arena
 
