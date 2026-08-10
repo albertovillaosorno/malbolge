@@ -228,10 +228,12 @@ parts:
     kind: domain
     responsibility: Own pure rules and domain models.
   - id: part-0040
+    # jig-ignore-next-line: canonical tracked part path is indivisible
     path: domain/algorithms/adaptive-accelerator-resource-budgeting/experiment.toml
     kind: domain
     responsibility: Own pure rules and domain models.
   - id: part-0041
+    # jig-ignore-next-line: canonical tracked part path is indivisible
     path: domain/algorithms/adaptive-accelerator-resource-budgeting/lifecycle.toml
     kind: domain
     responsibility: Own pure rules and domain models.
@@ -311,26 +313,31 @@ parts:
     language: c
     responsibility: Own pure rules and domain models.
   - id: part-0059
+    # jig-ignore-next-line: canonical tracked part path is indivisible
     path: domain/algorithms/doom/generator/probe_assets/fixed_point/shim/limits.h
     kind: domain
     language: c
     responsibility: Own pure rules and domain models.
   - id: part-0060
+    # jig-ignore-next-line: canonical tracked part path is indivisible
     path: domain/algorithms/doom/generator/probe_assets/fixed_point/shim/stdbool.h
     kind: domain
     language: c
     responsibility: Own pure rules and domain models.
   - id: part-0061
+    # jig-ignore-next-line: canonical tracked part path is indivisible
     path: domain/algorithms/doom/generator/probe_assets/fixed_point/shim/stddef.h
     kind: domain
     language: c
     responsibility: Own pure rules and domain models.
   - id: part-0062
+    # jig-ignore-next-line: canonical tracked part path is indivisible
     path: domain/algorithms/doom/generator/probe_assets/fixed_point/shim/stdint.h
     kind: domain
     language: c
     responsibility: Own pure rules and domain models.
   - id: part-0063
+    # jig-ignore-next-line: canonical tracked part path is indivisible
     path: domain/algorithms/doom/generator/probe_assets/fixed_point/shim/stdlib.h
     kind: domain
     language: c
@@ -395,10 +402,12 @@ parts:
     kind: domain
     responsibility: Own pure rules and domain models.
   - id: part-0077
+    # jig-ignore-next-line: canonical tracked part path is indivisible
     path: domain/algorithms/malbolge-specific-optimization-mathematics/experiment.toml
     kind: domain
     responsibility: Own pure rules and domain models.
   - id: part-0078
+    # jig-ignore-next-line: canonical tracked part path is indivisible
     path: domain/algorithms/malbolge-specific-optimization-mathematics/lifecycle.toml
     kind: domain
     responsibility: Own pure rules and domain models.
@@ -419,15 +428,18 @@ parts:
     kind: domain
     responsibility: Own pure rules and domain models.
   - id: part-0083
+    # jig-ignore-next-line: canonical tracked part path is indivisible
     path: domain/algorithms/search-pruning-and-state-canonicalization/exact_duplicate.rs
     kind: domain
     language: rust
     responsibility: Own pure rules and domain models.
   - id: part-0084
+    # jig-ignore-next-line: canonical tracked part path is indivisible
     path: domain/algorithms/search-pruning-and-state-canonicalization/experiment.toml
     kind: domain
     responsibility: Own pure rules and domain models.
   - id: part-0085
+    # jig-ignore-next-line: canonical tracked part path is indivisible
     path: domain/algorithms/search-pruning-and-state-canonicalization/lifecycle.toml
     kind: domain
     responsibility: Own pure rules and domain models.
