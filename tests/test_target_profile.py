@@ -78,6 +78,24 @@ def test_validate_document_rejects_foreign_top_level_type() -> None:
         )
 
 
+def test_profile_text_rejects_foreign_input_type() -> None:
+    """Direct parser misuse remains inside the profile validation boundary."""
+    with pytest.raises(
+        validator.ProfileValidationError, match="JSON text must use the exact"
+    ):
+        _ = validator.loads_document(cast("str", object()))
+
+
+def test_profile_loader_rejects_foreign_path_type() -> None:
+    """Direct loader misuse fails before invoking pathlib methods."""
+    with pytest.raises(
+        validator.ProfileValidationError, match="path must use pathlib Path"
+    ):
+        _ = validator.load_document(
+            cast("Path", cast("object", "malbolge.json"))
+        )
+
+
 def test_canonical_profile_is_valid() -> None:
     """The committed canonical profile satisfies schema v2."""
     validator.validate_text(_canonical_text())

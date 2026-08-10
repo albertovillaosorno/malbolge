@@ -204,6 +204,8 @@ def loads_document(text: str) -> JsonObject:
         The parsed top-level target-profile object.
 
     """
+    if type(text) is not str:
+        _fail("target-profile JSON text must use the exact string type")
     try:
         parsed = cast(
             "object",
@@ -214,6 +216,12 @@ def loads_document(text: str) -> JsonObject:
     return _expect_mapping(parsed, "target profile document")
 
 
+def _validated_profile_path(value: object) -> Path:
+    if not isinstance(value, Path):
+        _fail("target-profile path must use pathlib Path")
+    return value
+
+
 def load_document(path: Path) -> JsonObject:
     """Load one target-profile document from disk.
 
@@ -221,8 +229,9 @@ def load_document(path: Path) -> JsonObject:
         The parsed top-level target-profile object.
 
     """
+    admitted_path = _validated_profile_path(path)
     try:
-        text = path.read_text(encoding="utf-8-sig")
+        text = admitted_path.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError as error:
         _fail(f"invalid target-profile UTF-8: {error}")
     return loads_document(text)
