@@ -47,18 +47,19 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v4 keeps
-  the exact all-zero entry transition and additionally resolves one reachable
-  second transition, including evolved fetch/data cells, C/D aliasing, planned
-  writes, encryption input/output, input-dependent accumulator state, halt or
-  rejection, pointer succession, and second-step wraparound. A reachable `p`
-  after unknown input is explicitly unresolved rather than guessed. Rejected or
-  unresolved bounded prefixes still emit JSON but return a nonzero CLI status.
-  The report also states the structurally closed historical address domain.
-- Third-step and later control-flow reachability, longer dataflow/evolved memory,
-  source-map context, later wraparound, and input-dependent cycles remain open
-  and are never inferred from the two-transition prefix or initial-image
-  admission.
+  offsets, stable finding codes, and explicit analysis limits. Schema v5 keeps
+  the exact entry and second transitions and additionally resolves one reachable
+  third transition by replaying committed bounded writes. It records evolved
+  fetch/data cells, C/D aliasing, planned writes, encryption input/output,
+  input-dependent accumulator state, halt or rejection, pointer succession, and
+  wrap. The preserved interpreter's non-graphical `continue` ordering also lets
+  the verifier prove the `b"c'"` third-step fixed-fetch cycle (`C=2`, `D=40`,
+  `M[2]=29503`) without executing a guest loop. Rejected or unresolved bounded
+  prefixes still emit JSON but return a nonzero CLI status.
+- Fourth-step and later control-flow reachability, longer dataflow/evolved
+  memory, source-map context, later wraparound, and longer input-dependent cycles
+  remain open and are never inferred from the three-transition prefix or
+  initial-image admission.
 
 - Expected durable artifact surface: `verifier/`, `tests/differential/`,
   `tests/exhaustive/`, `tests/fuzz/`.
@@ -76,5 +77,6 @@ executable cells, and input-dependent cycles or hangs.
   decode, byte-exact CLI/library report parity, exact second-step input, halt,
   invalid self-encryption and input-dependent-crazy fixtures, a 24-case public
   CLI differential spanning recurrence-backed entry `j`, 16 seeded invalid
-  positional mutations with byte-exact replay, explicit bounded analysis limits,
-  CLI second-step rejection status, and CLI missing-source failure.
+  positional mutations with byte-exact replay, exact third-step halt and
+  fixed-fetch-cycle evidence, explicit bounded analysis limits, CLI second/third
+  rejection status, and CLI missing-source failure.

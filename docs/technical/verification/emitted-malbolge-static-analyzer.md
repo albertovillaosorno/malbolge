@@ -30,21 +30,24 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v4` retains the exact `entry_transition` from the
-historical all-zero register state and adds one exact or explicitly unresolved
-`second_transition`. The prefix replays committed entry writes before resolving
-the reachable second fetch/data cells, decode, C/D alias, planned data write,
-encryption address/input/output, accumulator dependency, halt/rejection, pointer
-succession, and wrap. A second `p` whose accumulator depends on prior input is
-reported unresolved rather than assigned a guessed value. Historical recurrence
-words are derived only when a bounded read needs them. The report still records
-that the profile's code/data pointers and words stay in `0..=59048`.
+`malbolge-static-image/v5` retains exact `entry_transition` and
+`second_transition` evidence and adds one exact or explicitly unresolved
+`third_transition`. The prefix replays committed entry/second writes before each
+bounded read, then resolves fetch/data cells, decode, C/D alias, planned data
+write, encryption address/input/output, accumulator dependency, halt/rejection,
+pointer succession, and wrap. A `p` whose accumulator depends on prior input is
+reported unresolved rather than assigned a guessed value. A non-graphical fetch
+is stronger: the preserved 1998 interpreter executes `continue` before decode,
+encryption, or pointer advancement, so the unchanged C/D state proves a fixed
+fetch cycle. The two-word `b"c'"` fixture reaches exactly that third-step state at
+`C=2`, `D=40`, `M[2]=29503`. Historical recurrence words are derived only when a
+bounded read needs them.
 
 Initial-image admission is deliberately narrower than whole-program safety. The
-current slice proves only a two-transition prefix. It does not claim third-step
-or later reachability, general dataflow/evolved-memory equivalence, source-map
-context, or input-dependent cycle/hang safety. Those remain open under this
-TODO.
+current slice proves only a three-transition prefix. It does not claim
+fourth-step or later reachability, general dataflow/evolved-memory equivalence,
+source-map context, or longer input-dependent cycle/hang safety. Those remain
+open under this TODO.
 
 ## Invariants
 
@@ -52,10 +55,10 @@ TODO.
   imply which addresses are reachable or whether a particular run wraps a
   pointer.
 - Per-cell encryption-target classification does not imply reachability. The
-  bounded transfer records resolve only the first two historical transitions.
-- Two-transition evidence never implies third-step or later control flow,
-  general dataflow/evolved-memory equivalence, source-map context, or cycle/hang
-  safety.
+  bounded transfer records resolve only the first three historical transitions.
+- Three-transition evidence never implies fourth-step or later control flow,
+  general dataflow/evolved-memory equivalence, source-map context, or longer
+  cycle/hang safety.
 - Every reported initial cell preserves its loaded position and raw-source byte
   offset, and every report binds the exact source bytes and historical profile.
 - Future dynamic analyses must state their bounded assumptions rather than
@@ -88,9 +91,9 @@ Unreadable source fails before a semantic report is emitted.
   rejection, exact second-step input/no-op/halt/invalid-encryption fixtures,
   explicit input-dependent-crazy unresolved evidence, a 24-case public CLI
   differential including recurrence-backed entry `j`, 16 seeded invalid
-  positional mutations with byte-exact replay, byte-exact CLI/library report
-  parity, bounded analysis limits, CLI second-step rejection status, and CLI read
-  failure.
+  positional mutations with byte-exact replay, exact third-step halt and
+  fixed-fetch-cycle evidence, byte-exact CLI/library report parity, bounded
+  analysis limits, CLI second/third rejection status, and CLI read failure.
 
 ## References
 

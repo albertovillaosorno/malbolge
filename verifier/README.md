@@ -8,13 +8,14 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v4 retains the exact all-zero entry transition and adds one
-reachable second transition. The bounded two-transition prefix records fetch and
-data cells, code/data aliasing, planned writes, encryption input/output, input
-dependence, halt/rejection, pointer succession, and wrap without a worklist or
-unbounded guest execution. It records the closed classic address range while
-explicitly leaving third-step and later control flow, source-map context, and
-input-dependent cycles unproved.
+load decode. Schema v5 retains the exact entry and second transitions and adds
+one reachable third transition. The bounded three-transition prefix replays
+committed writes before resolving fetch/data cells, code/data aliasing, planned
+writes, encryption input/output, input dependence, halt/rejection, pointer
+succession, and wrap without a worklist or unbounded guest execution. It can
+also prove the historical non-graphical-fetch fixed cycle because `continue`
+precedes pointer advance. Fourth-step and later control flow, source-map context,
+and longer input-dependent cycles remain unproved.
 
 The initial-image report is bounded by the selected historical profile. Sources
 that exceed 59,049 loaded words receive a capacity finding without materializing
@@ -26,9 +27,10 @@ lexical, recurrence-base, capacity, and positional-decode failures.
 
 The CLI always emits the canonical UTF-8 report bytes when source bytes are
 readable, without platform newline translation. It returns zero only when the
-admitted image also has an accepted bounded two-transition prefix, including a
-halt before step two. Proven second-step rejection or unresolved input-dependent
-state returns nonzero so process-status-only callers cannot overclaim safety.
+admitted image also has an accepted bounded three-transition prefix. Proven
+entry/second rejection, unresolved input-dependent state, or a third-step fixed
+fetch cycle returns nonzero; a halt at any resolved prefix step remains an exact
+accepted terminal result.
 
 Each report also carries a SHA-256 identity for the exact raw source bytes. This
 distinguishes inputs that have the same loaded-word semantics, including
