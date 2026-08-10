@@ -614,6 +614,29 @@ def _instruction_bytes(
     return _patch_bytes(source, instruction.segments)
 
 
+def _write_output_file(path: Path, data: bytes, context: str) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_bytes(data)
+    except OSError as error:
+        message = f"{context} write failed: {path}: {error}"
+        raise ExactTreeError(message) from error
+
+
+def _make_output_directory(
+    path: Path,
+    context: str,
+    *,
+    parents: bool,
+    exist_ok: bool,
+) -> None:
+    try:
+        path.mkdir(parents=parents, exist_ok=exist_ok)
+    except OSError as error:
+        message = f"{context} creation failed: {path}: {error}"
+        raise ExactTreeError(message) from error
+
+
 def _write_instruction(
     source_root: Path,
     staging_root: Path,
@@ -627,8 +650,7 @@ def _write_instruction(
         )
         raise ExactTreeError(message)
     output_path = _safe_tree_path(staging_root, instruction.output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    _ = output_path.write_bytes(data)
+    _write_output_file(output_path, data, "instruction output")
 
 
 def _verify_source(source_root: Path, plan: ExactAuthoringPlan) -> None:
@@ -639,22 +661,32 @@ def _verify_source(source_root: Path, plan: ExactAuthoringPlan) -> None:
 
 
 def _prepare_staging(output_root: Path) -> Path:
-    if output_root.exists():
+    if _entry_mode(output_root, "output root") is not None:
         message = f"output root already exists: {output_root}"
         raise ExactTreeError(message)
     staging_name = f".{output_root.name}{_STAGING_SUFFIX}"
     staging_root = output_root.with_name(staging_name)
-    if staging_root.exists():
+    if _entry_mode(staging_root, "staging root") is not None:
         message = f"staging root already exists: {staging_root}"
         raise ExactTreeError(message)
-    output_root.parent.mkdir(parents=True, exist_ok=True)
-    staging_root.mkdir()
+    _make_output_directory(
+        output_root.parent,
+        "output parent",
+        parents=True,
+        exist_ok=True,
+    )
+    _make_output_directory(
+        staging_root,
+        "staging root",
+        parents=False,
+        exist_ok=False,
+    )
     return staging_root
 
 
 def _copy_passthrough_file(source: Path, target: Path) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    _ = target.write_bytes(_read_file_bytes(source, "passthrough file"))
+    data = _read_file_bytes(source, "passthrough file")
+    _write_output_file(target, data, "passthrough output")
 
 
 def _copy_passthrough_entry(
@@ -669,7 +701,12 @@ def _copy_passthrough_entry(
         raise ExactTreeError(message)
     output = _safe_tree_path(staging_root, relative)
     if S_ISDIR(mode):
-        output.mkdir(parents=True, exist_ok=True)
+        _make_output_directory(
+            output,
+            "passthrough directory",
+            parents=True,
+            exist_ok=True,
+        )
     elif S_ISREG(mode):
         _copy_passthrough_file(path, output)
     else:
@@ -707,7 +744,12 @@ def _copy_passthrough_root(
         _copy_passthrough_file(source, target)
         return
     if S_ISDIR(mode):
-        target.mkdir(parents=True, exist_ok=True)
+        _make_output_directory(
+            target,
+            "passthrough root directory",
+            parents=True,
+            exist_ok=True,
+        )
         _copy_passthrough_directory(source_root, staging_root, source)
         return
     message = f"special passthrough entry is not supported: {relative_root}"

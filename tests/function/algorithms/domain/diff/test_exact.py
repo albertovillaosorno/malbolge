@@ -312,6 +312,51 @@ def test_exact_publication_collision_preserves_foreign_output(
     assert not (tmp_path / ".result.staging").exists()
 
 
+def test_exact_materialization_wraps_output_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A staging write failure stays inside the exact-tree boundary."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "result"
+    blocked = tmp_path / ".result.staging" / "created.txt"
+    original_write = Path.write_bytes
+
+    def fail_write(path: Path, data: bytes) -> int:
+        if path == blocked:
+            message = "blocked staging write"
+            raise PermissionError(message)
+        return original_write(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    with pytest.raises(ExactTreeError, match="instruction output write failed"):
+        materialize_exact_plan(source, plan, output)
+    _expect(not output.exists(), "write failure published output")
+    _expect(not (tmp_path / ".result.staging").exists(), "staging survived")
+
+
+def test_exact_staging_status_failure_is_not_reported_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inaccessible staging path cannot be mistaken for an absent path."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "result"
+    staging = tmp_path / ".result.staging"
+    original_lstat = Path.lstat
+
+    def fail_lstat(path: Path) -> object:
+        if path == staging:
+            message = "blocked staging status"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(ExactTreeError, match="staging root status failed"):
+        materialize_exact_plan(source, plan, output)
+    _expect(not output.exists(), "status failure published output")
+
+
 def test_exact_materialization_rejects_existing_output(tmp_path: Path) -> None:
     """Never overwrite an existing output tree implicitly."""
     source, oracle = _synthetic_pair(tmp_path)
