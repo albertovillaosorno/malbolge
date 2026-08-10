@@ -56,6 +56,11 @@ if TYPE_CHECKING:
     from algorithms.diff.probe_exec import ProbeRunContext
     from algorithms.diff.provenance import SourcePinEvidence
 
+    CorrectionBindingBuilder = Callable[
+        [CompatibleAuthoringPlan],
+        tuple[CompatibleCorrectionBinding, ...],
+    ]
+
 
 class DomainContractError(ValueError):
     """Invalid diff consumer-module contract."""
@@ -69,9 +74,7 @@ class DiffDomain:
     validate_authoring_oracle: Callable[[Path], None]
     build_identity_tree: Callable[[Path], IdentityTree]
     map_compatible_file: Callable[[str, bytes], MappedView | None]
-    build_compatible_correction_bindings: Callable[
-        [CompatibleAuthoringPlan], tuple[CompatibleCorrectionBinding, ...]
-    ]
+    build_compatible_correction_bindings: CorrectionBindingBuilder
     build_behavior_programs: Callable[[], BehaviorPrograms]
     build_behavior_probe_context: Callable[[Path, Path], ProbeRunContext]
 
@@ -180,8 +183,7 @@ def load_diff_domain(path: object) -> DiffDomain:
             _callable(module, "map_compatible_file"),
         ),
         build_compatible_correction_bindings=cast(
-            "Callable[[CompatibleAuthoringPlan], "
-            "tuple[CompatibleCorrectionBinding, ...]]",
+            "CorrectionBindingBuilder",
             _callable(module, "build_compatible_correction_bindings"),
         ),
         build_behavior_programs=cast(

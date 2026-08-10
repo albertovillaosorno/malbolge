@@ -36,11 +36,17 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import cast
 
 from algorithms.diff.domain import DomainContractError
 from algorithms.diff.domain import load_diff_domain
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from algorithms.diff.mapped import MappedView
 
 _COMPLETE = """def validate_source_provenance(root):
     return None
@@ -142,7 +148,9 @@ def test_direct_domain_bundle_rejects_foreign_hook(tmp_path: Path) -> None:
     with pytest.raises(DomainContractError, match="map_compatible_file"):
         _ = replace(
             domain,
-            map_compatible_file=cast("object", object()),
+            map_compatible_file=cast(
+                "Callable[[str, bytes], MappedView | None]", object()
+            ),
         )
 
 
