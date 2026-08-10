@@ -370,6 +370,20 @@ def _fail(message: str) -> Never:
     raise ProgressSidecarError(message)
 
 
+def _output_path_text(output: object) -> str:
+    if type(output) is str:
+        return output
+    if isinstance(output, Path):
+        return str(output)
+    _fail("output path must use an exact string or pathlib Path")
+
+
+def _read_path(path: object) -> Path:
+    if not isinstance(path, Path):
+        _fail("progress sidecar read path must use pathlib Path")
+    return path
+
+
 def progress_path(output: str | Path) -> Path:
     """Return the canonical progress sidecar path.
 
@@ -377,7 +391,7 @@ def progress_path(output: str | Path) -> Path:
         `<output>.progress.json` beside the requested artifact.
 
     """
-    return Path(f"{output}.progress.json")
+    return Path(f"{_output_path_text(output)}.progress.json")
 
 
 def checkpoint_path(output: str | Path, sequence: int) -> Path:
@@ -389,7 +403,9 @@ def checkpoint_path(output: str | Path, sequence: int) -> Path:
     """
     if type(sequence) is not int or sequence <= 0:
         _fail("checkpoint sequence must be a positive integer")
-    return Path(f"{output}.checkpoint.{sequence:020d}")
+    return Path(
+        f"{_output_path_text(output)}.checkpoint.{sequence:020d}"
+    )
 
 
 def partial_path(output: str | Path, sequence: int) -> Path:
@@ -401,7 +417,7 @@ def partial_path(output: str | Path, sequence: int) -> Path:
     """
     if type(sequence) is not int or sequence <= 0:
         _fail("partial sequence must be a positive integer")
-    return Path(f"{output}.partial.{sequence:020d}")
+    return Path(f"{_output_path_text(output)}.partial.{sequence:020d}")
 
 
 def resume_compatibility_fingerprint(identity: ResumeIdentity) -> str:
@@ -1041,9 +1057,10 @@ def read(path: Path) -> ProgressSidecar:
         Immutable validated progress sidecar.
 
     """
-    _reject_path_redirect(path, "progress sidecar")
+    admitted_path = _read_path(path)
+    _reject_path_redirect(admitted_path, "progress sidecar")
     try:
-        text = path.read_text(encoding="utf-8-sig")
+        text = admitted_path.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError as error:
         _fail(f"invalid progress UTF-8: {error}")
     except OSError as error:

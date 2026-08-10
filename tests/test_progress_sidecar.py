@@ -409,6 +409,12 @@ def test_paths_and_resume_identity_are_backend_neutral(tmp_path: Path) -> None:
         _ = progress.checkpoint_path(output, sequence=True)
     with pytest.raises(ERROR, match="positive integer"):
         _ = progress.partial_path(output, sequence=True)
+    with pytest.raises(ERROR, match="output path"):
+        _ = progress.progress_path(cast("str | Path", object()))
+    with pytest.raises(ERROR, match="output path"):
+        _ = progress.checkpoint_path(cast("str | Path", object()), 1)
+    with pytest.raises(ERROR, match="output path"):
+        _ = progress.partial_path(cast("str | Path", object()), 1)
     assert sidecar.compatibility_fingerprint == (
         progress.resume_compatibility_fingerprint(
             progress.ResumeIdentity(
@@ -424,6 +430,12 @@ def test_paths_and_resume_identity_are_backend_neutral(tmp_path: Path) -> None:
             )
         )
     )
+
+
+def test_read_rejects_foreign_path_type() -> None:
+    """Direct read misuse remains inside the progress-sidecar error boundary."""
+    with pytest.raises(ERROR, match="read path must use pathlib Path"):
+        _ = progress.read(cast("Path", "not-a-path-object"))
 
 
 def test_read_wraps_missing_storage_as_sidecar_error(tmp_path: Path) -> None:
