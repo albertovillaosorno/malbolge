@@ -9,29 +9,30 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Exact static transfer for the second classic Malbolge transition.
+#   - Exact static transfer for the second and third classic Malbolge
+#     transitions.
 # - Must-Not:
 #   - Iterate a worklist, execute an unbounded loop, or infer later
 #     reachability.
 # - Allows:
-#   - Inputs: admitted initial words and one accepted entry-transition record.
-#   - Outputs: exact second-step state or an explicit bounded unresolved status.
+#   - Inputs: admitted initial words plus accepted bounded-prefix records.
+#   - Outputs: exact second/third-step state or bounded unresolved status.
 #   - Side effects: none.
 # - Split-When:
-#   - Third-step or cyclic reachability requires a general abstract-state model.
+#   - Fourth-step or general cyclic reachability needs an abstract-state model.
 # - Merge-When:
 #   - A bounded-prefix verifier owns both entry and second transfer directly.
 # - Summary:
-#   - Exact second-transition analysis after one admitted classic entry step.
+#   - Exact two-transition continuation after the classic entry step.
 # - Description:
-#   - Replays committed entry writes, then resolves one more historical step.
+#   - Replays committed bounded writes through the third historical transition.
 # - Usage:
 #   - Called after entry transfer succeeds and does not halt.
 # - Defaults:
 #   - Input-dependent crazy state is reported unresolved rather than guessed.
 #
 
-"""Exact second-step transfer for bounded classic Malbolge prefix analysis."""
+"""Exact second/third-step transfer for bounded classic Malbolge prefixes."""
 
 from __future__ import annotations
 
@@ -124,48 +125,89 @@ class _StepPlan:
     unresolved: bool = False
 
 
-def _read_after_entry(
+@dataclass(frozen=True, slots=True)
+class _MemoryState:
+    words: tuple[int, ...]
+    writes: tuple[tuple[int, int], ...] = ()
+
+    def read(self, address: int) -> int:
+        """Read one address after replaying bounded committed writes.
+
+        Returns:
+            Most recent committed value or the exact initial-memory value.
+
+        """
+        for write_address, value in reversed(self.writes):
+            if write_address == address:
+                return value
+        return classic.initial_memory_value(self.words, address)
+
+
+@dataclass(frozen=True, slots=True)
+class _MachineState:
+    code_pointer: int
+    data_pointer: int
+    accumulator: int | None
+
+
+def _commit_write(
+    memory: _MemoryState,
+    address: int | None,
+    value: int | None,
+) -> _MemoryState:
+    if address is None or value is None:
+        return memory
+    return _MemoryState(memory.words, (*memory.writes, (address, value)))
+
+
+def _memory_after_entry(
     words: tuple[int, ...],
     entry: entry_transfer.EntryTransition,
-    address: int,
-) -> int:
-    if (
-        entry.encryption_address == address
-        and entry.encryption_output is not None
-    ):
-        return entry.encryption_output
-    if (
-        entry.planned_data_write_address == address
-        and entry.planned_data_write_value is not None
-        and entry.planned_data_write_address != entry.encryption_address
-    ):
-        return entry.planned_data_write_value
-    return classic.initial_memory_value(words, address)
+) -> _MemoryState:
+    memory = _MemoryState(words)
+    memory = _commit_write(
+        memory,
+        entry.planned_data_write_address,
+        entry.planned_data_write_value,
+    )
+    return _commit_write(
+        memory,
+        entry.encryption_address,
+        entry.encryption_output,
+    )
+
+
+def _memory_after_second(
+    memory: _MemoryState,
+    second: SecondTransition,
+) -> _MemoryState:
+    result = _commit_write(
+        memory,
+        second.planned_data_write_address,
+        second.planned_data_write_value,
+    )
+    return _commit_write(
+        result,
+        second.encryption_address,
+        second.encryption_output,
+    )
 
 
 def _fetch_state(
-    words: tuple[int, ...],
-    entry: entry_transfer.EntryTransition,
+    memory: _MemoryState,
+    state: _MachineState,
 ) -> _FetchedState:
-    address = entry.next_fetch_address
-    if address is None:
-        message = "accepted continued entry must name a second fetch"
-        raise AssertionError(message)
-    value = _read_after_entry(words, entry, address)
+    address = state.code_pointer
+    value = memory.read(address)
     decoded = classic.decode(value, address)
-    data_address = entry.result_data_pointer
-    data_value = (
-        None
-        if decoded is None
-        else _read_after_entry(words, entry, data_address)
-    )
+    data_value = None if decoded is None else memory.read(state.data_pointer)
     return _FetchedState(
         address,
         value,
         decoded,
-        data_address,
+        state.data_pointer,
         data_value,
-        entry.result_accumulator,
+        state.accumulator,
     )
 
 
@@ -326,24 +368,22 @@ def _unresolved(fetched: _FetchedState) -> SecondTransition:
 
 
 def _encryption_input(
-    words: tuple[int, ...],
-    entry: entry_transfer.EntryTransition,
+    memory: _MemoryState,
     plan: _StepPlan,
 ) -> tuple[int, bool]:
     aliases = plan.data_write_address == plan.code_pointer
     if aliases and plan.data_write_value is not None:
         return plan.data_write_value, True
-    return _read_after_entry(words, entry, plan.code_pointer), False
+    return memory.read(plan.code_pointer), False
 
 
 def _resolved(
-    words: tuple[int, ...],
-    entry: entry_transfer.EntryTransition,
+    memory: _MemoryState,
     fetched: _FetchedState,
     *,
     plan: _StepPlan,
 ) -> SecondTransition:
-    encryption_input, aliases = _encryption_input(words, entry, plan)
+    encryption_input, aliases = _encryption_input(memory, plan)
     encrypted = classic.encrypt(encryption_input)
     if encrypted is None:
         return SecondTransition(
@@ -397,6 +437,24 @@ def _resolved(
     )
 
 
+def _analyze_state(
+    memory: _MemoryState,
+    state: _MachineState,
+) -> SecondTransition:
+    fetched = _fetch_state(memory, state)
+    if fetched.decoded is None:
+        result = _terminal(fetched, _STATUS_STUCK, provable_cycle=True)
+    else:
+        plan = _plan(fetched)
+        if plan.halted:
+            result = _terminal(fetched, _STATUS_HALTED)
+        elif plan.unresolved:
+            result = _unresolved(fetched)
+        else:
+            result = _resolved(memory, fetched, plan=plan)
+    return result
+
+
 def analyze_second_transition(
     words: tuple[int, ...],
     entry: entry_transfer.EntryTransition,
@@ -407,17 +465,42 @@ def analyze_second_transition(
         Second-step evidence, or ``None`` when entry has no successor fetch.
 
     """
-    result: SecondTransition | None = None
-    if entry.accepted and entry.next_fetch_address is not None:
-        fetched = _fetch_state(words, entry)
-        if fetched.decoded is None:
-            result = _terminal(fetched, _STATUS_STUCK, provable_cycle=True)
-        else:
-            plan = _plan(fetched)
-            if plan.halted:
-                result = _terminal(fetched, _STATUS_HALTED)
-            elif plan.unresolved:
-                result = _unresolved(fetched)
-            else:
-                result = _resolved(words, entry, fetched, plan=plan)
-    return result
+    if not entry.accepted or entry.next_fetch_address is None:
+        return None
+    memory = _memory_after_entry(words, entry)
+    state = _MachineState(
+        entry.next_fetch_address,
+        entry.result_data_pointer,
+        entry.result_accumulator,
+    )
+    return _analyze_state(memory, state)
+
+
+def analyze_third_transition(
+    words: tuple[int, ...],
+    entry: entry_transfer.EntryTransition,
+    second: SecondTransition,
+) -> SecondTransition | None:
+    """Resolve one exact third transition after two accepted prefix steps.
+
+    Returns:
+        Third-step evidence, or ``None`` when the second step has no successor.
+
+    Raises:
+        AssertionError: If a forged accepted second step loses its data pointer.
+
+    """
+    if not second.accepted or second.next_fetch_address is None:
+        return None
+    data_pointer = second.result_data_pointer
+    if data_pointer is None:
+        message = "accepted continued second step must retain a data pointer"
+        raise AssertionError(message)
+    memory = _memory_after_entry(words, entry)
+    memory = _memory_after_second(memory, second)
+    state = _MachineState(
+        second.next_fetch_address,
+        data_pointer,
+        second.result_accumulator,
+    )
+    return _analyze_state(memory, state)

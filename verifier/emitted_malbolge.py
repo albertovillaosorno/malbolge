@@ -55,7 +55,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v4"
+_SCHEMA: Final = "malbolge-static-image/v5"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -67,13 +67,13 @@ _ENCRYPTION_TARGET_POST_JUMP: Final = "post-jump-code-pointer"
 _ENCRYPTION_TARGET_NONE: Final = "none"
 _DATA_WRITING_INSTRUCTIONS: Final = frozenset(b"*p")
 _LIMITS: Final = (
-    "code-data-aliasing:two-transition-prefix-only",
-    "control-flow-reachability:two-transition-prefix-only",
-    "dataflow:two-transition-prefix-only",
+    "code-data-aliasing:three-transition-prefix-only",
+    "control-flow-reachability:three-transition-prefix-only",
+    "dataflow:three-transition-prefix-only",
     "input-dependent-cycles:not-analyzed",
-    "self-modification:two-transition-prefix-only",
+    "self-modification:three-transition-prefix-only",
     "source-map-context:not-analyzed",
-    "wraparound-reachability:two-transition-prefix-only",
+    "wraparound-reachability:three-transition-prefix-only",
 )
 
 
@@ -116,6 +116,7 @@ class StaticImageReport:
     initial_cells: tuple[InitialCell, ...]
     entry_transition: entry_transfer.EntryTransition | None
     second_transition: prefix_transfer.SecondTransition | None
+    third_transition: prefix_transfer.SecondTransition | None
     findings: tuple[StaticFinding, ...]
     analysis_limits: tuple[str, ...]
 
@@ -203,10 +204,11 @@ def _analyze_admitted_cells(
     tuple[InitialCell, ...],
     entry_transfer.EntryTransition | None,
     prefix_transfer.SecondTransition | None,
+    prefix_transfer.SecondTransition | None,
     tuple[StaticFinding, ...],
 ]:
     if not can_decode:
-        return (), None, None, ()
+        return (), None, None, None, ()
     cells = _initial_cells(source)
     findings = _decode_findings(cells)
     entry = (
@@ -221,7 +223,12 @@ def _analyze_admitted_cells(
         if entry is None
         else prefix_transfer.analyze_second_transition(words, entry)
     )
-    return cells, entry, second, findings
+    third = (
+        None
+        if entry is None or second is None
+        else prefix_transfer.analyze_third_transition(words, entry, second)
+    )
+    return cells, entry, second, third, findings
 
 
 def analyze_source(source: bytes) -> StaticImageReport:
@@ -258,12 +265,16 @@ def analyze_source(source: bytes) -> StaticImageReport:
     within_profile = (
         _RECURRENCE_BASE_WORDS <= required <= classic.PROFILE_MEMORY_WORDS
     )
-    cells, entry_transition, second_transition, decode_findings = (
-        _analyze_admitted_cells(
-            source,
-            words,
-            can_decode=lexical is None and within_profile,
-        )
+    (
+        cells,
+        entry_transition,
+        second_transition,
+        third_transition,
+        decode_findings,
+    ) = _analyze_admitted_cells(
+        source,
+        words,
+        can_decode=lexical is None and within_profile,
     )
     findings.extend(decode_findings)
     return StaticImageReport(
@@ -278,6 +289,7 @@ def analyze_source(source: bytes) -> StaticImageReport:
         initial_cells=cells,
         entry_transition=entry_transition,
         second_transition=second_transition,
+        third_transition=third_transition,
         findings=tuple(findings),
         analysis_limits=_LIMITS,
     )
@@ -295,13 +307,21 @@ def render_report(report: StaticImageReport) -> str:
 
 
 def _bounded_prefix_accepted(report: StaticImageReport) -> bool:
+    accepted = report.admitted_initial_image
     entry = report.entry_transition
-    if not report.admitted_initial_image or entry is None or not entry.accepted:
-        return False
-    if entry.next_fetch_address is None:
-        return True
-    second = report.second_transition
-    return second is not None and second.accepted
+    if accepted:
+        accepted = entry is not None and entry.accepted
+    if accepted and entry is not None and entry.next_fetch_address is not None:
+        second = report.second_transition
+        accepted = second is not None and second.accepted
+        if (
+            accepted
+            and second is not None
+            and second.next_fetch_address is not None
+        ):
+            third = report.third_transition
+            accepted = third is not None and third.accepted
+    return accepted
 
 
 def _fail(message: str) -> Never:
@@ -312,8 +332,8 @@ def main(arguments: list[str] | None = None) -> int:
     """Analyze one source path and print its canonical JSON report.
 
     Returns:
-        Zero when initial-image admission and the bounded two-transition prefix
-        succeed, otherwise one after writing the canonical report.
+        Zero when initial-image admission and the bounded three-transition
+        prefix succeed, otherwise one after writing the canonical report.
 
     """
     argv = sys.argv[1:] if arguments is None else arguments
