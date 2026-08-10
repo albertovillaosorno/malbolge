@@ -38,6 +38,7 @@ from dataclasses import dataclass
 import math
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.fingerprints import anchor_coverage
@@ -165,6 +166,175 @@ class AdmissionPolicy:
             raise AdmissionPolicyError(message)
 
 
+def _require_evidence_fraction(value: object, context: str) -> float:
+    if type(value) is not float or not math.isfinite(value):
+        message = f"{context} must use a finite exact float"
+        raise AdmissionPolicyError(message)
+    if value < _ZERO or value > _ONE:
+        message = f"{context} must be in [0, 1]"
+        raise AdmissionPolicyError(message)
+    return value
+
+
+def _require_evidence_count(value: object, context: str) -> int:
+    if type(value) is not int or value < _ZERO:
+        message = f"{context} must use a non-negative exact integer"
+        raise AdmissionPolicyError(message)
+    return value
+
+
+def _require_evidence_path(value: object) -> str:
+    if type(value) is not str:
+        message = "file admission path must use the exact string type"
+        raise AdmissionPolicyError(message)
+    candidate = PurePosixPath(value)
+    unsafe = (
+        not value
+        or _BACKSLASH in value
+        or value == _DOT
+        or candidate.is_absolute()
+        or _PARENT in candidate.parts
+        or candidate.as_posix() != value
+    )
+    if unsafe:
+        message = f"invalid file admission path: {value!r}"
+        raise AdmissionPolicyError(message)
+    return value
+
+
+def _require_reason_tuple(value: object) -> tuple[str, ...]:
+    if type(value) is not tuple:
+        message = "tree admission reasons must use the exact immutable tuple"
+        raise AdmissionPolicyError(message)
+    items = cast("tuple[object, ...]", value)
+    if any(type(item) is not str or not item for item in items):
+        message = "tree admission reasons must contain non-empty exact strings"
+        raise AdmissionPolicyError(message)
+    return cast("tuple[str, ...]", value)
+
+
+def _require_file_anchor_relation(
+    coverage: float | None,
+    reference: int,
+    matched: int,
+) -> None:
+    if matched > reference:
+        message = "matched anchor count cannot exceed reference anchors"
+        raise AdmissionPolicyError(message)
+    if coverage is not None and (
+        reference == _ZERO or coverage != matched / reference
+    ):
+        message = "file anchor coverage does not match anchor counts"
+        raise AdmissionPolicyError(message)
+
+
+def _validate_file_admission_evidence(evidence: FileAdmissionEvidence) -> None:
+    _ = _require_evidence_path(evidence.path)
+    _ = _require_evidence_fraction(
+        evidence.structural_similarity,
+        "file structural similarity",
+    )
+    coverage = (
+        _require_evidence_fraction(
+            evidence.anchor_coverage,
+            "file anchor coverage",
+        )
+        if evidence.anchor_coverage is not None
+        else None
+    )
+    reference = _require_evidence_count(
+        evidence.reference_anchor_count,
+        "reference anchor count",
+    )
+    matched = _require_evidence_count(
+        evidence.matched_anchor_count,
+        "matched anchor count",
+    )
+    _require_file_anchor_relation(coverage, reference, matched)
+
+
+def _require_file_evidence_tuple(
+    value: object,
+) -> tuple[FileAdmissionEvidence, ...]:
+    if type(value) is not tuple:
+        message = "tree admission files must use the exact immutable tuple"
+        raise AdmissionPolicyError(message)
+    items = cast("tuple[object, ...]", value)
+    if any(type(item) is not FileAdmissionEvidence for item in items):
+        message = "tree admission files must use exact immutable records"
+        raise AdmissionPolicyError(message)
+    files = cast("tuple[FileAdmissionEvidence, ...]", value)
+    if not files:
+        message = "tree admission evidence requires at least one file"
+        raise AdmissionPolicyError(message)
+    paths = tuple(item.path for item in files)
+    if paths != tuple(sorted(set(paths))):
+        message = "tree admission file paths must be unique and sorted"
+        raise AdmissionPolicyError(message)
+    return files
+
+
+def _tree_file_aggregates(
+    files: tuple[FileAdmissionEvidence, ...],
+) -> tuple[float, float, int]:
+    source_values = tuple(item.structural_similarity for item in files)
+    source = math.fsum(source_values) / len(source_values)
+    covered = tuple(
+        item.anchor_coverage
+        for item in files
+        if item.anchor_coverage is not None
+    )
+    anchor = math.fsum(covered) / len(covered) if covered else 0.0
+    return source, anchor, len(covered)
+
+
+def _require_equal_evidence_value(
+    actual: float,
+    expected: float,
+    message: str,
+) -> None:
+    if actual != expected:
+        raise AdmissionPolicyError(message)
+
+
+def _validate_tree_admission_evidence(evidence: TreeAdmissionEvidence) -> None:
+    files = _require_file_evidence_tuple(evidence.files)
+    aggregates = _tree_file_aggregates(files)
+    _require_equal_evidence_value(
+        _require_evidence_fraction(
+            evidence.source_similarity,
+            "tree source similarity",
+        ),
+        aggregates[0],
+        "tree source similarity does not match file evidence",
+    )
+    _require_equal_evidence_value(
+        _require_evidence_fraction(
+            evidence.anchor_coverage,
+            "tree anchor coverage",
+        ),
+        aggregates[1],
+        "tree anchor coverage does not match file evidence",
+    )
+    eligible = _require_evidence_count(
+        evidence.eligible_anchor_files,
+        "eligible anchor file count",
+    )
+    _require_equal_evidence_value(
+        eligible,
+        aggregates[2],
+        "eligible anchor file count does not match file evidence",
+    )
+    satisfied = _require_evidence_count(
+        evidence.satisfied_anchor_files,
+        "satisfied anchor file count",
+    )
+    if satisfied > eligible:
+        message = "satisfied anchor file count cannot exceed eligible files"
+        raise AdmissionPolicyError(message)
+    _ = _require_reason_tuple(evidence.reasons)
+
+
 @dataclass(frozen=True, slots=True)
 class FileAdmissionEvidence:
     """Structural and anchor evidence for one reference identity file."""
@@ -174,6 +344,10 @@ class FileAdmissionEvidence:
     anchor_coverage: float | None
     reference_anchor_count: int
     matched_anchor_count: int
+
+    def __post_init__(self) -> None:
+        """Require internally coherent per-file source evidence."""
+        _validate_file_admission_evidence(self)
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +360,10 @@ class TreeAdmissionEvidence:
     satisfied_anchor_files: int
     files: tuple[FileAdmissionEvidence, ...]
     reasons: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Require aggregate evidence consistent with per-file records."""
+        _validate_tree_admission_evidence(self)
 
     @property
     def admitted(self) -> bool:

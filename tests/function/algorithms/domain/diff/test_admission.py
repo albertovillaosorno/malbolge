@@ -39,8 +39,10 @@ from typing import cast
 from algorithms.diff.admission import AdmissionError
 from algorithms.diff.admission import AdmissionPolicy
 from algorithms.diff.admission import AdmissionPolicyError
+from algorithms.diff.admission import FileAdmissionEvidence
 from algorithms.diff.admission import IdentityFile
 from algorithms.diff.admission import IdentityTree
+from algorithms.diff.admission import TreeAdmissionEvidence
 from algorithms.diff.admission import evaluate_admission
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.admission import require_admission
@@ -96,6 +98,20 @@ def _candidate_with_first_insertion() -> tuple[IdentityTree, IdentityTree]:
         content[:midpoint] + _INSERTION + content[midpoint:]
     )
     return identity_tree(reference_files), identity_tree(candidate_files)
+
+
+def test_admission_evidence_rejects_incoherent_direct_construction() -> None:
+    """Per-file and aggregate evidence cannot contradict their local counts."""
+    with pytest.raises(AdmissionPolicyError, match="cannot exceed reference"):
+        _ = FileAdmissionEvidence("a.c", 1.0, 1.0, 1, 2)
+
+    file = FileAdmissionEvidence("a.c", 1.0, 1.0, 1, 1)
+    with pytest.raises(AdmissionPolicyError, match="source similarity"):
+        _ = TreeAdmissionEvidence(0.5, 1.0, 1, 1, (file,), ())
+    with pytest.raises(
+        AdmissionPolicyError, match="eligible anchor file count"
+    ):
+        _ = TreeAdmissionEvidence(1.0, 1.0, 0, 0, (file,), ())
 
 
 def test_exact_identity_tree_is_admitted() -> None:
