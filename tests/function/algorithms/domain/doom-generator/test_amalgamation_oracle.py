@@ -194,6 +194,26 @@ def test_linked_code_root_is_rejected_when_supported(tmp_path: Path) -> None:
         _ = oracle.build_amalgamation(linked)
 
 
+def test_code_root_resolution_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep a post-admission root race inside the oracle error boundary."""
+    _accepted_tree(tmp_path)
+    original_resolve = Path.resolve
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == tmp_path and strict:
+            message = "blocked code root resolution"
+            raise PermissionError(message)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    with pytest.raises(
+        oracle.DoomAmalgamationError, match="root resolution failed"
+    ):
+        _ = oracle.build_amalgamation(tmp_path)
+
+
 def test_code_root_enumeration_error_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

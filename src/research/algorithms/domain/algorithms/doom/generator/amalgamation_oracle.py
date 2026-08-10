@@ -396,9 +396,16 @@ def build_amalgamation(code_root: Path) -> tuple[bytes, AmalgamationStats]:
     Returns:
         UTF-8 oracle bytes and deterministic construction statistics.
 
+    Raises:
+        DoomAmalgamationError: The source root or oracle inputs are invalid.
+
     """
     _require_directory(code_root, "accepted DOOM code root")
-    resolved_root = code_root.resolve()
+    try:
+        resolved_root = code_root.resolve(strict=True)
+    except OSError as error:
+        message = f"DOOM code root resolution failed: {code_root}: {error}"
+        raise DoomAmalgamationError(message) from error
     wrapper, unit_count, private_bindings = _wrapper_text(resolved_root)
     output, state = _flatten_wrapper(resolved_root, wrapper)
     stats = _amalgamation_stats(
