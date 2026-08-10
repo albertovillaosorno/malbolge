@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 from scripts.validate import target_profile as validator
@@ -65,6 +66,16 @@ def _expect_invalid(text: str) -> None:
         return
     message = "profile validation unexpectedly succeeded"
     raise AssertionError(message)
+
+
+def test_validate_document_rejects_foreign_top_level_type() -> None:
+    """Foreign direct inputs fail through the canonical validation boundary."""
+    with pytest.raises(
+        validator.ProfileValidationError, match="must be an object"
+    ):
+        validator.validate_document(
+            cast("validator.JsonObject", object())
+        )
 
 
 def test_canonical_profile_is_valid() -> None:

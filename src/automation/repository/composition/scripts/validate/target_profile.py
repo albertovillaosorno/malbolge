@@ -419,15 +419,16 @@ def _validate_profile_identities(
 
 def validate_document(document: JsonObject) -> None:
     """Validate the closed schema and cross-profile governance invariants."""
-    _expect_exact_keys(document, TOP_LEVEL_KEYS, "target profile document")
-    schema_version = _expect_int(document["schema_version"], "schema_version")
+    admitted = _expect_mapping(document, "target profile document")
+    _expect_exact_keys(admitted, TOP_LEVEL_KEYS, "target profile document")
+    schema_version = _expect_int(admitted["schema_version"], "schema_version")
     if schema_version != SCHEMA_VERSION:
         _fail(f"unsupported schema_version: {schema_version}")
     current_profile = _expect_string(
-        document["current_profile"],
+        admitted["current_profile"],
         "current_profile",
     )
-    profiles = _expect_mapping(document["profiles"], "profiles")
+    profiles = _expect_mapping(admitted["profiles"], "profiles")
     if HISTORICAL_PROFILE not in profiles:
         _fail(f"{HISTORICAL_PROFILE} profile is required")
     if current_profile not in profiles:
