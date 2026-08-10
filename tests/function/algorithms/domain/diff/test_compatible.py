@@ -327,6 +327,56 @@ def test_compatible_plan_rejects_forged_topology_and_bindings(
     with pytest.raises(CompatiblePlanError, match="target snapshot"):
         _ = replace(plan, instructions=tuple(forged_instructions))
 
+
+def test_compatible_mapper_failures_stay_inside_plan_boundary(
+    tmp_path: Path,
+) -> None:
+    """Wrap mapper exceptions and foreign views before output publication."""
+    source, oracle = _roots(tmp_path / "author")
+
+    def fail_mapper(path: str, raw: bytes) -> MappedView | None:
+        _ = path, raw
+        raise RuntimeError("synthetic mapper failure")
+
+    request = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=fail_mapper,
+    )
+    with pytest.raises(CompatiblePlanError, match="compatible mapper failed"):
+        _ = build_compatible_plan(request)
+
+    def foreign_mapper(path: str, raw: bytes) -> MappedView | None:
+        _ = path, raw
+        return cast("MappedView", object())
+
+    request = replace(request, mapper=foreign_mapper)
+    with pytest.raises(CompatiblePlanError, match="exact MappedView or None"):
+        _ = build_compatible_plan(request)
+
+    plan = _plan(tmp_path / "materialize")
+    candidate = _candidate(tmp_path / "materialize")
+    output = tmp_path / "materialize" / "out"
+
+    def runtime_mapper(path: str, raw: bytes) -> MappedView | None:
+        if raw == _CANDIDATE_CODE:
+            raise RuntimeError("synthetic runtime mapper failure")
+        return _mapper(path, raw)
+
+    materialize = replace(
+        _request(candidate, plan, output),
+        mapper=runtime_mapper,
+    )
+    with pytest.raises(CompatiblePlanError, match="compatible mapper failed"):
+        _ = materialize_compatible_plan(materialize)
+    _expect(not output.exists(), "mapper failure published compatible output")
+    _expect(
+        not (output.parent / ".out.compatible-staging").exists(),
+        "mapper failure left compatible staging behind",
+    )
+
 def test_compatible_tree_preserves_candidate_and_target_topology(
     tmp_path: Path,
 ) -> None:

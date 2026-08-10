@@ -501,6 +501,22 @@ def _tree_bytes(root: Path, relative_path: str) -> bytes:
     return _read_compatible_bytes(path, "compatible tree file")
 
 
+def _map_compatible_file(
+    mapper: Mapper,
+    path: str,
+    data: bytes,
+) -> MappedView | None:
+    try:
+        view = mapper(path, data)
+    except Exception as error:
+        message = f"compatible mapper failed for {path!r}: {error}"
+        raise CompatiblePlanError(message) from error
+    if view is not None and type(view) is not MappedView:
+        message = "compatible mapper must return exact MappedView or None"
+        raise CompatiblePlanError(message)
+    return view
+
+
 def _source_path(
     instruction: ExactInstruction,
     source_records: dict[str, FileRecord],
@@ -522,8 +538,12 @@ def _mapped_pair(
         context.request.oracle_root,
         instruction.output_path,
     )
-    source_view = context.request.mapper(source_path, source_bytes)
-    target_view = context.request.mapper(instruction.output_path, target_bytes)
+    source_view = _map_compatible_file(
+        context.request.mapper, source_path, source_bytes
+    )
+    target_view = _map_compatible_file(
+        context.request.mapper, instruction.output_path, target_bytes
+    )
     if (source_view is None) != (target_view is None):
         message = "compatible mapper disagrees between source and target file"
         raise CompatiblePlanError(message)
@@ -678,7 +698,7 @@ def _exact_bytes(candidate: bytes, instruction: ExactInstruction) -> bytes:
 
 
 def _require_mapped(mapper: Mapper, path: str, data: bytes) -> MappedView:
-    view = mapper(path, data)
+    view = _map_compatible_file(mapper, path, data)
     if view is None:
         message = "compatible output lost required semantic mapper support"
         raise CompatiblePlanError(message)
