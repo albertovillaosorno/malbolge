@@ -157,6 +157,35 @@ def test_retokenization_rejects_unsafe_insertion_seam() -> None:
         _ = apply_semantic_plan(candidate, plan, _map)
 
 
+def test_semantic_mapper_failure_is_contained() -> None:
+    """Map failures after edits stay inside semantic placement diagnostics."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    candidate = _map(b"alpha = old ; omega")
+    plan = build_semantic_plan(source, target)
+
+    def fail_mapper(_: bytes) -> MappedView:
+        message = "consumer mapper boom"
+        raise RuntimeError(message)
+
+    with pytest.raises(SemanticPlacementError, match="mapper failed"):
+        _ = apply_semantic_plan(candidate, plan, fail_mapper)
+
+
+def test_semantic_mapper_return_type_is_exact() -> None:
+    """Reject foreign mapper output before digest inspection."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    candidate = _map(b"alpha = old ; omega")
+    plan = build_semantic_plan(source, target)
+
+    def foreign_mapper(_: bytes) -> MappedView:
+        return cast("MappedView", object())
+
+    with pytest.raises(SemanticPlacementError, match="exact MappedView"):
+        _ = apply_semantic_plan(candidate, plan, foreign_mapper)
+
+
 def test_semantic_authoring_is_deterministic() -> None:
     """Produce stable hashed locators and target replacements across runs."""
     source = _map(b"alpha = old ; omega")

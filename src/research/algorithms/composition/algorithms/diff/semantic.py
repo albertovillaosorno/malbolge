@@ -734,6 +734,20 @@ def _validate_mapper(value: object) -> None:
         raise SemanticPlacementError(message)
 
 
+def _map_semantic_output(
+    mapper: Callable[[bytes], MappedView], output: bytes
+) -> MappedView:
+    try:
+        mapped = mapper(output)
+    except Exception as error:
+        message = f"semantic mapper failed after edit application: {error}"
+        raise SemanticPlacementError(message) from error
+    if type(mapped) is not MappedView:
+        message = "semantic mapper must return the exact MappedView type"
+        raise SemanticPlacementError(message)
+    return mapped
+
+
 def apply_semantic_plan(
     candidate: MappedView,
     plan: SemanticAuthoringPlan,
@@ -761,7 +775,7 @@ def apply_semantic_plan(
     located = _locate_edits(candidate, plan)
     expected = _expected_digests(candidate, located)
     output = _apply_raw_edits(candidate.raw, located)
-    observed = _view_digests(mapper(output))
+    observed = _view_digests(_map_semantic_output(mapper, output))
     if observed != expected:
         message = "semantic edit changed canonical units at a replacement seam"
         raise SemanticPlacementError(message)
