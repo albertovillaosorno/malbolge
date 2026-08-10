@@ -190,6 +190,36 @@ def test_oracle_write_preserves_foreign_legacy_temporary(
     )
 
 
+def test_oracle_output_parent_creation_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Output-parent creation failures stay inside the oracle boundary."""
+    code_root = tmp_path / "code"
+    _accepted_tree(code_root)
+    output = tmp_path / "generated" / "oracle.c"
+    blocked_parent = output.parent
+    original_mkdir = Path.mkdir
+
+    def fail_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        *,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        if path == blocked_parent:
+            message = "blocked oracle output parent"
+            raise PermissionError(message)
+        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+    with pytest.raises(
+        oracle.DoomAmalgamationError, match="publication failed"
+    ):
+        _ = oracle.write_amalgamation_oracle(code_root, output)
+    _expect(not output.exists(), "parent creation failure published oracle")
+
+
 def test_oracle_write_preserves_unowned_temp_collision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

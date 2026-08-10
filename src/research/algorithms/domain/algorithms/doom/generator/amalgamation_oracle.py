@@ -439,6 +439,14 @@ def _cleanup_temporary(path: Path) -> str | None:
     return None
 
 
+def _ensure_oracle_output_parent(output_path: Path) -> None:
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        message = f"DOOM amalgamation oracle publication failed: {error}"
+        raise DoomAmalgamationError(message) from error
+
+
 def write_amalgamation_oracle(
     code_root: Path = QUALITY_CODE_ROOT,
     output_path: Path = AMALGAMATION_ORACLE,
@@ -453,7 +461,7 @@ def write_amalgamation_oracle(
 
     """
     data, stats = build_amalgamation(code_root)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_oracle_output_parent(output_path)
     temporary = output_path.with_name(f".{output_path.name}.{token_hex(8)}.tmp")
     owned_temporary = False
     try:
