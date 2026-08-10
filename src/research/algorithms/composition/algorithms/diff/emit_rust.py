@@ -39,12 +39,12 @@ from pathlib import Path
 from secrets import token_hex
 from typing import TYPE_CHECKING
 
+from algorithms.diff.protected import ProtectedExactPlan
 from algorithms.diff.protected import ProtectedMetadata
 from algorithms.diff.protected import protected_plan_aad
 from scripts.repository_root import repository_root
 
 if TYPE_CHECKING:
-    from algorithms.diff.protected import ProtectedExactPlan
     from algorithms.diff.source_binding import ThresholdBinding
 
 _RUNTIME_TEMPLATE = Path(__file__).with_name("rust_runtime.rs")
@@ -211,6 +211,22 @@ def _runtime_template_text() -> str:
         raise RustEmissionError(message) from error
 
 
+def _validate_emission_inputs(
+    plan: object, profile: object, output_path: object
+) -> None:
+    if type(plan) is not ProtectedExactPlan:
+        message = (
+            "Rust emission plan must use the exact ProtectedExactPlan type"
+        )
+        raise RustEmissionError(message)
+    if type(profile) is not str or not profile:
+        message = "Rust transform profile must use a non-empty exact string"
+        raise RustEmissionError(message)
+    if not isinstance(output_path, Path):
+        message = "Rust transform output path must use pathlib Path"
+        raise RustEmissionError(message)
+
+
 def emit_rust_transform(
     plan: ProtectedExactPlan,
     profile: str,
@@ -225,9 +241,7 @@ def emit_rust_transform(
         RustEmissionError: Profile/template state is invalid.
 
     """
-    if not profile:
-        message = "Rust transform profile must be non-empty"
-        raise RustEmissionError(message)
+    _validate_emission_inputs(plan, profile, output_path)
     template = _runtime_template_text()
     start = template.find(_BEGIN)
     end = template.find(_END)

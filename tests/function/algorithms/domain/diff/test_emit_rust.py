@@ -42,6 +42,7 @@ import shutil
 # Used only with fixed local argv and shell=False.
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff import emit_rust as emit_rust_module
 from algorithms.diff.admission import identity_tree
@@ -195,6 +196,30 @@ def _run(
         capture_output=True,
         shell=False,
     )
+
+
+def test_emitter_rejects_foreign_public_inputs(tmp_path: Path) -> None:
+    """Validate plan, profile, and output path before template processing."""
+    _, _, _, protected = _fixture(tmp_path)
+    with pytest.raises(RustEmissionError, match="exact ProtectedExactPlan"):
+        _ = emit_rust_transform(cast("ProtectedExactPlan", object()), _PROFILE)
+    boolean_profile: object = True
+    with pytest.raises(RustEmissionError, match="non-empty exact string"):
+        _ = emit_rust_transform(
+            protected,
+            cast("str", cast("object", boolean_profile)),
+        )
+    with pytest.raises(RustEmissionError, match="non-empty exact string"):
+        _ = emit_rust_transform(
+            protected,
+            cast("str", cast("object", bytearray(b"profile"))),
+        )
+    with pytest.raises(RustEmissionError, match="pathlib Path"):
+        _ = emit_rust_transform(
+            protected,
+            _PROFILE,
+            cast("Path", cast("object", "generated/main.rs")),
+        )
 
 
 def test_emitted_rust_is_deterministic_and_hides_plaintext_literals(
