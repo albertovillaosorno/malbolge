@@ -40,6 +40,7 @@ from typing import cast
 
 from algorithms.diff.provenance import SourcePin
 from algorithms.diff.provenance import SourcePinError
+from algorithms.diff.provenance import SourcePinEvidence
 from algorithms.diff.provenance import require_source_pin
 from algorithms.diff.provenance import source_snapshot_evidence
 import pytest
@@ -71,6 +72,14 @@ def _pin(root: Path) -> SourcePin:
         file_count=evidence.file_count,
         snapshot_sha256=evidence.snapshot_sha256,
     )
+
+
+def test_source_pin_evidence_rejects_malformed_direct_construction() -> None:
+    """Observed pin evidence uses the same count and digest domain as pins."""
+    with pytest.raises(SourcePinError, match="positive integer"):
+        _ = SourcePinEvidence(file_count=True, snapshot_sha256="0" * 64)
+    with pytest.raises(SourcePinError, match="lowercase SHA-256"):
+        _ = SourcePinEvidence(file_count=1, snapshot_sha256="A" * 64)
 
 
 def test_pinned_snapshot_accepts_exact_selected_tree(tmp_path: Path) -> None:

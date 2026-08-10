@@ -133,6 +133,11 @@ class SourcePinEvidence:
     file_count: int
     snapshot_sha256: str
 
+    def __post_init__(self) -> None:
+        """Reject malformed observed source-pin evidence."""
+        _validate_file_count(self.file_count)
+        _validate_snapshot_sha256(self.snapshot_sha256)
+
 
 def _u64(value: int) -> bytes:
     return value.to_bytes(_FRAME_BYTES, byteorder="big", signed=False)
