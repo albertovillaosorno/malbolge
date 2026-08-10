@@ -153,14 +153,14 @@ def _monotonic_sample(value: object) -> int:
     return value
 
 
-def _sample_clock(clock: Callable[[], int]) -> int:
+def _sample_clock(clock: object) -> int:
     if not callable(clock):
         _fail("monotonic clock must be callable")
     try:
         value = clock()
     except ProgressSidecarError:
         raise
-    except Exception as error:
+    except Exception as error:  # ruff: ignore[blind-except] -- consumer clock boundary.
         _fail(f"monotonic clock failed: {error}")
     return _monotonic_sample(value)
 
@@ -403,9 +403,7 @@ def checkpoint_path(output: str | Path, sequence: int) -> Path:
     """
     if type(sequence) is not int or sequence <= 0:
         _fail("checkpoint sequence must be a positive integer")
-    return Path(
-        f"{_output_path_text(output)}.checkpoint.{sequence:020d}"
-    )
+    return Path(f"{_output_path_text(output)}.checkpoint.{sequence:020d}")
 
 
 def partial_path(output: str | Path, sequence: int) -> Path:
@@ -1274,6 +1272,18 @@ class _PayloadReference:
     sha256: str | None
 
 
+def _validate_payload_integrity(
+    payload: bytes, reference: _PayloadReference
+) -> None:
+    if _sha256_digest(payload) != reference.sha256:
+        _fail(f"{reference.context} bytes do not match sidecar hash")
+    if (
+        reference.byte_count is not None
+        and len(payload) != reference.byte_count
+    ):
+        _fail(f"{reference.context} byte count does not match sidecar")
+
+
 def _validate_payload(
     payload: bytes | None,
     reference: _PayloadReference,
@@ -1285,13 +1295,7 @@ def _validate_payload(
         return None
     if type(payload) is not bytes:
         _fail(f"{reference.context} payload must use exact bytes")
-    if _sha256_digest(payload) != reference.sha256:
-        _fail(f"{reference.context} bytes do not match sidecar hash")
-    if (
-        reference.byte_count is not None
-        and len(payload) != reference.byte_count
-    ):
-        _fail(f"{reference.context} byte count does not match sidecar")
+    _validate_payload_integrity(payload, reference)
     return payload
 
 

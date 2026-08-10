@@ -435,7 +435,7 @@ def test_paths_and_resume_identity_are_backend_neutral(tmp_path: Path) -> None:
 def test_read_rejects_foreign_path_type() -> None:
     """Direct read misuse remains inside the progress-sidecar error boundary."""
     with pytest.raises(ERROR, match="read path must use pathlib Path"):
-        _ = progress.read(cast("Path", "not-a-path-object"))
+        _ = progress.read(cast("Path", cast("object", "not-a-path-object")))
 
 
 def test_read_wraps_missing_storage_as_sidecar_error(tmp_path: Path) -> None:
@@ -1537,14 +1537,14 @@ def test_generation_payloads_reject_mutable_foreign_bytes(
     with pytest.raises(ERROR, match="checkpoint payload must use exact bytes"):
         _ = progress.write_checkpoint_generation(
             sidecar,
-            cast("bytes", bytearray(checkpoint)),
+            cast("bytes", cast("object", bytearray(checkpoint))),
             partial,
         )
     with pytest.raises(ERROR, match="partial payload must use exact bytes"):
         _ = progress.write_checkpoint_generation(
             sidecar,
             checkpoint,
-            cast("bytes", bytearray(partial)),
+            cast("bytes", cast("object", bytearray(partial))),
         )
     assert not Path(sidecar.progress_path).exists()
     assert not Path(sidecar.checkpoint_path or "").exists()
@@ -1677,17 +1677,18 @@ def test_monotonic_timer_contains_foreign_clock_failures() -> None:
     """Foreign or failing clocks stay inside the sidecar error boundary."""
     with pytest.raises(ERROR, match="clock must be callable"):
         _ = progress.ProgressTimer.start(
-            clock=cast("Callable[[], int]", cast("object", object()))
+            clock=cast("Callable[[], int]", object())
         )
 
     def fail_clock() -> int:
-        raise RuntimeError("synthetic clock failure")
+        message = "synthetic clock failure"
+        raise RuntimeError(message)
 
     with pytest.raises(ERROR, match="monotonic clock failed"):
         _ = progress.ProgressTimer.start(clock=fail_clock)
 
     direct = progress.ProgressTimer(
-        _clock=cast("Callable[[], int]", cast("object", object())),
+        _clock=cast("Callable[[], int]", object()),
         _phase=progress.TimingPhase.ACTIVE,
         _segment_started_ns=0,
         _started_ns=0,
