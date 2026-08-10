@@ -166,6 +166,61 @@ def _tree_paths(root: Path) -> tuple[Path, ...]:
     return tuple(sorted(paths))
 
 
+def _walk_relative_path(root: Path, path: Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
+def _prune_excluded_directories(
+    root: Path,
+    directory: Path,
+    directories: list[str],
+    *,
+    roots: tuple[str, ...],
+) -> tuple[Path, ...]:
+    admitted: list[Path] = []
+    kept: list[str] = []
+    for name in directories:
+        path = directory / name
+        if _path_in_roots(_walk_relative_path(root, path), roots):
+            continue
+        admitted.append(path)
+        kept.append(name)
+    directories[:] = kept
+    return tuple(admitted)
+
+
+def _admitted_files(
+    root: Path,
+    directory: Path,
+    filenames: list[str],
+    *,
+    roots: tuple[str, ...],
+) -> tuple[Path, ...]:
+    paths = (directory / name for name in filenames)
+    return tuple(
+        path
+        for path in paths
+        if not _path_in_roots(_walk_relative_path(root, path), roots)
+    )
+
+
+def _tree_paths_excluding(
+    root: Path, roots: tuple[str, ...]
+) -> tuple[Path, ...]:
+    paths: list[Path] = []
+    for directory, directories, filenames in root.walk(
+        top_down=True,
+        on_error=_raise_tree_walk_error,
+    ):
+        paths.extend(
+            _prune_excluded_directories(
+                root, directory, directories, roots=roots
+            )
+        )
+        paths.extend(_admitted_files(root, directory, filenames, roots=roots))
+    return tuple(sorted(paths))
+
+
 def _entry_mode(path: Path, context: str) -> int | None:
     try:
         return path.lstat().st_mode
@@ -255,7 +310,13 @@ def snapshot_tree_excluding(
 
     """
     roots = _normalized_roots(excluded_roots)
-    return _filter_snapshot(snapshot_tree(root), roots, inside=False)
+    resolved_root = _resolved_tree_root(root)
+    records = (
+        record
+        for path in _tree_paths_excluding(resolved_root, roots)
+        if (record := _record_file(resolved_root, path)) is not None
+    )
+    return TreeSnapshot(files=tuple(sorted(records)))
 
 
 def _source_paths_by_content(

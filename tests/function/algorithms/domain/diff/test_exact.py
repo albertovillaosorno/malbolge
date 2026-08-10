@@ -45,6 +45,7 @@ from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.exact import materialize_exact_plan
 from algorithms.diff.exact import snapshot_tree
+from algorithms.diff.exact import snapshot_tree_excluding
 from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
 from algorithms.diff.model import SourceSlice
@@ -438,6 +439,55 @@ def test_snapshot_rejects_symlink_when_supported(tmp_path: Path) -> None:
 
     with pytest.raises(ExactTreeError, match="symlinks"):
         _ = snapshot_tree(root)
+
+
+def test_snapshot_excluding_does_not_read_passthrough_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Static verification must not read a fully excluded dynamic subtree."""
+    root = tmp_path / "tree"
+    _write(root, "static.bin", b"static")
+    dynamic = root / "external" / "game.bin"
+    _write(root, "external/game.bin", b"dynamic")
+    original_read = Path.read_bytes
+
+    def reject_dynamic_read(path: Path) -> bytes:
+        if path == dynamic:
+            message = "passthrough payload must not be read"
+            raise PermissionError(message)
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", reject_dynamic_read)
+    snapshot = snapshot_tree_excluding(root, ("external",))
+    _expect(
+        tuple(record.path for record in snapshot.files) == ("static.bin",),
+        "excluded passthrough leaked into static snapshot",
+    )
+
+
+def test_snapshot_excluding_nested_root_preserves_static_sibling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Prune only the configured nested root, not its static parent siblings."""
+    root = tmp_path / "tree"
+    _write(root, "external/keep.bin", b"keep")
+    dynamic = root / "external" / "data" / "game.bin"
+    _write(root, "external/data/game.bin", b"dynamic")
+    original_read = Path.read_bytes
+
+    def reject_dynamic_read(path: Path) -> bytes:
+        if path == dynamic:
+            message = "nested passthrough payload must not be read"
+            raise PermissionError(message)
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", reject_dynamic_read)
+    snapshot = snapshot_tree_excluding(root, ("external/data",))
+    paths = tuple(record.path for record in snapshot.files)
+    _expect(
+        paths == ("external/keep.bin",),
+        "nested passthrough pruning removed a static sibling",
+    )
 
 
 def test_passthrough_root_is_dynamic_after_exact_authoring(
