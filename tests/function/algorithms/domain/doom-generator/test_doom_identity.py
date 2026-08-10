@@ -106,6 +106,61 @@ def test_unterminated_comment_fails_closed() -> None:
         _ = canonicalize_c_identity(b"int x; /* missing end")
 
 
+def test_identity_root_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inaccessible identity root cannot become a weaker missing error."""
+    original_lstat = Path.lstat
+
+    def fail_status(path: Path) -> object:
+        if path == tmp_path:
+            message = "blocked DOOM identity root"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_status)
+    with pytest.raises(DoomIdentityError, match="root status failed"):
+        _ = build_identity_tree(tmp_path)
+
+
+def test_identity_rejects_linked_root_when_supported(tmp_path: Path) -> None:
+    """Do not resolve a linked source root before C/H identity admission."""
+    target = tmp_path / "target"
+    linux = target / "linuxdoom-1.10"
+    linux.mkdir(parents=True)
+    main_source = b"int main(void){return 0;}" + bytes((10,))
+    _ = (linux / "main.c").write_bytes(main_source)
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is unavailable on this host")
+
+    with pytest.raises(DoomIdentityError, match="symlink is not accepted"):
+        _ = build_identity_tree(linked)
+
+
+def test_identity_entry_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inaccessible C/H entry cannot disappear from source identity."""
+    linux = tmp_path / "linuxdoom-1.10"
+    linux.mkdir()
+    blocked = linux / "main.c"
+    _ = blocked.write_bytes(b"int main(void){return 0;}" + bytes((10,)))
+    original_lstat = Path.lstat
+
+    def fail_status(path: Path) -> object:
+        if path == blocked:
+            message = "blocked DOOM identity entry"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_status)
+    with pytest.raises(DoomIdentityError, match="entry status failed"):
+        _ = build_identity_tree(tmp_path)
+
+
 def test_identity_tree_walk_errors_fail_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

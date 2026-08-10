@@ -43,6 +43,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import PurePosixPath
+from stat import S_ISDIR
+from stat import S_ISLNK
+from stat import S_ISREG
 from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import identity_tree
@@ -627,6 +630,49 @@ def _raise_identity_walk_error(error: OSError) -> None:
     raise DoomIdentityError(message) from error
 
 
+def _identity_entry_mode(path: Path, description: str) -> int | None:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        message = f"DOOM identity {description} status failed: {path}: {error}"
+        raise DoomIdentityError(message) from error
+    if S_ISLNK(mode) or path.is_junction():
+        message = f"symlink is not accepted in DOOM source identity: {path}"
+        raise DoomIdentityError(message)
+    return mode
+
+
+def _resolved_identity_root(source_root: Path) -> Path:
+    mode = _identity_entry_mode(source_root, "root")
+    if mode is None or not S_ISDIR(mode):
+        message = f"missing DOOM source root: {source_root}"
+        raise DoomIdentityError(message)
+    try:
+        return source_root.resolve(strict=True)
+    except OSError as error:
+        message = (
+            f"DOOM identity root resolution failed: {source_root}: {error}"
+        )
+        raise DoomIdentityError(message) from error
+
+
+def _selected_identity_file(path: Path) -> Path | None:
+    mode = _identity_entry_mode(path, "entry")
+    if mode is None:
+        message = f"DOOM source identity entry disappeared: {path}"
+        raise DoomIdentityError(message)
+    if S_ISDIR(mode):
+        return None
+    if not S_ISREG(mode):
+        message = (
+            f"special entry is not accepted in DOOM source identity: {path}"
+        )
+        raise DoomIdentityError(message)
+    return path if path.suffix.lower() in _CODE_SUFFIXES else None
+
+
 def _identity_source_files(code_root: Path) -> tuple[Path, ...]:
     paths: list[Path] = []
     for directory, directories, filenames in code_root.walk(
@@ -634,14 +680,11 @@ def _identity_source_files(code_root: Path) -> tuple[Path, ...]:
     ):
         paths.extend(directory / name for name in directories)
         paths.extend(directory / name for name in filenames)
-    selected: list[Path] = []
-    for path in sorted(paths):
-        if path.is_symlink():
-            message = f"symlink is not accepted in DOOM source identity: {path}"
-            raise DoomIdentityError(message)
-        if path.is_file() and path.suffix.lower() in _CODE_SUFFIXES:
-            selected.append(path)
-    return tuple(selected)
+    return tuple(
+        selected
+        for path in sorted(paths)
+        if (selected := _selected_identity_file(path)) is not None
+    )
 
 
 def build_identity_tree(source_root: Path) -> IdentityTree:
@@ -655,9 +698,10 @@ def build_identity_tree(source_root: Path) -> IdentityTree:
         no selected code.
 
     """
-    resolved_root = source_root.resolve()
+    resolved_root = _resolved_identity_root(source_root)
     code_root = resolved_root / DOOM_IDENTITY_SUBTREE
-    if not code_root.is_dir():
+    mode = _identity_entry_mode(code_root, "subtree")
+    if mode is None or not S_ISDIR(mode):
         message = f"missing DOOM identity subtree: {code_root}"
         raise DoomIdentityError(message)
     source_files = _identity_source_files(code_root)
