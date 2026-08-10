@@ -44,6 +44,7 @@ from typing import cast
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.domain import load_diff_domain
 from algorithms.diff.emit_rust import write_rust_transform
+from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.protected import protect_exact_plan
@@ -209,12 +210,23 @@ def _validate_recipe(recipe: DiffRecipe) -> None:
     _validate_binding_policy(recipe)
 
 
+def _read_exact_identity_file(path: Path, relative: str) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError as error:
+        message = f"exact source identity read failed: {relative}: {error}"
+        raise ExactTreeError(message) from error
+
+
 def _raw_exact_identity(
     recipe: DiffRecipe,
     source_paths: tuple[str, ...],
 ) -> IdentityTree:
     files = {
-        relative: (recipe.source_root / relative).read_bytes()
+        relative: _read_exact_identity_file(
+            recipe.source_root / relative,
+            relative,
+        )
         for relative in source_paths
     }
     return identity_tree(files)

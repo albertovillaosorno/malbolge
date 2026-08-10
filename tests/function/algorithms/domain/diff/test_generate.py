@@ -36,17 +36,15 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
-from typing import TYPE_CHECKING
+from pathlib import Path
 from typing import cast
 
+from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.generate import DiffGeneratorUnavailableError
 from algorithms.diff.generate import DiffRecipe
 from algorithms.diff.generate import TransformMode
 from algorithms.diff.generate import write_algorithm
 import pytest
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _BLOCKS = 48
 _STD_MARKER = b"use std::"
@@ -193,6 +191,33 @@ def test_exact_mode_writes_deterministic_standalone_rust(
     _expect(first == second, "exact generator output changed across runs")
     _expect(_STD_MARKER in first, "exact generator did not emit Rust runtime")
     _expect(_LITERAL_MARKER not in first, "plaintext oracle literal leaked")
+
+
+def test_exact_identity_second_read_failure_stays_in_exact_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A source-binding identity reread cannot leak a host I/O exception."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    blocked = recipe.source_root / "b.bin"
+    original_read = Path.read_bytes
+    reads = 0
+
+    def fail_second_read(path: Path) -> bytes:
+        nonlocal reads
+        if path == blocked:
+            reads += 1
+            if reads > 1:
+                message = "blocked exact identity reread"
+                raise PermissionError(message)
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_second_read)
+    with pytest.raises(ExactTreeError, match="source identity read failed"):
+        write_algorithm(recipe)
+    _expect(
+        not recipe.output_algorithm.exists(),
+        "failed identity wrote output",
+    )
 
 
 def test_exact_mode_runs_domain_preflight_with_passthrough(
