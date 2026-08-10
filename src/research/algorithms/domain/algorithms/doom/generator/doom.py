@@ -717,11 +717,34 @@ def build_identity_tree(source_root: Path) -> IdentityTree:
     return identity_tree(canonical_files)
 
 
-def _require_source_root_surface(source_root: Path) -> None:
-    if not source_root.is_dir():
+def _require_source_root_directory(source_root: Path) -> None:
+    try:
+        mode = source_root.lstat().st_mode
+    except FileNotFoundError as error:
+        message = f"missing DOOM source root: {source_root}"
+        raise SourcePinError(message) from error
+    except OSError as error:
+        message = f"DOOM source root status failed: {source_root}: {error}"
+        raise SourcePinError(message) from error
+    if S_ISLNK(mode) or source_root.is_junction():
+        message = f"DOOM source root must not be linked: {source_root}"
+        raise SourcePinError(message)
+    if not S_ISDIR(mode):
         message = f"missing DOOM source root: {source_root}"
         raise SourcePinError(message)
-    names = frozenset(entry.name for entry in source_root.iterdir())
+
+
+def _source_root_names(source_root: Path) -> frozenset[str]:
+    try:
+        return frozenset(entry.name for entry in source_root.iterdir())
+    except OSError as error:
+        message = f"DOOM source root enumeration failed: {source_root}: {error}"
+        raise SourcePinError(message) from error
+
+
+def _require_source_root_surface(source_root: Path) -> None:
+    _require_source_root_directory(source_root)
+    names = _source_root_names(source_root)
     unexpected = tuple(sorted(names - _SOURCE_ALLOWED_ROOTS))
     if unexpected:
         message = f"unexpected DOOM source root entries: {unexpected!r}"

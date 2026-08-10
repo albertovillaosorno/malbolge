@@ -37,6 +37,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from algorithms.diff.provenance import SourcePinError
+from algorithms.diff.provenance import SourcePinEvidence
+from algorithms.doom.generator import doom as doom_module
 from algorithms.doom.generator.doom import DOOM_SOURCE_PIN
 from algorithms.doom.generator.doom import DOOM_UPSTREAM_COMMIT
 from algorithms.doom.generator.doom import DOOM_UPSTREAM_FILE_COUNT
@@ -403,6 +406,64 @@ def test_compatible_mapper_selects_only_linux_c_and_headers() -> None:
         map_compatible_file("ipx/doomnet.c", code) is None,
         "non-Linux source unexpectedly entered semantic placement",
     )
+
+
+def _accept_source_pin(root: Path, pin: object) -> SourcePinEvidence:
+    _ = root, pin
+    return SourcePinEvidence(file_count=0, snapshot_sha256="0" * 64)
+
+
+def test_source_surface_root_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep inaccessible root metadata inside the source-pin boundary."""
+    original_lstat = Path.lstat
+
+    def fail_lstat(path: Path) -> object:
+        if path == tmp_path:
+            message = "blocked DOOM source root"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(doom_module, "require_source_pin", _accept_source_pin)
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(SourcePinError, match="root status failed"):
+        _ = doom_module.validate_source_provenance(tmp_path)
+
+
+def test_source_surface_rejects_linked_root_when_supported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reject a linked source container before checking its names."""
+    target = tmp_path / "target"
+    target.mkdir()
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is unavailable on this host")
+
+    monkeypatch.setattr(doom_module, "require_source_pin", _accept_source_pin)
+    with pytest.raises(SourcePinError, match="must not be linked"):
+        _ = doom_module.validate_source_provenance(linked)
+
+
+def test_source_surface_enumeration_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep source-root scan failures distinct from an empty allowlist."""
+    original_iterdir = Path.iterdir
+
+    def fail_iterdir(path: Path) -> Iterator[Path]:
+        if path == tmp_path:
+            message = "blocked DOOM source scan"
+            raise PermissionError(message)
+        return original_iterdir(path)
+
+    monkeypatch.setattr(doom_module, "require_source_pin", _accept_source_pin)
+    monkeypatch.setattr(Path, "iterdir", fail_iterdir)
+    with pytest.raises(SourcePinError, match="enumeration failed"):
+        _ = doom_module.validate_source_provenance(tmp_path)
 
 
 def test_source_pin_names_exact_official_revision() -> None:
