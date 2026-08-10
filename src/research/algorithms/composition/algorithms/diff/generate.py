@@ -271,7 +271,10 @@ def _preflight_domain(recipe: DiffRecipe) -> None:
     if type(evidence) is not SourcePinEvidence:
         message = "domain source provenance hook must return SourcePinEvidence"
         raise DomainContractError(message)
-    domain.validate_authoring_oracle(recipe.oracle_root)
+    oracle_result = domain.validate_authoring_oracle(recipe.oracle_root)
+    if oracle_result is not None:
+        message = "domain oracle preflight hook must return None"
+        raise DomainContractError(message)
 
 
 def write_algorithm(recipe: DiffRecipe) -> None:

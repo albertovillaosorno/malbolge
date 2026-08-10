@@ -189,6 +189,30 @@ def test_domain_preflight_requires_source_pin_evidence(tmp_path: Path) -> None:
     )
 
 
+def test_domain_preflight_requires_void_oracle_result(tmp_path: Path) -> None:
+    """Reject oracle validators that return foreign success metadata."""
+    module = _domain_module(tmp_path)
+    text = module.read_text(encoding="utf-8")
+    marker = 'raise RuntimeError("oracle preflight rejected")'
+    replacement = marker + chr(10) + "    return object()"
+    _ = module.write_text(
+        text.replace(marker, replacement, 1),
+        encoding="utf-8",
+        newline=chr(10),
+    )
+    recipe = _recipe(tmp_path, mode=TransformMode.COMPATIBLE)
+    recipe = replace(recipe, domain_module=module)
+
+    with pytest.raises(
+        DomainContractError, match=r"oracle preflight.*return None"
+    ):
+        write_algorithm(recipe)
+    _expect(
+        not recipe.output_algorithm.exists(),
+        "invalid oracle result wrote output",
+    )
+
+
 def test_compatible_mode_propagates_source_preflight_failure(
     tmp_path: Path,
 ) -> None:
