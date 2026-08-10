@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import hashlib
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.admission import AdmissionError
 from algorithms.diff.admission import AdmissionPolicy
@@ -51,6 +52,7 @@ from algorithms.diff.behavior import CompatibilityProbe
 from algorithms.diff.behavior import IdentityObservation
 from algorithms.diff.behavior import IdentityProbe
 from algorithms.diff.behavior import evaluate_behavior
+from algorithms.diff.gate import TransformAdmissionEvidence
 from algorithms.diff.gate import combine_admission
 from algorithms.diff.gate import require_transform_admission
 import pytest
@@ -143,6 +145,30 @@ def test_source_lineage_cannot_replace_failed_compatibility() -> None:
         combined.reasons == ("behavior admission failed",),
         "combined gate reported the wrong failure family",
     )
+
+
+def test_gate_rejects_foreign_and_forged_evidence_records() -> None:
+    """Invalid gate metadata cannot forge a passing conjunctive decision."""
+    source = _source_evidence("reference")
+    behavior = _behavior_evidence()
+    with pytest.raises(AdmissionError, match="exact TreeAdmissionEvidence"):
+        _ = combine_admission(
+            cast("TreeAdmissionEvidence", object()),
+            behavior,
+        )
+    with pytest.raises(AdmissionError, match="exact BehaviorEvidence"):
+        _ = combine_admission(
+            source,
+            cast("BehaviorEvidence", object()),
+        )
+
+    rejected_source = _source_evidence("unrelated")
+    with pytest.raises(AdmissionError, match="do not match evidence"):
+        _ = TransformAdmissionEvidence(
+            source=rejected_source,
+            behavior=behavior,
+            reasons=(),
+        )
 
 
 def test_combined_gate_accepts_only_when_both_families_pass() -> None:

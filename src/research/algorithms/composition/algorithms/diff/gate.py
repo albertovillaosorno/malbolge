@@ -35,13 +35,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import AdmissionError
-
-if TYPE_CHECKING:
-    from algorithms.diff.admission import TreeAdmissionEvidence
-    from algorithms.diff.behavior import BehaviorEvidence
+from algorithms.diff.admission import TreeAdmissionEvidence
+from algorithms.diff.behavior import BehaviorEvidence
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +48,24 @@ class TransformAdmissionEvidence:
     source: TreeAdmissionEvidence
     behavior: BehaviorEvidence
     reasons: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """Require exact evidence and canonical conjunctive rejection reasons.
+
+        Raises:
+            AdmissionError: Evidence records or reasons are inconsistent.
+
+        """
+        source = _require_source_evidence(self.source)
+        behavior = _require_behavior_evidence(self.behavior)
+        if type(self.reasons) is not tuple or any(
+            type(reason) is not str for reason in self.reasons
+        ):
+            message = "transform admission reasons must use exact strings"
+            raise AdmissionError(message)
+        if self.reasons != _canonical_reasons(source, behavior):
+            message = "transform admission reasons do not match evidence"
+            raise AdmissionError(message)
 
     @property
     def admitted(self) -> bool:
@@ -63,6 +78,32 @@ class TransformAdmissionEvidence:
         return not self.reasons
 
 
+def _require_source_evidence(value: object) -> TreeAdmissionEvidence:
+    if type(value) is not TreeAdmissionEvidence:
+        message = "transform gate requires exact TreeAdmissionEvidence"
+        raise AdmissionError(message)
+    return value
+
+
+def _require_behavior_evidence(value: object) -> BehaviorEvidence:
+    if type(value) is not BehaviorEvidence:
+        message = "transform gate requires exact BehaviorEvidence"
+        raise AdmissionError(message)
+    return value
+
+
+def _canonical_reasons(
+    source: TreeAdmissionEvidence,
+    behavior: BehaviorEvidence,
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    if not source.admitted:
+        reasons.append("source lineage admission failed")
+    if not behavior.admitted:
+        reasons.append("behavior admission failed")
+    return tuple(reasons)
+
+
 def combine_admission(
     source: TreeAdmissionEvidence,
     behavior: BehaviorEvidence,
@@ -73,15 +114,12 @@ def combine_admission(
         Conjunctive admission evidence preserving both underlying reports.
 
     """
-    reasons: list[str] = []
-    if not source.admitted:
-        reasons.append("source lineage admission failed")
-    if not behavior.admitted:
-        reasons.append("behavior admission failed")
+    source = _require_source_evidence(source)
+    behavior = _require_behavior_evidence(behavior)
     return TransformAdmissionEvidence(
         source=source,
         behavior=behavior,
-        reasons=tuple(reasons),
+        reasons=_canonical_reasons(source, behavior),
     )
 
 
