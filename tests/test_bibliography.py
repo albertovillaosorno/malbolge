@@ -34,7 +34,16 @@
 
 from __future__ import annotations
 
+from os import stat_result
 from pathlib import Path
+from stat import S_IFDIR
+from stat import S_IFLNK
+from typing import TYPE_CHECKING
+from typing import cast
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from typing import Never
 
 import pytest
 from scripts.validate import bibliography as validator
@@ -45,12 +54,40 @@ EXPECTED_RECORDS = 48
 EXPECTED_BASELINE = 44
 EXPECTED_VALIDATION_PACKAGES = 9
 EXPECTED_DURABLE_REFERENCES = 19
+PYTEST_CACHE_DIRECTORY = ".pytest_cache"
 MISSING_COVERAGE_MESSAGE = "lack bibliography coverage"
 DUPLICATE_IDENTITY_MESSAGE = "duplicate stable identifier"
 VALIDATION_REQUIREMENTS = ROOT / (
     "src/automation/repository/composition/scripts/bootstrap/"
     "python-validation-requirements.txt"
 )
+
+
+class _LinkedPath:
+    @staticmethod
+    def lstat() -> stat_result:
+        return stat_result((S_IFLNK, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+
+    @staticmethod
+    def is_junction() -> bool:
+        return False
+
+
+class _JunctionPath:
+    @staticmethod
+    def lstat() -> stat_result:
+        return stat_result((S_IFDIR, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+
+    @staticmethod
+    def is_junction() -> bool:
+        return True
+
+
+class _DeniedPath:
+    @staticmethod
+    def lstat() -> Never:
+        message = "blocked entry"
+        raise PermissionError(message)
 
 
 def _expect_failure(text: str, message: str) -> None:
@@ -87,12 +124,10 @@ def test_repository_bibliography_taxonomy_and_baseline_are_valid() -> None:
     assert report.record_count == EXPECTED_RECORDS
     assert report.required_baseline_count == EXPECTED_BASELINE
     assert (
-        report.required_validation_package_count
-        == EXPECTED_VALIDATION_PACKAGES
+        report.required_validation_package_count == EXPECTED_VALIDATION_PACKAGES
     )
     assert (
-        report.covered_external_reference_count
-        == EXPECTED_DURABLE_REFERENCES
+        report.covered_external_reference_count == EXPECTED_DURABLE_REFERENCES
     )
     assert report.categories == validator.CATEGORIES
 
@@ -162,6 +197,53 @@ def test_validation_requirement_version_drift_fails_closed() -> None:
         text,
         "Python validation requirements mismatch canonical bibliography",
     )
+
+
+def test_generated_pytest_cache_is_not_durable_evidence() -> None:
+    """Pytest's generated cache cannot add bibliography obligations."""
+    assert PYTEST_CACHE_DIRECTORY in validator.DURABLE_REFERENCE_EXCLUDED_PARTS
+
+
+def test_redirected_bibliography_paths_fail_closed() -> None:
+    """A symlink-like source entry cannot redirect durable evidence."""
+    is_regular_file = cast(
+        "Callable[[Path], bool]", vars(validator)["_is_regular_file"]
+    )
+    for redirected in (_LinkedPath(), _JunctionPath()):
+        path = cast("Path", cast("object", redirected))
+        with pytest.raises(
+            validator.BibliographyValidationError,
+            match="must not redirect",
+        ):
+            _ = is_regular_file(path)
+
+
+def test_filesystem_status_errors_fail_closed() -> None:
+    """File-type checks cannot hide inaccessible bibliography entries."""
+    is_regular_file = cast(
+        "Callable[[Path], bool]", vars(validator)["_is_regular_file"]
+    )
+    denied = cast("Path", cast("object", _DeniedPath()))
+    with pytest.raises(
+        validator.BibliographyValidationError,
+        match="filesystem traversal failed",
+    ):
+        _ = is_regular_file(denied)
+
+
+def test_filesystem_walk_errors_fail_closed() -> None:
+    """Recursive scan failures cannot silently remove durable evidence."""
+    handler = cast(
+        "Callable[[OSError], Never]",
+        vars(validator)["_raise_walk_error"],
+    )
+    error = PermissionError("blocked directory")
+    with pytest.raises(
+        validator.BibliographyValidationError,
+        match="filesystem traversal failed",
+    ) as caught:
+        handler(error)
+    assert caught.value.__cause__ is None
 
 
 def test_durable_external_reference_requires_canonical_coverage() -> None:

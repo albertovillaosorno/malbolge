@@ -37,10 +37,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+from stat import S_ISDIR
+from stat import S_ISLNK
+from stat import S_ISREG
 import sys
 from typing import Never
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 from urllib.parse import urlunsplit
+
+if TYPE_CHECKING:
+    from os import stat_result
 
 from scripts.repository_root import repository_root
 
@@ -155,6 +162,7 @@ DURABLE_REFERENCE_EXCLUDED_PARTS = frozenset((
     ".cache",
     ".dependencies",
     ".git",
+    ".pytest_cache",
     ".logs",
     ".temp",
     "target",
@@ -164,9 +172,7 @@ DURABLE_REFERENCE_EXCLUDED_PREFIXES = (
     "docs/todo/open/",
     "tests/",
 )
-SELF_OWNED_URLS = frozenset((
-    "https://github.com/albertovillaosorno/malbolge",
-))
+SELF_OWNED_URLS = frozenset(("https://github.com/albertovillaosorno/malbolge",))
 DATE_PATTERN = re.compile(r"20\d{2}-\d{2}-\d{2}")
 PLACEHOLDERS = (
     "{required}",
@@ -176,6 +182,7 @@ ADR_DIR = "adr"
 UNRESOLVED_HEADING = "### Unresolved"
 BASELINE_COVERAGE_HEADING = "### Baseline Coverage"
 SPECIAL_FILES = frozenset({"README.md", "disclaimer.md", "template.md"})
+SOURCE_RECORD_SUFFIX = ".md"
 
 
 class BibliographyValidationError(ValueError):
@@ -201,9 +208,52 @@ def _relative(path: Path) -> str:
     return path.relative_to(BIBLIOGRAPHY_ROOT).as_posix()
 
 
+def _raise_walk_error(error: OSError) -> Never:
+    _ = error
+    _fail("bibliography filesystem traversal failed")
+
+
+def _path_status(path: Path) -> stat_result | None:
+    try:
+        status = path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        _fail("bibliography filesystem traversal failed")
+    if S_ISLNK(status.st_mode) or path.is_junction():
+        _fail("bibliography paths must not redirect")
+    return status
+
+
+def _is_regular_file(path: Path) -> bool:
+    status = _path_status(path)
+    return status is not None and S_ISREG(status.st_mode)
+
+
+def _is_directory(path: Path) -> bool:
+    status = _path_status(path)
+    return status is not None and S_ISDIR(status.st_mode)
+
+
+def _path_exists(path: Path) -> bool:
+    return _path_status(path) is not None
+
+
+def _walk_paths(root: Path) -> tuple[Path, ...]:
+    paths: list[Path] = []
+    for directory, directories, filenames in root.walk(
+        on_error=_raise_walk_error
+    ):
+        paths.extend(directory / name for name in directories)
+        paths.extend(directory / name for name in filenames)
+    return tuple(paths)
+
+
 def _source_record_paths() -> tuple[Path, ...]:
     records: list[Path] = []
-    for path in BIBLIOGRAPHY_ROOT.rglob("*.md"):
+    for path in _walk_paths(BIBLIOGRAPHY_ROOT):
+        if path.suffix != SOURCE_RECORD_SUFFIX or not _is_regular_file(path):
+            continue
         relative = path.relative_to(BIBLIOGRAPHY_ROOT)
         if path.name in SPECIAL_FILES or ADR_DIR in relative.parts:
             continue
@@ -214,7 +264,7 @@ def _source_record_paths() -> tuple[Path, ...]:
 def _validate_first_level_taxonomy() -> None:
     expected = frozenset((*CATEGORIES, ADR_DIR))
     actual = frozenset(
-        path.name for path in BIBLIOGRAPHY_ROOT.iterdir() if path.is_dir()
+        path.name for path in BIBLIOGRAPHY_ROOT.iterdir() if _is_directory(path)
     )
     if actual != expected:
         _fail(f"bibliography first-level taxonomy mismatch: {sorted(actual)}")
@@ -223,18 +273,22 @@ def _validate_first_level_taxonomy() -> None:
 def _validate_directory_catalogs() -> None:
     directories = (
         BIBLIOGRAPHY_ROOT,
-        *sorted(path for path in BIBLIOGRAPHY_ROOT.rglob("*") if path.is_dir()),
+        *sorted(
+            path
+            for path in _walk_paths(BIBLIOGRAPHY_ROOT)
+            if _is_directory(path)
+        ),
     )
     for directory in directories:
-        if not (directory / "README.md").is_file():
+        if not _is_regular_file(directory / "README.md"):
             relative = _relative(directory)
             _fail(f"bibliography directory lacks README.md: {relative}")
 
 
 def _validate_templates() -> None:
-    if not CANONICAL_TEMPLATE.is_file():
+    if not _is_regular_file(CANONICAL_TEMPLATE):
         _fail("canonical bibliography source template is missing")
-    if (BIBLIOGRAPHY_ROOT / "template.md").exists():
+    if _path_exists(BIBLIOGRAPHY_ROOT / "template.md"):
         _fail("duplicate root bibliography template is forbidden")
 
 
@@ -324,10 +378,12 @@ def validate_unique_stable_identifiers(
         identifier = _stable_identifier(text, label)
         previous = seen.get(identifier)
         if previous is not None:
-            _fail("".join((
-                f"duplicate stable identifier {identifier!r}: ",
-                f"{previous} and {label}",
-            )))
+            _fail(
+                "".join((
+                    f"duplicate stable identifier {identifier!r}: ",
+                    f"{previous} and {label}",
+                ))
+            )
         seen[identifier] = label
 
 
@@ -336,8 +392,7 @@ def _validate_records() -> int:
     if not paths:
         _fail("bibliography contains no source records")
     records = tuple(
-        (_relative(path), path.read_text(encoding="utf-8"))
-        for path in paths
+        (_relative(path), path.read_text(encoding="utf-8")) for path in paths
     )
     for label, text in records:
         validate_source_text(text, label)
@@ -347,7 +402,7 @@ def _validate_records() -> int:
 
 def _validate_baseline() -> None:
     for relative in BASELINE_RECORDS:
-        if not (BIBLIOGRAPHY_ROOT / relative).is_file():
+        if not _is_regular_file(BIBLIOGRAPHY_ROOT / relative):
             _fail(f"required bibliography baseline record missing: {relative}")
     ledger = (
         BIBLIOGRAPHY_ROOT
@@ -367,10 +422,15 @@ def validate_validation_requirements_text(text: str) -> None:
         requirement for requirement, _record in VALIDATION_REQUIREMENT_RECORDS
     )
     if actual != expected:
-        _fail("".join((
-            "Python validation requirements mismatch canonical bibliography ",
-            f"coverage: {actual}",
-        )))
+        _fail(
+            "".join((
+                (
+                    "Python validation requirements mismatch canonical "
+                    "bibliography coverage: "
+                ),
+                f"{actual}",
+            ))
+        )
 
 
 def _validate_validation_requirements() -> None:
@@ -378,17 +438,21 @@ def _validate_validation_requirements() -> None:
     validate_validation_requirements_text(requirements_text)
     for requirement, relative in VALIDATION_REQUIREMENT_RECORDS:
         path = BIBLIOGRAPHY_ROOT / relative
-        if not path.is_file():
-            _fail("".join((
-                "validation dependency lacks bibliography record: ",
-                f"{requirement} -> {relative}",
-            )))
+        if not _is_regular_file(path):
+            _fail(
+                "".join((
+                    "validation dependency lacks bibliography record: ",
+                    f"{requirement} -> {relative}",
+                ))
+            )
         record = path.read_text(encoding="utf-8")
         if f"`{requirement}`" not in record:
-            _fail("".join((
-                "validation dependency record lacks exact pin: ",
-                f"{requirement} -> {relative}",
-            )))
+            _fail(
+                "".join((
+                    "validation dependency record lacks exact pin: ",
+                    f"{requirement} -> {relative}",
+                ))
+            )
 
 
 def _normalized_url(value: str) -> str:
@@ -406,8 +470,7 @@ def _normalized_url(value: str) -> str:
 
 def _urls_from_text(text: str) -> tuple[str, ...]:
     return tuple(
-        _normalized_url(match.group(0))
-        for match in URL_PATTERN.finditer(text)
+        _normalized_url(match.group(0)) for match in URL_PATTERN.finditer(text)
     )
 
 
@@ -423,41 +486,56 @@ def validate_external_reference_coverage(
     """
     normalized_sources = frozenset(_normalized_url(url) for url in source_urls)
     self_owned = frozenset(_normalized_url(url) for url in SELF_OWNED_URLS)
-    normalized_references = frozenset(
-        _normalized_url(url) for url in references
-    ) - self_owned
+    normalized_references = (
+        frozenset(_normalized_url(url) for url in references) - self_owned
+    )
     missing = tuple(sorted(normalized_references - normalized_sources))
     if missing:
-        _fail("".join((
-            "durable external references lack bibliography coverage: ",
-            f"{missing}",
-        )))
+        _fail(
+            "".join((
+                "durable external references lack bibliography coverage: ",
+                f"{missing}",
+            ))
+        )
     return len(normalized_references)
 
 
+def _is_excluded_relative_path(relative: Path) -> bool:
+    if any(part in DURABLE_REFERENCE_EXCLUDED_PARTS for part in relative.parts):
+        return True
+    value = relative.as_posix()
+    return any(
+        value == prefix.removesuffix("/") or value.startswith(prefix)
+        for prefix in DURABLE_REFERENCE_EXCLUDED_PREFIXES
+    )
+
+
 def _is_durable_reference_path(path: Path) -> bool:
-    if not path.is_file():
-        return False
     relative = path.relative_to(ROOT)
-    excluded_part = any(
-        part in DURABLE_REFERENCE_EXCLUDED_PARTS
-        for part in relative.parts
-    )
-    excluded_prefix = relative.as_posix().startswith(
-        DURABLE_REFERENCE_EXCLUDED_PREFIXES
-    )
     return (
-        not excluded_part
-        and not excluded_prefix
+        not _is_excluded_relative_path(relative)
         and path.suffix in DURABLE_REFERENCE_SUFFIXES
     )
 
 
 def _durable_reference_paths() -> tuple[Path, ...]:
-    return tuple(sorted(
-        path for path in ROOT.rglob("*")
-        if _is_durable_reference_path(path)
-    ))
+    paths: list[Path] = []
+    for directory, directories, filenames in ROOT.walk(
+        on_error=_raise_walk_error
+    ):
+        directories[:] = [
+            name
+            for name in directories
+            if not _is_excluded_relative_path(
+                (directory / name).relative_to(ROOT)
+            )
+        ]
+        paths.extend(
+            path
+            for name in filenames
+            if _is_durable_reference_path(path := directory / name)
+        )
+    return tuple(sorted(paths))
 
 
 def _durable_external_references() -> tuple[str, ...]:
@@ -497,9 +575,7 @@ def validate_repository() -> BibliographyReport:
         categories=CATEGORIES,
         record_count=count,
         required_baseline_count=len(BASELINE_RECORDS),
-        required_validation_package_count=len(
-            VALIDATION_REQUIREMENT_RECORDS
-        ),
+        required_validation_package_count=len(VALIDATION_REQUIREMENT_RECORDS),
         covered_external_reference_count=covered_external_reference_count,
     )
 
