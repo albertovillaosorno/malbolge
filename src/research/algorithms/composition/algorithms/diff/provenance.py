@@ -38,6 +38,9 @@ from dataclasses import dataclass
 import hashlib
 from pathlib import Path
 from pathlib import PurePosixPath
+from stat import S_ISDIR
+from stat import S_ISLNK
+from stat import S_ISREG
 from typing import cast
 
 _ZERO = 0
@@ -158,29 +161,59 @@ def _validate_relative_path(relative_path: object) -> str:
     return relative_path
 
 
-def _selected_root(root: Path, relative_root: str) -> Path:
-    selected = root.joinpath(*PurePosixPath(relative_root).parts)
-    if selected.is_symlink():
-        message = f"symlink is not accepted in pinned source: {relative_root}"
+def _source_mode(path: Path, relative: str) -> int | None:
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        message = f"pinned source status failed for {relative}: {error}"
+        raise SourcePinError(message) from error
+    if S_ISLNK(mode) or path.is_junction():
+        message = f"symlink is not accepted in pinned source: {relative}"
         raise SourcePinError(message)
-    if selected.is_file() or selected.is_dir():
-        return selected
-    message = f"missing pinned source root: {relative_root}"
+    return mode
+
+
+def _selected_root(root: Path, relative_root: str) -> tuple[Path, int]:
+    selected = root.joinpath(*PurePosixPath(relative_root).parts)
+    mode = _source_mode(selected, relative_root)
+    if mode is None:
+        message = f"missing pinned source root: {relative_root}"
+        raise SourcePinError(message)
+    if S_ISREG(mode) or S_ISDIR(mode):
+        return selected, mode
+    message = f"special entry is not accepted in pinned source: {relative_root}"
     raise SourcePinError(message)
+
+
+def _raise_source_walk_error(error: OSError) -> None:
+    message = f"pinned source traversal failed: {error}"
+    raise SourcePinError(message) from error
+
+
+def _directory_paths(selected: Path) -> tuple[Path, ...]:
+    paths: list[Path] = []
+    for directory, directories, filenames in selected.walk(
+        on_error=_raise_source_walk_error
+    ):
+        paths.extend(directory / name for name in directories)
+        paths.extend(directory / name for name in filenames)
+    return tuple(sorted(paths))
 
 
 def _directory_files(root: Path, selected: Path) -> tuple[Path, ...]:
     files: list[Path] = []
-    for path in sorted(selected.rglob("*")):
-        if path.is_symlink():
-            relative = path.relative_to(root).as_posix()
-            message = f"symlink is not accepted in pinned source: {relative}"
+    for path in _directory_paths(selected):
+        relative = path.relative_to(root).as_posix()
+        mode = _source_mode(path, relative)
+        if mode is None:
+            message = f"pinned source entry disappeared: {relative}"
             raise SourcePinError(message)
-        if path.is_file():
+        if S_ISREG(mode):
             files.append(path)
             continue
-        if not path.is_dir():
-            relative = path.relative_to(root).as_posix()
+        if not S_ISDIR(mode):
             message = (
                 f"special entry is not accepted in pinned source: {relative}"
             )
@@ -189,8 +222,8 @@ def _directory_files(root: Path, selected: Path) -> tuple[Path, ...]:
 
 
 def _collect_root(root: Path, relative_root: str) -> tuple[Path, ...]:
-    selected = _selected_root(root, relative_root)
-    if selected.is_file():
+    selected, mode = _selected_root(root, relative_root)
+    if S_ISREG(mode):
         return (selected,)
     return _directory_files(root, selected)
 

@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -44,7 +45,7 @@ from algorithms.diff.provenance import source_snapshot_evidence
 import pytest
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Callable
 
 _COMMIT = "0123456789abcdef0123456789abcdef01234567"
 _EXPECTED_FILE_COUNT = 3
@@ -102,6 +103,51 @@ def test_pinned_snapshot_rejects_byte_or_path_change(tmp_path: Path) -> None:
     _write(tmp_path, "src/new.c", b"int new_file;\n")
     with pytest.raises(SourcePinError, match="file count mismatch"):
         _ = require_source_pin(tmp_path, pin)
+
+
+def test_pinned_snapshot_walk_errors_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A recursive scan failure cannot disappear from a revision pin."""
+    selected = tmp_path / "src"
+    selected.mkdir()
+
+    def fail_walk(
+        path: Path,
+        *,
+        top_down: bool = True,
+        on_error: Callable[[OSError], object] | None = None,
+        follow_symlinks: bool = False,
+    ) -> object:
+        _ = path, top_down, follow_symlinks
+        assert on_error is not None
+        _ = on_error(PermissionError("blocked pinned source"))
+        return iter(())
+
+    monkeypatch.setattr(Path, "walk", fail_walk)
+    with pytest.raises(SourcePinError, match="pinned source traversal failed"):
+        _ = source_snapshot_evidence(tmp_path, ("src",))
+
+
+def test_pinned_entry_status_errors_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An inaccessible pinned entry cannot disappear from source evidence."""
+    blocked = tmp_path / "src" / "blocked.c"
+    _write(tmp_path, "src/blocked.c", b"int blocked;\n")
+    original_lstat = Path.lstat
+
+    def fail_status(path: Path) -> object:
+        if path == blocked:
+            message = "blocked pinned entry"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_status)
+    with pytest.raises(SourcePinError, match="pinned source status failed"):
+        _ = source_snapshot_evidence(tmp_path, ("src",))
 
 
 def test_missing_or_symlinked_selected_root_fails_closed(

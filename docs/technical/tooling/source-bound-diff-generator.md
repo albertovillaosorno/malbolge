@@ -89,7 +89,8 @@ authoring, are
 then excluded from static snapshots/source binding, and are copied recursively
 from
 the runtime candidate into staging. Symlinks and special entries still fail
-closed.
+closed. Recursive snapshot and passthrough enumeration also surfaces filesystem
+scan failures instead of treating an inaccessible subtree as absent.
 The matcher used for source-span reuse remains separate from canonical identity
 and
 stable admission anchors.

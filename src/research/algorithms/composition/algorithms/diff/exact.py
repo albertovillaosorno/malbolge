@@ -38,6 +38,9 @@ from dataclasses import dataclass
 import hashlib
 from pathlib import PurePosixPath
 import shutil
+from stat import S_ISDIR
+from stat import S_ISLNK
+from stat import S_ISREG
 from typing import TYPE_CHECKING
 
 from algorithms.diff.model import ExactAuthoringPlan
@@ -147,13 +150,46 @@ def _filter_snapshot(
     )
 
 
+def _raise_tree_walk_error(error: OSError) -> None:
+    message = f"tree traversal failed: {error}"
+    raise ExactTreeError(message) from error
+
+
+def _tree_paths(root: Path) -> tuple[Path, ...]:
+    paths: list[Path] = []
+    for directory, directories, filenames in root.walk(
+        on_error=_raise_tree_walk_error
+    ):
+        paths.extend(directory / name for name in directories)
+        paths.extend(directory / name for name in filenames)
+    return tuple(sorted(paths))
+
+
+def _entry_mode(path: Path, context: str) -> int | None:
+    try:
+        return path.lstat().st_mode
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        message = f"{context} status failed: {error}"
+        raise ExactTreeError(message) from error
+
+
+def _is_redirect(path: Path, mode: int) -> bool:
+    return S_ISLNK(mode) or path.is_junction()
+
+
 def _record_file(root: Path, path: Path) -> FileRecord | None:
-    if path.is_symlink():
+    mode = _entry_mode(path, "tree entry")
+    if mode is None:
+        message = f"tree entry disappeared during traversal: {path}"
+        raise ExactTreeError(message)
+    if _is_redirect(path, mode):
         message = f"symlinks are not supported: {path}"
         raise ExactTreeError(message)
-    if path.is_dir():
+    if S_ISDIR(mode):
         return None
-    if not path.is_file():
+    if not S_ISREG(mode):
         message = f"special filesystem entry is not supported: {path}"
         raise ExactTreeError(message)
     relative = path.relative_to(root).as_posix()
@@ -181,7 +217,7 @@ def snapshot_tree(root: Path) -> TreeSnapshot:
         raise ExactTreeError(message)
     records = (
         record
-        for path in resolved_root.rglob("*")
+        for path in _tree_paths(resolved_root)
         if (record := _record_file(resolved_root, path)) is not None
     )
     return TreeSnapshot(files=tuple(sorted(records)))
@@ -532,27 +568,34 @@ def _copy_passthrough_file(source: Path, target: Path) -> None:
     _ = target.write_bytes(source.read_bytes())
 
 
+def _copy_passthrough_entry(
+    staging_root: Path, path: Path, relative: str
+) -> None:
+    mode = _entry_mode(path, "passthrough entry")
+    if mode is None:
+        message = f"passthrough entry disappeared: {relative}"
+        raise ExactTreeError(message)
+    if _is_redirect(path, mode):
+        message = f"symlink is not supported in passthrough root: {relative}"
+        raise ExactTreeError(message)
+    output = _safe_tree_path(staging_root, relative)
+    if S_ISDIR(mode):
+        output.mkdir(parents=True, exist_ok=True)
+    elif S_ISREG(mode):
+        _copy_passthrough_file(path, output)
+    else:
+        message = f"special passthrough entry is not supported: {relative}"
+        raise ExactTreeError(message)
+
+
 def _copy_passthrough_directory(
     source_root: Path,
     staging_root: Path,
     source: Path,
 ) -> None:
-    for path in sorted(source.rglob("*")):
+    for path in _tree_paths(source):
         relative = path.relative_to(source_root).as_posix()
-        if path.is_symlink():
-            message = (
-                f"symlink is not supported in passthrough root: {relative}"
-            )
-            raise ExactTreeError(message)
-        output = _safe_tree_path(staging_root, relative)
-        if path.is_dir():
-            output.mkdir(parents=True, exist_ok=True)
-            continue
-        if path.is_file():
-            _copy_passthrough_file(path, output)
-            continue
-        message = f"special passthrough entry is not supported: {relative}"
-        raise ExactTreeError(message)
+        _copy_passthrough_entry(staging_root, path, relative)
 
 
 def _copy_passthrough_root(
@@ -562,19 +605,23 @@ def _copy_passthrough_root(
 ) -> None:
     source = _safe_tree_path(source_root, relative_root)
     target = _safe_tree_path(staging_root, relative_root)
-    if source.is_symlink():
+    mode = _entry_mode(source, "passthrough root")
+    if mode is None:
+        message = f"missing passthrough root: {relative_root}"
+        raise ExactTreeError(message)
+    if _is_redirect(source, mode):
         message = (
             f"symlink is not supported in passthrough root: {relative_root}"
         )
         raise ExactTreeError(message)
-    if source.is_file():
+    if S_ISREG(mode):
         _copy_passthrough_file(source, target)
         return
-    if source.is_dir():
+    if S_ISDIR(mode):
         target.mkdir(parents=True, exist_ok=True)
         _copy_passthrough_directory(source_root, staging_root, source)
         return
-    message = f"missing passthrough root: {relative_root}"
+    message = f"special passthrough entry is not supported: {relative_root}"
     raise ExactTreeError(message)
 
 

@@ -32,7 +32,13 @@
 
 """Exact-baseline tests for the generic source-bound diff authoring model."""
 
+from __future__ import annotations
+
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import build_exact_plan
@@ -42,9 +48,6 @@ from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
 from algorithms.diff.model import SourceSlice
 import pytest
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _MOVED_SOURCE = "rename-me.txt"
 _PATCH_PATH = "patch.txt"
@@ -183,6 +186,53 @@ def test_exact_materialization_rejects_existing_output(tmp_path: Path) -> None:
 
     with pytest.raises(ExactTreeError, match="already exists"):
         materialize_exact_plan(source, plan, output)
+
+
+def test_snapshot_walk_errors_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A recursive scan failure cannot disappear from exact tree identity."""
+    root = tmp_path / "tree"
+    root.mkdir()
+
+    def fail_walk(
+        path: Path,
+        *,
+        top_down: bool = True,
+        on_error: Callable[[OSError], object] | None = None,
+        follow_symlinks: bool = False,
+    ) -> object:
+        _ = path, top_down, follow_symlinks
+        assert on_error is not None
+        _ = on_error(PermissionError("blocked exact tree"))
+        return iter(())
+
+    monkeypatch.setattr(Path, "walk", fail_walk)
+    with pytest.raises(ExactTreeError, match="tree traversal failed"):
+        _ = snapshot_tree(root)
+
+
+def test_snapshot_entry_status_errors_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An inaccessible discovered entry cannot vanish from exact identity."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    blocked = root / "blocked.txt"
+    _ = blocked.write_text("evidence", encoding="utf-8")
+    original_lstat = Path.lstat
+
+    def fail_status(path: Path) -> object:
+        if path == blocked:
+            message = "blocked exact entry"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_status)
+    with pytest.raises(ExactTreeError, match="tree entry status failed"):
+        _ = snapshot_tree(root)
 
 
 def test_snapshot_rejects_symlink_when_supported(tmp_path: Path) -> None:
