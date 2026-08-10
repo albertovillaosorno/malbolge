@@ -1,6 +1,6 @@
 ---
 id: "parametric-compiler-challenge-generator"
-status: "pending"
+status: "active"
 lane: "7"
 area: "applications"
 task: "TODO - Parametric compiler challenge generator"
@@ -37,6 +37,25 @@ semantic oracles. Every instance is identified by family, version, seed, target
 profile, and explicit difficulty parameters so two algorithms can be compared on
 exactly the same problem rather than on vaguely similar examples.
 
+**Current implementation.**
+
+- `benchmarks/challenges/generate.py` implements deterministic
+  `arithmetic-dag/v1` challenges identified by family, version, unsigned seed,
+  canonical target-profile fingerprint, and node count. Every node feeds the
+  next node on a live dependency spine so difficulty cannot grow through dead
+  C statements.
+- Each identity emits `program.c`, `oracle.bin`, and canonical `manifest.json`
+  bytes. The manifest binds source/oracle SHA-256 digests, while the source
+  entry
+  `malbolge_challenge` returns the full oracle `uint32_t` without unavailable
+  guest libc calls.
+- Analysis evidence locks byte-identical replay, difficulty growth, invalid
+  identity rejection, non-destructive no-replace publication including a raced
+  final-path collision, ABI/libc admission, and pinned-Clang agreement between
+  emitted C and the independent Python oracle.
+- The objective remains open: other workload families and the required
+  end-to-end compiled/executed Malbolge fixture are not yet implemented.
+
 ## Acceptance
 
 - Every challenge has stable family/version/seed/profile identity, an oracle,
@@ -65,6 +84,13 @@ exactly the same problem rather than on vaguely similar examples.
   `compiler-algorithm-experimentation-platform`,
   `canonical-malbolge-target-profile`, `deterministic-c-to-malbolge-abi`,
   `reproducible-experiment-identity-and-manifest`.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
+- Current implementation evidence:
+  `tests/analysis/test_parametric_challenges.py`
+  exercises exact replay, profile binding, publication failure behavior,
+  C-profile admission, and independent native oracle agreement. The methodology
+  record
+  documents the current threats and explicitly withholds final Malbolge
+  end-to-end completion.
+- Remaining research evidence: broader family coverage, end-to-end Malbolge
+  execution, retained comparative results, and a reviewed cross-family
   conclusion with threats to validity.
