@@ -166,6 +166,27 @@ def test_build_amalgamation_flattens_project_headers_once(
     _expect(stats.deduplicated_headers > 0, "duplicate headers were not elided")
 
 
+def test_oracle_write_preserves_foreign_legacy_temporary(
+    tmp_path: Path,
+) -> None:
+    """Do not overwrite a fixed temporary path owned by another writer."""
+    code_root = tmp_path / "code"
+    _accepted_tree(code_root)
+    output = tmp_path / "oracle.c"
+    legacy_temporary = tmp_path / "oracle.c.tmp"
+    sentinel = b"foreign-writer"
+    _ = legacy_temporary.write_bytes(sentinel)
+
+    stats = oracle.write_amalgamation_oracle(code_root, output)
+
+    _expect(output.is_file(), "oracle output was not published")
+    _expect(stats.output_bytes == output.stat().st_size, "oracle size drifted")
+    _expect(
+        legacy_temporary.read_bytes() == sentinel,
+        "foreign legacy temporary was modified",
+    )
+
+
 def test_build_amalgamation_rejects_missing_terminal_unit(
     tmp_path: Path,
 ) -> None:

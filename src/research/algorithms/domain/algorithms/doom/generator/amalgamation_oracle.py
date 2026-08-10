@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+from secrets import token_hex
 from stat import S_ISDIR
 from stat import S_ISLNK
 from stat import S_ISREG
@@ -417,6 +418,16 @@ def build_amalgamation(code_root: Path) -> tuple[bytes, AmalgamationStats]:
     return output.encode("utf-8"), stats
 
 
+def _cleanup_temporary(path: Path) -> str | None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        return str(error)
+    return None
+
+
 def write_amalgamation_oracle(
     code_root: Path = QUALITY_CODE_ROOT,
     output_path: Path = AMALGAMATION_ORACLE,
@@ -426,12 +437,24 @@ def write_amalgamation_oracle(
     Returns:
         Deterministic statistics for the written oracle.
 
+    Raises:
+        DoomAmalgamationError: Oracle construction or publication fails.
+
     """
     data, stats = build_amalgamation(code_root)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output_path.with_suffix(output_path.suffix + ".tmp")
-    _ = temporary.write_bytes(data)
-    _ = temporary.replace(output_path)
+    temporary = output_path.with_name(f".{output_path.name}.{token_hex(8)}.tmp")
+    try:
+        with temporary.open("xb") as output_file:
+            _ = output_file.write(data)
+            output_file.flush()
+        _ = temporary.replace(output_path)
+    except OSError as error:
+        cleanup_error = _cleanup_temporary(temporary)
+        message = f"DOOM amalgamation oracle publication failed: {error}"
+        if cleanup_error is not None:
+            message = f"{message}; temporary cleanup failed: {cleanup_error}"
+        raise DoomAmalgamationError(message) from error
     return stats
 
 
