@@ -35,21 +35,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
 
-_PROFILE_MEMORY_WORDS: Final = 59_049
-_GRAPHICAL_START: Final = 33
-_GRAPHICAL_END: Final = 126
-_ENTRY_CONTINUED: Final = "continued"
-_ENTRY_HALTED: Final = "halted"
-_ENTRY_INVALID_ENCRYPTION: Final = "rejected-invalid-self-encryption"
-_CRAZY_TRIT: Final = ((1, 0, 0), (1, 0, 2), (2, 2, 1))
-_XLAT2_HEX_PARTS = (
-    "357a5d2667717479667224287765347b575029482d5a6e2c5b255c33644c2b51",
-    "3b3e5521704a53373246684f4131434236765e3d495f302f387c6a7362396d3c",
-    "2e545661636075592a4d4b27587e78446c7d52456f6b4e3a233f47226940",
-)
-_XLAT2: Final = bytes.fromhex("".join(_XLAT2_HEX_PARTS))
+if __package__:
+    from verifier import emitted_malbolge_classic as classic
+else:
+    import emitted_malbolge_classic as classic
+
+_ENTRY_CONTINUED = "continued"
+_ENTRY_HALTED = "halted"
+_ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,36 +72,6 @@ class EntryTransition:
     def accepted(self) -> bool:
         """Bounded entry-step acceptance status."""
         return self.status != _ENTRY_INVALID_ENCRYPTION
-
-
-def _crazy(data: int, accumulator: int) -> int:
-    result = 0
-    place = 1
-    for _ in range(10):
-        data_trit = data % 3
-        accumulator_trit = accumulator % 3
-        result += _CRAZY_TRIT[data_trit][accumulator_trit] * place
-        data //= 3
-        accumulator //= 3
-        place *= 3
-    return result
-
-
-def _rotate(value: int) -> int:
-    return value // 3 + value % 3 * 19_683
-
-
-def _initial_memory_value(words: tuple[int, ...], address: int) -> int:
-    if address < len(words):
-        return words[address]
-    memory = list(words)
-    while len(memory) <= address:
-        memory.append(_crazy(memory[-2], memory[-1]))
-    return memory[address]
-
-
-def _pointer_successor(pointer: int) -> int:
-    return (pointer + 1) % _PROFILE_MEMORY_WORDS
 
 
 def _halted(decoded: int) -> EntryTransition:
@@ -167,7 +131,7 @@ def _plan_jump_code(data_value: int) -> _EntryPlan:
 
 
 def _plan_rotate(data_value: int) -> _EntryPlan:
-    rotated = _rotate(data_value)
+    rotated = classic.rotate(data_value)
     return _EntryPlan(
         accumulator=rotated,
         data_write_address=0,
@@ -176,7 +140,7 @@ def _plan_rotate(data_value: int) -> _EntryPlan:
 
 
 def _plan_crazy(data_value: int) -> _EntryPlan:
-    result = _crazy(data_value, 0)
+    result = classic.crazy(data_value, 0)
     return _EntryPlan(
         accumulator=result,
         data_write_address=0,
@@ -210,7 +174,7 @@ def _encryption_state(
     input_value = (
         plan.data_write_value
         if aliases and plan.data_write_value is not None
-        else _initial_memory_value(words, address)
+        else classic.initial_memory_value(words, address)
     )
     return _EncryptionState(address, input_value, aliases)
 
@@ -246,8 +210,8 @@ def _continued(
     plan: _EntryPlan,
     encryption: _EncryptionState,
 ) -> EntryTransition:
-    result_code = _pointer_successor(plan.code_pointer)
-    result_data = _pointer_successor(plan.data_pointer)
+    result_code = classic.pointer_successor(plan.code_pointer)
+    result_data = classic.pointer_successor(plan.data_pointer)
     return EntryTransition(
         status=_ENTRY_CONTINUED,
         fetched_address=0,
@@ -258,7 +222,7 @@ def _continued(
         planned_data_write_value=plan.data_write_value,
         encryption_address=encryption.address,
         encryption_input=encryption.input_value,
-        encryption_output=_XLAT2[encryption.input_value - _GRAPHICAL_START],
+        encryption_output=classic.encrypt(encryption.input_value),
         data_write_aliases_encryption=encryption.aliases_data_write,
         input_dependent_accumulator=plan.input_dependent,
         result_accumulator=plan.accumulator,
@@ -266,8 +230,8 @@ def _continued(
         result_data_pointer=result_data,
         next_fetch_address=result_code,
         pointer_wraps=(
-            plan.code_pointer == _PROFILE_MEMORY_WORDS - 1
-            or plan.data_pointer == _PROFILE_MEMORY_WORDS - 1
+            plan.code_pointer == classic.PROFILE_MEMORY_WORDS - 1
+            or plan.data_pointer == classic.PROFILE_MEMORY_WORDS - 1
         ),
     )
 
@@ -285,6 +249,6 @@ def analyze_entry_transition(
     if plan.halted:
         return _halted(decoded)
     encryption = _encryption_state(words, plan)
-    if not _GRAPHICAL_START <= encryption.input_value <= _GRAPHICAL_END:
+    if not classic.is_graphical(encryption.input_value):
         return _rejected(decoded, plan, encryption)
     return _continued(decoded, plan, encryption)
