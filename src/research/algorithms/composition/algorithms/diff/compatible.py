@@ -72,6 +72,7 @@ _STAGING_SUFFIX = ".compatible-staging"
 _PARENT = ".."
 _DOT = "."
 _BACKSLASH = "\\"
+_HEX_DIGITS = frozenset("0123456789abcdef")
 
 Mapper = Callable[[str, bytes], MappedView | None]
 Postcondition = Callable[[Path], bool]
@@ -99,11 +100,18 @@ class CompatibleCorrectionBinding:
     correction_id: str
 
     def __post_init__(self) -> None:
-        """Require deterministic path, edit index, and correction identity."""
+        """Require deterministic path, edit index, and correction identity.
+
+        Raises:
+            CompatiblePlanError: Correction metadata is malformed.
+
+        """
         if type(self.output_path) is not str:
-            message = "compatible correction path must use the exact string type"
+            message = (
+                "compatible correction path must use the exact string type"
+            )
             raise CompatiblePlanError(message)
-        _validate_relative_path(self.output_path)
+        _ = _validate_relative_path(self.output_path)
         if type(self.edit_index) is not int or self.edit_index < 0:
             message = "compatible correction edit index must be non-negative"
             raise CompatiblePlanError(message)
@@ -236,7 +244,9 @@ def _validate_materialize_request(
         message = "compatible plan must use exact CompatibleAuthoringPlan"
         raise CompatiblePlanError(message)
     _validate_mapper(request.mapper)
-    if request.postcondition is not None and not callable(request.postcondition):
+    if request.postcondition is not None and not callable(
+        request.postcondition
+    ):
         message = "compatible postcondition must be callable or None"
         raise CompatiblePlanError(message)
 
@@ -324,11 +334,11 @@ _INSTRUCTION_VALIDATORS = {
 }
 
 
-def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None:
+def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None:  # ruff: ignore[complex-structure, too-many-branches, too-many-statements] -- independent metadata invariants.
     if type(instruction.output_path) is not str:
         message = "compatible output path must use the exact string type"
         raise CompatiblePlanError(message)
-    _validate_relative_path(instruction.output_path)
+    _ = _validate_relative_path(instruction.output_path)
     if type(instruction.kind) is not CompatibleFileKind:
         message = "compatible instruction kind must use the exact enum type"
         raise CompatiblePlanError(message)
@@ -336,13 +346,13 @@ def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None:
         if type(instruction.source_path) is not str:
             message = "compatible source path must use the exact string type"
             raise CompatiblePlanError(message)
-        _validate_relative_path(instruction.source_path)
+        _ = _validate_relative_path(instruction.source_path)
     if instruction.source_sha256 is not None:
         value = instruction.source_sha256
         if (
             type(value) is not str
             or len(value) != hashlib.sha256().digest_size * 2
-            or any(char not in "0123456789abcdef" for char in value)
+            or any(char not in _HEX_DIGITS for char in value)
         ):
             message = "compatible source sha256 must be 64 lowercase hex digits"
             raise CompatiblePlanError(message)
@@ -356,7 +366,9 @@ def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None:
         instruction.exact is not None
         and type(instruction.exact) is not ExactInstruction
     ):
-        message = "compatible exact evidence must use the exact instruction type"
+        message = (
+            "compatible exact evidence must use the exact instruction type"
+        )
         raise CompatiblePlanError(message)
     if (
         instruction.literal is not None
@@ -384,15 +396,24 @@ def _validate_instruction(instruction: CompatibleInstruction) -> None:
     validator(instruction)
 
 
-def _validate_plan_records(plan: CompatibleAuthoringPlan) -> None:
-    if type(plan.source) is not TreeSnapshot or type(plan.target) is not TreeSnapshot:
-        message = "compatible plan snapshots must use exact TreeSnapshot records"
+def _validate_plan_records(plan: CompatibleAuthoringPlan) -> None:  # ruff: ignore[complex-structure] -- independent plan record invariants.
+    if (
+        type(plan.source) is not TreeSnapshot
+        or type(plan.target) is not TreeSnapshot
+    ):
+        message = (
+            "compatible plan snapshots must use exact TreeSnapshot records"
+        )
         raise CompatiblePlanError(message)
     if type(plan.reference_identity) is not IdentityTree:
-        message = "compatible plan identity must use the exact IdentityTree type"
+        message = (
+            "compatible plan identity must use the exact IdentityTree type"
+        )
         raise CompatiblePlanError(message)
     if type(plan.admission_policy) is not AdmissionPolicy:
-        message = "compatible plan policy must use the exact AdmissionPolicy type"
+        message = (
+            "compatible plan policy must use the exact AdmissionPolicy type"
+        )
         raise CompatiblePlanError(message)
     if type(plan.instructions) is not tuple or any(
         type(item) is not CompatibleInstruction for item in plan.instructions
@@ -412,41 +433,58 @@ def _validate_plan_topology(plan: CompatibleAuthoringPlan) -> None:
         raise CompatiblePlanError(message)
 
 
+def _source_record_for_instruction(
+    instruction: CompatibleInstruction,
+    source_records: dict[str, FileRecord],
+) -> FileRecord | None:
+    if instruction.source_path is None:
+        return None
+    record = source_records.get(instruction.source_path)
+    if record is None:
+        message = (
+            "compatible instruction source path is absent from plan source"
+        )
+        raise CompatiblePlanError(message)
+    return record
+
+
+def _validate_exact_plan_binding(
+    instruction: CompatibleInstruction,
+    source_record: FileRecord | None,
+    target_record: FileRecord,
+) -> None:
+    if instruction.kind is not CompatibleFileKind.EXACT_GATED:
+        return
+    if (
+        source_record is None
+        or instruction.source_sha256 != source_record.sha256
+    ):
+        message = "compatible exact gate does not match plan source hash"
+        raise CompatiblePlanError(message)
+    exact = instruction.exact
+    if (
+        exact is None
+        or exact.output_path != instruction.output_path
+        or exact.expected_sha256 != target_record.sha256
+    ):
+        message = "compatible exact gate does not match plan target evidence"
+        raise CompatiblePlanError(message)
+
+
 def _validate_plan_instruction_binding(
     instruction: CompatibleInstruction,
     source_records: dict[str, FileRecord],
     target_records: dict[str, FileRecord],
 ) -> None:
-    source_record = (
-        None
-        if instruction.source_path is None
-        else source_records.get(instruction.source_path)
-    )
-    if instruction.source_path is not None and source_record is None:
-        message = "compatible instruction source path is absent from plan source"
-        raise CompatiblePlanError(message)
+    source_record = _source_record_for_instruction(instruction, source_records)
     target_record = target_records[instruction.output_path]
-    if instruction.kind is CompatibleFileKind.EXACT_GATED:
-        if (
-            source_record is None
-            or instruction.source_sha256 != source_record.sha256
-        ):
-            message = "compatible exact gate does not match plan source hash"
-            raise CompatiblePlanError(message)
-        if (
-            instruction.exact is None
-            or instruction.exact.output_path != instruction.output_path
-            or instruction.exact.expected_sha256 != target_record.sha256
-        ):
-            message = "compatible exact gate does not match plan target evidence"
-            raise CompatiblePlanError(message)
-    if instruction.kind is CompatibleFileKind.CREATE_LITERAL:
-        if (
-            instruction.literal is None
-            or _sha256(instruction.literal) != target_record.sha256
-        ):
-            message = "compatible literal does not match plan target snapshot"
-            raise CompatiblePlanError(message)
+    _validate_exact_plan_binding(instruction, source_record, target_record)
+    if instruction.kind is CompatibleFileKind.CREATE_LITERAL and (
+        instruction.literal is None
+        or _sha256(instruction.literal) != target_record.sha256
+    ):
+        message = "compatible literal does not match plan target snapshot"
+        raise CompatiblePlanError(message)
 
 
 def _validate_authoring_plan(plan: CompatibleAuthoringPlan) -> None:
@@ -485,12 +523,29 @@ def _validate_correction_bindings(
     admitted = cast("tuple[CompatibleCorrectionBinding, ...]", bindings)
     locations = tuple((item.output_path, item.edit_index) for item in admitted)
     if locations != tuple(sorted(locations)):
-        message = "compatible correction bindings must be sorted by edit location"
+        message = (
+            "compatible correction bindings must be sorted by edit location"
+        )
         raise CompatiblePlanError(message)
     if len(locations) != len(set(locations)):
-        message = "compatible correction bindings must use unique edit locations"
+        message = (
+            "compatible correction bindings must use unique edit locations"
+        )
         raise CompatiblePlanError(message)
     return admitted
+
+
+def _apply_correction_binding(
+    correction_ids: list[str | None], binding: CompatibleCorrectionBinding
+) -> None:
+    if binding.edit_index >= len(correction_ids):
+        message = "compatible correction edit index exceeds semantic plan"
+        raise CompatiblePlanError(message)
+    existing = correction_ids[binding.edit_index]
+    if existing is not None and existing != binding.correction_id:
+        message = "compatible semantic edit already has another correction ID"
+        raise CompatiblePlanError(message)
+    correction_ids[binding.edit_index] = binding.correction_id
 
 
 def _bind_instruction_corrections(
@@ -500,18 +555,13 @@ def _bind_instruction_corrections(
     if not bindings:
         return instruction
     if instruction.semantic is None:
-        message = "compatible correction binding requires a semantic instruction"
+        message = (
+            "compatible correction binding requires a semantic instruction"
+        )
         raise CompatiblePlanError(message)
     correction_ids = list(_normalized_correction_ids(instruction))
     for binding in bindings:
-        if binding.edit_index >= len(correction_ids):
-            message = "compatible correction edit index exceeds semantic plan"
-            raise CompatiblePlanError(message)
-        existing = correction_ids[binding.edit_index]
-        if existing is not None and existing != binding.correction_id:
-            message = "compatible semantic edit already has another correction ID"
-            raise CompatiblePlanError(message)
-        correction_ids[binding.edit_index] = binding.correction_id
+        _apply_correction_binding(correction_ids, binding)
     return replace(instruction, correction_ids=tuple(correction_ids))
 
 
@@ -523,6 +573,9 @@ def bind_compatible_corrections(
 
     Returns:
         A new compatible authoring plan with correction IDs aligned to edits.
+
+    Raises:
+        CompatiblePlanError: Plan or correction metadata is invalid.
 
     """
     if type(plan) is not CompatibleAuthoringPlan:
@@ -1035,9 +1088,10 @@ def _require_correction_routes(
     behavior: BehaviorEvidence,
 ) -> None:
     attached = _plan_correction_ids(plan)
-    routed = frozenset(
-        (*behavior.corrections_to_apply, *behavior.corrections_to_skip)
-    )
+    routed = frozenset((
+        *behavior.corrections_to_apply,
+        *behavior.corrections_to_skip,
+    ))
     if routed - attached:
         message = "behavior routes an unbound compatible correction ID"
         raise CompatiblePlanError(message)

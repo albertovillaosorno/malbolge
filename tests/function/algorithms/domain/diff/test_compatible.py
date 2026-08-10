@@ -80,6 +80,7 @@ _EXPECTED_CODE = b"extra ; alpha   = new ; omega tail"
 _FIXED_CANDIDATE_CODE = b"extra ; alpha = new ; omega tail"
 _FOREIGN_OUTPUT = b"foreign-output"
 _FOREIGN_STAGING = b"foreign-writer"
+_EXPECTED_MIXED_EDITS = 2
 
 
 def _expect(condition: object, message: str) -> None:
@@ -212,17 +213,19 @@ def test_compatible_instruction_rejects_foreign_metadata() -> None:
     """Reject malformed direct instruction evidence at construction time."""
     with pytest.raises(CompatiblePlanError, match="output path"):
         _ = CompatibleInstruction(
-            output_path=cast("str", 1),
+            output_path=cast("str", cast("object", 1)),
             kind=CompatibleFileKind.COPY_CANDIDATE,
             source_path="file.bin",
         )
     with pytest.raises(CompatiblePlanError, match="exact enum type"):
         _ = CompatibleInstruction(
             output_path="file.bin",
-            kind=cast("CompatibleFileKind", "copy-candidate"),
+            kind=cast("CompatibleFileKind", cast("object", "copy-candidate")),
             source_path="file.bin",
         )
-    with pytest.raises(CompatiblePlanError, match="unsafe compatible tree path"):
+    with pytest.raises(
+        CompatiblePlanError, match="unsafe compatible tree path"
+    ):
         _ = CompatibleInstruction(
             output_path="file.bin",
             kind=CompatibleFileKind.COPY_CANDIDATE,
@@ -247,15 +250,14 @@ def test_compatible_instruction_rejects_foreign_metadata() -> None:
         _ = CompatibleInstruction(
             output_path="created.bin",
             kind=CompatibleFileKind.CREATE_LITERAL,
-            literal=cast("bytes", bytearray(b"created")),
+            literal=cast("bytes", cast("object", bytearray(b"created"))),
         )
-
 
 
 def test_compatible_correction_bindings_name_semantic_edits(
     tmp_path: Path,
 ) -> None:
-    """Attach correction identities only to deterministic semantic edit indexes."""
+    """Attach correction identities only to deterministic semantic edits."""
     plan = _plan(tmp_path)
     bound = bind_compatible_corrections(
         plan,
@@ -291,9 +293,16 @@ def test_compatible_correction_bindings_name_semantic_edits(
 def test_compatible_correction_binding_rejects_foreign_metadata() -> None:
     """Reject malformed correction records before they can annotate a plan."""
     with pytest.raises(CompatiblePlanError, match="correction path"):
-        _ = CompatibleCorrectionBinding(cast("str", 1), 0, "fix")
+        _ = CompatibleCorrectionBinding(
+            cast("str", cast("object", 1)), 0, "fix"
+        )
+    boolean_index: object = True
     with pytest.raises(CompatiblePlanError, match="edit index"):
-        _ = CompatibleCorrectionBinding("code.src", cast("int", True), "fix")
+        _ = CompatibleCorrectionBinding(
+            output_path="code.src",
+            edit_index=cast("int", cast("object", boolean_index)),
+            correction_id="fix",
+        )
     with pytest.raises(CompatiblePlanError, match="correction ID"):
         _ = CompatibleCorrectionBinding("code.src", 0, "")
 
@@ -305,9 +314,9 @@ def test_compatible_request_envelopes_reject_foreign_fields(
     source, oracle = _roots(tmp_path)
     reference = _identity(source)
     policy = _policy()
-    with pytest.raises(CompatiblePlanError, match="source root.*Path"):
+    with pytest.raises(CompatiblePlanError, match=r"source root.*Path"):
         _ = CompatibleBuildRequest(
-            source_root=cast("Path", "source"),
+            source_root=cast("Path", cast("object", "source")),
             oracle_root=oracle,
             reference_identity=reference,
             admission_policy=policy,
@@ -328,7 +337,7 @@ def test_compatible_request_envelopes_reject_foreign_fields(
             reference_identity=reference,
             admission_policy=policy,
             mapper=_mapper,
-            preserve_candidate_only=cast("bool", 1),
+            preserve_candidate_only=cast("bool", cast("object", 1)),
         )
 
     plan = _plan(tmp_path / "materialize")
@@ -337,10 +346,13 @@ def test_compatible_request_envelopes_reject_foreign_fields(
     request = _request(candidate, plan, output)
     with pytest.raises(CompatiblePlanError, match="behavior evidence"):
         _ = replace(request, behavior=cast("BehaviorEvidence", object()))
-    with pytest.raises(CompatiblePlanError, match="exact CompatibleAuthoringPlan"):
+    with pytest.raises(
+        CompatiblePlanError, match="exact CompatibleAuthoringPlan"
+    ):
         _ = replace(request, plan=cast("CompatibleAuthoringPlan", object()))
     with pytest.raises(CompatiblePlanError, match="postcondition"):
         _ = replace(request, postcondition=cast("Postcondition", object()))
+
 
 def test_compatible_public_apis_reject_foreign_request_records(
     tmp_path: Path,
@@ -361,7 +373,6 @@ def test_compatible_public_apis_reject_foreign_request_records(
     _expect(not output.exists(), "foreign materialize request wrote output")
 
 
-
 def test_compatible_plan_rejects_forged_topology_and_bindings(
     tmp_path: Path,
 ) -> None:
@@ -370,7 +381,9 @@ def test_compatible_plan_rejects_forged_topology_and_bindings(
     with pytest.raises(CompatiblePlanError, match="exactly cover target paths"):
         _ = replace(plan, instructions=plan.instructions[:-1])
     with pytest.raises(CompatiblePlanError, match="exact boolean"):
-        _ = replace(plan, preserve_candidate_only=cast("bool", 1))
+        _ = replace(
+            plan, preserve_candidate_only=cast("bool", cast("object", 1))
+        )
 
     exact_index = next(
         index
@@ -405,7 +418,8 @@ def test_compatible_mapper_failures_stay_inside_plan_boundary(
 
     def fail_mapper(path: str, raw: bytes) -> MappedView | None:
         _ = path, raw
-        raise RuntimeError("synthetic mapper failure")
+        message = "synthetic mapper failure"
+        raise RuntimeError(message)
 
     request = CompatibleBuildRequest(
         source_root=source,
@@ -425,13 +439,19 @@ def test_compatible_mapper_failures_stay_inside_plan_boundary(
     with pytest.raises(CompatiblePlanError, match="exact MappedView or None"):
         _ = build_compatible_plan(request)
 
+
+def test_compatible_runtime_mapper_failure_cleans_staging(
+    tmp_path: Path,
+) -> None:
+    """Contain runtime mapper failures and remove owned staging output."""
     plan = _plan(tmp_path / "materialize")
     candidate = _candidate(tmp_path / "materialize")
     output = tmp_path / "materialize" / "out"
 
     def runtime_mapper(path: str, raw: bytes) -> MappedView | None:
         if raw == _CANDIDATE_CODE:
-            raise RuntimeError("synthetic runtime mapper failure")
+            message = "synthetic runtime mapper failure"
+            raise RuntimeError(message)
         return _mapper(path, raw)
 
     materialize = replace(
@@ -445,6 +465,7 @@ def test_compatible_mapper_failures_stay_inside_plan_boundary(
         not (output.parent / ".out.compatible-staging").exists(),
         "mapper failure left compatible staging behind",
     )
+
 
 def test_compatible_tree_preserves_candidate_and_target_topology(
     tmp_path: Path,
@@ -637,7 +658,9 @@ def test_unbound_bug_routing_fails_closed(tmp_path: Path) -> None:
     candidate = _candidate(tmp_path)
     output = tmp_path / "out"
 
-    with pytest.raises(CompatiblePlanError, match="unbound compatible correction"):
+    with pytest.raises(
+        CompatiblePlanError, match="unbound compatible correction"
+    ):
         _ = materialize_compatible_plan(
             _request(
                 candidate,
@@ -649,7 +672,9 @@ def test_unbound_bug_routing_fails_closed(tmp_path: Path) -> None:
     _expect(not output.exists(), "unbound bug routing published output")
 
 
-def test_bound_bug_correction_applies_named_semantic_edit(tmp_path: Path) -> None:
+def test_bound_bug_correction_applies_named_semantic_edit(
+    tmp_path: Path,
+) -> None:
     """Apply a named semantic correction when behavior reports the defect."""
     plan = bind_compatible_corrections(
         _plan(tmp_path),
@@ -666,7 +691,10 @@ def test_bound_bug_correction_applies_named_semantic_edit(tmp_path: Path) -> Non
         )
     )
 
-    _expect(evidence.behavior.corrections_to_apply == ("fix",), "apply route was lost")
+    _expect(
+        evidence.behavior.corrections_to_apply == ("fix",),
+        "apply route was lost",
+    )
     _expect((output / "code.src").read_bytes() == _EXPECTED_CODE, "fix missing")
 
 
@@ -690,7 +718,9 @@ def test_bound_bug_correction_skips_already_fixed_semantic_edit(
         )
     )
 
-    _expect(evidence.behavior.corrections_to_skip == ("fix",), "skip route was lost")
+    _expect(
+        evidence.behavior.corrections_to_skip == ("fix",), "skip route was lost"
+    )
     _expect(
         (output / "code.src").read_bytes() == _FIXED_CANDIDATE_CODE,
         "upstream fix was overwritten",
@@ -701,19 +731,13 @@ def test_skipped_correction_keeps_unconditional_semantic_edits(
     tmp_path: Path,
 ) -> None:
     """Skip one named fix without suppressing another target semantic change."""
-    source_code = (
-        b"alpha = old ; stable1 ; stable2 ; beta = old ; omega"
-    )
-    target_code = (
-        b"alpha = new ; stable1 ; stable2 ; beta = new ; omega"
-    )
+    source_code = b"alpha = old ; stable1 ; stable2 ; beta = old ; omega"
+    target_code = b"alpha = new ; stable1 ; stable2 ; beta = new ; omega"
     candidate_code = (
-        b"extra ; alpha = new ; stable1 ; stable2 ; "
-        b"beta   = old ; omega tail"
+        b"extra ; alpha = new ; stable1 ; stable2 ; beta   = old ; omega tail"
     )
     expected = (
-        b"extra ; alpha = new ; stable1 ; stable2 ; "
-        b"beta   = new ; omega tail"
+        b"extra ; alpha = new ; stable1 ; stable2 ; beta   = new ; omega tail"
     )
     plan = _plan_with_code(tmp_path, source_code, target_code)
     semantic = next(
@@ -721,9 +745,12 @@ def test_skipped_correction_keeps_unconditional_semantic_edits(
         for item in plan.instructions
         if item.kind is CompatibleFileKind.SEMANTIC_PATCH
     )
-    if semantic.semantic is None:
-        raise AssertionError("mixed fixture lost semantic plan")
-    _expect(len(semantic.semantic.edits) == 2, "mixed fixture lost edit split")
+    semantic_plan = semantic.semantic
+    assert semantic_plan is not None
+    _expect(
+        len(semantic_plan.edits) == _EXPECTED_MIXED_EDITS,
+        "mixed fixture lost edit split",
+    )
     plan = bind_compatible_corrections(
         plan,
         (CompatibleCorrectionBinding("code.src", 0, "fix"),),
@@ -817,7 +844,8 @@ def test_postcondition_failures_are_wrapped_and_cleaned(
 
     def fail_postcondition(root: Path) -> bool:
         _ = root
-        raise RuntimeError("synthetic postcondition failure")
+        message = "synthetic postcondition failure"
+        raise RuntimeError(message)
 
     request = replace(
         _request(candidate, plan, output),
@@ -833,12 +861,15 @@ def test_postcondition_failures_are_wrapped_and_cleaned(
 
     def foreign_result(root: Path) -> bool:
         _ = root
-        return cast("bool", 1)
+        return cast("bool", cast("object", 1))
 
     request = replace(request, postcondition=foreign_result)
     with pytest.raises(CompatiblePlanError, match="exact boolean"):
         _ = materialize_compatible_plan(request)
-    _expect(not output.exists(), "foreign postcondition result published output")
+    _expect(
+        not output.exists(), "foreign postcondition result published output"
+    )
+
 
 def test_postcondition_rejects_staging_before_publish(tmp_path: Path) -> None:
     """Keep downstream quality validation inside the transactional boundary."""
