@@ -69,7 +69,8 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   immutable target races away, direct-construction type admission,
   referenced-generation
   validation before pointer replacement, stable read plus writer-lock lifecycle
-  and mutable/immutable publication filesystem failures, rejection of linked
+  and mutable/immutable publication filesystem failures, fail-closed validation
+  of direct timer state before snapshots, rejection of linked
   components in sidecar/lock/checkpoint/partial paths, and an injected monotonic
   phase timer.
 - `tests/test_progress_sidecar.py` exercises canonical paths, unknown totals,

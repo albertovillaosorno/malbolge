@@ -36,15 +36,18 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from dataclasses import replace
+from hashlib import sha256
 import json
 import os
+from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import time
-from dataclasses import dataclass, replace
-from hashlib import sha256
-from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import Protocol
+from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 from scripts import progress_sidecar as progress
@@ -277,7 +280,9 @@ def _sidecar(
         checkpoint_path=None,
         checkpoint_sequence=0,
         checkpoint_sha256=None,
-        compatibility_fingerprint=(progress.resume_compatibility_fingerprint(identity)),
+        compatibility_fingerprint=(
+            progress.resume_compatibility_fingerprint(identity)
+        ),
         completed_at=COMPLETED if terminal else None,
         device=None,
         diagnostic_code="MALBOLGE-JOB-001" if failed else None,
@@ -320,7 +325,9 @@ def _checkpointed(
         sidecar,
         active_elapsed_ns=sidecar.active_elapsed_ns + 100,
         checkpoint_elapsed_ns=sidecar.checkpoint_elapsed_ns + 10,
-        checkpoint_path=str(progress.checkpoint_path(sidecar.output_path, sequence)),
+        checkpoint_path=str(
+            progress.checkpoint_path(sidecar.output_path, sequence)
+        ),
         checkpoint_sequence=sequence,
         checkpoint_sha256=_digest(checkpoint),
         partial_bytes=len(partial) if partial is not None else None,
@@ -624,13 +631,19 @@ def test_impossible_timing_and_units_fail(tmp_path: Path) -> None:
     """Impossible counters or elapsed-time partitions are rejected."""
     sidecar = _sidecar(tmp_path)
     with pytest.raises(ERROR, match="units_completed"):
-        _ = progress.validate(replace(sidecar, units_completed=2, units_total=1))
+        _ = progress.validate(
+            replace(sidecar, units_completed=2, units_total=1)
+        )
     with pytest.raises(ERROR, match="exactly partition"):
         _ = progress.validate(replace(sidecar, active_elapsed_ns=601))
     with pytest.raises(ERROR, match="precedes"):
-        _ = progress.validate(replace(sidecar, updated_at="2026-08-06T13:59:59Z"))
+        _ = progress.validate(
+            replace(sidecar, updated_at="2026-08-06T13:59:59Z")
+        )
     with pytest.raises(ERROR, match="valid UTC timestamp"):
-        _ = progress.validate(replace(sidecar, updated_at="2026-02-30T14:00:01Z"))
+        _ = progress.validate(
+            replace(sidecar, updated_at="2026-02-30T14:00:01Z")
+        )
 
 
 def test_direct_records_reject_negative_or_boolean_numbers(
@@ -702,7 +715,9 @@ def test_checkpoint_and_partial_members_are_atomic(tmp_path: Path) -> None:
         _ = progress.validate(
             replace(
                 _checkpointed(sidecar),
-                checkpoint_path=str(progress.checkpoint_path(sidecar.output_path, 2)),
+                checkpoint_path=str(
+                    progress.checkpoint_path(sidecar.output_path, 2)
+                ),
             )
         )
     assert progress.validate(_checkpointed(sidecar)) == _checkpointed(sidecar)
@@ -943,7 +958,9 @@ def test_immutable_writer_rejects_linked_parent(tmp_path: Path) -> None:
     destination = linked / "checkpoint.bin"
     writer = cast("ImmutableWriter", vars(progress)["_write_immutable"])
 
-    with pytest.raises(ERROR, match="immutable progress payload path is linked"):
+    with pytest.raises(
+        ERROR, match="immutable progress payload path is linked"
+    ):
         _ = writer(destination, b"checkpoint", platform=os.name)
     assert not (target / "checkpoint.bin").exists()
 
@@ -1045,7 +1062,9 @@ def test_terminal_status_controls_metadata(tmp_path: Path) -> None:
             replace(
                 completed,
                 partial_bytes=len(partial),
-                partial_path=str(progress.partial_path(completed.output_path, 1)),
+                partial_path=str(
+                    progress.partial_path(completed.output_path, 1)
+                ),
                 partial_sha256=_digest(partial),
             )
         )
@@ -1468,7 +1487,9 @@ def test_process_crash_preserves_last_committed_generation(
         shell=False,
         timeout=30,
     )
-    assert completed.returncode == CRASH_EXIT, completed.stderr.decode(errors="replace")
+    assert completed.returncode == CRASH_EXIT, completed.stderr.decode(
+        errors="replace"
+    )
     assert progress.read(fixture.destination) == fixture.first
     assert progress.read_checkpoint_generation(fixture.first) == (
         fixture.checkpoint_one,
@@ -1589,6 +1610,29 @@ def test_monotonic_timer_separates_every_scientific_phase() -> None:
     )
 
 
+def test_monotonic_timer_rejects_corrupt_direct_state() -> None:
+    """Directly constructed timer state cannot masquerade as timing evidence."""
+    foreign_phase = cast("progress.TimingPhase", cast("object", "foreign"))
+    timer = progress.ProgressTimer(
+        _clock=SequenceClock([100]),
+        _phase=foreign_phase,
+        _segment_started_ns=0,
+        _started_ns=0,
+    )
+    with pytest.raises(ERROR, match="exact enum type"):
+        _ = timer.snapshot()
+
+    inconsistent = progress.ProgressTimer(
+        _clock=SequenceClock([110]),
+        _phase=progress.TimingPhase.ACTIVE,
+        _segment_started_ns=100,
+        _started_ns=90,
+        _active_elapsed_ns=9,
+    )
+    with pytest.raises(ERROR, match="do not match closed elapsed time"):
+        _ = inconsistent.snapshot()
+
+
 def test_monotonic_timer_rejects_invalid_phases_and_clock_samples() -> None:
     """Invalid phases or clocks fail before corrupting elapsed-time evidence."""
     with pytest.raises(ERROR, match="exact enum type"):
@@ -1598,7 +1642,9 @@ def test_monotonic_timer_rejects_invalid_phases_and_clock_samples() -> None:
     with pytest.raises(ERROR, match="non-negative integer"):
         _ = progress.ProgressTimer.start(clock=SequenceClock([-1]))
     with pytest.raises(ERROR, match="non-negative integer"):
-        _ = progress.ProgressTimer.start(clock=cast("SequenceClock", lambda: True))
+        _ = progress.ProgressTimer.start(
+            clock=cast("SequenceClock", lambda: True)
+        )
 
     timer = progress.ProgressTimer.start(clock=SequenceClock([100, 99]))
     with pytest.raises(ERROR, match="exact enum type"):

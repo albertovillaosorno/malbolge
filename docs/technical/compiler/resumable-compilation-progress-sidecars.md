@@ -48,7 +48,10 @@ objects do not leak decoder/type exceptions, oversized JSON integer literals
 that hit the interpreter conversion limit remain inside the stable sidecar error
 boundary, and impossible UTC calendar timestamps are reported the same way.
 `ProgressTimer` validates every phase and monotonic-clock sample before mutating
-timing evidence.
+timing evidence. Snapshotting also revalidates its internal anchors and
+accumulated
+phase partition, so directly constructed or corrupted timer state cannot be
+misclassified as verification time.
 
 `write_atomic()` also validates every referenced checkpoint and partial payload
 before moving the mutable pointer: the files must exist, hashes must match, and
@@ -180,7 +183,8 @@ jobs that requested resumability.
 - CPU and CUDA fixtures resume from a common canonical checkpoint and produce
   the same independently verified final artifact as uninterrupted execution.
 - Timing tests use an injected monotonic clock, exercise every exclusive
-  phase, reject foreign phases plus boolean/negative/backward samples, and prove
+  phase, reject foreign phases, corrupt direct timer state, boolean/negative/
+  backward samples, and prove
   active, paused, wall, verification, serialization, and checkpoint durations
   are not conflated.
 - Direct-construction tests mutate resume identity and sidecar fields, reject

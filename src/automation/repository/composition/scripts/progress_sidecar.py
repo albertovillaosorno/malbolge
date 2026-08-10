@@ -35,23 +35,31 @@
 
 from __future__ import annotations
 
-import json
-import os
-import re
-import sys
-import tempfile
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, fields
-from datetime import UTC, datetime
+from dataclasses import asdict
+from dataclasses import dataclass
+from dataclasses import fields
+from datetime import UTC
+from datetime import datetime
 from enum import Enum
 from hashlib import sha256
 from importlib import import_module
+import json
+import os
 from pathlib import Path
+import re
+import sys
+import tempfile
 from time import monotonic_ns
-from typing import TYPE_CHECKING, Final, Never, Protocol, cast
+from typing import Final
+from typing import Never
+from typing import Protocol
+from typing import TYPE_CHECKING
+from typing import cast
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator
+    from collections.abc import Callable
+    from collections.abc import Generator
 
 SCHEMA_ID: Final = "malbolge-progress-v1"
 COMPATIBILITY_PREFIX: Final = "malbolge-progress-compat-v1:sha256:"
@@ -192,12 +200,40 @@ class ProgressTimer:
             _started_ns=now,
         )
 
+    def _validate_state(self) -> None:
+        _validate_timing_phase(self._phase)
+        values = (
+            (self._segment_started_ns, "timer segment start"),
+            (self._started_ns, "timer start"),
+            (self._active_elapsed_ns, "timer active elapsed"),
+            (self._checkpoint_elapsed_ns, "timer checkpoint elapsed"),
+            (self._paused_elapsed_ns, "timer paused elapsed"),
+            (self._serialization_elapsed_ns, "timer serialization elapsed"),
+            (self._verification_elapsed_ns, "timer verification elapsed"),
+        )
+        for value, context in values:
+            _ = _nonnegative_integer(value, context)
+        if self._segment_started_ns < self._started_ns:
+            _fail("timer segment start precedes timer start")
+        accumulated = (
+            self._active_elapsed_ns
+            + self._checkpoint_elapsed_ns
+            + self._paused_elapsed_ns
+            + self._serialization_elapsed_ns
+            + self._verification_elapsed_ns
+        )
+        closed_elapsed = self._segment_started_ns - self._started_ns
+        if accumulated != closed_elapsed:
+            _fail("timer accumulated phases do not match closed elapsed time")
+
     @property
     def phase(self) -> TimingPhase:
         """The currently accumulating exclusive phase."""
+        self._validate_state()
         return self._phase
 
     def _sample(self) -> int:
+        self._validate_state()
         now = _monotonic_sample(self._clock())
         if now < self._segment_started_ns:
             _fail("monotonic clock moved backward")
@@ -594,7 +630,9 @@ def _validate_identity(sidecar: ProgressSidecar) -> None:
 def _validate_checkpoint_path(sidecar: ProgressSidecar) -> None:
     if sidecar.checkpoint_path is None:
         return
-    expected = str(checkpoint_path(sidecar.output_path, sidecar.checkpoint_sequence))
+    expected = str(
+        checkpoint_path(sidecar.output_path, sidecar.checkpoint_sequence)
+    )
     if sidecar.checkpoint_path != expected:
         _fail("checkpoint_path does not match output and sequence")
 
@@ -602,7 +640,9 @@ def _validate_checkpoint_path(sidecar: ProgressSidecar) -> None:
 def _validate_partial_path(sidecar: ProgressSidecar) -> None:
     if sidecar.partial_path is None:
         return
-    expected = str(partial_path(sidecar.output_path, sidecar.checkpoint_sequence))
+    expected = str(
+        partial_path(sidecar.output_path, sidecar.checkpoint_sequence)
+    )
     if sidecar.partial_path != expected:
         _fail("partial_path does not match output and sequence")
 
@@ -794,32 +834,26 @@ def validate(sidecar: ProgressSidecar) -> ProgressSidecar:
 
 
 _ALLOWED_TRANSITIONS: Final = {
-    ProgressStatus.QUEUED: frozenset(
-        {
-            ProgressStatus.CANCELLED,
-            ProgressStatus.FAILED,
-            ProgressStatus.QUEUED,
-            ProgressStatus.RUNNING,
-        }
-    ),
-    ProgressStatus.RUNNING: frozenset(
-        {
-            ProgressStatus.CANCELLED,
-            ProgressStatus.CHECKPOINTED,
-            ProgressStatus.COMPLETED,
-            ProgressStatus.FAILED,
-            ProgressStatus.RUNNING,
-        }
-    ),
-    ProgressStatus.CHECKPOINTED: frozenset(
-        {
-            ProgressStatus.CANCELLED,
-            ProgressStatus.CHECKPOINTED,
-            ProgressStatus.COMPLETED,
-            ProgressStatus.FAILED,
-            ProgressStatus.RUNNING,
-        }
-    ),
+    ProgressStatus.QUEUED: frozenset({
+        ProgressStatus.CANCELLED,
+        ProgressStatus.FAILED,
+        ProgressStatus.QUEUED,
+        ProgressStatus.RUNNING,
+    }),
+    ProgressStatus.RUNNING: frozenset({
+        ProgressStatus.CANCELLED,
+        ProgressStatus.CHECKPOINTED,
+        ProgressStatus.COMPLETED,
+        ProgressStatus.FAILED,
+        ProgressStatus.RUNNING,
+    }),
+    ProgressStatus.CHECKPOINTED: frozenset({
+        ProgressStatus.CANCELLED,
+        ProgressStatus.CHECKPOINTED,
+        ProgressStatus.COMPLETED,
+        ProgressStatus.FAILED,
+        ProgressStatus.RUNNING,
+    }),
 }
 
 
@@ -1220,7 +1254,10 @@ def _validate_payload(
         return None
     if _sha256_digest(payload) != reference.sha256:
         _fail(f"{reference.context} bytes do not match sidecar hash")
-    if reference.byte_count is not None and len(payload) != reference.byte_count:
+    if (
+        reference.byte_count is not None
+        and len(payload) != reference.byte_count
+    ):
         _fail(f"{reference.context} byte count does not match sidecar")
     return payload
 
