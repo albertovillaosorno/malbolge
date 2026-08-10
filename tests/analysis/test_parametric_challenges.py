@@ -79,12 +79,14 @@ _BRANCH_MIX_FAMILY = "branch-mix"
 _CALL_CHAIN_FAMILY = "call-chain"
 _LINEAR_MIX_FAMILY = "linear-mix"
 _MEMORY_WALK_FAMILY = "memory-walk"
+_POINTER_WALK_FAMILY = "pointer-walk"
 _FAMILIES = (
     _ARITHMETIC_DAG_FAMILY,
     _BRANCH_MIX_FAMILY,
     _CALL_CHAIN_FAMILY,
     _LINEAR_MIX_FAMILY,
     _MEMORY_WALK_FAMILY,
+    _POINTER_WALK_FAMILY,
 )
 _ARITHMETIC_DAG_V1_SOURCE_SHA256 = (
     "dcadb0753d70d16a19601bac1c05b6868767432a48eea67d599056ab28880607"
@@ -230,6 +232,18 @@ def test_branch_mix_emits_one_live_diamond_per_node() -> None:
     assert source.count("    uint32_t v") >= nodes
 
 
+def test_pointer_walk_uses_live_data_dependent_addresses() -> None:
+    """Pointer challenges select one live runtime-dependent slot per node."""
+    nodes = 17
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_POINTER_WALK_FAMILY, seed=0xBEEF, nodes=nodes)
+    )
+    source = generated.source.decode()
+    assert source.count("= &cells[value & UINT32_C(7)];") == nodes
+    assert source.count("    value = (*slot") == nodes
+    assert source.count("    *slot") == nodes
+
+
 def test_identity_dimensions_change_artifact_identity() -> None:
     """Seed and difficulty remain part of the exact generated identity."""
     baseline = _GENERATOR_MODULE.generate(_identity())
@@ -251,6 +265,7 @@ def test_identity_dimensions_change_artifact_identity() -> None:
         (_CALL_CHAIN_FAMILY, "splitmix64-call-chain-v1"),
         (_LINEAR_MIX_FAMILY, "splitmix64-linear-mix-v1"),
         (_MEMORY_WALK_FAMILY, "splitmix64-memory-walk-v1"),
+        (_POINTER_WALK_FAMILY, "splitmix64-pointer-walk-v1"),
     ],
 )
 def test_manifest_binds_identity_hashes_and_oracle(
@@ -487,6 +502,9 @@ def _assert_native_oracle(
         (_MEMORY_WALK_FAMILY, 0, 1),
         (_MEMORY_WALK_FAMILY, 7, 64),
         (_MEMORY_WALK_FAMILY, 0x1234, 257),
+        (_POINTER_WALK_FAMILY, 0, 1),
+        (_POINTER_WALK_FAMILY, 7, 64),
+        (_POINTER_WALK_FAMILY, 0x1234, 257),
     ],
 )
 def test_native_source_result_matches_independent_oracle(
