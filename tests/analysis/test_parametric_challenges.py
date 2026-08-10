@@ -40,13 +40,18 @@ import hashlib
 import importlib.util
 import json
 import os
+from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import Protocol
+from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
-from scripts.validate import c_abi_source, c_libc_source, target_profile
+from scripts.validate import c_abi_source
+from scripts.validate import c_frontend_build
+from scripts.validate import c_libc_source
+from scripts.validate import target_profile
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -59,10 +64,37 @@ _SENTINEL = "preserve"
 _ENTRY_SYMBOL = "malbolge_challenge"
 _ORACLE_SEMANTICS = "entry-return-u32-little-endian"
 _STANDALONE_MAIN = "low-31-bits-only-not-oracle"
+_ARRAY_SUBSCRIPT_KIND = "array-subscript-expression"
+_CALL_EXPRESSION_KIND = "call-expression"
+_IF_STATEMENT_KIND = "if-statement"
+_MEMORY_WALK_SUBSCRIPTS_PER_NODE = 3
 _FORBIDDEN_PUTCHAR = "putchar"
 _FORBIDDEN_STDIO = "<stdio.h>"
 _CLANG = _ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
+_FRONTEND_RESOURCE_DIR = _ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
+_GUEST_INCLUDE = _ROOT / "src/runtime/guest-c-library/contract/include"
 _WINDOWS_OS_NAME = "nt"
+_ARITHMETIC_DAG_FAMILY = "arithmetic-dag"
+_BRANCH_MIX_FAMILY = "branch-mix"
+_CALL_CHAIN_FAMILY = "call-chain"
+_LINEAR_MIX_FAMILY = "linear-mix"
+_MEMORY_WALK_FAMILY = "memory-walk"
+_FAMILIES = (
+    _ARITHMETIC_DAG_FAMILY,
+    _BRANCH_MIX_FAMILY,
+    _CALL_CHAIN_FAMILY,
+    _LINEAR_MIX_FAMILY,
+    _MEMORY_WALK_FAMILY,
+)
+_ARITHMETIC_DAG_V1_SOURCE_SHA256 = (
+    "dcadb0753d70d16a19601bac1c05b6868767432a48eea67d599056ab28880607"
+)
+_ARITHMETIC_DAG_V1_ORACLE_SHA256 = (
+    "0868382fe8067330f2ca3ccfcb4042ce5bcd38aaab75399d31f5f1994604b2ab"
+)
+_ARITHMETIC_DAG_V1_MANIFEST_SHA256 = (
+    "f51043df00825e1b16fc9ded26cfeec71b10979bc852fd9533184b8aefe2d489"
+)
 
 
 class _ChallengeIdentity(Protocol):
@@ -123,9 +155,14 @@ def _load_generator() -> _GeneratorModule:
 _GENERATOR_MODULE = _load_generator()
 
 
-def _identity(*, seed: int = 7, nodes: int = 16) -> _ChallengeIdentity:
+def _identity(
+    *,
+    family: str = _ARITHMETIC_DAG_FAMILY,
+    seed: int = 7,
+    nodes: int = 16,
+) -> _ChallengeIdentity:
     return _GENERATOR_MODULE.ChallengeIdentity(
-        "arithmetic-dag", 1, seed, "malbolge-2026", nodes
+        family, 1, seed, "malbolge-2026", nodes
     )
 
 
@@ -145,18 +182,52 @@ def _snapshot(root: Path) -> dict[str, bytes]:
     return {path.name: path.read_bytes() for path in sorted(root.iterdir())}
 
 
-def test_same_identity_replays_byte_identically(tmp_path: Path) -> None:
+@pytest.mark.parametrize("family", _FAMILIES)
+def test_same_identity_replays_byte_identically(
+    tmp_path: Path, family: str
+) -> None:
     """The full payload is byte-identical for one immutable identity."""
-    first = _GENERATOR_MODULE.generate(_identity())
-    second = _GENERATOR_MODULE.generate(_identity())
+    first = _GENERATOR_MODULE.generate(_identity(family=family))
+    second = _GENERATOR_MODULE.generate(_identity(family=family))
     assert first.source == second.source
     assert first.oracle == second.oracle
     assert first.manifest == second.manifest
     one = tmp_path / "one"
     two = tmp_path / "two"
-    _GENERATOR_MODULE.write_challenge(_identity(), one)
-    _GENERATOR_MODULE.write_challenge(_identity(), two)
+    _GENERATOR_MODULE.write_challenge(_identity(family=family), one)
+    _GENERATOR_MODULE.write_challenge(_identity(family=family), two)
     assert _snapshot(one) == _snapshot(two)
+
+
+def test_arithmetic_dag_v1_preserves_known_replay_vector() -> None:
+    """Keep published v1 arithmetic identities byte-compatible."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_ARITHMETIC_DAG_FAMILY, seed=0x1234, nodes=64)
+    )
+    assert (
+        hashlib.sha256(generated.source).hexdigest()
+        == _ARITHMETIC_DAG_V1_SOURCE_SHA256
+    )
+    assert (
+        hashlib.sha256(generated.oracle).hexdigest()
+        == _ARITHMETIC_DAG_V1_ORACLE_SHA256
+    )
+    assert (
+        hashlib.sha256(generated.manifest).hexdigest()
+        == _ARITHMETIC_DAG_V1_MANIFEST_SHA256
+    )
+
+
+def test_branch_mix_emits_one_live_diamond_per_node() -> None:
+    """Branch challenges scale explicit if/else control-flow diamonds."""
+    nodes = 19
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_BRANCH_MIX_FAMILY, seed=0xCAFE, nodes=nodes)
+    )
+    source = generated.source.decode()
+    assert source.count("    if (") == nodes
+    assert source.count("    } else {") == nodes
+    assert source.count("    uint32_t v") >= nodes
 
 
 def test_identity_dimensions_change_artifact_identity() -> None:
@@ -164,18 +235,36 @@ def test_identity_dimensions_change_artifact_identity() -> None:
     baseline = _GENERATOR_MODULE.generate(_identity())
     changed_seed = _GENERATOR_MODULE.generate(_identity(seed=8))
     changed_nodes = _GENERATOR_MODULE.generate(_identity(nodes=17))
+    changed_family = _GENERATOR_MODULE.generate(
+        _identity(family=_LINEAR_MIX_FAMILY)
+    )
     assert changed_seed.source != baseline.source
     assert changed_nodes.source != baseline.source
+    assert changed_family.source != baseline.source
 
 
-def test_manifest_binds_identity_hashes_and_oracle() -> None:
+@pytest.mark.parametrize(
+    ("family", "family_algorithm"),
+    [
+        (_ARITHMETIC_DAG_FAMILY, "splitmix64-arithmetic-dag-v1"),
+        (_BRANCH_MIX_FAMILY, "splitmix64-branch-mix-v1"),
+        (_CALL_CHAIN_FAMILY, "splitmix64-call-chain-v1"),
+        (_LINEAR_MIX_FAMILY, "splitmix64-linear-mix-v1"),
+        (_MEMORY_WALK_FAMILY, "splitmix64-memory-walk-v1"),
+    ],
+)
+def test_manifest_binds_identity_hashes_and_oracle(
+    family: str, family_algorithm: str
+) -> None:
     """The manifest binds profile identity, difficulty, and oracle size."""
-    generated = _GENERATOR_MODULE.generate(_identity(seed=0x1234, nodes=4))
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=family, seed=0x1234, nodes=4)
+    )
     manifest = cast("dict[str, object]", json.loads(generated.manifest))
     identity = cast("dict[str, object]", manifest["identity"])
     fingerprint = cast("str", identity["target_profile_fingerprint"])
     assert identity == {
-        "family": "arithmetic-dag",
+        "family": family,
         "version": 1,
         "seed": 0x1234,
         "target_profile": "malbolge-2026",
@@ -194,6 +283,8 @@ def test_manifest_binds_identity_hashes_and_oracle() -> None:
     assert manifest["oracle_semantics"] == _ORACLE_SEMANTICS
     assert manifest["entry_symbol"] == _ENTRY_SYMBOL
     assert manifest["standalone_main"] == _STANDALONE_MAIN
+    generator = cast("dict[str, object]", manifest["generator"])
+    assert generator["family_algorithm"] == family_algorithm
     assert len(generated.oracle) == _ORACLE_BYTES
     source = generated.source.decode()
     assert f"uint32_t {_ENTRY_SYMBOL}(void)" in source
@@ -201,15 +292,133 @@ def test_manifest_binds_identity_hashes_and_oracle() -> None:
     assert _FORBIDDEN_STDIO not in source
 
 
+@pytest.mark.parametrize("family", _FAMILIES)
 def test_generated_source_is_admitted_by_current_c_profile(
-    tmp_path: Path,
+    tmp_path: Path, family: str
 ) -> None:
-    """Generated arithmetic DAG source uses only currently admitted C."""
-    generated = _GENERATOR_MODULE.generate(_identity(seed=11, nodes=32))
+    """Every generated family uses only currently admitted C."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=family, seed=11, nodes=32)
+    )
     source = tmp_path / "program.c"
     _ = source.write_bytes(generated.source)
     assert c_abi_source.analyze_source(source) == ()
     assert c_libc_source.analyze_source(source) == ()
+
+
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME,
+    reason="reviewed normalized C frontend is Windows x86-64",
+)
+def test_branch_family_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep branch nodes explicit through frontend normalization."""
+    nodes = 13
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_BRANCH_MIX_FAMILY, seed=23, nodes=nodes)
+    )
+    source = tmp_path / "branch.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/branch-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    assert (
+        sum(node.get("kind") == _IF_STATEMENT_KIND for node in normalized)
+        == nodes
+    )
+
+
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME,
+    reason="reviewed normalized C frontend is Windows x86-64",
+)
+def test_call_family_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep generated function calls explicit through normalization."""
+    nodes = 17
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_CALL_CHAIN_FAMILY, seed=31, nodes=nodes)
+    )
+    source = tmp_path / "calls.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/call-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    calls = sum(
+        node.get("kind") == _CALL_EXPRESSION_KIND for node in normalized
+    )
+    assert calls == nodes + 1
+
+
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME,
+    reason="reviewed normalized C frontend is Windows x86-64",
+)
+def test_memory_family_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep generated memory accesses explicit through normalization."""
+    nodes = 11
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_MEMORY_WALK_FAMILY, seed=29, nodes=nodes)
+    )
+    source = tmp_path / "memory.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/memory-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    observed = sum(
+        node.get("kind") == _ARRAY_SUBSCRIPT_KIND for node in normalized
+    )
+    expected = 1 + (_MEMORY_WALK_SUBSCRIPTS_PER_NODE * nodes)
+    assert observed == expected
 
 
 def _assert_native_oracle(
@@ -222,16 +431,14 @@ def _assert_native_oracle(
     executable = tmp_path / "oracle-check.exe"
     _ = source.write_bytes(generated.source)
     expected = int.from_bytes(generated.oracle, byteorder="little")
-    harness_text = chr(10).join(
-        (
-            "#include <stdint.h>",
-            f"uint32_t {_ENTRY_SYMBOL}(void);",
-            "int main(void) {",
-            f"    return {_ENTRY_SYMBOL}() == UINT32_C({expected}) ? 0 : 1;",
-            "}",
-            "",
-        )
-    )
+    harness_text = chr(10).join((
+        "#include <stdint.h>",
+        f"uint32_t {_ENTRY_SYMBOL}(void);",
+        "int main(void) {",
+        f"    return {_ENTRY_SYMBOL}() == UINT32_C({expected}) ? 0 : 1;",
+        "}",
+        "",
+    ))
     _ = harness.write_text(harness_text, encoding="utf-8")
     compiled = _run(
         [
@@ -263,23 +470,50 @@ def _assert_native_oracle(
     reason="repository-pinned native Clang is unavailable",
 )
 @pytest.mark.parametrize(
-    ("seed", "nodes"),
-    [(0, 1), (7, 64), (0x1234, 257)],
+    ("family", "seed", "nodes"),
+    [
+        (_ARITHMETIC_DAG_FAMILY, 0, 1),
+        (_ARITHMETIC_DAG_FAMILY, 7, 64),
+        (_ARITHMETIC_DAG_FAMILY, 0x1234, 257),
+        (_BRANCH_MIX_FAMILY, 0, 1),
+        (_BRANCH_MIX_FAMILY, 7, 64),
+        (_BRANCH_MIX_FAMILY, 0x1234, 257),
+        (_CALL_CHAIN_FAMILY, 0, 1),
+        (_CALL_CHAIN_FAMILY, 7, 64),
+        (_CALL_CHAIN_FAMILY, 0x1234, 257),
+        (_LINEAR_MIX_FAMILY, 0, 1),
+        (_LINEAR_MIX_FAMILY, 7, 64),
+        (_LINEAR_MIX_FAMILY, 0x1234, 257),
+        (_MEMORY_WALK_FAMILY, 0, 1),
+        (_MEMORY_WALK_FAMILY, 7, 64),
+        (_MEMORY_WALK_FAMILY, 0x1234, 257),
+    ],
 )
 def test_native_source_result_matches_independent_oracle(
     tmp_path: Path,
+    *,
+    family: str,
     seed: int,
     nodes: int,
 ) -> None:
     """Compiled C entry result matches the independently retained oracle."""
-    generated = _GENERATOR_MODULE.generate(_identity(seed=seed, nodes=nodes))
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=family, seed=seed, nodes=nodes)
+    )
     _assert_native_oracle(generated, tmp_path)
 
 
-def test_difficulty_scales_source_without_saturating_small_cases() -> None:
+@pytest.mark.parametrize("family", _FAMILIES)
+def test_difficulty_scales_source_without_saturating_small_cases(
+    family: str,
+) -> None:
     """Increasing node counts continue increasing generated source size."""
     sizes = [
-        len(_GENERATOR_MODULE.generate(_identity(nodes=nodes)).source)
+        len(
+            _GENERATOR_MODULE.generate(
+                _identity(family=family, nodes=nodes)
+            ).source
+        )
         for nodes in (1, 8, 64, 512)
     ]
     assert sizes == sorted(sizes)
@@ -294,7 +528,9 @@ def test_profile_projection_cannot_introduce_identity(
     projection = tmp_path / "profile-fingerprints.json"
     canonical = cast(
         "dict[str, object]",
-        json.loads(target_profile.FINGERPRINT_MANIFEST.read_text(encoding="utf-8")),
+        json.loads(
+            target_profile.FINGERPRINT_MANIFEST.read_text(encoding="utf-8")
+        ),
     )
     profiles = cast("dict[str, object]", canonical["profiles"])
     profiles["invented-profile"] = "malbolge-profile-v1:sha256:" + (
@@ -331,7 +567,12 @@ def test_invalid_identity_fails_closed() -> None:
     """Malformed or non-canonical identity dimensions never generate output."""
     invalid = (
         _GENERATOR_MODULE.ChallengeIdentity("wrong", 1, 0, "malbolge-2026", 1),
-        _GENERATOR_MODULE.ChallengeIdentity("arithmetic-dag", 2, 0, "malbolge-2026", 1),
+        _GENERATOR_MODULE.ChallengeIdentity(
+            "arithmetic-dag", 2, 0, "malbolge-2026", 1
+        ),
+        _GENERATOR_MODULE.ChallengeIdentity(
+            "linear-mix", 2, 0, "malbolge-2026", 1
+        ),
         _GENERATOR_MODULE.ChallengeIdentity(
             "arithmetic-dag", 1, -1, "malbolge-2026", 1
         ),
@@ -341,7 +582,9 @@ def test_invalid_identity_fails_closed() -> None:
         _GENERATOR_MODULE.ChallengeIdentity(
             "arithmetic-dag", 1, 0, "invented-profile", 1
         ),
-        _GENERATOR_MODULE.ChallengeIdentity("arithmetic-dag", 1, 0, "malbolge-2026", 0),
+        _GENERATOR_MODULE.ChallengeIdentity(
+            "arithmetic-dag", 1, 0, "malbolge-2026", 0
+        ),
     )
     for identity in invalid:
         with pytest.raises(_GENERATOR_MODULE.ChallengeError, match=r".+"):
@@ -387,6 +630,23 @@ def test_exact_replay_with_linked_artifact_fails_closed(
         _GENERATOR_MODULE.write_challenge(_identity(), output)
     assert artifact.is_symlink()
     assert target.read_bytes() == artifact.read_bytes()
+
+
+def test_exact_replay_cannot_bypass_distinct_output_requirement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exact replay at `.` cannot bypass the distinct-directory contract."""
+    generated = _GENERATOR_MODULE.generate(_identity())
+    _ = (tmp_path / "program.c").write_bytes(generated.source)
+    _ = (tmp_path / "oracle.bin").write_bytes(generated.oracle)
+    _ = (tmp_path / "manifest.json").write_bytes(generated.manifest)
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(
+        _GENERATOR_MODULE.ChallengeError,
+        match="output path must name a distinct directory",
+    ):
+        _GENERATOR_MODULE.write_challenge(_identity(), Path())
 
 
 def test_exact_replay_under_linked_parent_still_fails_closed(
@@ -578,15 +838,17 @@ def test_raced_final_output_file_is_preserved(
     assert not staging.exists()
 
 
+@pytest.mark.parametrize("family", _FAMILIES)
 def test_cli_replays_manifest_and_files(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    family: str,
 ) -> None:
     """The CLI parser and publisher replay an exact generated directory."""
     output = tmp_path / "challenge"
     arguments = [
         str(_GENERATOR),
-        "arithmetic-dag",
+        family,
         "--version",
         "1",
         "--seed",

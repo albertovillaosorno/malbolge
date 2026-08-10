@@ -51,15 +51,27 @@ Work under this record uses stable identities, explicit inputs and assumptions,
 independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`.
 
-The first implemented slice is `arithmetic-dag/v1`. It binds family, version,
-seed, canonical profile fingerprint, and node count into one replay identity.
-Generation emits deterministic `uint32_t` arithmetic DAG source plus a four-byte
-little-endian oracle and a canonical manifest containing source/oracle SHA-256
-digests. The version-one family keeps every generated node on a live dependency
-spine, so increasing `nodes` cannot add dead C statements that disappear from
-the observable challenge result. Native warning-clean compilation is regression
-evidence for that invariant. The C entry `malbolge_challenge` returns the oracle
-value directly;
+The implemented slices are `arithmetic-dag/v1`, `linear-mix/v1`,
+`branch-mix/v1`, `memory-walk/v1`, and `call-chain/v1`. Each binds family,
+version, seed,
+canonical profile fingerprint, and node count into one replay identity.
+Generation emits deterministic `uint32_t` C source for the selected topology, a
+four-byte little-endian oracle, and a canonical manifest containing
+source/oracle
+SHA-256 digests. Every version-one family keeps each generated node on a live
+dependency path to the observable result, so increasing `nodes` cannot grow only
+through dead C statements. Native warning-clean compilation is regression
+evidence for that invariant. `linear-mix/v1` uses a family-domain-separated
+stream and a strict predecessor chain, contrasting dependency depth with the
+DAG family’s extra source-order fan-in. `branch-mix/v1` adds one live
+`if`/`else` diamond per node from a third domain-separated stream;
+normalized-frontend tests
+retain the expected branch count. `memory-walk/v1` uses a fixed eight-cell
+local array with deterministic indexed read/write/read steps, and frontend
+evidence retains `1 + 3×nodes` array-subscript expressions. `call-chain/v1`
+threads the live value through a pure three-argument helper, with normalized
+evidence retaining one call per node plus the standalone driver call. The C
+entry `malbolge_challenge` returns the oracle value directly;
 standalone `main` is only a low-31-bit driver and is not an oracle surface.
 
 The generated source is preflighted through the repository-owned C ABI and libc
@@ -80,31 +92,38 @@ host execution guest semantic authority.
 
 ## Results
 
-The first deterministic family is implemented and replayable. Tests lock byte-
-identical regeneration, profile-fingerprint binding, difficulty growth, invalid
+Five deterministic families are implemented and replayable. Tests lock byte-
+identical regeneration, a hash-locked `arithmetic-dag/v1` replay vector,
+profile-fingerprint binding, difficulty growth for all five topologies, invalid
 identity rejection, collision-safe no-replace publication (including a raced
 final-path collision), replay rejection for linked artifact leaves, current
 C-profile admission, and independent native agreement for representative node
-counts.
+counts in all five families.
 
 This result does not satisfy the end-to-end acceptance criterion. No current
 backend evidence yet demonstrates a generated challenge compiled to and executed
-as a final `.malbolge` artifact, and the broader family set remains
-unimplemented.
+as a final `.malbolge` artifact; data-dependent memory/pointer and larger
+front-end-stress families also remain open.
 
 ## Threats to Validity
 
-The first family covers only straight-line unsigned arithmetic DAGs. Workload
-selection, generator/model common-mode bugs, native-check host differences,
+The current families cover unsigned arithmetic with DAG, strict-chain,
+branch-diamond, fixed-array memory-walk, and helper-call topologies. They still
+omit data-dependent addresses, pointers, and broader workload structure.
+Workload selection, generator/model common-mode bugs, native-check host
+differences,
 missing final Malbolge execution, and incomplete family coverage remain
 threats. The independent native check narrows only the Python-versus-C-source
 agreement risk; it does not prove downstream compiler correctness.
 
 ## Conclusion
 
-Active. Retain `arithmetic-dag/v1` as deterministic challenge substrate while
-expanding family coverage and waiting for an end-to-end generated Malbolge
-execution path before completing this planning objective.
+Active. Retain hash-locked `arithmetic-dag/v1` and domain-separated
+`linear-mix/v1`, `branch-mix/v1`, `memory-walk/v1`, and `call-chain/v1` as
+deterministic challenge substrates while expanding family coverage and waiting
+for an
+end-to-end generated Malbolge execution path before completing this planning
+objective.
 
 ## References
 

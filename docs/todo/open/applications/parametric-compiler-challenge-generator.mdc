@@ -40,21 +40,34 @@ exactly the same problem rather than on vaguely similar examples.
 **Current implementation.**
 
 - `benchmarks/challenges/generate.py` implements deterministic
-  `arithmetic-dag/v1` challenges identified by family, version, unsigned seed,
-  canonical target-profile fingerprint, and node count. Every node feeds the
-  next node on a live dependency spine so difficulty cannot grow through dead
-  C statements.
+  `arithmetic-dag/v1`, `linear-mix/v1`, `branch-mix/v1`,
+  `memory-walk/v1`, and `call-chain/v1` challenges
+  identified by family, version, unsigned seed, canonical target-profile
+  fingerprint, and node count. Every node feeds the next node on a live
+  dependency spine so difficulty cannot grow through dead
+  C statements. The domain-separated linear family is a strict predecessor
+  chain while the DAG family retains additional source-order fan-in. The
+  branch family adds one live `if`/`else` diamond per node. The memory family
+  uses a fixed eight-cell local array with deterministic indexed read/write/read
+  operations per node. The call family threads the live value through one pure
+  three-argument helper call per node.
 - Each identity emits `program.c`, `oracle.bin`, and canonical `manifest.json`
   bytes. The manifest binds source/oracle SHA-256 digests, while the source
   entry
   `malbolge_challenge` returns the full oracle `uint32_t` without unavailable
   guest libc calls.
-- Analysis evidence locks byte-identical replay, difficulty growth, invalid
-  identity rejection, non-destructive no-replace publication including a raced
+- Analysis evidence locks byte-identical replay, a hash-locked
+  `arithmetic-dag/v1` vector, difficulty growth for all five topologies,
+  invalid identity rejection, non-destructive no-replace publication including a
+  raced
   final-path collision, ABI/libc admission, and pinned-Clang agreement between
-  emitted C and the independent Python oracle.
-- The objective remains open: other workload families and the required
-  end-to-end compiled/executed Malbolge fixture are not yet implemented.
+  emitted C and the independent Python oracle for all five families. The
+  normalized frontend additionally preserves the branch family’s expected
+  `if-statement` count, the memory family’s exact array-subscript count, and
+  one helper call per call-family node.
+- The objective remains open: data-dependent memory/pointer and larger-stress
+  families plus the required end-to-end compiled/executed Malbolge fixture are
+  not yet implemented.
 
 ## Acceptance
 
@@ -88,9 +101,9 @@ exactly the same problem rather than on vaguely similar examples.
   `tests/analysis/test_parametric_challenges.py`
   exercises exact replay, profile binding, publication failure behavior,
   C-profile admission, and independent native oracle agreement. The methodology
-  record
-  documents the current threats and explicitly withholds final Malbolge
+  record documents the current threats and explicitly withholds final Malbolge
   end-to-end completion.
-- Remaining research evidence: broader family coverage, end-to-end Malbolge
-  execution, retained comparative results, and a reviewed cross-family
-  conclusion with threats to validity.
+- Remaining research evidence: data-dependent memory/pointer and larger-stress
+  family coverage, end-to-end Malbolge execution, retained
+  comparative results,
+  and a reviewed cross-family conclusion with threats to validity.

@@ -23,7 +23,7 @@
 # - Summary:
 #   - Deterministic parametric compiler challenge generator.
 # - Description:
-#   - Generates replayable arithmetic DAG workloads with exact C32 oracles.
+#   - Generates replayable versioned C32 challenge families with exact oracles.
 # - Usage:
 #   - `python benchmarks/challenges/generate.py arithmetic-dag ...`.
 # - Defaults:
@@ -36,23 +36,43 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+from dataclasses import dataclass
 import errno
 import hashlib
 import json
 import os
+from pathlib import Path
 import shutil
 import sys
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Final, Never, Protocol, cast
+from typing import Final
+from typing import Never
+from typing import Protocol
+from typing import cast
 
 _WINDOWS_OS_NAME: Final = "nt"
 _LINUX_PLATFORM: Final = "linux"
 _AT_FDCWD: Final = -100
 _RENAME_NOREPLACE: Final = 1
 
-_FAMILY: Final = "arithmetic-dag"
+_ARITHMETIC_DAG_FAMILY: Final = "arithmetic-dag"
+_BRANCH_MIX_FAMILY: Final = "branch-mix"
+_CALL_CHAIN_FAMILY: Final = "call-chain"
+_LINEAR_MIX_FAMILY: Final = "linear-mix"
+_MEMORY_WALK_FAMILY: Final = "memory-walk"
+_FAMILY_ALGORITHMS: Final = {
+    _ARITHMETIC_DAG_FAMILY: "splitmix64-arithmetic-dag-v1",
+    _BRANCH_MIX_FAMILY: "splitmix64-branch-mix-v1",
+    _CALL_CHAIN_FAMILY: "splitmix64-call-chain-v1",
+    _LINEAR_MIX_FAMILY: "splitmix64-linear-mix-v1",
+    _MEMORY_WALK_FAMILY: "splitmix64-memory-walk-v1",
+}
+_FAMILIES: Final = frozenset(_FAMILY_ALGORITHMS)
 _VERSION: Final = 1
+_BRANCH_MIX_SEED_SALT: Final = 0x4252_414E_4348_4D58
+_CALL_CHAIN_SEED_SALT: Final = 0x4341_4C4C_4348_414E
+_LINEAR_MIX_SEED_SALT: Final = 0x4C49_4E45_4152_4D58
+_MEMORY_WALK_SEED_SALT: Final = 0x4D45_4D4F_5259_574B
+_MEMORY_WALK_CELLS: Final = 8
 _MASK32: Final = (1 << 32) - 1
 _MASK64: Final = (1 << 64) - 1
 _MAX_NODES: Final = 1_000_000
@@ -64,7 +84,9 @@ _ENTRY_SYMBOL: Final = "malbolge_challenge"
 _PROFILE_CANONICALIZATION: Final = "malbolge-profile-v1"
 _PROFILE_PREFIX: Final = f"{_PROFILE_CANONICALIZATION}:sha256:"
 _ROOT: Final = Path(__file__).resolve().parents[2]
-_COMPOSITION_ROOT: Final = _ROOT / "src" / "automation" / "repository" / "composition"
+_COMPOSITION_ROOT: Final = (
+    _ROOT / "src" / "automation" / "repository" / "composition"
+)
 if str(_COMPOSITION_ROOT) not in sys.path:
     sys.path.insert(0, str(_COMPOSITION_ROOT))
 
@@ -73,13 +95,11 @@ from scripts.validate import (  # ruff: ignore[module-import-not-at-top-of-file]
 )
 
 _PROFILE_MANIFEST: Final = target_profile.FINGERPRINT_MANIFEST
-_EXPECTED_ARTIFACTS: Final = frozenset(
-    {
-        "manifest.json",
-        "oracle.bin",
-        "program.c",
-    }
-)
+_EXPECTED_ARTIFACTS: Final = frozenset({
+    "manifest.json",
+    "oracle.bin",
+    "program.c",
+})
 
 
 class _RenameAt2(Protocol):
@@ -117,9 +137,13 @@ def _verify_profile_projection(canonical: target_profile.JsonObject) -> None:
     except (OSError, UnicodeError) as error:
         message = "canonical profile fingerprint manifest is unavailable"
         _fail(message, error)
-    expected_projection = target_profile.render_profile_fingerprint_manifest(canonical)
+    expected_projection = target_profile.render_profile_fingerprint_manifest(
+        canonical
+    )
     if observed_projection != expected_projection:
-        message = "canonical profile fingerprint manifest disagrees with registry"
+        message = (
+            "canonical profile fingerprint manifest disagrees with registry"
+        )
         _fail(message)
 
 
@@ -152,11 +176,11 @@ class ChallengeIdentity:
 
 
 def _validate_family_version(family: str, version: int) -> None:
-    if family != _FAMILY:
+    if type(family) is not str or family not in _FAMILIES:
         message = f"unsupported challenge family: {family}"
         _fail(message)
     if type(version) is not int or version != _VERSION:
-        message = f"unsupported {_FAMILY} version: {version}"
+        message = f"unsupported {family} version: {version}"
         _fail(message)
 
 
@@ -244,12 +268,14 @@ def _node_expression(
         value = (left * multiplier) & _MASK32
     else:
         shift = int((rng.next_u64() % 31) + 1)
-        expression = f"(v{left_index} << {shift}) | (v{left_index} >> {32 - shift})"
+        expression = (
+            f"(v{left_index} << {shift}) | (v{left_index} >> {32 - shift})"
+        )
         value = _rotate_left(left, shift)
     return f"    uint32_t v{index} = {expression};", value
 
 
-def _program_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+def _arithmetic_dag_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     rng = _SplitMix64(identity.seed)
     initial = rng.next_u32()
     lines = [
@@ -264,21 +290,233 @@ def _program_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
         lines.append(line)
         values.append(value)
     final = values[-1]
-    lines.extend(
-        (
-            f"    return v{identity.nodes};",
-            "}",
-            "",
-            "int main(void) {",
-            f"    uint32_t result = {_ENTRY_SYMBOL}();",
-            "    return (int)(result & UINT32_C(2147483647));",
-            "}",
-            "",
-        )
-    )
+    lines.extend((
+        f"    return v{identity.nodes};",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ))
     source = "\n".join(lines).encode()
     oracle = final.to_bytes(_ORACLE_BYTES, byteorder="little")
     return source, oracle
+
+
+def _linear_mix_node_expression(
+    rng: _SplitMix64, index: int, previous: int
+) -> tuple[str, int]:
+    previous_index = index - 1
+    operation = rng.next_u64() % 4
+    if operation == _OP_ADD:
+        constant = rng.next_u32()
+        expression = f"v{previous_index} + UINT32_C({constant})"
+        value = (previous + constant) & _MASK32
+    elif operation == _OP_XOR:
+        constant = rng.next_u32()
+        expression = f"v{previous_index} ^ UINT32_C({constant})"
+        value = previous ^ constant
+    elif operation == _OP_MULTIPLY:
+        multiplier = rng.next_u32() | 1
+        expression = f"v{previous_index} * UINT32_C({multiplier})"
+        value = (previous * multiplier) & _MASK32
+    else:
+        shift = int((rng.next_u64() % 31) + 1)
+        expression = (
+            f"(v{previous_index} << {shift}) | "
+            f"(v{previous_index} >> {32 - shift})"
+        )
+        value = _rotate_left(previous, shift)
+    return f"    uint32_t v{index} = {expression};", value
+
+
+def _linear_mix_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _LINEAR_MIX_SEED_SALT)
+    initial = rng.next_u32()
+    lines = [
+        "#include <stdint.h>",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t v0 = UINT32_C({initial});",
+    ]
+    value = initial
+    for index in range(1, identity.nodes + 1):
+        line, value = _linear_mix_node_expression(rng, index, value)
+        lines.append(line)
+    lines.extend((
+        f"    return v{identity.nodes};",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ))
+    source = "\n".join(lines).encode()
+    oracle = value.to_bytes(_ORACLE_BYTES, byteorder="little")
+    return source, oracle
+
+
+def _branch_mix_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _BRANCH_MIX_SEED_SALT)
+    initial = rng.next_u32()
+    lines = [
+        "#include <stdint.h>",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t v0 = UINT32_C({initial});",
+    ]
+    value = initial
+    for index in range(1, identity.nodes + 1):
+        previous_index = index - 1
+        mask = 1 << int(rng.next_u64() % 32)
+        addend = rng.next_u32()
+        xor_mask = rng.next_u32()
+        lines.extend((
+            f"    uint32_t v{index};",
+            (
+                f"    if ((v{previous_index} & UINT32_C({mask})) "
+                "!= UINT32_C(0)) {"
+            ),
+            f"        v{index} = v{previous_index} + UINT32_C({addend});",
+            "    } else {",
+            f"        v{index} = v{previous_index} ^ UINT32_C({xor_mask});",
+            "    }",
+        ))
+        if value & mask:
+            value = (value + addend) & _MASK32
+        else:
+            value ^= xor_mask
+    lines.extend((
+        f"    return v{identity.nodes};",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ))
+    source = "\n".join(lines).encode()
+    oracle = value.to_bytes(_ORACLE_BYTES, byteorder="little")
+    return source, oracle
+
+
+def _call_chain_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _CALL_CHAIN_SEED_SALT)
+    initial = rng.next_u32()
+    lines = [
+        "#include <stdint.h>",
+        "",
+        "uint32_t malbolge_challenge_mix(",
+        "    uint32_t value, uint32_t addend, uint32_t mask",
+        ") {",
+        "    return (value + addend) ^ mask;",
+        "}",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t value = UINT32_C({initial});",
+    ]
+    value = initial
+    for _ in range(identity.nodes):
+        addend = rng.next_u32()
+        mask = rng.next_u32()
+        lines.extend((
+            "    value = malbolge_challenge_mix(",
+            f"        value, UINT32_C({addend}), UINT32_C({mask})",
+            "    );",
+        ))
+        value = ((value + addend) & _MASK32) ^ mask
+    lines.extend((
+        "    return value;",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ))
+    source = chr(10).join(lines).encode()
+    oracle = value.to_bytes(_ORACLE_BYTES, byteorder="little")
+    return source, oracle
+
+
+def _memory_walk_step(
+    rng: _SplitMix64, cells: list[int], value: int
+) -> tuple[tuple[str, str], int]:
+    read_index = int(rng.next_u64() % _MEMORY_WALK_CELLS)
+    write_index = int(rng.next_u64() % _MEMORY_WALK_CELLS)
+    addend = rng.next_u32()
+    mask = rng.next_u32()
+    written = (cells[read_index] + value + addend) & _MASK32
+    cells[write_index] = written
+    lines = (
+        (
+            f"    cells[{write_index}] = cells[{read_index}] + value "
+            f"+ UINT32_C({addend});"
+        ),
+        f"    value = cells[{write_index}] ^ UINT32_C({mask});",
+    )
+    return lines, written ^ mask
+
+
+def _memory_walk_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _MEMORY_WALK_SEED_SALT)
+    cells = [rng.next_u32() for _index in range(_MEMORY_WALK_CELLS)]
+    initializer = ", ".join(f"UINT32_C({cell})" for cell in cells)
+    lines = [
+        "#include <stdint.h>",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t cells[{_MEMORY_WALK_CELLS}] = {{{initializer}}};",
+        "    uint32_t value = cells[0];",
+    ]
+    value = cells[0]
+    for _ in range(identity.nodes):
+        step_lines, value = _memory_walk_step(rng, cells, value)
+        lines.extend(step_lines)
+    lines.extend((
+        "    return value;",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ))
+    source = chr(10).join(lines).encode()
+    oracle = value.to_bytes(_ORACLE_BYTES, byteorder="little")
+    return source, oracle
+
+
+_PAYLOAD_RENDERERS: Final = {
+    _ARITHMETIC_DAG_FAMILY: _arithmetic_dag_payload,
+    _BRANCH_MIX_FAMILY: _branch_mix_payload,
+    _CALL_CHAIN_FAMILY: _call_chain_payload,
+    _LINEAR_MIX_FAMILY: _linear_mix_payload,
+    _MEMORY_WALK_FAMILY: _memory_walk_payload,
+}
+
+
+def _program_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    renderer = _PAYLOAD_RENDERERS.get(identity.family)
+    if renderer is None:
+        message = f"unsupported challenge family: {identity.family}"
+        _fail(message)
+    return renderer(identity)
+
+
+def _family_algorithm(family: str) -> str:
+    algorithm = _FAMILY_ALGORITHMS.get(family)
+    if algorithm is None:
+        message = f"unsupported challenge family: {family}"
+        _fail(message)
+    return algorithm
 
 
 def _manifest_bytes(
@@ -309,7 +547,7 @@ def _manifest_bytes(
         "entry_symbol": _ENTRY_SYMBOL,
         "standalone_main": "low-31-bits-only-not-oracle",
         "generator": {
-            "family_algorithm": "splitmix64-arithmetic-dag-v1",
+            "family_algorithm": _family_algorithm(identity.family),
             "unsigned_arithmetic": "modulo-2-to-32",
         },
     }
@@ -318,7 +556,7 @@ def _manifest_bytes(
 
 
 def generate(identity: ChallengeIdentity) -> GeneratedChallenge:
-    """Generate one deterministic `arithmetic-dag/v1` challenge.
+    """Generate one deterministic versioned parametric challenge.
 
     Returns:
         Exact source, oracle, and canonical manifest bytes.
@@ -350,7 +588,9 @@ def _published_artifact_paths(
         root / "oracle.bin",
         root / "manifest.json",
     )
-    redirected = any(_path_redirects(path) or not path.is_file() for path in artifacts)
+    redirected = any(
+        _path_redirects(path) or not path.is_file() for path in artifacts
+    )
     return None if redirected else artifacts
 
 
@@ -393,10 +633,14 @@ def _reject_linked_output_ancestor(parent: Path) -> None:
         candidate = ancestor
 
 
-def _staging_path(output_root: Path) -> Path:
+def _validate_output_root(output_root: Path) -> None:
     if output_root.name in {"", ".", ".."}:
         message = "output path must name a distinct directory"
         _fail(message)
+
+
+def _staging_path(output_root: Path) -> Path:
+    _validate_output_root(output_root)
     parent = output_root.parent
     _reject_linked_output_ancestor(parent)
     try:
@@ -485,6 +729,7 @@ def _publish_staging_no_replace(
 def write_challenge(identity: ChallengeIdentity, output_root: Path) -> None:
     """Publish without deleting pre-existing unrelated state."""
     generated = generate(identity)
+    _validate_output_root(output_root)
     _reject_linked_output_ancestor(output_root.parent)
     if _existing_output_is_replay(output_root, generated):
         return
@@ -501,7 +746,7 @@ def write_challenge(identity: ChallengeIdentity, output_root: Path) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    _ = parser.add_argument("family", choices=[_FAMILY])
+    _ = parser.add_argument("family", choices=sorted(_FAMILIES))
     _ = parser.add_argument("--version", type=int, required=True)
     _ = parser.add_argument("--seed", type=int, required=True)
     _ = parser.add_argument("--profile", required=True)
