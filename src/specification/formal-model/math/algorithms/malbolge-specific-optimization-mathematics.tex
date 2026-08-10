@@ -98,6 +98,28 @@ residue modulo 94:
 The runtime may therefore precompute one 94-value code phase and a
 $94\times94$ graphical-cell/phase table without changing decode semantics.
 
+
+\section{Self-encryption orbit canonicalization}
+
+Let $G=\{33,\ldots,126\}$ be the graphical-cell domain and let
+$E:G\to G$ be the Malbolge self-encryption permutation $E(m)=\EncryptOp(m)$.
+The exact $X_2$ table partitions $G$ into six disjoint cycles whose lengths are
+\[
+  \{2,4,5,6,9,68\}.
+\]
+For a cell $m\in G$, write $\ell(m)$ for the length of its unique cycle. Then
+for every visit count $k\in\mathbb{N}$,
+\begin{equation}
+  E^k(m)=E^{k\bmod\ell(m)}(m).
+  \label{eq:optimization-encryption-orbit}
+\end{equation}
+Therefore a search state that tracks only repeated committed self-encryption of
+one unchanged code-cell address may replace an unbounded encryption-visit count
+by the canonical residue $k\bmod\ell(m)$. The reduction applies only when each
+counted visit reaches the normative post-instruction encryption phase. Halt,
+rejected transitions, writes that change the cell by another mechanism, and
+control-flow/address equivalence remain outside this reduction.
+
 \section{Classic rotate lookup}
 
 The classic word domain is finite, so define a table $R$ by
@@ -108,6 +130,22 @@ The classic word domain is finite, so define a table $R$ by
 \end{equation}
 Replacing scalar rotation by $R[x]$ is an exact finite-domain substitution, not
 an approximation or heuristic.
+
+\section{Classic rotate-history canonicalization}
+
+Let $R$ now denote one normative right rotation of a classic ten-trit word. A
+rotation permutes the ten trit positions cyclically, so applying ten rotations
+restores every word. Therefore, for every $x\in\WordDomain{10}$ and visit count
+$k\in\mathbb{N}$,
+\begin{equation}
+  R^k(x)=R^{k\bmod 10}(x).
+  \label{eq:optimization-rotate-history}
+\end{equation}
+This does not claim that every word has minimal period ten; repeated-trit words
+may have a proper divisor as their period. It only gives a safe canonical bound:
+a search state tracking repeated rotate updates to one otherwise unchanged
+classic data cell needs at most the residue modulo ten. Intervening writes or a
+changed data-pointer identity fall outside the reduction.
 
 \section{Verified candidate boundary}
 

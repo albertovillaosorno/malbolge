@@ -19,6 +19,16 @@ mechanism = "exhaustive"
 evidence = ["tests/vm/tables.rs::rotate_table_matches_scalar_definition_for_every_word"]
 
 [[correspondence]]
+id = "optimization-rotate-history"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-rotate-history"
+domain = "all 59049 classic words and two full ten-trit rotation cycles"
+mechanism = "exhaustive-rotation-orbit"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/exhaustive/math_correspondence.rs::classic_rotation_history_reduces_modulo_ten_trits"]
+
+[[correspondence]]
 id = "classic-word-domain"
 tex = "src/specification/formal-model/math/specification/malbolge-1998.tex"
 label = "eq:classic-word-domain"
@@ -191,6 +201,17 @@ domain = "all classic code pointers and all 94 graphical cell values"
 mechanism = "exhaustive"
 # jig-ignore-next-line: indivisible reviewed identifier
 evidence = ["tests/vm/tables.rs::decode_table_matches_scalar_definition_for_every_position"]
+
+[[correspondence]]
+id = "optimization-encryption-orbit"
+# jig-ignore-next-line: indivisible reviewed identifier
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-encryption-orbit"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all 94 graphical encryption cells and two full visits of each exact orbit"
+mechanism = "exhaustive-orbit-partition"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/exhaustive/math_correspondence.rs::encryption_history_reduces_to_six_modular_orbits"]
 
 [[correspondence]]
 id = "optimization-rotate-table"

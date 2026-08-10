@@ -61,16 +61,24 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes four implementation-relevant reductions: classic five-trit crazy
-factorization, general profile-width crazy chunking, decode phase reduction, and
-classic rotate lookup.
+formalizes six exact reductions: classic five-trit crazy factorization, general
+profile-width crazy chunking, decode phase reduction, classic rotate lookup,
+graphical self-encryption orbit canonicalization, and classic rotate-history
+canonicalization. The encryption table is proved to partition the complete
+graphical domain into cycles of lengths 2, 4, 5, 6, 9, and 68, so repeated
+committed encryption of an otherwise unchanged code cell needs only the visit
+residue modulo its cycle length. Repeated rotate updates to one otherwise
+unchanged classic ten-trit data cell likewise need only the visit residue modulo
+ten; no minimal-period-ten claim is made for individual words.
 
 `src/specification/formal-model/math/specification/correspondence.toml` binds
-those equations to exhaustive or
-composite executable evidence. The classic crazy/rotate finite domains are
-checked exhaustively; decode is checked across every classic code pointer and
-all 94 graphical cells; current 14-trit crazy chunking is checked against scalar
-fixtures and real profile execution.
+those equations to exhaustive or composite executable evidence. The classic
+crazy/rotate finite domains are checked exhaustively; decode is checked across
+every classic code pointer and all 94 graphical cells; current 14-trit crazy
+chunking is checked against scalar fixtures and real profile execution; and the
+self-encryption result independently partitions all 94 graphical cells, checks
+every table transition against the VM-owned encryption helper, and then checks
+two full independent visits of every orbit for the modular reduction.
 
 The existing versioned benchmark at
 `benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/` supplies 15 raw
@@ -78,9 +86,10 @@ samples per scalar/table implementation with matching checksums. On that
 recorded
 host/workload, crazy improved from a 77,456,700 ns scalar median to 7,423,600 ns
 (10.43x), and rotate improved from 15,260,300 ns to 10,141,700 ns (1.50x).
-These results support H1 only for this admitted CPU table-factorization slice.
-They do not establish a universal speedup or prove broader synthesis/search
-reductions.
+These timing results support H1 only for the admitted CPU table-factorization
+slice. The self-encryption orbit result is a correctness-proved search-state
+canonicalization, not a measured performance result. None of these results
+establishes a universal speedup or proves broader synthesis lower bounds.
 
 ## Threats to Validity
 
@@ -90,13 +99,19 @@ Each experiment must narrow these threats before drawing a conclusion.
 
 ## Conclusion
 
-Promote the four proved table/factorization reductions as valid optimization
-building blocks. Continue the research for canonical forms, lower bounds, and
-search-space reductions; those remain unproved and receive no performance claim
-from this result.
+Retain the four proved table/factorization reductions plus the exact
+self-encryption and classic rotate-history canonicalizations as valid
+optimization building blocks.
+Continue the research for broader canonical forms, lower bounds, and
+search-space
+reductions; those remain unproved and receive no performance claim from this
+result.
 
 ## References
 
+<!-- jig-ignore-next-line: canonical source-record path is indivisible -->
+- [Malbolge 1998 specification and reference
+  interpreter](../../../bibliography/specifications-and-standards/malbolge/malbolge-1998.md)
 - [Verification Trust
   Boundary](../../../technical/adr/verification-trust-boundary.md)
 - [Research Evidence And Algorithm
