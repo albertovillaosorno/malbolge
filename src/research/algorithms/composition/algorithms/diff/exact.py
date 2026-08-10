@@ -198,6 +198,24 @@ def _record_file(root: Path, path: Path) -> FileRecord | None:
     return FileRecord(path=relative_path, sha256=_sha256(data), size=len(data))
 
 
+def _resolved_tree_root(root: Path) -> Path:
+    mode = _entry_mode(root, "tree root")
+    if mode is None:
+        message = f"tree root is not a directory: {root}"
+        raise ExactTreeError(message)
+    if _is_redirect(root, mode):
+        message = f"tree root must not be linked: {root}"
+        raise ExactTreeError(message)
+    if not S_ISDIR(mode):
+        message = f"tree root is not a directory: {root}"
+        raise ExactTreeError(message)
+    try:
+        return root.resolve(strict=True)
+    except OSError as error:
+        message = f"tree root resolution failed: {root}: {error}"
+        raise ExactTreeError(message) from error
+
+
 def snapshot_tree(root: Path) -> TreeSnapshot:
     """Snapshot regular files under ``root`` in stable path order.
 
@@ -207,14 +225,8 @@ def snapshot_tree(root: Path) -> TreeSnapshot:
     Returns:
         A path-sorted regular-file snapshot.
 
-    Raises:
-        ExactTreeError: The root or one of its entries is unsupported.
-
     """
-    resolved_root = root.resolve()
-    if not resolved_root.is_dir():
-        message = f"tree root is not a directory: {resolved_root}"
-        raise ExactTreeError(message)
+    resolved_root = _resolved_tree_root(root)
     records = (
         record
         for path in _tree_paths(resolved_root)

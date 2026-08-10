@@ -188,6 +188,40 @@ def test_exact_materialization_rejects_existing_output(tmp_path: Path) -> None:
         materialize_exact_plan(source, plan, output)
 
 
+def test_snapshot_root_status_error_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inaccessible root cannot be reported as merely non-directory."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    original_lstat = Path.lstat
+
+    def fail_status(path: Path) -> object:
+        if path == root:
+            message = "blocked exact root"
+            raise PermissionError(message)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_status)
+    with pytest.raises(ExactTreeError, match="tree root status failed"):
+        _ = snapshot_tree(root)
+
+
+def test_snapshot_rejects_linked_root_when_supported(tmp_path: Path) -> None:
+    """A linked root cannot erase the exact tree boundary during resolution."""
+    target = tmp_path / "target"
+    target.mkdir()
+    _ = (target / "payload.txt").write_bytes(b"payload")
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is unavailable on this host")
+
+    with pytest.raises(ExactTreeError, match="tree root must not be linked"):
+        _ = snapshot_tree(linked)
+
+
 def test_snapshot_walk_errors_fail_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
