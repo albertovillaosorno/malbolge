@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.behavior import BehaviorObservations
 from algorithms.diff.behavior import BehaviorProfile
@@ -48,6 +49,7 @@ from algorithms.diff.behavior import IdentityObservation
 from algorithms.diff.behavior import IdentityProbe
 from algorithms.diff.behavior import evaluate_behavior
 from algorithms.diff.probe_exec import ProbeExecutionError
+from algorithms.diff.probe_exec import ProbeProgram
 from algorithms.diff.probe_exec import run_probe_program
 from algorithms.diff.probe_exec import run_probe_programs
 
@@ -56,7 +58,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from algorithms.diff.behavior import BehaviorEvidence
-    from algorithms.diff.probe_exec import ProbeProgram
     from algorithms.diff.probe_exec import ProbeRunContext
     from algorithms.diff.probe_exec import ProbeTranscript
 
@@ -79,9 +80,34 @@ class BugProgram:
             BehaviorProgramError: The correction identifier is empty.
 
         """
-        if not self.correction_id:
+        if type(self.program) is not ProbeProgram:
+            message = "bug behavior program requires an exact ProbeProgram"
+            raise BehaviorProgramError(message)
+        if type(self.correction_id) is not str or not self.correction_id:
             message = "bug behavior program requires a correction identifier"
             raise BehaviorProgramError(message)
+
+
+def _require_program_tuple(value: object, context: str) -> None:
+    if type(value) is not tuple:
+        message = f"{context} must use the exact immutable tuple type"
+        raise BehaviorProgramError(message)
+    items = cast("tuple[object, ...]", value)
+    if any(type(item) is not ProbeProgram for item in items):
+        message = f"{context} contains a foreign probe program"
+        raise BehaviorProgramError(message)
+
+
+def _require_bug_program_tuple(value: object) -> None:
+    if type(value) is not tuple:
+        message = (
+            "bug behavior programs must use the exact immutable tuple type"
+        )
+        raise BehaviorProgramError(message)
+    items = cast("tuple[object, ...]", value)
+    if any(type(item) is not BugProgram for item in items):
+        message = "bug behavior programs contain a foreign bug record"
+        raise BehaviorProgramError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +125,12 @@ class BehaviorPrograms:
             BehaviorProgramError: Program identifiers violate profile policy.
 
         """
+        _require_program_tuple(self.identity, "identity behavior programs")
+        _require_program_tuple(
+            self.compatibility,
+            "compatibility behavior programs",
+        )
+        _require_bug_program_tuple(self.bugs)
         if not self.identity:
             message = "behavior programs require at least one identity program"
             raise BehaviorProgramError(message)

@@ -38,6 +38,7 @@ import math
 from pathlib import Path
 import sys
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.behavior import BugState
 from algorithms.diff.behavior_programs import BehaviorProgramError
@@ -199,6 +200,36 @@ def test_context_tool_resolution_error_fails_closed(
             _programs(),
             _context(source, tmp_path),
             _context(oracle, tmp_path),
+        )
+
+
+def test_behavior_program_records_reject_foreign_mutable_inputs() -> None:
+    """Validate metadata before dereferencing program records."""
+    program = _read_program("identity", "identity.txt")
+    with pytest.raises(BehaviorProgramError, match="exact ProbeProgram"):
+        _ = BugProgram(cast("ProbeProgram", object()), "fix")
+    with pytest.raises(BehaviorProgramError, match="correction identifier"):
+        _ = BugProgram(program, cast("str", object()))
+    with pytest.raises(BehaviorProgramError, match="immutable tuple"):
+        _ = BehaviorPrograms(
+            identity=cast(
+                "tuple[ProbeProgram, ...]",
+                cast("object", [program]),
+            ),
+            compatibility=(),
+            bugs=(),
+        )
+    with pytest.raises(BehaviorProgramError, match="foreign probe program"):
+        _ = BehaviorPrograms(
+            identity=(cast("ProbeProgram", object()),),
+            compatibility=(),
+            bugs=(),
+        )
+    with pytest.raises(BehaviorProgramError, match="foreign bug record"):
+        _ = BehaviorPrograms(
+            identity=(program,),
+            compatibility=(),
+            bugs=(cast("BugProgram", object()),),
         )
 
 
