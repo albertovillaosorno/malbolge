@@ -98,6 +98,16 @@ _NATIVE_WORD_FORMAT = "I"
 
 
 @dataclass(frozen=True, slots=True)
+class CrazyAccumulatorClass:
+    """One classic accumulator class with equal crazy search bounds."""
+
+    two_trits: int
+    accumulator_count: int
+    max_preimage_count: int
+    reachable_target_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class PreparedCrazyTargetSelection:
     """Proof-bound exact candidate positions for one crazy target."""
 
@@ -304,6 +314,46 @@ def crazy_target_full_domain_reachable_target_count(accumulator: int) -> int:
         count *= sum(multiplicity > 0 for multiplicity in multiplicities)
         accumulator //= radix
     return count
+
+
+def _accumulator_class_counts() -> tuple[int, ...]:
+    counts = (1,)
+    non_two_choices = len(CRAZY_TRIT_TABLE) - 1
+    for _ in range(TRIT_COUNT):
+        expanded = [0] * (len(counts) + 1)
+        for two_trits, count in enumerate(counts):
+            expanded[two_trits] += non_two_choices * count
+            expanded[two_trits + 1] += count
+        counts = tuple(expanded)
+    return counts
+
+
+def crazy_target_full_domain_accumulator_classes(
+) -> tuple[CrazyAccumulatorClass, ...]:
+    """Return exact classic accumulator classes for crazy-target planning.
+
+    Returns:
+        Classes ordered by the number of accumulator trits equal to two.
+
+    """
+    radix = len(CRAZY_TRIT_TABLE)
+    classes: list[CrazyAccumulatorClass] = []
+    for two_trits, accumulator_count in enumerate(_accumulator_class_counts()):
+        max_preimage = 1
+        for _ in range(TRIT_COUNT - two_trits):
+            max_preimage *= radix - 1
+        reachable_targets = max_preimage
+        for _ in range(two_trits):
+            reachable_targets *= radix
+        classes.append(
+            CrazyAccumulatorClass(
+                two_trits=two_trits,
+                accumulator_count=accumulator_count,
+                max_preimage_count=max_preimage,
+                reachable_target_count=reachable_targets,
+            )
+        )
+    return tuple(classes)
 
 
 def crazy_target_search_adapter(

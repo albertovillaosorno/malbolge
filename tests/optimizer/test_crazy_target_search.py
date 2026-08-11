@@ -55,6 +55,7 @@ from accelerator.work_ports import InvalidAcceleratorWorkError
 from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import admit_search_result
 from optimizer.crazy_target import CRAZY_TARGET_ALGORITHM_ID
+from optimizer.crazy_target import CrazyAccumulatorClass
 from optimizer.crazy_target import CrazyTargetProblem
 from optimizer.crazy_target import CrazyTargetVerifier
 from optimizer.crazy_target import InvalidCrazyTargetProblemError
@@ -63,6 +64,7 @@ from optimizer.crazy_target import build_crazy_target_batch
 from optimizer.crazy_target import count_prepared_crazy_target_positions
 from optimizer.crazy_target import cpu_crazy_target_search_adapter
 from optimizer.crazy_target import crazy_target_batch_builder_id
+from optimizer.crazy_target import crazy_target_full_domain_accumulator_classes
 from optimizer.crazy_target import crazy_target_full_domain_max_preimage_count
 from optimizer.crazy_target import crazy_target_full_domain_preimage_count
 from optimizer.crazy_target import (
@@ -381,6 +383,39 @@ def test_accumulator_planning_bounds_match_independent_relation() -> None:
             crazy_target_full_domain_reachable_target_count(accumulator)
             == _independent_reachable_target_count(accumulator)
             == expected_reachable
+        )
+
+
+def _independent_accumulator_class_histogram() -> tuple[int, ...]:
+    counts = [0] * (10 + 1)
+    for accumulator in range(FULL_DOMAIN_COUNT):
+        counts[_count_accumulator_two_trits(accumulator)] += 1
+    return tuple(counts)
+
+
+def test_accumulator_classes_partition_complete_classic_domain() -> None:
+    """Class counts independently partition all classic accumulators."""
+    classes = crazy_target_full_domain_accumulator_classes()
+    histogram = _independent_accumulator_class_histogram()
+    assert tuple(item.accumulator_count for item in classes) == histogram
+    assert sum(histogram) == FULL_DOMAIN_COUNT
+    assert tuple(item.two_trits for item in classes) == tuple(range(11))
+
+
+def test_accumulator_classes_match_every_state_level_planning_bound() -> None:
+    """All accumulators in one class share both exact planning cardinalities."""
+    classes = crazy_target_full_domain_accumulator_classes()
+    for accumulator in range(FULL_DOMAIN_COUNT):
+        two_trits = _count_accumulator_two_trits(accumulator)
+        item = classes[two_trits]
+        assert isinstance(item, CrazyAccumulatorClass)
+        assert (
+            crazy_target_full_domain_max_preimage_count(accumulator)
+            == item.max_preimage_count
+        )
+        assert (
+            crazy_target_full_domain_reachable_target_count(accumulator)
+            == item.reachable_target_count
         )
 
 
