@@ -495,12 +495,21 @@ def analyze_next_transition(
     Returns:
         Next-step evidence, or ``None`` when the supplied prefix is terminal.
 
+    Raises:
+        AssertionError: If a supplied transition is not the exact next state.
+
     """
     memory = _memory_after_entry(words, entry)
     state = _state_after_entry(entry)
     for transition in prior:
         if state is None:
             return None
+        expected = _analyze_state(memory, state)
+        if transition != expected:
+            message = (
+                "explicit prefix transition does not match recomputed state"
+            )
+            raise AssertionError(message)
         memory = _memory_after_transition(memory, transition)
         state = _state_after_transition(transition)
     if state is None:

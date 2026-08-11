@@ -44,6 +44,7 @@ import sys
 from typing import Protocol
 from typing import cast
 
+import pytest
 from scripts.validate import target_profile
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -93,6 +94,9 @@ _ROTATED_ENTRY_VALUE = 13
 _JUMP_ENTRY_ADDRESS = 98
 _JUMP_ENTRY_ENCRYPTION_INPUT = 29_492
 _MISSING_SOURCE_MESSAGE = "static analyzer cannot read source"
+_PREFIX_MISMATCH_MESSAGE = (
+    "explicit prefix transition does not match recomputed state"
+)
 _GRAPHICAL_START = 33
 _GRAPHICAL_END = 126
 _DECODE_PERIOD = 94
@@ -864,6 +868,21 @@ def test_next_transfer_resolves_fifth_fixed_fetch_cycle() -> None:
     assert transition.next_fetch_address == _FIFTH_FETCH_ADDRESS
     assert transition.provable_cycle
     assert not transition.accepted
+
+
+def test_next_transfer_rejects_noncontiguous_explicit_prefix() -> None:
+    """Caller-supplied bounded prefix records must be exact and contiguous."""
+    report = _ANALYZER_MODULE.analyze_source(_FIFTH_TRANSFER_SOURCE)
+    entry = report.entry_transition
+    third = report.third_transition
+    assert entry is not None
+    assert third is not None
+    with pytest.raises(AssertionError, match=_PREFIX_MISMATCH_MESSAGE):
+        _ = _ANALYZER_MODULE.prefix_transfer.analyze_next_transition(
+            tuple(_FIFTH_TRANSFER_SOURCE),
+            entry,
+            (third,),
+        )
 
 
 def test_second_transition_rejects_reachable_rotate_alias() -> None:
