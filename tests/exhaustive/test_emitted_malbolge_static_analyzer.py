@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import replace
 from hashlib import sha256
 import importlib.util
 import json
@@ -114,6 +115,9 @@ _ROTATED_ENTRY_VALUE = 13
 _JUMP_ENTRY_ADDRESS = 98
 _JUMP_ENTRY_ENCRYPTION_INPUT = 29_492
 _MISSING_SOURCE_MESSAGE = "static analyzer cannot read source"
+_ENTRY_MISMATCH_MESSAGE = (
+    "explicit entry transition does not match recomputed state"
+)
 _PREFIX_MISMATCH_MESSAGE = (
     "explicit prefix transition does not match recomputed state"
 )
@@ -1040,6 +1044,33 @@ def test_next_transfer_resolves_fifth_fixed_fetch_cycle() -> None:
     memory = report.bounded_memory_requirement
     assert memory is not None
     _assert_fifth_memory(memory)
+
+
+def test_next_transfer_rejects_forged_entry_transition() -> None:
+    """Caller-supplied entry state must match exact recomputation."""
+    source = _FIXTURE.read_bytes()
+    report = _ANALYZER_MODULE.analyze_source(source)
+    entry = report.entry_transition
+    assert entry is not None
+    forged = replace(
+        entry,
+        next_fetch_address=(
+            (entry.result_code_pointer + 1) % _PROFILE_MEMORY_WORDS
+        ),
+    )
+    words = tuple(source)
+    with pytest.raises(AssertionError, match=_ENTRY_MISMATCH_MESSAGE):
+        _ = _ANALYZER_MODULE.prefix_transfer.analyze_next_transition(
+            words,
+            forged,
+            (),
+        )
+    with pytest.raises(AssertionError, match=_ENTRY_MISMATCH_MESSAGE):
+        _ = _ANALYZER_MODULE.prefix_transfer.analyze_continuations(
+            words,
+            forged,
+            maximum_transitions=1,
+        )
 
 
 def test_next_transfer_rejects_noncontiguous_explicit_prefix() -> None:

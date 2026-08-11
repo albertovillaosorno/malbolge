@@ -43,16 +43,13 @@ from typing import TYPE_CHECKING
 
 if __package__:
     from verifier import emitted_malbolge_classic as classic
+    from verifier import emitted_malbolge_entry as entry_transfer
 else:
     import emitted_malbolge_classic as classic
+    import emitted_malbolge_entry as entry_transfer
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-
-    if __package__:
-        from verifier import emitted_malbolge_entry as entry_transfer
-    else:
-        import emitted_malbolge_entry as entry_transfer
 
 _STATUS_CONTINUED = "continued"
 _STATUS_HALTED = "halted"
@@ -576,6 +573,19 @@ def _remember_exact_state(
     )
 
 
+def _validate_entry_transition(
+    words: tuple[int, ...],
+    entry: entry_transfer.EntryTransition,
+) -> None:
+    expected = entry_transfer.analyze_entry_transition(
+        words,
+        entry.decoded_byte,
+    )
+    if entry != expected:
+        message = "explicit entry transition does not match recomputed state"
+        raise AssertionError(message)
+
+
 def analyze_next_transition(
     words: tuple[int, ...],
     entry: entry_transfer.EntryTransition,
@@ -590,6 +600,7 @@ def analyze_next_transition(
         AssertionError: If a supplied transition is not the exact next state.
 
     """
+    _validate_entry_transition(words, entry)
     memory = _memory_after_entry(words, entry)
     state = _state_after_entry(entry)
     for transition in prior:
@@ -626,6 +637,7 @@ def analyze_continuation_trace(
     if type(maximum_transitions) is not int or maximum_transitions <= 0:
         message = "maximum transitions must be a positive exact integer"
         raise ValueError(message)
+    _validate_entry_transition(words, entry)
     memory = _memory_after_entry(words, entry)
     state = _state_after_entry(entry)
     transitions: list[SecondTransition] = []
