@@ -35,7 +35,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import comb
 from typing import TYPE_CHECKING
 from typing import cast
 from typing import override
@@ -193,6 +192,7 @@ _INDEPENDENT_CRAZY_TRIT = (
 )
 _RADIX = 3
 _TWO_TRIT = 2
+_TRIT_COUNT = 10
 _MIXED_PREIMAGE_CASES = (
     (7_654, 12_345),
     (MAX_WORD, ALL_ONES),
@@ -403,11 +403,23 @@ def test_accumulator_classes_partition_complete_classic_domain() -> None:
     assert tuple(item.two_trits for item in classes) == tuple(range(11))
 
 
+def _independent_binomial(total: int, selected: int) -> int:
+    numerator = 1
+    denominator = 1
+    for offset in range(selected):
+        numerator *= total - offset
+        denominator *= offset + 1
+    return numerator // denominator
+
+
 def test_accumulator_class_cardinality_matches_closed_form() -> None:
     """Each sufficient-statistic class has the exact binomial cardinality."""
     classes = crazy_target_full_domain_accumulator_classes()
+    non_two_choices = _RADIX - 1
     for item in classes:
-        expected = comb(10, item.two_trits) * 2 ** (10 - item.two_trits)
+        expected = _independent_binomial(_TRIT_COUNT, item.two_trits)
+        for _ in range(_TRIT_COUNT - item.two_trits):
+            expected *= non_two_choices
         assert item.accumulator_count == expected
 
 
