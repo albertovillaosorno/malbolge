@@ -125,6 +125,32 @@ _POINTER_WALK_V1_ORACLE_SHA256 = (
 _POINTER_WALK_V1_MANIFEST_SHA256 = (
     "e92dcb30cc2a6f1477564b3c9843a6bc47c04ed06beaafa74589dbaf788854cf"
 )
+_NEW_V1_REPLAY_VECTORS = (
+    (
+        _STREAM_STATE_FAMILY,
+        "44aab52f684af9ce29e25571e1bcc8bc923a0e8e727ef289cce05cda28e6e979",
+        "5ba8e9887d2497d962179fc1b875aa6edc422e238eab9904e490a9b8e8064f6f",
+        "64388aa9f928af85fb7d7efcd350cd55ae837d477f2e2d74dbdc9097b42be5b1",
+    ),
+    (
+        _GRAPH_REDUCE_FAMILY,
+        "995762c8fe399e74b4ad504de29a96f989ede21efebc81daa91f53a20e374def",
+        "5c73807e22a3b5e48c88dc6d47a479fad932a1303666aa4500ac63e56144defe",
+        "a08cbd085c66c4547d0bfa0a65c91d673ddba98b7edd0b50ffd1da32f348ba0c",
+    ),
+    (
+        _LAYOUT_CHAIN_FAMILY,
+        "60d6fead17d6eb88919c6af8cf4f769a197c639b5e3b79c60fa3d27bf473549c",
+        "340596d515c10929a75260bc5713fbc2643702aaed0618645d6741f794f4131f",
+        "bd590d65687754555991c15a62ccb72458197ca10ca04a414194fec4499a1e46",
+    ),
+    (
+        _TERNARY_FOLD_FAMILY,
+        "c80be1d8967784fab599da5108c1c2ead4dbf1c032cbe8b0d981d743651fdb78",
+        "3336c45d6b03c76bfac661cc6afb0952fab026cec34e646663f1bdd8289f2436",
+        "41c5700e68b3b0df01506840a0e45d4faffe684a95a32a81a7c4f526ab77e3c2",
+    ),
+)
 
 
 class _ChallengeIdentity(Protocol):
@@ -265,6 +291,20 @@ def test_pointer_walk_v1_preserves_known_replay_vector() -> None:
         hashlib.sha256(generated.manifest).hexdigest()
         == _POINTER_WALK_V1_MANIFEST_SHA256
     )
+
+
+@pytest.mark.parametrize("vector", _NEW_V1_REPLAY_VECTORS)
+def test_new_v1_families_preserve_known_replay_vectors(
+    vector: tuple[str, str, str, str],
+) -> None:
+    """Keep newly published v1 family identities byte-compatible."""
+    family, source_sha256, oracle_sha256, manifest_sha256 = vector
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=family, seed=0x1234, nodes=64)
+    )
+    assert hashlib.sha256(generated.source).hexdigest() == source_sha256
+    assert hashlib.sha256(generated.oracle).hexdigest() == oracle_sha256
+    assert hashlib.sha256(generated.manifest).hexdigest() == manifest_sha256
 
 
 def test_branch_mix_emits_one_live_diamond_per_node() -> None:
