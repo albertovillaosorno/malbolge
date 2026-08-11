@@ -182,8 +182,10 @@ pub use loader::{
     VerifiedDirectLoadError, VerifiedDirectLoadImage,
 };
 use malbolge::{
-    EFFECT_IR_VERSION, ProfileMachineObservation, ProfileMemoryWrite,
-    RegionEffectProgram, RunOutcome, TraceInput,
+    EFFECT_IR_VERSION, PortableProfileRequirementError,
+    ProfileMachineObservation, ProfileMemoryWrite, RegionEffectProgram,
+    RunOutcome, RuntimeCapability, TraceInput,
+    preflight_portable_profile_requirement,
 };
 pub use platform::{
     NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
@@ -289,6 +291,33 @@ impl Display for NativeArtifactError {
 impl From<NativeIdentityError> for NativeArtifactError {
     fn from(error: NativeIdentityError) -> Self {
         Self::Identity(error)
+    }
+}
+
+/// Typed marker for a noncanonical bootstrap profile requirement envelope.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BootstrapProfileRequirementDrift;
+
+/// Failure while profile-preflighting one bootstrap native source request.
+#[derive(Debug, Eq, PartialEq)]
+pub enum BootstrapProfilePreflightError<'requirement> {
+    /// Profile-preflighted bootstrap lowering failed structurally.
+    Artifact(Box<NativeArtifactError>),
+    /// Selected runtime cannot implement the admitted profile requirement.
+    Profile(Box<PortableProfileRequirementError<'requirement>>),
+    /// Portable profile envelope is not canonical for its declared identity.
+    ProfileRequirement(Box<BootstrapProfileRequirementDrift>),
+}
+
+impl Display for BootstrapProfilePreflightError<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Artifact(error) => Display::fmt(error, f),
+            Self::Profile(error) => Display::fmt(error, f),
+            Self::ProfileRequirement(_drift) => {
+                f.write_str("portable IR profile requirement is not canonical")
+            },
+        }
     }
 }
 
@@ -665,6 +694,47 @@ pub fn lower_clang_c23(
         key,
         source,
         target_triple,
+    })
+}
+
+/// Lowers one portable region only after canonical profile/runtime preflight.
+///
+/// This product-facing bootstrap boundary preserves raw [`lower_clang_c23`]
+/// transport while ensuring profile capacity and runtime capability fail before
+/// bootstrap target validation or source generation.
+///
+/// # Errors
+///
+/// Returns [`BootstrapProfilePreflightError`] when the transported profile
+/// envelope is noncanonical, combined profile preflight rejects the region, or
+/// ordinary bootstrap lowering fails after profile admission.
+pub fn lower_preflighted_clang_c23<'requirement>(
+    program: &'requirement RegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+    target: NativeTargetIdentity,
+) -> Result<
+    UntrustedNativeSourceArtifact,
+    BootstrapProfilePreflightError<'requirement>,
+> {
+    if !program
+        .profile_requirement
+        .is_canonical_for(&program.profile_id)
+    {
+        return Err(BootstrapProfilePreflightError::ProfileRequirement(
+            Box::new(BootstrapProfileRequirementDrift),
+        ));
+    }
+    preflight_portable_profile_requirement(
+        &program.profile_id,
+        &program.profile_requirement,
+        program.required_memory_words(),
+        runtime,
+    )
+    .map_err(|error| {
+        BootstrapProfilePreflightError::Profile(Box::new(error))
+    })?;
+    lower_clang_c23(program, target).map_err(|error| {
+        BootstrapProfilePreflightError::Artifact(Box::new(error))
     })
 }
 

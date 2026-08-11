@@ -121,9 +121,9 @@ use execution_cache::{
     RegionEffectIdentity,
 };
 use execution_native::{
-    CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
-    CachedPreflightedExecutionTier, CoffAdmissionError,
-    DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
+    BootstrapProfilePreflightError, CLANG_C23_BOOTSTRAP_BACKEND_ID,
+    CLANG_C23_BOOTSTRAP_BACKEND_REVISION, CachedPreflightedExecutionTier,
+    CoffAdmissionError, DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
     DIRECT_HALT_FETCH_BACKEND_ID, DIRECT_HALT_FETCH_BACKEND_REVISION,
     DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
@@ -187,7 +187,8 @@ use execution_native::{
     execute_loaded_verified_native_sequence, execute_verified_native,
     execute_verified_native_sequence, load_cached_verified_native_sequence,
     load_native_executable, load_verified_native_sequence, lower_clang_c23,
-    release_native_executable, release_native_executable_sequence,
+    lower_preflighted_clang_c23, release_native_executable,
+    release_native_executable_sequence,
     select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence, select_preflighted_execution_tier,
     select_verified_direct_native, select_verified_direct_sequence,
@@ -1166,6 +1167,108 @@ fn native_emitters_reject_profile_capacity_inconsistent_ir()
         Ok(())
     } else {
         Err(String::from("direct deopt admitted profile-invalid IR"))
+    }
+}
+
+#[test]
+fn preflighted_bootstrap_rejects_requirement_before_target()
+-> Result<(), String> {
+    let mut forged = native_program();
+    forged.profile_requirement =
+        TargetProfileRequirement::from_descriptor(historical_profile());
+    if matches!(
+        lower_preflighted_clang_c23(
+            &forged,
+            safe_rust_classic_capability(),
+            NativeTargetIdentity::new(base_target_config()),
+        ),
+        Err(BootstrapProfilePreflightError::ProfileRequirement(_))
+    ) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "bootstrap target validation masked profile requirement drift",
+        ))
+    }
+}
+
+#[test]
+fn preflighted_bootstrap_rejects_runtime_before_target() -> Result<(), String> {
+    let program = native_program();
+    let Err(BootstrapProfilePreflightError::Profile(runtime_error)) =
+        lower_preflighted_clang_c23(
+            &program,
+            safe_rust_classic_capability(),
+            NativeTargetIdentity::new(base_target_config()),
+        )
+    else {
+        return Err(String::from(
+            "bootstrap target validation masked runtime profile preflight",
+        ));
+    };
+    if runtime_error.kind()
+        == ProfileRequirementErrorKind::RuntimeCapabilityMissing
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "bootstrap runtime preflight changed diagnostic category",
+        ))
+    }
+}
+
+#[test]
+fn preflighted_bootstrap_rejects_capacity_before_target() -> Result<(), String>
+{
+    let mut overflow = native_program();
+    let address = current_profile().memory_words();
+    let effect = overflow
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("bootstrap fixture has no effect"))?;
+    effect.before.registers.code_pointer = address;
+    effect.after.registers.code_pointer = address;
+    let Err(BootstrapProfilePreflightError::Profile(capacity_error)) =
+        lower_preflighted_clang_c23(
+            &overflow,
+            safe_rust_classic_capability(),
+            NativeTargetIdentity::new(base_target_config()),
+        )
+    else {
+        return Err(String::from(
+            "bootstrap target validation masked profile capacity preflight",
+        ));
+    };
+    if capacity_error.kind()
+        == ProfileRequirementErrorKind::ProfileCapacityExceeded
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "bootstrap capacity preflight changed diagnostic category",
+        ))
+    }
+}
+
+#[test]
+fn preflighted_bootstrap_preserves_raw_lowering_after_admission()
+-> Result<(), String> {
+    let program = native_program();
+    let target = native_target(HostIsa::X86_64);
+    let raw = lower_clang_c23(&program, target.clone())
+        .map_err(|error| error.to_string())?;
+    let admitted = lower_preflighted_clang_c23(
+        &program,
+        safe_rust_profiled_capability(),
+        target,
+    )
+    .map_err(|error| error.to_string())?;
+    if admitted == raw {
+        Ok(())
+    } else {
+        Err(String::from(
+            "profile admission changed bootstrap source candidate",
+        ))
     }
 }
 
