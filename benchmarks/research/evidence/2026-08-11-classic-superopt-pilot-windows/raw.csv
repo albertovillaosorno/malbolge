@@ -1,0 +1,11 @@
+repetition,schedule_id,evaluations,verified_count,first_verified_evaluation,first_verified_candidate,best_candidate,best_quality,elapsed_nanoseconds,first_verified_elapsed_nanoseconds,stop_reason,outcome
+0,deterministic-enumeration-v1,8836,10,706,705,4517,1,221533800,18995000,candidate-corpus-exhausted,verified-candidate-found
+0,splitmix64-sparse-partial-fisher-yates-v1,8836,10,250,4576,4576,1,225080800,6278100,candidate-corpus-exhausted,verified-candidate-found
+1,deterministic-enumeration-v1,8836,10,706,705,4517,1,224074400,18462600,candidate-corpus-exhausted,verified-candidate-found
+1,splitmix64-sparse-partial-fisher-yates-v1,8836,10,250,4576,4576,1,284910800,6119900,candidate-corpus-exhausted,verified-candidate-found
+2,deterministic-enumeration-v1,8836,10,706,705,4517,1,248096000,18718200,candidate-corpus-exhausted,verified-candidate-found
+2,splitmix64-sparse-partial-fisher-yates-v1,8836,10,250,4576,4576,1,222662100,6098200,candidate-corpus-exhausted,verified-candidate-found
+3,deterministic-enumeration-v1,8836,10,706,705,4517,1,243033100,18395400,candidate-corpus-exhausted,verified-candidate-found
+3,splitmix64-sparse-partial-fisher-yates-v1,8836,10,250,4576,4576,1,230959300,6146300,candidate-corpus-exhausted,verified-candidate-found
+4,deterministic-enumeration-v1,8836,10,706,705,4517,1,227928500,18506300,candidate-corpus-exhausted,verified-candidate-found
+4,splitmix64-sparse-partial-fisher-yates-v1,8836,10,250,4576,4576,1,227433600,6098600,candidate-corpus-exhausted,verified-candidate-found

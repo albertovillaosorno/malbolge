@@ -1,0 +1,66 @@
+schema_version = 1
+
+[experiment]
+id = "superoptimization-research-program"
+record_kind = "run"
+seed = 0
+method_class = "optimization"
+
+[challenge]
+family = "classic-verified-block-search-v1"
+difficulty = 1
+target_profile = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[budget]
+seconds = 60
+candidate_evaluations = 10000
+memory_mib = 512
+
+[verification]
+required = true
+oracle = "classic-two-word-no-io-halt-v1"
+baseline = "deterministic-enumeration"
+
+[classic_block_search]
+candidate_count = 8836
+candidate_encoding = "lexicographic-two-graphical-bytes-v1"
+objective = "halt-without-prior-input-or-output"
+quality = "semantic-transitions-to-halt-v1"
+source_words = 2
+verifier = "classic-two-word-no-io-halt-v1"
+workload_sha256 = "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
+
+[provenance]
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/experiment.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"
+
+[measurement]
+repetitions = 5
+warmup_iterations = 0
+ordering = "fixed-enumeration-then-seeded"
+outlier_policy = "retain-all"
+center = "median"
+dispersion = "observed-range"
+uncertainty = "observed-range"
+
+[run]
+commit = "23dd86d656e6b7bdd0d1422a984e95a9feeebd0f"
+workload_sha256 = "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
+host = "Microsoft Windows 10.0.26200 x64-based PC"
+accelerator = "none"
+toolchain = "Python 3.14.6"
+outcome = "success"
+raw_output = "benchmarks/research/evidence/2026-08-11-classic-superopt-pilot-windows/raw.csv"
+
+[superoptimization_measurement]
+format_id = "superoptimization-measurement-run-record-v1"
+measurement_series_id = "superoptimization-five-repetition-measurement-v1"
+repetitions = 5
+comparison_id = "finite-verifier-gated-dual-bound-comparison-v1"
+candidate_count = 8836
+evaluation_budget = 10000
+wall_clock_budget_nanoseconds = 60000000000
+seed = 0
