@@ -615,6 +615,14 @@ def test_canonical_roundtrip_and_atomic_replace(tmp_path: Path) -> None:
     assert document["units_total"] is None
 
 
+def test_loads_rejects_foreign_text_types() -> None:
+    """Direct JSON parsing admits exact text and never decoder aliases."""
+    foreign_values = (object(), b"{}", bytearray(b"{}"))
+    for value in foreign_values:
+        with pytest.raises(ERROR, match="JSON text must use exact string type"):
+            _ = progress.loads(cast("str", value))
+
+
 def test_duplicate_and_unknown_json_keys_fail_closed(tmp_path: Path) -> None:
     """JSON transport cannot overwrite authority or extend v1 silently."""
     sidecar = _sidecar(tmp_path)

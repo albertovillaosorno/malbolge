@@ -1036,6 +1036,8 @@ def loads(text: str) -> ProgressSidecar:
         ProgressSidecarError: If JSON or sidecar invariants are invalid.
 
     """
+    if type(text) is not str:
+        _fail("progress JSON text must use exact string type")
     try:
         parsed = cast(
             "object",
