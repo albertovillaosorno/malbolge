@@ -2,7 +2,7 @@
 
 ## Status
 
-Active planning
+Active
 
 ## Research Question
 
@@ -19,7 +19,7 @@ preregisters only the first comparison so its inputs and stopping rules exist
 before measurements. It does not promote stochastic search or claim that the
 pilot challenge generalizes to other Malbolge workloads.
 
-- Status: Active planning
+- Status: Active
 - Research ID: `superoptimization-research-program`
 - Last reviewed: 2026-08-09
 
@@ -52,18 +52,27 @@ bound, a 10,000-candidate evaluation bound, and a 512 MiB memory bound. A run
 must stop when its governing harness reaches the applicable declared bound; both
 strategies receive the same bounds and challenge identity.
 
-Deterministic enumeration is the baseline. Candidate generation is untrusted,
-and `trusted-semantic-verifier` remains mandatory for every accepted candidate.
-Future recorded runs must add exact commit, workload hash, host, toolchain,
-outcome, accelerator identity, and raw-output path through the repository's run
-manifest contract. No such run is recorded by this planning slice.
+Deterministic enumeration is the baseline. The executable substrate now fixes
+natural enumeration order and a seed-stable SplitMix64 sparse partial
+Fisher-Yates proposal order over opaque candidate indices. The seeded scheduler
+samples without replacement and stores state proportional to the evaluation
+budget, not the logical candidate count. It does not define the
+`classic-verified-block-search-v1` candidate language or execute a candidate.
+Candidate generation remains untrusted, and `trusted-semantic-verifier` remains
+mandatory for every accepted candidate. Future recorded runs must add exact
+commit, workload hash, host, toolchain, outcome, accelerator identity, and
+raw-output path through the repository's run manifest contract. No such run is
+recorded by this slice.
 
 ## Evidence
 
 Repository validators close the plan identity across the research mirror,
 experiment manifest, lifecycle record, target-profile fingerprint, and ignored
-output directory. The plan preserves a non-success outcome vocabulary for later
-runs rather than making success a prerequisite for retained evidence.
+output directory. Schedule tests lock natural enumeration, exact seed replay,
+no-replacement membership, seed separation, fail-closed dimensions, and sparse
+operation over the maximum unsigned-64 logical corpus. The plan preserves a
+non-success outcome vocabulary for later runs rather than making success a
+prerequisite for retained evidence.
 
 The broader study at `../../studies/superoptimization-program.md` remains the
 human synthesis record. This mirrored plan supplies reproducible configuration
@@ -72,7 +81,8 @@ and a reviewed conclusion remain pending.
 
 ## Results
 
-No experiment run or comparative result is recorded yet.
+Candidate-order mechanics are implemented and replay-locked. No experiment run
+or comparative performance result is recorded yet.
 
 ## Threats to Validity
 
@@ -84,8 +94,8 @@ families.
 
 ## Conclusion
 
-The first superoptimization comparison now has a reproducible plan identity, but
-no technique is promoted and no performance conclusion is accepted before
+The first comparison now has reproducible plan and candidate-order identities,
+but no technique is promoted and no performance conclusion is accepted before
 recorded, independently verified runs exist.
 
 ## References

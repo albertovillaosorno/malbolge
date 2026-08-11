@@ -96,7 +96,11 @@ The deterministic enumeration and exact-byte duplicate-pruning paths are the
 initial correctness baselines. The first preregistered comparison is mirrored as
 `superoptimization-research-program`: a classic-profile stochastic-proposal
 pilot against deterministic enumeration with fixed seed, target fingerprint,
-wall-clock, candidate-evaluation, memory, and verifier bounds. New synthesis,
+wall-clock, candidate-evaluation, memory, and verifier bounds. Candidate-order
+mechanics are now executable: natural enumeration is the baseline order and a
+version-stable SplitMix64 sparse partial Fisher-Yates schedule defines the
+seeded no-replacement proposal order. This does not define candidate semantics
+or count as a run. New synthesis,
 equality-saturation, learned, or accelerator-guided strategies must add their
 own equally identified comparisons rather than inheriting a result from that
 pilot. Source claims resolve through `docs/bibliography/`.
@@ -109,8 +113,9 @@ pilot. Source claims resolve through `docs/bibliography/`.
   experiment manifest, raw-output provenance, results, and threats to validity.
 - Initial bibliography-backed technique mapping and falsifiable rejection
   conditions are recorded above. The first schema-one experiment plan,
-  lifecycle record, and two-sided research mirror now establish reproducible
-  identity before measurement. Recorded runs, raw measurements, retained
+  lifecycle record, two-sided research mirror, and replay-locked candidate-order
+  substrate now establish reproducible identity before measurement. Recorded
+  runs, raw measurements, retained
   negative/null results, additional technique plans, and a reviewed comparative
   conclusion remain pending.
 
