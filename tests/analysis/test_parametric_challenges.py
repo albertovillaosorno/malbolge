@@ -67,6 +67,7 @@ _STANDALONE_MAIN = "low-31-bits-only-not-oracle"
 _ARRAY_SUBSCRIPT_KIND = "array-subscript-expression"
 _CALL_EXPRESSION_KIND = "call-expression"
 _IF_STATEMENT_KIND = "if-statement"
+_FOR_STATEMENT_KIND = "for-statement"
 _UNARY_EXPRESSION_KIND = "unary-expression"
 _VARIABLE_DECLARATION_KIND = "variable-declaration"
 _POINTER_TYPE = "ptr(u32)"
@@ -84,6 +85,7 @@ _LINEAR_MIX_FAMILY = "linear-mix"
 _MEMORY_WALK_FAMILY = "memory-walk"
 _POINTER_WALK_FAMILY = "pointer-walk"
 _ALIAS_WALK_FAMILY = "alias-walk"
+_STREAM_STATE_FAMILY = "stream-state"
 _FAMILIES = (
     _ARITHMETIC_DAG_FAMILY,
     _BRANCH_MIX_FAMILY,
@@ -92,6 +94,7 @@ _FAMILIES = (
     _MEMORY_WALK_FAMILY,
     _POINTER_WALK_FAMILY,
     _ALIAS_WALK_FAMILY,
+    _STREAM_STATE_FAMILY,
 )
 _ARITHMETIC_DAG_V1_SOURCE_SHA256 = (
     "dcadb0753d70d16a19601bac1c05b6868767432a48eea67d599056ab28880607"
@@ -290,6 +293,19 @@ def test_pointer_walk_uses_live_data_dependent_addresses() -> None:
     assert source.count("    *slot") == nodes
 
 
+def test_stream_state_emits_live_loop_and_branch() -> None:
+    """Stream challenges keep one loop and one live state branch."""
+    nodes = 19
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_STREAM_STATE_FAMILY, seed=0xCAFE, nodes=nodes)
+    )
+    source = generated.source.decode()
+    assert source.count("    for (") == 1
+    assert source.count("        if (") == 1
+    assert source.count("stream[index]") == 1
+    assert source.count("        UINT32_C(") == nodes
+
+
 def test_identity_dimensions_change_artifact_identity() -> None:
     """Seed and difficulty remain part of the exact generated identity."""
     baseline = _GENERATOR_MODULE.generate(_identity())
@@ -313,6 +329,7 @@ def test_identity_dimensions_change_artifact_identity() -> None:
         (_MEMORY_WALK_FAMILY, "splitmix64-memory-walk-v1"),
         (_POINTER_WALK_FAMILY, "splitmix64-pointer-walk-v1"),
         (_ALIAS_WALK_FAMILY, "splitmix64-alias-walk-v1"),
+        (_STREAM_STATE_FAMILY, "splitmix64-stream-state-v1"),
     ],
 )
 def test_manifest_binds_identity_hashes_and_oracle(
@@ -531,6 +548,48 @@ def test_pointer_family_is_admitted_by_normalized_frontend(
     assert unary_operations == 3 * nodes
 
 
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME,
+    reason="reviewed normalized C frontend is Windows x86-64",
+)
+def test_stream_family_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep stream loop, indexed read, and branch after normalization."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_STREAM_STATE_FAMILY, seed=41, nodes=23)
+    )
+    source = tmp_path / "stream.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/stream-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    assert sum(
+        node.get("kind") == _FOR_STATEMENT_KIND for node in normalized
+    ) == 1
+    assert sum(
+        node.get("kind") == _IF_STATEMENT_KIND for node in normalized
+    ) == 1
+    assert sum(
+        node.get("kind") == _ARRAY_SUBSCRIPT_KIND for node in normalized
+    ) == 1
+
+
 def _assert_native_oracle(
     generated: _GeneratedChallenge,
     tmp_path: Path,
@@ -603,6 +662,9 @@ def _assert_native_oracle(
         (_ALIAS_WALK_FAMILY, 0, 1),
         (_ALIAS_WALK_FAMILY, 7, 64),
         (_ALIAS_WALK_FAMILY, 0x1234, 257),
+        (_STREAM_STATE_FAMILY, 0, 1),
+        (_STREAM_STATE_FAMILY, 7, 64),
+        (_STREAM_STATE_FAMILY, 0x1234, 257),
     ],
 )
 def test_native_source_result_matches_independent_oracle(

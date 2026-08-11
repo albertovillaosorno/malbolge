@@ -61,6 +61,7 @@ _LINEAR_MIX_FAMILY: Final = "linear-mix"
 _MEMORY_WALK_FAMILY: Final = "memory-walk"
 _POINTER_WALK_FAMILY: Final = "pointer-walk"
 _ALIAS_WALK_FAMILY: Final = "alias-walk"
+_STREAM_STATE_FAMILY: Final = "stream-state"
 _FAMILY_ALGORITHMS: Final = {
     _ARITHMETIC_DAG_FAMILY: "splitmix64-arithmetic-dag-v1",
     _BRANCH_MIX_FAMILY: "splitmix64-branch-mix-v1",
@@ -69,6 +70,7 @@ _FAMILY_ALGORITHMS: Final = {
     _MEMORY_WALK_FAMILY: "splitmix64-memory-walk-v1",
     _POINTER_WALK_FAMILY: "splitmix64-pointer-walk-v1",
     _ALIAS_WALK_FAMILY: "splitmix64-alias-walk-v1",
+    _STREAM_STATE_FAMILY: "splitmix64-stream-state-v1",
 }
 _FAMILIES: Final = frozenset(_FAMILY_ALGORITHMS)
 _VERSION: Final = 1
@@ -78,6 +80,7 @@ _LINEAR_MIX_SEED_SALT: Final = 0x4C49_4E45_4152_4D58
 _MEMORY_WALK_SEED_SALT: Final = 0x4D45_4D4F_5259_574B
 _POINTER_WALK_SEED_SALT: Final = 0x5054_5257_414C_4B31
 _ALIAS_WALK_SEED_SALT: Final = 0x414C_4941_5357_4B31
+_STREAM_STATE_SEED_SALT: Final = 0x5354_524D_5354_4154
 _MEMORY_WALK_CELLS: Final = 8
 _MASK32: Final = (1 << 32) - 1
 _MASK64: Final = (1 << 64) - 1
@@ -596,6 +599,59 @@ def _alias_walk_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     )
 
 
+def _stream_state_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _STREAM_STATE_SEED_SALT)
+    initial = rng.next_u32()
+    addend = rng.next_u32()
+    mask = rng.next_u32()
+    tokens = [rng.next_u32() for _index in range(identity.nodes)]
+    lines = [
+        "#include <stdint.h>",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t stream[{identity.nodes}] = {{",
+        *(f"        UINT32_C({token})," for token in tokens),
+        "    };",
+        f"    uint32_t state = UINT32_C({initial});",
+        (
+            "    for (uint32_t index = UINT32_C(0); "
+            f"index < UINT32_C({identity.nodes}); "
+            "index += UINT32_C(1)) {"
+        ),
+        "        uint32_t token = stream[index];",
+        "        if (((state ^ token) & UINT32_C(1)) != UINT32_C(0)) {",
+        (
+            "            state = (state + token + "
+            f"UINT32_C({addend})) ^ UINT32_C({mask});"
+        ),
+        "        } else {",
+        (
+            "            state = (state ^ token ^ "
+            f"UINT32_C({mask})) + UINT32_C({addend});"
+        ),
+        "        }",
+        "    }",
+        "    return state;",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ]
+    state = initial
+    for token in tokens:
+        if (state ^ token) & 1:
+            state = ((state + token + addend) & _MASK32) ^ mask
+        else:
+            state = ((state ^ token ^ mask) + addend) & _MASK32
+    return (
+        chr(10).join(lines).encode(),
+        state.to_bytes(_ORACLE_BYTES, byteorder="little"),
+    )
+
+
 _PAYLOAD_RENDERERS: Final = {
     _ARITHMETIC_DAG_FAMILY: _arithmetic_dag_payload,
     _BRANCH_MIX_FAMILY: _branch_mix_payload,
@@ -604,6 +660,7 @@ _PAYLOAD_RENDERERS: Final = {
     _MEMORY_WALK_FAMILY: _memory_walk_payload,
     _POINTER_WALK_FAMILY: _pointer_walk_payload,
     _ALIAS_WALK_FAMILY: _alias_walk_payload,
+    _STREAM_STATE_FAMILY: _stream_state_payload,
 }
 
 
