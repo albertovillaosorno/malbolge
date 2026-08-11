@@ -279,7 +279,12 @@ converted to fallback. Its cache-aware form performs the same profile and
 explicit
 `DirectHost` checks before exact-key lookup. A populated verified-direct cache
 cannot bypass either diagnostic, and profile/interpreter outcomes do not mutate
-cache cardinality.
+cache cardinality. Native-retry planning also keeps profile failure hard: it
+retains the stable retry step/index category while snapshotting the exact
+canonical `MALBOLGE-PROFILE-001` text before taking ownership of the suspension.
+The owned planning failure therefore renders the same runtime-profile diagnostic
+as direct sequence preflight instead of degrading it to a generic `profile`
+label. Retry-capacity `MALBOLGE-PROFILE-002` propagation is not claimed yet.
 Other artifact families do not yet universally expose an equivalent program
 requirement. Raw `.malbolge` product invocation uses canonical source preflight,
 and bootstrap source generation plus external Clang compilation now have
@@ -311,8 +316,10 @@ profile diagnostic completion.
   `u32::MAX`, native-identity rejection of inconsistent capacity, `MBPF` v3
   footprint mismatch rejection, emitter propagation, direct-template precedence
   `002` then `001` then host/backend, the same precedence before verified direct
-  cache lookup without cache mutation on rejection/interpreter selection, and
-  byte-identical `002`/`001` precedence before external Clang launch. The same
+  cache lookup without cache mutation on rejection/interpreter selection,
+  native-retry preservation of exact `MALBOLGE-PROFILE-001` text across owned
+  planning failure, and byte-identical `002`/`001` precedence before external
+  Clang launch. The same
   suite compiles real x86-64/AArch64 COFF through the product compiler adapter.
 - `tests/vm/profile_machine.rs` verifies `safe-rust-profiled` admits and
   executes

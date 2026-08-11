@@ -119,6 +119,11 @@ historical-profile constraint.
   and preserves `002`/`001` ahead of missing-compiler launch failure. Admitted
   x86-64 and AArch64 fixtures compile through pinned Clang and retain structural
   COFF admission.
+- Native-retry planning preserves profile rejection as a hard failure and now
+  snapshots the exact canonical `MALBOLGE-PROFILE-001` text before the planner
+  takes ownership of the suspension. Callers retain the stable retry step/index
+  category while the owned failure renders the same diagnostic as direct
+  sequence preflight. Retry-capacity `002` propagation remains open.
 - Raw `.malbolge` CLI invocation now uses `ExecutionMachine`, so source capacity
   reaches the same historical-ceiling diagnostic without changing normal
   interpreter output. Equivalent program-memory requirements for non-IR artifact
