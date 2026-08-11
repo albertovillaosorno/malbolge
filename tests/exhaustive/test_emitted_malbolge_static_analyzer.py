@@ -79,6 +79,9 @@ _RECUR_DATA_ADDRESS = 41
 _RECUR_DATA_WORDS = 42
 _THIRD_STUCK_SOURCE = b"c'"
 _FOURTH_STUCK_SOURCE = b"('&"
+_FIFTH_TRANSFER_SOURCE = b"('&%"
+_FIFTH_FETCH_ADDRESS = 4
+_FIFTH_DATA_ADDRESS = 29_490
 _FOURTH_FETCH_ADDRESS = 3
 _FOURTH_DATA_ADDRESS = 39
 _FOURTH_HIGHEST_ADDRESS = 29_488
@@ -222,7 +225,20 @@ class _ClassicModule(Protocol):
         ...
 
 
+class _PrefixModule(Protocol):
+    def analyze_next_transition(
+        self,
+        words: tuple[int, ...],
+        entry: _EntryTransition,
+        prior: tuple[_SecondTransition, ...],
+    ) -> _SecondTransition | None:
+        """Resolve exactly one step after an explicit finite prefix."""
+        ...
+
+
 class _AnalyzerModule(Protocol):
+    prefix_transfer: _PrefixModule
+
     def analyze_source(self, source: bytes) -> _Report:
         """Analyze source without running it."""
         ...
@@ -816,6 +832,38 @@ def test_fourth_transition_proves_recurrence_fixed_fetch_cycle() -> None:
     memory = report.bounded_memory_requirement
     assert memory is not None
     _assert_fourth_memory(memory)
+
+
+def test_next_transfer_resolves_fifth_fixed_fetch_cycle() -> None:
+    """Generic transfer resolves one fifth step beyond the public v7 report."""
+    report = _ANALYZER_MODULE.analyze_source(_FIFTH_TRANSFER_SOURCE)
+    entry = report.entry_transition
+    second = report.second_transition
+    third = report.third_transition
+    fourth = report.fourth_transition
+    assert entry is not None
+    assert second is not None
+    assert third is not None
+    assert fourth is not None
+    assert fourth.status == _ENTRY_CONTINUED
+    transition = _ANALYZER_MODULE.prefix_transfer.analyze_next_transition(
+        tuple(_FIFTH_TRANSFER_SOURCE),
+        entry,
+        (second, third, fourth),
+    )
+    assert transition is not None
+    expected_fetch = _historical_c_op(
+        _FIFTH_TRANSFER_SOURCE[3],
+        _FIFTH_TRANSFER_SOURCE[2],
+    )
+    assert transition.status == _THIRD_STUCK
+    assert transition.fetched_address == _FIFTH_FETCH_ADDRESS
+    assert transition.fetched_value == expected_fetch
+    assert transition.decoded_byte is None
+    assert transition.data_address == _FIFTH_DATA_ADDRESS
+    assert transition.next_fetch_address == _FIFTH_FETCH_ADDRESS
+    assert transition.provable_cycle
+    assert not transition.accepted
 
 
 def test_second_transition_rejects_reachable_rotate_alias() -> None:
