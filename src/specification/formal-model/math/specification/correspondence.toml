@@ -236,6 +236,16 @@ mechanism = "exhaustive-accumulator-reachable-target-count"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_accumulator_planning_bounds_match_independent_relation"]
 
 [[correspondence]]
+id = "optimization-crazy-accumulator-class-cardinality"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-accumulator-class-cardinality"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all 59049 classic accumulators partitioned by exact count of trits equal to two"
+mechanism = "full-domain-histogram-plus-binomial-closed-form"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_accumulator_classes_partition_complete_classic_domain", "tests/optimizer/test_crazy_target_search.py::test_accumulator_class_cardinality_matches_closed_form"]
+
+[[correspondence]]
 id = "optimization-decode-phase"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-decode-phase"

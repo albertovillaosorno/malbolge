@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import comb
 from typing import TYPE_CHECKING
 from typing import cast
 from typing import override
@@ -400,6 +401,14 @@ def test_accumulator_classes_partition_complete_classic_domain() -> None:
     assert tuple(item.accumulator_count for item in classes) == histogram
     assert sum(histogram) == FULL_DOMAIN_COUNT
     assert tuple(item.two_trits for item in classes) == tuple(range(11))
+
+
+def test_accumulator_class_cardinality_matches_closed_form() -> None:
+    """Each sufficient-statistic class has the exact binomial cardinality."""
+    classes = crazy_target_full_domain_accumulator_classes()
+    for item in classes:
+        expected = comb(10, item.two_trits) * 2 ** (10 - item.two_trits)
+        assert item.accumulator_count == expected
 
 
 def test_accumulator_classes_match_every_state_level_planning_bound() -> None:

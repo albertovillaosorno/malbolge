@@ -172,6 +172,20 @@ This count can reject impossible target states before data-word enumeration.
 It is a complete-domain reachability cardinality and does not assert that an
 external candidate corpus contains any particular preimage.
 
+The same statistic $n_2(a)$ partitions the complete accumulator domain. For
+$k\in\{0,\ldots,10\}$, exactly $k$ positions must be chosen for trit value 2,
+and every remaining position independently admits either trit 0 or trit 1.
+Hence the exact cardinality of accumulator class $k$ is
+\begin{equation}
+  \left|\{a\in\WordDomain{10}:n_2(a)=k\}\right|
+    = \binom{10}{k}2^{10-k}.
+  \label{eq:optimization-crazy-accumulator-class-cardinality}
+\end{equation}
+Summing these eleven classes yields $(2+1)^{10}=3^{10}=59049$, so the
+partition is complete. This grouping is an exact planning classification only;
+it does not imply that two accumulator values are semantically interchangeable
+outside the two crazy-target cardinalities derived above.
+
 \section{Decode phase reduction}
 
 For graphical cell $m$, decode depends on the code pointer only through its
