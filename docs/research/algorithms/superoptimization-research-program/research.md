@@ -88,8 +88,12 @@ provenance. The `pilot.py` orchestration layer separately revalidates the plan's
 challenge/verifier/workload identity before constructing the exact dual-bound
 request and wiring only the concrete semantic verifier into the runner. Import,
 plan validation, and synthetic zero-evaluation wiring tests are not
-measurements.
-No concrete run is recorded by this slice.
+measurements. The committed measurement extension freezes five retained cold
+repetitions, fixed enumeration-then-seeded ordering, no warmup, retain-all
+outlier policy, median center, and observed-range evidence before the first run.
+The first measured pilot is retained under
+`benchmarks/research/evidence/2026-08-11-classic-superopt-pilot-windows/` and
+binds pre-run commit `23dd86d6`.
 
 ## Evidence
 
@@ -113,36 +117,52 @@ deterministic rendering, shared schema-v1 admission, retained verified/null
 schedule metrics, plan/result bound closure, candidate-corpus/workload closure,
 and shared commit-shape authority. Pilot-orchestration tests additionally prove
 plan-to-request identity and fail-closed workload/verifier drift without
-executing a candidate. The plan preserves a non-success outcome vocabulary for
-later runs rather than
-making success a prerequisite for retained evidence.
+executing a candidate. Measurement tests lock the five-repetition retain-all
+protocol without real timing; recorded-evidence tests then validate the tracked
+run/benchmark records and recompute exact semantic and median timing results
+from retained CSV without rerunning the experiment. The plan preserves a
+non-success outcome vocabulary rather than making success a prerequisite for
+retained evidence.
 
 The broader study at `../../studies/superoptimization-program.md` remains the
-human synthesis record. This mirrored plan supplies reproducible configuration
-for its first hypothesis only; comparative raw output, dispersion, failures,
-and a reviewed conclusion remain pending.
+human synthesis record. This mirrored plan now has one retained host-specific
+pilot for its first hypothesis. Additional seeds, larger challenge families,
+other techniques, independent-host replication, and stronger statistical power
+remain pending.
 
 ## Results
 
-Candidate semantics, candidate-order mechanics, and equal-budget verifier-gated
-execution under both preregistered evaluation and wall-clock bounds are
-implemented and replay-locked before measurement. The complete challenge corpus
-has ten independently verified accepted members, but no comparative search run,
-raw timing evidence, or performance result is recorded yet.
+The first measured seed-zero comparison retained five cold repetitions on
+Microsoft Windows 10.0.26200 x64 with Python 3.14.6. Both schedules exhausted
+all
+8,836 candidates and verified the same ten accepted sources in every repetition;
+both reached best quality 1. Deterministic enumeration first verified candidate
+705 at evaluation 706, while the seeded order first verified candidate 4576 at
+evaluation 250. That evaluation-count difference is exact for the frozen corpus
+and schedule identities. Median first-hit elapsed time was 18,506,300 ns for
+enumeration and 6,119,900 ns for seeded order. Median full-corpus time was
+227,928,500 ns versus 227,433,600 ns, with overlapping observed ranges, so this
+pilot does not establish a total-throughput advantage.
 
 ## Threats to Validity
 
-A single classic pilot can be dominated by challenge-family bias, search-seed
-variance, evaluator overhead, verifier cost, candidate-language choices, and
-hardware or toolchain effects. Even a positive pilot would not establish that
-stochastic search dominates synthesis, equality saturation, or other workload
-families.
+This single-host, seed-zero, five-repetition pilot is dominated by possible
+challenge-family bias, fixed enumeration-then-seeded ordering, Python verifier
+overhead, evaluator cost, candidate-language choices, and hardware/toolchain
+effects. The two-word corpus is deliberately tiny, and no cross-seed or
+cross-host dispersion is available. The positive first-hit result therefore does
+not establish that stochastic search dominates other seeds, larger Malbolge
+workloads, synthesis, equality saturation, or other workload families.
 
 ## Conclusion
 
-The first comparison now has reproducible challenge, verifier, workload, plan,
-and candidate-order identities, but no technique is promoted and no performance
-conclusion is accepted before recorded, independently verified runs exist.
+For this frozen seed-zero corpus, H1 is supported only on the first-hit
+objective: seeded proposal order requires 250 evaluations versus 706 for
+enumeration and also had a lower first-hit median on this host. Best quality
+ties
+and full-corpus timing is effectively inconclusive. This is retained pilot
+evidence, not sufficient basis to promote stochastic search to product
+architecture or generalize beyond the recorded challenge/seed/host.
 
 ## References
 

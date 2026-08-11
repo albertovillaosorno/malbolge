@@ -104,8 +104,13 @@ before measurement as every two-graphical-byte classic source (8,836 members),
 with independent acceptance only for one- or two-transition halts that perform
 no
 prior input/output and quality equal to transitions-to-halt. Exhaustive verifier
-characterization finds ten accepted members, but that is corpus correctness
-information rather than a strategy comparison or timing result. New synthesis,
+characterization finds ten accepted members. A preregistered five-repetition
+seed-zero pilot is now retained: seeded ordering reaches the first verified
+candidate in 250 evaluations versus 706 for enumeration, with best quality 1 on
+both paths. First-hit median elapsed time also favors seeded order on the
+recorded host, while full-corpus medians overlap and are effectively tied. This
+supports only the frozen pilot's first-hit objective; it is not a general
+stochastic-search or throughput result. New synthesis,
 equality-saturation, learned, or accelerator-guided strategies must add their
 own equally identified comparisons rather than inheriting a result from that
 pilot. Source claims resolve through `docs/bibliography/`.
@@ -120,21 +125,26 @@ pilot. Source claims resolve through `docs/bibliography/`.
   conditions are recorded above. The first schema-one experiment plan,
   lifecycle record, two-sided research mirror, concrete workload/verifier
   identity, exhaustive corpus characterization, and replay-locked
-  candidate-order
-  substrate now establish reproducible identity before measurement. Recorded
-  runs, raw measurements, retained
-  negative/null results, additional technique plans, and a reviewed comparative
-  conclusion remain pending.
+  candidate-order substrate established reproducible identity before
+  measurement. The first tracked run now retains all five raw repetitions plus
+  generated run/benchmark identity and exact regression tests. Additional seeds,
+  larger challenges, retained negative/null results, additional technique plans,
+  independent-host replication, and a stronger comparative conclusion remain
+  pending.
 
 ## Results
 
-No completed comparative research result or product implementation claim is made
-by this active record.
+The first seed-zero classic pilot supports the first-hit objective only: 250
+seeded evaluations to first verification versus 706 for deterministic
+enumeration, with equal best quality. Host timing likewise favors seeded
+first-hit median, but full-corpus runtime does not separate materially. No
+product implementation or general technique-superiority claim is made.
 
 ## Threats to Validity
 
-The record is active but unmeasured; implementation bias, workload selection,
-hardware effects, and incomplete replication remain threats until measured.
+The record remains active. One tiny two-word challenge, one seed, fixed schedule
+ordering, five repetitions, Python verifier overhead, one Windows host, and no
+independent replication materially limit the first pilot's external validity.
 
 ## Conclusion
 

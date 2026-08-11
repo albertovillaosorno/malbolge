@@ -98,5 +98,14 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   to halt. Exhaustive low-level transfer evidence finds ten accepted corpus
   members (eight one-step, two two-step) and locks the workload/accepted-set
   hashes; this is challenge characterization, not comparative search evidence.
-  Recorded runs/raw measurements, plans for the other techniques, and a reviewed
-  conclusion remain pending.
+  The timing protocol was then preregistered before measurement as five retained
+  cold repetitions with fixed enumeration-then-seeded order, no warmup,
+  retain-all outliers, median center, and observed-range evidence. The first
+  tracked run binds pre-run commit `23dd86d6`, retains all raw rows, and passes
+  both experiment-manifest and benchmark-protocol validation. Every repetition
+  exhausts 8,836 candidates and finds all ten verified sources; seeded first-hit
+  work is 250 evaluations versus 706 for enumeration, both best qualities are 1,
+  and median first-hit time is 6,119,900 ns versus 18,506,300 ns. Full-corpus
+  medians are nearly equal with overlapping ranges, so no throughput win is
+  claimed. Additional seeds, larger challenges, independent hosts, plans for the
+  other techniques, and a stronger comparative conclusion remain pending.
