@@ -27,10 +27,11 @@ It can also prove the historical non-graphical-fetch fixed cycle because
 `continue` precedes pointer advance. The prefix module now has both one
 generic next-transition primitive over an
 explicit accepted prefix and one single-pass finite continuation iterator.
-The entry opcode is independently decoded from source cell zero, the supplied
-entry transition is recomputed from that derived opcode before replay, and every
-supplied continuation record is recomputed from the current bounded state before
-its writes can influence later analysis. Forged entries and
+Explicit replay first requires at least two source words to seed the historical
+recurrence. The entry opcode is independently decoded from source cell zero, the
+supplied entry transition is recomputed from that derived opcode before replay,
+and every supplied continuation record is recomputed from the current bounded
+state before its writes can influence later analysis. Forged entries and
 noncontiguous/forged prefixes fail closed. The finite transfer also
 canonicalizes evolved memory as exact sparse overrides and can identify a
 repeated concrete `(C,D,A,memory)` state when the accumulator is known. That

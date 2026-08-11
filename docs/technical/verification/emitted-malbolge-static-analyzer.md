@@ -95,9 +95,10 @@ remain open.
   bounded transfer records resolve only the explicitly selected finite prefix.
 - Finite-prefix report evidence never implies control flow after the selected
   transition limit. A separate next-transition call requires the caller to
-  supply the exact accepted prefix explicitly. The entry opcode is first
+  supply the exact accepted prefix explicitly. Replay first requires at least
+  two source words for the historical recurrence base. The entry opcode is then
   independently decoded from source cell zero, its transition is recomputed from
-  that derived opcode, then every continuation record is recomputed from the
+  that derived opcode, and every continuation record is recomputed from the
   current bounded state before its writes are replayed. General
   reachability remains unproved.
 - Every reported initial cell preserves its loaded position and raw-source byte

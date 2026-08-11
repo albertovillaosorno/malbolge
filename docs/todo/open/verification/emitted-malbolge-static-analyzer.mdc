@@ -65,10 +65,11 @@ executable cells, and input-dependent cycles or hangs.
   fixture continues through three exact jumps and proves a recurrence-backed
   fourth fixed-fetch cycle at `C=3`, `D=39`, `M[3]=29487`. The prefix transfer
   now exposes one generic next-step primitive over an explicit finite accepted
-  prefix. The entry opcode is independently decoded from source cell zero and
-  the caller-supplied entry transition is recomputed from that derived opcode
-  before replay. Every continuation record is then recomputed from the current
-  bounded state before its writes can influence analysis.
+  prefix. Explicit replay first requires the historical two-word recurrence
+  base. The entry opcode is independently decoded from source cell zero and the
+  caller-supplied entry transition is recomputed from that derived opcode before
+  replay. Every continuation record is then recomputed from the current bounded
+  state before its writes can influence analysis.
   Forged entries and skipped/reordered/forged prefix records fail closed. The
   four-word `b"('&%"` fixture uses it after four continued `j`
   transitions to prove a recurrence-backed fifth fixed-fetch cycle at `C=4`,
