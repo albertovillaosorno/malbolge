@@ -48,9 +48,11 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v11 keeps
-  the exact entry-through-fifth compatibility fields and adds one generic
-  `bounded_continuations` trace with an explicit total transition limit of 16.
+  offsets, stable finding codes, and explicit analysis limits. Schema v12
+  keeps the exact entry-through-fifth compatibility fields and one generic
+  `bounded_continuations` trace. Sixteen transitions remain the default,
+  while library and CLI callers may request any finite total bound from 1
+  through 256.
   It publishes the bounded memory requirement for the complete trace and
   records evolved fetch/data cells, C/D aliasing, planned writes, encryption
   input/output,
@@ -67,22 +69,23 @@ executable cells, and input-dependent cycles or hangs.
   its writes are replayed, so skipped/reordered/forged prefix records fail
   closed. The four-word `b"('&%"` fixture uses it after four continued `j`
   transitions to prove a recurrence-backed fifth fixed-fetch cycle at `C=4`,
-  `D=29490`, `M[4]=29489`; schema v11 publishes that exact step and includes
-  address 4 in its bounded memory evidence. Schema v11 adds exact bounded
+  `D=29490`, `M[4]=29489`; schema v12 publishes that exact step and includes
+  address 4 in its bounded memory evidence. Schema v12 adds exact bounded
   source-address context: fetches map loaded-source addresses to their original
   loaded position/raw byte offset/initial byte and record whether the fetched
   value still equals that byte. A companion access map applies the same source
   coordinates to each exact fetch, actual data read, planned data write, and
   self-encryption address. Recurrence-only addresses remain explicitly
   unmapped. Rejected or unresolved report prefixes still emit JSON but return
-  a nonzero CLI status. A 16-cell sequential-output fixture reaches the full
-  reviewed bound with exact source/access provenance; invalid continuation
-  limits fail closed.
-- Automatic/report-level transition-17-and-later control-flow reachability,
-  broader dataflow/evolved-memory equivalence, higher-level C/source-map
-  linkage, complete value lineage, later wraparound beyond the bounded trace,
-  and longer input-dependent cycles remain open and are never inferred from the
-  16-transition prefix or initial-image admission.
+  a nonzero CLI status. Default-16, explicit-32, and maximum-256
+  sequential-output fixtures exercise the finite report bound; transition
+  17+ is reportable under an explicit request. Requests outside 1 through
+  256 fail closed before analysis.
+- Automatic unbounded/worklist control-flow reachability, broader
+  dataflow/evolved-memory equivalence, higher-level C/source-map linkage,
+  complete value lineage, later wraparound beyond the selected finite
+  trace, and longer input-dependent cycles remain open. Nothing after the
+  requested bound is inferred from prefix or initial-image admission.
 
 - Expected durable artifact surface: `verifier/`, `tests/differential/`,
   `tests/exhaustive/`, `tests/fuzz/`.
@@ -101,8 +104,9 @@ executable cells, and input-dependent cycles or hangs.
   invalid self-encryption and input-dependent-crazy fixtures, a 25-case public
   CLI differential spanning recurrence-backed entry `j`, 16 seeded invalid
   positional mutations with byte-exact replay, exact third/fourth/fifth-step
-  halt or fixed-fetch-cycle evidence, exact 16-transition sequential-output
-  continuation evidence, bounded recurrence-backed memory requirements, exact
+  halt or fixed-fetch-cycle evidence, default-16, explicit-32 transition-17+
+  and maximum-256 sequential-output continuation evidence, bounded
+  recurrence-backed memory requirements, exact
   loaded-source/raw-offset bounded
   fetch/read/write/encryption context,
   explicit bounded analysis limits, CLI second/third/fourth rejection status,

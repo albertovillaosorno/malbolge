@@ -8,16 +8,16 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v11 retains the legacy exact entry-through-fifth
-fields and adds
-`bounded_continuations` plus an explicit total transition limit of 16. The
+load decode. Schema v12 retains the legacy exact entry-through-fifth
+fields and adds `bounded_continuations`. Sixteen transitions remain the
+default; callers may request a finite total limit from 1 through 256. The
 single-pass bounded trace replays
 committed writes before resolving fetch/data cells, code/data aliasing, planned
 writes, encryption input/output, input dependence, halt/rejection, pointer
 succession, and wrap without a worklist or unbounded guest execution. The
 report also publishes the minimum word footprint and exact addresses actually
 touched by the analyzed prefix; merely-held future C/D pointers are not counted.
-For each resolved bounded fetch, schema v11 maps loaded-source addresses back
+For each resolved bounded fetch, schema v12 maps loaded-source addresses back
 to the original loaded position/raw byte offset and initial source byte, while
 recurrence-only fetches remain explicitly unmapped. The record also states
 whether the fetched value still equals that initial source byte. A second
@@ -31,12 +31,18 @@ Supplied transition records passed to the former are recomputed from the current
 bounded state before their writes can influence later analysis;
 noncontiguous/forged prefixes fail closed.
 A four-word `b"('&%"` fixture uses it to prove a recurrence-backed fifth
-fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v11 publishes that
-exact transition and its bounded memory footprint. A 16-cell sequential-output
-fixture reaches the complete reviewed bound with exact source/access evidence.
-Transition 17 and later control flow, higher-level C/source-map linkage,
-complete
-value-lineage provenance, and longer input-dependent cycles remain unproved.
+fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v12 publishes that
+exact transition and its bounded memory footprint. Schema v12 keeps sixteen
+transitions as the default but makes finite depth explicit. Library callers and
+the CLI `--transition-limit N` option may request from 1 through 256 exact
+transitions. The report binds that request in `bounded_transition_limit`,
+numeric memory-scope identity, and every bounded analysis-limit string. A
+32-cell
+sequential-output fixture proves transition 17 and later are reported exactly
+when requested, while a 256-cell fixture proves the reviewed safety ceiling.
+Reachability beyond the selected finite bound, higher-level C/source-map
+linkage, complete value-lineage provenance, and longer input-dependent cycles
+remain unproved.
 
 The initial-image report is bounded by the selected historical profile. Sources
 that exceed 59,049 loaded words receive a capacity finding without materializing
@@ -48,10 +54,12 @@ lexical, recurrence-base, capacity, and positional-decode failures.
 
 The CLI always emits the canonical UTF-8 report bytes when source bytes are
 readable, without platform newline translation. It returns zero only when the
-admitted image also has an accepted bounded 16-transition trace (or halts
-exactly before that bound). Proven rejection, unresolved input-dependent state,
-or a fixed-fetch cycle at any resolved step returns nonzero; an exact halt at
-any resolved prefix step remains an accepted terminal result.
+admitted image also has an accepted trace through the requested finite bound (or
+halts exactly before that bound). The default request is 16 transitions. Proven
+rejection, unresolved input-dependent state, or a fixed-fetch cycle at any
+resolved step returns nonzero; an exact halt at any resolved prefix step remains
+an accepted terminal result. Requests outside 1 through 256 fail before source
+analysis.
 
 Each report also carries a SHA-256 identity for the exact raw source bytes. This
 distinguishes inputs that have the same loaded-word semantics, including

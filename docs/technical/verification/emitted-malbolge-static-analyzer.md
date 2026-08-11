@@ -30,10 +30,12 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v11` retains exact `entry_transition` through
-`fifth_transition` compatibility fields and adds `bounded_continuations` plus
-an explicit total transition limit of 16. One single-pass finite trace replays
-committed writes before each bounded read, then resolves fetch/data cells,
+`malbolge-static-image/v12` retains exact `entry_transition` through
+`fifth_transition` compatibility fields and adds `bounded_continuations`.
+Sixteen transitions remain the default, while one explicit finite request
+may select any total bound from 1 through 256. One single-pass finite trace
+replays committed writes before each bounded read, then resolves fetch/data
+cells,
 decode, C/D alias, planned data write, encryption address/input/output,
 accumulator dependency, halt/rejection, pointer succession, and wrap.
 A `p` whose accumulator depends on prior input is
@@ -49,7 +51,7 @@ finite accepted prefix. The four-word `b"('&%"` fixture continues through four
 `j` steps and then uses that primitive to prove a fifth recurrence-backed fixed
 fetch at `C=4`, `D=29490`, `M[4]=29489`. Historical recurrence words are
 derived only when a bounded read needs them.
-Schema v11 publishes `bounded_fetch_source_map`: each resolved instruction
+Schema v12 publishes `bounded_fetch_source_map`: each resolved instruction
 fetch carries its bounded transition index, fetched address/value, and original
 loaded source position/raw byte offset/initial byte when that address belongs to
 the loaded source image. Recurrence-only addresses carry null source
@@ -66,14 +68,20 @@ future pointer value alone is not a memory touch; for example the proven
 non-graphical third-step cycle keeps `D=40` without reading address 40.
 
 Initial-image admission is deliberately narrower than whole-program safety.
-Schema v11 proves at most 16 exact transitions, stopping earlier on halt,
-rejection, fixed-fetch cycle, or unresolved input-dependent state. The legacy
-second-through-fifth fields project the first four continuation records, while
-memory/source-access evidence uses the complete bounded trace. A 16-cell
-sequential-output fixture reaches the reviewed bound exactly. Transition 17 and
-later reachability, general dataflow/evolved-memory equivalence, higher-level
-C/source-map linkage, complete value-lineage provenance, and longer
-input-dependent cycle/hang safety remain open.
+Schema v12 keeps 16 exact transitions as the default and admits an explicit
+finite `transition_limit` from 1 through 256. The CLI exposes the same
+request as
+`--transition-limit N`. Analysis stops earlier on halt, rejection, fixed-fetch
+cycle, or unresolved input-dependent state. The legacy second-through-fifth
+fields project the first four continuation records, while memory/source-access
+evidence uses the complete selected trace. A 32-cell sequential-output fixture
+proves transition 17 and later reporting under an explicit request, and a
+256-cell fixture closes the reviewed maximum. The report records the selected
+bound in `bounded_transition_limit`, the bounded-memory scope, and every
+limit-dependent analysis string. Reachability beyond that selected finite bound,
+general dataflow/evolved-memory equivalence, higher-level C/source-map linkage,
+complete value-lineage provenance, and longer input-dependent cycle/hang safety
+remain open.
 
 ## Invariants
 
@@ -81,12 +89,12 @@ input-dependent cycle/hang safety remain open.
   imply which addresses are reachable or whether a particular run wraps a
   pointer.
 - Per-cell encryption-target classification does not imply reachability. The
-  bounded transfer records resolve at most the first 16 historical transitions.
-- Sixteen-transition report evidence never implies transition 17 or later
-  control flow. A separate next-transition call requires the caller to supply
-  the exact accepted prefix explicitly; every supplied transition is recomputed
-  from the current bounded state before its writes are replayed. General
-  reachability remains unproved.
+  bounded transfer records resolve only the explicitly selected finite prefix.
+- Finite-prefix report evidence never implies control flow after the selected
+  transition limit. A separate next-transition call requires the caller to
+  supply the exact accepted prefix explicitly; every supplied transition is
+  recomputed from the current bounded state before its writes are replayed.
+  General reachability remains unproved.
 - Every reported initial cell preserves its loaded position and raw-source byte
   offset, and every report binds the exact source bytes and historical profile.
   Bounded fetch and memory-access source context map only addresses in that
@@ -126,8 +134,9 @@ Unreadable source fails before a semantic report is emitted.
   differential including recurrence-backed entry `j`, 16 seeded invalid
   positional mutations with byte-exact replay, exact third/fourth/fifth-step
   halt or fixed-fetch-cycle evidence, recurrence-backed bounded memory
-  requirements, a full 16-transition sequential-output bound fixture, bounded
-  loaded-source/raw-offset fetch/read/write/encryption provenance,
+  requirements, default-16 plus explicit-32 and maximum-256 sequential-output
+  bound fixtures, bounded loaded-source/raw-offset fetch/read/write/encryption
+  provenance,
   byte-exact CLI/library report parity, bounded analysis limits, CLI
   second/third/fourth rejection status, and CLI read failure.
 

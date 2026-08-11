@@ -9,25 +9,27 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Bounded static admission analysis for emitted classic Malbolge source.
+#   - Initial-image admission and explicit finite-prefix classic analysis.
 # - Must-Not:
-#   - Execute guest instructions or claim dynamic reachability equivalence.
+#   - Execute guest instructions or claim reachability beyond the requested
+#     bound.
 # - Allows:
-#   - Inputs: raw classic Malbolge source bytes.
-#   - Outputs: deterministic initial-image findings and profile requirements.
+#   - Inputs: raw classic Malbolge source bytes plus one finite transition
+#     limit.
+#   - Outputs: deterministic image findings, profile needs, and prefix evidence.
 #   - Side effects: CLI-only source reads and report writes.
 # - Split-When:
-#   - Dynamic control-flow or self-modification analysis gains its own model.
+#   - Cyclic worklists or abstract-state reachability gain their own model.
 # - Merge-When:
 #   - Another verifier owns the exact same initial-image checker boundary.
 # - Summary:
-#   - Static checker for classic Malbolge initial source images.
+#   - Bounded checker for classic Malbolge images and exact finite prefixes.
 # - Description:
-#   - Checks whitespace, graphical bytes, capacity, and positional decode.
+#   - Checks loading plus bounded evolving memory/control-flow transitions.
 # - Usage:
 #   - Called by verifier tests or as a JSON-report command-line tool.
 # - Defaults:
-#   - Dynamic behavior remains explicitly not analyzed.
+#   - Sixteen transitions; callers may request at most 256 exact transitions.
 #
 
 """Bounded static analysis for emitted classic Malbolge source images."""
