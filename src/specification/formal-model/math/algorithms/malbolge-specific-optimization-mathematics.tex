@@ -139,6 +139,25 @@ exactly $k$ target-one positions realizes $2^k$; target trit $0$ in any position
 realizes the zero case. This quantization is a complete-domain search-size fact,
 not a statement about duplicate or incomplete external corpora.
 
+For a fixed accumulator $a$, let
+\[
+  n_2(a)=\left|\{i\in\{0,\ldots,9\}:a_i=2\}\right|.
+\]
+Accumulator trits $0$ and $1$ each have one target trit with multiplicity $2$,
+while accumulator trit $2$ has maximum multiplicity $1$. Digit independence
+therefore sharpens the worst target for that particular accumulator to
+\begin{equation}
+  \max_{t\in\WordDomain{10}}
+    \left|\{d\in\WordDomain{10}:\CrazyN{10}{d}{a}=t\}\right|
+      =2^{10-n_2(a)}.
+  \label{eq:optimization-crazy-preimage-accumulator-bound}
+\end{equation}
+The maximum is attained independently at each digit by target trit $1$ when
+$a_i=0$, target trit $0$ when $a_i=1$, and any reachable target trit when
+$a_i=2$. Thus accumulator state can tighten the complete-domain candidate bound
+below $1024$ before enumeration, without making any claim about an incomplete or
+duplicated external corpus.
+
 \section{Decode phase reduction}
 
 For graphical cell $m$, decode depends on the code pointer only through its

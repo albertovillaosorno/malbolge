@@ -218,6 +218,15 @@ mechanism = "exhaustive-accumulator-spectrum"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_counts_have_exact_power_of_two_spectrum", "tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_count_matches_independent_relation"]
 
 [[correspondence]]
+id = "optimization-crazy-preimage-accumulator-bound"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-accumulator-bound"
+domain = "all 59049 classic accumulators with an independent maximizing target"
+mechanism = "exhaustive-accumulator-maximizer"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_maximum_preimage_count_is_accumulator_specific", "tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_count_matches_independent_relation"]
+
+[[correspondence]]
 id = "optimization-decode-phase"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-decode-phase"
