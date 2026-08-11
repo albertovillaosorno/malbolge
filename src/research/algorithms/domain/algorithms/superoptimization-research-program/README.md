@@ -3,8 +3,11 @@
 This directory is the executable mirror for research ID
 `superoptimization-research-program`. The current slice owns a versioned,
 validator-enforced experiment plan plus replay-locked deterministic/seeded
-candidate schedules and equal-budget verifier-gated execution. It does not yet
-define the pilot candidate language, measure elapsed time, or claim a result.
+candidate schedules and equal-budget verifier-gated execution. The pilot now
+binds the complete 8,836-member two-graphical-byte classic corpus to
+`classic-two-word-no-io-halt-v1`, which accepts exact one- or two-transition
+halts without prior I/O and scores transitions to halt. It does not yet record a
+comparative run, measured elapsed time, or performance conclusion.
 
 The shared mechanisms live under
 `src/research/algorithms/composition/algorithms/superoptimization/`; domain

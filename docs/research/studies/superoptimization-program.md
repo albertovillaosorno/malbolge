@@ -99,8 +99,13 @@ pilot against deterministic enumeration with fixed seed, target fingerprint,
 wall-clock, candidate-evaluation, memory, and verifier bounds. Candidate-order
 mechanics are now executable: natural enumeration is the baseline order and a
 version-stable SplitMix64 sparse partial Fisher-Yates schedule defines the
-seeded no-replacement proposal order. This does not define candidate semantics
-or count as a run. New synthesis,
+seeded no-replacement proposal order. The pilot candidate language is now frozen
+before measurement as every two-graphical-byte classic source (8,836 members),
+with independent acceptance only for one- or two-transition halts that perform
+no
+prior input/output and quality equal to transitions-to-halt. Exhaustive verifier
+characterization finds ten accepted members, but that is corpus correctness
+information rather than a strategy comparison or timing result. New synthesis,
 equality-saturation, learned, or accelerator-guided strategies must add their
 own equally identified comparisons rather than inheriting a result from that
 pilot. Source claims resolve through `docs/bibliography/`.
@@ -113,7 +118,9 @@ pilot. Source claims resolve through `docs/bibliography/`.
   experiment manifest, raw-output provenance, results, and threats to validity.
 - Initial bibliography-backed technique mapping and falsifiable rejection
   conditions are recorded above. The first schema-one experiment plan,
-  lifecycle record, two-sided research mirror, and replay-locked candidate-order
+  lifecycle record, two-sided research mirror, concrete workload/verifier
+  identity, exhaustive corpus characterization, and replay-locked
+  candidate-order
   substrate now establish reproducible identity before measurement. Recorded
   runs, raw measurements, retained
   negative/null results, additional technique plans, and a reviewed comparative

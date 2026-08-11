@@ -85,6 +85,13 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   dual-bound result to the frozen plan plus caller-supplied commit/workload/
   environment/outcome/raw-output provenance, emits the shared schema-v1 run
   identity and algorithm metrics, and rejects plan/result bound drift. It does
-  not write evidence or invent provenance. Concrete challenge semantics,
-  recorded runs/raw measurements, plans for the other techniques, and a reviewed
+  not write evidence or invent provenance. The concrete
+  `classic-verified-block-search-v1` semantics are now preregistered before
+  measurement as the complete 8,836-member two-graphical-byte corpus. The
+  independent `classic-two-word-no-io-halt-v1` verifier accepts only one- or
+  two-transition halts with no prior input/output and scores exact transitions
+  to halt. Exhaustive low-level transfer evidence finds ten accepted corpus
+  members (eight one-step, two two-step) and locks the workload/accepted-set
+  hashes; this is challenge characterization, not comparative search evidence.
+  Recorded runs/raw measurements, plans for the other techniques, and a reviewed
   conclusion remain pending.

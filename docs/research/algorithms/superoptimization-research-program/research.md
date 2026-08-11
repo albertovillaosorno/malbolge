@@ -21,7 +21,7 @@ pilot challenge generalizes to other Malbolge workloads.
 
 - Status: Active
 - Research ID: `superoptimization-research-program`
-- Last reviewed: 2026-08-09
+- Last reviewed: 2026-08-11
 
 ## Prior Work
 
@@ -68,9 +68,14 @@ wall-clock bound to both schedules through an injected monotonic nanosecond
 clock, records first-hit elapsed time plus the exact stop reason, and rejects
 invalid or backward clocks. Wall-clock checks occur between synchronous verifier
 calls; the harness does not claim hard preemption of a verifier callback that
-fails to return. Neither runner defines the `classic-verified-block-search-v1`
-candidate language. Candidate generation remains untrusted,
-and `trusted-semantic-verifier` remains mandatory for every accepted candidate.
+fails to return. The preregistered `classic-verified-block-search-v1` pilot is
+now concrete before measurements: candidate indices bijectively enumerate all
+$94^2=8,836$ two-graphical-byte classic sources in lexicographic order. The
+independent `classic-two-word-no-io-halt-v1` verifier accepts only sources that
+halt in one or two exact semantic transitions without prior input or output;
+quality is the transition count to halt, so one is better than two. This is a
+whole-program miniature, not reusable internal-block equivalence, and search
+order never grants acceptance authority.
 The pure `superoptimization-run-record-v1` renderer can now combine one
 bounded-comparison result with the frozen plan and caller-supplied exact commit,
 workload hash, host, toolchain, outcome, accelerator identity, and raw-output
@@ -83,8 +88,15 @@ slice.
 ## Evidence
 
 Repository validators close the plan identity across the research mirror,
-experiment manifest, lifecycle record, target-profile fingerprint, and ignored
-output directory. Schedule tests lock natural enumeration, exact seed replay,
+experiment manifest, lifecycle record, target-profile fingerprint, concrete
+challenge extension, and ignored output directory. Challenge tests exhaust all
+8,836 candidates against independent low-level classic decode/entry/prefix
+transfer, locking the candidate bijection, workload SHA-256, and accepted-set
+digest. Exactly ten sources satisfy the challenge semantics: eight halt in one
+transition and two in two transitions. That count characterizes the frozen
+verifier/corpus before search measurement; it is not comparative search
+evidence.
+Schedule tests lock natural enumeration, exact seed replay,
 no-replacement membership, seed separation, fail-closed dimensions, and sparse
 operation over the maximum unsigned-64 logical corpus. Runner tests additionally
 prove equal scheduled evaluation counts, verifier-gated first/best evidence,
@@ -103,10 +115,11 @@ and a reviewed conclusion remain pending.
 
 ## Results
 
-Candidate-order mechanics and equal-budget verifier-gated execution under both
-preregistered evaluation and wall-clock bounds are implemented and
-replay-locked.
-No concrete challenge run or comparative performance result is recorded yet.
+Candidate semantics, candidate-order mechanics, and equal-budget verifier-gated
+execution under both preregistered evaluation and wall-clock bounds are
+implemented and replay-locked before measurement. The complete challenge corpus
+has ten independently verified accepted members, but no comparative search run,
+raw timing evidence, or performance result is recorded yet.
 
 ## Threats to Validity
 
@@ -118,9 +131,9 @@ families.
 
 ## Conclusion
 
-The first comparison now has reproducible plan and candidate-order identities,
-but no technique is promoted and no performance conclusion is accepted before
-recorded, independently verified runs exist.
+The first comparison now has reproducible challenge, verifier, workload, plan,
+and candidate-order identities, but no technique is promoted and no performance
+conclusion is accepted before recorded, independently verified runs exist.
 
 ## References
 
