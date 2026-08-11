@@ -64,9 +64,12 @@ _COMPARISON_ID = "finite-verifier-gated-dual-bound-comparison-v1"
 _FORMAT_ID = "superoptimization-run-record-v1"
 _EVALUATIONS = 10_000
 _WALL_NANOSECONDS = 60_000_000_000
-_CANDIDATE_COUNT = 20_000
+_CANDIDATE_COUNT = 8_836
 _COMMIT = "a" * 40
-_WORKLOAD = "b" * 64
+_WORKLOAD = (
+    "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
+)
+_OTHER_WORKLOAD = "b" * 64
 _RAW_OUTPUT = "algorithms/superoptimization-research-program/out/run.json"
 _ENUMERATION_ID = "deterministic-enumeration-v1"
 _SEEDED_ID = "splitmix64-sparse-partial-fisher-yates-v1"
@@ -194,14 +197,18 @@ def _result() -> _Comparison:
     )
 
 
-def _provenance(*, commit: str = _COMMIT) -> _Provenance:
+def _provenance(
+    *,
+    commit: str = _COMMIT,
+    workload_sha256: str = _WORKLOAD,
+) -> _Provenance:
     factory = cast(
         "Callable[..., _Provenance]",
         _RUN_RECORD_MODULE.RunProvenance,
     )
     return factory(
         commit=commit,
-        workload_sha256=_WORKLOAD,
+        workload_sha256=workload_sha256,
         host="windows-x86_64-test",
         accelerator="none",
         toolchain="python-3.14.6",
@@ -256,6 +263,29 @@ def test_run_renderer_rejects_preregistered_bound_drift() -> None:
         match="evaluation budget differs from plan",
     ):
         _ = _render(drifted)
+
+
+def test_run_renderer_rejects_candidate_corpus_drift() -> None:
+    """A result cannot replace the preregistered finite candidate corpus."""
+    drifted = replace(_result(), candidate_count=_CANDIDATE_COUNT - 1)
+    with pytest.raises(
+        _RUN_RECORD_MODULE.RunRecordError,
+        match="candidate count differs from plan",
+    ):
+        _ = _render(drifted)
+
+
+def test_run_renderer_rejects_workload_hash_drift() -> None:
+    """Run provenance must bind the exact preregistered challenge workload."""
+    with pytest.raises(
+        _RUN_RECORD_MODULE.RunRecordError,
+        match="workload hash differs from plan",
+    ):
+        _ = _RUN_RECORD_MODULE.render_run_manifest(
+            _PLAN.read_text(encoding="utf-8"),
+            _provenance(workload_sha256=_OTHER_WORKLOAD),
+            _result(),
+        )
 
 
 def test_shared_validator_still_owns_commit_shape() -> None:
