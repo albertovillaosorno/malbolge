@@ -54,6 +54,7 @@ if TYPE_CHECKING:
 _STATUS_CONTINUED = "continued"
 _STATUS_HALTED = "halted"
 _STATUS_STUCK = "stuck-non-graphical-fetch"
+_RECURRENCE_BASE_WORDS = 2
 _STATUS_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
 _STATUS_INPUT_UNRESOLVED = "unresolved-input-dependent-accumulator"
 
@@ -577,6 +578,9 @@ def _validate_entry_transition(
     words: tuple[int, ...],
     entry: entry_transfer.EntryTransition,
 ) -> None:
+    if len(words) < _RECURRENCE_BASE_WORDS:
+        message = "explicit prefix source cannot seed recurrence memory"
+        raise AssertionError(message)
     decoded = classic.decode(words[0], 0)
     if decoded is None or entry.decoded_byte != decoded:
         message = "explicit entry transition does not match recomputed state"
@@ -598,7 +602,7 @@ def analyze_next_transition(
         Next-step evidence, or ``None`` when the supplied prefix is terminal.
 
     Raises:
-        AssertionError: If a supplied transition is not the exact next state.
+        AssertionError: If source or supplied transition evidence is invalid.
 
     """
     _validate_entry_transition(words, entry)

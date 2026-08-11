@@ -118,6 +118,7 @@ _MISSING_SOURCE_MESSAGE = "static analyzer cannot read source"
 _ENTRY_MISMATCH_MESSAGE = (
     "explicit entry transition does not match recomputed state"
 )
+_PREFIX_SOURCE_MESSAGE = "explicit prefix source cannot seed recurrence memory"
 _PREFIX_MISMATCH_MESSAGE = (
     "explicit prefix transition does not match recomputed state"
 )
@@ -1112,6 +1113,27 @@ def test_next_transfer_rejects_forged_entry_decode() -> None:
             forged,
             maximum_transitions=1,
         )
+
+
+def test_next_transfer_rejects_missing_recurrence_base() -> None:
+    """Explicit replay rejects empty and one-word recurrence bases."""
+    source = _FIXTURE.read_bytes()
+    report = _ANALYZER_MODULE.analyze_source(source)
+    entry = report.entry_transition
+    assert entry is not None
+    for words in ((), (source[0],)):
+        with pytest.raises(AssertionError, match=_PREFIX_SOURCE_MESSAGE):
+            _ = _ANALYZER_MODULE.prefix_transfer.analyze_next_transition(
+                words,
+                entry,
+                (),
+            )
+        with pytest.raises(AssertionError, match=_PREFIX_SOURCE_MESSAGE):
+            _ = _ANALYZER_MODULE.prefix_transfer.analyze_continuations(
+                words,
+                entry,
+                maximum_transitions=1,
+            )
 
 
 def test_next_transfer_rejects_noncontiguous_explicit_prefix() -> None:
