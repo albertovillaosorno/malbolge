@@ -246,6 +246,16 @@ mechanism = "full-domain-histogram-plus-binomial-closed-form"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_accumulator_classes_partition_complete_classic_domain", "tests/optimizer/test_crazy_target_search.py::test_accumulator_class_cardinality_matches_closed_form"]
 
 [[correspondence]]
+id = "optimization-crazy-reachable-pair-count"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-reachable-pair-count"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all classic accumulator/target pairs via independent per-trit reachability, all-state sum, and class sum"
+mechanism = "per-trit-product-plus-state-and-class-sums"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_reachable_accumulator_target_pair_count_is_exact"]
+
+[[correspondence]]
 id = "optimization-decode-phase"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-decode-phase"

@@ -186,6 +186,20 @@ partition is complete. This grouping is an exact planning classification only;
 it does not imply that two accumulator values are semantically interchangeable
 outside the two crazy-target cardinalities derived above.
 
+Across accumulator and target digits together, accumulator trit $0$ admits two
+target trits, accumulator trit $1$ admits two, and accumulator trit $2$ admits
+three. Thus one trit position has exactly $2+2+3=7$ reachable
+accumulator/target pairs. Digit independence gives the complete classic count
+\begin{equation}
+  \left|\left\{(a,t)\in\WordDomain{10}^{2}:
+    \exists d\in\WordDomain{10},\ \CrazyN{10}{d}{a}=t\right\}\right|
+      =7^{10}=282475249.
+  \label{eq:optimization-crazy-reachable-pair-count}
+\end{equation}
+The complete accumulator/target domain has $9^{10}$ pairs, so the reachable
+fraction is $(7/9)^{10}$. This is a global complete-domain pruning fact only;
+it does not identify a data preimage or imply a runtime speedup.
+
 \section{Decode phase reduction}
 
 For graphical cell $m$, decode depends on the code pointer only through its
