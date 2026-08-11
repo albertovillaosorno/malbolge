@@ -87,7 +87,8 @@ experiment-manifest authority. It does not write evidence or discover
 provenance. The `pilot.py` orchestration layer separately revalidates the plan's
 challenge/verifier/workload identity before constructing the exact dual-bound
 request and wiring only the concrete semantic verifier into the runner. Import,
-plan validation, and synthetic zero-evaluation wiring tests are not measurements.
+plan validation, and synthetic zero-evaluation wiring tests are not
+measurements.
 No concrete run is recorded by this slice.
 
 ## Evidence

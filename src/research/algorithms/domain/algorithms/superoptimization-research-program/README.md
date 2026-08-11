@@ -22,7 +22,8 @@ candidate schema-v1 run manifest only from the frozen plan, that bounded result,
 and caller-supplied exact provenance; rendering writes no evidence, does not
 invent host/toolchain/workload identity, and rejects candidate-count or workload
 hash drift from the frozen plan. `pilot.py` revalidates that plan against the
-concrete challenge before creating the dual-bound request or wiring its verifier.
+concrete challenge before creating the dual-bound request or wiring its
+verifier.
 Future executable comparisons must
 preserve challenge identity, budget, baseline, schedule/runner identities, and
 the independent verifier boundary. Regenerable run output belongs in `out/` and
