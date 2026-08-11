@@ -52,9 +52,8 @@ independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`.
 
 The implemented slices are `arithmetic-dag/v1`, `linear-mix/v1`,
-`branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`, and
-`alias-walk/v1`. Each binds family,
-version, seed,
+`branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`,
+`alias-walk/v1`, and `stream-state/v1`. Each binds family, version, seed,
 canonical profile fingerprint, and node count into one replay identity.
 Generation emits deterministic `uint32_t` C source for the selected topology, a
 four-byte little-endian oracle, and a canonical manifest containing
@@ -71,8 +70,14 @@ retain the expected branch count. `memory-walk/v1` uses a fixed eight-cell
 local array with deterministic indexed read/write/read steps, and frontend
 evidence retains `1 + 3×nodes` array-subscript expressions. `call-chain/v1`
 threads the live value through a pure three-argument helper, with normalized
-evidence retaining one call per node plus the standalone driver call. The C
-entry `malbolge_challenge` returns the oracle value directly;
+evidence retaining one call per node plus the standalone driver call.
+`pointer-walk/v1` keeps one live runtime-selected pointer per node, while
+`alias-walk/v1` keeps two such pointers whose sequential writes may alias the
+same cell. `stream-state/v1` fixes a seed-derived state transition rule and uses
+`nodes` only as stream length, so increasing difficulty appends deterministic
+tokens under the same machine. Its normalized frontend preserves one loop, one
+indexed stream read, and one live state branch. The C entry
+`malbolge_challenge` returns the oracle value directly;
 standalone `main` is only a low-31-bit driver and is not an oracle surface.
 
 The generated source is preflighted through the repository-owned C ABI and libc
@@ -93,14 +98,14 @@ host execution guest semantic authority.
 
 ## Results
 
-Five deterministic families are implemented and replayable. Tests lock byte-
+Eight deterministic families are implemented and replayable. Tests lock byte-
 identical regeneration, hash-locked `arithmetic-dag/v1` and `pointer-walk/v1`
-replay vectors, profile-fingerprint binding, difficulty growth for all seven
+replay vectors, profile-fingerprint binding, difficulty growth for all eight
 topologies, invalid
 identity rejection, collision-safe no-replace publication (including a raced
 final-path collision), replay rejection for linked artifact leaves, current
 C-profile admission, and independent native agreement for representative node
-counts in all seven families.
+counts in all eight families.
 
 This result does not satisfy the end-to-end acceptance criterion. No current
 backend evidence yet demonstrates a generated challenge compiled to and executed
@@ -111,7 +116,8 @@ families also remain open.
 
 The current families cover unsigned arithmetic with DAG, strict-chain,
 branch-diamond, fixed-array memory-walk, helper-call, live pointer-selected
-memory, and potentially aliasing pointer-pair topologies. They still omit
+memory, potentially aliasing pointer-pair, and streaming state-machine
+topologies. They still omit
 broader workload structure and substantially larger stress shapes.
 Workload selection, generator/model common-mode bugs, native-check host
 differences,
@@ -122,9 +128,9 @@ agreement risk; it does not prove downstream compiler correctness.
 ## Conclusion
 
 Active. Retain hash-locked `arithmetic-dag/v1` and `pointer-walk/v1` plus
-domain-separated `linear-mix/v1`, `branch-mix/v1`, `memory-walk/v1`, and
-`call-chain/v1` and `alias-walk/v1` as deterministic challenge substrates while
-expanding family coverage and waiting for an
+domain-separated `linear-mix/v1`, `branch-mix/v1`, `memory-walk/v1`,
+`call-chain/v1`, `alias-walk/v1`, and `stream-state/v1` as deterministic
+challenge substrates while expanding family coverage and waiting for an
 end-to-end generated Malbolge execution path before completing this planning
 objective.
 
