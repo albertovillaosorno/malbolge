@@ -43,8 +43,7 @@ exactly the same problem rather than on vaguely similar examples.
 - `benchmarks/challenges/generate.py` implements deterministic
   `arithmetic-dag/v1`, `linear-mix/v1`, `branch-mix/v1`,
   `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`, `alias-walk/v1`, and
-  `stream-state/v1`
-  challenges identified by family, version, unsigned seed, canonical
+  `stream-state/v1`, and `graph-reduce/v1` challenges identified by family, version, unsigned seed, canonical
   target-profile fingerprint, and node count. Every node feeds the next node
   on a live dependency spine so difficulty cannot grow through dead C
   statements. The domain-separated linear family is a strict predecessor
@@ -60,11 +59,11 @@ exactly the same problem rather than on vaguely similar examples.
   guest libc calls.
 - Analysis evidence locks byte-identical replay, hash-locked
   `arithmetic-dag/v1` and `pointer-walk/v1` vectors, difficulty growth for all
-  eight topologies,
+  nine topologies,
   invalid identity rejection, non-destructive no-replace publication including a
   raced
   final-path collision, ABI/libc admission, and pinned-Clang agreement between
-  emitted C and the independent Python oracle for all eight families. The
+  emitted C and the independent Python oracle for all nine families. The
   normalized frontend additionally preserves the branch family’s expected
   `if-statement` count, the memory family’s exact array-subscript count, and
   one helper call per call-family node. `pointer-walk/v1` selects one array
@@ -76,6 +75,9 @@ exactly the same problem rather than on vaguely similar examples.
   `stream-state/v1` uses `nodes` as deterministic stream length under a
   seed-stable transition rule, retaining one live `for` loop, one indexed token
   read, and one state-dependent branch in normalized frontend evidence.
+  `graph-reduce/v1` generates one acyclic parent link and weight per vertex;
+  runtime reduction keeps parent-index and predecessor-state dependencies live,
+  with normalized evidence retaining one loop and six graph/state subscripts.
 - The objective remains open: larger-stress and broader workload families plus
   the required end-to-end compiled/executed Malbolge fixture are not yet
   implemented.
