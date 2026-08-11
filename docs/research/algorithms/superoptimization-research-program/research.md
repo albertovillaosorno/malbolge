@@ -53,8 +53,10 @@ must stop when its governing harness reaches the applicable declared bound; both
 strategies receive the same bounds and challenge identity.
 
 Deterministic enumeration is the baseline. The executable substrate now fixes
-natural enumeration order and a seed-stable SplitMix64 sparse partial
-Fisher-Yates proposal order over opaque candidate indices. The seeded scheduler
+natural enumeration order as `deterministic-enumeration-v1` and a seed-stable
+SplitMix64 sparse partial Fisher-Yates proposal order as
+`splitmix64-sparse-partial-fisher-yates-v1` over opaque candidate indices. The
+seeded scheduler
 samples without replacement and stores state proportional to the evaluation
 budget, not the logical candidate count. It does not define the
 `classic-verified-block-search-v1` candidate language or execute a candidate.
