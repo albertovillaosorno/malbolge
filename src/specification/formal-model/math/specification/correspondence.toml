@@ -200,6 +200,15 @@ mechanism = "exhaustive-trit-plus-full-domain-bruteforce"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_count_matches_independent_relation", "tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_count_exposes_exact_search_bounds"]
 
 [[correspondence]]
+id = "optimization-crazy-preimage-bound"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-bound"
+domain = "all 59049 classic accumulator words plus one tight attaining target"
+mechanism = "exhaustive-accumulator-trit-bound"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_count_has_tight_global_bound", "tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_count_matches_independent_relation"]
+
+[[correspondence]]
 id = "optimization-decode-phase"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-decode-phase"

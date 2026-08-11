@@ -111,6 +111,20 @@ for $a=0$ and the all-one-trit target $t=\sum_{i=0}^{9}3^i$, every digit has
 $\mu(0,1)=2$, so the exact full-domain cardinality is $2^{10}=1024$. If any
 factor is zero, no classic data word can reach the target for that accumulator.
 
+The complete one-trit crazy table has no accumulator/target pair with more than
+two compatible data trits, so $\mu(\alpha,\tau)\leq2$. Combining that fact with
+the exact product formula yields the global classic fixed-target bound
+\begin{equation}
+  \left|\{d\in\WordDomain{10}:\CrazyN{10}{d}{a}=t\}\right|
+    \leq 2^{10}=1024
+  \qquad\text{for all }a,t\in\WordDomain{10}.
+  \label{eq:optimization-crazy-preimage-bound}
+\end{equation}
+The bound is tight because $a=0$ and the all-one-trit target have exactly two
+compatible data trits at every position. This bound applies to complete classic
+data-word search only; arbitrary corpora may omit those words or contain repeated
+entries and therefore retain their own membership/accounting costs.
+
 \section{Decode phase reduction}
 
 For graphical cell $m$, decode depends on the code pointer only through its
