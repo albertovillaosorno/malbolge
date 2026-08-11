@@ -14,8 +14,9 @@
 #   - Define the pilot candidate language or claim measured search performance.
 # - Allows:
 #   - Inputs: finite synthetic candidate indices and deterministic verifiers.
-# - Outputs: first-hit, best-quality, null-outcome, and fail-closed assertions.
-# - Side effects: dynamic import of repository-owned pure research modules.
+#   - Outputs: first-hit, best-quality, null-outcome, and fail-closed
+#     assertions.
+#   - Side effects: dynamic import of repository-owned pure research modules.
 # - Split-When:
 #   - Concrete challenge semantics or recorded-run evidence gains ownership.
 # - Merge-When:
