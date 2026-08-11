@@ -55,7 +55,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v11"
+_SCHEMA: Final = "malbolge-static-image/v12"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -71,18 +71,10 @@ _ACCESS_FETCH: Final = "instruction-fetch"
 _ACCESS_DATA_READ: Final = "data-read"
 _ACCESS_DATA_WRITE: Final = "data-write"
 _ACCESS_ENCRYPTION: Final = "self-encryption"
-_TOTAL_TRANSITION_LIMIT: Final = 16
-_CONTINUATION_LIMIT: Final = _TOTAL_TRANSITION_LIMIT - 1
-_MEMORY_SCOPE: Final = "sixteen-transition-prefix"
-_LIMITS: Final = (
-    "code-data-aliasing:sixteen-transition-prefix-only",
-    "control-flow-reachability:sixteen-transition-prefix-only",
-    "dataflow:sixteen-transition-prefix-only",
-    "input-dependent-cycles:not-analyzed",
-    "self-modification:sixteen-transition-prefix-only",
-    "source-map-context:sixteen-transition-memory-access-origin-only",
-    "wraparound-reachability:sixteen-transition-prefix-only",
-)
+_DEFAULT_TOTAL_TRANSITION_LIMIT: Final = 16
+_MAX_TOTAL_TRANSITION_LIMIT: Final = 256
+_TRANSITION_LIMIT_OPTION: Final = "--transition-limit"
+_CLI_LIMIT_ARGUMENT_COUNT: Final = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,6 +175,40 @@ class _PrefixAnalysis:
     findings: tuple[StaticFinding, ...]
 
 
+def _transition_limit(value: object) -> int:
+    if (
+        type(value) is not int
+        or value < 1
+        or value > _MAX_TOTAL_TRANSITION_LIMIT
+    ):
+        message = (
+            "transition limit must be an exact integer from 1 through "
+            f"{_MAX_TOTAL_TRANSITION_LIMIT}"
+        )
+        raise ValueError(message)
+    return value
+
+
+def _memory_scope(transition_limit: int) -> str:
+    return f"{transition_limit}-transition-prefix"
+
+
+def _analysis_limits(transition_limit: int) -> tuple[str, ...]:
+    prefix = f"{transition_limit}-transition-prefix-only"
+    return (
+        f"code-data-aliasing:{prefix}",
+        f"control-flow-reachability:{prefix}",
+        f"dataflow:{prefix}",
+        "input-dependent-cycles:not-analyzed",
+        f"self-modification:{prefix}",
+        (
+            "source-map-context:"
+            f"{transition_limit}-transition-memory-access-origin-only"
+        ),
+        f"wraparound-reachability:{prefix}",
+    )
+
+
 def _loaded_source_words(source: bytes) -> tuple[int, ...]:
     return tuple(byte for byte in source if byte not in _SOURCE_WHITESPACE)
 
@@ -262,6 +288,7 @@ def _analyze_admitted_cells(
     words: tuple[int, ...],
     *,
     can_decode: bool,
+    transition_limit: int,
 ) -> _PrefixAnalysis:
     if not can_decode:
         return _PrefixAnalysis((), None, (), ())
@@ -274,13 +301,14 @@ def _analyze_admitted_cells(
             words, cells[0].decoded_byte
         )
     )
+    continuation_limit = transition_limit - 1
     continuations = (
         ()
-        if entry is None
+        if entry is None or continuation_limit == 0
         else prefix_transfer.analyze_continuations(
             words,
             entry,
-            maximum_transitions=_CONTINUATION_LIMIT,
+            maximum_transitions=continuation_limit,
         )
     )
     return _PrefixAnalysis(cells, entry, continuations, findings)
@@ -325,6 +353,8 @@ def _bounded_memory_requirement(
     source_words: int,
     entry: entry_transfer.EntryTransition | None,
     transitions: tuple[prefix_transfer.SecondTransition, ...],
+    *,
+    transition_limit: int,
 ) -> BoundedMemoryRequirement | None:
     if entry is None:
         return None
@@ -334,7 +364,7 @@ def _bounded_memory_requirement(
     ordered = tuple(sorted(accesses))
     highest = ordered[-1]
     return BoundedMemoryRequirement(
-        scope=_MEMORY_SCOPE,
+        scope=_memory_scope(transition_limit),
         minimum_words=max(source_words, highest + 1),
         highest_accessed_address=highest,
         accessed_addresses=ordered,
@@ -503,13 +533,18 @@ def _bounded_memory_access_source_map(
     return tuple(contexts)
 
 
-def analyze_source(source: bytes) -> StaticImageReport:
-    """Analyze one classic source image without executing guest instructions.
+def analyze_source(
+    source: bytes,
+    *,
+    transition_limit: int = _DEFAULT_TOTAL_TRANSITION_LIMIT,
+) -> StaticImageReport:
+    """Analyze one classic source image under one explicit finite step bound.
 
     Returns:
         Deterministic bounded initial-image analysis.
 
     """
+    admitted_limit = _transition_limit(transition_limit)
     words = _loaded_source_words(source)
     required = len(words)
     findings: list[StaticFinding] = []
@@ -541,6 +576,7 @@ def analyze_source(source: bytes) -> StaticImageReport:
         source,
         words,
         can_decode=lexical is None and within_profile,
+        transition_limit=admitted_limit,
     )
     findings.extend(prefix.findings)
     return StaticImageReport(
@@ -551,12 +587,13 @@ def analyze_source(source: bytes) -> StaticImageReport:
         profile_address_domain_closed=True,
         source_sha256="sha256:" + sha256(source).hexdigest(),
         required_source_words=required,
-        bounded_transition_limit=_TOTAL_TRANSITION_LIMIT,
+        bounded_transition_limit=admitted_limit,
         bounded_continuations=prefix.continuations,
         bounded_memory_requirement=_bounded_memory_requirement(
             required,
             prefix.entry,
             prefix.continuations,
+            transition_limit=admitted_limit,
         ),
         bounded_fetch_source_map=_bounded_fetch_source_map(words, prefix),
         bounded_memory_access_source_map=(
@@ -570,7 +607,7 @@ def analyze_source(source: bytes) -> StaticImageReport:
         fourth_transition=_continuation_at(prefix, 2),
         fifth_transition=_continuation_at(prefix, 3),
         findings=tuple(findings),
-        analysis_limits=_LIMITS,
+        analysis_limits=_analysis_limits(admitted_limit),
     )
 
 
@@ -604,7 +641,7 @@ def _bounded_prefix_accepted(report: StaticImageReport) -> bool:
     entry = report.entry_transition
     if not report.admitted_initial_image or entry is None or not entry.accepted:
         return False
-    if entry.next_fetch_address is None:
+    if entry.next_fetch_address is None or report.bounded_transition_limit == 1:
         return True
     return _continuations_accepted(report.bounded_continuations)
 
@@ -613,23 +650,43 @@ def _fail(message: str) -> Never:
     raise SystemExit(message)
 
 
+def _cli_request(arguments: list[str]) -> tuple[Path, int]:
+    usage = (
+        "usage: emitted_malbolge.py [--transition-limit N] SOURCE.malbolge"
+    )
+    if len(arguments) == 1:
+        return Path(arguments[0]), _DEFAULT_TOTAL_TRANSITION_LIMIT
+    if (
+        len(arguments) != _CLI_LIMIT_ARGUMENT_COUNT
+        or arguments[0] != _TRANSITION_LIMIT_OPTION
+    ):
+        _fail(usage)
+    try:
+        requested = int(arguments[1], 10)
+    except ValueError:
+        _fail("transition limit must be a decimal integer")
+    try:
+        admitted = _transition_limit(requested)
+    except ValueError as error:
+        _fail(str(error))
+    return Path(arguments[2]), admitted
+
+
 def main(arguments: list[str] | None = None) -> int:
     """Analyze one source path and print its canonical JSON report.
 
     Returns:
-        Zero when initial-image admission and the bounded sixteen-transition
-        prefix succeed, otherwise one after writing the canonical report.
+        Zero when initial-image admission and the requested finite prefix
+        succeed, otherwise one after writing the canonical report.
 
     """
     argv = sys.argv[1:] if arguments is None else arguments
-    if len(argv) != 1:
-        _fail("usage: emitted_malbolge.py SOURCE.malbolge")
-    source_path = Path(argv[0])
+    source_path, transition_limit = _cli_request(argv)
     try:
         source = source_path.read_bytes()
     except OSError as error:
         _fail(f"static analyzer cannot read source: {error}")
-    report = analyze_source(source)
+    report = analyze_source(source, transition_limit=transition_limit)
     payload = render_report(report).encode("utf-8")
     _ = sys.stdout.buffer.write(payload)
     return 0 if _bounded_prefix_accepted(report) else 1

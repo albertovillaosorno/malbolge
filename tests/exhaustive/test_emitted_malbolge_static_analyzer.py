@@ -65,7 +65,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v11"
+_SCHEMA = "malbolge-static-image/v12"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -76,7 +76,16 @@ _FIXTURE_SECOND_VALUE = 116
 _SECOND_SUCCESSOR = 2
 _TOTAL_TRANSITION_LIMIT = 16
 _CONTINUATION_LIMIT = _TOTAL_TRANSITION_LIMIT - 1
-_MEMORY_SCOPE = "sixteen-transition-prefix"
+_EXTENDED_TRANSITION_LIMIT = 32
+_MAX_TOTAL_TRANSITION_LIMIT = 256
+_INVALID_TOTAL_TRANSITION_LIMIT = _MAX_TOTAL_TRANSITION_LIMIT + 1
+_MEMORY_SCOPE = "16-transition-prefix"
+_EXTENDED_CONTROL_FLOW_LIMIT = (
+    "control-flow-reachability:32-transition-prefix-only"
+)
+_TRANSITION_LIMIT_ERROR = (
+    "transition limit must be an exact integer from 1 through 256"
+)
 _ACCESS_FETCH = "instruction-fetch"
 _ACCESS_DATA_READ = "data-read"
 _ACCESS_DATA_WRITE = "data-write"
@@ -290,7 +299,12 @@ class _PrefixModule(Protocol):
 class _AnalyzerModule(Protocol):
     prefix_transfer: _PrefixModule
 
-    def analyze_source(self, source: bytes) -> _Report:
+    def analyze_source(
+        self,
+        source: bytes,
+        *,
+        transition_limit: int = _TOTAL_TRANSITION_LIMIT,
+    ) -> _Report:
         """Analyze source without running it."""
         ...
 
@@ -1158,6 +1172,55 @@ def test_report_reaches_exact_sixteen_transition_bound() -> None:
     )
 
 
+def test_report_reaches_requested_transition_beyond_default_bound() -> None:
+    """Prove transition 17 and later under one explicit finite depth."""
+    source = _sequential_output_source(_EXTENDED_TRANSITION_LIMIT)
+    report = _ANALYZER_MODULE.analyze_source(
+        source,
+        transition_limit=_EXTENDED_TRANSITION_LIMIT,
+    )
+    assert report.admitted_initial_image
+    assert report.bounded_transition_limit == _EXTENDED_TRANSITION_LIMIT
+    assert len(report.bounded_continuations) == _EXTENDED_TRANSITION_LIMIT - 1
+    last = report.bounded_continuations[-1]
+    assert last.fetched_address == _EXTENDED_TRANSITION_LIMIT - 1
+    assert last.next_fetch_address == _EXTENDED_TRANSITION_LIMIT
+    memory = report.bounded_memory_requirement
+    assert memory is not None
+    assert memory.scope == f"{_EXTENDED_TRANSITION_LIMIT}-transition-prefix"
+    assert memory.accessed_addresses == tuple(range(_EXTENDED_TRANSITION_LIMIT))
+    assert len(report.bounded_fetch_source_map) == _EXTENDED_TRANSITION_LIMIT
+    assert report.analysis_limits[1] == _EXTENDED_CONTROL_FLOW_LIMIT
+
+
+def test_report_accepts_reviewed_maximum_transition_limit() -> None:
+    """The explicit safety ceiling itself remains a valid finite proof depth."""
+    source = _sequential_output_source(_MAX_TOTAL_TRANSITION_LIMIT)
+    report = _ANALYZER_MODULE.analyze_source(
+        source,
+        transition_limit=_MAX_TOTAL_TRANSITION_LIMIT,
+    )
+    assert report.bounded_transition_limit == _MAX_TOTAL_TRANSITION_LIMIT
+    assert len(report.bounded_continuations) == _MAX_TOTAL_TRANSITION_LIMIT - 1
+    last = report.bounded_continuations[-1]
+    assert last.fetched_address == _MAX_TOTAL_TRANSITION_LIMIT - 1
+    assert last.next_fetch_address == _MAX_TOTAL_TRANSITION_LIMIT
+
+
+def test_report_transition_limit_is_fail_closed() -> None:
+    """Public report depth accepts only the reviewed finite integer interval."""
+    source = _sequential_output_source(2)
+    for invalid in (0, -1, True, _INVALID_TOTAL_TRANSITION_LIMIT):
+        with pytest.raises(
+            ValueError,
+            match=_TRANSITION_LIMIT_ERROR,
+        ):
+            _ = _ANALYZER_MODULE.analyze_source(
+                source,
+                transition_limit=cast("int", invalid),
+            )
+
+
 def test_continuation_bound_rejects_nonpositive_or_foreign_integer() -> None:
     """Finite prefix iteration accepts only positive exact integer bounds."""
     source = _sequential_output_source(2)
@@ -1192,13 +1255,13 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
     """Initial-image admission never implies dynamic reachability proof."""
     report = _ANALYZER_MODULE.analyze_source(bytes((39, 38)))
     assert report.analysis_limits == (
-        "code-data-aliasing:sixteen-transition-prefix-only",
-        "control-flow-reachability:sixteen-transition-prefix-only",
-        "dataflow:sixteen-transition-prefix-only",
+        "code-data-aliasing:16-transition-prefix-only",
+        "control-flow-reachability:16-transition-prefix-only",
+        "dataflow:16-transition-prefix-only",
         "input-dependent-cycles:not-analyzed",
-        "self-modification:sixteen-transition-prefix-only",
-        "source-map-context:sixteen-transition-memory-access-origin-only",
-        "wraparound-reachability:sixteen-transition-prefix-only",
+        "self-modification:16-transition-prefix-only",
+        "source-map-context:16-transition-memory-access-origin-only",
+        "wraparound-reachability:16-transition-prefix-only",
     )
 
 
@@ -1230,6 +1293,60 @@ def test_cli_prints_same_report_as_library() -> None:
     ).encode("utf-8")
     assert completed.stdout == expected
     assert not completed.stderr
+
+
+def test_cli_accepts_explicit_extended_transition_limit(tmp_path: Path) -> None:
+    """CLI can request exact reachability beyond the default sixteen steps."""
+    source = tmp_path / "extended-prefix.malbolge"
+    payload = _sequential_output_source(_EXTENDED_TRANSITION_LIMIT)
+    _ = source.write_bytes(payload)
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            str(_ANALYZER),
+            "--transition-limit",
+            str(_EXTENDED_TRANSITION_LIMIT),
+            str(source),
+        ],
+        cwd=_ROOT,
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert not completed.stderr
+    document = cast("dict[str, object]", json.loads(completed.stdout))
+    assert document["bounded_transition_limit"] == _EXTENDED_TRANSITION_LIMIT
+    transitions = cast(
+        "list[dict[str, object]]",
+        document["bounded_continuations"],
+    )
+    assert len(transitions) == _EXTENDED_TRANSITION_LIMIT - 1
+    assert transitions[-1]["fetched_address"] == _EXTENDED_TRANSITION_LIMIT - 1
+
+
+def test_cli_rejects_transition_limit_above_safety_ceiling() -> None:
+    """CLI rejects a requested depth above the reviewed safety ceiling."""
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            str(_ANALYZER),
+            "--transition-limit",
+            str(_INVALID_TOTAL_TRANSITION_LIMIT),
+            str(_FIXTURE),
+        ],
+        cwd=_ROOT,
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 1
+    assert not completed.stdout
+    assert completed.stderr.strip() == _TRANSITION_LIMIT_ERROR
 
 
 def test_cli_rejects_statically_invalid_entry_transition(
