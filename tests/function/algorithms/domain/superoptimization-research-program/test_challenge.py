@@ -14,8 +14,8 @@
 #   - Use search order as acceptance or claim the pilot generalizes.
 # - Allows:
 #   - Inputs: every exact two-word graphical candidate index.
-# - Outputs: corpus identity, independent quality parity, and replay digests.
-# - Side effects: none.
+#   - Outputs: corpus identity, independent quality parity, and replay digests.
+#   - Side effects: dynamic imports with temporary module search paths.
 # - Split-When:
 #   - Another concrete challenge family gains independent semantics.
 # - Merge-When:
@@ -35,16 +35,113 @@
 from __future__ import annotations
 
 from hashlib import sha256
+import importlib
+import importlib.util
+from pathlib import Path
+import sys
+from typing import Protocol
 from typing import cast
 
 import pytest
 
-from src.research.algorithms.composition.algorithms.superoptimization import (
-    challenge,
+_ROOT = Path(__file__).resolve().parents[5]
+_CHALLENGE = _ROOT / (
+    "src/research/algorithms/composition/algorithms/"
+    "superoptimization/challenge.py"
 )
-from verifier import emitted_malbolge_classic as classic
-from verifier import emitted_malbolge_entry as entry_transfer
-from verifier import emitted_malbolge_prefix as prefix_transfer
+
+
+class _EntryTransition(Protocol):
+    accepted: bool
+    status: str
+    decoded_byte: int
+
+
+class _SecondTransition(Protocol):
+    accepted: bool
+    status: str
+
+
+class _ClassicModule(Protocol):
+    def decode(self, value: int, position: int) -> int | None: ...
+
+
+class _EntryModule(Protocol):
+    def analyze_entry_transition(
+        self,
+        words: tuple[int, ...],
+        decoded_byte: int,
+    ) -> _EntryTransition: ...
+
+
+class _PrefixModule(Protocol):
+    def analyze_second_transition(
+        self,
+        words: tuple[int, ...],
+        entry: _EntryTransition,
+    ) -> _SecondTransition | None: ...
+
+
+class _ChallengeModule(Protocol):
+    CLASSIC_BLOCK_SEARCH_CANDIDATE_COUNT: int
+    InvalidClassicBlockCandidateError: type[ValueError]
+
+    def candidate_source(self, candidate_index: int) -> bytes: ...
+
+    def verified_quality(self, candidate_index: int) -> int | None: ...
+
+    def workload_bytes(self) -> bytes: ...
+
+    def workload_sha256(self) -> str: ...
+
+
+def _load_challenge() -> _ChallengeModule:
+    spec = importlib.util.spec_from_file_location(
+        "superoptimization_challenge_test",
+        _CHALLENGE,
+    )
+    if spec is None or spec.loader is None:
+        message = "superoptimization challenge module cannot be loaded"
+        raise RuntimeError(message)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    sys.path.insert(0, str(_ROOT))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        _ = sys.path.pop(0)
+    return cast("_ChallengeModule", cast("object", module))
+
+
+_CHALLENGE_MODULE = _load_challenge()
+
+
+def _load_reference_modules() -> tuple[
+    _ClassicModule,
+    _EntryModule,
+    _PrefixModule,
+]:
+    sys.path.insert(0, str(_ROOT))
+    try:
+        classic_module = importlib.import_module(
+            "verifier.emitted_malbolge_classic"
+        )
+        entry_module = importlib.import_module(
+            "verifier.emitted_malbolge_entry"
+        )
+        prefix_module = importlib.import_module(
+            "verifier.emitted_malbolge_prefix"
+        )
+    finally:
+        _ = sys.path.pop(0)
+    return (
+        cast("_ClassicModule", cast("object", classic_module)),
+        cast("_EntryModule", cast("object", entry_module)),
+        cast("_PrefixModule", cast("object", prefix_module)),
+    )
+
+
+_CLASSIC, _ENTRY_TRANSFER, _PREFIX_TRANSFER = _load_reference_modules()
 
 _GRAPHICAL_START = 33
 _GRAPHICAL_VALUES = 94
@@ -81,18 +178,18 @@ def _reference_source(candidate_index: int) -> bytes:
 def _reference_quality(candidate_index: int) -> int | None:
     source = _reference_source(candidate_index)
     decoded = tuple(
-        classic.decode(source[position], position) for position in range(2)
+        _CLASSIC.decode(source[position], position) for position in range(2)
     )
     if any(item not in _ALLOWED_INSTRUCTIONS for item in decoded):
         return None
     first = cast("int", decoded[0])
-    entry = entry_transfer.analyze_entry_transition(tuple(source), first)
+    entry = _ENTRY_TRANSFER.analyze_entry_transition(tuple(source), first)
     quality: int | None = None
     if entry.accepted:
         if entry.status == _STATUS_HALTED:
             quality = _ONE_STEP_QUALITY
         else:
-            second = prefix_transfer.analyze_second_transition(
+            second = _PREFIX_TRANSFER.analyze_second_transition(
                 tuple(source), entry
             )
             eligible_second = (
@@ -109,7 +206,7 @@ def _reference_quality(candidate_index: int) -> int | None:
 def _accepted_results() -> tuple[tuple[int, int], ...]:
     accepted: list[tuple[int, int]] = []
     for candidate_index in range(_CANDIDATE_COUNT):
-        observed = challenge.verified_quality(candidate_index)
+        observed = _CHALLENGE_MODULE.verified_quality(candidate_index)
         expected = _reference_quality(candidate_index)
         assert observed == expected
         if observed is not None:
@@ -127,17 +224,23 @@ def _accepted_digest(accepted: tuple[tuple[int, int], ...]) -> str:
 
 def test_challenge_spans_complete_two_word_graphical_corpus() -> None:
     """Candidate encoding is a complete lexicographic 94-by-94 bijection."""
-    assert challenge.CLASSIC_BLOCK_SEARCH_CANDIDATE_COUNT == _CANDIDATE_COUNT
-    assert challenge.candidate_source(0) == _FIRST_SOURCE
     assert (
-        challenge.candidate_source(_GRAPHICAL_VALUES - 1)
+        _CHALLENGE_MODULE.CLASSIC_BLOCK_SEARCH_CANDIDATE_COUNT
+        == _CANDIDATE_COUNT
+    )
+    assert _CHALLENGE_MODULE.candidate_source(0) == _FIRST_SOURCE
+    assert (
+        _CHALLENGE_MODULE.candidate_source(_GRAPHICAL_VALUES - 1)
         == _LAST_FIRST_ROW_SOURCE
     )
     assert (
-        challenge.candidate_source(_GRAPHICAL_VALUES)
+        _CHALLENGE_MODULE.candidate_source(_GRAPHICAL_VALUES)
         == _SECOND_ROW_FIRST_SOURCE
     )
-    assert challenge.candidate_source(_CANDIDATE_COUNT - 1) == _LAST_SOURCE
+    assert (
+        _CHALLENGE_MODULE.candidate_source(_CANDIDATE_COUNT - 1)
+        == _LAST_SOURCE
+    )
 
 
 @pytest.mark.parametrize("candidate_index", [-1, _CANDIDATE_COUNT, True])
@@ -146,10 +249,10 @@ def test_challenge_rejects_foreign_or_out_of_range_indices(
 ) -> None:
     """Candidate admission is exact and never wraps or accepts bool."""
     with pytest.raises(
-        challenge.InvalidClassicBlockCandidateError,
+        _CHALLENGE_MODULE.InvalidClassicBlockCandidateError,
         match=_CANDIDATE_ERROR,
     ):
-        _ = challenge.candidate_source(cast("int", candidate_index))
+        _ = _CHALLENGE_MODULE.candidate_source(cast("int", candidate_index))
 
 
 def test_challenge_matches_independent_transfer_for_every_candidate() -> None:
@@ -169,8 +272,8 @@ def test_challenge_matches_independent_transfer_for_every_candidate() -> None:
 
 def test_workload_identity_is_canonical_and_search_order_independent() -> None:
     """Workload provenance excludes schedule, seed, and host identity."""
-    payload = challenge.workload_bytes()
-    assert challenge.workload_sha256() == _WORKLOAD_SHA256
+    payload = _CHALLENGE_MODULE.workload_bytes()
+    assert _CHALLENGE_MODULE.workload_sha256() == _WORKLOAD_SHA256
     assert sha256(payload).hexdigest() == _WORKLOAD_SHA256
     assert _CHALLENGE_MARKER in payload
     assert _COUNT_MARKER in payload
