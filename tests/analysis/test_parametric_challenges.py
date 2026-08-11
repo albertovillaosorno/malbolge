@@ -77,6 +77,8 @@ _GRAPH_REDUCE_SUBSCRIPTS = 6
 _TERNARY_REMAINDER_EXPRESSIONS = 3
 _TERNARY_QUOTIENT_ASSIGNMENTS = 2
 _TERNARY_FRONTEND_LOOPS = 2
+_NESTED_STATE_FRONTEND_LOOPS = 2
+_NESTED_STATE_SUBSCRIPTS = 3
 _FORBIDDEN_PUTCHAR = "putchar"
 _FORBIDDEN_STDIO = "<stdio.h>"
 _CLANG = _ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
@@ -94,6 +96,7 @@ _STREAM_STATE_FAMILY = "stream-state"
 _GRAPH_REDUCE_FAMILY = "graph-reduce"
 _LAYOUT_CHAIN_FAMILY = "layout-chain"
 _TERNARY_FOLD_FAMILY = "ternary-fold"
+_NESTED_STATE_FAMILY = "nested-state"
 _FAMILIES = (
     _ARITHMETIC_DAG_FAMILY,
     _BRANCH_MIX_FAMILY,
@@ -106,6 +109,7 @@ _FAMILIES = (
     _GRAPH_REDUCE_FAMILY,
     _LAYOUT_CHAIN_FAMILY,
     _TERNARY_FOLD_FAMILY,
+    _NESTED_STATE_FAMILY,
 )
 _ARITHMETIC_DAG_V1_SOURCE_SHA256 = (
     "dcadb0753d70d16a19601bac1c05b6868767432a48eea67d599056ab28880607"
@@ -149,6 +153,12 @@ _NEW_V1_REPLAY_VECTORS = (
         "c80be1d8967784fab599da5108c1c2ead4dbf1c032cbe8b0d981d743651fdb78",
         "3336c45d6b03c76bfac661cc6afb0952fab026cec34e646663f1bdd8289f2436",
         "41c5700e68b3b0df01506840a0e45d4faffe684a95a32a81a7c4f526ab77e3c2",
+    ),
+    (
+        _NESTED_STATE_FAMILY,
+        "d15c74926ada99e4421ef7192a2c262f236de9f163c7b838db45c7f0e3d78e56",
+        "2f761656ece85b8d1bc94b42b953feace3f10be1287abe3ef39f19155dab7030",
+        "11a98647a09bd23639d7369cf50e0ca49d874446b3a2058555349d99f246d42a",
     ),
 )
 
@@ -393,6 +403,18 @@ def test_ternary_fold_emits_base_three_transform() -> None:
     assert source.count("malbolge_ternary_mix(state, tokens[index])") == 1
 
 
+def test_nested_state_emits_two_live_loops() -> None:
+    """Nested-state challenges keep node and lane loops on the live state."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_NESTED_STATE_FAMILY, seed=0x5151, nodes=19)
+    )
+    source = generated.source.decode()
+    assert source.count("for (uint32_t") == _NESTED_STATE_FRONTEND_LOOPS
+    assert source.count("tokens[index]") == 1
+    assert source.count("addends[lane]") == 1
+    assert source.count("masks[lane]") == 1
+
+
 def test_identity_dimensions_change_artifact_identity() -> None:
     """Seed and difficulty remain part of the exact generated identity."""
     baseline = _GENERATOR_MODULE.generate(_identity())
@@ -420,6 +442,7 @@ def test_identity_dimensions_change_artifact_identity() -> None:
         (_GRAPH_REDUCE_FAMILY, "splitmix64-graph-reduce-v1"),
         (_LAYOUT_CHAIN_FAMILY, "splitmix64-layout-chain-v1"),
         (_TERNARY_FOLD_FAMILY, "splitmix64-ternary-fold-v1"),
+        (_NESTED_STATE_FAMILY, "splitmix64-nested-state-v1"),
     ],
 )
 def test_manifest_binds_identity_hashes_and_oracle(
@@ -802,6 +825,47 @@ def test_ternary_family_is_admitted_by_normalized_frontend(
     assert subscripts == 1
 
 
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME,
+    reason="reviewed normalized C frontend is Windows x86-64",
+)
+def test_nested_state_family_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep both nested loops and indexed state inputs after normalization."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_NESTED_STATE_FAMILY, seed=59, nodes=23)
+    )
+    source = tmp_path / "nested-state.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/nested-state-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    loops = sum(
+        node.get("kind") == _FOR_STATEMENT_KIND for node in normalized
+    )
+    subscripts = sum(
+        node.get("kind") == _ARRAY_SUBSCRIPT_KIND for node in normalized
+    )
+    assert loops == _NESTED_STATE_FRONTEND_LOOPS
+    assert subscripts == _NESTED_STATE_SUBSCRIPTS
+
+
 def _assert_native_oracle(
     generated: _GeneratedChallenge,
     tmp_path: Path,
@@ -886,6 +950,10 @@ def _assert_native_oracle(
         (_TERNARY_FOLD_FAMILY, 0, 1),
         (_TERNARY_FOLD_FAMILY, 7, 64),
         (_TERNARY_FOLD_FAMILY, 0x1234, 257),
+        (_NESTED_STATE_FAMILY, 0, 1),
+        (_NESTED_STATE_FAMILY, 7, 64),
+        (_NESTED_STATE_FAMILY, 0x1234, 257),
+        (_NESTED_STATE_FAMILY, 0xBEEF, 4096),
     ],
 )
 def test_native_source_result_matches_independent_oracle(

@@ -65,6 +65,7 @@ _STREAM_STATE_FAMILY: Final = "stream-state"
 _GRAPH_REDUCE_FAMILY: Final = "graph-reduce"
 _LAYOUT_CHAIN_FAMILY: Final = "layout-chain"
 _TERNARY_FOLD_FAMILY: Final = "ternary-fold"
+_NESTED_STATE_FAMILY: Final = "nested-state"
 _FAMILY_ALGORITHMS: Final = {
     _ARITHMETIC_DAG_FAMILY: "splitmix64-arithmetic-dag-v1",
     _BRANCH_MIX_FAMILY: "splitmix64-branch-mix-v1",
@@ -77,6 +78,7 @@ _FAMILY_ALGORITHMS: Final = {
     _GRAPH_REDUCE_FAMILY: "splitmix64-graph-reduce-v1",
     _LAYOUT_CHAIN_FAMILY: "splitmix64-layout-chain-v1",
     _TERNARY_FOLD_FAMILY: "splitmix64-ternary-fold-v1",
+    _NESTED_STATE_FAMILY: "splitmix64-nested-state-v1",
 }
 _FAMILIES: Final = frozenset(_FAMILY_ALGORITHMS)
 _VERSION: Final = 1
@@ -90,6 +92,8 @@ _STREAM_STATE_SEED_SALT: Final = 0x5354_524D_5354_4154
 _GRAPH_REDUCE_SEED_SALT: Final = 0x4752_4150_4852_4431
 _LAYOUT_CHAIN_SEED_SALT: Final = 0x4C41_594F_5554_4348
 _TERNARY_FOLD_SEED_SALT: Final = 0x5445_524E_4152_5931
+_NESTED_STATE_SEED_SALT: Final = 0x4E45_5354_5354_4154
+_NESTED_STATE_LANES: Final = 4
 _MEMORY_WALK_CELLS: Final = 8
 _CLASSIC_TRITS: Final = 10
 _CLASSIC_MODULUS: Final = 59_049
@@ -763,6 +767,67 @@ def _layout_chain_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     )
 
 
+def _nested_state_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _NESTED_STATE_SEED_SALT)
+    initial = rng.next_u32()
+    tokens = [rng.next_u32() for _index in range(identity.nodes)]
+    addends = [rng.next_u32() for _index in range(_NESTED_STATE_LANES)]
+    masks = [rng.next_u32() for _index in range(_NESTED_STATE_LANES)]
+    state = initial
+    for token in tokens:
+        for lane in range(_NESTED_STATE_LANES):
+            state = ((state + token + addends[lane]) & _MASK32) ^ masks[lane]
+    token_initializer = ", ".join(f"UINT32_C({token})" for token in tokens)
+    addend_initializer = ", ".join(
+        f"UINT32_C({value})" for value in addends
+    )
+    mask_initializer = ", ".join(f"UINT32_C({value})" for value in masks)
+    lines = [
+        "#include <stdint.h>",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t tokens[{identity.nodes}] = {{{token_initializer}}};",
+        (
+            f"    uint32_t addends[{_NESTED_STATE_LANES}] = "
+            f"{{{addend_initializer}}};"
+        ),
+        (
+            f"    uint32_t masks[{_NESTED_STATE_LANES}] = "
+            f"{{{mask_initializer}}};"
+        ),
+        f"    uint32_t state = UINT32_C({initial});",
+        (
+            "    for (uint32_t index = UINT32_C(0); "
+            f"index < UINT32_C({identity.nodes}); "
+            "index += UINT32_C(1)) {"
+        ),
+        "        uint32_t token = tokens[index];",
+        (
+            "        for (uint32_t lane = UINT32_C(0); "
+            f"lane < UINT32_C({_NESTED_STATE_LANES}); "
+            "lane += UINT32_C(1)) {"
+        ),
+        (
+            "            state = (state + token + addends[lane]) "
+            "^ masks[lane];"
+        ),
+        "        }",
+        "    }",
+        "    return state;",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ]
+    return (
+        chr(10).join(lines).encode(),
+        state.to_bytes(_ORACLE_BYTES, byteorder="little"),
+    )
+
+
 def _ternary_mix_value(value: int, token: int) -> int:
     result = 0
     place = 1
@@ -849,6 +914,7 @@ _PAYLOAD_RENDERERS: Final = {
     _GRAPH_REDUCE_FAMILY: _graph_reduce_payload,
     _LAYOUT_CHAIN_FAMILY: _layout_chain_payload,
     _TERNARY_FOLD_FAMILY: _ternary_fold_payload,
+    _NESTED_STATE_FAMILY: _nested_state_payload,
 }
 
 
