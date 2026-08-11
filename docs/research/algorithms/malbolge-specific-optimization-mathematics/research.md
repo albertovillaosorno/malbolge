@@ -61,11 +61,12 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes eight exact reductions: classic five-trit crazy factorization,
+formalizes nine exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, decode phase reduction, classic rotate
 lookup, graphical self-encryption orbit canonicalization, classic rotate-history
-canonicalization, exact crazy-target preimage cardinality, and the tight
-classic 1,024-preimage global bound. The encryption
+canonicalization, exact crazy-target preimage cardinality, the tight classic
+1,024-preimage global bound, and the exact zero-or-power-of-two preimage
+spectrum. The encryption
 table is proved to partition the complete
 graphical domain into cycles of lengths 2, 4, 5, 6, 9, and 68, so repeated
 committed encryption of an otherwise unchanged code cell needs only the visit
@@ -78,6 +79,8 @@ accumulator zero therefore has exactly 1,024 data-word preimages, while a zero
 target under accumulator zero has none. Exhausting all 59,049 accumulator words
 through an independent trit relation proves no fixed classic accumulator/target
 pair can exceed 1,024 preimages, so that known case attains the global bound.
+The same exhaustive accumulator spectrum proves every nonzero full-domain count
+is one of `1,2,4,...,1024`, and every listed power plus zero is attainable.
 
 `src/specification/formal-model/math/specification/correspondence.toml` binds
 those equations to exhaustive or composite executable evidence. The classic
@@ -96,8 +99,8 @@ host/workload, crazy improved from a 77,456,700 ns scalar median to 7,423,600 ns
 (10.43x), and rotate improved from 15,260,300 ns to 10,141,700 ns (1.50x).
 These timing results support H1 only for the admitted CPU table-factorization
 slice. The self-encryption/rotate-history reductions, crazy preimage count,
-and global preimage bound are correctness-proved search reductions, not measured
-performance results. None
+global preimage bound, and discrete preimage spectrum are correctness-proved
+search reductions, not measured performance results. None
 of these results establishes a universal speedup or proves broader synthesis
 lower bounds.
 
@@ -111,8 +114,8 @@ Each experiment must narrow these threats before drawing a conclusion.
 
 Retain the four proved table/factorization reductions plus the exact
 self-encryption and classic rotate-history canonicalizations, crazy-target
-preimage cardinality, and the tight 1,024-preimage bound as valid optimization
-building blocks.
+preimage cardinality, tight 1,024-preimage bound, and discrete cardinality
+spectrum as valid optimization building blocks.
 Continue the research for broader canonical forms, lower bounds, and
 search-space
 reductions; those remain unproved and receive no performance claim from this

@@ -17,6 +17,6 @@ semantic acceptance is owned by
 
 The current research surface also exposes an exact classic crazy-target
 full-domain preimage count. Its product-of-per-trit-multiplicities equation and
-the derived tight 1,024-preimage global ceiling are registered in the
-mathematical correspondence manifest; both are correctness/search-bound results,
-not benchmark-derived speedup claims.
+the derived tight 1,024-preimage global ceiling and exact zero-or-power-of-two
+cardinality spectrum are registered in the mathematical correspondence manifest;
+all are correctness/search-bound results, not benchmark-derived speedup claims.
