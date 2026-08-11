@@ -2,12 +2,22 @@ schema_version = 1
 
 [study]
 id = "classic-superopt-pilot-windows-2026-08-11"
+# jig-ignore-next-line: canonical repository-relative evidence path is indivisible
 experiment_manifest = "benchmarks/research/evidence/2026-08-11-classic-superopt-pilot-windows/experiment.toml"
 kind = "deterministic"
-question = """Does the frozen seeded proposal order reach a verified classic candidate sooner than deterministic enumeration?"""
-hypothesis = """Under equal corpus and bounds, seeded proposal reaches the first verified candidate sooner or yields better verified quality."""
+question = """\
+Does the frozen seeded proposal order reach a verified classic candidate \
+sooner than deterministic enumeration?\
+"""
+hypothesis = """\
+Under equal corpus and bounds, seeded proposal reaches the first verified \
+candidate sooner or yields better verified quality.\
+"""
 baseline = "deterministic-enumeration-v1"
-rejection_observation = """No preregistered objective improves, verifier acceptance differs, or the result cannot be replayed."""
+rejection_observation = """\
+No preregistered objective improves, verifier acceptance differs, or the result \
+cannot be replayed.\
+"""
 
 [workload]
 identity = "classic-verified-block-search-v1"
@@ -18,7 +28,10 @@ warmup_iterations = 0
 repetitions = 5
 warmup_policy = "no warmup; all five fixed-seed cold repetitions are retained"
 ordering = "fixed"
-stopping_rule = """enumeration then seeded; each schedule stops at corpus, evaluation, or 60-second bound"""
+stopping_rule = """\
+enumeration then seeded; each schedule stops at corpus, evaluation, or \
+60-second bound\
+"""
 outlier_policy = "retain-all"
 outlier_rule = "none"
 
@@ -34,7 +47,10 @@ metrics = [
   "best_quality",
   "elapsed_nanoseconds",
 ]
-tradeoff_policy = """report first-hit work/time, best quality, and total time separately; do not collapse them"""
+tradeoff_policy = """\
+report first-hit work/time, best quality, and total time separately; do not \
+collapse them\
+"""
 
 [resources]
 host = "Microsoft Windows 10.0.26200 x64-based PC"
@@ -42,6 +58,7 @@ accelerator = "none"
 memory_mib = 512
 
 [raw]
+# jig-ignore-next-line: canonical repository-relative evidence path is indivisible
 path = "benchmarks/research/evidence/2026-08-11-classic-superopt-pilot-windows/raw.csv"
 retained = true
 
