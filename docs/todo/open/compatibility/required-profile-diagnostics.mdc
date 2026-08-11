@@ -102,15 +102,23 @@ historical-profile constraint.
   interpreter fallback. The cache-aware form repeats all gates before lookup,
   and rejected/interpreter outcomes leave cache size unchanged.
 - Raw IR remains transportable for verifier rejection, while cache/native
-  identity
-  rejects profile-capacity-inconsistent addressing before bootstrap or direct
-  artifact construction. Direct structural admission also rejects same-profile
-  object/key footprint mismatch through `MBPF` v3.
+  identity rejects profile-capacity-inconsistent addressing before bootstrap or
+  direct artifact construction. Direct structural admission also rejects
+  same-profile object/key footprint mismatch through `MBPF` v3.
+- Bootstrap source lowering now has a product-facing
+  `lower_preflighted_clang_c23()` boundary. It requires the transported profile
+  envelope to be canonical, applies combined `002` then `001` preflight, and
+  only then validates the bootstrap target or renders C23 source. Raw
+  `lower_clang_c23()` remains available for explicitly untrusted transport and
+  deterministic rejection. Focused tests require byte-identical runtime
+  diagnostics for the artifact's exact immutable profile ID and exact capacity
+  text before an invalid target can mask either profile error.
 - Raw `.malbolge` CLI invocation now uses `ExecutionMachine`, so source capacity
   reaches the same historical-ceiling diagnostic without changing normal
   interpreter output. Equivalent program-memory requirements for non-IR artifact
-  families, bootstrap compiler artifacts, durable-cache/AOT/JIT/runtime
-  orchestration, and remaining product invocation paths remain open, so
+  families, external bootstrap compiler invocation,
+  durable-cache/AOT/JIT/runtime orchestration, and remaining product invocation
+  paths remain open, so
   repository-wide completion is not claimed.
 
 ## Acceptance

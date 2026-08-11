@@ -181,6 +181,16 @@ validation or backend construction. Program capacity has precedence over runtime
 capability, which has precedence over host/backend selection. Neither `002` nor
 `001` is converted to a deopt artifact.
 
+Bootstrap C23 source generation now exposes the same product-facing ordering
+through `lower_preflighted_clang_c23()`. The transported requirement must first
+be canonical for its exact declared profile ID; combined portable preflight then
+checks program capacity before runtime capability, and bootstrap target
+validation/rendering happens only after those gates pass. Raw
+`lower_clang_c23()` intentionally remains an untrusted lowering surface so
+verifier-rejection and transport tests can still construct invalid candidates.
+An admitted preflighted result is byte-identical to raw lowering for the same
+program/target.
+
 ### Stable Diagnostic Categories
 
 `MALBOLGE-PROFILE-001` means that the selected runtime cannot implement the
@@ -266,11 +276,12 @@ explicit
 cannot bypass either diagnostic, and profile/interpreter outcomes do not mutate
 cache cardinality.
 Other artifact families do not yet universally expose an equivalent program
-requirement. Raw `.malbolge` product invocation now uses canonical source
-preflight, but bootstrap compiler artifacts, durable-cache/AOT/JIT execution,
-and remaining product/artifact paths do not yet universally invoke combined
-portable preflight. This contract therefore remains active rather than claiming
-repository-wide profile diagnostic completion.
+requirement. Raw `.malbolge` product invocation uses canonical source preflight,
+and bootstrap source generation now has explicit combined portable preflight.
+External bootstrap compiler invocation, durable-cache/AOT/JIT execution, and
+remaining product/artifact paths do not yet universally invoke that boundary.
+This contract therefore remains active rather than claiming repository-wide
+profile diagnostic completion.
 
 ## Verification
 
