@@ -62,6 +62,7 @@ _MEMORY_WALK_FAMILY: Final = "memory-walk"
 _POINTER_WALK_FAMILY: Final = "pointer-walk"
 _ALIAS_WALK_FAMILY: Final = "alias-walk"
 _STREAM_STATE_FAMILY: Final = "stream-state"
+_GRAPH_REDUCE_FAMILY: Final = "graph-reduce"
 _FAMILY_ALGORITHMS: Final = {
     _ARITHMETIC_DAG_FAMILY: "splitmix64-arithmetic-dag-v1",
     _BRANCH_MIX_FAMILY: "splitmix64-branch-mix-v1",
@@ -71,6 +72,7 @@ _FAMILY_ALGORITHMS: Final = {
     _POINTER_WALK_FAMILY: "splitmix64-pointer-walk-v1",
     _ALIAS_WALK_FAMILY: "splitmix64-alias-walk-v1",
     _STREAM_STATE_FAMILY: "splitmix64-stream-state-v1",
+    _GRAPH_REDUCE_FAMILY: "splitmix64-graph-reduce-v1",
 }
 _FAMILIES: Final = frozenset(_FAMILY_ALGORITHMS)
 _VERSION: Final = 1
@@ -81,6 +83,7 @@ _MEMORY_WALK_SEED_SALT: Final = 0x4D45_4D4F_5259_574B
 _POINTER_WALK_SEED_SALT: Final = 0x5054_5257_414C_4B31
 _ALIAS_WALK_SEED_SALT: Final = 0x414C_4941_5357_4B31
 _STREAM_STATE_SEED_SALT: Final = 0x5354_524D_5354_4154
+_GRAPH_REDUCE_SEED_SALT: Final = 0x4752_4150_4852_4431
 _MEMORY_WALK_CELLS: Final = 8
 _MASK32: Final = (1 << 32) - 1
 _MASK64: Final = (1 << 64) - 1
@@ -652,6 +655,62 @@ def _stream_state_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     )
 
 
+def _graph_reduce_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _GRAPH_REDUCE_SEED_SALT)
+    initial = rng.next_u32()
+    mask = rng.next_u32()
+    parents: list[int] = []
+    weights: list[int] = []
+    states = [initial]
+    for index in range(identity.nodes):
+        parent = int(rng.next_u64() % (index + 1))
+        weight = rng.next_u32()
+        parents.append(parent)
+        weights.append(weight)
+        combined = (states[parent] + states[index] + weight) & _MASK32
+        states.append(combined ^ mask)
+    lines = [
+        "#include <stdint.h>",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t parents[{identity.nodes}] = {{",
+        *(f"        UINT32_C({parent})," for parent in parents),
+        "    };",
+        f"    uint32_t weights[{identity.nodes}] = {{",
+        *(f"        UINT32_C({weight})," for weight in weights),
+        "    };",
+        f"    uint32_t states[{identity.nodes + 1}] = {{",
+        f"        UINT32_C({initial}),",
+        *("        UINT32_C(0)," for _index in range(identity.nodes)),
+        "    };",
+        (
+            "    for (uint32_t index = UINT32_C(0); "
+            f"index < UINT32_C({identity.nodes}); "
+            "index += UINT32_C(1)) {"
+        ),
+        "        uint32_t parent = parents[index];",
+        "        uint32_t previous = states[index];",
+        (
+            "        states[index + UINT32_C(1)] = "
+            "(states[parent] + previous + weights[index]) "
+            f"^ UINT32_C({mask});"
+        ),
+        "    }",
+        f"    return states[{identity.nodes}];",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ]
+    return (
+        chr(10).join(lines).encode(),
+        states[-1].to_bytes(_ORACLE_BYTES, byteorder="little"),
+    )
+
+
 _PAYLOAD_RENDERERS: Final = {
     _ARITHMETIC_DAG_FAMILY: _arithmetic_dag_payload,
     _BRANCH_MIX_FAMILY: _branch_mix_payload,
@@ -661,6 +720,7 @@ _PAYLOAD_RENDERERS: Final = {
     _POINTER_WALK_FAMILY: _pointer_walk_payload,
     _ALIAS_WALK_FAMILY: _alias_walk_payload,
     _STREAM_STATE_FAMILY: _stream_state_payload,
+    _GRAPH_REDUCE_FAMILY: _graph_reduce_payload,
 }
 
 

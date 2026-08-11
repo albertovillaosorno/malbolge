@@ -72,6 +72,7 @@ _UNARY_EXPRESSION_KIND = "unary-expression"
 _VARIABLE_DECLARATION_KIND = "variable-declaration"
 _POINTER_TYPE = "ptr(u32)"
 _MEMORY_WALK_SUBSCRIPTS_PER_NODE = 3
+_GRAPH_REDUCE_SUBSCRIPTS = 6
 _FORBIDDEN_PUTCHAR = "putchar"
 _FORBIDDEN_STDIO = "<stdio.h>"
 _CLANG = _ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
@@ -86,6 +87,7 @@ _MEMORY_WALK_FAMILY = "memory-walk"
 _POINTER_WALK_FAMILY = "pointer-walk"
 _ALIAS_WALK_FAMILY = "alias-walk"
 _STREAM_STATE_FAMILY = "stream-state"
+_GRAPH_REDUCE_FAMILY = "graph-reduce"
 _FAMILIES = (
     _ARITHMETIC_DAG_FAMILY,
     _BRANCH_MIX_FAMILY,
@@ -95,6 +97,7 @@ _FAMILIES = (
     _POINTER_WALK_FAMILY,
     _ALIAS_WALK_FAMILY,
     _STREAM_STATE_FAMILY,
+    _GRAPH_REDUCE_FAMILY,
 )
 _ARITHMETIC_DAG_V1_SOURCE_SHA256 = (
     "dcadb0753d70d16a19601bac1c05b6868767432a48eea67d599056ab28880607"
@@ -306,6 +309,20 @@ def test_stream_state_emits_live_loop_and_branch() -> None:
     assert source.count("        UINT32_C(") == nodes
 
 
+def test_graph_reduce_emits_live_parent_graph() -> None:
+    """Graph challenges retain generated parents and runtime graph lookup."""
+    nodes = 19
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_GRAPH_REDUCE_FAMILY, seed=0xFACE, nodes=nodes)
+    )
+    source = generated.source.decode()
+    assert source.count("    for (") == 1
+    assert source.count("parents[index]") == 1
+    assert source.count("states[parent]") == 1
+    assert source.count("weights[index]") == 1
+    assert f"return states[{nodes}];" in source
+
+
 def test_identity_dimensions_change_artifact_identity() -> None:
     """Seed and difficulty remain part of the exact generated identity."""
     baseline = _GENERATOR_MODULE.generate(_identity())
@@ -330,6 +347,7 @@ def test_identity_dimensions_change_artifact_identity() -> None:
         (_POINTER_WALK_FAMILY, "splitmix64-pointer-walk-v1"),
         (_ALIAS_WALK_FAMILY, "splitmix64-alias-walk-v1"),
         (_STREAM_STATE_FAMILY, "splitmix64-stream-state-v1"),
+        (_GRAPH_REDUCE_FAMILY, "splitmix64-graph-reduce-v1"),
     ],
 )
 def test_manifest_binds_identity_hashes_and_oracle(
@@ -590,6 +608,45 @@ def test_stream_family_is_admitted_by_normalized_frontend(
     ) == 1
 
 
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME,
+    reason="reviewed normalized C frontend is Windows x86-64",
+)
+def test_graph_family_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep graph parent lookup and state reduction after normalization."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_GRAPH_REDUCE_FAMILY, seed=43, nodes=23)
+    )
+    source = tmp_path / "graph.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/graph-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    assert sum(
+        node.get("kind") == _FOR_STATEMENT_KIND for node in normalized
+    ) == 1
+    assert sum(
+        node.get("kind") == _ARRAY_SUBSCRIPT_KIND for node in normalized
+    ) == _GRAPH_REDUCE_SUBSCRIPTS
+
+
 def _assert_native_oracle(
     generated: _GeneratedChallenge,
     tmp_path: Path,
@@ -665,6 +722,9 @@ def _assert_native_oracle(
         (_STREAM_STATE_FAMILY, 0, 1),
         (_STREAM_STATE_FAMILY, 7, 64),
         (_STREAM_STATE_FAMILY, 0x1234, 257),
+        (_GRAPH_REDUCE_FAMILY, 0, 1),
+        (_GRAPH_REDUCE_FAMILY, 7, 64),
+        (_GRAPH_REDUCE_FAMILY, 0x1234, 257),
     ],
 )
 def test_native_source_result_matches_independent_oracle(
