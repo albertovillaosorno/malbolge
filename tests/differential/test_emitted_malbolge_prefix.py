@@ -23,7 +23,7 @@
 # - Merge-When:
 #   - Another verifier differential owns the same bounded public surface.
 # - Summary:
-#   - Compares schema-v5 second/third transitions to independent 1998 semantics.
+#   - Compares schema-v6 second/third transitions to independent 1998 semantics.
 # - Description:
 #   - Covers every admitted second opcode after exact output or input entry.
 # - Usage:

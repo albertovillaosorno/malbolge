@@ -64,7 +64,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v5"
+_SCHEMA = "malbolge-static-image/v6"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -73,6 +73,10 @@ _SECOND_INPUT_UNRESOLVED = "unresolved-input-dependent-accumulator"
 _FIXTURE_ENCRYPTION_INPUT = 99
 _FIXTURE_SECOND_VALUE = 116
 _SECOND_SUCCESSOR = 2
+_MEMORY_SCOPE = "three-transition-prefix"
+_THIRD_PREFIX_WORDS = 3
+_RECUR_DATA_ADDRESS = 41
+_RECUR_DATA_WORDS = 42
 _THIRD_STUCK_SOURCE = b"c'"
 _THIRD_STUCK_VALUE = 29_503
 _THIRD_STUCK_DATA_ADDRESS = 40
@@ -180,6 +184,13 @@ class _SecondTransition(Protocol):
     accepted: bool
 
 
+class _BoundedMemoryRequirement(Protocol):
+    scope: str
+    minimum_words: int
+    highest_accessed_address: int
+    accessed_addresses: tuple[int, ...]
+
+
 class _Report(Protocol):
     schema: str
     profile_id: str
@@ -188,6 +199,7 @@ class _Report(Protocol):
     profile_address_domain_closed: bool
     source_sha256: str
     required_source_words: int
+    bounded_memory_requirement: _BoundedMemoryRequirement | None
     admitted_initial_image: bool
     initial_cells: tuple[_Cell, ...]
     entry_transition: _EntryTransition | None
@@ -404,6 +416,56 @@ def test_known_valid_fixture_has_exact_initial_decode() -> None:
     assert [cell.source_byte for cell in report.initial_cells] == [99, 116, 79]
     assert [cell.decoded_byte for cell in report.initial_cells] == [60, 47, 118]
     assert report.findings == ()
+
+
+def test_bounded_memory_requirement_tracks_exact_fixture_accesses() -> None:
+    """Known fixture needs only its three loaded/fetched prefix words."""
+    report = _ANALYZER_MODULE.analyze_source(_FIXTURE.read_bytes())
+    memory = report.bounded_memory_requirement
+    assert memory is not None
+    assert memory.scope == _MEMORY_SCOPE
+    assert memory.minimum_words == _FIXTURE_SOURCE_WORDS
+    assert memory.highest_accessed_address == _SECOND_SUCCESSOR
+    assert memory.accessed_addresses == (0, 1, 2)
+
+
+def test_bounded_memory_includes_recurrence_encryption_target() -> None:
+    """Entry jump encryption proves the recurrence footprint through M[98]."""
+    report = _ANALYZER_MODULE.analyze_source(b"b'")
+    memory = report.bounded_memory_requirement
+    assert memory is not None
+    assert memory.minimum_words == _JUMP_ENTRY_ADDRESS + 1
+    assert memory.highest_accessed_address == _JUMP_ENTRY_ADDRESS
+    assert memory.accessed_addresses == (0, _JUMP_ENTRY_ADDRESS)
+
+
+def test_bounded_memory_excludes_unread_stuck_data_pointer() -> None:
+    """A non-graphical fetch does not read D before historical continue."""
+    report = _ANALYZER_MODULE.analyze_source(_THIRD_STUCK_SOURCE)
+    memory = report.bounded_memory_requirement
+    assert memory is not None
+    assert memory.minimum_words == _THIRD_PREFIX_WORDS
+    assert memory.highest_accessed_address == _SECOND_SUCCESSOR
+    assert _THIRD_STUCK_DATA_ADDRESS not in memory.accessed_addresses
+    assert memory.accessed_addresses == (0, 1, 2)
+
+
+def test_bounded_memory_includes_recurrence_data_read() -> None:
+    """A reachable second j includes its recurrence-backed D read."""
+    report = _ANALYZER_MODULE.analyze_source(b"('")
+    memory = report.bounded_memory_requirement
+    assert memory is not None
+    assert memory.minimum_words == _RECUR_DATA_WORDS
+    assert memory.highest_accessed_address == _RECUR_DATA_ADDRESS
+    assert memory.accessed_addresses == (0, 1, 2, _RECUR_DATA_ADDRESS)
+
+
+def test_rejected_initial_decode_has_no_bounded_memory_claim() -> None:
+    """No dynamic memory footprint is claimed before load admission succeeds."""
+    report = _ANALYZER_MODULE.analyze_source(bytes((33, 38)))
+    assert not report.admitted_initial_image
+    assert report.entry_transition is None
+    assert report.bounded_memory_requirement is None
 
 
 def test_report_profile_capacity_matches_canonical_authority() -> None:

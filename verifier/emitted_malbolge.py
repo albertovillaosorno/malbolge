@@ -55,7 +55,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v5"
+_SCHEMA: Final = "malbolge-static-image/v6"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -66,6 +66,8 @@ _ENCRYPTION_TARGET_CURRENT: Final = "current-code-pointer"
 _ENCRYPTION_TARGET_POST_JUMP: Final = "post-jump-code-pointer"
 _ENCRYPTION_TARGET_NONE: Final = "none"
 _DATA_WRITING_INSTRUCTIONS: Final = frozenset(b"*p")
+_DATA_READING_INSTRUCTIONS: Final = frozenset(b"ji*p")
+_MEMORY_SCOPE: Final = "three-transition-prefix"
 _LIMITS: Final = (
     "code-data-aliasing:three-transition-prefix-only",
     "control-flow-reachability:three-transition-prefix-only",
@@ -102,6 +104,16 @@ class InitialCell:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedMemoryRequirement:
+    """Exact memory footprint needed by the analyzed bounded prefix."""
+
+    scope: str
+    minimum_words: int
+    highest_accessed_address: int
+    accessed_addresses: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class StaticImageReport:
     """Bounded report that never implies dynamic guest execution."""
 
@@ -112,6 +124,7 @@ class StaticImageReport:
     profile_address_domain_closed: bool
     source_sha256: str
     required_source_words: int
+    bounded_memory_requirement: BoundedMemoryRequirement | None
     admitted_initial_image: bool
     initial_cells: tuple[InitialCell, ...]
     entry_transition: entry_transfer.EntryTransition | None
@@ -231,6 +244,55 @@ def _analyze_admitted_cells(
     return cells, entry, second, third, findings
 
 
+def _entry_memory_accesses(
+    entry: entry_transfer.EntryTransition,
+) -> set[int]:
+    accesses = {entry.fetched_address}
+    if entry.decoded_byte in _DATA_READING_INSTRUCTIONS:
+        accesses.add(entry.data_address)
+    if entry.planned_data_write_address is not None:
+        accesses.add(entry.planned_data_write_address)
+    if entry.encryption_address is not None:
+        accesses.add(entry.encryption_address)
+    return accesses
+
+
+def _prefix_memory_accesses(
+    transition: prefix_transfer.SecondTransition,
+) -> set[int]:
+    accesses = {transition.fetched_address}
+    if transition.decoded_byte in _DATA_READING_INSTRUCTIONS:
+        accesses.add(transition.data_address)
+    if transition.planned_data_write_address is not None:
+        accesses.add(transition.planned_data_write_address)
+    if transition.encryption_address is not None:
+        accesses.add(transition.encryption_address)
+    return accesses
+
+
+def _bounded_memory_requirement(
+    source_words: int,
+    entry: entry_transfer.EntryTransition | None,
+    *,
+    second: prefix_transfer.SecondTransition | None,
+    third: prefix_transfer.SecondTransition | None,
+) -> BoundedMemoryRequirement | None:
+    if entry is None:
+        return None
+    accesses = _entry_memory_accesses(entry)
+    for transition in (second, third):
+        if transition is not None:
+            accesses.update(_prefix_memory_accesses(transition))
+    ordered = tuple(sorted(accesses))
+    highest = ordered[-1]
+    return BoundedMemoryRequirement(
+        scope=_MEMORY_SCOPE,
+        minimum_words=max(source_words, highest + 1),
+        highest_accessed_address=highest,
+        accessed_addresses=ordered,
+    )
+
+
 def analyze_source(source: bytes) -> StaticImageReport:
     """Analyze one classic source image without executing guest instructions.
 
@@ -285,6 +347,12 @@ def analyze_source(source: bytes) -> StaticImageReport:
         profile_address_domain_closed=True,
         source_sha256="sha256:" + sha256(source).hexdigest(),
         required_source_words=required,
+        bounded_memory_requirement=_bounded_memory_requirement(
+            required,
+            entry_transition,
+            second=second_transition,
+            third=third_transition,
+        ),
         admitted_initial_image=not findings,
         initial_cells=cells,
         entry_transition=entry_transition,
