@@ -30,8 +30,8 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v7` retains exact `entry_transition` through
-`fourth_transition` evidence and `bounded_memory_requirement` for that exact
+`malbolge-static-image/v8` retains exact `entry_transition` through
+`fifth_transition` evidence and `bounded_memory_requirement` for that exact
 prefix. The prefix replays committed entry/second writes before each
 bounded read, then resolves fetch/data cells, decode, C/D alias, planned data
 write, encryption address/input/output, accumulator dependency, halt/rejection,
@@ -54,11 +54,11 @@ future pointer value alone is not a memory touch; for example the proven
 non-graphical third-step cycle keeps `D=40` without reading address 40.
 
 Initial-image admission is deliberately narrower than whole-program safety. The
-current report proves only a four-transition prefix. A direct transfer test
-proves one fifth step after an explicitly supplied accepted prefix, but schema
-v7 does not infer or publish that step. Automatic fifth-step/later reachability,
-general dataflow/evolved-memory equivalence, source-map context, and longer
-input-dependent cycle/hang safety remain open under this TODO.
+current report proves only a five-transition prefix. Schema v8 publishes the
+verified fifth transition after recomputing its explicit accepted prefix.
+Automatic sixth-step/later reachability, general dataflow/evolved-memory
+equivalence, source-map context, and longer input-dependent cycle/hang safety
+remain open under this TODO.
 
 ## Invariants
 
@@ -67,7 +67,7 @@ input-dependent cycle/hang safety remain open under this TODO.
   pointer.
 - Per-cell encryption-target classification does not imply reachability. The
   bounded transfer records resolve only the first four historical transitions.
-- Four-transition report evidence never implies fifth-step or later control
+- Five-transition report evidence never implies sixth-step or later control
   flow. A separate next-transition call requires the caller to supply the exact
   accepted prefix explicitly; every supplied transition is recomputed from the
   current bounded state before its writes are replayed. General reachability
@@ -106,9 +106,9 @@ Unreadable source fails before a semantic report is emitted.
   rejection, exact second-step input/no-op/halt/invalid-encryption fixtures,
   explicit input-dependent-crazy unresolved evidence, a 25-case public CLI
   differential including recurrence-backed entry `j`, 16 seeded invalid
-  positional mutations with byte-exact replay, exact third/fourth-step halt or
-  fixed-fetch-cycle evidence, a fifth-step generic-transfer fixed-cycle fixture,
-  recurrence-backed bounded memory requirements,
+  positional mutations with byte-exact replay, exact third/fourth/fifth-step
+  halt or fixed-fetch-cycle evidence, recurrence-backed bounded memory
+  requirements,
   byte-exact CLI/library report parity, bounded analysis limits, CLI
   second/third/fourth rejection status, and CLI read failure.
 
