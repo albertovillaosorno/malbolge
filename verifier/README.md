@@ -8,29 +8,34 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v10 retains the exact entry through fifth transitions and
-adds a bounded memory requirement for that exact prefix. The bounded
-five-transition prefix replays
+load decode. Schema v11 retains the legacy exact entry-through-fifth
+fields and adds
+`bounded_continuations` plus an explicit total transition limit of 16. The
+single-pass bounded trace replays
 committed writes before resolving fetch/data cells, code/data aliasing, planned
 writes, encryption input/output, input dependence, halt/rejection, pointer
 succession, and wrap without a worklist or unbounded guest execution. The
 report also publishes the minimum word footprint and exact addresses actually
 touched by the analyzed prefix; merely-held future C/D pointers are not counted.
-For each resolved bounded fetch, schema v10 maps loaded-source addresses back
+For each resolved bounded fetch, schema v11 maps loaded-source addresses back
 to the original loaded position/raw byte offset and initial source byte, while
 recurrence-only fetches remain explicitly unmapped. The record also states
 whether the fetched value still equals that initial source byte. A second
 bounded access map applies the same exact source coordinates to each fetch,
 actual data read, planned data write, and self-encryption address role.
 It can also prove the historical non-graphical-fetch fixed cycle because
-`continue` precedes pointer advance. The prefix module now has one generic
-next-transition primitive over an explicit finite accepted prefix. Supplied
-transition records are recomputed from the current bounded state before their
-writes can influence later analysis; noncontiguous/forged prefixes fail closed.
+`continue` precedes pointer advance. The prefix module now has both one
+generic next-transition primitive over an
+explicit accepted prefix and one single-pass finite continuation iterator.
+Supplied transition records passed to the former are recomputed from the current
+bounded state before their writes can influence later analysis;
+noncontiguous/forged prefixes fail closed.
 A four-word `b"('&%"` fixture uses it to prove a recurrence-backed fifth
-fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v10 publishes that
-exact transition and its bounded memory footprint. Automatic/report-level
-sixth-and-later control flow, higher-level C/source-map linkage, complete
+fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v11 publishes that
+exact transition and its bounded memory footprint. A 16-cell sequential-output
+fixture reaches the complete reviewed bound with exact source/access evidence.
+Transition 17 and later control flow, higher-level C/source-map linkage,
+complete
 value-lineage provenance, and longer input-dependent cycles remain unproved.
 
 The initial-image report is bounded by the selected historical profile. Sources
@@ -43,10 +48,10 @@ lexical, recurrence-base, capacity, and positional-decode failures.
 
 The CLI always emits the canonical UTF-8 report bytes when source bytes are
 readable, without platform newline translation. It returns zero only when the
-admitted image also has an accepted bounded five-transition prefix. Proven
-entry/second rejection, unresolved input-dependent state, or a
-third/fourth/fifth-step fixed fetch cycle returns nonzero; a halt at any
-resolved prefix step remains an exact accepted terminal result.
+admitted image also has an accepted bounded 16-transition trace (or halts
+exactly before that bound). Proven rejection, unresolved input-dependent state,
+or a fixed-fetch cycle at any resolved step returns nonzero; an exact halt at
+any resolved prefix step remains an accepted terminal result.
 
 Each report also carries a SHA-256 identity for the exact raw source bytes. This
 distinguishes inputs that have the same loaded-word semantics, including
