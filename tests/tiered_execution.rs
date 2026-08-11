@@ -15027,7 +15027,14 @@ fn cached_retry_cycle_preserves_initial_routing_failure() -> Result<(), String>
     else {
         return Err(String::from("cached routing failure category drifted"));
     };
+    let profile_diagnostic =
+        routing_failure.profile_diagnostic().ok_or_else(|| {
+            String::from("cached routing lost profile diagnostic")
+        })?;
     if routing_failure.prior_attempts().is_empty()
+        && profile_diagnostic.starts_with("MALBOLGE-PROFILE-001 ")
+        && routing_failure.failure().to_string() == profile_diagnostic
+        && routing_failure.to_string() == profile_diagnostic
         && runner.calls == 0
         && cache.is_empty()
         && adapter.operations.is_empty()

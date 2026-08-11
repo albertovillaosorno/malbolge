@@ -37,6 +37,8 @@
 
 //! Bounded cache-aware native continuation retry cycles.
 
+use std::fmt::{Display, Formatter, Result as FormatResult};
+
 #[path = "cached_cycle/telemetry.rs"]
 mod telemetry;
 #[path = "cached_cycle/telemetry_assessment.rs"]
@@ -587,11 +589,23 @@ impl<RunnerError> NativeContinuationCachedRetryFailureRebaseCycle<RunnerError> {
     }
 }
 
+impl Display for NativeContinuationCachedRetryRoutingCycleFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        Display::fmt(self.failure.as_ref(), f)
+    }
+}
+
 impl NativeContinuationCachedRetryRoutingCycleFailure {
     /// Returns exact host/policy routing failure ownership.
     #[must_use]
     pub const fn failure(&self) -> &NativeContinuationRetryRoutingFailure {
         &self.failure
+    }
+
+    /// Returns the retained canonical profile diagnostic, when applicable.
+    #[must_use]
+    pub fn profile_diagnostic(&self) -> Option<&str> {
+        self.failure.profile_diagnostic()
     }
 
     /// Consumes this owner into prior evidence and exact routing failure.
