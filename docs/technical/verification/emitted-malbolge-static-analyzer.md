@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v8` retains exact `entry_transition` through
+`malbolge-static-image/v9` retains exact `entry_transition` through
 `fifth_transition` evidence and `bounded_memory_requirement` for that exact
 prefix. The prefix replays committed entry/second writes before each
 bounded read, then resolves fetch/data cells, decode, C/D alias, planned data
@@ -46,19 +46,27 @@ cycle at `C=3`, `D=39`, `M[3]=29487`. The transfer module now reconstructs
 memory/state through one generic next-transition primitive over an explicit
 finite accepted prefix. The four-word `b"('&%"` fixture continues through four
 `j` steps and then uses that primitive to prove a fifth recurrence-backed fixed
-fetch at `C=4`, `D=29490`, `M[4]=29489`. Historical recurrence words are derived
-only when a bounded read needs them.
-sorted addresses touched by fetch/data/write/encryption semantics and the
+fetch at `C=4`, `D=29490`, `M[4]=29489`. Historical recurrence words are
+derived only when a bounded read needs them.
+Schema v9 additionally publishes `bounded_fetch_source_map`: each resolved
+instruction fetch carries its bounded transition index, fetched address/value,
+and original loaded source position/raw byte offset/initial byte when that
+address belongs to the loaded source image. Recurrence-only addresses carry null
+source coordinates. The context also distinguishes a still-original source
+value from an evolved fetch value without asserting why the value changed.
+The bounded memory requirement records the sorted addresses touched by
+fetch/data/write/encryption semantics and the
 minimum word count needed to load the source and reproduce those accesses. A
 future pointer value alone is not a memory touch; for example the proven
 non-graphical third-step cycle keeps `D=40` without reading address 40.
 
 Initial-image admission is deliberately narrower than whole-program safety. The
-current report proves only a five-transition prefix. Schema v8 publishes the
-verified fifth transition after recomputing its explicit accepted prefix.
-Automatic sixth-step/later reachability, general dataflow/evolved-memory
-equivalence, source-map context, and longer input-dependent cycle/hang safety
-remain open under this TODO.
+current report proves only a five-transition prefix. Schema v9 publishes the
+verified fifth transition after recomputing its explicit accepted prefix and
+adds exact fetch-origin source context for that bounded prefix. Automatic
+sixth-step/later reachability, general dataflow/evolved-memory equivalence,
+non-fetch data/write/encryption provenance, broader C-level source mapping, and
+longer input-dependent cycle/hang safety remain open under this TODO.
 
 ## Invariants
 
@@ -66,7 +74,7 @@ remain open under this TODO.
   imply which addresses are reachable or whether a particular run wraps a
   pointer.
 - Per-cell encryption-target classification does not imply reachability. The
-  bounded transfer records resolve only the first four historical transitions.
+  bounded transfer records resolve only the first five historical transitions.
 - Five-transition report evidence never implies sixth-step or later control
   flow. A separate next-transition call requires the caller to supply the exact
   accepted prefix explicitly; every supplied transition is recomputed from the
@@ -74,6 +82,8 @@ remain open under this TODO.
   remains unproved.
 - Every reported initial cell preserves its loaded position and raw-source byte
   offset, and every report binds the exact source bytes and historical profile.
+  Fetch source context maps only addresses in that loaded image; recurrence
+  addresses remain explicitly unmapped instead of receiving invented offsets.
 - Bounded memory evidence counts only addresses actually touched by the analyzed
   prefix and never treats a future code/data pointer as an observed access.
 - Future dynamic analyses must state their bounded assumptions rather than
@@ -108,7 +118,7 @@ Unreadable source fails before a semantic report is emitted.
   differential including recurrence-backed entry `j`, 16 seeded invalid
   positional mutations with byte-exact replay, exact third/fourth/fifth-step
   halt or fixed-fetch-cycle evidence, recurrence-backed bounded memory
-  requirements,
+  requirements, bounded loaded-source/raw-offset fetch provenance,
   byte-exact CLI/library report parity, bounded analysis limits, CLI
   second/third/fourth rejection status, and CLI read failure.
 
