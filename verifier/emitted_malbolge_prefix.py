@@ -98,6 +98,27 @@ class SecondTransition:
 
 
 @dataclass(frozen=True, slots=True)
+class ExactCycleCertificate:
+    """One exact repeated concrete state inside a bounded classic trace."""
+
+    first_seen_before_transition: int
+    repeated_before_transition: int
+    period_transitions: int
+    code_pointer: int
+    data_pointer: int
+    accumulator: int
+    memory_overrides: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ContinuationAnalysis:
+    """Bounded continuation transitions plus an optional exact cycle proof."""
+
+    transitions: tuple[SecondTransition, ...]
+    exact_cycle: ExactCycleCertificate | None
+
+
+@dataclass(frozen=True, slots=True)
 class _FetchedState:
     address: int
     value: int
@@ -130,17 +151,17 @@ class _StepPlan:
 @dataclass(frozen=True, slots=True)
 class _MemoryState:
     words: tuple[int, ...]
-    writes: tuple[tuple[int, int], ...] = ()
+    overrides: tuple[tuple[int, int], ...] = ()
 
     def read(self, address: int) -> int:
         """Read one address after replaying bounded committed writes.
 
         Returns:
-            Most recent committed value or the exact initial-memory value.
+            Current override or the exact immutable initial-memory value.
 
         """
-        for write_address, value in reversed(self.writes):
-            if write_address == address:
+        for override_address, value in self.overrides:
+            if override_address == address:
                 return value
         return classic.initial_memory_value(self.words, address)
 
@@ -159,7 +180,13 @@ def _commit_write(
 ) -> _MemoryState:
     if address is None or value is None:
         return memory
-    return _MemoryState(memory.words, (*memory.writes, (address, value)))
+    overrides = dict(memory.overrides)
+    initial = classic.initial_memory_value(memory.words, address)
+    if value == initial:
+        _ = overrides.pop(address, None)
+    else:
+        overrides[address] = value
+    return _MemoryState(memory.words, tuple(sorted(overrides.items())))
 
 
 def _memory_after_entry(
@@ -485,6 +512,70 @@ def _state_after_transition(
     )
 
 
+def _exact_state_key(
+    memory: _MemoryState,
+    state: _MachineState | None,
+) -> tuple[int, int, int, tuple[tuple[int, int], ...]] | None:
+    if state is None:
+        return None
+    accumulator = state.accumulator
+    if accumulator is None:
+        return None
+    return (
+        state.code_pointer,
+        state.data_pointer,
+        accumulator,
+        memory.overrides,
+    )
+
+
+def _cycle_certificate(
+    first_seen: int,
+    repeated: int,
+    *,
+    memory: _MemoryState,
+    state: _MachineState,
+) -> ExactCycleCertificate:
+    accumulator = state.accumulator
+    if accumulator is None:
+        message = "exact cycle certificate requires a concrete accumulator"
+        raise AssertionError(message)
+    return ExactCycleCertificate(
+        first_seen_before_transition=first_seen,
+        repeated_before_transition=repeated,
+        period_transitions=repeated - first_seen,
+        code_pointer=state.code_pointer,
+        data_pointer=state.data_pointer,
+        accumulator=accumulator,
+        memory_overrides=memory.overrides,
+    )
+
+
+def _remember_exact_state(
+    seen: dict[tuple[int, int, int, tuple[tuple[int, int], ...]], int],
+    memory: _MemoryState,
+    state: _MachineState | None,
+    *,
+    before_transition: int,
+) -> ExactCycleCertificate | None:
+    key = _exact_state_key(memory, state)
+    if key is None:
+        return None
+    first_seen = seen.get(key)
+    if first_seen is None:
+        seen[key] = before_transition
+        return None
+    if state is None:
+        message = "remembered exact state unexpectedly lost machine state"
+        raise AssertionError(message)
+    return _cycle_certificate(
+        first_seen,
+        before_transition,
+        memory=memory,
+        state=state,
+    )
+
+
 def analyze_next_transition(
     words: tuple[int, ...],
     entry: entry_transfer.EntryTransition,
@@ -517,16 +608,16 @@ def analyze_next_transition(
     return _analyze_state(memory, state)
 
 
-def analyze_continuations(
+def analyze_continuation_trace(
     words: tuple[int, ...],
     entry: entry_transfer.EntryTransition,
     *,
     maximum_transitions: int,
-) -> tuple[SecondTransition, ...]:
-    """Resolve up to ``maximum_transitions`` exact steps after entry.
+) -> ContinuationAnalysis:
+    """Resolve a finite continuation and prove any repeated concrete state.
 
     Returns:
-        Ordered continuation evidence, stopping at terminal or unresolved state.
+        Ordered transitions plus the first exact concrete-state cycle, if any.
 
     Raises:
         ValueError: If ``maximum_transitions`` is not a positive exact integer.
@@ -538,6 +629,11 @@ def analyze_continuations(
     memory = _memory_after_entry(words, entry)
     state = _state_after_entry(entry)
     transitions: list[SecondTransition] = []
+    seen: dict[
+        tuple[int, int, int, tuple[tuple[int, int], ...]],
+        int,
+    ] = {}
+    _ = _remember_exact_state(seen, memory, state, before_transition=2)
     for _ in range(maximum_transitions):
         if state is None:
             break
@@ -545,7 +641,34 @@ def analyze_continuations(
         transitions.append(transition)
         memory = _memory_after_transition(memory, transition)
         state = _state_after_transition(transition)
-    return tuple(transitions)
+        cycle = _remember_exact_state(
+            seen,
+            memory,
+            state,
+            before_transition=len(transitions) + 2,
+        )
+        if cycle is not None:
+            return ContinuationAnalysis(tuple(transitions), cycle)
+    return ContinuationAnalysis(tuple(transitions), None)
+
+
+def analyze_continuations(
+    words: tuple[int, ...],
+    entry: entry_transfer.EntryTransition,
+    *,
+    maximum_transitions: int,
+) -> tuple[SecondTransition, ...]:
+    """Resolve up to ``maximum_transitions`` exact steps after entry.
+
+    Returns:
+        Ordered evidence, stopping at terminal, unresolved, or exact cycle.
+
+    """
+    return analyze_continuation_trace(
+        words,
+        entry,
+        maximum_transitions=maximum_transitions,
+    ).transitions
 
 
 def analyze_second_transition(
