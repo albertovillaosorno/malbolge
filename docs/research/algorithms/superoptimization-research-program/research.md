@@ -97,7 +97,8 @@ and a reviewed conclusion remain pending.
 ## Results
 
 Candidate-order mechanics and equal-budget verifier-gated execution under both
-preregistered evaluation and wall-clock bounds are implemented and replay-locked.
+preregistered evaluation and wall-clock bounds are implemented and
+replay-locked.
 No concrete challenge run or comparative performance result is recorded yet.
 
 ## Threats to Validity
