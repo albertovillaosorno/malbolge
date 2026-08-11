@@ -75,6 +75,9 @@ from optimizer.crazy_target import crazy_target_full_domain_reachable_pair_count
 from optimizer.crazy_target import (
     crazy_target_full_domain_reachable_target_count,
 )
+from optimizer.crazy_target import (
+    crazy_target_full_domain_unreachable_pair_count,
+)
 from optimizer.crazy_target import crazy_target_projected_evaluation_id
 from optimizer.crazy_target import crazy_target_search_adapter
 from optimizer.crazy_target import crazy_target_selection_preparer_id
@@ -463,6 +466,15 @@ def test_global_preimage_pair_classes_match_independent_relation() -> None:
     assert sum(
         item.preimage_count * item.pair_count for item in classes
     ) == FULL_DOMAIN_COUNT * FULL_DOMAIN_COUNT
+
+
+def test_unreachable_accumulator_target_pair_count_is_exact() -> None:
+    """Impossible global pairs are the exact complement of reachable pairs."""
+    reachable = crazy_target_full_domain_reachable_pair_count()
+    total_pairs = FULL_DOMAIN_COUNT * FULL_DOMAIN_COUNT
+    observed = crazy_target_full_domain_unreachable_pair_count()
+    assert observed == total_pairs - reachable
+    assert observed + reachable == total_pairs
 
 
 def test_reachable_accumulator_target_pair_count_is_exact() -> None:

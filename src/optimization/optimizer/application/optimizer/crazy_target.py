@@ -343,6 +343,21 @@ def crazy_target_full_domain_reachable_pair_count() -> int:
     return count
 
 
+def crazy_target_full_domain_unreachable_pair_count() -> int:
+    """Return exact classic accumulator/target pairs with no data preimage.
+
+    Returns:
+        Count of classic ``(accumulator, target)`` pairs that no data word can
+        reach.
+
+    """
+    radix = len(CRAZY_TRIT_TABLE)
+    total_pairs = 1
+    for _ in range(TRIT_COUNT):
+        total_pairs *= radix * radix
+    return total_pairs - crazy_target_full_domain_reachable_pair_count()
+
+
 def _positive_trit_preimage_class_counts() -> tuple[tuple[int, int], ...]:
     counts: dict[int, int] = {}
     for accumulator_trit in range(len(CRAZY_TRIT_TABLE)):
