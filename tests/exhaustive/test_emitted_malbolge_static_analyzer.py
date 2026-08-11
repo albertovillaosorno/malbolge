@@ -65,7 +65,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v8"
+_SCHEMA = "malbolge-static-image/v9"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -76,6 +76,7 @@ _FIXTURE_SECOND_VALUE = 116
 _SECOND_SUCCESSOR = 2
 _MEMORY_SCOPE = "five-transition-prefix"
 _THIRD_PREFIX_WORDS = 3
+_THIRD_TRANSITION_INDEX = 3
 _RECUR_DATA_ADDRESS = 41
 _RECUR_DATA_WORDS = 42
 _THIRD_STUCK_SOURCE = b"c'"
@@ -207,6 +208,16 @@ class _BoundedMemoryRequirement(Protocol):
     accessed_addresses: tuple[int, ...]
 
 
+class _BoundedFetchSourceContext(Protocol):
+    transition_index: int
+    fetched_address: int
+    fetched_value: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    fetched_value_matches_initial_source: bool | None
+
+
 class _Report(Protocol):
     schema: str
     profile_id: str
@@ -216,6 +227,7 @@ class _Report(Protocol):
     source_sha256: str
     required_source_words: int
     bounded_memory_requirement: _BoundedMemoryRequirement | None
+    bounded_fetch_source_map: tuple[_BoundedFetchSourceContext, ...]
     admitted_initial_image: bool
     initial_cells: tuple[_Cell, ...]
     entry_transition: _EntryTransition | None
@@ -447,6 +459,38 @@ def test_known_valid_fixture_has_exact_initial_decode() -> None:
     assert [cell.source_byte for cell in report.initial_cells] == [99, 116, 79]
     assert [cell.decoded_byte for cell in report.initial_cells] == [60, 47, 118]
     assert report.findings == ()
+
+
+def test_bounded_fetch_source_map_preserves_raw_offsets() -> None:
+    """Bounded fetches map loaded addresses back to exact raw source offsets."""
+    source = bytes((ord("c"), 10, ord("'")))
+    report = _ANALYZER_MODULE.analyze_source(source)
+    contexts = report.bounded_fetch_source_map
+    assert len(contexts) == _THIRD_PREFIX_WORDS
+    first, second, third = contexts
+    assert (
+        first.transition_index,
+        first.fetched_address,
+        first.source_position,
+        first.source_byte_offset,
+        first.initial_source_byte,
+        first.fetched_value_matches_initial_source,
+    ) == (1, 0, 0, 0, ord("c"), True)
+    assert (
+        second.transition_index,
+        second.fetched_address,
+        second.source_position,
+        second.source_byte_offset,
+        second.initial_source_byte,
+        second.fetched_value_matches_initial_source,
+    ) == (2, 1, 1, 2, ord("'"), True)
+    assert third.transition_index == _THIRD_TRANSITION_INDEX
+    assert third.fetched_address == _SECOND_SUCCESSOR
+    assert third.fetched_value == _THIRD_STUCK_VALUE
+    assert third.source_position is None
+    assert third.source_byte_offset is None
+    assert third.initial_source_byte is None
+    assert third.fetched_value_matches_initial_source is None
 
 
 def test_bounded_memory_requirement_tracks_exact_fixture_accesses() -> None:
@@ -1008,7 +1052,7 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
         "dataflow:five-transition-prefix-only",
         "input-dependent-cycles:not-analyzed",
         "self-modification:five-transition-prefix-only",
-        "source-map-context:not-analyzed",
+        "source-map-context:five-transition-fetch-origin-only",
         "wraparound-reachability:five-transition-prefix-only",
     )
 
