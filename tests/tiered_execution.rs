@@ -1207,12 +1207,26 @@ fn preflighted_bootstrap_rejects_runtime_before_target() -> Result<(), String> {
         ));
     };
     if runtime_error.kind()
-        == ProfileRequirementErrorKind::RuntimeCapabilityMissing
+        != ProfileRequirementErrorKind::RuntimeCapabilityMissing
     {
+        return Err(String::from(
+            "bootstrap runtime preflight changed diagnostic category",
+        ));
+    }
+    let profile = target_profile(&program.profile_id)
+        .ok_or_else(|| String::from("bootstrap fixture profile is missing"))?;
+    let Err(canonical) = preflight_profile(
+        profile,
+        program.required_memory_words(),
+        safe_rust_classic_capability(),
+    ) else {
+        return Err(String::from("bootstrap profile unexpectedly preflighted"));
+    };
+    if runtime_error.to_string() == canonical.to_string() {
         Ok(())
     } else {
         Err(String::from(
-            "bootstrap runtime preflight changed diagnostic category",
+            "bootstrap runtime preflight changed canonical diagnostic text",
         ))
     }
 }
@@ -1240,12 +1254,22 @@ fn preflighted_bootstrap_rejects_capacity_before_target() -> Result<(), String>
         ));
     };
     if capacity_error.kind()
-        == ProfileRequirementErrorKind::ProfileCapacityExceeded
+        != ProfileRequirementErrorKind::ProfileCapacityExceeded
     {
+        return Err(String::from(
+            "bootstrap capacity preflight changed diagnostic category",
+        ));
+    }
+    let expected = concat!(
+        "MALBOLGE-PROFILE-002 profile=malbolge-2026.3 version=2026.3 ",
+        "constraint=profile-capacity-ceiling required_memory_words=4782970 ",
+        "profile_memory_words=4782969"
+    );
+    if capacity_error.to_string() == expected {
         Ok(())
     } else {
-        Err(String::from(
-            "bootstrap capacity preflight changed diagnostic category",
+        Err(format!(
+            "bootstrap capacity diagnostic changed: {capacity_error}"
         ))
     }
 }
