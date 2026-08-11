@@ -53,8 +53,8 @@ results. Source claims resolve through `docs/bibliography/`.
 
 The implemented slices are `arithmetic-dag/v1`, `linear-mix/v1`,
 `branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`,
-`alias-walk/v1`, `stream-state/v1`, `graph-reduce/v1`, and `layout-chain/v1`.
-Each binds family, version, seed,
+`alias-walk/v1`, `stream-state/v1`, `graph-reduce/v1`, `layout-chain/v1`, and
+`ternary-fold/v1`. Each binds family, version, seed,
 canonical profile fingerprint, and node count into one replay identity.
 Generation emits deterministic `uint32_t` C source for the selected topology, a
 four-byte little-endian oracle, and a canonical manifest containing
@@ -83,8 +83,11 @@ runtime loop combines parent state, predecessor state, and weight into the next
 state; normalized evidence retains one loop and six graph/state subscripts.
 `layout-chain/v1` emits one distinct helper body and call target per node; all
 calls are sequentially live, while normalized evidence retains `nodes + 2`
-functions and `nodes + 1` call expressions. The C entry `malbolge_challenge`
-returns the oracle value directly;
+functions and `nodes + 1` call expressions. `ternary-fold/v1` restricts values
+to the classic ten-trit domain and applies explicit base-three quotient,
+remainder, and recomposition work in a fixed inner transform before the
+node-scaled outer fold. The C entry `malbolge_challenge` returns the oracle value
+directly;
 standalone `main` is only a low-31-bit driver and is not an oracle surface.
 
 The generated source is preflighted through the repository-owned C ABI and libc
@@ -105,14 +108,14 @@ host execution guest semantic authority.
 
 ## Results
 
-Ten deterministic families are implemented and replayable. Tests lock byte-
+Eleven deterministic families are implemented and replayable. Tests lock byte-
 identical regeneration, hash-locked `arithmetic-dag/v1` and `pointer-walk/v1`
-replay vectors, profile-fingerprint binding, difficulty growth for all ten
+replay vectors, profile-fingerprint binding, difficulty growth for all eleven
 topologies, invalid
 identity rejection, collision-safe no-replace publication (including a raced
 final-path collision), replay rejection for linked artifact leaves, current
 C-profile admission, and independent native agreement for representative node
-counts in all ten families.
+counts in all eleven families.
 
 This result does not satisfy the end-to-end acceptance criterion. No current
 backend evidence yet demonstrates a generated challenge compiled to and executed
@@ -124,7 +127,8 @@ families also remain open.
 The current families cover unsigned arithmetic with DAG, strict-chain,
 branch-diamond, fixed-array memory-walk, helper-call, live pointer-selected
 memory, potentially aliasing pointer-pair, streaming state-machine, acyclic
-graph-reduction, and distinct-function layout-pressure topologies. They still omit
+graph-reduction, distinct-function layout-pressure, and explicit ternary-fold
+topologies. They still omit
 broader workload structure and substantially larger stress shapes.
 Workload selection, generator/model common-mode bugs, native-check host
 differences,
@@ -137,7 +141,7 @@ agreement risk; it does not prove downstream compiler correctness.
 Active. Retain hash-locked `arithmetic-dag/v1` and `pointer-walk/v1` plus
 domain-separated `linear-mix/v1`, `branch-mix/v1`, `memory-walk/v1`,
 `call-chain/v1`, `alias-walk/v1`, `stream-state/v1`, `graph-reduce/v1`, and
-`layout-chain/v1` as deterministic challenge substrates while expanding family coverage and waiting for an
+`layout-chain/v1`, and `ternary-fold/v1` as deterministic challenge substrates while expanding family coverage and waiting for an
 end-to-end generated Malbolge execution path before completing this planning
 objective.
 
