@@ -53,8 +53,8 @@ results. Source claims resolve through `docs/bibliography/`.
 
 The implemented slices are `arithmetic-dag/v1`, `linear-mix/v1`,
 `branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`,
-`alias-walk/v1`, `stream-state/v1`, `graph-reduce/v1`, `layout-chain/v1`, and
-`ternary-fold/v1`. Each binds family, version, seed,
+`alias-walk/v1`, `stream-state/v1`, `graph-reduce/v1`, `layout-chain/v1`,
+`ternary-fold/v1`, and `nested-state/v1`. Each binds family, version, seed,
 canonical profile fingerprint, and node count into one replay identity.
 Generation emits deterministic `uint32_t` C source for the selected topology, a
 four-byte little-endian oracle, and a canonical manifest containing
@@ -89,6 +89,11 @@ remainder, and recomposition work in a fixed inner transform before the
 node-scaled outer fold. The C entry `malbolge_challenge` returns the oracle
 value directly;
 standalone `main` is only a low-31-bit driver and is not an oracle surface.
+`nested-state/v1` adds nested control-flow stress without making generation
+quadratic: a node-scaled token stream feeds a fixed four-lane inner loop, so
+runtime work performs four live state transitions per node while the Python
+oracle remains O(nodes). Normalized frontend evidence retains both loops and the
+three indexed inputs (`tokens`, `addends`, `masks`).
 
 The generated source is preflighted through the repository-owned C ABI and libc
 validators. Independent native evidence compiles selected generated sources with
@@ -108,30 +113,33 @@ host execution guest semantic authority.
 
 ## Results
 
-Eleven deterministic families are implemented and replayable. Tests lock byte-
+Twelve deterministic families are implemented and replayable. Tests lock byte-
 identical regeneration and v1 replay vectors for `arithmetic-dag`,
-`pointer-walk`, `stream-state`, `graph-reduce`, `layout-chain`, and
-`ternary-fold`, plus profile-fingerprint binding and difficulty growth for all
-eleven
-topologies, invalid
+`pointer-walk`, `stream-state`, `graph-reduce`, `layout-chain`,
+`ternary-fold`, and `nested-state`, plus profile-fingerprint
+binding and difficulty growth for all twelve topologies, invalid
 identity rejection, collision-safe no-replace publication (including a raced
 final-path collision), replay rejection for linked artifact leaves, current
-C-profile admission, and independent native agreement for representative node
-counts in all eleven families.
+C-profile admission, and independent native agreement for
+representative node counts in all twelve families. `nested-state/v1`
+additionally
+retains a 4,096-node pinned-Clang/native-oracle case.
 
 This result does not satisfy the end-to-end acceptance criterion. No current
-backend evidence yet demonstrates a generated challenge compiled to and executed
-as a final `.malbolge` artifact; larger front-end-stress and broader workload
-families also remain open.
+backend evidence yet demonstrates a generated challenge compiled to and
+executed as a final `.malbolge` artifact; the layout/encoding backend required
+for that path is still pending. Broader workload families also remain open.
 
 ## Threats to Validity
 
 The current families cover unsigned arithmetic with DAG, strict-chain,
 branch-diamond, fixed-array memory-walk, helper-call, live pointer-selected
 memory, potentially aliasing pointer-pair, streaming state-machine, acyclic
-graph-reduction, distinct-function layout-pressure, and explicit ternary-fold
-topologies. They still omit
-broader workload structure and substantially larger stress shapes.
+graph-reduction, distinct-function layout-pressure, explicit ternary-fold, and
+nested-state
+control-flow topologies. The 4,096-node nested case adds one larger stress
+fixture, but broader workload structure and additional large shapes remain
+open.
 Workload selection, generator/model common-mode bugs, native-check host
 differences,
 missing final Malbolge execution, and incomplete family coverage remain
@@ -141,10 +149,10 @@ agreement risk; it does not prove downstream compiler correctness.
 ## Conclusion
 
 Active. Retain hash-locked v1 replay vectors for `arithmetic-dag`,
-`pointer-walk`, `stream-state`, `graph-reduce`, `layout-chain`, and
-`ternary-fold`, alongside domain-separated `linear-mix/v1`, `branch-mix/v1`,
-`memory-walk/v1`, `call-chain/v1`, and `alias-walk/v1` as deterministic
-challenge substrates
+`pointer-walk`, `stream-state`, `graph-reduce`, `layout-chain`,
+`ternary-fold`, and `nested-state`, alongside domain-separated
+`linear-mix/v1`, `branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, and
+`alias-walk/v1` as deterministic challenge substrates
 while expanding family coverage and waiting for an end-to-end generated
 Malbolge execution path before completing this planning
 objective.
