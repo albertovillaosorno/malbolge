@@ -108,6 +108,14 @@ class CrazyAccumulatorClass:
 
 
 @dataclass(frozen=True, slots=True)
+class CrazyPreimagePairClass:
+    """One global reachable pair class with equal crazy preimage size."""
+
+    preimage_count: int
+    pair_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class PreparedCrazyTargetSelection:
     """Proof-bound exact candidate positions for one crazy target."""
 
@@ -333,6 +341,56 @@ def crazy_target_full_domain_reachable_pair_count() -> int:
     for _ in range(TRIT_COUNT):
         count *= per_trit_pairs
     return count
+
+
+def _positive_trit_preimage_class_counts() -> tuple[tuple[int, int], ...]:
+    counts: dict[int, int] = {}
+    for accumulator_trit in range(len(CRAZY_TRIT_TABLE)):
+        for multiplicity in _crazy_target_trit_multiplicities(accumulator_trit):
+            if multiplicity == 0:
+                continue
+            counts[multiplicity] = counts.get(multiplicity, 0) + 1
+    return tuple(sorted(counts.items()))
+
+
+def _expand_preimage_pair_class_counts(
+    counts: dict[int, int],
+    per_trit: tuple[tuple[int, int], ...],
+) -> dict[int, int]:
+    expanded: dict[int, int] = {}
+    for preimage_count, pair_count in counts.items():
+        for multiplicity, trit_pair_count in per_trit:
+            combined = preimage_count * multiplicity
+            expanded[combined] = (
+                expanded.get(combined, 0) + pair_count * trit_pair_count
+            )
+    return expanded
+
+
+def _preimage_pair_class_counts() -> tuple[tuple[int, int], ...]:
+    per_trit = _positive_trit_preimage_class_counts()
+    counts = {1: 1}
+    for _ in range(TRIT_COUNT):
+        counts = _expand_preimage_pair_class_counts(counts, per_trit)
+    return tuple(sorted(counts.items()))
+
+
+def crazy_target_full_domain_preimage_pair_classes(
+) -> tuple[CrazyPreimagePairClass, ...]:
+    """Return global reachable pair classes by exact crazy preimage size.
+
+    Returns:
+        Reachable ``(accumulator, target)`` pair counts ordered by exact
+        preimage size.
+
+    """
+    return tuple(
+        CrazyPreimagePairClass(
+            preimage_count=preimage_count,
+            pair_count=pair_count,
+        )
+        for preimage_count, pair_count in _preimage_pair_class_counts()
+    )
 
 
 def _accumulator_class_counts() -> tuple[int, ...]:

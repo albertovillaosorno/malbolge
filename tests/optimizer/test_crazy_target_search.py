@@ -56,6 +56,7 @@ from accelerator.work_ports import SearchRequest
 from accelerator.work_ports import admit_search_result
 from optimizer.crazy_target import CRAZY_TARGET_ALGORITHM_ID
 from optimizer.crazy_target import CrazyAccumulatorClass
+from optimizer.crazy_target import CrazyPreimagePairClass
 from optimizer.crazy_target import CrazyTargetProblem
 from optimizer.crazy_target import CrazyTargetVerifier
 from optimizer.crazy_target import InvalidCrazyTargetProblemError
@@ -67,6 +68,9 @@ from optimizer.crazy_target import crazy_target_batch_builder_id
 from optimizer.crazy_target import crazy_target_full_domain_accumulator_classes
 from optimizer.crazy_target import crazy_target_full_domain_max_preimage_count
 from optimizer.crazy_target import crazy_target_full_domain_preimage_count
+from optimizer.crazy_target import (
+    crazy_target_full_domain_preimage_pair_classes,
+)
 from optimizer.crazy_target import crazy_target_full_domain_reachable_pair_count
 from optimizer.crazy_target import (
     crazy_target_full_domain_reachable_target_count,
@@ -394,6 +398,71 @@ def _independent_accumulator_class_histogram() -> tuple[int, ...]:
     for accumulator in range(FULL_DOMAIN_COUNT):
         counts[_count_accumulator_two_trits(accumulator)] += 1
     return tuple(counts)
+
+
+def _independent_trit_preimage_class_counts() -> tuple[tuple[int, int], ...]:
+    counts: dict[int, int] = {}
+    for accumulator_trit in range(_RADIX):
+        for target_trit in range(_RADIX):
+            multiplicity = sum(
+                _INDEPENDENT_CRAZY_TRIT[data_trit][accumulator_trit]
+                == target_trit
+                for data_trit in range(_RADIX)
+            )
+            if multiplicity == 0:
+                continue
+            counts[multiplicity] = counts.get(multiplicity, 0) + 1
+    return tuple(sorted(counts.items()))
+
+
+def _expand_independent_preimage_pair_histogram(
+    histogram: dict[int, int],
+    per_trit: tuple[tuple[int, int], ...],
+) -> dict[int, int]:
+    expanded: dict[int, int] = {}
+    for preimage_count, pair_count in histogram.items():
+        for multiplicity, trit_pair_count in per_trit:
+            combined = preimage_count * multiplicity
+            expanded[combined] = (
+                expanded.get(combined, 0) + pair_count * trit_pair_count
+            )
+    return expanded
+
+
+def _independent_preimage_pair_histogram() -> dict[int, int]:
+    per_trit = _independent_trit_preimage_class_counts()
+    histogram = {1: 1}
+    for _ in range(_TRIT_COUNT):
+        histogram = _expand_independent_preimage_pair_histogram(
+            histogram,
+            per_trit,
+        )
+    return histogram
+
+
+def test_global_preimage_pair_classes_match_independent_relation() -> None:
+    """Reachable pair counts are exact for every nonzero preimage class."""
+    classes = crazy_target_full_domain_preimage_pair_classes()
+    histogram = _independent_preimage_pair_histogram()
+    assert all(isinstance(item, CrazyPreimagePairClass) for item in classes)
+    assert tuple(item.preimage_count for item in classes) == tuple(
+        1 << exponent for exponent in range(_TRIT_COUNT + 1)
+    )
+    observed = {item.preimage_count: item.pair_count for item in classes}
+    assert observed == histogram
+    for exponent, item in enumerate(classes):
+        expected = _independent_binomial(_TRIT_COUNT, exponent)
+        for _ in range(exponent):
+            expected *= 2
+        for _ in range(_TRIT_COUNT - exponent):
+            expected *= 5
+        assert item.pair_count == expected
+    assert sum(item.pair_count for item in classes) == (
+        crazy_target_full_domain_reachable_pair_count()
+    )
+    assert sum(
+        item.preimage_count * item.pair_count for item in classes
+    ) == FULL_DOMAIN_COUNT * FULL_DOMAIN_COUNT
 
 
 def test_reachable_accumulator_target_pair_count_is_exact() -> None:
