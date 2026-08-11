@@ -227,6 +227,15 @@ mechanism = "exhaustive-accumulator-maximizer"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_maximum_preimage_count_is_accumulator_specific", "tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_count_matches_independent_relation"]
 
 [[correspondence]]
+id = "optimization-crazy-reachable-target-count"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-reachable-target-count"
+domain = "all 59049 classic accumulators via independent per-trit reachability"
+mechanism = "exhaustive-accumulator-reachable-target-count"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_accumulator_planning_bounds_match_independent_relation"]
+
+[[correspondence]]
 id = "optimization-decode-phase"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-decode-phase"

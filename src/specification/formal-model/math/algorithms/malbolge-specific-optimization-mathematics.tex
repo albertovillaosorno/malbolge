@@ -158,6 +158,20 @@ $a_i=2$. Thus accumulator state can tighten the complete-domain candidate bound
 below $1024$ before enumeration, without making any claim about an incomplete or
 duplicated external corpus.
 
+For the same fixed accumulator, target reachability is also digitwise. An
+accumulator trit $0$ or $1$ admits exactly two target trits, while accumulator
+trit $2$ admits all three. Therefore the number of classic targets with at
+least one data-word preimage is
+\begin{equation}
+  \left|\left\{t\in\WordDomain{10}:
+    \exists d\in\WordDomain{10},\ \CrazyN{10}{d}{a}=t\right\}\right|
+      =2^{10-n_2(a)}3^{n_2(a)}.
+  \label{eq:optimization-crazy-reachable-target-count}
+\end{equation}
+This count can reject impossible target states before data-word enumeration.
+It is a complete-domain reachability cardinality and does not assert that an
+external candidate corpus contains any particular preimage.
+
 \section{Decode phase reduction}
 
 For graphical cell $m$, decode depends on the code pointer only through its
