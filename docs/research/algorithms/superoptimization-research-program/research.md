@@ -56,15 +56,18 @@ Deterministic enumeration is the baseline. The executable substrate now fixes
 natural enumeration order as `deterministic-enumeration-v1` and a seed-stable
 SplitMix64 sparse partial Fisher-Yates proposal order as
 `splitmix64-sparse-partial-fisher-yates-v1` over opaque candidate indices. The
-seeded scheduler
-samples without replacement and stores state proportional to the evaluation
-budget, not the logical candidate count. It does not define the
-`classic-verified-block-search-v1` candidate language or execute a candidate.
-Candidate generation remains untrusted, and `trusted-semantic-verifier` remains
-mandatory for every accepted candidate. Future recorded runs must add exact
-commit, workload hash, host, toolchain, outcome, accelerator identity, and
-raw-output path through the repository's run manifest contract. No such run is
-recorded by this slice.
+seeded scheduler samples without replacement and stores state proportional to
+the evaluation budget, not the logical candidate count. The shared
+`finite-verifier-gated-comparison-v1` runner executes both orders under the same
+candidate count and evaluation budget through one caller-supplied trusted
+verifier. It records evaluation-count time-to-first, total verified count, best
+verified quality/index, and an explicit no-verified-candidate outcome after the
+full budget. It does not define the `classic-verified-block-search-v1` candidate
+language or measure wall-clock time. Candidate generation remains untrusted,
+and `trusted-semantic-verifier` remains mandatory for every accepted candidate.
+Future recorded runs must add exact commit, workload hash, host, toolchain,
+outcome, accelerator identity, and raw-output path through the repository's run
+manifest contract. No such run is recorded by this slice.
 
 ## Evidence
 
@@ -72,9 +75,11 @@ Repository validators close the plan identity across the research mirror,
 experiment manifest, lifecycle record, target-profile fingerprint, and ignored
 output directory. Schedule tests lock natural enumeration, exact seed replay,
 no-replacement membership, seed separation, fail-closed dimensions, and sparse
-operation over the maximum unsigned-64 logical corpus. The plan preserves a
-non-success outcome vocabulary for later runs rather than making success a
-prerequisite for retained evidence.
+operation over the maximum unsigned-64 logical corpus. Runner tests additionally
+prove equal scheduled evaluation counts, verifier-gated first/best evidence,
+full-budget retained null outcomes, and fail-closed malformed verifier quality.
+The plan preserves a non-success outcome vocabulary for later runs rather than
+making success a prerequisite for retained evidence.
 
 The broader study at `../../studies/superoptimization-program.md` remains the
 human synthesis record. This mirrored plan supplies reproducible configuration
@@ -83,8 +88,9 @@ and a reviewed conclusion remain pending.
 
 ## Results
 
-Candidate-order mechanics are implemented and replay-locked. No experiment run
-or comparative performance result is recorded yet.
+Candidate-order mechanics and equal-budget verifier-gated execution are
+implemented and replay-locked. No concrete challenge run or comparative
+performance result is recorded yet.
 
 ## Threats to Validity
 
