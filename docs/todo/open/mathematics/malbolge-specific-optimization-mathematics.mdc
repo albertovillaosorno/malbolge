@@ -30,13 +30,14 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize seven exact reductions: classic five-trit
+- The proved slices now formalize eight exact reductions: classic five-trit
   crazy factorization, profile-width crazy chunking, decode phase reduction,
   exact classic rotate lookup, graphical self-encryption orbit
-  canonicalization, classic rotate-history canonicalization, and exact
-  crazy-target preimage cardinality. The first four are consumed by runtime
-  paths; the three search reductions carry no inherited runtime speedup claim.
-- Seven optimization research equations are registered in
+  canonicalization, classic rotate-history canonicalization, exact
+  crazy-target preimage cardinality, and the tight global 1,024-preimage bound.
+  The first four are consumed by runtime paths; the four search reductions carry
+  no inherited runtime speedup claim.
+- Eight optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -69,9 +70,10 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes seven labelled optimization equations,
+- Current mathematical evidence includes eight labelled optimization equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, an exhaustive six-orbit encryption partition, exhaustive
   two-cycle classic rotate-history reduction, exact full-domain crazy-target
-  preimage counts including the 1,024/zero bounds, and explicit bounded
-  conclusions. Broader lower-bound/search mathematics remains open.
+  preimage counts including impossible targets, the exhaustive tight global
+  1,024-preimage ceiling, and explicit bounded conclusions. Broader
+  lower-bound/search mathematics remains open.

@@ -16,6 +16,7 @@ semantic acceptance is owned by
 `src/specification/formal-model/math/specification/correspondence.toml`.
 
 The current research surface also exposes an exact classic crazy-target
-full-domain preimage count. Its product-of-per-trit-multiplicities equation is
-registered in the mathematical correspondence manifest; it is a correctness and
-search-bound result, not a benchmark-derived speedup claim.
+full-domain preimage count. Its product-of-per-trit-multiplicities equation and
+the derived tight 1,024-preimage global ceiling are registered in the
+mathematical correspondence manifest; both are correctness/search-bound results,
+not benchmark-derived speedup claims.
