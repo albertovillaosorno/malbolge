@@ -160,8 +160,9 @@ VM evidence.
 - `artifact.rs` now defines portable effect IR v3 as an explicitly untrusted
   artifact. Independent admission reprojects profile identity, live-ins, budget,
   outcome, and every compact state effect from the verified region. Tamper
-  fixtures now mutate effect before/after observations, input, output, and memory
-  delta independently in addition to metadata/effect-count changes; every claim
+  fixtures now mutate effect before/after observations, input, output, and
+  memory delta independently in addition to metadata/effect-count changes;
+  every claim
   fails exact reprojection. Admitted shortcut/deopt results equal the
   verified-region baseline. Production `execution/ir/` owns effect IR v3;
   host-code artifacts remain open.
