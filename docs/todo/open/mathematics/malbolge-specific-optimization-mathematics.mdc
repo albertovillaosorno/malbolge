@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize thirteen exact reductions: classic five-trit
+- The proved slices now formalize fourteen exact reductions: classic five-trit
   crazy factorization, profile-width crazy chunking, decode phase reduction,
   exact classic rotate lookup, graphical self-encryption orbit
   canonicalization, classic rotate-history canonicalization, exact
@@ -38,11 +38,12 @@ force or stochastic optimization begins.
   the exact zero-or-power-of-two preimage spectrum, the accumulator-specific
   `2^(10-n2(a))` worst-target bound, and the exact
   `2^(10-n2(a))*3^n2(a)` reachable-target count, and the exact
-  `C(10,k)*2^(10-k)` accumulator-class cardinality, and the exact global
-  `7^10` reachable accumulator/target-pair count. The first four are
-  consumed by runtime paths; the nine search reductions carry
+  `C(10,k)*2^(10-k)` accumulator-class cardinality, the exact global
+  `7^10` reachable accumulator/target-pair count, and the exact
+  `C(10,k)*2^k*5^(10-k)` nonzero preimage-pair distribution. The first four
+  are consumed by runtime paths; the ten search reductions carry
   no inherited runtime speedup claim.
-- Twelve optimization research equations are registered in
+- Fourteen optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -75,7 +76,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes thirteen labelled optimization
+- Current mathematical evidence includes fourteen labelled optimization
   equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, an exhaustive six-orbit encryption partition, exhaustive
@@ -85,5 +86,6 @@ force or stochastic optimization begins.
   the accumulator-specific `2^(10-n2(a))` maximum, the exact
   `2^(10-n2(a))*3^n2(a)` reachable-target count, the complete eleven-class
   accumulator partition, the exact `7^10` reachable accumulator/target-pair
-  count, and explicit bounded conclusions. Broader
+  count, the exact nonzero preimage-pair distribution, and explicit bounded
+  conclusions. Broader
   lower-bound/search mathematics remains open.
