@@ -22,9 +22,10 @@ cardinality spectrum, accumulator-specific `2^(10-n2(a))` worst-target bound,
 exact `2^(10-n2(a))*3^n2(a)` reachable-target count, and
 `C(10,k)*2^(10-k)` accumulator-class cardinality, the exact `7^10`
 reachable accumulator/target-pair count, and the exact
-`C(10,k)*2^k*5^(10-k)` nonzero preimage-pair distribution are registered in the
-mathematical correspondence manifest; all are correctness/search-bound results,
+`C(10,k)*2^k*5^(10-k)` nonzero preimage-pair distribution and exact
+`9^10-7^10` unreachable-pair count are registered in the mathematical
+correspondence manifest; all are correctness/search-bound results,
 not benchmark-derived speedup claims. The optimizer exposes both state-level
 counts, the complete eleven-class accumulator partition, the global
-reachable-pair count, and all eleven nonzero preimage-pair classes directly from
-the normative trit table.
+reachable-pair count, all eleven nonzero preimage-pair classes, and the exact
+unreachable complement directly from the normative trit table.
