@@ -139,6 +139,7 @@ pub enum NativeContinuationRetryStepPlanningError {
 #[derive(Debug, Eq, PartialEq)]
 pub struct NativeContinuationRetryPlanningFailure {
     error: NativeContinuationRetryPlanningError,
+    profile_diagnostic: Option<String>,
     suspension: NativeContinuationScheduleSuspension,
 }
 
@@ -178,11 +179,27 @@ impl Display for NativeContinuationRetryPlanningError {
     }
 }
 
+impl Display for NativeContinuationRetryPlanningFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        if let Some(diagnostic) = self.profile_diagnostic.as_deref() {
+            f.write_str(diagnostic)
+        } else {
+            Display::fmt(&self.error, f)
+        }
+    }
+}
+
 impl NativeContinuationRetryPlanningFailure {
     /// Returns the stable hard planning rejection.
     #[must_use]
     pub const fn error(&self) -> NativeContinuationRetryPlanningError {
         self.error
+    }
+
+    /// Returns the retained canonical profile diagnostic, when applicable.
+    #[must_use]
+    pub fn profile_diagnostic(&self) -> Option<&str> {
+        self.profile_diagnostic.as_deref()
     }
 
     /// Consumes this rejection and restores the exact affine suspension.
@@ -213,7 +230,10 @@ impl NativeContinuationRetryStepPlanningError {
 }
 
 enum RetryPlanningClassification {
-    Hard(NativeContinuationRetryPlanningError),
+    Hard {
+        error: NativeContinuationRetryPlanningError,
+        profile_diagnostic: Option<String>,
+    },
     Interpreter,
 }
 
@@ -242,6 +262,7 @@ pub fn plan_native_continuation_retry(
             NativeContinuationRetryPlanningError::ScheduleReason {
                 observed: suspension.reason(),
             },
+            None,
             suspension,
         ));
     }
@@ -259,9 +280,10 @@ pub fn plan_native_continuation_retry(
                     Box::new(suspension.into_handoff()),
                 ))
             },
-            RetryPlanningClassification::Hard(planning_error) => {
-                Err(planning_failure(planning_error, suspension))
-            },
+            RetryPlanningClassification::Hard {
+                error,
+                profile_diagnostic,
+            } => Err(planning_failure(error, profile_diagnostic, suspension)),
         },
     }
 }
@@ -314,48 +336,55 @@ const fn classify_selection_error(
     }
 }
 
+fn hard_classification(
+    error: NativeContinuationRetryPlanningError,
+) -> RetryPlanningClassification {
+    RetryPlanningClassification::Hard {
+        error,
+        profile_diagnostic: None,
+    }
+}
+
 fn classify_sequence_error(
     error: DirectSequenceError<'_>,
 ) -> RetryPlanningClassification {
     match error {
-        DirectSequenceError::Deoptimization { index } => {
-            RetryPlanningClassification::Hard(
-                NativeContinuationRetryPlanningError::Deoptimization { index },
-            )
-        },
-        DirectSequenceError::Empty => RetryPlanningClassification::Hard(
-            NativeContinuationRetryPlanningError::Empty,
+        DirectSequenceError::Deoptimization { index } => hard_classification(
+            NativeContinuationRetryPlanningError::Deoptimization { index },
         ),
-        DirectSequenceError::ObservationChain { index } => {
-            RetryPlanningClassification::Hard(
-                NativeContinuationRetryPlanningError::ObservationChain {
-                    index,
-                },
-            )
+        DirectSequenceError::Empty => {
+            hard_classification(NativeContinuationRetryPlanningError::Empty)
         },
-        DirectSequenceError::ProfileMismatch { index } => {
-            RetryPlanningClassification::Hard(
-                NativeContinuationRetryPlanningError::ProfileMismatch { index },
-            )
-        },
-        DirectSequenceError::ProgramShape { index } => {
-            RetryPlanningClassification::Hard(
-                NativeContinuationRetryPlanningError::ProgramShape { index },
-            )
-        },
+        DirectSequenceError::ObservationChain { index } => hard_classification(
+            NativeContinuationRetryPlanningError::ObservationChain { index },
+        ),
+        DirectSequenceError::ProfileMismatch { index } => hard_classification(
+            NativeContinuationRetryPlanningError::ProfileMismatch { index },
+        ),
+        DirectSequenceError::ProgramShape { index } => hard_classification(
+            NativeContinuationRetryPlanningError::ProgramShape { index },
+        ),
         DirectSequenceError::Step {
             error: selection_error,
             index,
-        } => classify_selection_error(&selection_error).map_or(
-            RetryPlanningClassification::Interpreter,
-            |cause| {
-                RetryPlanningClassification::Hard(
-                    NativeContinuationRetryPlanningError::Step { cause, index },
-                )
-            },
-        ),
+        } => {
+            let profile_diagnostic = match selection_error.as_ref() {
+                DirectSelectionError::Profile(error) => Some(error.to_string()),
+                _ => None,
+            };
+            classify_selection_error(&selection_error).map_or(
+                RetryPlanningClassification::Interpreter,
+                |cause| RetryPlanningClassification::Hard {
+                    error: NativeContinuationRetryPlanningError::Step {
+                        cause,
+                        index,
+                    },
+                    profile_diagnostic,
+                },
+            )
+        },
         DirectSequenceError::TerminationBeforeEnd { index } => {
-            RetryPlanningClassification::Hard(
+            hard_classification(
                 NativeContinuationRetryPlanningError::TerminationBeforeEnd {
                     index,
                 },
@@ -380,6 +409,7 @@ fn plan_admitted_retry(
             let (recovered_suspension, _) = (*failure).into_parts();
             Err(planning_failure(
                 NativeContinuationRetryPlanningError::Admission(error),
+                None,
                 recovered_suspension,
             ))
         },
@@ -388,9 +418,14 @@ fn plan_admitted_retry(
 
 fn planning_failure(
     error: NativeContinuationRetryPlanningError,
+    profile_diagnostic: Option<String>,
     suspension: NativeContinuationScheduleSuspension,
 ) -> Box<NativeContinuationRetryPlanningFailure> {
-    Box::new(NativeContinuationRetryPlanningFailure { error, suspension })
+    Box::new(NativeContinuationRetryPlanningFailure {
+        error,
+        profile_diagnostic,
+        suspension,
+    })
 }
 
 const fn stop_reason_id(

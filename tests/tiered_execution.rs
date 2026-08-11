@@ -13022,6 +13022,23 @@ fn native_retry_planner_falls_back_for_target_format() -> Result<(), String> {
 #[test]
 fn native_retry_planner_preserves_hard_profile_failure() -> Result<(), String> {
     let fixture = native_retry_fixture(HostIsa::X86_64, 1)?;
+    let expected_profile_diagnostic = match select_verified_direct_sequence(
+        fixture.suspension.remaining_programs(),
+        safe_rust_classic_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    ) {
+        Err(DirectSequenceError::Step { error, index: 0 })
+            if matches!(error.as_ref(), DirectSelectionError::Profile(_)) =>
+        {
+            error.to_string()
+        },
+        result => {
+            return Err(format!(
+                "direct profile preflight fixture changed: {result:?}"
+            ));
+        },
+    };
     let expected_state = fixture.suspension.state().clone();
     let expected_steps = fixture.suspension.interpreter_steps();
     let Err(failure) = plan_native_continuation_retry(
@@ -13039,6 +13056,15 @@ fn native_retry_planner_preserves_hard_profile_failure() -> Result<(), String> {
         })
     {
         return Err(String::from("hard retry planning error drifted"));
+    }
+    if !expected_profile_diagnostic.starts_with("MALBOLGE-PROFILE-001 ")
+        || failure.profile_diagnostic()
+            != Some(expected_profile_diagnostic.as_str())
+        || failure.to_string() != expected_profile_diagnostic
+    {
+        return Err(String::from(
+            "retry planner lost exact MALBOLGE-PROFILE-001 diagnostic",
+        ));
     }
     let suspension = (*failure).into_suspension();
     if suspension.interpreter_steps() == expected_steps
