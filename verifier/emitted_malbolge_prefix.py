@@ -9,8 +9,8 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Exact static transfer for the second through fourth classic Malbolge
-#     transitions.
+#   - Exact static transfer for one continuation after an explicit finite
+#     classic Malbolge prefix.
 # - Must-Not:
 #   - Iterate a worklist, execute an unbounded loop, or infer later
 #     reachability.
@@ -20,20 +20,21 @@
 #     status.
 #   - Side effects: none.
 # - Split-When:
-#   - Fifth-step or general cyclic reachability needs an abstract-state model.
+#   - General cyclic reachability or abstract-state exploration gains ownership.
 # - Merge-When:
 #   - A bounded-prefix verifier owns both entry and second transfer directly.
 # - Summary:
-#   - Exact two-transition continuation after the classic entry step.
+#   - Exact bounded continuation after the classic entry step.
 # - Description:
-#   - Replays committed bounded writes through the fourth historical transition.
+#   - Replays caller-supplied committed prefix writes and resolves one next
+#     step.
 # - Usage:
 #   - Called after entry transfer succeeds and does not halt.
 # - Defaults:
 #   - Input-dependent crazy state is reported unresolved rather than guessed.
 #
 
-"""Exact second-through-fourth transfer for bounded classic prefixes."""
+"""Exact next-step transfer after explicit bounded classic prefixes."""
 
 from __future__ import annotations
 
@@ -456,6 +457,57 @@ def _analyze_state(
     return result
 
 
+def _state_after_entry(
+    entry: entry_transfer.EntryTransition,
+) -> _MachineState | None:
+    if not entry.accepted or entry.next_fetch_address is None:
+        return None
+    return _MachineState(
+        entry.next_fetch_address,
+        entry.result_data_pointer,
+        entry.result_accumulator,
+    )
+
+
+def _state_after_transition(
+    transition: SecondTransition,
+) -> _MachineState | None:
+    if not transition.accepted or transition.next_fetch_address is None:
+        return None
+    data_pointer = transition.result_data_pointer
+    if data_pointer is None:
+        message = "accepted continued prefix step must retain a data pointer"
+        raise AssertionError(message)
+    return _MachineState(
+        transition.next_fetch_address,
+        data_pointer,
+        transition.result_accumulator,
+    )
+
+
+def analyze_next_transition(
+    words: tuple[int, ...],
+    entry: entry_transfer.EntryTransition,
+    prior: tuple[SecondTransition, ...],
+) -> SecondTransition | None:
+    """Resolve exactly one transition after an explicit accepted prefix.
+
+    Returns:
+        Next-step evidence, or ``None`` when the supplied prefix is terminal.
+
+    """
+    memory = _memory_after_entry(words, entry)
+    state = _state_after_entry(entry)
+    for transition in prior:
+        if state is None:
+            return None
+        memory = _memory_after_transition(memory, transition)
+        state = _state_after_transition(transition)
+    if state is None:
+        return None
+    return _analyze_state(memory, state)
+
+
 def analyze_second_transition(
     words: tuple[int, ...],
     entry: entry_transfer.EntryTransition,
@@ -466,15 +518,7 @@ def analyze_second_transition(
         Second-step evidence, or ``None`` when entry has no successor fetch.
 
     """
-    if not entry.accepted or entry.next_fetch_address is None:
-        return None
-    memory = _memory_after_entry(words, entry)
-    state = _MachineState(
-        entry.next_fetch_address,
-        entry.result_data_pointer,
-        entry.result_accumulator,
-    )
-    return _analyze_state(memory, state)
+    return analyze_next_transition(words, entry, ())
 
 
 def analyze_third_transition(
@@ -487,24 +531,8 @@ def analyze_third_transition(
     Returns:
         Third-step evidence, or ``None`` when the second step has no successor.
 
-    Raises:
-        AssertionError: If a forged accepted second step loses its data pointer.
-
     """
-    if not second.accepted or second.next_fetch_address is None:
-        return None
-    data_pointer = second.result_data_pointer
-    if data_pointer is None:
-        message = "accepted continued second step must retain a data pointer"
-        raise AssertionError(message)
-    memory = _memory_after_entry(words, entry)
-    memory = _memory_after_transition(memory, second)
-    state = _MachineState(
-        second.next_fetch_address,
-        data_pointer,
-        second.result_accumulator,
-    )
-    return _analyze_state(memory, state)
+    return analyze_next_transition(words, entry, (second,))
 
 
 def analyze_fourth_transition(
@@ -519,22 +547,5 @@ def analyze_fourth_transition(
     Returns:
         Fourth-step evidence, or ``None`` when the third step has no successor.
 
-    Raises:
-        AssertionError: If a forged accepted third step loses its data pointer.
-
     """
-    if not third.accepted or third.next_fetch_address is None:
-        return None
-    data_pointer = third.result_data_pointer
-    if data_pointer is None:
-        message = "accepted continued third step must retain a data pointer"
-        raise AssertionError(message)
-    memory = _memory_after_entry(words, entry)
-    for transition in (second, third):
-        memory = _memory_after_transition(memory, transition)
-    state = _MachineState(
-        third.next_fetch_address,
-        data_pointer,
-        third.result_accumulator,
-    )
-    return _analyze_state(memory, state)
+    return analyze_next_transition(words, entry, (second, third))
