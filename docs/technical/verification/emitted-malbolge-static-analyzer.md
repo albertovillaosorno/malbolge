@@ -95,9 +95,10 @@ remain open.
   bounded transfer records resolve only the explicitly selected finite prefix.
 - Finite-prefix report evidence never implies control flow after the selected
   transition limit. A separate next-transition call requires the caller to
-  supply the exact accepted prefix explicitly; every supplied transition is
-  recomputed from the current bounded state before its writes are replayed.
-  General reachability remains unproved.
+  supply the exact accepted prefix explicitly. Its entry transition is first
+  recomputed from the source words, then every continuation record is recomputed
+  from the current bounded state before its writes are replayed. General
+  reachability remains unproved.
 - Every reported initial cell preserves its loaded position and raw-source byte
   offset, and every report binds the exact source bytes and historical profile.
   Bounded fetch and memory-access source context map only addresses in that

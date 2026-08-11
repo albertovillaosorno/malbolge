@@ -27,8 +27,9 @@ It can also prove the historical non-graphical-fetch fixed cycle because
 `continue` precedes pointer advance. The prefix module now has both one
 generic next-transition primitive over an
 explicit accepted prefix and one single-pass finite continuation iterator.
-Supplied transition records passed to the former are recomputed from the current
-bounded state before their writes can influence later analysis;
+The supplied entry transition is recomputed from the source words before replay,
+and every supplied continuation record is recomputed from the current bounded
+state before its writes can influence later analysis. Forged entries and
 noncontiguous/forged prefixes fail closed. The finite transfer also
 canonicalizes evolved memory as exact sparse overrides and can identify a
 repeated concrete `(C,D,A,memory)` state when the accumulator is known. That

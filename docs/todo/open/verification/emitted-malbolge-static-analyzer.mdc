@@ -65,9 +65,11 @@ executable cells, and input-dependent cycles or hangs.
   fixture continues through three exact jumps and proves a recurrence-backed
   fourth fixed-fetch cycle at `C=3`, `D=39`, `M[3]=29487`. The prefix transfer
   now exposes one generic next-step primitive over an explicit finite accepted
-  prefix. Every caller-supplied transition is independently recomputed before
-  its writes are replayed, so skipped/reordered/forged prefix records fail
-  closed. The four-word `b"('&%"` fixture uses it after four continued `j`
+  prefix. The caller-supplied entry transition is independently recomputed from
+  the source words before replay, then every continuation record is recomputed
+  from the current bounded state before its writes can influence analysis.
+  Forged entries and skipped/reordered/forged prefix records fail closed. The
+  four-word `b"('&%"` fixture uses it after four continued `j`
   transitions to prove a recurrence-backed fifth fixed-fetch cycle at `C=4`,
   `D=29490`, `M[4]=29489`; schema v12 publishes that exact step and includes
   address 4 in its bounded memory evidence. Schema v12 adds exact bounded
