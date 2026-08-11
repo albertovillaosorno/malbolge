@@ -69,7 +69,9 @@ input-dependent cycle/hang safety remain open under this TODO.
   bounded transfer records resolve only the first four historical transitions.
 - Four-transition report evidence never implies fifth-step or later control
   flow. A separate next-transition call requires the caller to supply the exact
-  accepted prefix explicitly; general reachability remains unproved.
+  accepted prefix explicitly; every supplied transition is recomputed from the
+  current bounded state before its writes are replayed. General reachability
+  remains unproved.
 - Every reported initial cell preserves its loaded position and raw-source byte
   offset, and every report binds the exact source bytes and historical profile.
 - Bounded memory evidence counts only addresses actually touched by the analyzed

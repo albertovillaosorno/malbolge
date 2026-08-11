@@ -61,7 +61,9 @@ executable cells, and input-dependent cycles or hangs.
   fixture continues through three exact jumps and proves a recurrence-backed
   fourth fixed-fetch cycle at `C=3`, `D=39`, `M[3]=29487`. The prefix transfer
   now exposes one generic next-step primitive over an explicit finite accepted
-  prefix. The four-word `b"('&%"` fixture uses it after four continued `j`
+  prefix. Every caller-supplied transition is independently recomputed before
+  its writes are replayed, so skipped/reordered/forged prefix records fail
+  closed. The four-word `b"('&%"` fixture uses it after four continued `j`
   transitions to prove a recurrence-backed fifth fixed-fetch cycle at `C=4`,
   `D=29490`, `M[4]=29489` without changing schema v7. Rejected or unresolved
   report prefixes still emit JSON but return a nonzero CLI status.
