@@ -53,6 +53,7 @@ _RUNNER = _ROOT / (
     "superoptimization/runner.py"
 )
 _EXPECTED_COMPARISON_ID = "finite-verifier-gated-comparison-v1"
+_EXPECTED_BOUNDED_ID = "finite-verifier-gated-dual-bound-comparison-v1"
 _EXPECTED_ENUMERATION_ID = "deterministic-enumeration-v1"
 _EXPECTED_SEEDED_ID = "splitmix64-sparse-partial-fisher-yates-v1"
 _EXPECTED_EVALUATIONS = 6
@@ -61,6 +62,14 @@ _EXPECTED_ENUMERATION_FIRST = 2
 _BEST_CANDIDATE = 1
 _BEST_QUALITY = 3
 _NULL_OUTCOME = "no-verified-candidate"
+_STOP_WALL_CLOCK = "wall-clock-budget"
+_STOP_EVALUATION = "evaluation-budget"
+_STOP_CORPUS = "candidate-corpus-exhausted"
+_WALL_BUDGET = 5
+_LARGE_WALL_BUDGET = 100
+_TWO_EVALUATIONS = 2
+_ENUMERATION_FIRST_ELAPSED = 4
+_SEEDED_FIRST_ELAPSED = 2
 
 
 class _ScheduleRun(Protocol):
@@ -80,7 +89,44 @@ class _ComparisonResult(Protocol):
     seeded: _ScheduleRun
 
 
+class _BoundedRequest(Protocol):
+    candidate_count: int
+    evaluation_budget: int
+    wall_clock_budget_nanoseconds: int
+    seed: int
+
+
+class _BoundedRequestFactory(Protocol):
+    def __call__(
+        self,
+        candidate_count: int,
+        *,
+        evaluation_budget: int,
+        wall_clock_budget_nanoseconds: int,
+        seed: int,
+    ) -> _BoundedRequest: ...
+
+
+class _BoundedScheduleRun(Protocol):
+    result: _ScheduleRun
+    elapsed_nanoseconds: int
+    first_verified_elapsed_nanoseconds: int | None
+    stop_reason: str
+
+
+class _BoundedComparisonResult(Protocol):
+    comparison_id: str
+    candidate_count: int
+    evaluation_budget: int
+    wall_clock_budget_nanoseconds: int
+    seed: int
+    enumeration: _BoundedScheduleRun
+    seeded: _BoundedScheduleRun
+
+
 class _RunnerModule(Protocol):
+    BoundedComparisonRequest: _BoundedRequestFactory
+    InvalidComparisonClockError: type[ValueError]
     InvalidVerifierResultError: type[ValueError]
 
     def compare_schedules(
@@ -92,6 +138,16 @@ class _RunnerModule(Protocol):
         verifier: object,
     ) -> _ComparisonResult:
         """Run the two candidate orders through one trusted verifier."""
+        ...
+
+    def compare_schedules_bounded(
+        self,
+        request: _BoundedRequest,
+        *,
+        verifier: object,
+        clock_ns: object,
+    ) -> _BoundedComparisonResult:
+        """Run both candidate orders through dual stopping bounds."""
         ...
 
 
@@ -134,6 +190,40 @@ def _assert_best_is_shared(result: _ComparisonResult) -> None:
     assert result.seeded.best_candidate == _BEST_CANDIDATE
     assert result.enumeration.best_quality == _BEST_QUALITY
     assert result.seeded.best_quality == _BEST_QUALITY
+
+
+class _CountingClock:
+    def __init__(self) -> None:
+        self._value: int = 0
+
+    def __call__(self) -> int:
+        value = self._value
+        self._value += 1
+        return value
+
+
+class _ScriptedClock:
+    def __init__(self, values: tuple[int, ...]) -> None:
+        self._values: tuple[int, ...] = values
+        self._index: int = 0
+
+    def __call__(self) -> int:
+        value = self._values[self._index]
+        self._index += 1
+        return value
+
+
+def _bounded_request(
+    candidate_count: int,
+    evaluation_budget: int,
+    wall_clock_budget_nanoseconds: int,
+) -> _BoundedRequest:
+    return _RUNNER_MODULE.BoundedComparisonRequest(
+        candidate_count,
+        evaluation_budget=evaluation_budget,
+        wall_clock_budget_nanoseconds=wall_clock_budget_nanoseconds,
+        seed=0,
+    )
 
 
 def test_runner_records_first_and_best_verified_candidate() -> None:
@@ -194,4 +284,82 @@ def test_runner_rejects_malformed_trusted_quality(quality: object) -> None:
             1,
             0,
             verifier=_constant_verifier(quality),
+        )
+
+
+def test_bounded_runner_stops_both_schedules_on_wall_clock() -> None:
+    """Equal wall-clock bounds stop both schedules after two evaluations."""
+    result = _RUNNER_MODULE.compare_schedules_bounded(
+        _bounded_request(10, _EXPECTED_EVALUATIONS, _WALL_BUDGET),
+        verifier=_fixture_verifier,
+        clock_ns=_CountingClock(),
+    )
+    assert result.comparison_id == _EXPECTED_BOUNDED_ID
+    for run in (result.enumeration, result.seeded):
+        assert run.result.evaluations == _TWO_EVALUATIONS
+        assert run.elapsed_nanoseconds == _WALL_BUDGET
+        assert run.stop_reason == _STOP_WALL_CLOCK
+    assert (
+        result.enumeration.first_verified_elapsed_nanoseconds
+        == _ENUMERATION_FIRST_ELAPSED
+    )
+    assert (
+        result.seeded.first_verified_elapsed_nanoseconds
+        == _SEEDED_FIRST_ELAPSED
+    )
+
+
+def test_bounded_runner_records_evaluation_budget_stop() -> None:
+    """Evaluation budget remains the stop reason when time is ample."""
+    result = _RUNNER_MODULE.compare_schedules_bounded(
+        _bounded_request(10, 2, _LARGE_WALL_BUDGET),
+        verifier=_fixture_verifier,
+        clock_ns=_CountingClock(),
+    )
+    for run in (result.enumeration, result.seeded):
+        assert run.result.evaluations == _TWO_EVALUATIONS
+        assert run.stop_reason == _STOP_EVALUATION
+
+
+def test_bounded_runner_records_candidate_corpus_exhaustion() -> None:
+    """A short finite corpus is distinct from budget exhaustion."""
+    result = _RUNNER_MODULE.compare_schedules_bounded(
+        _bounded_request(2, _EXPECTED_EVALUATIONS, _LARGE_WALL_BUDGET),
+        verifier=_fixture_verifier,
+        clock_ns=_CountingClock(),
+    )
+    for run in (result.enumeration, result.seeded):
+        assert run.result.evaluations == _TWO_EVALUATIONS
+        assert run.stop_reason == _STOP_CORPUS
+
+
+@pytest.mark.parametrize("wall_budget", [0, -1, True, 1 << 64])
+def test_bounded_runner_rejects_invalid_wall_clock_budget(
+    wall_budget: int,
+) -> None:
+    """Wall-clock bound requires one exact positive unsigned integer."""
+    request = _RUNNER_MODULE.BoundedComparisonRequest(
+        10,
+        evaluation_budget=_TWO_EVALUATIONS,
+        wall_clock_budget_nanoseconds=wall_budget,
+        seed=0,
+    )
+    with pytest.raises(_RUNNER_MODULE.InvalidComparisonClockError):
+        _ = _RUNNER_MODULE.compare_schedules_bounded(
+            request,
+            verifier=_fixture_verifier,
+            clock_ns=_CountingClock(),
+        )
+
+
+def test_bounded_runner_rejects_backward_clock() -> None:
+    """Elapsed-time evidence fails closed if the injected clock regresses."""
+    with pytest.raises(
+        _RUNNER_MODULE.InvalidComparisonClockError,
+        match="comparison clock moved backwards",
+    ):
+        _ = _RUNNER_MODULE.compare_schedules_bounded(
+            _bounded_request(10, 2, _LARGE_WALL_BUDGET),
+            verifier=_fixture_verifier,
+            clock_ns=_ScriptedClock((5, 4)),
         )
