@@ -74,6 +74,9 @@ _VARIABLE_DECLARATION_KIND = "variable-declaration"
 _POINTER_TYPE = "ptr(u32)"
 _MEMORY_WALK_SUBSCRIPTS_PER_NODE = 3
 _GRAPH_REDUCE_SUBSCRIPTS = 6
+_TERNARY_REMAINDER_EXPRESSIONS = 3
+_TERNARY_QUOTIENT_ASSIGNMENTS = 2
+_TERNARY_FRONTEND_LOOPS = 2
 _FORBIDDEN_PUTCHAR = "putchar"
 _FORBIDDEN_STDIO = "<stdio.h>"
 _CLANG = _ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
@@ -90,6 +93,7 @@ _ALIAS_WALK_FAMILY = "alias-walk"
 _STREAM_STATE_FAMILY = "stream-state"
 _GRAPH_REDUCE_FAMILY = "graph-reduce"
 _LAYOUT_CHAIN_FAMILY = "layout-chain"
+_TERNARY_FOLD_FAMILY = "ternary-fold"
 _FAMILIES = (
     _ARITHMETIC_DAG_FAMILY,
     _BRANCH_MIX_FAMILY,
@@ -101,6 +105,7 @@ _FAMILIES = (
     _STREAM_STATE_FAMILY,
     _GRAPH_REDUCE_FAMILY,
     _LAYOUT_CHAIN_FAMILY,
+    _TERNARY_FOLD_FAMILY,
 )
 _ARITHMETIC_DAG_V1_SOURCE_SHA256 = (
     "dcadb0753d70d16a19601bac1c05b6868767432a48eea67d599056ab28880607"
@@ -337,6 +342,17 @@ def test_layout_chain_emits_distinct_live_helpers() -> None:
     assert source.count("    value = malbolge_layout_") == nodes
 
 
+def test_ternary_fold_emits_base_three_transform() -> None:
+    """Ternary challenges keep explicit base-three quotient/remainder work."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_TERNARY_FOLD_FAMILY, seed=0x3333, nodes=19)
+    )
+    source = generated.source.decode()
+    assert source.count("% UINT32_C(3)") == _TERNARY_REMAINDER_EXPRESSIONS
+    assert source.count("/= UINT32_C(3)") == _TERNARY_QUOTIENT_ASSIGNMENTS
+    assert source.count("malbolge_ternary_mix(state, tokens[index])") == 1
+
+
 def test_identity_dimensions_change_artifact_identity() -> None:
     """Seed and difficulty remain part of the exact generated identity."""
     baseline = _GENERATOR_MODULE.generate(_identity())
@@ -363,6 +379,7 @@ def test_identity_dimensions_change_artifact_identity() -> None:
         (_STREAM_STATE_FAMILY, "splitmix64-stream-state-v1"),
         (_GRAPH_REDUCE_FAMILY, "splitmix64-graph-reduce-v1"),
         (_LAYOUT_CHAIN_FAMILY, "splitmix64-layout-chain-v1"),
+        (_TERNARY_FOLD_FAMILY, "splitmix64-ternary-fold-v1"),
     ],
 )
 def test_manifest_binds_identity_hashes_and_oracle(
@@ -704,6 +721,47 @@ def test_layout_family_is_admitted_by_normalized_frontend(
     assert calls == nodes + 1
 
 
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME,
+    reason="reviewed normalized C frontend is Windows x86-64",
+)
+def test_ternary_family_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep fixed-trit transform and token fold after normalization."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_TERNARY_FOLD_FAMILY, seed=53, nodes=23)
+    )
+    source = tmp_path / "ternary.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/ternary-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    loops = sum(
+        node.get("kind") == _FOR_STATEMENT_KIND for node in normalized
+    )
+    subscripts = sum(
+        node.get("kind") == _ARRAY_SUBSCRIPT_KIND for node in normalized
+    )
+    assert loops == _TERNARY_FRONTEND_LOOPS
+    assert subscripts == 1
+
+
 def _assert_native_oracle(
     generated: _GeneratedChallenge,
     tmp_path: Path,
@@ -785,6 +843,9 @@ def _assert_native_oracle(
         (_LAYOUT_CHAIN_FAMILY, 0, 1),
         (_LAYOUT_CHAIN_FAMILY, 7, 64),
         (_LAYOUT_CHAIN_FAMILY, 0x1234, 257),
+        (_TERNARY_FOLD_FAMILY, 0, 1),
+        (_TERNARY_FOLD_FAMILY, 7, 64),
+        (_TERNARY_FOLD_FAMILY, 0x1234, 257),
     ],
 )
 def test_native_source_result_matches_independent_oracle(

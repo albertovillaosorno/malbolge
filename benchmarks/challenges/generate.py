@@ -64,6 +64,7 @@ _ALIAS_WALK_FAMILY: Final = "alias-walk"
 _STREAM_STATE_FAMILY: Final = "stream-state"
 _GRAPH_REDUCE_FAMILY: Final = "graph-reduce"
 _LAYOUT_CHAIN_FAMILY: Final = "layout-chain"
+_TERNARY_FOLD_FAMILY: Final = "ternary-fold"
 _FAMILY_ALGORITHMS: Final = {
     _ARITHMETIC_DAG_FAMILY: "splitmix64-arithmetic-dag-v1",
     _BRANCH_MIX_FAMILY: "splitmix64-branch-mix-v1",
@@ -75,6 +76,7 @@ _FAMILY_ALGORITHMS: Final = {
     _STREAM_STATE_FAMILY: "splitmix64-stream-state-v1",
     _GRAPH_REDUCE_FAMILY: "splitmix64-graph-reduce-v1",
     _LAYOUT_CHAIN_FAMILY: "splitmix64-layout-chain-v1",
+    _TERNARY_FOLD_FAMILY: "splitmix64-ternary-fold-v1",
 }
 _FAMILIES: Final = frozenset(_FAMILY_ALGORITHMS)
 _VERSION: Final = 1
@@ -87,7 +89,10 @@ _ALIAS_WALK_SEED_SALT: Final = 0x414C_4941_5357_4B31
 _STREAM_STATE_SEED_SALT: Final = 0x5354_524D_5354_4154
 _GRAPH_REDUCE_SEED_SALT: Final = 0x4752_4150_4852_4431
 _LAYOUT_CHAIN_SEED_SALT: Final = 0x4C41_594F_5554_4348
+_TERNARY_FOLD_SEED_SALT: Final = 0x5445_524E_4152_5931
 _MEMORY_WALK_CELLS: Final = 8
+_CLASSIC_TRITS: Final = 10
+_CLASSIC_MODULUS: Final = 59_049
 _MASK32: Final = (1 << 32) - 1
 _MASK64: Final = (1 << 64) - 1
 _MAX_NODES: Final = 1_000_000
@@ -758,6 +763,80 @@ def _layout_chain_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     )
 
 
+def _ternary_mix_value(value: int, token: int) -> int:
+    result = 0
+    place = 1
+    for _ in range(_CLASSIC_TRITS):
+        left = value % 3
+        right = token % 3
+        result += ((left + (2 * right) + 1) % 3) * place
+        value //= 3
+        token //= 3
+        place *= 3
+    return result
+
+
+def _ternary_fold_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _TERNARY_FOLD_SEED_SALT)
+    initial = rng.next_u32() % _CLASSIC_MODULUS
+    tokens = [
+        rng.next_u32() % _CLASSIC_MODULUS for _index in range(identity.nodes)
+    ]
+    state = initial
+    for token in tokens:
+        state = _ternary_mix_value(state, token)
+    lines = [
+        "#include <stdint.h>",
+        "",
+        "uint32_t malbolge_ternary_mix(uint32_t value, uint32_t token) {",
+        "    uint32_t result = UINT32_C(0);",
+        "    uint32_t place = UINT32_C(1);",
+        (
+            "    for (uint32_t trit = UINT32_C(0); "
+            f"trit < UINT32_C({_CLASSIC_TRITS}); "
+            "trit += UINT32_C(1)) {"
+        ),
+        "        uint32_t left = value % UINT32_C(3);",
+        "        uint32_t right = token % UINT32_C(3);",
+        (
+            "        uint32_t mixed = (left + (UINT32_C(2) * right) + "
+            "UINT32_C(1)) % UINT32_C(3);"
+        ),
+        "        result += mixed * place;",
+        "        value /= UINT32_C(3);",
+        "        token /= UINT32_C(3);",
+        "        place *= UINT32_C(3);",
+        "    }",
+        "    return result;",
+        "}",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t tokens[{identity.nodes}] = {{",
+        *(f"        UINT32_C({token})," for token in tokens),
+        "    };",
+        f"    uint32_t state = UINT32_C({initial});",
+        (
+            "    for (uint32_t index = UINT32_C(0); "
+            f"index < UINT32_C({identity.nodes}); "
+            "index += UINT32_C(1)) {"
+        ),
+        "        state = malbolge_ternary_mix(state, tokens[index]);",
+        "    }",
+        "    return state;",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ]
+    return (
+        chr(10).join(lines).encode(),
+        state.to_bytes(_ORACLE_BYTES, byteorder="little"),
+    )
+
+
 _PAYLOAD_RENDERERS: Final = {
     _ARITHMETIC_DAG_FAMILY: _arithmetic_dag_payload,
     _BRANCH_MIX_FAMILY: _branch_mix_payload,
@@ -769,6 +848,7 @@ _PAYLOAD_RENDERERS: Final = {
     _STREAM_STATE_FAMILY: _stream_state_payload,
     _GRAPH_REDUCE_FAMILY: _graph_reduce_payload,
     _LAYOUT_CHAIN_FAMILY: _layout_chain_payload,
+    _TERNARY_FOLD_FAMILY: _ternary_fold_payload,
 }
 
 
