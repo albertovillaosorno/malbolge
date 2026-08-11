@@ -36,3 +36,12 @@ workload_sha256 = "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce181
 configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/experiment.toml"
 implementation = "algorithms/superoptimization-research-program/"
 output = "algorithms/superoptimization-research-program/out/"
+
+[measurement]
+repetitions = 5
+warmup_iterations = 0
+ordering = "fixed-enumeration-then-seeded"
+outlier_policy = "retain-all"
+center = "median"
+dispersion = "observed-range"
+uncertainty = "observed-range"

@@ -64,6 +64,13 @@ _CANDIDATE_ENCODING = "lexicographic-two-graphical-bytes-v1"
 _OBJECTIVE = "halt-without-prior-input-or-output"
 _QUALITY = "semantic-transitions-to-halt-v1"
 _SOURCE_WORDS = 2
+_MEASUREMENT_REPETITIONS = 5
+_MEASUREMENT_WARMUPS = 0
+_MEASUREMENT_ORDERING = "fixed-enumeration-then-seeded"
+_MEASUREMENT_OUTLIER = "retain-all"
+_MEASUREMENT_CENTER = "median"
+_MEASUREMENT_DISPERSION = "observed-range"
+_MEASUREMENT_UNCERTAINTY = "observed-range"
 _WORKLOAD_SHA256 = (
     "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
 )
@@ -79,6 +86,7 @@ def test_superoptimization_pilot_identity_is_preregistered() -> None:
     challenge_semantics = cast(
         "dict[str, object]", plan["classic_block_search"]
     )
+    measurement = cast("dict[str, object]", plan["measurement"])
 
     assert experiment == {
         "id": _EXPERIMENT_ID,
@@ -110,6 +118,15 @@ def test_superoptimization_pilot_identity_is_preregistered() -> None:
         "source_words": _SOURCE_WORDS,
         "verifier": _ORACLE,
         "workload_sha256": _WORKLOAD_SHA256,
+    }
+    assert measurement == {
+        "repetitions": _MEASUREMENT_REPETITIONS,
+        "warmup_iterations": _MEASUREMENT_WARMUPS,
+        "ordering": _MEASUREMENT_ORDERING,
+        "outlier_policy": _MEASUREMENT_OUTLIER,
+        "center": _MEASUREMENT_CENTER,
+        "dispersion": _MEASUREMENT_DISPERSION,
+        "uncertainty": _MEASUREMENT_UNCERTAINTY,
     }
 
 
