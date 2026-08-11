@@ -65,7 +65,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v9"
+_SCHEMA = "malbolge-static-image/v10"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -75,7 +75,12 @@ _FIXTURE_ENCRYPTION_INPUT = 99
 _FIXTURE_SECOND_VALUE = 116
 _SECOND_SUCCESSOR = 2
 _MEMORY_SCOPE = "five-transition-prefix"
+_ACCESS_FETCH = "instruction-fetch"
+_ACCESS_DATA_READ = "data-read"
+_ACCESS_DATA_WRITE = "data-write"
+_ACCESS_ENCRYPTION = "self-encryption"
 _THIRD_PREFIX_WORDS = 3
+_SECOND_TRANSITION_INDEX = 2
 _THIRD_TRANSITION_INDEX = 3
 _RECUR_DATA_ADDRESS = 41
 _RECUR_DATA_WORDS = 42
@@ -218,6 +223,15 @@ class _BoundedFetchSourceContext(Protocol):
     fetched_value_matches_initial_source: bool | None
 
 
+class _BoundedMemoryAccessSourceContext(Protocol):
+    transition_index: int
+    access_kind: str
+    address: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+
+
 class _Report(Protocol):
     schema: str
     profile_id: str
@@ -228,6 +242,9 @@ class _Report(Protocol):
     required_source_words: int
     bounded_memory_requirement: _BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[_BoundedFetchSourceContext, ...]
+    bounded_memory_access_source_map: tuple[
+        _BoundedMemoryAccessSourceContext, ...
+    ]
     admitted_initial_image: bool
     initial_cells: tuple[_Cell, ...]
     entry_transition: _EntryTransition | None
@@ -491,6 +508,65 @@ def test_bounded_fetch_source_map_preserves_raw_offsets() -> None:
     assert third.source_byte_offset is None
     assert third.initial_source_byte is None
     assert third.fetched_value_matches_initial_source is None
+
+
+def _assert_source_access(
+    context: _BoundedMemoryAccessSourceContext,
+    expected: tuple[int, str, int, int, int],
+) -> None:
+    assert (
+        context.transition_index,
+        context.access_kind,
+        context.address,
+        context.source_position,
+        context.source_byte_offset,
+        context.initial_source_byte,
+    ) == (*expected[:4], expected[3], expected[4])
+
+
+def test_memory_access_map_unmaps_recurrence_encryption() -> None:
+    """Recurrence encryption receives no invented source context."""
+    report = _ANALYZER_MODULE.analyze_source(b"b'")
+    fetch, data_read, encryption = report.bounded_memory_access_source_map
+    _assert_source_access(
+        fetch,
+        (1, _ACCESS_FETCH, 0, 0, ord("b")),
+    )
+    _assert_source_access(
+        data_read,
+        (1, _ACCESS_DATA_READ, 0, 0, ord("b")),
+    )
+    assert encryption.transition_index == 1
+    assert encryption.access_kind == _ACCESS_ENCRYPTION
+    assert encryption.address == _JUMP_ENTRY_ADDRESS
+    assert encryption.source_position is None
+    assert encryption.source_byte_offset is None
+    assert encryption.initial_source_byte is None
+
+
+def test_bounded_memory_access_map_tracks_source_write_roles() -> None:
+    """A rotate maps read, write, and encryption to source byte one."""
+    source = bytes((
+        _source_byte_for_decode(ord("<"), 0),
+        _source_byte_for_decode(ord("*"), 1),
+    ))
+    report = _ANALYZER_MODULE.analyze_source(source)
+    second_contexts = tuple(
+        context
+        for context in report.bounded_memory_access_source_map
+        if context.transition_index == _SECOND_TRANSITION_INDEX
+    )
+    assert tuple(context.access_kind for context in second_contexts) == (
+        _ACCESS_FETCH,
+        _ACCESS_DATA_READ,
+        _ACCESS_DATA_WRITE,
+        _ACCESS_ENCRYPTION,
+    )
+    for context in second_contexts:
+        assert context.address == 1
+        assert context.source_position == 1
+        assert context.source_byte_offset == 1
+        assert context.initial_source_byte == source[1]
 
 
 def test_bounded_memory_requirement_tracks_exact_fixture_accesses() -> None:
@@ -1052,7 +1128,7 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
         "dataflow:five-transition-prefix-only",
         "input-dependent-cycles:not-analyzed",
         "self-modification:five-transition-prefix-only",
-        "source-map-context:five-transition-fetch-origin-only",
+        "source-map-context:five-transition-memory-access-origin-only",
         "wraparound-reachability:five-transition-prefix-only",
     )
 

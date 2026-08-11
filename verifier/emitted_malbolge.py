@@ -55,7 +55,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v9"
+_SCHEMA: Final = "malbolge-static-image/v10"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -67,6 +67,10 @@ _ENCRYPTION_TARGET_POST_JUMP: Final = "post-jump-code-pointer"
 _ENCRYPTION_TARGET_NONE: Final = "none"
 _DATA_WRITING_INSTRUCTIONS: Final = frozenset(b"*p")
 _DATA_READING_INSTRUCTIONS: Final = frozenset(b"ji*p")
+_ACCESS_FETCH: Final = "instruction-fetch"
+_ACCESS_DATA_READ: Final = "data-read"
+_ACCESS_DATA_WRITE: Final = "data-write"
+_ACCESS_ENCRYPTION: Final = "self-encryption"
 _MEMORY_SCOPE: Final = "five-transition-prefix"
 _LIMITS: Final = (
     "code-data-aliasing:five-transition-prefix-only",
@@ -74,7 +78,7 @@ _LIMITS: Final = (
     "dataflow:five-transition-prefix-only",
     "input-dependent-cycles:not-analyzed",
     "self-modification:five-transition-prefix-only",
-    "source-map-context:five-transition-fetch-origin-only",
+    "source-map-context:five-transition-memory-access-origin-only",
     "wraparound-reachability:five-transition-prefix-only",
 )
 
@@ -127,6 +131,18 @@ class BoundedFetchSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedMemoryAccessSourceContext:
+    """Exact source-image coordinates for one bounded memory access role."""
+
+    transition_index: int
+    access_kind: str
+    address: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class StaticImageReport:
     """Bounded report that never implies dynamic guest execution."""
 
@@ -139,6 +155,9 @@ class StaticImageReport:
     required_source_words: int
     bounded_memory_requirement: BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[BoundedFetchSourceContext, ...]
+    bounded_memory_access_source_map: tuple[
+        BoundedMemoryAccessSourceContext, ...
+    ]
     admitted_initial_image: bool
     initial_cells: tuple[InitialCell, ...]
     entry_transition: entry_transfer.EntryTransition | None
@@ -408,6 +427,108 @@ def _bounded_fetch_source_map(
     return tuple(contexts)
 
 
+def _entry_accesses(
+    transition: entry_transfer.EntryTransition,
+) -> tuple[tuple[str, int], ...]:
+    accesses: list[tuple[str, int]] = [
+        (_ACCESS_FETCH, transition.fetched_address)
+    ]
+    if transition.decoded_byte in _DATA_READING_INSTRUCTIONS:
+        accesses.append((_ACCESS_DATA_READ, transition.data_address))
+    if transition.planned_data_write_address is not None:
+        accesses.append(
+            (_ACCESS_DATA_WRITE, transition.planned_data_write_address)
+        )
+    if transition.encryption_address is not None:
+        accesses.append((_ACCESS_ENCRYPTION, transition.encryption_address))
+    return tuple(accesses)
+
+
+def _prefix_accesses(
+    transition: prefix_transfer.SecondTransition,
+) -> tuple[tuple[str, int], ...]:
+    accesses: list[tuple[str, int]] = [
+        (_ACCESS_FETCH, transition.fetched_address)
+    ]
+    if transition.decoded_byte in _DATA_READING_INSTRUCTIONS:
+        accesses.append((_ACCESS_DATA_READ, transition.data_address))
+    if transition.planned_data_write_address is not None:
+        accesses.append(
+            (_ACCESS_DATA_WRITE, transition.planned_data_write_address)
+        )
+    if transition.encryption_address is not None:
+        accesses.append((_ACCESS_ENCRYPTION, transition.encryption_address))
+    return tuple(accesses)
+
+
+def _memory_access_source_context(
+    transition_index: int,
+    access_kind: str,
+    address: int,
+    *,
+    cells: tuple[InitialCell, ...],
+) -> BoundedMemoryAccessSourceContext:
+    if address >= len(cells):
+        return BoundedMemoryAccessSourceContext(
+            transition_index=transition_index,
+            access_kind=access_kind,
+            address=address,
+            source_position=None,
+            source_byte_offset=None,
+            initial_source_byte=None,
+        )
+    cell = cells[address]
+    return BoundedMemoryAccessSourceContext(
+        transition_index=transition_index,
+        access_kind=access_kind,
+        address=address,
+        source_position=cell.position,
+        source_byte_offset=cell.byte_offset,
+        initial_source_byte=cell.source_byte,
+    )
+
+
+def _access_source_contexts(
+    transition_index: int,
+    accesses: tuple[tuple[str, int], ...],
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedMemoryAccessSourceContext, ...]:
+    return tuple(
+        _memory_access_source_context(
+            transition_index,
+            access_kind,
+            address,
+            cells=cells,
+        )
+        for access_kind, address in accesses
+    )
+
+
+def _bounded_memory_access_source_map(
+    prefix: _PrefixAnalysis,
+) -> tuple[BoundedMemoryAccessSourceContext, ...]:
+    entry = prefix.entry
+    if entry is None:
+        return ()
+    contexts = list(
+        _access_source_contexts(1, _entry_accesses(entry), prefix.cells)
+    )
+    for transition_index, transition in enumerate(
+        (prefix.second, prefix.third, prefix.fourth, prefix.fifth),
+        start=2,
+    ):
+        if transition is None:
+            break
+        contexts.extend(
+            _access_source_contexts(
+                transition_index,
+                _prefix_accesses(transition),
+                prefix.cells,
+            )
+        )
+    return tuple(contexts)
+
+
 def analyze_source(source: bytes) -> StaticImageReport:
     """Analyze one classic source image without executing guest instructions.
 
@@ -462,6 +583,9 @@ def analyze_source(source: bytes) -> StaticImageReport:
             (prefix.second, prefix.third, prefix.fourth, prefix.fifth),
         ),
         bounded_fetch_source_map=_bounded_fetch_source_map(words, prefix),
+        bounded_memory_access_source_map=(
+            _bounded_memory_access_source_map(prefix)
+        ),
         admitted_initial_image=not findings,
         initial_cells=prefix.cells,
         entry_transition=prefix.entry,
