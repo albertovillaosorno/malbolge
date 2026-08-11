@@ -84,8 +84,13 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   claiming hard callback preemption. A pure run-record renderer now binds a
   dual-bound result to the frozen plan plus caller-supplied commit/workload/
   environment/outcome/raw-output provenance, emits the shared schema-v1 run
-  identity and algorithm metrics, and rejects plan/result bound drift. It does
-  not write evidence or invent provenance. The concrete
+  identity and algorithm metrics, rejects plan/result bound drift, and now also
+  requires result candidate count plus provenance workload SHA-256 to match the
+  frozen challenge. It does not write evidence or invent provenance. A pure
+  pilot-orchestration layer revalidates challenge/verifier/workload identity
+  before constructing the exact dual-bound request and wiring the concrete
+  semantic verifier; synthetic wiring tests stop before candidate evaluation.
+  The concrete
   `classic-verified-block-search-v1` semantics are now preregistered before
   measurement as the complete 8,836-member two-graphical-byte corpus. The
   independent `classic-two-word-no-io-halt-v1` verifier accepts only one- or
