@@ -61,14 +61,15 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes twelve exact reductions: classic five-trit crazy factorization,
+formalizes thirteen exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, decode phase reduction, classic rotate
 lookup, graphical self-encryption orbit canonicalization, classic rotate-history
 canonicalization, exact crazy-target preimage cardinality, the tight classic
 1,024-preimage global bound, the exact zero-or-power-of-two preimage spectrum,
 the accumulator-specific `2^(10-n2(a))` worst-target bound, and the exact
 `2^(10-n2(a))*3^n2(a)` reachable-target count, and the exact
-`C(10,k)*2^(10-k)` cardinality of accumulator class `k`. The encryption
+`C(10,k)*2^(10-k)` cardinality of accumulator class `k`, and the exact
+`7^10` count of reachable accumulator/target pairs. The encryption
 table is proved to partition the complete
 graphical domain into cycles of lengths 2, 4, 5, 6, 9, and 68, so repeated
 committed encryption of an otherwise unchanged code cell needs only the visit
@@ -90,8 +91,11 @@ least one complete-domain preimage. The optimizer exposes both state-level
 quantities from the normative trit table and exhaustively checks them against an
 independent relation. The optimizer also exposes all eleven accumulator classes;
 their counts match both a complete 59,049-word histogram and the binomial
-closed form. Sharing these planning cardinalities does not imply general
-semantic equivalence between accumulator words.
+closed form. Summing reachable targets across all accumulator states and
+weighting the same eleven classes both yield `7^10 = 282,475,249` reachable
+accumulator/target pairs, matching the independent per-trit product. Sharing
+these planning cardinalities does not imply general semantic equivalence
+between accumulator words.
 
 `src/specification/formal-model/math/specification/correspondence.toml` binds
 those equations to exhaustive or composite executable evidence. The classic
@@ -111,8 +115,9 @@ host/workload, crazy improved from a 77,456,700 ns scalar median to 7,423,600 ns
 These timing results support H1 only for the admitted CPU table-factorization
 slice. The self-encryption/rotate-history reductions, crazy preimage count,
 global preimage bound, discrete preimage spectrum, accumulator-specific
-worst-target bound, reachable-target count, and accumulator-class partition
-are correctness-proved search reductions, not measured performance results. None
+worst-target bound, reachable-target count, accumulator-class partition, and
+global reachable-pair count are correctness-proved search reductions, not
+measured performance results. None
 of these results establishes a universal speedup or proves broader synthesis
 lower bounds.
 
@@ -127,8 +132,9 @@ Each experiment must narrow these threats before drawing a conclusion.
 Retain the four proved table/factorization reductions plus the exact
 self-encryption and classic rotate-history canonicalizations, crazy-target
 preimage cardinality, tight 1,024-preimage bound, discrete cardinality spectrum,
-accumulator-specific worst-target bound, reachable-target count, and exact
-accumulator-class partition as valid optimization building blocks.
+accumulator-specific worst-target bound, reachable-target count, exact
+accumulator-class partition, and global reachable-pair count as valid
+optimization building blocks.
 Continue the research for broader canonical forms, lower bounds, and
 search-space
 reductions; those remain unproved and receive no performance claim from this

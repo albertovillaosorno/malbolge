@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize twelve exact reductions: classic five-trit
+- The proved slices now formalize thirteen exact reductions: classic five-trit
   crazy factorization, profile-width crazy chunking, decode phase reduction,
   exact classic rotate lookup, graphical self-encryption orbit
   canonicalization, classic rotate-history canonicalization, exact
@@ -38,8 +38,9 @@ force or stochastic optimization begins.
   the exact zero-or-power-of-two preimage spectrum, the accumulator-specific
   `2^(10-n2(a))` worst-target bound, and the exact
   `2^(10-n2(a))*3^n2(a)` reachable-target count, and the exact
-  `C(10,k)*2^(10-k)` accumulator-class cardinality. The first four are
-  consumed by runtime paths; the eight search reductions carry
+  `C(10,k)*2^(10-k)` accumulator-class cardinality, and the exact global
+  `7^10` reachable accumulator/target-pair count. The first four are
+  consumed by runtime paths; the nine search reductions carry
   no inherited runtime speedup claim.
 - Twelve optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
@@ -74,7 +75,8 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes twelve labelled optimization equations,
+- Current mathematical evidence includes thirteen labelled optimization
+  equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, an exhaustive six-orbit encryption partition, exhaustive
   two-cycle classic rotate-history reduction, exact full-domain crazy-target
@@ -82,5 +84,6 @@ force or stochastic optimization begins.
   1,024-preimage ceiling, the exact `{0,1,2,4,...,1024}` cardinality spectrum,
   the accumulator-specific `2^(10-n2(a))` maximum, the exact
   `2^(10-n2(a))*3^n2(a)` reachable-target count, the complete eleven-class
-  accumulator partition, and explicit bounded conclusions. Broader
+  accumulator partition, the exact `7^10` reachable accumulator/target-pair
+  count, and explicit bounded conclusions. Broader
   lower-bound/search mathematics remains open.
