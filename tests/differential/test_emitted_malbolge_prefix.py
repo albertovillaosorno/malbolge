@@ -14,16 +14,16 @@
 # - Must-Not:
 #   - Import verifier transition helpers or execute an unbounded guest loop.
 # - Allows:
-#   - Inputs: fixed admitted two-word sources and the analyzer CLI JSON report.
+#   - Inputs: fixed admitted bounded sources and the analyzer CLI JSON report.
 #   - Outputs: exact agreement with a test-local historical bounded-prefix
 #     model.
 #   - Side effects: test-local source files and bounded subprocess execution.
 # - Split-When:
-#   - Fourth-step differential reachability needs a separately bounded model.
+#   - Fifth-step differential reachability needs a separately bounded model.
 # - Merge-When:
 #   - Another verifier differential owns the same bounded public surface.
 # - Summary:
-#   - Compares schema-v6 second/third transitions to independent 1998 semantics.
+#   - Compares schema-v7 bounded transitions to independent 1998 semantics.
 # - Description:
 #   - Covers every admitted second opcode after exact output or input entry.
 # - Usage:
@@ -73,11 +73,16 @@ _STATUS_HALTED: Final = "halted"
 _STATUS_REJECTED: Final = "rejected-invalid-self-encryption"
 _STATUS_UNRESOLVED: Final = "unresolved-input-dependent-accumulator"
 _STATUS_STUCK: Final = "stuck-non-graphical-fetch"
+_FOURTH_SOURCE: Final = (40, 39, 38)
+_FOURTH_FETCH_ADDRESS: Final = 3
+_FOURTH_SECOND_DATA_ADDRESS: Final = 41
+_FOURTH_THIRD_DATA_ADDRESS: Final = 29_488
+_FOURTH_FINAL_DATA_ADDRESS: Final = 39
 
 
 @dataclass(frozen=True, slots=True)
 class _ReferenceMemory:
-    source: tuple[int, int]
+    source: tuple[int, ...]
     writes: tuple[tuple[int, int], ...] = ()
 
     def read(self, address: int) -> int:
@@ -162,7 +167,7 @@ def _rotate(value: int) -> int:
     return value // 3 + value % 3 * 19_683
 
 
-def _initial_memory(source: tuple[int, int], address: int) -> int:
+def _initial_memory(source: tuple[int, ...], address: int) -> int:
     memory = list(source)
     while len(memory) <= address:
         memory.append(_crazy(memory[-2], memory[-1]))
@@ -489,3 +494,50 @@ def test_two_transition_cli_matches_independent_historical_model(
     _assert_third_prefix(document["third_transition"], source_tuple, expected)
     assert document["fourth_transition"] is None
     assert returncode == _expected_cli_code(expected)
+
+
+def _assert_fourth_reference_transition(
+    document: dict[str, object],
+    *,
+    expected_fetch: int,
+) -> None:
+    assert document["status"] == _STATUS_STUCK
+    assert document["fetched_address"] == _FOURTH_FETCH_ADDRESS
+    assert document["fetched_value"] == expected_fetch
+    assert document["decoded_byte"] is None
+    assert document["data_address"] == _FOURTH_FINAL_DATA_ADDRESS
+    assert document["data_value"] is None
+    assert document["result_code_pointer"] == _FOURTH_FETCH_ADDRESS
+    assert document["result_data_pointer"] == _FOURTH_FINAL_DATA_ADDRESS
+    assert document["next_fetch_address"] == _FOURTH_FETCH_ADDRESS
+    assert document["provable_cycle"] is True
+
+
+def test_fourth_transition_matches_independent_recurrence_model(
+    tmp_path: Path,
+) -> None:
+    """Compare one recurrence-backed fourth step to private 1998 semantics."""
+    source = bytes(_FOURTH_SOURCE)
+    returncode, report = _report(tmp_path, source)
+    entry = cast("dict[str, object]", report["entry_transition"])
+    second = cast("dict[str, object]", report["second_transition"])
+    third = cast("dict[str, object]", report["third_transition"])
+    fourth = cast("dict[str, object]", report["fourth_transition"])
+    assert entry["decoded_byte"] == ord("j")
+    assert entry["result_data_pointer"] == _FOURTH_SECOND_DATA_ADDRESS
+    assert second["data_value"] == _initial_memory(
+        _FOURTH_SOURCE, _FOURTH_SECOND_DATA_ADDRESS
+    )
+    assert second["encryption_output"] == _XLAT2[
+        _FOURTH_SOURCE[1] - _GRAPHICAL_START
+    ]
+    assert third["data_address"] == _FOURTH_THIRD_DATA_ADDRESS
+    assert third["data_value"] == _initial_memory(
+        _FOURTH_SOURCE, _FOURTH_THIRD_DATA_ADDRESS
+    )
+    assert third["encryption_output"] == _XLAT2[
+        _FOURTH_SOURCE[2] - _GRAPHICAL_START
+    ]
+    expected_fetch = _initial_memory(_FOURTH_SOURCE, _FOURTH_FETCH_ADDRESS)
+    _assert_fourth_reference_transition(fourth, expected_fetch=expected_fetch)
+    assert returncode == 1
