@@ -33,8 +33,8 @@
 //! Verification fixtures for portable region effect artifacts.
 
 use malbolge::{
-    ProfileMachine, ProfileMemoryDelta, ProfileMemoryWrite,
-    RegionEffectProgram, current_profile,
+    ProfileMachine, ProfileMemoryDelta, ProfileMemoryWrite, RegionEffectProgram,
+    TraceInput, current_profile,
 };
 
 use crate::indexed_state::IndexedMachineState;
@@ -181,6 +181,58 @@ fn artifact_verifier_rejects_effect_tampering() -> Result<(), String> {
         Err(RegionArtifactVerificationError::VerificationMismatch) => Ok(()),
         other => Err(format!("tampered effects artifact result: {other:?}")),
     }
+}
+
+#[test]
+fn artifact_verifier_rejects_effect_field_tampering() -> Result<(), String> {
+    let (_entry, region) = verified_fixture()?;
+    let source = UntrustedRegionArtifact::from_verified_region(&region);
+    let original = source.program();
+    if original.effects.is_empty() {
+        return Err(String::from("artifact fixture has no effects"));
+    }
+
+    let mut before = original.clone();
+    before.effects[0].before.registers.accumulator =
+        changed_word(before.effects[0].before.registers.accumulator);
+    check_rejected(before, &region, "effect before")?;
+
+    let mut after = original.clone();
+    after.effects[0].after.registers.accumulator =
+        changed_word(after.effects[0].after.registers.accumulator);
+    check_rejected(after, &region, "effect after")?;
+
+    let mut input = original.clone();
+    input.effects[0].input = match input.effects[0].input {
+        Some(_) => None,
+        None => Some(TraceInput::EndOfInput),
+    };
+    check_rejected(input, &region, "effect input")?;
+
+    let mut output = original.clone();
+    output.effects[0].output = match output.effects[0].output {
+        Some(_) => None,
+        None => Some(0),
+    };
+    check_rejected(output, &region, "effect output")?;
+
+    let mut memory = original.clone();
+    let write = ProfileMemoryWrite {
+        address: 0,
+        after: 1,
+        before: 0,
+    };
+    memory.effects[0].memory_delta = match memory.effects[0].memory_delta.data {
+        Some(_) => ProfileMemoryDelta {
+            data: None,
+            encryption: memory.effects[0].memory_delta.encryption,
+        },
+        None => ProfileMemoryDelta {
+            data: Some(write),
+            encryption: memory.effects[0].memory_delta.encryption,
+        },
+    };
+    check_rejected(memory, &region, "effect memory delta")
 }
 
 #[test]
