@@ -577,10 +577,11 @@ def _validate_entry_transition(
     words: tuple[int, ...],
     entry: entry_transfer.EntryTransition,
 ) -> None:
-    expected = entry_transfer.analyze_entry_transition(
-        words,
-        entry.decoded_byte,
-    )
+    decoded = classic.decode(words[0], 0)
+    if decoded is None or entry.decoded_byte != decoded:
+        message = "explicit entry transition does not match recomputed state"
+        raise AssertionError(message)
+    expected = entry_transfer.analyze_entry_transition(words, decoded)
     if entry != expected:
         message = "explicit entry transition does not match recomputed state"
         raise AssertionError(message)

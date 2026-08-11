@@ -279,6 +279,16 @@ class _ClassicModule(Protocol):
         ...
 
 
+class _EntryModule(Protocol):
+    def analyze_entry_transition(
+        self,
+        words: tuple[int, ...],
+        decoded: int,
+    ) -> _EntryTransition:
+        """Resolve one exact entry transition for a supplied decoded opcode."""
+        ...
+
+
 class _PrefixModule(Protocol):
     def analyze_continuations(
         self,
@@ -301,6 +311,7 @@ class _PrefixModule(Protocol):
 
 
 class _AnalyzerModule(Protocol):
+    entry_transfer: _EntryModule
     prefix_transfer: _PrefixModule
 
     def analyze_source(
@@ -1059,6 +1070,36 @@ def test_next_transfer_rejects_forged_entry_transition() -> None:
         ),
     )
     words = tuple(source)
+    with pytest.raises(AssertionError, match=_ENTRY_MISMATCH_MESSAGE):
+        _ = _ANALYZER_MODULE.prefix_transfer.analyze_next_transition(
+            words,
+            forged,
+            (),
+        )
+    with pytest.raises(AssertionError, match=_ENTRY_MISMATCH_MESSAGE):
+        _ = _ANALYZER_MODULE.prefix_transfer.analyze_continuations(
+            words,
+            forged,
+            maximum_transitions=1,
+        )
+
+
+def test_next_transfer_rejects_forged_entry_decode() -> None:
+    """Entry replay derives decode from source rather than caller metadata."""
+    source = _FIXTURE.read_bytes()
+    words = tuple(source)
+    report = _ANALYZER_MODULE.analyze_source(source)
+    entry = report.entry_transition
+    assert entry is not None
+    alternate_decoded = (
+        ord("o") if entry.decoded_byte != ord("o") else ord("<")
+    )
+    assert alternate_decoded != entry.decoded_byte
+    forged = _ANALYZER_MODULE.entry_transfer.analyze_entry_transition(
+        words,
+        alternate_decoded,
+    )
+    assert forged.decoded_byte == alternate_decoded
     with pytest.raises(AssertionError, match=_ENTRY_MISMATCH_MESSAGE):
         _ = _ANALYZER_MODULE.prefix_transfer.analyze_next_transition(
             words,
