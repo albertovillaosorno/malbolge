@@ -18,6 +18,8 @@ semantic acceptance is owned by
 The current research surface also exposes an exact classic crazy-target
 full-domain preimage count. Its product-of-per-trit-multiplicities equation and
 the derived tight 1,024-preimage global ceiling, exact zero-or-power-of-two
-cardinality spectrum, and accumulator-specific `2^(10-n2(a))` worst-target bound
-are registered in the mathematical correspondence manifest; all are
-correctness/search-bound results, not benchmark-derived speedup claims.
+cardinality spectrum, accumulator-specific `2^(10-n2(a))` worst-target bound,
+and exact `2^(10-n2(a))*3^n2(a)` reachable-target count are registered in the
+mathematical correspondence manifest; all are correctness/search-bound results,
+not benchmark-derived speedup claims. The optimizer exposes both state-level
+counts directly from the normative trit table.
