@@ -37,7 +37,10 @@ may select any total bound from 1 through 256. One single-pass finite trace
 replays committed writes before each bounded read, then resolves fetch/data
 cells,
 decode, C/D alias, planned data write, encryption address/input/output,
-accumulator dependency, halt/rejection, pointer succession, and wrap.
+accumulator dependency, halt/rejection, pointer succession, and wrap. The
+prefix transfer canonicalizes effective memory as exact sparse overrides and
+can prove repeated concrete `(C,D,A,memory)` state only when the accumulator is
+known. Schema v12 does not yet publish that internal cycle certificate.
 A `p` whose accumulator depends on prior input is
 reported unresolved rather than assigned a guessed value. A non-graphical fetch
 is stronger: the preserved 1998 interpreter executes `continue` before decode,

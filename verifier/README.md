@@ -29,7 +29,10 @@ generic next-transition primitive over an
 explicit accepted prefix and one single-pass finite continuation iterator.
 Supplied transition records passed to the former are recomputed from the current
 bounded state before their writes can influence later analysis;
-noncontiguous/forged prefixes fail closed.
+noncontiguous/forged prefixes fail closed. The finite transfer also
+canonicalizes evolved memory as exact sparse overrides and can identify a
+repeated concrete `(C,D,A,memory)` state when the accumulator is known. That
+internal certificate is not yet promoted into schema v12.
 A four-word `b"('&%"` fixture uses it to prove a recurrence-backed fifth
 fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v12 publishes that
 exact transition and its bounded memory footprint. Schema v12 keeps sixteen

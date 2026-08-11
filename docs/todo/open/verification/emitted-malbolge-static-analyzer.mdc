@@ -80,7 +80,11 @@ executable cells, and input-dependent cycles or hangs.
   a nonzero CLI status. Default-16, explicit-32, and maximum-256
   sequential-output fixtures exercise the finite report bound; transition
   17+ is reportable under an explicit request. Requests outside 1 through
-  256 fail closed before analysis.
+  256 fail closed before analysis. The finite transfer now also canonicalizes
+  exact evolved-memory overrides and can certify a repeated concrete
+  `(C,D,A,memory)` state when the accumulator is known. This internal cycle
+  substrate is not yet exposed by schema v12 and does not close worklist or
+  input-dependent cycle analysis.
 - Automatic unbounded/worklist control-flow reachability, broader
   dataflow/evolved-memory equivalence, higher-level C/source-map linkage,
   complete value lineage, later wraparound beyond the selected finite
