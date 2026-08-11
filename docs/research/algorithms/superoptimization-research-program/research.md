@@ -71,9 +71,14 @@ calls; the harness does not claim hard preemption of a verifier callback that
 fails to return. Neither runner defines the `classic-verified-block-search-v1`
 candidate language. Candidate generation remains untrusted,
 and `trusted-semantic-verifier` remains mandatory for every accepted candidate.
-Future recorded runs must add exact commit, workload hash, host, toolchain,
-outcome, accelerator identity, and raw-output path through the repository's run
-manifest contract. No such run is recorded by this slice.
+The pure `superoptimization-run-record-v1` renderer can now combine one
+bounded-comparison result with the frozen plan and caller-supplied exact commit,
+workload hash, host, toolchain, outcome, accelerator identity, and raw-output
+path. It emits the shared schema-v1 `[run]` identity plus algorithm-specific
+schedule metrics, rejects result/plan bound drift, and delegates core run
+identity validation to the repository's experiment-manifest authority. It does
+not write evidence or discover provenance. No concrete run is recorded by this
+slice.
 
 ## Evidence
 
@@ -85,8 +90,10 @@ operation over the maximum unsigned-64 logical corpus. Runner tests additionally
 prove equal scheduled evaluation counts, verifier-gated first/best evidence,
 full-budget retained null outcomes, and fail-closed malformed verifier quality.
 Dual-bound tests additionally lock wall-clock, evaluation-budget, and finite
-corpus stop identities plus fail-closed clock regression. The plan preserves a
-non-success outcome vocabulary for later runs rather than
+corpus stop identities plus fail-closed clock regression. Run-record tests prove
+deterministic rendering, shared schema-v1 admission, retained verified/null
+schedule metrics, plan/result bound closure, and shared commit-shape authority.
+The plan preserves a non-success outcome vocabulary for later runs rather than
 making success a prerequisite for retained evidence.
 
 The broader study at `../../studies/superoptimization-program.md` remains the
