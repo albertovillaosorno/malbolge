@@ -17,7 +17,11 @@ succession, and wrap without a worklist or unbounded guest execution. The
 report also publishes the minimum word footprint and exact addresses actually
 touched by the analyzed prefix; merely-held future C/D pointers are not counted.
 It can also prove the historical non-graphical-fetch fixed cycle because
-`continue` precedes pointer advance. Fifth-step and later control flow,
+`continue` precedes pointer advance. The prefix module now has one generic
+next-transition primitive over an explicit finite accepted prefix; a four-word
+`b"('&%"` fixture uses it to prove a recurrence-backed fifth fixed-fetch cycle
+at `C=4`, `D=29490`, `M[4]=29489`. Schema v7 deliberately does not publish that
+fifth transition. Automatic/report-level fifth-and-later control flow,
 source-map context, and longer input-dependent cycles remain unproved.
 
 The initial-image report is bounded by the selected historical profile. Sources

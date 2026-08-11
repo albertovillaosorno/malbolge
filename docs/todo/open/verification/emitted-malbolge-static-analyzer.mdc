@@ -59,10 +59,14 @@ executable cells, and input-dependent cycles or hangs.
   lets the verifier prove the `b"c'"` third-step fixed-fetch cycle
   (`C=2`, `D=40`, `M[2]=29503`) without executing a guest loop. The `b"('&"`
   fixture continues through three exact jumps and proves a recurrence-backed
-  fourth fixed-fetch cycle at `C=3`, `D=39`, `M[3]=29487`. Rejected or
-  unresolved bounded
-  prefixes still emit JSON but return a nonzero CLI status.
-- Fifth-step and later control-flow reachability, longer dataflow/evolved
+  fourth fixed-fetch cycle at `C=3`, `D=39`, `M[3]=29487`. The prefix transfer
+  now exposes one generic next-step primitive over an explicit finite accepted
+  prefix. The four-word `b"('&%"` fixture uses it after four continued `j`
+  transitions to prove a recurrence-backed fifth fixed-fetch cycle at `C=4`,
+  `D=29490`, `M[4]=29489` without changing schema v7. Rejected or unresolved
+  report prefixes still emit JSON but return a nonzero CLI status.
+- Automatic/report-level fifth-step and later control-flow reachability, longer
+  dataflow/evolved
   memory, source-map context, later wraparound, and longer input-dependent
   cycles remain open and are never inferred from the four-transition prefix
   or initial-image admission.
@@ -84,6 +88,7 @@ executable cells, and input-dependent cycles or hangs.
   invalid self-encryption and input-dependent-crazy fixtures, a 25-case public
   CLI differential spanning recurrence-backed entry `j`, 16 seeded invalid
   positional mutations with byte-exact replay, exact third/fourth-step halt or
-  fixed-fetch-cycle evidence, bounded recurrence-backed memory requirements,
+  fixed-fetch-cycle evidence, explicit fifth-step generic-transfer cycle
+  evidence, bounded recurrence-backed memory requirements,
   explicit bounded analysis limits, CLI second/third/fourth rejection status,
   and CLI missing-source failure.
