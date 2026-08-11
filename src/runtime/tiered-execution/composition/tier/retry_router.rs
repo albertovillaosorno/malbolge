@@ -115,6 +115,7 @@ pub enum NativeContinuationRetryRoutingError {
 #[derive(Debug, Eq, PartialEq)]
 pub struct NativeContinuationRetryRoutingFailure {
     error: NativeContinuationRetryRoutingError,
+    profile_diagnostic: Option<String>,
     suspension: NativeContinuationScheduleSuspension,
 }
 
@@ -125,6 +126,16 @@ impl Display for NativeContinuationRetryRoutingError {
                 write!(f, "retry routing planning: {error}")
             },
             Self::Policy(error) => write!(f, "retry routing policy: {error}"),
+        }
+    }
+}
+
+impl Display for NativeContinuationRetryRoutingFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        if let Some(diagnostic) = self.profile_diagnostic.as_deref() {
+            f.write_str(diagnostic)
+        } else {
+            Display::fmt(&self.error, f)
         }
     }
 }
@@ -212,6 +223,12 @@ impl NativeContinuationRetryRoutingFailure {
         self.error
     }
 
+    /// Returns the retained canonical profile diagnostic, when applicable.
+    #[must_use]
+    pub fn profile_diagnostic(&self) -> Option<&str> {
+        self.profile_diagnostic.as_deref()
+    }
+
     /// Consumes this failure and restores the exact retry suspension.
     #[must_use]
     pub fn into_suspension(self) -> NativeContinuationScheduleSuspension {
@@ -245,7 +262,7 @@ pub fn route_native_continuation_retry(
         policy.route(suspension, attempts).map_err(|failure| {
             let error =
                 NativeContinuationRetryRoutingError::Policy(failure.error());
-            routing_failure(error, (*failure).into_suspension())
+            routing_failure(error, None, (*failure).into_suspension())
         })?;
     match policy_route {
         NativeContinuationRetryPolicyOutcome::Interpreter(route) => {
@@ -304,14 +321,25 @@ fn route_planned_retry(
         Err(failure) => {
             let error =
                 NativeContinuationRetryRoutingError::Planning(failure.error());
-            Err(routing_failure(error, (*failure).into_suspension()))
+            let profile_diagnostic =
+                failure.profile_diagnostic().map(str::to_owned);
+            Err(routing_failure(
+                error,
+                profile_diagnostic,
+                (*failure).into_suspension(),
+            ))
         },
     }
 }
 
 fn routing_failure(
     error: NativeContinuationRetryRoutingError,
+    profile_diagnostic: Option<String>,
     suspension: NativeContinuationScheduleSuspension,
 ) -> Box<NativeContinuationRetryRoutingFailure> {
-    Box::new(NativeContinuationRetryRoutingFailure { error, suspension })
+    Box::new(NativeContinuationRetryRoutingFailure {
+        error,
+        profile_diagnostic,
+        suspension,
+    })
 }

@@ -13419,6 +13419,23 @@ fn native_retry_router_uses_policy_for_target_format() -> Result<(), String> {
 #[test]
 fn native_retry_router_preserves_hard_planning_failure() -> Result<(), String> {
     let fixture = native_retry_fixture(HostIsa::X86_64, 1)?;
+    let expected_profile_diagnostic = match select_verified_direct_sequence(
+        fixture.suspension.remaining_programs(),
+        safe_rust_classic_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    ) {
+        Err(DirectSequenceError::Step { error, index: 0 })
+            if matches!(error.as_ref(), DirectSelectionError::Profile(_)) =>
+        {
+            error.to_string()
+        },
+        result => {
+            return Err(format!(
+                "router profile preflight fixture changed: {result:?}"
+            ));
+        },
+    };
     let expected_state = fixture.suspension.state().clone();
     let policy = NativeContinuationRetryPolicy::new(
         2,
@@ -13447,6 +13464,14 @@ fn native_retry_router_preserves_hard_planning_failure() -> Result<(), String> {
         ))
     {
         return Err(String::from("hard router planning error drifted"));
+    }
+    if failure.profile_diagnostic()
+        != Some(expected_profile_diagnostic.as_str())
+        || failure.to_string() != expected_profile_diagnostic
+    {
+        return Err(String::from(
+            "retry router lost exact MALBOLGE-PROFILE-001 diagnostic",
+        ));
     }
     let recovered = (*failure).into_suspension();
     if recovered.state() == &expected_state
@@ -14120,6 +14145,11 @@ fn native_retry_cycle_preserves_hard_routing_failure() -> Result<(), String> {
                 index: 0,
             },
         ))
+        || routing_failure
+            .profile_diagnostic()
+            .is_none_or(|diagnostic| {
+                !diagnostic.starts_with("MALBOLGE-PROFILE-001 ")
+            })
         || !adapter.allocation_requests.is_empty()
         || runner.calls != 0
     {
