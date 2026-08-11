@@ -275,6 +275,37 @@ def test_full_domain_preimage_count_has_tight_global_bound() -> None:
     )
 
 
+def _independent_preimage_spectrum(accumulator: int) -> set[int]:
+    spectrum = {1}
+    for _ in range(10):
+        accumulator_trit = accumulator % _RADIX
+        multiplicities = {
+            sum(
+                row[accumulator_trit] == target_trit
+                for row in _INDEPENDENT_CRAZY_TRIT
+            )
+            for target_trit in range(_RADIX)
+        }
+        spectrum = {
+            prefix * multiplicity
+            for prefix in spectrum
+            for multiplicity in multiplicities
+        }
+        accumulator //= _RADIX
+    return spectrum
+
+
+def test_full_domain_preimage_counts_have_exact_power_of_two_spectrum() -> None:
+    """Nonzero classic preimage counts are powers of two through 1,024."""
+    expected = {0, *(1 << exponent for exponent in range(11))}
+    observed: set[int] = set()
+    for accumulator in range(FULL_DOMAIN_COUNT):
+        spectrum = _independent_preimage_spectrum(accumulator)
+        assert spectrum <= expected
+        observed.update(spectrum)
+    assert observed == expected
+
+
 def test_crazy_target_strategy_identities_are_stable() -> None:
     """Batch, selector, and multiposition projection identities are explicit."""
     assert crazy_target_batch_builder_id() == EXPECTED_BATCH_BUILDER_ID
