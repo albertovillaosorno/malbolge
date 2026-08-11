@@ -9,7 +9,7 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Independent three-transition differential evidence for the static
+#   - Independent bounded-prefix differential evidence for the static
 #     analyzer.
 # - Must-Not:
 #   - Import verifier transition helpers or execute an unbounded guest loop.
@@ -487,4 +487,5 @@ def test_two_transition_cli_matches_independent_historical_model(
     observed = cast("dict[str, object]", document["second_transition"])
     _assert_second(observed, expected)
     _assert_third_prefix(document["third_transition"], source_tuple, expected)
+    assert document["fourth_transition"] is None
     assert returncode == _expected_cli_code(expected)

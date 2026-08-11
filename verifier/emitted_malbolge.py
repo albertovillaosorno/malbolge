@@ -55,7 +55,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v6"
+_SCHEMA: Final = "malbolge-static-image/v7"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -67,15 +67,15 @@ _ENCRYPTION_TARGET_POST_JUMP: Final = "post-jump-code-pointer"
 _ENCRYPTION_TARGET_NONE: Final = "none"
 _DATA_WRITING_INSTRUCTIONS: Final = frozenset(b"*p")
 _DATA_READING_INSTRUCTIONS: Final = frozenset(b"ji*p")
-_MEMORY_SCOPE: Final = "three-transition-prefix"
+_MEMORY_SCOPE: Final = "four-transition-prefix"
 _LIMITS: Final = (
-    "code-data-aliasing:three-transition-prefix-only",
-    "control-flow-reachability:three-transition-prefix-only",
-    "dataflow:three-transition-prefix-only",
+    "code-data-aliasing:four-transition-prefix-only",
+    "control-flow-reachability:four-transition-prefix-only",
+    "dataflow:four-transition-prefix-only",
     "input-dependent-cycles:not-analyzed",
-    "self-modification:three-transition-prefix-only",
+    "self-modification:four-transition-prefix-only",
     "source-map-context:not-analyzed",
-    "wraparound-reachability:three-transition-prefix-only",
+    "wraparound-reachability:four-transition-prefix-only",
 )
 
 
@@ -130,8 +130,21 @@ class StaticImageReport:
     entry_transition: entry_transfer.EntryTransition | None
     second_transition: prefix_transfer.SecondTransition | None
     third_transition: prefix_transfer.SecondTransition | None
+    fourth_transition: prefix_transfer.SecondTransition | None
     findings: tuple[StaticFinding, ...]
     analysis_limits: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _PrefixAnalysis:
+    """Internal bounded-prefix evidence before final report assembly."""
+
+    cells: tuple[InitialCell, ...]
+    entry: entry_transfer.EntryTransition | None
+    second: prefix_transfer.SecondTransition | None
+    third: prefix_transfer.SecondTransition | None
+    fourth: prefix_transfer.SecondTransition | None
+    findings: tuple[StaticFinding, ...]
 
 
 def _loaded_source_words(source: bytes) -> tuple[int, ...]:
@@ -213,15 +226,9 @@ def _analyze_admitted_cells(
     words: tuple[int, ...],
     *,
     can_decode: bool,
-) -> tuple[
-    tuple[InitialCell, ...],
-    entry_transfer.EntryTransition | None,
-    prefix_transfer.SecondTransition | None,
-    prefix_transfer.SecondTransition | None,
-    tuple[StaticFinding, ...],
-]:
+) -> _PrefixAnalysis:
     if not can_decode:
-        return (), None, None, None, ()
+        return _PrefixAnalysis((), None, None, None, None, ())
     cells = _initial_cells(source)
     findings = _decode_findings(cells)
     entry = (
@@ -241,7 +248,17 @@ def _analyze_admitted_cells(
         if entry is None or second is None
         else prefix_transfer.analyze_third_transition(words, entry, second)
     )
-    return cells, entry, second, third, findings
+    fourth = (
+        None
+        if entry is None or second is None or third is None
+        else prefix_transfer.analyze_fourth_transition(
+            words,
+            entry,
+            second,
+            third=third,
+        )
+    )
+    return _PrefixAnalysis(cells, entry, second, third, fourth, findings)
 
 
 def _entry_memory_accesses(
@@ -273,14 +290,12 @@ def _prefix_memory_accesses(
 def _bounded_memory_requirement(
     source_words: int,
     entry: entry_transfer.EntryTransition | None,
-    *,
-    second: prefix_transfer.SecondTransition | None,
-    third: prefix_transfer.SecondTransition | None,
+    transitions: tuple[prefix_transfer.SecondTransition | None, ...],
 ) -> BoundedMemoryRequirement | None:
     if entry is None:
         return None
     accesses = _entry_memory_accesses(entry)
-    for transition in (second, third):
+    for transition in transitions:
         if transition is not None:
             accesses.update(_prefix_memory_accesses(transition))
     ordered = tuple(sorted(accesses))
@@ -327,18 +342,12 @@ def analyze_source(source: bytes) -> StaticImageReport:
     within_profile = (
         _RECURRENCE_BASE_WORDS <= required <= classic.PROFILE_MEMORY_WORDS
     )
-    (
-        cells,
-        entry_transition,
-        second_transition,
-        third_transition,
-        decode_findings,
-    ) = _analyze_admitted_cells(
+    prefix = _analyze_admitted_cells(
         source,
         words,
         can_decode=lexical is None and within_profile,
     )
-    findings.extend(decode_findings)
+    findings.extend(prefix.findings)
     return StaticImageReport(
         schema=_SCHEMA,
         profile_id=_PROFILE_ID,
@@ -349,15 +358,15 @@ def analyze_source(source: bytes) -> StaticImageReport:
         required_source_words=required,
         bounded_memory_requirement=_bounded_memory_requirement(
             required,
-            entry_transition,
-            second=second_transition,
-            third=third_transition,
+            prefix.entry,
+            (prefix.second, prefix.third, prefix.fourth),
         ),
         admitted_initial_image=not findings,
-        initial_cells=cells,
-        entry_transition=entry_transition,
-        second_transition=second_transition,
-        third_transition=third_transition,
+        initial_cells=prefix.cells,
+        entry_transition=prefix.entry,
+        second_transition=prefix.second,
+        third_transition=prefix.third,
+        fourth_transition=prefix.fourth,
         findings=tuple(findings),
         analysis_limits=_LIMITS,
     )
@@ -389,6 +398,13 @@ def _bounded_prefix_accepted(report: StaticImageReport) -> bool:
         ):
             third = report.third_transition
             accepted = third is not None and third.accepted
+            if (
+                accepted
+                and third is not None
+                and third.next_fetch_address is not None
+            ):
+                fourth = report.fourth_transition
+                accepted = fourth is not None and fourth.accepted
     return accepted
 
 
@@ -400,7 +416,7 @@ def main(arguments: list[str] | None = None) -> int:
     """Analyze one source path and print its canonical JSON report.
 
     Returns:
-        Zero when initial-image admission and the bounded three-transition
+        Zero when initial-image admission and the bounded four-transition
         prefix succeed, otherwise one after writing the canonical report.
 
     """

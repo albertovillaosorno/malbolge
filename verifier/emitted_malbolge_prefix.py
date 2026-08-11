@@ -9,30 +9,31 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Exact static transfer for the second and third classic Malbolge
+#   - Exact static transfer for the second through fourth classic Malbolge
 #     transitions.
 # - Must-Not:
 #   - Iterate a worklist, execute an unbounded loop, or infer later
 #     reachability.
 # - Allows:
 #   - Inputs: admitted initial words plus accepted bounded-prefix records.
-#   - Outputs: exact second/third-step state or bounded unresolved status.
+#   - Outputs: exact second/third/fourth-step state or bounded unresolved
+#     status.
 #   - Side effects: none.
 # - Split-When:
-#   - Fourth-step or general cyclic reachability needs an abstract-state model.
+#   - Fifth-step or general cyclic reachability needs an abstract-state model.
 # - Merge-When:
 #   - A bounded-prefix verifier owns both entry and second transfer directly.
 # - Summary:
 #   - Exact two-transition continuation after the classic entry step.
 # - Description:
-#   - Replays committed bounded writes through the third historical transition.
+#   - Replays committed bounded writes through the fourth historical transition.
 # - Usage:
 #   - Called after entry transfer succeeds and does not halt.
 # - Defaults:
 #   - Input-dependent crazy state is reported unresolved rather than guessed.
 #
 
-"""Exact second/third-step transfer for bounded classic Malbolge prefixes."""
+"""Exact second-through-fourth transfer for bounded classic prefixes."""
 
 from __future__ import annotations
 
@@ -177,19 +178,19 @@ def _memory_after_entry(
     )
 
 
-def _memory_after_second(
+def _memory_after_transition(
     memory: _MemoryState,
-    second: SecondTransition,
+    transition: SecondTransition,
 ) -> _MemoryState:
     result = _commit_write(
         memory,
-        second.planned_data_write_address,
-        second.planned_data_write_value,
+        transition.planned_data_write_address,
+        transition.planned_data_write_value,
     )
     return _commit_write(
         result,
-        second.encryption_address,
-        second.encryption_output,
+        transition.encryption_address,
+        transition.encryption_output,
     )
 
 
@@ -497,10 +498,43 @@ def analyze_third_transition(
         message = "accepted continued second step must retain a data pointer"
         raise AssertionError(message)
     memory = _memory_after_entry(words, entry)
-    memory = _memory_after_second(memory, second)
+    memory = _memory_after_transition(memory, second)
     state = _MachineState(
         second.next_fetch_address,
         data_pointer,
         second.result_accumulator,
+    )
+    return _analyze_state(memory, state)
+
+
+def analyze_fourth_transition(
+    words: tuple[int, ...],
+    entry: entry_transfer.EntryTransition,
+    second: SecondTransition,
+    *,
+    third: SecondTransition,
+) -> SecondTransition | None:
+    """Resolve one exact fourth transition after three accepted prefix steps.
+
+    Returns:
+        Fourth-step evidence, or ``None`` when the third step has no successor.
+
+    Raises:
+        AssertionError: If a forged accepted third step loses its data pointer.
+
+    """
+    if not third.accepted or third.next_fetch_address is None:
+        return None
+    data_pointer = third.result_data_pointer
+    if data_pointer is None:
+        message = "accepted continued third step must retain a data pointer"
+        raise AssertionError(message)
+    memory = _memory_after_entry(words, entry)
+    for transition in (second, third):
+        memory = _memory_after_transition(memory, transition)
+    state = _MachineState(
+        third.next_fetch_address,
+        data_pointer,
+        third.result_accumulator,
     )
     return _analyze_state(memory, state)

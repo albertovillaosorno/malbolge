@@ -64,7 +64,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v6"
+_SCHEMA = "malbolge-static-image/v7"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -73,11 +73,17 @@ _SECOND_INPUT_UNRESOLVED = "unresolved-input-dependent-accumulator"
 _FIXTURE_ENCRYPTION_INPUT = 99
 _FIXTURE_SECOND_VALUE = 116
 _SECOND_SUCCESSOR = 2
-_MEMORY_SCOPE = "three-transition-prefix"
+_MEMORY_SCOPE = "four-transition-prefix"
 _THIRD_PREFIX_WORDS = 3
 _RECUR_DATA_ADDRESS = 41
 _RECUR_DATA_WORDS = 42
 _THIRD_STUCK_SOURCE = b"c'"
+_FOURTH_STUCK_SOURCE = b"('&"
+_FOURTH_FETCH_ADDRESS = 3
+_FOURTH_DATA_ADDRESS = 39
+_FOURTH_HIGHEST_ADDRESS = 29_488
+_FOURTH_MEMORY_WORDS = 29_489
+_FOURTH_ACCESSES = (0, 1, 2, 3, 41, 29_488)
 _THIRD_STUCK_VALUE = 29_503
 _THIRD_STUCK_DATA_ADDRESS = 40
 _ROTATED_ENTRY_VALUE = 13
@@ -205,6 +211,7 @@ class _Report(Protocol):
     entry_transition: _EntryTransition | None
     second_transition: _SecondTransition | None
     third_transition: _SecondTransition | None
+    fourth_transition: _SecondTransition | None
     findings: tuple[_Finding, ...]
     analysis_limits: tuple[str, ...]
 
@@ -767,6 +774,50 @@ def test_third_transition_proves_fixed_fetch_cycle() -> None:
     _assert_third_fixed_fetch_cycle(transition)
 
 
+def _assert_fourth_fixed_fetch_cycle(
+    transition: _SecondTransition,
+    expected_fetch: int,
+) -> None:
+    assert transition.status == _THIRD_STUCK
+    assert transition.fetched_address == _FOURTH_FETCH_ADDRESS
+    assert transition.fetched_value == expected_fetch
+    assert transition.decoded_byte is None
+    assert transition.data_address == _FOURTH_DATA_ADDRESS
+    assert transition.data_value is None
+    assert transition.result_code_pointer == _FOURTH_FETCH_ADDRESS
+    assert transition.result_data_pointer == _FOURTH_DATA_ADDRESS
+    assert transition.next_fetch_address == _FOURTH_FETCH_ADDRESS
+    assert transition.provable_cycle
+    assert not transition.accepted
+
+
+def _assert_fourth_memory(memory: _BoundedMemoryRequirement) -> None:
+    assert memory.scope == _MEMORY_SCOPE
+    assert memory.minimum_words == _FOURTH_MEMORY_WORDS
+    assert memory.highest_accessed_address == _FOURTH_HIGHEST_ADDRESS
+    assert memory.accessed_addresses == _FOURTH_ACCESSES
+
+
+def test_fourth_transition_proves_recurrence_fixed_fetch_cycle() -> None:
+    """Fourth-step recurrence fetch is exact after three committed steps."""
+    report = _ANALYZER_MODULE.analyze_source(_FOURTH_STUCK_SOURCE)
+    assert report.admitted_initial_image
+    third = report.third_transition
+    assert third is not None
+    assert third.status == _ENTRY_CONTINUED
+    assert third.next_fetch_address == _FOURTH_FETCH_ADDRESS
+    transition = report.fourth_transition
+    assert transition is not None
+    expected_fetch = _historical_c_op(
+        _FOURTH_STUCK_SOURCE[2],
+        _FOURTH_STUCK_SOURCE[1],
+    )
+    _assert_fourth_fixed_fetch_cycle(transition, expected_fetch)
+    memory = report.bounded_memory_requirement
+    assert memory is not None
+    _assert_fourth_memory(memory)
+
+
 def test_second_transition_rejects_reachable_rotate_alias() -> None:
     """A valid initial image can fail exact self-encryption on step two."""
     source = bytes((
@@ -861,13 +912,13 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
     """Initial-image admission never implies dynamic reachability proof."""
     report = _ANALYZER_MODULE.analyze_source(bytes((39, 38)))
     assert report.analysis_limits == (
-        "code-data-aliasing:three-transition-prefix-only",
-        "control-flow-reachability:three-transition-prefix-only",
-        "dataflow:three-transition-prefix-only",
+        "code-data-aliasing:four-transition-prefix-only",
+        "control-flow-reachability:four-transition-prefix-only",
+        "dataflow:four-transition-prefix-only",
         "input-dependent-cycles:not-analyzed",
-        "self-modification:three-transition-prefix-only",
+        "self-modification:four-transition-prefix-only",
         "source-map-context:not-analyzed",
-        "wraparound-reachability:three-transition-prefix-only",
+        "wraparound-reachability:four-transition-prefix-only",
     )
 
 
@@ -944,6 +995,29 @@ def test_cli_rejects_provable_third_step_fixed_fetch_cycle(
     document = cast("dict[str, object]", json.loads(completed.stdout))
     assert document["admitted_initial_image"] is True
     transition = cast("dict[str, object]", document["third_transition"])
+    assert transition["status"] == _THIRD_STUCK
+    assert transition["provable_cycle"] is True
+
+
+def test_cli_rejects_provable_fourth_step_fixed_fetch_cycle(
+    tmp_path: Path,
+) -> None:
+    """CLI rejects a bounded fourth fetch proven unable to advance."""
+    source = tmp_path / "fourth-step-stuck.malbolge"
+    _ = source.write_bytes(_FOURTH_STUCK_SOURCE)
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [sys.executable, str(_ANALYZER), str(source)],
+        cwd=_ROOT,
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 1
+    assert not completed.stderr
+    document = cast("dict[str, object]", json.loads(completed.stdout))
+    transition = cast("dict[str, object]", document["fourth_transition"])
     assert transition["status"] == _THIRD_STUCK
     assert transition["provable_cycle"] is True
 
