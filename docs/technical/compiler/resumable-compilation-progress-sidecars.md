@@ -44,9 +44,11 @@ so a stale writer cannot overwrite a generation committed concurrently.
 Direct API admission is fail-closed as well as JSON admission. Runtime callers
 must supply exact sidecar/resume-identity enums, strings, integers, and
 immutable records. Booleans cannot alias counters or sequence numbers, foreign
-objects do not leak decoder/type exceptions, oversized JSON integer literals
-that hit the interpreter conversion limit remain inside the stable sidecar error
-boundary, and impossible UTC calendar timestamps are reported the same way.
+objects do not leak decoder/type exceptions, and direct JSON parsing requires
+an exact string instead of accepting byte/bytearray aliases or leaking decoder
+`TypeError`. Oversized JSON integer literals that hit the interpreter conversion
+limit remain inside the stable sidecar error boundary, and impossible UTC
+calendar timestamps are reported the same way.
 `ProgressTimer` validates every phase and monotonic-clock sample before mutating
 timing evidence. Non-callable clocks and callback failures remain inside the
 stable sidecar error boundary. Snapshotting also revalidates its internal
