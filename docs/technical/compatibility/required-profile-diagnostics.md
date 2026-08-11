@@ -189,7 +189,12 @@ validation/rendering happens only after those gates pass. Raw
 `lower_clang_c23()` intentionally remains an untrusted lowering surface so
 verifier-rejection and transport tests can still construct invalid candidates.
 An admitted preflighted result is byte-identical to raw lowering for the same
-program/target.
+program/target. The sibling `compile_preflighted_clang_c23()` process adapter is
+the product-owned external compiler boundary: it performs that same profile
+admission before spawning Clang, streams deterministic C23 over stdin, captures
+opaque object bytes from stdout, and never exposes a raw-unpreflighted compile
+entry point. Missing-compiler tests prove canonical `002` and `001` text wins
+before launch failure; admitted work reaches a typed launch error instead.
 
 ### Stable Diagnostic Categories
 
@@ -277,8 +282,8 @@ cannot bypass either diagnostic, and profile/interpreter outcomes do not mutate
 cache cardinality.
 Other artifact families do not yet universally expose an equivalent program
 requirement. Raw `.malbolge` product invocation uses canonical source preflight,
-and bootstrap source generation now has explicit combined portable preflight.
-External bootstrap compiler invocation, durable-cache/AOT/JIT execution, and
+and bootstrap source generation plus external Clang compilation now have
+explicit combined portable preflight. Durable-cache/AOT/JIT execution and
 remaining product/artifact paths do not yet universally invoke that boundary.
 This contract therefore remains active rather than claiming repository-wide
 profile diagnostic completion.
@@ -305,8 +310,10 @@ profile diagnostic completion.
 - `tests/tiered_execution.rs` proves exact derived IR footprint, including
   `u32::MAX`, native-identity rejection of inconsistent capacity, `MBPF` v3
   footprint mismatch rejection, emitter propagation, direct-template precedence
-  `002` then `001` then host/backend, and the same precedence before verified
-  direct cache lookup without cache mutation on rejection/interpreter selection.
+  `002` then `001` then host/backend, the same precedence before verified direct
+  cache lookup without cache mutation on rejection/interpreter selection, and
+  byte-identical `002`/`001` precedence before external Clang launch. The same
+  suite compiles real x86-64/AArch64 COFF through the product compiler adapter.
 - `tests/vm/profile_machine.rs` verifies `safe-rust-profiled` admits and
   executes
   the current profile while preserving full 1998 equivalence on historical

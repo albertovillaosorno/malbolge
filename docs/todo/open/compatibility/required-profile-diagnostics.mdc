@@ -112,14 +112,18 @@ historical-profile constraint.
   `lower_clang_c23()` remains available for explicitly untrusted transport and
   deterministic rejection. Focused tests require byte-identical runtime
   diagnostics for the artifact's exact immutable profile ID and exact capacity
-  text before an invalid target can mask either profile error.
+  text before an invalid target can mask either profile error. The sibling
+  `compile_preflighted_clang_c23()` product adapter now owns external compiler
+  invocation and exposes no raw compile entry point: it applies the same gates
+  before spawning Clang, streams C23 over stdin, captures opaque object bytes,
+  and preserves `002`/`001` ahead of missing-compiler launch failure. Admitted
+  x86-64 and AArch64 fixtures compile through pinned Clang and retain structural
+  COFF admission.
 - Raw `.malbolge` CLI invocation now uses `ExecutionMachine`, so source capacity
   reaches the same historical-ceiling diagnostic without changing normal
   interpreter output. Equivalent program-memory requirements for non-IR artifact
-  families, external bootstrap compiler invocation,
-  durable-cache/AOT/JIT/runtime orchestration, and remaining product invocation
-  paths remain open, so
-  repository-wide completion is not claimed.
+  families, durable-cache/AOT/JIT/runtime orchestration, and remaining product
+  invocation paths remain open, so repository-wide completion is not claimed.
 
 ## Acceptance
 

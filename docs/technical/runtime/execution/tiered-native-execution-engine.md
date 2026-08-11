@@ -95,11 +95,16 @@ apparently valid transition. Repeated writes to one address collapse to their
 first required value and final committed value, so a guard miss cannot leave an
 intermediate region state.
 
-Pinned Clang 22.1.8 materializes the same bootstrap representation as real
-Windows COFF objects for both x86-64 and AArch64 under strict warning-clean C23
-compilation. Source and object containers remain explicitly `Untrusted*`:
-matching IR/target identity proves provenance of the claim, not semantic
-correctness of compiler-produced machine code.
+`native/compiler.rs` now owns the explicit external bootstrap compiler process.
+Its only public compile path first calls canonical profile/runtime-preflighted
+lowering, then streams deterministic source to Clang stdin and captures object
+bytes from stdout without temporary files. Profile-capacity `002` and runtime
+`001` diagnostics therefore precede even a missing-compiler launch failure.
+Pinned Clang 22.1.8 materializes real Windows COFF objects for both x86-64 and
+AArch64 under strict warning-clean C23 compilation through that product path.
+Source and object containers remain explicitly `Untrusted*`: matching IR/target
+identity proves provenance of the claim, not semantic correctness of
+compiler-produced machine code.
 
 `src/runtime/tiered-execution/adapter-outbound/native/profile_metadata.rs` is
 the single private owner of the
