@@ -245,6 +245,36 @@ def test_full_domain_preimage_count_exposes_exact_search_bounds() -> None:
         _ = crazy_target_full_domain_preimage_count(foreign_target, 0)
 
 
+def _independent_max_preimage_count(accumulator: int) -> int:
+    count = 1
+    for _ in range(10):
+        accumulator_trit = accumulator % _RADIX
+        multiplicities = (
+            sum(
+                row[accumulator_trit] == target_trit
+                for row in _INDEPENDENT_CRAZY_TRIT
+            )
+            for target_trit in range(_RADIX)
+        )
+        count *= max(multiplicities)
+        accumulator //= _RADIX
+    return count
+
+
+def test_full_domain_preimage_count_has_tight_global_bound() -> None:
+    """Every classic fixed crazy target has at most 1,024 data preimages."""
+    observed_maximum = 0
+    for accumulator in range(FULL_DOMAIN_COUNT):
+        maximum = _independent_max_preimage_count(accumulator)
+        assert maximum <= MULTI_PREIMAGE_COUNT
+        observed_maximum = max(observed_maximum, maximum)
+    assert observed_maximum == MULTI_PREIMAGE_COUNT
+    assert (
+        crazy_target_full_domain_preimage_count(ALL_ONES, 0)
+        == observed_maximum
+    )
+
+
 def test_crazy_target_strategy_identities_are_stable() -> None:
     """Batch, selector, and multiposition projection identities are explicit."""
     assert crazy_target_batch_builder_id() == EXPECTED_BATCH_BUILDER_ID
