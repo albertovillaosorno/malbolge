@@ -48,6 +48,7 @@ _RUN_RECORD = 'record_kind = "run"'
 _RUN_TABLE_MARKER = "\n[run]"
 _EXPECTED_COMPARISON_ID = "finite-verifier-gated-dual-bound-comparison-v1"
 RUN_RECORD_FORMAT_ID = "superoptimization-run-record-v1"
+MEASUREMENT_RUN_RECORD_FORMAT_ID = "superoptimization-measurement-run-record-v1"
 
 
 class RunRecordError(ValueError):
@@ -82,6 +83,13 @@ class BoundedComparison(Protocol):
     seed: int
     enumeration: _BoundedScheduleRun
     seeded: _BoundedScheduleRun
+
+
+class MeasurementSeries(Protocol):
+    """Structural repeated-measurement result required by this boundary."""
+
+    format_id: str
+    repetitions: tuple[BoundedComparison, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,6 +228,21 @@ def _require_bound_identity(
         _expect_equal(observed, preregistered, message)
 
 
+def _require_measurement_identity(
+    plan: dict[str, object],
+    provenance: RunProvenance,
+    series: MeasurementSeries,
+) -> None:
+    measurement = _table(plan, "measurement")
+    repetitions = _exact_int(measurement, "repetitions", "plan.measurement")
+    if len(series.repetitions) != repetitions:
+        _fail("superoptimization measurement repetitions differ from plan")
+    if not series.repetitions:
+        _fail("superoptimization measurement series must not be empty")
+    for result in series.repetitions:
+        _require_bound_identity(plan, provenance, result)
+
+
 def _quoted(value: object, label: str) -> str:
     if type(value) is not str or not value:
         _fail(f"{label} must be a non-empty exact string")
@@ -299,6 +322,55 @@ def _extension_lines(result: BoundedComparison) -> list[str]:
     lines.append("")
     lines.extend(_schedule_lines("seeded", result.seeded))
     return lines
+
+
+def _measurement_extension_lines(
+    series: MeasurementSeries,
+) -> list[str]:
+    first = series.repetitions[0]
+    return [
+        "[superoptimization_measurement]",
+        (
+            "format_id = "
+            f"{_quoted(MEASUREMENT_RUN_RECORD_FORMAT_ID, 'measurement format')}"
+        ),
+        f"measurement_series_id = {_quoted(series.format_id, 'series format')}",
+        f"repetitions = {len(series.repetitions)}",
+        f"comparison_id = {_quoted(first.comparison_id, 'comparison id')}",
+        f"candidate_count = {first.candidate_count}",
+        f"evaluation_budget = {first.evaluation_budget}",
+        (
+            "wall_clock_budget_nanoseconds = "
+            f"{first.wall_clock_budget_nanoseconds}"
+        ),
+        f"seed = {first.seed}",
+    ]
+
+
+def render_measurement_run_manifest(
+    plan_text: str,
+    provenance: RunProvenance,
+    series: MeasurementSeries,
+) -> str:
+    """Render one recorded-run manifest for all retained repetitions.
+
+    Returns:
+        Deterministic TOML binding the frozen plan to retained raw evidence.
+
+    """
+    plan = _parse_plan(plan_text)
+    _require_measurement_identity(plan, provenance, series)
+    if plan_text.count(_PLAN_RECORD) != 1 or _RUN_TABLE_MARKER in plan_text:
+        _fail("superoptimization plan record marker is not canonical")
+    prefix = plan_text.replace(_PLAN_RECORD, _RUN_RECORD, 1).rstrip()
+    lines = [
+        prefix,
+        "",
+        *_run_lines(provenance),
+        "",
+        *_measurement_extension_lines(series),
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def render_run_manifest(

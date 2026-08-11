@@ -62,6 +62,9 @@ _PLAN = _ROOT / (
 _EXPERIMENT_ID = "superoptimization-research-program"
 _COMPARISON_ID = "finite-verifier-gated-dual-bound-comparison-v1"
 _FORMAT_ID = "superoptimization-run-record-v1"
+_MEASUREMENT_FORMAT_ID = "superoptimization-measurement-run-record-v1"
+_SERIES_FORMAT_ID = "superoptimization-five-repetition-measurement-v1"
+_REPETITIONS = 5
 _EVALUATIONS = 10_000
 _WALL_NANOSECONDS = 60_000_000_000
 _CANDIDATE_COUNT = 8_836
@@ -118,6 +121,12 @@ class _Comparison:
     seeded: _BoundedRun
 
 
+@dataclass(frozen=True, slots=True)
+class _Series:
+    format_id: str
+    repetitions: tuple[_Comparison, ...]
+
+
 class _Provenance(Protocol):
     commit: str
     workload_sha256: str
@@ -132,6 +141,7 @@ class _RunRecordModule(Protocol):
     RunProvenance: object
     RunRecordError: type[ValueError]
     RUN_RECORD_FORMAT_ID: str
+    MEASUREMENT_RUN_RECORD_FORMAT_ID: str
 
     def render_run_manifest(
         self,
@@ -140,6 +150,15 @@ class _RunRecordModule(Protocol):
         result: _Comparison,
     ) -> str:
         """Render one candidate run manifest."""
+        ...
+
+    def render_measurement_run_manifest(
+        self,
+        plan_text: str,
+        provenance: _Provenance,
+        series: _Series,
+    ) -> str:
+        """Render one retained-measurement run manifest."""
         ...
 
 
@@ -195,6 +214,10 @@ def _result() -> _Comparison:
         ),
         _BoundedRun(seeded, _SEEDED_ELAPSED, None, _STOP_EVALUATION),
     )
+
+
+def _series() -> _Series:
+    return _Series(_SERIES_FORMAT_ID, (_result(),) * _REPETITIONS)
 
 
 def _provenance(
@@ -300,3 +323,38 @@ def test_shared_validator_still_owns_commit_shape() -> None:
         match="lowercase 40-hex Git commit",
     ):
         _ = manifest_validator.parse_manifest(text)
+
+
+def test_measurement_run_manifest_binds_all_retained_repetitions() -> None:
+    """Multi-repetition record keeps the full series identity in one run."""
+    text = _RUN_RECORD_MODULE.render_measurement_run_manifest(
+        _PLAN.read_text(encoding="utf-8"),
+        _provenance(),
+        _series(),
+    )
+    manifest = manifest_validator.parse_manifest(text)
+    document = tomllib.loads(text)
+    extension = cast(
+        "dict[str, object]",
+        document["superoptimization_measurement"],
+    )
+    assert manifest.record_kind == _RECORD_KIND_RUN
+    assert extension["format_id"] == _MEASUREMENT_FORMAT_ID
+    assert extension["measurement_series_id"] == _SERIES_FORMAT_ID
+    assert extension["repetitions"] == _REPETITIONS
+
+
+def test_measurement_run_manifest_rejects_one_repetition_bound_drift() -> None:
+    """One drifted retained repetition invalidates the complete run record."""
+    results = list(_series().repetitions)
+    results[-1] = replace(results[-1], candidate_count=_CANDIDATE_COUNT - 1)
+    series = _Series(_SERIES_FORMAT_ID, tuple(results))
+    with pytest.raises(
+        _RUN_RECORD_MODULE.RunRecordError,
+        match="candidate count differs from plan",
+    ):
+        _ = _RUN_RECORD_MODULE.render_measurement_run_manifest(
+            _PLAN.read_text(encoding="utf-8"),
+            _provenance(),
+            series,
+        )
