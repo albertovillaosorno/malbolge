@@ -22,7 +22,6 @@ required = true
 oracle = "safe-rust-malbolge-vm"
 
 [provenance]
-# jig-ignore-next-line: indivisible reviewed identifier
 configuration = "src/research/algorithms/domain/algorithms/adaptive-accelerator-resource-budgeting/experiment.toml"
 implementation = "algorithms/adaptive-accelerator-resource-budgeting/"
 output = "algorithms/adaptive-accelerator-resource-budgeting/out/"

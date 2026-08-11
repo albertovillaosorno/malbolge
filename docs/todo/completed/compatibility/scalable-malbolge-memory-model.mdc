@@ -2,6 +2,7 @@
 id: "scalable-malbolge-memory-model"
 status: "completed"
 lane: "6"
+priority: "p1"
 area: "compatibility"
 task: "TODO - Scalable Malbolge memory model"
 contract: "docs/technical/compatibility/scalable-malbolge-memory-model.md"

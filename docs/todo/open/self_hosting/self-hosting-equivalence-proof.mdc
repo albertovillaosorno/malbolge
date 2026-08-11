@@ -2,9 +2,9 @@
 id: "self-hosting-equivalence-proof"
 status: "pending"
 lane: "15"
+priority: "p4"
 area: "self_hosting"
 task: "TODO - Self-hosting equivalence proof"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/compiler/self-hosting/self-hosting-equivalence-proof.md"
 depends_on:
   - "malbolge-compiler-compiles-c-to-malbolge"

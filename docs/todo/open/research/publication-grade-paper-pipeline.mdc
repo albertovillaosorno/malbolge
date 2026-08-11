@@ -2,6 +2,7 @@
 id: "publication-grade-paper-pipeline"
 status: "pending"
 lane: "18"
+priority: "p5"
 area: "research"
 task: "TODO - Publication-grade paper pipeline"
 contract: "docs/research/methodology/publication-pipeline.md"

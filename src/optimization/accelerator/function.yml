@@ -205,13 +205,11 @@ parts:
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0035
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_environment_async_https_auth_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0036
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_file_async_https_auth_provider.py
     kind: application
     language: python
@@ -222,13 +220,11 @@ parts:
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0038
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_memory_async_https_auth_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0039
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_memory_async_secret_provider.py
     kind: application
     language: python
@@ -249,163 +245,136 @@ parts:
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0043
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_async_bundle_fetcher.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0044
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_async_https_auth_fetcher.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0045
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_async_https_auth_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0046
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_async_https_bundle_fetcher.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0047
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_async_public_key_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0048
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_async_secret_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0049
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_environment_https_auth_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0050
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_file_https_auth_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0051
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_file_secret_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0052
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_https_auth_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0053
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_https_authorized_fetcher.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0054
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_https_bundle_fetcher.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0055
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_memory_async_public_key_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0056
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_memory_https_auth_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0057
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_memory_public_key_batch_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0058
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_memory_public_key_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0059
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_memory_public_key_session.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0060
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_memory_secret_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0061
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_public_key_batch_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0062
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_public_key_bundle.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0063
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_public_key_bundle_fetcher.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0064
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_public_key_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0065
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_public_key_provider_session.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0066
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_secret_provider.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0067
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_signature.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0068
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_signature_trust.py
     kind: application
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0069
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_signature_trust_manifest.py
     kind: application
     language: python
@@ -416,7 +385,6 @@ parts:
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0071
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_lineage_trust_manifest.py
     kind: application
     language: python
@@ -432,7 +400,6 @@ parts:
     language: python
     responsibility: Coordinate use cases without owning external policy.
   - id: part-0074
-    # jig-ignore-next-line: canonical tracked part path
     path: application/accelerator/ticket_admission_telemetry_overlap_components.py
     kind: application
     language: python

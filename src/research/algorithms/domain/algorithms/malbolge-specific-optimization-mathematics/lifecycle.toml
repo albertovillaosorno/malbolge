@@ -3,7 +3,5 @@ schema_version = 1
 [algorithm]
 id = "malbolge-specific-optimization-mathematics"
 state = "experimental"
-# jig-ignore-next-line: indivisible reviewed identifier
 research_record = "docs/research/algorithms/malbolge-specific-optimization-mathematics/research.md"
-# jig-ignore-next-line: indivisible reviewed identifier
 experiment_manifest = "src/research/algorithms/domain/algorithms/malbolge-specific-optimization-mathematics/experiment.toml"

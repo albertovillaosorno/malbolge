@@ -41,6 +41,7 @@ import json
 from pathlib import Path
 from pathlib import PureWindowsPath
 import platform
+from shutil import which
 import sys
 import tomllib
 from typing import Final
@@ -370,27 +371,27 @@ def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
 
 
 def inspect_jig(root: Path, platform_id: str) -> ComponentStatus:
-    """Inspect the repository-local Jig launcher for this host.
+    """Inspect the standalone Jig launcher resolved from PATH.
 
     Returns:
         Ready or missing repository governance tool status.
 
     """
+    del root
     executable = "jig.cmd" if platform_id.startswith(WINDOWS_SYSTEM) else "jig"
-    path = root / ".dependencies" / "jig" / "bin" / executable
-    if path.is_file():
+    resolved = which(executable)
+    if resolved is not None:
+        path = Path(resolved)
         return ComponentStatus(
-            detail="repository-local Jig launcher is present",
+            detail="standalone Jig launcher is present on PATH",
             name="jig",
             path=path,
             state=ComponentState.READY,
         )
     return ComponentStatus(
-        detail=(
-            "repository-local Jig launcher has not been installed for this host"
-        ),
+        detail="standalone Jig launcher is unavailable on PATH",
         name="jig",
-        path=path,
+        path=None,
         state=ComponentState.MISSING,
     )
 

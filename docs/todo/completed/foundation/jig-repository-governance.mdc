@@ -2,6 +2,7 @@
 id: "jig-repository-governance"
 status: "completed"
 lane: "2"
+priority: "p0"
 area: "foundation"
 task: "TODO - Jig repository governance"
 contract: "docs/technical/contracts/jig-repository-governance.md"
@@ -11,26 +12,28 @@ adr_paths:
   - "docs/technical/adr/documentation-authority-taxonomy.md"
 scope:
   - ".jig/jig.toml"
-  - ".dependencies/jig/"
+  - ".jig/roadmap.json"
+  - "AGENTS.md"
   - "docs/todo/"
+  - "ROADMAP.md"
   - "TODO.md"
   - "tests/test_governance_paths.py"
 validation:
-  - ".dependencies/jig/bin/jig.cmd validate --root ."
+  - "jig validate --root ."
 ---
 # TODO - Jig repository governance
 
 ## Objective
 
-Integrate the evolving Jig validator as repository-local tooling, preserve its
+Integrate the evolving Jig validator through the system `PATH`, preserve its
 fail-closed rules, and configure only genuine project-specific differences
 without weakening unrelated linter contracts.
 
 ## Acceptance
 
-- The repository-local Jig installation and `.jig/jig.toml` describe the actual
-  polyglot repository without fake language/tool requirements or weakened
-  reviewed lint policy.
+- The Jig installation selected from `PATH` and `.jig/jig.toml` describe the
+  actual polyglot repository without fake language/tool requirements or
+  weakened reviewed lint policy.
 - The authoritative rule/specification is deterministic, versionable, and does
   not depend on undocumented host behavior.
 - The declared scope contains no unresolved placeholder implementation or
@@ -40,35 +43,32 @@ without weakening unrelated linter contracts.
 
 ## Evidence
 
-- Repository-local Jig 26.3.0 remains installed through the source-linked
-  launcher under `.dependencies/jig/bin/`; the active development authority now
-  requires configuration schema 8.
-- `.jig/jig.toml` schema 8 declares the repository-owned typed TODO workflow:
+- Jig 26.3.0 is resolved through the system `PATH`; repository-local launchers
+  are not part of the validation boundary.
+- `.jig/jig.toml` schema 20 declares the repository-owned typed TODO workflow:
   task
   document, open/completed roots, record extension, exact sections, acceptance
   evidence, validation commands, and strict dependency-lane ordering. It also
   declares closed change-class path policy for architecture, implementation,
   bugfix, tests, documentation, and dependency admission.
-- Schema 8 Git governance additionally declares `JIG_SHIT.md` as a required
+- Git governance additionally declares `JIG_SHIT.md` as a required
   local-only QA ledger. The tracked root `.gitignore` owns `/JIG_SHIT.md`, so
   agents may record Jig integration defects without accidentally promoting that
   scratch evidence into repository history.
-- The installed commit-message hook parses the schema-8 configuration and
-  accepts new compliant commits fail-closed.
+- The installed commit-message hook resolves `jig` through `PATH`, parses the
+  schema-20 configuration, and accepts new compliant commits fail-closed.
 - `tests/test_governance_paths.py` rejects duplicated nested `.jig` path
   segments in authored text outside the validator-owned configuration tree.
-- `.dependencies/jig/bin/jig.cmd validate --root .` is the canonical command.
-  It builds and runs the source-linked authority instead of the stale versioned
-  release executable.
+- `jig validate --root .` is the canonical command and invokes the installed,
+  versioned validator without a repository-local Jig checkout.
 - Historical repair plan
   `5f7e10afc710f9c47093d68f853d26657f8854aa` normalized 32 messages across
   208 linear unsigned commits while preserving every tree, identity, timestamp,
   and chronological position. The original tip remains under the Jig backup ref.
-- The repaired history has zero `JIG-COMMIT-*` diagnostics, and the complete
-  source-linked schema-8 validation now passes with zero current findings.
+- The repaired history has zero `JIG-COMMIT-*` diagnostics, and complete
+  schema-20 validation is the current repository closure gate.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.
-- **Completion:** Completed on 2026-08-06 after schema-8 configuration,
-  source-linked repository tooling, commit-message governance, typed TODO
-  policy,
-  repaired historical messages, governance-path tests, and full Jig validation
-  passed with zero diagnostics.
+- **Completion:** Completed on 2026-08-06 after initial repository governance,
+  typed TODO policy, repaired historical messages, governance-path tests, and
+  full Jig validation passed with zero diagnostics. The integration was later
+  migrated to schema 20 and the system `PATH` authority.

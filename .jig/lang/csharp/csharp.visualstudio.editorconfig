@@ -181,20 +181,15 @@ dotnet_naming_symbols.parameter_symbols.applicable_kinds = parameter
 dotnet_naming_symbols.parameter_symbols.applicable_accessibilities = *
 dotnet_naming_symbols.local_symbols.applicable_kinds = local
 dotnet_naming_symbols.local_symbols.applicable_accessibilities = *
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.interfaces_must_be_prefixed_with_i.symbols = interface_symbols
 dotnet_naming_rule.interfaces_must_be_prefixed_with_i.style = i_prefix_style
 dotnet_naming_rule.interfaces_must_be_prefixed_with_i.severity = error
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.type_parameters_must_be_prefixed_with_t.symbols = type_parameter_symbols
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.type_parameters_must_be_prefixed_with_t.style = t_prefix_style
 dotnet_naming_rule.type_parameters_must_be_prefixed_with_t.severity = error
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.async_methods_must_end_with_async.symbols = async_method_symbols
 dotnet_naming_rule.async_methods_must_end_with_async.style = async_suffix_style
 dotnet_naming_rule.async_methods_must_end_with_async.severity = error
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.abstract_classes_must_end_with_base.symbols = abstract_class_symbols
 dotnet_naming_rule.abstract_classes_must_end_with_base.style = base_suffix_style
 dotnet_naming_rule.abstract_classes_must_end_with_base.severity = error
@@ -210,20 +205,13 @@ dotnet_naming_rule.events_should_be_pascal_case.severity = error
 dotnet_naming_rule.methods_should_be_pascal_case.symbols = method_symbols
 dotnet_naming_rule.methods_should_be_pascal_case.style = pascal_case_style
 dotnet_naming_rule.methods_should_be_pascal_case.severity = error
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.constant_fields_should_be_pascal_case.symbols = constant_fields
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.constant_fields_should_be_pascal_case.style = pascal_case_style
 dotnet_naming_rule.constant_fields_should_be_pascal_case.severity = error
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.non_public_constant_fields_should_be_pascal_case.symbols = non_public_constant_fields
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.non_public_constant_fields_should_be_pascal_case.style = pascal_case_style
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.non_public_constant_fields_should_be_pascal_case.severity = error
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.constant_locals_should_be_pascal_case.symbols = constant_locals
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.constant_locals_should_be_pascal_case.style = pascal_case_style
 dotnet_naming_rule.constant_locals_should_be_pascal_case.severity = error
 dotnet_naming_rule.public_fields_should_be_pascal_case.symbols = public_fields
@@ -232,9 +220,7 @@ dotnet_naming_rule.public_fields_should_be_pascal_case.severity = error
 dotnet_naming_rule.static_fields_should_have_prefix.symbols = static_fields
 dotnet_naming_rule.static_fields_should_have_prefix.style = static_prefix_style
 dotnet_naming_rule.static_fields_should_have_prefix.severity = error
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.camel_case_for_private_internal_fields.symbols = private_internal_fields
-# jig-ignore-next-line: reviewed EditorConfig value is indivisible
 dotnet_naming_rule.camel_case_for_private_internal_fields.style = camel_case_underscore_style
 dotnet_naming_rule.camel_case_for_private_internal_fields.severity = error
 dotnet_naming_rule.parameters_should_be_camel_case.symbols = parameter_symbols

@@ -2,9 +2,9 @@
 id: "configurable-accelerator-algorithm-adapters"
 status: "active"
 lane: "8"
+priority: "p2"
 area: "accelerator"
 task: "TODO - Configurable accelerator algorithm adapters"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/integrations/accelerators/configurable-accelerator-algorithm-adapters.md"
 depends_on:
   - "replaceable-accelerator-boundary"

@@ -2,6 +2,7 @@
 id: "parametric-compiler-challenge-generator"
 status: "active"
 lane: "7"
+priority: "p1"
 area: "applications"
 task: "TODO - Parametric compiler challenge generator"
 contract: "docs/research/methodology/parametric-challenges.md"
@@ -41,11 +42,11 @@ exactly the same problem rather than on vaguely similar examples.
 
 - `benchmarks/challenges/generate.py` implements deterministic
   `arithmetic-dag/v1`, `linear-mix/v1`, `branch-mix/v1`,
-  `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`, and `alias-walk/v1` challenges
-  identified by family, version, unsigned seed, canonical target-profile
-  fingerprint, and node count. Every node feeds the next node on a live
-  dependency spine so difficulty cannot grow through dead
-  C statements. The domain-separated linear family is a strict predecessor
+  `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`, and `alias-walk/v1`
+  challenges identified by family, version, unsigned seed, canonical
+  target-profile fingerprint, and node count. Every node feeds the next node
+  on a live dependency spine so difficulty cannot grow through dead C
+  statements. The domain-separated linear family is a strict predecessor
   chain while the DAG family retains additional source-order fan-in. The
   branch family adds one live `if`/`else` diamond per node. The memory family
   uses a fixed eight-cell local array with deterministic indexed read/write/read

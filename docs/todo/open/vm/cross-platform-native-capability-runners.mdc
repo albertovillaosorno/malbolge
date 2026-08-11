@@ -2,9 +2,9 @@
 id: "cross-platform-native-capability-runners"
 status: "pending"
 lane: "11"
+priority: "p3"
 area: "vm"
 task: "TODO - Cross-platform native capability runners"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/runtime/execution/cross-platform-native-capability-runners.md"
 depends_on:
   - "versioned-host-capability-call-abi"

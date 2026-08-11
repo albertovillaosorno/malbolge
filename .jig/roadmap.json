@@ -1,0 +1,120 @@
+{
+  "dependency_rules": [
+    "Every milestone has one stable identifier.",
+    "Typed TODO dependencies and lanes remain execution authority.",
+    "Horizons advance only after deterministic verifier evidence exists.",
+    "Search and accelerator results never replace semantic verification.",
+    "Target dates are plans and never completion claims."
+  ],
+  "horizons": [
+    {
+      "id": "p0",
+      "lanes": [1, 2, 3, 4],
+      "title": "Authority and governance"
+    },
+    {
+      "id": "p1",
+      "lanes": [5, 6, 7],
+      "title": "Semantic and language foundations"
+    },
+    {
+      "id": "p2",
+      "lanes": [8, 9, 10],
+      "title": "Compiler, runtime, and accelerator core"
+    },
+    {
+      "id": "p3",
+      "lanes": [11, 12, 13],
+      "title": "Optimization, proof, and reusable scale"
+    },
+    {
+      "id": "p4",
+      "lanes": [14, 15, 16],
+      "title": "Applications, evidence, and self-hosting"
+    },
+    {
+      "id": "p5",
+      "lanes": [17, 18],
+      "title": "Documentation and publication"
+    }
+  ],
+  "milestone_notes": [
+    "M-000 established repository and historical specification authority.",
+    "M-001 delivered the accepted safe-Rust VM and its deterministic evidence.",
+    "M-002 owns the first complete compiler and exact execution core.",
+    "M-003 scales verified optimization without trusting heuristic components.",
+    "M-004 proves real applications and practical self-hosting.",
+    "M-005 closes reproducible publication and historical demonstration."
+  ],
+  "milestones": [
+    {
+      "finish": "2026-07-26",
+      "id": "M-000",
+      "needs": [],
+      "start": "2026-07-26",
+      "state": "completed",
+      "target": "2026-07-26",
+      "title": "Repository authority"
+    },
+    {
+      "finish": "2026-08-06",
+      "id": "M-001",
+      "needs": ["M-000"],
+      "start": "2026-07-27",
+      "state": "completed",
+      "target": "2026-08-06",
+      "title": "Safe VM baseline"
+    },
+    {
+      "finish": "-",
+      "id": "M-002",
+      "needs": ["M-001"],
+      "start": "2026-08-07",
+      "state": "active",
+      "target": "2026-09-30",
+      "title": "Compiler and execution core"
+    },
+    {
+      "finish": "-",
+      "id": "M-003",
+      "needs": ["M-002"],
+      "start": "2026-10-01",
+      "state": "planned",
+      "target": "2026-12-31",
+      "title": "Verified optimization scale"
+    },
+    {
+      "finish": "-",
+      "id": "M-004",
+      "needs": ["M-003"],
+      "start": "2027-01-01",
+      "state": "planned",
+      "target": "2027-06-30",
+      "title": "Applications and self-hosting"
+    },
+    {
+      "finish": "-",
+      "id": "M-005",
+      "needs": ["M-004"],
+      "start": "2027-07-01",
+      "state": "planned",
+      "target": "2027-09-30",
+      "title": "Publication and historical proof"
+    }
+  ],
+  "program_contract": [
+    "Defined Malbolge profiles own observable guest semantics.",
+    "Independent deterministic verification accepts generated artifacts.",
+    "Host parallelism never creates guest threads or reorders semantics.",
+    "Source, IR, layout, mutation, and verifier provenance remain explicit.",
+    "Historical compatibility never imports undefined behavior."
+  ],
+  "project": {
+    "current_milestone": "M-002",
+    "last_schedule_review": "2026-08-10",
+    "name": "Malbolge",
+    "schedule_owner": "Repository owner",
+    "started": "2026-07-26"
+  },
+  "schema_version": 1
+}

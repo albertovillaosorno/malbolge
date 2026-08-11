@@ -2,6 +2,7 @@
 id: "independent-pure-c-malbolge-vm"
 status: "completed"
 lane: "5"
+priority: "p1"
 area: "vm"
 task: "TODO - Independent pure C Malbolge VM"
 contract: "docs/technical/runtime/vm/independent-pure-c-malbolge-vm.md"

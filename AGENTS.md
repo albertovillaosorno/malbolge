@@ -182,7 +182,8 @@ Never discard unrelated uncommitted work. Do not change
 concurrently edited configuration merely to make a global gate green unless the
 current task explicitly owns that configuration.
 
-Use the repository-pinned Rust toolchain and repository-local Jig installation.
+Use the repository-pinned Rust toolchain and the standalone Jig resolved from
+`PATH`.
 For Rust VM work, the minimum useful checks are formatting, tests, compiler/lint
 checks, and Jig validation. Prefer the full repository validation before a
 product commit, but report unrelated pre-existing blockers honestly instead of

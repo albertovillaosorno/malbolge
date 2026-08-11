@@ -2,9 +2,9 @@
 id: "deterministic-cpu-optimizer"
 status: "active"
 lane: "12"
+priority: "p3"
 area: "accelerator"
 task: "TODO - Deterministic CPU optimizer"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/integrations/accelerators/deterministic-cpu-optimizer.md"
 depends_on:
   - "safe-rust-malbolge-vm"

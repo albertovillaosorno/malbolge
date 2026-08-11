@@ -2,6 +2,7 @@
 id: "malbolge-decompiler-and-reverse-engineering"
 status: "completed"
 lane: "6"
+priority: "p1"
 area: "tools"
 task: "TODO - Malbolge decompiler and reverse engineering"
 contract: "docs/technical/tooling/malbolge-decompiler.md"

@@ -2,6 +2,7 @@
 id: "versioned-c-and-malbolge-example-corpus"
 status: "pending"
 lane: "12"
+priority: "p3"
 area: "applications"
 task: "TODO - Versioned C and Malbolge example corpus"
 contract: "docs/technical/examples/versioned-c-malbolge-corpus.md"

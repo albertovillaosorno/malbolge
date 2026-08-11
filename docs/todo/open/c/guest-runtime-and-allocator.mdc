@@ -2,6 +2,7 @@
 id: "guest-runtime-and-allocator"
 status: "active"
 lane: "8"
+priority: "p2"
 area: "c"
 task: "TODO - Guest runtime and allocator"
 contract: "docs/technical/compiler/c-profile/guest-runtime-and-allocator.md"

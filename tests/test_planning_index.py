@@ -14,7 +14,7 @@
 #   - Duplicate typed metadata or accept completed work as active planning.
 # - Allows:
 #   - Inputs: `TODO.md` and typed TODO records.
-#   - Outputs: exact group, heuristic-order, summary, and link assertions.
+#   - Outputs: exact group, status/title order, summary, and link assertions.
 #   - Side effects: repository reads only.
 # - Split-When:
 #   - Planning surfaces acquire an independent machine-readable schema.
@@ -34,7 +34,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import dataclass
 from dataclasses import field
 from pathlib import Path
@@ -177,28 +176,13 @@ def _open_records() -> tuple[PlanningRecord, ...]:
     )
 
 
-def _dependent_counts(
-    records: tuple[PlanningRecord, ...],
-) -> Counter[str]:
-    identifiers = {record.identifier for record in records}
-    return Counter(
-        dependency
-        for record in records
-        for dependency in record.dependencies
-        if dependency in identifiers
-    )
-
-
 def _priority_key(
     record: PlanningRecord,
-    dependent_counts: Counter[str],
-) -> tuple[int, int, int, int, str]:
+) -> tuple[int, str, str]:
     return (
-        record.lane,
         record.status_order,
-        -dependent_counts[record.identifier],
-        record.area_order,
         record.title.casefold(),
+        record.identifier,
     )
 
 
@@ -234,7 +218,9 @@ def _parse_todo_entry(
     summary = " ".join(summary_lines)
     assert index + 1 < len(lines)
     link_index = index + 1
-    if lines[link_index].startswith("<!-- jig-ignore-next-line:"):
+    if lines[link_index].startswith(
+        "<!-- MarkdownLint-disable-next-line MD013 MD044 -->"
+    ):
         link_index += 1
     record = _parse_link(lines[link_index])
     assert title == record.title
@@ -277,13 +263,11 @@ def _assert_section_headers(sections: tuple[ParsedSection, ...]) -> None:
 def _expected_section_records(
     lanes: range,
     open_records: tuple[PlanningRecord, ...],
-    *,
-    dependent_counts: Counter[str],
 ) -> tuple[PlanningRecord, ...]:
     return tuple(
         sorted(
             (record for record in open_records if record.lane in lanes),
-            key=lambda record: _priority_key(record, dependent_counts),
+            key=_priority_key,
         )
     )
 
@@ -302,13 +286,11 @@ def test_todo_index_is_priority_grouped_compact_and_complete() -> None:
     sections = _parse_sections(TODO_PATH.read_text(encoding="utf-8"))
     _assert_section_headers(sections)
     open_records = _open_records()
-    dependent_counts = _dependent_counts(open_records)
     actual_records: list[PlanningRecord] = []
     for section, group in zip(sections, P_GROUPS, strict=True):
         expected = _expected_section_records(
             group[2],
             open_records,
-            dependent_counts=dependent_counts,
         )
         assert tuple(section.records) == expected
         actual_records.extend(section.records)

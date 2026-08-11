@@ -2,6 +2,7 @@
 id: "latex-mathematical-specification-framework"
 status: "completed"
 lane: "5"
+priority: "p1"
 area: "mathematics"
 task: "TODO - LaTeX mathematical specification framework"
 contract: "docs/technical/specification/mathematics/framework.md"
@@ -17,7 +18,6 @@ scope:
   - "math/algorithms/"
   - "docs/research/algorithms/"
   - "algorithms/"
-  # jig-ignore-next-line: canonical front matter value is indivisible
   - "src/automation/repository/composition/scripts/validate/math_specifications.py"
   - "tests/mathematics/"
 validation:

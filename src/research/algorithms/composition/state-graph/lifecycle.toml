@@ -3,7 +3,5 @@ schema_version = 1
 [algorithm]
 id = "self-modification-state-graph-optimizer"
 state = "experimental"
-# jig-ignore-next-line: indivisible reviewed identifier
 research_record = "docs/research/algorithms/self-modification-state-graph-optimizer/research.md"
-# jig-ignore-next-line: indivisible reviewed identifier
 experiment_manifest = "src/research/algorithms/composition/state-graph/experiment.toml"

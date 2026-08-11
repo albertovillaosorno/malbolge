@@ -2,6 +2,7 @@
 id: "differential-vm-verification"
 status: "completed"
 lane: "6"
+priority: "p1"
 area: "verification"
 task: "TODO - Differential VM verification"
 contract: "docs/technical/verification/differential-vm-verification.md"

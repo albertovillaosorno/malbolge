@@ -2,6 +2,7 @@
 id: "algorithm-promotion-rejection-and-retirement-lifecycle"
 status: "completed"
 lane: "5"
+priority: "p1"
 area: "research"
 task: "TODO - Algorithm promotion rejection and retirement lifecycle"
 contract: "docs/research/methodology/algorithm-lifecycle.md"

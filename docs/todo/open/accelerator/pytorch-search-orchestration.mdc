@@ -2,6 +2,7 @@
 id: "pytorch-search-orchestration"
 status: "pending"
 lane: "14"
+priority: "p4"
 area: "accelerator"
 task: "TODO - PyTorch search orchestration"
 contract: "docs/research/algorithms/pytorch-search-orchestration/README.md"

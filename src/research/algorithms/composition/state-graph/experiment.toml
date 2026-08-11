@@ -18,7 +18,6 @@ profile = "malbolge-1998"
 [verification]
 required = true
 oracle = "safe-rust-profile-vm"
-# jig-ignore-next-line: indivisible reviewed identifier
 correspondence = "src/specification/formal-model/math/specification/correspondence.toml"
 # jig-ignore-next-line: indivisible reviewed identifier
 rejection_condition = "any exact-state hash collision that merges unequal snapshots, or any reduced-key merge with divergent future observations"
@@ -62,7 +61,6 @@ before_value_validation = true
 
 [persistent_depth.benchmark]
 commit = "51fb0b6"
-# jig-ignore-next-line: indivisible reviewed identifier
 evidence = "benchmarks/research/state-graph/evidence/2026-07-27-depth-windows-x86_64"
 depths = [1, 8, 64, 512, 4096]
 samples_per_case = 15
@@ -80,7 +78,6 @@ full_materialization_role = "oracle-only"
 
 [indexed_memory.benchmark]
 commit = "ec459d0"
-# jig-ignore-next-line: indivisible reviewed identifier
 evidence = "benchmarks/research/state-graph/evidence/2026-07-27-indexed-windows-x86_64"
 depths = [1, 8, 64, 512, 4096]
 samples_per_case = 15
@@ -97,7 +94,6 @@ materialization_role = "oracle-only"
 
 [incremental_state_identity.benchmark]
 commit = "f317f3e"
-# jig-ignore-next-line: indivisible reviewed identifier
 evidence = "benchmarks/research/state-graph/evidence/2026-07-27-state-identity-windows-x86_64"
 samples_per_case = 15
 operations_per_incremental_sample = 4096
@@ -113,7 +109,6 @@ long_history_fixture_bytes = 65536
 
 [persistent_output.benchmark]
 commit = "1d229d0"
-# jig-ignore-next-line: indivisible reviewed identifier
 evidence = "benchmarks/research/state-graph/evidence/2026-07-27-output-windows-x86_64"
 lengths = [0, 1024, 65536, 262144]
 samples_per_case = 15
@@ -131,7 +126,6 @@ next_risk = "dependency-read-set-guard-reduction"
 
 [exact_region.benchmark]
 commit = "f16785d"
-# jig-ignore-next-line: indivisible reviewed identifier
 evidence = "benchmarks/research/state-graph/evidence/2026-07-27-region-windows-x86_64"
 samples_per_case = 15
 guard_operations_per_sample = 16384
@@ -149,7 +143,6 @@ reduction_goal = "increase-safe-region-reuse"
 
 [region_dependency_guard.benchmark]
 commit = "1988f14"
-# jig-ignore-next-line: indivisible reviewed identifier
 evidence = "benchmarks/research/state-graph/evidence/2026-07-27-dependency-region-windows-x86_64"
 samples_per_case = 15
 dependency_guard_operations_per_sample = 16384
@@ -176,7 +169,6 @@ deopt = "same-normative-region-fallback"
 next_risk = "production-execution-ir-and-native-code-artifact"
 
 [provenance]
-# jig-ignore-next-line: indivisible reviewed identifier
 configuration = "src/research/algorithms/composition/state-graph/experiment.toml"
 implementation = "algorithms/self-modification-state-graph-optimizer/"
 output = "algorithms/self-modification-state-graph-optimizer/out/"

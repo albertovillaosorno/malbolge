@@ -54,7 +54,6 @@ parts:
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0004
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/classic_resident_session_throughput.py
     kind: composition
     language: python
@@ -85,43 +84,36 @@ parts:
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0010
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/independent_ticket_event_timeline.py
     kind: composition
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0011
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/independent_ticket_stream_throughput.py
     kind: composition
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0012
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/independent_ticket_transfer_event_timeline.py
     kind: composition
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0013
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/independent_ticket_transfer_throughput.py
     kind: composition
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0014
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/prepared_cuda_primitive_phase_profile.py
     kind: composition
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0015
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/profile_resident_session_throughput.py
     kind: composition
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0016
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/profile_resident_snapshot_phase_profile.py
     kind: composition
     language: python
@@ -137,25 +129,21 @@ parts:
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0019
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/profile_snapshot_double_buffer_overlap.py
     kind: composition
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0020
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/profile_snapshot_host_registration_tradeoff.py
     kind: composition
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0021
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/profile_snapshot_stream_window_tradeoff.py
     kind: composition
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0022
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/profile_snapshot_workspace_tradeoff.py
     kind: composition
     language: python
@@ -171,7 +159,6 @@ parts:
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0025
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/rotate_target_selection_preparer_comparison.py
     kind: composition
     language: python
@@ -207,7 +194,6 @@ parts:
     language: python
     responsibility: Wire runtime policy and executable entrypoints.
   - id: part-0032
-    # jig-ignore-next-line: canonical tracked part path
     path: composition/benchmarks/accelerator/ticket_admission_profile_manifest.py
     kind: composition
     language: python

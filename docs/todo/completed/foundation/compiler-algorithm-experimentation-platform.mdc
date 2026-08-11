@@ -2,9 +2,9 @@
 id: "compiler-algorithm-experimentation-platform"
 status: "completed"
 lane: "5"
+priority: "p1"
 area: "foundation"
 task: "TODO - Compiler algorithm experimentation platform"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/research/methodology/compiler-algorithm-experimentation-platform.md"
 depends_on:
   - "algorithm-research-mirror-and-local-output-contract"

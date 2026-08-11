@@ -22,7 +22,6 @@ oracle = "exact-byte-equality-fixtures"
 cargo_test = "search_pruning_research"
 
 [provenance]
-# jig-ignore-next-line: indivisible reviewed identifier
 configuration = "src/research/algorithms/domain/algorithms/search-pruning-and-state-canonicalization/experiment.toml"
 implementation = "algorithms/search-pruning-and-state-canonicalization/"
 output = "algorithms/search-pruning-and-state-canonicalization/out/"

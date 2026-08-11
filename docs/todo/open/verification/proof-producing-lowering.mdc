@@ -2,6 +2,7 @@
 id: "proof-producing-lowering"
 status: "pending"
 lane: "12"
+priority: "p3"
 area: "verification"
 task: "TODO - Proof-producing lowering"
 contract: "docs/technical/verification/proof-producing-lowering.md"

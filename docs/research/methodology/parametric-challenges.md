@@ -110,9 +110,9 @@ families also remain open.
 ## Threats to Validity
 
 The current families cover unsigned arithmetic with DAG, strict-chain,
-branch-diamond, fixed-array memory-walk, helper-call, live pointer-selected memory, and potentially aliasing
-pointer-pair topologies. They still omit broader workload structure
-and substantially larger stress shapes.
+branch-diamond, fixed-array memory-walk, helper-call, live pointer-selected
+memory, and potentially aliasing pointer-pair topologies. They still omit
+broader workload structure and substantially larger stress shapes.
 Workload selection, generator/model common-mode bugs, native-check host
 differences,
 missing final Malbolge execution, and incomplete family coverage remain
@@ -123,9 +123,8 @@ agreement risk; it does not prove downstream compiler correctness.
 
 Active. Retain hash-locked `arithmetic-dag/v1` and `pointer-walk/v1` plus
 domain-separated `linear-mix/v1`, `branch-mix/v1`, `memory-walk/v1`, and
-`call-chain/v1` and `alias-walk/v1` as deterministic challenge substrates while expanding family
-coverage and waiting
-for an
+`call-chain/v1` and `alias-walk/v1` as deterministic challenge substrates while
+expanding family coverage and waiting for an
 end-to-end generated Malbolge execution path before completing this planning
 objective.
 

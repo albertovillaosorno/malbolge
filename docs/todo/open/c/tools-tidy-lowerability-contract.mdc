@@ -2,9 +2,9 @@
 id: "tools-tidy-lowerability-contract"
 status: "pending"
 lane: "11"
+priority: "p3"
 area: "c"
 task: "TODO - tools/tidy lowerability contract"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/compiler/c-profile/tools-tidy-lowerability-contract.md"
 depends_on:
   - "tools-tidy-clang-tidy-plugin"

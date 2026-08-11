@@ -2,6 +2,7 @@
 id: "machine-readable-llm-and-compiler-challenge-corpus"
 status: "pending"
 lane: "12"
+priority: "p3"
 area: "applications"
 task: "TODO - Machine-readable LLM and compiler challenge corpus"
 contract: "docs/research/methodology/machine-readable-agent-challenges.md"

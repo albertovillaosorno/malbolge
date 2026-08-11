@@ -14,8 +14,8 @@ committed writes before resolving fetch/data cells, code/data aliasing, planned
 writes, encryption input/output, input dependence, halt/rejection, pointer
 succession, and wrap without a worklist or unbounded guest execution. It can
 also prove the historical non-graphical-fetch fixed cycle because `continue`
-precedes pointer advance. Fourth-step and later control flow, source-map context,
-and longer input-dependent cycles remain unproved.
+precedes pointer advance. Fourth-step and later control flow,
+source-map context, and longer input-dependent cycles remain unproved.
 
 The initial-image report is bounded by the selected historical profile. Sources
 that exceed 59,049 loaded words receive a capacity finding without materializing

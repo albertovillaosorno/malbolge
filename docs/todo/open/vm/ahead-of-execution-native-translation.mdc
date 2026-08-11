@@ -2,9 +2,9 @@
 id: "ahead-of-execution-native-translation"
 status: "pending"
 lane: "11"
+priority: "p3"
 area: "vm"
 task: "TODO - Ahead-of-execution native translation"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/runtime/execution/ahead-of-execution-native-translation.md"
 depends_on:
   - "tiered-native-execution-engine"

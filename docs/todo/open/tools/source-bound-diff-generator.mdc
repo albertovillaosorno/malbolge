@@ -2,6 +2,7 @@
 id: "source-bound-diff-generator"
 status: "active"
 lane: "11"
+priority: "p3"
 area: "tools"
 task: "TODO - Source-bound diff generator"
 contract: "docs/technical/tooling/source-bound-diff-generator.md"

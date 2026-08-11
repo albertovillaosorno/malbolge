@@ -2,6 +2,7 @@
 id: "typed-compiler-ir"
 status: "completed"
 lane: "8"
+priority: "p2"
 area: "compiler"
 task: "TODO - Typed compiler IR"
 contract: "docs/technical/compiler/typed-compiler-ir.md"

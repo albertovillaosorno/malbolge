@@ -160,7 +160,7 @@ def _sample_clock(clock: object) -> int:
         value = clock()
     except ProgressSidecarError:
         raise
-    except Exception as error:  # ruff: ignore[blind-except] -- consumer clock boundary.
+    except Exception as error:  # ruff: ignore[blind-except] -- clock boundary.
         _fail(f"monotonic clock failed: {error}")
     return _monotonic_sample(value)
 

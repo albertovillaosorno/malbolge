@@ -2,9 +2,9 @@
 id: "specification-and-legacy-interpreter-modes"
 status: "completed"
 lane: "6"
+priority: "p1"
 area: "vm"
 task: "TODO - Interpreter-authority and specification-comparison modes"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/runtime/vm/specification-and-legacy-interpreter-modes.md"
 depends_on:
   - "safe-rust-malbolge-vm"

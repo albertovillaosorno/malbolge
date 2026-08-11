@@ -2,6 +2,7 @@
 id: "doom-playable-generated-code-performance"
 status: "pending"
 lane: "14"
+priority: "p4"
 area: "applications"
 task: "TODO - DOOM playable generated-code performance"
 contract: "docs/technical/interoperability/doom-generated-performance.md"

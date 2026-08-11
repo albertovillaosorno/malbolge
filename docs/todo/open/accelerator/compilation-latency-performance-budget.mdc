@@ -2,9 +2,9 @@
 id: "compilation-latency-performance-budget"
 status: "pending"
 lane: "15"
+priority: "p4"
 area: "accelerator"
 task: "TODO - Compilation latency performance budget"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/integrations/accelerators/compilation-latency-performance-budget.md"
 depends_on:
   - "benchmark-and-statistical-evidence-protocol"

@@ -2,9 +2,9 @@
 id: "versioned-host-capability-call-abi"
 status: "completed"
 lane: "7"
+priority: "p1"
 area: "c"
 task: "TODO - Versioned host-capability call ABI"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/runtime/execution/versioned-host-capability-call-abi.md"
 depends_on:
   - "deterministic-c-to-malbolge-abi"

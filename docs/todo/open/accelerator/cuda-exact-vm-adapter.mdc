@@ -2,6 +2,7 @@
 id: "cuda-exact-vm-adapter"
 status: "active"
 lane: "8"
+priority: "p2"
 area: "accelerator"
 task: "TODO - CUDA exact VM adapter"
 contract: "docs/technical/integrations/accelerators/cuda-exact-vm-adapter.md"

@@ -2,6 +2,7 @@
 id: "c-level-source-mapping-and-debugging"
 status: "pending"
 lane: "11"
+priority: "p3"
 area: "compiler"
 task: "TODO - C-level source mapping and debugging"
 contract: "docs/technical/compiler/source-mapping-debugging.md"

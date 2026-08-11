@@ -2,9 +2,9 @@
 id: "cuda-linux-runtime-and-hermetic-toolchain"
 status: "pending"
 lane: "9"
+priority: "p2"
 area: "accelerator"
 task: "TODO - CUDA Linux runtime and hermetic toolchain"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/integrations/accelerators/cuda-linux-runtime-and-toolchain.md"
 depends_on:
   - "cuda-exact-vm-adapter"

@@ -2,6 +2,7 @@
 id: "supported-libc-contract"
 status: "completed"
 lane: "7"
+priority: "p1"
 area: "c"
 task: "TODO - Supported libc contract"
 contract: "docs/technical/compiler/c-profile/supported-libc-contract.md"

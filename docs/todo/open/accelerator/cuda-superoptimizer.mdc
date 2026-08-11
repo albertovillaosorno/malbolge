@@ -2,6 +2,7 @@
 id: "cuda-superoptimizer"
 status: "pending"
 lane: "14"
+priority: "p4"
 area: "accelerator"
 task: "TODO - CUDA superoptimizer"
 contract: "docs/technical/integrations/accelerators/cuda-superoptimizer.md"

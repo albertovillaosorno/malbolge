@@ -2,6 +2,7 @@
 id: "academic-research-methodology-and-evidence-model"
 status: "completed"
 lane: "1"
+priority: "p0"
 area: "research"
 task: "TODO - Academic research methodology and evidence model"
 contract: "docs/research/methodology/scientific-method.md"

@@ -2,9 +2,9 @@
 id: "replaceable-accelerator-boundary"
 status: "completed"
 lane: "7"
+priority: "p1"
 area: "accelerator"
 task: "TODO - Replaceable accelerator boundary"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/integrations/accelerators/replaceable-accelerator-boundary.md"
 depends_on:
   - "batch-vm-execution"

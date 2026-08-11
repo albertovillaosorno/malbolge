@@ -2,6 +2,7 @@
 id: "translation-validation"
 status: "pending"
 lane: "11"
+priority: "p3"
 area: "verification"
 task: "TODO - Translation validation"
 contract: "docs/technical/verification/translation-validation.md"

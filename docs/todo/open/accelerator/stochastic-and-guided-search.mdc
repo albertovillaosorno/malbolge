@@ -2,6 +2,7 @@
 id: "stochastic-and-guided-search"
 status: "pending"
 lane: "13"
+priority: "p3"
 area: "accelerator"
 task: "TODO - Stochastic and guided search"
 contract: "docs/research/algorithms/stochastic-and-guided-search/README.md"

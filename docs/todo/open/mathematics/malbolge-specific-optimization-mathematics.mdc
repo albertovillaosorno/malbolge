@@ -2,9 +2,9 @@
 id: "malbolge-specific-optimization-mathematics"
 status: "active"
 lane: "6"
+priority: "p1"
 area: "mathematics"
 task: "TODO - Malbolge-specific optimization mathematics"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/research/algorithms/malbolge-specific-optimization-mathematics/README.md"
 depends_on:
   - "latex-mathematical-specification-framework"

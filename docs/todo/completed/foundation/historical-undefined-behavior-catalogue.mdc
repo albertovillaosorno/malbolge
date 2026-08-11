@@ -2,6 +2,7 @@
 id: "historical-undefined-behavior-catalogue"
 status: "completed"
 lane: "2"
+priority: "p0"
 area: "foundation"
 task: "TODO - Historical undefined-behavior catalogue"
 contract: "docs/technical/specification/historical-undefined-behavior.md"

@@ -2,6 +2,7 @@
 id: "documentation-readiness-and-implementation-gate"
 status: "completed"
 lane: "4"
+priority: "p0"
 area: "documentation"
 task: "TODO - Documentation readiness and implementation gate"
 contract: "docs/technical/contracts/documentation-readiness-gate.md"

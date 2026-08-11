@@ -2,6 +2,7 @@
 id: "state-aware-malbolge-linker"
 status: "pending"
 lane: "12"
+priority: "p3"
 area: "compiler"
 task: "TODO - State-aware Malbolge linker"
 contract: "docs/technical/compiler/state-aware-malbolge-linker.md"

@@ -2,9 +2,9 @@
 id: "search-pruning-and-state-canonicalization"
 status: "active"
 lane: "13"
+priority: "p3"
 area: "accelerator"
 task: "TODO - Search pruning and state canonicalization"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/research/algorithms/search-pruning-and-state-canonicalization/README.md"
 depends_on:
   - "deterministic-cpu-optimizer"

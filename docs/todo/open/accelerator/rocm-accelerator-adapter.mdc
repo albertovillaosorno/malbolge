@@ -2,6 +2,7 @@
 id: "rocm-accelerator-adapter"
 status: "pending"
 lane: "16"
+priority: "p4"
 area: "accelerator"
 task: "TODO - ROCm adapter contract reservation"
 contract: "docs/technical/integrations/accelerators/rocm-accelerator-adapter.md"

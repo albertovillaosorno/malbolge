@@ -334,6 +334,7 @@ _INSTRUCTION_VALIDATORS = {
 }
 
 
+# jig-ignore-next-line: exact Ruff suppression is indivisible
 def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None:  # ruff: ignore[complex-structure, too-many-branches, too-many-statements] -- independent metadata invariants.
     if type(instruction.output_path) is not str:
         message = "compatible output path must use the exact string type"
@@ -396,6 +397,7 @@ def _validate_instruction(instruction: CompatibleInstruction) -> None:
     validator(instruction)
 
 
+# jig-ignore-next-line: exact Ruff suppression is indivisible
 def _validate_plan_records(plan: CompatibleAuthoringPlan) -> None:  # ruff: ignore[complex-structure] -- independent plan record invariants.
     if (
         type(plan.source) is not TreeSnapshot

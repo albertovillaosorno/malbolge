@@ -2,6 +2,7 @@
 id: "benchmark-and-statistical-evidence-protocol"
 status: "completed"
 lane: "4"
+priority: "p0"
 area: "research"
 task: "TODO - Benchmark and statistical evidence protocol"
 contract: "docs/research/methodology/benchmark-protocol.md"

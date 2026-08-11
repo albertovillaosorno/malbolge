@@ -1,5 +1,5 @@
 [jig]
-schema_version = 18
+schema_version = 20
 
 [documentation]
 path_style = "lower-kebab"
@@ -136,6 +136,11 @@ require_validation_commands = true
 sections = ["Objective", "Acceptance", "Evidence"]
 task_document = "TODO.md"
 task_heading_level = 3
+task_heading_prefix = ""
+
+[todo.ordered_dimension]
+field = "priority"
+order = ["p0", "p1", "p2", "p3", "p4", "p5"]
 
 [change_policy.architecture]
 mode = "all"
@@ -233,17 +238,17 @@ reason = "MSVC C++ policy is centralized at .jig/lang/cpp/msvc-cpp.editorconfig;
 [linters.applicability.pyright]
 enabled = false
 # jig-ignore-next-line: indivisible reviewed identifier
-reason = "BasedPyright is executed by validation.pyright with the schema-18 configuration under .jig/lang/python."
+reason = "BasedPyright is executed by validation.pyright with the schema-20 configuration under .jig/lang/python."
 
 [linters.applicability.pytest]
 enabled = false
 # jig-ignore-next-line: indivisible reviewed identifier
-reason = "Pytest is executed by validation.pytest with the schema-18 configuration under .jig/lang/python."
+reason = "Pytest is executed by validation.pytest with the schema-20 configuration under .jig/lang/python."
 
 [linters.applicability.ruff]
 enabled = false
 # jig-ignore-next-line: indivisible reviewed identifier
-reason = "Ruff is executed by validation.ruff with the schema-18 configuration under .jig/lang/python."
+reason = "Ruff is executed by validation.ruff with the schema-20 configuration under .jig/lang/python."
 
 [linters.applicability.rust-toolchain]
 enabled = true
@@ -313,17 +318,14 @@ path = ".dependencies/python/3.14.6/Scripts/ruff.exe"
 version = "0.16.0"
 
 [tool.rust_nightly_cargo_clippy]
-# jig-ignore-next-line: indivisible reviewed identifier
 path = ".dependencies/jig/source/.dependencies/rust/nightly-2026-07-14-x86_64-pc-windows-gnu/bin/cargo-clippy.exe"
 version = "0.1.99"
 
 [tool.rust_nightly_cargo_fmt]
-# jig-ignore-next-line: indivisible reviewed identifier
 path = ".dependencies/jig/source/.dependencies/rust/nightly-2026-07-14-x86_64-pc-windows-gnu/bin/cargo-fmt.exe"
 version = "1.9.0-nightly"
 
 [tool.rust_stable_cargo]
-# jig-ignore-next-line: indivisible reviewed identifier
 path = ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe"
 version = "1.97.1"
 
@@ -455,6 +457,7 @@ adjacent_component_repetition = "deny"
 
 [repository]
 fixture_roots = []
+host_absolute_path_guard = false
 
 [rigor]
 conflict = "fail"
@@ -485,7 +488,7 @@ paths = ["src/"]
 
 [taxonomy.role.root_governance]
 # jig-ignore-next-line: indivisible reviewed identifier
-paths = [".editorconfig", ".gitattributes", ".gitignore", "AGENTS.md", "CITATION.cff", "Cargo.lock", "Cargo.toml", "LICENSE-MIT", "README.md", "TODO.md", "malbolge.json"]
+paths = [".editorconfig", ".gitattributes", ".gitignore", "AGENTS.md", "CITATION.cff", "Cargo.lock", "Cargo.toml", "LICENSE-MIT", "README.md", "ROADMAP.md", "TODO.md", "malbolge.json"]
 
 [taxonomy.role.tests]
 paths = ["tests/"]
@@ -568,7 +571,7 @@ required_hooks = ["commit-msg"]
 required_ignored_paths = ["JIG_SHIT.md"]
 
 
-[graphify]
+[graph]
 authority_roots = ["."]
 cache_root = ".cache/jig/graph"
 excluded_roots = []

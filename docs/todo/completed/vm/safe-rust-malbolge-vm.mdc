@@ -2,6 +2,7 @@
 id: "safe-rust-malbolge-vm"
 status: "completed"
 lane: "5"
+priority: "p1"
 area: "vm"
 task: "TODO - Safe Rust Malbolge VM"
 contract: "docs/technical/runtime/vm/safe-rust-malbolge-vm.md"

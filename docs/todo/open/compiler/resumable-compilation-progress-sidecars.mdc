@@ -2,6 +2,7 @@
 id: "resumable-compilation-progress-sidecars"
 status: "active"
 lane: "9"
+priority: "p2"
 area: "compiler"
 task: "TODO - Resumable compilation progress sidecars"
 contract: "docs/technical/compiler/resumable-compilation-progress-sidecars.md"

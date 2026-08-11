@@ -2,6 +2,7 @@
 id: "annotated-malbolge-source-syntax-and-formatter"
 status: "active"
 lane: "11"
+priority: "p3"
 area: "tools"
 task: "TODO - Annotated Malbolge source syntax and formatter"
 contract: "docs/technical/tooling/annotated-malbolge-source-format.md"

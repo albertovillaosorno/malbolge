@@ -2,6 +2,7 @@
 id: "canonical-malbolge-target-profile"
 status: "completed"
 lane: "3"
+priority: "p0"
 area: "foundation"
 task: "TODO - Canonical Malbolge target profile"
 contract: "docs/technical/specification/target-profile.md"

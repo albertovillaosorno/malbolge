@@ -2,9 +2,9 @@
 id: "self-modification-state-graph-optimizer"
 status: "active"
 lane: "8"
+priority: "p2"
 area: "mathematics"
 task: "TODO - Self-modification state-graph optimizer"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/research/algorithms/self-modification-state-graph-optimizer/README.md"
 depends_on:
   - "machine-checked-mathematical-correspondence"

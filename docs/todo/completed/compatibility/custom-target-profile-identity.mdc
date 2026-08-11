@@ -2,6 +2,7 @@
 id: "custom-target-profile-identity"
 status: "completed"
 lane: "5"
+priority: "p1"
 area: "compatibility"
 task: "TODO - Custom target profile identity"
 contract: "docs/technical/compatibility/custom-target-profile-identity.md"
@@ -16,7 +17,6 @@ scope:
   - "docs/technical/specification/"
   - "src/automation/repository/composition/scripts/validate/target_profile.py"
   - "src/automation/repository/composition/scripts/validate/profile_identity.py"
-  # jig-ignore-next-line: canonical front matter value is indivisible
   - "src/automation/repository/composition/scripts/validate/experiment_manifest.py"
   - "src/runtime/virtual-machine/domain/profile.rs"
   - "src/runtime/virtual-machine/domain/profile_generated.rs"

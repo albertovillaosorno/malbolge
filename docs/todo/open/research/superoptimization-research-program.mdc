@@ -2,6 +2,7 @@
 id: "superoptimization-research-program"
 status: "active"
 lane: "5"
+priority: "p1"
 area: "research"
 task: "TODO - Superoptimization research program"
 contract: "docs/research/studies/superoptimization-program.md"

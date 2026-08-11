@@ -2,11 +2,11 @@
 
 ## Status
 
-Accepted; schema 8 is adopted and full repository validation is clean.
+Accepted; schema 20 is adopted.
 
 ## Intent
 
-Integrate the evolving Jig validator as repository-local tooling, preserve its
+Use the standalone Jig validator installed on the host `PATH`, preserve its
 fail-closed rules, and configure only genuine project-specific differences
 without weakening unrelated linter contracts.
 
@@ -21,29 +21,25 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Invariants
 
-- The repository-local Jig installation and `.jig/jig.toml` describe the actual
-  polyglot repository without fake language/tool requirements or weakened
-  reviewed lint policy.
+- The standalone Jig identity and `.jig/jig.toml` describe the actual polyglot
+  repository without fake language/tool requirements or weakened reviewed lint
+  policy.
 - The authoritative rule/specification is deterministic, versionable, and does
   not depend on undocumented host behavior.
 
 ## Evidence Boundary
 
-- Repository-local Jig 26.3.0 is installed under `.dependencies/jig/bin/` and
-  executes from the repository-local source-linked authority.
-- The active source-linked Jig requires configuration schema 8. Malbolge
-  declares
-  its typed TODO document, lifecycle roots, record shape, acceptance
-  requirements,
-  validation-command requirement, strict dependency-lane policy, and all six
-  closed change-class path policies explicitly.
+- Jig 26.3.0 resolves from `PATH` and requires configuration schema 20.
+- Malbolge declares its typed TODO document, lifecycle roots, record shape,
+  acceptance requirements, validation-command requirement, strict dependency
+  lanes, `p0` through `p5` priority order, and all six closed change-class path
+  policies explicitly.
 - Git governance declares `JIG_SHIT.md` as required local-only evidence and
   binds that policy to the tracked root `.gitignore`; the ledger may exist
   locally but must not become governed source.
-- The canonical validation command is
-  `.dependencies/jig/bin/jig.cmd validate --root .`. It builds and runs the
-  source-linked authority; the versioned release executable is not the active
-  schema-8 validator.
+- The canonical validation command is `jig validate --root .`.
+- The generated TODO and roadmap are projections of typed records and
+  `.jig/roadmap.json`, respectively.
 - Commit-message validation accepts compliant new commits with this
   configuration.
 - `tests/test_governance_paths.py` rejects authored path references that enter a
@@ -53,8 +49,7 @@ trust boundary, or ownership rules stated by its governing decisions.
   `5f7e10afc710f9c47093d68f853d26657f8854aa` normalized 32 messages across
   208 linear unsigned commits. Every tree, author/committer identity, timestamp,
   and chronological position remained unchanged.
-- The repaired history has zero `JIG-COMMIT-*` diagnostics. Full source-linked
-  validation passes with zero current repository diagnostics.
+- The repaired history has zero `JIG-COMMIT-*` diagnostics.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.
 
 ## Diagnostics
@@ -69,15 +64,13 @@ selecting an implicit repository policy.
 
 ## Implementation
 
-The schema-8 `.jig/jig.toml` and installed commit-message hook accept the
-declared
-TODO workflow. Jig repaired historical messages transactionally from
+The schema-20 `.jig/jig.toml` and PATH-delegating commit-message hook accept the
+declared TODO workflow. Jig repaired historical messages transactionally from
 `b7686ed1ba2e6369eac124046158fb65ac667747` to
 `b88e219e8a14dadfe2a4bd8255cb49f1d4ea87c8`; the original tip remains at
 `refs/jig/repair/backups/5f7e10afc710f9c47093d68f853d26657f8854aa`.
-The source-linked schema-8 authority now validates the complete repository with
-zero diagnostics. Later Jig upgrades remain dependency maintenance rather
-than an open governance objective.
+Later Jig upgrades remain explicit schema and dependency maintenance rather
+than an implicit source-link refresh.
 
 ## References
 

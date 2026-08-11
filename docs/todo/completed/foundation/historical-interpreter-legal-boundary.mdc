@@ -2,6 +2,7 @@
 id: "historical-interpreter-legal-boundary"
 status: "completed"
 lane: "1"
+priority: "p0"
 area: "foundation"
 task: "TODO - Historical interpreter legal boundary"
 contract: "docs/legal/licenses/ben-olmstead-malbolge-public-domain.md"

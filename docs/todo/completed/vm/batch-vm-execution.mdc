@@ -2,6 +2,7 @@
 id: "batch-vm-execution"
 status: "completed"
 lane: "6"
+priority: "p1"
 area: "vm"
 task: "TODO - Batch VM execution"
 contract: "docs/technical/runtime/execution/batch-vm-execution.md"

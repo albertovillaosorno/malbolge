@@ -2,9 +2,9 @@
 id: "historical-interpreter-fallback-capsule"
 status: "active"
 lane: "8"
+priority: "p2"
 area: "compatibility"
 task: "TODO - Historical-interpreter fallback capsule"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/compatibility/historical-interpreter-fallback-capsule.md"
 depends_on:
   - "scalable-malbolge-memory-model"

@@ -2,6 +2,7 @@
 id: "required-profile-diagnostics"
 status: "active"
 lane: "7"
+priority: "p1"
 area: "compatibility"
 task: "TODO - Required-profile diagnostics"
 contract: "docs/technical/compatibility/required-profile-diagnostics.md"
@@ -19,7 +20,6 @@ scope:
   - "src/runtime/virtual-machine/domain/profile_generated.rs"
   - "src/runtime/virtual-machine/domain/execution.rs"
   - "src/automation/repository/composition/scripts/validate/target_profile.py"
-  # jig-ignore-next-line: canonical front matter value is indivisible
   - "src/automation/repository/composition/scripts/validate/profile_requirements.py"
   - "tests/compatibility/"
   - "tests/test_target_profile.py"

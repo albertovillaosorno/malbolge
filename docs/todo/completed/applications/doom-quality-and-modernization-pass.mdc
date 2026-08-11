@@ -2,6 +2,7 @@
 id: "doom-quality-and-modernization-pass"
 status: "completed"
 lane: "12"
+priority: "p3"
 area: "applications"
 task: "TODO - DOOM quality and modernization pass"
 contract: "docs/technical/interoperability/doom-modernization.md"

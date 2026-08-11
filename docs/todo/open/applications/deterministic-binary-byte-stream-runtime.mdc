@@ -2,6 +2,7 @@
 id: "deterministic-binary-byte-stream-runtime"
 status: "pending"
 lane: "11"
+priority: "p3"
 area: "applications"
 task: "TODO - Deterministic binary byte-stream runtime"
 contract: "docs/technical/runtime/binary-byte-stream.md"

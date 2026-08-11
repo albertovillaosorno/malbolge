@@ -20,7 +20,6 @@ evidence = ["tests/vm/tables.rs::rotate_table_matches_scalar_definition_for_ever
 
 [[correspondence]]
 id = "optimization-rotate-history"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-rotate-history"
 domain = "all 59049 classic words and two full ten-trit rotation cycles"
@@ -174,7 +173,6 @@ evidence = ["tests/exhaustive/math_correspondence.rs::canonical_profile_domains_
 
 [[correspondence]]
 id = "optimization-crazy-chunk"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-chunk"
 domain = "all 243x243 five-trit pairs in both classic ten-trit positions"
@@ -184,7 +182,6 @@ evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_po
 
 [[correspondence]]
 id = "optimization-crazy-profile-chunks"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-profile-chunks"
 domain = "current 14-trit 5+5+4 decomposition plus scalar profile fixtures"
@@ -194,7 +191,6 @@ evidence = ["tests/compatibility/test_scalable_memory.py::test_crazy_generalizes
 
 [[correspondence]]
 id = "optimization-decode-phase"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-decode-phase"
 domain = "all classic code pointers and all 94 graphical cell values"
@@ -204,7 +200,6 @@ evidence = ["tests/vm/tables.rs::decode_table_matches_scalar_definition_for_ever
 
 [[correspondence]]
 id = "optimization-encryption-orbit"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-encryption-orbit"
 # jig-ignore-next-line: canonical correspondence value is indivisible
@@ -215,7 +210,6 @@ evidence = ["tests/exhaustive/math_correspondence.rs::encryption_history_reduces
 
 [[correspondence]]
 id = "optimization-rotate-table"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-rotate-table"
 domain = "all 59049 classic words"
@@ -225,7 +219,6 @@ evidence = ["tests/vm/tables.rs::rotate_table_matches_scalar_definition_for_ever
 
 [[correspondence]]
 id = "state-graph-collision-safe-merge"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-collision-safe-merge"
 domain = "classic exact-state snapshots under an adversarial constant digest"
@@ -235,7 +228,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/exact.rs::forced_diges
 
 [[correspondence]]
 id = "state-graph-exact-key"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-exact-key"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -246,7 +238,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/exact.rs::exact_replay
 
 [[correspondence]]
 id = "state-graph-consumed-input-prefix"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-consumed-input-prefix"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -257,7 +248,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/exact.rs::consumed_inp
 
 [[correspondence]]
 id = "state-graph-terminal-state"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-terminal-state"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -268,7 +258,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/exact.rs::terminal_sta
 
 [[correspondence]]
 id = "state-graph-profile-checkpoint"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-profile-checkpoint"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -279,7 +268,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/c.rs::current_checkpoi
 
 [[correspondence]]
 id = "state-graph-profile-collision-safe-merge"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-profile-collision-safe-merge"
 domain = "validated current checkpoints under an adversarial constant digest"
@@ -289,7 +277,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/c.rs::current_forced_c
 
 [[correspondence]]
 id = "state-graph-two-cell-memory-delta"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-two-cell-memory-delta"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -300,7 +287,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/d.rs::classic_instruct
 
 [[correspondence]]
 id = "state-graph-trace-memory-delta"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-trace-memory-delta"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -311,7 +297,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/d.rs::classic_instruct
 
 [[correspondence]]
 id = "state-graph-persistent-memory"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-persistent-memory"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -322,7 +307,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/p.rs::current_trace_pa
 
 [[correspondence]]
 id = "state-graph-indexed-memory"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-indexed-memory"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -333,7 +317,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/i.rs::current_trace_de
 
 [[correspondence]]
 id = "state-graph-incremental-identity"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-incremental-identity"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -345,7 +328,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/s.rs::current_trace_re
 
 [[correspondence]]
 id = "state-graph-incremental-collision-guard"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-incremental-collision-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -356,7 +338,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/s.rs::forced_digest_co
 
 [[correspondence]]
 id = "state-graph-persistent-output"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-persistent-output"
 domain = "one lineage output prefix plus append-only committed byte histories"
@@ -366,7 +347,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/o.rs::independent_equa
 
 [[correspondence]]
 id = "state-graph-exact-region-certificate"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-exact-region-certificate"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -377,7 +357,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/r.rs::current_region_r
 
 [[correspondence]]
 id = "state-graph-profile-read-bound"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-profile-read-bound"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -388,7 +367,6 @@ evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exac
 
 [[correspondence]]
 id = "state-graph-region-live-in"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-region-live-in"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -399,7 +377,6 @@ evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exac
 
 [[correspondence]]
 id = "state-graph-region-dependency-guard"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-region-dependency-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -411,7 +388,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard
 
 [[correspondence]]
 id = "state-graph-tiered-region-deopt"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-tiered-region-deopt"
 # jig-ignore-next-line: indivisible reviewed identifier
@@ -422,7 +398,6 @@ evidence = ["tests/function/algorithms/domain/state-graph/r.rs::tiered_region_us
 
 [[correspondence]]
 id = "state-graph-verified-effect-artifact"
-# jig-ignore-next-line: indivisible reviewed identifier
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-verified-effect-artifact"
 # jig-ignore-next-line: indivisible reviewed identifier

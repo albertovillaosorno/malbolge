@@ -2,6 +2,7 @@
 id: "clang-c-frontend-integration"
 status: "completed"
 lane: "7"
+priority: "p1"
 area: "compiler"
 task: "TODO - Clang C frontend integration"
 contract: "docs/technical/compiler/clang-c-frontend-integration.md"

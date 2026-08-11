@@ -2,6 +2,7 @@
 id: "tiered-native-execution-engine"
 status: "active"
 lane: "9"
+priority: "p2"
 area: "vm"
 task: "TODO - Tiered native execution engine"
 contract: "docs/technical/runtime/execution/tiered-native-execution-engine.md"

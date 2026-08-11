@@ -2,6 +2,7 @@
 id: "historical-capability-demonstration"
 status: "pending"
 lane: "17"
+priority: "p5"
 area: "research"
 task: "TODO - Historical capability demonstration"
 contract: "docs/research/studies/historical-capability-demonstration.md"

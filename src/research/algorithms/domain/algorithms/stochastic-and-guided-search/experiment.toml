@@ -22,7 +22,6 @@ required = true
 oracle = "trusted-semantic-verifier"
 
 [provenance]
-# jig-ignore-next-line: indivisible reviewed identifier
 configuration = "src/research/algorithms/domain/algorithms/stochastic-and-guided-search/experiment.toml"
 implementation = "algorithms/stochastic-and-guided-search/"
 output = "algorithms/stochastic-and-guided-search/out/"

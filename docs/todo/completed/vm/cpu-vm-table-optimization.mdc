@@ -2,6 +2,7 @@
 id: "cpu-vm-table-optimization"
 status: "completed"
 lane: "6"
+priority: "p1"
 area: "vm"
 task: "TODO - CPU VM table optimization"
 contract: "docs/technical/runtime/vm/cpu-vm-table-optimization.md"

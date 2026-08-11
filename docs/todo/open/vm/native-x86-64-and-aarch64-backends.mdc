@@ -2,9 +2,9 @@
 id: "native-x86-64-and-aarch64-backends"
 status: "active"
 lane: "10"
+priority: "p2"
 area: "vm"
 task: "TODO - Native x86-64 and AArch64 backends"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/runtime/execution/native-x86-64-and-aarch64-backends.md"
 depends_on:
   - "tiered-native-execution-engine"

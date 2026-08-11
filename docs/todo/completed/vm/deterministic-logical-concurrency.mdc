@@ -2,9 +2,9 @@
 id: "deterministic-logical-concurrency"
 status: "completed"
 lane: "6"
+priority: "p1"
 area: "vm"
 task: "TODO - Deterministic logical concurrency"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/runtime/execution/deterministic-logical-concurrency.md"
 depends_on:
   - "safe-rust-malbolge-vm"

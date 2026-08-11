@@ -2,6 +2,7 @@
 id: "deterministic-cross-backend-artifact-hashing"
 status: "pending"
 lane: "11"
+priority: "p3"
 area: "applications"
 task: "TODO - Deterministic cross-backend artifact hashing"
 contract: "docs/technical/contracts/deterministic-artifact-hashing.md"

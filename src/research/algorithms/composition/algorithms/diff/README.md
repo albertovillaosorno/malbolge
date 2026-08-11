@@ -424,8 +424,9 @@ compared with 2,116,232 target-only bytes in the exact baseline. These are
 authoring
 measurements, not yet a distributable compatible transform. Generic named-edit
 correction binding and apply/skip routing now exist, but consumer domains still
-need to author those bindings and DOOM has no validated bug probes yet. Compatible
-target material still needs source-bound serialization/runtime support.
+need to author those bindings and DOOM has no validated bug probes yet.
+Compatible target material still needs source-bound serialization/runtime
+support.
 
 ## Exact and Compatible Modes
 

@@ -2,9 +2,9 @@
 id: "explicit-native-tier-execution-controls"
 status: "pending"
 lane: "12"
+priority: "p3"
 area: "vm"
 task: "TODO - Explicit native-tier execution controls"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/runtime/execution/explicit-native-tier-execution-controls.md"
 depends_on:
   - "ahead-of-execution-native-translation"

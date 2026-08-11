@@ -22,7 +22,6 @@ required = true
 oracle = "trusted-semantic-verifier"
 
 [provenance]
-# jig-ignore-next-line: indivisible reviewed identifier
 configuration = "src/research/algorithms/domain/algorithms/compact-guest-bytecode-strategy/experiment.toml"
 implementation = "algorithms/compact-guest-bytecode-strategy/"
 output = "algorithms/compact-guest-bytecode-strategy/out/"

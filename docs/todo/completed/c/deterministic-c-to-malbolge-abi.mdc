@@ -2,6 +2,7 @@
 id: "deterministic-c-to-malbolge-abi"
 status: "completed"
 lane: "6"
+priority: "p1"
 area: "c"
 task: "TODO - Deterministic C-to-Malbolge ABI"
 contract: "docs/technical/compiler/c-profile/deterministic-c-to-malbolge-abi.md"

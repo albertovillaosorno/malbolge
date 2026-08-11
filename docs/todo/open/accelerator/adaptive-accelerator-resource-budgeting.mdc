@@ -2,9 +2,9 @@
 id: "adaptive-accelerator-resource-budgeting"
 status: "active"
 lane: "9"
+priority: "p2"
 area: "accelerator"
 task: "TODO - Adaptive accelerator resource budgeting"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/research/algorithms/adaptive-accelerator-resource-budgeting/README.md"
 depends_on:
   - "cuda-exact-vm-adapter"

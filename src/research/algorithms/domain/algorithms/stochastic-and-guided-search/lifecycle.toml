@@ -3,7 +3,5 @@ schema_version = 1
 [algorithm]
 id = "stochastic-and-guided-search"
 state = "experimental"
-# jig-ignore-next-line: indivisible reviewed identifier
 research_record = "docs/research/algorithms/stochastic-and-guided-search/research.md"
-# jig-ignore-next-line: indivisible reviewed identifier
 experiment_manifest = "src/research/algorithms/domain/algorithms/stochastic-and-guided-search/experiment.toml"

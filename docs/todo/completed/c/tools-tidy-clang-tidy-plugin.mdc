@@ -2,6 +2,7 @@
 id: "tools-tidy-clang-tidy-plugin"
 status: "completed"
 lane: "7"
+priority: "p1"
 area: "c"
 task: "TODO - tools/tidy clang-tidy plugin"
 contract: "docs/technical/compiler/c-profile/tools-tidy-clang-tidy-plugin.md"

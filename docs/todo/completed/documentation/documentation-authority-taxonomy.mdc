@@ -2,6 +2,7 @@
 id: "documentation-authority-taxonomy"
 status: "completed"
 lane: "1"
+priority: "p0"
 area: "documentation"
 task: "TODO - Documentation authority taxonomy"
 contract: "docs/technical/adr/documentation-authority-taxonomy.md"

@@ -2,6 +2,7 @@
 id: "exact-and-diagnostic-cycle-detection"
 status: "completed"
 lane: "6"
+priority: "p1"
 area: "verification"
 task: "TODO - Exact and diagnostic cycle detection"
 contract: "docs/technical/verification/exact-and-diagnostic-cycle-detection.md"

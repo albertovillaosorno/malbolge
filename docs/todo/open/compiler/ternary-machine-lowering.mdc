@@ -2,6 +2,7 @@
 id: "ternary-machine-lowering"
 status: "pending"
 lane: "9"
+priority: "p2"
 area: "compiler"
 task: "TODO - Ternary machine lowering"
 contract: "docs/technical/compiler/ternary-machine-lowering.md"

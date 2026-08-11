@@ -2,6 +2,7 @@
 id: "human-scale-malbolge-search-study"
 status: "pending"
 lane: "17"
+priority: "p5"
 area: "research"
 task: "TODO - Human-scale Malbolge search study"
 contract: "docs/research/studies/human-scale-malbolge-search.md"

@@ -2,6 +2,7 @@
 id: "emitted-malbolge-static-analyzer"
 status: "active"
 lane: "6"
+priority: "p1"
 area: "verification"
 task: "TODO - Emitted Malbolge static analyzer"
 contract: "docs/technical/verification/emitted-malbolge-static-analyzer.md"
@@ -57,9 +58,9 @@ executable cells, and input-dependent cycles or hangs.
   `M[2]=29503`) without executing a guest loop. Rejected or unresolved bounded
   prefixes still emit JSON but return a nonzero CLI status.
 - Fourth-step and later control-flow reachability, longer dataflow/evolved
-  memory, source-map context, later wraparound, and longer input-dependent cycles
-  remain open and are never inferred from the three-transition prefix or
-  initial-image admission.
+  memory, source-map context, later wraparound, and longer input-dependent
+  cycles remain open and are never inferred from the three-transition prefix
+  or initial-image admission.
 
 - Expected durable artifact surface: `verifier/`, `tests/differential/`,
   `tests/exhaustive/`, `tests/fuzz/`.

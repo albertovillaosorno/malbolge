@@ -2,6 +2,7 @@
 id: "multi-objective-compiler-algorithm-evaluation-arena"
 status: "pending"
 lane: "8"
+priority: "p2"
 area: "applications"
 task: "TODO - Multi-objective compiler algorithm evaluation arena"
 contract: "docs/research/methodology/multi-objective-evaluation-arena.md"

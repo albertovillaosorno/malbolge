@@ -2,6 +2,7 @@
 id: "real-program-benchmark-suite"
 status: "pending"
 lane: "15"
+priority: "p4"
 area: "applications"
 task: "TODO - Real-program benchmark suite"
 contract: "docs/research/methodology/real-program-benchmark-suite.md"

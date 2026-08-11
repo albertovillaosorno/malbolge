@@ -39,9 +39,9 @@ pointer succession, and wrap. A `p` whose accumulator depends on prior input is
 reported unresolved rather than assigned a guessed value. A non-graphical fetch
 is stronger: the preserved 1998 interpreter executes `continue` before decode,
 encryption, or pointer advancement, so the unchanged C/D state proves a fixed
-fetch cycle. The two-word `b"c'"` fixture reaches exactly that third-step state at
-`C=2`, `D=40`, `M[2]=29503`. Historical recurrence words are derived only when a
-bounded read needs them.
+fetch cycle. The two-word `b"c'"` fixture reaches exactly that third-step state
+at `C=2`, `D=40`, `M[2]=29503`. Historical recurrence words are derived only
+when a bounded read needs them.
 
 Initial-image admission is deliberately narrower than whole-program safety. The
 current slice proves only a three-transition prefix. It does not claim

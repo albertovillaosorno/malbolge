@@ -2,6 +2,7 @@
 id: "malbolge-layout-and-encoding-backend"
 status: "pending"
 lane: "10"
+priority: "p2"
 area: "compiler"
 task: "TODO - Malbolge layout and encoding backend"
 contract: "docs/technical/compiler/malbolge-layout-and-encoding-backend.md"

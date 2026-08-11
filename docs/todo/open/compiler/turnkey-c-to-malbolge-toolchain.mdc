@@ -2,6 +2,7 @@
 id: "turnkey-c-to-malbolge-toolchain"
 status: "pending"
 lane: "16"
+priority: "p4"
 area: "compiler"
 task: "TODO - Turnkey C-to-Malbolge toolchain"
 contract: "docs/technical/compiler/turnkey-c-to-malbolge-toolchain.md"

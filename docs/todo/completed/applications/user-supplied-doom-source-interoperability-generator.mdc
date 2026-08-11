@@ -2,6 +2,7 @@
 id: "user-supplied-doom-source-interoperability-generator"
 status: "completed"
 lane: "13"
+priority: "p3"
 area: "applications"
 task: "TODO - User-supplied DOOM source interoperability generator"
 contract: "docs/technical/interoperability/doom-amalgamation.md"

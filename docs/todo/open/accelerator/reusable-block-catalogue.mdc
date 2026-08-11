@@ -2,6 +2,7 @@
 id: "reusable-block-catalogue"
 status: "pending"
 lane: "13"
+priority: "p3"
 area: "accelerator"
 task: "TODO - Reusable block catalogue"
 contract: "docs/technical/integrations/accelerators/reusable-block-catalogue.md"

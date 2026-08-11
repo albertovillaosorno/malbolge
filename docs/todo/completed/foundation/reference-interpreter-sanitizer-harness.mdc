@@ -2,9 +2,9 @@
 id: "reference-interpreter-sanitizer-harness"
 status: "completed"
 lane: "5"
+priority: "p1"
 area: "foundation"
 task: "TODO - Reference interpreter sanitizer harness"
-# jig-ignore-next-line: canonical front matter value is indivisible
 contract: "docs/technical/verification/reference-interpreter-sanitizer-harness.md"
 depends_on:
   - "historical-interpreter-legal-boundary"

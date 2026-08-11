@@ -2,6 +2,7 @@
 id: "property-fuzz-and-exhaustive-testing"
 status: "completed"
 lane: "6"
+priority: "p1"
 area: "verification"
 task: "TODO - Property, fuzz, and exhaustive testing"
 contract: "docs/technical/verification/property-fuzz-and-exhaustive-testing.md"
