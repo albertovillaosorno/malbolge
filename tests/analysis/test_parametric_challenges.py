@@ -66,6 +66,7 @@ _ORACLE_SEMANTICS = "entry-return-u32-little-endian"
 _STANDALONE_MAIN = "low-31-bits-only-not-oracle"
 _ARRAY_SUBSCRIPT_KIND = "array-subscript-expression"
 _CALL_EXPRESSION_KIND = "call-expression"
+_FUNCTION_DECLARATION_KIND = "function-declaration"
 _IF_STATEMENT_KIND = "if-statement"
 _FOR_STATEMENT_KIND = "for-statement"
 _UNARY_EXPRESSION_KIND = "unary-expression"
@@ -88,6 +89,7 @@ _POINTER_WALK_FAMILY = "pointer-walk"
 _ALIAS_WALK_FAMILY = "alias-walk"
 _STREAM_STATE_FAMILY = "stream-state"
 _GRAPH_REDUCE_FAMILY = "graph-reduce"
+_LAYOUT_CHAIN_FAMILY = "layout-chain"
 _FAMILIES = (
     _ARITHMETIC_DAG_FAMILY,
     _BRANCH_MIX_FAMILY,
@@ -98,6 +100,7 @@ _FAMILIES = (
     _ALIAS_WALK_FAMILY,
     _STREAM_STATE_FAMILY,
     _GRAPH_REDUCE_FAMILY,
+    _LAYOUT_CHAIN_FAMILY,
 )
 _ARITHMETIC_DAG_V1_SOURCE_SHA256 = (
     "dcadb0753d70d16a19601bac1c05b6868767432a48eea67d599056ab28880607"
@@ -323,6 +326,17 @@ def test_graph_reduce_emits_live_parent_graph() -> None:
     assert f"return states[{nodes}];" in source
 
 
+def test_layout_chain_emits_distinct_live_helpers() -> None:
+    """Layout challenges grow distinct helper bodies and live call sites."""
+    nodes = 19
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_LAYOUT_CHAIN_FAMILY, seed=0xF00D, nodes=nodes)
+    )
+    source = generated.source.decode()
+    assert source.count("uint32_t malbolge_layout_") == nodes
+    assert source.count("    value = malbolge_layout_") == nodes
+
+
 def test_identity_dimensions_change_artifact_identity() -> None:
     """Seed and difficulty remain part of the exact generated identity."""
     baseline = _GENERATOR_MODULE.generate(_identity())
@@ -348,6 +362,7 @@ def test_identity_dimensions_change_artifact_identity() -> None:
         (_ALIAS_WALK_FAMILY, "splitmix64-alias-walk-v1"),
         (_STREAM_STATE_FAMILY, "splitmix64-stream-state-v1"),
         (_GRAPH_REDUCE_FAMILY, "splitmix64-graph-reduce-v1"),
+        (_LAYOUT_CHAIN_FAMILY, "splitmix64-layout-chain-v1"),
     ],
 )
 def test_manifest_binds_identity_hashes_and_oracle(
@@ -647,6 +662,48 @@ def test_graph_family_is_admitted_by_normalized_frontend(
     ) == _GRAPH_REDUCE_SUBSCRIPTS
 
 
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME,
+    reason="reviewed normalized C frontend is Windows x86-64",
+)
+def test_layout_family_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep every distinct helper and live call after normalization."""
+    nodes = 17
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_LAYOUT_CHAIN_FAMILY, seed=47, nodes=nodes)
+    )
+    source = tmp_path / "layout.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/layout-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    functions = sum(
+        node.get("kind") == _FUNCTION_DECLARATION_KIND for node in normalized
+    )
+    calls = sum(
+        node.get("kind") == _CALL_EXPRESSION_KIND for node in normalized
+    )
+    assert functions == nodes + 2
+    assert calls == nodes + 1
+
+
 def _assert_native_oracle(
     generated: _GeneratedChallenge,
     tmp_path: Path,
@@ -725,6 +782,9 @@ def _assert_native_oracle(
         (_GRAPH_REDUCE_FAMILY, 0, 1),
         (_GRAPH_REDUCE_FAMILY, 7, 64),
         (_GRAPH_REDUCE_FAMILY, 0x1234, 257),
+        (_LAYOUT_CHAIN_FAMILY, 0, 1),
+        (_LAYOUT_CHAIN_FAMILY, 7, 64),
+        (_LAYOUT_CHAIN_FAMILY, 0x1234, 257),
     ],
 )
 def test_native_source_result_matches_independent_oracle(

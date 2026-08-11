@@ -63,6 +63,7 @@ _POINTER_WALK_FAMILY: Final = "pointer-walk"
 _ALIAS_WALK_FAMILY: Final = "alias-walk"
 _STREAM_STATE_FAMILY: Final = "stream-state"
 _GRAPH_REDUCE_FAMILY: Final = "graph-reduce"
+_LAYOUT_CHAIN_FAMILY: Final = "layout-chain"
 _FAMILY_ALGORITHMS: Final = {
     _ARITHMETIC_DAG_FAMILY: "splitmix64-arithmetic-dag-v1",
     _BRANCH_MIX_FAMILY: "splitmix64-branch-mix-v1",
@@ -73,6 +74,7 @@ _FAMILY_ALGORITHMS: Final = {
     _ALIAS_WALK_FAMILY: "splitmix64-alias-walk-v1",
     _STREAM_STATE_FAMILY: "splitmix64-stream-state-v1",
     _GRAPH_REDUCE_FAMILY: "splitmix64-graph-reduce-v1",
+    _LAYOUT_CHAIN_FAMILY: "splitmix64-layout-chain-v1",
 }
 _FAMILIES: Final = frozenset(_FAMILY_ALGORITHMS)
 _VERSION: Final = 1
@@ -84,6 +86,7 @@ _POINTER_WALK_SEED_SALT: Final = 0x5054_5257_414C_4B31
 _ALIAS_WALK_SEED_SALT: Final = 0x414C_4941_5357_4B31
 _STREAM_STATE_SEED_SALT: Final = 0x5354_524D_5354_4154
 _GRAPH_REDUCE_SEED_SALT: Final = 0x4752_4150_4852_4431
+_LAYOUT_CHAIN_SEED_SALT: Final = 0x4C41_594F_5554_4348
 _MEMORY_WALK_CELLS: Final = 8
 _MASK32: Final = (1 << 32) - 1
 _MASK64: Final = (1 << 64) - 1
@@ -711,6 +714,50 @@ def _graph_reduce_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     )
 
 
+def _layout_chain_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _LAYOUT_CHAIN_SEED_SALT)
+    initial = rng.next_u32()
+    steps = [
+        (rng.next_u32(), rng.next_u32())
+        for _index in range(identity.nodes)
+    ]
+    lines = ["#include <stdint.h>", ""]
+    value = initial
+    for index, (addend, mask) in enumerate(steps):
+        lines.extend((
+            f"uint32_t malbolge_layout_{index}(uint32_t value) {{",
+            (
+                "    return (value + "
+                f"UINT32_C({addend})) ^ UINT32_C({mask});"
+            ),
+            "}",
+            "",
+        ))
+        value = ((value + addend) & _MASK32) ^ mask
+    lines.extend((
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t value = UINT32_C({initial});",
+    ))
+    lines.extend(
+        f"    value = malbolge_layout_{index}(value);"
+        for index in range(identity.nodes)
+    )
+    lines.extend((
+        "    return value;",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ))
+    return (
+        chr(10).join(lines).encode(),
+        value.to_bytes(_ORACLE_BYTES, byteorder="little"),
+    )
+
+
 _PAYLOAD_RENDERERS: Final = {
     _ARITHMETIC_DAG_FAMILY: _arithmetic_dag_payload,
     _BRANCH_MIX_FAMILY: _branch_mix_payload,
@@ -721,6 +768,7 @@ _PAYLOAD_RENDERERS: Final = {
     _ALIAS_WALK_FAMILY: _alias_walk_payload,
     _STREAM_STATE_FAMILY: _stream_state_payload,
     _GRAPH_REDUCE_FAMILY: _graph_reduce_payload,
+    _LAYOUT_CHAIN_FAMILY: _layout_chain_payload,
 }
 
 
