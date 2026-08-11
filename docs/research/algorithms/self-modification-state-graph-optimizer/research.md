@@ -419,9 +419,12 @@ The verified artifact executes compact effects directly on guard hit while still
 checking before-state and deterministic I/O progression. On guard miss it uses
 the already proved normative deoptimization path. Fixtures tamper effect count,
 profile fingerprint, format version, dependency set, budget, and outcome and
-require verifier rejection; admitted shortcut/deopt results equal the existing
-verified-region baselines. This is a portable effect-IR research precursor, not
-yet x86-64/AArch64 bytes or a stable serialized native cache format.
+require verifier rejection. Field-level fixtures additionally mutate effect
+before/after observations, input, output, and memory delta independently; exact
+reprojection rejects each change. Admitted shortcut/deopt results equal the
+existing verified-region baselines. This is a portable effect-IR research
+precursor, not yet x86-64/AArch64 bytes or a stable serialized native cache
+format.
 `src/runtime/virtual-machine/domain/execution_ir.rs` now owns that portable
 schema
 as product code; research
