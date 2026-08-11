@@ -48,8 +48,8 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v6 keeps
-  the exact entry, second, and third transitions and publishes a bounded memory
+  offsets, stable finding codes, and explicit analysis limits. Schema v7 keeps
+  the exact entry through fourth transitions and publishes a bounded memory
   requirement for that prefix. It records evolved
   fetch/data cells, C/D aliasing, planned writes, encryption input/output,
   input-dependent accumulator state, halt or rejection, pointer succession, and
@@ -57,12 +57,14 @@ executable cells, and input-dependent cycles or hangs.
   addresses actually touched by the prefix, excluding merely-held future C/D
   pointers. The preserved interpreter's non-graphical `continue` ordering also
   lets the verifier prove the `b"c'"` third-step fixed-fetch cycle
-  (`C=2`, `D=40`,
-  `M[2]=29503`) without executing a guest loop. Rejected or unresolved bounded
+  (`C=2`, `D=40`, `M[2]=29503`) without executing a guest loop. The `b"('&"`
+  fixture continues through three exact jumps and proves a recurrence-backed
+  fourth fixed-fetch cycle at `C=3`, `D=39`, `M[3]=29487`. Rejected or
+  unresolved bounded
   prefixes still emit JSON but return a nonzero CLI status.
-- Fourth-step and later control-flow reachability, longer dataflow/evolved
+- Fifth-step and later control-flow reachability, longer dataflow/evolved
   memory, source-map context, later wraparound, and longer input-dependent
-  cycles remain open and are never inferred from the three-transition prefix
+  cycles remain open and are never inferred from the four-transition prefix
   or initial-image admission.
 
 - Expected durable artifact surface: `verifier/`, `tests/differential/`,
@@ -79,9 +81,9 @@ executable cells, and input-dependent cycles or hangs.
   assignment/wrap closure, post-step encryption-target classification anchored
   to the interpreter's `i`/`v` ordering, graphical-but-forbidden positional
   decode, byte-exact CLI/library report parity, exact second-step input, halt,
-  invalid self-encryption and input-dependent-crazy fixtures, a 24-case public
+  invalid self-encryption and input-dependent-crazy fixtures, a 25-case public
   CLI differential spanning recurrence-backed entry `j`, 16 seeded invalid
-  positional mutations with byte-exact replay, exact third-step halt and
+  positional mutations with byte-exact replay, exact third/fourth-step halt or
   fixed-fetch-cycle evidence, bounded recurrence-backed memory requirements,
-  explicit bounded analysis limits, CLI second/third
-  rejection status, and CLI missing-source failure.
+  explicit bounded analysis limits, CLI second/third/fourth rejection status,
+  and CLI missing-source failure.
