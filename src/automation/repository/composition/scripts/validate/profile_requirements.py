@@ -379,8 +379,7 @@ def _validated_requirement(value: ProfileRequirement) -> ProfileRequirement:
         _raise_validation(
             "profile features must equal the normative feature set"
         )
-    canonical = build_profile_requirement(
-        target_profile.load_document(target_profile.DEFAULT_PROFILE),
+    canonical = _canonical_profile_requirement(
         value.profile_id,
         required_memory_words=value.required_memory_words,
     )
@@ -389,6 +388,24 @@ def _validated_requirement(value: ProfileRequirement) -> ProfileRequirement:
             "profile fields must match canonical profile authority"
         )
     return value
+
+
+def _canonical_profile_requirement(
+    profile_id: str,
+    *,
+    required_memory_words: int,
+) -> ProfileRequirement:
+    try:
+        document = target_profile.load_document(target_profile.DEFAULT_PROFILE)
+        return build_profile_requirement(
+            document,
+            profile_id,
+            required_memory_words=required_memory_words,
+        )
+    except (OSError, target_profile.ProfileValidationError):
+        _raise_validation(
+            "canonical profile authority is unavailable or invalid"
+        )
 
 
 def _validated_runtime(value: RuntimeCapability) -> RuntimeCapability:

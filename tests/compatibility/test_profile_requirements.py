@@ -516,6 +516,37 @@ def test_preflight_rejects_foreign_runtime_type() -> None:
         )
 
 
+def test_preflight_contains_unavailable_canonical_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requirement = _requirement(required_memory_words=1)
+    missing = tmp_path / "missing-malbolge.json"
+    monkeypatch.setattr(target_profile, "DEFAULT_PROFILE", missing)
+
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="canonical profile authority is unavailable or invalid",
+    ):
+        requirements.preflight_profile_requirement(requirement, _runtime())
+
+
+def test_preflight_contains_invalid_canonical_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requirement = _requirement(required_memory_words=1)
+    invalid = tmp_path / "malbolge.json"
+    _ = invalid.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(target_profile, "DEFAULT_PROFILE", invalid)
+
+    with pytest.raises(
+        requirements.ProfileRequirementValidationError,
+        match="canonical profile authority is unavailable or invalid",
+    ):
+        requirements.preflight_profile_requirement(requirement, _runtime())
+
+
 def test_preflight_revalidates_tampered_requirement() -> None:
     tampered = replace(
         _requirement(),
