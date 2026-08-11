@@ -8,8 +8,9 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v6 retains the exact entry, second, and third transitions and adds
-a bounded memory requirement for that exact prefix. The bounded three-transition prefix replays
+load decode. Schema v6 retains the exact entry, second, and third transitions
+and adds a bounded memory requirement for that exact prefix. The bounded
+three-transition prefix replays
 committed writes before resolving fetch/data cells, code/data aliasing, planned
 writes, encryption input/output, input dependence, halt/rejection, pointer
 succession, and wrap without a worklist or unbounded guest execution. The

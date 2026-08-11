@@ -86,8 +86,8 @@ calls are sequentially live, while normalized evidence retains `nodes + 2`
 functions and `nodes + 1` call expressions. `ternary-fold/v1` restricts values
 to the classic ten-trit domain and applies explicit base-three quotient,
 remainder, and recomposition work in a fixed inner transform before the
-node-scaled outer fold. The C entry `malbolge_challenge` returns the oracle value
-directly;
+node-scaled outer fold. The C entry `malbolge_challenge` returns the oracle
+value directly;
 standalone `main` is only a low-31-bit driver and is not an oracle surface.
 
 The generated source is preflighted through the repository-owned C ABI and libc
@@ -140,9 +140,10 @@ agreement risk; it does not prove downstream compiler correctness.
 
 Active. Retain hash-locked `arithmetic-dag/v1` and `pointer-walk/v1` plus
 domain-separated `linear-mix/v1`, `branch-mix/v1`, `memory-walk/v1`,
-`call-chain/v1`, `alias-walk/v1`, `stream-state/v1`, `graph-reduce/v1`, and
-`layout-chain/v1`, and `ternary-fold/v1` as deterministic challenge substrates while expanding family coverage and waiting for an
-end-to-end generated Malbolge execution path before completing this planning
+`call-chain/v1`, `alias-walk/v1`, `stream-state/v1`, `graph-reduce/v1`,
+`layout-chain/v1`, and `ternary-fold/v1` as deterministic challenge substrates
+while expanding family coverage and waiting for an end-to-end generated
+Malbolge execution path before completing this planning
 objective.
 
 ## References

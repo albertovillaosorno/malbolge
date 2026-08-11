@@ -30,8 +30,9 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v6` retains exact `entry_transition`, `second_transition`,
-and `third_transition` evidence and adds `bounded_memory_requirement` for that
+`malbolge-static-image/v6` retains exact `entry_transition`,
+`second_transition`, and `third_transition` evidence and adds
+`bounded_memory_requirement` for that
 exact prefix. The prefix replays committed entry/second writes before each
 bounded read, then resolves fetch/data cells, decode, C/D alias, planned data
 write, encryption address/input/output, accumulator dependency, halt/rejection,

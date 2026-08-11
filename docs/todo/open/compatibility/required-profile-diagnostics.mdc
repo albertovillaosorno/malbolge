@@ -78,8 +78,9 @@ historical-profile constraint.
   immutable dimensions, and a real rejected preflight pair with the same
   precedence. Canonical revalidation now contains unavailable/invalid authority
   failures inside `ProfileRequirementValidationError` rather than leaking raw
-  filesystem/parser exceptions. Canonical profile parsing also validates top-level mappings,
-  exact JSON-text inputs, real `pathlib.Path` loader arguments, named profile
+  filesystem/parser exceptions. Canonical profile parsing also validates
+  top-level mappings, exact JSON-text inputs, real `pathlib.Path` loader
+  arguments, named profile
   identities, and feature member types before operations that could leak Python
   implementation errors.
 - Portable effect IR v3, native keys, and direct COFF `MBPF` v3 metadata now

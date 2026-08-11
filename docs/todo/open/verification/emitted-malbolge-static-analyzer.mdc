@@ -56,7 +56,8 @@ executable cells, and input-dependent cycles or hangs.
   wrap. The bounded memory evidence reports the minimum word footprint and exact
   addresses actually touched by the prefix, excluding merely-held future C/D
   pointers. The preserved interpreter's non-graphical `continue` ordering also
-  lets the verifier prove the `b"c'"` third-step fixed-fetch cycle (`C=2`, `D=40`,
+  lets the verifier prove the `b"c'"` third-step fixed-fetch cycle
+  (`C=2`, `D=40`,
   `M[2]=29503`) without executing a guest loop. Rejected or unresolved bounded
   prefixes still emit JSON but return a nonzero CLI status.
 - Fourth-step and later control-flow reachability, longer dataflow/evolved

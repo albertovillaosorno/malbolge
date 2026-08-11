@@ -44,9 +44,9 @@ exactly the same problem rather than on vaguely similar examples.
   `arithmetic-dag/v1`, `linear-mix/v1`, `branch-mix/v1`,
   `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`, `alias-walk/v1`, and
   `stream-state/v1`, `graph-reduce/v1`, `layout-chain/v1`, and
-  `ternary-fold/v1` challenges identified by family, version, unsigned seed, canonical
-  target-profile fingerprint, and node count. Every node feeds the next node
-  on a live dependency spine so difficulty cannot grow through dead C
+  `ternary-fold/v1` challenges identified by family, version, unsigned seed,
+  canonical target-profile fingerprint, and node count. Every node feeds the
+  next node on a live dependency spine so difficulty cannot grow through dead C
   statements. The domain-separated linear family is a strict predecessor
   chain while the DAG family retains additional source-order fan-in. The
   branch family adds one live `if`/`else` diamond per node. The memory family
@@ -82,8 +82,8 @@ exactly the same problem rather than on vaguely similar examples.
   `layout-chain/v1` emits one distinct live helper function and call target per
   node, so function/code-layout pressure grows without dead source blocks;
   normalized evidence retains `nodes + 2` functions and `nodes + 1` calls.
-  `ternary-fold/v1` keeps state and tokens inside the classic ten-trit domain and
-  performs explicit base-three quotient/remainder mixing before folding the
+  `ternary-fold/v1` keeps state and tokens inside the classic ten-trit domain
+  and performs explicit base-three quotient/remainder mixing before folding the
   node-scaled token stream; native evidence matches the Python oracle.
 - The objective remains open: larger-stress and broader workload families plus
   the required end-to-end compiled/executed Malbolge fixture are not yet
