@@ -200,6 +200,31 @@ The complete accumulator/target domain has $9^{10}$ pairs, so the reachable
 fraction is $(7/9)^{10}$. This is a global complete-domain pruning fact only;
 it does not identify a data preimage or imply a runtime speedup.
 
+The one-trit multiplicity table refines that total further. Among the nine
+possible accumulator/target trit pairs, exactly two have multiplicity zero,
+five have multiplicity one, and two have multiplicity two. Therefore, for
+$k\in\{0,\ldots,10\}$, the number of reachable classic accumulator/target
+pairs whose complete data-word preimage has cardinality exactly $2^k$ is
+\begin{equation}
+  \left|\left\{(a,t)\in\WordDomain{10}^{2}:
+    \left|\left\{d\in\WordDomain{10}:\CrazyN{10}{d}{a}=t
+ight\}
+ight|
+      =2^k
+ight\}
+ight|
+    =\binom{10}{k}2^k5^{10-k}.
+  \label{eq:optimization-crazy-preimage-pair-distribution}
+\end{equation}
+Choosing the $k$ doubled positions contributes $\binom{10}{k}$, each doubled
+position has two accumulator/target trit pairs, and each remaining reachable
+position has five singleton pairs. Summing the classes gives
+$(5+2)^{10}=7^{10}$ reachable pairs, while weighting each class by its preimage
+size gives $(5+4)^{10}=9^{10}=59049^2$, exactly accounting for every classic
+$(d,a)$ input pair. This distribution is a complete-domain search-planning fact;
+it does not imply equal semantics between different accumulator/target pairs or
+a measured runtime speedup.
+
 \section{Decode phase reduction}
 
 For graphical cell $m$, decode depends on the code pointer only through its

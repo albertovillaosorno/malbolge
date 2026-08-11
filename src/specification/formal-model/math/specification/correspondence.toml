@@ -256,6 +256,16 @@ mechanism = "per-trit-product-plus-state-and-class-sums"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_reachable_accumulator_target_pair_count_is_exact"]
 
 [[correspondence]]
+id = "optimization-crazy-preimage-pair-distribution"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-pair-distribution"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all classic accumulator/target pairs grouped by exact nonzero full-data-domain preimage cardinality"
+mechanism = "independent-trit-convolution-plus-binomial-closed-form"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_global_preimage_pair_classes_match_independent_relation"]
+
+[[correspondence]]
 id = "optimization-decode-phase"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-decode-phase"
