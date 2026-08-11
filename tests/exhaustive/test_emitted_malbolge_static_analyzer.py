@@ -65,7 +65,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v7"
+_SCHEMA = "malbolge-static-image/v8"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -74,7 +74,7 @@ _SECOND_INPUT_UNRESOLVED = "unresolved-input-dependent-accumulator"
 _FIXTURE_ENCRYPTION_INPUT = 99
 _FIXTURE_SECOND_VALUE = 116
 _SECOND_SUCCESSOR = 2
-_MEMORY_SCOPE = "four-transition-prefix"
+_MEMORY_SCOPE = "five-transition-prefix"
 _THIRD_PREFIX_WORDS = 3
 _RECUR_DATA_ADDRESS = 41
 _RECUR_DATA_WORDS = 42
@@ -83,6 +83,9 @@ _FOURTH_STUCK_SOURCE = b"('&"
 _FIFTH_TRANSFER_SOURCE = b"('&%"
 _FIFTH_FETCH_ADDRESS = 4
 _FIFTH_DATA_ADDRESS = 29_490
+_FIFTH_MEMORY_WORDS = 42
+_FIFTH_HIGHEST_ADDRESS = 41
+_FIFTH_ACCESSES = (0, 1, 2, 3, 4, 38, 39, 41)
 _FOURTH_FETCH_ADDRESS = 3
 _FOURTH_DATA_ADDRESS = 39
 _FOURTH_HIGHEST_ADDRESS = 29_488
@@ -219,6 +222,7 @@ class _Report(Protocol):
     second_transition: _SecondTransition | None
     third_transition: _SecondTransition | None
     fourth_transition: _SecondTransition | None
+    fifth_transition: _SecondTransition | None
     findings: tuple[_Finding, ...]
     analysis_limits: tuple[str, ...]
 
@@ -838,28 +842,10 @@ def test_fourth_transition_proves_recurrence_fixed_fetch_cycle() -> None:
     _assert_fourth_memory(memory)
 
 
-def test_next_transfer_resolves_fifth_fixed_fetch_cycle() -> None:
-    """Generic transfer resolves one fifth step beyond the public v7 report."""
-    report = _ANALYZER_MODULE.analyze_source(_FIFTH_TRANSFER_SOURCE)
-    entry = report.entry_transition
-    second = report.second_transition
-    third = report.third_transition
-    fourth = report.fourth_transition
-    assert entry is not None
-    assert second is not None
-    assert third is not None
-    assert fourth is not None
-    assert fourth.status == _ENTRY_CONTINUED
-    transition = _ANALYZER_MODULE.prefix_transfer.analyze_next_transition(
-        tuple(_FIFTH_TRANSFER_SOURCE),
-        entry,
-        (second, third, fourth),
-    )
-    assert transition is not None
-    expected_fetch = _historical_c_op(
-        _FIFTH_TRANSFER_SOURCE[3],
-        _FIFTH_TRANSFER_SOURCE[2],
-    )
+def _assert_fifth_fixed_fetch_cycle(
+    transition: _SecondTransition,
+    expected_fetch: int,
+) -> None:
     assert transition.status == _THIRD_STUCK
     assert transition.fetched_address == _FIFTH_FETCH_ADDRESS
     assert transition.fetched_value == expected_fetch
@@ -868,6 +854,44 @@ def test_next_transfer_resolves_fifth_fixed_fetch_cycle() -> None:
     assert transition.next_fetch_address == _FIFTH_FETCH_ADDRESS
     assert transition.provable_cycle
     assert not transition.accepted
+
+
+def _assert_fifth_memory(memory: _BoundedMemoryRequirement) -> None:
+    assert memory.scope == _MEMORY_SCOPE
+    assert memory.minimum_words == _FIFTH_MEMORY_WORDS
+    assert memory.highest_accessed_address == _FIFTH_HIGHEST_ADDRESS
+    assert memory.accessed_addresses == _FIFTH_ACCESSES
+
+
+def test_next_transfer_resolves_fifth_fixed_fetch_cycle() -> None:
+    """Public v8 fifth step matches the generic exact transfer."""
+    report = _ANALYZER_MODULE.analyze_source(_FIFTH_TRANSFER_SOURCE)
+    entry = report.entry_transition
+    second = report.second_transition
+    third = report.third_transition
+    fourth = report.fourth_transition
+    reported = report.fifth_transition
+    assert entry is not None
+    assert second is not None
+    assert third is not None
+    assert fourth is not None
+    assert reported is not None
+    assert fourth.status == _ENTRY_CONTINUED
+    transition = _ANALYZER_MODULE.prefix_transfer.analyze_next_transition(
+        tuple(_FIFTH_TRANSFER_SOURCE),
+        entry,
+        (second, third, fourth),
+    )
+    assert transition is not None
+    assert reported == transition
+    expected_fetch = _historical_c_op(
+        _FIFTH_TRANSFER_SOURCE[3],
+        _FIFTH_TRANSFER_SOURCE[2],
+    )
+    _assert_fifth_fixed_fetch_cycle(reported, expected_fetch)
+    memory = report.bounded_memory_requirement
+    assert memory is not None
+    _assert_fifth_memory(memory)
 
 
 def test_next_transfer_rejects_noncontiguous_explicit_prefix() -> None:
@@ -979,13 +1003,13 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
     """Initial-image admission never implies dynamic reachability proof."""
     report = _ANALYZER_MODULE.analyze_source(bytes((39, 38)))
     assert report.analysis_limits == (
-        "code-data-aliasing:four-transition-prefix-only",
-        "control-flow-reachability:four-transition-prefix-only",
-        "dataflow:four-transition-prefix-only",
+        "code-data-aliasing:five-transition-prefix-only",
+        "control-flow-reachability:five-transition-prefix-only",
+        "dataflow:five-transition-prefix-only",
         "input-dependent-cycles:not-analyzed",
-        "self-modification:four-transition-prefix-only",
+        "self-modification:five-transition-prefix-only",
         "source-map-context:not-analyzed",
-        "wraparound-reachability:four-transition-prefix-only",
+        "wraparound-reachability:five-transition-prefix-only",
     )
 
 
@@ -1086,6 +1110,30 @@ def test_cli_rejects_provable_fourth_step_fixed_fetch_cycle(
     document = cast("dict[str, object]", json.loads(completed.stdout))
     transition = cast("dict[str, object]", document["fourth_transition"])
     assert transition["status"] == _THIRD_STUCK
+    assert transition["provable_cycle"] is True
+
+
+def test_cli_rejects_provable_fifth_step_fixed_fetch_cycle(
+    tmp_path: Path,
+) -> None:
+    """CLI rejects a bounded fifth fetch proven unable to advance."""
+    source = tmp_path / "fifth-step-stuck.malbolge"
+    _ = source.write_bytes(_FIFTH_TRANSFER_SOURCE)
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [sys.executable, str(_ANALYZER), str(source)],
+        cwd=_ROOT,
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 1
+    assert not completed.stderr
+    document = cast("dict[str, object]", json.loads(completed.stdout))
+    transition = cast("dict[str, object]", document["fifth_transition"])
+    assert transition["status"] == _THIRD_STUCK
+    assert transition["fetched_address"] == _FIFTH_FETCH_ADDRESS
     assert transition["provable_cycle"] is True
 
 

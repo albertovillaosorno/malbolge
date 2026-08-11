@@ -493,6 +493,7 @@ def test_two_transition_cli_matches_independent_historical_model(
     _assert_second(observed, expected)
     _assert_third_prefix(document["third_transition"], source_tuple, expected)
     assert document["fourth_transition"] is None
+    assert document["fifth_transition"] is None
     assert returncode == _expected_cli_code(expected)
 
 
@@ -540,4 +541,5 @@ def test_fourth_transition_matches_independent_recurrence_model(
     ]
     expected_fetch = _initial_memory(_FOURTH_SOURCE, _FOURTH_FETCH_ADDRESS)
     _assert_fourth_reference_transition(fourth, expected_fetch=expected_fetch)
+    assert report["fifth_transition"] is None
     assert returncode == 1
