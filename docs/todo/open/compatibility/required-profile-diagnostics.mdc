@@ -123,8 +123,11 @@ historical-profile constraint.
   snapshots the exact canonical `MALBOLGE-PROFILE-001` text before the planner
   takes ownership of the suspension. Callers retain the stable retry step/index
   category while the owned failure renders the same diagnostic as direct
-  sequence preflight. Retry routing carries that snapshot onward, and retry-cycle
-  hard routing failure retains it without entering native execution.
+  sequence preflight. Retry routing carries that snapshot onward, and
+  retry-cycle hard routing failure retains it without entering native execution.
+  The
+  cache-aware routing-cycle owner now exposes and renders that same retained
+  diagnostic directly without rebuilding it.
   Retry-capacity `002` propagation remains open.
 - Raw `.malbolge` CLI invocation now uses `ExecutionMachine`, so source capacity
   reaches the same historical-ceiling diagnostic without changing normal
