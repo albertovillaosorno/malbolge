@@ -30,21 +30,21 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize six exact reductions: classic five-trit crazy
-  factorization, profile-width crazy chunking, decode phase reduction, exact
-  classic rotate lookup, graphical self-encryption orbit canonicalization, and
-  classic rotate-history canonicalization. The first four are consumed by
-  runtime paths; the two history reductions are verified search-state
-  canonicalizations and carry no inherited runtime speedup claim.
-- Six optimization research equations are registered in
+- The proved slices now formalize seven exact reductions: classic five-trit
+  crazy factorization, profile-width crazy chunking, decode phase reduction,
+  exact classic rotate lookup, graphical self-encryption orbit
+  canonicalization, classic rotate-history canonicalization, and exact
+  crazy-target preimage cardinality. The first four are consumed by runtime
+  paths; the three search reductions carry no inherited runtime speedup claim.
+- Seven optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
 - Existing benchmark evidence retains 15 raw samples per scalar/table path with
   matching checksums. On the recorded host, crazy is 10.43x and rotate 1.50x
   faster by median for the admitted workload.
-- This result promotes only those reductions. Canonical forms, lower bounds,
-  and synthesis/search-space reductions remain open and receive no inherited
+- This result promotes only those reductions. Broader canonical forms, lower
+  bounds, and search-space reductions remain open and receive no inherited
   correctness or performance claim.
 
 ## Acceptance
@@ -69,8 +69,9 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes six labelled optimization equations,
+- Current mathematical evidence includes seven labelled optimization equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, an exhaustive six-orbit encryption partition, exhaustive
-  two-cycle classic rotate-history reduction, and explicit bounded conclusions.
-  Broader lower-bound/search mathematics remains open.
+  two-cycle classic rotate-history reduction, exact full-domain crazy-target
+  preimage counts including the 1,024/zero bounds, and explicit bounded
+  conclusions. Broader lower-bound/search mathematics remains open.
