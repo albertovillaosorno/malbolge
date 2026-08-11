@@ -56,9 +56,17 @@ _DIFFICULTY = 1
 _SECONDS = 60
 _CANDIDATES = 10_000
 _MEMORY_MIB = 512
-_ORACLE = "trusted-semantic-verifier"
+_ORACLE = "classic-two-word-no-io-halt-v1"
 _BASELINE = "deterministic-enumeration"
 _LIFECYCLE_STATE = "experimental"
+_CORPUS_CANDIDATES = 8_836
+_CANDIDATE_ENCODING = "lexicographic-two-graphical-bytes-v1"
+_OBJECTIVE = "halt-without-prior-input-or-output"
+_QUALITY = "semantic-transitions-to-halt-v1"
+_SOURCE_WORDS = 2
+_WORKLOAD_SHA256 = (
+    "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
+)
 
 
 def test_superoptimization_pilot_identity_is_preregistered() -> None:
@@ -68,6 +76,9 @@ def test_superoptimization_pilot_identity_is_preregistered() -> None:
     challenge = cast("dict[str, object]", plan["challenge"])
     budget = cast("dict[str, object]", plan["budget"])
     verification = cast("dict[str, object]", plan["verification"])
+    challenge_semantics = cast(
+        "dict[str, object]", plan["classic_block_search"]
+    )
 
     assert experiment == {
         "id": _EXPERIMENT_ID,
@@ -90,6 +101,15 @@ def test_superoptimization_pilot_identity_is_preregistered() -> None:
         "required": True,
         "oracle": _ORACLE,
         "baseline": _BASELINE,
+    }
+    assert challenge_semantics == {
+        "candidate_count": _CORPUS_CANDIDATES,
+        "candidate_encoding": _CANDIDATE_ENCODING,
+        "objective": _OBJECTIVE,
+        "quality": _QUALITY,
+        "source_words": _SOURCE_WORDS,
+        "verifier": _ORACLE,
+        "workload_sha256": _WORKLOAD_SHA256,
     }
 
 

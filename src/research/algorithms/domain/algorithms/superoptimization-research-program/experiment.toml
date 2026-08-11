@@ -20,8 +20,17 @@ memory_mib = 512
 
 [verification]
 required = true
-oracle = "trusted-semantic-verifier"
+oracle = "classic-two-word-no-io-halt-v1"
 baseline = "deterministic-enumeration"
+
+[classic_block_search]
+candidate_count = 8836
+candidate_encoding = "lexicographic-two-graphical-bytes-v1"
+objective = "halt-without-prior-input-or-output"
+quality = "semantic-transitions-to-halt-v1"
+source_words = 2
+verifier = "classic-two-word-no-io-halt-v1"
+workload_sha256 = "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
 
 [provenance]
 configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/experiment.toml"
