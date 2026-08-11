@@ -48,6 +48,8 @@ _SCHEDULE = _ROOT / (
     "superoptimization/schedule.py"
 )
 _CANDIDATE_COUNT = 10
+_EXPECTED_ENUMERATION_ID = "deterministic-enumeration-v1"
+_EXPECTED_SEEDED_ID = "splitmix64-sparse-partial-fisher-yates-v1"
 _KNOWN_SEEDED_ORDER = (5, 1, 9, 7, 0, 4)
 _MAX_U64 = (1 << 64) - 1
 _SPARSE_BUDGET = 4
@@ -56,6 +58,8 @@ _SPARSE_BUDGET = 4
 class _ScheduleModule(Protocol):
     """Typed view of the pure research schedule module."""
 
+    ENUMERATION_SCHEDULE_ID: str
+    SEEDED_PROPOSAL_SCHEDULE_ID: str
     InvalidCandidateScheduleError: type[ValueError]
 
     def enumeration_order(
@@ -87,6 +91,18 @@ def _load_schedule() -> _ScheduleModule:
 
 
 _SCHEDULE_MODULE = _load_schedule()
+
+
+def test_schedule_algorithm_identities_are_stable() -> None:
+    """Run manifests can bind exact versioned candidate-order algorithms."""
+    assert (
+        _SCHEDULE_MODULE.ENUMERATION_SCHEDULE_ID
+        == _EXPECTED_ENUMERATION_ID
+    )
+    assert (
+        _SCHEDULE_MODULE.SEEDED_PROPOSAL_SCHEDULE_ID
+        == _EXPECTED_SEEDED_ID
+    )
 
 
 def test_enumeration_order_is_budget_bounded_natural_prefix() -> None:

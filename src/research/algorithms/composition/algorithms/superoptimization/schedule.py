@@ -40,6 +40,9 @@ _SPLITMIX_INCREMENT = 0x9E3779B97F4A7C15
 _SPLITMIX_MIX1 = 0xBF58476D1CE4E5B9
 _SPLITMIX_MIX2 = 0x94D049BB133111EB
 
+ENUMERATION_SCHEDULE_ID = "deterministic-enumeration-v1"
+SEEDED_PROPOSAL_SCHEDULE_ID = "splitmix64-sparse-partial-fisher-yates-v1"
+
 
 class InvalidCandidateScheduleError(ValueError):
     """One pilot candidate schedule request is malformed."""
