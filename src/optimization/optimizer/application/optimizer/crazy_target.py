@@ -233,6 +233,34 @@ class CrazyTargetProblem:
         return (target, accumulator)
 
 
+def crazy_target_full_domain_preimage_count(
+    target: int,
+    accumulator: int,
+) -> int:
+    """Return exact classic data-word preimages for one crazy target.
+
+    Returns:
+        Cardinality over all 59,049 classic data words for the fixed
+        accumulator and target.
+
+    """
+    _validate_problem_word(target, "target")
+    _validate_problem_word(accumulator, "accumulator")
+    count = 1
+    radix = len(CRAZY_TRIT_TABLE)
+    for _ in range(TRIT_COUNT):
+        target_trit = target % radix
+        accumulator_trit = accumulator % radix
+        multiplicity = sum(
+            row[accumulator_trit] == target_trit
+            for row in CRAZY_TRIT_TABLE
+        )
+        count *= multiplicity
+        target //= radix
+        accumulator //= radix
+    return count
+
+
 def crazy_target_search_adapter(
     primitive: ExactPrimitiveAdapter,
 ) -> EvaluatedSearchExecutionAdapter:

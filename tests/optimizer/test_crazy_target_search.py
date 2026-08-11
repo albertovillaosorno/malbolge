@@ -63,6 +63,7 @@ from optimizer.crazy_target import build_crazy_target_batch
 from optimizer.crazy_target import count_prepared_crazy_target_positions
 from optimizer.crazy_target import cpu_crazy_target_search_adapter
 from optimizer.crazy_target import crazy_target_batch_builder_id
+from optimizer.crazy_target import crazy_target_full_domain_preimage_count
 from optimizer.crazy_target import crazy_target_projected_evaluation_id
 from optimizer.crazy_target import crazy_target_search_adapter
 from optimizer.crazy_target import crazy_target_selection_preparer_id
@@ -176,6 +177,72 @@ def test_normative_crazy_table_is_hardware_neutral() -> None:
         (1, 0, 2),
         (2, 2, 1),
     )
+
+
+_INDEPENDENT_CRAZY_TRIT = (
+    (1, 0, 0),
+    (1, 0, 2),
+    (2, 2, 1),
+)
+_RADIX = 3
+_MIXED_PREIMAGE_CASES = (
+    (7_654, 12_345),
+    (MAX_WORD, ALL_ONES),
+)
+
+
+def _independent_crazy(data: int, accumulator: int) -> int:
+    result = 0
+    place = 1
+    for _ in range(10):
+        result += (
+            _INDEPENDENT_CRAZY_TRIT[data % _RADIX][accumulator % _RADIX]
+            * place
+        )
+        data //= _RADIX
+        accumulator //= _RADIX
+        place *= _RADIX
+    return result
+
+
+def _brute_preimage_count(target: int, accumulator: int) -> int:
+    return sum(
+        _independent_crazy(data, accumulator) == target
+        for data in range(FULL_DOMAIN_COUNT)
+    )
+
+
+def test_full_domain_preimage_count_matches_independent_relation() -> None:
+    """Digitwise cardinality equals brute force on homogeneous trit pairs."""
+    assert CRAZY_TRIT_TABLE == _INDEPENDENT_CRAZY_TRIT
+    for accumulator_trit in range(_RADIX):
+        accumulator = accumulator_trit * ALL_ONES
+        for target_trit in range(_RADIX):
+            target = target_trit * ALL_ONES
+            observed = crazy_target_full_domain_preimage_count(
+                target,
+                accumulator,
+            )
+            assert observed == _brute_preimage_count(target, accumulator)
+    for target, accumulator in _MIXED_PREIMAGE_CASES:
+        observed = crazy_target_full_domain_preimage_count(target, accumulator)
+        assert observed == _brute_preimage_count(target, accumulator)
+
+
+def test_full_domain_preimage_count_exposes_exact_search_bounds() -> None:
+    """Known all-one and impossible targets expose exact finite search sizes."""
+    assert (
+        crazy_target_full_domain_preimage_count(ALL_ONES, 0)
+        == MULTI_PREIMAGE_COUNT
+    )
+    assert crazy_target_full_domain_preimage_count(0, 0) == 0
+    foreign_value: object = MAX_WORD >= 0
+    foreign_target = cast("int", foreign_value)
+    with pytest.raises(
+        InvalidCrazyTargetProblemError,
+        match="target must use the exact integer type",
+    ):
+        _ = crazy_target_full_domain_preimage_count(foreign_target, 0)
 
 
 def test_crazy_target_strategy_identities_are_stable() -> None:
