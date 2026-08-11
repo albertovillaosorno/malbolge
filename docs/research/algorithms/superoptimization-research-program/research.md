@@ -62,8 +62,14 @@ the evaluation budget, not the logical candidate count. The shared
 candidate count and evaluation budget through one caller-supplied trusted
 verifier. It records evaluation-count time-to-first, total verified count, best
 verified quality/index, and an explicit no-verified-candidate outcome after the
-full budget. It does not define the `classic-verified-block-search-v1` candidate
-language or measure wall-clock time. Candidate generation remains untrusted,
+full budget. The companion
+`finite-verifier-gated-dual-bound-comparison-v1` also applies the preregistered
+wall-clock bound to both schedules through an injected monotonic nanosecond
+clock, records first-hit elapsed time plus the exact stop reason, and rejects
+invalid or backward clocks. Wall-clock checks occur between synchronous verifier
+calls; the harness does not claim hard preemption of a verifier callback that
+fails to return. Neither runner defines the `classic-verified-block-search-v1`
+candidate language. Candidate generation remains untrusted,
 and `trusted-semantic-verifier` remains mandatory for every accepted candidate.
 Future recorded runs must add exact commit, workload hash, host, toolchain,
 outcome, accelerator identity, and raw-output path through the repository's run
@@ -78,7 +84,9 @@ no-replacement membership, seed separation, fail-closed dimensions, and sparse
 operation over the maximum unsigned-64 logical corpus. Runner tests additionally
 prove equal scheduled evaluation counts, verifier-gated first/best evidence,
 full-budget retained null outcomes, and fail-closed malformed verifier quality.
-The plan preserves a non-success outcome vocabulary for later runs rather than
+Dual-bound tests additionally lock wall-clock, evaluation-budget, and finite
+corpus stop identities plus fail-closed clock regression. The plan preserves a
+non-success outcome vocabulary for later runs rather than
 making success a prerequisite for retained evidence.
 
 The broader study at `../../studies/superoptimization-program.md` remains the
@@ -88,9 +96,9 @@ and a reviewed conclusion remain pending.
 
 ## Results
 
-Candidate-order mechanics and equal-budget verifier-gated execution are
-implemented and replay-locked. No concrete challenge run or comparative
-performance result is recorded yet.
+Candidate-order mechanics and equal-budget verifier-gated execution under both
+preregistered evaluation and wall-clock bounds are implemented and replay-locked.
+No concrete challenge run or comparative performance result is recorded yet.
 
 ## Threats to Validity
 

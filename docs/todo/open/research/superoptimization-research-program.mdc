@@ -75,6 +75,10 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   with evaluation budget instead of logical corpus size. A versioned
   verifier-gated runner executes both orders under equal candidate/evaluation
   bounds, records evaluation-count first-hit/best-quality evidence, and retains
-  full-budget null outcomes. Concrete challenge semantics, wall-clock/run
+  full-budget null outcomes. A second versioned runner applies the preregistered
+  wall-clock bound through an injected monotonic clock, records first-hit elapsed
+  nanoseconds and exact stop identity, and fails closed on invalid/backward clock
+  evidence. It checks time between synchronous verifier calls rather than
+  claiming hard callback preemption. Concrete challenge semantics, recorded-run
   manifests, raw measurements, plans for the other techniques, and a reviewed
   conclusion remain pending.
