@@ -63,7 +63,11 @@ from optimizer.crazy_target import build_crazy_target_batch
 from optimizer.crazy_target import count_prepared_crazy_target_positions
 from optimizer.crazy_target import cpu_crazy_target_search_adapter
 from optimizer.crazy_target import crazy_target_batch_builder_id
+from optimizer.crazy_target import crazy_target_full_domain_max_preimage_count
 from optimizer.crazy_target import crazy_target_full_domain_preimage_count
+from optimizer.crazy_target import (
+    crazy_target_full_domain_reachable_target_count,
+)
 from optimizer.crazy_target import crazy_target_projected_evaluation_id
 from optimizer.crazy_target import crazy_target_search_adapter
 from optimizer.crazy_target import crazy_target_selection_preparer_id
@@ -185,6 +189,7 @@ _INDEPENDENT_CRAZY_TRIT = (
     (2, 2, 1),
 )
 _RADIX = 3
+_TWO_TRIT = 2
 _MIXED_PREIMAGE_CASES = (
     (7_654, 12_345),
     (MAX_WORD, ALL_ONES),
@@ -322,6 +327,30 @@ def test_full_domain_preimage_counts_have_exact_power_of_two_spectrum() -> None:
     assert observed == expected
 
 
+def _independent_reachable_target_count(accumulator: int) -> int:
+    count = 1
+    for _ in range(10):
+        accumulator_trit = accumulator % _RADIX
+        multiplicities = tuple(
+            sum(
+                row[accumulator_trit] == target_trit
+                for row in _INDEPENDENT_CRAZY_TRIT
+            )
+            for target_trit in range(_RADIX)
+        )
+        count *= sum(multiplicity > 0 for multiplicity in multiplicities)
+        accumulator //= _RADIX
+    return count
+
+
+def _count_accumulator_two_trits(accumulator: int) -> int:
+    count = 0
+    for _ in range(10):
+        count += accumulator % _RADIX == _TWO_TRIT
+        accumulator //= _RADIX
+    return count
+
+
 def test_maximum_preimage_count_is_accumulator_specific() -> None:
     """Each accumulator has an exact worst-target power-of-two bound."""
     for accumulator in range(FULL_DOMAIN_COUNT):
@@ -332,6 +361,41 @@ def test_maximum_preimage_count_is_accumulator_specific() -> None:
             crazy_target_full_domain_preimage_count(target, accumulator)
             == expected
         )
+
+
+def test_accumulator_planning_bounds_match_independent_relation() -> None:
+    """Public state-level bounds match every independent classic accumulator."""
+    for accumulator in range(FULL_DOMAIN_COUNT):
+        two_trits = _count_accumulator_two_trits(accumulator)
+        doubled = 10 - two_trits
+        expected_max = 1 << doubled
+        expected_reachable = expected_max
+        for _ in range(two_trits):
+            expected_reachable *= _RADIX
+        assert (
+            crazy_target_full_domain_max_preimage_count(accumulator)
+            == _independent_max_preimage_count(accumulator)
+            == expected_max
+        )
+        assert (
+            crazy_target_full_domain_reachable_target_count(accumulator)
+            == _independent_reachable_target_count(accumulator)
+            == expected_reachable
+        )
+
+
+def test_accumulator_planning_bounds_reject_foreign_words() -> None:
+    """Planning helpers preserve exact classic-word admission."""
+    foreign: object = True
+    for operation in (
+        crazy_target_full_domain_max_preimage_count,
+        crazy_target_full_domain_reachable_target_count,
+    ):
+        with pytest.raises(
+            InvalidCrazyTargetProblemError,
+            match="accumulator must use the exact integer type",
+        ):
+            _ = operation(cast("int", foreign))
 
 
 def test_crazy_target_strategy_identities_are_stable() -> None:

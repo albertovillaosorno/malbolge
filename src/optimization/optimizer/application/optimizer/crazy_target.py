@@ -233,6 +233,19 @@ class CrazyTargetProblem:
         return (target, accumulator)
 
 
+def _crazy_target_trit_multiplicities(
+    accumulator_trit: int,
+) -> tuple[int, ...]:
+    radix = len(CRAZY_TRIT_TABLE)
+    return tuple(
+        sum(
+            row[accumulator_trit] == target_trit
+            for row in CRAZY_TRIT_TABLE
+        )
+        for target_trit in range(radix)
+    )
+
+
 def crazy_target_full_domain_preimage_count(
     target: int,
     accumulator: int,
@@ -251,12 +264,44 @@ def crazy_target_full_domain_preimage_count(
     for _ in range(TRIT_COUNT):
         target_trit = target % radix
         accumulator_trit = accumulator % radix
-        multiplicity = sum(
-            row[accumulator_trit] == target_trit
-            for row in CRAZY_TRIT_TABLE
-        )
-        count *= multiplicity
+        multiplicities = _crazy_target_trit_multiplicities(accumulator_trit)
+        count *= multiplicities[target_trit]
         target //= radix
+        accumulator //= radix
+    return count
+
+
+def crazy_target_full_domain_max_preimage_count(accumulator: int) -> int:
+    """Return the exact largest target preimage for one accumulator.
+
+    Returns:
+        Maximum full-domain preimage cardinality over all classic targets.
+
+    """
+    _validate_problem_word(accumulator, "accumulator")
+    count = 1
+    radix = len(CRAZY_TRIT_TABLE)
+    for _ in range(TRIT_COUNT):
+        accumulator_trit = accumulator % radix
+        count *= max(_crazy_target_trit_multiplicities(accumulator_trit))
+        accumulator //= radix
+    return count
+
+
+def crazy_target_full_domain_reachable_target_count(accumulator: int) -> int:
+    """Return the exact number of reachable targets for one accumulator.
+
+    Returns:
+        Count of classic target words with at least one full-domain preimage.
+
+    """
+    _validate_problem_word(accumulator, "accumulator")
+    count = 1
+    radix = len(CRAZY_TRIT_TABLE)
+    for _ in range(TRIT_COUNT):
+        accumulator_trit = accumulator % radix
+        multiplicities = _crazy_target_trit_multiplicities(accumulator_trit)
+        count *= sum(multiplicity > 0 for multiplicity in multiplicities)
         accumulator //= radix
     return count
 
