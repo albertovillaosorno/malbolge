@@ -2,7 +2,7 @@ schema_version = 1
 
 [study]
 id = "classic-superopt-pilot-windows-2026-08-11"
-# jig-ignore-next-line: canonical repository-relative evidence path is indivisible
+# jig-ignore-next-line: canonical evidence path is indivisible
 experiment_manifest = "benchmarks/research/evidence/2026-08-11-classic-superopt-pilot-windows/experiment.toml"
 kind = "deterministic"
 question = """\
@@ -58,7 +58,7 @@ accelerator = "none"
 memory_mib = 512
 
 [raw]
-# jig-ignore-next-line: canonical repository-relative evidence path is indivisible
+# jig-ignore-next-line: canonical evidence path is indivisible
 path = "benchmarks/research/evidence/2026-08-11-classic-superopt-pilot-windows/raw.csv"
 retained = true
 
