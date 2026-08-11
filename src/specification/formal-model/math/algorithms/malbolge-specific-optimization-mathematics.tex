@@ -87,6 +87,30 @@ The current 14-trit runtime therefore uses chunks $5+5+4$ while reusing the same
 five-trit table. The final four-trit result is reduced modulo $3^4$; no phantom
 fifteenth trit is admitted.
 
+
+\section{Exact crazy-target preimage cardinality}
+
+For one ternary accumulator digit $\alpha\in\{0,1,2\}$ and target digit
+$\tau\in\{0,1,2\}$, define the data-digit multiplicity
+\[
+  \mu(\alpha,\tau)
+    = \left|\{\delta\in\{0,1,2\}:\CrazyN{1}{\delta}{\alpha}=\tau\}\right|.
+\]
+For classic words write the fixed accumulator and target in trits as
+$a=\sum_{i=0}^{9}a_i3^i$ and $t=\sum_{i=0}^{9}t_i3^i$. Digit independence
+then gives the exact full-data-domain preimage cardinality
+\begin{equation}
+  \left|\{d\in\WordDomain{10}:\CrazyN{10}{d}{a}=t\}\right|
+    = \prod_{i=0}^{9}\mu(a_i,t_i).
+  \label{eq:optimization-crazy-preimage-cardinality}
+\end{equation}
+This is an exact finite search bound only for the complete classic data-word
+domain under one fixed accumulator. It does not claim that an arbitrary corpus
+contains every preimage or contains each data word only once. In particular,
+for $a=0$ and the all-one-trit target $t=\sum_{i=0}^{9}3^i$, every digit has
+$\mu(0,1)=2$, so the exact full-domain cardinality is $2^{10}=1024$. If any
+factor is zero, no classic data word can reach the target for that accumulator.
+
 \section{Decode phase reduction}
 
 For graphical cell $m$, decode depends on the code pointer only through its

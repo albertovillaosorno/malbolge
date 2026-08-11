@@ -190,6 +190,16 @@ mechanism = "composite"
 evidence = ["tests/compatibility/test_scalable_memory.py::test_crazy_generalizes_digitwise_without_new_truth_table", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
 
 [[correspondence]]
+id = "optimization-crazy-preimage-cardinality"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cardinality"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all nine homogeneous trit pairs plus mixed classic full-domain brute-force fixtures"
+mechanism = "exhaustive-trit-plus-full-domain-bruteforce"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_count_matches_independent_relation", "tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_count_exposes_exact_search_bounds"]
+
+[[correspondence]]
 id = "optimization-decode-phase"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-decode-phase"
