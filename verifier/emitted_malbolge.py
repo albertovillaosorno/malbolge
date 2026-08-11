@@ -55,7 +55,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v10"
+_SCHEMA: Final = "malbolge-static-image/v11"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -71,15 +71,17 @@ _ACCESS_FETCH: Final = "instruction-fetch"
 _ACCESS_DATA_READ: Final = "data-read"
 _ACCESS_DATA_WRITE: Final = "data-write"
 _ACCESS_ENCRYPTION: Final = "self-encryption"
-_MEMORY_SCOPE: Final = "five-transition-prefix"
+_TOTAL_TRANSITION_LIMIT: Final = 16
+_CONTINUATION_LIMIT: Final = _TOTAL_TRANSITION_LIMIT - 1
+_MEMORY_SCOPE: Final = "sixteen-transition-prefix"
 _LIMITS: Final = (
-    "code-data-aliasing:five-transition-prefix-only",
-    "control-flow-reachability:five-transition-prefix-only",
-    "dataflow:five-transition-prefix-only",
+    "code-data-aliasing:sixteen-transition-prefix-only",
+    "control-flow-reachability:sixteen-transition-prefix-only",
+    "dataflow:sixteen-transition-prefix-only",
     "input-dependent-cycles:not-analyzed",
-    "self-modification:five-transition-prefix-only",
-    "source-map-context:five-transition-memory-access-origin-only",
-    "wraparound-reachability:five-transition-prefix-only",
+    "self-modification:sixteen-transition-prefix-only",
+    "source-map-context:sixteen-transition-memory-access-origin-only",
+    "wraparound-reachability:sixteen-transition-prefix-only",
 )
 
 
@@ -153,6 +155,8 @@ class StaticImageReport:
     profile_address_domain_closed: bool
     source_sha256: str
     required_source_words: int
+    bounded_transition_limit: int
+    bounded_continuations: tuple[prefix_transfer.SecondTransition, ...]
     bounded_memory_requirement: BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[BoundedFetchSourceContext, ...]
     bounded_memory_access_source_map: tuple[
@@ -175,10 +179,7 @@ class _PrefixAnalysis:
 
     cells: tuple[InitialCell, ...]
     entry: entry_transfer.EntryTransition | None
-    second: prefix_transfer.SecondTransition | None
-    third: prefix_transfer.SecondTransition | None
-    fourth: prefix_transfer.SecondTransition | None
-    fifth: prefix_transfer.SecondTransition | None
+    continuations: tuple[prefix_transfer.SecondTransition, ...]
     findings: tuple[StaticFinding, ...]
 
 
@@ -263,7 +264,7 @@ def _analyze_admitted_cells(
     can_decode: bool,
 ) -> _PrefixAnalysis:
     if not can_decode:
-        return _PrefixAnalysis((), None, None, None, None, None, ())
+        return _PrefixAnalysis((), None, (), ())
     cells = _initial_cells(source)
     findings = _decode_findings(cells)
     entry = (
@@ -273,47 +274,25 @@ def _analyze_admitted_cells(
             words, cells[0].decoded_byte
         )
     )
-    second = (
-        None
+    continuations = (
+        ()
         if entry is None
-        else prefix_transfer.analyze_second_transition(words, entry)
-    )
-    third = (
-        None
-        if entry is None or second is None
-        else prefix_transfer.analyze_third_transition(words, entry, second)
-    )
-    fourth = (
-        None
-        if entry is None or second is None or third is None
-        else prefix_transfer.analyze_fourth_transition(
+        else prefix_transfer.analyze_continuations(
             words,
             entry,
-            second,
-            third=third,
+            maximum_transitions=_CONTINUATION_LIMIT,
         )
     )
-    fifth = (
-        None
-        if entry is None
-        or second is None
-        or third is None
-        or fourth is None
-        else prefix_transfer.analyze_next_transition(
-            words,
-            entry,
-            (second, third, fourth),
-        )
-    )
-    return _PrefixAnalysis(
-        cells,
-        entry,
-        second,
-        third,
-        fourth,
-        fifth,
-        findings,
-    )
+    return _PrefixAnalysis(cells, entry, continuations, findings)
+
+
+def _continuation_at(
+    prefix: _PrefixAnalysis,
+    index: int,
+) -> prefix_transfer.SecondTransition | None:
+    if index >= len(prefix.continuations):
+        return None
+    return prefix.continuations[index]
 
 
 def _entry_memory_accesses(
@@ -345,14 +324,13 @@ def _prefix_memory_accesses(
 def _bounded_memory_requirement(
     source_words: int,
     entry: entry_transfer.EntryTransition | None,
-    transitions: tuple[prefix_transfer.SecondTransition | None, ...],
+    transitions: tuple[prefix_transfer.SecondTransition, ...],
 ) -> BoundedMemoryRequirement | None:
     if entry is None:
         return None
     accesses = _entry_memory_accesses(entry)
     for transition in transitions:
-        if transition is not None:
-            accesses.update(_prefix_memory_accesses(transition))
+        accesses.update(_prefix_memory_accesses(transition))
     ordered = tuple(sorted(accesses))
     highest = ordered[-1]
     return BoundedMemoryRequirement(
@@ -411,11 +389,9 @@ def _bounded_fetch_source_map(
         )
     )
     for transition_index, transition in enumerate(
-        (prefix.second, prefix.third, prefix.fourth, prefix.fifth),
+        prefix.continuations,
         start=2,
     ):
-        if transition is None:
-            break
         contexts.append(
             _fetch_source_context(
                 transition_index,
@@ -514,11 +490,9 @@ def _bounded_memory_access_source_map(
         _access_source_contexts(1, _entry_accesses(entry), prefix.cells)
     )
     for transition_index, transition in enumerate(
-        (prefix.second, prefix.third, prefix.fourth, prefix.fifth),
+        prefix.continuations,
         start=2,
     ):
-        if transition is None:
-            break
         contexts.extend(
             _access_source_contexts(
                 transition_index,
@@ -577,10 +551,12 @@ def analyze_source(source: bytes) -> StaticImageReport:
         profile_address_domain_closed=True,
         source_sha256="sha256:" + sha256(source).hexdigest(),
         required_source_words=required,
+        bounded_transition_limit=_TOTAL_TRANSITION_LIMIT,
+        bounded_continuations=prefix.continuations,
         bounded_memory_requirement=_bounded_memory_requirement(
             required,
             prefix.entry,
-            (prefix.second, prefix.third, prefix.fourth, prefix.fifth),
+            prefix.continuations,
         ),
         bounded_fetch_source_map=_bounded_fetch_source_map(words, prefix),
         bounded_memory_access_source_map=(
@@ -589,10 +565,10 @@ def analyze_source(source: bytes) -> StaticImageReport:
         admitted_initial_image=not findings,
         initial_cells=prefix.cells,
         entry_transition=prefix.entry,
-        second_transition=prefix.second,
-        third_transition=prefix.third,
-        fourth_transition=prefix.fourth,
-        fifth_transition=prefix.fifth,
+        second_transition=_continuation_at(prefix, 0),
+        third_transition=_continuation_at(prefix, 1),
+        fourth_transition=_continuation_at(prefix, 2),
+        fifth_transition=_continuation_at(prefix, 3),
         findings=tuple(findings),
         analysis_limits=_LIMITS,
     )
@@ -610,11 +586,13 @@ def render_report(report: StaticImageReport) -> str:
 
 
 def _continuations_accepted(
-    transitions: tuple[prefix_transfer.SecondTransition | None, ...],
+    transitions: tuple[prefix_transfer.SecondTransition, ...],
 ) -> bool:
+    if not transitions:
+        return False
     accepted = True
     for transition in transitions:
-        if transition is None or not transition.accepted:
+        if not transition.accepted:
             accepted = False
             break
         if transition.next_fetch_address is None:
@@ -628,12 +606,7 @@ def _bounded_prefix_accepted(report: StaticImageReport) -> bool:
         return False
     if entry.next_fetch_address is None:
         return True
-    return _continuations_accepted((
-        report.second_transition,
-        report.third_transition,
-        report.fourth_transition,
-        report.fifth_transition,
-    ))
+    return _continuations_accepted(report.bounded_continuations)
 
 
 def _fail(message: str) -> Never:
@@ -644,7 +617,7 @@ def main(arguments: list[str] | None = None) -> int:
     """Analyze one source path and print its canonical JSON report.
 
     Returns:
-        Zero when initial-image admission and the bounded five-transition
+        Zero when initial-image admission and the bounded sixteen-transition
         prefix succeed, otherwise one after writing the canonical report.
 
     """

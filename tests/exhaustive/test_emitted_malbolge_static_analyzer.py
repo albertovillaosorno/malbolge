@@ -65,7 +65,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v10"
+_SCHEMA = "malbolge-static-image/v11"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -74,7 +74,9 @@ _SECOND_INPUT_UNRESOLVED = "unresolved-input-dependent-accumulator"
 _FIXTURE_ENCRYPTION_INPUT = 99
 _FIXTURE_SECOND_VALUE = 116
 _SECOND_SUCCESSOR = 2
-_MEMORY_SCOPE = "five-transition-prefix"
+_TOTAL_TRANSITION_LIMIT = 16
+_CONTINUATION_LIMIT = _TOTAL_TRANSITION_LIMIT - 1
+_MEMORY_SCOPE = "sixteen-transition-prefix"
 _ACCESS_FETCH = "instruction-fetch"
 _ACCESS_DATA_READ = "data-read"
 _ACCESS_DATA_WRITE = "data-write"
@@ -240,6 +242,8 @@ class _Report(Protocol):
     profile_address_domain_closed: bool
     source_sha256: str
     required_source_words: int
+    bounded_transition_limit: int
+    bounded_continuations: tuple[_SecondTransition, ...]
     bounded_memory_requirement: _BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[_BoundedFetchSourceContext, ...]
     bounded_memory_access_source_map: tuple[
@@ -263,6 +267,16 @@ class _ClassicModule(Protocol):
 
 
 class _PrefixModule(Protocol):
+    def analyze_continuations(
+        self,
+        words: tuple[int, ...],
+        entry: _EntryTransition,
+        *,
+        maximum_transitions: int,
+    ) -> tuple[_SecondTransition, ...]:
+        """Resolve a finite exact continuation trace after entry."""
+        ...
+
     def analyze_next_transition(
         self,
         words: tuple[int, ...],
@@ -1107,6 +1121,61 @@ def test_second_transition_halt_is_exact_terminal_state() -> None:
     assert transition.accepted
 
 
+def _sequential_output_source(words: int) -> bytes:
+    return bytes(
+        _source_byte_for_decode(ord("<"), position)
+        for position in range(words)
+    )
+
+
+def test_report_reaches_exact_sixteen_transition_bound() -> None:
+    """Sequential output cells exercise the complete reviewed trace bound."""
+    source = _sequential_output_source(_TOTAL_TRANSITION_LIMIT)
+    report = _ANALYZER_MODULE.analyze_source(source)
+    assert report.admitted_initial_image
+    assert report.bounded_transition_limit == _TOTAL_TRANSITION_LIMIT
+    assert len(report.bounded_continuations) == _CONTINUATION_LIMIT
+    assert report.second_transition == report.bounded_continuations[0]
+    assert report.third_transition == report.bounded_continuations[1]
+    assert report.fourth_transition == report.bounded_continuations[2]
+    assert report.fifth_transition == report.bounded_continuations[3]
+    assert all(item.accepted for item in report.bounded_continuations)
+    last = report.bounded_continuations[-1]
+    assert last.fetched_address == _TOTAL_TRANSITION_LIMIT - 1
+    assert last.next_fetch_address == _TOTAL_TRANSITION_LIMIT
+    memory = report.bounded_memory_requirement
+    assert memory is not None
+    assert memory.scope == _MEMORY_SCOPE
+    assert memory.minimum_words == _TOTAL_TRANSITION_LIMIT
+    assert memory.accessed_addresses == tuple(range(_TOTAL_TRANSITION_LIMIT))
+    assert len(report.bounded_fetch_source_map) == _TOTAL_TRANSITION_LIMIT
+    assert all(
+        context.fetched_value_matches_initial_source is True
+        for context in report.bounded_fetch_source_map
+    )
+    assert len(report.bounded_memory_access_source_map) == (
+        _TOTAL_TRANSITION_LIMIT * 2
+    )
+
+
+def test_continuation_bound_rejects_nonpositive_or_foreign_integer() -> None:
+    """Finite prefix iteration accepts only positive exact integer bounds."""
+    source = _sequential_output_source(2)
+    report = _ANALYZER_MODULE.analyze_source(source)
+    entry = report.entry_transition
+    assert entry is not None
+    for invalid in (0, -1, True):
+        with pytest.raises(
+            ValueError,
+            match="maximum transitions must be a positive exact integer",
+        ):
+            _ = _ANALYZER_MODULE.prefix_transfer.analyze_continuations(
+                tuple(source),
+                entry,
+                maximum_transitions=cast("int", invalid),
+            )
+
+
 def test_historical_address_domain_is_structurally_closed() -> None:
     """Classic pointers stay inside the fixed 59,049-word memory domain."""
     interpreter = _HISTORICAL_INTERPRETER.read_text(encoding="utf-8")
@@ -1123,13 +1192,13 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
     """Initial-image admission never implies dynamic reachability proof."""
     report = _ANALYZER_MODULE.analyze_source(bytes((39, 38)))
     assert report.analysis_limits == (
-        "code-data-aliasing:five-transition-prefix-only",
-        "control-flow-reachability:five-transition-prefix-only",
-        "dataflow:five-transition-prefix-only",
+        "code-data-aliasing:sixteen-transition-prefix-only",
+        "control-flow-reachability:sixteen-transition-prefix-only",
+        "dataflow:sixteen-transition-prefix-only",
         "input-dependent-cycles:not-analyzed",
-        "self-modification:five-transition-prefix-only",
-        "source-map-context:five-transition-memory-access-origin-only",
-        "wraparound-reachability:five-transition-prefix-only",
+        "self-modification:sixteen-transition-prefix-only",
+        "source-map-context:sixteen-transition-memory-access-origin-only",
+        "wraparound-reachability:sixteen-transition-prefix-only",
     )
 
 

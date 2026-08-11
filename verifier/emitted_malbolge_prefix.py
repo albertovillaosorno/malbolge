@@ -517,6 +517,37 @@ def analyze_next_transition(
     return _analyze_state(memory, state)
 
 
+def analyze_continuations(
+    words: tuple[int, ...],
+    entry: entry_transfer.EntryTransition,
+    *,
+    maximum_transitions: int,
+) -> tuple[SecondTransition, ...]:
+    """Resolve up to ``maximum_transitions`` exact steps after entry.
+
+    Returns:
+        Ordered continuation evidence, stopping at terminal or unresolved state.
+
+    Raises:
+        ValueError: If ``maximum_transitions`` is not a positive exact integer.
+
+    """
+    if type(maximum_transitions) is not int or maximum_transitions <= 0:
+        message = "maximum transitions must be a positive exact integer"
+        raise ValueError(message)
+    memory = _memory_after_entry(words, entry)
+    state = _state_after_entry(entry)
+    transitions: list[SecondTransition] = []
+    for _ in range(maximum_transitions):
+        if state is None:
+            break
+        transition = _analyze_state(memory, state)
+        transitions.append(transition)
+        memory = _memory_after_transition(memory, transition)
+        state = _state_after_transition(transition)
+    return tuple(transitions)
+
+
 def analyze_second_transition(
     words: tuple[int, ...],
     entry: entry_transfer.EntryTransition,
