@@ -109,8 +109,10 @@ host execution guest semantic authority.
 ## Results
 
 Eleven deterministic families are implemented and replayable. Tests lock byte-
-identical regeneration, hash-locked `arithmetic-dag/v1` and `pointer-walk/v1`
-replay vectors, profile-fingerprint binding, difficulty growth for all eleven
+identical regeneration and v1 replay vectors for `arithmetic-dag`,
+`pointer-walk`, `stream-state`, `graph-reduce`, `layout-chain`, and
+`ternary-fold`, plus profile-fingerprint binding and difficulty growth for all
+eleven
 topologies, invalid
 identity rejection, collision-safe no-replace publication (including a raced
 final-path collision), replay rejection for linked artifact leaves, current
@@ -138,10 +140,11 @@ agreement risk; it does not prove downstream compiler correctness.
 
 ## Conclusion
 
-Active. Retain hash-locked `arithmetic-dag/v1` and `pointer-walk/v1` plus
-domain-separated `linear-mix/v1`, `branch-mix/v1`, `memory-walk/v1`,
-`call-chain/v1`, `alias-walk/v1`, `stream-state/v1`, `graph-reduce/v1`,
-`layout-chain/v1`, and `ternary-fold/v1` as deterministic challenge substrates
+Active. Retain hash-locked v1 replay vectors for `arithmetic-dag`,
+`pointer-walk`, `stream-state`, `graph-reduce`, `layout-chain`, and
+`ternary-fold`, alongside domain-separated `linear-mix/v1`, `branch-mix/v1`,
+`memory-walk/v1`, `call-chain/v1`, and `alias-walk/v1` as deterministic
+challenge substrates
 while expanding family coverage and waiting for an end-to-end generated
 Malbolge execution path before completing this planning
 objective.

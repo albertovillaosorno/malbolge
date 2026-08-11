@@ -58,9 +58,10 @@ exactly the same problem rather than on vaguely similar examples.
   entry
   `malbolge_challenge` returns the full oracle `uint32_t` without unavailable
   guest libc calls.
-- Analysis evidence locks byte-identical replay, hash-locked
-  `arithmetic-dag/v1` and `pointer-walk/v1` vectors, difficulty growth for all
-  eleven topologies,
+- Analysis evidence locks byte-identical replay and hash-locked v1 vectors for
+  `arithmetic-dag`, `pointer-walk`, `stream-state`, `graph-reduce`,
+  `layout-chain`, and `ternary-fold`; difficulty growth covers all eleven
+  topologies,
   invalid identity rejection, non-destructive no-replace publication including a
   raced
   final-path collision, ABI/libc admission, and pinned-Clang agreement between
