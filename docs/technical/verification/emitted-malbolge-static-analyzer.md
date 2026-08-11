@@ -30,9 +30,9 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v5` retains exact `entry_transition` and
-`second_transition` evidence and adds one exact or explicitly unresolved
-`third_transition`. The prefix replays committed entry/second writes before each
+`malbolge-static-image/v6` retains exact `entry_transition`, `second_transition`,
+and `third_transition` evidence and adds `bounded_memory_requirement` for that
+exact prefix. The prefix replays committed entry/second writes before each
 bounded read, then resolves fetch/data cells, decode, C/D alias, planned data
 write, encryption address/input/output, accumulator dependency, halt/rejection,
 pointer succession, and wrap. A `p` whose accumulator depends on prior input is
@@ -41,7 +41,11 @@ is stronger: the preserved 1998 interpreter executes `continue` before decode,
 encryption, or pointer advancement, so the unchanged C/D state proves a fixed
 fetch cycle. The two-word `b"c'"` fixture reaches exactly that third-step state
 at `C=2`, `D=40`, `M[2]=29503`. Historical recurrence words are derived only
-when a bounded read needs them.
+when a bounded read needs them. `bounded_memory_requirement` reports the exact
+sorted addresses touched by fetch/data/write/encryption semantics and the
+minimum word count needed to load the source and reproduce those accesses. A
+future pointer value alone is not a memory touch; for example the proven
+non-graphical third-step cycle keeps `D=40` without reading address 40.
 
 Initial-image admission is deliberately narrower than whole-program safety. The
 current slice proves only a three-transition prefix. It does not claim
@@ -61,6 +65,8 @@ open under this TODO.
   cycle/hang safety.
 - Every reported initial cell preserves its loaded position and raw-source byte
   offset, and every report binds the exact source bytes and historical profile.
+- Bounded memory evidence counts only addresses actually touched by the analyzed
+  prefix and never treats a future code/data pointer as an observed access.
 - Future dynamic analyses must state their bounded assumptions rather than
   executing arbitrary guest work to completion or treating unknown as safe.
 - The verifier is tested against valid cases and deliberately mutated invalid
@@ -92,7 +98,8 @@ Unreadable source fails before a semantic report is emitted.
   explicit input-dependent-crazy unresolved evidence, a 24-case public CLI
   differential including recurrence-backed entry `j`, 16 seeded invalid
   positional mutations with byte-exact replay, exact third-step halt and
-  fixed-fetch-cycle evidence, byte-exact CLI/library report parity, bounded
+  fixed-fetch-cycle evidence, recurrence-backed bounded memory requirements,
+  byte-exact CLI/library report parity, bounded
   analysis limits, CLI second/third rejection status, and CLI read failure.
 
 ## References

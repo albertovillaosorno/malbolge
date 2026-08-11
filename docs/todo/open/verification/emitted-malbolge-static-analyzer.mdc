@@ -48,13 +48,15 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v5 keeps
-  the exact entry and second transitions and additionally resolves one reachable
-  third transition by replaying committed bounded writes. It records evolved
+  offsets, stable finding codes, and explicit analysis limits. Schema v6 keeps
+  the exact entry, second, and third transitions and publishes a bounded memory
+  requirement for that prefix. It records evolved
   fetch/data cells, C/D aliasing, planned writes, encryption input/output,
   input-dependent accumulator state, halt or rejection, pointer succession, and
-  wrap. The preserved interpreter's non-graphical `continue` ordering also lets
-  the verifier prove the `b"c'"` third-step fixed-fetch cycle (`C=2`, `D=40`,
+  wrap. The bounded memory evidence reports the minimum word footprint and exact
+  addresses actually touched by the prefix, excluding merely-held future C/D
+  pointers. The preserved interpreter's non-graphical `continue` ordering also
+  lets the verifier prove the `b"c'"` third-step fixed-fetch cycle (`C=2`, `D=40`,
   `M[2]=29503`) without executing a guest loop. Rejected or unresolved bounded
   prefixes still emit JSON but return a nonzero CLI status.
 - Fourth-step and later control-flow reachability, longer dataflow/evolved
@@ -79,5 +81,6 @@ executable cells, and input-dependent cycles or hangs.
   invalid self-encryption and input-dependent-crazy fixtures, a 24-case public
   CLI differential spanning recurrence-backed entry `j`, 16 seeded invalid
   positional mutations with byte-exact replay, exact third-step halt and
-  fixed-fetch-cycle evidence, explicit bounded analysis limits, CLI second/third
+  fixed-fetch-cycle evidence, bounded recurrence-backed memory requirements,
+  explicit bounded analysis limits, CLI second/third
   rejection status, and CLI missing-source failure.
