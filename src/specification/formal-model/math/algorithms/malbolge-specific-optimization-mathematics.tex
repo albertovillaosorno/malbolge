@@ -225,6 +225,18 @@ $(d,a)$ input pair. This distribution is a complete-domain search-planning fact;
 it does not imply equal semantics between different accumulator/target pairs or
 a measured runtime speedup.
 
+The unreachable accumulator/target region is the exact complement of the
+reachable region inside the complete $9^{10}$ pair domain:
+\begin{equation}
+  \left|\left\{(a,t)\in\WordDomain{10}^{2}:
+    \nexists d\in\WordDomain{10},\ \CrazyN{10}{d}{a}=t\right\}\right|
+    =9^{10}-7^{10}=3204309152.
+  \label{eq:optimization-crazy-unreachable-pair-count}
+\end{equation}
+This count rejects only complete-domain impossibility. It does not imply that a
+reachable pair occurs in any incomplete external candidate corpus or that
+checking membership is free.
+
 \section{Decode phase reduction}
 
 For graphical cell $m$, decode depends on the code pointer only through its
