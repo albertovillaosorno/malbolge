@@ -209,6 +209,15 @@ mechanism = "exhaustive-accumulator-trit-bound"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_count_has_tight_global_bound", "tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_count_matches_independent_relation"]
 
 [[correspondence]]
+id = "optimization-crazy-preimage-spectrum"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-spectrum"
+domain = "all 59049 classic accumulators via exact per-trit target spectra"
+mechanism = "exhaustive-accumulator-spectrum"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_counts_have_exact_power_of_two_spectrum", "tests/optimizer/test_crazy_target_search.py::test_full_domain_preimage_count_matches_independent_relation"]
+
+[[correspondence]]
 id = "optimization-decode-phase"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-decode-phase"

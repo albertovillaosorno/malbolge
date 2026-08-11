@@ -125,6 +125,20 @@ compatible data trits at every position. This bound applies to complete classic
 data-word search only; arbitrary corpora may omit those words or contain repeated
 entries and therefore retain their own membership/accounting costs.
 
+The same one-trit table sharpens the cardinality range: every factor in the
+product is exactly $0$, $1$, or $2$. Therefore every fixed classic
+accumulator/target pair has a preimage count in the discrete spectrum
+\begin{equation}
+  \left|\{d\in\WordDomain{10}:\CrazyN{10}{d}{a}=t\}\right|
+    \in \{0\}\cup\{2^k:0\leq k\leq10\}.
+  \label{eq:optimization-crazy-preimage-spectrum}
+\end{equation}
+Every listed value is attainable. With $a=0$, target trit $1$ contributes
+multiplicity $2$ while target trit $2$ contributes multiplicity $1$, so choosing
+exactly $k$ target-one positions realizes $2^k$; target trit $0$ in any position
+realizes the zero case. This quantization is a complete-domain search-size fact,
+not a statement about duplicate or incomplete external corpora.
+
 \section{Decode phase reduction}
 
 For graphical cell $m$, decode depends on the code pointer only through its
