@@ -295,6 +295,22 @@ def _independent_preimage_spectrum(accumulator: int) -> set[int]:
     return spectrum
 
 
+def _independent_maximizing_target(accumulator: int) -> tuple[int, int]:
+    target = 0
+    place = 1
+    doubled_positions = 0
+    for _ in range(10):
+        accumulator_trit = accumulator % _RADIX
+        if accumulator_trit == 0:
+            target += place
+            doubled_positions += 1
+        elif accumulator_trit == 1:
+            doubled_positions += 1
+        accumulator //= _RADIX
+        place *= _RADIX
+    return (target, doubled_positions)
+
+
 def test_full_domain_preimage_counts_have_exact_power_of_two_spectrum() -> None:
     """Nonzero classic preimage counts are powers of two through 1,024."""
     expected = {0, *(1 << exponent for exponent in range(11))}
@@ -304,6 +320,18 @@ def test_full_domain_preimage_counts_have_exact_power_of_two_spectrum() -> None:
         assert spectrum <= expected
         observed.update(spectrum)
     assert observed == expected
+
+
+def test_maximum_preimage_count_is_accumulator_specific() -> None:
+    """Each accumulator has an exact worst-target power-of-two bound."""
+    for accumulator in range(FULL_DOMAIN_COUNT):
+        target, doubled_positions = _independent_maximizing_target(accumulator)
+        expected = 1 << doubled_positions
+        assert _independent_max_preimage_count(accumulator) == expected
+        assert (
+            crazy_target_full_domain_preimage_count(target, accumulator)
+            == expected
+        )
 
 
 def test_crazy_target_strategy_identities_are_stable() -> None:
