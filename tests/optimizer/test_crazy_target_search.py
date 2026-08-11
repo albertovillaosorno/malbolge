@@ -67,6 +67,7 @@ from optimizer.crazy_target import crazy_target_batch_builder_id
 from optimizer.crazy_target import crazy_target_full_domain_accumulator_classes
 from optimizer.crazy_target import crazy_target_full_domain_max_preimage_count
 from optimizer.crazy_target import crazy_target_full_domain_preimage_count
+from optimizer.crazy_target import crazy_target_full_domain_reachable_pair_count
 from optimizer.crazy_target import (
     crazy_target_full_domain_reachable_target_count,
 )
@@ -192,6 +193,7 @@ _INDEPENDENT_CRAZY_TRIT = (
 )
 _RADIX = 3
 _TWO_TRIT = 2
+_REACHABLE_PAIRS_PER_TRIT = 7
 _TRIT_COUNT = 10
 _MIXED_PREIMAGE_CASES = (
     (7_654, 12_345),
@@ -392,6 +394,36 @@ def _independent_accumulator_class_histogram() -> tuple[int, ...]:
     for accumulator in range(FULL_DOMAIN_COUNT):
         counts[_count_accumulator_two_trits(accumulator)] += 1
     return tuple(counts)
+
+
+def test_reachable_accumulator_target_pair_count_is_exact() -> None:
+    """Global reachable pair count matches independent state/class sums."""
+    expected_per_trit = 0
+    for accumulator_trit in range(_RADIX):
+        multiplicities = tuple(
+            sum(
+                _INDEPENDENT_CRAZY_TRIT[data_trit][accumulator_trit]
+                == target_trit
+                for data_trit in range(_RADIX)
+            )
+            for target_trit in range(_RADIX)
+        )
+        expected_per_trit += sum(value > 0 for value in multiplicities)
+    expected = 1
+    for _ in range(_TRIT_COUNT):
+        expected *= expected_per_trit
+    state_sum = sum(
+        crazy_target_full_domain_reachable_target_count(accumulator)
+        for accumulator in range(FULL_DOMAIN_COUNT)
+    )
+    class_sum = sum(
+        item.accumulator_count * item.reachable_target_count
+        for item in crazy_target_full_domain_accumulator_classes()
+    )
+    assert expected_per_trit == _REACHABLE_PAIRS_PER_TRIT
+    assert crazy_target_full_domain_reachable_pair_count() == expected
+    assert state_sum == expected
+    assert class_sum == expected
 
 
 def test_accumulator_classes_partition_complete_classic_domain() -> None:

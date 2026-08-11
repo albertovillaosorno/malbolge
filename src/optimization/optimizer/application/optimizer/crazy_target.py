@@ -316,6 +316,25 @@ def crazy_target_full_domain_reachable_target_count(accumulator: int) -> int:
     return count
 
 
+def crazy_target_full_domain_reachable_pair_count() -> int:
+    """Return the exact number of reachable accumulator/target pairs.
+
+    Returns:
+        Count of classic ``(accumulator, target)`` pairs with a data preimage.
+
+    """
+    per_trit_pairs = 0
+    for accumulator_trit in range(len(CRAZY_TRIT_TABLE)):
+        multiplicities = _crazy_target_trit_multiplicities(accumulator_trit)
+        per_trit_pairs += sum(
+            multiplicity > 0 for multiplicity in multiplicities
+        )
+    count = 1
+    for _ in range(TRIT_COUNT):
+        count *= per_trit_pairs
+    return count
+
+
 def _accumulator_class_counts() -> tuple[int, ...]:
     counts = (1,)
     non_two_choices = len(CRAZY_TRIT_TABLE) - 1
