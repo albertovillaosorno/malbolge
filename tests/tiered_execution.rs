@@ -61,10 +61,8 @@ pub mod retry_router;
 pub mod retry_turn;
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
-use std::fs::{create_dir_all, read, remove_dir_all, write};
 use std::num::NonZeroUsize;
-use std::path::{Path, PathBuf};
-use std::process::{Command, id as process_id};
+use std::path::Path;
 use std::str::from_utf8;
 use std::sync::Arc;
 use std::thread;
@@ -121,9 +119,10 @@ use execution_cache::{
     RegionEffectIdentity,
 };
 use execution_native::{
-    BootstrapProfilePreflightError, CLANG_C23_BOOTSTRAP_BACKEND_ID,
-    CLANG_C23_BOOTSTRAP_BACKEND_REVISION, CachedPreflightedExecutionTier,
-    CoffAdmissionError, DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
+    BootstrapCompilerError, BootstrapProfilePreflightError,
+    CLANG_C23_BOOTSTRAP_BACKEND_ID, CLANG_C23_BOOTSTRAP_BACKEND_REVISION,
+    CachedPreflightedExecutionTier, CoffAdmissionError,
+    DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
     DIRECT_HALT_FETCH_BACKEND_ID, DIRECT_HALT_FETCH_BACKEND_REVISION,
     DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
@@ -176,7 +175,8 @@ use execution_native::{
     StagedNativeExecutable, UntrustedNativeObjectArtifact,
     VerifiedDirectInvocationError, VerifiedDirectLoadError,
     VerifiedDirectLoadImage, VerifiedDirectNativeCache,
-    VerifiedDirectSequencePlan, emit_direct_crazy_coff, emit_direct_deopt_coff,
+    VerifiedDirectSequencePlan, compile_preflighted_clang_c23,
+    emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_input_coff,
     emit_direct_jump_code_coff, emit_direct_jump_data_coff,
@@ -1234,14 +1234,7 @@ fn preflighted_bootstrap_rejects_runtime_before_target() -> Result<(), String> {
 #[test]
 fn preflighted_bootstrap_rejects_capacity_before_target() -> Result<(), String>
 {
-    let mut overflow = native_program();
-    let address = current_profile().memory_words();
-    let effect = overflow
-        .effects
-        .first_mut()
-        .ok_or_else(|| String::from("bootstrap fixture has no effect"))?;
-    effect.before.registers.code_pointer = address;
-    effect.after.registers.code_pointer = address;
+    let overflow = profile_capacity_overflow_native_program()?;
     let Err(BootstrapProfilePreflightError::Profile(capacity_error)) =
         lower_preflighted_clang_c23(
             &overflow,
@@ -1270,6 +1263,105 @@ fn preflighted_bootstrap_rejects_capacity_before_target() -> Result<(), String>
     } else {
         Err(format!(
             "bootstrap capacity diagnostic changed: {capacity_error}"
+        ))
+    }
+}
+
+#[test]
+fn bootstrap_compiler_rejects_runtime_before_process_launch()
+-> Result<(), String> {
+    let program = native_program();
+    let compiler = Path::new("./.temp/missing-bootstrap-clang");
+    let Err(BootstrapCompilerError::Preflight(
+        BootstrapProfilePreflightError::Profile(error),
+    )) = compile_preflighted_clang_c23(
+        compiler,
+        &program,
+        safe_rust_classic_capability(),
+        native_target(HostIsa::X86_64),
+    )
+    else {
+        return Err(String::from(
+            "compiler launch masked runtime profile error",
+        ));
+    };
+    let profile = target_profile(&program.profile_id)
+        .ok_or_else(|| String::from("bootstrap compiler profile is missing"))?;
+    let Err(canonical) = preflight_profile(
+        profile,
+        program.required_memory_words(),
+        safe_rust_classic_capability(),
+    ) else {
+        return Err(String::from(
+            "bootstrap compiler profile unexpectedly passed",
+        ));
+    };
+    if error.to_string() == canonical.to_string() {
+        Ok(())
+    } else {
+        Err(String::from(
+            "compiler wrapper changed MALBOLGE-PROFILE-001",
+        ))
+    }
+}
+
+#[test]
+fn bootstrap_compiler_rejects_capacity_before_process_launch()
+-> Result<(), String> {
+    let program = profile_capacity_overflow_native_program()?;
+    let compiler = Path::new("./.temp/missing-bootstrap-clang");
+    let Err(BootstrapCompilerError::Preflight(
+        BootstrapProfilePreflightError::Profile(error),
+    )) = compile_preflighted_clang_c23(
+        compiler,
+        &program,
+        safe_rust_profiled_capability(),
+        native_target(HostIsa::X86_64),
+    )
+    else {
+        return Err(String::from(
+            "compiler launch masked profile capacity error",
+        ));
+    };
+    let profile = target_profile(&program.profile_id)
+        .ok_or_else(|| String::from("overflow compiler profile is missing"))?;
+    let Err(canonical) = preflight_profile(
+        profile,
+        program.required_memory_words(),
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from(
+            "overflow compiler profile unexpectedly passed",
+        ));
+    };
+    if error.kind() == ProfileRequirementErrorKind::ProfileCapacityExceeded
+        && error.to_string() == canonical.to_string()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "compiler wrapper changed MALBOLGE-PROFILE-002",
+        ))
+    }
+}
+
+#[test]
+fn bootstrap_compiler_launch_failure_follows_profile_admission()
+-> Result<(), String> {
+    let compiler = Path::new("./.temp/missing-bootstrap-clang");
+    if matches!(
+        compile_preflighted_clang_c23(
+            compiler,
+            &native_program(),
+            safe_rust_profiled_capability(),
+            native_target(HostIsa::X86_64),
+        ),
+        Err(BootstrapCompilerError::Launch(_))
+    ) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "admitted bootstrap did not reach compiler launch",
         ))
     }
 }
@@ -1743,6 +1835,19 @@ fn profile_invalid_native_program() -> RegionEffectProgram {
     let mut program = native_program();
     program.profile_requirement.memory_words = 1;
     program
+}
+
+fn profile_capacity_overflow_native_program()
+-> Result<RegionEffectProgram, String> {
+    let mut program = native_program();
+    let address = current_profile().memory_words();
+    let effect = program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("bootstrap fixture has no effect"))?;
+    effect.before.registers.code_pointer = address;
+    effect.after.registers.code_pointer = address;
+    Ok(program)
 }
 
 fn native_target(isa: HostIsa) -> NativeTargetIdentity {
@@ -5491,21 +5596,13 @@ fn native_bootstrap_rejects_observation_counter_overflow() -> Result<(), String>
 }
 
 #[test]
-fn native_bootstrap_compiles_real_x86_64_and_aarch64_coff_objects()
+fn native_bootstrap_compiler_emits_real_x86_64_and_aarch64_coff_objects()
 -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let clang = root.join(".dependencies/llvm/22.1.8/bin/clang.exe");
     if !clang.is_file() {
         return Err(format!("pinned Clang missing: {}", clang.display()));
     }
-    let temporary = native_test_directory(root);
-    if temporary.exists() {
-        remove_dir_all(&temporary)
-            .map_err(|error| format!("native temp cleanup: {error}"))?;
-    }
-    create_dir_all(&temporary)
-        .map_err(|error| format!("native temp create: {error}"))?;
-
     let program = native_program();
     let cases = [
         CoffCompileCase {
@@ -5518,47 +5615,37 @@ fn native_bootstrap_compiles_real_x86_64_and_aarch64_coff_objects()
         },
     ];
     for case in cases {
-        check_compiled_coff_case(&clang, &temporary, &program, case)?;
+        check_compiled_coff_case(&clang, &program, case)?;
     }
-    remove_dir_all(&temporary)
-        .map_err(|error| format!("native temp final cleanup: {error}"))?;
     Ok(())
 }
 
 fn check_compiled_coff_case(
     clang: &Path,
-    temporary: &Path,
     program: &RegionEffectProgram,
     case: CoffCompileCase,
 ) -> Result<(), String> {
-    let candidate = lower_clang_c23(program, native_target(case.isa))
-        .map_err(|error| error.to_string())?;
-    let stem = match case.isa {
-        HostIsa::X86_64 => "x86_64",
-        HostIsa::AArch64 => "aarch64",
-    };
-    let source_path = temporary.join(format!("{stem}.c"));
-    let object_path = temporary.join(format!("{stem}.obj"));
-    write(&source_path, candidate.source().as_bytes())
-        .map_err(|error| format!("native source write: {error}"))?;
-    compile_native_object(
+    let target = native_target(case.isa);
+    let source = lower_preflighted_clang_c23(
+        program,
+        safe_rust_profiled_capability(),
+        target.clone(),
+    )
+    .map_err(|error| error.to_string())?;
+    let artifact = compile_preflighted_clang_c23(
         clang,
-        candidate.target_triple(),
-        &source_path,
-        &object_path,
-    )?;
-    let object = read(&object_path)
-        .map_err(|error| format!("native object read: {error}"))?;
-    let artifact =
-        UntrustedNativeObjectArtifact::from_compiler_output(&candidate, object)
-            .map_err(|error| error.to_string())?;
-    if artifact.key() != candidate.key()
-        || artifact.target_triple() != candidate.target_triple()
+        program,
+        safe_rust_profiled_capability(),
+        target,
+    )
+    .map_err(|error| error.to_string())?;
+    if artifact.key() != source.key()
+        || artifact.target_triple() != source.target_triple()
     {
         return Err(String::from("native object lost source identity"));
     }
     if artifact.object().get(..2) != Some(case.expected_machine.as_slice()) {
-        return Err(format!("unexpected COFF machine for {stem}"));
+        return Err(String::from("unexpected compiled COFF machine"));
     }
     let admitted = structurally_admit_coff(&artifact)
         .map_err(|error| format!("COFF structural admission: {error}"))?;
@@ -5569,7 +5656,7 @@ fn check_compiled_coff_case(
         return Err(String::from("COFF admission changed artifact identity"));
     }
     if case.isa == HostIsa::X86_64 {
-        check_rejected_coff_mutations(&candidate, &artifact)?;
+        check_rejected_coff_mutations(&source, &artifact)?;
     }
     Ok(())
 }
@@ -5627,44 +5714,6 @@ fn check_rejected_coff_mutations(
         return Err(String::from("renamed native entry was admitted"));
     }
     Ok(())
-}
-
-fn native_test_directory(root: &Path) -> PathBuf {
-    root.join(".temp")
-        .join(format!("native-bootstrap-tests-{}", process_id()))
-}
-
-fn compile_native_object(
-    clang: &Path,
-    target: &str,
-    source: &Path,
-    object: &Path,
-) -> Result<(), String> {
-    let output = Command::new(clang)
-        .args([
-            "-std=c23",
-            "-ffreestanding",
-            "-nostdinc",
-            "-Wall",
-            "-Wextra",
-            "-Werror",
-            "-O2",
-            "-c",
-            "-target",
-            target,
-        ])
-        .arg(source)
-        .arg("-o")
-        .arg(object)
-        .output()
-        .map_err(|error| format!("native Clang launch failed: {error}"))?;
-    if output.status.success() {
-        return Ok(());
-    }
-    Err(format!(
-        "native Clang failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    ))
 }
 
 fn direct_normative_sequence_state() -> Result<ProfileMachineState, String> {

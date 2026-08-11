@@ -40,6 +40,7 @@
 mod aarch64;
 mod abi;
 mod coff;
+mod compiler;
 mod direct;
 mod executable_cache;
 mod executable_cache_capacity;
@@ -76,6 +77,7 @@ pub use coff::{
     CoffAdmissionError, StructurallyAdmittedNativeObjectArtifact,
     structurally_admit_coff,
 };
+pub use compiler::{BootstrapCompilerError, compile_preflighted_clang_c23};
 pub use direct::{
     CachedPreflightedExecutionTier, CachedVerifiedDirectSequencePlan,
     DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
