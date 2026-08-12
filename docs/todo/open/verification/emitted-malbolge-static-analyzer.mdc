@@ -79,7 +79,8 @@ executable cells, and input-dependent cycles or hangs.
   source-address context: fetches map loaded-source addresses to their original
   loaded position/raw byte offset/initial byte and record whether the fetched
   value still equals that byte. Schema v16 also publishes exact data-read value
-  lineage for semantic `j`, `i`, `*`, and `p` operands plus exact self-encryption
+  lineage for semantic `j`, `i`, `*`, and `p` operands plus exact
+  self-encryption
   input lineage. These use the same loaded-source, recurrence, data-write, and
   self-encryption origins as fetch lineage. Data reads are sampled before
   current-transition writes; encryption input is sampled after any aliased data
@@ -87,7 +88,8 @@ executable cells, and input-dependent cycles or hangs.
   4 reads evolved `M[41]=49218` from transition 2's data write, and the entry
   rotate-alias fixture proves a same-transition data write becomes encryption
   input. A companion access map applies the same source coordinates to each
-  exact fetch, actual data read, planned data write, and self-encryption address.
+  exact fetch, actual data read, planned data write, and self-encryption
+  address.
   Recurrence-only addresses remain explicitly unmapped. Rejected, unresolved,
   fixed-fetch-cycle, or exact
   repeated-state

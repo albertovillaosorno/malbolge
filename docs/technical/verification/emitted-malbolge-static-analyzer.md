@@ -68,7 +68,8 @@ The context also distinguishes a still-original source value from an evolved
 fetch value. Schema v16 separately publishes `bounded_fetch_value_lineage` for
 every resolved fetch, `bounded_data_read_value_lineage` for every semantic `j`,
 `i`, `*`, or `p` data operand, and
-`bounded_encryption_input_value_lineage` for each resolved self-encryption input.
+`bounded_encryption_input_value_lineage` for each resolved self-encryption
+input.
 Origins are exactly `loaded-source`, `recurrence-initialization`, `data-write`,
 or `self-encryption`; prior writes retain the exact transition index. Data-read
 lineage is sampled before current-transition writes, while encryption-input
