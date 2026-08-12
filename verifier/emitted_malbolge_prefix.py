@@ -120,6 +120,14 @@ class StateSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class SnapshotStep:
+    """One validated snapshot transfer and optional successor state."""
+
+    transition: SecondTransition
+    successor: StateSnapshot | None
+
+
+@dataclass(frozen=True, slots=True)
 class ContinuationAnalysis:
     """Bounded continuation transitions, states, and exact cycle proof."""
 
@@ -534,6 +542,116 @@ def _state_snapshot(
         data_pointer=state.data_pointer,
         accumulator=state.accumulator,
         memory_overrides=memory.overrides,
+    )
+
+
+def _validate_snapshot_source(words: tuple[int, ...]) -> None:
+    if len(words) >= _RECURRENCE_BASE_WORDS:
+        return
+    message = "snapshot source cannot seed recurrence memory"
+    raise AssertionError(message)
+
+
+def _is_historical_word(value: object) -> bool:
+    return (
+        type(value) is int
+        and 0 <= value < classic.PROFILE_MEMORY_WORDS
+    )
+
+
+def _validate_snapshot_registers(snapshot: StateSnapshot) -> None:
+    if (
+        type(snapshot.before_transition) is not int
+        or snapshot.before_transition < 1
+    ):
+        message = "snapshot transition index must be a positive exact integer"
+        raise AssertionError(message)
+    if not (
+        _is_historical_word(snapshot.code_pointer)
+        and _is_historical_word(snapshot.data_pointer)
+    ):
+        message = "snapshot pointer is outside historical memory"
+        raise AssertionError(message)
+    accumulator = snapshot.accumulator
+    if accumulator is None or _is_historical_word(accumulator):
+        return
+    message = "snapshot accumulator is outside historical word domain"
+    raise AssertionError(message)
+
+
+def _canonical_override(
+    words: tuple[int, ...],
+    address: object,
+    value: object,
+    *,
+    previous_address: int,
+) -> bool:
+    if type(address) is not int or type(value) is not int:
+        return False
+    if not (
+        _is_historical_word(address)
+        and _is_historical_word(value)
+        and address > previous_address
+    ):
+        return False
+    return value != classic.initial_memory_value(words, address)
+
+
+def _validate_snapshot_overrides(
+    words: tuple[int, ...],
+    overrides: tuple[tuple[int, int], ...],
+) -> None:
+    previous_address = -1
+    for address, value in overrides:
+        if not _canonical_override(
+            words,
+            address,
+            value,
+            previous_address=previous_address,
+        ):
+            message = "snapshot memory overrides are not canonical"
+            raise AssertionError(message)
+        previous_address = address
+
+
+def _validate_state_snapshot(
+    words: tuple[int, ...],
+    snapshot: StateSnapshot,
+) -> None:
+    _validate_snapshot_source(words)
+    _validate_snapshot_registers(snapshot)
+    _validate_snapshot_overrides(words, snapshot.memory_overrides)
+
+
+def analyze_state_snapshot(
+    words: tuple[int, ...],
+    snapshot: StateSnapshot,
+) -> SnapshotStep:
+    """Analyze one caller-supplied canonical pre-transition state.
+
+    Returns:
+        Exact transition evidence plus its next state when execution continues.
+
+    """
+    _validate_state_snapshot(words, snapshot)
+    memory = _MemoryState(words, snapshot.memory_overrides)
+    state = _MachineState(
+        snapshot.code_pointer,
+        snapshot.data_pointer,
+        snapshot.accumulator,
+    )
+    transition = _analyze_state(memory, state)
+    next_state = _state_after_transition(transition)
+    if next_state is None:
+        return SnapshotStep(transition, None)
+    next_memory = _memory_after_transition(memory, transition)
+    return SnapshotStep(
+        transition,
+        _state_snapshot(
+            next_memory,
+            next_state,
+            before_transition=snapshot.before_transition + 1,
+        ),
     )
 
 

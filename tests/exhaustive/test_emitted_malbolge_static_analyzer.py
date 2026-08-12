@@ -135,6 +135,7 @@ _PREFIX_SOURCE_MESSAGE = "explicit prefix source cannot seed recurrence memory"
 _PREFIX_MISMATCH_MESSAGE = (
     "explicit prefix transition does not match recomputed state"
 )
+_SNAPSHOT_CANONICAL_MESSAGE = "snapshot memory overrides are not canonical"
 _GRAPHICAL_START = 33
 _GRAPHICAL_END = 126
 _DECODE_PERIOD = 94
@@ -241,6 +242,11 @@ class _StateSnapshot(Protocol):
     data_pointer: int
     accumulator: int | None
     memory_overrides: tuple[tuple[int, int], ...]
+
+
+class _SnapshotStep(Protocol):
+    transition: _SecondTransition
+    successor: _StateSnapshot | None
 
 
 class _ExactCycleCertificate(Protocol):
@@ -370,6 +376,14 @@ class _PrefixModule(Protocol):
         prior: tuple[_SecondTransition, ...],
     ) -> _SecondTransition | None:
         """Resolve exactly one step after an explicit finite prefix."""
+        ...
+
+    def analyze_state_snapshot(
+        self,
+        words: tuple[int, ...],
+        snapshot: _StateSnapshot,
+    ) -> _SnapshotStep:
+        """Resolve one validated caller-supplied snapshot transition."""
         ...
 
 
@@ -1236,6 +1250,45 @@ def test_next_transfer_resolves_fifth_fixed_fetch_cycle() -> None:
     memory = report.bounded_memory_requirement
     assert memory is not None
     _assert_fifth_memory(memory)
+
+
+def test_snapshot_transfer_replays_reported_evolved_state() -> None:
+    """Public snapshot transfer reproduces the reported next transition."""
+    source = _DATA_LINEAGE_WRITE_SOURCE
+    report = _ANALYZER_MODULE.analyze_source(
+        source,
+        transition_limit=_DATA_LINEAGE_TRANSITION_LIMIT,
+    )
+    snapshot = report.bounded_state_snapshots[
+        _DATA_LINEAGE_READ_TRANSITION - 1
+    ]
+    step = _ANALYZER_MODULE.prefix_transfer.analyze_state_snapshot(
+        tuple(source),
+        snapshot,
+    )
+    assert step.transition == report.fourth_transition
+    successor = step.successor
+    assert successor is not None
+    assert successor == report.bounded_state_snapshots[
+        _DATA_LINEAGE_READ_TRANSITION
+    ]
+
+
+def test_snapshot_transfer_rejects_noncanonical_memory() -> None:
+    """Caller-supplied snapshots cannot retain redundant initial values."""
+    source = _FIXTURE.read_bytes()
+    report = _ANALYZER_MODULE.analyze_source(source)
+    snapshot = copy(report.bounded_state_snapshots[0])
+    object.__setattr__(  # ruff: ignore[unnecessary-dunder-call]
+        snapshot,
+        "memory_overrides",
+        ((0, source[0]),),
+    )
+    with pytest.raises(AssertionError, match=_SNAPSHOT_CANONICAL_MESSAGE):
+        _ = _ANALYZER_MODULE.prefix_transfer.analyze_state_snapshot(
+            tuple(source),
+            snapshot,
+        )
 
 
 def test_next_transfer_rejects_forged_entry_transition() -> None:
