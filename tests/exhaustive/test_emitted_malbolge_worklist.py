@@ -43,6 +43,15 @@ import pytest
 from verifier import emitted_malbolge_prefix as prefix_transfer
 from verifier import emitted_malbolge_worklist as worklist
 
+type _WorklistStateKey = tuple[
+    int,
+    int,
+    int,
+    tuple[tuple[int, int], ...],
+    bool,
+]
+
+
 _INPUT_HALT_SOURCE = (117, 80)
 _INPUT_CRAZY_SOURCE = (117, 61)
 _DOUBLE_INPUT_SOURCE = (117, 116)
@@ -54,6 +63,8 @@ _DOUBLE_INPUT_REPEATED_EDGES = 65_536
 _INPUT_VALUE_COUNT = 257
 _EOF_ACCUMULATOR = 59_048
 _SECOND_TRANSITION = 2
+_GRAPH_KEY_A: _WorklistStateKey = (0, 0, 0, (), False)
+_GRAPH_KEY_B: _WorklistStateKey = (1, 0, 0, (), False)
 _STATE_LIMIT_MESSAGE = "worklist state limit must be a positive exact integer"
 _ADMISSION_MESSAGE = "worklist source is not an admitted classic image"
 
@@ -68,6 +79,7 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     assert result.unique_states == _FULL_STATE_LIMIT
     assert result.explored_states == _FULL_STATE_LIMIT
     assert result.repeated_state_edges == 0
+    assert not result.reachable_cycle_detected
     assert result.input_branch_points == 1
     assert result.terminal_status_counts == (("halted", _INPUT_VALUE_COUNT),)
     assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
@@ -122,6 +134,7 @@ def test_double_input_merges_are_not_silently_discarded() -> None:
     )
     assert result.unique_states == _DOUBLE_INPUT_UNIQUE_STATES
     assert result.repeated_state_edges == _DOUBLE_INPUT_REPEATED_EDGES
+    assert not result.reachable_cycle_detected
     assert result.input_branch_points == _FULL_STATE_LIMIT
     assert result.terminal_status_counts == (
         ("stuck-non-graphical-fetch", _INPUT_VALUE_COUNT),
@@ -143,6 +156,18 @@ def test_input_domain_becomes_eof_only_after_eof() -> None:
     successor = successors[0]
     assert successor.eof_seen
     assert successor.snapshot.accumulator == _EOF_ACCUMULATOR
+
+
+def test_known_graph_cycle_detection_rejects_merge_only_heuristics() -> None:
+    """Cycle detection uses graph structure rather than repeat-edge count."""
+    cycle_edges = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B},
+        _GRAPH_KEY_B: {_GRAPH_KEY_A},
+    }
+    assert worklist._known_graph_has_cycle(
+        cycle_edges,
+        {_GRAPH_KEY_A, _GRAPH_KEY_B},
+    )
 
 
 def test_worklist_state_limit_is_fail_closed() -> None:

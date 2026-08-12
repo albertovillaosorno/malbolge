@@ -69,6 +69,7 @@ class WorklistAnalysis:
     unique_states: int
     explored_states: int
     repeated_state_edges: int
+    reachable_cycle_detected: bool
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     maximum_first_seen_transition_index: int
@@ -176,12 +177,42 @@ def _unseen_successor_count(
     return len(unseen)
 
 
+def _graph_indegrees(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+) -> dict[_StateKey, int]:
+    indegrees = dict.fromkeys(nodes, 0)
+    for source in nodes:
+        for target in edges.get(source, set()):
+            if target in indegrees:
+                indegrees[target] += 1
+    return indegrees
+
+
+def _known_graph_has_cycle(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+) -> bool:
+    indegrees = _graph_indegrees(edges, nodes)
+    queue = deque(key for key, degree in indegrees.items() if degree == 0)
+    removed = 0
+    while queue:
+        source = queue.popleft()
+        removed += 1
+        for target in edges.get(source, set()):
+            indegrees[target] -= 1
+            if indegrees[target] == 0:
+                queue.append(target)
+    return removed != len(nodes)
+
+
 @dataclass(slots=True)
 class _Explorer:
     words: tuple[int, ...]
     state_limit: int
     queue: deque[_ReachabilityNode]
     seen: set[_StateKey]
+    edges: dict[_StateKey, set[_StateKey]]
     terminal_counts: dict[str, int]
     explored: int = 0
     repeated_edges: int = 0
@@ -205,6 +236,7 @@ class _Explorer:
             state_limit=state_limit,
             queue=deque((initial,)),
             seen={_node_key(initial)},
+            edges={_node_key(initial): set()},
             terminal_counts={},
         )
 
@@ -219,6 +251,10 @@ class _Explorer:
             unique_states=len(self.seen),
             explored_states=self.explored,
             repeated_state_edges=self.repeated_edges,
+            reachable_cycle_detected=_known_graph_has_cycle(
+                self.edges,
+                self.seen,
+            ),
             input_branch_points=self.input_branch_points,
             terminal_status_counts=tuple(sorted(self.terminal_counts.items())),
             maximum_first_seen_transition_index=(
@@ -233,11 +269,15 @@ class _Explorer:
 
     def _admit_successors(
         self,
+        source: _ReachabilityNode,
         successors: tuple[_ReachabilityNode, ...],
     ) -> WorklistAnalysis | None:
+        source_key = _node_key(source)
+        source_edges = self.edges[source_key]
         for index, successor in enumerate(successors):
             key = _node_key(successor)
             if key in self.seen:
+                source_edges.add(key)
                 self.repeated_edges += 1
                 continue
             if len(self.seen) >= self.state_limit:
@@ -253,6 +293,8 @@ class _Explorer:
                     ),
                 )
             self.seen.add(key)
+            source_edges.add(key)
+            self.edges[key] = set()
             self.queue.append(successor)
         return None
 
@@ -267,7 +309,7 @@ class _Explorer:
             self.input_branch_points += 1
         successors = _successors(node, step)
         if successors:
-            return self._admit_successors(successors)
+            return self._admit_successors(node, successors)
         self._record_terminal(step.transition.status)
         return None
 
