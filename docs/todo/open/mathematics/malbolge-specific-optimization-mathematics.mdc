@@ -41,7 +41,7 @@ force or stochastic optimization begins.
   `C(10,k)*2^(10-k)` accumulator-class cardinality, the exact global
   `7^10` reachable accumulator/target-pair count, and the exact
   `C(10,k)*2^k*5^(10-k)` nonzero preimage-pair distribution, the exact
-  `C(N,k)*2^k*5^(N-k)` distribution across admitted widths `1<=N<=14`, the
+  `C(N,k)*2^k*5^(N-k)` distribution across checked widths `1<=N<=14`, the
   exact `9^10-7^10` unreachable-pair count, and the exact preimage-budget
   exceedance sum over those classes. The first four are consumed by runtime
   paths; the thirteen search reductions carry

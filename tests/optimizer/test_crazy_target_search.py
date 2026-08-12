@@ -109,7 +109,7 @@ FULL_DOMAIN_COUNT = MAX_WORD + 1
 MULTI_PREIMAGE_COUNT = 1 << 10
 ROTATION_PIVOT = 2
 FIRST_LOGICAL_ID = "corpus-0"
-_MAX_ADMITTED_PROFILE_TRITS = 14
+_MAX_CHECKED_PROFILE_TRITS = 14
 _PAIR_DOMAIN_PER_TRIT = 9
 
 
@@ -484,7 +484,7 @@ def _independent_integer_power(base: int, exponent: int) -> int:
 
 def test_profile_width_preimage_pair_distribution_matches_closed_form() -> None:
     """Widths one through fourteen match the exact digitwise closed form."""
-    for trit_count in range(1, _MAX_ADMITTED_PROFILE_TRITS + 1):
+    for trit_count in range(1, _MAX_CHECKED_PROFILE_TRITS + 1):
         histogram = _independent_preimage_pair_histogram(trit_count)
         for exponent in range(trit_count + 1):
             expected = _independent_binomial(trit_count, exponent)

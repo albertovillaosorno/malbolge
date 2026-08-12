@@ -224,8 +224,9 @@ it does not imply equal semantics between different accumulator/target pairs or
 a measured runtime speedup.
 
 The same digitwise multiplicity classification extends exactly across every
-currently admitted profile width $N\in\{1,\ldots,14\}$. For
-$k\in\{0,\ldots,N\}$, the number of accumulator/target pairs whose complete
+bounded width $N\in\{1,\ldots,14\}$, a family that includes both canonical
+profile widths 10 and 14. For $k\in\{0,\ldots,N\}$, the number of
+accumulator/target pairs whose complete
 $N$-trit data-word preimage has cardinality $2^k$ is
 \begin{equation}
   \left|\left\{(a,t)\in\WordDomain{N}^{2}:
@@ -239,7 +240,7 @@ $N$-trit data-word preimage has cardinality $2^k$ is
 Consequently the reachable pair count is $7^N$, weighting each class by its
 preimage size accounts for all $9^N$ data/accumulator inputs, and the unreachable
 accumulator/target complement is $9^N-7^N$. This is complete-domain planning
-evidence only for the admitted widths; it does not assert candidate-corpus
+evidence only for this bounded width family; it does not assert candidate-corpus
 membership or runtime speedup.
 
 For a nonnegative integer full-domain enumeration budget $B$, the same exact
