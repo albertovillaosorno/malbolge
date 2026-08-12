@@ -54,12 +54,14 @@ type _WorklistStateKey = tuple[
 
 _INPUT_HALT_SOURCE = (117, 80)
 _INPUT_CRAZY_SOURCE = (117, 61)
-_DOUBLE_INPUT_SOURCE = (117, 116)
+_DOUBLE_INPUT_HALT_SOURCE = (117, 116, 79)
+_DOUBLE_INPUT_FIXED_CYCLE_SOURCE = (117, 116)
 _FULL_STATE_LIMIT = 258
 _TRUNCATED_STATE_LIMIT = _FULL_STATE_LIMIT - 1
 _TINY_STATE_LIMIT = 2
 _DOUBLE_INPUT_UNIQUE_STATES = 515
 _DOUBLE_INPUT_REPEATED_EDGES = 65_536
+_DOUBLE_INPUT_CYCLE_EDGES = 65_793
 _INPUT_VALUE_COUNT = 257
 _EOF_ACCUMULATOR = 59_048
 _SECOND_TRANSITION = 2
@@ -129,7 +131,7 @@ def test_tiny_cap_counts_all_pending_input_frontier_states() -> None:
 def test_double_input_merges_are_not_silently_discarded() -> None:
     """Second input creates many exact merges while the graph still closes."""
     result = worklist.analyze_reachability(
-        _DOUBLE_INPUT_SOURCE,
+        _DOUBLE_INPUT_HALT_SOURCE,
         maximum_states=_DOUBLE_INPUT_UNIQUE_STATES,
     )
     assert result.unique_states == _DOUBLE_INPUT_UNIQUE_STATES
@@ -137,8 +139,21 @@ def test_double_input_merges_are_not_silently_discarded() -> None:
     assert not result.reachable_cycle_detected
     assert result.input_branch_points == _FULL_STATE_LIMIT
     assert result.terminal_status_counts == (
-        ("stuck-non-graphical-fetch", _INPUT_VALUE_COUNT),
+        ("halted", _INPUT_VALUE_COUNT),
     )
+    assert not result.truncated
+
+
+def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:
+    """Historical non-graphical continue is an exact self-loop edge."""
+    result = worklist.analyze_reachability(
+        _DOUBLE_INPUT_FIXED_CYCLE_SOURCE,
+        maximum_states=_DOUBLE_INPUT_UNIQUE_STATES,
+    )
+    assert result.unique_states == _DOUBLE_INPUT_UNIQUE_STATES
+    assert result.repeated_state_edges == _DOUBLE_INPUT_CYCLE_EDGES
+    assert result.reachable_cycle_detected
+    assert result.terminal_status_counts == ()
     assert not result.truncated
 
 

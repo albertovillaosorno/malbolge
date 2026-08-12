@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v19"
+_SCHEMA = "malbolge-static-image/v20"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -93,6 +93,8 @@ _WORKLIST_TRUNCATED_LIMIT = (
 )
 _INPUT_CRAZY_SOURCE = bytes((117, 61))
 _INPUT_HALT_SOURCE = bytes((117, 80))
+_DOUBLE_INPUT_CYCLE_SOURCE = bytes((117, 116))
+_DOUBLE_INPUT_CYCLE_STATE_LIMIT = 515
 _MEMORY_SCOPE = "16-transition-prefix"
 _EXTENDED_CONTROL_FLOW_LIMIT = (
     "control-flow-reachability:32-transition-prefix-only"
@@ -1579,60 +1581,34 @@ def test_exact_cycle_certificate_causes_cli_failure(
     assert document["bounded_exact_cycle"] == {"period_transitions": 1}
 
 
-def test_worklist_cycle_detection_causes_cli_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """A proven cycle in the requested known graph makes CLI nonzero."""
-    payload = _INPUT_HALT_SOURCE
+def test_worklist_cycle_detection_causes_cli_failure(tmp_path: Path) -> None:
+    """A cycle beyond the prefix bound still makes requested CLI nonzero."""
     source_path = tmp_path / "worklist-cycle.malbolge"
-    _ = source_path.write_bytes(payload)
-    report = _ANALYZER_MODULE.analyze_source(
-        payload,
-        worklist_state_limit=_WORKLIST_COMPLETE_STATE_LIMIT,
-    )
-    worklist = report.bounded_worklist
-    assert worklist is not None
-    cyclic_worklist = copy(worklist)
-    object.__setattr__(  # ruff: ignore[unnecessary-dunder-call]
-        cyclic_worklist,
-        "reachable_cycle_detected",
-        True,
-    )
-    cycled = copy(report)
-    object.__setattr__(  # ruff: ignore[unnecessary-dunder-call]
-        cycled,
-        "bounded_worklist",
-        cyclic_worklist,
-    )
-
-    def analyze_cycle(
-        source: bytes,
-        *,
-        transition_limit: int = _TOTAL_TRANSITION_LIMIT,
-        worklist_state_limit: int | None = None,
-    ) -> _Report:
-        assert source == payload
-        assert transition_limit == _TOTAL_TRANSITION_LIMIT
-        assert worklist_state_limit == _WORKLIST_COMPLETE_STATE_LIMIT
-        return cycled
-
-    monkeypatch.setattr(_ANALYZER_MODULE, "analyze_source", analyze_cycle)
-    result = _ANALYZER_MODULE.main(
+    _ = source_path.write_bytes(_DOUBLE_INPUT_CYCLE_SOURCE)
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         [
+            sys.executable,
+            str(_ANALYZER),
+            "--transition-limit",
+            str(_TWO_SOURCE_WORDS),
             "--worklist-state-limit",
-            str(_WORKLIST_COMPLETE_STATE_LIMIT),
+            str(_DOUBLE_INPUT_CYCLE_STATE_LIMIT),
             str(source_path),
-        ]
+        ],
+        cwd=_ROOT,
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
     )
-    assert result == 1
-    document = cast(
-        "dict[str, object]",
-        json.loads(capsys.readouterr().out),
-    )
+    assert completed.returncode == 1
+    assert not completed.stderr
+    document = cast("dict[str, object]", json.loads(completed.stdout))
+    assert document["bounded_transition_limit"] == _TWO_SOURCE_WORDS
     bounded = cast("dict[str, object]", document["bounded_worklist"])
     assert bounded["reachable_cycle_detected"] is True
+    assert bounded["truncated"] is False
 
 
 def test_report_reaches_requested_transition_beyond_default_bound() -> None:

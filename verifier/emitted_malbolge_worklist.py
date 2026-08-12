@@ -154,7 +154,7 @@ def _successors(
 ) -> tuple[_ReachabilityNode, ...]:
     successor = step.successor
     if successor is None:
-        return ()
+        return (node,) if step.transition.provable_cycle else ()
     if step.transition.decoded_byte == _INPUT_OPCODE:
         return _input_successors(successor, eof_seen=node.eof_seen)
     if successor.accumulator is None:
