@@ -16,7 +16,12 @@ A later preregistered seeds-0-through-7 work-count replication is also retained.
 Four seeded schedules reach verification before enumeration's evaluation 706 and
 four reach it later; seeded median first-hit work is 723. This mixed/null result
 weakens the seed-zero first-hit conclusion. Replication timing is retained only
-as provenance and is not interpreted.
+as provenance and is not interpreted. A second technique is now preregistered
+without measurements: `classic-history-residue-canonicalization-v1` compares
+exact encryption-orbit/rotate-history residues with raw visit-count state under
+equal budgets. Its applicability requires stable address identity and no
+intervening write; results remain blocked until a versioned challenge and runner
+exist.
 
 The shared mechanisms live under
 `src/research/algorithms/composition/algorithms/superoptimization/`; domain

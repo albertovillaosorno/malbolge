@@ -113,5 +113,11 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   evaluations versus enumeration's constant 706: four trials improve, four are
   worse, and seeded median work is 723. This mixed/null result materially
   weakens the seed-zero first-hit conclusion; replication timing is retained but
-  not interpreted. Larger challenges, independent hosts, plans for the other
-  techniques, and a stronger comparative conclusion remain pending.
+  not interpreted. Exact history-residue canonicalization is now preregistered
+  without measurements. Its plan binds the proved encryption-orbit and
+  rotate-history equations to raw visit-count state with equal budgets,
+  fail-closed applicability, accepted-set equivalence, and a hard gate requiring
+  a versioned challenge and runner before results. Larger challenges,
+  independent hosts, the canonicalization challenge/runner, plans for other
+  techniques, and
+  a stronger comparative conclusion remain pending.

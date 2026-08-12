@@ -21,7 +21,7 @@ pilot challenge generalizes to other Malbolge workloads.
 
 - Status: Active
 - Research ID: `superoptimization-research-program`
-- Last reviewed: 2026-08-11
+- Last reviewed: 2026-08-12
 
 ## Prior Work
 
@@ -95,6 +95,14 @@ The first measured pilot is retained under
 `benchmarks/research/evidence/2026-08-11-classic-superopt-pilot-windows/` and
 binds pre-run commit `23dd86d6`.
 
+A second technique is now preregistered without measurement.
+`classic-history-residue-canonicalization-v1` binds the proved encryption-orbit
+and rotate-history equations to raw visit-count state under equal 10,000
+evaluation, 60-second, and 512 MiB bounds. Applicability requires stable address
+identity and no intervening write; unique search states is the primary metric,
+and accepted-set drift is a rejection condition. Results remain forbidden until
+a versioned canonicalization challenge and runner are registered.
+
 ## Evidence
 
 Repository validators close the plan identity across the research mirror,
@@ -126,9 +134,9 @@ retained evidence.
 
 The broader study at `../../studies/superoptimization-program.md` remains the
 human synthesis record. This mirrored plan now has one retained host-specific
-pilot for its first hypothesis. Additional seeds, larger challenge families,
-other techniques, independent-host replication, and stronger statistical power
-remain pending.
+pilot for its first hypothesis plus one unmeasured canonicalization plan. Larger
+challenge families, the canonicalization challenge/runner, other techniques,
+independent-host replication, and stronger statistical power remain pending.
 
 ## Results
 

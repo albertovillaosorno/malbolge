@@ -23,7 +23,7 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
 - Status: Active
 - Record type: Study
 - Planning identity: `superoptimization-research-program`
-- Last reviewed: 2026-08-11
+- Last reviewed: 2026-08-12
 
 ## Prior Work
 
@@ -115,10 +115,15 @@ observing new schedules. Seeded first-hit evaluations were 250, 1709, 642, 1142,
 189, 1861, 506, and 804 against enumeration's constant 706: four seeds improved
 and four worsened, with seeded median 723. The seed-zero advantage therefore did
 not persist across this declared seed set. Timing from the replication is
-retained only as provenance and is not interpreted. New synthesis,
-equality-saturation, learned, or accelerator-guided strategies must add their
-own equally identified comparisons rather than inheriting a result from either
-pilot. Source claims resolve through `docs/bibliography/`.
+retained only as provenance and is not interpreted. Exact history-residue
+canonicalization now has a separate preregistered, unmeasured comparison. It
+binds the already-proved encryption-orbit and rotate-history reductions to raw
+visit-count state with equal budgets, fail-closed applicability, accepted-set
+equivalence, and a gate requiring a versioned challenge and runner before any
+result. New synthesis, equality-saturation, learned, or accelerator-guided
+strategies must add their own equally identified comparisons rather than
+inheriting a result from either pilot. Source claims resolve through
+`docs/bibliography/`.
 
 ## Evidence
 
@@ -135,9 +140,11 @@ pilot. Source claims resolve through `docs/bibliography/`.
   generated run/benchmark identity and exact regression tests. The subsequent
   eight-seed work-count replication is also retained with a pre-run source pin,
   stochastic benchmark metadata, all raw rows, and exact regression tests. It is
-  the first retained negative/null comparative result. Larger challenges,
-  additional technique plans, independent-host replication, and a stronger
-  comparative conclusion remain pending.
+  the first retained negative/null comparative result. The history-residue plan
+  is tracked with formal-equation and no-measurement-gate tests. Larger
+  challenges, the canonicalization challenge/runner, additional technique plans,
+  independent-host replication, and a stronger comparative conclusion remain
+  pending.
 
 ## Results
 
