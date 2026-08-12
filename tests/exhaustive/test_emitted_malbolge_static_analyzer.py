@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v13"
+_SCHEMA = "malbolge-static-image/v14"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -229,6 +229,16 @@ class _SecondTransition(Protocol):
     accepted: bool
 
 
+class _ExactCycleCertificate(Protocol):
+    first_seen_before_transition: int
+    repeated_before_transition: int
+    period_transitions: int
+    code_pointer: int
+    data_pointer: int
+    accumulator: int
+    memory_overrides: tuple[tuple[int, int], ...]
+
+
 class _BoundedMemoryRequirement(Protocol):
     scope: str
     minimum_words: int
@@ -273,6 +283,7 @@ class _Report(Protocol):
     required_source_words: int
     bounded_transition_limit: int
     bounded_continuations: tuple[_SecondTransition, ...]
+    bounded_exact_cycle: _ExactCycleCertificate | None
     bounded_memory_requirement: _BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[_BoundedFetchSourceContext, ...]
     bounded_fetch_value_lineage: tuple[_BoundedFetchValueLineage, ...]
@@ -1280,6 +1291,7 @@ def test_report_reaches_exact_sixteen_transition_bound() -> None:
     assert report.admitted_initial_image
     assert report.bounded_transition_limit == _TOTAL_TRANSITION_LIMIT
     assert len(report.bounded_continuations) == _CONTINUATION_LIMIT
+    assert report.bounded_exact_cycle is None
     assert report.second_transition == report.bounded_continuations[0]
     assert report.third_transition == report.bounded_continuations[1]
     assert report.fourth_transition == report.bounded_continuations[2]
@@ -1409,6 +1421,7 @@ def test_report_rendering_is_canonical_and_replayable() -> None:
     parsed = cast("dict[str, object]", json.loads(first))
     assert parsed["schema"] == _SCHEMA
     assert parsed["admitted_initial_image"] is True
+    assert parsed["bounded_exact_cycle"] is None
 
 
 def test_cli_prints_same_report_as_library() -> None:
