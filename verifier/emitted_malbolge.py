@@ -57,7 +57,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v14"
+_SCHEMA: Final = "malbolge-static-image/v15"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -140,6 +140,17 @@ class BoundedFetchValueLineage:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedDataReadValueLineage:
+    """Exact bounded origin of one semantically consumed data value."""
+
+    transition_index: int
+    data_address: int
+    data_value: int
+    origin_kind: str
+    origin_transition_index: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedMemoryAccessSourceContext:
     """Exact source-image coordinates for one bounded memory access role."""
 
@@ -168,6 +179,7 @@ class StaticImageReport:
     bounded_memory_requirement: BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[BoundedFetchSourceContext, ...]
     bounded_fetch_value_lineage: tuple[BoundedFetchValueLineage, ...]
+    bounded_data_read_value_lineage: tuple[BoundedDataReadValueLineage, ...]
     bounded_memory_access_source_map: tuple[
         BoundedMemoryAccessSourceContext, ...
     ]
@@ -222,7 +234,7 @@ def _analysis_limits(transition_limit: int) -> tuple[str, ...]:
         (
             "source-map-context:"
             f"{transition_limit}-transition-memory-access-and-"
-            "fetch-value-lineage"
+            "fetch-and-data-read-value-lineage"
         ),
         f"wraparound-reachability:{prefix}",
     )
@@ -460,6 +472,23 @@ def _bounded_fetch_source_map(
     return tuple(contexts)
 
 
+def _memory_value_origin(
+    address: int,
+    source_word_count: int,
+    writers: dict[int, tuple[int, str]],
+) -> tuple[str, int | None]:
+    writer = writers.get(address)
+    if writer is not None:
+        origin_transition_index, origin_kind = writer
+        return origin_kind, origin_transition_index
+    origin_kind = (
+        _ORIGIN_LOADED_SOURCE
+        if address < source_word_count
+        else _ORIGIN_RECURRENCE
+    )
+    return origin_kind, None
+
+
 def _fetch_value_origin(
     transition_index: int,
     fetched: tuple[int, int],
@@ -468,20 +497,37 @@ def _fetch_value_origin(
     writers: dict[int, tuple[int, str]],
 ) -> BoundedFetchValueLineage:
     fetched_address, fetched_value = fetched
-    writer = writers.get(fetched_address)
-    if writer is None:
-        origin_kind = (
-            _ORIGIN_LOADED_SOURCE
-            if fetched_address < source_word_count
-            else _ORIGIN_RECURRENCE
-        )
-        origin_transition_index = None
-    else:
-        origin_transition_index, origin_kind = writer
+    origin_kind, origin_transition_index = _memory_value_origin(
+        fetched_address,
+        source_word_count,
+        writers,
+    )
     return BoundedFetchValueLineage(
         transition_index=transition_index,
         fetched_address=fetched_address,
         fetched_value=fetched_value,
+        origin_kind=origin_kind,
+        origin_transition_index=origin_transition_index,
+    )
+
+
+def _data_read_value_origin(
+    transition_index: int,
+    data_read: tuple[int, int],
+    *,
+    source_word_count: int,
+    writers: dict[int, tuple[int, str]],
+) -> BoundedDataReadValueLineage:
+    data_address, data_value = data_read
+    origin_kind, origin_transition_index = _memory_value_origin(
+        data_address,
+        source_word_count,
+        writers,
+    )
+    return BoundedDataReadValueLineage(
+        transition_index=transition_index,
+        data_address=data_address,
+        data_value=data_value,
         origin_kind=origin_kind,
         origin_transition_index=origin_transition_index,
     )
@@ -538,6 +584,48 @@ def _bounded_fetch_value_lineage(
                 writers=writers,
             )
         )
+        _remember_transition_writes(writers, transition_index, transition)
+    return tuple(lineage)
+
+
+def _bounded_data_read_value_lineage(
+    words: tuple[int, ...],
+    prefix: _PrefixAnalysis,
+) -> tuple[BoundedDataReadValueLineage, ...]:
+    entry = prefix.entry
+    if entry is None:
+        return ()
+    source_word_count = len(words)
+    writers: dict[int, tuple[int, str]] = {}
+    lineage: list[BoundedDataReadValueLineage] = []
+    if entry.decoded_byte in _DATA_READING_INSTRUCTIONS:
+        data_value = classic.initial_memory_value(words, entry.data_address)
+        lineage.append(
+            _data_read_value_origin(
+                1,
+                (entry.data_address, data_value),
+                source_word_count=source_word_count,
+                writers=writers,
+            )
+        )
+    _remember_transition_writes(writers, 1, entry)
+    for transition_index, transition in enumerate(
+        prefix.continuations,
+        start=2,
+    ):
+        data_value = transition.data_value
+        if (
+            transition.decoded_byte in _DATA_READING_INSTRUCTIONS
+            and data_value is not None
+        ):
+            lineage.append(
+                _data_read_value_origin(
+                    transition_index,
+                    (transition.data_address, data_value),
+                    source_word_count=source_word_count,
+                    writers=writers,
+                )
+            )
         _remember_transition_writes(writers, transition_index, transition)
     return tuple(lineage)
 
@@ -709,6 +797,9 @@ def analyze_source(
         bounded_fetch_value_lineage=_bounded_fetch_value_lineage(
             required,
             prefix,
+        ),
+        bounded_data_read_value_lineage=(
+            _bounded_data_read_value_lineage(words, prefix)
         ),
         bounded_memory_access_source_map=(
             _bounded_memory_access_source_map(prefix)

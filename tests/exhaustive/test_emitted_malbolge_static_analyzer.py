@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v14"
+_SCHEMA = "malbolge-static-image/v15"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -98,6 +98,12 @@ _LINEAGE_TRANSITION_LIMIT = 6
 _LINEAGE_FETCH_ADDRESS = 95
 _LINEAGE_FETCH_VALUE = 9_810
 _LINEAGE_WRITE_TRANSITION = 4
+_DATA_LINEAGE_WRITE_SOURCE = b"(&&%M"
+_DATA_LINEAGE_TRANSITION_LIMIT = 5
+_DATA_LINEAGE_READ_TRANSITION = 4
+_DATA_LINEAGE_WRITE_TRANSITION = 2
+_DATA_LINEAGE_ADDRESS = 41
+_DATA_LINEAGE_VALUE = 49_218
 _THIRD_PREFIX_WORDS = 3
 _SECOND_TRANSITION_INDEX = 2
 _THIRD_TRANSITION_INDEX = 3
@@ -264,6 +270,14 @@ class _BoundedFetchValueLineage(Protocol):
     origin_transition_index: int | None
 
 
+class _BoundedDataReadValueLineage(Protocol):
+    transition_index: int
+    data_address: int
+    data_value: int
+    origin_kind: str
+    origin_transition_index: int | None
+
+
 class _BoundedMemoryAccessSourceContext(Protocol):
     transition_index: int
     access_kind: str
@@ -287,6 +301,7 @@ class _Report(Protocol):
     bounded_memory_requirement: _BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[_BoundedFetchSourceContext, ...]
     bounded_fetch_value_lineage: tuple[_BoundedFetchValueLineage, ...]
+    bounded_data_read_value_lineage: tuple[_BoundedDataReadValueLineage, ...]
     bounded_memory_access_source_map: tuple[
         _BoundedMemoryAccessSourceContext, ...
     ]
@@ -604,6 +619,28 @@ def test_bounded_fetch_value_lineage_tracks_initial_origins_and_write() -> None:
     assert final.fetched_value == _LINEAGE_FETCH_VALUE
     assert final.origin_kind == _ACCESS_DATA_WRITE
     assert final.origin_transition_index == _LINEAGE_WRITE_TRANSITION
+
+
+def test_bounded_data_read_lineage_tracks_recurrence_and_prior_write() -> None:
+    """Data reads distinguish recurrence values from evolved-memory writes."""
+    recurrence = _ANALYZER_MODULE.analyze_source(b"('")
+    recurrence_lineage = recurrence.bounded_data_read_value_lineage
+    assert recurrence_lineage[0].origin_kind == _ORIGIN_LOADED_SOURCE
+    assert recurrence_lineage[0].origin_transition_index is None
+    assert recurrence_lineage[1].data_address == _RECUR_DATA_ADDRESS
+    assert recurrence_lineage[1].origin_kind == _ORIGIN_RECURRENCE
+    assert recurrence_lineage[1].origin_transition_index is None
+
+    written = _ANALYZER_MODULE.analyze_source(
+        _DATA_LINEAGE_WRITE_SOURCE,
+        transition_limit=_DATA_LINEAGE_TRANSITION_LIMIT,
+    )
+    final = written.bounded_data_read_value_lineage[-1]
+    assert final.transition_index == _DATA_LINEAGE_READ_TRANSITION
+    assert final.data_address == _DATA_LINEAGE_ADDRESS
+    assert final.data_value == _DATA_LINEAGE_VALUE
+    assert final.origin_kind == _ACCESS_DATA_WRITE
+    assert final.origin_transition_index == _DATA_LINEAGE_WRITE_TRANSITION
 
 
 def _assert_source_access(
@@ -1455,7 +1492,7 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
         "self-modification:16-transition-prefix-only",
         (
             "source-map-context:16-transition-memory-access-and-"
-            "fetch-value-lineage"
+            "fetch-and-data-read-value-lineage"
         ),
         "wraparound-reachability:16-transition-prefix-only",
     )
@@ -1472,6 +1509,7 @@ def test_report_rendering_is_canonical_and_replayable() -> None:
     assert parsed["schema"] == _SCHEMA
     assert parsed["admitted_initial_image"] is True
     assert parsed["bounded_exact_cycle"] is None
+    assert parsed["bounded_data_read_value_lineage"] == []
 
 
 def test_cli_prints_same_report_as_library() -> None:

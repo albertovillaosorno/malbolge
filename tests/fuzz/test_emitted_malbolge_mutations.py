@@ -48,7 +48,7 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _ANALYZER = _ROOT / "verifier" / "emitted_malbolge.py"
-_SCHEMA: Final = "malbolge-static-image/v14"
+_SCHEMA: Final = "malbolge-static-image/v15"
 _DECODE_CODE: Final = "MALBOLGE-STATIC-004"
 _GRAPHICAL_START: Final = 33
 _XLAT1: Final = (
@@ -117,6 +117,7 @@ def test_seeded_invalid_decode_replays_exactly(
     assert document["schema"] == _SCHEMA
     assert document["admitted_initial_image"] is False
     assert document["bounded_exact_cycle"] is None
+    assert document["bounded_data_read_value_lineage"] == []
     assert document["source_sha256"] == "sha256:" + sha256(source).hexdigest()
     findings = cast("list[dict[str, object]]", document["findings"])
     assert len(findings) == 1
