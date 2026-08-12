@@ -1,0 +1,48 @@
+schema_version = 1
+
+[study]
+id = "classic-superopt-seed-replication-windows-2026-08-11"
+# jig-ignore-next-line: canonical evidence path is indivisible
+experiment_manifest = "benchmarks/research/evidence/2026-08-11-classic-superopt-seed-replication-windows/experiment.toml"
+kind = "stochastic"
+question = "Does the seed-zero first-hit work advantage persist across the preregistered seed set?"
+hypothesis = "Seeded proposal lowers first-hit evaluation work across the preregistered seed distribution."
+baseline = "deterministic-enumeration-v1"
+rejection_observation = "Seeded first-hit work does not improve across the preregistered seed distribution."
+
+[workload]
+identity = "classic-verified-block-search-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 0
+repetitions = 8
+warmup_policy = "no warmup; one retained comparison for every preregistered seed"
+ordering = "fixed"
+stopping_rule = "ascending seeds 0 through 7; both schedules retain the frozen corpus and dual bounds"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "trial-distribution"
+uncertainty = "trial-distribution"
+
+[objectives]
+metrics = ["first_verified_evaluation", "best_quality"]
+tradeoff_policy = "compare first-hit evaluation work by seed and retain quality separately; do not infer timing"
+
+[resources]
+host = "Microsoft Windows 11 Pro 10.0.26200 x64-based PC"
+accelerator = "none"
+memory_mib = 512
+
+[raw]
+# jig-ignore-next-line: canonical evidence path is indivisible
+path = "benchmarks/research/evidence/2026-08-11-classic-superopt-seed-replication-windows/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 8
+failed_trials = 0
+seeds = [0, 1, 2, 3, 4, 5, 6, 7]

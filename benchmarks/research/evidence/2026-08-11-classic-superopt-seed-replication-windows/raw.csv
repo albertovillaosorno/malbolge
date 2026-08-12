@@ -1,0 +1,17 @@
+seed,schedule,schedule_id,evaluations,verified_count,first_verified_evaluation,first_verified_candidate,best_candidate,best_quality,elapsed_nanoseconds,first_verified_elapsed_nanoseconds,stop_reason,outcome
+0,enumeration,deterministic-enumeration-v1,8836,10,706,705,4517,1,337950600,28501500,candidate-corpus-exhausted,verified-candidate-found
+0,seeded,splitmix64-sparse-partial-fisher-yates-v1,8836,10,250,4576,4576,1,306153800,12168700,candidate-corpus-exhausted,verified-candidate-found
+1,enumeration,deterministic-enumeration-v1,8836,10,706,705,4517,1,344239600,22966600,candidate-corpus-exhausted,verified-candidate-found
+1,seeded,splitmix64-sparse-partial-fisher-yates-v1,8836,10,1709,4576,4576,1,336615400,58956000,candidate-corpus-exhausted,verified-candidate-found
+2,enumeration,deterministic-enumeration-v1,8836,10,706,705,4517,1,273270600,24007600,candidate-corpus-exhausted,verified-candidate-found
+2,seeded,splitmix64-sparse-partial-fisher-yates-v1,8836,10,642,4595,4595,1,282287400,20073300,candidate-corpus-exhausted,verified-candidate-found
+3,enumeration,deterministic-enumeration-v1,8836,10,706,705,4517,1,307024900,22991700,candidate-corpus-exhausted,verified-candidate-found
+3,seeded,splitmix64-sparse-partial-fisher-yates-v1,8836,10,1142,4576,4576,1,347594900,33475000,candidate-corpus-exhausted,verified-candidate-found
+4,enumeration,deterministic-enumeration-v1,8836,10,706,705,4517,1,316164800,19495900,candidate-corpus-exhausted,verified-candidate-found
+4,seeded,splitmix64-sparse-partial-fisher-yates-v1,8836,10,189,4559,4559,1,297779700,6513400,candidate-corpus-exhausted,verified-candidate-found
+5,enumeration,deterministic-enumeration-v1,8836,10,706,705,4517,1,345855700,19490300,candidate-corpus-exhausted,verified-candidate-found
+5,seeded,splitmix64-sparse-partial-fisher-yates-v1,8836,10,1861,4559,4559,1,366804800,65403300,candidate-corpus-exhausted,verified-candidate-found
+6,enumeration,deterministic-enumeration-v1,8836,10,706,705,4517,1,316586900,22847100,candidate-corpus-exhausted,verified-candidate-found
+6,seeded,splitmix64-sparse-partial-fisher-yates-v1,8836,10,506,4559,4559,1,275833000,15920200,candidate-corpus-exhausted,verified-candidate-found
+7,enumeration,deterministic-enumeration-v1,8836,10,706,705,4517,1,319993900,22453500,candidate-corpus-exhausted,verified-candidate-found
+7,seeded,splitmix64-sparse-partial-fisher-yates-v1,8836,10,804,4517,4517,1,304871300,20161500,candidate-corpus-exhausted,verified-candidate-found

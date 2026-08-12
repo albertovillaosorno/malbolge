@@ -1,0 +1,47 @@
+schema_version = 1
+
+[experiment]
+id = "superoptimization-research-program"
+record_kind = "run"
+seed = 0
+method_class = "replication"
+
+[challenge]
+family = "classic-verified-block-search-v1"
+difficulty = 1
+target_profile = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[budget]
+seconds = 60
+candidate_evaluations = 10000
+memory_mib = 512
+
+[verification]
+required = true
+oracle = "classic-two-word-no-io-halt-v1"
+baseline = "deterministic-enumeration"
+
+[provenance]
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/seed-replication.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"
+
+[run]
+commit = "f2dcc67aa313a7d0279ba081479bf4f9b46ebd0d"
+workload_sha256 = "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
+host = "Microsoft Windows 11 Pro 10.0.26200 x64-based PC"
+accelerator = "none"
+toolchain = "Python 3.14.6"
+outcome = "success"
+raw_output = "benchmarks/research/evidence/2026-08-11-classic-superopt-seed-replication-windows/raw.csv"
+
+[seed_replication]
+id = "classic-superopt-seed-replication-v1"
+base_plan_sha256 = "0c5239e47d6ceaae0536d61fa1b8abb8c44461e5caaa04becd1a195b9a218b2c"
+seeds = [0, 1, 2, 3, 4, 5, 6, 7]
+repetitions_per_seed = 1
+primary_metric = "first_verified_evaluation"
+timing_interpretation = "retained-not-compared"
+comparison_id = "finite-verifier-gated-dual-bound-comparison-v1"
