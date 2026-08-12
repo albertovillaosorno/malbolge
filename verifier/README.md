@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v14 retains the legacy exact entry-through-fifth
+load decode. Schema v15 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -18,17 +18,20 @@ writes, encryption input/output, input dependence, halt/rejection, pointer
 succession, and wrap without a worklist or unbounded guest execution. The
 report also publishes the minimum word footprint and exact addresses actually
 touched by the analyzed prefix; merely-held future C/D pointers are not counted.
-For each resolved bounded fetch, schema v14 maps loaded-source addresses back
+For each resolved bounded fetch, schema v15 maps loaded-source addresses back
 to the original loaded position/raw byte offset and initial source byte, while
 recurrence-only fetches remain explicitly unmapped. The record also states
-whether the fetched value still equals that initial source byte. Schema v14
+whether the fetched value still equals that initial source byte. Schema v15
 also publishes `bounded_fetch_value_lineage`: each resolved fetch records
 whether its value comes from the loaded source, recurrence initialization, or
-the latest prior committed data write/self-encryption transition. Writer order
-matches the exact bounded transfer, so self-encryption supersedes an aliased
-data write in the same transition. A second bounded access map applies the same
-exact source coordinates to each fetch, actual data read, planned data write,
-and self-encryption address role.
+the latest prior committed data write/self-encryption transition. The companion
+`bounded_data_read_value_lineage` applies the same origin vocabulary to actual
+`j`, `i`, `*`, and `p` data operands before the current transition commits any
+writes. The `b"(&&%M"` fixture proves transition 4 reads evolved `M[41]=49218`
+from transition 2's data write. Writer order matches the exact bounded transfer,
+so self-encryption supersedes an aliased data write in the same transition. A
+second bounded access map applies exact source coordinates to each fetch, actual
+data read, planned data write, and self-encryption address role.
 It can also prove the historical non-graphical-fetch fixed cycle because
 `continue` precedes pointer advance. The prefix module now has both one
 generic next-transition primitive over an
@@ -41,14 +44,14 @@ state before its writes can influence later analysis. Forged entries and
 noncontiguous/forged prefixes fail closed. The finite transfer also
 canonicalizes evolved memory as exact sparse overrides and can identify a
 repeated concrete `(C,D,A,memory)` state when the accumulator is known. Schema
-v14 publishes the first such proof as `bounded_exact_cycle`, including the
+v15 publishes the first such proof as `bounded_exact_cycle`, including the
 first-seen/repeated transition indices, period, registers, and sparse memory
 overrides. A null field means only that this selected finite prefix did not
 establish an exact concrete repeat; it does not prove a longer or
 input-dependent cycle absent.
 A four-word `b"('&%"` fixture uses it to prove a recurrence-backed fifth
-fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v14 publishes that
-exact transition and its bounded memory footprint. Schema v14 keeps sixteen
+fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v15 publishes that
+exact transition and its bounded memory footprint. Schema v15 keeps sixteen
 transitions as the default but makes finite depth explicit. Library callers and
 the CLI `--transition-limit N` option may request from 1 through 256 exact
 transitions. The report binds that request in `bounded_transition_limit`,
@@ -57,7 +60,7 @@ numeric memory-scope identity, and every bounded analysis-limit string. A
 sequential-output fixture proves transition 17 and later are reported exactly
 when requested, while a 256-cell fixture proves the reviewed safety ceiling.
 Reachability beyond the selected finite bound, higher-level C/source-map
-linkage, non-fetch value-lineage provenance, and longer input-dependent cycles
+linkage, self-encryption-input value lineage, and longer input-dependent cycles
 remain unproved.
 
 The initial-image report is bounded by the selected historical profile. Sources

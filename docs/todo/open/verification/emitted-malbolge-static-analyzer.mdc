@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v14
+  offsets, stable finding codes, and explicit analysis limits. Schema v15
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -74,21 +74,26 @@ executable cells, and input-dependent cycles or hangs.
   Forged entries and skipped/reordered/forged prefix records fail closed. The
   four-word `b"('&%"` fixture uses it after four continued `j`
   transitions to prove a recurrence-backed fifth fixed-fetch cycle at `C=4`,
-  `D=29490`, `M[4]=29489`; schema v14 publishes that exact step and includes
-  address 4 in its bounded memory evidence. Schema v14 adds exact bounded
+  `D=29490`, `M[4]=29489`; schema v15 publishes that exact step and includes
+  address 4 in its bounded memory evidence. Schema v15 adds exact bounded
   source-address context: fetches map loaded-source addresses to their original
   loaded position/raw byte offset/initial byte and record whether the fetched
-  value still equals that byte. A companion access map applies the same source
-  coordinates to each exact fetch, actual data read, planned data write, and
-  self-encryption address. Recurrence-only addresses remain explicitly
-  unmapped. Rejected, unresolved, fixed-fetch-cycle, or exact repeated-state
+  value still equals that byte. Schema v15 also publishes exact data-read value
+  lineage for semantic `j`, `i`, `*`, and `p` operands using the same
+  loaded-source, recurrence, data-write, and self-encryption origins as fetch
+  lineage. The `b"(&&%M"` fixture proves transition 4 reads evolved
+  `M[41]=49218` from transition 2's data write. A companion access map applies
+  the same source coordinates to each exact fetch, actual data read, planned
+  data write, and self-encryption address. Recurrence-only addresses remain
+  explicitly unmapped. Rejected, unresolved, fixed-fetch-cycle, or exact
+  repeated-state
   report prefixes still emit JSON but return a nonzero CLI status. Default-16,
   explicit-32, and maximum-256
   sequential-output fixtures exercise the finite report bound; transition
   17+ is reportable under an explicit request. Requests outside 1 through
   256 fail closed before analysis. The finite transfer now also canonicalizes
   exact evolved-memory overrides and can certify a repeated concrete
-  `(C,D,A,memory)` state when the accumulator is known. Schema v14 publishes
+  `(C,D,A,memory)` state when the accumulator is known. Schema v15 publishes
   the first such certificate with transition indices, period, registers, and
   sparse memory overrides. Null means no exact repeat was proved within the
   selected finite trace, not that longer or input-dependent execution is
@@ -98,8 +103,8 @@ executable cells, and input-dependent cycles or hangs.
   cycle analysis.
 - Automatic unbounded/worklist control-flow reachability, broader
   dataflow/evolved-memory equivalence, higher-level C/source-map linkage,
-  non-fetch value lineage, later wraparound beyond the selected finite
-  trace, and longer input-dependent cycles remain open. Nothing after the
+  self-encryption-input value lineage, later wraparound beyond the selected
+  finite trace, and longer input-dependent cycles remain open. Nothing after the
   requested bound is inferred from prefix or initial-image admission.
 
 - Expected durable artifact surface: `verifier/`, `tests/differential/`,
