@@ -119,16 +119,16 @@ historical-profile constraint.
   and preserves `002`/`001` ahead of missing-compiler launch failure. Admitted
   x86-64 and AArch64 fixtures compile through pinned Clang and retain structural
   COFF admission.
-- Native-retry planning preserves profile rejection as a hard failure and now
-  snapshots the exact canonical `MALBOLGE-PROFILE-001` text before the planner
-  takes ownership of the suspension. Callers retain the stable retry step/index
-  category while the owned failure renders the same diagnostic as direct
-  sequence preflight. Retry routing carries that snapshot onward, and
-  retry-cycle hard routing failure retains it without entering native execution.
-  The
-  cache-aware routing-cycle owner now exposes and renders that same retained
-  diagnostic directly without rebuilding it.
-  Retry-capacity `002` propagation remains open.
+- Native-retry planning preserves profile rejection as a hard failure and
+  snapshots exact canonical profile text before the planner takes ownership of
+  the suspension. Callers retain the stable retry step/index category while the
+  owned failure renders the same diagnostic as direct sequence preflight. Retry
+  routing and the cache-aware routing cycle carry that snapshot without entering
+  native execution or rebuilding diagnostic text. Capacity-driven `002` is bound
+  by construction rather than treated as a reachable retry state: every
+  `NativeRetry` suffix came from an already published verified direct sequence,
+  whose immutable steps passed profile-capacity preflight. A focused regression
+  rejects an overflow step as `MALBOLGE-PROFILE-002` before plan publication.
 - Raw `.malbolge` CLI invocation now uses `ExecutionMachine`, so source capacity
   reaches the same historical-ceiling diagnostic without changing normal
   interpreter output. Equivalent program-memory requirements for non-IR artifact

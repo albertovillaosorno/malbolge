@@ -280,17 +280,18 @@ explicit
 `DirectHost` checks before exact-key lookup. A populated verified-direct cache
 cannot bypass either diagnostic, and profile/interpreter outcomes do not mutate
 cache cardinality. Native-retry planning also keeps profile failure hard: it
-retains the stable retry step/index category while snapshotting the exact
-canonical `MALBOLGE-PROFILE-001` text before taking ownership of the suspension.
-The owned planning failure therefore renders the same runtime-profile diagnostic
-as direct sequence preflight instead of degrading it to a generic `profile`
-label. Retry routing preserves the same owned snapshot, and retry-cycle hard
-routing failure retains that routing object without touching native mappings or
-runner state. The cache-aware routing-cycle owner now delegates both direct
-profile-diagnostic access and `Display` to that retained routing failure, so
-that same `MALBOLGE-PROFILE-001` text remains observable at the outer cached
-boundary.
-Retry-capacity `MALBOLGE-PROFILE-002` propagation is not claimed yet.
+retains the stable retry step/index category while snapshotting exact canonical
+profile text before taking ownership of the suspension. The owned planning
+failure therefore renders the same diagnostic as direct sequence preflight
+instead of degrading it to a generic `profile` label. Retry routing preserves
+the same owned snapshot, and retry-cycle hard routing failure retains that
+routing object without touching native mappings or runner state. The cache-aware
+routing-cycle owner delegates direct profile-diagnostic access and `Display` to
+that retained routing failure. A legitimate retry suffix cannot newly produce
+`MALBOLGE-PROFILE-002`: every `NativeRetry` suspension owns a suffix of an
+already published `VerifiedDirectSequencePlan`, and sequence publication
+preflights every immutable step against its selected profile capacity. A focused
+regression rejects a capacity-overflow step as `002` before plan publication.
 Other artifact families do not yet universally expose an equivalent program
 requirement. Raw `.malbolge` product invocation uses canonical source preflight,
 and bootstrap source generation plus external Clang compilation now have

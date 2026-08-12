@@ -574,9 +574,12 @@ selects the exact remaining verified sequence, and admits it as a retry on
 supported Windows hosts. Only direct `TargetFormat` absence becomes a normative
 handoff. Profile, program shape, observation continuity, deoptimization,
 emission, and verification failures are classified as stable hard errors and
-retain the exact suspension. Four cases cover Windows native routing, Linux
-fallback before/after interpreter progress, hard profile failure, and invalid
-schedule reason.
+retain the exact suspension. A legitimate retry suffix cannot newly fail profile
+capacity: every retained program was already selected inside the verified direct
+sequence that created retry authority. A regression rejects an overflowing step
+as `MALBOLGE-PROFILE-002` before sequence-plan publication. Four cases cover
+Windows native routing, Linux fallback before/after interpreter progress, hard
+profile failure, and invalid schedule reason.
 
 `application/retry_policy.rs` adds an immutable caller-configured maximum
 attempt
