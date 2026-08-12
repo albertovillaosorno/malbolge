@@ -1009,13 +1009,20 @@ def _continuations_accepted(
     return accepted
 
 
+def _bounded_worklist_accepted(report: StaticImageReport) -> bool:
+    worklist = report.bounded_worklist
+    return worklist is None or (
+        not worklist.truncated and not worklist.reachable_cycle_detected
+    )
+
+
 def _bounded_prefix_accepted(report: StaticImageReport) -> bool:
     entry = report.entry_transition
     if not report.admitted_initial_image or entry is None or not entry.accepted:
         return False
-    worklist = report.bounded_worklist
-    if report.bounded_exact_cycle is not None or (
-        worklist is not None and worklist.truncated
+    if (
+        report.bounded_exact_cycle is not None
+        or not _bounded_worklist_accepted(report)
     ):
         return False
     return (
