@@ -39,11 +39,14 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable
+import importlib.util
+from pathlib import Path
+import sys
+from typing import Protocol
+from typing import cast
 
 import pytest
-
-from verifier import emitted_malbolge_prefix as prefix_transfer
-from verifier import emitted_malbolge_worklist as worklist
 
 type _WorklistStateKey = tuple[
     int,
@@ -79,6 +82,131 @@ _GRAPH_KEY_A: _WorklistStateKey = (0, 0, 0, (), False)
 _GRAPH_KEY_B: _WorklistStateKey = (1, 0, 0, (), False)
 _STATE_LIMIT_MESSAGE = "worklist state limit must be a positive exact integer"
 _ADMISSION_MESSAGE = "worklist source is not an admitted classic image"
+_ROOT = Path(__file__).resolve().parents[2]
+_WORKLIST_MODULE = _ROOT / "verifier" / "emitted_malbolge_worklist.py"
+
+
+class _Snapshot(Protocol):
+    accumulator: int | None
+
+
+type _SnapshotFactory = Callable[
+    [
+        int,
+        int,
+        int,
+        int | None,
+        tuple[tuple[int, int], ...],
+    ],
+    _Snapshot,
+]
+
+
+class _PrefixModule(Protocol):
+    StateSnapshot: _SnapshotFactory
+
+
+class _ReachabilityNode(Protocol):
+    snapshot: _Snapshot
+    eof_seen: bool
+
+
+class _ReachabilityNodeFactory(Protocol):
+    def __call__(
+        self,
+        *,
+        snapshot: _Snapshot,
+        eof_seen: bool,
+    ) -> _ReachabilityNode: ...
+
+
+class _WorklistAnalysis(Protocol):
+    state_limit: int
+    unique_states: int
+    explored_states: int
+    repeated_state_edges: int
+    reachable_cycle_detected: bool
+    input_branch_points: int
+    terminal_status_counts: tuple[tuple[str, int], ...]
+    explored_minimum_words: int
+    explored_highest_accessed_address: int
+    explored_accessed_addresses: tuple[int, ...]
+    explored_wraparound_transition_count: int
+    maximum_first_seen_transition_index: int
+    frontier_states: int
+    truncated: bool
+
+
+class _Explorer(Protocol):
+    def run(self) -> _WorklistAnalysis:
+        """Return one exact bounded exploration summary."""
+        ...
+
+
+type _ExplorerFactory = Callable[
+    [
+        tuple[int, ...],
+        int,
+        deque[_ReachabilityNode],
+        set[_WorklistStateKey],
+        dict[_WorklistStateKey, set[_WorklistStateKey]],
+        dict[str, int],
+        set[int],
+    ],
+    _Explorer,
+]
+
+
+class _WorklistModule(Protocol):
+    prefix_transfer: _PrefixModule
+    _ReachabilityNode: _ReachabilityNodeFactory
+    _Explorer: _ExplorerFactory
+
+    def analyze_reachability(
+        self,
+        words: tuple[int, ...],
+        *,
+        maximum_states: int,
+    ) -> _WorklistAnalysis:
+        """Return exact bounded reachability evidence."""
+        ...
+
+    def _input_successors(
+        self,
+        snapshot: _Snapshot,
+        *,
+        eof_seen: bool,
+    ) -> tuple[_ReachabilityNode, ...]: ...
+
+    def _known_graph_has_cycle(
+        self,
+        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+        nodes: set[_WorklistStateKey],
+    ) -> bool: ...
+
+    def _node_key(self, node: _ReachabilityNode) -> _WorklistStateKey: ...
+
+
+def _load_worklist() -> _WorklistModule:
+    spec = importlib.util.spec_from_file_location(
+        "emitted_malbolge_worklist_primary_test",
+        _WORKLIST_MODULE,
+    )
+    if spec is None or spec.loader is None:
+        message = "worklist verifier module cannot be loaded"
+        raise RuntimeError(message)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    sys.path.insert(0, str(_WORKLIST_MODULE.parent))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        _ = sys.path.pop(0)
+    return cast("_WorklistModule", cast("object", module))
+
+
+worklist = _load_worklist()
+prefix_transfer = worklist.prefix_transfer
 
 
 def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
@@ -184,11 +312,11 @@ def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:
 def test_input_domain_becomes_eof_only_after_eof() -> None:
     """Historical EOF state cannot branch back to later ordinary bytes."""
     snapshot = prefix_transfer.StateSnapshot(
-        before_transition=_SECOND_TRANSITION,
-        code_pointer=1,
-        data_pointer=1,
-        accumulator=None,
-        memory_overrides=(),
+        _SECOND_TRANSITION,
+        1,
+        1,
+        None,
+        (),
     )
     successors = worklist._input_successors(snapshot, eof_seen=True)
     assert len(successors) == 1
@@ -212,22 +340,22 @@ def test_known_graph_cycle_detection_rejects_merge_only_heuristics() -> None:
 def test_explorer_counts_exact_pointer_wrap_transition() -> None:
     """A canonical near-boundary state records C/D wrap to zero."""
     snapshot = prefix_transfer.StateSnapshot(
-        before_transition=1,
-        code_pointer=_WRAP_ADDRESS,
-        data_pointer=_WRAP_ADDRESS,
-        accumulator=0,
-        memory_overrides=((_WRAP_ADDRESS, _WRAP_SOURCE_VALUE),),
+        1,
+        _WRAP_ADDRESS,
+        _WRAP_ADDRESS,
+        0,
+        ((_WRAP_ADDRESS, _WRAP_SOURCE_VALUE),),
     )
     node = worklist._ReachabilityNode(snapshot=snapshot, eof_seen=False)
     key = worklist._node_key(node)
     explorer = worklist._Explorer(
-        words=_INPUT_HALT_SOURCE,
-        state_limit=_WRAP_STATE_LIMIT,
-        queue=deque((node,)),
-        seen={key},
-        edges={key: set()},
-        terminal_counts={},
-        accessed_addresses=set(),
+        _INPUT_HALT_SOURCE,
+        _WRAP_STATE_LIMIT,
+        deque((node,)),
+        {key},
+        {key: set()},
+        {},
+        set(),
     )
     result = explorer.run()
     assert result.explored_wraparound_transition_count == 1
