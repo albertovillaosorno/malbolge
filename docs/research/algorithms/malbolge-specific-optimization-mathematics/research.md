@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes fifteen exact reductions: classic five-trit crazy factorization,
+formalizes sixteen exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, decode phase reduction, classic rotate
 lookup, graphical self-encryption orbit canonicalization, classic rotate-history
 canonicalization, exact crazy-target preimage cardinality, the tight classic
@@ -70,8 +70,10 @@ the accumulator-specific `2^(10-n2(a))` worst-target bound, and the exact
 `2^(10-n2(a))*3^n2(a)` reachable-target count, and the exact
 `C(10,k)*2^(10-k)` cardinality of accumulator class `k`, the exact `7^10`
 count of reachable accumulator/target pairs, and the exact
-`C(10,k)*2^k*5^(10-k)` count of pairs in preimage class `2^k`, and the exact
-`9^10-7^10 = 3,204,309,152` unreachable-pair count. The encryption
+`C(10,k)*2^k*5^(10-k)` count of pairs in preimage class `2^k`, the exact
+`9^10-7^10 = 3,204,309,152` unreachable-pair count, and the exact threshold sum
+for reachable pairs whose full preimage set exceeds a nonnegative enumeration
+budget. The encryption
 table is proved to partition the complete
 graphical domain into cycles of lengths 2, 4, 5, 6, 9, and 68, so repeated
 committed encryption of an otherwise unchanged code cell needs only the visit
@@ -100,8 +102,13 @@ pair distribution has exactly `C(10,k)*2^k*5^(10-k)` members with `2^k`
 preimages; its class sum is `7^10`, while weighting by preimage size gives
 `59,049^2`, accounting for every classic `(data, accumulator)` input pair.
 The complement `9^10-7^10 = 3,204,309,152` is therefore globally impossible
-before any data-word enumeration. Sharing these planning cardinalities does not
-imply general semantic equivalence between accumulator/target pairs.
+before any data-word enumeration. Summing preimage classes above a supplied
+budget gives an exact planning lower bound for complete preimage enumeration:
+budget 0 exceeds all `7^10` reachable pairs, while budget 1,024 exceeds none.
+This lower bound does not apply to search procedures that do not promise
+complete preimage enumeration. Sharing these planning cardinalities does not
+imply
+general semantic equivalence between accumulator/target pairs.
 
 `src/specification/formal-model/math/specification/correspondence.toml` binds
 those equations to exhaustive or composite executable evidence. The classic
@@ -122,8 +129,9 @@ These timing results support H1 only for the admitted CPU table-factorization
 slice. The self-encryption/rotate-history reductions, crazy preimage count,
 global preimage bound, discrete preimage spectrum, accumulator-specific
 worst-target bound, reachable-target count, accumulator-class partition,
-global reachable-pair count, preimage-pair distribution, and exact
-unreachable-pair count are correctness-proved search reductions, not
+global reachable-pair count, preimage-pair distribution, exact unreachable-pair
+count, and preimage-budget exceedance bound are correctness-proved search
+reductions, not
 measured performance results. None
 of these results establishes a universal speedup or proves broader synthesis
 lower bounds.
@@ -141,10 +149,10 @@ self-encryption and classic rotate-history canonicalizations, crazy-target
 preimage cardinality, tight 1,024-preimage bound, discrete cardinality spectrum,
 accumulator-specific worst-target bound, reachable-target count, exact
 accumulator-class partition, global reachable-pair count, exact preimage-pair
-distribution, and exact unreachable-pair count as valid optimization building
-blocks.
-Continue the research for broader canonical forms, lower bounds, and
-search-space
+distribution, exact unreachable-pair count, and exact preimage-budget
+exceedance bound as valid optimization building blocks.
+Continue the research for broader canonical forms, universal synthesis lower
+bounds, and search-space
 reductions; those remain unproved and receive no performance claim from this
 result.
 
