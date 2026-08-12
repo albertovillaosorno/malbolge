@@ -8,19 +8,20 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v13 retains the legacy exact entry-through-fifth
-fields and adds `bounded_continuations`. Sixteen transitions remain the
-default; callers may request a finite total limit from 1 through 256. The
+load decode. Schema v14 retains the legacy exact entry-through-fifth
+fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
+evidence. Sixteen transitions remain the default; callers may request a finite
+total limit from 1 through 256. The
 single-pass bounded trace replays
 committed writes before resolving fetch/data cells, code/data aliasing, planned
 writes, encryption input/output, input dependence, halt/rejection, pointer
 succession, and wrap without a worklist or unbounded guest execution. The
 report also publishes the minimum word footprint and exact addresses actually
 touched by the analyzed prefix; merely-held future C/D pointers are not counted.
-For each resolved bounded fetch, schema v13 maps loaded-source addresses back
+For each resolved bounded fetch, schema v14 maps loaded-source addresses back
 to the original loaded position/raw byte offset and initial source byte, while
 recurrence-only fetches remain explicitly unmapped. The record also states
-whether the fetched value still equals that initial source byte. Schema v13
+whether the fetched value still equals that initial source byte. Schema v14
 also publishes `bounded_fetch_value_lineage`: each resolved fetch records
 whether its value comes from the loaded source, recurrence initialization, or
 the latest prior committed data write/self-encryption transition. Writer order
@@ -39,11 +40,15 @@ and every supplied continuation record is recomputed from the current bounded
 state before its writes can influence later analysis. Forged entries and
 noncontiguous/forged prefixes fail closed. The finite transfer also
 canonicalizes evolved memory as exact sparse overrides and can identify a
-repeated concrete `(C,D,A,memory)` state when the accumulator is known. That
-internal certificate is not yet promoted into schema v13.
+repeated concrete `(C,D,A,memory)` state when the accumulator is known. Schema
+v14 publishes the first such proof as `bounded_exact_cycle`, including the
+first-seen/repeated transition indices, period, registers, and sparse memory
+overrides. A null field means only that this selected finite prefix did not
+establish an exact concrete repeat; it does not prove a longer or
+input-dependent cycle absent.
 A four-word `b"('&%"` fixture uses it to prove a recurrence-backed fifth
-fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v13 publishes that
-exact transition and its bounded memory footprint. Schema v13 keeps sixteen
+fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v14 publishes that
+exact transition and its bounded memory footprint. Schema v14 keeps sixteen
 transitions as the default but makes finite depth explicit. Library callers and
 the CLI `--transition-limit N` option may request from 1 through 256 exact
 transitions. The report binds that request in `bounded_transition_limit`,
@@ -67,10 +72,10 @@ The CLI always emits the canonical UTF-8 report bytes when source bytes are
 readable, without platform newline translation. It returns zero only when the
 admitted image also has an accepted trace through the requested finite bound (or
 halts exactly before that bound). The default request is 16 transitions. Proven
-rejection, unresolved input-dependent state, or a fixed-fetch cycle at any
-resolved step returns nonzero; an exact halt at any resolved prefix step remains
-an accepted terminal result. Requests outside 1 through 256 fail before source
-analysis.
+rejection, unresolved input-dependent state, a fixed-fetch cycle, or a
+published exact repeated-state certificate returns nonzero; an exact halt at any
+resolved prefix step remains an accepted terminal result. Requests outside 1
+through 256 fail before source analysis.
 
 Each report also carries a SHA-256 identity for the exact raw source bytes. This
 distinguishes inputs that have the same loaded-word semantics, including

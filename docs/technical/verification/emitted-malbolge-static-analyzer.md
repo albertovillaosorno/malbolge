@@ -30,8 +30,9 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v13` retains exact `entry_transition` through
-`fifth_transition` compatibility fields and adds `bounded_continuations`.
+`malbolge-static-image/v14` retains exact `entry_transition` through
+`fifth_transition` compatibility fields and `bounded_continuations`, and adds
+nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
 may select any total bound from 1 through 256. One single-pass finite trace
 replays committed writes before each bounded read, then resolves fetch/data
@@ -40,7 +41,11 @@ decode, C/D alias, planned data write, encryption address/input/output,
 accumulator dependency, halt/rejection, pointer succession, and wrap. The
 prefix transfer canonicalizes effective memory as exact sparse overrides and
 can prove repeated concrete `(C,D,A,memory)` state only when the accumulator is
-known. Schema v13 does not yet publish that internal cycle certificate.
+known. Schema v14 publishes the first such repeated-state proof as
+`bounded_exact_cycle`, including first-seen/repeated transition indices, period,
+registers, and sparse memory overrides. A null certificate means only that the
+selected finite trace established no exact concrete repeat. It does not prove
+that longer or input-dependent execution is acyclic.
 A `p` whose accumulator depends on prior input is
 reported unresolved rather than assigned a guessed value. A non-graphical fetch
 is stronger: the preserved 1998 interpreter executes `continue` before decode,
@@ -54,13 +59,13 @@ finite accepted prefix. The four-word `b"('&%"` fixture continues through four
 `j` steps and then uses that primitive to prove a fifth recurrence-backed fixed
 fetch at `C=4`, `D=29490`, `M[4]=29489`. Historical recurrence words are
 derived only when a bounded read needs them.
-Schema v13 publishes `bounded_fetch_source_map`: each resolved instruction
+Schema v14 publishes `bounded_fetch_source_map`: each resolved instruction
 fetch carries its bounded transition index, fetched address/value, and original
 loaded source position/raw byte offset/initial byte when that address belongs to
 the loaded source image. Recurrence-only addresses carry null source
 coordinates.
 The context also distinguishes a still-original source value from an evolved
-fetch value. Schema v13 separately publishes `bounded_fetch_value_lineage` for
+fetch value. Schema v14 separately publishes `bounded_fetch_value_lineage` for
 every resolved fetch. Its origin is exactly `loaded-source`,
 `recurrence-initialization`, `data-write`, or `self-encryption`; prior writes
 retain the exact transition index, and self-encryption supersedes an aliased
@@ -76,11 +81,13 @@ future pointer value alone is not a memory touch; for example the proven
 non-graphical third-step cycle keeps `D=40` without reading address 40.
 
 Initial-image admission is deliberately narrower than whole-program safety.
-Schema v13 keeps 16 exact transitions as the default and admits an explicit
+Schema v14 keeps 16 exact transitions as the default and admits an explicit
 finite `transition_limit` from 1 through 256. The CLI exposes the same
 request as
 `--transition-limit N`. Analysis stops earlier on halt, rejection, fixed-fetch
-cycle, or unresolved input-dependent state. The legacy second-through-fifth
+cycle, exact repeated concrete state, or unresolved input-dependent state. A
+published exact cycle makes the CLI result nonzero because the requested finite
+prefix was not traversed to its bound. The legacy second-through-fifth
 fields project the first four continuation records, while memory/source-access
 evidence uses the complete selected trace. A 32-cell sequential-output fixture
 proves transition 17 and later reporting under an explicit request, and a
