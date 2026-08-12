@@ -57,7 +57,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v12"
+_SCHEMA: Final = "malbolge-static-image/v13"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -73,6 +73,8 @@ _ACCESS_FETCH: Final = "instruction-fetch"
 _ACCESS_DATA_READ: Final = "data-read"
 _ACCESS_DATA_WRITE: Final = "data-write"
 _ACCESS_ENCRYPTION: Final = "self-encryption"
+_ORIGIN_LOADED_SOURCE: Final = "loaded-source"
+_ORIGIN_RECURRENCE: Final = "recurrence-initialization"
 _DEFAULT_TOTAL_TRANSITION_LIMIT: Final = 16
 _MAX_TOTAL_TRANSITION_LIMIT: Final = 256
 _TRANSITION_LIMIT_OPTION: Final = "--transition-limit"
@@ -127,6 +129,17 @@ class BoundedFetchSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedFetchValueLineage:
+    """Exact bounded origin of one resolved instruction-fetch value."""
+
+    transition_index: int
+    fetched_address: int
+    fetched_value: int
+    origin_kind: str
+    origin_transition_index: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedMemoryAccessSourceContext:
     """Exact source-image coordinates for one bounded memory access role."""
 
@@ -153,6 +166,7 @@ class StaticImageReport:
     bounded_continuations: tuple[prefix_transfer.SecondTransition, ...]
     bounded_memory_requirement: BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[BoundedFetchSourceContext, ...]
+    bounded_fetch_value_lineage: tuple[BoundedFetchValueLineage, ...]
     bounded_memory_access_source_map: tuple[
         BoundedMemoryAccessSourceContext, ...
     ]
@@ -205,7 +219,7 @@ def _analysis_limits(transition_limit: int) -> tuple[str, ...]:
         f"self-modification:{prefix}",
         (
             "source-map-context:"
-            f"{transition_limit}-transition-memory-access-origin-only"
+            f"{transition_limit}-transition-memory-access-and-fetch-value-lineage"
         ),
         f"wraparound-reachability:{prefix}",
     )
@@ -435,6 +449,88 @@ def _bounded_fetch_source_map(
     return tuple(contexts)
 
 
+def _fetch_value_origin(
+    transition_index: int,
+    fetched: tuple[int, int],
+    *,
+    source_word_count: int,
+    writers: dict[int, tuple[int, str]],
+) -> BoundedFetchValueLineage:
+    fetched_address, fetched_value = fetched
+    writer = writers.get(fetched_address)
+    if writer is None:
+        origin_kind = (
+            _ORIGIN_LOADED_SOURCE
+            if fetched_address < source_word_count
+            else _ORIGIN_RECURRENCE
+        )
+        origin_transition_index = None
+    else:
+        origin_transition_index, origin_kind = writer
+    return BoundedFetchValueLineage(
+        transition_index=transition_index,
+        fetched_address=fetched_address,
+        fetched_value=fetched_value,
+        origin_kind=origin_kind,
+        origin_transition_index=origin_transition_index,
+    )
+
+
+def _remember_transition_writes(
+    writers: dict[int, tuple[int, str]],
+    transition_index: int,
+    transition: (
+        entry_transfer.EntryTransition | prefix_transfer.SecondTransition
+    ),
+) -> None:
+    data_address = transition.planned_data_write_address
+    data_value = transition.planned_data_write_value
+    if data_address is not None and data_value is not None:
+        writers[data_address] = (transition_index, _ACCESS_DATA_WRITE)
+    encryption_address = transition.encryption_address
+    if (
+        encryption_address is not None
+        and transition.encryption_output is not None
+    ):
+        writers[encryption_address] = (transition_index, _ACCESS_ENCRYPTION)
+
+
+def _bounded_fetch_value_lineage(
+    source_word_count: int,
+    prefix: _PrefixAnalysis,
+) -> tuple[BoundedFetchValueLineage, ...]:
+    entry = prefix.entry
+    if entry is None:
+        return ()
+    writers: dict[int, tuple[int, str]] = {}
+    lineage = [
+        _fetch_value_origin(
+            1,
+            (
+                entry.fetched_address,
+                prefix.cells[entry.fetched_address].source_byte,
+            ),
+            source_word_count=source_word_count,
+            writers=writers,
+        )
+    ]
+    _remember_transition_writes(writers, 1, entry)
+    for transition_index, transition in enumerate(
+        prefix.continuations,
+        start=2,
+    ):
+        lineage.append(
+            _fetch_value_origin(
+                transition_index,
+                (transition.fetched_address, transition.fetched_value),
+                source_word_count=source_word_count,
+                writers=writers,
+            )
+        )
+        _remember_transition_writes(writers, transition_index, transition)
+    return tuple(lineage)
+
+
 def _entry_accesses(
     transition: entry_transfer.EntryTransition,
 ) -> tuple[tuple[str, int], ...]:
@@ -598,6 +694,10 @@ def analyze_source(
             transition_limit=admitted_limit,
         ),
         bounded_fetch_source_map=_bounded_fetch_source_map(words, prefix),
+        bounded_fetch_value_lineage=_bounded_fetch_value_lineage(
+            required,
+            prefix,
+        ),
         bounded_memory_access_source_map=(
             _bounded_memory_access_source_map(prefix)
         ),

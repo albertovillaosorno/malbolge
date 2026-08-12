@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v12"
+_SCHEMA = "malbolge-static-image/v13"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -91,6 +91,13 @@ _ACCESS_FETCH = "instruction-fetch"
 _ACCESS_DATA_READ = "data-read"
 _ACCESS_DATA_WRITE = "data-write"
 _ACCESS_ENCRYPTION = "self-encryption"
+_ORIGIN_LOADED_SOURCE = "loaded-source"
+_ORIGIN_RECURRENCE = "recurrence-initialization"
+_LINEAGE_WRITE_SOURCE = b"(&&$^"
+_LINEAGE_TRANSITION_LIMIT = 6
+_LINEAGE_FETCH_ADDRESS = 95
+_LINEAGE_FETCH_VALUE = 9_810
+_LINEAGE_WRITE_TRANSITION = 4
 _THIRD_PREFIX_WORDS = 3
 _SECOND_TRANSITION_INDEX = 2
 _THIRD_TRANSITION_INDEX = 3
@@ -239,6 +246,14 @@ class _BoundedFetchSourceContext(Protocol):
     fetched_value_matches_initial_source: bool | None
 
 
+class _BoundedFetchValueLineage(Protocol):
+    transition_index: int
+    fetched_address: int
+    fetched_value: int
+    origin_kind: str
+    origin_transition_index: int | None
+
+
 class _BoundedMemoryAccessSourceContext(Protocol):
     transition_index: int
     access_kind: str
@@ -260,6 +275,7 @@ class _Report(Protocol):
     bounded_continuations: tuple[_SecondTransition, ...]
     bounded_memory_requirement: _BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[_BoundedFetchSourceContext, ...]
+    bounded_fetch_value_lineage: tuple[_BoundedFetchValueLineage, ...]
     bounded_memory_access_source_map: tuple[
         _BoundedMemoryAccessSourceContext, ...
     ]
@@ -552,6 +568,27 @@ def test_bounded_fetch_source_map_preserves_raw_offsets() -> None:
     assert third.source_byte_offset is None
     assert third.initial_source_byte is None
     assert third.fetched_value_matches_initial_source is None
+
+
+def test_bounded_fetch_value_lineage_tracks_initial_origins_and_write() -> None:
+    """Fetch lineage distinguishes initial values from a prior data write."""
+    recurrence = _ANALYZER_MODULE.analyze_source(bytes((ord("c"), ord("'"))))
+    recurrence_lineage = recurrence.bounded_fetch_value_lineage
+    assert recurrence_lineage[0].origin_kind == _ORIGIN_LOADED_SOURCE
+    assert recurrence_lineage[0].origin_transition_index is None
+    assert recurrence_lineage[2].origin_kind == _ORIGIN_RECURRENCE
+    assert recurrence_lineage[2].origin_transition_index is None
+
+    written = _ANALYZER_MODULE.analyze_source(
+        _LINEAGE_WRITE_SOURCE,
+        transition_limit=_LINEAGE_TRANSITION_LIMIT,
+    )
+    final = written.bounded_fetch_value_lineage[-1]
+    assert final.transition_index == _LINEAGE_TRANSITION_LIMIT
+    assert final.fetched_address == _LINEAGE_FETCH_ADDRESS
+    assert final.fetched_value == _LINEAGE_FETCH_VALUE
+    assert final.origin_kind == _ACCESS_DATA_WRITE
+    assert final.origin_transition_index == _LINEAGE_WRITE_TRANSITION
 
 
 def _assert_source_access(
@@ -1354,7 +1391,7 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
         "dataflow:16-transition-prefix-only",
         "input-dependent-cycles:not-analyzed",
         "self-modification:16-transition-prefix-only",
-        "source-map-context:16-transition-memory-access-origin-only",
+        "source-map-context:16-transition-memory-access-and-fetch-value-lineage",
         "wraparound-reachability:16-transition-prefix-only",
     )
 
