@@ -49,6 +49,7 @@ else:
 _ALLOWED_INSTRUCTIONS: Final = frozenset(b"ji*p</vo")
 _INPUT_OPCODE: Final = ord("/")
 _INPUT_BYTES: Final = tuple(range(256))
+_DATA_READING_INSTRUCTIONS: Final = frozenset(b"ji*p")
 _EOF_ACCUMULATOR: Final = classic.PROFILE_MEMORY_WORDS - 1
 _RECURRENCE_BASE_WORDS: Final = 2
 
@@ -72,6 +73,9 @@ class WorklistAnalysis:
     reachable_cycle_detected: bool
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
+    explored_minimum_words: int
+    explored_highest_accessed_address: int
+    explored_accessed_addresses: tuple[int, ...]
     maximum_first_seen_transition_index: int
     frontier_states: int
     truncated: bool
@@ -163,6 +167,19 @@ def _successors(
     return (_ReachabilityNode(snapshot=successor, eof_seen=node.eof_seen),)
 
 
+def _transition_accesses(
+    transition: prefix_transfer.SecondTransition,
+) -> set[int]:
+    accesses = {transition.fetched_address}
+    if transition.decoded_byte in _DATA_READING_INSTRUCTIONS:
+        accesses.add(transition.data_address)
+    if transition.planned_data_write_address is not None:
+        accesses.add(transition.planned_data_write_address)
+    if transition.encryption_address is not None:
+        accesses.add(transition.encryption_address)
+    return accesses
+
+
 def _unseen_successor_count(
     successors: tuple[_ReachabilityNode, ...],
     seen: set[_StateKey],
@@ -214,6 +231,7 @@ class _Explorer:
     seen: set[_StateKey]
     edges: dict[_StateKey, set[_StateKey]]
     terminal_counts: dict[str, int]
+    accessed_addresses: set[int]
     explored: int = 0
     repeated_edges: int = 0
     input_branch_points: int = 0
@@ -238,6 +256,7 @@ class _Explorer:
             seen={_node_key(initial)},
             edges={_node_key(initial): set()},
             terminal_counts={},
+            accessed_addresses=set(),
         )
 
     def result(
@@ -246,6 +265,8 @@ class _Explorer:
         truncated: bool,
         frontier_states: int = 0,
     ) -> WorklistAnalysis:
+        ordered_addresses = tuple(sorted(self.accessed_addresses))
+        highest_address = ordered_addresses[-1]
         return WorklistAnalysis(
             state_limit=self.state_limit,
             unique_states=len(self.seen),
@@ -257,6 +278,12 @@ class _Explorer:
             ),
             input_branch_points=self.input_branch_points,
             terminal_status_counts=tuple(sorted(self.terminal_counts.items())),
+            explored_minimum_words=max(
+                len(self.words),
+                highest_address + 1,
+            ),
+            explored_highest_accessed_address=highest_address,
+            explored_accessed_addresses=ordered_addresses,
             maximum_first_seen_transition_index=(
                 self.maximum_first_seen_transition_index
             ),
@@ -305,6 +332,7 @@ class _Explorer:
             node.snapshot.before_transition,
         )
         step = prefix_transfer.analyze_state_snapshot(self.words, node.snapshot)
+        self.accessed_addresses.update(_transition_accesses(step.transition))
         if step.transition.decoded_byte == _INPUT_OPCODE:
             self.input_branch_points += 1
         successors = _successors(node, step)

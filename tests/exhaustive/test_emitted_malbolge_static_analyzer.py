@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v20"
+_SCHEMA = "malbolge-static-image/v21"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -275,6 +275,9 @@ class _WorklistAnalysis(Protocol):
     reachable_cycle_detected: bool
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
+    explored_minimum_words: int
+    explored_highest_accessed_address: int
+    explored_accessed_addresses: tuple[int, ...]
     maximum_first_seen_transition_index: int
     frontier_states: int
     truncated: bool
@@ -1657,6 +1660,8 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     assert worklist.unique_states == _WORKLIST_COMPLETE_STATE_LIMIT
     assert worklist.explored_states == _WORKLIST_COMPLETE_STATE_LIMIT
     assert not worklist.reachable_cycle_detected
+    assert worklist.explored_minimum_words == _TWO_SOURCE_WORDS
+    assert worklist.explored_accessed_addresses == (0, 1)
     assert worklist.terminal_status_counts == (
         ("rejected-invalid-self-encryption", _WORKLIST_INPUT_VALUE_COUNT),
     )

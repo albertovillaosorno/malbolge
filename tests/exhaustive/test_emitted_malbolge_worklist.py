@@ -56,6 +56,11 @@ _INPUT_HALT_SOURCE = (117, 80)
 _INPUT_CRAZY_SOURCE = (117, 61)
 _DOUBLE_INPUT_HALT_SOURCE = (117, 116, 79)
 _DOUBLE_INPUT_FIXED_CYCLE_SOURCE = (117, 116)
+_RECURRENCE_READ_SOURCE = tuple(b"('")
+_RECURRENCE_STATE_LIMIT = 16
+_RECURRENCE_HIGHEST_ADDRESS = 41
+_RECURRENCE_MINIMUM_WORDS = 42
+_RECURRENCE_ACCESSES = (0, 1, 2, 41)
 _FULL_STATE_LIMIT = 258
 _TRUNCATED_STATE_LIMIT = _FULL_STATE_LIMIT - 1
 _TINY_STATE_LIMIT = 2
@@ -87,6 +92,20 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
     assert result.frontier_states == 0
     assert not result.truncated
+
+
+def test_worklist_memory_requirement_includes_recurrence_reads() -> None:
+    """Explored graph memory evidence includes exact recurrence addresses."""
+    result = worklist.analyze_reachability(
+        _RECURRENCE_READ_SOURCE,
+        maximum_states=_RECURRENCE_STATE_LIMIT,
+    )
+    assert result.explored_minimum_words == _RECURRENCE_MINIMUM_WORDS
+    assert (
+        result.explored_highest_accessed_address
+        == _RECURRENCE_HIGHEST_ADDRESS
+    )
+    assert result.explored_accessed_addresses == _RECURRENCE_ACCESSES
 
 
 def test_input_crazy_worklist_resolves_every_input_branch() -> None:
