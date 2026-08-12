@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes sixteen exact reductions: classic five-trit crazy factorization,
+formalizes seventeen exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, decode phase reduction, classic rotate
 lookup, graphical self-encryption orbit canonicalization, classic rotate-history
 canonicalization, exact crazy-target preimage cardinality, the tight classic
@@ -71,6 +71,7 @@ the accumulator-specific `2^(10-n2(a))` worst-target bound, and the exact
 `C(10,k)*2^(10-k)` cardinality of accumulator class `k`, the exact `7^10`
 count of reachable accumulator/target pairs, and the exact
 `C(10,k)*2^k*5^(10-k)` count of pairs in preimage class `2^k`, the exact
+profile-width `C(N,k)*2^k*5^(N-k)` distribution for `1<=N<=14`, the exact
 `9^10-7^10 = 3,204,309,152` unreachable-pair count, and the exact threshold sum
 for reachable pairs whose full preimage set exceeds a nonnegative enumeration
 budget. The encryption
@@ -100,7 +101,9 @@ weighting the same eleven classes both yield `7^10 = 282,475,249` reachable
 accumulator/target pairs, matching the independent per-trit product. The full
 pair distribution has exactly `C(10,k)*2^k*5^(10-k)` members with `2^k`
 preimages; its class sum is `7^10`, while weighting by preimage size gives
-`59,049^2`, accounting for every classic `(data, accumulator)` input pair.
+`59,049^2`, accounting for every classic `(data, accumulator)` input pair. The
+same independent trit convolution now checks every width 1 through 14 against
+`C(N,k)*2^k*5^(N-k)`, with class sum `7^N` and weighted sum `9^N`.
 The complement `9^10-7^10 = 3,204,309,152` is therefore globally impossible
 before any data-word enumeration. Summing preimage classes above a supplied
 budget gives an exact planning lower bound for complete preimage enumeration:
@@ -129,8 +132,9 @@ These timing results support H1 only for the admitted CPU table-factorization
 slice. The self-encryption/rotate-history reductions, crazy preimage count,
 global preimage bound, discrete preimage spectrum, accumulator-specific
 worst-target bound, reachable-target count, accumulator-class partition,
-global reachable-pair count, preimage-pair distribution, exact unreachable-pair
-count, and preimage-budget exceedance bound are correctness-proved search
+global reachable-pair count, classic/profile-width preimage-pair distributions,
+exact unreachable-pair count, and preimage-budget exceedance bound are
+correctness-proved search
 reductions, not
 measured performance results. None
 of these results establishes a universal speedup or proves broader synthesis
@@ -148,8 +152,9 @@ Retain the four proved table/factorization reductions plus the exact
 self-encryption and classic rotate-history canonicalizations, crazy-target
 preimage cardinality, tight 1,024-preimage bound, discrete cardinality spectrum,
 accumulator-specific worst-target bound, reachable-target count, exact
-accumulator-class partition, global reachable-pair count, exact preimage-pair
-distribution, exact unreachable-pair count, and exact preimage-budget
+accumulator-class partition, global reachable-pair count, exact classic and
+profile-width preimage-pair distributions, exact unreachable-pair count, and
+exact preimage-budget
 exceedance bound as valid optimization building blocks.
 Continue the research for broader canonical forms, universal synthesis lower
 bounds, and search-space
