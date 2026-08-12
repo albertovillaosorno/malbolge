@@ -1,0 +1,23 @@
+schema_version = 1
+
+[replication]
+id = "classic-superopt-seed-replication-v1"
+# jig-ignore-next-line: immutable base-plan digest is indivisible
+base_plan_sha256 = "0c5239e47d6ceaae0536d61fa1b8abb8c44461e5caaa04becd1a195b9a218b2c"
+seeds = [0, 1, 2, 3, 4, 5, 6, 7]
+repetitions_per_seed = 1
+ordering = "ascending-seed"
+primary_metric = "first_verified_evaluation"
+timing_interpretation = "retained-not-compared"
+
+[constraints]
+challenge = "classic-verified-block-search-v1"
+verifier = "classic-two-word-no-io-halt-v1"
+candidate_count = 8836
+evaluation_budget = 10000
+wall_clock_budget_nanoseconds = 60000000000
+workload_sha256 = "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
+
+[provenance]
+base_plan = "src/research/algorithms/domain/algorithms/superoptimization-research-program/experiment.toml"
+output = "algorithms/superoptimization-research-program/out/"
