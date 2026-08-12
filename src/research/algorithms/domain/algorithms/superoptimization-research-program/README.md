@@ -12,6 +12,11 @@ cold, retain-all repetitions from pre-run commit `23dd86d6`. Seeded ordering
 reaches the first verified candidate in 250 evaluations versus 706 for natural
 enumeration; both schedules find all ten accepted candidates and best quality 1.
 The host-specific timing evidence does not establish a general throughput win.
+A later preregistered seeds-0-through-7 work-count replication is also retained.
+Four seeded schedules reach verification before enumeration's evaluation 706 and
+four reach it later; seeded median first-hit work is 723. This mixed/null result
+weakens the seed-zero first-hit conclusion. Replication timing is retained only
+as provenance and is not interpreted.
 
 The shared mechanisms live under
 `src/research/algorithms/composition/algorithms/superoptimization/`; domain

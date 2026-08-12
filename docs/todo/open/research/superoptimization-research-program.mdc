@@ -107,5 +107,11 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   work is 250 evaluations versus 706 for enumeration, both best qualities are 1,
   and median first-hit time is 6,119,900 ns versus 18,506,300 ns. Full-corpus
   medians are nearly equal with overlapping ranges, so no throughput win is
-  claimed. Additional seeds, larger challenges, independent hosts, plans for the
-  other techniques, and a stronger comparative conclusion remain pending.
+  claimed. A separately preregistered work-count replication fixed seeds 0
+  through 7 against the same frozen challenge and retained all eight trials.
+  Seeded first-hit work is 250, 1709, 642, 1142, 189, 1861, 506, and 804
+  evaluations versus enumeration's constant 706: four trials improve, four are
+  worse, and seeded median work is 723. This mixed/null result materially
+  weakens the seed-zero first-hit conclusion; replication timing is retained but
+  not interpreted. Larger challenges, independent hosts, plans for the other
+  techniques, and a stronger comparative conclusion remain pending.

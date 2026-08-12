@@ -23,7 +23,7 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
 - Status: Active
 - Record type: Study
 - Planning identity: `superoptimization-research-program`
-- Last reviewed: 2026-08-09
+- Last reviewed: 2026-08-11
 
 ## Prior Work
 
@@ -109,10 +109,15 @@ seed-zero pilot is now retained: seeded ordering reaches the first verified
 candidate in 250 evaluations versus 706 for enumeration, with best quality 1 on
 both paths. First-hit median elapsed time also favors seeded order on the
 recorded host, while full-corpus medians overlap and are effectively tied. This
-supports only the frozen pilot's first-hit objective; it is not a general
-stochastic-search or throughput result. New synthesis,
+supports only the frozen seed-zero pilot's first-hit objective. A separately
+preregistered work-count replication then fixed seeds 0 through 7 before
+observing new schedules. Seeded first-hit evaluations were 250, 1709, 642, 1142,
+189, 1861, 506, and 804 against enumeration's constant 706: four seeds improved
+and four worsened, with seeded median 723. The seed-zero advantage therefore did
+not persist across this declared seed set. Timing from the replication is
+retained only as provenance and is not interpreted. New synthesis,
 equality-saturation, learned, or accelerator-guided strategies must add their
-own equally identified comparisons rather than inheriting a result from that
+own equally identified comparisons rather than inheriting a result from either
 pilot. Source claims resolve through `docs/bibliography/`.
 
 ## Evidence
@@ -126,25 +131,31 @@ pilot. Source claims resolve through `docs/bibliography/`.
   lifecycle record, two-sided research mirror, concrete workload/verifier
   identity, exhaustive corpus characterization, and replay-locked
   candidate-order substrate established reproducible identity before
-  measurement. The first tracked run now retains all five raw repetitions plus
-  generated run/benchmark identity and exact regression tests. Additional seeds,
-  larger challenges, retained negative/null results, additional technique plans,
-  independent-host replication, and a stronger comparative conclusion remain
-  pending.
+  measurement. The first tracked run retains all five raw repetitions plus
+  generated run/benchmark identity and exact regression tests. The subsequent
+  eight-seed work-count replication is also retained with a pre-run source pin,
+  stochastic benchmark metadata, all raw rows, and exact regression tests. It is
+  the first retained negative/null comparative result. Larger challenges,
+  additional technique plans, independent-host replication, and a stronger
+  comparative conclusion remain pending.
 
 ## Results
 
-The first seed-zero classic pilot supports the first-hit objective only: 250
+The first seed-zero classic pilot supports its first-hit objective only: 250
 seeded evaluations to first verification versus 706 for deterministic
-enumeration, with equal best quality. Host timing likewise favors seeded
-first-hit median, but full-corpus runtime does not separate materially. No
-product implementation or general technique-superiority claim is made.
+enumeration, with equal best quality. The preregistered eight-seed replication
+materially weakens that result: seeded first-hit work beats 706 for four seeds
+and loses for four, while its median is 723 evaluations. Host timing from the
+first pilot remains host-specific, and replication timing is not an objective.
+No product implementation or general technique-superiority claim is made.
 
 ## Threats to Validity
 
-The record remains active. One tiny two-word challenge, one seed, fixed schedule
-ordering, five repetitions, Python verifier overhead, one Windows host, and no
-independent replication materially limit the first pilot's external validity.
+The record remains active. The seed replication narrows seed-selection risk but
+still covers only eight deterministic schedules over one tiny two-word challenge
+on one Windows host with Python verifier overhead. Larger challenge families,
+independent hosts, and independent implementations remain necessary for external
+validity.
 
 ## Conclusion
 
