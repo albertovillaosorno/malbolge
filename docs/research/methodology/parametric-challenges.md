@@ -24,7 +24,7 @@ exactly the same problem rather than on vaguely similar examples.
 - Status: Active
 - Record type: Methodology
 - Planning identity: `parametric-compiler-challenge-generator`
-- Last reviewed: 2026-08-10
+- Last reviewed: 2026-08-11
 
 ## Prior Work
 
@@ -53,8 +53,9 @@ results. Source claims resolve through `docs/bibliography/`.
 
 The implemented slices are `arithmetic-dag/v1`, `linear-mix/v1`,
 `branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`,
-`alias-walk/v1`, `stream-state/v1`, `graph-reduce/v1`, `layout-chain/v1`,
-`ternary-fold/v1`, and `nested-state/v1`. Each binds family, version, seed,
+`alias-walk/v1`, `stream-state/v1`, `graph-reduce/v1`,
+`grid-accumulate/v1`, `layout-chain/v1`, `ternary-fold/v1`, and
+`nested-state/v1`. Each binds family, version, seed,
 canonical profile fingerprint, and node count into one replay identity.
 Generation emits deterministic `uint32_t` C source for the selected topology, a
 four-byte little-endian oracle, and a canonical manifest containing
@@ -81,6 +82,12 @@ indexed stream read, and one live state branch. `graph-reduce/v1` generates
 one parent link to an already-computed state plus one weight per vertex. Its
 runtime loop combines parent state, predecessor state, and weight into the next
 state; normalized evidence retains one loop and six graph/state subscripts.
+`grid-accumulate/v1` decouples generation size from generated runtime work: a
+node-scaled token vector feeds two loops each bounded by `nodes`, so the emitted
+program performs exactly `nodes^2` live `uint32_t` accumulation updates while
+source construction remains O(nodes). The independent Python oracle also stays
+O(nodes) by using the algebraically equivalent modulo-`2^32` sum. Normalized
+frontend evidence retains exactly two loops and one token subscript.
 `layout-chain/v1` emits one distinct helper body and call target per node; all
 calls are sequentially live, while normalized evidence retains `nodes + 2`
 functions and `nodes + 1` call expressions. `ternary-fold/v1` restricts values
@@ -113,17 +120,18 @@ host execution guest semantic authority.
 
 ## Results
 
-Twelve deterministic families are implemented and replayable. Tests lock byte-
+Thirteen deterministic families are implemented and replayable. Tests lock byte-
 identical regeneration and v1 replay vectors for `arithmetic-dag`,
-`pointer-walk`, `stream-state`, `graph-reduce`, `layout-chain`,
-`ternary-fold`, and `nested-state`, plus profile-fingerprint
-binding and difficulty growth for all twelve topologies, invalid
+`pointer-walk`, `stream-state`, `graph-reduce`, `grid-accumulate`,
+`layout-chain`, `ternary-fold`, and `nested-state`, plus profile-fingerprint
+binding and difficulty growth for all thirteen topologies, invalid
 identity rejection, collision-safe no-replace publication (including a raced
 final-path collision), replay rejection for linked artifact leaves, current
 C-profile admission, and independent native agreement for
-representative node counts in all twelve families. `nested-state/v1`
-additionally
-retains a 4,096-node pinned-Clang/native-oracle case.
+representative node counts in all thirteen families. `nested-state/v1`
+additionally retains a 4,096-node pinned-Clang/native-oracle case, while
+`grid-accumulate/v1` retains a 257-node native case whose generated runtime work
+contains 66,049 live inner updates.
 
 This result does not satisfy the end-to-end acceptance criterion. No current
 backend evidence yet demonstrates a generated challenge compiled to and
@@ -135,9 +143,9 @@ for that path is still pending. Broader workload families also remain open.
 The current families cover unsigned arithmetic with DAG, strict-chain,
 branch-diamond, fixed-array memory-walk, helper-call, live pointer-selected
 memory, potentially aliasing pointer-pair, streaming state-machine, acyclic
-graph-reduction, distinct-function layout-pressure, explicit ternary-fold, and
-nested-state
-control-flow topologies. The 4,096-node nested case adds one larger stress
+graph-reduction, quadratic grid accumulation, distinct-function
+layout-pressure, explicit ternary-fold, and nested-state control-flow
+topologies. The 4,096-node nested case adds one larger stress
 fixture, but broader workload structure and additional large shapes remain
 open.
 Workload selection, generator/model common-mode bugs, native-check host
@@ -149,8 +157,8 @@ agreement risk; it does not prove downstream compiler correctness.
 ## Conclusion
 
 Active. Retain hash-locked v1 replay vectors for `arithmetic-dag`,
-`pointer-walk`, `stream-state`, `graph-reduce`, `layout-chain`,
-`ternary-fold`, and `nested-state`, alongside domain-separated
+`pointer-walk`, `stream-state`, `graph-reduce`, `grid-accumulate`,
+`layout-chain`, `ternary-fold`, and `nested-state`, alongside domain-separated
 `linear-mix/v1`, `branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, and
 `alias-walk/v1` as deterministic challenge substrates
 while expanding family coverage and waiting for an end-to-end generated
