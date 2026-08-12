@@ -1,0 +1,57 @@
+schema_version = 1
+
+[plan]
+id = "classic-history-residue-canonicalization-v1"
+record_kind = "plan"
+status = "preregistered-unmeasured"
+method_class = "optimization"
+technique = "exact-history-residue-state-v1"
+baseline = "raw-visit-count-state-v1"
+
+[profile]
+id = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[formal_basis]
+# jig-ignore-next-line: canonical path is indivisible
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+self_encryption_equation = "eq:optimization-encryption-orbit"
+rotate_history_equation = "eq:optimization-rotate-history"
+
+[comparison]
+primary_metric = "unique-search-states"
+secondary_metrics = [
+  "generated-successors",
+  "independent-verifier-calls",
+  "peak-frontier-states",
+]
+evaluation_budget = 10000
+wall_clock_seconds = 60
+memory_mib = 512
+
+[applicability]
+self_encryption = "unchanged graphical-cell committed-encryption visits"
+rotate_history = "unchanged classic ten-trit data-cell rotate visits"
+requires_same_address_identity = true
+requires_no_intervening_write = true
+
+[rejection]
+conditions = [
+  "verified accepted-set differs from baseline",
+  "unique-search-states do not decrease on any preregistered challenge",
+  "verifier work increases enough to erase the declared primary benefit",
+  "applicability cannot be checked before canonicalization",
+]
+
+[measurement_gate]
+challenge_status = "required-before-run"
+runner_status = "required-before-run"
+results_allowed = false
+reason = "no versioned canonicalization challenge and runner are registered yet"
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/history-canonicalization-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"
