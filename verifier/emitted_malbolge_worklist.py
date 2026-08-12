@@ -71,7 +71,7 @@ class WorklistAnalysis:
     repeated_state_edges: int
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
-    maximum_transition_index: int
+    maximum_first_seen_transition_index: int
     frontier_states: int
     truncated: bool
 
@@ -162,6 +162,20 @@ def _successors(
     return (_ReachabilityNode(snapshot=successor, eof_seen=node.eof_seen),)
 
 
+def _unseen_successor_count(
+    successors: tuple[_ReachabilityNode, ...],
+    seen: set[_StateKey],
+    *,
+    start_index: int,
+) -> int:
+    unseen = {
+        _node_key(successor)
+        for successor in successors[start_index:]
+        if _node_key(successor) not in seen
+    }
+    return len(unseen)
+
+
 @dataclass(slots=True)
 class _Explorer:
     words: tuple[int, ...]
@@ -172,7 +186,7 @@ class _Explorer:
     explored: int = 0
     repeated_edges: int = 0
     input_branch_points: int = 0
-    maximum_transition_index: int = 1
+    maximum_first_seen_transition_index: int = 1
 
     @classmethod
     def create(cls, words: tuple[int, ...], state_limit: int) -> _Explorer:
@@ -207,7 +221,9 @@ class _Explorer:
             repeated_state_edges=self.repeated_edges,
             input_branch_points=self.input_branch_points,
             terminal_status_counts=tuple(sorted(self.terminal_counts.items())),
-            maximum_transition_index=self.maximum_transition_index,
+            maximum_first_seen_transition_index=(
+                self.maximum_first_seen_transition_index
+            ),
             frontier_states=frontier_states,
             truncated=truncated,
         )
@@ -219,7 +235,7 @@ class _Explorer:
         self,
         successors: tuple[_ReachabilityNode, ...],
     ) -> WorklistAnalysis | None:
-        for successor in successors:
+        for index, successor in enumerate(successors):
             key = _node_key(successor)
             if key in self.seen:
                 self.repeated_edges += 1
@@ -227,7 +243,14 @@ class _Explorer:
             if len(self.seen) >= self.state_limit:
                 return self.result(
                     truncated=True,
-                    frontier_states=len(self.queue) + 1,
+                    frontier_states=(
+                        len(self.queue)
+                        + _unseen_successor_count(
+                            successors,
+                            self.seen,
+                            start_index=index,
+                        )
+                    ),
                 )
             self.seen.add(key)
             self.queue.append(successor)
@@ -235,8 +258,8 @@ class _Explorer:
 
     def _process_node(self, node: _ReachabilityNode) -> WorklistAnalysis | None:
         self.explored += 1
-        self.maximum_transition_index = max(
-            self.maximum_transition_index,
+        self.maximum_first_seen_transition_index = max(
+            self.maximum_first_seen_transition_index,
             node.snapshot.before_transition,
         )
         step = prefix_transfer.analyze_state_snapshot(self.words, node.snapshot)

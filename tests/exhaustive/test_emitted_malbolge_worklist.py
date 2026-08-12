@@ -45,8 +45,12 @@ from verifier import emitted_malbolge_worklist as worklist
 
 _INPUT_HALT_SOURCE = (117, 80)
 _INPUT_CRAZY_SOURCE = (117, 61)
+_DOUBLE_INPUT_SOURCE = (117, 116)
 _FULL_STATE_LIMIT = 258
 _TRUNCATED_STATE_LIMIT = _FULL_STATE_LIMIT - 1
+_TINY_STATE_LIMIT = 2
+_DOUBLE_INPUT_UNIQUE_STATES = 515
+_DOUBLE_INPUT_REPEATED_EDGES = 65_536
 _INPUT_VALUE_COUNT = 257
 _EOF_ACCUMULATOR = 59_048
 _SECOND_TRANSITION = 2
@@ -66,7 +70,7 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     assert result.repeated_state_edges == 0
     assert result.input_branch_points == 1
     assert result.terminal_status_counts == (("halted", _INPUT_VALUE_COUNT),)
-    assert result.maximum_transition_index == _SECOND_TRANSITION
+    assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
     assert result.frontier_states == 0
     assert not result.truncated
 
@@ -97,6 +101,32 @@ def test_input_worklist_truncates_before_unadmitted_eof_state() -> None:
     assert result.terminal_status_counts == ()
     assert result.frontier_states == _INPUT_VALUE_COUNT
     assert result.truncated
+
+
+def test_tiny_cap_counts_all_pending_input_frontier_states() -> None:
+    """Truncation counts unadmitted alternatives, not only the first one."""
+    result = worklist.analyze_reachability(
+        _INPUT_HALT_SOURCE,
+        maximum_states=_TINY_STATE_LIMIT,
+    )
+    assert result.unique_states == _TINY_STATE_LIMIT
+    assert result.frontier_states == _INPUT_VALUE_COUNT
+    assert result.truncated
+
+
+def test_double_input_merges_are_not_silently_discarded() -> None:
+    """Second input creates many exact merges while the graph still closes."""
+    result = worklist.analyze_reachability(
+        _DOUBLE_INPUT_SOURCE,
+        maximum_states=_DOUBLE_INPUT_UNIQUE_STATES,
+    )
+    assert result.unique_states == _DOUBLE_INPUT_UNIQUE_STATES
+    assert result.repeated_state_edges == _DOUBLE_INPUT_REPEATED_EDGES
+    assert result.input_branch_points == _FULL_STATE_LIMIT
+    assert result.terminal_status_counts == (
+        ("stuck-non-graphical-fetch", _INPUT_VALUE_COUNT),
+    )
+    assert not result.truncated
 
 
 def test_input_domain_becomes_eof_only_after_eof() -> None:

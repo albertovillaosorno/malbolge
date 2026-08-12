@@ -272,7 +272,7 @@ class _WorklistAnalysis(Protocol):
     repeated_state_edges: int
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
-    maximum_transition_index: int
+    maximum_first_seen_transition_index: int
     frontier_states: int
     truncated: bool
 
