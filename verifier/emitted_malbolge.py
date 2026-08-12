@@ -57,7 +57,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v15"
+_SCHEMA: Final = "malbolge-static-image/v16"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -151,6 +151,17 @@ class BoundedDataReadValueLineage:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedEncryptionInputValueLineage:
+    """Exact bounded origin of one self-encryption input value."""
+
+    transition_index: int
+    encryption_address: int
+    encryption_input: int
+    origin_kind: str
+    origin_transition_index: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedMemoryAccessSourceContext:
     """Exact source-image coordinates for one bounded memory access role."""
 
@@ -180,6 +191,9 @@ class StaticImageReport:
     bounded_fetch_source_map: tuple[BoundedFetchSourceContext, ...]
     bounded_fetch_value_lineage: tuple[BoundedFetchValueLineage, ...]
     bounded_data_read_value_lineage: tuple[BoundedDataReadValueLineage, ...]
+    bounded_encryption_input_value_lineage: tuple[
+        BoundedEncryptionInputValueLineage, ...
+    ]
     bounded_memory_access_source_map: tuple[
         BoundedMemoryAccessSourceContext, ...
     ]
@@ -234,7 +248,7 @@ def _analysis_limits(transition_limit: int) -> tuple[str, ...]:
         (
             "source-map-context:"
             f"{transition_limit}-transition-memory-access-and-"
-            "fetch-and-data-read-value-lineage"
+            "fetch-data-read-and-encryption-input-value-lineage"
         ),
         f"wraparound-reachability:{prefix}",
     )
@@ -533,7 +547,29 @@ def _data_read_value_origin(
     )
 
 
-def _remember_transition_writes(
+def _encryption_input_value_origin(
+    transition_index: int,
+    encryption_read: tuple[int, int],
+    *,
+    source_word_count: int,
+    writers: dict[int, tuple[int, str]],
+) -> BoundedEncryptionInputValueLineage:
+    encryption_address, encryption_input = encryption_read
+    origin_kind, origin_transition_index = _memory_value_origin(
+        encryption_address,
+        source_word_count,
+        writers,
+    )
+    return BoundedEncryptionInputValueLineage(
+        transition_index=transition_index,
+        encryption_address=encryption_address,
+        encryption_input=encryption_input,
+        origin_kind=origin_kind,
+        origin_transition_index=origin_transition_index,
+    )
+
+
+def _remember_data_write(
     writers: dict[int, tuple[int, str]],
     transition_index: int,
     transition: (
@@ -544,12 +580,32 @@ def _remember_transition_writes(
     data_value = transition.planned_data_write_value
     if data_address is not None and data_value is not None:
         writers[data_address] = (transition_index, _ACCESS_DATA_WRITE)
+
+
+def _remember_encryption_write(
+    writers: dict[int, tuple[int, str]],
+    transition_index: int,
+    transition: (
+        entry_transfer.EntryTransition | prefix_transfer.SecondTransition
+    ),
+) -> None:
     encryption_address = transition.encryption_address
     if (
         encryption_address is not None
         and transition.encryption_output is not None
     ):
         writers[encryption_address] = (transition_index, _ACCESS_ENCRYPTION)
+
+
+def _remember_transition_writes(
+    writers: dict[int, tuple[int, str]],
+    transition_index: int,
+    transition: (
+        entry_transfer.EntryTransition | prefix_transfer.SecondTransition
+    ),
+) -> None:
+    _remember_data_write(writers, transition_index, transition)
+    _remember_encryption_write(writers, transition_index, transition)
 
 
 def _bounded_fetch_value_lineage(
@@ -627,6 +683,53 @@ def _bounded_data_read_value_lineage(
                 )
             )
         _remember_transition_writes(writers, transition_index, transition)
+    return tuple(lineage)
+
+
+def _bounded_encryption_input_value_lineage(
+    prefix: _PrefixAnalysis,
+) -> tuple[BoundedEncryptionInputValueLineage, ...]:
+    entry = prefix.entry
+    if entry is None:
+        return ()
+    source_word_count = len(prefix.cells)
+    writers: dict[int, tuple[int, str]] = {}
+    lineage: list[BoundedEncryptionInputValueLineage] = []
+    _remember_data_write(writers, 1, entry)
+    if (
+        entry.encryption_address is not None
+        and entry.encryption_input is not None
+    ):
+        lineage.append(
+            _encryption_input_value_origin(
+                1,
+                (entry.encryption_address, entry.encryption_input),
+                source_word_count=source_word_count,
+                writers=writers,
+            )
+        )
+    _remember_encryption_write(writers, 1, entry)
+    for transition_index, transition in enumerate(
+        prefix.continuations,
+        start=2,
+    ):
+        _remember_data_write(writers, transition_index, transition)
+        if (
+            transition.encryption_address is not None
+            and transition.encryption_input is not None
+        ):
+            lineage.append(
+                _encryption_input_value_origin(
+                    transition_index,
+                    (
+                        transition.encryption_address,
+                        transition.encryption_input,
+                    ),
+                    source_word_count=source_word_count,
+                    writers=writers,
+                )
+            )
+        _remember_encryption_write(writers, transition_index, transition)
     return tuple(lineage)
 
 
@@ -800,6 +903,9 @@ def analyze_source(
         ),
         bounded_data_read_value_lineage=(
             _bounded_data_read_value_lineage(words, prefix)
+        ),
+        bounded_encryption_input_value_lineage=(
+            _bounded_encryption_input_value_lineage(prefix)
         ),
         bounded_memory_access_source_map=(
             _bounded_memory_access_source_map(prefix)

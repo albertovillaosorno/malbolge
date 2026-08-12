@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v15"
+_SCHEMA = "malbolge-static-image/v16"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -278,6 +278,14 @@ class _BoundedDataReadValueLineage(Protocol):
     origin_transition_index: int | None
 
 
+class _BoundedEncryptionInputValueLineage(Protocol):
+    transition_index: int
+    encryption_address: int
+    encryption_input: int
+    origin_kind: str
+    origin_transition_index: int | None
+
+
 class _BoundedMemoryAccessSourceContext(Protocol):
     transition_index: int
     access_kind: str
@@ -302,6 +310,9 @@ class _Report(Protocol):
     bounded_fetch_source_map: tuple[_BoundedFetchSourceContext, ...]
     bounded_fetch_value_lineage: tuple[_BoundedFetchValueLineage, ...]
     bounded_data_read_value_lineage: tuple[_BoundedDataReadValueLineage, ...]
+    bounded_encryption_input_value_lineage: tuple[
+        _BoundedEncryptionInputValueLineage, ...
+    ]
     bounded_memory_access_source_map: tuple[
         _BoundedMemoryAccessSourceContext, ...
     ]
@@ -958,6 +969,31 @@ def test_entry_jump_resolves_initial_recurrence_encryption_target() -> None:
     assert transition.next_fetch_address is None
 
 
+def test_encryption_input_lineage_tracks_memory_and_alias_write() -> None:
+    """Encryption input observes memory after same-step data writes."""
+    loaded = _ANALYZER_MODULE.analyze_source(_FIXTURE.read_bytes())
+    loaded_lineage = loaded.bounded_encryption_input_value_lineage[0]
+    assert loaded_lineage.transition_index == 1
+    assert loaded_lineage.encryption_address == 0
+    assert loaded_lineage.encryption_input == _FIXTURE_ENCRYPTION_INPUT
+    assert loaded_lineage.origin_kind == _ORIGIN_LOADED_SOURCE
+    assert loaded_lineage.origin_transition_index is None
+
+    recurrence = _ANALYZER_MODULE.analyze_source(b"b'")
+    recurrence_lineage = recurrence.bounded_encryption_input_value_lineage[0]
+    assert recurrence_lineage.encryption_address == _JUMP_ENTRY_ADDRESS
+    assert recurrence_lineage.encryption_input == _JUMP_ENTRY_ENCRYPTION_INPUT
+    assert recurrence_lineage.origin_kind == _ORIGIN_RECURRENCE
+    assert recurrence_lineage.origin_transition_index is None
+
+    alias = _ANALYZER_MODULE.analyze_source(bytes((39, 38)))
+    alias_lineage = alias.bounded_encryption_input_value_lineage[0]
+    assert alias_lineage.encryption_address == 0
+    assert alias_lineage.encryption_input == _ROTATED_ENTRY_VALUE
+    assert alias_lineage.origin_kind == _ACCESS_DATA_WRITE
+    assert alias_lineage.origin_transition_index == 1
+
+
 def test_entry_halt_skips_encryption_and_pointer_advance() -> None:
     """Halt is an exact terminal entry transition with unchanged registers."""
     report = _ANALYZER_MODULE.analyze_source(bytes((81, 80)))
@@ -1492,7 +1528,7 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
         "self-modification:16-transition-prefix-only",
         (
             "source-map-context:16-transition-memory-access-and-"
-            "fetch-and-data-read-value-lineage"
+            "fetch-data-read-and-encryption-input-value-lineage"
         ),
         "wraparound-reachability:16-transition-prefix-only",
     )
@@ -1510,6 +1546,11 @@ def test_report_rendering_is_canonical_and_replayable() -> None:
     assert parsed["admitted_initial_image"] is True
     assert parsed["bounded_exact_cycle"] is None
     assert parsed["bounded_data_read_value_lineage"] == []
+    encryption_lineage = cast(
+        "list[dict[str, object]]",
+        parsed["bounded_encryption_input_value_lineage"],
+    )
+    assert encryption_lineage[0]["origin_kind"] == _ORIGIN_LOADED_SOURCE
 
 
 def test_cli_prints_same_report_as_library() -> None:
