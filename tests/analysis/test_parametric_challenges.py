@@ -79,6 +79,8 @@ _TERNARY_QUOTIENT_ASSIGNMENTS = 2
 _TERNARY_FRONTEND_LOOPS = 2
 _NESTED_STATE_FRONTEND_LOOPS = 2
 _NESTED_STATE_SUBSCRIPTS = 3
+_GRID_ACCUMULATE_FRONTEND_LOOPS = 2
+_GRID_ACCUMULATE_SUBSCRIPTS = 1
 _FORBIDDEN_PUTCHAR = "putchar"
 _FORBIDDEN_STDIO = "<stdio.h>"
 _CLANG = _ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
@@ -94,6 +96,7 @@ _POINTER_WALK_FAMILY = "pointer-walk"
 _ALIAS_WALK_FAMILY = "alias-walk"
 _STREAM_STATE_FAMILY = "stream-state"
 _GRAPH_REDUCE_FAMILY = "graph-reduce"
+_GRID_ACCUMULATE_FAMILY = "grid-accumulate"
 _LAYOUT_CHAIN_FAMILY = "layout-chain"
 _TERNARY_FOLD_FAMILY = "ternary-fold"
 _NESTED_STATE_FAMILY = "nested-state"
@@ -107,6 +110,7 @@ _FAMILIES = (
     _ALIAS_WALK_FAMILY,
     _STREAM_STATE_FAMILY,
     _GRAPH_REDUCE_FAMILY,
+    _GRID_ACCUMULATE_FAMILY,
     _LAYOUT_CHAIN_FAMILY,
     _TERNARY_FOLD_FAMILY,
     _NESTED_STATE_FAMILY,
@@ -141,6 +145,12 @@ _NEW_V1_REPLAY_VECTORS = (
         "995762c8fe399e74b4ad504de29a96f989ede21efebc81daa91f53a20e374def",
         "5c73807e22a3b5e48c88dc6d47a479fad932a1303666aa4500ac63e56144defe",
         "a08cbd085c66c4547d0bfa0a65c91d673ddba98b7edd0b50ffd1da32f348ba0c",
+    ),
+    (
+        _GRID_ACCUMULATE_FAMILY,
+        "3975e8eb80c8b4e5bf7ccea6ef7839e42256a162c3ec8d495e7da2209ee31c71",
+        "c969b91b2fac7328745a3035233b6efbb613acc1a59096a82ce42901f1f0cf18",
+        "528f74a19b6774c944b12c393c8fe7c8a73ba8a375c72d9ecbf4440718116632",
     ),
     (
         _LAYOUT_CHAIN_FAMILY,
@@ -381,6 +391,19 @@ def test_graph_reduce_emits_live_parent_graph() -> None:
     assert f"return states[{nodes}];" in source
 
 
+def test_grid_accumulate_emits_quadratic_live_loop_nest() -> None:
+    """Grid challenges keep two node-bounded loops on one live state."""
+    nodes = 19
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_GRID_ACCUMULATE_FAMILY, seed=0xA11C, nodes=nodes)
+    )
+    source = generated.source.decode()
+    assert source.count("for (uint32_t") == _GRID_ACCUMULATE_FRONTEND_LOOPS
+    assert source.count("tokens[column]") == 1
+    assert f"row < UINT32_C({nodes})" in source
+    assert f"column < UINT32_C({nodes})" in source
+
+
 def test_layout_chain_emits_distinct_live_helpers() -> None:
     """Layout challenges grow distinct helper bodies and live call sites."""
     nodes = 19
@@ -440,6 +463,7 @@ def test_identity_dimensions_change_artifact_identity() -> None:
         (_ALIAS_WALK_FAMILY, "splitmix64-alias-walk-v1"),
         (_STREAM_STATE_FAMILY, "splitmix64-stream-state-v1"),
         (_GRAPH_REDUCE_FAMILY, "splitmix64-graph-reduce-v1"),
+        (_GRID_ACCUMULATE_FAMILY, "splitmix64-grid-accumulate-v1"),
         (_LAYOUT_CHAIN_FAMILY, "splitmix64-layout-chain-v1"),
         (_TERNARY_FOLD_FAMILY, "splitmix64-ternary-fold-v1"),
         (_NESTED_STATE_FAMILY, "splitmix64-nested-state-v1"),
@@ -829,6 +853,47 @@ def test_ternary_family_is_admitted_by_normalized_frontend(
     os.name != _WINDOWS_OS_NAME,
     reason="reviewed normalized C frontend is Windows x86-64",
 )
+def test_grid_accumulate_family_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep the quadratic loop nest and token read after normalization."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_GRID_ACCUMULATE_FAMILY, seed=61, nodes=23)
+    )
+    source = tmp_path / "grid-accumulate.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/grid-accumulate-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    loops = sum(
+        node.get("kind") == _FOR_STATEMENT_KIND for node in normalized
+    )
+    subscripts = sum(
+        node.get("kind") == _ARRAY_SUBSCRIPT_KIND for node in normalized
+    )
+    assert loops == _GRID_ACCUMULATE_FRONTEND_LOOPS
+    assert subscripts == _GRID_ACCUMULATE_SUBSCRIPTS
+
+
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME,
+    reason="reviewed normalized C frontend is Windows x86-64",
+)
 def test_nested_state_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
 ) -> None:
@@ -944,6 +1009,9 @@ def _assert_native_oracle(
         (_GRAPH_REDUCE_FAMILY, 0, 1),
         (_GRAPH_REDUCE_FAMILY, 7, 64),
         (_GRAPH_REDUCE_FAMILY, 0x1234, 257),
+        (_GRID_ACCUMULATE_FAMILY, 0, 1),
+        (_GRID_ACCUMULATE_FAMILY, 7, 64),
+        (_GRID_ACCUMULATE_FAMILY, 0x1234, 257),
         (_LAYOUT_CHAIN_FAMILY, 0, 1),
         (_LAYOUT_CHAIN_FAMILY, 7, 64),
         (_LAYOUT_CHAIN_FAMILY, 0x1234, 257),

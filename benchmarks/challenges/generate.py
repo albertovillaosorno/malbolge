@@ -63,6 +63,7 @@ _POINTER_WALK_FAMILY: Final = "pointer-walk"
 _ALIAS_WALK_FAMILY: Final = "alias-walk"
 _STREAM_STATE_FAMILY: Final = "stream-state"
 _GRAPH_REDUCE_FAMILY: Final = "graph-reduce"
+_GRID_ACCUMULATE_FAMILY: Final = "grid-accumulate"
 _LAYOUT_CHAIN_FAMILY: Final = "layout-chain"
 _TERNARY_FOLD_FAMILY: Final = "ternary-fold"
 _NESTED_STATE_FAMILY: Final = "nested-state"
@@ -76,6 +77,7 @@ _FAMILY_ALGORITHMS: Final = {
     _ALIAS_WALK_FAMILY: "splitmix64-alias-walk-v1",
     _STREAM_STATE_FAMILY: "splitmix64-stream-state-v1",
     _GRAPH_REDUCE_FAMILY: "splitmix64-graph-reduce-v1",
+    _GRID_ACCUMULATE_FAMILY: "splitmix64-grid-accumulate-v1",
     _LAYOUT_CHAIN_FAMILY: "splitmix64-layout-chain-v1",
     _TERNARY_FOLD_FAMILY: "splitmix64-ternary-fold-v1",
     _NESTED_STATE_FAMILY: "splitmix64-nested-state-v1",
@@ -90,6 +92,7 @@ _POINTER_WALK_SEED_SALT: Final = 0x5054_5257_414C_4B31
 _ALIAS_WALK_SEED_SALT: Final = 0x414C_4941_5357_4B31
 _STREAM_STATE_SEED_SALT: Final = 0x5354_524D_5354_4154
 _GRAPH_REDUCE_SEED_SALT: Final = 0x4752_4150_4852_4431
+_GRID_ACCUMULATE_SEED_SALT: Final = 0x4752_4944_5F41_4343
 _LAYOUT_CHAIN_SEED_SALT: Final = 0x4C41_594F_5554_4348
 _TERNARY_FOLD_SEED_SALT: Final = 0x5445_524E_4152_5931
 _NESTED_STATE_SEED_SALT: Final = 0x4E45_5354_5354_4154
@@ -723,6 +726,61 @@ def _graph_reduce_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     )
 
 
+def _grid_accumulate_payload(
+    identity: ChallengeIdentity,
+) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _GRID_ACCUMULATE_SEED_SALT)
+    initial = rng.next_u32()
+    bias = rng.next_u32()
+    tokens = [rng.next_u32() for _index in range(identity.nodes)]
+    token_sum = sum(tokens)
+    row_sum = identity.nodes * (identity.nodes - 1) // 2
+    increment = (
+        identity.nodes * token_sum
+        + identity.nodes * row_sum
+        + identity.nodes * identity.nodes * bias
+    )
+    state = (initial + increment) & _MASK32
+    token_initializer = ", ".join(
+        f"UINT32_C({token})" for token in tokens
+    )
+    lines = [
+        "#include <stdint.h>",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t tokens[{identity.nodes}] = {{{token_initializer}}};",
+        f"    uint32_t state = UINT32_C({initial});",
+        (
+            "    for (uint32_t row = UINT32_C(0); "
+            f"row < UINT32_C({identity.nodes}); "
+            "row += UINT32_C(1)) {"
+        ),
+        (
+            "        for (uint32_t column = UINT32_C(0); "
+            f"column < UINT32_C({identity.nodes}); "
+            "column += UINT32_C(1)) {"
+        ),
+        (
+            "            state += tokens[column] + row + "
+            f"UINT32_C({bias});"
+        ),
+        "        }",
+        "    }",
+        "    return state;",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ]
+    return (
+        chr(10).join(lines).encode(),
+        state.to_bytes(_ORACLE_BYTES, byteorder="little"),
+    )
+
+
 def _layout_chain_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     rng = _SplitMix64(identity.seed ^ _LAYOUT_CHAIN_SEED_SALT)
     initial = rng.next_u32()
@@ -912,6 +970,7 @@ _PAYLOAD_RENDERERS: Final = {
     _ALIAS_WALK_FAMILY: _alias_walk_payload,
     _STREAM_STATE_FAMILY: _stream_state_payload,
     _GRAPH_REDUCE_FAMILY: _graph_reduce_payload,
+    _GRID_ACCUMULATE_FAMILY: _grid_accumulate_payload,
     _LAYOUT_CHAIN_FAMILY: _layout_chain_payload,
     _TERNARY_FOLD_FAMILY: _ternary_fold_payload,
     _NESTED_STATE_FAMILY: _nested_state_payload,
