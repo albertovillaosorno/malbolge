@@ -408,6 +408,29 @@ def crazy_target_full_domain_preimage_pair_classes(
     )
 
 
+def crazy_target_full_domain_pairs_exceeding_preimage_budget(
+    maximum_preimages: int,
+) -> int:
+    """Return reachable pairs whose exact preimage size exceeds a budget.
+
+    Returns:
+        Number of classic ``(accumulator, target)`` pairs that require more
+        complete-domain preimages than the supplied nonnegative budget.
+
+    Raises:
+        InvalidCrazyTargetProblemError: If the budget is negative or nonexact.
+
+    """
+    if type(maximum_preimages) is not int or maximum_preimages < 0:
+        message = "preimage budget must be a nonnegative exact integer"
+        raise InvalidCrazyTargetProblemError(message)
+    return sum(
+        pair_count
+        for preimage_count, pair_count in _preimage_pair_class_counts()
+        if preimage_count > maximum_preimages
+    )
+
+
 def _accumulator_class_counts() -> tuple[int, ...]:
     counts = (1,)
     non_two_choices = len(CRAZY_TRIT_TABLE) - 1

@@ -67,6 +67,9 @@ from optimizer.crazy_target import cpu_crazy_target_search_adapter
 from optimizer.crazy_target import crazy_target_batch_builder_id
 from optimizer.crazy_target import crazy_target_full_domain_accumulator_classes
 from optimizer.crazy_target import crazy_target_full_domain_max_preimage_count
+from optimizer.crazy_target import (
+    crazy_target_full_domain_pairs_exceeding_preimage_budget,
+)
 from optimizer.crazy_target import crazy_target_full_domain_preimage_count
 from optimizer.crazy_target import (
     crazy_target_full_domain_preimage_pair_classes,
@@ -466,6 +469,38 @@ def test_global_preimage_pair_classes_match_independent_relation() -> None:
     assert sum(
         item.preimage_count * item.pair_count for item in classes
     ) == FULL_DOMAIN_COUNT * FULL_DOMAIN_COUNT
+
+
+def test_preimage_budget_pair_count_matches_independent_histogram() -> None:
+    """Budget thresholds exactly count reachable pairs they cannot cover."""
+    histogram = _independent_preimage_pair_histogram()
+    budgets = (0, 1, 2, 3, 31, 32, 511, 512, 1023, 1024, 2048)
+    for budget in budgets:
+        expected = sum(
+            pair_count
+            for preimage_count, pair_count in histogram.items()
+            if preimage_count > budget
+        )
+        assert (
+            crazy_target_full_domain_pairs_exceeding_preimage_budget(budget)
+            == expected
+        )
+    assert crazy_target_full_domain_pairs_exceeding_preimage_budget(0) == (
+        crazy_target_full_domain_reachable_pair_count()
+    )
+    assert crazy_target_full_domain_pairs_exceeding_preimage_budget(1024) == 0
+
+
+def test_preimage_budget_pair_count_rejects_invalid_budget() -> None:
+    """Planning-budget admission is fail-closed before class accounting."""
+    for invalid in (-1, True):
+        with pytest.raises(
+            InvalidCrazyTargetProblemError,
+            match="preimage budget must be a nonnegative exact integer",
+        ):
+            _ = crazy_target_full_domain_pairs_exceeding_preimage_budget(
+                cast("int", invalid)
+            )
 
 
 def test_unreachable_accumulator_target_pair_count_is_exact() -> None:

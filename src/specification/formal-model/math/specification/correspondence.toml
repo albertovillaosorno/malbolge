@@ -266,6 +266,16 @@ mechanism = "independent-trit-convolution-plus-binomial-closed-form"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_global_preimage_pair_classes_match_independent_relation"]
 
 [[correspondence]]
+id = "optimization-crazy-preimage-budget-exceedance"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-budget-exceedance"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all classic reachable accumulator/target pairs under a nonnegative exact full-domain preimage budget"
+mechanism = "independent-preimage-class-histogram-threshold-sum"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_preimage_budget_pair_count_matches_independent_histogram"]
+
+[[correspondence]]
 id = "optimization-crazy-unreachable-pair-count"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-unreachable-pair-count"

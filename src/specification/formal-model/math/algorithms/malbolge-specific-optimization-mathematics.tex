@@ -223,6 +223,21 @@ $(d,a)$ input pair. This distribution is a complete-domain search-planning fact;
 it does not imply equal semantics between different accumulator/target pairs or
 a measured runtime speedup.
 
+For a nonnegative integer full-domain enumeration budget $B$, the same exact
+preimage classes give the number of reachable accumulator/target pairs whose
+complete data-word preimage cannot fit within that budget:
+\begin{equation}
+  N_{>B}
+    = \sum_{\substack{0\leq k\leq10\2^k>B}}
+      \binom{10}{k}2^k5^{10-k}.
+  \label{eq:optimization-crazy-preimage-budget-exceedance}
+\end{equation}
+Thus $N_{>0}=7^{10}$ and $N_{>1024}=0$. This is an exact planning lower bound
+only for a procedure that must enumerate every complete-domain preimage of each
+pair. It does not imply that an incomplete external corpus contains those
+preimages, that every search algorithm must enumerate them, or that a budgeted
+search is semantically incorrect when completeness is not its contract.
+
 The unreachable accumulator/target region is the exact complement of the
 reachable region inside the complete $9^{10}$ pair domain:
 \begin{equation}
