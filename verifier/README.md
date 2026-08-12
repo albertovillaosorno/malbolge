@@ -8,20 +8,20 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v17 retains the legacy exact entry-through-fifth
+load decode. Schema v18 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
 single-pass bounded trace replays
 committed writes before resolving fetch/data cells, code/data aliasing, planned
 writes, encryption input/output, input dependence, halt/rejection, pointer
-succession, and wrap without a worklist or unbounded guest execution. The
+succession, and wrap without unbounded guest execution. The
 report also publishes the minimum word footprint and exact addresses actually
 touched by the analyzed prefix; merely-held future C/D pointers are not counted.
-For each resolved bounded fetch, schema v17 maps loaded-source addresses back
+For each resolved bounded fetch, schema v18 maps loaded-source addresses back
 to the original loaded position/raw byte offset and initial source byte, while
 recurrence-only fetches remain explicitly unmapped. The record also states
-whether the fetched value still equals that initial source byte. Schema v17
+whether the fetched value still equals that initial source byte. Schema v18
 also publishes `bounded_fetch_value_lineage`: each resolved fetch records
 whether its value comes from the loaded source, recurrence initialization, or
 the latest prior committed data write/self-encryption transition. The companion
@@ -48,17 +48,23 @@ state before its writes can influence later analysis. Forged entries and
 noncontiguous/forged prefixes fail closed. The finite transfer also
 canonicalizes evolved memory as exact sparse overrides and can identify a
 repeated concrete `(C,D,A,memory)` state when the accumulator is known. Schema
-v17 publishes the first such proof as `bounded_exact_cycle`, including the
+v18 publishes the first such proof as `bounded_exact_cycle`, including the
 first-seen/repeated transition indices, period, registers, and sparse memory
 overrides. It also publishes `bounded_state_snapshots` for every analyzed
 transition. Each snapshot records the pre-step C/D/A registers and canonical
 sparse evolved-memory overrides; input-derived unknown `A` remains null rather
 than being guessed. A null cycle field means only that this selected finite
 prefix did not establish an exact concrete repeat; it does not prove a longer
-or input-dependent cycle absent.
+or input-dependent cycle absent. An optional exact-state worklist can be
+requested with `--worklist-state-limit N`, where `N` is 1 through 4,096. It
+branches historical input into all 256 byte values plus EOF, keeps EOF sticky
+for later reads, deduplicates `(C,D,A,memory,EOF-state)`, and reports either
+closed reachability or explicit frontier truncation in `bounded_worklist`. The
+`b"u="` input-then-crazy fixture closes in 258 states: every byte/EOF branch
+resolves concretely instead of retaining an unknown accumulator.
 A four-word `b"('&%"` fixture uses it to prove a recurrence-backed fifth
-fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v17 publishes that
-exact transition and its bounded memory footprint. Schema v17 keeps sixteen
+fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v18 publishes that
+exact transition and its bounded memory footprint. Schema v18 keeps sixteen
 transitions as the default but makes finite depth explicit. Library callers and
 the CLI `--transition-limit N` option may request from 1 through 256 exact
 transitions. The report binds that request in `bounded_transition_limit`,
@@ -66,8 +72,8 @@ numeric memory-scope identity, and every bounded analysis-limit string. A
 32-cell
 sequential-output fixture proves transition 17 and later are reported exactly
 when requested, while a 256-cell fixture proves the reviewed safety ceiling.
-Reachability beyond the selected finite bound, higher-level C/source-map
-linkage, and longer input-dependent cycles remain unproved.
+Automatic or unbounded reachability, higher-level C/source-map linkage, and
+longer state graphs beyond an explicit worklist cap remain unproved.
 
 The initial-image report is bounded by the selected historical profile. Sources
 that exceed 59,049 loaded words receive a capacity finding without materializing
