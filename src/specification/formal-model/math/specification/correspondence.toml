@@ -266,6 +266,16 @@ mechanism = "independent-trit-convolution-plus-binomial-closed-form"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_global_preimage_pair_classes_match_independent_relation"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-pair-distribution"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-preimage-pair-distribution"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all profile widths 1 through 14 via independent per-trit nonzero-preimage convolution"
+mechanism = "width-indexed-trit-convolution-plus-binomial-closed-form"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_profile_width_preimage_pair_distribution_matches_closed_form"]
+
+[[correspondence]]
 id = "optimization-crazy-preimage-budget-exceedance"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-budget-exceedance"

@@ -109,6 +109,8 @@ FULL_DOMAIN_COUNT = MAX_WORD + 1
 MULTI_PREIMAGE_COUNT = 1 << 10
 ROTATION_PIVOT = 2
 FIRST_LOGICAL_ID = "corpus-0"
+_MAX_ADMITTED_PROFILE_TRITS = 14
+_PAIR_DOMAIN_PER_TRIT = 9
 
 
 def _request(
@@ -435,10 +437,12 @@ def _expand_independent_preimage_pair_histogram(
     return expanded
 
 
-def _independent_preimage_pair_histogram() -> dict[int, int]:
+def _independent_preimage_pair_histogram(
+    trit_count: int = _TRIT_COUNT,
+) -> dict[int, int]:
     per_trit = _independent_trit_preimage_class_counts()
     histogram = {1: 1}
-    for _ in range(_TRIT_COUNT):
+    for _ in range(trit_count):
         histogram = _expand_independent_preimage_pair_histogram(
             histogram,
             per_trit,
@@ -469,6 +473,37 @@ def test_global_preimage_pair_classes_match_independent_relation() -> None:
     assert sum(
         item.preimage_count * item.pair_count for item in classes
     ) == FULL_DOMAIN_COUNT * FULL_DOMAIN_COUNT
+
+
+def _independent_integer_power(base: int, exponent: int) -> int:
+    result = 1
+    for _ in range(exponent):
+        result *= base
+    return result
+
+
+def test_profile_width_preimage_pair_distribution_matches_closed_form() -> None:
+    """Widths one through fourteen match the exact digitwise closed form."""
+    for trit_count in range(1, _MAX_ADMITTED_PROFILE_TRITS + 1):
+        histogram = _independent_preimage_pair_histogram(trit_count)
+        for exponent in range(trit_count + 1):
+            expected = _independent_binomial(trit_count, exponent)
+            expected *= _independent_integer_power(2, exponent)
+            expected *= _independent_integer_power(
+                5, trit_count - exponent
+            )
+            assert histogram[1 << exponent] == expected
+        reachable = _independent_integer_power(
+            _REACHABLE_PAIRS_PER_TRIT, trit_count
+        )
+        pair_domain = _independent_integer_power(
+            _PAIR_DOMAIN_PER_TRIT, trit_count
+        )
+        assert sum(histogram.values()) == reachable
+        assert sum(
+            preimages * pairs for preimages, pairs in histogram.items()
+        ) == pair_domain
+        assert pair_domain - reachable >= 0
 
 
 def test_preimage_budget_pair_count_matches_independent_histogram() -> None:
