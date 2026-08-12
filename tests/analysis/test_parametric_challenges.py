@@ -60,6 +60,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 _GENERATOR = _ROOT / "benchmarks" / "challenges" / "generate.py"
 _SHA256_HEX_LENGTH = 64
 _ORACLE_BYTES = 4
+_LARGE_GENERATION_STRESS_NODES = 16_384
 _SENTINEL = "preserve"
 _ENTRY_SYMBOL = "malbolge_challenge"
 _ORACLE_SEMANTICS = "entry-return-u32-little-endian"
@@ -112,6 +113,13 @@ _FAMILIES = (
     _GRAPH_REDUCE_FAMILY,
     _GRID_ACCUMULATE_FAMILY,
     _LAYOUT_CHAIN_FAMILY,
+    _TERNARY_FOLD_FAMILY,
+    _NESTED_STATE_FAMILY,
+)
+_LARGE_GENERATION_STRESS_FAMILIES = (
+    _STREAM_STATE_FAMILY,
+    _GRAPH_REDUCE_FAMILY,
+    _GRID_ACCUMULATE_FAMILY,
     _TERNARY_FOLD_FAMILY,
     _NESTED_STATE_FAMILY,
 )
@@ -1036,6 +1044,22 @@ def test_native_source_result_matches_independent_oracle(
         _identity(family=family, seed=seed, nodes=nodes)
     )
     _assert_native_oracle(generated, tmp_path)
+
+
+@pytest.mark.parametrize("family", _LARGE_GENERATION_STRESS_FAMILIES)
+def test_large_loop_families_replay_at_16384_nodes(family: str) -> None:
+    """Large linear-construction identities remain deterministic and bounded."""
+    identity = _identity(family=family, nodes=_LARGE_GENERATION_STRESS_NODES)
+    first = _GENERATOR_MODULE.generate(identity)
+    second = _GENERATOR_MODULE.generate(identity)
+    assert first.source == second.source
+    assert first.oracle == second.oracle
+    assert first.manifest == second.manifest
+    assert len(first.oracle) == _ORACLE_BYTES
+    manifest = cast("dict[str, object]", json.loads(first.manifest))
+    identity_document = cast("dict[str, object]", manifest["identity"])
+    difficulty = cast("dict[str, object]", identity_document["difficulty"])
+    assert difficulty["nodes"] == _LARGE_GENERATION_STRESS_NODES
 
 
 @pytest.mark.parametrize("family", _FAMILIES)
