@@ -21,7 +21,13 @@ without measurements: `classic-history-residue-canonicalization-v1` compares
 exact encryption-orbit/rotate-history residues with raw visit-count state under
 equal budgets. Its applicability requires stable address identity and no
 intervening write; results remain blocked until a versioned challenge and runner
-exist.
+exist. A pure `exact-history-residue-state-v1` substrate now implements those
+reductions without owning encryption semantics: callers inject the exact
+graphical encryption successor, and both encryption/rotate reductions require
+explicit stable-address/no-intervening-write applicability. Exhaustive tests
+cover all 94 historical graphical starts and recover the six proved orbit
+periods. This is implementation evidence only; the measured comparison remains
+gated.
 
 The shared mechanisms live under
 `src/research/algorithms/composition/algorithms/superoptimization/`; domain

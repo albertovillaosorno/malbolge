@@ -101,7 +101,12 @@ and rotate-history equations to raw visit-count state under equal 10,000
 evaluation, 60-second, and 512 MiB bounds. Applicability requires stable address
 identity and no intervening write; unique search states is the primary metric,
 and accepted-set drift is a rejection condition. Results remain forbidden until
-a versioned canonicalization challenge and runner are registered.
+a versioned canonicalization challenge and runner are registered. The pure
+`exact-history-residue-state-v1` substrate is now implemented below that gate.
+It accepts caller-owned encryption semantics, derives a closed graphical orbit
+period before reduction, reduces rotate visits modulo ten, and rejects any
+changed-address or intervening-write applicability. It does not search or
+measure candidates.
 
 ## Evidence
 
@@ -130,7 +135,10 @@ protocol without real timing; recorded-evidence tests then validate the tracked
 run/benchmark records and recompute exact semantic and median timing results
 from retained CSV without rerunning the experiment. The plan preserves a
 non-success outcome vocabulary rather than making success a prerequisite for
-retained evidence.
+retained evidence. History-canonicalization tests inject the repository classic
+verifier successor across all 94 graphical starts, recover orbit periods
+`2,4,5,6,9,68`, verify modulo-ten rotate history, and fail closed on unproved
+applicability or malformed injected orbits.
 
 The broader study at `../../studies/superoptimization-program.md` remains the
 human synthesis record. This mirrored plan now has one retained host-specific

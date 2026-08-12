@@ -120,8 +120,12 @@ canonicalization now has a separate preregistered, unmeasured comparison. It
 binds the already-proved encryption-orbit and rotate-history reductions to raw
 visit-count state with equal budgets, fail-closed applicability, accepted-set
 equivalence, and a gate requiring a versioned challenge and runner before any
-result. New synthesis, equality-saturation, learned, or accelerator-guided
-strategies must add their own equally identified comparisons rather than
+result. The pure canonicalizer is now implemented below that gate: encryption
+semantics are injected by the caller, orbit closure is validated before residue
+reduction, rotate uses the proved modulo-ten bound, and applicability failures
+are rejected. This is substrate evidence, not comparison evidence. New
+synthesis, equality-saturation, learned, or accelerator-guided strategies must
+add their own equally identified comparisons rather than
 inheriting a result from either pilot. Source claims resolve through
 `docs/bibliography/`.
 

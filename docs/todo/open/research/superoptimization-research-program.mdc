@@ -117,7 +117,13 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   without measurements. Its plan binds the proved encryption-orbit and
   rotate-history equations to raw visit-count state with equal budgets,
   fail-closed applicability, accepted-set equivalence, and a hard gate requiring
-  a versioned challenge and runner before results. Larger challenges,
+  a versioned challenge and runner before results. A pure canonicalization
+  substrate now exists below that gate: callers inject exact encryption
+  semantics, orbit closure is validated, rotate visits reduce modulo ten, and
+  changed-address/intervening-write cases fail closed. Exhaustive tests cover
+  all 94 historical graphical starts and the six proved encryption periods.
+  Larger
+  challenges,
   independent hosts, the canonicalization challenge/runner, plans for other
   techniques, and
   a stronger comparative conclusion remain pending.
