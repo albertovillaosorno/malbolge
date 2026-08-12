@@ -355,6 +355,10 @@ class _AnalyzerModule(Protocol):
         """Render canonical report JSON."""
         ...
 
+    def main(self, arguments: list[str] | None = None) -> int:
+        """Run the public CLI entry point over explicit arguments."""
+        ...
+
 
 def _load_analyzer() -> _AnalyzerModule:
     spec = importlib.util.spec_from_file_location("emitted_malbolge", _ANALYZER)
@@ -1313,6 +1317,52 @@ def test_report_reaches_exact_sixteen_transition_bound() -> None:
     assert len(report.bounded_memory_access_source_map) == (
         _TOTAL_TRANSITION_LIMIT * 2
     )
+
+
+def test_exact_cycle_certificate_causes_cli_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A proven repeated state makes the bounded CLI result nonzero."""
+    payload = _sequential_output_source(_TWO_SOURCE_WORDS)
+    source_path = tmp_path / "exact-cycle.malbolge"
+    _ = source_path.write_bytes(payload)
+    report = _ANALYZER_MODULE.analyze_source(
+        payload,
+        transition_limit=_TWO_SOURCE_WORDS,
+    )
+    cycle = cast(
+        "_ExactCycleCertificate",
+        cast("object", {"period_transitions": 1}),
+    )
+    cycled = copy(report)
+    # Mutate only the isolated copy of the frozen production report.
+    object.__setattr__(  # ruff: ignore[unnecessary-dunder-call]
+        cycled,
+        "bounded_exact_cycle",
+        cycle,
+    )
+
+    def analyze_cycle(
+        source: bytes,
+        *,
+        transition_limit: int = _TOTAL_TRANSITION_LIMIT,
+    ) -> _Report:
+        assert source == payload
+        assert transition_limit == _TWO_SOURCE_WORDS
+        return cycled
+
+    monkeypatch.setattr(_ANALYZER_MODULE, "analyze_source", analyze_cycle)
+    result = _ANALYZER_MODULE.main(
+        ["--transition-limit", str(_TWO_SOURCE_WORDS), str(source_path)]
+    )
+    assert result == 1
+    document = cast(
+        "dict[str, object]",
+        json.loads(capsys.readouterr().out),
+    )
+    assert document["bounded_exact_cycle"] == {"period_transitions": 1}
 
 
 def test_report_reaches_requested_transition_beyond_default_bound() -> None:

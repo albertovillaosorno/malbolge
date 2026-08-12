@@ -755,9 +755,13 @@ def _bounded_prefix_accepted(report: StaticImageReport) -> bool:
     entry = report.entry_transition
     if not report.admitted_initial_image or entry is None or not entry.accepted:
         return False
-    if entry.next_fetch_address is None or report.bounded_transition_limit == 1:
-        return True
-    return _continuations_accepted(report.bounded_continuations)
+    if report.bounded_exact_cycle is not None:
+        return False
+    return (
+        entry.next_fetch_address is None
+        or report.bounded_transition_limit == 1
+        or _continuations_accepted(report.bounded_continuations)
+    )
 
 
 def _fail(message: str) -> Never:
