@@ -3238,6 +3238,52 @@ fn direct_selector_prioritizes_program_capacity() -> Result<(), String> {
 }
 
 #[test]
+fn direct_sequence_blocks_capacity_overflow_before_retry_authority()
+-> Result<(), String> {
+    let mut program = direct_initial_halt_program();
+    let overflow_address = current_profile().memory_words();
+    let effect = program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("initial-halt fixture has no effect"))?;
+    effect.before.registers.code_pointer = overflow_address;
+    effect.after.registers.code_pointer = overflow_address;
+    let programs = [program];
+
+    let Err(error) = select_verified_direct_sequence(
+        &programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    ) else {
+        return Err(String::from(
+            "capacity overflow published a verified sequence plan",
+        ));
+    };
+    let DirectSequenceError::Step { error, index: 0 } = error else {
+        return Err(format!(
+            "capacity overflow changed sequence error: {error}"
+        ));
+    };
+    let DirectSelectionError::Profile(profile_error) = *error else {
+        return Err(String::from(
+            "capacity overflow lost profile error before sequence publication",
+        ));
+    };
+    if profile_error.kind()
+        == ProfileRequirementErrorKind::ProfileCapacityExceeded
+        && profile_error.to_string().starts_with("MALBOLGE-PROFILE-002 ")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "sequence capacity preflight diagnostic drifted: {profile_error}"
+        ))
+    }
+}
+
+
+#[test]
 fn direct_selector_rejects_forged_profile_requirement() -> Result<(), String> {
     let mut program = direct_initial_halt_program();
     program.profile_requirement =

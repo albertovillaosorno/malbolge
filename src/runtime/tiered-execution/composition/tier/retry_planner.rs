@@ -241,7 +241,11 @@ enum RetryPlanningClassification {
 ///
 /// Only direct `TargetFormat` absence becomes a normative interpreter handoff.
 /// Every other planning or admission failure retains the suspension and fails
-/// closed.
+/// closed. A legitimate retry suffix came from a previously verified direct
+/// sequence, so every retained program already passed immutable
+/// profile-capacity preflight before retry authority existed. Replanning still
+/// retains any
+/// defensive profile diagnostic verbatim if that invariant is ever violated.
 ///
 /// # Errors
 ///
