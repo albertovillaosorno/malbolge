@@ -37,8 +37,6 @@
 
 //! Bounded cache-aware native continuation retry cycles.
 
-use std::fmt::{Display, Formatter, Result as FormatResult};
-
 #[path = "cached_cycle/telemetry.rs"]
 mod telemetry;
 #[path = "cached_cycle/telemetry_assessment.rs"]
@@ -57,6 +55,8 @@ mod telemetry_latency_snapshot;
 mod telemetry_snapshot;
 #[path = "cached_cycle/telemetry_window.rs"]
 mod telemetry_window;
+
+use std::fmt::{Display, Formatter, Result as FormatResult};
 
 pub use telemetry::{
     NativeContinuationCachedRetryTelemetry,
@@ -602,12 +602,6 @@ impl NativeContinuationCachedRetryRoutingCycleFailure {
         &self.failure
     }
 
-    /// Returns the retained canonical profile diagnostic, when applicable.
-    #[must_use]
-    pub fn profile_diagnostic(&self) -> Option<&str> {
-        self.failure.profile_diagnostic()
-    }
-
     /// Consumes this owner into prior evidence and exact routing failure.
     #[must_use]
     pub fn into_parts(
@@ -620,6 +614,12 @@ impl NativeContinuationCachedRetryRoutingCycleFailure {
     #[must_use]
     pub fn prior_attempts(&self) -> &[NativeContinuationCachedRetryAttempt] {
         &self.prior_attempts
+    }
+
+    /// Returns the retained canonical profile diagnostic, when applicable.
+    #[must_use]
+    pub fn profile_diagnostic(&self) -> Option<&str> {
+        self.failure.profile_diagnostic()
     }
 }
 

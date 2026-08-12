@@ -196,16 +196,16 @@ impl NativeContinuationRetryPlanningFailure {
         self.error
     }
 
-    /// Returns the retained canonical profile diagnostic, when applicable.
-    #[must_use]
-    pub fn profile_diagnostic(&self) -> Option<&str> {
-        self.profile_diagnostic.as_deref()
-    }
-
     /// Consumes this rejection and restores the exact affine suspension.
     #[must_use]
     pub fn into_suspension(self) -> NativeContinuationScheduleSuspension {
         self.suspension
+    }
+
+    /// Returns the retained canonical profile diagnostic, when applicable.
+    #[must_use]
+    pub fn profile_diagnostic(&self) -> Option<&str> {
+        self.profile_diagnostic.as_deref()
     }
 }
 
@@ -336,7 +336,7 @@ const fn classify_selection_error(
     }
 }
 
-fn hard_classification(
+const fn hard_classification(
     error: NativeContinuationRetryPlanningError,
 ) -> RetryPlanningClassification {
     RetryPlanningClassification::Hard {
@@ -368,10 +368,14 @@ fn classify_sequence_error(
             error: selection_error,
             index,
         } => {
-            let profile_diagnostic = match selection_error.as_ref() {
-                DirectSelectionError::Profile(error) => Some(error.to_string()),
-                _ => None,
-            };
+            let profile_diagnostic =
+                if let DirectSelectionError::Profile(profile_error) =
+                    selection_error.as_ref()
+                {
+                    Some(profile_error.to_string())
+                } else {
+                    None
+                };
             classify_selection_error(&selection_error).map_or(
                 RetryPlanningClassification::Interpreter,
                 |cause| RetryPlanningClassification::Hard {

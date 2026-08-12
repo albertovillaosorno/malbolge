@@ -6,6 +6,29 @@
 #   - false
 # License-File:
 #   - LICENSE-MIT
+#
+# Boundary-Contract:
+# - Owns:
+#   - Retained evidence for the classic superopt seed replication.
+# - Must-Not:
+#   - Rerun timing, discard trials, or generalize beyond the recorded seeds.
+# - Allows:
+#   - Inputs: tracked manifest, benchmark metadata, raw CSV, and source pin.
+#   - Outputs: shared-policy and exact observed-trial assertions.
+#   - Side effects: repository-local evidence reads only.
+# - Split-When:
+#   - Another seed replication gains independent retained evidence.
+# - Merge-When:
+#   - Shared benchmark evidence tests own this exact record shape.
+# - Summary:
+#   - Lock the preregistered eight-seed mixed replication result.
+# - Description:
+#   - Recomputes first-hit work conclusions from every retained seed trial.
+# - Usage:
+#   - Collected by the research-algorithm Python test surface.
+# - Defaults:
+#   - Exact observations are evidence, not a broad performance claim.
+#
 
 """Retained evidence for the preregistered classic superopt seed replication."""
 

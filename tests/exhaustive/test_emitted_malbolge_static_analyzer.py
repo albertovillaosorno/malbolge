@@ -1391,7 +1391,10 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
         "dataflow:16-transition-prefix-only",
         "input-dependent-cycles:not-analyzed",
         "self-modification:16-transition-prefix-only",
-        "source-map-context:16-transition-memory-access-and-fetch-value-lineage",
+        (
+            "source-map-context:16-transition-memory-access-and-"
+            "fetch-value-lineage"
+        ),
         "wraparound-reachability:16-transition-prefix-only",
     )
 

@@ -13416,11 +13416,11 @@ fn native_retry_router_uses_policy_for_target_format() -> Result<(), String> {
     }
 }
 
-#[test]
-fn native_retry_router_preserves_hard_planning_failure() -> Result<(), String> {
-    let fixture = native_retry_fixture(HostIsa::X86_64, 1)?;
-    let expected_profile_diagnostic = match select_verified_direct_sequence(
-        fixture.suspension.remaining_programs(),
+fn expected_retry_profile_diagnostic(
+    suspension: &NativeContinuationScheduleSuspension,
+) -> Result<String, String> {
+    match select_verified_direct_sequence(
+        suspension.remaining_programs(),
         safe_rust_classic_capability(),
         HostOperatingSystem::Windows,
         HostIsa::X86_64,
@@ -13428,14 +13428,19 @@ fn native_retry_router_preserves_hard_planning_failure() -> Result<(), String> {
         Err(DirectSequenceError::Step { error, index: 0 })
             if matches!(error.as_ref(), DirectSelectionError::Profile(_)) =>
         {
-            error.to_string()
+            Ok(error.to_string())
         },
-        result => {
-            return Err(format!(
-                "router profile preflight fixture changed: {result:?}"
-            ));
-        },
-    };
+        result => Err(format!(
+            "router profile preflight fixture changed: {result:?}"
+        )),
+    }
+}
+
+#[test]
+fn native_retry_router_preserves_hard_planning_failure() -> Result<(), String> {
+    let fixture = native_retry_fixture(HostIsa::X86_64, 1)?;
+    let expected_profile_diagnostic =
+        expected_retry_profile_diagnostic(&fixture.suspension)?;
     let expected_state = fixture.suspension.state().clone();
     let policy = NativeContinuationRetryPolicy::new(
         2,

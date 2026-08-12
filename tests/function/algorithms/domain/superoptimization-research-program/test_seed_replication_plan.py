@@ -6,6 +6,29 @@
 #   - false
 # License-File:
 #   - LICENSE-MIT
+#
+# Boundary-Contract:
+# - Owns:
+#   - Preregistration evidence for the classic superopt seed replication.
+# - Must-Not:
+#   - Observe replication outcomes or weaken the frozen base-plan identity.
+# - Allows:
+#   - Inputs: tracked replication plan and frozen base plan.
+#   - Outputs: exact preregistered seed, metric, and identity assertions.
+#   - Side effects: repository-local plan reads only.
+# - Split-When:
+#   - Another replication protocol gains independent lifecycle or policy.
+# - Merge-When:
+#   - Shared preregistration tests own this exact record shape.
+# - Summary:
+#   - Lock the multi-seed replication identity before measured runs.
+# - Description:
+#   - Binds declared seeds and metric to the immutable classic pilot plan.
+# - Usage:
+#   - Collected by the research-algorithm Python test surface.
+# - Defaults:
+#   - Any plan or base-plan digest drift fails closed.
+#
 
 """Preregistration evidence for the classic superopt multi-seed replication."""
 

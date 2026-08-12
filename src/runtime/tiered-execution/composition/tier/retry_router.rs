@@ -223,16 +223,16 @@ impl NativeContinuationRetryRoutingFailure {
         self.error
     }
 
-    /// Returns the retained canonical profile diagnostic, when applicable.
-    #[must_use]
-    pub fn profile_diagnostic(&self) -> Option<&str> {
-        self.profile_diagnostic.as_deref()
-    }
-
     /// Consumes this failure and restores the exact retry suspension.
     #[must_use]
     pub fn into_suspension(self) -> NativeContinuationScheduleSuspension {
         self.suspension
+    }
+
+    /// Returns the retained canonical profile diagnostic, when applicable.
+    #[must_use]
+    pub fn profile_diagnostic(&self) -> Option<&str> {
+        self.profile_diagnostic.as_deref()
     }
 }
 

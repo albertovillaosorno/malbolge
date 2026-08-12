@@ -219,7 +219,8 @@ def _analysis_limits(transition_limit: int) -> tuple[str, ...]:
         f"self-modification:{prefix}",
         (
             "source-map-context:"
-            f"{transition_limit}-transition-memory-access-and-fetch-value-lineage"
+            f"{transition_limit}-transition-memory-access-and-"
+            "fetch-value-lineage"
         ),
         f"wraparound-reachability:{prefix}",
     )
