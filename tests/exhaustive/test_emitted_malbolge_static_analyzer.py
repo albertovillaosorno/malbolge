@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v17"
+_SCHEMA = "malbolge-static-image/v18"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -80,12 +80,28 @@ _CONTINUATION_LIMIT = _TOTAL_TRANSITION_LIMIT - 1
 _EXTENDED_TRANSITION_LIMIT = 32
 _MAX_TOTAL_TRANSITION_LIMIT = 256
 _INVALID_TOTAL_TRANSITION_LIMIT = _MAX_TOTAL_TRANSITION_LIMIT + 1
+_MAX_WORKLIST_STATE_LIMIT = 4_096
+_INVALID_WORKLIST_STATE_LIMIT = _MAX_WORKLIST_STATE_LIMIT + 1
+_WORKLIST_COMPLETE_STATE_LIMIT = 258
+_WORKLIST_TRUNCATED_STATE_LIMIT = 257
+_WORKLIST_INPUT_VALUE_COUNT = 257
+_WORKLIST_CLOSED_LIMIT = (
+    "input-dependent-reachability:258-state-worklist-closed"
+)
+_WORKLIST_TRUNCATED_LIMIT = (
+    "input-dependent-reachability:257-state-worklist-truncated"
+)
+_INPUT_CRAZY_SOURCE = bytes((117, 61))
+_INPUT_HALT_SOURCE = bytes((117, 80))
 _MEMORY_SCOPE = "16-transition-prefix"
 _EXTENDED_CONTROL_FLOW_LIMIT = (
     "control-flow-reachability:32-transition-prefix-only"
 )
 _TRANSITION_LIMIT_ERROR = (
     "transition limit must be an exact integer from 1 through 256"
+)
+_WORKLIST_LIMIT_ERROR = (
+    "worklist state limit must be an exact integer from 1 through 4096"
 )
 _ACCESS_FETCH = "instruction-fetch"
 _ACCESS_DATA_READ = "data-read"
@@ -249,6 +265,18 @@ class _SnapshotStep(Protocol):
     successor: _StateSnapshot | None
 
 
+class _WorklistAnalysis(Protocol):
+    state_limit: int
+    unique_states: int
+    explored_states: int
+    repeated_state_edges: int
+    input_branch_points: int
+    terminal_status_counts: tuple[tuple[str, int], ...]
+    maximum_transition_index: int
+    frontier_states: int
+    truncated: bool
+
+
 class _ExactCycleCertificate(Protocol):
     first_seen_before_transition: int
     repeated_before_transition: int
@@ -320,6 +348,7 @@ class _Report(Protocol):
     bounded_transition_limit: int
     bounded_continuations: tuple[_SecondTransition, ...]
     bounded_state_snapshots: tuple[_StateSnapshot, ...]
+    bounded_worklist: _WorklistAnalysis | None
     bounded_exact_cycle: _ExactCycleCertificate | None
     bounded_memory_requirement: _BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[_BoundedFetchSourceContext, ...]
@@ -396,6 +425,7 @@ class _AnalyzerModule(Protocol):
         source: bytes,
         *,
         transition_limit: int = _TOTAL_TRANSITION_LIMIT,
+        worklist_state_limit: int | None = None,
     ) -> _Report:
         """Analyze source without running it."""
         ...
@@ -1581,6 +1611,46 @@ def test_report_accepts_reviewed_maximum_transition_limit() -> None:
     assert last.next_fetch_address == _MAX_TOTAL_TRANSITION_LIMIT
 
 
+def test_report_worklist_resolves_input_dependent_crazy() -> None:
+    """Opt-in worklist resolves every byte/EOF branch after input."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _INPUT_CRAZY_SOURCE,
+        worklist_state_limit=_WORKLIST_COMPLETE_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _WORKLIST_COMPLETE_STATE_LIMIT
+    assert worklist.explored_states == _WORKLIST_COMPLETE_STATE_LIMIT
+    assert worklist.terminal_status_counts == (
+        ("rejected-invalid-self-encryption", _WORKLIST_INPUT_VALUE_COUNT),
+    )
+    assert not worklist.truncated
+    assert _WORKLIST_CLOSED_LIMIT in report.analysis_limits
+
+
+def test_report_worklist_truncation_is_explicit() -> None:
+    """A too-small state budget records frontier truncation fail-closed."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _INPUT_HALT_SOURCE,
+        worklist_state_limit=_WORKLIST_TRUNCATED_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.truncated
+    assert worklist.frontier_states == _WORKLIST_TRUNCATED_STATE_LIMIT
+    assert _WORKLIST_TRUNCATED_LIMIT in report.analysis_limits
+
+
+def test_report_worklist_state_limit_is_fail_closed() -> None:
+    """Public worklist budget accepts only its reviewed exact interval."""
+    for invalid in (0, -1, True, _INVALID_WORKLIST_STATE_LIMIT):
+        with pytest.raises(ValueError, match=_WORKLIST_LIMIT_ERROR):
+            _ = _ANALYZER_MODULE.analyze_source(
+                _INPUT_HALT_SOURCE,
+                worklist_state_limit=cast("int", invalid),
+            )
+
+
 def test_report_transition_limit_is_fail_closed() -> None:
     """Public report depth accepts only the reviewed finite integer interval."""
     source = _sequential_output_source(2)
@@ -1632,7 +1702,7 @@ def test_dynamic_analysis_limits_are_explicit_and_stable() -> None:
         "code-data-aliasing:16-transition-prefix-only",
         "control-flow-reachability:16-transition-prefix-only",
         "dataflow:16-transition-prefix-only",
-        "input-dependent-cycles:not-analyzed",
+        "input-dependent-reachability:not-analyzed",
         "self-modification:16-transition-prefix-only",
         (
             "source-map-context:16-transition-memory-access-and-"
@@ -1653,6 +1723,7 @@ def test_report_rendering_is_canonical_and_replayable() -> None:
     assert parsed["schema"] == _SCHEMA
     assert parsed["admitted_initial_image"] is True
     assert parsed["bounded_exact_cycle"] is None
+    assert parsed["bounded_worklist"] is None
     snapshots = cast(
         "list[dict[str, object]]",
         parsed["bounded_state_snapshots"],
@@ -1685,6 +1756,57 @@ def test_cli_prints_same_report_as_library() -> None:
     assert not completed.stderr
 
 
+def test_cli_accepts_closed_worklist_request(tmp_path: Path) -> None:
+    """CLI publishes a closed exact input worklist under an explicit cap."""
+    source = tmp_path / "input-halt.malbolge"
+    _ = source.write_bytes(_INPUT_HALT_SOURCE)
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            str(_ANALYZER),
+            "--worklist-state-limit",
+            str(_WORKLIST_COMPLETE_STATE_LIMIT),
+            str(source),
+        ],
+        cwd=_ROOT,
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+    document = cast("dict[str, object]", json.loads(completed.stdout))
+    bounded = cast("dict[str, object]", document["bounded_worklist"])
+    assert bounded["unique_states"] == _WORKLIST_COMPLETE_STATE_LIMIT
+    assert bounded["truncated"] is False
+
+
+def test_cli_rejects_truncated_worklist_request(tmp_path: Path) -> None:
+    """Requested graph exploration cannot succeed after state truncation."""
+    source = tmp_path / "input-halt-truncated.malbolge"
+    _ = source.write_bytes(_INPUT_HALT_SOURCE)
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            str(_ANALYZER),
+            "--worklist-state-limit",
+            str(_WORKLIST_TRUNCATED_STATE_LIMIT),
+            str(source),
+        ],
+        cwd=_ROOT,
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 1
+    document = cast("dict[str, object]", json.loads(completed.stdout))
+    bounded = cast("dict[str, object]", document["bounded_worklist"])
+    assert bounded["truncated"] is True
+
+
 def test_cli_accepts_explicit_extended_transition_limit(tmp_path: Path) -> None:
     """CLI can request exact reachability beyond the default sixteen steps."""
     source = tmp_path / "extended-prefix.malbolge"
@@ -1715,6 +1837,28 @@ def test_cli_accepts_explicit_extended_transition_limit(tmp_path: Path) -> None:
     )
     assert len(transitions) == _EXTENDED_TRANSITION_LIMIT - 1
     assert transitions[-1]["fetched_address"] == _EXTENDED_TRANSITION_LIMIT - 1
+
+
+def test_cli_rejects_worklist_limit_above_safety_ceiling() -> None:
+    """CLI rejects a worklist budget above the reviewed safety ceiling."""
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            str(_ANALYZER),
+            "--worklist-state-limit",
+            str(_INVALID_WORKLIST_STATE_LIMIT),
+            str(_FIXTURE),
+        ],
+        cwd=_ROOT,
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 1
+    assert not completed.stdout
+    assert completed.stderr.strip() == _WORKLIST_LIMIT_ERROR
 
 
 def test_cli_rejects_transition_limit_above_safety_ceiling() -> None:

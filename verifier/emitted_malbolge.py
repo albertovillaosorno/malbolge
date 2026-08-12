@@ -49,15 +49,17 @@ if __package__:
     from verifier import emitted_malbolge_classic as classic
     from verifier import emitted_malbolge_entry as entry_transfer
     from verifier import emitted_malbolge_prefix as prefix_transfer
+    from verifier import emitted_malbolge_worklist as worklist_transfer
 else:
     import emitted_malbolge_classic as classic
     import emitted_malbolge_entry as entry_transfer
     import emitted_malbolge_prefix as prefix_transfer
+    import emitted_malbolge_worklist as worklist_transfer
 
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v17"
+_SCHEMA: Final = "malbolge-static-image/v18"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -78,7 +80,8 @@ _ORIGIN_RECURRENCE: Final = "recurrence-initialization"
 _DEFAULT_TOTAL_TRANSITION_LIMIT: Final = 16
 _MAX_TOTAL_TRANSITION_LIMIT: Final = 256
 _TRANSITION_LIMIT_OPTION: Final = "--transition-limit"
-_CLI_LIMIT_ARGUMENT_COUNT: Final = 3
+_WORKLIST_LIMIT_OPTION: Final = "--worklist-state-limit"
+_MAX_WORKLIST_STATE_LIMIT: Final = 4_096
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +190,7 @@ class StaticImageReport:
     bounded_transition_limit: int
     bounded_continuations: tuple[prefix_transfer.SecondTransition, ...]
     bounded_state_snapshots: tuple[prefix_transfer.StateSnapshot, ...]
+    bounded_worklist: worklist_transfer.WorklistAnalysis | None
     bounded_exact_cycle: prefix_transfer.ExactCycleCertificate | None
     bounded_memory_requirement: BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[BoundedFetchSourceContext, ...]
@@ -235,17 +239,48 @@ def _transition_limit(value: object) -> int:
     return value
 
 
+def _worklist_state_limit(value: object) -> int | None:
+    if value is None:
+        return None
+    if (
+        type(value) is not int
+        or value < 1
+        or value > _MAX_WORKLIST_STATE_LIMIT
+    ):
+        message = (
+            "worklist state limit must be an exact integer from 1 through "
+            f"{_MAX_WORKLIST_STATE_LIMIT}"
+        )
+        raise ValueError(message)
+    return value
+
+
 def _memory_scope(transition_limit: int) -> str:
     return f"{transition_limit}-transition-prefix"
 
 
-def _analysis_limits(transition_limit: int) -> tuple[str, ...]:
+def _worklist_limit_label(
+    analysis: worklist_transfer.WorklistAnalysis | None,
+) -> str:
+    if analysis is None:
+        return "input-dependent-reachability:not-analyzed"
+    status = "truncated" if analysis.truncated else "closed"
+    return (
+        "input-dependent-reachability:"
+        f"{analysis.state_limit}-state-worklist-{status}"
+    )
+
+
+def _analysis_limits(
+    transition_limit: int,
+    worklist: worklist_transfer.WorklistAnalysis | None,
+) -> tuple[str, ...]:
     prefix = f"{transition_limit}-transition-prefix-only"
     return (
         f"code-data-aliasing:{prefix}",
         f"control-flow-reachability:{prefix}",
         f"dataflow:{prefix}",
-        "input-dependent-cycles:not-analyzed",
+        _worklist_limit_label(worklist),
         f"self-modification:{prefix}",
         (
             "source-map-context:"
@@ -851,6 +886,7 @@ def analyze_source(
     source: bytes,
     *,
     transition_limit: int = _DEFAULT_TOTAL_TRANSITION_LIMIT,
+    worklist_state_limit: int | None = None,
 ) -> StaticImageReport:
     """Analyze one classic source image under one explicit finite step bound.
 
@@ -859,6 +895,7 @@ def analyze_source(
 
     """
     admitted_limit = _transition_limit(transition_limit)
+    admitted_worklist_limit = _worklist_state_limit(worklist_state_limit)
     words = _loaded_source_words(source)
     required = len(words)
     findings: list[StaticFinding] = []
@@ -893,6 +930,14 @@ def analyze_source(
         transition_limit=admitted_limit,
     )
     findings.extend(prefix.findings)
+    worklist = (
+        worklist_transfer.analyze_reachability(
+            words,
+            maximum_states=admitted_worklist_limit,
+        )
+        if not findings and admitted_worklist_limit is not None
+        else None
+    )
     return StaticImageReport(
         schema=_SCHEMA,
         profile_id=_PROFILE_ID,
@@ -904,6 +949,7 @@ def analyze_source(
         bounded_transition_limit=admitted_limit,
         bounded_continuations=prefix.continuations,
         bounded_state_snapshots=prefix.state_snapshots,
+        bounded_worklist=worklist,
         bounded_exact_cycle=prefix.exact_cycle,
         bounded_memory_requirement=_bounded_memory_requirement(
             required,
@@ -933,7 +979,7 @@ def analyze_source(
         fourth_transition=_continuation_at(prefix, 2),
         fifth_transition=_continuation_at(prefix, 3),
         findings=tuple(findings),
-        analysis_limits=_analysis_limits(admitted_limit),
+        analysis_limits=_analysis_limits(admitted_limit, worklist),
     )
 
 
@@ -967,7 +1013,10 @@ def _bounded_prefix_accepted(report: StaticImageReport) -> bool:
     entry = report.entry_transition
     if not report.admitted_initial_image or entry is None or not entry.accepted:
         return False
-    if report.bounded_exact_cycle is not None:
+    worklist = report.bounded_worklist
+    if report.bounded_exact_cycle is not None or (
+        worklist is not None and worklist.truncated
+    ):
         return False
     return (
         entry.next_fetch_address is None
@@ -980,26 +1029,62 @@ def _fail(message: str) -> Never:
     raise SystemExit(message)
 
 
-def _cli_request(arguments: list[str]) -> tuple[Path, int]:
-    usage = (
-        "usage: emitted_malbolge.py [--transition-limit N] SOURCE.malbolge"
-    )
-    if len(arguments) == 1:
-        return Path(arguments[0]), _DEFAULT_TOTAL_TRANSITION_LIMIT
-    if (
-        len(arguments) != _CLI_LIMIT_ARGUMENT_COUNT
-        or arguments[0] != _TRANSITION_LIMIT_OPTION
-    ):
-        _fail(usage)
+def _decimal_cli_value(value: str, *, label: str) -> int:
     try:
-        requested = int(arguments[1], 10)
+        return int(value, 10)
     except ValueError:
-        _fail("transition limit must be a decimal integer")
+        _fail(f"{label} must be a decimal integer")
+
+
+def _cli_option_values(arguments: list[str], usage: str) -> dict[str, str]:
+    options = arguments[:-1]
+    if len(options) % 2 != 0:
+        _fail(usage)
+    values: dict[str, str] = {}
+    allowed = {_TRANSITION_LIMIT_OPTION, _WORKLIST_LIMIT_OPTION}
+    for index in range(0, len(options), 2):
+        option = options[index]
+        if option not in allowed or option in values:
+            _fail(usage)
+        values[option] = options[index + 1]
+    return values
+
+
+def _cli_transition_limit(values: dict[str, str]) -> int:
+    raw = values.get(_TRANSITION_LIMIT_OPTION)
+    if raw is None:
+        return _DEFAULT_TOTAL_TRANSITION_LIMIT
+    requested = _decimal_cli_value(raw, label="transition limit")
     try:
-        admitted = _transition_limit(requested)
+        return _transition_limit(requested)
     except ValueError as error:
         _fail(str(error))
-    return Path(arguments[2]), admitted
+
+
+def _cli_worklist_limit(values: dict[str, str]) -> int | None:
+    raw = values.get(_WORKLIST_LIMIT_OPTION)
+    if raw is None:
+        return None
+    requested = _decimal_cli_value(raw, label="worklist state limit")
+    try:
+        return _worklist_state_limit(requested)
+    except ValueError as error:
+        _fail(str(error))
+
+
+def _cli_request(arguments: list[str]) -> tuple[Path, int, int | None]:
+    usage = (
+        "usage: emitted_malbolge.py [--transition-limit N] "
+        "[--worklist-state-limit N] SOURCE.malbolge"
+    )
+    if not arguments:
+        _fail(usage)
+    values = _cli_option_values(arguments, usage)
+    return (
+        Path(arguments[-1]),
+        _cli_transition_limit(values),
+        _cli_worklist_limit(values),
+    )
 
 
 def main(arguments: list[str] | None = None) -> int:
@@ -1011,12 +1096,16 @@ def main(arguments: list[str] | None = None) -> int:
 
     """
     argv = sys.argv[1:] if arguments is None else arguments
-    source_path, transition_limit = _cli_request(argv)
+    source_path, transition_limit, worklist_state_limit = _cli_request(argv)
     try:
         source = source_path.read_bytes()
     except OSError as error:
         _fail(f"static analyzer cannot read source: {error}")
-    report = analyze_source(source, transition_limit=transition_limit)
+    report = analyze_source(
+        source,
+        transition_limit=transition_limit,
+        worklist_state_limit=worklist_state_limit,
+    )
     payload = render_report(report).encode("utf-8")
     _ = sys.stdout.buffer.write(payload)
     return 0 if _bounded_prefix_accepted(report) else 1
