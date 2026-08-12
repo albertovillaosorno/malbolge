@@ -109,10 +109,22 @@ class ExactCycleCertificate:
 
 
 @dataclass(frozen=True, slots=True)
+class StateSnapshot:
+    """Exact bounded machine and sparse-memory state before one step."""
+
+    before_transition: int
+    code_pointer: int
+    data_pointer: int
+    accumulator: int | None
+    memory_overrides: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ContinuationAnalysis:
-    """Bounded continuation transitions plus an optional exact cycle proof."""
+    """Bounded continuation transitions, states, and exact cycle proof."""
 
     transitions: tuple[SecondTransition, ...]
+    state_snapshots: tuple[StateSnapshot, ...]
     exact_cycle: ExactCycleCertificate | None
 
 
@@ -510,6 +522,21 @@ def _state_after_transition(
     )
 
 
+def _state_snapshot(
+    memory: _MemoryState,
+    state: _MachineState,
+    *,
+    before_transition: int,
+) -> StateSnapshot:
+    return StateSnapshot(
+        before_transition=before_transition,
+        code_pointer=state.code_pointer,
+        data_pointer=state.data_pointer,
+        accumulator=state.accumulator,
+        memory_overrides=memory.overrides,
+    )
+
+
 def _exact_state_key(
     memory: _MemoryState,
     state: _MachineState | None,
@@ -646,6 +673,7 @@ def analyze_continuation_trace(
     memory = _memory_after_entry(words, entry)
     state = _state_after_entry(entry)
     transitions: list[SecondTransition] = []
+    state_snapshots: list[StateSnapshot] = []
     seen: dict[
         tuple[int, int, int, tuple[tuple[int, int], ...]],
         int,
@@ -654,6 +682,13 @@ def analyze_continuation_trace(
     for _ in range(maximum_transitions):
         if state is None:
             break
+        state_snapshots.append(
+            _state_snapshot(
+                memory,
+                state,
+                before_transition=len(transitions) + 2,
+            )
+        )
         transition = _analyze_state(memory, state)
         transitions.append(transition)
         memory = _memory_after_transition(memory, transition)
@@ -665,8 +700,16 @@ def analyze_continuation_trace(
             before_transition=len(transitions) + 2,
         )
         if cycle is not None:
-            return ContinuationAnalysis(tuple(transitions), cycle)
-    return ContinuationAnalysis(tuple(transitions), None)
+            return ContinuationAnalysis(
+                tuple(transitions),
+                tuple(state_snapshots),
+                cycle,
+            )
+    return ContinuationAnalysis(
+        tuple(transitions),
+        tuple(state_snapshots),
+        None,
+    )
 
 
 def analyze_continuations(

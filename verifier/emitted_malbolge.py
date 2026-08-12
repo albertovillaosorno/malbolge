@@ -57,7 +57,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v16"
+_SCHEMA: Final = "malbolge-static-image/v17"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -186,6 +186,7 @@ class StaticImageReport:
     required_source_words: int
     bounded_transition_limit: int
     bounded_continuations: tuple[prefix_transfer.SecondTransition, ...]
+    bounded_state_snapshots: tuple[prefix_transfer.StateSnapshot, ...]
     bounded_exact_cycle: prefix_transfer.ExactCycleCertificate | None
     bounded_memory_requirement: BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[BoundedFetchSourceContext, ...]
@@ -215,6 +216,7 @@ class _PrefixAnalysis:
     cells: tuple[InitialCell, ...]
     entry: entry_transfer.EntryTransition | None
     continuations: tuple[prefix_transfer.SecondTransition, ...]
+    state_snapshots: tuple[prefix_transfer.StateSnapshot, ...]
     exact_cycle: prefix_transfer.ExactCycleCertificate | None
     findings: tuple[StaticFinding, ...]
 
@@ -336,7 +338,7 @@ def _analyze_admitted_cells(
     transition_limit: int,
 ) -> _PrefixAnalysis:
     if not can_decode:
-        return _PrefixAnalysis((), None, (), None, ())
+        return _PrefixAnalysis((), None, (), (), None, ())
     cells = _initial_cells(source)
     findings = _decode_findings(cells)
     entry = (
@@ -347,7 +349,14 @@ def _analyze_admitted_cells(
         )
     )
     continuation_limit = transition_limit - 1
-    if entry is None or continuation_limit == 0:
+    if entry is None:
+        state_snapshots = ()
+        continuations = ()
+        exact_cycle = None
+    elif continuation_limit == 0:
+        state_snapshots = (
+            prefix_transfer.StateSnapshot(1, 0, 0, 0, ()),
+        )
         continuations = ()
         exact_cycle = None
     else:
@@ -357,11 +366,16 @@ def _analyze_admitted_cells(
             maximum_transitions=continuation_limit,
         )
         continuations = trace.transitions
+        state_snapshots = (
+            prefix_transfer.StateSnapshot(1, 0, 0, 0, ()),
+            *trace.state_snapshots,
+        )
         exact_cycle = trace.exact_cycle
     return _PrefixAnalysis(
         cells,
         entry,
         continuations,
+        state_snapshots,
         exact_cycle,
         findings,
     )
@@ -889,6 +903,7 @@ def analyze_source(
         required_source_words=required,
         bounded_transition_limit=admitted_limit,
         bounded_continuations=prefix.continuations,
+        bounded_state_snapshots=prefix.state_snapshots,
         bounded_exact_cycle=prefix.exact_cycle,
         bounded_memory_requirement=_bounded_memory_requirement(
             required,

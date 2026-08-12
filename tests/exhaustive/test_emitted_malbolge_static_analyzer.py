@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v16"
+_SCHEMA = "malbolge-static-image/v17"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -235,6 +235,14 @@ class _SecondTransition(Protocol):
     accepted: bool
 
 
+class _StateSnapshot(Protocol):
+    before_transition: int
+    code_pointer: int
+    data_pointer: int
+    accumulator: int | None
+    memory_overrides: tuple[tuple[int, int], ...]
+
+
 class _ExactCycleCertificate(Protocol):
     first_seen_before_transition: int
     repeated_before_transition: int
@@ -305,6 +313,7 @@ class _Report(Protocol):
     required_source_words: int
     bounded_transition_limit: int
     bounded_continuations: tuple[_SecondTransition, ...]
+    bounded_state_snapshots: tuple[_StateSnapshot, ...]
     bounded_exact_cycle: _ExactCycleCertificate | None
     bounded_memory_requirement: _BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[_BoundedFetchSourceContext, ...]
@@ -609,6 +618,52 @@ def test_bounded_fetch_source_map_preserves_raw_offsets() -> None:
     assert third.source_byte_offset is None
     assert third.initial_source_byte is None
     assert third.fetched_value_matches_initial_source is None
+
+
+def test_bounded_state_snapshots_track_evolved_memory() -> None:
+    """Pre-step snapshots preserve registers and sparse evolved memory."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _DATA_LINEAGE_WRITE_SOURCE,
+        transition_limit=_DATA_LINEAGE_TRANSITION_LIMIT,
+    )
+    snapshots = report.bounded_state_snapshots
+    assert len(snapshots) == _DATA_LINEAGE_TRANSITION_LIMIT
+    initial = snapshots[0]
+    assert (
+        initial.before_transition,
+        initial.code_pointer,
+        initial.data_pointer,
+        initial.accumulator,
+        initial.memory_overrides,
+    ) == (1, 0, 0, 0, ())
+    before_read = snapshots[_DATA_LINEAGE_READ_TRANSITION - 1]
+    assert before_read.before_transition == _DATA_LINEAGE_READ_TRANSITION
+    assert before_read.code_pointer == _THIRD_TRANSITION_INDEX
+    assert before_read.data_pointer == _DATA_LINEAGE_ADDRESS
+    assert before_read.accumulator == _DATA_LINEAGE_VALUE
+    assert before_read.memory_overrides == (
+        (0, 121),
+        (1, 113),
+        (2, 113),
+        (_DATA_LINEAGE_ADDRESS, _DATA_LINEAGE_VALUE),
+    )
+
+
+def test_bounded_state_snapshots_preserve_unknown_input_accumulator() -> None:
+    """Input dependency remains explicit in the next pre-step snapshot."""
+    source = bytes((
+        _source_byte_for_decode(ord("/"), 0),
+        _source_byte_for_decode(ord("p"), 1),
+    ))
+    report = _ANALYZER_MODULE.analyze_source(source)
+    snapshots = report.bounded_state_snapshots
+    assert len(snapshots) == _TWO_SOURCE_WORDS
+    after_input = snapshots[1]
+    assert after_input.before_transition == _SECOND_TRANSITION_INDEX
+    assert after_input.code_pointer == 1
+    assert after_input.data_pointer == 1
+    assert after_input.accumulator is None
+    assert after_input.memory_overrides
 
 
 def test_bounded_fetch_value_lineage_tracks_initial_origins_and_write() -> None:
@@ -1545,6 +1600,12 @@ def test_report_rendering_is_canonical_and_replayable() -> None:
     assert parsed["schema"] == _SCHEMA
     assert parsed["admitted_initial_image"] is True
     assert parsed["bounded_exact_cycle"] is None
+    snapshots = cast(
+        "list[dict[str, object]]",
+        parsed["bounded_state_snapshots"],
+    )
+    assert snapshots[0]["before_transition"] == 1
+    assert snapshots[0]["memory_overrides"] == []
     assert parsed["bounded_data_read_value_lineage"] == []
     encryption_lineage = cast(
         "list[dict[str, object]]",
