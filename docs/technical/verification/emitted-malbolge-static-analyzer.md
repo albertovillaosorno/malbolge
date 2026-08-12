@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v12` retains exact `entry_transition` through
+`malbolge-static-image/v13` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and adds `bounded_continuations`.
 Sixteen transitions remain the default, while one explicit finite request
 may select any total bound from 1 through 256. One single-pass finite trace
@@ -40,7 +40,7 @@ decode, C/D alias, planned data write, encryption address/input/output,
 accumulator dependency, halt/rejection, pointer succession, and wrap. The
 prefix transfer canonicalizes effective memory as exact sparse overrides and
 can prove repeated concrete `(C,D,A,memory)` state only when the accumulator is
-known. Schema v12 does not yet publish that internal cycle certificate.
+known. Schema v13 does not yet publish that internal cycle certificate.
 A `p` whose accumulator depends on prior input is
 reported unresolved rather than assigned a guessed value. A non-graphical fetch
 is stronger: the preserved 1998 interpreter executes `continue` before decode,
@@ -54,16 +54,21 @@ finite accepted prefix. The four-word `b"('&%"` fixture continues through four
 `j` steps and then uses that primitive to prove a fifth recurrence-backed fixed
 fetch at `C=4`, `D=29490`, `M[4]=29489`. Historical recurrence words are
 derived only when a bounded read needs them.
-Schema v12 publishes `bounded_fetch_source_map`: each resolved instruction
+Schema v13 publishes `bounded_fetch_source_map`: each resolved instruction
 fetch carries its bounded transition index, fetched address/value, and original
 loaded source position/raw byte offset/initial byte when that address belongs to
 the loaded source image. Recurrence-only addresses carry null source
 coordinates.
 The context also distinguishes a still-original source value from an evolved
-fetch value without asserting why the value changed. The companion
-`bounded_memory_access_source_map` applies the same coordinate rule to every
-exact fetch, actual data read, planned data write, and self-encryption address
-role in the bounded prefix.
+fetch value. Schema v13 separately publishes `bounded_fetch_value_lineage` for
+every resolved fetch. Its origin is exactly `loaded-source`,
+`recurrence-initialization`, `data-write`, or `self-encryption`; prior writes
+retain the exact transition index, and self-encryption supersedes an aliased
+data write because it commits later in the same historical step. The
+`b"(&&$^"` fixture proves transition 6 fetches recurrence address 95 from the
+value written by transition 4. The companion `bounded_memory_access_source_map`
+applies source-coordinate rules to every exact fetch, actual data read, planned
+data write, and self-encryption address role in the bounded prefix.
 The bounded memory requirement records the sorted addresses touched by
 fetch/data/write/encryption semantics and the
 minimum word count needed to load the source and reproduce those accesses. A
@@ -71,7 +76,7 @@ future pointer value alone is not a memory touch; for example the proven
 non-graphical third-step cycle keeps `D=40` without reading address 40.
 
 Initial-image admission is deliberately narrower than whole-program safety.
-Schema v12 keeps 16 exact transitions as the default and admits an explicit
+Schema v13 keeps 16 exact transitions as the default and admits an explicit
 finite `transition_limit` from 1 through 256. The CLI exposes the same
 request as
 `--transition-limit N`. Analysis stops earlier on halt, rejection, fixed-fetch
@@ -83,7 +88,7 @@ proves transition 17 and later reporting under an explicit request, and a
 bound in `bounded_transition_limit`, the bounded-memory scope, and every
 limit-dependent analysis string. Reachability beyond that selected finite bound,
 general dataflow/evolved-memory equivalence, higher-level C/source-map linkage,
-complete value-lineage provenance, and longer input-dependent cycle/hang safety
+non-fetch value-lineage provenance, and longer input-dependent cycle/hang safety
 remain open.
 
 ## Invariants
@@ -105,7 +110,9 @@ remain open.
   offset, and every report binds the exact source bytes and historical profile.
   Bounded fetch and memory-access source context map only addresses in that
   loaded image; recurrence addresses remain explicitly unmapped instead of
-  receiving invented offsets.
+  receiving invented offsets. Fetch-value lineage is independent of source
+  coordinates and may therefore identify a recurrence address as originating
+  from an exact earlier write without inventing a source position.
 - Bounded memory evidence counts only addresses actually touched by the analyzed
   prefix and never treats a future code/data pointer as an observed access.
 - Future dynamic analyses must state their bounded assumptions rather than
@@ -142,7 +149,7 @@ Unreadable source fails before a semantic report is emitted.
   halt or fixed-fetch-cycle evidence, recurrence-backed bounded memory
   requirements, default-16 plus explicit-32 and maximum-256 sequential-output
   bound fixtures, bounded loaded-source/raw-offset fetch/read/write/encryption
-  provenance,
+  provenance, exact loaded/recurrence/prior-data-write fetch-value lineage,
   byte-exact CLI/library report parity, bounded analysis limits, CLI
   second/third/fourth rejection status, and CLI read failure.
 

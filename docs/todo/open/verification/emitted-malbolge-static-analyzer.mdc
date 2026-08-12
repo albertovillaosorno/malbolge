@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v12
+  offsets, stable finding codes, and explicit analysis limits. Schema v13
   keeps the exact entry-through-fifth compatibility fields and one generic
   `bounded_continuations` trace. Sixteen transitions remain the default,
   while library and CLI callers may request any finite total bound from 1
@@ -73,8 +73,8 @@ executable cells, and input-dependent cycles or hangs.
   Forged entries and skipped/reordered/forged prefix records fail closed. The
   four-word `b"('&%"` fixture uses it after four continued `j`
   transitions to prove a recurrence-backed fifth fixed-fetch cycle at `C=4`,
-  `D=29490`, `M[4]=29489`; schema v12 publishes that exact step and includes
-  address 4 in its bounded memory evidence. Schema v12 adds exact bounded
+  `D=29490`, `M[4]=29489`; schema v13 publishes that exact step and includes
+  address 4 in its bounded memory evidence. Schema v13 adds exact bounded
   source-address context: fetches map loaded-source addresses to their original
   loaded position/raw byte offset/initial byte and record whether the fetched
   value still equals that byte. A companion access map applies the same source
@@ -87,11 +87,11 @@ executable cells, and input-dependent cycles or hangs.
   256 fail closed before analysis. The finite transfer now also canonicalizes
   exact evolved-memory overrides and can certify a repeated concrete
   `(C,D,A,memory)` state when the accumulator is known. This internal cycle
-  substrate is not yet exposed by schema v12 and does not close worklist or
+  substrate is not yet exposed by schema v13 and does not close worklist or
   input-dependent cycle analysis.
 - Automatic unbounded/worklist control-flow reachability, broader
   dataflow/evolved-memory equivalence, higher-level C/source-map linkage,
-  complete value lineage, later wraparound beyond the selected finite
+  non-fetch value lineage, later wraparound beyond the selected finite
   trace, and longer input-dependent cycles remain open. Nothing after the
   requested bound is inferred from prefix or initial-image admission.
 
@@ -116,6 +116,7 @@ executable cells, and input-dependent cycles or hangs.
   and maximum-256 sequential-output continuation evidence, bounded
   recurrence-backed memory requirements, exact
   loaded-source/raw-offset bounded
-  fetch/read/write/encryption context,
+  fetch/read/write/encryption context, exact bounded fetch-value lineage through
+  loaded source, recurrence, and prior data-write evidence,
   explicit bounded analysis limits, CLI second/third/fourth rejection status,
   and CLI missing-source failure.
