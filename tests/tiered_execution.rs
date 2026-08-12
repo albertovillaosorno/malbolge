@@ -3250,7 +3250,7 @@ fn direct_sequence_blocks_capacity_overflow_before_retry_authority()
     effect.after.registers.code_pointer = overflow_address;
     let programs = [program];
 
-    let Err(error) = select_verified_direct_sequence(
+    let Err(sequence_error) = select_verified_direct_sequence(
         &programs,
         safe_rust_profiled_capability(),
         HostOperatingSystem::Windows,
@@ -3260,19 +3260,25 @@ fn direct_sequence_blocks_capacity_overflow_before_retry_authority()
             "capacity overflow published a verified sequence plan",
         ));
     };
-    let DirectSequenceError::Step { error, index: 0 } = error else {
+    let DirectSequenceError::Step {
+        error: selection_error,
+        index: 0,
+    } = sequence_error
+    else {
         return Err(format!(
-            "capacity overflow changed sequence error: {error}"
+            "capacity overflow changed sequence error: {sequence_error}"
         ));
     };
-    let DirectSelectionError::Profile(profile_error) = *error else {
+    let DirectSelectionError::Profile(profile_error) = *selection_error else {
         return Err(String::from(
             "capacity overflow lost profile error before sequence publication",
         ));
     };
     if profile_error.kind()
         == ProfileRequirementErrorKind::ProfileCapacityExceeded
-        && profile_error.to_string().starts_with("MALBOLGE-PROFILE-002 ")
+        && profile_error
+            .to_string()
+            .starts_with("MALBOLGE-PROFILE-002 ")
     {
         Ok(())
     } else {
@@ -3281,7 +3287,6 @@ fn direct_sequence_blocks_capacity_overflow_before_retry_authority()
         ))
     }
 }
-
 
 #[test]
 fn direct_selector_rejects_forged_profile_requirement() -> Result<(), String> {
