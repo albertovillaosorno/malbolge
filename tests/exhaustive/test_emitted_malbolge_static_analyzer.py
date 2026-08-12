@@ -35,7 +35,7 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import replace
+from copy import copy
 from hashlib import sha256
 import importlib.util
 import json
@@ -1101,11 +1101,11 @@ def test_next_transfer_rejects_forged_entry_transition() -> None:
     report = _ANALYZER_MODULE.analyze_source(source)
     entry = report.entry_transition
     assert entry is not None
-    forged = replace(
-        entry,
-        next_fetch_address=(
-            (entry.result_code_pointer + 1) % _PROFILE_MEMORY_WORDS
-        ),
+    forged = copy(entry)
+    object.__setattr__(  # ruff: ignore[unnecessary-dunder-call]
+        forged,
+        "next_fetch_address",
+        (entry.result_code_pointer + 1) % _PROFILE_MEMORY_WORDS,
     )
     words = tuple(source)
     with pytest.raises(AssertionError, match=_ENTRY_MISMATCH_MESSAGE):
