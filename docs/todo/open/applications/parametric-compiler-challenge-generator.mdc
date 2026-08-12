@@ -97,7 +97,10 @@ exactly the same problem rather than on vaguely similar examples.
   inner state loop, so every node drives four live state transitions while
   generator/oracle construction remains linear in `nodes`. Normalized frontend
   evidence retains exactly two loops and three indexed reads; pinned Clang also
-  matches the independent oracle at 4,096 nodes.
+  matches the independent oracle at 4,096 nodes. Generation-only stress replays
+  `stream-state`, `graph-reduce`, `grid-accumulate`, `ternary-fold`, and
+  `nested-state` byte-identically at 16,384 nodes, retaining exact manifest
+  difficulty and the fixed four-byte oracle without a wall-clock claim.
 - The objective remains open: broader workload families plus
   the required end-to-end compiled/executed Malbolge fixture are not yet
   implemented.
@@ -136,7 +139,8 @@ exactly the same problem rather than on vaguely similar examples.
   C-profile admission, and independent native oracle agreement. The methodology
   record documents the current threats and explicitly withholds final Malbolge
   end-to-end completion.
-- Remaining research evidence: larger-stress and broader family coverage,
-  end-to-end Malbolge execution after the pending layout/encoding backend,
+- Remaining research evidence: broader family coverage and additional
+  large native/executed shapes, end-to-end Malbolge execution after the pending
+  layout/encoding backend,
   retained comparative results,
   and a reviewed cross-family conclusion with threats to validity.

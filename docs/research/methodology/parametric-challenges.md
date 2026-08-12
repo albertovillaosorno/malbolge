@@ -131,7 +131,10 @@ C-profile admission, and independent native agreement for
 representative node counts in all thirteen families. `nested-state/v1`
 additionally retains a 4,096-node pinned-Clang/native-oracle case, while
 `grid-accumulate/v1` retains a 257-node native case whose generated runtime work
-contains 66,049 live inner updates.
+contains 66,049 live inner updates. Generation-only stress now replays
+`stream-state`, `graph-reduce`, `grid-accumulate`, `ternary-fold`, and
+`nested-state` byte-identically at 16,384 nodes while retaining a four-byte
+oracle and exact manifest difficulty.
 
 This result does not satisfy the end-to-end acceptance criterion. No current
 backend evidence yet demonstrates a generated challenge compiled to and
@@ -145,9 +148,9 @@ branch-diamond, fixed-array memory-walk, helper-call, live pointer-selected
 memory, potentially aliasing pointer-pair, streaming state-machine, acyclic
 graph-reduction, quadratic grid accumulation, distinct-function
 layout-pressure, explicit ternary-fold, and nested-state control-flow
-topologies. The 4,096-node nested case adds one larger stress
-fixture, but broader workload structure and additional large shapes remain
-open.
+topologies. The 4,096-node nested native case plus five 16,384-node deterministic
+generation/replay cases add larger stress evidence, but broader workload
+structure and additional native/executed large shapes remain open.
 Workload selection, generator/model common-mode bugs, native-check host
 differences,
 missing final Malbolge execution, and incomplete family coverage remain
