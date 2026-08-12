@@ -148,8 +148,9 @@ branch-diamond, fixed-array memory-walk, helper-call, live pointer-selected
 memory, potentially aliasing pointer-pair, streaming state-machine, acyclic
 graph-reduction, quadratic grid accumulation, distinct-function
 layout-pressure, explicit ternary-fold, and nested-state control-flow
-topologies. The 4,096-node nested native case plus five 16,384-node deterministic
-generation/replay cases add larger stress evidence, but broader workload
+topologies. The 4,096-node nested native case plus five 16,384-node
+deterministic generation/replay cases add larger stress evidence, but broader
+workload
 structure and additional native/executed large shapes remain open.
 Workload selection, generator/model common-mode bugs, native-check host
 differences,
