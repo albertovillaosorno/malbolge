@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v21"
+_SCHEMA: Final = "malbolge-static-image/v22"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -259,15 +259,35 @@ def _memory_scope(transition_limit: int) -> str:
     return f"{transition_limit}-transition-prefix"
 
 
+def _worklist_status(
+    analysis: worklist_transfer.WorklistAnalysis,
+) -> str:
+    return "truncated" if analysis.truncated else "closed"
+
+
 def _worklist_limit_label(
     analysis: worklist_transfer.WorklistAnalysis | None,
 ) -> str:
     if analysis is None:
         return "input-dependent-reachability:not-analyzed"
-    status = "truncated" if analysis.truncated else "closed"
+    status = _worklist_status(analysis)
     return (
         "input-dependent-reachability:"
         f"{analysis.state_limit}-state-worklist-{status}"
+    )
+
+
+def _wraparound_limit_label(
+    transition_limit: int,
+    worklist: worklist_transfer.WorklistAnalysis | None,
+) -> str:
+    prefix = f"{transition_limit}-transition-prefix-only"
+    if worklist is None:
+        return f"wraparound-reachability:{prefix}"
+    return (
+        "wraparound-reachability:"
+        f"{transition_limit}-transition-prefix-and-"
+        f"{worklist.state_limit}-state-worklist-{_worklist_status(worklist)}"
     )
 
 
@@ -287,7 +307,7 @@ def _analysis_limits(
             f"{transition_limit}-transition-memory-access-and-"
             "fetch-data-read-and-encryption-input-value-lineage"
         ),
-        f"wraparound-reachability:{prefix}",
+        _wraparound_limit_label(transition_limit, worklist),
     )
 
 

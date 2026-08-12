@@ -76,6 +76,7 @@ class WorklistAnalysis:
     explored_minimum_words: int
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
+    explored_wraparound_transition_count: int
     maximum_first_seen_transition_index: int
     frontier_states: int
     truncated: bool
@@ -235,6 +236,7 @@ class _Explorer:
     explored: int = 0
     repeated_edges: int = 0
     input_branch_points: int = 0
+    wraparound_transitions: int = 0
     maximum_first_seen_transition_index: int = 1
 
     @classmethod
@@ -284,6 +286,7 @@ class _Explorer:
             ),
             explored_highest_accessed_address=highest_address,
             explored_accessed_addresses=ordered_addresses,
+            explored_wraparound_transition_count=self.wraparound_transitions,
             maximum_first_seen_transition_index=(
                 self.maximum_first_seen_transition_index
             ),
@@ -333,6 +336,8 @@ class _Explorer:
         )
         step = prefix_transfer.analyze_state_snapshot(self.words, node.snapshot)
         self.accessed_addresses.update(_transition_accesses(step.transition))
+        if step.transition.pointer_wraps:
+            self.wraparound_transitions += 1
         if step.transition.decoded_byte == _INPUT_OPCODE:
             self.input_branch_points += 1
         successors = _successors(node, step)

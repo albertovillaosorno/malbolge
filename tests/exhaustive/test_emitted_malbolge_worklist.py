@@ -38,6 +38,8 @@
 
 from __future__ import annotations
 
+from collections import deque
+
 import pytest
 
 from verifier import emitted_malbolge_prefix as prefix_transfer
@@ -69,6 +71,9 @@ _DOUBLE_INPUT_REPEATED_EDGES = 65_536
 _DOUBLE_INPUT_CYCLE_EDGES = 65_793
 _INPUT_VALUE_COUNT = 257
 _EOF_ACCUMULATOR = 59_048
+_WRAP_ADDRESS = 59_048
+_WRAP_SOURCE_VALUE = 52
+_WRAP_STATE_LIMIT = 1
 _SECOND_TRANSITION = 2
 _GRAPH_KEY_A: _WorklistStateKey = (0, 0, 0, (), False)
 _GRAPH_KEY_B: _WorklistStateKey = (1, 0, 0, (), False)
@@ -202,6 +207,33 @@ def test_known_graph_cycle_detection_rejects_merge_only_heuristics() -> None:
         cycle_edges,
         {_GRAPH_KEY_A, _GRAPH_KEY_B},
     )
+
+
+def test_explorer_counts_exact_pointer_wrap_transition() -> None:
+    """A canonical near-boundary state records C/D wrap to zero."""
+    snapshot = prefix_transfer.StateSnapshot(
+        before_transition=1,
+        code_pointer=_WRAP_ADDRESS,
+        data_pointer=_WRAP_ADDRESS,
+        accumulator=0,
+        memory_overrides=((_WRAP_ADDRESS, _WRAP_SOURCE_VALUE),),
+    )
+    node = worklist._ReachabilityNode(snapshot=snapshot, eof_seen=False)
+    key = worklist._node_key(node)
+    explorer = worklist._Explorer(
+        words=_INPUT_HALT_SOURCE,
+        state_limit=_WRAP_STATE_LIMIT,
+        queue=deque((node,)),
+        seen={key},
+        edges={key: set()},
+        terminal_counts={},
+        accessed_addresses=set(),
+    )
+    result = explorer.run()
+    assert result.explored_wraparound_transition_count == 1
+    assert result.explored_highest_accessed_address == _WRAP_ADDRESS
+    assert result.explored_minimum_words == _WRAP_ADDRESS + 1
+    assert result.truncated
 
 
 def test_worklist_state_limit_is_fail_closed() -> None:

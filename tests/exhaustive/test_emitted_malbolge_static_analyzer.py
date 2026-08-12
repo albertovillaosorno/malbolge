@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v21"
+_SCHEMA = "malbolge-static-image/v22"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -90,6 +90,10 @@ _WORKLIST_CLOSED_LIMIT = (
 )
 _WORKLIST_TRUNCATED_LIMIT = (
     "input-dependent-reachability:257-state-worklist-truncated"
+)
+_WORKLIST_WRAP_LIMIT = (
+    "wraparound-reachability:16-transition-prefix-and-"
+    "258-state-worklist-closed"
 )
 _INPUT_CRAZY_SOURCE = bytes((117, 61))
 _INPUT_HALT_SOURCE = bytes((117, 80))
@@ -278,6 +282,7 @@ class _WorklistAnalysis(Protocol):
     explored_minimum_words: int
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
+    explored_wraparound_transition_count: int
     maximum_first_seen_transition_index: int
     frontier_states: int
     truncated: bool
@@ -1662,11 +1667,13 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     assert not worklist.reachable_cycle_detected
     assert worklist.explored_minimum_words == _TWO_SOURCE_WORDS
     assert worklist.explored_accessed_addresses == (0, 1)
+    assert worklist.explored_wraparound_transition_count == 0
     assert worklist.terminal_status_counts == (
         ("rejected-invalid-self-encryption", _WORKLIST_INPUT_VALUE_COUNT),
     )
     assert not worklist.truncated
     assert _WORKLIST_CLOSED_LIMIT in report.analysis_limits
+    assert _WORKLIST_WRAP_LIMIT in report.analysis_limits
 
 
 def test_report_worklist_truncation_is_explicit() -> None:
