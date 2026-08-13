@@ -110,18 +110,19 @@ to 6,496 (35.04%). Host timing moves the other way: medians are 96,384,900 ns
 for raw state and 244,447,500 ns for residue state, so this implementation is
 about 2.54 times slower despite the structural reduction.
 
-A third comparison is now preregistered without measured results.
+A third comparison now has a preregistered retained measurement.
 `classic-crazy-exact-preimage-pruning-v1` binds the production
 `classic-crazy-digitwise-exact-preimage-v1` preparer to the exact classic
-preimage-cardinality and 1,024-preimage-bound equations. Its registered
-12-problem challenge spans preimage cardinalities 0, 1, 2, ..., 1,024 with a
-fixed zero accumulator. The registered runner enumerates all 59,049 classic data
-words independently for each problem and rejects any exact preimage-set drift.
-It deterministically characterizes 708,588 baseline candidate checks versus
-2,047 exact projected checks (99.71% fewer). This is structural implementation
-evidence only: it collects no clock data, and measurement protocol plus retained
-provenance remain unregistered, so the plan still forbids measured-result
-interpretation.
+preimage-cardinality and 1,024-preimage-bound equations. Its 12-problem
+challenge
+spans preimage cardinalities 0, 1, 2, ..., 1,024 with a fixed zero accumulator.
+Every paired run preserves the same complete independent preimage-set digest.
+Candidate work falls from 708,588 full-domain checks to 2,047 projected checks
+(99.71%). The source-pinned five-pair timing run at `5fbea346` is negative on
+its recorded Windows/Python host: baseline median strategy time is
+2,298,684,800 ns and exact projection median is 2,931,140,300 ns, about 1.28
+times slower. Their observed ranges overlap, so no runtime-speedup claim
+follows.
 
 ## Evidence
 
@@ -157,15 +158,19 @@ applicability or malformed injected orbits. Challenge/runner tests lock the
 10,000-observation workload hash and exact semantic digest. Synthetic-clock
 measurement tests freeze protocol mechanics without real timing, while retained
 evidence tests validate the shared run/benchmark authorities and recompute the
-35.04% structural reduction plus timing medians/ranges from raw CSV only.
+35.04% structural reduction plus timing medians/ranges from raw CSV only. The
+crazy-preimage plan/challenge/runner tests independently span all twelve exact
+cardinality classes, require complete preimage-set equality, and freeze the
+five-pair timing protocol before measurement. Its retained-evidence regression
+recomputes 708,588-to-2,047 candidate work plus timing medians/ranges from raw
+CSV without rerunning the experiment.
 
 The broader study at `../../studies/superoptimization-program.md` remains the
-human synthesis record. This mirror now has two retained host-specific measured
-comparisons plus the eight-seed work-count replication and one unmeasured
-exact-preimage-pruning preregistration with a registered finite challenge and
-structural runner. Larger challenge families, its measurement protocol/retained
-provenance, additional techniques, independent-host replication, and stronger
-statistical power remain pending.
+human synthesis record. This mirror now has three retained host-specific
+measured
+comparisons plus the eight-seed work-count replication. Larger challenge
+families, additional techniques, independent-host replication, independent
+implementations, and stronger statistical power remain pending.
 
 ## Results
 
@@ -188,17 +193,25 @@ semantic digest. Canonicalization reduces unique states and verifier calls from
 244,447,500 ns, with non-overlapping observed ranges. The structural hypothesis
 is supported for this corpus; a runtime-speedup hypothesis is not.
 
+The crazy-preimage pruning run retains five fixed-order pairs on the same host
+and Python toolchain. Exact projection removes 706,541 of 708,588 candidate
+checks (99.71%) while preserving all 2,047 preimages and one semantic digest.
+Median strategy time nevertheless increases from 2,298,684,800 ns to
+2,931,140,300 ns, about 1.28 times slower, with overlapping observed ranges.
+The exact pruning hypothesis is supported structurally; runtime speedup is not.
+
 ## Threats to Validity
 
 This single-host, seed-zero, five-repetition pilot is dominated by possible
 challenge-family bias, fixed enumeration-then-seeded ordering, Python verifier
 overhead, evaluator cost, candidate-language choices, and hardware/toolchain
 effects. The two-word corpus is deliberately tiny, and no cross-seed or
-cross-host dispersion is available. The history comparison adds another single
-host, fixed-order, Python implementation over a synthetic finite corpus; its
-negative timing may reflect canonicalization overhead specific to this runner.
-Neither result establishes behavior for larger Malbolge workloads, compiled
-optimizers, equality saturation, or other workload families.
+cross-host dispersion is available. The history and crazy-preimage comparisons
+add fixed-order Python implementations over synthetic finite corpora; their
+negative timing may reflect canonicalization or projection/preparation overhead
+specific to these runners. None of these results establishes behavior for larger
+Malbolge workloads, compiled optimizers, equality saturation, or other workload
+families.
 
 ## Conclusion
 
@@ -210,8 +223,9 @@ and full-corpus timing is effectively inconclusive. This is retained pilot
 evidence, not sufficient basis to promote stochastic search to product
 architecture or generalize beyond the recorded challenge/seed/host. The
 history-residue study separately supports exact state/verifier reduction but
-shows a clear timing loss in this Python implementation, so canonicalization is
-not promoted as a runtime optimization on this evidence alone.
+shows a clear timing loss in this Python implementation. The crazy-preimage run
+likewise supports exact candidate pruning while showing a slower median here.
+Neither technique is promoted as a runtime optimization on this evidence alone.
 
 ## References
 

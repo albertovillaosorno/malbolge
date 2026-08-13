@@ -125,15 +125,16 @@ semantic digest while residue identity reduces unique states/verifier calls from
 its recorded Windows/Python host: median strategy time is 96,384,900 ns for raw
 state versus 244,447,500 ns for canonicalized state, about 2.54 times slower.
 The structural reduction is retained, but no runtime-speedup claim is
-supported. A third exact-pruning comparison is now preregistered: the existing
-classic digitwise crazy preimage preparer is compared structurally with full
+supported. A third exact-pruning comparison is now preregistered and retained.
+The existing classic digitwise crazy preimage preparer is compared with full
 59,049-word data enumeration under the proved preimage-cardinality and
-1,024-ceiling bounds. Its registered 12-problem challenge spans every exact
-cardinality class from zero through 1,024; independent set equality gives
-708,588 baseline candidate checks versus 2,047 projected checks. This is
-deterministic implementation characterization, not timing evidence. Measurement
-protocol and retained provenance remain unregistered, so it contributes no
-measured result. New
+1,024-ceiling bounds. Its 12-problem challenge spans every exact cardinality
+class from zero through 1,024; complete independent set equality gives 708,588
+baseline candidate checks versus 2,047 projected checks (99.71% fewer). The
+source-pinned five-pair Windows/Python timing is negative: median time rises
+from
+2,298,684,800 ns to 2,931,140,300 ns, about 1.28 times slower, with overlapping
+ranges. This supports exact pruning but not a runtime-speedup claim. New
 synthesis, equality-saturation, learned, or accelerator-guided strategies must
 add their own equally identified comparisons rather than
 inheriting a result from either pilot. Source claims resolve through
@@ -157,9 +158,10 @@ inheriting a result from either pilot. Source claims resolve through
   the first retained negative/null comparative result. The history-residue study
   now retains its preregistered five-pair run, shared benchmark/run manifests,
   exact semantic digest, structural state counts, and negative host timing.
-  Larger challenges, the exact-preimage pruning measurement protocol/provenance,
-  additional technique plans, independent-host replication, and a stronger
-  comparative conclusion remain pending.
+  The crazy-preimage study now also retains its preregistered five-pair run,
+  exact set digest, structural candidate counts, and negative host timing.
+  Larger challenges, additional technique plans, independent-host replication,
+  and a stronger comparative conclusion remain pending.
 
 ## Results
 
@@ -178,15 +180,20 @@ canonicalized median about 2.54 times the raw-state median, so this evidence
 does
 not support promoting the current implementation as a runtime optimization.
 
+The crazy-preimage comparison supports exact pruning on its frozen 12-problem
+corpus: projected evaluation removes 706,541 candidate checks without semantic
+drift. Its exact-arm median is about 1.28 times the full-domain median on this
+host, with overlapping observed ranges, so the current implementation is not
+promoted as a runtime optimization either.
+
 ## Threats to Validity
 
 The record remains active. The seed replication narrows seed-selection risk but
 still covers only eight deterministic schedules over one tiny two-word challenge
 on one Windows host with Python verifier overhead. The history result adds one
-synthetic finite corpus, fixed raw-first ordering, and the same broad
-host/Python
-implementation limitation. Larger challenges, independent hosts, and independent
-implementations remain necessary for external validity.
+synthetic finite corpora, fixed baseline-first ordering, and the same broad
+host/Python implementation limitation. Larger challenges, independent hosts,
+and independent implementations remain necessary for external validity.
 
 ## Conclusion
 

@@ -121,12 +121,13 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   strategy time is 96,384,900 ns versus 244,447,500 ns for canonicalized state,
   about 2.54 times slower. This supports the structural reduction only and does
   not support a runtime-speedup claim. A third technique,
-  `classic-crazy-exact-preimage-pruning-v1`, is now preregistered without
-  measured results. Its registered 12-problem challenge spans exact cardinality
-  classes 0 through 1,024, and its registered runner independently enumerates
-  the 59,049-word baseline before accepting exact preimage-set equality. The
-  deterministic structural count is 708,588 baseline candidate checks versus
-  2,047 projected checks (99.71% fewer). No timing is collected. Measurement
-  protocol and retained provenance remain unregistered, so measured results stay
-  forbidden. Larger challenges, independent hosts, additional technique plans,
-  and a stronger comparative conclusion remain pending.
+  `classic-crazy-exact-preimage-pruning-v1`, now has a preregistered retained
+  five-pair comparison. Its 12-problem challenge spans exact cardinality classes
+  0 through 1,024, and complete independent set equality holds. Candidate work
+  falls from 708,588 checks to 2,047 (99.71%). The source-pinned Windows/Python
+  timing is negative: median strategy time rises from 2,298,684,800 ns to
+  2,931,140,300 ns, about 1.28 times slower, with overlapping observed ranges.
+  This supports exact pruning but not a runtime-speedup claim. Larger
+  challenges,
+  independent hosts/implementations, additional technique plans, and a stronger
+  comparative conclusion remain pending.
