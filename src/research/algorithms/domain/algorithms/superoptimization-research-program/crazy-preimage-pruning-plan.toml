@@ -1,0 +1,61 @@
+schema_version = 1
+
+[plan]
+id = "classic-crazy-exact-preimage-pruning-v1"
+record_kind = "plan"
+status = "preregistered"
+method_class = "optimization"
+technique = "classic-crazy-digitwise-exact-preimage-v1"
+baseline = "classic-crazy-full-domain-data-enumeration-v1"
+
+[profile]
+id = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[formal_basis]
+# jig-ignore-next-line: canonical path is indivisible
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+preimage_cardinality_equation = "eq:optimization-crazy-preimage-cardinality"
+preimage_bound_equation = "eq:optimization-crazy-preimage-bound"
+
+[comparison]
+primary_metric = "evaluated-data-candidates"
+secondary_metrics = [
+  "prepared-data-candidates",
+  "independent-verifier-calls",
+  "strategy-elapsed-nanoseconds",
+]
+full_domain_data_words = 59049
+maximum_exact_preimages = 1024
+per_problem_wall_clock_seconds = 60
+memory_mib = 512
+
+[applicability]
+word_trits = 10
+word_modulus = 59049
+requires_fixed_accumulator = true
+requires_fixed_target = true
+requires_complete_classic_data_domain = true
+
+[rejection]
+conditions = [
+  "exact preimage set differs from full-domain baseline",
+  "prepared candidate count exceeds proved 1024 ceiling",
+  "candidate evaluation count does not decrease for any registered reachable problem",
+  "unreachable targets are treated as having a candidate",
+]
+
+[measurement_gate]
+challenge_status = "unregistered"
+runner_status = "unregistered"
+protocol_status = "unregistered"
+retained_provenance_status = "unregistered"
+results_allowed = false
+reason = "register finite challenge, runner, protocol, and retained provenance first"
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/crazy-preimage-pruning-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"
