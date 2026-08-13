@@ -114,6 +114,9 @@ executable cells, and input-dependent cycles or hangs.
   `(C,D,A,memory,EOF-state)` nodes, and reports closed versus truncated graph
   evidence. `input_branch_points` counts only real byte-plus-EOF expansions; an
   EOF-sticky input transition has one successor and is not a branch point.
+  `maximum_first_seen_transition_index` advances on unique-state admission, so
+  truncated queued states retain their exact first-seen depth before
+  exploration.
   Schema v22 additionally detects directed cycles only from exact
   known-graph edges, so repeat-heavy branch merges do not become cycle claims.
   Schema v22 represents each proven non-graphical fixed fetch as an exact

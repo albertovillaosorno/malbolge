@@ -56,9 +56,11 @@ a separate EOF-state bit prevents later ordinary bytes after EOF. Canonical
 `(C,D,A,memory,EOF-state)` nodes are explored FIFO and deduplicated. The
 `input_branch_points` metric counts only non-EOF input states that actually
 expand to byte-plus-EOF alternatives; an EOF-sticky input has one successor. A
-complete queue drain reports closed bounded reachability; hitting the
-unique-state cap
-reports `truncated=true` with a nonempty frontier and makes CLI acceptance
+`maximum_first_seen_transition_index` is updated when each unique successor is
+admitted, so queued states retain their first-seen depth even if the state cap
+truncates before exploration. A complete queue drain reports closed bounded
+reachability; hitting the unique-state cap reports `truncated=true` with a
+nonempty frontier and makes CLI acceptance
 nonzero. Schema v22 derives `reachable_cycle_detected` from exact directed
 edges in the admitted known graph. Repeat edges caused only by branch merges do
 not become cycle claims; a proven graph cycle also makes CLI acceptance

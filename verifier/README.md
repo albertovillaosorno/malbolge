@@ -62,7 +62,10 @@ for later reads, deduplicates `(C,D,A,memory,EOF-state)`, and reports either
 closed reachability or explicit frontier truncation in `bounded_worklist`. The
 `input_branch_points` count includes only real byte-plus-EOF expansions; an
 EOF-sticky `/` transition has one successor and is not counted as a branch.
-Schema v22 also records `reachable_cycle_detected` from exact directed edges in
+`maximum_first_seen_transition_index` advances when a unique state is admitted,
+so a truncated queued frontier retains its exact first-seen depth even before
+those states are explored. Schema v22 also records `reachable_cycle_detected`
+from exact directed edges in
 the known graph. Repeat-heavy branch merges are not treated as cycles, and a
 proven cycle makes requested CLI analysis fail. Historical fixed-fetch cycles
 become exact self-loop graph edges rather than terminal states. Thus `b"utO"`
