@@ -305,8 +305,13 @@ regression rejects a capacity-overflow step as `002` before plan publication.
 Other artifact families do not yet universally expose an equivalent program
 requirement. Raw and capsule `.malbolge` product invocation use canonical source
 preflight, and bootstrap source generation plus external Clang compilation have
-explicit combined portable preflight. Durable-cache/AOT/JIT execution and the
-remaining product/artifact paths do not yet universally invoke that boundary.
+explicit combined portable preflight. Profile batch/backend routing also builds
+each safe-Rust machine before exposing any backend request; a historical
+59,050-word source therefore emits `MALBOLGE-PROFILE-002`, records
+`SafeRustAdmissionRejection`, and never calls the optional backend.
+Durable-cache, AOT/JIT execution, and the remaining product/artifact paths do not
+yet universally
+invoke that boundary.
 This contract therefore remains active rather than claiming repository-wide
 profile diagnostic completion.
 
@@ -332,6 +337,10 @@ profile diagnostic completion.
   interpreter-authority output remains unchanged. `tests/cli_capsule.rs` proves
   the same capacity diagnostic after successful historical capsule parsing and
   before payload loading, so capsule dispatch cannot bypass profile preflight.
+- `tests/vm/batch_backend.rs` proves a 59,050-word historical profile batch
+  request fails as `MALBOLGE-PROFILE-002` with admission-only origin and zero
+  optional-backend calls, so profile capacity cannot be bypassed by batch
+  routing.
 - `tests/tiered_execution.rs` proves exact derived IR footprint, including
   `u32::MAX`, native-identity rejection of inconsistent capacity, `MBPF` v3
   footprint mismatch rejection, emitter propagation, direct-template precedence

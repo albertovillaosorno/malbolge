@@ -136,11 +136,13 @@ historical-profile constraint.
   path emits `MALBOLGE-PROFILE-002` with `historical-profile-ceiling` before
   payload loading. Classic checkpoint restoration also preflights its explicitly
   selected profile: `malbolge-2026` is rejected as `001`, while compatible
-  `malbolge-2026.1` restores and retains its identity. Equivalent program-memory
-  requirements for other non-IR
-  artifact families, durable-cache/AOT/JIT/runtime orchestration, and remaining
-  product invocation paths remain open, so repository-wide completion is not
-  claimed.
+  `malbolge-2026.1` restores and retains its identity. Profile batch/backend
+  routing now has equivalent capacity precedence evidence: a 59,050-word
+  historical request emits `002`, records safe-Rust admission rejection, and
+  never calls the optional backend. Equivalent program-memory requirements for
+  other non-IR artifact families, durable-cache/AOT/JIT/runtime orchestration,
+  and remaining product invocation paths remain open, so repository-wide
+  completion is not claimed.
 
 ## Acceptance
 
