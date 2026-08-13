@@ -57,11 +57,26 @@ conditions = [
   "applicability cannot be checked before canonicalization",
 ]
 
+[measurement]
+id = "history-residue-five-paired-protocol-v1"
+repetitions = 5
+warmup_iterations = 0
+ordering = "fixed-raw-then-canonicalized"
+outlier_policy = "retain-all"
+center = "median"
+dispersion = "observed-range"
+uncertainty = "observed-range"
+clock = "time-perf-counter-ns"
+timing_scope = "strategy-run-only"
+per_strategy_wall_clock_seconds = 60
+
 [measurement_gate]
 challenge_status = "registered"
 runner_status = "registered"
+protocol_status = "registered"
+retained_provenance_status = "required-before-run"
 results_allowed = false
-reason = "measurement protocol and retained run provenance are not registered"
+reason = "retained source-pinned run provenance is not registered"
 
 [provenance]
 # jig-ignore-next-line: canonical path is indivisible

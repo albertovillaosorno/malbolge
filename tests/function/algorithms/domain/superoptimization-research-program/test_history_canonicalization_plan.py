@@ -68,6 +68,11 @@ _CANDIDATE_COUNT = 10_000
 _WORKLOAD_SHA256 = (
     "f300a5adf717027eb11c850b4a8b292bf0bac7fe0cde6bdb9be9d2f7f504d103"
 )
+_MEASUREMENT_ID = "history-residue-five-paired-protocol-v1"
+_REPETITIONS = 5
+_ORDERING = "fixed-raw-then-canonicalized"
+_REQUIRED_BEFORE_RUN = "required-before-run"
+_RETAIN_ALL = "retain-all"
 
 
 def test_history_canonicalization_plan_is_preregistered_unmeasured() -> None:
@@ -77,7 +82,6 @@ def test_history_canonicalization_plan_is_preregistered_unmeasured() -> None:
     comparison = cast("dict[str, object]", document["comparison"])
     challenge = cast("dict[str, object]", document["challenge"])
     runner = cast("dict[str, object]", document["runner"])
-    gate = cast("dict[str, object]", document["measurement_gate"])
 
     assert plan == {
         "id": _PLAN_ID,
@@ -97,8 +101,24 @@ def test_history_canonicalization_plan_is_preregistered_unmeasured() -> None:
     assert runner["id"] == _RUNNER_ID
     assert runner["baseline"] == _BASELINE
     assert runner["canonicalized"] == _TECHNIQUE
+
+
+def test_history_measurement_protocol_is_preregistered_but_gated() -> None:
+    """Freeze paired timing policy while retained provenance is still absent."""
+    document = tomllib.loads(_PLAN.read_text(encoding="utf-8"))
+    measurement = cast("dict[str, object]", document["measurement"])
+    gate = cast("dict[str, object]", document["measurement_gate"])
+
+    assert measurement["id"] == _MEASUREMENT_ID
+    assert measurement["repetitions"] == _REPETITIONS
+    assert measurement["warmup_iterations"] == 0
+    assert measurement["ordering"] == _ORDERING
+    assert measurement["outlier_policy"] == _RETAIN_ALL
+    assert measurement["per_strategy_wall_clock_seconds"] == _WALL_CLOCK_SECONDS
     assert gate["challenge_status"] == _REGISTERED
     assert gate["runner_status"] == _REGISTERED
+    assert gate["protocol_status"] == _REGISTERED
+    assert gate["retained_provenance_status"] == _REQUIRED_BEFORE_RUN
     assert gate["results_allowed"] is False
 
 
