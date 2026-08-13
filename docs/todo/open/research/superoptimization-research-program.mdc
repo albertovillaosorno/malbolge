@@ -120,6 +120,11 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   The source-pinned Windows/Python timing result is negative: raw-state median
   strategy time is 96,384,900 ns versus 244,447,500 ns for canonicalized state,
   about 2.54 times slower. This supports the structural reduction only and does
-  not support a runtime-speedup claim. Larger challenges, independent hosts,
-  plans for other techniques, and a stronger comparative conclusion remain
-  pending.
+  not support a runtime-speedup claim. A third technique,
+  `classic-crazy-exact-preimage-pruning-v1`, is now preregistered without
+  results. It binds the existing exact digitwise preimage preparer to the proved
+  classic preimage-cardinality and 1,024-ceiling equations against a 59,049-word
+  full-domain baseline. Challenge, runner, measurement protocol, and retained
+  provenance remain unregistered, so results stay forbidden. Larger challenges,
+  independent hosts, additional technique plans, and a stronger comparative
+  conclusion remain pending.

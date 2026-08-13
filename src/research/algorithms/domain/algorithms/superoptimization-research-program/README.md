@@ -26,7 +26,15 @@ retained five paired repetitions, residue identity reduces unique states and
 independent verifier calls from 10,000 to 6,496 (35.04%). Host timing is
 negative: raw-state median strategy time is 96,384,900 ns versus 244,447,500 ns
 for canonicalized state, about 2.54 times slower. This supports the structural
-state-reduction claim only; it does not support a runtime-speedup claim.
+state-reduction claim only; it does not support a runtime-speedup claim. A
+third technique is preregistered but unmeasured:
+`classic-crazy-exact-preimage-pruning-v1` compares the existing
+`classic-crazy-digitwise-exact-preimage-v1` preparer with complete 59,049-word
+data enumeration for fixed classic accumulator/target problems. The plan binds
+the exact preimage-cardinality and 1,024-preimage ceiling equations. Challenge,
+runner, measurement protocol, and retained provenance are all still
+unregistered,
+so no comparative result is currently admissible.
 
 The shared mechanisms live under
 `src/research/algorithms/composition/algorithms/superoptimization/`; domain

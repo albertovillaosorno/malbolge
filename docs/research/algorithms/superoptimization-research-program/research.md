@@ -110,6 +110,16 @@ to 6,496 (35.04%). Host timing moves the other way: medians are 96,384,900 ns
 for raw state and 244,447,500 ns for residue state, so this implementation is
 about 2.54 times slower despite the structural reduction.
 
+A third comparison is now preregistered without results.
+`classic-crazy-exact-preimage-pruning-v1` binds the production
+`classic-crazy-digitwise-exact-preimage-v1` preparer to the exact classic
+preimage-cardinality and 1,024-preimage-bound equations. Its baseline enumerates
+all 59,049 classic data words for each fixed accumulator/target problem, while
+the primary metric counts evaluated data candidates. Semantic preimage-set drift
+is a rejection condition. No finite challenge, runner, measurement protocol, or
+retained provenance is registered yet, so the plan explicitly forbids result
+interpretation.
+
 ## Evidence
 
 Repository validators close the plan identity across the research mirror,
@@ -148,9 +158,10 @@ evidence tests validate the shared run/benchmark authorities and recompute the
 
 The broader study at `../../studies/superoptimization-program.md` remains the
 human synthesis record. This mirror now has two retained host-specific measured
-comparisons plus the eight-seed work-count replication. Larger challenge
-families, other techniques, independent-host replication, and stronger
-statistical power remain pending.
+comparisons plus the eight-seed work-count replication and one unmeasured
+exact-preimage-pruning preregistration. Larger challenge families, the pruning
+challenge/runner/protocol, additional techniques, independent-host replication,
+and stronger statistical power remain pending.
 
 ## Results
 

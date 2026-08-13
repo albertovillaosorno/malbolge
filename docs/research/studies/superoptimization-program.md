@@ -125,7 +125,11 @@ semantic digest while residue identity reduces unique states/verifier calls from
 its recorded Windows/Python host: median strategy time is 96,384,900 ns for raw
 state versus 244,447,500 ns for canonicalized state, about 2.54 times slower.
 The structural reduction is retained, but no runtime-speedup claim is
-supported. New
+supported. A third exact-pruning comparison is now preregistered: the existing
+classic digitwise crazy preimage preparer will be compared with full 59,049-word
+data enumeration under the proved preimage-cardinality and 1,024-ceiling bounds.
+Its finite challenge, runner, measurement protocol, and retained provenance are
+not registered yet, so it contributes no result. New
 synthesis, equality-saturation, learned, or accelerator-guided strategies must
 add their own equally identified comparisons rather than
 inheriting a result from either pilot. Source claims resolve through
@@ -149,8 +153,9 @@ inheriting a result from either pilot. Source claims resolve through
   the first retained negative/null comparative result. The history-residue study
   now retains its preregistered five-pair run, shared benchmark/run manifests,
   exact semantic digest, structural state counts, and negative host timing.
-  Larger challenges, additional technique plans, independent-host replication,
-  and a stronger comparative conclusion remain pending.
+  Larger challenges, the exact-preimage pruning challenge/runner/protocol,
+  additional technique plans, independent-host replication, and a stronger
+  comparative conclusion remain pending.
 
 ## Results
 
