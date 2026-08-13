@@ -135,6 +135,13 @@ source that needs 59,050 words under `malbolge-1998` therefore emits
 `MALBOLGE-PROFILE-002` even when a later source byte would also be invalid;
 whitespace does not consume profile memory.
 
+`ExecutionMachine::from_snapshot()` applies the same classic runtime/profile
+preflight before restoring an already validated checkpoint. A classic snapshot
+therefore rejects `malbolge-2026` as `MALBOLGE-PROFILE-001`, while the
+compatible
+`malbolge-2026.1` transition profile restores the checkpoint and remains the
+machine's exact profile identity.
+
 `ProfileMachine::from_source()` uses the same source-word requirement before its
 profile-width loader. The raw `.malbolge` CLI constructs its historical
 interpreter through `ExecutionMachine`, while recognized capsules dispatch
@@ -315,8 +322,9 @@ profile diagnostic completion.
 - `tests/vm/profile_requirements.rs` verifies current-profile rejection by the
   classic facade before loading, exact source-word capacity before loader
   errors, canonical whitespace non-consumption, profiled-source parity,
-  transition-profile acceptance, classic default identity, exact
-  historical-ceiling diagnostics, portable/canonical `001` and `002` parity,
+  transition-profile acceptance for both source loading and classic checkpoint
+  restoration, classic default identity, exact historical-ceiling diagnostics,
+  portable/canonical `001` and `002` parity,
   explicit profiled-runtime acceptance, unknown-feature rejection, and
   no-fallback lookup.
 - `tests/cli_malbolge.rs` proves an oversized raw historical source surfaces

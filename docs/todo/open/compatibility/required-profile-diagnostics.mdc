@@ -134,7 +134,10 @@ historical-profile constraint.
   generated
   historical capsule with 59,050 payload words now proves the product capsule
   path emits `MALBOLGE-PROFILE-002` with `historical-profile-ceiling` before
-  payload loading. Equivalent program-memory requirements for other non-IR
+  payload loading. Classic checkpoint restoration also preflights its explicitly
+  selected profile: `malbolge-2026` is rejected as `001`, while compatible
+  `malbolge-2026.1` restores and retains its identity. Equivalent program-memory
+  requirements for other non-IR
   artifact families, durable-cache/AOT/JIT/runtime orchestration, and remaining
   product invocation paths remain open, so repository-wide completion is not
   claimed.
