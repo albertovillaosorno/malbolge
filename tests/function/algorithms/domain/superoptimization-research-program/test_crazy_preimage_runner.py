@@ -102,6 +102,21 @@ def test_crazy_preimage_runner_matches_every_independent_preimage_set() -> None:
     )
 
 
+def test_crazy_preimage_strategies_are_separately_callable() -> None:
+    """Baseline and exact arms preserve one canonical semantic digest."""
+    baseline = runner.run_baseline_strategy(_crazy)
+    exact = runner.run_exact_strategy(_crazy)
+
+    assert baseline.strategy_id == _BASELINE_ID
+    assert exact.strategy_id == _TECHNIQUE_ID
+    assert baseline.evaluations == _BASELINE_EVALUATIONS
+    assert exact.evaluations == _EXACT_EVALUATIONS
+    assert baseline.preimage_count == _EXACT_EVALUATIONS
+    assert exact.preimage_count == _EXACT_EVALUATIONS
+    assert baseline.semantic_sha256 == exact.semantic_sha256
+    assert len(baseline.semantic_sha256) == _SHA256_HEX_LENGTH
+
+
 def test_crazy_preimage_runner_rejects_independent_semantic_drift() -> None:
     """A forged semantic oracle cannot turn structural work into evidence."""
     with pytest.raises(

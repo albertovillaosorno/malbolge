@@ -71,6 +71,16 @@ class CrazyPreimageComparisonError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class CrazyPreimageStrategyRun:
+    """One separately callable structural strategy result."""
+
+    strategy_id: str
+    evaluations: int
+    preimage_count: int
+    semantic_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class CrazyPreimageProblemResult:
     """Exact structural evidence for one fixed accumulator/target problem."""
 
@@ -114,6 +124,15 @@ def _preimage_digest(preimages: tuple[int, ...]) -> str:
     return sha256(payload).hexdigest()
 
 
+def _strategy_digest(preimage_sets: tuple[tuple[int, ...], ...]) -> str:
+    digest = sha256()
+    for preimages in preimage_sets:
+        digest.update(len(preimages).to_bytes(_WORD_BYTES, _LITTLE_ENDIAN))
+        for value in preimages:
+            digest.update(value.to_bytes(_WORD_BYTES, _LITTLE_ENDIAN))
+    return digest.hexdigest()
+
+
 def _request(problem: CrazyPreimageChallengeProblem) -> SearchRequest:
     encoded = CrazyTargetProblem(
         accumulator=problem.accumulator,
@@ -142,19 +161,26 @@ def _proposal_data(payload: bytes, accumulator: int) -> int:
     return data
 
 
-def _compare_problem(
+def _validated_baseline_preimages(
     problem: CrazyPreimageChallengeProblem,
     oracle: CrazySemanticOracle,
-) -> CrazyPreimageProblemResult:
+) -> tuple[int, ...]:
     baseline = _baseline_preimages(problem, oracle)
     if len(baseline) != problem.expected_preimages:
         message = (
             "independent baseline differs from declared challenge cardinality"
         )
         raise CrazyPreimageComparisonError(message)
+    return baseline
+
+
+def _exact_preimages(
+    problem: CrazyPreimageChallengeProblem,
+    oracle: CrazySemanticOracle,
+) -> tuple[tuple[int, ...], int]:
     adapter = cpu_crazy_target_search_adapter()
     prepared = adapter.prepare(_request(problem))
-    exact_evaluations = adapter.prepared_candidate_state_count(prepared)
+    evaluations = adapter.prepared_candidate_state_count(prepared)
     proposals = adapter.search_prepared(prepared).proposals
     exact = tuple(
         sorted(
@@ -162,13 +188,85 @@ def _compare_problem(
             for proposal in proposals
         )
     )
+    if len(exact) != len(set(exact)):
+        message = "production exact preimage proposals contain duplicates"
+        raise CrazyPreimageComparisonError(message)
+    if len(exact) != problem.expected_preimages:
+        message = "production exact preimage cardinality differs from challenge"
+        raise CrazyPreimageComparisonError(message)
+    if any(
+        oracle(data, problem.accumulator) != problem.target for data in exact
+    ):
+        message = (
+            "production exact preimage proposal failed independent semantics"
+        )
+        raise CrazyPreimageComparisonError(message)
+    if evaluations != len(exact):
+        message = "production exact preimage evaluation count drifted"
+        raise CrazyPreimageComparisonError(message)
+    return exact, evaluations
+
+
+def run_baseline_strategy(
+    oracle: CrazySemanticOracle,
+) -> CrazyPreimageStrategyRun:
+    """Run complete-domain independent enumeration for the frozen challenge.
+
+    Returns:
+        Baseline work count and canonical semantic preimage digest.
+
+    """
+    frozen = challenge()
+    preimage_sets = tuple(
+        _validated_baseline_preimages(problem, oracle)
+        for problem in frozen.problems
+    )
+    return CrazyPreimageStrategyRun(
+        strategy_id=BASELINE_ID,
+        evaluations=len(frozen.problems) * _FULL_DOMAIN_WORDS,
+        preimage_count=sum(len(preimages) for preimages in preimage_sets),
+        semantic_sha256=_strategy_digest(preimage_sets),
+    )
+
+
+def run_exact_strategy(
+    oracle: CrazySemanticOracle,
+) -> CrazyPreimageStrategyRun:
+    """Run production exact projection with independent semantic verification.
+
+    Returns:
+        Exact projected work count and canonical semantic preimage digest.
+
+    Raises:
+        CrazyPreimageComparisonError: If production or semantic evidence drifts.
+
+    """
+    if crazy_target_selection_preparer_id() != TECHNIQUE_ID:
+        message = "production crazy preimage preparer identity drifted"
+        raise CrazyPreimageComparisonError(message)
+    frozen = challenge()
+    resolved = tuple(
+        _exact_preimages(problem, oracle) for problem in frozen.problems
+    )
+    preimage_sets = tuple(preimages for preimages, _evaluations in resolved)
+    return CrazyPreimageStrategyRun(
+        strategy_id=TECHNIQUE_ID,
+        evaluations=sum(evaluations for _preimages, evaluations in resolved),
+        preimage_count=sum(len(preimages) for preimages in preimage_sets),
+        semantic_sha256=_strategy_digest(preimage_sets),
+    )
+
+
+def _compare_problem(
+    problem: CrazyPreimageChallengeProblem,
+    oracle: CrazySemanticOracle,
+) -> CrazyPreimageProblemResult:
+    baseline = _validated_baseline_preimages(problem, oracle)
+    exact, exact_evaluations = _exact_preimages(problem, oracle)
     if exact != baseline:
         message = (
             "production exact preimage set differs from independent baseline"
         )
-        raise CrazyPreimageComparisonError(message)
-    if exact_evaluations != len(exact):
-        message = "production exact preimage evaluation count drifted"
         raise CrazyPreimageComparisonError(message)
     return CrazyPreimageProblemResult(
         accumulator=problem.accumulator,
