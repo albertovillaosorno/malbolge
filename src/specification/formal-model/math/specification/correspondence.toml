@@ -246,6 +246,16 @@ mechanism = "independent-per-accumulator-trit-multiplicity-convolution"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_profile_width_fixed_accumulator_preimage_distribution"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-fixed-accumulator-budget-exceedance"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-fixed-accumulator-budget-exceedance"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "fixed accumulator classes at bounded trit widths 1 through 14 under nonnegative complete-preimage budgets"
+mechanism = "fixed-accumulator-binomial-tail-vs-independent-target-histogram"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_fixed_accumulator_budget_exceedance_matches_closed_form"]
+
+[[correspondence]]
 id = "optimization-crazy-accumulator-class-cardinality"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-accumulator-class-cardinality"

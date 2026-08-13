@@ -519,6 +519,53 @@ def test_profile_width_fixed_accumulator_preimage_distribution() -> None:
             ) == _independent_integer_power(_RADIX, trit_count)
 
 
+def _independent_fixed_accumulator_budget_tail(
+    non_two_trits: int,
+    two_trits: int,
+    budget: int,
+) -> int:
+    tail = sum(
+        _independent_binomial(non_two_trits, exponent)
+        for exponent in range(non_two_trits + 1)
+        if (1 << exponent) > budget
+    )
+    return tail * _independent_integer_power(3, two_trits)
+
+
+def _assert_fixed_accumulator_budget_class(
+    trit_count: int,
+    two_trits: int,
+    budgets: tuple[int, ...],
+) -> None:
+    histogram = _independent_fixed_accumulator_preimage_histogram(
+        trit_count, two_trits
+    )
+    non_two_trits = trit_count - two_trits
+    for budget in budgets:
+        observed = sum(
+            targets
+            for preimages, targets in histogram.items()
+            if preimages > budget
+        )
+        expected = _independent_fixed_accumulator_budget_tail(
+            non_two_trits, two_trits, budget
+        )
+        assert observed == expected
+    expected_targets = _independent_integer_power(2, non_two_trits)
+    expected_targets *= _independent_integer_power(3, two_trits)
+    assert sum(histogram.values()) == expected_targets
+
+
+def test_fixed_accumulator_budget_exceedance_matches_closed_form() -> None:
+    """Every checked accumulator class matches exact target budget tails."""
+    budgets = (0, 1, 2, 3, 7, 15, 1 << _MAX_CHECKED_PROFILE_TRITS)
+    for trit_count in range(1, _MAX_CHECKED_PROFILE_TRITS + 1):
+        for two_trits in range(trit_count + 1):
+            _assert_fixed_accumulator_budget_class(
+                trit_count, two_trits, budgets
+            )
+
+
 def test_global_preimage_pair_classes_match_independent_relation() -> None:
     """Reachable pair counts are exact for every nonzero preimage class."""
     classes = crazy_target_full_domain_preimage_pair_classes()

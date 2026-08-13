@@ -191,6 +191,21 @@ $2^{N-m}3^m$, while preimage-weighting recovers the complete $3^N$ data-word
 domain for every fixed accumulator. This is exact complete-domain target-search
 planning evidence only and carries no corpus-membership or runtime-speed claim.
 
+For a nonnegative complete-preimage enumeration budget $B$, the same fixed-
+accumulator classes give an exact target exceedance count:
+\\begin{equation}
+  T^{(N,m)}_{>B}
+    =3^m\!\sum_{\substack{0\leq k\leq N-m\2^k>B}}
+      \\binom{N-m}{k},
+  \qquad 0\leq m\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-fixed-accumulator-budget-exceedance}
+\end{equation}
+Thus $T^{(N,m)}_{>0}=2^{N-m}3^m$ and
+$T^{(N,m)}_{>2^{N-m}}=0$. This counts targets whose complete preimage cannot
+fit within $B$ data candidates for a fixed accumulator class. It does not claim
+that an incomplete external corpus contains every such preimage or that every
+search algorithm must enumerate them.
+
 The same statistic $n_2(a)$ partitions the complete accumulator domain. For
 $k\in\{0,\ldots,10\}$, exactly $k$ positions must be chosen for trit value 2,
 and every remaining position independently admits either trit 0 or trit 1.
