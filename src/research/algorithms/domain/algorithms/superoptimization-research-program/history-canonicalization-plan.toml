@@ -30,6 +30,19 @@ evaluation_budget = 10000
 wall_clock_seconds = 60
 memory_mib = 512
 
+[challenge]
+id = "classic-history-residue-search-v1"
+candidate_count = 10000
+candidate_encoding = "encryption-94x70-plus-rotate-171x20-v1"
+verifier = "classic-history-semantic-value-v1"
+workload_sha256 = "f300a5adf717027eb11c850b4a8b292bf0bac7fe0cde6bdb9be9d2f7f504d103"
+
+[runner]
+id = "classic-history-residue-comparison-v1"
+baseline = "raw-visit-count-state-v1"
+canonicalized = "exact-history-residue-state-v1"
+semantic_equivalence = "exact-per-observation-sha256-v1"
+
 [applicability]
 self_encryption = "unchanged graphical-cell committed-encryption visits"
 rotate_history = "unchanged classic ten-trit data-cell rotate visits"
@@ -45,10 +58,10 @@ conditions = [
 ]
 
 [measurement_gate]
-challenge_status = "required-before-run"
-runner_status = "required-before-run"
+challenge_status = "registered"
+runner_status = "registered"
 results_allowed = false
-reason = "no versioned canonicalization challenge and runner are registered yet"
+reason = "measurement protocol and retained run provenance are not registered"
 
 [provenance]
 # jig-ignore-next-line: canonical path is indivisible

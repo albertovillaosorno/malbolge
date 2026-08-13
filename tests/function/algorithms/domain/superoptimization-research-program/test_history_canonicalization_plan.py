@@ -19,7 +19,7 @@
 #     assertions.
 #   - Side effects: repository-local reads only.
 # - Split-When:
-#   - The canonicalization runner or measured evidence gains its own lifecycle.
+#   - Measured evidence gains an independent protocol or retained lifecycle.
 # - Merge-When:
 #   - Shared preregistration tests own this exact record shape.
 # - Summary:
@@ -30,7 +30,7 @@
 # - Usage:
 #   - Collected by the research-algorithm Python test surface.
 # - Defaults:
-#   - No results are admissible until a versioned challenge and runner exist.
+#   - No measured result is admissible until protocol and provenance are frozen.
 #
 
 """Preregistration checks for exact history-residue canonicalization."""
@@ -57,10 +57,16 @@ _PRIMARY_METRIC = "unique-search-states"
 _EVALUATION_BUDGET = 10_000
 _WALL_CLOCK_SECONDS = 60
 _MEMORY_MIB = 512
-_REQUIRED_BEFORE_RUN = "required-before-run"
+_REGISTERED = "registered"
 _ACCEPTED_SET_REJECTION = "verified accepted-set differs from baseline"
 _APPLICABILITY_REJECTION = (
     "applicability cannot be checked before canonicalization"
+)
+_CHALLENGE_ID = "classic-history-residue-search-v1"
+_RUNNER_ID = "classic-history-residue-comparison-v1"
+_CANDIDATE_COUNT = 10_000
+_WORKLOAD_SHA256 = (
+    "f300a5adf717027eb11c850b4a8b292bf0bac7fe0cde6bdb9be9d2f7f504d103"
 )
 
 
@@ -69,6 +75,8 @@ def test_history_canonicalization_plan_is_preregistered_unmeasured() -> None:
     document = tomllib.loads(_PLAN.read_text(encoding="utf-8"))
     plan = cast("dict[str, object]", document["plan"])
     comparison = cast("dict[str, object]", document["comparison"])
+    challenge = cast("dict[str, object]", document["challenge"])
+    runner = cast("dict[str, object]", document["runner"])
     gate = cast("dict[str, object]", document["measurement_gate"])
 
     assert plan == {
@@ -83,8 +91,14 @@ def test_history_canonicalization_plan_is_preregistered_unmeasured() -> None:
     assert comparison["evaluation_budget"] == _EVALUATION_BUDGET
     assert comparison["wall_clock_seconds"] == _WALL_CLOCK_SECONDS
     assert comparison["memory_mib"] == _MEMORY_MIB
-    assert gate["challenge_status"] == _REQUIRED_BEFORE_RUN
-    assert gate["runner_status"] == _REQUIRED_BEFORE_RUN
+    assert challenge["id"] == _CHALLENGE_ID
+    assert challenge["candidate_count"] == _CANDIDATE_COUNT
+    assert challenge["workload_sha256"] == _WORKLOAD_SHA256
+    assert runner["id"] == _RUNNER_ID
+    assert runner["baseline"] == _BASELINE
+    assert runner["canonicalized"] == _TECHNIQUE
+    assert gate["challenge_status"] == _REGISTERED
+    assert gate["runner_status"] == _REGISTERED
     assert gate["results_allowed"] is False
 
 
