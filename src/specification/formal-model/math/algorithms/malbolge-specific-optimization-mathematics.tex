@@ -172,6 +172,25 @@ This count can reject impossible target states before data-word enumeration.
 It is a complete-domain reachability cardinality and does not assert that an
 external candidate corpus contains any particular preimage.
 
+The same one-trit multiplicities refine that target count by exact preimage
+size. Let $m=n_2(a)$ be the number of accumulator trits equal to $2$. For every
+$k\in\{0,\ldots,N-m\}$, the number of reachable targets with complete
+$N$-trit data preimage cardinality exactly $2^k$ is
+\begin{equation}
+  \left|\left\{t\in\WordDomain{N}:
+    \left|\left\{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t\right\}\right|=2^k
+  \right\}\right|
+    =\binom{N-m}{k}3^m,
+  \qquad 0\leq m\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-fixed-accumulator-preimage-distribution}
+\end{equation}
+Each accumulator trit unequal to $2$ contributes one singleton-target choice
+and one doubled-target choice; each accumulator trit equal to $2$ contributes
+three singleton targets. Summing target classes recovers
+$2^{N-m}3^m$, while preimage-weighting recovers the complete $3^N$ data-word
+domain for every fixed accumulator. This is exact complete-domain target-search
+planning evidence only and carries no corpus-membership or runtime-speed claim.
+
 The same statistic $n_2(a)$ partitions the complete accumulator domain. For
 $k\in\{0,\ldots,10\}$, exactly $k$ positions must be chosen for trit value 2,
 and every remaining position independently admits either trit 0 or trit 1.

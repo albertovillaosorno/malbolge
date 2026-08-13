@@ -37,7 +37,7 @@ from __future__ import annotations
 import pytest
 from scripts.validate import math_correspondence as validator
 
-EXPECTED_EQUATIONS = 58
+EXPECTED_EQUATIONS = 59
 REPOSITORY_RELATIVE_ERROR = "must be repository-relative"
 
 

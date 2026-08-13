@@ -408,6 +408,51 @@ def _independent_accumulator_class_histogram() -> tuple[int, ...]:
     return tuple(counts)
 
 
+def _independent_target_preimage_class_counts(
+    accumulator_trit: int,
+) -> tuple[tuple[int, int], ...]:
+    counts: dict[int, int] = {}
+    for target_trit in range(_RADIX):
+        multiplicity = sum(
+            _INDEPENDENT_CRAZY_TRIT[data_trit][accumulator_trit]
+            == target_trit
+            for data_trit in range(_RADIX)
+        )
+        if multiplicity == 0:
+            continue
+        counts[multiplicity] = counts.get(multiplicity, 0) + 1
+    return tuple(sorted(counts.items()))
+
+
+def _expand_target_preimage_histogram(
+    histogram: dict[int, int],
+    per_trit: tuple[tuple[int, int], ...],
+) -> dict[int, int]:
+    expanded: dict[int, int] = {}
+    for preimage_count, target_count in histogram.items():
+        for multiplicity, trit_target_count in per_trit:
+            combined = preimage_count * multiplicity
+            expanded[combined] = (
+                expanded.get(combined, 0)
+                + target_count * trit_target_count
+            )
+    return expanded
+
+
+def _independent_fixed_accumulator_preimage_histogram(
+    trit_count: int,
+    two_trits: int,
+) -> dict[int, int]:
+    histogram = {1: 1}
+    non_two = _independent_target_preimage_class_counts(0)
+    two = _independent_target_preimage_class_counts(_TWO_TRIT)
+    for _ in range(trit_count - two_trits):
+        histogram = _expand_target_preimage_histogram(histogram, non_two)
+    for _ in range(two_trits):
+        histogram = _expand_target_preimage_histogram(histogram, two)
+    return histogram
+
+
 def _independent_trit_preimage_class_counts() -> tuple[tuple[int, int], ...]:
     counts: dict[int, int] = {}
     for accumulator_trit in range(_RADIX):
@@ -448,6 +493,30 @@ def _independent_preimage_pair_histogram(
             per_trit,
         )
     return histogram
+
+
+def test_profile_width_fixed_accumulator_preimage_distribution() -> None:
+    """Every accumulator class matches the exact target multiplicity law."""
+    assert _independent_target_preimage_class_counts(0) == ((1, 1), (2, 1))
+    assert _independent_target_preimage_class_counts(1) == ((1, 1), (2, 1))
+    assert _independent_target_preimage_class_counts(_TWO_TRIT) == ((1, 3),)
+    for trit_count in range(1, _MAX_CHECKED_PROFILE_TRITS + 1):
+        for two_trits in range(trit_count + 1):
+            histogram = _independent_fixed_accumulator_preimage_histogram(
+                trit_count, two_trits
+            )
+            non_two_trits = trit_count - two_trits
+            for exponent in range(non_two_trits + 1):
+                expected = _independent_binomial(non_two_trits, exponent)
+                expected *= _independent_integer_power(3, two_trits)
+                assert histogram[1 << exponent] == expected
+            expected_targets = _independent_integer_power(2, non_two_trits)
+            expected_targets *= _independent_integer_power(3, two_trits)
+            assert sum(histogram.values()) == expected_targets
+            assert sum(
+                preimages * targets
+                for preimages, targets in histogram.items()
+            ) == _independent_integer_power(_RADIX, trit_count)
 
 
 def test_global_preimage_pair_classes_match_independent_relation() -> None:
