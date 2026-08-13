@@ -1,0 +1,64 @@
+schema_version = 1
+
+[experiment]
+id = "superoptimization-research-program"
+record_kind = "run"
+seed = 0
+method_class = "optimization"
+
+[challenge]
+family = "classic-history-residue-search-v1"
+difficulty = 10000
+target_profile = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[budget]
+seconds = 60
+candidate_evaluations = 10000
+memory_mib = 512
+
+[verification]
+required = true
+oracle = "classic-history-semantic-value-v1"
+baseline = "raw-visit-count-state-v1"
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/history-canonicalization-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"
+
+[measurement]
+id = "history-residue-five-paired-protocol-v1"
+repetitions = 5
+warmup_iterations = 0
+ordering = "fixed-raw-then-canonicalized"
+outlier_policy = "retain-all"
+center = "median"
+dispersion = "observed-range"
+uncertainty = "observed-range"
+clock = "time-perf-counter-ns"
+timing_scope = "strategy-run-only"
+per_strategy_wall_clock_seconds = 60
+
+[run]
+commit = "9ff4834614b35900cbc51f85a4edd3b5e24fe38b"
+workload_sha256 = "f300a5adf717027eb11c850b4a8b292bf0bac7fe0cde6bdb9be9d2f7f504d103"
+host = "Microsoft Windows 11 Pro 10.0.26200 x64-based PC"
+accelerator = "none"
+toolchain = "Python 3.14.6"
+outcome = "success"
+# jig-ignore-next-line: canonical evidence path is indivisible
+raw_output = "benchmarks/research/evidence/2026-08-12-history-residue-canonicalization-windows/raw.csv"
+
+[history_measurement]
+format_id = "history-residue-five-paired-measurement-v1"
+comparison_id = "classic-history-residue-comparison-v1"
+challenge_id = "classic-history-residue-search-v1"
+repetitions = 5
+candidate_count = 10000
+baseline_strategy = "raw-visit-count-state-v1"
+canonicalized_strategy = "exact-history-residue-state-v1"
+workload_sha256 = "f300a5adf717027eb11c850b4a8b292bf0bac7fe0cde6bdb9be9d2f7f504d103"
+semantic_sha256 = "fd3644058b415d3acc091d0b837111948ff640132f7c8093fca562d553bdb527"
