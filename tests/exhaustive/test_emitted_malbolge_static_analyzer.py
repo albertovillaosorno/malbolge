@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v23"
+_SCHEMA = "malbolge-static-image/v24"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -289,6 +289,10 @@ class _WorklistAnalysis(Protocol):
     repeated_state_edges: int
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[_WorklistCycleState, ...]
+    known_graph_strong_component_count: int
+    known_graph_cyclic_component_count: int
+    known_graph_cyclic_state_count: int
+    known_graph_largest_cyclic_component_states: int
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     explored_minimum_words: int
@@ -1641,6 +1645,19 @@ def test_worklist_cycle_detection_causes_cli_failure(tmp_path: Path) -> None:
         [1, _FIXED_CYCLE_ENCRYPTED_ONE],
     ]
     assert witness[0]["eof_seen"] is False
+    assert (
+        bounded["known_graph_strong_component_count"]
+        == _DOUBLE_INPUT_CYCLE_STATE_LIMIT
+    )
+    assert (
+        bounded["known_graph_cyclic_component_count"]
+        == _WORKLIST_INPUT_VALUE_COUNT
+    )
+    assert (
+        bounded["known_graph_cyclic_state_count"]
+        == _WORKLIST_INPUT_VALUE_COUNT
+    )
+    assert bounded["known_graph_largest_cyclic_component_states"] == 1
     assert bounded["truncated"] is False
 
 

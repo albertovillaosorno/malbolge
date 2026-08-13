@@ -86,6 +86,10 @@ _GRAPH_KEY_A: _WorklistStateKey = (0, 0, 0, (), False)
 _GRAPH_KEY_B: _WorklistStateKey = (1, 0, 0, (), False)
 _GRAPH_KEY_C: _WorklistStateKey = (2, 0, 0, (), False)
 _GRAPH_KEY_D: _WorklistStateKey = (3, 0, 0, (), False)
+_SCC_COMPONENT_COUNT = 3
+_SCC_CYCLIC_COMPONENT_COUNT = 2
+_SCC_CYCLIC_STATE_COUNT = 3
+_SCC_LARGEST_CYCLIC_COMPONENT_STATES = 2
 _STATE_LIMIT_MESSAGE = "worklist state limit must be a positive exact integer"
 _ADMISSION_MESSAGE = "worklist source is not an admitted classic image"
 _ROOT = Path(__file__).resolve().parents[2]
@@ -141,6 +145,10 @@ class _WorklistAnalysis(Protocol):
     repeated_state_edges: int
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[_WorklistCycleState, ...]
+    known_graph_strong_component_count: int
+    known_graph_cyclic_component_count: int
+    known_graph_cyclic_state_count: int
+    known_graph_largest_cyclic_component_states: int
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     explored_minimum_words: int
@@ -150,6 +158,13 @@ class _WorklistAnalysis(Protocol):
     maximum_first_seen_transition_index: int
     frontier_states: int
     truncated: bool
+
+
+class _StrongComponentSummary(Protocol):
+    component_count: int
+    cyclic_component_count: int
+    cyclic_state_count: int
+    largest_cyclic_component_states: int
 
 
 class _Explorer(Protocol):
@@ -192,6 +207,18 @@ class _WorklistModule(Protocol):
         *,
         eof_seen: bool,
     ) -> tuple[_ReachabilityNode, ...]: ...
+
+    def _known_graph_strong_components(
+        self,
+        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+        nodes: set[_WorklistStateKey],
+    ) -> tuple[tuple[_WorklistStateKey, ...], ...]: ...
+
+    def _known_graph_strong_component_summary(
+        self,
+        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+        nodes: set[_WorklistStateKey],
+    ) -> _StrongComponentSummary: ...
 
     def _known_graph_has_cycle(
         self,
@@ -242,6 +269,10 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     assert result.repeated_state_edges == 0
     assert not result.reachable_cycle_detected
     assert result.reachable_cycle_witness == ()
+    assert result.known_graph_strong_component_count == _FULL_STATE_LIMIT
+    assert result.known_graph_cyclic_component_count == 0
+    assert result.known_graph_cyclic_state_count == 0
+    assert result.known_graph_largest_cyclic_component_states == 0
     assert result.input_branch_points == 1
     assert result.terminal_status_counts == (("halted", _INPUT_VALUE_COUNT),)
     assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
@@ -314,6 +345,13 @@ def test_double_input_merges_are_not_silently_discarded() -> None:
     assert result.repeated_state_edges == _DOUBLE_INPUT_REPEATED_EDGES
     assert not result.reachable_cycle_detected
     assert result.reachable_cycle_witness == ()
+    assert (
+        result.known_graph_strong_component_count
+        == _DOUBLE_INPUT_UNIQUE_STATES
+    )
+    assert result.known_graph_cyclic_component_count == 0
+    assert result.known_graph_cyclic_state_count == 0
+    assert result.known_graph_largest_cyclic_component_states == 0
     assert result.input_branch_points == _DOUBLE_INPUT_BRANCH_POINTS
     assert result.terminal_status_counts == (
         ("halted", _INPUT_VALUE_COUNT),
@@ -337,6 +375,13 @@ def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:
     assert cycle.accumulator == 0
     assert cycle.memory_overrides == _FIXED_CYCLE_MEMORY_OVERRIDES
     assert not cycle.eof_seen
+    assert (
+        result.known_graph_strong_component_count
+        == _DOUBLE_INPUT_UNIQUE_STATES
+    )
+    assert result.known_graph_cyclic_component_count == _INPUT_VALUE_COUNT
+    assert result.known_graph_cyclic_state_count == _INPUT_VALUE_COUNT
+    assert result.known_graph_largest_cyclic_component_states == 1
     assert result.terminal_status_counts == ()
     assert not result.truncated
 
@@ -368,6 +413,30 @@ def test_known_graph_cycle_detection_rejects_merge_only_heuristics() -> None:
     assert worklist._known_graph_cycle_witness(cycle_edges, nodes) == (
         _GRAPH_KEY_A,
         _GRAPH_KEY_B,
+    )
+
+
+def test_known_graph_scc_summary_counts_cycle_components_exactly() -> None:
+    """SCC counts separate a two-state cycle, self-loop, and acyclic tail."""
+    edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B},
+        _GRAPH_KEY_B: {_GRAPH_KEY_A},
+        _GRAPH_KEY_C: {_GRAPH_KEY_C},
+        _GRAPH_KEY_D: {_GRAPH_KEY_C},
+    }
+    nodes = {_GRAPH_KEY_D, _GRAPH_KEY_C, _GRAPH_KEY_B, _GRAPH_KEY_A}
+    assert worklist._known_graph_strong_components(edges, nodes) == (
+        (_GRAPH_KEY_A, _GRAPH_KEY_B),
+        (_GRAPH_KEY_C,),
+        (_GRAPH_KEY_D,),
+    )
+    summary = worklist._known_graph_strong_component_summary(edges, nodes)
+    assert summary.component_count == _SCC_COMPONENT_COUNT
+    assert summary.cyclic_component_count == _SCC_CYCLIC_COMPONENT_COUNT
+    assert summary.cyclic_state_count == _SCC_CYCLIC_STATE_COUNT
+    assert (
+        summary.largest_cyclic_component_states
+        == _SCC_LARGEST_CYCLIC_COMPONENT_STATES
     )
 
 

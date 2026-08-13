@@ -83,6 +83,10 @@ class WorklistAnalysis:
     repeated_state_edges: int
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[WorklistCycleState, ...]
+    known_graph_strong_component_count: int
+    known_graph_cyclic_component_count: int
+    known_graph_cyclic_state_count: int
+    known_graph_largest_cyclic_component_states: int
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     explored_minimum_words: int
@@ -92,6 +96,16 @@ class WorklistAnalysis:
     maximum_first_seen_transition_index: int
     frontier_states: int
     truncated: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _StrongComponentSummary:
+    """Exact SCC counts over only the admitted known directed graph."""
+
+    component_count: int
+    cyclic_component_count: int
+    cyclic_state_count: int
+    largest_cyclic_component_states: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,6 +232,122 @@ def _known_targets(
             for target in edges.get(source, set())
             if target in nodes
         )
+    )
+
+
+def _finish_order_component(
+    root: _StateKey,
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+    *,
+    visited: set[_StateKey],
+) -> tuple[_StateKey, ...]:
+    finished: list[_StateKey] = []
+    visited.add(root)
+    stack: list[tuple[_StateKey, bool]] = [(root, False)]
+    while stack:
+        source, expanded = stack.pop()
+        if expanded:
+            finished.append(source)
+            continue
+        stack.append((source, True))
+        for target in reversed(_known_targets(source, edges, nodes)):
+            if target in visited:
+                continue
+            visited.add(target)
+            stack.append((target, False))
+    return tuple(finished)
+
+
+def _known_graph_finish_order(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+) -> tuple[_StateKey, ...]:
+    visited: set[_StateKey] = set()
+    finished: list[_StateKey] = []
+    for root in sorted(nodes):
+        if root in visited:
+            continue
+        finished.extend(
+            _finish_order_component(root, edges, nodes, visited=visited)
+        )
+    return tuple(finished)
+
+
+def _reverse_known_edges(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+) -> dict[_StateKey, set[_StateKey]]:
+    reverse: dict[_StateKey, set[_StateKey]] = {
+        node: set() for node in nodes
+    }
+    for source in sorted(nodes):
+        for target in _known_targets(source, edges, nodes):
+            reverse[target].add(source)
+    return reverse
+
+
+def _reverse_component(
+    root: _StateKey,
+    reverse_edges: dict[_StateKey, set[_StateKey]],
+    visited: set[_StateKey],
+) -> tuple[_StateKey, ...]:
+    component: list[_StateKey] = []
+    visited.add(root)
+    stack = [root]
+    while stack:
+        source = stack.pop()
+        component.append(source)
+        for target in reversed(tuple(sorted(reverse_edges[source]))):
+            if target in visited:
+                continue
+            visited.add(target)
+            stack.append(target)
+    return tuple(sorted(component))
+
+
+def _known_graph_strong_components(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+) -> tuple[tuple[_StateKey, ...], ...]:
+    finish_order = _known_graph_finish_order(edges, nodes)
+    reverse_edges = _reverse_known_edges(edges, nodes)
+    visited: set[_StateKey] = set()
+    components: list[tuple[_StateKey, ...]] = []
+    for root in reversed(finish_order):
+        if root in visited:
+            continue
+        components.append(_reverse_component(root, reverse_edges, visited))
+    return tuple(sorted(components))
+
+
+def _component_is_cyclic(
+    component: tuple[_StateKey, ...],
+    edges: dict[_StateKey, set[_StateKey]],
+) -> bool:
+    if len(component) > 1:
+        return True
+    if not component:
+        return False
+    node = component[0]
+    return node in edges.get(node, set())
+
+
+def _known_graph_strong_component_summary(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+) -> _StrongComponentSummary:
+    components = _known_graph_strong_components(edges, nodes)
+    cyclic_sizes = tuple(
+        len(component)
+        for component in components
+        if _component_is_cyclic(component, edges)
+    )
+    return _StrongComponentSummary(
+        component_count=len(components),
+        cyclic_component_count=len(cyclic_sizes),
+        cyclic_state_count=sum(cyclic_sizes),
+        largest_cyclic_component_states=max(cyclic_sizes, default=0),
     )
 
 
@@ -350,16 +480,33 @@ class _Explorer:
         ordered_addresses = tuple(sorted(self.accessed_addresses))
         highest_address = ordered_addresses[-1]
         cycle_keys = _known_graph_cycle_witness(self.edges, self.seen)
+        component_summary = _known_graph_strong_component_summary(
+            self.edges, self.seen
+        )
+        has_cycle = _known_graph_has_cycle(
+            self.edges, self.seen, witness=cycle_keys
+        )
+        if has_cycle != bool(component_summary.cyclic_component_count):
+            message = "known-graph cycle and SCC evidence disagree"
+            raise AssertionError(message)
         return WorklistAnalysis(
             state_limit=self.state_limit,
             unique_states=len(self.seen),
             explored_states=self.explored,
             repeated_state_edges=self.repeated_edges,
-            reachable_cycle_detected=_known_graph_has_cycle(
-                self.edges, self.seen, witness=cycle_keys
-            ),
+            reachable_cycle_detected=has_cycle,
             reachable_cycle_witness=tuple(
                 _cycle_state(key) for key in cycle_keys
+            ),
+            known_graph_strong_component_count=(
+                component_summary.component_count
+            ),
+            known_graph_cyclic_component_count=(
+                component_summary.cyclic_component_count
+            ),
+            known_graph_cyclic_state_count=component_summary.cyclic_state_count,
+            known_graph_largest_cyclic_component_states=(
+                component_summary.largest_cyclic_component_states
             ),
             input_branch_points=self.input_branch_points,
             terminal_status_counts=tuple(sorted(self.terminal_counts.items())),
