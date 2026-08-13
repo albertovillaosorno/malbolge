@@ -286,6 +286,16 @@ mechanism = "independent-convolution-weighted-input-mass-accounting"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_profile_width_mean_preimage_count_matches_input_mass"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-variance"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-preimage-variance"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "uniformly selected reachable accumulator/target pairs at bounded trit widths 1 through 14"
+mechanism = "independent-convolution-first-and-second-moment-accounting"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_profile_width_preimage_variance_matches_weighted_classes"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-budget-exceedance"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-profile-preimage-budget-exceedance"

@@ -259,6 +259,24 @@ This mean is over reachable pairs only and follows from exact input-mass
 accounting, not from a probabilistic model of an external candidate corpus. It
 is search-planning evidence and carries no runtime-speedup claim.
 
+The same class distribution gives the exact second moment and variance of the
+complete-domain preimage cardinality over uniformly chosen reachable pairs:
+\begin{equation}
+  \begin{aligned}
+    \mathbb{E}[M_N^2]
+      &= \frac{13^N}{7^N}=\left(\frac{13}{7}\right)^N,\
+    \operatorname{Var}(M_N)
+      &= \left(\frac{13}{7}\right)^N
+       - \left(\frac{9}{7}\right)^{2N},
+    \qquad 1\leq N\leq14,
+  \end{aligned}
+  \label{eq:optimization-crazy-profile-preimage-variance}
+\end{equation}
+where $M_N$ is the complete preimage cardinality of a uniformly selected
+reachable accumulator/target pair. This is exact dispersion evidence for
+complete-domain search planning only; it does not model an external corpus or
+imply a runtime-speedup distribution.
+
 For a nonnegative integer full-domain enumeration budget $B$, the same exact
 preimage classes give the number of reachable accumulator/target pairs whose
 complete data-word preimage cannot fit within that budget:
