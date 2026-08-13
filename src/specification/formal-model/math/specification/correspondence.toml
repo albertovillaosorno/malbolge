@@ -296,6 +296,16 @@ mechanism = "independent-convolution-first-and-second-moment-accounting"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_profile_width_preimage_variance_matches_weighted_classes"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-log-preimage-binomial"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-log-preimage-binomial"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "uniformly selected reachable accumulator/target pairs at bounded trit widths 1 through 14"
+mechanism = "independent-convolution-log-preimage-binomial-moment-accounting"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/optimizer/test_crazy_target_search.py::test_profile_width_log_preimage_exponent_is_binomial"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-budget-exceedance"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-profile-preimage-budget-exceedance"

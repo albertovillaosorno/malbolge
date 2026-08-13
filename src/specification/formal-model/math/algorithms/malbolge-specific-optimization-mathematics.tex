@@ -277,6 +277,21 @@ reachable accumulator/target pair. This is exact dispersion evidence for
 complete-domain search planning only; it does not model an external corpus or
 imply a runtime-speedup distribution.
 
+Equivalently, for $K_N=\log_2 M_N$ over reachable pairs, the preimage exponent
+is exactly binomial:
+\begin{equation}
+  \Pr[K_N=k]
+    = \binom{N}{k}\left(\frac{2}{7}\right)^k
+      \left(\frac{5}{7}\right)^{N-k},\qquad
+  \mathbb{E}[K_N]=\frac{2N}{7},\qquad
+  \operatorname{Var}(K_N)=\frac{10N}{49},
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-log-preimage-binomial}
+\end{equation}
+This describes exact multiplicity classes under uniform selection from the
+reachable complete-domain pair set. It is not a distributional assumption about
+an external candidate corpus and carries no timing claim.
+
 For a nonnegative integer full-domain enumeration budget $B$, the same exact
 preimage classes give the number of reachable accumulator/target pairs whose
 complete data-word preimage cannot fit within that budget:

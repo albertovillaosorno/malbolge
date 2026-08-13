@@ -557,6 +557,38 @@ def test_profile_width_preimage_variance_matches_weighted_classes() -> None:
         assert variance_numerator == expected_variance_numerator
 
 
+def test_profile_width_log_preimage_exponent_is_binomial() -> None:
+    """Reachable-pair log-preimage moments match Binomial(N, two-sevenths)."""
+    for trit_count in range(1, _MAX_CHECKED_PROFILE_TRITS + 1):
+        histogram = _independent_preimage_pair_histogram(trit_count)
+        reachable = sum(histogram.values())
+        first_moment_numerator = sum(
+            exponent * histogram[1 << exponent]
+            for exponent in range(trit_count + 1)
+        )
+        second_moment_numerator = sum(
+            exponent * exponent * histogram[1 << exponent]
+            for exponent in range(trit_count + 1)
+        )
+        expected_reachable = _independent_integer_power(
+            _REACHABLE_PAIRS_PER_TRIT, trit_count
+        )
+        expected_first = 2 * trit_count * _independent_integer_power(
+            _REACHABLE_PAIRS_PER_TRIT, trit_count - 1
+        )
+        variance_numerator = (
+            second_moment_numerator * reachable
+            - first_moment_numerator * first_moment_numerator
+        )
+        expected_variance_numerator = 10 * trit_count
+        expected_variance_numerator *= _independent_integer_power(
+            _REACHABLE_PAIRS_PER_TRIT, (2 * trit_count) - 2
+        )
+        assert reachable == expected_reachable
+        assert first_moment_numerator == expected_first
+        assert variance_numerator == expected_variance_numerator
+
+
 def test_profile_width_unreachable_pair_count_matches_closed_form() -> None:
     """Widths one through fourteen match the exact unreachable complement."""
     for trit_count in range(1, _MAX_CHECKED_PROFILE_TRITS + 1):
