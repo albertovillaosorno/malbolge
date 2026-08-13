@@ -41,6 +41,8 @@ import sys
 from typing import Protocol
 from typing import cast
 
+import pytest
+
 _ROOT = Path(__file__).resolve().parents[5]
 _MODULE = _ROOT / (
     "src/research/algorithms/composition/algorithms/"
@@ -81,7 +83,11 @@ class _Comparison(Protocol):
 
 
 class _RunnerModule(Protocol):
+    InvalidHistoryComparisonError: type[ValueError]
+
     def compare_history_states(self) -> _Comparison: ...
+
+    def run_history_strategy(self, strategy_id: str) -> _Summary: ...
 
 
 def _load_runner() -> _RunnerModule:
@@ -143,3 +149,23 @@ def test_history_runner_replays_identically() -> None:
     first = _RUNNER.compare_history_states()
     second = _RUNNER.compare_history_states()
     assert first == second
+
+
+def test_history_runner_exposes_each_registered_strategy_independently(
+) -> None:
+    """Measurement callers can execute either frozen arm without private API."""
+    baseline = _RUNNER.run_history_strategy(_BASELINE_ID)
+    canonicalized = _RUNNER.run_history_strategy(_CANONICAL_ID)
+    assert baseline.unique_search_states == _BASELINE_STATES
+    assert canonicalized.unique_search_states == _CANONICAL_STATES
+    assert baseline.semantic_sha256 == _SEMANTIC_SHA256
+    assert canonicalized.semantic_sha256 == _SEMANTIC_SHA256
+
+
+def test_history_runner_rejects_unregistered_strategy_identity() -> None:
+    """A measurement cannot silently substitute a third comparison arm."""
+    with pytest.raises(
+        _RUNNER.InvalidHistoryComparisonError,
+        match="history comparison strategy is not registered",
+    ):
+        _ = _RUNNER.run_history_strategy("different-history-strategy-v1")

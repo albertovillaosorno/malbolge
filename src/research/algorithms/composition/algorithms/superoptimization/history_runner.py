@@ -144,6 +144,25 @@ def _run_strategy(
     )
 
 
+def run_history_strategy(strategy_id: str) -> HistoryStrategySummary:
+    """Run one registered state-identity strategy over the frozen corpus.
+
+    Returns:
+        Exact semantic and work-count summary for the requested strategy.
+
+    Raises:
+        InvalidHistoryComparisonError: If the strategy identity is not one of
+            the two preregistered comparison arms.
+
+    """
+    if strategy_id == RAW_HISTORY_STATE_ID:
+        return _run_strategy(strategy_id, _raw_state_key)
+    if strategy_id == CANONICAL_HISTORY_STATE_ID:
+        return _run_strategy(strategy_id, _canonical_state_key)
+    message = f"history comparison strategy is not registered: {strategy_id}"
+    raise InvalidHistoryComparisonError(message)
+
+
 def compare_history_states() -> HistoryComparisonResult:
     """Compare raw visit-count state with exact residue canonicalization.
 
@@ -156,11 +175,8 @@ def compare_history_states() -> HistoryComparisonResult:
             per-candidate semantic value.
 
     """
-    baseline = _run_strategy(RAW_HISTORY_STATE_ID, _raw_state_key)
-    canonicalized = _run_strategy(
-        CANONICAL_HISTORY_STATE_ID,
-        _canonical_state_key,
-    )
+    baseline = run_history_strategy(RAW_HISTORY_STATE_ID)
+    canonicalized = run_history_strategy(CANONICAL_HISTORY_STATE_ID)
     if baseline.semantic_sha256 != canonicalized.semantic_sha256:
         message = "history canonicalization changed exact challenge semantics"
         raise InvalidHistoryComparisonError(message)
