@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes eighteen exact reductions: classic five-trit crazy factorization,
+formalizes nineteen exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, decode phase reduction, classic rotate
 lookup, graphical self-encryption orbit canonicalization, classic rotate-history
 canonicalization, exact crazy-target preimage cardinality, the tight classic
@@ -72,7 +72,8 @@ the accumulator-specific `2^(10-n2(a))` worst-target bound, and the exact
 count of reachable accumulator/target pairs, and the exact
 `C(10,k)*2^k*5^(10-k)` count of pairs in preimage class `2^k`, the exact
 profile-width `C(N,k)*2^k*5^(N-k)` distribution for `1<=N<=14`, the exact
-`9^10-7^10 = 3,204,309,152` unreachable-pair count, the exact classic threshold
+`9^10-7^10 = 3,204,309,152` unreachable-pair count, its exact `9^N-7^N`
+generalization for `1<=N<=14`, and the exact classic threshold
 sum for reachable pairs whose full preimage set exceeds a nonnegative
 enumeration budget, and its exact width-indexed generalization for `1<=N<=14`.
 The encryption
@@ -134,7 +135,8 @@ slice. The self-encryption/rotate-history reductions, crazy preimage count,
 global preimage bound, discrete preimage spectrum, accumulator-specific
 worst-target bound, reachable-target count, accumulator-class partition,
 global reachable-pair count, classic/profile-width preimage-pair distributions,
-exact unreachable-pair count, and classic/profile-width preimage-budget
+classic/profile-width unreachable-pair counts, and classic/profile-width
+preimage-budget
 exceedance bounds are correctness-proved search
 reductions, not
 measured performance results. None
@@ -154,8 +156,9 @@ self-encryption and classic rotate-history canonicalizations, crazy-target
 preimage cardinality, tight 1,024-preimage bound, discrete cardinality spectrum,
 accumulator-specific worst-target bound, reachable-target count, exact
 accumulator-class partition, global reachable-pair count, exact classic and
-profile-width preimage-pair distributions, exact unreachable-pair count, and
-exact classic/profile-width preimage-budget exceedance bounds as valid
+profile-width preimage-pair distributions, exact classic/profile-width
+unreachable-pair counts, and exact classic/profile-width preimage-budget
+exceedance bounds as valid
 optimization building blocks.
 Continue the research for broader canonical forms, universal synthesis lower
 bounds, and search-space
