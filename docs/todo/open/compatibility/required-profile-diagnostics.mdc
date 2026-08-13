@@ -139,7 +139,10 @@ historical-profile constraint.
   `malbolge-2026.1` restores and retains its identity. Profile batch/backend
   routing now has equivalent capacity precedence evidence: a 59,050-word
   historical request emits `002`, records safe-Rust admission rejection, and
-  never calls the optional backend. Equivalent program-memory requirements for
+  never calls the optional backend. Sequential and parallel profile batches keep
+  that exact typed rejection equal. Logical-task orchestration preserves the
+  same `002` plus rejected task identity through parallel execution/join while a
+  later independent task still runs. Equivalent program-memory requirements for
   other non-IR artifact families, durable-cache/AOT/JIT/runtime orchestration,
   and remaining product invocation paths remain open, so repository-wide
   completion is not claimed.

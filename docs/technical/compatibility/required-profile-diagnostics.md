@@ -308,9 +308,13 @@ preflight, and bootstrap source generation plus external Clang compilation have
 explicit combined portable preflight. Profile batch/backend routing also builds
 each safe-Rust machine before exposing any backend request; a historical
 59,050-word source therefore emits `MALBOLGE-PROFILE-002`, records
-`SafeRustAdmissionRejection`, and never calls the optional backend.
-Durable-cache, AOT/JIT execution, and the remaining product/artifact paths do
-not yet universally invoke that boundary.
+`SafeRustAdmissionRejection`, and never calls the optional backend. Sequential
+and host-parallel profile batches return that exact same typed rejection. The
+logical-task layer preserves it through sorted parallel execution, keeps later
+independent tasks runnable, and joins fail with the same profile error plus the
+exact rejected task identity. Durable-cache, AOT/JIT execution, and the
+remaining
+product/artifact paths do not yet universally invoke that boundary.
 This contract therefore remains active rather than claiming repository-wide
 profile diagnostic completion.
 
@@ -340,6 +344,10 @@ profile diagnostic completion.
   request fails as `MALBOLGE-PROFILE-002` with admission-only origin and zero
   optional-backend calls, so profile capacity cannot be bypassed by batch
   routing.
+- `tests/vm/profile_batch.rs` and `tests/vm/profile_logical.rs` prove the same
+  capacity rejection is byte/category-stable across sequential and parallel
+  profile batches, then remains attached to its exact logical task identity at
+  host output join while later independent tasks still execute.
 - `tests/tiered_execution.rs` proves exact derived IR footprint, including
   `u32::MAX`, native-identity rejection of inconsistent capacity, `MBPF` v3
   footprint mismatch rejection, emitter propagation, direct-template precedence
