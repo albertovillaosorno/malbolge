@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v23 retains the legacy exact entry-through-fifth
+load decode. Schema v24 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -18,10 +18,10 @@ writes, encryption input/output, input dependence, halt/rejection, pointer
 succession, and wrap without unbounded guest execution. The
 report also publishes the minimum word footprint and exact addresses actually
 touched by the analyzed prefix; merely-held future C/D pointers are not counted.
-For each resolved bounded fetch, schema v23 maps loaded-source addresses back
+For each resolved bounded fetch, schema v24 maps loaded-source addresses back
 to the original loaded position/raw byte offset and initial source byte, while
 recurrence-only fetches remain explicitly unmapped. The record also states
-whether the fetched value still equals that initial source byte. Schema v23
+whether the fetched value still equals that initial source byte. Schema v24
 also publishes `bounded_fetch_value_lineage`: each resolved fetch records
 whether its value comes from the loaded source, recurrence initialization, or
 the latest prior committed data write/self-encryption transition. The companion
@@ -48,7 +48,7 @@ state before its writes can influence later analysis. Forged entries and
 noncontiguous/forged prefixes fail closed. The finite transfer also
 canonicalizes evolved memory as exact sparse overrides and can identify a
 repeated concrete `(C,D,A,memory)` state when the accumulator is known. Schema
-v23 publishes the first such proof as `bounded_exact_cycle`, including the
+v24 publishes the first such proof as `bounded_exact_cycle`, including the
 first-seen/repeated transition indices, period, registers, and sparse memory
 overrides. It also publishes `bounded_state_snapshots` for every analyzed
 transition. Each snapshot records the pre-step C/D/A registers and canonical
@@ -64,26 +64,29 @@ closed reachability or explicit frontier truncation in `bounded_worklist`. The
 EOF-sticky `/` transition has one successor and is not counted as a branch.
 `maximum_first_seen_transition_index` advances when a unique state is admitted,
 so a truncated queued frontier retains its exact first-seen depth even before
-those states are explored. Schema v23 also records
+those states are explored. Schema v24 also records
 `reachable_cycle_detected` and a deterministic
 `reachable_cycle_witness` from exact directed edges in the known graph. Every
 witness state carries C/D/A, canonical sparse memory overrides, and the sticky
 EOF flag. An empty witness means no cycle was proved in the admitted known
 graph; it says nothing about a truncated frontier. Repeat-heavy branch merges
 are not treated as cycles, and a proven cycle makes requested CLI analysis
-fail. Historical fixed-fetch cycles
-become exact self-loop graph edges rather than terminal states. Thus `b"utO"`
+fail. Schema v24 also reports the known graph's exact SCC count, cyclic SCC
+count, cyclic-state count, and largest cyclic SCC size. These values use only
+admitted known edges; a truncated frontier may later connect components, so they
+are not whole-program SCC claims. Historical fixed-fetch cycles become exact
+self-loop graph edges rather than terminal states. Thus `b"utO"`
 (two inputs then halt) has many merge edges but no cycle, while `b"ut"` reaches
-a fixed-fetch self-loop. Schema v23 additionally records exact explored-graph
+a fixed-fetch self-loop. Schema v24 additionally records exact explored-graph
 memory addresses, the highest accessed address, and minimum word capacity under
 `bounded_worklist`; truncation keeps that footprint explicitly incomplete.
-Schema v23 also counts exact explored transitions whose C or D pointer wraps and
+Schema v24 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope. The
 `b"u="` input-then-crazy fixture closes in 258 states: every byte/EOF branch
 resolves concretely instead of retaining an unknown accumulator.
 A four-word `b"('&%"` fixture uses it to prove a recurrence-backed fifth
-fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v23 publishes that
-exact transition and its bounded memory footprint. Schema v23 keeps sixteen
+fixed-fetch cycle at `C=4`, `D=29490`, `M[4]=29489`; schema v24 publishes that
+exact transition and its bounded memory footprint. Schema v24 keeps sixteen
 transitions as the default but makes finite depth explicit. Library callers and
 the CLI `--transition-limit N` option may request from 1 through 256 exact
 transitions. The report binds that request in `bounded_transition_limit`,

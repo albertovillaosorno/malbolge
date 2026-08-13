@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v23
+  offsets, stable finding codes, and explicit analysis limits. Schema v24
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -74,11 +74,11 @@ executable cells, and input-dependent cycles or hangs.
   Forged entries and skipped/reordered/forged prefix records fail closed. The
   four-word `b"('&%"` fixture uses it after four continued `j`
   transitions to prove a recurrence-backed fifth fixed-fetch cycle at `C=4`,
-  `D=29490`, `M[4]=29489`; schema v23 publishes that exact step and includes
-  address 4 in its bounded memory evidence. Schema v23 adds exact bounded
+  `D=29490`, `M[4]=29489`; schema v24 publishes that exact step and includes
+  address 4 in its bounded memory evidence. Schema v24 adds exact bounded
   source-address context: fetches map loaded-source addresses to their original
   loaded position/raw byte offset/initial byte and record whether the fetched
-  value still equals that byte. Schema v23 also publishes exact data-read value
+  value still equals that byte. Schema v24 also publishes exact data-read value
   lineage for semantic `j`, `i`, `*`, and `p` operands plus exact
   self-encryption
   input lineage. These use the same loaded-source, recurrence, data-write, and
@@ -99,7 +99,7 @@ executable cells, and input-dependent cycles or hangs.
   17+ is reportable under an explicit request. Requests outside 1 through
   256 fail closed before analysis. The finite transfer now also canonicalizes
   exact evolved-memory overrides and can certify a repeated concrete
-  `(C,D,A,memory)` state when the accumulator is known. Schema v23 publishes
+  `(C,D,A,memory)` state when the accumulator is known. Schema v24 publishes
   the first such certificate with transition indices, period, registers, and
   sparse memory overrides. It also publishes one pre-transition state snapshot
   per analyzed step with C/D/A plus canonical sparse evolved-memory overrides.
@@ -108,7 +108,7 @@ executable cells, and input-dependent cycles or hangs.
   input-dependent execution is
   acyclic. Public CLI acceptance rejects any published exact-cycle certificate;
   white-box exact-state tests cover canonical memory identity and certificate
-  fields. Schema v23 also adds an opt-in exact worklist under a reviewed
+  fields. Schema v24 also adds an opt-in exact worklist under a reviewed
   1-through-4,096 unique-state cap. It branches input across all 256 byte values
   plus EOF, keeps EOF sticky, deduplicates canonical
   `(C,D,A,memory,EOF-state)` nodes, and reports closed versus truncated graph
@@ -117,19 +117,24 @@ executable cells, and input-dependent cycles or hangs.
   `maximum_first_seen_transition_index` advances on unique-state admission, so
   truncated queued states retain their exact first-seen depth before
   exploration.
-  Schema v23 detects directed cycles only from exact known-graph edges and
+  Schema v24 detects directed cycles only from exact known-graph edges and
   publishes one deterministic `reachable_cycle_witness`. Each witness state
   carries C/D/A, canonical sparse memory overrides, and the sticky EOF flag.
   An empty witness under truncation does not prove the unexplored frontier
-  acyclic. Repeat-heavy branch merges do not become cycle claims. Schema v23
-  represents each proven non-graphical fixed fetch as an exact
+  acyclic. Repeat-heavy branch merges do not become cycle claims. Schema v24
+  additionally publishes exact SCC summary counts over only the admitted known
+  graph: all SCCs, cyclic SCCs, cyclic states, and the largest cyclic SCC size.
+  Its cycle/non-cycle verdict is checked against the independent witness search
+  before publication. Under truncation unexplored outgoing edges may later merge
+  SCCs, so these counts are not promoted to whole-program graph evidence.
+  Schema v24 represents each proven non-graphical fixed fetch as an exact
   self-loop edge. The three-word `b"utO"` two-input-then-halt fixture exercises
   65,536 merge edges without a cycle, while `b"ut"` reaches a fixed-fetch
-  self-loop beyond a two-transition prefix. Schema v23 also records exact
+  self-loop beyond a two-transition prefix. Schema v24 also records exact
   explored-graph memory addresses/highest address/minimum words; truncated
   graphs do not promote that footprint to whole-program evidence. The recurrence
   fixture `b"('"` touches addresses 0, 1, 2, and 41 and requires 42 words.
-  Schema v23 counts exact wrap transitions in explored worklist states and binds
+  Schema v24 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. A
   canonical C/D=59,048 snapshot proves one wrap to zero without claiming entry
   reachability. The two-word `b"u="` input-then-crazy fixture closes in 258
