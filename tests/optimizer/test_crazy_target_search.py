@@ -506,6 +506,43 @@ def test_profile_width_preimage_pair_distribution_matches_closed_form() -> None:
         assert pair_domain - reachable >= 0
 
 
+def _independent_budget_closed_form(trit_count: int, budget: int) -> int:
+    total = 0
+    for exponent in range(trit_count + 1):
+        preimage_count = 1 << exponent
+        if preimage_count > budget:
+            pair_count = _independent_binomial(trit_count, exponent)
+            pair_count *= _independent_integer_power(2, exponent)
+            pair_count *= _independent_integer_power(
+                5, trit_count - exponent
+            )
+            total += pair_count
+    return total
+
+
+def test_profile_width_preimage_budget_exceedance_matches_closed_form() -> None:
+    """Widths one through fourteen match the exact budget threshold sum."""
+    for trit_count in range(1, _MAX_CHECKED_PROFILE_TRITS + 1):
+        histogram = _independent_preimage_pair_histogram(trit_count)
+        maximum_preimages = 1 << trit_count
+        budgets = (0, 1, 2, 3, maximum_preimages - 1, maximum_preimages)
+        for budget in budgets:
+            observed = sum(
+                pair_count
+                for preimage_count, pair_count in histogram.items()
+                if preimage_count > budget
+            )
+            assert observed == _independent_budget_closed_form(
+                trit_count, budget
+            )
+        assert _independent_budget_closed_form(trit_count, 0) == (
+            _independent_integer_power(_REACHABLE_PAIRS_PER_TRIT, trit_count)
+        )
+        assert _independent_budget_closed_form(
+            trit_count, maximum_preimages
+        ) == 0
+
+
 def test_preimage_budget_pair_count_matches_independent_histogram() -> None:
     """Budget thresholds exactly count reachable pairs they cannot cover."""
     histogram = _independent_preimage_pair_histogram()

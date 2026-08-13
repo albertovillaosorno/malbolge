@@ -259,6 +259,19 @@ pair. It does not imply that an incomplete external corpus contains those
 preimages, that every search algorithm must enumerate them, or that a budgeted
 search is semantically incorrect when completeness is not its contract.
 
+The same threshold extends to the bounded width family above. For
+$N\in\{1,\ldots,14\}$ and nonnegative integer $B$, define
+\begin{equation}
+  N^{(N)}_{>B}
+    = \sum_{\substack{0\leq k\leq N\2^k>B}}
+      \binom{N}{k}2^k5^{N-k}.
+  \label{eq:optimization-crazy-profile-preimage-budget-exceedance}
+\end{equation}
+Then $N^{(N)}_{>0}=7^N$ and $N^{(N)}_{>2^N}=0$. The bound inherits the
+same complete-domain assumption as the classic equation. It does not claim that
+a search over an incomplete corpus must enumerate every preimage, and it carries
+no timing or runtime-speed conclusion.
+
 The unreachable accumulator/target region is the exact complement of the
 reachable region inside the complete $9^{10}$ pair domain:
 \begin{equation}
