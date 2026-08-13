@@ -122,9 +122,11 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   about 2.54 times slower. This supports the structural reduction only and does
   not support a runtime-speedup claim. A third technique,
   `classic-crazy-exact-preimage-pruning-v1`, is now preregistered without
-  results. It binds the existing exact digitwise preimage preparer to the proved
-  classic preimage-cardinality and 1,024-ceiling equations against a 59,049-word
-  full-domain baseline. Challenge, runner, measurement protocol, and retained
-  provenance remain unregistered, so results stay forbidden. Larger challenges,
-  independent hosts, additional technique plans, and a stronger comparative
-  conclusion remain pending.
+  measured results. Its registered 12-problem challenge spans exact cardinality
+  classes 0 through 1,024, and its registered runner independently enumerates
+  the 59,049-word baseline before accepting exact preimage-set equality. The
+  deterministic structural count is 708,588 baseline candidate checks versus
+  2,047 projected checks (99.71% fewer). No timing is collected. Measurement
+  protocol and retained provenance remain unregistered, so measured results stay
+  forbidden. Larger challenges, independent hosts, additional technique plans,
+  and a stronger comparative conclusion remain pending.

@@ -126,10 +126,14 @@ its recorded Windows/Python host: median strategy time is 96,384,900 ns for raw
 state versus 244,447,500 ns for canonicalized state, about 2.54 times slower.
 The structural reduction is retained, but no runtime-speedup claim is
 supported. A third exact-pruning comparison is now preregistered: the existing
-classic digitwise crazy preimage preparer will be compared with full 59,049-word
-data enumeration under the proved preimage-cardinality and 1,024-ceiling bounds.
-Its finite challenge, runner, measurement protocol, and retained provenance are
-not registered yet, so it contributes no result. New
+classic digitwise crazy preimage preparer is compared structurally with full
+59,049-word data enumeration under the proved preimage-cardinality and
+1,024-ceiling bounds. Its registered 12-problem challenge spans every exact
+cardinality class from zero through 1,024; independent set equality gives
+708,588 baseline candidate checks versus 2,047 projected checks. This is
+deterministic implementation characterization, not timing evidence. Measurement
+protocol and retained provenance remain unregistered, so it contributes no
+measured result. New
 synthesis, equality-saturation, learned, or accelerator-guided strategies must
 add their own equally identified comparisons rather than
 inheriting a result from either pilot. Source claims resolve through
@@ -153,7 +157,7 @@ inheriting a result from either pilot. Source claims resolve through
   the first retained negative/null comparative result. The history-residue study
   now retains its preregistered five-pair run, shared benchmark/run manifests,
   exact semantic digest, structural state counts, and negative host timing.
-  Larger challenges, the exact-preimage pruning challenge/runner/protocol,
+  Larger challenges, the exact-preimage pruning measurement protocol/provenance,
   additional technique plans, independent-host replication, and a stronger
   comparative conclusion remain pending.
 

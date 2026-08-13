@@ -30,11 +30,13 @@ state-reduction claim only; it does not support a runtime-speedup claim. A
 third technique is preregistered but unmeasured:
 `classic-crazy-exact-preimage-pruning-v1` compares the existing
 `classic-crazy-digitwise-exact-preimage-v1` preparer with complete 59,049-word
-data enumeration for fixed classic accumulator/target problems. The plan binds
-the exact preimage-cardinality and 1,024-preimage ceiling equations. Challenge,
-runner, measurement protocol, and retained provenance are all still
-unregistered,
-so no comparative result is currently admissible.
+data enumeration for fixed classic accumulator/target problems. Its registered
+12-problem challenge spans unreachable through 1,024-preimage classes, and the
+registered structural runner requires exact independent preimage-set equality.
+Deterministic implementation characterization is 708,588 baseline candidate
+checks versus 2,047 exact projected checks, a 99.71% reduction. No timing is
+collected. Measurement protocol and retained provenance remain unregistered, so
+no measured comparative result is admissible.
 
 The shared mechanisms live under
 `src/research/algorithms/composition/algorithms/superoptimization/`; domain
