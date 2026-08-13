@@ -56,6 +56,7 @@ _RENAME_NOREPLACE: Final = 1
 
 _ARITHMETIC_DAG_FAMILY: Final = "arithmetic-dag"
 _BRANCH_MIX_FAMILY: Final = "branch-mix"
+_BINARY_TREE_FAMILY: Final = "binary-tree"
 _CALL_CHAIN_FAMILY: Final = "call-chain"
 _LINEAR_MIX_FAMILY: Final = "linear-mix"
 _MEMORY_WALK_FAMILY: Final = "memory-walk"
@@ -70,6 +71,7 @@ _NESTED_STATE_FAMILY: Final = "nested-state"
 _FAMILY_ALGORITHMS: Final = {
     _ARITHMETIC_DAG_FAMILY: "splitmix64-arithmetic-dag-v1",
     _BRANCH_MIX_FAMILY: "splitmix64-branch-mix-v1",
+    _BINARY_TREE_FAMILY: "splitmix64-binary-tree-v1",
     _CALL_CHAIN_FAMILY: "splitmix64-call-chain-v1",
     _LINEAR_MIX_FAMILY: "splitmix64-linear-mix-v1",
     _MEMORY_WALK_FAMILY: "splitmix64-memory-walk-v1",
@@ -85,6 +87,7 @@ _FAMILY_ALGORITHMS: Final = {
 _FAMILIES: Final = frozenset(_FAMILY_ALGORITHMS)
 _VERSION: Final = 1
 _BRANCH_MIX_SEED_SALT: Final = 0x4252_414E_4348_4D58
+_BINARY_TREE_SEED_SALT: Final = 0x4254_5245_455F_5631
 _CALL_CHAIN_SEED_SALT: Final = 0x4341_4C4C_4348_414E
 _LINEAR_MIX_SEED_SALT: Final = 0x4C49_4E45_4152_4D58
 _MEMORY_WALK_SEED_SALT: Final = 0x4D45_4D4F_5259_574B
@@ -726,6 +729,83 @@ def _graph_reduce_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     )
 
 
+def _binary_tree_oracle(leaves: list[int], salts: list[int]) -> int:
+    states = [0] * (len(leaves) * 2)
+    states[len(leaves):] = leaves
+    for parent in range(len(leaves) - 1, 0, -1):
+        left = states[parent * 2]
+        right = states[(parent * 2) + 1]
+        salt = salts[parent]
+        shift = (salt % 31) + 1
+        states[parent] = ((left + _rotate_left(right, shift)) & _MASK32) ^ salt
+    return states[1]
+
+
+def _binary_tree_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _BINARY_TREE_SEED_SALT)
+    leaves = [rng.next_u32() for _index in range(identity.nodes)]
+    salts = [0, *(rng.next_u32() for _index in range(identity.nodes - 1))]
+    oracle_value = _binary_tree_oracle(leaves, salts)
+    leaf_initializer = ", ".join(
+        f"UINT32_C({value})" for value in leaves
+    )
+    salt_initializer = ", ".join(
+        f"UINT32_C({value})" for value in salts
+    )
+    lines = [
+        "#include <stdint.h>",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t leaves[{identity.nodes}] = {{{leaf_initializer}}};",
+        f"    uint32_t salts[{identity.nodes}] = {{{salt_initializer}}};",
+        f"    uint32_t states[{identity.nodes * 2}] = {{UINT32_C(0)}};",
+        (
+            "    for (uint32_t index = UINT32_C(0); "
+            f"index < UINT32_C({identity.nodes}); "
+            "index += UINT32_C(1)) {"
+        ),
+        (
+            f"        states[UINT32_C({identity.nodes}) + index] = "
+            "leaves[index];"
+        ),
+        "    }",
+        (
+            f"    for (uint32_t parent = UINT32_C({identity.nodes - 1}); "
+            "parent > UINT32_C(0); parent -= UINT32_C(1)) {"
+        ),
+        "        uint32_t left = states[parent * UINT32_C(2)];",
+        (
+            "        uint32_t right = "
+            "states[(parent * UINT32_C(2)) + UINT32_C(1)];"
+        ),
+        "        uint32_t salt = salts[parent];",
+        (
+            "        uint32_t shift = "
+            "(salt % UINT32_C(31)) + UINT32_C(1);"
+        ),
+        (
+            "        uint32_t rotated = "
+            "(right << shift) | (right >> (UINT32_C(32) - shift));"
+        ),
+        (
+            "        states[parent] = (left + rotated) ^ salt;"
+        ),
+        "    }",
+        "    return states[UINT32_C(1)];",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ]
+    return (
+        chr(10).join(lines).encode(),
+        oracle_value.to_bytes(_ORACLE_BYTES, byteorder="little"),
+    )
+
+
 def _grid_accumulate_payload(
     identity: ChallengeIdentity,
 ) -> tuple[bytes, bytes]:
@@ -963,6 +1043,7 @@ def _ternary_fold_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
 _PAYLOAD_RENDERERS: Final = {
     _ARITHMETIC_DAG_FAMILY: _arithmetic_dag_payload,
     _BRANCH_MIX_FAMILY: _branch_mix_payload,
+    _BINARY_TREE_FAMILY: _binary_tree_payload,
     _CALL_CHAIN_FAMILY: _call_chain_payload,
     _LINEAR_MIX_FAMILY: _linear_mix_payload,
     _MEMORY_WALK_FAMILY: _memory_walk_payload,

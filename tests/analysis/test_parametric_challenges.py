@@ -82,6 +82,13 @@ _NESTED_STATE_FRONTEND_LOOPS = 2
 _NESTED_STATE_SUBSCRIPTS = 3
 _GRID_ACCUMULATE_FRONTEND_LOOPS = 2
 _GRID_ACCUMULATE_SUBSCRIPTS = 1
+_BINARY_TREE_FRONTEND_LOOPS = 2
+_BINARY_TREE_SUBSCRIPTS = 7
+_BINARY_TREE_LEFT_MARKER = "states[parent * UINT32_C(2)]"
+_BINARY_TREE_RIGHT_MARKER = (
+    "states[(parent * UINT32_C(2)) + UINT32_C(1)]"
+)
+_BINARY_TREE_RETURN_MARKER = "return states[UINT32_C(1)];"
 _FORBIDDEN_PUTCHAR = "putchar"
 _FORBIDDEN_STDIO = "<stdio.h>"
 _CLANG = _ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
@@ -90,6 +97,7 @@ _GUEST_INCLUDE = _ROOT / "src/runtime/guest-c-library/contract/include"
 _WINDOWS_OS_NAME = "nt"
 _ARITHMETIC_DAG_FAMILY = "arithmetic-dag"
 _BRANCH_MIX_FAMILY = "branch-mix"
+_BINARY_TREE_FAMILY = "binary-tree"
 _CALL_CHAIN_FAMILY = "call-chain"
 _LINEAR_MIX_FAMILY = "linear-mix"
 _MEMORY_WALK_FAMILY = "memory-walk"
@@ -104,6 +112,7 @@ _NESTED_STATE_FAMILY = "nested-state"
 _FAMILIES = (
     _ARITHMETIC_DAG_FAMILY,
     _BRANCH_MIX_FAMILY,
+    _BINARY_TREE_FAMILY,
     _CALL_CHAIN_FAMILY,
     _LINEAR_MIX_FAMILY,
     _MEMORY_WALK_FAMILY,
@@ -119,6 +128,7 @@ _FAMILIES = (
 _LARGE_GENERATION_STRESS_FAMILIES = (
     _STREAM_STATE_FAMILY,
     _GRAPH_REDUCE_FAMILY,
+    _BINARY_TREE_FAMILY,
     _GRID_ACCUMULATE_FAMILY,
     _TERNARY_FOLD_FAMILY,
     _NESTED_STATE_FAMILY,
@@ -142,6 +152,12 @@ _POINTER_WALK_V1_MANIFEST_SHA256 = (
     "e92dcb30cc2a6f1477564b3c9843a6bc47c04ed06beaafa74589dbaf788854cf"
 )
 _NEW_V1_REPLAY_VECTORS = (
+    (
+        _BINARY_TREE_FAMILY,
+        "90fad2f641fc83997419acf9b4fa6db8e249763c6b7ea2848945a8b0ef9fff1d",
+        "2b88d974b6b5de98d8dfb53017db4e336551ed9b608c413332e74a80d8c7ab17",
+        "54e304bd954bd67eed9c0787d3552841b90a2e5796cb148b1eb734a1e95b41da",
+    ),
     (
         _STREAM_STATE_FAMILY,
         "44aab52f684af9ce29e25571e1bcc8bc923a0e8e727ef289cce05cda28e6e979",
@@ -397,6 +413,21 @@ def test_graph_reduce_emits_live_parent_graph() -> None:
     assert source.count("states[parent]") == 1
     assert source.count("weights[index]") == 1
     assert f"return states[{nodes}];" in source
+
+
+def test_binary_tree_emits_live_hierarchical_reduction() -> None:
+    """Tree challenges keep every generated leaf on the live root path."""
+    nodes = 19
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_BINARY_TREE_FAMILY, seed=0xB17E, nodes=nodes)
+    )
+    source = generated.source.decode()
+    assert source.count("for (uint32_t") == _BINARY_TREE_FRONTEND_LOOPS
+    assert f"uint32_t leaves[{nodes}]" in source
+    assert f"uint32_t states[{nodes * 2}]" in source
+    assert _BINARY_TREE_LEFT_MARKER in source
+    assert _BINARY_TREE_RIGHT_MARKER in source
+    assert _BINARY_TREE_RETURN_MARKER in source
 
 
 def test_grid_accumulate_emits_quadratic_live_loop_nest() -> None:
@@ -861,6 +892,47 @@ def test_ternary_family_is_admitted_by_normalized_frontend(
     os.name != _WINDOWS_OS_NAME,
     reason="reviewed normalized C frontend is Windows x86-64",
 )
+def test_binary_tree_family_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep both tree loops and live heap accesses after normalization."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_BINARY_TREE_FAMILY, seed=67, nodes=23)
+    )
+    source = tmp_path / "binary-tree.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/binary-tree-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    loops = sum(
+        node.get("kind") == _FOR_STATEMENT_KIND for node in normalized
+    )
+    subscripts = sum(
+        node.get("kind") == _ARRAY_SUBSCRIPT_KIND for node in normalized
+    )
+    assert loops == _BINARY_TREE_FRONTEND_LOOPS
+    assert subscripts == _BINARY_TREE_SUBSCRIPTS
+
+
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME,
+    reason="reviewed normalized C frontend is Windows x86-64",
+)
 def test_grid_accumulate_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
 ) -> None:
@@ -996,6 +1068,9 @@ def _assert_native_oracle(
         (_BRANCH_MIX_FAMILY, 0, 1),
         (_BRANCH_MIX_FAMILY, 7, 64),
         (_BRANCH_MIX_FAMILY, 0x1234, 257),
+        (_BINARY_TREE_FAMILY, 0, 1),
+        (_BINARY_TREE_FAMILY, 7, 64),
+        (_BINARY_TREE_FAMILY, 0x1234, 257),
         (_CALL_CHAIN_FAMILY, 0, 1),
         (_CALL_CHAIN_FAMILY, 7, 64),
         (_CALL_CHAIN_FAMILY, 0x1234, 257),
