@@ -506,6 +506,27 @@ def test_profile_width_preimage_pair_distribution_matches_closed_form() -> None:
         assert pair_domain - reachable >= 0
 
 
+def test_profile_width_mean_preimage_count_matches_input_mass() -> None:
+    """Reachable-pair mean preimage count is exactly nine-sevenths per trit."""
+    for trit_count in range(1, _MAX_CHECKED_PROFILE_TRITS + 1):
+        histogram = _independent_preimage_pair_histogram(trit_count)
+        reachable = sum(histogram.values())
+        weighted = sum(
+            preimages * pairs for preimages, pairs in histogram.items()
+        )
+        expected_reachable = _independent_integer_power(
+            _REACHABLE_PAIRS_PER_TRIT, trit_count
+        )
+        expected_weighted = _independent_integer_power(
+            _PAIR_DOMAIN_PER_TRIT, trit_count
+        )
+        assert reachable == expected_reachable
+        assert weighted == expected_weighted
+        assert weighted * expected_reachable == (
+            reachable * expected_weighted
+        )
+
+
 def test_profile_width_unreachable_pair_count_matches_closed_form() -> None:
     """Widths one through fourteen match the exact unreachable complement."""
     for trit_count in range(1, _MAX_CHECKED_PROFILE_TRITS + 1):

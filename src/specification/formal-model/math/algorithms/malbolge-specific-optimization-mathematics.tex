@@ -244,6 +244,21 @@ planning
 evidence only for this bounded width family; it does not assert candidate-corpus
 membership or runtime speedup.
 
+A uniformly chosen reachable accumulator/target pair therefore has exact mean
+complete-domain preimage cardinality
+\begin{equation}
+  \frac{1}{7^N}
+  \sum_{\substack{(a,t)\in\WordDomain{N}^{2}\
+                   \exists d:\CrazyN{N}{d}{a}=t}}
+    \left|\left\{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t\right\}\right|
+    =\frac{9^N}{7^N}=\left(\frac{9}{7}\right)^N,
+  \qquad 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-mean-preimage-count}
+\end{equation}
+This mean is over reachable pairs only and follows from exact input-mass
+accounting, not from a probabilistic model of an external candidate corpus. It
+is search-planning evidence and carries no runtime-speedup claim.
+
 For a nonnegative integer full-domain enumeration budget $B$, the same exact
 preimage classes give the number of reachable accumulator/target pairs whose
 complete data-word preimage cannot fit within that budget:
