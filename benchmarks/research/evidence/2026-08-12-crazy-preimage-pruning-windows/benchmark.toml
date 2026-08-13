@@ -1,0 +1,65 @@
+schema_version = 1
+
+[study]
+id = "crazy-preimage-pruning-windows-2026-08-12"
+# jig-ignore-next-line: canonical evidence path is indivisible
+experiment_manifest = "benchmarks/research/evidence/2026-08-12-crazy-preimage-pruning-windows/experiment.toml"
+kind = "deterministic"
+question = """\
+Does exact digitwise crazy preimage projection reduce candidate evaluations \
+without changing exact preimage semantics, and what host timing does the \
+implementation exhibit?\
+"""
+hypothesis = """\
+Exact preimage projection reduces evaluated data candidates on every reachable \
+frozen problem without changing the complete independent preimage set.\
+"""
+baseline = "classic-crazy-full-domain-data-enumeration-v1"
+rejection_observation = """\
+Exact preimage sets differ, projected candidate work does not decrease on a \
+reachable problem, or the source-pinned retained run cannot be replayed.\
+"""
+
+[workload]
+identity = "classic-crazy-preimage-cardinality-span-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 0
+repetitions = 5
+warmup_policy = "no warmup; all five fixed-order pairs are retained"
+ordering = "fixed"
+stopping_rule = "full-domain then exact; each arm has a 60-second bound"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = [
+  "evaluations",
+  "preimage_count",
+  "elapsed_nanoseconds",
+]
+tradeoff_policy = """\
+Treat exact candidate-work reduction and host timing as separate objectives; \
+semantic equality is mandatory and timing cannot override semantic rejection.\
+"""
+
+[resources]
+host = "Microsoft Windows 11 Pro 10.0.26200 x64-based PC"
+accelerator = "none"
+memory_mib = 512
+
+[raw]
+# jig-ignore-next-line: canonical evidence path is indivisible
+path = "benchmarks/research/evidence/2026-08-12-crazy-preimage-pruning-windows/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

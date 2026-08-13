@@ -1,0 +1,70 @@
+schema_version = 1
+
+[experiment]
+id = "superoptimization-research-program"
+record_kind = "run"
+seed = 0
+method_class = "optimization"
+
+[challenge]
+family = "classic-crazy-preimage-cardinality-span-v1"
+difficulty = 12
+target_profile = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[budget]
+seconds = 60
+candidate_evaluations = 708588
+memory_mib = 512
+
+[verification]
+required = true
+oracle = "classic-crazy-independent-table-v1"
+baseline = "classic-crazy-full-domain-data-enumeration-v1"
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/crazy-preimage-pruning-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"
+
+[measurement]
+id = "crazy-preimage-five-paired-protocol-v1"
+repetitions = 5
+warmup_iterations = 0
+ordering = "fixed-full-domain-then-exact"
+outlier_policy = "retain-all"
+center = "median"
+dispersion = "observed-range"
+uncertainty = "observed-range"
+clock = "time-perf-counter-ns"
+timing_scope = "strategy-run-including-independent-semantic-check"
+per_strategy_wall_clock_seconds = 60
+
+[run]
+commit = "5fbea3461d5fbb035611b1ce6cce43b3d4cad44c"
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "2b0c969c46511a67fae4b977fdfa6cb0b6019740ed81c018d6150b03d8387d15"
+host = "Microsoft Windows 11 Pro 10.0.26200 x64-based PC"
+accelerator = "none"
+toolchain = "Python 3.14.6"
+outcome = "success"
+# jig-ignore-next-line: canonical evidence path is indivisible
+raw_output = "benchmarks/research/evidence/2026-08-12-crazy-preimage-pruning-windows/raw.csv"
+
+[crazy_preimage_measurement]
+format_id = "crazy-preimage-five-paired-measurement-v1"
+comparison_id = "classic-crazy-exact-preimage-pruning-v1"
+runner_id = "classic-crazy-preimage-structural-comparison-v1"
+challenge_id = "classic-crazy-preimage-cardinality-span-v1"
+repetitions = 5
+problem_count = 12
+baseline_strategy = "classic-crazy-full-domain-data-enumeration-v1"
+exact_strategy = "classic-crazy-digitwise-exact-preimage-v1"
+baseline_evaluations = 708588
+exact_evaluations = 2047
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "2b0c969c46511a67fae4b977fdfa6cb0b6019740ed81c018d6150b03d8387d15"
+# jig-ignore-next-line: indivisible reviewed semantic identity
+semantic_sha256 = "86cbd11391b4db60a8665cb2f1d698140206f388400bd072116d72a32cbf2f62"
