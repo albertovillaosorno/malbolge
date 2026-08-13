@@ -112,7 +112,9 @@ executable cells, and input-dependent cycles or hangs.
   1-through-4,096 unique-state cap. It branches input across all 256 byte values
   plus EOF, keeps EOF sticky, deduplicates canonical
   `(C,D,A,memory,EOF-state)` nodes, and reports closed versus truncated graph
-  evidence. Schema v22 additionally detects directed cycles only from exact
+  evidence. `input_branch_points` counts only real byte-plus-EOF expansions; an
+  EOF-sticky input transition has one successor and is not a branch point.
+  Schema v22 additionally detects directed cycles only from exact
   known-graph edges, so repeat-heavy branch merges do not become cycle claims.
   Schema v22 represents each proven non-graphical fixed fetch as an exact
   self-loop edge. The three-word `b"utO"` two-input-then-halt fixture exercises

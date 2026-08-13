@@ -53,8 +53,11 @@ Schema v22 adds opt-in `bounded_worklist` evidence under an explicit
 `worklist_state_limit` from 1 through 4,096, also exposed as
 `--worklist-state-limit N`. Input branches cover all 256 byte values plus EOF;
 a separate EOF-state bit prevents later ordinary bytes after EOF. Canonical
-`(C,D,A,memory,EOF-state)` nodes are explored FIFO and deduplicated. A complete
-queue drain reports closed bounded reachability; hitting the unique-state cap
+`(C,D,A,memory,EOF-state)` nodes are explored FIFO and deduplicated. The
+`input_branch_points` metric counts only non-EOF input states that actually
+expand to byte-plus-EOF alternatives; an EOF-sticky input has one successor. A
+complete queue drain reports closed bounded reachability; hitting the
+unique-state cap
 reports `truncated=true` with a nonempty frontier and makes CLI acceptance
 nonzero. Schema v22 derives `reachable_cycle_detected` from exact directed
 edges in the admitted known graph. Repeat edges caused only by branch merges do
