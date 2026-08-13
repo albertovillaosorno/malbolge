@@ -41,7 +41,7 @@ exactly the same problem rather than on vaguely similar examples.
 **Current implementation.**
 
 - `benchmarks/challenges/generate.py` implements deterministic
-  `arithmetic-dag/v1`, `linear-mix/v1`, `branch-mix/v1`,
+  `arithmetic-dag/v1`, `linear-mix/v1`, `branch-mix/v1`, `binary-tree/v1`,
   `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`, `alias-walk/v1`, and
   `stream-state/v1`, `graph-reduce/v1`, `grid-accumulate/v1`,
   `layout-chain/v1`, `ternary-fold/v1`, and `nested-state/v1` challenges
@@ -62,12 +62,12 @@ exactly the same problem rather than on vaguely similar examples.
   guest libc calls.
 - Analysis evidence locks byte-identical replay and hash-locked v1 vectors for
   `arithmetic-dag`, `pointer-walk`, `stream-state`, `graph-reduce`,
-  `grid-accumulate`, `layout-chain`, `ternary-fold`, and `nested-state`;
-  difficulty growth covers all thirteen topologies,
+  `grid-accumulate`, `binary-tree`, `layout-chain`, `ternary-fold`, and
+  `nested-state`; difficulty growth covers all fourteen topologies,
   invalid identity rejection, non-destructive no-replace publication including a
   raced
   final-path collision, ABI/libc admission, and pinned-Clang agreement between
-  emitted C and the independent Python oracle for all thirteen families. The
+  emitted C and the independent Python oracle for all fourteen families. The
   normalized frontend additionally preserves the branch family’s expected
   `if-statement` count, the memory family’s exact array-subscript count, and
   one helper call per call-family node. `pointer-walk/v1` selects one array
@@ -82,6 +82,10 @@ exactly the same problem rather than on vaguely similar examples.
   `graph-reduce/v1` generates one acyclic parent link and weight per vertex;
   runtime reduction keeps parent-index and predecessor-state dependencies live,
   with normalized evidence retaining one loop and six graph/state subscripts.
+  `binary-tree/v1` places every generated leaf in a fixed heap and reduces
+  internal parents bottom-up, adding hierarchical fan-in without dead leaves.
+  Normalized frontend evidence retains two loops and seven live subscripts;
+  pinned Clang matches the independent oracle at 1, 64, and 257 nodes.
   `grid-accumulate/v1` emits a node-scaled token vector but executes an exact
   `nodes * nodes` live accumulation loop nest. Generator and oracle work remain
   linear because the independent oracle uses the closed-form modulo-`2^32`
@@ -98,8 +102,9 @@ exactly the same problem rather than on vaguely similar examples.
   generator/oracle construction remains linear in `nodes`. Normalized frontend
   evidence retains exactly two loops and three indexed reads; pinned Clang also
   matches the independent oracle at 4,096 nodes. Generation-only stress replays
-  `stream-state`, `graph-reduce`, `grid-accumulate`, `ternary-fold`, and
-  `nested-state` byte-identically at 16,384 nodes, retaining exact manifest
+  `stream-state`, `graph-reduce`, `binary-tree`, `grid-accumulate`,
+  `ternary-fold`, and `nested-state` byte-identically at 16,384 nodes, retaining
+  exact manifest
   difficulty and the fixed four-byte oracle without a wall-clock claim.
 - The objective remains open: broader workload families plus
   the required end-to-end compiled/executed Malbolge fixture are not yet

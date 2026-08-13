@@ -52,8 +52,8 @@ independent correctness evidence where applicable, and retained negative/null
 results. Source claims resolve through `docs/bibliography/`.
 
 The implemented slices are `arithmetic-dag/v1`, `linear-mix/v1`,
-`branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, `pointer-walk/v1`,
-`alias-walk/v1`, `stream-state/v1`, `graph-reduce/v1`,
+`branch-mix/v1`, `binary-tree/v1`, `memory-walk/v1`, `call-chain/v1`,
+`pointer-walk/v1`, `alias-walk/v1`, `stream-state/v1`, `graph-reduce/v1`,
 `grid-accumulate/v1`, `layout-chain/v1`, `ternary-fold/v1`, and
 `nested-state/v1`. Each binds family, version, seed,
 canonical profile fingerprint, and node count into one replay identity.
@@ -82,6 +82,10 @@ indexed stream read, and one live state branch. `graph-reduce/v1` generates
 one parent link to an already-computed state plus one weight per vertex. Its
 runtime loop combines parent state, predecessor state, and weight into the next
 state; normalized evidence retains one loop and six graph/state subscripts.
+`binary-tree/v1` places `nodes` generated leaves in a fixed binary heap and
+reduces internal parents from the bottom up. Its two loops preserve hierarchical
+fan-in while every leaf remains on the observable root path; normalized frontend
+evidence retains two loops and seven live array subscripts.
 `grid-accumulate/v1` decouples generation size from generated runtime work: a
 node-scaled token vector feeds two loops each bounded by `nodes`, so the emitted
 program performs exactly `nodes^2` live `uint32_t` accumulation updates while
@@ -120,20 +124,22 @@ host execution guest semantic authority.
 
 ## Results
 
-Thirteen deterministic families are implemented and replayable. Tests lock byte-
+Fourteen deterministic families are implemented and replayable. Tests lock byte-
 identical regeneration and v1 replay vectors for `arithmetic-dag`,
-`pointer-walk`, `stream-state`, `graph-reduce`, `grid-accumulate`,
-`layout-chain`, `ternary-fold`, and `nested-state`, plus profile-fingerprint
-binding and difficulty growth for all thirteen topologies, invalid
+`pointer-walk`, `stream-state`, `graph-reduce`, `binary-tree`,
+`grid-accumulate`, `layout-chain`, `ternary-fold`, and `nested-state`, plus
+profile-fingerprint binding and difficulty growth for all fourteen topologies,
+invalid
 identity rejection, collision-safe no-replace publication (including a raced
 final-path collision), replay rejection for linked artifact leaves, current
 C-profile admission, and independent native agreement for
-representative node counts in all thirteen families. `nested-state/v1`
+representative node counts in all fourteen families. `nested-state/v1`
 additionally retains a 4,096-node pinned-Clang/native-oracle case, while
 `grid-accumulate/v1` retains a 257-node native case whose generated runtime work
 contains 66,049 live inner updates. Generation-only stress now replays
-`stream-state`, `graph-reduce`, `grid-accumulate`, `ternary-fold`, and
-`nested-state` byte-identically at 16,384 nodes while retaining a four-byte
+`stream-state`, `graph-reduce`, `binary-tree`, `grid-accumulate`,
+`ternary-fold`, and `nested-state` byte-identically at 16,384 nodes while
+retaining a four-byte
 oracle and exact manifest difficulty.
 
 This result does not satisfy the end-to-end acceptance criterion. No current
@@ -146,9 +152,10 @@ for that path is still pending. Broader workload families also remain open.
 The current families cover unsigned arithmetic with DAG, strict-chain,
 branch-diamond, fixed-array memory-walk, helper-call, live pointer-selected
 memory, potentially aliasing pointer-pair, streaming state-machine, acyclic
-graph-reduction, quadratic grid accumulation, distinct-function
+graph-reduction, hierarchical binary-tree reduction, quadratic grid
+accumulation, distinct-function
 layout-pressure, explicit ternary-fold, and nested-state control-flow
-topologies. The 4,096-node nested native case plus five 16,384-node
+topologies. The 4,096-node nested native case plus six 16,384-node
 deterministic generation/replay cases add larger stress evidence, but broader
 workload
 structure and additional native/executed large shapes remain open.
@@ -161,8 +168,9 @@ agreement risk; it does not prove downstream compiler correctness.
 ## Conclusion
 
 Active. Retain hash-locked v1 replay vectors for `arithmetic-dag`,
-`pointer-walk`, `stream-state`, `graph-reduce`, `grid-accumulate`,
-`layout-chain`, `ternary-fold`, and `nested-state`, alongside domain-separated
+`pointer-walk`, `stream-state`, `graph-reduce`, `binary-tree`,
+`grid-accumulate`, `layout-chain`, `ternary-fold`, and `nested-state`, alongside
+domain-separated
 `linear-mix/v1`, `branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, and
 `alias-walk/v1` as deterministic challenge substrates
 while expanding family coverage and waiting for an end-to-end generated
