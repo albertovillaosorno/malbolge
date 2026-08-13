@@ -63,6 +63,17 @@ type _StateKey = tuple[
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistCycleState:
+    """One exact state in a deterministic known-graph cycle witness."""
+
+    code_pointer: int
+    data_pointer: int
+    accumulator: int
+    memory_overrides: tuple[tuple[int, int], ...]
+    eof_seen: bool
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistAnalysis:
     """Deterministic summary of one bounded exact-state exploration."""
 
@@ -71,6 +82,7 @@ class WorklistAnalysis:
     explored_states: int
     repeated_state_edges: int
     reachable_cycle_detected: bool
+    reachable_cycle_witness: tuple[WorklistCycleState, ...]
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     explored_minimum_words: int
@@ -195,33 +207,101 @@ def _unseen_successor_count(
     return len(unseen)
 
 
-def _graph_indegrees(
+def _known_targets(
+    source: _StateKey,
     edges: dict[_StateKey, set[_StateKey]],
     nodes: set[_StateKey],
-) -> dict[_StateKey, int]:
-    indegrees = dict.fromkeys(nodes, 0)
-    for source in nodes:
-        for target in edges.get(source, set()):
-            if target in indegrees:
-                indegrees[target] += 1
-    return indegrees
+) -> tuple[_StateKey, ...]:
+    return tuple(
+        sorted(
+            target
+            for target in edges.get(source, set())
+            if target in nodes
+        )
+    )
+
+
+def _cycle_from_back_edge(
+    source: _StateKey,
+    target: _StateKey,
+    parents: dict[_StateKey, _StateKey],
+) -> tuple[_StateKey, ...]:
+    path = [source]
+    cursor = source
+    while cursor != target:
+        cursor = parents[cursor]
+        path.append(cursor)
+    path.reverse()
+    return tuple(path)
+
+
+def _cycle_component_witness(
+    root: _StateKey,
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+    *,
+    colors: dict[_StateKey, int],
+) -> tuple[_StateKey, ...]:
+    parents: dict[_StateKey, _StateKey] = {}
+    colors[root] = 1
+    stack = [(root, _known_targets(root, edges, nodes), 0)]
+    while stack:
+        source, targets, index = stack[-1]
+        if index >= len(targets):
+            colors[source] = 2
+            _ = stack.pop()
+            continue
+        target = targets[index]
+        stack[-1] = (source, targets, index + 1)
+        target_color = colors.get(target, 0)
+        if target_color == 0:
+            parents[target] = source
+            colors[target] = 1
+            stack.append((target, _known_targets(target, edges, nodes), 0))
+        elif target_color == 1:
+            return _cycle_from_back_edge(source, target, parents)
+    return ()
+
+
+def _known_graph_cycle_witness(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+) -> tuple[_StateKey, ...]:
+    colors: dict[_StateKey, int] = {}
+    for root in sorted(nodes):
+        if colors.get(root, 0) != 0:
+            continue
+        witness = _cycle_component_witness(
+            root, edges, nodes, colors=colors
+        )
+        if witness:
+            return witness
+    return ()
 
 
 def _known_graph_has_cycle(
     edges: dict[_StateKey, set[_StateKey]],
     nodes: set[_StateKey],
+    *,
+    witness: tuple[_StateKey, ...] | None = None,
 ) -> bool:
-    indegrees = _graph_indegrees(edges, nodes)
-    queue = deque(key for key, degree in indegrees.items() if degree == 0)
-    removed = 0
-    while queue:
-        source = queue.popleft()
-        removed += 1
-        for target in edges.get(source, set()):
-            indegrees[target] -= 1
-            if indegrees[target] == 0:
-                queue.append(target)
-    return removed != len(nodes)
+    cycle = (
+        _known_graph_cycle_witness(edges, nodes)
+        if witness is None
+        else witness
+    )
+    return bool(cycle)
+
+
+def _cycle_state(key: _StateKey) -> WorklistCycleState:
+    code_pointer, data_pointer, accumulator, memory_overrides, eof_seen = key
+    return WorklistCycleState(
+        code_pointer=code_pointer,
+        data_pointer=data_pointer,
+        accumulator=accumulator,
+        memory_overrides=memory_overrides,
+        eof_seen=eof_seen,
+    )
 
 
 @dataclass(slots=True)
@@ -269,14 +349,17 @@ class _Explorer:
     ) -> WorklistAnalysis:
         ordered_addresses = tuple(sorted(self.accessed_addresses))
         highest_address = ordered_addresses[-1]
+        cycle_keys = _known_graph_cycle_witness(self.edges, self.seen)
         return WorklistAnalysis(
             state_limit=self.state_limit,
             unique_states=len(self.seen),
             explored_states=self.explored,
             repeated_state_edges=self.repeated_edges,
             reachable_cycle_detected=_known_graph_has_cycle(
-                self.edges,
-                self.seen,
+                self.edges, self.seen, witness=cycle_keys
+            ),
+            reachable_cycle_witness=tuple(
+                _cycle_state(key) for key in cycle_keys
             ),
             input_branch_points=self.input_branch_points,
             terminal_status_counts=tuple(sorted(self.terminal_counts.items())),

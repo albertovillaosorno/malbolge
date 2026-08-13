@@ -72,6 +72,8 @@ _TINY_STATE_LIMIT = 2
 _DOUBLE_INPUT_UNIQUE_STATES = 515
 _DOUBLE_INPUT_REPEATED_EDGES = 65_536
 _DOUBLE_INPUT_CYCLE_EDGES = 65_793
+_FIXED_CYCLE_POINTER = 2
+_FIXED_CYCLE_MEMORY_OVERRIDES = ((0, 111), (1, 69))
 _INPUT_VALUE_COUNT = 257
 _BYTE_VALUE_COUNT = 256
 _DOUBLE_INPUT_BRANCH_POINTS = 1 + _BYTE_VALUE_COUNT
@@ -122,12 +124,21 @@ class _ReachabilityNodeFactory(Protocol):
     ) -> _ReachabilityNode: ...
 
 
+class _WorklistCycleState(Protocol):
+    code_pointer: int
+    data_pointer: int
+    accumulator: int
+    memory_overrides: tuple[tuple[int, int], ...]
+    eof_seen: bool
+
+
 class _WorklistAnalysis(Protocol):
     state_limit: int
     unique_states: int
     explored_states: int
     repeated_state_edges: int
     reachable_cycle_detected: bool
+    reachable_cycle_witness: tuple[_WorklistCycleState, ...]
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     explored_minimum_words: int
@@ -186,6 +197,12 @@ class _WorklistModule(Protocol):
         nodes: set[_WorklistStateKey],
     ) -> bool: ...
 
+    def _known_graph_cycle_witness(
+        self,
+        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+        nodes: set[_WorklistStateKey],
+    ) -> tuple[_WorklistStateKey, ...]: ...
+
     def _node_key(self, node: _ReachabilityNode) -> _WorklistStateKey: ...
 
 
@@ -222,6 +239,7 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     assert result.explored_states == _FULL_STATE_LIMIT
     assert result.repeated_state_edges == 0
     assert not result.reachable_cycle_detected
+    assert result.reachable_cycle_witness == ()
     assert result.input_branch_points == 1
     assert result.terminal_status_counts == (("halted", _INPUT_VALUE_COUNT),)
     assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
@@ -293,6 +311,7 @@ def test_double_input_merges_are_not_silently_discarded() -> None:
     assert result.unique_states == _DOUBLE_INPUT_UNIQUE_STATES
     assert result.repeated_state_edges == _DOUBLE_INPUT_REPEATED_EDGES
     assert not result.reachable_cycle_detected
+    assert result.reachable_cycle_witness == ()
     assert result.input_branch_points == _DOUBLE_INPUT_BRANCH_POINTS
     assert result.terminal_status_counts == (
         ("halted", _INPUT_VALUE_COUNT),
@@ -309,6 +328,13 @@ def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:
     assert result.unique_states == _DOUBLE_INPUT_UNIQUE_STATES
     assert result.repeated_state_edges == _DOUBLE_INPUT_CYCLE_EDGES
     assert result.reachable_cycle_detected
+    assert len(result.reachable_cycle_witness) == 1
+    cycle = result.reachable_cycle_witness[0]
+    assert cycle.code_pointer == _FIXED_CYCLE_POINTER
+    assert cycle.data_pointer == _FIXED_CYCLE_POINTER
+    assert cycle.accumulator == 0
+    assert cycle.memory_overrides == _FIXED_CYCLE_MEMORY_OVERRIDES
+    assert not cycle.eof_seen
     assert result.terminal_status_counts == ()
     assert not result.truncated
 
@@ -335,9 +361,11 @@ def test_known_graph_cycle_detection_rejects_merge_only_heuristics() -> None:
         _GRAPH_KEY_A: {_GRAPH_KEY_B},
         _GRAPH_KEY_B: {_GRAPH_KEY_A},
     }
-    assert worklist._known_graph_has_cycle(
-        cycle_edges,
-        {_GRAPH_KEY_A, _GRAPH_KEY_B},
+    nodes = {_GRAPH_KEY_A, _GRAPH_KEY_B}
+    assert worklist._known_graph_has_cycle(cycle_edges, nodes)
+    assert worklist._known_graph_cycle_witness(cycle_edges, nodes) == (
+        _GRAPH_KEY_A,
+        _GRAPH_KEY_B,
     )
 
 

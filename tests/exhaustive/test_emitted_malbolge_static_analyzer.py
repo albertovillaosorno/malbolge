@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v22"
+_SCHEMA = "malbolge-static-image/v23"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -99,6 +99,9 @@ _INPUT_CRAZY_SOURCE = bytes((117, 61))
 _INPUT_HALT_SOURCE = bytes((117, 80))
 _DOUBLE_INPUT_CYCLE_SOURCE = bytes((117, 116))
 _DOUBLE_INPUT_CYCLE_STATE_LIMIT = 515
+_FIXED_CYCLE_POINTER = 2
+_FIXED_CYCLE_ENCRYPTED_ZERO = 111
+_FIXED_CYCLE_ENCRYPTED_ONE = 69
 _MEMORY_SCOPE = "16-transition-prefix"
 _EXTENDED_CONTROL_FLOW_LIMIT = (
     "control-flow-reachability:32-transition-prefix-only"
@@ -271,12 +274,21 @@ class _SnapshotStep(Protocol):
     successor: _StateSnapshot | None
 
 
+class _WorklistCycleState(Protocol):
+    code_pointer: int
+    data_pointer: int
+    accumulator: int
+    memory_overrides: tuple[tuple[int, int], ...]
+    eof_seen: bool
+
+
 class _WorklistAnalysis(Protocol):
     state_limit: int
     unique_states: int
     explored_states: int
     repeated_state_edges: int
     reachable_cycle_detected: bool
+    reachable_cycle_witness: tuple[_WorklistCycleState, ...]
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     explored_minimum_words: int
@@ -1616,6 +1628,19 @@ def test_worklist_cycle_detection_causes_cli_failure(tmp_path: Path) -> None:
     assert document["bounded_transition_limit"] == _TWO_SOURCE_WORDS
     bounded = cast("dict[str, object]", document["bounded_worklist"])
     assert bounded["reachable_cycle_detected"] is True
+    witness = cast(
+        "list[dict[str, object]]",
+        bounded["reachable_cycle_witness"],
+    )
+    assert len(witness) == 1
+    assert witness[0]["code_pointer"] == _FIXED_CYCLE_POINTER
+    assert witness[0]["data_pointer"] == _FIXED_CYCLE_POINTER
+    assert witness[0]["accumulator"] == 0
+    assert witness[0]["memory_overrides"] == [
+        [0, _FIXED_CYCLE_ENCRYPTED_ZERO],
+        [1, _FIXED_CYCLE_ENCRYPTED_ONE],
+    ]
+    assert witness[0]["eof_seen"] is False
     assert bounded["truncated"] is False
 
 
