@@ -92,7 +92,7 @@ def test_crazy_preimage_plan_locks_identity_and_exact_bounds() -> None:
     assert plan == {
         "id": _PLAN_ID,
         "record_kind": "plan",
-        "status": "preregistered",
+        "status": "measured",
         "method_class": "optimization",
         "technique": _TECHNIQUE,
         "baseline": _BASELINE,
@@ -165,12 +165,12 @@ def test_crazy_preimage_plan_keeps_classic_applicability_fail_closed() -> None:
     assert _UNREACHABLE_REJECTION in conditions
 
 
-def test_crazy_preimage_plan_forbids_unregistered_measurement_results() -> None:
-    """Challenge/runner registration cannot bypass measurement provenance."""
+def test_crazy_preimage_plan_has_retained_measurement_provenance() -> None:
+    """All lifecycle gates open only after source-pinned evidence exists."""
     gate = cast("dict[str, object]", _document()["measurement_gate"])
 
     assert gate["challenge_status"] == _REGISTERED
     assert gate["runner_status"] == _REGISTERED
     assert gate["protocol_status"] == _REGISTERED
-    assert gate["retained_provenance_status"] == _UNREGISTERED
-    assert gate["results_allowed"] is False
+    assert gate["retained_provenance_status"] == _REGISTERED
+    assert gate["results_allowed"] is True
