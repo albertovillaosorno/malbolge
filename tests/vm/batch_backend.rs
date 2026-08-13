@@ -40,8 +40,8 @@ use malbolge::{
     ExecutionMode, MachineIoState, MachineState, MachineStateError,
     ProfileBatchBackendCompletion, ProfileBatchBackendRequest,
     ProfileBatchExecutionBackend, ProfileBatchRequest, ProfileBatchResult,
-    ProfileMachineState, RunOutcome, current_profile, execute_batch,
-    execute_batch_with_backend_report, execute_profile_batch,
+    ProfileMachineError, ProfileMachineState, RunOutcome, current_profile,
+    execute_batch, execute_batch_with_backend_report, execute_profile_batch,
     execute_profile_batch_with_backend,
     execute_profile_batch_with_backend_report, historical_profile,
 };
@@ -52,6 +52,9 @@ const INTERPRETER_IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
     "../compatibility/specification/",
     "interpreter-io-roundtrip.malbolge",
 ));
+const HISTORICAL_OVERSIZED_WORDS: usize = 59_050;
+const PROFILE_CAPACITY_CODE: &str = "MALBOLGE-PROFILE-002";
+
 const SPECIFICATION_IO_ROUNDTRIP: &[u8] =
     include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
 
@@ -64,7 +67,7 @@ struct ClassicSnapshot {
 
 #[derive(Debug, Eq, PartialEq)]
 struct ProfileSnapshot {
-    error: Option<malbolge::ProfileMachineError>,
+    error: Option<ProfileMachineError>,
     machine: Option<ProfileMachineState>,
     outcome: Option<RunOutcome>,
 }
@@ -365,6 +368,42 @@ fn rejected_only_batches_never_invoke_optional_backend() -> TestResult {
             .is_some(),
         &true,
         "profile rejected-only result",
+    )
+}
+
+#[test]
+fn profile_capacity_rejection_never_reaches_optional_backend() -> TestResult {
+    let mut backend = CountingBackend { calls: 0 };
+    let (results, report) = execute_profile_batch_with_backend_report(
+        vec![ProfileBatchRequest::from_source(
+            historical_profile(),
+            vec![b'!'; HISTORICAL_OVERSIZED_WORDS],
+            Vec::new(),
+            1,
+        )],
+        &mut backend,
+    );
+    check_equal(&backend.calls, &0usize, "profile capacity backend calls")?;
+    let admission_only: &[BatchExecutionOrigin] =
+        &[BatchExecutionOrigin::SafeRustAdmissionRejection];
+    check_equal(
+        &report.origins(),
+        &admission_only,
+        "profile capacity rejected-only origin",
+    )?;
+    let error = results
+        .first()
+        .and_then(ProfileBatchResult::error)
+        .ok_or_else(|| String::from("profile capacity rejection lost error"))?;
+    let ProfileMachineError::Profile(requirement) = error else {
+        return Err(format!(
+            "profile capacity rejection changed category: {error}"
+        ));
+    };
+    check_equal(
+        &requirement.code(),
+        &PROFILE_CAPACITY_CODE,
+        "profile capacity backend diagnostic",
     )
 }
 
