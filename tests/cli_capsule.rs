@@ -13,7 +13,8 @@
 // - Must-Not:
 //   - Rebuild capsule framing or infer profile identity from the payload.
 // - Allows:
-//   - Inputs: checked-in annual/2026.3 vectors and one checksum mutation.
+//   - Inputs: checked-in annual/2026.3 vectors, public capsule builder/profile,
+//     and one checksum mutation.
 //   - Outputs: exact status, EOF byte, and diagnostic assertions.
 //   - Side effects: temporary capsule files removed after each invocation.
 // - Split-When:
@@ -38,13 +39,14 @@ use std::path::PathBuf;
 use std::process::{Command, id};
 use std::str::from_utf8;
 
-use malbolge as _;
+use malbolge::{build_capsule, historical_profile};
 
 const ANNUAL_CAPSULE_HEX: &str = include_str!(concat!(
     "compatibility/capsule/",
     "current-profile-capsule.hex",
 ));
 const EXPECTED_EOF_OUTPUT: &[u8] = &[0x78];
+const HISTORICAL_OVERSIZED_WORDS: usize = 59_050;
 const VERSIONED_CAPSULE_HEX: &str = include_str!(concat!(
     "compatibility/capsule/",
     "malbolge-2026.3-capsule.hex",
@@ -119,6 +121,34 @@ fn assert_capsule_dispatch(label: &str, source: &str) -> Result<(), String> {
             String::from_utf8_lossy(&output.stderr),
         ))
     }
+}
+
+#[test]
+fn historical_capsule_capacity_uses_profile_diagnostic() -> Result<(), String> {
+    let payload = vec![b'!'; HISTORICAL_OVERSIZED_WORDS];
+    let bytes = build_capsule(historical_profile(), &payload)
+        .map_err(|error| format!("build historical overflow capsule: {error}"))?;
+    let capsule = TemporaryCapsule::from_bytes("historical-overflow", &bytes)?;
+    let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&capsule.path)
+        .output()
+        .map_err(|error| format!("run historical overflow capsule CLI: {error}"))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.status.success()
+        || !output.stdout.is_empty()
+        || !stderr.contains("MALBOLGE-PROFILE-002")
+        || !stderr.contains("constraint=historical-profile-ceiling")
+        || !stderr.contains("required_memory_words=59050")
+    {
+        return Err(format!(
+            concat!(
+                "historical capsule capacity diagnostic mismatch: status={} ",
+                "stdout={:?} stderr={}",
+            ),
+            output.status, output.stdout, stderr,
+        ));
+    }
+    Ok(())
 }
 
 #[test]
