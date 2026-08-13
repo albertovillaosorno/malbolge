@@ -63,6 +63,13 @@ _REGISTERED = "registered"
 _CHALLENGE_ID = "classic-crazy-preimage-cardinality-span-v1"
 _RUNNER_ID = "classic-crazy-preimage-structural-comparison-v1"
 _SEMANTIC_EQUIVALENCE = "exact-sorted-preimage-set-v1"
+_MEASUREMENT_ID = "crazy-preimage-five-paired-protocol-v1"
+_REPETITIONS = 5
+_ORDERING = "fixed-full-domain-then-exact"
+_RETAIN_ALL = "retain-all"
+_CLOCK = "time-perf-counter-ns"
+_TIMING_SCOPE = "strategy-run-including-independent-semantic-check"
+_WALL_SECONDS = 60
 _PROBLEM_COUNT = 12
 _WORKLOAD_SHA256 = (
     "2b0c969c46511a67fae4b977fdfa6cb0b6019740ed81c018d6150b03d8387d15"
@@ -125,6 +132,21 @@ def test_crazy_preimage_plan_registers_frozen_challenge_and_runner() -> None:
     assert runner["semantic_equivalence"] == _SEMANTIC_EQUIVALENCE
 
 
+def test_crazy_preimage_plan_registers_measurement_protocol() -> None:
+    """Freeze paired timing mechanics while retained provenance stays absent."""
+    document = _document()
+    measurement = cast("dict[str, object]", document["measurement"])
+
+    assert measurement["id"] == _MEASUREMENT_ID
+    assert measurement["repetitions"] == _REPETITIONS
+    assert measurement["warmup_iterations"] == 0
+    assert measurement["ordering"] == _ORDERING
+    assert measurement["outlier_policy"] == _RETAIN_ALL
+    assert measurement["clock"] == _CLOCK
+    assert measurement["timing_scope"] == _TIMING_SCOPE
+    assert measurement["per_strategy_wall_clock_seconds"] == _WALL_SECONDS
+
+
 def test_crazy_preimage_plan_keeps_classic_applicability_fail_closed() -> None:
     """Exact pruning stays bound to one complete classic fixed-input problem."""
     document = _document()
@@ -149,6 +171,6 @@ def test_crazy_preimage_plan_forbids_unregistered_measurement_results() -> None:
 
     assert gate["challenge_status"] == _REGISTERED
     assert gate["runner_status"] == _REGISTERED
-    assert gate["protocol_status"] == _UNREGISTERED
+    assert gate["protocol_status"] == _REGISTERED
     assert gate["retained_provenance_status"] == _UNREGISTERED
     assert gate["results_allowed"] is False
