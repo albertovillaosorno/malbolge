@@ -129,11 +129,15 @@ historical-profile constraint.
   `NativeRetry` suffix came from an already published verified direct sequence,
   whose immutable steps passed profile-capacity preflight. A focused regression
   rejects an overflow step as `MALBOLGE-PROFILE-002` before plan publication.
-- Raw `.malbolge` CLI invocation now uses `ExecutionMachine`, so source capacity
-  reaches the same historical-ceiling diagnostic without changing normal
-  interpreter output. Equivalent program-memory requirements for non-IR artifact
-  families, durable-cache/AOT/JIT/runtime orchestration, and remaining product
-  invocation paths remain open, so repository-wide completion is not claimed.
+- Raw `.malbolge` CLI invocation uses `ExecutionMachine`, and recognized
+  capsule invocation uses `ProfileMachine` with the capsule-selected profile. A
+  generated
+  historical capsule with 59,050 payload words now proves the product capsule
+  path emits `MALBOLGE-PROFILE-002` with `historical-profile-ceiling` before
+  payload loading. Equivalent program-memory requirements for other non-IR
+  artifact families, durable-cache/AOT/JIT/runtime orchestration, and remaining
+  product invocation paths remain open, so repository-wide completion is not
+  claimed.
 
 ## Acceptance
 

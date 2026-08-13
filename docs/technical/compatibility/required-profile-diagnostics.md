@@ -136,9 +136,12 @@ source that needs 59,050 words under `malbolge-1998` therefore emits
 whitespace does not consume profile memory.
 
 `ProfileMachine::from_source()` uses the same source-word requirement before its
-profile-width loader. The raw `.malbolge` CLI now constructs its historical
-interpreter through `ExecutionMachine`, so the product path preserves the same
-capacity diagnostic instead of exposing a generic classic-loader overflow.
+profile-width loader. The raw `.malbolge` CLI constructs its historical
+interpreter through `ExecutionMachine`, while recognized capsules dispatch
+through `ProfileMachine` using the capsule-selected profile. Both product paths
+therefore preserve `MALBOLGE-PROFILE-002` before loader admission; a historical
+capsule with 59,050 payload words retains `historical-profile-ceiling` and the
+exact required-memory count.
 
 Every constructed `ExecutionMachine` retains its exact target-profile identity
 through `ExecutionMachine::profile()`.
@@ -293,9 +296,9 @@ already published `VerifiedDirectSequencePlan`, and sequence publication
 preflights every immutable step against its selected profile capacity. A focused
 regression rejects a capacity-overflow step as `002` before plan publication.
 Other artifact families do not yet universally expose an equivalent program
-requirement. Raw `.malbolge` product invocation uses canonical source preflight,
-and bootstrap source generation plus external Clang compilation now have
-explicit combined portable preflight. Durable-cache/AOT/JIT execution and
+requirement. Raw and capsule `.malbolge` product invocation use canonical source
+preflight, and bootstrap source generation plus external Clang compilation have
+explicit combined portable preflight. Durable-cache/AOT/JIT execution and the
 remaining product/artifact paths do not yet universally invoke that boundary.
 This contract therefore remains active rather than claiming repository-wide
 profile diagnostic completion.
@@ -318,7 +321,9 @@ profile diagnostic completion.
   no-fallback lookup.
 - `tests/cli_malbolge.rs` proves an oversized raw historical source surfaces
   `MALBOLGE-PROFILE-002` with `historical-profile-ceiling` while normal raw
-  interpreter-authority output remains unchanged.
+  interpreter-authority output remains unchanged. `tests/cli_capsule.rs` proves
+  the same capacity diagnostic after successful historical capsule parsing and
+  before payload loading, so capsule dispatch cannot bypass profile preflight.
 - `tests/tiered_execution.rs` proves exact derived IR footprint, including
   `u32::MAX`, native-identity rejection of inconsistent capacity, `MBPF` v3
   footprint mismatch rejection, emitter propagation, direct-template precedence
