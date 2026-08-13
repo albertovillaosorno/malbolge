@@ -95,26 +95,20 @@ The first measured pilot is retained under
 `benchmarks/research/evidence/2026-08-11-classic-superopt-pilot-windows/` and
 binds pre-run commit `23dd86d6`.
 
-A second technique is now preregistered without measurement.
+A second technique is now measured under its separately frozen protocol.
 `classic-history-residue-canonicalization-v1` binds the proved encryption-orbit
 and rotate-history equations to raw visit-count state under equal 10,000
 evaluation, 60-second, and 512 MiB bounds. Applicability requires stable address
 identity and no intervening write; unique search states is the primary metric,
-and accepted-set drift is a rejection condition. The pure
-`exact-history-residue-state-v1` substrate accepts caller-owned encryption
-semantics, derives a closed graphical orbit period before reduction, reduces
-rotate visits modulo ten, and rejects changed-address or intervening-write
-applicability. The registered `classic-history-residue-search-v1` challenge
-freezes 94 graphical encryption starts through 70 visit counts plus 171
-deterministic classic rotate words through 20 visit counts, exactly matching the
-10,000-evaluation bound. The registered
-`classic-history-residue-comparison-v1` runner verifies each unique state once
-and requires raw/canonical per-observation semantic digests to match. Its
-deterministic correctness characterization is 10,000 raw states versus 6,496
-canonical states with identical semantics. That structural count was observed
-during implementation and is not presented as preregistered measurement
-evidence. Timed or retained results remain forbidden until a measurement
-protocol and exact run provenance are frozen separately.
+and semantic drift is a rejection condition. The registered 10,000-observation
+challenge spans all 94 graphical encryption starts plus deterministic classic
+rotate samples. The paired protocol was committed before measurement at
+`9ff48346`, fixes raw-then-canonicalized order, retains all five repetitions,
+and uses no warmup deletion. The retained run preserves one exact semantic
+digest while reducing unique states and independent verifier calls from 10,000
+to 6,496 (35.04%). Host timing moves the other way: medians are 96,384,900 ns
+for raw state and 244,447,500 ns for residue state, so this implementation is
+about 2.54 times slower despite the structural reduction.
 
 ## Evidence
 
@@ -146,17 +140,17 @@ non-success outcome vocabulary rather than making success a prerequisite for
 retained evidence. History-canonicalization tests inject the repository classic
 verifier successor across all 94 graphical starts, recover orbit periods
 `2,4,5,6,9,68`, verify modulo-ten rotate history, and fail closed on unproved
-applicability or malformed injected orbits. Challenge/runner tests additionally
-lock the 10,000-observation workload hash, exact raw/canonical semantic digest,
-and the deterministic 10,000-to-6,496 unique-state characterization without
-collecting wall-clock evidence.
+applicability or malformed injected orbits. Challenge/runner tests lock the
+10,000-observation workload hash and exact semantic digest. Synthetic-clock
+measurement tests freeze protocol mechanics without real timing, while retained
+evidence tests validate the shared run/benchmark authorities and recompute the
+35.04% structural reduction plus timing medians/ranges from raw CSV only.
 
 The broader study at `../../studies/superoptimization-program.md` remains the
-human synthesis record. This mirrored plan now has one retained host-specific
-pilot for its first hypothesis plus one unmeasured canonicalization plan with a
-registered finite challenge and runner. Larger challenge families, the
-canonicalization measurement protocol/retained run, other techniques,
-independent-host replication, and stronger statistical power remain pending.
+human synthesis record. This mirror now has two retained host-specific measured
+comparisons plus the eight-seed work-count replication. Larger challenge
+families, other techniques, independent-host replication, and stronger
+statistical power remain pending.
 
 ## Results
 
@@ -172,15 +166,24 @@ enumeration and 6,119,900 ns for seeded order. Median full-corpus time was
 227,928,500 ns versus 227,433,600 ns, with overlapping observed ranges, so this
 pilot does not establish a total-throughput advantage.
 
+The history-residue run retains five paired repetitions on Microsoft Windows 11
+Pro 10.0.26200 x64 with Python 3.14.6. Both strategies preserve the same exact
+semantic digest. Canonicalization reduces unique states and verifier calls from
+10,000 to 6,496, but median strategy time increases from 96,384,900 ns to
+244,447,500 ns, with non-overlapping observed ranges. The structural hypothesis
+is supported for this corpus; a runtime-speedup hypothesis is not.
+
 ## Threats to Validity
 
 This single-host, seed-zero, five-repetition pilot is dominated by possible
 challenge-family bias, fixed enumeration-then-seeded ordering, Python verifier
 overhead, evaluator cost, candidate-language choices, and hardware/toolchain
 effects. The two-word corpus is deliberately tiny, and no cross-seed or
-cross-host dispersion is available. The positive first-hit result therefore does
-not establish that stochastic search dominates other seeds, larger Malbolge
-workloads, synthesis, equality saturation, or other workload families.
+cross-host dispersion is available. The history comparison adds another single
+host, fixed-order, Python implementation over a synthetic finite corpus; its
+negative timing may reflect canonicalization overhead specific to this runner.
+Neither result establishes behavior for larger Malbolge workloads, compiled
+optimizers, equality saturation, or other workload families.
 
 ## Conclusion
 
@@ -190,7 +193,10 @@ enumeration and also had a lower first-hit median on this host. Best quality
 ties
 and full-corpus timing is effectively inconclusive. This is retained pilot
 evidence, not sufficient basis to promote stochastic search to product
-architecture or generalize beyond the recorded challenge/seed/host.
+architecture or generalize beyond the recorded challenge/seed/host. The
+history-residue study separately supports exact state/verifier reduction but
+shows a clear timing loss in this Python implementation, so canonicalization is
+not promoted as a runtime optimization on this evidence alone.
 
 ## References
 

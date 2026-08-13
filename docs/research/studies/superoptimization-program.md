@@ -116,15 +116,16 @@ observing new schedules. Seeded first-hit evaluations were 250, 1709, 642, 1142,
 and four worsened, with seeded median 723. The seed-zero advantage therefore did
 not persist across this declared seed set. Timing from the replication is
 retained only as provenance and is not interpreted. Exact history-residue
-canonicalization now has a separate preregistered, unmeasured comparison. It
-binds the already-proved encryption-orbit and rotate-history reductions to raw
+canonicalization now has a separately preregistered and retained comparison. It
+binds the proved encryption-orbit and rotate-history reductions to raw
 visit-count state with equal bounds, fail-closed applicability, and exact
-semantic equivalence. A registered 10,000-observation challenge and comparison
-runner now exist. The runner's deterministic correctness characterization
-reduces unique state/verifier identities from 10,000 to 6,496 while preserving
-the exact per-observation semantic digest. This count is implementation
-characterization, not a preregistered timed result. A measurement protocol and
-retained run provenance remain required before performance interpretation. New
+semantic equivalence. The frozen 10,000-observation challenge preserves one
+semantic digest while residue identity reduces unique states/verifier calls from
+10,000 to 6,496 (35.04%). The five-pair source-pinned timing run is negative on
+its recorded Windows/Python host: median strategy time is 96,384,900 ns for raw
+state versus 244,447,500 ns for canonicalized state, about 2.54 times slower.
+The structural reduction is retained, but no runtime-speedup claim is
+supported. New
 synthesis, equality-saturation, learned, or accelerator-guided strategies must
 add their own equally identified comparisons rather than
 inheriting a result from either pilot. Source claims resolve through
@@ -145,12 +146,11 @@ inheriting a result from either pilot. Source claims resolve through
   generated run/benchmark identity and exact regression tests. The subsequent
   eight-seed work-count replication is also retained with a pre-run source pin,
   stochastic benchmark metadata, all raw rows, and exact regression tests. It is
-  the first retained negative/null comparative result. The history-residue plan
-  is tracked with formal-equation, finite-challenge, runner, semantic-digest,
-  and no-measurement-gate tests. Larger challenges, the canonicalization
-  measurement
-  protocol/retained run, additional technique plans, independent-host
-  replication, and a stronger comparative conclusion remain pending.
+  the first retained negative/null comparative result. The history-residue study
+  now retains its preregistered five-pair run, shared benchmark/run manifests,
+  exact semantic digest, structural state counts, and negative host timing.
+  Larger challenges, additional technique plans, independent-host replication,
+  and a stronger comparative conclusion remain pending.
 
 ## Results
 
@@ -162,13 +162,22 @@ and loses for four, while its median is 723 evaluations. Host timing from the
 first pilot remains host-specific, and replication timing is not an objective.
 No product implementation or general technique-superiority claim is made.
 
+The history-residue comparison supports its structural objective on the frozen
+10,000-observation corpus: exact residue state removes 3,504 unique states and
+verifier calls without semantic drift. Its host timing is negative, with the
+canonicalized median about 2.54 times the raw-state median, so this evidence
+does
+not support promoting the current implementation as a runtime optimization.
+
 ## Threats to Validity
 
 The record remains active. The seed replication narrows seed-selection risk but
 still covers only eight deterministic schedules over one tiny two-word challenge
-on one Windows host with Python verifier overhead. Larger challenge families,
-independent hosts, and independent implementations remain necessary for external
-validity.
+on one Windows host with Python verifier overhead. The history result adds one
+synthetic finite corpus, fixed raw-first ordering, and the same broad
+host/Python
+implementation limitation. Larger challenges, independent hosts, and independent
+implementations remain necessary for external validity.
 
 ## Conclusion
 

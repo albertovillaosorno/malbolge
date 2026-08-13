@@ -16,21 +16,17 @@ A later preregistered seeds-0-through-7 work-count replication is also retained.
 Four seeded schedules reach verification before enumeration's evaluation 706 and
 four reach it later; seeded median first-hit work is 723. This mixed/null result
 weakens the seed-zero first-hit conclusion. Replication timing is retained only
-as provenance and is not interpreted. A second technique is now preregistered
-without measurements: `classic-history-residue-canonicalization-v1` compares
-exact encryption-orbit/rotate-history residues with raw visit-count state under
-equal bounds. Its applicability requires stable address identity and no
-intervening write. A pure `exact-history-residue-state-v1` substrate implements
-those reductions without owning encryption semantics: callers inject the exact
-graphical encryption successor, and both reductions require explicit
-stable-address/no-intervening-write applicability. The registered
-`classic-history-residue-search-v1` challenge contains exactly 10,000 history
-observations, and `classic-history-residue-comparison-v1` verifies raw and
-canonical state identities against the same exact semantics. Deterministic
-correctness characterization reduces unique states/verifier calls from 10,000
-to 6,496 while preserving the exact per-observation semantic digest. This is not
-a timed or retained measurement; measured results remain gated on a separately
-frozen protocol and run provenance.
+as provenance and is not interpreted. A second technique,
+`classic-history-residue-canonicalization-v1`, now has a retained measurement.
+Its exact residue substrate requires stable address identity and no intervening
+write, and callers inject the classic encryption successor rather than granting
+the optimizer semantic authority. The frozen 10,000-observation challenge and
+comparison runner preserve one exact per-observation semantic digest. Across the
+retained five paired repetitions, residue identity reduces unique states and
+independent verifier calls from 10,000 to 6,496 (35.04%). Host timing is
+negative: raw-state median strategy time is 96,384,900 ns versus 244,447,500 ns
+for canonicalized state, about 2.54 times slower. This supports the structural
+state-reduction claim only; it does not support a runtime-speedup claim.
 
 The shared mechanisms live under
 `src/research/algorithms/composition/algorithms/superoptimization/`; domain
