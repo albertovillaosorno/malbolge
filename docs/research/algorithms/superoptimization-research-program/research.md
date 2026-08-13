@@ -100,13 +100,21 @@ A second technique is now preregistered without measurement.
 and rotate-history equations to raw visit-count state under equal 10,000
 evaluation, 60-second, and 512 MiB bounds. Applicability requires stable address
 identity and no intervening write; unique search states is the primary metric,
-and accepted-set drift is a rejection condition. Results remain forbidden until
-a versioned canonicalization challenge and runner are registered. The pure
-`exact-history-residue-state-v1` substrate is now implemented below that gate.
-It accepts caller-owned encryption semantics, derives a closed graphical orbit
-period before reduction, reduces rotate visits modulo ten, and rejects any
-changed-address or intervening-write applicability. It does not search or
-measure candidates.
+and accepted-set drift is a rejection condition. The pure
+`exact-history-residue-state-v1` substrate accepts caller-owned encryption
+semantics, derives a closed graphical orbit period before reduction, reduces
+rotate visits modulo ten, and rejects changed-address or intervening-write
+applicability. The registered `classic-history-residue-search-v1` challenge
+freezes 94 graphical encryption starts through 70 visit counts plus 171
+deterministic classic rotate words through 20 visit counts, exactly matching the
+10,000-evaluation bound. The registered
+`classic-history-residue-comparison-v1` runner verifies each unique state once
+and requires raw/canonical per-observation semantic digests to match. Its
+deterministic correctness characterization is 10,000 raw states versus 6,496
+canonical states with identical semantics. That structural count was observed
+during implementation and is not presented as preregistered measurement
+evidence. Timed or retained results remain forbidden until a measurement
+protocol and exact run provenance are frozen separately.
 
 ## Evidence
 
@@ -138,12 +146,16 @@ non-success outcome vocabulary rather than making success a prerequisite for
 retained evidence. History-canonicalization tests inject the repository classic
 verifier successor across all 94 graphical starts, recover orbit periods
 `2,4,5,6,9,68`, verify modulo-ten rotate history, and fail closed on unproved
-applicability or malformed injected orbits.
+applicability or malformed injected orbits. Challenge/runner tests additionally
+lock the 10,000-observation workload hash, exact raw/canonical semantic digest,
+and the deterministic 10,000-to-6,496 unique-state characterization without
+collecting wall-clock evidence.
 
 The broader study at `../../studies/superoptimization-program.md` remains the
 human synthesis record. This mirrored plan now has one retained host-specific
-pilot for its first hypothesis plus one unmeasured canonicalization plan. Larger
-challenge families, the canonicalization challenge/runner, other techniques,
+pilot for its first hypothesis plus one unmeasured canonicalization plan with a
+registered finite challenge and runner. Larger challenge families, the
+canonicalization measurement protocol/retained run, other techniques,
 independent-host replication, and stronger statistical power remain pending.
 
 ## Results

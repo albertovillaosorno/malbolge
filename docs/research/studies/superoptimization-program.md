@@ -118,12 +118,13 @@ not persist across this declared seed set. Timing from the replication is
 retained only as provenance and is not interpreted. Exact history-residue
 canonicalization now has a separate preregistered, unmeasured comparison. It
 binds the already-proved encryption-orbit and rotate-history reductions to raw
-visit-count state with equal budgets, fail-closed applicability, accepted-set
-equivalence, and a gate requiring a versioned challenge and runner before any
-result. The pure canonicalizer is now implemented below that gate: encryption
-semantics are injected by the caller, orbit closure is validated before residue
-reduction, rotate uses the proved modulo-ten bound, and applicability failures
-are rejected. This is substrate evidence, not comparison evidence. New
+visit-count state with equal bounds, fail-closed applicability, and exact
+semantic equivalence. A registered 10,000-observation challenge and comparison
+runner now exist. The runner's deterministic correctness characterization
+reduces unique state/verifier identities from 10,000 to 6,496 while preserving
+the exact per-observation semantic digest. This count is implementation
+characterization, not a preregistered timed result. A measurement protocol and
+retained run provenance remain required before performance interpretation. New
 synthesis, equality-saturation, learned, or accelerator-guided strategies must
 add their own equally identified comparisons rather than
 inheriting a result from either pilot. Source claims resolve through
@@ -145,10 +146,11 @@ inheriting a result from either pilot. Source claims resolve through
   eight-seed work-count replication is also retained with a pre-run source pin,
   stochastic benchmark metadata, all raw rows, and exact regression tests. It is
   the first retained negative/null comparative result. The history-residue plan
-  is tracked with formal-equation and no-measurement-gate tests. Larger
-  challenges, the canonicalization challenge/runner, additional technique plans,
-  independent-host replication, and a stronger comparative conclusion remain
-  pending.
+  is tracked with formal-equation, finite-challenge, runner, semantic-digest,
+  and no-measurement-gate tests. Larger challenges, the canonicalization
+  measurement
+  protocol/retained run, additional technique plans, independent-host
+  replication, and a stronger comparative conclusion remain pending.
 
 ## Results
 

@@ -19,15 +19,18 @@ weakens the seed-zero first-hit conclusion. Replication timing is retained only
 as provenance and is not interpreted. A second technique is now preregistered
 without measurements: `classic-history-residue-canonicalization-v1` compares
 exact encryption-orbit/rotate-history residues with raw visit-count state under
-equal budgets. Its applicability requires stable address identity and no
-intervening write; results remain blocked until a versioned challenge and runner
-exist. A pure `exact-history-residue-state-v1` substrate now implements those
-reductions without owning encryption semantics: callers inject the exact
-graphical encryption successor, and both encryption/rotate reductions require
-explicit stable-address/no-intervening-write applicability. Exhaustive tests
-cover all 94 historical graphical starts and recover the six proved orbit
-periods. This is implementation evidence only; the measured comparison remains
-gated.
+equal bounds. Its applicability requires stable address identity and no
+intervening write. A pure `exact-history-residue-state-v1` substrate implements
+those reductions without owning encryption semantics: callers inject the exact
+graphical encryption successor, and both reductions require explicit
+stable-address/no-intervening-write applicability. The registered
+`classic-history-residue-search-v1` challenge contains exactly 10,000 history
+observations, and `classic-history-residue-comparison-v1` verifies raw and
+canonical state identities against the same exact semantics. Deterministic
+correctness characterization reduces unique states/verifier calls from 10,000
+to 6,496 while preserving the exact per-observation semantic digest. This is not
+a timed or retained measurement; measured results remain gated on a separately
+frozen protocol and run provenance.
 
 The shared mechanisms live under
 `src/research/algorithms/composition/algorithms/superoptimization/`; domain
