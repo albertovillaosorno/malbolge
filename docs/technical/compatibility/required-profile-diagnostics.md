@@ -309,9 +309,8 @@ explicit combined portable preflight. Profile batch/backend routing also builds
 each safe-Rust machine before exposing any backend request; a historical
 59,050-word source therefore emits `MALBOLGE-PROFILE-002`, records
 `SafeRustAdmissionRejection`, and never calls the optional backend.
-Durable-cache, AOT/JIT execution, and the remaining product/artifact paths do not
-yet universally
-invoke that boundary.
+Durable-cache, AOT/JIT execution, and the remaining product/artifact paths do
+not yet universally invoke that boundary.
 This contract therefore remains active rather than claiming repository-wide
 profile diagnostic completion.
 
