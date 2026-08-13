@@ -14,8 +14,8 @@
 #   - Observe real timing, write evidence, filter samples, or infer speedup.
 # - Allows:
 #   - Inputs: checked-in plan plus deterministic clocks and strategy stubs.
-# - Outputs: retention, CSV, semantic, and fail-closed protocol assertions.
-# - Side effects: monkeypatching registered strategy calls in process only.
+#   - Outputs: retention, CSV, semantic, and fail-closed protocol assertions.
+#   - Side effects: monkeypatching registered strategy calls in process only.
 # - Split-When:
 #   - Retained crazy-preimage evidence gains an independent regression surface.
 # - Merge-When:

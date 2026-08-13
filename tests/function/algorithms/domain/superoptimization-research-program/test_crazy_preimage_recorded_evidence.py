@@ -14,8 +14,8 @@
 #   - Rerun measurement, filter raw rows, or generalize host timing.
 # - Allows:
 #   - Inputs: tracked benchmark/run manifests, source pin, and raw CSV.
-# - Outputs: authority, structural, semantic, and retained timing assertions.
-# - Side effects: repository-local reads only.
+#   - Outputs: authority, structural, semantic, and retained timing assertions.
+#   - Side effects: repository-local reads only.
 # - Split-When:
 #   - Another retained run needs independent provenance.
 # - Merge-When:

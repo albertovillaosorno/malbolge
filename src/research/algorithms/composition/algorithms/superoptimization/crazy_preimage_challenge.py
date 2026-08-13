@@ -14,8 +14,8 @@
 #   - Import production crazy search helpers or infer timing conclusions.
 # - Allows:
 #   - Inputs: the frozen classic ten-trit one-trit multiplicity construction.
-# - Outputs: twelve fixed accumulator/target problems and one workload hash.
-# - Side effects: none.
+#   - Outputs: twelve fixed accumulator/target problems and one workload hash.
+#   - Side effects: none.
 # - Split-When:
 #   - Another profile width or challenge sampling rule needs an independent ID.
 # - Merge-When:

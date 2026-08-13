@@ -14,8 +14,8 @@
 #   - Interpret timing or use production crazy semantics as verifier authority.
 # - Allows:
 #   - Inputs: runner plus one independently implemented classic one-trit table.
-# - Outputs: exact set equality, work-count, identity, and failure assertions.
-# - Side effects: CPU reference search evaluation only.
+#   - Outputs: exact set equality, work-count, identity, and failure assertions.
+#   - Side effects: CPU reference search evaluation only.
 # - Split-When:
 #   - Timed measurement gains a separately preregistered protocol.
 # - Merge-When:

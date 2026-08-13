@@ -15,8 +15,9 @@
 # - Allows:
 #   - Inputs: frozen challenge and one injected independent classic crazy
 #     oracle.
-# - Outputs: exact per-problem/aggregate evaluation counts and semantic digests.
-# - Side effects: CPU reference search evaluation only.
+#   - Outputs: exact per-problem/aggregate evaluation counts and semantic
+#     digests.
+#   - Side effects: CPU reference search evaluation only.
 # - Split-When:
 #   - Timed measurement or another profile width needs a separate protocol.
 # - Merge-When:

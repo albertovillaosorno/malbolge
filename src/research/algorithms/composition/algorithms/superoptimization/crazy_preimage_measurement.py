@@ -14,8 +14,9 @@
 #   - Write evidence, discover provenance, filter samples, or alter strategies.
 # - Allows:
 #   - Inputs: frozen plan, independent crazy oracle, and monotonic clock.
-# - Outputs: all retained paired samples and canonical raw CSV text.
-# - Side effects: executes only registered deterministic comparison strategies.
+#   - Outputs: all retained paired samples and canonical raw CSV text.
+#   - Side effects: executes only registered deterministic comparison
+#     strategies.
 # - Split-When:
 #   - Evidence persistence or statistical inference gains independent policy.
 # - Merge-When:

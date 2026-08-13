@@ -16,7 +16,7 @@
 #   - Inputs: versioned challenge and independently written one-trit relation.
 #   - Outputs: exact cardinality, coverage, replay, and workload-hash
 #     assertions.
-# - Side effects: none.
+#   - Side effects: none.
 # - Split-When:
 #   - Another challenge version needs a distinct cardinality construction.
 # - Merge-When:
