@@ -126,13 +126,17 @@ fn assert_capsule_dispatch(label: &str, source: &str) -> Result<(), String> {
 #[test]
 fn historical_capsule_capacity_uses_profile_diagnostic() -> Result<(), String> {
     let payload = vec![b'!'; HISTORICAL_OVERSIZED_WORDS];
-    let bytes = build_capsule(historical_profile(), &payload)
-        .map_err(|error| format!("build historical overflow capsule: {error}"))?;
+    let bytes =
+        build_capsule(historical_profile(), &payload).map_err(|error| {
+            format!("build historical overflow capsule: {error}")
+        })?;
     let capsule = TemporaryCapsule::from_bytes("historical-overflow", &bytes)?;
     let output = Command::new(env!("CARGO_BIN_EXE_malbolge"))
         .arg(&capsule.path)
         .output()
-        .map_err(|error| format!("run historical overflow capsule CLI: {error}"))?;
+        .map_err(|error| {
+            format!("run historical overflow capsule CLI: {error}")
+        })?;
     let stderr = String::from_utf8_lossy(&output.stderr);
     if output.status.success()
         || !output.stdout.is_empty()
