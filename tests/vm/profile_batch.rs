@@ -40,6 +40,7 @@ use malbolge::{
     BatchError, ProfileBatchRequest, ProfileBatchResult, ProfileLoadError,
     ProfileMachine, ProfileMachineError, ProfileRegisters, RunOutcome,
     current_profile, execute_profile_batch, execute_profile_batch_parallel,
+    historical_profile,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -49,6 +50,9 @@ const IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
     "interpreter-io-roundtrip.malbolge",
 ));
 const STEP_BUDGET: usize = 8;
+const HISTORICAL_OVERSIZED_WORDS: usize = 59_050;
+const HISTORICAL_OVERSIZED_MEMORY_WORDS: u64 = 59_050;
+const PROFILE_CAPACITY_CODE: &str = "MALBOLGE-PROFILE-002";
 
 type MemorySamples = Vec<(u32, u32)>;
 
@@ -160,6 +164,49 @@ fn current_profile_batch_parallel_matches_sequential_baseline() -> TestResult {
             ProfileLoadError::InsufficientRecurrenceBase,
         )),
         "current middle load rejection",
+    )
+}
+
+#[test]
+fn historical_capacity_rejection_matches_parallel_batch() -> TestResult {
+    let request = ProfileBatchRequest::from_source(
+        historical_profile(),
+        vec![b'!'; HISTORICAL_OVERSIZED_WORDS],
+        Vec::new(),
+        STEP_BUDGET,
+    );
+    let sequential = execute_profile_batch(vec![request.clone()]);
+    let parallel =
+        normalize_result(execute_profile_batch_parallel(vec![request], 2))?;
+    let sequential_error = sequential
+        .first()
+        .and_then(ProfileBatchResult::error)
+        .ok_or_else(|| String::from("missing sequential capacity rejection"))?;
+    let parallel_error = parallel
+        .first()
+        .and_then(ProfileBatchResult::error)
+        .ok_or_else(|| {
+        String::from("missing parallel capacity rejection")
+    })?;
+    check_equal(
+        &parallel_error,
+        &sequential_error,
+        "parallel profile capacity rejection",
+    )?;
+    let ProfileMachineError::Profile(requirement) = sequential_error else {
+        return Err(format!(
+            "profile batch capacity changed category: {sequential_error}"
+        ));
+    };
+    check_equal(
+        &requirement.code(),
+        &PROFILE_CAPACITY_CODE,
+        "profile batch capacity diagnostic",
+    )?;
+    check_equal(
+        &requirement.required_memory_words(),
+        &HISTORICAL_OVERSIZED_MEMORY_WORDS,
+        "profile batch required memory",
     )
 }
 

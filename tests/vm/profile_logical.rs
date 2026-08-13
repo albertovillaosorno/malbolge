@@ -43,7 +43,7 @@ use malbolge::{
     ProfileLoadError, ProfileLogicalJoinError, ProfileLogicalTask,
     ProfileLogicalTaskResult, ProfileMachineError, current_profile,
     execute_profile_logical_tasks, execute_profile_logical_tasks_parallel,
-    join_profile_logical_outputs, target_profile,
+    historical_profile, join_profile_logical_outputs, target_profile,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -56,6 +56,9 @@ const TRANSITION_IO_ROUNDTRIP: &[u8] =
     include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
 const STEP_BUDGET: usize = 8;
 const TRANSITION_ID: &str = "malbolge-2026.1";
+const HISTORICAL_OVERSIZED_WORDS: usize = 59_050;
+const HISTORICAL_OVERSIZED_MEMORY_WORDS: u64 = 59_050;
+const PROFILE_CAPACITY_CODE: &str = "MALBOLGE-PROFILE-002";
 
 fn profile_task(
     id: u64,
@@ -200,6 +203,68 @@ fn profile_rejection_blocks_join_but_not_later_task() -> TestResult {
             task_id: LogicalTaskId::new(20),
         },
         "profile join rejection identity",
+    )
+}
+
+#[test]
+fn profile_capacity_rejection_survives_parallel_logical_join() -> TestResult {
+    let transition = transition_profile()?;
+    let tasks = vec![
+        profile_task(30, transition, TRANSITION_IO_ROUNDTRIP, b'C'),
+        ProfileLogicalTask::new(
+            LogicalTaskId::new(20),
+            ProfileBatchRequest::from_source(
+                historical_profile(),
+                vec![b'!'; HISTORICAL_OVERSIZED_WORDS],
+                Vec::new(),
+                STEP_BUDGET,
+            ),
+        ),
+        profile_task(10, transition, TRANSITION_IO_ROUNDTRIP, b'A'),
+    ];
+    let results =
+        normalize_result(execute_profile_logical_tasks_parallel(tasks, 3))?;
+    let rejected = results
+        .get(1)
+        .ok_or_else(|| String::from("missing logical capacity rejection"))?;
+    let error = rejected
+        .result()
+        .error()
+        .ok_or_else(|| String::from("logical capacity rejection lost error"))?;
+    let ProfileMachineError::Profile(requirement) = error else {
+        return Err(format!(
+            "logical capacity rejection changed category: {error}"
+        ));
+    };
+    check_equal(
+        &requirement.code(),
+        &PROFILE_CAPACITY_CODE,
+        "logical capacity diagnostic",
+    )?;
+    check_equal(
+        &requirement.required_memory_words(),
+        &HISTORICAL_OVERSIZED_MEMORY_WORDS,
+        "logical capacity required memory",
+    )?;
+    let later_output = results
+        .get(2)
+        .and_then(|item| item.result().machine())
+        .map(|machine| machine.output().to_vec());
+    check_equal(
+        &later_output,
+        &Some(vec![b'C']),
+        "later task survives profile capacity rejection",
+    )?;
+    let Err(join_error) = join_profile_logical_outputs(&results) else {
+        return Err(String::from("profile capacity rejection joined"));
+    };
+    check_equal(
+        &join_error,
+        &ProfileLogicalJoinError::RejectedTask {
+            error,
+            task_id: LogicalTaskId::new(20),
+        },
+        "logical join retains profile capacity rejection",
     )
 }
 
