@@ -30,7 +30,7 @@
 # - Usage:
 #   - Collected by the research-algorithm Python test surface.
 # - Defaults:
-#   - No measured result is admissible until protocol and provenance are frozen.
+#   - Measured interpretation requires the frozen protocol and retained pin.
 #
 
 """Preregistration checks for exact history-residue canonicalization."""
@@ -71,12 +71,11 @@ _WORKLOAD_SHA256 = (
 _MEASUREMENT_ID = "history-residue-five-paired-protocol-v1"
 _REPETITIONS = 5
 _ORDERING = "fixed-raw-then-canonicalized"
-_REQUIRED_BEFORE_RUN = "required-before-run"
 _RETAIN_ALL = "retain-all"
 
 
-def test_history_canonicalization_plan_is_preregistered_unmeasured() -> None:
-    """Lock identity, comparison bounds, and the no-measurement gate."""
+def test_history_canonicalization_plan_retains_measured_identity() -> None:
+    """Lock the measured plan identity and original comparison bounds."""
     document = tomllib.loads(_PLAN.read_text(encoding="utf-8"))
     plan = cast("dict[str, object]", document["plan"])
     comparison = cast("dict[str, object]", document["comparison"])
@@ -86,7 +85,7 @@ def test_history_canonicalization_plan_is_preregistered_unmeasured() -> None:
     assert plan == {
         "id": _PLAN_ID,
         "record_kind": "plan",
-        "status": "preregistered-unmeasured",
+        "status": "measured",
         "method_class": "optimization",
         "technique": _TECHNIQUE,
         "baseline": _BASELINE,
@@ -103,8 +102,8 @@ def test_history_canonicalization_plan_is_preregistered_unmeasured() -> None:
     assert runner["canonicalized"] == _TECHNIQUE
 
 
-def test_history_measurement_protocol_is_preregistered_but_gated() -> None:
-    """Freeze paired timing policy while retained provenance is still absent."""
+def test_history_measurement_protocol_has_retained_provenance() -> None:
+    """Keep the frozen protocol and its retained source-pinned run."""
     document = tomllib.loads(_PLAN.read_text(encoding="utf-8"))
     measurement = cast("dict[str, object]", document["measurement"])
     gate = cast("dict[str, object]", document["measurement_gate"])
@@ -118,8 +117,8 @@ def test_history_measurement_protocol_is_preregistered_but_gated() -> None:
     assert gate["challenge_status"] == _REGISTERED
     assert gate["runner_status"] == _REGISTERED
     assert gate["protocol_status"] == _REGISTERED
-    assert gate["retained_provenance_status"] == _REQUIRED_BEFORE_RUN
-    assert gate["results_allowed"] is False
+    assert gate["retained_provenance_status"] == _REGISTERED
+    assert gate["results_allowed"] is True
 
 
 def test_history_canonicalization_plan_binds_existing_formal_equations(

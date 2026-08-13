@@ -3,7 +3,7 @@ schema_version = 1
 [plan]
 id = "classic-history-residue-canonicalization-v1"
 record_kind = "plan"
-status = "preregistered-unmeasured"
+status = "measured"
 method_class = "optimization"
 technique = "exact-history-residue-state-v1"
 baseline = "raw-visit-count-state-v1"
@@ -74,9 +74,9 @@ per_strategy_wall_clock_seconds = 60
 challenge_status = "registered"
 runner_status = "registered"
 protocol_status = "registered"
-retained_provenance_status = "required-before-run"
-results_allowed = false
-reason = "retained source-pinned run provenance is not registered"
+retained_provenance_status = "registered"
+results_allowed = true
+reason = "retained source-pinned run provenance is registered"
 
 [provenance]
 # jig-ignore-next-line: canonical path is indivisible
