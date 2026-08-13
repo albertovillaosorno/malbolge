@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize twenty-three exact reductions: classic
+- The proved slices now formalize twenty-four exact reductions: classic
   five-trit
   crazy factorization, profile-width crazy chunking, decode phase reduction,
   exact classic rotate lookup, graphical self-encryption orbit
@@ -52,9 +52,9 @@ force or stochastic optimization begins.
   unreachable-pair count and `9^N-7^N` generalization, the exact classic
   preimage-budget exceedance sum, and its width-indexed generalization. The
   first
-  four are consumed by runtime paths; the nineteen search reductions carry
+  four are consumed by runtime paths; the twenty search reductions carry
   no inherited runtime speedup claim.
-- Twenty-three optimization research equations are registered in
+- Twenty-four optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -88,7 +88,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes twenty-three labelled optimization
+- Current mathematical evidence includes twenty-four labelled optimization
   equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, an exhaustive six-orbit encryption partition, exhaustive

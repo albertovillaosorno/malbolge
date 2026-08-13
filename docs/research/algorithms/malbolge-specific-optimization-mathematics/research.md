@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes twenty-three exact reductions: classic five-trit crazy factorization,
+formalizes twenty-four exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, decode phase reduction, classic rotate
 lookup, graphical self-encryption orbit canonicalization, classic rotate-history
 canonicalization, exact crazy-target preimage cardinality, the tight classic
@@ -167,7 +167,8 @@ Retain the four proved table/factorization reductions plus the exact
 self-encryption and classic rotate-history canonicalizations, crazy-target
 preimage cardinality, tight 1,024-preimage bound, discrete cardinality spectrum,
 accumulator-specific worst-target bound, reachable-target count, exact
-fixed-accumulator target preimage distribution, exact accumulator-class
+fixed-accumulator target preimage distribution, fixed-accumulator budget
+exceedance, exact accumulator-class
 partition, global reachable-pair count, exact classic and
 profile-width preimage-pair distributions, exact profile-width mean/variance
 preimage evidence, the exact Binomial(N, 2/7) log-preimage exponent law, exact
