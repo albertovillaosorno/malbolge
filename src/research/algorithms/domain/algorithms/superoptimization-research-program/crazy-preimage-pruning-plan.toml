@@ -31,6 +31,18 @@ maximum_exact_preimages = 1024
 per_problem_wall_clock_seconds = 60
 memory_mib = 512
 
+[challenge]
+id = "classic-crazy-preimage-cardinality-span-v1"
+problem_count = 12
+verifier = "classic-crazy-independent-table-v1"
+workload_sha256 = "2b0c969c46511a67fae4b977fdfa6cb0b6019740ed81c018d6150b03d8387d15"
+
+[runner]
+id = "classic-crazy-preimage-structural-comparison-v1"
+baseline = "classic-crazy-full-domain-data-enumeration-v1"
+technique = "classic-crazy-digitwise-exact-preimage-v1"
+semantic_equivalence = "exact-sorted-preimage-set-v1"
+
 [applicability]
 word_trits = 10
 word_modulus = 59049
@@ -47,12 +59,12 @@ conditions = [
 ]
 
 [measurement_gate]
-challenge_status = "unregistered"
-runner_status = "unregistered"
+challenge_status = "registered"
+runner_status = "registered"
 protocol_status = "unregistered"
 retained_provenance_status = "unregistered"
 results_allowed = false
-reason = "register finite challenge, runner, protocol, and retained provenance first"
+reason = "register measurement protocol and retained provenance first"
 
 [provenance]
 # jig-ignore-next-line: canonical path is indivisible

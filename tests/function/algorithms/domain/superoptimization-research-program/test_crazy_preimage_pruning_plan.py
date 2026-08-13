@@ -59,6 +59,14 @@ _PRIMARY_METRIC = "evaluated-data-candidates"
 _PREIMAGE_SET_REJECTION = "exact preimage set differs from full-domain baseline"
 _UNREACHABLE_REJECTION = "unreachable targets are treated as having a candidate"
 _UNREGISTERED = "unregistered"
+_REGISTERED = "registered"
+_CHALLENGE_ID = "classic-crazy-preimage-cardinality-span-v1"
+_RUNNER_ID = "classic-crazy-preimage-structural-comparison-v1"
+_SEMANTIC_EQUIVALENCE = "exact-sorted-preimage-set-v1"
+_PROBLEM_COUNT = 12
+_WORKLOAD_SHA256 = (
+    "2b0c969c46511a67fae4b977fdfa6cb0b6019740ed81c018d6150b03d8387d15"
+)
 
 
 def _document() -> dict[str, object]:
@@ -102,6 +110,21 @@ def test_crazy_preimage_plan_binds_formal_and_product_identity() -> None:
     assert preparer_identity in implementation
 
 
+def test_crazy_preimage_plan_registers_frozen_challenge_and_runner() -> None:
+    """Lock the finite challenge/runner without opening measurement results."""
+    document = _document()
+    challenge = cast("dict[str, object]", document["challenge"])
+    runner = cast("dict[str, object]", document["runner"])
+
+    assert challenge["id"] == _CHALLENGE_ID
+    assert challenge["problem_count"] == _PROBLEM_COUNT
+    assert challenge["workload_sha256"] == _WORKLOAD_SHA256
+    assert runner["id"] == _RUNNER_ID
+    assert runner["baseline"] == _BASELINE
+    assert runner["technique"] == _TECHNIQUE
+    assert runner["semantic_equivalence"] == _SEMANTIC_EQUIVALENCE
+
+
 def test_crazy_preimage_plan_keeps_classic_applicability_fail_closed() -> None:
     """Exact pruning stays bound to one complete classic fixed-input problem."""
     document = _document()
@@ -120,12 +143,12 @@ def test_crazy_preimage_plan_keeps_classic_applicability_fail_closed() -> None:
     assert _UNREACHABLE_REJECTION in conditions
 
 
-def test_crazy_preimage_plan_forbids_unregistered_results() -> None:
-    """No comparison result is admissible before all lifecycle gates exist."""
+def test_crazy_preimage_plan_forbids_unregistered_measurement_results() -> None:
+    """Challenge/runner registration cannot bypass measurement provenance."""
     gate = cast("dict[str, object]", _document()["measurement_gate"])
 
-    assert gate["challenge_status"] == _UNREGISTERED
-    assert gate["runner_status"] == _UNREGISTERED
+    assert gate["challenge_status"] == _REGISTERED
+    assert gate["runner_status"] == _REGISTERED
     assert gate["protocol_status"] == _UNREGISTERED
     assert gate["retained_provenance_status"] == _UNREGISTERED
     assert gate["results_allowed"] is False
