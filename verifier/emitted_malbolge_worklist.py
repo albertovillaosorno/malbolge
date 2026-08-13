@@ -338,7 +338,10 @@ class _Explorer:
         self.accessed_addresses.update(_transition_accesses(step.transition))
         if step.transition.pointer_wraps:
             self.wraparound_transitions += 1
-        if step.transition.decoded_byte == _INPUT_OPCODE:
+        if (
+            step.transition.decoded_byte == _INPUT_OPCODE
+            and not node.eof_seen
+        ):
             self.input_branch_points += 1
         successors = _successors(node, step)
         if successors:

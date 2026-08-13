@@ -73,6 +73,8 @@ _DOUBLE_INPUT_UNIQUE_STATES = 515
 _DOUBLE_INPUT_REPEATED_EDGES = 65_536
 _DOUBLE_INPUT_CYCLE_EDGES = 65_793
 _INPUT_VALUE_COUNT = 257
+_BYTE_VALUE_COUNT = 256
+_DOUBLE_INPUT_BRANCH_POINTS = 1 + _BYTE_VALUE_COUNT
 _EOF_ACCUMULATOR = 59_048
 _WRAP_ADDRESS = 59_048
 _WRAP_SOURCE_VALUE = 52
@@ -281,7 +283,7 @@ def test_tiny_cap_counts_all_pending_input_frontier_states() -> None:
 
 
 def test_double_input_merges_are_not_silently_discarded() -> None:
-    """Second input creates many exact merges while the graph still closes."""
+    """Only non-EOF input states branch while the merged graph still closes."""
     result = worklist.analyze_reachability(
         _DOUBLE_INPUT_HALT_SOURCE,
         maximum_states=_DOUBLE_INPUT_UNIQUE_STATES,
@@ -289,7 +291,7 @@ def test_double_input_merges_are_not_silently_discarded() -> None:
     assert result.unique_states == _DOUBLE_INPUT_UNIQUE_STATES
     assert result.repeated_state_edges == _DOUBLE_INPUT_REPEATED_EDGES
     assert not result.reachable_cycle_detected
-    assert result.input_branch_points == _FULL_STATE_LIMIT
+    assert result.input_branch_points == _DOUBLE_INPUT_BRANCH_POINTS
     assert result.terminal_status_counts == (
         ("halted", _INPUT_VALUE_COUNT),
     )
