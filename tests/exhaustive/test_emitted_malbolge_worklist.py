@@ -84,6 +84,8 @@ _WRAP_STATE_LIMIT = 1
 _SECOND_TRANSITION = 2
 _GRAPH_KEY_A: _WorklistStateKey = (0, 0, 0, (), False)
 _GRAPH_KEY_B: _WorklistStateKey = (1, 0, 0, (), False)
+_GRAPH_KEY_C: _WorklistStateKey = (2, 0, 0, (), False)
+_GRAPH_KEY_D: _WorklistStateKey = (3, 0, 0, (), False)
 _STATE_LIMIT_MESSAGE = "worklist state limit must be a positive exact integer"
 _ADMISSION_MESSAGE = "worklist source is not an admitted classic image"
 _ROOT = Path(__file__).resolve().parents[2]
@@ -367,6 +369,26 @@ def test_known_graph_cycle_detection_rejects_merge_only_heuristics() -> None:
         _GRAPH_KEY_A,
         _GRAPH_KEY_B,
     )
+
+
+def test_cycle_witness_is_stable_across_graph_insertion_order() -> None:
+    """Sorted exact keys make a later disconnected cycle deterministic."""
+    nodes = {_GRAPH_KEY_D, _GRAPH_KEY_C, _GRAPH_KEY_B, _GRAPH_KEY_A}
+    first_edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_D: {_GRAPH_KEY_C},
+        _GRAPH_KEY_C: {_GRAPH_KEY_D},
+        _GRAPH_KEY_B: set(),
+        _GRAPH_KEY_A: {_GRAPH_KEY_B},
+    }
+    second_edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B},
+        _GRAPH_KEY_B: set(),
+        _GRAPH_KEY_C: {_GRAPH_KEY_D},
+        _GRAPH_KEY_D: {_GRAPH_KEY_C},
+    }
+    expected = (_GRAPH_KEY_C, _GRAPH_KEY_D)
+    assert worklist._known_graph_cycle_witness(first_edges, nodes) == expected
+    assert worklist._known_graph_cycle_witness(second_edges, nodes) == expected
 
 
 def test_explorer_counts_exact_pointer_wrap_transition() -> None:
