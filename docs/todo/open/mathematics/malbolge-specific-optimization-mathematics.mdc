@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize twenty exact reductions: classic five-trit
+- The proved slices now formalize twenty-one exact reductions: classic five-trit
   crazy factorization, profile-width crazy chunking, decode phase reduction,
   exact classic rotate lookup, graphical self-encryption orbit
   canonicalization, classic rotate-history canonicalization, exact
@@ -42,13 +42,14 @@ force or stochastic optimization begins.
   `7^10` reachable accumulator/target-pair count, and the exact
   `C(10,k)*2^k*5^(10-k)` nonzero preimage-pair distribution, the exact
   `C(N,k)*2^k*5^(N-k)` distribution across checked widths `1<=N<=14`, the exact
-  reachable-pair mean preimage size `(9/7)^N`, the exact `9^10-7^10`
+  reachable-pair mean preimage size `(9/7)^N`, the exact second moment
+  `(13/7)^N` and variance `(13/7)^N-(9/7)^(2N)`, the exact `9^10-7^10`
   unreachable-pair count and `9^N-7^N` generalization, the exact classic
   preimage-budget exceedance sum, and its width-indexed generalization. The
   first
-  four are consumed by runtime paths; the sixteen search reductions carry
+  four are consumed by runtime paths; the seventeen search reductions carry
   no inherited runtime speedup claim.
-- Twenty optimization research equations are registered in
+- Twenty-one optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -82,7 +83,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes twenty labelled optimization
+- Current mathematical evidence includes twenty-one labelled optimization
   equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, an exhaustive six-orbit encryption partition, exhaustive
@@ -94,7 +95,8 @@ force or stochastic optimization begins.
   accumulator partition, the exact `7^10` reachable accumulator/target-pair
   count, the exact classic nonzero preimage-pair distribution, its exact
   width-1-through-14 `C(N,k)*2^k*5^(N-k)` generalization, the exact
-  width-indexed reachable-pair mean preimage size `(9/7)^N`, the exact
+  width-indexed reachable-pair mean preimage size `(9/7)^N`, exact second
+  moment `(13/7)^N` and variance `(13/7)^N-(9/7)^(2N)`, the exact
   `9^10-7^10 = 3,204,309,152` unreachable-pair count, its exact
   width-1-through-14 `9^N-7^N` complement, and exact classic/width-indexed
   counts of reachable pairs whose full preimage set exceeds any
