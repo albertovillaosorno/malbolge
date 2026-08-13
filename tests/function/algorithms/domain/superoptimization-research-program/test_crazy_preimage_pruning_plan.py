@@ -27,7 +27,8 @@
 # - Usage:
 #   - Collected by the research-algorithm Python test surface.
 # - Defaults:
-#   - Results remain forbidden until every measurement gate is registered.
+#   - Result interpretation is allowed only after every measurement gate is
+#     registered with retained source-pinned provenance.
 #
 
 """Preregistration checks for exact classic crazy preimage pruning."""
