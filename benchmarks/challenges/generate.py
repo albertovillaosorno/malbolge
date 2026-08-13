@@ -63,6 +63,7 @@ _MEMORY_WALK_FAMILY: Final = "memory-walk"
 _POINTER_WALK_FAMILY: Final = "pointer-walk"
 _ALIAS_WALK_FAMILY: Final = "alias-walk"
 _STREAM_STATE_FAMILY: Final = "stream-state"
+_SORT_REDUCE_FAMILY: Final = "sort-reduce"
 _GRAPH_REDUCE_FAMILY: Final = "graph-reduce"
 _GRID_ACCUMULATE_FAMILY: Final = "grid-accumulate"
 _LAYOUT_CHAIN_FAMILY: Final = "layout-chain"
@@ -78,6 +79,7 @@ _FAMILY_ALGORITHMS: Final = {
     _POINTER_WALK_FAMILY: "splitmix64-pointer-walk-v1",
     _ALIAS_WALK_FAMILY: "splitmix64-alias-walk-v1",
     _STREAM_STATE_FAMILY: "splitmix64-stream-state-v1",
+    _SORT_REDUCE_FAMILY: "splitmix64-sort-reduce-v1",
     _GRAPH_REDUCE_FAMILY: "splitmix64-graph-reduce-v1",
     _GRID_ACCUMULATE_FAMILY: "splitmix64-grid-accumulate-v1",
     _LAYOUT_CHAIN_FAMILY: "splitmix64-layout-chain-v1",
@@ -94,6 +96,7 @@ _MEMORY_WALK_SEED_SALT: Final = 0x4D45_4D4F_5259_574B
 _POINTER_WALK_SEED_SALT: Final = 0x5054_5257_414C_4B31
 _ALIAS_WALK_SEED_SALT: Final = 0x414C_4941_5357_4B31
 _STREAM_STATE_SEED_SALT: Final = 0x5354_524D_5354_4154
+_SORT_REDUCE_SEED_SALT: Final = 0x534F_5254_5244_5631
 _GRAPH_REDUCE_SEED_SALT: Final = 0x4752_4150_4852_4431
 _GRID_ACCUMULATE_SEED_SALT: Final = 0x4752_4944_5F41_4343
 _LAYOUT_CHAIN_SEED_SALT: Final = 0x4C41_594F_5554_4348
@@ -673,6 +676,80 @@ def _stream_state_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     )
 
 
+def _sort_reduce_oracle(
+    items: list[int],
+    *,
+    initial: int,
+    multiplier: int,
+    addend: int,
+) -> int:
+    state = initial
+    for item in sorted(items):
+        state = (((state ^ item) * multiplier) + addend) & _MASK32
+    return state
+
+
+def _sort_reduce_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _SORT_REDUCE_SEED_SALT)
+    initial = rng.next_u32()
+    multiplier = rng.next_u32() | 1
+    addend = rng.next_u32()
+    items = [rng.next_u32() for _index in range(identity.nodes)]
+    oracle_value = _sort_reduce_oracle(
+        items, initial=initial, multiplier=multiplier, addend=addend
+    )
+    item_initializer = ", ".join(
+        f"UINT32_C({value})" for value in items
+    )
+    lines = [
+        "#include <stdint.h>",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t items[{identity.nodes}] = {{{item_initializer}}};",
+        (
+            "    for (uint32_t pass = UINT32_C(0); "
+            f"pass < UINT32_C({identity.nodes}); "
+            "pass += UINT32_C(1)) {"
+        ),
+        (
+            "        for (uint32_t index = UINT32_C(1); "
+            f"index < UINT32_C({identity.nodes}) - pass; "
+            "index += UINT32_C(1)) {"
+        ),
+        "            uint32_t left = items[index - UINT32_C(1)];",
+        "            uint32_t right = items[index];",
+        "            if (left > right) {",
+        "                items[index - UINT32_C(1)] = right;",
+        "                items[index] = left;",
+        "            }",
+        "        }",
+        "    }",
+        f"    uint32_t state = UINT32_C({initial});",
+        (
+            "    for (uint32_t index = UINT32_C(0); "
+            f"index < UINT32_C({identity.nodes}); "
+            "index += UINT32_C(1)) {"
+        ),
+        (
+            "        state = ((state ^ items[index]) * "
+            f"UINT32_C({multiplier})) + UINT32_C({addend});"
+        ),
+        "    }",
+        "    return state;",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ]
+    return (
+        chr(10).join(lines).encode(),
+        oracle_value.to_bytes(_ORACLE_BYTES, byteorder="little"),
+    )
+
+
 def _graph_reduce_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     rng = _SplitMix64(identity.seed ^ _GRAPH_REDUCE_SEED_SALT)
     initial = rng.next_u32()
@@ -1050,6 +1127,7 @@ _PAYLOAD_RENDERERS: Final = {
     _POINTER_WALK_FAMILY: _pointer_walk_payload,
     _ALIAS_WALK_FAMILY: _alias_walk_payload,
     _STREAM_STATE_FAMILY: _stream_state_payload,
+    _SORT_REDUCE_FAMILY: _sort_reduce_payload,
     _GRAPH_REDUCE_FAMILY: _graph_reduce_payload,
     _GRID_ACCUMULATE_FAMILY: _grid_accumulate_payload,
     _LAYOUT_CHAIN_FAMILY: _layout_chain_payload,

@@ -89,6 +89,10 @@ _BINARY_TREE_RIGHT_MARKER = (
     "states[(parent * UINT32_C(2)) + UINT32_C(1)]"
 )
 _BINARY_TREE_RETURN_MARKER = "return states[UINT32_C(1)];"
+_SORT_REDUCE_FRONTEND_LOOPS = 3
+_SORT_REDUCE_SUBSCRIPTS = 5
+_SORT_REDUCE_IF_STATEMENTS = 1
+_SORT_REDUCE_SWAP_MARKER = "if (left > right)"
 _FORBIDDEN_PUTCHAR = "putchar"
 _FORBIDDEN_STDIO = "<stdio.h>"
 _CLANG = _ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
@@ -104,6 +108,7 @@ _MEMORY_WALK_FAMILY = "memory-walk"
 _POINTER_WALK_FAMILY = "pointer-walk"
 _ALIAS_WALK_FAMILY = "alias-walk"
 _STREAM_STATE_FAMILY = "stream-state"
+_SORT_REDUCE_FAMILY = "sort-reduce"
 _GRAPH_REDUCE_FAMILY = "graph-reduce"
 _GRID_ACCUMULATE_FAMILY = "grid-accumulate"
 _LAYOUT_CHAIN_FAMILY = "layout-chain"
@@ -119,6 +124,7 @@ _FAMILIES = (
     _POINTER_WALK_FAMILY,
     _ALIAS_WALK_FAMILY,
     _STREAM_STATE_FAMILY,
+    _SORT_REDUCE_FAMILY,
     _GRAPH_REDUCE_FAMILY,
     _GRID_ACCUMULATE_FAMILY,
     _LAYOUT_CHAIN_FAMILY,
@@ -127,6 +133,7 @@ _FAMILIES = (
 )
 _LARGE_GENERATION_STRESS_FAMILIES = (
     _STREAM_STATE_FAMILY,
+    _SORT_REDUCE_FAMILY,
     _GRAPH_REDUCE_FAMILY,
     _BINARY_TREE_FAMILY,
     _GRID_ACCUMULATE_FAMILY,
@@ -152,6 +159,12 @@ _POINTER_WALK_V1_MANIFEST_SHA256 = (
     "e92dcb30cc2a6f1477564b3c9843a6bc47c04ed06beaafa74589dbaf788854cf"
 )
 _NEW_V1_REPLAY_VECTORS = (
+    (
+        _SORT_REDUCE_FAMILY,
+        "2508aa418e7a2c9ff82c3a4070ee89a708feb9753912c56a7f3346e9a1448086",
+        "707f0db23b85cc31c45d6d98dced0fa33446a994f864923e83ab0dd129e5f385",
+        "42eed53ab110f9b6b8677ab20b7a963304626f39aa8124b2932f7fa75c2b44cc",
+    ),
     (
         _BINARY_TREE_FAMILY,
         "90fad2f641fc83997419acf9b4fa6db8e249763c6b7ea2848945a8b0ef9fff1d",
@@ -413,6 +426,18 @@ def test_graph_reduce_emits_live_parent_graph() -> None:
     assert source.count("states[parent]") == 1
     assert source.count("weights[index]") == 1
     assert f"return states[{nodes}];" in source
+
+
+def test_sort_reduce_emits_live_compare_swap_and_fold() -> None:
+    """Sort challenges keep generated items live through ordering and fold."""
+    nodes = 19
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_SORT_REDUCE_FAMILY, seed=0x5077, nodes=nodes)
+    )
+    source = generated.source.decode()
+    assert source.count("for (uint32_t") == _SORT_REDUCE_FRONTEND_LOOPS
+    assert source.count(_SORT_REDUCE_SWAP_MARKER) == _SORT_REDUCE_IF_STATEMENTS
+    assert f"uint32_t items[{nodes}]" in source
 
 
 def test_binary_tree_emits_live_hierarchical_reduction() -> None:
@@ -892,6 +917,51 @@ def test_ternary_family_is_admitted_by_normalized_frontend(
     os.name != _WINDOWS_OS_NAME,
     reason="reviewed normalized C frontend is Windows x86-64",
 )
+def test_sort_reduce_family_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep compare/swap loops and sorted fold after normalization."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_SORT_REDUCE_FAMILY, seed=71, nodes=23)
+    )
+    source = tmp_path / "sort-reduce.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/sort-reduce-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    loops = sum(
+        node.get("kind") == _FOR_STATEMENT_KIND for node in normalized
+    )
+    subscripts = sum(
+        node.get("kind") == _ARRAY_SUBSCRIPT_KIND for node in normalized
+    )
+    branches = sum(
+        node.get("kind") == _IF_STATEMENT_KIND for node in normalized
+    )
+    assert loops == _SORT_REDUCE_FRONTEND_LOOPS
+    assert subscripts == _SORT_REDUCE_SUBSCRIPTS
+    assert branches == _SORT_REDUCE_IF_STATEMENTS
+
+
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME,
+    reason="reviewed normalized C frontend is Windows x86-64",
+)
 def test_binary_tree_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
 ) -> None:
@@ -1068,6 +1138,9 @@ def _assert_native_oracle(
         (_BRANCH_MIX_FAMILY, 0, 1),
         (_BRANCH_MIX_FAMILY, 7, 64),
         (_BRANCH_MIX_FAMILY, 0x1234, 257),
+        (_SORT_REDUCE_FAMILY, 0, 1),
+        (_SORT_REDUCE_FAMILY, 7, 64),
+        (_SORT_REDUCE_FAMILY, 0x1234, 257),
         (_BINARY_TREE_FAMILY, 0, 1),
         (_BINARY_TREE_FAMILY, 7, 64),
         (_BINARY_TREE_FAMILY, 0x1234, 257),
