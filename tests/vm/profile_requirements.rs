@@ -129,6 +129,52 @@ fn current_profile_is_rejected_before_loader() -> TestResult {
 }
 
 #[test]
+fn snapshot_restore_preflights_selected_profile() -> TestResult {
+    let machine = normalize_result(ExecutionMachine::from_source(
+        IO_ROUNDTRIP,
+        vec![0x41],
+        ExecutionMode::Specification,
+    ))?;
+    let checkpoint = machine.snapshot_state();
+    let Err(error) = ExecutionMachine::from_snapshot(
+        checkpoint.clone(),
+        ExecutionMode::Specification,
+        current_profile(),
+    ) else {
+        return Err(String::from(
+            "unsupported current profile restored a classic snapshot",
+        ));
+    };
+    let ExecutionErrorKind::Profile(requirement) = error.kind() else {
+        return Err(format!(
+            "snapshot profile preflight lost precedence: {error}"
+        ));
+    };
+    check_equal(
+        &requirement.kind(),
+        &ProfileRequirementErrorKind::RuntimeCapabilityMissing,
+        "snapshot restore profile category",
+    )?;
+    check_equal(
+        &requirement.code(),
+        &"MALBOLGE-PROFILE-001",
+        "snapshot restore diagnostic code",
+    )?;
+    let transition = target_profile(TRANSITION_ID)
+        .ok_or_else(|| String::from("missing transition profile projection"))?;
+    let restored = normalize_result(ExecutionMachine::from_snapshot(
+        checkpoint,
+        ExecutionMode::Specification,
+        transition,
+    ))?;
+    check_equal(
+        &restored.profile().id(),
+        &TRANSITION_ID,
+        "snapshot restore retains exact transition identity",
+    )
+}
+
+#[test]
 fn source_capacity_preflight_precedes_loader_errors() -> TestResult {
     let historical = historical_profile();
     let source = vec![b'!'; 59_050];
