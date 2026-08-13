@@ -278,6 +278,8 @@ def test_tiny_cap_counts_all_pending_input_frontier_states() -> None:
         maximum_states=_TINY_STATE_LIMIT,
     )
     assert result.unique_states == _TINY_STATE_LIMIT
+    assert result.explored_states == 1
+    assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
     assert result.frontier_states == _INPUT_VALUE_COUNT
     assert result.truncated
 

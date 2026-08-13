@@ -323,6 +323,10 @@ class _Explorer:
                     ),
                 )
             self.seen.add(key)
+            self.maximum_first_seen_transition_index = max(
+                self.maximum_first_seen_transition_index,
+                successor.snapshot.before_transition,
+            )
             source_edges.add(key)
             self.edges[key] = set()
             self.queue.append(successor)
@@ -330,10 +334,6 @@ class _Explorer:
 
     def _process_node(self, node: _ReachabilityNode) -> WorklistAnalysis | None:
         self.explored += 1
-        self.maximum_first_seen_transition_index = max(
-            self.maximum_first_seen_transition_index,
-            node.snapshot.before_transition,
-        )
         step = prefix_transfer.analyze_state_snapshot(self.words, node.snapshot)
         self.accessed_addresses.update(_transition_accesses(step.transition))
         if step.transition.pointer_wraps:
