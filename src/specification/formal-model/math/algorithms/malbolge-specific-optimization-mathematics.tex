@@ -284,6 +284,17 @@ This count rejects only complete-domain impossibility. It does not imply that a
 reachable pair occurs in any incomplete external candidate corpus or that
 checking membership is free.
 
+For the same bounded width family, the unreachable complement scales exactly as
+\begin{equation}
+  \left|\left\{(a,t)\in\WordDomain{N}^{2}:
+    \nexists d\in\WordDomain{N},\ \CrazyN{N}{d}{a}=t\right\}\right|
+    =9^N-7^N,\qquad 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-unreachable-pair-count}
+\end{equation}
+This is the complement of the independently checked $7^N$ reachable class sum
+inside the complete $9^N$ accumulator/target domain. It is an impossibility
+count only; it does not infer corpus membership or search/runtime cost.
+
 \section{Decode phase reduction}
 
 For graphical cell $m$, decode depends on the code pointer only through its

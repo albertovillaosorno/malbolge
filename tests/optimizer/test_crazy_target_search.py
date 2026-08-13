@@ -506,6 +506,20 @@ def test_profile_width_preimage_pair_distribution_matches_closed_form() -> None:
         assert pair_domain - reachable >= 0
 
 
+def test_profile_width_unreachable_pair_count_matches_closed_form() -> None:
+    """Widths one through fourteen match the exact unreachable complement."""
+    for trit_count in range(1, _MAX_CHECKED_PROFILE_TRITS + 1):
+        histogram = _independent_preimage_pair_histogram(trit_count)
+        reachable = sum(histogram.values())
+        pair_domain = _independent_integer_power(
+            _PAIR_DOMAIN_PER_TRIT, trit_count
+        )
+        expected = pair_domain - _independent_integer_power(
+            _REACHABLE_PAIRS_PER_TRIT, trit_count
+        )
+        assert pair_domain - reachable == expected
+
+
 def _independent_budget_closed_form(trit_count: int, budget: int) -> int:
     total = 0
     for exponent in range(trit_count + 1):
