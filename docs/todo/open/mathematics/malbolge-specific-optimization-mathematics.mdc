@@ -30,15 +30,18 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize twenty-two exact reductions: classic five-trit
+- The proved slices now formalize twenty-three exact reductions: classic
+  five-trit
   crazy factorization, profile-width crazy chunking, decode phase reduction,
   exact classic rotate lookup, graphical self-encryption orbit
   canonicalization, classic rotate-history canonicalization, exact
   crazy-target preimage cardinality, the tight global 1,024-preimage bound,
   the exact zero-or-power-of-two preimage spectrum, the accumulator-specific
   `2^(10-n2(a))` worst-target bound, and the exact
-  `2^(10-n2(a))*3^n2(a)` reachable-target count, and the exact
-  `C(10,k)*2^(10-k)` accumulator-class cardinality, the exact global
+  `2^(10-n2(a))*3^n2(a)` reachable-target count, the exact checked-width
+  `C(N-m,k)*3^m` fixed-accumulator target distribution for preimage class
+  `2^k`, and the exact `C(10,k)*2^(10-k)` accumulator-class cardinality, the
+  exact global
   `7^10` reachable accumulator/target-pair count, and the exact
   `C(10,k)*2^k*5^(10-k)` nonzero preimage-pair distribution, the exact
   `C(N,k)*2^k*5^(N-k)` distribution across checked widths `1<=N<=14`, the exact
@@ -49,9 +52,9 @@ force or stochastic optimization begins.
   unreachable-pair count and `9^N-7^N` generalization, the exact classic
   preimage-budget exceedance sum, and its width-indexed generalization. The
   first
-  four are consumed by runtime paths; the eighteen search reductions carry
+  four are consumed by runtime paths; the nineteen search reductions carry
   no inherited runtime speedup claim.
-- Twenty-two optimization research equations are registered in
+- Twenty-three optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -85,7 +88,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes twenty-two labelled optimization
+- Current mathematical evidence includes twenty-three labelled optimization
   equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, an exhaustive six-orbit encryption partition, exhaustive
@@ -93,8 +96,10 @@ force or stochastic optimization begins.
   preimage counts including impossible targets, the exhaustive tight global
   1,024-preimage ceiling, the exact `{0,1,2,4,...,1024}` cardinality spectrum,
   the accumulator-specific `2^(10-n2(a))` maximum, the exact
-  `2^(10-n2(a))*3^n2(a)` reachable-target count, the complete eleven-class
-  accumulator partition, the exact `7^10` reachable accumulator/target-pair
+  `2^(10-n2(a))*3^n2(a)` reachable-target count, the exact checked-width
+  `C(N-m,k)*3^m` fixed-accumulator target distribution, the complete eleven-
+  class accumulator partition, the exact `7^10` reachable accumulator/target-
+  pair
   count, the exact classic nonzero preimage-pair distribution, its exact
   width-1-through-14 `C(N,k)*2^k*5^(N-k)` generalization, the exact
   width-indexed reachable-pair mean preimage size `(9/7)^N`, exact second
