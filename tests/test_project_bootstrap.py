@@ -536,6 +536,33 @@ def test_rust_inspection_rejects_drive_relative_channel(
         _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
 
 
+def test_rust_linker_adapter_binds_explicit_linux_host_linker(
+    tmp_path: Path,
+) -> None:
+    """Linux Rust toolchains receive one explicit repo-local linker adapter."""
+    linker = tmp_path / "host/bin/cc"
+    linker.parent.mkdir(parents=True)
+    linker.touch()
+    roots = (
+        tmp_path / ".dependencies/rust/1.97.1",
+        tmp_path / ".dependencies/rust/nightly-2026-07-14",
+    )
+    for root in roots:
+        (root / "bin").mkdir(parents=True)
+
+    adapters = project.write_rust_linker_adapters(
+        roots,
+        LINUX_PLATFORM,
+        linker=linker,
+    )
+
+    assert adapters == tuple(root / "bin/cc" for root in roots)
+    for adapter in adapters:
+        text = adapter.read_text(encoding="ascii")
+        assert text == f'#!/bin/sh\nexec {linker.resolve()} "$@"\n'
+        assert adapter.stat().st_mode & stat.S_IXUSR
+
+
 def test_rust_toolchain_import_preserves_native_tree_and_alias(
     tmp_path: Path,
 ) -> None:
@@ -723,13 +750,17 @@ def test_rust_inspection_requires_completed_neutral_alias(
         encoding="ascii",
     )
 
-    linux = project.inspect_rust(tmp_path, LINUX_PLATFORM)
+    linux_before_linker = project.inspect_rust(tmp_path, LINUX_PLATFORM)
     windows = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+    linker = toolchain / "bin" / "cc"
+    linker.touch()
+    linux = project.inspect_rust(tmp_path, LINUX_PLATFORM)
 
-    assert linux.state is project.ComponentState.READY
-    assert linux.path == cargo
+    assert linux_before_linker.state is project.ComponentState.MISSING
     assert windows.state is project.ComponentState.READY
     assert windows.path == cargo
+    assert linux.state is project.ComponentState.READY
+    assert linux.path == cargo
 
 
 def test_git_version_match_accepts_portable_and_windows_distribution() -> None:

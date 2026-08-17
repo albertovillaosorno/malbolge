@@ -43,8 +43,10 @@ import os
 from pathlib import Path
 from pathlib import PureWindowsPath
 import platform
+import shlex
 import shutil
 from shutil import which
+import stat
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed Rustup argv.
@@ -496,6 +498,40 @@ def rust_toolchain_import_complete(toolchain_root: Path) -> bool:
     return (toolchain_root / RUST_IMPORT_MARKER).is_file()
 
 
+def write_rust_linker_adapters(
+    toolchain_roots: tuple[Path, ...],
+    platform_id: str,
+    *,
+    linker: Path | None = None,
+) -> tuple[Path, ...]:
+    """Bind imported Linux Rust toolchains to one explicit host linker.
+
+    Returns:
+        Repository-local linker adapter paths, or empty outside Linux.
+
+    """
+    if not platform_id.startswith(LINUX_SYSTEM):
+        return ()
+    selected = linker
+    if selected is None:
+        resolved = which("cc")
+        if resolved is None:
+            return ()
+        selected = Path(resolved)
+    target = shlex.quote(str(selected.resolve()))
+    adapters: list[Path] = []
+    for root in toolchain_roots:
+        adapter = root / "bin" / "cc"
+        _ = adapter.write_text(
+            f'#!/bin/sh\nexec {target} "$@"\n',
+            encoding="ascii",
+            newline="\n",
+        )
+        adapter.chmod(adapter.stat().st_mode | stat.S_IXUSR)
+        adapters.append(adapter)
+    return tuple(adapters)
+
+
 def import_rust_toolchain(
     source: Path,
     destination: Path,
@@ -718,11 +754,13 @@ def import_host_rust_toolchains(
     rustup = rustup_executable(platform_id)
     if rustup is None:
         return ()
-    return import_installed_rust_toolchains(
+    imported = import_installed_rust_toolchains(
         root,
         platform_id,
         resolver=rustup_toolchain_resolver(rustup),
     )
+    _ = write_rust_linker_adapters(imported, platform_id)
+    return imported
 
 
 def _imported_cargo(root: Path, channel: str) -> Path:
@@ -736,18 +774,22 @@ def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
         Ready only for a completed repository-local imported toolchain.
 
     """
-    del platform_id
     toolchain_path = root / ".jig/version/rust-toolchain.toml"
     channel = _rust_channel(root)
     cargo = _imported_cargo(root, channel)
     imported_root = cargo.parent.parent
-    if cargo.is_file() and rust_toolchain_import_complete(imported_root):
+    imported = cargo.is_file() and rust_toolchain_import_complete(imported_root)
+    linux_linker = imported_root / "bin" / "cc"
+    linker_ready = (
+        not platform_id.startswith(LINUX_SYSTEM) or linux_linker.is_file()
+    )
+    if imported and linker_ready:
         path: Path | None = cargo
         detail = f"pinned Cargo for {channel} is present"
         state = ComponentState.READY
     else:
         path = toolchain_path
-        detail = f"Cargo for pinned channel {channel} is absent"
+        detail = f"Cargo/linker for pinned channel {channel} is absent"
         state = ComponentState.MISSING
     return ComponentStatus(
         detail=detail,
