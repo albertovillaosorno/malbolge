@@ -608,6 +608,28 @@ def test_rust_linker_adapter_binds_explicit_linux_host_linker(
     )
 
 
+def test_rust_linker_adapters_leave_windows_aliases_unchanged(
+    tmp_path: Path,
+) -> None:
+    """Linux linker adaptation never rewrites Windows Rust aliases."""
+    root = tmp_path / ".dependencies/rust/1.97.1"
+    binary = root / "bin/cargo.exe"
+    alias = root / "bin/cargo.bin"
+    binary.parent.mkdir(parents=True)
+    _ = binary.write_bytes(RUST_CARGO_BYTES)
+    _ = alias.write_bytes(RUST_CARGO_BYTES)
+
+    adapters = project.write_rust_linker_adapters(
+        (root,),
+        WINDOWS_PLATFORM,
+        linker=tmp_path / "unused-cc.exe",
+    )
+
+    assert adapters == ()
+    assert alias.read_bytes() == RUST_CARGO_BYTES
+    assert not (root / project.RUST_LINUX_ADAPTER_MARKER).exists()
+
+
 def test_rust_toolchain_import_preserves_native_tree_and_alias(
     tmp_path: Path,
 ) -> None:
