@@ -57,6 +57,7 @@ from typing import Never
 from typing import cast
 
 from scripts.bootstrap import cuda_validation
+from scripts.bootstrap import llvm_validation
 from scripts.bootstrap import python_validation
 from scripts.repository_root import repository_root
 
@@ -141,6 +142,7 @@ class ProjectInitializationReport:
     cuda: ComponentStatus
     directories: tuple[Path, ...]
     jig: ComponentStatus
+    llvm: ComponentStatus
     platform_id: str
     python_environment: Path
     rust: ComponentStatus
@@ -1013,6 +1015,77 @@ def inspect_jig(root: Path, platform_id: str) -> ComponentStatus:
     )
 
 
+def _llvm_status(root: Path, platform_id: str) -> ComponentStatus:
+    observed = llvm_validation.inspect_llvm(root, platform_id)
+    return ComponentStatus(
+        detail=observed.detail,
+        name="llvm",
+        path=observed.path,
+        state=(
+            ComponentState.READY
+            if observed.ready
+            else ComponentState.MISSING
+        ),
+    )
+
+
+def _prepare_linux_llvm(
+    root: Path,
+    linux_observer: (
+        Callable[[], llvm_validation.LlvmHostObservation | None] | None
+    ),
+) -> None:
+    observe = linux_observer or llvm_validation.observe_linux_llvm_host
+    observation = observe()
+    if observation is not None:
+        _ = llvm_validation.import_linux_llvm(root, observation)
+
+
+def _prepare_windows_llvm(root: Path) -> None:
+    llvm_root = root / llvm_validation.LLVM_ROOT
+    if (llvm_root / "bin/clang.exe").is_file():
+        _ = llvm_validation.write_windows_llvm_aliases(llvm_root)
+
+
+def _prepare_llvm_platform(
+    root: Path,
+    platform_id: str,
+    linux_observer: (
+        Callable[[], llvm_validation.LlvmHostObservation | None] | None
+    ),
+) -> None:
+    if platform_id == llvm_validation.LINUX_PLATFORM:
+        _prepare_linux_llvm(root, linux_observer)
+    elif platform_id == llvm_validation.WINDOWS_PLATFORM:
+        _prepare_windows_llvm(root)
+
+
+def prepare_llvm(
+    root: Path,
+    platform_id: str,
+    *,
+    linux_observer: (
+        Callable[[], llvm_validation.LlvmHostObservation | None] | None
+    ) = None,
+) -> ComponentStatus:
+    """Prepare exact neutral LLVM aliases when an admitted host is available.
+
+    Returns:
+        Repository-local LLVM readiness after optional exact host import.
+
+    """
+    try:
+        _prepare_llvm_platform(root, platform_id, linux_observer)
+    except llvm_validation.LlvmImportError as error:
+        return ComponentStatus(
+            detail=f"exact LLVM import failed: {error}",
+            name="llvm",
+            path=root / llvm_validation.LLVM_ROOT,
+            state=ComponentState.MISSING,
+        )
+    return _llvm_status(root, platform_id)
+
+
 def provision_cuda_if_requested(
     root: Path,
     platform_id: str,
@@ -1071,12 +1144,14 @@ def initialize_project(
     cuda = inspect_cuda(root, platform_id)
     rust = inspect_rust(root, platform_id)
     jig = inspect_jig(root, platform_id)
+    llvm = prepare_llvm(root, platform_id)
     if require_cuda and cuda.state is not ComponentState.READY:
         _fail(f"CUDA is required but {cuda.state}: {cuda.detail}")
     return ProjectInitializationReport(
         cuda=cuda,
         directories=directories,
         jig=jig,
+        llvm=llvm,
         platform_id=platform_id,
         python_environment=layout.environment,
         rust=rust,
@@ -1094,7 +1169,7 @@ def render_report(report: ProjectInitializationReport) -> str:
         f"project initialized for {report.platform_id}",
         f"python: ready ({report.python_environment})",
     ]
-    for component in (report.rust, report.jig, report.cuda):
+    for component in (report.rust, report.jig, report.llvm, report.cuda):
         location = "" if component.path is None else f" ({component.path})"
         line = f"{component.name}: {component.state} - "
         line += f"{component.detail}{location}"

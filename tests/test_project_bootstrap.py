@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING
 from typing import cast
 
 import pytest
+from scripts.bootstrap import llvm_validation
 from scripts.bootstrap import project
 from scripts.bootstrap import python_validation
 
@@ -459,6 +460,55 @@ def test_platform_identity_normalizes_windows_and_linux() -> None:
     assert (
         project.host_platform_id(system="Linux", machine="arm64")
         == LINUX_AARCH64
+    )
+
+
+def _linux_llvm_observation(
+    tmp_path: Path,
+) -> llvm_validation.LlvmHostObservation:
+    host = tmp_path / "host-llvm"
+    bin_dir = host / "bin"
+    lib_dir = host / "lib"
+    resource_dir = host / "resource"
+    bin_dir.mkdir(parents=True)
+    lib_dir.mkdir()
+    resource_dir.mkdir()
+    paths = {
+        "clang": bin_dir / "clang",
+        "clang_tidy": bin_dir / "clang-tidy",
+        "clang_format": bin_dir / "clang-format",
+        "llvm": lib_dir / "libLLVM.so.22.1",
+        "clang_cpp": lib_dir / "libclang-cpp.so.22.1",
+    }
+    for path in paths.values():
+        path.touch()
+    (resource_dir / "stddef.h").touch()
+    return llvm_validation.LlvmHostObservation(
+        clang=paths["clang"],
+        clang_format=paths["clang_format"],
+        clang_tidy=paths["clang_tidy"],
+        clang_cpp=paths["clang_cpp"],
+        llvm=paths["llvm"],
+        resource_dir=resource_dir,
+        version=llvm_validation.LLVM_VERSION,
+    )
+
+
+def test_linux_llvm_preparation_imports_exact_host_observation(
+    tmp_path: Path,
+) -> None:
+    """Project bootstrap promotes an exact observed Linux LLVM to ready."""
+    observation = _linux_llvm_observation(tmp_path)
+
+    status = project.prepare_llvm(
+        tmp_path,
+        LINUX_PLATFORM,
+        linux_observer=lambda: observation,
+    )
+
+    assert status.state is project.ComponentState.READY
+    assert status.path == (
+        tmp_path / llvm_validation.LLVM_ROOT / "jig-bin/clang.bin"
     )
 
 
