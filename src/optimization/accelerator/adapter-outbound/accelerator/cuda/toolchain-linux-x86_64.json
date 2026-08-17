@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "cuda_release": "13.3 Update 1",
+  "redistrib_manifest": "redistrib_13.3.1.json",
+  "release_date": "2026-06-29",
+  "platform": "linux-x86_64",
+  "toolkit_root": ".dependencies/cuda/13.3.1/toolkit",
+  "packages": [
+    {
+      "name": "cuda_nvrtc",
+      "version": "13.3.33",
+      "relative_path": "cuda_nvrtc/linux-x86_64/cuda_nvrtc-linux-x86_64-13.3.33-archive.tar.xz",
+      "sha256": "9e8f78278215babd1236b137252424ca7912c185bd093201f5d97f7dd763b74a",
+      "size": 69662780
+    }
+  ],
+  "redistrib_base_url": "https://developer.download.nvidia.com/compute/cuda/redist/"
+}

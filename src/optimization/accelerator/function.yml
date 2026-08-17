@@ -438,6 +438,19 @@ parts:
     path: contract/reference.md
     kind: contract
     responsibility: Define serialized and cross-boundary representations.
+  - id: part-0082
+    path: adapter-outbound/accelerator/cuda/toolchain-manifests.json
+    kind: adapter-outbound
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0083
+    path: adapter-outbound/accelerator/cuda/toolchain-linux-x86_64.json
+    kind: adapter-outbound
+    responsibility: Bind outbound capabilities to external systems.
+  - id: part-0084
+    path: adapter-outbound/accelerator/cuda/toolchain.py
+    kind: adapter-outbound
+    language: python
+    responsibility: Bind outbound capabilities to external systems.
 projects: []
 tests: []
 graph:

@@ -49,6 +49,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 CUDA_VERSION_ROOT = ".dependencies/cuda/13.3.1/toolkit"
+CUDA_WINDOWS_MANIFEST_SHA256 = (
+    "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
+)
+CUDA_LINUX_MANIFEST = "toolchain-linux-x86_64.json"
+CUDA_MANIFEST_INDEX = "toolchain-manifests.json"
 WINDOWS_PLATFORM = "windows-x86_64"
 LINUX_PLATFORM = "linux-x86_64"
 RUST_CHANNEL = "1.97.1"
@@ -98,6 +103,58 @@ def _write_cuda_manifest(root: Path, platform_id: str) -> Path:
             "schema_version": project.CUDA_TOOLCHAIN_SCHEMA_VERSION,
             "platform": platform_id,
             "toolkit_root": CUDA_VERSION_ROOT,
+        }),
+        encoding="utf-8",
+        newline="\n",
+    )
+    return manifest
+
+
+def _write_cuda_manifest_index(root: Path) -> Path:
+    manifest_root = (root / project.CUDA_TOOLCHAIN_MANIFEST).parent
+    index = manifest_root / CUDA_MANIFEST_INDEX
+    _ = index.write_text(
+        json.dumps({
+            "schema_version": 1,
+            "platforms": {
+                WINDOWS_PLATFORM: {
+                    "manifest": "toolchain.json",
+                    "loader": "windll",
+                    "driver_library": "nvcuda.dll",
+                    "nvrtc_library": "bin/x64/nvrtc64_130_0.dll",
+                },
+                LINUX_PLATFORM: {
+                    "manifest": CUDA_LINUX_MANIFEST,
+                    "loader": "cdll",
+                    "driver_library": "libcuda.so.1",
+                    "nvrtc_library": "lib64/libnvrtc.so.13",
+                },
+            },
+        }),
+        encoding="utf-8",
+        newline="\n",
+    )
+    return index
+
+
+def _write_platform_cuda_manifest(
+    root: Path,
+    platform_id: str,
+    filename: str,
+) -> Path:
+    manifest = (root / project.CUDA_TOOLCHAIN_MANIFEST).parent / filename
+    _ = manifest.write_text(
+        json.dumps({
+            "schema_version": project.CUDA_TOOLCHAIN_SCHEMA_VERSION,
+            "cuda_release": "13.3 Update 1",
+            "redistrib_manifest": "redistrib_13.3.1.json",
+            "release_date": "2026-06-29",
+            "platform": platform_id,
+            "toolkit_root": CUDA_VERSION_ROOT,
+            "packages": [],
+            "redistrib_base_url": (
+                "https://developer.download.nvidia.com/compute/cuda/redist/"
+            ),
         }),
         encoding="utf-8",
         newline="\n",
@@ -402,6 +459,57 @@ def test_platform_identity_normalizes_windows_and_linux() -> None:
         project.host_platform_id(system="Linux", machine="arm64")
         == LINUX_AARCH64
     )
+
+
+def test_cuda_manifest_index_selects_linux_without_rewriting_windows(
+    tmp_path: Path,
+) -> None:
+    """Platform selection preserves retained Windows manifest identity."""
+    manifest_root = (tmp_path / project.CUDA_TOOLCHAIN_MANIFEST).parent
+    manifest_root.mkdir(parents=True)
+    windows = _write_platform_cuda_manifest(
+        tmp_path, WINDOWS_PLATFORM, "toolchain.json"
+    )
+    linux = _write_platform_cuda_manifest(
+        tmp_path, LINUX_PLATFORM, CUDA_LINUX_MANIFEST
+    )
+    _ = _write_cuda_manifest_index(tmp_path)
+
+    assert project.cuda_toolchain_manifest_path(
+        tmp_path, WINDOWS_PLATFORM
+    ) == windows
+    assert (
+        project.cuda_toolchain_manifest_path(tmp_path, LINUX_PLATFORM) == linux
+    )
+
+
+def test_repository_windows_cuda_manifest_sha_is_retained() -> None:
+    """Linux enablement never rewrites retained Windows CUDA identity bytes."""
+    payload = (project.ROOT / project.CUDA_TOOLCHAIN_MANIFEST).read_bytes()
+    assert hashlib.sha256(payload).hexdigest() == CUDA_WINDOWS_MANIFEST_SHA256
+
+
+def test_cuda_inspection_selects_linux_manifest_and_bundle(
+    tmp_path: Path,
+) -> None:
+    """Fedora readiness follows the indexed Linux manifest toolkit root."""
+    manifest_root = (tmp_path / project.CUDA_TOOLCHAIN_MANIFEST).parent
+    manifest_root.mkdir(parents=True)
+    _ = _write_platform_cuda_manifest(
+        tmp_path, WINDOWS_PLATFORM, "toolchain.json"
+    )
+    linux = _write_platform_cuda_manifest(
+        tmp_path, LINUX_PLATFORM, CUDA_LINUX_MANIFEST
+    )
+    _ = _write_cuda_manifest_index(tmp_path)
+    toolkit = tmp_path / CUDA_VERSION_ROOT
+    toolkit.mkdir(parents=True)
+
+    status = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+
+    assert linux.is_file()
+    assert status.state is project.ComponentState.READY
+    assert status.path == toolkit
 
 
 def test_cuda_inspection_requires_matching_platform_and_bundle(

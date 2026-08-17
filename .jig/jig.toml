@@ -539,7 +539,7 @@ selectors = ["prefix:tests/execution/fixtures/"]
 authority = "repository-contract-renderers"
 kind = "generated"
 # jig-ignore-next-line: indivisible reviewed identifier
-selectors = ["exact:src/interoperability/profile-compatibility/contract/profile-fingerprints.json", "exact:src/interoperability/profile-compatibility/contract/scalable-memory-evidence.json", "exact:src/optimization/accelerator/adapter-outbound/accelerator/cuda/ticket_admission_profiles.json", "exact:src/optimization/accelerator/adapter-outbound/accelerator/cuda/toolchain.json", "exact:src/research/algorithms/domain/algorithms/doom/quality/comparison/metrics.json", "exact:src/tooling/language-support/contract/grammar/syntaxes/malbolge.tmLanguage.json"]
+selectors = ["exact:src/interoperability/profile-compatibility/contract/profile-fingerprints.json", "exact:src/interoperability/profile-compatibility/contract/scalable-memory-evidence.json", "exact:src/optimization/accelerator/adapter-outbound/accelerator/cuda/ticket_admission_profiles.json", "exact:src/optimization/accelerator/adapter-outbound/accelerator/cuda/toolchain.json", "exact:src/optimization/accelerator/adapter-outbound/accelerator/cuda/toolchain-linux-x86_64.json", "exact:src/research/algorithms/domain/algorithms/doom/quality/comparison/metrics.json", "exact:src/tooling/language-support/contract/grammar/syntaxes/malbolge.tmLanguage.json"]
 
 [code_ownership.override.generated_dictionary_projections]
 authority = "repository-cspell-dictionary-renderer"

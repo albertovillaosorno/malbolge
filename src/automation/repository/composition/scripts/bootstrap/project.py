@@ -91,6 +91,10 @@ CUDA_TOOLCHAIN_MANIFEST: Final = (
     / "toolchain.json"
 )
 CUDA_TOOLCHAIN_SCHEMA_VERSION: Final = 1
+CUDA_TOOLCHAIN_INDEX: Final = CUDA_TOOLCHAIN_MANIFEST.with_name(
+    "toolchain-manifests.json"
+)
+CUDA_TOOLCHAIN_INDEX_SCHEMA_VERSION: Final = 1
 SYSTEM_NAMES: Final = {
     WINDOWS_SYSTEM: WINDOWS_SYSTEM,
     LINUX_SYSTEM: LINUX_SYSTEM,
@@ -269,15 +273,54 @@ def _toml_document(path: Path, label: str) -> dict[str, object]:
     return _mapping(parsed, label)
 
 
-def inspect_cuda(root: Path, platform_id: str) -> ComponentStatus:
-    """Inspect the tracked hermetic CUDA manifest for this host.
+def cuda_toolchain_manifest_path(
+    root: Path,
+    platform_id: str,
+) -> Path | None:
+    """Select the tracked CUDA package manifest for one normalized platform.
 
     Returns:
-        Ready, missing, or unsupported CUDA bundle status.
+        Platform manifest path, or ``None`` when the index has no such host.
 
     """
-    manifest_path = root / CUDA_TOOLCHAIN_MANIFEST
-    path: Path | None = manifest_path
+    index_path = root / CUDA_TOOLCHAIN_INDEX
+    if not index_path.is_file():
+        return root / CUDA_TOOLCHAIN_MANIFEST
+    document = _json_document(index_path, "CUDA toolchain manifest index")
+    schema_version = document.get("schema_version")
+    if (
+        type(schema_version) is not int
+        or schema_version != CUDA_TOOLCHAIN_INDEX_SCHEMA_VERSION
+    ):
+        _fail("unsupported CUDA toolchain manifest index schema")
+    platforms = _mapping(
+        document.get("platforms"),
+        "CUDA toolchain manifest index.platforms",
+    )
+    selected = platforms.get(platform_id)
+    if selected is None:
+        return None
+    entry = _mapping(
+        selected,
+        f"CUDA toolchain manifest index.platforms.{platform_id}",
+    )
+    manifest_name = _path_segment(
+        _required_string(
+            entry,
+            "manifest",
+            f"CUDA toolchain manifest index.platforms.{platform_id}",
+        ),
+        f"CUDA toolchain manifest index.platforms.{platform_id}.manifest",
+    )
+    return index_path.parent / manifest_name
+
+
+def _inspect_cuda_manifest(
+    root: Path,
+    manifest_path: Path,
+    platform_id: str,
+) -> ComponentStatus:
+    path = manifest_path
     if not manifest_path.is_file():
         detail = "tracked CUDA toolchain manifest is absent"
         state = ComponentState.MISSING
@@ -320,6 +363,24 @@ def inspect_cuda(root: Path, platform_id: str) -> ComponentStatus:
         path=path,
         state=state,
     )
+
+
+def inspect_cuda(root: Path, platform_id: str) -> ComponentStatus:
+    """Inspect the tracked hermetic CUDA manifest for this host.
+
+    Returns:
+        Ready, missing, or unsupported CUDA bundle status.
+
+    """
+    manifest_path = cuda_toolchain_manifest_path(root, platform_id)
+    if manifest_path is None:
+        return ComponentStatus(
+            detail=f"no tracked CUDA toolchain manifest for {platform_id}",
+            name="cuda",
+            path=None,
+            state=ComponentState.UNSUPPORTED,
+        )
+    return _inspect_cuda_manifest(root, manifest_path, platform_id)
 
 
 def _link_or_copy(source: str, destination: str) -> str:

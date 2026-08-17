@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "platforms": {
+    "windows-x86_64": {
+      "manifest": "toolchain.json",
+      "loader": "windll",
+      "driver_library": "nvcuda.dll",
+      "nvrtc_library": "bin/x64/nvrtc64_130_0.dll"
+    },
+    "linux-x86_64": {
+      "manifest": "toolchain-linux-x86_64.json",
+      "loader": "cdll",
+      "driver_library": "libcuda.so.1",
+      "nvrtc_library": "lib64/libnvrtc.so.13"
+    }
+  }
+}
