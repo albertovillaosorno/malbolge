@@ -42,12 +42,18 @@ import os
 from pathlib import Path
 import platform
 from typing import Final
+from typing import TYPE_CHECKING
 from typing import cast
 from typing import final
 
+from accelerator.cuda.toolchain import CudaToolchainSelectionError
+from accelerator.cuda.toolchain import select_cuda_toolchain
 from accelerator.exact_primitives import AcceleratorExecutionError
 from accelerator.exact_primitives import AcceleratorUnavailableError
 from accelerator.resource_budget import AcceleratorResources
+
+if TYPE_CHECKING:
+    from accelerator.cuda.toolchain import CudaToolchainSelection
 
 
 def _repository_root(start: Path) -> Path:
@@ -75,8 +81,6 @@ def _repository_root(start: Path) -> Path:
 
 
 ROOT: Final = _repository_root(Path(__file__))
-CUDA_TOOLKIT: Final = ROOT / ".dependencies" / "cuda" / "13.3.1" / "toolkit"
-NVRTC_DLL: Final = CUDA_TOOLKIT / "bin" / "x64" / "nvrtc64_130_0.dll"
 NVML_DLL: Final = (
     Path(os.environ.get("WINDIR", r"C:\Windows")) / "System32" / "nvml.dll"
 )
@@ -95,6 +99,7 @@ NVML_SUCCESS: Final = 0
 NVML_VERSION_BUFFER_BYTES: Final = 96
 _DISPLAY_DRIVER_MIN_COMPONENTS: Final = 2
 _WINDOWS_SYSTEM: Final = "Windows"
+_WINDOWS_LOADER_KIND: Final = "windll"
 THREADS_PER_BLOCK: Final = 256
 CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 1
 CUDA_ATTRIBUTE_MULTIPROCESSOR_COUNT: Final = 16
@@ -119,7 +124,18 @@ CUDA_EVENT_DEFAULT: Final = 0
 _CudaFn = Callable[..., int]
 type _NvmlBindings = tuple[_CudaFn, _CudaFn, _CudaFn]
 type _NvmlLoader = Callable[[Path], _NvmlBindings | None]
+type _LibraryLoader = Callable[[str], ctypes.CDLL]
+type _DllDirectoryOpener = Callable[[Path], object]
 type HostWords = ctypes.Array[ctypes.c_uint32]
+
+
+@dataclass(frozen=True, slots=True)
+class _LoadedCudaLibraries:
+    """Loaded Driver/NVRTC handles plus optional Windows search lifetime."""
+
+    driver: ctypes.CDLL
+    nvrtc: ctypes.CDLL
+    search_directory: object | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2142,8 +2158,8 @@ class CudaRuntime:
     _context: ctypes.c_void_p
     _device: int
     _dll_directory: object
-    _driver: ctypes.WinDLL
-    _nvrtc: ctypes.WinDLL
+    _driver: ctypes.CDLL
+    _nvrtc: ctypes.CDLL
     device_info: CudaDeviceInfo
     runtime_identity: CudaRuntimeIdentity
     host_memory: CudaHostMemoryRegistry
@@ -2205,21 +2221,23 @@ class CudaRuntime:
                 If toolkit, driver, or device is absent.
 
         """
-        _configure_toolkit_environment()
-        self._dll_directory = _add_cuda_dll_directory()
         try:
-            self._driver = ctypes.WinDLL("nvcuda.dll")
-            self._nvrtc = ctypes.WinDLL(str(NVRTC_DLL))
-        except OSError as error:
-            message = f"CUDA runtime DLL unavailable: {error}"
+            selection = select_cuda_toolchain(ROOT, _cuda_platform_id())
+        except CudaToolchainSelectionError as error:
+            message = f"CUDA toolchain unavailable: {error}"
             raise AcceleratorUnavailableError(message) from error
+        _configure_toolkit_environment(selection)
+        loaded = _load_cuda_libraries(selection)
+        self._dll_directory = loaded.search_directory
+        self._driver = loaded.driver
+        self._nvrtc = loaded.nvrtc
         self._bind_driver()
         self._bind_nvrtc()
         self._closed = False
         self.runtime_identity = measure_cuda_runtime_identity(
             self._cu_driver_get_version,
             self._nvrtc_version,
-            CUDA_TOOLCHAIN_MANIFEST,
+            selection.manifest_path,
             environment=CudaRuntimeEnvironment(
                 display_driver_version=measure_nvml_display_driver_version(),
                 host_runtime_identity=measure_cuda_host_runtime_identity(),
@@ -2658,12 +2676,81 @@ class CudaRuntime:
         )
 
 
-def _add_cuda_dll_directory() -> object:
+def _cuda_platform_id(
+    *,
+    system: str | None = None,
+    machine: str | None = None,
+) -> str:
+    operating_system = (system or platform.system()).strip().casefold()
+    architecture = _normalize_host_machine(
+        machine or platform.machine()
+    ).casefold()
+    return f"{operating_system}-{architecture}"
+
+
+def _windows_library_loader(name: str) -> ctypes.CDLL:
+    return ctypes.WinDLL(name)
+
+
+def _posix_library_loader(name: str) -> ctypes.CDLL:
+    return ctypes.CDLL(name)
+
+
+def _open_windows_dll_directory(path: Path) -> object:
+    return os.add_dll_directory(str(path))
+
+
+def _library_loader_and_search_directory(
+    selection: CudaToolchainSelection,
+    *,
+    windows_loader: _LibraryLoader | None,
+    posix_loader: _LibraryLoader | None,
+    dll_directory_opener: _DllDirectoryOpener | None,
+) -> tuple[_LibraryLoader, object | None]:
+    if selection.loader_kind != _WINDOWS_LOADER_KIND:
+        return posix_loader or _posix_library_loader, None
+    loader = windows_loader or _windows_library_loader
+    opener = dll_directory_opener or _open_windows_dll_directory
     try:
-        return os.add_dll_directory(str(CUDA_TOOLKIT / "bin" / "x64"))
-    except OSError as error:
+        search_directory = opener(selection.nvrtc_library.parent)
+    except (AttributeError, OSError) as error:
         message = f"CUDA DLL directory unavailable: {error}"
         raise AcceleratorUnavailableError(message) from error
+    return loader, search_directory
+
+
+def _load_cuda_libraries(
+    selection: CudaToolchainSelection,
+    *,
+    windows_loader: _LibraryLoader | None = None,
+    posix_loader: _LibraryLoader | None = None,
+    dll_directory_opener: _DllDirectoryOpener | None = None,
+) -> _LoadedCudaLibraries:
+    if not selection.toolkit_root.is_dir():
+        message = f"pinned CUDA toolkit missing: {selection.toolkit_root}"
+        raise AcceleratorUnavailableError(message)
+    if not selection.nvrtc_library.is_file():
+        message = (
+            f"pinned CUDA NVRTC library missing: {selection.nvrtc_library}"
+        )
+        raise AcceleratorUnavailableError(message)
+    loader, search_directory = _library_loader_and_search_directory(
+        selection,
+        windows_loader=windows_loader,
+        posix_loader=posix_loader,
+        dll_directory_opener=dll_directory_opener,
+    )
+    try:
+        driver = loader(selection.driver_library)
+        nvrtc = loader(str(selection.nvrtc_library))
+    except (AttributeError, OSError) as error:
+        message = f"CUDA runtime library unavailable: {error}"
+        raise AcceleratorUnavailableError(message) from error
+    return _LoadedCudaLibraries(
+        driver=driver,
+        nvrtc=nvrtc,
+        search_directory=search_directory,
+    )
 
 
 def cuda_host_runtime_identity_id() -> str:
@@ -2817,7 +2904,7 @@ def _decode_ascii(payload: bytes) -> str | None:
         return None
 
 
-def _bind_nvml(dll: ctypes.WinDLL) -> _NvmlBindings:
+def _bind_nvml(dll: ctypes.CDLL) -> _NvmlBindings:
     raw_init = dll.nvmlInit_v2
     raw_init.argtypes = []
     raw_init.restype = ctypes.c_int
@@ -2897,14 +2984,14 @@ def _validate_sha256(digest: str) -> None:
         raise AcceleratorUnavailableError(message)
 
 
-def _bind_driver_version(dll: ctypes.WinDLL) -> _CudaFn:
+def _bind_driver_version(dll: ctypes.CDLL) -> _CudaFn:
     raw = dll.cuDriverGetVersion
     raw.argtypes = [ctypes.POINTER(ctypes.c_int)]
     raw.restype = ctypes.c_int
     return cast("_CudaFn", raw)
 
 
-def _bind_driver_context(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
+def _bind_driver_context(dll: ctypes.CDLL) -> tuple[_CudaFn, ...]:
     raw_init = dll.cuInit
     raw_init.argtypes = [ctypes.c_uint]
     raw_init.restype = ctypes.c_int
@@ -2958,7 +3045,7 @@ def _bind_driver_context(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     )
 
 
-def _bind_driver_memory(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
+def _bind_driver_memory(dll: ctypes.CDLL) -> tuple[_CudaFn, ...]:
     raw_alloc = dll.cuMemAlloc_v2
     raw_alloc.argtypes = [ctypes.POINTER(ctypes.c_uint64), ctypes.c_size_t]
     raw_alloc.restype = ctypes.c_int
@@ -3005,7 +3092,7 @@ def _bind_driver_memory(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     )
 
 
-def _bind_driver_event(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
+def _bind_driver_event(dll: ctypes.CDLL) -> tuple[_CudaFn, ...]:
     raw_create = dll.cuEventCreate
     raw_create.argtypes = [
         ctypes.POINTER(ctypes.c_void_p),
@@ -3040,7 +3127,7 @@ def _bind_driver_event(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     )
 
 
-def _bind_driver_module(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
+def _bind_driver_module(dll: ctypes.CDLL) -> tuple[_CudaFn, ...]:
     raw_load = dll.cuModuleLoadData
     raw_load.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p]
     raw_load.restype = ctypes.c_int
@@ -3075,7 +3162,7 @@ def _bind_driver_module(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
     )
 
 
-def _bind_driver_stream(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
+def _bind_driver_stream(dll: ctypes.CDLL) -> tuple[_CudaFn, ...]:
     raw_create = dll.cuStreamCreate
     raw_create.argtypes = [
         ctypes.POINTER(ctypes.c_void_p),
@@ -3283,7 +3370,7 @@ def _release_ordered_dtoh_streams(
     return failure
 
 
-def _bind_nvrtc(dll: ctypes.WinDLL) -> tuple[_CudaFn, ...]:
+def _bind_nvrtc(dll: ctypes.CDLL) -> tuple[_CudaFn, ...]:
     raw_version = dll.nvrtcVersion
     raw_version.argtypes = [
         ctypes.POINTER(ctypes.c_int),
@@ -3355,15 +3442,15 @@ def _check_nvrtc(result: int, operation: str) -> None:
         raise AcceleratorExecutionError(message)
 
 
-def _configure_toolkit_environment() -> None:
-    if not CUDA_TOOLKIT.is_dir() or not NVRTC_DLL.is_file():
-        message = f"pinned CUDA toolkit missing: {CUDA_TOOLKIT}"
-        raise AcceleratorUnavailableError(message)
-    os.environ["CUDA_PATH"] = str(CUDA_TOOLKIT)
-    bin_path = CUDA_TOOLKIT / "bin"
-    x64_path = bin_path / "x64"
+def _configure_toolkit_environment(
+    selection: CudaToolchainSelection,
+) -> None:
+    os.environ["CUDA_PATH"] = str(selection.toolkit_root)
+    if selection.loader_kind != _WINDOWS_LOADER_KIND:
+        return
+    bin_path = selection.toolkit_root / "bin"
     os.environ["PATH"] = os.pathsep.join((
         str(bin_path),
-        str(x64_path),
+        str(selection.nvrtc_library.parent),
         os.environ.get("PATH", ""),
     ))
