@@ -29,8 +29,10 @@ channels are observations only; bootstrap does not download them.
 
 Jig consumes only repository-local validation aliases. Linux Rust linking
 receives a generated `cc` adapter that names the observed host linker explicitly
-instead of restoring ambient `PATH` lookup. Windows keeps its native executable
-layout behind the same neutral Jig-facing paths where applicable.
+instead of restoring ambient `PATH` lookup. Jig-facing Cargo aliases replace a
+validator-supplied target-linker environment value with that repository-local
+adapter before entering native Cargo or Clippy. Windows keeps its native
+executable layout behind the same neutral Jig-facing paths where applicable.
 
 ## Invariants
 
@@ -49,8 +51,8 @@ layout behind the same neutral Jig-facing paths where applicable.
 Version mismatch, incomplete prior imports, missing required files, invalid
 helper directories, or absent supported host tools fail closed or remain
 reported as missing. Bootstrap never silently substitutes a different Rustup
-channel, invokes `rustup which` for an uninstalled channel, or promotes the Linux
-host linker to hermetic package authority.
+channel, invokes `rustup which` for an uninstalled channel, or promotes the
+Linux host linker to hermetic package authority.
 
 ## Verification
 
@@ -64,5 +66,7 @@ acceptance evidence.
 ## References
 
 - [Verification trust boundary](../adr/verification-trust-boundary.md)
+<!-- jig-ignore-next-line: canonical documentation path is indivisible -->
 - [Repository responsibility model](../architecture/repository-responsibility-model.md)
+<!-- jig-ignore-next-line: canonical documentation path is indivisible -->
 - [CUDA Linux runtime and toolchain](../integrations/accelerators/cuda-linux-runtime-and-toolchain.md)

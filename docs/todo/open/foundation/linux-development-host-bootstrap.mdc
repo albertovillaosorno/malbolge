@@ -34,7 +34,9 @@ run Jig without inheriting Windows executable paths or ambient PATH authority.
 - Bootstrap imports already-installed pinned Rustup stable/nightly toolchains to
   repository-local neutral aliases without downloading missing channels.
 - Linux Rust imports receive an explicit repository-local `cc` adapter bound to
-  the observed host linker; Windows imports retain their native behavior.
+  the observed host linker. Jig-facing Cargo aliases replace target-linker
+  environment selection with that adapter; Windows imports retain native
+  behavior.
 - Matching host Git is imported with its helper runtime under
   `.dependencies/git/<version>/`, using one neutral `git.bin` authority path.
 - Repository-local Cargo home creation and Jig tool paths no longer require the
