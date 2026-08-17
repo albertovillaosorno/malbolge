@@ -1,14 +1,13 @@
 ---
 id: "cuda-linux-runtime-and-hermetic-toolchain"
-status: "pending"
-lane: "9"
-priority: "p2"
+status: "active"
+lane: "4"
+priority: "p0"
 area: "accelerator"
 task: "TODO - CUDA Linux runtime and hermetic toolchain"
 contract: "docs/technical/integrations/accelerators/cuda-linux-runtime-and-toolchain.md"
 depends_on:
   - "linux-development-host-bootstrap"
-  - "cuda-exact-vm-adapter"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md"
