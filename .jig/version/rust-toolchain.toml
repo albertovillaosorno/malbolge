@@ -8,6 +8,6 @@
 # Nightly is the validation channel because the strictest lints and the
 # rustfmt options this repository requires exist only there.
 [toolchain]
-channel = "stable-1.97.1-x86_64-pc-windows-gnu"
+channel = "1.97.1"
 components = ["clippy", "rustfmt"]
 profile = "minimal"

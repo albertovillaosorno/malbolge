@@ -51,7 +51,7 @@ if TYPE_CHECKING:
 CUDA_VERSION_ROOT = ".dependencies/cuda/13.3.1/toolkit"
 WINDOWS_PLATFORM = "windows-x86_64"
 LINUX_PLATFORM = "linux-x86_64"
-WINDOWS_CHANNEL = "stable-1.97.1-x86_64-pc-windows-gnu"
+RUST_CHANNEL = "1.97.1"
 WINDOWS_PYTHON = "python.exe"
 WINDOWS_PYTHON_LAUNCHER = "python-jig.cmd"
 WINDOWS_PYTEST = "pytest.exe"
@@ -86,7 +86,7 @@ def _write_cuda_manifest(root: Path, platform_id: str) -> Path:
     return manifest
 
 
-def _write_rust_manifest(root: Path, channel: str = WINDOWS_CHANNEL) -> Path:
+def _write_rust_manifest(root: Path, channel: str = RUST_CHANNEL) -> Path:
     manifest = root / ".jig/version/rust-toolchain.toml"
     manifest.parent.mkdir(parents=True)
     _ = manifest.write_text(
@@ -497,16 +497,24 @@ def test_rust_inspection_rejects_drive_relative_channel(
         _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
 
 
-def test_rust_inspection_rejects_windows_channel_on_linux(
+def test_rust_inspection_uses_host_native_executable_name(
     tmp_path: Path,
 ) -> None:
-    """A Windows GNU Rust channel never becomes Linux-ready by inference."""
+    """One version-only channel resolves native Cargo names on each host."""
     _ = _write_rust_manifest(tmp_path)
+    linux_cargo = (
+        tmp_path / ".dependencies" / "rust" / RUST_CHANNEL / "bin" / "cargo"
+    )
+    linux_cargo.parent.mkdir(parents=True)
+    linux_cargo.touch()
 
-    status = project.inspect_rust(tmp_path, LINUX_PLATFORM)
+    linux = project.inspect_rust(tmp_path, LINUX_PLATFORM)
+    windows = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
 
-    assert status.state is project.ComponentState.UNSUPPORTED
-    assert WINDOWS_CHANNEL in status.detail
+    assert linux.state is project.ComponentState.READY
+    assert linux.path == linux_cargo
+    assert windows.state is project.ComponentState.MISSING
+    assert windows.path == tmp_path / ".jig/version/rust-toolchain.toml"
 
 
 def test_local_directory_initialization_is_idempotent(tmp_path: Path) -> None:

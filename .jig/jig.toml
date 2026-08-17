@@ -393,7 +393,7 @@ template = "{version}"
 kind = "toml"
 path = ".jig/version/rust-toolchain.toml"
 selector = "toolchain.channel"
-template = "stable-{version}-x86_64-pc-windows-gnu"
+template = "{version}"
 
 [version.rustfmt-nightly]
 current = "1.9.0-nightly"
