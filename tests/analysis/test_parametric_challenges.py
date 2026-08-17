@@ -95,7 +95,7 @@ _SORT_REDUCE_IF_STATEMENTS = 1
 _SORT_REDUCE_SWAP_MARKER = "if (left > right)"
 _FORBIDDEN_PUTCHAR = "putchar"
 _FORBIDDEN_STDIO = "<stdio.h>"
-_CLANG = _ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
+_CLANG = _ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
 _FRONTEND_RESOURCE_DIR = _ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
 _GUEST_INCLUDE = _ROOT / "src/runtime/guest-c-library/contract/include"
 _WINDOWS_OS_NAME = "nt"
@@ -573,7 +573,7 @@ def test_manifest_binds_identity_hashes_and_oracle(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME or not _CLANG.is_file(),
+    not _CLANG.is_file(),
     reason="repository-pinned native Clang is unavailable",
 )
 @pytest.mark.parametrize("family", _FAMILIES)
@@ -1130,7 +1130,7 @@ def _assert_native_oracle(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME or not _CLANG.is_file(),
+    not _CLANG.is_file(),
     reason="repository-pinned native Clang is unavailable",
 )
 @pytest.mark.parametrize(

@@ -450,17 +450,12 @@ fn repository_zig() -> Option<PathBuf> {
 }
 
 fn repository_clang() -> Option<PathBuf> {
-    let executable_name = if cfg!(windows) {
-        "clang.exe"
-    } else {
-        "clang"
-    };
     let candidate = repository_root()?
         .join(".dependencies")
         .join("llvm")
         .join(LLVM_VERSION)
-        .join("bin")
-        .join(executable_name);
+        .join("jig-bin")
+        .join("clang.bin");
     candidate.is_file().then_some(candidate)
 }
 

@@ -48,7 +48,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ABI_PATH = ROOT / "docs/technical/specification/c-abi-v1.json"
 ACCEPTED = ROOT / "tests/tidy/accepted"
 REJECTED = ROOT / "tests/tidy/rejected"
-CLANG_TIDY = ROOT / ".dependencies/llvm/22.1.8/bin/clang-tidy.exe"
+CLANG_TIDY = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang-tidy.bin"
 VALIDATOR = (
     ROOT / "src/automation/repository/composition/scripts/validate/main.py"
 )

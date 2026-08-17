@@ -52,7 +52,7 @@ from scripts.validate import c_abi
 
 ROOT = repository_root(Path(__file__))
 PINNED_LLVM_VERSION = "22.1.8"
-PINNED_CLANG = ROOT / ".dependencies/llvm/22.1.8/bin/clang.exe"
+PINNED_CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
 GUEST_LIBC_INCLUDE = (
     ROOT / "src/runtime/guest-c-library/contract/include"
 )
