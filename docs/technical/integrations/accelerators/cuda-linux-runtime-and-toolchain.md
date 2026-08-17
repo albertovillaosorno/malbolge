@@ -25,33 +25,43 @@ reference path.
 
 ## Current Behavior
 
-The active CUDA runtime is Windows x86-64 specific. It loads the Driver API with
-`ctypes.WinDLL("nvcuda.dll")`, loads a versioned NVRTC `.dll`, and annotates the
-binding surface with `ctypes.WinDLL`. The runtime also constructs the toolkit
-root
-from `.dependencies/cuda/13.3.1/toolkit` instead of resolving it from a selected
-platform manifest.
+The CUDA runtime now selects one exact tracked platform contract before native
+loading. Windows x86-64 retains the existing byte-identical `toolchain.json`,
+`ctypes.WinDLL`, `nvcuda.dll`, versioned NVRTC DLL, and DLL-directory lifetime.
+Linux x86-64 selects a separate CUDA 13.3.1 manifest, `ctypes.CDLL`, the host
+Driver API soname `libcuda.so.1`, and repository-local versioned NVRTC ELF
+libraries. Linux preloads the manifest-declared
+`libnvrtc-builtins.so.13.3` through `RTLD_GLOBAL` before NVRTC because the
+published NVRTC ELF does not carry
+an RPATH/RUNPATH for that required companion library.
 
-`src/optimization/accelerator/adapter-outbound/accelerator/cuda/toolchain.json`
-correctly pins CUDA 13.3 Update 1 package paths,
-versions, sizes, and SHA-256 values, but its only platform is
-`windows-x86_64`. The repository Rust channel, Jig launcher, and Pyright
-platform
-configuration also contain unconditional Windows identities.
+The bootstrap has an explicit `--provision-cuda` operation. It downloads only
+the package identities in the selected host manifest, validates tracked byte
+size and SHA-256 before extraction, rejects archive traversal, stages inside the
+repository, and atomically publishes a completion-marker-bound toolkit. Normal
+bootstrap remains offline with respect to CUDA and reports a missing toolkit
+instead of installing one implicitly. The current Linux package surface is the
+NVIDIA CUDA 13.3.1 NVRTC 13.3.33 redistributable; the installed host driver is a
+runtime capability and is not copied into `.dependencies`.
 
-`src/automation/repository/composition/scripts/bootstrap/project.py` is now a
-platform-aware checkout entrypoint. It
-creates ignored local state, provisions native Windows or POSIX Python
-launchers,
-and reports a mismatched CUDA or Rust manifest as unsupported. This diagnostic
-behavior is not Linux CUDA runtime support.
+Live Fedora evidence at pre-documentation commit `bc2ebf7b` constructs the
+exact adapter on an NVIDIA GeForce RTX 4060 (`sm_89`). The measured identity is
+display driver `610.57.04`, Driver API `13030`, NVRTC `13.3`, CPython `3.14.6`,
+and Linux toolchain-manifest SHA-256
+`deaa908864ba3e3f85def6e983aa66d3d30892598423feddb9e9a006bd0491a7`.
+The CUDA/runtime/bootstrap slice passes 185 tests with only five explicit
+Windows-retained-evidence skips, while a representative exact CPU/CUDA
+comparison set passes 113 tests. These are correctness/support observations;
+there is no Linux performance claim and retained Windows ticket-admission timing
+profiles remain Windows-specific.
 
-The Linux port is an active lane-4 P0 blocker because accelerator-backed
-compiler work on the current development host requires the existing CUDA
-adapter to load there. Completion of the broader `cuda-exact-vm-adapter` TODO
-is deliberately not a prerequisite: that TODO owns additional semantics,
-scaling, and performance work, while this contract owns the platform/toolchain
-boundary needed to run its existing implementation on Linux.
+The remaining P0 work is the shared LLVM development-toolchain surface. Fedora
+provides Clang, clang-tidy, and clang-format 22.1.8, but repository validation
+still contains Windows-only `.dependencies/llvm/22.1.8/bin/*.exe` authority
+in multiple C/LLVM paths. The P0 therefore remains active until LLVM admission
+and
+shared validation paths are platform-neutral; CUDA runtime execution itself is
+no longer the blocker.
 
 ## Invariants
 

@@ -57,25 +57,41 @@ fallback, verifier authority, and existing Windows support.
 
 ## Evidence
 
-- Current limitation:
-  `src/optimization/accelerator/adapter-outbound/accelerator/cuda/runtime.py`
-  uses `ctypes.WinDLL`,
-  `nvcuda.dll`, a versioned NVRTC `.dll`, and a literal
-  `.dependencies/cuda/13.3.1/toolkit` root.
-- Current manifest:
-<!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
-  `src/optimization/accelerator/adapter-outbound/accelerator/cuda/toolchain.json`
-  is exact and reproducible but
-  only declares `windows-x86_64`.
-- Active preparation:
-  `src/automation/repository/composition/scripts/bootstrap/project.py`
-  normalizes host identity,
-  provisions Windows or POSIX Python launchers, and reports platform-mismatched
-  CUDA/Rust toolchains as unsupported rather than guessing.
+- Linux CUDA runtime support is now live on the current Fedora x86-64 host.
+  Platform selection preserves the byte-exact Windows manifest while adding a
+  separate Linux CUDA 13.3.1 manifest. Windows keeps `WinDLL`/`nvcuda.dll`;
+  Linux uses `CDLL`/`libcuda.so.1`, repository-local NVRTC, and an explicit
+  tracked `libnvrtc-builtins.so.13.3` preload because NVIDIA's NVRTC ELF carries
+  no runtime search path to its companion builtins library.
+- Explicit `--provision-cuda` bootstrap materializes only the selected tracked
+  redistributables after exact size/SHA-256 validation. Ordinary bootstrap does
+  not download CUDA. The Linux NVRTC 13.3.33 package is pinned at 69,662,780
+  archive bytes with SHA-256
+  `9e8f78278215babd1236b137252424ca7912c185bd093201f5d97f7dd763b74a`;
+  completion is marker-bound and repeated provisioning reuses the admitted
+  toolkit without another download.
+- Live support evidence at commit `bc2ebf7b` binds an NVIDIA GeForce RTX 4060
+  (`sm_89`), display driver `610.57.04`, Driver API `13030`, NVRTC `13.3`,
+  CPython `3.14.6`, and Linux manifest SHA-256
+  `deaa908864ba3e3f85def6e983aa66d3d30892598423feddb9e9a006bd0491a7`.
+  The broad CUDA/runtime/bootstrap slice passes 185 tests with five explicit
+  Windows-retained-evidence skips; a separate representative exact CPU/CUDA
+  differential set passes 113 tests. No Linux performance claim is made and
+  retained Windows ticket-routing timings are never generalized to Fedora.
+- Windows manifest SHA-256 remains
+  `b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e`;
+  deterministic Windows loader tests remain active even when live Windows
+  hardware is unavailable on the Linux host.
+- Remaining P0 blocker: shared LLVM/Clang 22.1.8 validation paths still encode
+  Windows executable names such as `clang.exe`, `clang-tidy.exe`, and
+  `clang-format.exe`. Fedora already supplies exact Clang 22.1.8, but it has not
+  yet been admitted through a repository-local platform-neutral LLVM toolchain
+  contract. The P0 remains active until that shared validation/toolchain surface
+  stops assuming Windows and the final exhaustive Jig gate passes with the
+  admitted Linux paths.
 - Required durable artifacts: platform loader tests, Linux CUDA package
-  manifest,
-  native toolchain resolution, exact fallback tests, and retained Linux device
-  evidence.
+  manifest, native toolchain resolution, exact fallback tests, and retained
+  Linux device evidence.
 - Foundation completion evidence: `linux-development-host-bootstrap` and
   `documentation-readiness-and-implementation-gate`. The active
   `cuda-exact-vm-adapter` supplies the implementation surface being ported but

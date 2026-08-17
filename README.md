@@ -45,8 +45,9 @@ pinned NVIDIA redistributables, verifies exact size and SHA-256, and publishes
 them under `.dependencies/cuda/`. Ordinary initialization continues to download
 only the standalone uv bootstrap executable; optional Rust and LLVM components
 remain diagnostic and are never downloaded implicitly. CUDA 13.3.1 now has
-separate Windows and Linux x86-64 package manifests while live Linux runtime
-validation remains part of the active CUDA P0.
+separate Windows and Linux x86-64 package manifests. The Linux runtime is live
+with repository-local NVRTC; the active CUDA P0 remains open for the shared
+platform-neutral LLVM/validation toolchain surface.
 
 ## Semantic authority
 
