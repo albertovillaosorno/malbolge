@@ -1,48 +1,113 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "llvm_version": "22.1.8",
   "release_tag": "llvmorg-22.1.8",
-  "platform": "windows-x86_64",
-  "development_asset": {
-    "name": "clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz",
-    "size_bytes": 862053924,
-    "sha256": [
-      "d96c2cc1736f4eb7fa43cb9bbdf56d93",
-      "551a9ae0a9aadb9c99c3c3b2b712a234"
-    ]
-  },
   "runtime_root": ".dependencies/llvm/22.1.8",
   "development_root": ".dependencies/llvm-dev/22.1.8",
-  "required_runtime_files": [
-    "bin/clang.exe",
-    "bin/clang++.exe",
-    "bin/clang-cl.exe",
-    "bin/clang-tidy.exe",
-    "bin/llvm-readobj.exe",
-    "lib/clang/22/include/limits.h"
-  ],
-  "required_development_files": [
-    "bin/llvm-tblgen.exe",
-    "include/clang-tidy/ClangTidyCheck.h",
-    "include/clang-tidy/ClangTidyModule.h",
-    "include/clang-tidy/tool/ClangTidyMain.h",
-    "include/llvm/Support/Registry.h",
-    "lib/clangAST.lib",
-    "lib/clangASTMatchers.lib",
-    "lib/clangBasic.lib",
-    "lib/clangTidy.lib",
-    "lib/clangTidyMain.lib",
-    "lib/cmake/clang/ClangConfig.cmake",
-    "lib/cmake/llvm/LLVMConfig.cmake"
-  ],
   "plugin_output_root": ".dependencies/tools-tidy/22.1.8",
-  "windows_plugin_strategy": "project-host-registry-bridge-v1",
-  "registry_bridge_export": "malbolge_tidy_register_node",
   "plugin_checks": [
     "malbolge-abi-bit-field",
     "malbolge-abi-packed-layout",
     "malbolge-abi-pragma-pack",
     "malbolge-abi-over-alignment",
     "malbolge-abi-type-surface"
-  ]
+  ],
+  "platforms": {
+    "windows-x86_64": {
+      "development_provider": "llvm-release-archive-v1",
+      "development_assets": [
+        {
+          "name": "clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz",
+          "size_bytes": 862053924,
+          "sha256": [
+            "d96c2cc1736f4eb7fa43cb9bbdf56d93",
+            "551a9ae0a9aadb9c99c3c3b2b712a234"
+          ]
+        }
+      ],
+      "required_runtime_files": [
+        "bin/clang.exe",
+        "bin/clang++.exe",
+        "bin/clang-cl.exe",
+        "bin/clang-tidy.exe",
+        "bin/llvm-readobj.exe",
+        "lib/clang/22/include/limits.h"
+      ],
+      "required_development_files": [
+        "bin/llvm-tblgen.exe",
+        "include/clang-tidy/ClangTidyCheck.h",
+        "include/clang-tidy/ClangTidyModule.h",
+        "include/clang-tidy/tool/ClangTidyMain.h",
+        "include/llvm/Support/Registry.h",
+        "lib/clangAST.lib",
+        "lib/clangASTMatchers.lib",
+        "lib/clangBasic.lib",
+        "lib/clangTidy.lib",
+        "lib/clangTidyMain.lib",
+        "lib/cmake/clang/ClangConfig.cmake",
+        "lib/cmake/llvm/LLVMConfig.cmake"
+      ],
+      "plugin_strategy": "project-host-registry-bridge-v1",
+      "registry_bridge_export": "malbolge_tidy_register_node",
+      "clang": "bin/clang.exe",
+      "clang_cl": "bin/clang-cl.exe",
+      "clang_tidy": "bin/clang-tidy.exe",
+      "llvm_readobj": "bin/llvm-readobj.exe",
+      "plugin_host_root": "output",
+      "plugin_host": "bin/malbolge-clang-tidy.exe",
+      "plugin_library": "bin/malbolge-tidy.dll"
+    },
+    "linux-x86_64": {
+      "development_provider": "fedora-rpm-set-v1",
+      "development_assets": [
+        {
+          "name": "clang-devel-22.1.8-4.fc44.x86_64.rpm",
+          "size_bytes": 4239048,
+          "sha256": [
+            "3f2e18cc4d5b8dd6e3d986b53d9e422a",
+            "d709a8421d7bbcab34c08fe7cf0166ce"
+          ]
+        },
+        {
+          "name": "clang-tools-extra-devel-22.1.8-4.fc44.x86_64.rpm",
+          "size_bytes": 326651,
+          "sha256": [
+            "10e950ff5fae5544887231d307230eb8d",
+            "aa1e1097659089bbe896240f3c7a5c9"
+          ]
+        },
+        {
+          "name": "llvm-devel-22.1.8-4.fc44.x86_64.rpm",
+          "size_bytes": 5958784,
+          "sha256": [
+            "c22b616026fab232529c678624760bca9",
+            "3ad429329c3cee4d1495b6db632f0e3"
+          ]
+        }
+      ],
+      "required_runtime_files": [
+        "jig-bin/clang.bin",
+        "jig-bin/clang-tidy.bin",
+        "lib/libclang-cpp.so.22.1",
+        "lib/libLLVM.so.22.1",
+        "lib/clang/22/include/limits.h"
+      ],
+      "required_development_files": [
+        "include/clang-tidy/ClangTidyCheck.h",
+        "include/clang-tidy/ClangTidyModule.h",
+        "include/clang-tidy/tool/ClangTidyMain.h",
+        "include/llvm/Support/Registry.h",
+        "include/clang/AST/AST.h"
+      ],
+      "plugin_strategy": "upstream-host-loadable-module-v1",
+      "registry_bridge_export": null,
+      "clang": "jig-bin/clang.bin",
+      "clang_cl": "jig-bin/clang.bin",
+      "clang_tidy": "jig-bin/clang-tidy.bin",
+      "llvm_readobj": null,
+      "plugin_host_root": "runtime",
+      "plugin_host": "jig-bin/clang-tidy.bin",
+      "plugin_library": "bin/malbolge-tidy.so"
+    }
+  }
 }

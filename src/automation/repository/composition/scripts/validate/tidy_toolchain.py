@@ -23,7 +23,7 @@
 # - Summary:
 #   - Validate the pinned clang-tidy development toolchain.
 # - Description:
-#   - Binds plugin development to one reviewed LLVM release artifact and roots.
+#   - Binds plugin development to reviewed LLVM 22.1.8 platform artifacts.
 # - Usage:
 #   - Run as `python -m scripts.validate.tidy_toolchain` from the repository.
 # - Defaults:
@@ -62,13 +62,16 @@ MANIFEST: Final = (
     / "contract"
     / "llvm-clang-tidy-toolchain.json"
 )
-SCHEMA_VERSION: Final = 1
+SCHEMA_VERSION: Final = 2
 LLVM_VERSION: Final = "22.1.8"
 RELEASE_TAG: Final = f"llvmorg-{LLVM_VERSION}"
 WINDOWS_SYSTEM: Final = "windows"
+LINUX_SYSTEM: Final = "linux"
 WINDOWS_PLATFORM: Final = "windows-x86_64"
+LINUX_PLATFORM: Final = "linux-x86_64"
 PARENT_SEGMENT: Final = ".."
 WINDOWS_PLUGIN_STRATEGY: Final = "project-host-registry-bridge-v1"
+LINUX_PLUGIN_STRATEGY: Final = "upstream-host-loadable-module-v1"
 REGISTRY_BRIDGE_EXPORT: Final = "malbolge_tidy_register_node"
 PLUGIN_CHECKS: Final = (
     "malbolge-abi-bit-field",
@@ -84,23 +87,47 @@ TOP_LEVEL_KEYS: Final = frozenset(
         "schema_version",
         "llvm_version",
         "release_tag",
-        "platform",
-        "development_asset",
         "runtime_root",
         "development_root",
+        "plugin_output_root",
+        "plugin_checks",
+        "platforms",
+    }
+)
+PLATFORM_KEYS: Final = frozenset(
+    {
+        "development_provider",
+        "development_assets",
         "required_runtime_files",
         "required_development_files",
-        "plugin_output_root",
-        "windows_plugin_strategy",
+        "plugin_strategy",
         "registry_bridge_export",
-        "plugin_checks",
+        "clang",
+        "clang_cl",
+        "clang_tidy",
+        "llvm_readobj",
+        "plugin_host_root",
+        "plugin_host",
+        "plugin_library",
     }
 )
 ASSET_KEYS: Final = frozenset({"name", "size_bytes", "sha256"})
+PLUGIN_HOST_RUNTIME: Final = "runtime"
+PLUGIN_HOST_OUTPUT: Final = "output"
+PLUGIN_HOST_ROOTS: Final = frozenset({PLUGIN_HOST_RUNTIME, PLUGIN_HOST_OUTPUT})
 
 
 class ToolchainError(RuntimeError):
     """Tracked LLVM development identity is malformed or unavailable."""
+
+
+@dataclass(frozen=True, slots=True)
+class DevelopmentAsset:
+    """One exact immutable development-package byte identity."""
+
+    name: str
+    sha256: str
+    size_bytes: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,47 +137,62 @@ class ToolchainIdentity:
     asset_name: str
     asset_sha256: str
     asset_size_bytes: int
+    development_assets: tuple[DevelopmentAsset, ...]
+    development_provider: str
     development_root: Path
     llvm_version: str
     platform_id: str
     plugin_checks: tuple[str, ...]
+    plugin_host_path: Path
+    plugin_library_path: Path
     plugin_output_root: Path
-    registry_bridge_export: str
+    plugin_strategy: str
+    registry_bridge_export: str | None
     release_tag: str
     required_development_files: tuple[Path, ...]
     required_runtime_files: tuple[Path, ...]
+    runtime_clang: Path
+    runtime_clang_cl: Path
+    runtime_clang_tidy: Path
+    runtime_llvm_readobj: Path | None
     runtime_root: Path
-    windows_plugin_strategy: str
+
+    @property
+    def windows_plugin_strategy(self) -> str:
+        """Legacy Windows strategy accessor retained for existing callers."""
+        return self.plugin_strategy
 
     @property
     def clang(self) -> Path:
-        """Pinned Clang frontend executable."""
-        return self.runtime_root / "bin" / "clang.exe"
+        """Pinned platform Clang frontend executable."""
+        return self.runtime_clang
 
     @property
     def clang_cl(self) -> Path:
-        """Pinned MSVC-compatible Clang compiler executable."""
-        return self.runtime_root / "bin" / "clang-cl.exe"
+        """Pinned compiler executable used by the platform build."""
+        return self.runtime_clang_cl
 
     @property
     def clang_tidy(self) -> Path:
         """Upstream pinned clang-tidy executable."""
-        return self.runtime_root / "bin" / "clang-tidy.exe"
+        return self.runtime_clang_tidy
 
     @property
     def plugin_host(self) -> Path:
-        """Canonical project-owned clang-tidy host path."""
-        return self.plugin_output_root / "bin" / "malbolge-clang-tidy.exe"
+        """Canonical clang-tidy process used to load the project plugin."""
+        return self.plugin_host_path
 
     @property
     def plugin_library(self) -> Path:
         """Canonical Malbolge clang-tidy plugin path."""
-        return self.plugin_output_root / "bin" / "malbolge-tidy.dll"
+        return self.plugin_library_path
 
     @property
     def llvm_readobj(self) -> Path:
-        """Pinned COFF inspection executable."""
-        return self.runtime_root / "bin" / "llvm-readobj.exe"
+        """Pinned COFF inspection executable for the Windows plugin strategy."""
+        if self.runtime_llvm_readobj is None:
+            _fail("LLVM readobj is unavailable for this platform")
+        return self.runtime_llvm_readobj
 
 
 def _fail(message: str) -> Never:
@@ -213,6 +255,19 @@ def _string(document: dict[str, object], key: str, label: str) -> str:
     return value
 
 
+def _optional_string(
+    document: dict[str, object],
+    key: str,
+    label: str,
+) -> str | None:
+    value = document.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        _fail(f"{label}.{key} must be null or a nonempty string")
+    return value
+
+
 def _positive_int(document: dict[str, object], key: str, label: str) -> int:
     value = document.get(key)
     if type(value) is not int or value <= 0:
@@ -251,12 +306,12 @@ def _relative_files(value: object, label: str) -> tuple[Path, ...]:
     )
 
 
-def _sha256(value: object) -> str:
-    digest = "".join(_string_list(value, "development_asset.sha256"))
+def _sha256(value: object, label: str) -> str:
+    digest = "".join(_string_list(value, f"{label}.sha256"))
     if len(digest) != SHA256_HEX_LENGTH or any(
         character not in LOWER_HEX for character in digest
     ):
-        _fail("development_asset.sha256 must be lowercase SHA-256")
+        _fail(f"{label}.sha256 must be lowercase SHA-256")
     return digest
 
 
@@ -273,47 +328,35 @@ def host_platform_id(
     """
     observed_system = (system or platform.system()).strip().lower()
     observed_machine = (machine or platform.machine()).strip().lower()
-    is_windows = observed_system == WINDOWS_SYSTEM
     is_x86_64 = observed_machine in {"amd64", "x86_64"}
-    if is_windows and is_x86_64:
+    if is_x86_64 and observed_system == WINDOWS_SYSTEM:
         return WINDOWS_PLATFORM
+    if is_x86_64 and observed_system == LINUX_SYSTEM:
+        return LINUX_PLATFORM
     return f"{observed_system or 'unknown'}-{observed_machine or 'unknown'}"
 
 
-@dataclass(frozen=True, slots=True)
-class _ReviewedContract:
-    llvm_version: str
-    release_tag: str
-    platform_id: str
-    strategy: str
-    bridge: str
-    checks: tuple[str, ...]
-
-
-def _reviewed_contract(document: dict[str, object]) -> _ReviewedContract:
+def _review_common_contract(document: dict[str, object]) -> None:
     if document.get("schema_version") != SCHEMA_VERSION:
         _fail("unsupported clang-tidy toolchain manifest schema")
-    contract = _ReviewedContract(
-        llvm_version=_string(document, "llvm_version", "toolchain"),
-        release_tag=_string(document, "release_tag", "toolchain"),
-        platform_id=_string(document, "platform", "toolchain"),
-        strategy=_string(document, "windows_plugin_strategy", "toolchain"),
-        bridge=_string(document, "registry_bridge_export", "toolchain"),
-        checks=_string_list(document.get("plugin_checks"), "plugin_checks"),
-    )
     expected = (
-        ("llvm_version", contract.llvm_version, LLVM_VERSION),
-        ("release_tag", contract.release_tag, RELEASE_TAG),
-        ("platform", contract.platform_id, WINDOWS_PLATFORM),
-        ("Windows strategy", contract.strategy, WINDOWS_PLUGIN_STRATEGY),
-        ("registry bridge", contract.bridge, REGISTRY_BRIDGE_EXPORT),
+        (
+            "llvm_version",
+            _string(document, "llvm_version", "toolchain"),
+            LLVM_VERSION,
+        ),
+        (
+            "release_tag",
+            _string(document, "release_tag", "toolchain"),
+            RELEASE_TAG,
+        ),
     )
     for label, observed, required in expected:
         if observed != required:
             _fail(f"toolchain {label} must be {required}")
-    if contract.checks != PLUGIN_CHECKS:
+    checks = _string_list(document.get("plugin_checks"), "plugin_checks")
+    if checks != PLUGIN_CHECKS:
         _fail("toolchain plugin_checks must match the reviewed v1 plugin set")
-    return contract
 
 
 def _manifest_root(
@@ -328,12 +371,86 @@ def _manifest_root(
     return root / relative
 
 
+def _development_assets(value: object) -> tuple[DevelopmentAsset, ...]:
+    if not isinstance(value, list) or not value:
+        _fail("development_assets must be a nonempty list")
+    assets: list[DevelopmentAsset] = []
+    for index, item in enumerate(cast("list[object]", value)):
+        label = f"development_assets[{index}]"
+        asset = _mapping(item, label)
+        _exact_keys(asset, ASSET_KEYS, label)
+        assets.append(
+            DevelopmentAsset(
+                name=_string(asset, "name", label),
+                sha256=_sha256(asset.get("sha256"), label),
+                size_bytes=_positive_int(asset, "size_bytes", label),
+            )
+        )
+    names = tuple(asset.name for asset in assets)
+    if len(set(names)) != len(names):
+        _fail("development_assets names must be unique")
+    return tuple(assets)
+
+
+def _selected_platform(
+    document: dict[str, object],
+    platform_id: str,
+) -> dict[str, object]:
+    platforms = _mapping(document.get("platforms"), "toolchain.platforms")
+    entry = platforms.get(platform_id)
+    if entry is None:
+        _fail(f"unsupported clang-tidy toolchain platform: {platform_id}")
+    selected = _mapping(entry, f"toolchain.platforms.{platform_id}")
+    _exact_keys(selected, PLATFORM_KEYS, f"platform {platform_id}")
+    return selected
+
+
+def _runtime_path(
+    entry: dict[str, object],
+    key: str,
+    runtime_root: Path,
+) -> Path:
+    relative = _repository_path(
+        _string(entry, key, "platform"),
+        f"platform.{key}",
+    )
+    return runtime_root / relative
+
+
+def _optional_runtime_path(
+    entry: dict[str, object],
+    key: str,
+    runtime_root: Path,
+) -> Path | None:
+    value = _optional_string(entry, key, "platform")
+    if value is None:
+        return None
+    return runtime_root / _repository_path(value, f"platform.{key}")
+
+
+def _plugin_host_path(
+    entry: dict[str, object],
+    runtime_root: Path,
+    output_root: Path,
+) -> Path:
+    root_kind = _string(entry, "plugin_host_root", "platform")
+    if root_kind not in PLUGIN_HOST_ROOTS:
+        _fail("platform.plugin_host_root must be runtime or output")
+    base = runtime_root if root_kind == PLUGIN_HOST_RUNTIME else output_root
+    relative = _repository_path(
+        _string(entry, "plugin_host", "platform"),
+        "platform.plugin_host",
+    )
+    return base / relative
+
+
 def load_identity(
     manifest: Path = MANIFEST,
     *,
     root: Path = ROOT,
+    platform_id: str = WINDOWS_PLATFORM,
 ) -> ToolchainIdentity:
-    """Load and close-validate the tracked clang-tidy toolchain identity.
+    """Load one close-validated clang-tidy platform identity.
 
     Returns:
         Immutable normalized identity rooted below ``root``.
@@ -341,32 +458,58 @@ def load_identity(
     """
     document = _document(manifest)
     _exact_keys(document, TOP_LEVEL_KEYS, "clang-tidy toolchain manifest")
-    contract = _reviewed_contract(document)
-    asset = _mapping(document.get("development_asset"), "development_asset")
-    _exact_keys(asset, ASSET_KEYS, "development_asset")
+    _review_common_contract(document)
+    entry = _selected_platform(document, platform_id)
+    runtime_root = _manifest_root(document, "runtime_root", root)
+    output_root = _manifest_root(document, "plugin_output_root", root)
+    assets = _development_assets(entry.get("development_assets"))
+    strategy = _string(entry, "plugin_strategy", "platform")
+    if platform_id == WINDOWS_PLATFORM and strategy != WINDOWS_PLUGIN_STRATEGY:
+        _fail(f"toolchain Windows strategy must be {WINDOWS_PLUGIN_STRATEGY}")
+    if platform_id == LINUX_PLATFORM and strategy != LINUX_PLUGIN_STRATEGY:
+        _fail(f"toolchain Linux strategy must be {LINUX_PLUGIN_STRATEGY}")
+    bridge = _optional_string(entry, "registry_bridge_export", "platform")
+    if platform_id == WINDOWS_PLATFORM and bridge != REGISTRY_BRIDGE_EXPORT:
+        _fail(f"toolchain registry bridge must be {REGISTRY_BRIDGE_EXPORT}")
+    if platform_id == LINUX_PLATFORM and bridge is not None:
+        _fail("toolchain Linux registry bridge must be null")
+    primary_asset = assets[0]
     return ToolchainIdentity(
-        asset_name=_string(asset, "name", "development_asset"),
-        asset_sha256=_sha256(asset.get("sha256")),
-        asset_size_bytes=_positive_int(
-            asset, "size_bytes", "development_asset"
-        ),
+        asset_name=primary_asset.name,
+        asset_sha256=primary_asset.sha256,
+        asset_size_bytes=primary_asset.size_bytes,
+        development_assets=assets,
+        development_provider=_string(entry, "development_provider", "platform"),
         development_root=_manifest_root(document, "development_root", root),
-        llvm_version=contract.llvm_version,
-        platform_id=contract.platform_id,
-        plugin_checks=contract.checks,
-        plugin_output_root=_manifest_root(document, "plugin_output_root", root),
-        registry_bridge_export=contract.bridge,
-        release_tag=contract.release_tag,
+        llvm_version=LLVM_VERSION,
+        platform_id=platform_id,
+        plugin_checks=PLUGIN_CHECKS,
+        plugin_host_path=_plugin_host_path(entry, runtime_root, output_root),
+        plugin_library_path=output_root / _repository_path(
+            _string(entry, "plugin_library", "platform"),
+            "platform.plugin_library",
+        ),
+        plugin_output_root=output_root,
+        plugin_strategy=strategy,
+        registry_bridge_export=bridge,
+        release_tag=RELEASE_TAG,
         required_development_files=_relative_files(
-            document.get("required_development_files"),
+            entry.get("required_development_files"),
             "required_development_files",
         ),
         required_runtime_files=_relative_files(
-            document.get("required_runtime_files"),
+            entry.get("required_runtime_files"),
             "required_runtime_files",
         ),
-        runtime_root=_manifest_root(document, "runtime_root", root),
-        windows_plugin_strategy=contract.strategy,
+        runtime_clang=_runtime_path(entry, "clang", runtime_root),
+        runtime_clang_cl=_runtime_path(entry, "clang_cl", runtime_root),
+        runtime_clang_tidy=_runtime_path(entry, "clang_tidy", runtime_root),
+        runtime_llvm_readobj=_optional_runtime_path(
+            entry,
+            "llvm_readobj",
+            runtime_root,
+        ),
+        runtime_root=runtime_root,
     )
 
 

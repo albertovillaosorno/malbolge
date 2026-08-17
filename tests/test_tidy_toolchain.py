@@ -55,6 +55,26 @@ EXPECTED_SHA256 = (
     "551a9ae0a9aadb9c99c3c3b2b712a234"
 )
 EXPECTED_SIZE = 862053924
+LINUX_PLATFORM = "linux-x86_64"
+LINUX_PROVIDER = "fedora-rpm-set-v1"
+LINUX_PLUGIN_STRATEGY = "upstream-host-loadable-module-v1"
+LINUX_ASSETS = (
+    (
+        "clang-devel-22.1.8-4.fc44.x86_64.rpm",
+        4_239_048,
+        "3f2e18cc4d5b8dd6e3d986b53d9e422ad709a8421d7bbcab34c08fe7cf0166ce",
+    ),
+    (
+        "clang-tools-extra-devel-22.1.8-4.fc44.x86_64.rpm",
+        326_651,
+        "10e950ff5fae5544887231d307230eb8daa1e1097659089bbe896240f3c7a5c9",
+    ),
+    (
+        "llvm-devel-22.1.8-4.fc44.x86_64.rpm",
+        5_958_784,
+        "c22b616026fab232529c678624760bca93ad429329c3cee4d1495b6db632f0e3",
+    ),
+)
 CONFIGURATION_ERROR_STATUS = 2
 PLUGIN_MISMATCH = "plugin registration mismatch"
 OBSERVED_NONE = "observed none"
@@ -138,6 +158,53 @@ def test_canonical_identity_pins_exact_release_artifact() -> None:
         == tidy_toolchain.REGISTRY_BRIDGE_EXPORT
     )
     assert identity.plugin_checks == tidy_toolchain.PLUGIN_CHECKS
+
+
+def test_linux_identity_selects_exact_rpm_set_and_neutral_runtime() -> None:
+    """Linux selects exact Fedora inputs and neutral LLVM runtime."""
+    identity = tidy_toolchain.load_identity(platform_id=LINUX_PLATFORM)
+
+    assert identity.platform_id == LINUX_PLATFORM
+    assert identity.development_provider == LINUX_PROVIDER
+    assert identity.plugin_strategy == LINUX_PLUGIN_STRATEGY
+    assert tuple(
+        (asset.name, asset.size_bytes, asset.sha256)
+        for asset in identity.development_assets
+    ) == LINUX_ASSETS
+    assert identity.clang == (
+        tidy_toolchain.ROOT
+        / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
+    )
+    assert identity.clang_tidy == (
+        tidy_toolchain.ROOT
+        / ".dependencies/llvm/22.1.8/jig-bin/clang-tidy.bin"
+    )
+    assert identity.plugin_host == identity.clang_tidy
+    assert identity.plugin_library == (
+        tidy_toolchain.ROOT
+        / ".dependencies/tools-tidy/22.1.8/bin/malbolge-tidy.so"
+    )
+
+
+def test_platform_identity_normalizes_linux_x86_64() -> None:
+    """Linux x86-64 normalizes to the tracked native-analysis platform key."""
+    assert (
+        tidy_toolchain.host_platform_id(system="Linux", machine="x86_64")
+        == LINUX_PLATFORM
+    )
+    assert (
+        tidy_toolchain.host_platform_id(system="linux", machine="AMD64")
+        == LINUX_PLATFORM
+    )
+
+
+def test_unknown_platform_identity_fails_closed() -> None:
+    """Native-analysis never invents a toolchain for an untracked platform."""
+    with pytest.raises(
+        tidy_toolchain.ToolchainError,
+        match="unsupported clang-tidy toolchain platform",
+    ):
+        _ = tidy_toolchain.load_identity(platform_id="linux-aarch64")
 
 
 def test_platform_identity_normalizes_windows_x86_64() -> None:
