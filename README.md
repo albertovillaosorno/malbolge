@@ -28,11 +28,13 @@ synchronizes the complete package set. Run it from the repository root with an
 exact Python 3.14.6 host interpreter:
 
 ```powershell
-py -3.14 -m scripts.bootstrap.project
+$env:PYTHONPATH = "$PWD/src/automation/repository/composition"
+py -3.14 -B -m scripts.bootstrap.project
 ```
 
 ```sh
-python3.14 -m scripts.bootstrap.project
+export PYTHONPATH=src/automation/repository/composition
+python3.14 -B -m scripts.bootstrap.project
 ```
 
 Use `--skip-python` for diagnostics without installing Python packages, or

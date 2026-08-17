@@ -75,7 +75,19 @@ LINUX_AARCH64 = "linux-aarch64"
 UV_VERSION = "0.11.16"
 PIP_REQUIREMENT_PREFIX = "pip=="
 VALIDATION_REQUIREMENT_COUNT = 9
+BOOTSTRAP_COMPOSITION = "src/automation/repository/composition"
+WINDOWS_BOOTSTRAP_COMMAND = "py -3.14 -B -m scripts.bootstrap.project"
+LINUX_BOOTSTRAP_COMMAND = "python3.14 -B -m scripts.bootstrap.project"
 WINDOWS_UV_ASSET = "uv-x86_64-pc-windows-msvc.zip"
+
+
+def test_bootstrap_documentation_disables_source_bytecode() -> None:
+    """Host bootstrap commands expose imports and disable source bytecode."""
+    readme = (project.ROOT / "README.md").read_text(encoding="utf-8")
+    assert f'$env:PYTHONPATH = "$PWD/{BOOTSTRAP_COMPOSITION}"' in readme
+    assert WINDOWS_BOOTSTRAP_COMMAND in readme
+    assert f"export PYTHONPATH={BOOTSTRAP_COMPOSITION}" in readme
+    assert LINUX_BOOTSTRAP_COMMAND in readme
 
 
 def _write_cuda_manifest(root: Path, platform_id: str) -> Path:
@@ -536,31 +548,64 @@ def test_rust_inspection_rejects_drive_relative_channel(
         _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
 
 
+def _assert_rust_validation_alias(
+    alias: Path,
+    tool_id: str,
+    linker_variable: str,
+) -> None:
+    alias_text = alias.read_text(encoding="ascii")
+    assert f'export {linker_variable}="$tool_dir/cc"' in alias_text
+    assert f'exec "$tool_dir/{tool_id}" "$@"' in alias_text
+    assert alias.stat().st_mode & stat.S_IXUSR
+
+
 def test_rust_linker_adapter_binds_explicit_linux_host_linker(
     tmp_path: Path,
 ) -> None:
-    """Linux Rust toolchains receive one explicit repo-local linker adapter."""
+    """Linux Rust tools override validator linker through neutral aliases."""
     linker = tmp_path / "host/bin/cc"
     linker.parent.mkdir(parents=True)
     linker.touch()
-    roots = (
-        tmp_path / ".dependencies/rust/1.97.1",
-        tmp_path / ".dependencies/rust/nightly-2026-07-14",
-    )
-    for root in roots:
-        (root / "bin").mkdir(parents=True)
+    stable = tmp_path / ".dependencies/rust/1.97.1"
+    nightly = tmp_path / ".dependencies/rust/nightly-2026-07-14"
+    stable_bin = stable / "bin"
+    nightly_bin = nightly / "bin"
+    stable_bin.mkdir(parents=True)
+    nightly_bin.mkdir(parents=True)
+    for native in (
+        stable_bin / "cargo",
+        nightly_bin / "cargo-clippy",
+        nightly_bin / "cargo-fmt",
+    ):
+        _ = native.write_text(native.name, encoding="ascii")
+        _ = native.chmod(native.stat().st_mode | stat.S_IXUSR)
 
     adapters = project.write_rust_linker_adapters(
-        roots,
+        (stable, nightly),
         LINUX_PLATFORM,
         linker=linker,
     )
 
-    assert adapters == tuple(root / "bin/cc" for root in roots)
-    for adapter in adapters:
-        text = adapter.read_text(encoding="ascii")
-        assert text == f'#!/bin/sh\nexec {linker.resolve()} "$@"\n'
-        assert adapter.stat().st_mode & stat.S_IXUSR
+    assert adapters == (stable_bin / "cc", nightly_bin / "cc")
+    expected_cc = f'#!/bin/sh\nexec {linker.resolve()} "$@"\n'
+    assert adapters[0].read_text(encoding="ascii") == expected_cc
+    assert adapters[1].read_text(encoding="ascii") == expected_cc
+    linker_variable = "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER"
+    _assert_rust_validation_alias(
+        stable_bin / "cargo.bin",
+        "cargo",
+        linker_variable,
+    )
+    _assert_rust_validation_alias(
+        nightly_bin / "cargo-clippy.bin",
+        "cargo-clippy",
+        linker_variable,
+    )
+    _assert_rust_validation_alias(
+        nightly_bin / "cargo-fmt.bin",
+        "cargo-fmt",
+        linker_variable,
+    )
 
 
 def test_rust_toolchain_import_preserves_native_tree_and_alias(
@@ -754,9 +799,15 @@ def test_rust_inspection_requires_completed_neutral_alias(
     windows = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
     linker = toolchain / "bin" / "cc"
     linker.touch()
+    linux_before_marker = project.inspect_rust(tmp_path, LINUX_PLATFORM)
+    _ = (toolchain / project.RUST_LINUX_ADAPTER_MARKER).write_text(
+        "malbolge-rust-linux-adapter/v1\n",
+        encoding="ascii",
+    )
     linux = project.inspect_rust(tmp_path, LINUX_PLATFORM)
 
     assert linux_before_linker.state is project.ComponentState.MISSING
+    assert linux_before_marker.state is project.ComponentState.MISSING
     assert windows.state is project.ComponentState.READY
     assert windows.path == cargo
     assert linux.state is project.ComponentState.READY

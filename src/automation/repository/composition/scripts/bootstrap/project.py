@@ -75,6 +75,7 @@ X86_64_MACHINES: Final = frozenset(("amd64", "x86_64"))
 AARCH64_MACHINES: Final = frozenset(("aarch64", "arm64"))
 RUST_IMPORT_MARKER: Final = ".malbolge-rust-toolchain-import-v1"
 RUST_NIGHTLY_CHANNEL: Final = "nightly-2026-07-14"
+RUST_LINUX_ADAPTER_MARKER: Final = ".malbolge-rust-linux-adapter-v1"
 GIT_IMPORT_MARKER: Final = ".malbolge-git-import-v1"
 CARGO_HOME_RELATIVE: Final = Path(".dependencies/cargo-home")
 UNKNOWN_PLATFORM: Final = "unknown"
@@ -498,19 +499,87 @@ def rust_toolchain_import_complete(toolchain_root: Path) -> bool:
     return (toolchain_root / RUST_IMPORT_MARKER).is_file()
 
 
+def _rust_linux_linker_environment(platform_id: str) -> str | None:
+    variables = {
+        "linux-x86_64": "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER",
+        "linux-aarch64": "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER",
+    }
+    return variables.get(platform_id)
+
+
+def _rust_validation_tool_ids(toolchain_root: Path) -> tuple[str, ...]:
+    if toolchain_root.name == RUST_NIGHTLY_CHANNEL:
+        return ("cargo-clippy", "cargo-fmt")
+    return ("cargo",)
+
+
+def _write_rust_validation_alias(
+    toolchain_root: Path,
+    tool_id: str,
+    linker_environment: str,
+) -> Path:
+    native = toolchain_root / "bin" / tool_id
+    if not native.is_file():
+        _fail(f"imported Rust validation tool is missing: {native}")
+    alias = toolchain_root / "bin" / f"{tool_id}.bin"
+    alias.unlink(missing_ok=True)
+    script = "\n".join(
+        (
+            "#!/bin/sh",
+            "tool_dir=${0%/*}",
+            f'export {linker_environment}="$tool_dir/cc"',
+            f'exec "$tool_dir/{tool_id}" "$@"',
+        )
+    ) + "\n"
+    _ = alias.write_text(
+        script,
+        encoding="ascii",
+        newline="\n",
+    )
+    alias.chmod(alias.stat().st_mode | stat.S_IXUSR)
+    return alias
+
+
+def _write_rust_toolchain_linker_adapters(
+    toolchain_root: Path,
+    linker_path: str,
+    linker_environment: str,
+) -> Path:
+    adapter = toolchain_root / "bin" / "cc"
+    _ = adapter.write_text(
+        f'#!/bin/sh\nexec {linker_path} "$@"\n',
+        encoding="ascii",
+        newline="\n",
+    )
+    adapter.chmod(adapter.stat().st_mode | stat.S_IXUSR)
+    for tool_id in _rust_validation_tool_ids(toolchain_root):
+        _ = _write_rust_validation_alias(
+            toolchain_root,
+            tool_id,
+            linker_environment,
+        )
+    _ = (toolchain_root / RUST_LINUX_ADAPTER_MARKER).write_text(
+        "malbolge-rust-linux-adapter/v1\n",
+        encoding="ascii",
+        newline="\n",
+    )
+    return adapter
+
+
 def write_rust_linker_adapters(
     toolchain_roots: tuple[Path, ...],
     platform_id: str,
     *,
     linker: Path | None = None,
 ) -> tuple[Path, ...]:
-    """Bind imported Linux Rust toolchains to one explicit host linker.
+    """Bind imported Linux Rust validation to one explicit host linker.
 
     Returns:
         Repository-local linker adapter paths, or empty outside Linux.
 
     """
-    if not platform_id.startswith(LINUX_SYSTEM):
+    linker_environment = _rust_linux_linker_environment(platform_id)
+    if linker_environment is None:
         return ()
     selected = linker
     if selected is None:
@@ -518,18 +587,15 @@ def write_rust_linker_adapters(
         if resolved is None:
             return ()
         selected = Path(resolved)
-    target = shlex.quote(str(selected.resolve()))
-    adapters: list[Path] = []
-    for root in toolchain_roots:
-        adapter = root / "bin" / "cc"
-        _ = adapter.write_text(
-            f'#!/bin/sh\nexec {target} "$@"\n',
-            encoding="ascii",
-            newline="\n",
+    linker_path = shlex.quote(str(selected.resolve()))
+    return tuple(
+        _write_rust_toolchain_linker_adapters(
+            root,
+            linker_path,
+            linker_environment,
         )
-        adapter.chmod(adapter.stat().st_mode | stat.S_IXUSR)
-        adapters.append(adapter)
-    return tuple(adapters)
+        for root in toolchain_roots
+    )
 
 
 def import_rust_toolchain(
@@ -767,6 +833,17 @@ def _imported_cargo(root: Path, channel: str) -> Path:
     return root / ".dependencies" / "rust" / channel / "bin" / "cargo.bin"
 
 
+def _rust_validation_adapter_ready(
+    toolchain_root: Path,
+    platform_id: str,
+) -> bool:
+    if not platform_id.startswith(LINUX_SYSTEM):
+        return True
+    linker = toolchain_root / "bin" / "cc"
+    marker = toolchain_root / RUST_LINUX_ADAPTER_MARKER
+    return linker.is_file() and marker.is_file()
+
+
 def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
     """Inspect the pinned Rust channel and imported neutral Cargo alias.
 
@@ -779,9 +856,9 @@ def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
     cargo = _imported_cargo(root, channel)
     imported_root = cargo.parent.parent
     imported = cargo.is_file() and rust_toolchain_import_complete(imported_root)
-    linux_linker = imported_root / "bin" / "cc"
-    linker_ready = (
-        not platform_id.startswith(LINUX_SYSTEM) or linux_linker.is_file()
+    linker_ready = _rust_validation_adapter_ready(
+        imported_root,
+        platform_id,
     )
     if imported and linker_ready:
         path: Path | None = cargo
