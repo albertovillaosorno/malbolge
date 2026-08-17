@@ -7,8 +7,6 @@ area: "accelerator"
 task: "TODO - CUDA Linux runtime and hermetic toolchain"
 contract: "docs/technical/integrations/accelerators/cuda-linux-runtime-and-toolchain.md"
 depends_on:
-  - "linux-development-host-bootstrap"
-  - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/host-cpu-and-accelerator-runtime-baseline.md"
   - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
@@ -78,5 +76,7 @@ fallback, verifier authority, and existing Windows support.
   manifest,
   native toolchain resolution, exact fallback tests, and retained Linux device
   evidence.
-- Prerequisite completion evidence: `cuda-exact-vm-adapter` and
-  `documentation-readiness-and-implementation-gate`.
+- Foundation completion evidence: `linux-development-host-bootstrap` and
+  `documentation-readiness-and-implementation-gate`. The active
+  `cuda-exact-vm-adapter` supplies the implementation surface being ported but
+  is not a completion prerequisite for Linux platform enablement.

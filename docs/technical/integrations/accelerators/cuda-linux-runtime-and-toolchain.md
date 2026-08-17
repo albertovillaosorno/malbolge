@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Active P0 implementation
 
 ## Purpose
 
@@ -46,6 +46,13 @@ launchers,
 and reports a mismatched CUDA or Rust manifest as unsupported. This diagnostic
 behavior is not Linux CUDA runtime support.
 
+The Linux port is an active lane-4 P0 blocker because accelerator-backed
+compiler work on the current development host requires the existing CUDA
+adapter to load there. Completion of the broader `cuda-exact-vm-adapter` TODO
+is deliberately not a prerequisite: that TODO owns additional semantics,
+scaling, and performance work, while this contract owns the platform/toolchain
+boundary needed to run its existing implementation on Linux.
+
 ## Invariants
 
 - Windows uses the reviewed `WinDLL` calling convention and Windows library
@@ -80,6 +87,10 @@ is requested.
 
 Completion requires all of the following:
 
+- the tracked CUDA 13.3.1 manifest selects exact Windows x86-64 and Linux
+  x86-64 package identities rather than accepting an ambient toolkit;
+- Linux provisioning uses NVIDIA-published archive size and SHA-256 identity
+  and retains only repository-local toolkit bytes needed by this runtime;
 - deterministic loader tests for Windows `WinDLL` plus `nvcuda.dll`/NVRTC
   `.dll`;
 - deterministic loader tests for Linux `CDLL` plus `libcuda.so.1` and a
