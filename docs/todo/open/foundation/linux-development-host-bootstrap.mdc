@@ -1,0 +1,64 @@
+---
+id: "linux-development-host-bootstrap"
+status: "active"
+lane: "4"
+priority: "p0"
+area: "foundation"
+task: "TODO - Linux development host bootstrap"
+contract: "docs/technical/tooling/linux-development-host-bootstrap.md"
+depends_on:
+  - "jig-repository-governance"
+adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/technical/adr/repository-responsibility-boundaries.md"
+scope:
+  - ".cargo/"
+  - ".jig/"
+  - "src/automation/repository/composition/scripts/bootstrap/"
+  - "tests/test_project_bootstrap.py"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Linux development host bootstrap
+
+## Objective
+
+Make Linux development hosts bootstrap repository-local validation tooling and
+run Jig without inheriting Windows executable paths or ambient PATH authority.
+
+**Current implementation.**
+
+- Python 3.14.6 provisions native POSIX launchers plus neutral Jig aliases under
+  `.dependencies/python/3.14.6/jig-bin/` while preserving Windows `Scripts/`
+  launchers.
+- Bootstrap imports already-installed pinned Rustup stable/nightly toolchains to
+  repository-local neutral aliases without downloading missing channels.
+- Linux Rust imports receive an explicit repository-local `cc` adapter bound to
+  the observed host linker; Windows imports retain their native behavior.
+- Matching host Git is imported with its helper runtime under
+  `.dependencies/git/<version>/`, using one neutral `git.bin` authority path.
+- Repository-local Cargo home creation and Jig tool paths no longer require the
+  former Windows-only executable layout.
+
+## Acceptance
+
+- A supported Linux host bootstraps Python, Git, Rust, and Jig validation paths
+  without `Scripts/*.exe/*.cmd` or Windows target tuples in shared authority.
+- The resulting Jig tool paths resolve canonically inside `.dependencies` and
+  do not fall back to ambient PATH during validation.
+- Missing Rustup channels are reported rather than downloaded implicitly.
+- Linux native linking uses an explicit host-ABI adapter until a fully packaged
+  linker/sysroot is admitted; that boundary is never described as hermetic.
+- Existing Windows bootstrap behavior and executable naming remain covered by
+  tests and are not replaced by Linux assumptions.
+- The declared scope contains no unresolved placeholder required for this
+  host-bootstrap objective to function.
+
+## Evidence
+
+- Expected durable artifact surface: bootstrap modules, `.jig/` tool authority,
+  focused bootstrap tests, and Linux Jig validation receipts.
+- Required evidence: Windows/Linux layout tests, exact tool version admission,
+  no-download Rustup tests, repository-local path evidence, and Jig validation.
+- The separate CUDA Linux runtime/toolchain TODO retains GPU driver, NVRTC,
+  package-manifest, LLVM, and fully hermetic native-linker work.

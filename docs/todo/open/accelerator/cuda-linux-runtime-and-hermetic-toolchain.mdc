@@ -7,6 +7,7 @@ area: "accelerator"
 task: "TODO - CUDA Linux runtime and hermetic toolchain"
 contract: "docs/technical/integrations/accelerators/cuda-linux-runtime-and-toolchain.md"
 depends_on:
+  - "linux-development-host-bootstrap"
   - "cuda-exact-vm-adapter"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
@@ -28,7 +29,7 @@ validation:
 
 Port the exact CUDA runtime and repository-local development toolchains to Linux
 while preserving platform-specific ABI loading, exact package identity, CPU
-fallback, and verifier authority.
+fallback, verifier authority, and existing Windows support.
 
 ## Acceptance
 

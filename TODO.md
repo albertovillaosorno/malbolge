@@ -15,6 +15,14 @@ labels belong here.
 
 ## P0 — Authority and governance
 
+### TODO - Linux development host bootstrap
+
+Make Linux development hosts bootstrap repository-local validation tooling and
+run Jig without inheriting Windows executable paths or ambient PATH authority.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/foundation/linux-development-host-bootstrap.mdc](docs/todo/open/foundation/linux-development-host-bootstrap.mdc)
+
 ## P1 — Semantic and language foundations
 
 ### TODO - Emitted Malbolge static analyzer
@@ -150,7 +158,7 @@ code-size explosion or compilation cost.
 
 Port the exact CUDA runtime and repository-local development toolchains to Linux
 while preserving platform-specific ABI loading, exact package identity, CPU
-fallback, and verifier authority.
+fallback, verifier authority, and existing Windows support.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/accelerator/cuda-linux-runtime-and-hermetic-toolchain.mdc](docs/todo/open/accelerator/cuda-linux-runtime-and-hermetic-toolchain.mdc)
