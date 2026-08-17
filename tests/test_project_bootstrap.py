@@ -54,6 +54,7 @@ CUDA_WINDOWS_MANIFEST_SHA256 = (
 )
 CUDA_LINUX_MANIFEST = "toolchain-linux-x86_64.json"
 CUDA_MANIFEST_INDEX = "toolchain-manifests.json"
+CUDA_NVRTC_LABEL = "NVRTC"
 WINDOWS_PLATFORM = "windows-x86_64"
 LINUX_PLATFORM = "linux-x86_64"
 RUST_CHANNEL = "1.97.1"
@@ -504,12 +505,17 @@ def test_cuda_inspection_selects_linux_manifest_and_bundle(
     _ = _write_cuda_manifest_index(tmp_path)
     toolkit = tmp_path / CUDA_VERSION_ROOT
     toolkit.mkdir(parents=True)
-
-    status = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+    missing_runtime = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+    nvrtc = toolkit / "lib64/libnvrtc.so.13"
+    nvrtc.parent.mkdir(parents=True)
+    nvrtc.touch()
+    ready = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
 
     assert linux.is_file()
-    assert status.state is project.ComponentState.READY
-    assert status.path == toolkit
+    assert missing_runtime.state is project.ComponentState.MISSING
+    assert CUDA_NVRTC_LABEL in missing_runtime.detail
+    assert ready.state is project.ComponentState.READY
+    assert ready.path == toolkit
 
 
 def test_cuda_inspection_requires_matching_platform_and_bundle(

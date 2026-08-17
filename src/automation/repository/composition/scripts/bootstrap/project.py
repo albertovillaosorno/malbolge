@@ -56,6 +56,7 @@ from typing import Final
 from typing import Never
 from typing import cast
 
+from scripts.bootstrap import cuda_validation
 from scripts.bootstrap import python_validation
 from scripts.repository_root import repository_root
 
@@ -315,6 +316,59 @@ def cuda_toolchain_manifest_path(
     return index_path.parent / manifest_name
 
 
+def cuda_toolchain_nvrtc_relative_path(
+    root: Path,
+    platform_id: str,
+) -> Path | None:
+    """Return indexed NVRTC path relative to the selected toolkit root.
+
+    Returns:
+        Relative NVRTC path, or ``None`` for legacy direct-manifest fixtures.
+
+    """
+    index_path = root / CUDA_TOOLCHAIN_INDEX
+    if not index_path.is_file():
+        return None
+    document = _json_document(index_path, "CUDA toolchain manifest index")
+    platforms = _mapping(
+        document.get("platforms"),
+        "CUDA toolchain manifest index.platforms",
+    )
+    selected = platforms.get(platform_id)
+    if selected is None:
+        return None
+    entry = _mapping(
+        selected,
+        f"CUDA toolchain manifest index.platforms.{platform_id}",
+    )
+    relative = _required_string(
+        entry,
+        "nvrtc_library",
+        f"CUDA toolchain manifest index.platforms.{platform_id}",
+    )
+    return _repository_relative_path(relative, "CUDA indexed NVRTC library")
+
+
+def _cuda_bundle_state(
+    root: Path,
+    toolkit_path: Path,
+    platform_id: str,
+) -> tuple[str, ComponentState]:
+    if not toolkit_path.is_dir():
+        return (
+            "matching hermetic CUDA bundle has not been installed",
+            ComponentState.MISSING,
+        )
+    nvrtc_relative = cuda_toolchain_nvrtc_relative_path(root, platform_id)
+    nvrtc = None if nvrtc_relative is None else toolkit_path / nvrtc_relative
+    if nvrtc is not None and not nvrtc.is_file():
+        return (
+            "matching hermetic CUDA NVRTC library is absent",
+            ComponentState.MISSING,
+        )
+    return "matching hermetic CUDA bundle is present", ComponentState.READY
+
+
 def _inspect_cuda_manifest(
     root: Path,
     manifest_path: Path,
@@ -351,12 +405,8 @@ def _inspect_cuda_manifest(
                 f"manifest targets {manifest_platform}; host is {platform_id}"
             )
             state = ComponentState.UNSUPPORTED
-        elif not path.is_dir():
-            detail = "matching hermetic CUDA bundle has not been installed"
-            state = ComponentState.MISSING
         else:
-            detail = "matching hermetic CUDA bundle is present"
-            state = ComponentState.READY
+            detail, state = _cuda_bundle_state(root, path, platform_id)
     return ComponentStatus(
         detail=detail,
         name="cuda",
@@ -963,11 +1013,37 @@ def inspect_jig(root: Path, platform_id: str) -> ComponentStatus:
     )
 
 
+def provision_cuda_if_requested(
+    root: Path,
+    platform_id: str,
+    *,
+    requested: bool,
+    provisioner: Callable[[Path, Path, str], Path] | None = None,
+) -> Path | None:
+    """Provision the selected CUDA manifest only after explicit opt-in.
+
+    Returns:
+        Provisioned toolkit root, or ``None`` when provisioning was not asked.
+
+    """
+    if not requested:
+        return None
+    manifest_path = cuda_toolchain_manifest_path(root, platform_id)
+    if manifest_path is None:
+        _fail(f"no tracked CUDA toolchain manifest for {platform_id}")
+    selected = provisioner or cuda_validation.provision_cuda_manifest
+    try:
+        return selected(root, manifest_path, platform_id)
+    except cuda_validation.CudaProvisionError as error:
+        _fail(f"cannot provision CUDA: {error}")
+
+
 def initialize_project(
     root: Path = ROOT,
     *,
     provision_python: bool = True,
     require_cuda: bool = False,
+    provision_cuda: bool = False,
 ) -> ProjectInitializationReport:
     """Initialize local state and report optional toolchain readiness.
 
@@ -983,6 +1059,11 @@ def initialize_project(
         else python_validation.validation_layout(root)
     )
     platform_id = host_platform_id()
+    _ = provision_cuda_if_requested(
+        root,
+        platform_id,
+        requested=provision_cuda,
+    )
     observation = observe_host_git(platform_id)
     if observation is not None:
         _ = import_host_git(root, platform_id, observation)
@@ -1021,7 +1102,14 @@ def render_report(report: ProjectInitializationReport) -> str:
     return "\n".join((*lines, ""))
 
 
-def _arguments(argv: list[str] | None) -> tuple[bool, bool]:
+def _boolean_argument(values: dict[str, object], key: str) -> bool:
+    value = values.get(key)
+    if type(value) is not bool:
+        _fail("bootstrap arguments did not resolve to booleans")
+    return value
+
+
+def _arguments(argv: list[str] | None) -> tuple[bool, bool, bool]:
     parser = argparse.ArgumentParser(
         description="Initialize repository-local Malbolge development state.",
     )
@@ -1037,13 +1125,18 @@ def _arguments(argv: list[str] | None) -> tuple[bool, bool]:
         action="store_true",
         help="fail unless a matching hermetic CUDA bundle is present",
     )
+    _ = parser.add_argument(
+        "--provision-cuda",
+        action="store_true",
+        help="download and provision exact tracked CUDA packages for this host",
+    )
     namespace = parser.parse_args(argv)
     values = cast("dict[str, object]", vars(namespace))
-    skip_python = values.get("skip_python")
-    require_cuda = values.get("require_cuda")
-    if type(skip_python) is not bool or type(require_cuda) is not bool:
-        _fail("bootstrap arguments did not resolve to booleans")
-    return skip_python, require_cuda
+    return (
+        _boolean_argument(values, "skip_python"),
+        _boolean_argument(values, "require_cuda"),
+        _boolean_argument(values, "provision_cuda"),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1053,11 +1146,12 @@ def main(argv: list[str] | None = None) -> int:
         Zero after successful initialization, otherwise one.
 
     """
-    skip_python, require_cuda = _arguments(argv)
+    skip_python, require_cuda, provision_cuda = _arguments(argv)
     try:
         report = initialize_project(
             provision_python=not skip_python,
             require_cuda=require_cuda,
+            provision_cuda=provision_cuda,
         )
     except (
         InitializationError,

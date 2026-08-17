@@ -156,6 +156,11 @@ parts:
     kind: composition
     language: python
     responsibility: Build and verify the exact normalized Clang C frontend.
+  - id: part-0025
+    path: composition/scripts/bootstrap/cuda_validation.py
+    kind: composition
+    language: python
+    responsibility: Provision exact repository-local CUDA redistributables.
 projects: []
 tests: []
 graph:

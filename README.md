@@ -39,10 +39,14 @@ python3.14 -B -m scripts.bootstrap.project
 
 Use `--skip-python` for diagnostics without installing Python packages, or
 `--require-cuda` when a missing or platform-mismatched CUDA bundle must fail the
-initialization. uv is the only downloaded bootstrap executable; optional Rust,
-LLVM, and CUDA components remain diagnostic and are never downloaded implicitly.
-The current tracked CUDA 13.3.1 manifest and runtime are Windows x86-64 only;
-Linux CUDA loading and per-platform hermetic toolchains remain an explicit TODO.
+initialization. CUDA packages are never downloaded implicitly. An explicit
+`--provision-cuda` request selects the tracked host manifest, downloads only its
+pinned NVIDIA redistributables, verifies exact size and SHA-256, and publishes
+them under `.dependencies/cuda/`. Ordinary initialization continues to download
+only the standalone uv bootstrap executable; optional Rust and LLVM components
+remain diagnostic and are never downloaded implicitly. CUDA 13.3.1 now has
+separate Windows and Linux x86-64 package manifests while live Linux runtime
+validation remains part of the active CUDA P0.
 
 ## Semantic authority
 
