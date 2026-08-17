@@ -608,4 +608,4 @@ fn add_windows_debug_libraries(command: &mut Command) {
 }
 
 #[cfg(not(windows))]
-fn add_windows_debug_libraries(_command: &mut Command) {}
+const fn add_windows_debug_libraries(_command: &mut Command) {}
