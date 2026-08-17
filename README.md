@@ -42,9 +42,13 @@ Use `--skip-python` for diagnostics without installing Python packages, or
 initialization. CUDA packages are never downloaded implicitly. An explicit
 `--provision-cuda` request selects the tracked host manifest, downloads only its
 pinned NVIDIA redistributables, verifies exact size and SHA-256, and publishes
-them under `.dependencies/cuda/`. Ordinary initialization continues to download
-only the standalone uv bootstrap executable; optional Rust and LLVM components
-remain diagnostic and are never downloaded implicitly. CUDA 13.3.1 now has
+them under `.dependencies/cuda/`. An explicit
+`--provision-llvm-development` request similarly admits the tracked Linux
+LLVM/Clang 22.1.8 development RPMs into `.dependencies/llvm-dev/`; ordinary
+initialization never downloads them. Ordinary initialization continues to
+download only the standalone uv bootstrap executable; optional Rust and LLVM
+components remain diagnostic and are never downloaded implicitly. CUDA 13.3.1
+now has
 separate Windows and Linux x86-64 package manifests. The Linux runtime is live
 with repository-local NVRTC; the active CUDA P0 remains open for the shared
 platform-neutral LLVM/validation toolchain surface.

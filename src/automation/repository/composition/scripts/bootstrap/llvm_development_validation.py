@@ -372,6 +372,34 @@ def provision_development_identity(
     return identity.development_root
 
 
+def linux_development_root(root: Path) -> Path:
+    """Resolve the tracked Linux native-analysis development root.
+
+    Returns:
+        Repository-local exact Linux development destination.
+
+    """
+    identity = tidy_toolchain.load_identity(
+        root=root,
+        platform_id=tidy_toolchain.LINUX_PLATFORM,
+    )
+    return identity.development_root
+
+
+def linux_development_ready(root: Path) -> bool:
+    """Check the exact marker and required files for the Linux development kit.
+
+    Returns:
+        True only for the exact tracked Linux development identity.
+
+    """
+    identity = tidy_toolchain.load_identity(
+        root=root,
+        platform_id=tidy_toolchain.LINUX_PLATFORM,
+    )
+    return development_root_matches(identity)
+
+
 def provision_linux_development(root: Path) -> Path:
     """Provision the tracked Linux x86-64 native-analysis development kit.
 

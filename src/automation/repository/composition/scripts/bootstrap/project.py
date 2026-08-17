@@ -57,6 +57,7 @@ from typing import Never
 from typing import cast
 
 from scripts.bootstrap import cuda_validation
+from scripts.bootstrap import llvm_development_validation
 from scripts.bootstrap import llvm_validation
 from scripts.bootstrap import python_validation
 from scripts.repository_root import repository_root
@@ -143,9 +144,21 @@ class ProjectInitializationReport:
     directories: tuple[Path, ...]
     jig: ComponentStatus
     llvm: ComponentStatus
+    llvm_development: ComponentStatus
     platform_id: str
     python_environment: Path
     rust: ComponentStatus
+
+
+@dataclass(frozen=True, slots=True)
+class ProvisionRequests:
+    """Explicit optional repository package provisioning requests."""
+
+    cuda: bool = False
+    llvm_development: bool = False
+
+
+NO_PROVISION_REQUESTS: Final = ProvisionRequests()
 
 
 class InitializationError(RuntimeError):
@@ -1086,6 +1099,63 @@ def prepare_llvm(
     return _llvm_status(root, platform_id)
 
 
+def inspect_llvm_development(
+    root: Path,
+    platform_id: str,
+) -> ComponentStatus:
+    """Inspect exact Linux native-analysis development package readiness.
+
+    Returns:
+        Ready, missing, or unsupported development-kit status.
+
+    """
+    if platform_id != llvm_validation.LINUX_PLATFORM:
+        return ComponentStatus(
+            detail="exact LLVM development provisioning is Linux x86-64 only",
+            name="llvm-development",
+            path=None,
+            state=ComponentState.UNSUPPORTED,
+        )
+    path = llvm_development_validation.linux_development_root(root)
+    ready = llvm_development_validation.linux_development_ready(root)
+    return ComponentStatus(
+        detail=(
+            "exact LLVM development kit is present"
+            if ready
+            else "exact LLVM development kit is absent"
+        ),
+        name="llvm-development",
+        path=path,
+        state=ComponentState.READY if ready else ComponentState.MISSING,
+    )
+
+
+def provision_llvm_development_if_requested(
+    root: Path,
+    platform_id: str,
+    *,
+    requested: bool,
+    provisioner: Callable[[Path], Path] | None = None,
+) -> Path | None:
+    """Provision exact Linux LLVM development packages only after opt-in.
+
+    Returns:
+        Exact development root, or ``None`` when provisioning was not asked.
+
+    """
+    if not requested:
+        return None
+    if platform_id != llvm_validation.LINUX_PLATFORM:
+        _fail("LLVM development provisioning supports only linux-x86_64")
+    selected = (
+        provisioner or llvm_development_validation.provision_linux_development
+    )
+    try:
+        return selected(root)
+    except llvm_development_validation.LlvmDevelopmentProvisionError as error:
+        _fail(f"cannot provision LLVM development kit: {error}")
+
+
 def provision_cuda_if_requested(
     root: Path,
     platform_id: str,
@@ -1116,7 +1186,7 @@ def initialize_project(
     *,
     provision_python: bool = True,
     require_cuda: bool = False,
-    provision_cuda: bool = False,
+    provisions: ProvisionRequests = NO_PROVISION_REQUESTS,
 ) -> ProjectInitializationReport:
     """Initialize local state and report optional toolchain readiness.
 
@@ -1132,10 +1202,15 @@ def initialize_project(
         else python_validation.validation_layout(root)
     )
     platform_id = host_platform_id()
+    _ = provision_llvm_development_if_requested(
+        root,
+        platform_id,
+        requested=provisions.llvm_development,
+    )
     _ = provision_cuda_if_requested(
         root,
         platform_id,
-        requested=provision_cuda,
+        requested=provisions.cuda,
     )
     observation = observe_host_git(platform_id)
     if observation is not None:
@@ -1145,6 +1220,7 @@ def initialize_project(
     rust = inspect_rust(root, platform_id)
     jig = inspect_jig(root, platform_id)
     llvm = prepare_llvm(root, platform_id)
+    llvm_development = inspect_llvm_development(root, platform_id)
     if require_cuda and cuda.state is not ComponentState.READY:
         _fail(f"CUDA is required but {cuda.state}: {cuda.detail}")
     return ProjectInitializationReport(
@@ -1152,6 +1228,7 @@ def initialize_project(
         directories=directories,
         jig=jig,
         llvm=llvm,
+        llvm_development=llvm_development,
         platform_id=platform_id,
         python_environment=layout.environment,
         rust=rust,
@@ -1169,7 +1246,13 @@ def render_report(report: ProjectInitializationReport) -> str:
         f"project initialized for {report.platform_id}",
         f"python: ready ({report.python_environment})",
     ]
-    for component in (report.rust, report.jig, report.llvm, report.cuda):
+    for component in (
+        report.rust,
+        report.jig,
+        report.llvm,
+        report.llvm_development,
+        report.cuda,
+    ):
         location = "" if component.path is None else f" ({component.path})"
         line = f"{component.name}: {component.state} - "
         line += f"{component.detail}{location}"
@@ -1184,7 +1267,7 @@ def _boolean_argument(values: dict[str, object], key: str) -> bool:
     return value
 
 
-def _arguments(argv: list[str] | None) -> tuple[bool, bool, bool]:
+def _arguments(argv: list[str] | None) -> tuple[bool, bool, bool, bool]:
     parser = argparse.ArgumentParser(
         description="Initialize repository-local Malbolge development state.",
     )
@@ -1205,12 +1288,18 @@ def _arguments(argv: list[str] | None) -> tuple[bool, bool, bool]:
         action="store_true",
         help="download and provision exact tracked CUDA packages for this host",
     )
+    _ = parser.add_argument(
+        "--provision-llvm-development",
+        action="store_true",
+        help="download exact tracked Linux LLVM development packages",
+    )
     namespace = parser.parse_args(argv)
     values = cast("dict[str, object]", vars(namespace))
     return (
         _boolean_argument(values, "skip_python"),
         _boolean_argument(values, "require_cuda"),
         _boolean_argument(values, "provision_cuda"),
+        _boolean_argument(values, "provision_llvm_development"),
     )
 
 
@@ -1221,12 +1310,20 @@ def main(argv: list[str] | None = None) -> int:
         Zero after successful initialization, otherwise one.
 
     """
-    skip_python, require_cuda, provision_cuda = _arguments(argv)
+    (
+        skip_python,
+        require_cuda,
+        provision_cuda,
+        provision_llvm_development,
+    ) = _arguments(argv)
     try:
         report = initialize_project(
             provision_python=not skip_python,
             require_cuda=require_cuda,
-            provision_cuda=provision_cuda,
+            provisions=ProvisionRequests(
+                cuda=provision_cuda,
+                llvm_development=provision_llvm_development,
+            ),
         )
     except (
         InitializationError,

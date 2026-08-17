@@ -42,11 +42,13 @@ from typing import TYPE_CHECKING
 from typing import cast
 
 import pytest
+from scripts.bootstrap import llvm_development_validation
 from scripts.bootstrap import llvm_validation
 from scripts.bootstrap import project
 from scripts.bootstrap import python_validation
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 CUDA_VERSION_ROOT = ".dependencies/cuda/13.3.1/toolkit"
@@ -58,6 +60,8 @@ CUDA_MANIFEST_INDEX = "toolchain-manifests.json"
 CUDA_NVRTC_LABEL = "NVRTC"
 WINDOWS_PLATFORM = "windows-x86_64"
 LINUX_PLATFORM = "linux-x86_64"
+LLVM_DEVELOPMENT_COMPONENT = "llvm-development"
+CAPTURED_BOOTSTRAP_ARGUMENTS = "captured bootstrap arguments"
 RUST_CHANNEL = "1.97.1"
 RUST_NIGHTLY_CHANNEL = "nightly-2026-07-14"
 RUST_CARGO_BYTES = b"cargo-1.97.1"
@@ -510,6 +514,116 @@ def test_linux_llvm_preparation_imports_exact_host_observation(
     assert status.path == (
         tmp_path / llvm_validation.LLVM_ROOT / "jig-bin/clang.bin"
     )
+
+
+def _recording_llvm_development_provisioner(
+    calls: list[Path],
+) -> Callable[[Path], Path]:
+    def provision(root: Path) -> Path:
+        calls.append(root)
+        return root / ".dependencies/llvm-dev/22.1.8"
+
+    return provision
+
+
+def test_llvm_development_provisioning_is_disabled_by_default(
+    tmp_path: Path,
+) -> None:
+    """Ordinary bootstrap never invokes the LLVM development downloader."""
+    calls: list[Path] = []
+
+    result = project.provision_llvm_development_if_requested(
+        tmp_path,
+        LINUX_PLATFORM,
+        requested=False,
+        provisioner=_recording_llvm_development_provisioner(calls),
+    )
+
+    assert result is None
+    assert calls == []
+
+
+def test_explicit_linux_llvm_development_provisioning_is_selected(
+    tmp_path: Path,
+) -> None:
+    """Explicit Linux opt-in invokes only the exact development provisioner."""
+    calls: list[Path] = []
+
+    result = project.provision_llvm_development_if_requested(
+        tmp_path,
+        LINUX_PLATFORM,
+        requested=True,
+        provisioner=_recording_llvm_development_provisioner(calls),
+    )
+
+    assert result == tmp_path / ".dependencies/llvm-dev/22.1.8"
+    assert calls == [tmp_path]
+
+
+def test_explicit_llvm_development_provisioning_rejects_other_platforms(
+    tmp_path: Path,
+) -> None:
+    """Fedora development packages are never applied to another platform."""
+    calls: list[Path] = []
+    with pytest.raises(
+        project.InitializationError,
+        match="LLVM development provisioning supports only linux-x86_64",
+    ):
+        _ = project.provision_llvm_development_if_requested(
+            tmp_path,
+            WINDOWS_PLATFORM,
+            requested=True,
+            provisioner=_recording_llvm_development_provisioner(calls),
+        )
+    assert calls == []
+
+
+def test_llvm_development_inspection_reports_exact_marker_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Development readiness is separate from the neutral LLVM runtime."""
+    states = iter((False, True))
+
+    def next_state(root: Path) -> bool:
+        del root
+        return next(states)
+
+    monkeypatch.setattr(
+        llvm_development_validation,
+        "linux_development_ready",
+        next_state,
+    )
+
+    missing = project.inspect_llvm_development(tmp_path, LINUX_PLATFORM)
+    ready = project.inspect_llvm_development(tmp_path, LINUX_PLATFORM)
+
+    assert missing.state is project.ComponentState.MISSING
+    assert ready.state is project.ComponentState.READY
+    assert ready.name == LLVM_DEVELOPMENT_COMPONENT
+
+
+def test_bootstrap_arguments_expose_explicit_llvm_development_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The command-line opt-in is independent from ordinary initialization."""
+    observed: dict[str, object] = {}
+
+    def reject_after_capture(
+        **keywords: object,
+    ) -> project.ProjectInitializationReport:
+        observed.update(keywords)
+        raise project.InitializationError(CAPTURED_BOOTSTRAP_ARGUMENTS)
+
+    monkeypatch.setattr(project, "initialize_project", reject_after_capture)
+
+    status = project.main(["--skip-python", "--provision-llvm-development"])
+
+    assert status == 1
+    assert observed["provision_python"] is False
+    provisions = cast("project.ProvisionRequests", observed["provisions"])
+    assert provisions.cuda is False
+    assert provisions.llvm_development is True
 
 
 def test_cuda_manifest_index_selects_linux_without_rewriting_windows(
