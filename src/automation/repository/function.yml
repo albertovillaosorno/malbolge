@@ -161,6 +161,11 @@ parts:
     kind: composition
     language: python
     responsibility: Provision exact repository-local CUDA redistributables.
+  - id: part-0026
+    path: composition/scripts/bootstrap/llvm_validation.py
+    kind: composition
+    language: python
+    responsibility: Import exact repository-local LLVM validation tooling.
 projects: []
 tests: []
 graph:
