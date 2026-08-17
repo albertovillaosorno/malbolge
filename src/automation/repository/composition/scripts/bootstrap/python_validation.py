@@ -516,6 +516,33 @@ def write_launchers(
     _make_executable(layout.pytest_launcher)
 
 
+def write_jig_tool_aliases(
+    layout: ValidationEnvironmentLayout = LAYOUT,
+    *,
+    windows: bool = WINDOWS,
+) -> tuple[tuple[str, Path], ...]:
+    """Copy native validation tools to platform-neutral Jig executable paths.
+
+    Returns:
+        Stable tool-ID and repository-local alias pairs.
+
+    """
+    alias_root = layout.environment / "jig-bin"
+    alias_root.mkdir(parents=True, exist_ok=True)
+    executable_suffix = ".exe" if windows else ""
+    aliases: list[tuple[str, Path]] = []
+    for tool_id in ("basedpyright", "pytest", "ruff"):
+        source = layout.scripts / f"{tool_id}{executable_suffix}"
+        if not source.is_file():
+            _fail(f"missing provisioned tool for Jig alias: {source}")
+        target = alias_root / f"{tool_id}.bin"
+        _ = target.write_bytes(source.read_bytes())
+        if not windows:
+            _make_executable(target)
+        aliases.append((tool_id, target))
+    return tuple(aliases)
+
+
 def _provision(layout: ValidationEnvironmentLayout) -> None:
     uv = ensure_uv()
     if not layout.python.is_file():
@@ -541,6 +568,7 @@ def _provision(layout: ValidationEnvironmentLayout) -> None:
         "pip",
     ])
     write_launchers(layout, windows=WINDOWS)
+    _ = write_jig_tool_aliases(layout, windows=WINDOWS)
 
 
 def _verify_tool(

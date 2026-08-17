@@ -319,6 +319,38 @@ def test_validation_layout_uses_posix_native_names(tmp_path: Path) -> None:
     )
 
 
+def test_jig_tool_aliases_copy_native_validation_tools(tmp_path: Path) -> None:
+    """Jig receives platform-neutral executable aliases with identical bytes."""
+    layout = python_validation.validation_layout(tmp_path, windows=False)
+    layout.scripts.mkdir(parents=True)
+    native = {
+        "basedpyright": b"basedpyright-linux",
+        "pytest": b"pytest-linux",
+        "ruff": b"ruff-linux",
+    }
+    for name, payload in native.items():
+        path = layout.scripts / name
+        _ = path.write_bytes(payload)
+        _ = path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+    aliases = python_validation.write_jig_tool_aliases(
+        layout,
+        windows=False,
+    )
+
+    assert tuple(path.name for _, path in aliases) == (
+        "basedpyright.bin",
+        "pytest.bin",
+        "ruff.bin",
+    )
+    alias_root = layout.environment / "jig-bin"
+    assert all(path.parent == alias_root for _, path in aliases)
+    assert {name: path.read_bytes() for name, path in aliases} == {
+        name: native[name] for name in native
+    }
+    assert all(path.stat().st_mode & stat.S_IXUSR for _, path in aliases)
+
+
 def test_posix_launchers_are_executable_and_cache_bound(tmp_path: Path) -> None:
     """POSIX launchers use the local interpreter and repository cache."""
     layout = python_validation.validation_layout(tmp_path, windows=False)
