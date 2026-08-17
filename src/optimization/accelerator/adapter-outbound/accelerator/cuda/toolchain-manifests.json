@@ -5,13 +5,15 @@
       "manifest": "toolchain.json",
       "loader": "windll",
       "driver_library": "nvcuda.dll",
-      "nvrtc_library": "bin/x64/nvrtc64_130_0.dll"
+      "nvrtc_library": "bin/x64/nvrtc64_130_0.dll",
+      "preload_libraries": []
     },
     "linux-x86_64": {
       "manifest": "toolchain-linux-x86_64.json",
       "loader": "cdll",
       "driver_library": "libcuda.so.1",
-      "nvrtc_library": "lib64/libnvrtc.so.13"
+      "nvrtc_library": "lib/libnvrtc.so.13",
+      "preload_libraries": ["lib/libnvrtc-builtins.so.13.3"]
     }
   }
 }

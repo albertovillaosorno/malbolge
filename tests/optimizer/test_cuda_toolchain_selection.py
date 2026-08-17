@@ -35,13 +35,10 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 from accelerator.cuda import toolchain
 import pytest
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 WINDOWS_PLATFORM = "windows-x86_64"
 LINUX_PLATFORM = "linux-x86_64"
@@ -52,6 +49,8 @@ WINDOWS_DRIVER = "nvcuda.dll"
 LINUX_DRIVER = "libcuda.so.1"
 WINDOWS_MANIFEST = "toolchain.json"
 LINUX_MANIFEST = "toolchain-linux-x86_64.json"
+LINUX_BUILTINS = "lib/libnvrtc-builtins.so.13.3"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _manifest_root(root: Path) -> Path:
@@ -91,12 +90,14 @@ def _write_index(root: Path) -> Path:
                     "loader": "windll",
                     "driver_library": "nvcuda.dll",
                     "nvrtc_library": "bin/x64/nvrtc64_130_0.dll",
+                    "preload_libraries": [],
                 },
                 LINUX_PLATFORM: {
                     "manifest": "toolchain-linux-x86_64.json",
                     "loader": "cdll",
                     "driver_library": "libcuda.so.1",
-                    "nvrtc_library": "lib64/libnvrtc.so.13",
+                    "nvrtc_library": "lib/libnvrtc.so.13",
+                    "preload_libraries": [LINUX_BUILTINS],
                 },
             },
         }),
@@ -130,6 +131,7 @@ def test_selects_windows_runtime_contract(tmp_path: Path) -> None:
     assert selected.nvrtc_library == (
         selected.toolkit_root / "bin/x64/nvrtc64_130_0.dll"
     )
+    assert selected.preload_libraries == ()
 
 
 def test_selects_linux_runtime_contract(tmp_path: Path) -> None:
@@ -143,7 +145,10 @@ def test_selects_linux_runtime_contract(tmp_path: Path) -> None:
     assert selected.driver_library == LINUX_DRIVER
     assert selected.manifest_path.name == LINUX_MANIFEST
     assert selected.nvrtc_library == (
-        selected.toolkit_root / "lib64/libnvrtc.so.13"
+        selected.toolkit_root / "lib/libnvrtc.so.13"
+    )
+    assert selected.preload_libraries == (
+        selected.toolkit_root / LINUX_BUILTINS,
     )
 
 
@@ -169,7 +174,8 @@ def test_manifest_path_escape_is_rejected(tmp_path: Path) -> None:
                     "manifest": "../escape.json",
                     "loader": "cdll",
                     "driver_library": "libcuda.so.1",
-                    "nvrtc_library": "lib64/libnvrtc.so.13",
+                    "nvrtc_library": "lib/libnvrtc.so.13",
+                    "preload_libraries": [LINUX_BUILTINS],
                 }
             },
         }),
@@ -198,3 +204,12 @@ def test_selected_manifest_must_match_platform(tmp_path: Path) -> None:
         match="selected manifest platform mismatch",
     ):
         _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
+
+
+def test_repository_linux_selector_matches_published_nvrtc_layout() -> None:
+    """Tracked Linux selection follows the extracted NVIDIA archive layout."""
+    selected = toolchain.select_cuda_toolchain(REPOSITORY_ROOT, LINUX_PLATFORM)
+
+    assert selected.nvrtc_library == (
+        selected.toolkit_root / "lib/libnvrtc.so.13"
+    )

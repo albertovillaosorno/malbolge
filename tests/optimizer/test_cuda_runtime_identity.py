@@ -38,6 +38,7 @@ from __future__ import annotations
 import ctypes
 from dataclasses import dataclass
 from hashlib import sha256
+import platform
 from typing import TYPE_CHECKING
 
 from accelerator.cuda import CudaExactPrimitiveAdapter
@@ -64,8 +65,13 @@ NVRTC_MINOR = 3
 TOOLCHAIN_SHA256 = (
     "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
 )
+LINUX_TOOLCHAIN_MANIFEST = CUDA_TOOLCHAIN_MANIFEST.with_name(
+    "toolchain-linux-x86_64.json"
+)
 FAILURE_STATUS = 7
 DISPLAY_DRIVER_VERSION = "610.88"
+WINDOWS_SYSTEM = "Windows"
+LINUX_SYSTEM = "Linux"
 HOST_RUNTIME_IDENTITY = CudaHostRuntimeIdentity(
     host_edition="Professional",
     host_machine="x86_64",
@@ -325,8 +331,12 @@ def test_fake_nvml_shutdown_failure_is_optional(
     assert state.shutdown_calls == 1
 
 
+@pytest.mark.skipif(
+    platform.system() != WINDOWS_SYSTEM,
+    reason="retained CUDA runtime compatibility identity is Windows-specific",
+)
 def test_live_cuda_runtime_identity_matches_current_compatibility() -> None:
-    """Live CUDA reports retained API/NVRTC and tracked manifest identity."""
+    """Live Windows CUDA matches the retained compatibility identity."""
     try:
         adapter = CudaExactPrimitiveAdapter()
     except AcceleratorUnavailableError as error:
@@ -344,3 +354,29 @@ def test_live_cuda_runtime_identity_matches_current_compatibility() -> None:
     assert sha256(CUDA_TOOLCHAIN_MANIFEST.read_bytes()).hexdigest() == (
         TOOLCHAIN_SHA256
     )
+
+
+@pytest.mark.skipif(
+    platform.system() != LINUX_SYSTEM,
+    reason="live Linux CUDA identity requires a Linux host",
+)
+def test_live_linux_cuda_runtime_identity_uses_selected_toolchain() -> None:
+    """Live Linux CUDA binds driver, NVRTC, host, and selected manifest."""
+    try:
+        adapter = CudaExactPrimitiveAdapter()
+    except AcceleratorUnavailableError as error:
+        pytest.skip(f"CUDA unavailable: {error}")
+    with adapter:
+        identity = adapter.runtime_identity
+    host = identity.host_runtime_identity
+    assert identity.display_driver_version is not None
+    assert identity.driver_api_version >= DRIVER_API_VERSION
+    assert host is not None
+    assert host.host_system == LINUX_SYSTEM
+    assert (identity.nvrtc_major, identity.nvrtc_minor) == (
+        NVRTC_MAJOR,
+        NVRTC_MINOR,
+    )
+    assert identity.toolchain_manifest_sha256 == sha256(
+        LINUX_TOOLCHAIN_MANIFEST.read_bytes()
+    ).hexdigest()

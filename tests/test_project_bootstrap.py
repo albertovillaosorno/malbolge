@@ -128,7 +128,7 @@ def _write_cuda_manifest_index(root: Path) -> Path:
                     "manifest": CUDA_LINUX_MANIFEST,
                     "loader": "cdll",
                     "driver_library": "libcuda.so.1",
-                    "nvrtc_library": "lib64/libnvrtc.so.13",
+                    "nvrtc_library": "lib/libnvrtc.so.13",
                 },
             },
         }),
@@ -506,7 +506,7 @@ def test_cuda_inspection_selects_linux_manifest_and_bundle(
     toolkit = tmp_path / CUDA_VERSION_ROOT
     toolkit.mkdir(parents=True)
     missing_runtime = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
-    nvrtc = toolkit / "lib64/libnvrtc.so.13"
+    nvrtc = toolkit / "lib/libnvrtc.so.13"
     nvrtc.parent.mkdir(parents=True)
     nvrtc.touch()
     ready = project.inspect_cuda(tmp_path, LINUX_PLATFORM)

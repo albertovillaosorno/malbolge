@@ -36,6 +36,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import platform
 from typing import TYPE_CHECKING
 from typing import cast
 from typing import final
@@ -770,6 +771,10 @@ def test_retained_cuda_report_matches_ordinary_plan() -> None:
     )
 
 
+@pytest.mark.skipif(
+    platform.system() != HOST_RUNTIME_IDENTITY.host_system,
+    reason="retained CUDA ticket-admission evidence is Windows-specific",
+)
 def test_live_retained_executor_uses_only_synchronous_exact_tickets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -798,6 +803,10 @@ def test_live_retained_executor_uses_only_synchronous_exact_tickets(
     assert all(result.words_u32le == expected_words for result in results)
 
 
+@pytest.mark.skipif(
+    platform.system() != HOST_RUNTIME_IDENTITY.host_system,
+    reason="retained CUDA ticket-admission evidence is Windows-specific",
+)
 def test_live_retained_telemetry_records_completed_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -832,6 +841,10 @@ def test_live_retained_telemetry_records_completed_execution(
     assert observation.elapsed_ns >= 0
 
 
+@pytest.mark.skipif(
+    platform.system() != HOST_RUNTIME_IDENTITY.host_system,
+    reason="retained CUDA ticket-admission evidence is Windows-specific",
+)
 def test_live_retained_executor_rejects_wrong_prepared_workload() -> None:
     """An exact capability cannot authorize another prepared payload."""
     prepared = prepare_packed_primitive_batch(

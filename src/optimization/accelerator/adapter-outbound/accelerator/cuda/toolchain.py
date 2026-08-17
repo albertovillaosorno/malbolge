@@ -72,6 +72,7 @@ class CudaToolchainSelection:
     loader_kind: str
     driver_library: str
     nvrtc_library: Path
+    preload_libraries: tuple[Path, ...]
 
 
 def _fail(detail: str) -> Never:
@@ -146,6 +147,20 @@ def _repository_relative(value: str, label: str) -> Path:
     if native.is_absolute() or _windows_anchored(value) or contains_parent:
         _fail(f"{label} must stay within the repository")
     return native
+
+
+def _repository_relative_paths(
+    value: object,
+    label: str,
+) -> tuple[Path, ...]:
+    if not isinstance(value, list):
+        _fail(f"{label} must be an array")
+    result: list[Path] = []
+    for index, candidate in enumerate(cast("list[object]", value)):
+        if not isinstance(candidate, str) or not candidate:
+            _fail(f"{label}[{index}] must be a nonempty string")
+        result.append(_repository_relative(candidate, f"{label}[{index}]"))
+    return tuple(result)
 
 
 def _loader_kind(value: str) -> str:
@@ -231,6 +246,10 @@ def select_cuda_toolchain(
     entry, manifest_path, manifest = _selected_manifest(root, platform_id)
     fields = _runtime_selection_fields(root, entry, manifest)
     toolkit_root, loader_kind, driver_library, nvrtc_relative = fields
+    preload_relatives = _repository_relative_paths(
+        entry.get("preload_libraries"),
+        "CUDA platform.preload_libraries",
+    )
     return CudaToolchainSelection(
         platform_id=platform_id,
         manifest_path=manifest_path,
@@ -238,4 +257,7 @@ def select_cuda_toolchain(
         loader_kind=loader_kind,
         driver_library=driver_library,
         nvrtc_library=toolkit_root / nvrtc_relative,
+        preload_libraries=tuple(
+            toolkit_root / relative for relative in preload_relatives
+        ),
     )

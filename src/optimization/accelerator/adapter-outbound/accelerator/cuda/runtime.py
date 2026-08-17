@@ -99,6 +99,8 @@ NVML_SUCCESS: Final = 0
 NVML_VERSION_BUFFER_BYTES: Final = 96
 _DISPLAY_DRIVER_MIN_COMPONENTS: Final = 2
 _WINDOWS_SYSTEM: Final = "Windows"
+_LINUX_SYSTEM: Final = "Linux"
+_LINUX_NVML_SONAME: Final = "libnvidia-ml.so.1"
 _WINDOWS_LOADER_KIND: Final = "windll"
 THREADS_PER_BLOCK: Final = 256
 CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 1
@@ -135,6 +137,7 @@ class _LoadedCudaLibraries:
 
     driver: ctypes.CDLL
     nvrtc: ctypes.CDLL
+    preloads: tuple[ctypes.CDLL, ...]
     search_directory: object | None
 
 
@@ -2160,6 +2163,7 @@ class CudaRuntime:
     _dll_directory: object
     _driver: ctypes.CDLL
     _nvrtc: ctypes.CDLL
+    _preload_libraries: tuple[ctypes.CDLL, ...]
     device_info: CudaDeviceInfo
     runtime_identity: CudaRuntimeIdentity
     host_memory: CudaHostMemoryRegistry
@@ -2228,9 +2232,17 @@ class CudaRuntime:
             raise AcceleratorUnavailableError(message) from error
         _configure_toolkit_environment(selection)
         loaded = _load_cuda_libraries(selection)
-        self._dll_directory = loaded.search_directory
-        self._driver = loaded.driver
-        self._nvrtc = loaded.nvrtc
+        (
+            self._dll_directory,
+            self._driver,
+            self._nvrtc,
+            self._preload_libraries,
+        ) = (
+            loaded.search_directory,
+            loaded.driver,
+            loaded.nvrtc,
+            loaded.preloads,
+        )
         self._bind_driver()
         self._bind_nvrtc()
         self._closed = False
@@ -2693,7 +2705,7 @@ def _windows_library_loader(name: str) -> ctypes.CDLL:
 
 
 def _posix_library_loader(name: str) -> ctypes.CDLL:
-    return ctypes.CDLL(name)
+    return ctypes.CDLL(name, mode=ctypes.RTLD_GLOBAL)
 
 
 def _open_windows_dll_directory(path: Path) -> object:
@@ -2734,6 +2746,13 @@ def _load_cuda_libraries(
             f"pinned CUDA NVRTC library missing: {selection.nvrtc_library}"
         )
         raise AcceleratorUnavailableError(message)
+    missing_preload = next(
+        (path for path in selection.preload_libraries if not path.is_file()),
+        None,
+    )
+    if missing_preload is not None:
+        message = f"pinned CUDA preload library missing: {missing_preload}"
+        raise AcceleratorUnavailableError(message)
     loader, search_directory = _library_loader_and_search_directory(
         selection,
         windows_loader=windows_loader,
@@ -2742,6 +2761,9 @@ def _load_cuda_libraries(
     )
     try:
         driver = loader(selection.driver_library)
+        preloads = tuple(
+            loader(str(path)) for path in selection.preload_libraries
+        )
         nvrtc = loader(str(selection.nvrtc_library))
     except (AttributeError, OSError) as error:
         message = f"CUDA runtime library unavailable: {error}"
@@ -2749,6 +2771,7 @@ def _load_cuda_libraries(
     return _LoadedCudaLibraries(
         driver=driver,
         nvrtc=nvrtc,
+        preloads=preloads,
         search_directory=search_directory,
     )
 
@@ -2844,8 +2867,45 @@ def measure_cuda_runtime_identity(
     ).validated()
 
 
+def _default_nvml_library(*, system: str | None = None) -> str | None:
+    host_system = system or platform.system()
+    if host_system == _WINDOWS_SYSTEM:
+        return str(NVML_DLL)
+    if host_system == _LINUX_SYSTEM:
+        return _LINUX_NVML_SONAME
+    return None
+
+
+def _load_nvml_library(library: str, *, system: str) -> _NvmlBindings | None:
+    try:
+        dll = (
+            ctypes.WinDLL(library)
+            if system == _WINDOWS_SYSTEM
+            else ctypes.CDLL(library)
+        )
+        return _bind_nvml(dll)
+    except AttributeError, OSError:
+        return None
+
+
+def _load_nvml_path(dll_path: Path) -> _NvmlBindings | None:
+    if not dll_path.is_file():
+        return None
+    return _load_nvml_library(str(dll_path), system=platform.system())
+
+
+def _load_default_nvml() -> _NvmlBindings | None:
+    system = platform.system()
+    library = _default_nvml_library(system=system)
+    if library is None:
+        return None
+    if system == _WINDOWS_SYSTEM:
+        return _load_nvml_path(Path(library))
+    return _load_nvml_library(library, system=system)
+
+
 def measure_nvml_display_driver_version(
-    dll_path: Path = NVML_DLL,
+    dll_path: Path | None = None,
     *,
     loader: _NvmlLoader | None = None,
 ) -> str | None:
@@ -2855,18 +2915,13 @@ def measure_nvml_display_driver_version(
         Normalized version text, or ``None`` when NVML cannot prove it.
 
     """
-    bindings = _load_nvml(dll_path) if loader is None else loader(dll_path)
+    if loader is not None:
+        bindings = loader(NVML_DLL if dll_path is None else dll_path)
+    elif dll_path is not None:
+        bindings = _load_nvml_path(dll_path)
+    else:
+        bindings = _load_default_nvml()
     return None if bindings is None else _query_nvml_display_driver(*bindings)
-
-
-def _load_nvml(dll_path: Path) -> _NvmlBindings | None:
-    if not dll_path.is_file():
-        return None
-    try:
-        dll = ctypes.WinDLL(str(dll_path))
-        return _bind_nvml(dll)
-    except AttributeError, OSError:
-        return None
 
 
 def _query_nvml_display_driver(

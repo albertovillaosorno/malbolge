@@ -53,7 +53,10 @@ LINUX_PLATFORM = "linux-x86_64"
 WINDOWS_DRIVER = "nvcuda.dll"
 LINUX_DRIVER = "libcuda.so.1"
 WINDOWS_NVRTC = "bin/x64/nvrtc64_130_0.dll"
-LINUX_NVRTC = "lib64/libnvrtc.so.13"
+LINUX_NVRTC = "lib/libnvrtc.so.13"
+LINUX_BUILTINS = "lib/libnvrtc-builtins.so.13.3"
+LINUX_NVML = "libnvidia-ml.so.1"
+WINDOWS_NVML_SUFFIX = "System32/nvml.dll"
 
 
 def _selection(
@@ -74,6 +77,11 @@ def _selection(
     nvrtc_path = toolkit / nvrtc
     nvrtc_path.parent.mkdir(parents=True)
     nvrtc_path.touch()
+    preloads: tuple[Path, ...] = ()
+    if platform_id == LINUX_PLATFORM:
+        builtins = toolkit / LINUX_BUILTINS
+        builtins.touch()
+        preloads = (builtins,)
     return CudaToolchainSelection(
         platform_id=platform_id,
         manifest_path=tmp_path / manifest_name,
@@ -81,6 +89,7 @@ def _selection(
         loader_kind=loader_kind,
         driver_library=driver,
         nvrtc_library=nvrtc_path,
+        preload_libraries=preloads,
     )
 
 
@@ -153,7 +162,11 @@ def test_linux_uses_cdll_without_windows_search_directory(
     )
 
     assert windows_calls == []
-    assert posix_calls == [LINUX_DRIVER, str(selection.nvrtc_library)]
+    assert posix_calls == [
+        LINUX_DRIVER,
+        str(selection.preload_libraries[0]),
+        str(selection.nvrtc_library),
+    ]
     assert search_paths == []
     assert loaded.search_directory is None
 
@@ -176,3 +189,14 @@ def test_missing_pinned_nvrtc_fails_before_driver_load(tmp_path: Path) -> None:
         )
 
     assert calls == []
+
+
+def test_nvml_default_library_is_platform_specific() -> None:
+    """Host-driver identity uses Win32 path or Linux NVML soname explicitly."""
+    windows = runtime._default_nvml_library(system="Windows")
+    linux = runtime._default_nvml_library(system="Linux")
+
+    assert windows is not None
+    assert windows.endswith(WINDOWS_NVML_SUFFIX)
+    assert linux == LINUX_NVML
+    assert runtime._default_nvml_library(system="Darwin") is None
