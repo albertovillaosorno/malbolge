@@ -149,6 +149,10 @@ class _WorklistAnalysis(Protocol):
     known_graph_cyclic_component_count: int
     known_graph_cyclic_state_count: int
     known_graph_largest_cyclic_component_states: int
+    closed_recurrent_component_count: int | None
+    closed_recurrent_state_count: int | None
+    closed_recurrent_largest_component_states: int | None
+    closed_recurrent_cycle_witness: tuple[_WorklistCycleState, ...] | None
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     explored_minimum_words: int
@@ -165,6 +169,7 @@ class _StrongComponentSummary(Protocol):
     cyclic_component_count: int
     cyclic_state_count: int
     largest_cyclic_component_states: int
+    cyclic_sink_components: tuple[tuple[_WorklistStateKey, ...], ...]
 
 
 class _Explorer(Protocol):
@@ -257,6 +262,26 @@ worklist = _load_worklist()
 prefix_transfer = worklist.prefix_transfer
 
 
+def _assert_no_closed_recurrence(result: _WorklistAnalysis) -> None:
+    assert result.closed_recurrent_component_count == 0
+    assert result.closed_recurrent_state_count == 0
+    assert result.closed_recurrent_largest_component_states == 0
+    assert result.closed_recurrent_cycle_witness == ()
+
+
+def _assert_fixed_cycle_closed_recurrence(result: _WorklistAnalysis) -> None:
+    assert result.closed_recurrent_component_count == _INPUT_VALUE_COUNT
+    assert result.closed_recurrent_state_count == _INPUT_VALUE_COUNT
+    assert result.closed_recurrent_largest_component_states == 1
+    witness = result.closed_recurrent_cycle_witness
+    assert witness is not None
+    assert len(witness) == 1
+    state = witness[0]
+    assert state.code_pointer == _FIXED_CYCLE_POINTER
+    assert state.data_pointer == _FIXED_CYCLE_POINTER
+    assert state.memory_overrides == _FIXED_CYCLE_MEMORY_OVERRIDES
+
+
 def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     """One input then halt closes exactly 256 byte states plus EOF."""
     result = worklist.analyze_reachability(
@@ -273,6 +298,7 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     assert result.known_graph_cyclic_component_count == 0
     assert result.known_graph_cyclic_state_count == 0
     assert result.known_graph_largest_cyclic_component_states == 0
+    _assert_no_closed_recurrence(result)
     assert result.input_branch_points == 1
     assert result.terminal_status_counts == (("halted", _INPUT_VALUE_COUNT),)
     assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
@@ -319,6 +345,10 @@ def test_input_worklist_truncates_before_unadmitted_eof_state() -> None:
     assert result.input_branch_points == 1
     assert result.terminal_status_counts == ()
     assert result.frontier_states == _INPUT_VALUE_COUNT
+    assert result.closed_recurrent_component_count is None
+    assert result.closed_recurrent_state_count is None
+    assert result.closed_recurrent_largest_component_states is None
+    assert result.closed_recurrent_cycle_witness is None
     assert result.truncated
 
 
@@ -352,6 +382,7 @@ def test_double_input_merges_are_not_silently_discarded() -> None:
     assert result.known_graph_cyclic_component_count == 0
     assert result.known_graph_cyclic_state_count == 0
     assert result.known_graph_largest_cyclic_component_states == 0
+    _assert_no_closed_recurrence(result)
     assert result.input_branch_points == _DOUBLE_INPUT_BRANCH_POINTS
     assert result.terminal_status_counts == (
         ("halted", _INPUT_VALUE_COUNT),
@@ -382,6 +413,7 @@ def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:
     assert result.known_graph_cyclic_component_count == _INPUT_VALUE_COUNT
     assert result.known_graph_cyclic_state_count == _INPUT_VALUE_COUNT
     assert result.known_graph_largest_cyclic_component_states == 1
+    _assert_fixed_cycle_closed_recurrence(result)
     assert result.terminal_status_counts == ()
     assert not result.truncated
 
@@ -438,6 +470,23 @@ def test_known_graph_scc_summary_counts_cycle_components_exactly() -> None:
         summary.largest_cyclic_component_states
         == _SCC_LARGEST_CYCLIC_COMPONENT_STATES
     )
+    assert summary.cyclic_sink_components == (
+        (_GRAPH_KEY_A, _GRAPH_KEY_B),
+        (_GRAPH_KEY_C,),
+    )
+
+
+def test_cyclic_scc_with_known_escape_is_not_closed_recurrent() -> None:
+    """A cycle with a known outgoing edge is not a recurrent sink SCC."""
+    edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B},
+        _GRAPH_KEY_B: {_GRAPH_KEY_A, _GRAPH_KEY_C},
+        _GRAPH_KEY_C: set(),
+    }
+    nodes = {_GRAPH_KEY_A, _GRAPH_KEY_B, _GRAPH_KEY_C}
+    summary = worklist._known_graph_strong_component_summary(edges, nodes)
+    assert summary.cyclic_component_count == 1
+    assert summary.cyclic_sink_components == ()
 
 
 def test_cycle_witness_is_stable_across_graph_insertion_order() -> None:

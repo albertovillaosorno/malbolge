@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v24"
+_SCHEMA = "malbolge-static-image/v25"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -293,6 +293,10 @@ class _WorklistAnalysis(Protocol):
     known_graph_cyclic_component_count: int
     known_graph_cyclic_state_count: int
     known_graph_largest_cyclic_component_states: int
+    closed_recurrent_component_count: int | None
+    closed_recurrent_state_count: int | None
+    closed_recurrent_largest_component_states: int | None
+    closed_recurrent_cycle_witness: tuple[_WorklistCycleState, ...] | None
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     explored_minimum_words: int
@@ -1605,6 +1609,27 @@ def test_exact_cycle_certificate_causes_cli_failure(
     assert document["bounded_exact_cycle"] == {"period_transitions": 1}
 
 
+def _assert_closed_recurrent_cycle_json(
+    bounded: dict[str, object],
+) -> None:
+    assert (
+        bounded["closed_recurrent_component_count"]
+        == _WORKLIST_INPUT_VALUE_COUNT
+    )
+    assert (
+        bounded["closed_recurrent_state_count"]
+        == _WORKLIST_INPUT_VALUE_COUNT
+    )
+    assert bounded["closed_recurrent_largest_component_states"] == 1
+    recurrent = cast(
+        "list[dict[str, object]]",
+        bounded["closed_recurrent_cycle_witness"],
+    )
+    assert len(recurrent) == 1
+    assert recurrent[0]["code_pointer"] == _FIXED_CYCLE_POINTER
+    assert recurrent[0]["data_pointer"] == _FIXED_CYCLE_POINTER
+
+
 def test_worklist_cycle_detection_causes_cli_failure(tmp_path: Path) -> None:
     """A cycle beyond the prefix bound still makes requested CLI nonzero."""
     source_path = tmp_path / "worklist-cycle.malbolge"
@@ -1658,6 +1683,7 @@ def test_worklist_cycle_detection_causes_cli_failure(tmp_path: Path) -> None:
         == _WORKLIST_INPUT_VALUE_COUNT
     )
     assert bounded["known_graph_largest_cyclic_component_states"] == 1
+    _assert_closed_recurrent_cycle_json(bounded)
     assert bounded["truncated"] is False
 
 
@@ -1728,6 +1754,10 @@ def test_report_worklist_truncation_is_explicit() -> None:
     assert worklist is not None
     assert worklist.truncated
     assert worklist.frontier_states == _WORKLIST_TRUNCATED_STATE_LIMIT
+    assert worklist.closed_recurrent_component_count is None
+    assert worklist.closed_recurrent_state_count is None
+    assert worklist.closed_recurrent_largest_component_states is None
+    assert worklist.closed_recurrent_cycle_witness is None
     assert _WORKLIST_TRUNCATED_LIMIT in report.analysis_limits
 
 

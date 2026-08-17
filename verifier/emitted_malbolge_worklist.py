@@ -87,6 +87,10 @@ class WorklistAnalysis:
     known_graph_cyclic_component_count: int
     known_graph_cyclic_state_count: int
     known_graph_largest_cyclic_component_states: int
+    closed_recurrent_component_count: int | None
+    closed_recurrent_state_count: int | None
+    closed_recurrent_largest_component_states: int | None
+    closed_recurrent_cycle_witness: tuple[WorklistCycleState, ...] | None
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     explored_minimum_words: int
@@ -106,6 +110,17 @@ class _StrongComponentSummary:
     cyclic_component_count: int
     cyclic_state_count: int
     largest_cyclic_component_states: int
+    cyclic_sink_components: tuple[tuple[_StateKey, ...], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ClosedRecurrenceEvidence:
+    """Nullable recurrent sink evidence after complete graph closure."""
+
+    component_count: int | None
+    state_count: int | None
+    largest_component_states: int | None
+    cycle_witness: tuple[WorklistCycleState, ...] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -333,21 +348,41 @@ def _component_is_cyclic(
     return node in edges.get(node, set())
 
 
+def _component_is_sink(
+    component: tuple[_StateKey, ...],
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+) -> bool:
+    members = set(component)
+    return all(
+        target in members
+        for source in component
+        for target in _known_targets(source, edges, nodes)
+    )
+
+
 def _known_graph_strong_component_summary(
     edges: dict[_StateKey, set[_StateKey]],
     nodes: set[_StateKey],
 ) -> _StrongComponentSummary:
     components = _known_graph_strong_components(edges, nodes)
-    cyclic_sizes = tuple(
-        len(component)
+    cyclic_components = tuple(
+        component
         for component in components
         if _component_is_cyclic(component, edges)
+    )
+    cyclic_sizes = tuple(map(len, cyclic_components))
+    cyclic_sinks = tuple(
+        component
+        for component in cyclic_components
+        if _component_is_sink(component, edges, nodes)
     )
     return _StrongComponentSummary(
         component_count=len(components),
         cyclic_component_count=len(cyclic_sizes),
         cyclic_state_count=sum(cyclic_sizes),
         largest_cyclic_component_states=max(cyclic_sizes, default=0),
+        cyclic_sink_components=cyclic_sinks,
     )
 
 
@@ -434,6 +469,31 @@ def _cycle_state(key: _StateKey) -> WorklistCycleState:
     )
 
 
+def _closed_recurrence_evidence(
+    summary: _StrongComponentSummary,
+    edges: dict[_StateKey, set[_StateKey]],
+    *,
+    truncated: bool,
+) -> _ClosedRecurrenceEvidence:
+    if truncated:
+        return _ClosedRecurrenceEvidence(None, None, None, None)
+    components = summary.cyclic_sink_components
+    witness_keys = (
+        _known_graph_cycle_witness(edges, set(components[0]))
+        if components
+        else ()
+    )
+    if bool(witness_keys) != bool(components):
+        message = "closed recurrent SCC lost deterministic witness"
+        raise AssertionError(message)
+    return _ClosedRecurrenceEvidence(
+        component_count=len(components),
+        state_count=sum(map(len, components)),
+        largest_component_states=max(map(len, components), default=0),
+        cycle_witness=tuple(_cycle_state(key) for key in witness_keys),
+    )
+
+
 @dataclass(slots=True)
 class _Explorer:
     words: tuple[int, ...]
@@ -489,6 +549,11 @@ class _Explorer:
         if has_cycle != bool(component_summary.cyclic_component_count):
             message = "known-graph cycle and SCC evidence disagree"
             raise AssertionError(message)
+        recurrence = _closed_recurrence_evidence(
+            component_summary,
+            self.edges,
+            truncated=truncated,
+        )
         return WorklistAnalysis(
             state_limit=self.state_limit,
             unique_states=len(self.seen),
@@ -508,6 +573,12 @@ class _Explorer:
             known_graph_largest_cyclic_component_states=(
                 component_summary.largest_cyclic_component_states
             ),
+            closed_recurrent_component_count=recurrence.component_count,
+            closed_recurrent_state_count=recurrence.state_count,
+            closed_recurrent_largest_component_states=(
+                recurrence.largest_component_states
+            ),
+            closed_recurrent_cycle_witness=recurrence.cycle_witness,
             input_branch_points=self.input_branch_points,
             terminal_status_counts=tuple(sorted(self.terminal_counts.items())),
             explored_minimum_words=max(
