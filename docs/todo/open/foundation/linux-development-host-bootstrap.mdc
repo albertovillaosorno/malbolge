@@ -41,6 +41,12 @@ run Jig without inheriting Windows executable paths or ambient PATH authority.
   `.dependencies/git/<version>/`, using one neutral `git.bin` authority path.
 - Repository-local Cargo home creation and Jig tool paths no longer require the
   former Windows-only executable layout.
+- Jig schema 21 now resolves every configured Python, Git, and Rust validation
+  tool from repository-local paths on Fedora. Full `jig validate --root .`
+  reaches native validation without Linux linker, Clippy, documentation, hook,
+  or source-bytecode errors; completion remains blocked by `JIG-NATIVE-009`
+  skips for unavailable Windows, NTFS, LLVM-development, and CUDA capabilities.
+  Those skips remain explicit rather than being hidden or promoted to passes.
 
 ## Acceptance
 

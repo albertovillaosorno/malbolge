@@ -238,17 +238,17 @@ reason = "MSVC C++ policy is centralized at .jig/lang/cpp/msvc-cpp.editorconfig;
 [linters.applicability.pyright]
 enabled = false
 # jig-ignore-next-line: indivisible reviewed identifier
-reason = "BasedPyright is executed by validation.pyright with the schema-20 configuration under .jig/lang/python."
+reason = "BasedPyright is executed by validation.pyright with the schema-21 configuration under .jig/lang/python."
 
 [linters.applicability.pytest]
 enabled = false
 # jig-ignore-next-line: indivisible reviewed identifier
-reason = "Pytest is executed by validation.pytest with the schema-20 configuration under .jig/lang/python."
+reason = "Pytest is executed by validation.pytest with the schema-21 configuration under .jig/lang/python."
 
 [linters.applicability.ruff]
 enabled = false
 # jig-ignore-next-line: indivisible reviewed identifier
-reason = "Ruff is executed by validation.ruff with the schema-20 configuration under .jig/lang/python."
+reason = "Ruff is executed by validation.ruff with the schema-21 configuration under .jig/lang/python."
 
 [linters.applicability.rust-toolchain]
 enabled = true
