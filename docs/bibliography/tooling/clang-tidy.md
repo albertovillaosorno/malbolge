@@ -27,8 +27,11 @@ that the plugin must be compiled against the same clang-tidy version because
 there are no API or ABI stability guarantees for this interface.
 
 LLVM 22.1.8 release metadata identifies the reviewed Windows development archive
-used by the repository. The repository tracks the exact asset size and SHA-256
-in `llvm-clang-tidy-toolchain.json`.
+used by the repository. For Linux x86-64, Fedora 44 Updates publishes the exact
+LLVM/Clang 22.1.8 development RPMs used as packaging provenance for the same
+upstream API/ABI. The repository tracks every admitted artifact size and SHA-256
+in `llvm-clang-tidy-toolchain.json`; Fedora packaging does not replace LLVM as
+the interface authority.
 
 ## Identity And Version
 
@@ -54,6 +57,9 @@ terms into the repository MIT license.
 - Out-of-tree plugin code must match the exact clang-tidy API/ABI version.
 - The LLVM 22.1.8 Windows development archive contains the clang-tidy headers,
   static libraries, LLVM/Clang CMake metadata, and build tools needed here.
+- Fedora 44 Updates supplies exact 22.1.8 Linux development RPMs for Clang,
+  clang-tools-extra, and LLVM; the repository admits their bytes by tracked
+  size and SHA-256 before extracting repository-local headers.
 - The official LLVM 22.1.8 Windows executable does not provide the registry
   export needed by this out-of-tree DLL layout, so the repository relinks the
   same pinned `clangTidyMain` libraries behind one narrow registry bridge.
@@ -71,3 +77,5 @@ lowerability coverage remains governed by later TODO contracts.
   2026-08-08.
 - <https://github.com/llvm/llvm-project/releases/tag/llvmorg-22.1.8> - accessed
   2026-08-08.
+- <https://download.fedoraproject.org/pub/fedora/linux/updates/44/> - accessed
+  2026-08-17.

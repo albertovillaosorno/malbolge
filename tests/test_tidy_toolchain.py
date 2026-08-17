@@ -332,8 +332,10 @@ def test_installation_rejects_wrong_host_platform(tmp_path: Path) -> None:
 
 
 def test_local_installation_matches_manifest_when_present() -> None:
-    """Installed optional LLVM roots, when present, match exact identity."""
-    identity = tidy_toolchain.load_identity()
+    """Installed optional LLVM roots match the exact host identity."""
+    identity = tidy_toolchain.load_identity(
+        platform_id=tidy_toolchain.host_platform_id()
+    )
     runtime_ready = identity.runtime_root.is_dir()
     development_ready = identity.development_root.is_dir()
     installed = runtime_ready and development_ready

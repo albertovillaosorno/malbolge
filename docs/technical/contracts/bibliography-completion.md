@@ -68,9 +68,9 @@ to increase the record count is invalid.
 
 ## Implementation
 
-Complete. The bibliography contains 47 source/provenance records, including 44
+Complete. The bibliography contains 48 source/provenance records, including 44
 required baseline records. The validator checks record shape, dated uncertainty,
-unique stable identities, exact Python dependency pins, and 17 distinct durable
+unique stable identities, exact Python dependency pins, and 20 distinct durable
 external references discovered across source, manifests, technical documents,
 completed lifecycle evidence, generated text artifacts, and Jig configuration.
 

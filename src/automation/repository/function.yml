@@ -166,6 +166,11 @@ parts:
     kind: composition
     language: python
     responsibility: Import exact repository-local LLVM validation tooling.
+  - id: part-0027
+    path: composition/scripts/bootstrap/llvm_development_validation.py
+    kind: composition
+    language: python
+    responsibility: Provision exact Linux LLVM development headers from RPMs.
 projects: []
 tests: []
 graph:
