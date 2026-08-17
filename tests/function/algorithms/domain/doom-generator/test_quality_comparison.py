@@ -134,6 +134,16 @@ def test_input_probe_validates_the_selected_policy(
     before.mkdir()
     after.mkdir()
     calls: list[tuple[list[str], Path]] = []
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    clang = tools / "clang"
+    clang_tidy = tools / "clang-tidy"
+    clang_format = tools / "clang-format"
+    for tool in (clang, clang_tidy, clang_format):
+        tool.touch()
+    monkeypatch.setattr(generate, "CLANG", clang)
+    monkeypatch.setattr(generate, "CLANG_TIDY", clang_tidy)
+    monkeypatch.setattr(generate, "CLANG_FORMAT", clang_format)
 
     def fake_run(
         arguments: list[str],

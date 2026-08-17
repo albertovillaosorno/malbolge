@@ -572,6 +572,10 @@ def test_manifest_binds_identity_hashes_and_oracle(
     assert _FORBIDDEN_STDIO not in source
 
 
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME or not _CLANG.is_file(),
+    reason="repository-pinned native Clang is unavailable",
+)
 @pytest.mark.parametrize("family", _FAMILIES)
 def test_generated_source_is_admitted_by_current_c_profile(
     tmp_path: Path, family: str
