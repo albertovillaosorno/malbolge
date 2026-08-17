@@ -52,6 +52,10 @@ CUDA_VERSION_ROOT = ".dependencies/cuda/13.3.1/toolkit"
 WINDOWS_PLATFORM = "windows-x86_64"
 LINUX_PLATFORM = "linux-x86_64"
 RUST_CHANNEL = "1.97.1"
+RUST_NIGHTLY_CHANNEL = "nightly-2026-07-14"
+RUST_CARGO_BYTES = b"cargo-1.97.1"
+RUST_RUSTC_BYTES = b"rustc-1.97.1"
+RUST_STD_BYTES = b"rust-std"
 WINDOWS_PYTHON = "python.exe"
 WINDOWS_PYTHON_LAUNCHER = "python-jig.cmd"
 WINDOWS_PYTEST = "pytest.exe"
@@ -529,24 +533,200 @@ def test_rust_inspection_rejects_drive_relative_channel(
         _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
 
 
-def test_rust_inspection_uses_host_native_executable_name(
+def test_rust_toolchain_import_preserves_native_tree_and_alias(
     tmp_path: Path,
 ) -> None:
-    """One version-only channel resolves native Cargo names on each host."""
-    _ = _write_rust_manifest(tmp_path)
-    linux_cargo = (
-        tmp_path / ".dependencies" / "rust" / RUST_CHANNEL / "bin" / "cargo"
+    """Imported Rust keeps its sysroot layout and adds one neutral Jig alias."""
+    source = tmp_path / "host-rust"
+    source_bin = source / "bin"
+    source_lib = source / "lib" / "rustlib"
+    source_bin.mkdir(parents=True)
+    source_lib.mkdir(parents=True)
+    cargo = source_bin / "cargo"
+    _ = cargo.write_bytes(RUST_CARGO_BYTES)
+    _ = cargo.chmod(cargo.stat().st_mode | stat.S_IXUSR)
+    _ = (source_bin / "rustc").write_bytes(RUST_RUSTC_BYTES)
+    _ = (source_lib / "manifest").write_bytes(RUST_STD_BYTES)
+    destination = tmp_path / ".dependencies" / "rust" / RUST_CHANNEL
+
+    aliases = project.import_rust_toolchain(
+        source,
+        destination,
+        tool_ids=("cargo",),
+        windows=False,
     )
-    linux_cargo.parent.mkdir(parents=True)
-    linux_cargo.touch()
+
+    alias = destination / "bin" / "cargo.bin"
+    assert aliases == (alias,)
+    assert alias.read_bytes() == RUST_CARGO_BYTES
+    assert alias.stat().st_mode & stat.S_IXUSR
+    assert (destination / "bin" / "rustc").read_bytes() == RUST_RUSTC_BYTES
+    assert (destination / "lib/rustlib/manifest").read_bytes() == RUST_STD_BYTES
+    assert project.rust_toolchain_import_complete(destination)
+
+
+def test_rustup_resolver_never_queries_uninstalled_channel(
+    tmp_path: Path,
+) -> None:
+    """Host resolver calls `which` only for channels already installed."""
+    rustup = tmp_path / "rustup"
+    stable_cargo = tmp_path / "stable" / "bin" / "cargo"
+    stable_cargo.parent.mkdir(parents=True)
+    stable_cargo.touch()
+    queried: list[str] = []
+
+    def list_runner(observed: Path) -> tuple[str, ...]:
+        assert observed == rustup
+        return ("1.97.1-x86_64-unknown-linux-gnu",)
+
+    def which_runner(observed: Path, channel: str) -> str:
+        assert observed == rustup
+        queried.append(channel)
+        return str(stable_cargo)
+
+    resolver = project.rustup_toolchain_resolver(
+        rustup,
+        list_runner=list_runner,
+        which_runner=which_runner,
+    )
+
+    assert resolver(RUST_CHANNEL) == stable_cargo.parent.parent
+    assert resolver(RUST_NIGHTLY_CHANNEL) is None
+    assert queried == [RUST_CHANNEL]
+
+
+def test_rustup_installed_channel_match_accepts_native_host_suffix() -> None:
+    """Pinned channels match installed host-qualified Rustup identities."""
+    installed = (
+        "1.97.1-x86_64-unknown-linux-gnu",
+        "nightly-2026-07-14-x86_64-unknown-linux-gnu",
+    )
+
+    assert project.rustup_channel_is_installed(RUST_CHANNEL, installed)
+    assert project.rustup_channel_is_installed(RUST_NIGHTLY_CHANNEL, installed)
+    assert not project.rustup_channel_is_installed("1.97.0", installed)
+    assert not project.rustup_channel_is_installed(
+        "nightly-2026-07-13",
+        installed,
+    )
+
+
+def test_rustup_toolchain_root_requires_existing_cargo_path(
+    tmp_path: Path,
+) -> None:
+    """Rustup resolution admits only an existing native Cargo executable."""
+    cargo = tmp_path / "toolchain" / "bin" / "cargo"
+    cargo.parent.mkdir(parents=True)
+    cargo.touch()
+
+    rustup = tmp_path / "rustup"
+
+    def resolve(observed_rustup: Path, channel: str) -> str:
+        assert observed_rustup == rustup
+        assert channel == RUST_CHANNEL
+        return str(cargo)
+
+    def resolve_missing(observed_rustup: Path, channel: str) -> str:
+        assert observed_rustup == rustup
+        assert channel == RUST_CHANNEL
+        return str(tmp_path / "missing")
+
+    resolved = project.rustup_toolchain_root(
+        rustup,
+        RUST_CHANNEL,
+        runner=resolve,
+    )
+    missing = project.rustup_toolchain_root(
+        rustup,
+        RUST_CHANNEL,
+        runner=resolve_missing,
+    )
+
+    assert resolved == cargo.parent.parent
+    assert missing is None
+
+
+def test_rustup_executable_finds_home_cargo_bin_without_path(
+    tmp_path: Path,
+) -> None:
+    """Bootstrap can find Rustup in Cargo home without ambient PATH support."""
+    rustup = tmp_path / ".cargo" / "bin" / "rustup"
+    rustup.parent.mkdir(parents=True)
+    rustup.touch()
+
+    resolved = project.rustup_executable(
+        LINUX_PLATFORM,
+        home=tmp_path,
+        search_path=False,
+    )
+
+    assert resolved == rustup
+
+
+def test_rust_import_orchestration_materializes_stable_and_nightly(
+    tmp_path: Path,
+) -> None:
+    """One host resolver imports the pinned stable and validation channels."""
+    _ = _write_rust_manifest(tmp_path)
+    sources = tmp_path / "host-rustup"
+    stable = sources / RUST_CHANNEL
+    nightly = sources / RUST_NIGHTLY_CHANNEL
+    for source, tools in (
+        (stable, ("cargo", "rustc")),
+        (nightly, ("cargo-clippy", "cargo-fmt", "rustc")),
+    ):
+        source_bin = source / "bin"
+        source_bin.mkdir(parents=True)
+        for tool in tools:
+            path = source_bin / tool
+            _ = path.write_text(tool, encoding="ascii")
+            _ = path.chmod(path.stat().st_mode | stat.S_IXUSR)
+        (source / "lib/rustlib").mkdir(parents=True)
+
+    def resolve(channel: str) -> Path | None:
+        sources_by_channel = {
+            RUST_CHANNEL: stable,
+            RUST_NIGHTLY_CHANNEL: nightly,
+        }
+        return sources_by_channel.get(channel)
+
+    imported = project.import_installed_rust_toolchains(
+        tmp_path,
+        LINUX_PLATFORM,
+        resolver=resolve,
+    )
+
+    stable_root = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    nightly_root = tmp_path / ".dependencies/rust" / RUST_NIGHTLY_CHANNEL
+    assert imported == (stable_root, nightly_root)
+    assert (stable_root / "bin/cargo.bin").is_file()
+    assert (nightly_root / "bin/cargo-clippy.bin").is_file()
+    assert (nightly_root / "bin/cargo-fmt.bin").is_file()
+    assert project.rust_toolchain_import_complete(stable_root)
+    assert project.rust_toolchain_import_complete(nightly_root)
+
+
+def test_rust_inspection_requires_completed_neutral_alias(
+    tmp_path: Path,
+) -> None:
+    """Completed imported Cargo is host-neutral readiness evidence."""
+    _ = _write_rust_manifest(tmp_path)
+    toolchain = tmp_path / ".dependencies" / "rust" / RUST_CHANNEL
+    cargo = toolchain / "bin" / "cargo.bin"
+    cargo.parent.mkdir(parents=True)
+    cargo.touch()
+    _ = (toolchain / project.RUST_IMPORT_MARKER).write_text(
+        "malbolge-rust-toolchain-import/v1\n",
+        encoding="ascii",
+    )
 
     linux = project.inspect_rust(tmp_path, LINUX_PLATFORM)
     windows = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
 
     assert linux.state is project.ComponentState.READY
-    assert linux.path == linux_cargo
-    assert windows.state is project.ComponentState.MISSING
-    assert windows.path == tmp_path / ".jig/version/rust-toolchain.toml"
+    assert linux.path == cargo
+    assert windows.state is project.ComponentState.READY
+    assert windows.path == cargo
 
 
 def test_local_directory_initialization_is_idempotent(tmp_path: Path) -> None:

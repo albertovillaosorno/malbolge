@@ -318,15 +318,15 @@ path = ".dependencies/python/3.14.6/jig-bin/ruff.bin"
 version = "0.16.0"
 
 [tool.rust_nightly_cargo_clippy]
-path = ".dependencies/jig/source/.dependencies/rust/nightly-2026-07-14-x86_64-pc-windows-gnu/bin/cargo-clippy.exe"
+path = ".dependencies/rust/nightly-2026-07-14/bin/cargo-clippy.bin"
 version = "0.1.99"
 
 [tool.rust_nightly_cargo_fmt]
-path = ".dependencies/jig/source/.dependencies/rust/nightly-2026-07-14-x86_64-pc-windows-gnu/bin/cargo-fmt.exe"
+path = ".dependencies/rust/nightly-2026-07-14/bin/cargo-fmt.bin"
 version = "1.9.0-nightly"
 
 [tool.rust_stable_cargo]
-path = ".dependencies/jig/source/.dependencies/rust/stable-1.97.1-x86_64-pc-windows-gnu/bin/cargo.exe"
+path = ".dependencies/rust/1.97.1/bin/cargo.bin"
 version = "1.97.1"
 
 [version.basedpyright]

@@ -35,13 +35,19 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 import json
+import os
 from pathlib import Path
 from pathlib import PureWindowsPath
 import platform
+import shutil
 from shutil import which
+
+# jig-ignore-next-line: indivisible reviewed identifier
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed Rustup argv.
 import sys
 import tomllib
 from typing import Final
@@ -65,7 +71,8 @@ LINUX_SYSTEM: Final = "linux"
 MACOS_SYSTEM: Final = "darwin"
 X86_64_MACHINES: Final = frozenset(("amd64", "x86_64"))
 AARCH64_MACHINES: Final = frozenset(("aarch64", "arm64"))
-WINDOWS_CHANNEL_MARKER: Final = "windows"
+RUST_IMPORT_MARKER: Final = ".malbolge-rust-toolchain-import-v1"
+RUST_NIGHTLY_CHANNEL: Final = "nightly-2026-07-14"
 UNKNOWN_PLATFORM: Final = "unknown"
 PARENT_SEGMENT: Final = ".."
 PATH_SEPARATORS: Final = frozenset(("/", "\\"))
@@ -300,68 +307,275 @@ def inspect_cuda(root: Path, platform_id: str) -> ComponentStatus:
     )
 
 
-def _cargo_candidates(
-    root: Path,
-    channel: str,
+def _link_or_copy(source: str, destination: str) -> str:
+    try:
+        os.link(source, destination)
+    except OSError:
+        _ = shutil.copy2(source, destination)
+    return destination
+
+
+def rust_toolchain_import_complete(toolchain_root: Path) -> bool:
+    """Return whether one imported toolchain reached its final marker.
+
+    Returns:
+        True only after the import completion marker is present.
+
+    """
+    return (toolchain_root / RUST_IMPORT_MARKER).is_file()
+
+
+def import_rust_toolchain(
+    source: Path,
+    destination: Path,
     *,
+    tool_ids: tuple[str, ...],
     windows: bool,
 ) -> tuple[Path, ...]:
-    executable = "cargo.exe" if windows else "cargo"
-    return (
-        root
-        / ".dependencies"
-        / "jig"
-        / "source"
-        / ".dependencies"
-        / "rust"
-        / channel
-        / "bin"
-        / executable,
-        root / ".dependencies" / "rust" / channel / "bin" / executable,
+    """Import one host Rust tree and add platform-neutral Jig aliases.
+
+    Returns:
+        Alias paths inside the imported native toolchain `bin` directory.
+
+    """
+    if destination.exists():
+        _fail(f"Rust import destination already exists: {destination}")
+    _ = shutil.copytree(
+        source,
+        destination,
+        copy_function=_link_or_copy,
+        symlinks=True,
+    )
+    suffix = ".exe" if windows else ""
+    aliases: list[Path] = []
+    for tool_id in tool_ids:
+        native = destination / "bin" / f"{tool_id}{suffix}"
+        if not native.is_file():
+            _fail(f"imported Rust tool is missing: {native}")
+        alias = destination / "bin" / f"{tool_id}.bin"
+        _ = _link_or_copy(str(native), str(alias))
+        aliases.append(alias)
+    _ = (destination / RUST_IMPORT_MARKER).write_text(
+        "malbolge-rust-toolchain-import/v1\n",
+        encoding="ascii",
+        newline="\n",
+    )
+    return tuple(aliases)
+
+
+type RustToolchainResolver = Callable[[str], Path | None]
+type RustupWhichRunner = Callable[[Path, str], str | None]
+type RustupListRunner = Callable[[Path], tuple[str, ...]]
+
+
+def _run_rustup_list(rustup: Path) -> tuple[str, ...]:
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [str(rustup), "toolchain", "list"],
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return ()
+    return tuple(
+        line.split(maxsplit=1)[0]
+        for line in completed.stdout.splitlines()
+        if line.strip()
     )
 
 
-def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
-    """Inspect the pinned Rust channel and an executable Cargo path.
+def rustup_channel_is_installed(
+    channel: str,
+    installed: tuple[str, ...],
+) -> bool:
+    """Match a pinned channel against installed host-qualified forms.
 
     Returns:
-        Ready, missing, or unsupported Rust toolchain status.
+        True when the exact channel or one host-qualified form is installed.
 
     """
+    prefix = f"{channel}-"
+    return any(item == channel or item.startswith(prefix) for item in installed)
+
+
+def _run_rustup_which(rustup: Path, channel: str) -> str | None:
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [str(rustup), "which", "--toolchain", channel, "cargo"],
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return None
+    output = completed.stdout.strip()
+    return output or None
+
+
+def rustup_toolchain_root(
+    rustup: Path,
+    channel: str,
+    *,
+    runner: RustupWhichRunner = _run_rustup_which,
+) -> Path | None:
+    """Resolve one installed Rustup channel to its native toolchain root.
+
+    Returns:
+        Existing toolchain root containing Cargo, otherwise None.
+
+    """
+    raw = runner(rustup, channel)
+    if raw is None:
+        return None
+    cargo = Path(raw)
+    if not cargo.is_file():
+        return None
+    return cargo.parent.parent
+
+
+def rustup_toolchain_resolver(
+    rustup: Path,
+    *,
+    list_runner: RustupListRunner = _run_rustup_list,
+    which_runner: RustupWhichRunner = _run_rustup_which,
+) -> RustToolchainResolver:
+    """Build a resolver that never queries an uninstalled Rustup channel.
+
+    Returns:
+        Stable resolver over one local installed-toolchain snapshot.
+
+    """
+    installed = list_runner(rustup)
+
+    def resolve(channel: str) -> Path | None:
+        if not rustup_channel_is_installed(channel, installed):
+            return None
+        return rustup_toolchain_root(
+            rustup,
+            channel,
+            runner=which_runner,
+        )
+
+    return resolve
+
+
+def rustup_executable(
+    platform_id: str,
+    *,
+    home: Path | None = None,
+    search_path: bool = True,
+) -> Path | None:
+    """Locate Rustup without requiring Cargo home on ambient PATH.
+
+    Returns:
+        Explicit Rustup path when installed, otherwise None.
+
+    """
+    windows = platform_id.startswith(WINDOWS_SYSTEM)
+    executable = "rustup.exe" if windows else "rustup"
+    cargo_home = (home or Path.home()) / ".cargo" / "bin" / executable
+    if cargo_home.is_file():
+        return cargo_home
+    if search_path:
+        resolved = which(executable)
+        if resolved is not None:
+            return Path(resolved)
+    return None
+
+
+def _rust_channel(root: Path) -> str:
     toolchain_path = root / ".jig/version/rust-toolchain.toml"
     document = _toml_document(toolchain_path, "Rust toolchain manifest")
     toolchain = _mapping(document.get("toolchain"), "rust-toolchain.toolchain")
-    channel = _path_segment(
+    return _path_segment(
         _required_string(toolchain, "channel", "rust-toolchain.toolchain"),
         "rust-toolchain.toolchain.channel",
     )
-    path: Path | None = toolchain_path
-    if WINDOWS_CHANNEL_MARKER in channel and not platform_id.startswith(
-        WINDOWS_SYSTEM
-    ):
-        detail = f"pinned channel {channel} is Windows-specific"
-        state = ComponentState.UNSUPPORTED
-    else:
-        windows = platform_id.startswith(WINDOWS_SYSTEM)
-        local = next(
-            (
-                candidate
-                for candidate in _cargo_candidates(
-                    root,
-                    channel,
-                    windows=windows,
-                )
-                if candidate.is_file()
-            ),
-            None,
+
+
+def import_installed_rust_toolchains(
+    root: Path,
+    platform_id: str,
+    *,
+    resolver: RustToolchainResolver,
+) -> tuple[Path, ...]:
+    """Import available pinned stable and nightly Rust trees.
+
+    Returns:
+        Completed repository-local toolchain roots in stable order.
+
+    """
+    windows = platform_id.startswith(WINDOWS_SYSTEM)
+    requests = (
+        (_rust_channel(root), ("cargo",)),
+        (RUST_NIGHTLY_CHANNEL, ("cargo-clippy", "cargo-fmt")),
+    )
+    imported: list[Path] = []
+    for channel, tool_ids in requests:
+        destination = root / ".dependencies" / "rust" / channel
+        if rust_toolchain_import_complete(destination):
+            imported.append(destination)
+            continue
+        if destination.exists():
+            _fail(f"incomplete Rust import already exists: {destination}")
+        source = resolver(channel)
+        if source is None:
+            continue
+        _ = import_rust_toolchain(
+            source,
+            destination,
+            tool_ids=tool_ids,
+            windows=windows,
         )
-        if local is not None:
-            path = local
-            detail = f"pinned Cargo for {channel} is present"
-            state = ComponentState.READY
-        else:
-            detail = f"Cargo for pinned channel {channel} is absent"
-            state = ComponentState.MISSING
+        imported.append(destination)
+    return tuple(imported)
+
+
+def import_host_rust_toolchains(
+    root: Path,
+    platform_id: str,
+) -> tuple[Path, ...]:
+    """Import already-installed pinned Rustup channels into the repository.
+
+    Returns:
+        Completed repository-local imports, or empty when Rustup is absent.
+
+    """
+    rustup = rustup_executable(platform_id)
+    if rustup is None:
+        return ()
+    return import_installed_rust_toolchains(
+        root,
+        platform_id,
+        resolver=rustup_toolchain_resolver(rustup),
+    )
+
+
+def _imported_cargo(root: Path, channel: str) -> Path:
+    return root / ".dependencies" / "rust" / channel / "bin" / "cargo.bin"
+
+
+def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
+    """Inspect the pinned Rust channel and imported neutral Cargo alias.
+
+    Returns:
+        Ready only for a completed repository-local imported toolchain.
+
+    """
+    del platform_id
+    toolchain_path = root / ".jig/version/rust-toolchain.toml"
+    channel = _rust_channel(root)
+    cargo = _imported_cargo(root, channel)
+    imported_root = cargo.parent.parent
+    if cargo.is_file() and rust_toolchain_import_complete(imported_root):
+        path: Path | None = cargo
+        detail = f"pinned Cargo for {channel} is present"
+        state = ComponentState.READY
+    else:
+        path = toolchain_path
+        detail = f"Cargo for pinned channel {channel} is absent"
+        state = ComponentState.MISSING
     return ComponentStatus(
         detail=detail,
         name="rust",
@@ -416,6 +630,7 @@ def initialize_project(
         else python_validation.validation_layout(root)
     )
     platform_id = host_platform_id()
+    _ = import_host_rust_toolchains(root, platform_id)
     cuda = inspect_cuda(root, platform_id)
     rust = inspect_rust(root, platform_id)
     jig = inspect_jig(root, platform_id)
