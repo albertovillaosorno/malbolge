@@ -56,6 +56,9 @@ RUST_NIGHTLY_CHANNEL = "nightly-2026-07-14"
 RUST_CARGO_BYTES = b"cargo-1.97.1"
 RUST_RUSTC_BYTES = b"rustc-1.97.1"
 RUST_STD_BYTES = b"rust-std"
+GIT_VERSION = "2.55.0"
+GIT_BYTES = b"git-2.55.0"
+GIT_HELPER_BYTES = b"git-helper"
 WINDOWS_PYTHON = "python.exe"
 WINDOWS_PYTHON_LAUNCHER = "python-jig.cmd"
 WINDOWS_PYTEST = "pytest.exe"
@@ -729,6 +732,85 @@ def test_rust_inspection_requires_completed_neutral_alias(
     assert windows.path == cargo
 
 
+def test_git_version_match_accepts_portable_and_windows_distribution() -> None:
+    """Portable Git version accepts exact upstream and distribution suffixes."""
+    assert project.git_version_line_matches(GIT_VERSION, "git version 2.55.0")
+    assert project.git_version_line_matches(
+        GIT_VERSION,
+        "git version 2.55.0.windows.1",
+    )
+    assert not project.git_version_line_matches(
+        GIT_VERSION,
+        "git version 2.54.0.windows.1",
+    )
+
+
+def test_host_git_import_requires_matching_version_and_exec_path(
+    tmp_path: Path,
+) -> None:
+    """Host Git becomes repository authority only with matching runtime data."""
+    jig_config = tmp_path / ".jig/jig.toml"
+    jig_config.parent.mkdir(parents=True)
+    _ = jig_config.write_text(
+        '[tool.git]\nversion = "2.55.0"\n',
+        encoding="utf-8",
+    )
+    git = tmp_path / "host/bin/git"
+    exec_path = tmp_path / "host/libexec/git-core"
+    git.parent.mkdir(parents=True)
+    exec_path.mkdir(parents=True)
+    _ = git.write_bytes(GIT_BYTES)
+    _ = git.chmod(git.stat().st_mode | stat.S_IXUSR)
+    _ = (exec_path / "git-remote-http").write_bytes(GIT_HELPER_BYTES)
+
+    observation = project.GitHostObservation(
+        executable=git,
+        exec_path=exec_path,
+        version_line="git version 2.55.0",
+    )
+    alias = project.import_host_git(
+        tmp_path,
+        LINUX_PLATFORM,
+        observation,
+    )
+
+    expected = tmp_path / ".dependencies/git/2.55.0/bin/git.bin"
+    assert alias == expected
+    assert project.git_import_complete(expected.parent.parent)
+
+
+def test_git_import_preserves_runtime_tree_and_neutral_alias(
+    tmp_path: Path,
+) -> None:
+    """Imported Git keeps helpers beside one platform-neutral Jig alias."""
+    git = tmp_path / "host" / "bin" / "git"
+    exec_path = tmp_path / "host" / "libexec" / "git-core"
+    git.parent.mkdir(parents=True)
+    exec_path.mkdir(parents=True)
+    _ = git.write_bytes(GIT_BYTES)
+    _ = git.chmod(git.stat().st_mode | stat.S_IXUSR)
+    helper = exec_path / "git-remote-http"
+    _ = helper.write_bytes(GIT_HELPER_BYTES)
+    _ = helper.chmod(helper.stat().st_mode | stat.S_IXUSR)
+    destination = tmp_path / ".dependencies" / "git" / GIT_VERSION
+
+    alias = project.import_git_installation(
+        git,
+        exec_path,
+        destination,
+        windows=False,
+    )
+
+    assert alias == destination / "bin/git.bin"
+    assert alias.read_bytes() == GIT_BYTES
+    assert alias.stat().st_mode & stat.S_IXUSR
+    assert (destination / "bin/git").read_bytes() == GIT_BYTES
+    assert (
+        destination / "libexec/git-core/git-remote-http"
+    ).read_bytes() == GIT_HELPER_BYTES
+    assert project.git_import_complete(destination)
+
+
 def test_local_directory_initialization_is_idempotent(tmp_path: Path) -> None:
     """Ignored checkout state directories can be initialized repeatedly."""
     first = project.initialize_local_directories(tmp_path)
@@ -737,6 +819,7 @@ def test_local_directory_initialization_is_idempotent(tmp_path: Path) -> None:
     assert first == second
     assert tuple(path.name for path in first) == project.LOCAL_DIRECTORIES
     assert all(path.is_dir() for path in first)
+    assert (tmp_path / ".dependencies/cargo-home").is_dir()
 
 
 def test_repository_validation_fails_closed_for_wrong_root(

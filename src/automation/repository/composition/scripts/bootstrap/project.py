@@ -73,6 +73,8 @@ X86_64_MACHINES: Final = frozenset(("amd64", "x86_64"))
 AARCH64_MACHINES: Final = frozenset(("aarch64", "arm64"))
 RUST_IMPORT_MARKER: Final = ".malbolge-rust-toolchain-import-v1"
 RUST_NIGHTLY_CHANNEL: Final = "nightly-2026-07-14"
+GIT_IMPORT_MARKER: Final = ".malbolge-git-import-v1"
+CARGO_HOME_RELATIVE: Final = Path(".dependencies/cargo-home")
 UNKNOWN_PLATFORM: Final = "unknown"
 PARENT_SEGMENT: Final = ".."
 PATH_SEPARATORS: Final = frozenset(("/", "\\"))
@@ -113,6 +115,15 @@ class ComponentStatus:
     name: str
     path: Path | None
     state: ComponentState
+
+
+@dataclass(frozen=True, slots=True)
+class GitHostObservation:
+    """Native Git executable, version banner, and helper directory."""
+
+    executable: Path
+    exec_path: Path
+    version_line: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +179,7 @@ def initialize_local_directories(root: Path = ROOT) -> tuple[Path, ...]:
     directories = tuple(root / name for name in LOCAL_DIRECTORIES)
     for directory in directories:
         directory.mkdir(parents=True, exist_ok=True)
+    (root / CARGO_HOME_RELATIVE).mkdir(parents=True, exist_ok=True)
     return directories
 
 
@@ -315,6 +327,165 @@ def _link_or_copy(source: str, destination: str) -> str:
     return destination
 
 
+type GitVersionRunner = Callable[[Path], str | None]
+type GitExecPathRunner = Callable[[Path], Path | None]
+
+
+def _run_git_version(git: Path) -> str | None:
+    # jig-ignore-next-line: reviewed subprocess suppression is indivisible
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [str(git), "--version"],
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return None
+    output = completed.stdout.strip()
+    return output or None
+
+
+def _run_git_exec_path(git: Path) -> Path | None:
+    # jig-ignore-next-line: reviewed subprocess suppression is indivisible
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [str(git), "--exec-path"],
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+    )
+    if completed.returncode != 0:
+        return None
+    output = completed.stdout.strip()
+    if not output:
+        return None
+    path = Path(output)
+    return path if path.is_dir() else None
+
+
+def _configured_git_version(root: Path) -> str:
+    document = _toml_document(root / ".jig/jig.toml", "Jig configuration")
+    tools = _mapping(document.get("tool"), "Jig configuration.tool")
+    git = _mapping(tools.get("git"), "Jig configuration.tool.git")
+    return _path_segment(
+        _required_string(git, "version", "Jig configuration.tool.git"),
+        "Jig configuration.tool.git.version",
+    )
+
+
+def git_version_line_matches(required: str, version_line: str) -> bool:
+    """Match exact upstream Git identity with an optional distribution suffix.
+
+    Returns:
+        True for the exact version or a dot-suffixed distribution build.
+
+    """
+    prefix = "git version "
+    if not version_line.startswith(prefix):
+        return False
+    observed = version_line.removeprefix(prefix).strip()
+    return observed == required or observed.startswith(f"{required}.")
+
+
+def git_import_complete(git_root: Path) -> bool:
+    """Return whether one imported Git installation reached its final marker.
+
+    Returns:
+        True only after the import completion marker is present.
+
+    """
+    return (git_root / GIT_IMPORT_MARKER).is_file()
+
+
+def import_git_installation(
+    git: Path,
+    exec_path: Path,
+    destination: Path,
+    *,
+    windows: bool,
+) -> Path:
+    """Import native Git runtime state and add one neutral Jig alias.
+
+    Returns:
+        Repository-local platform-neutral Git executable alias.
+
+    """
+    if destination.exists():
+        _fail(f"Git import destination already exists: {destination}")
+    native_name = "git.exe" if windows else "git"
+    native = destination / "bin" / native_name
+    native.parent.mkdir(parents=True)
+    _ = _link_or_copy(str(git), str(native))
+    alias = destination / "bin" / "git.bin"
+    _ = _link_or_copy(str(native), str(alias))
+    _ = shutil.copytree(
+        exec_path,
+        destination / "libexec" / "git-core",
+        copy_function=_link_or_copy,
+        symlinks=True,
+    )
+    _ = (destination / GIT_IMPORT_MARKER).write_text(
+        "malbolge-git-import/v1\n",
+        encoding="ascii",
+        newline="\n",
+    )
+    return alias
+
+
+def observe_host_git(platform_id: str) -> GitHostObservation | None:
+    """Observe one native Git installation without making it authority.
+
+    Returns:
+        Complete host Git observation, otherwise None.
+
+    """
+    windows = platform_id.startswith(WINDOWS_SYSTEM)
+    executable_name = "git.exe" if windows else "git"
+    resolved = which(executable_name)
+    if resolved is None:
+        return None
+    executable = Path(resolved)
+    version_line = _run_git_version(executable)
+    exec_path = _run_git_exec_path(executable)
+    if version_line is None or exec_path is None:
+        return None
+    return GitHostObservation(executable, exec_path, version_line)
+
+
+def import_host_git(
+    root: Path,
+    platform_id: str,
+    observation: GitHostObservation,
+) -> Path | None:
+    """Import matching observed Git into one repository-local portable layout.
+
+    Returns:
+        Neutral Git alias when admitted and imported, otherwise None.
+
+    """
+    required = _configured_git_version(root)
+    destination = root / ".dependencies" / "git" / required
+    alias = destination / "bin" / "git.bin"
+    if git_import_complete(destination) and alias.is_file():
+        return alias
+    if destination.exists():
+        _fail(f"incomplete Git import already exists: {destination}")
+    admitted = (
+        git_version_line_matches(required, observation.version_line)
+        and observation.exec_path.is_dir()
+    )
+    if not admitted:
+        return None
+    windows = platform_id.startswith(WINDOWS_SYSTEM)
+    return import_git_installation(
+        observation.executable,
+        observation.exec_path,
+        destination,
+        windows=windows,
+    )
+
+
 def rust_toolchain_import_complete(toolchain_root: Path) -> bool:
     """Return whether one imported toolchain reached its final marker.
 
@@ -369,6 +540,7 @@ type RustupListRunner = Callable[[Path], tuple[str, ...]]
 
 
 def _run_rustup_list(rustup: Path) -> tuple[str, ...]:
+    # jig-ignore-next-line: reviewed subprocess suppression is indivisible
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         [str(rustup), "toolchain", "list"],
         check=False,
@@ -400,6 +572,7 @@ def rustup_channel_is_installed(
 
 
 def _run_rustup_which(rustup: Path, channel: str) -> str | None:
+    # jig-ignore-next-line: reviewed subprocess suppression is indivisible
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         [str(rustup), "which", "--toolchain", channel, "cargo"],
         check=False,
@@ -630,6 +803,9 @@ def initialize_project(
         else python_validation.validation_layout(root)
     )
     platform_id = host_platform_id()
+    observation = observe_host_git(platform_id)
+    if observation is not None:
+        _ = import_host_git(root, platform_id, observation)
     _ = import_host_rust_toolchains(root, platform_id)
     cuda = inspect_cuda(root, platform_id)
     rust = inspect_rust(root, platform_id)

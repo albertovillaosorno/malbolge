@@ -306,8 +306,8 @@ path = ".dependencies/python/3.14.6/jig-bin/basedpyright.bin"
 version = "1.39.9"
 
 [tool.git]
-path = ".dependencies/jig/source/.dependencies/git/2.54.0.windows.1/bin/git.exe"
-version = "2.54.0.windows.1"
+path = ".dependencies/git/2.55.0/bin/git.bin"
+version = "2.55.0"
 
 [tool.pytest]
 path = ".dependencies/python/3.14.6/jig-bin/pytest.bin"
@@ -357,8 +357,8 @@ target = "ruff"
 template = "{version}"
 
 [version.git]
-current = "2.54.0.windows.1"
-stable = "2.54.0.windows.1"
+current = "2.55.0"
+stable = "2.55.0"
 
 [version.git.projection.tool]
 kind = "tool"
