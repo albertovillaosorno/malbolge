@@ -2,8 +2,8 @@
 
 ## Status
 
-Active P0 host-bootstrap work. CUDA runtime packaging and a fully hermetic Linux
-linker/sysroot remain separate P2 work.
+Completed P0 host-bootstrap work. CUDA runtime packaging and a fully hermetic
+Linux linker/sysroot remain separate P2 work.
 
 ## Purpose
 

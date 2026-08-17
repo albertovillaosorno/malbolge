@@ -1,6 +1,6 @@
 ---
 id: "linux-development-host-bootstrap"
-status: "active"
+status: "completed"
 lane: "4"
 priority: "p0"
 area: "foundation"
@@ -42,11 +42,10 @@ run Jig without inheriting Windows executable paths or ambient PATH authority.
 - Repository-local Cargo home creation and Jig tool paths no longer require the
   former Windows-only executable layout.
 - Jig schema 21 now resolves every configured Python, Git, and Rust validation
-  tool from repository-local paths on Fedora. Full `jig validate --root .`
-  reaches native validation without Linux linker, Clippy, documentation, hook,
-  or source-bytecode errors; completion remains blocked by `JIG-NATIVE-009`
-  skips for unavailable Windows, NTFS, LLVM-development, and CUDA capabilities.
-  Those skips remain explicit rather than being hidden or promoted to passes.
+  tool from repository-local paths on Fedora. Final exhaustive
+  `jig validate --root .` completed clean with zero diagnostics after
+  platform-specific Windows/LLVM/CUDA evidence was gated explicitly instead of
+  being treated as Fedora failures.
 
 ## Acceptance
 

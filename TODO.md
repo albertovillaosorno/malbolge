@@ -15,14 +15,6 @@ labels belong here.
 
 ## P0 — Authority and governance
 
-### TODO - Linux development host bootstrap
-
-Make Linux development hosts bootstrap repository-local validation tooling and
-run Jig without inheriting Windows executable paths or ambient PATH authority.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/foundation/linux-development-host-bootstrap.mdc](docs/todo/open/foundation/linux-development-host-bootstrap.mdc)
-
 ## P1 — Semantic and language foundations
 
 ### TODO - Emitted Malbolge static analyzer
