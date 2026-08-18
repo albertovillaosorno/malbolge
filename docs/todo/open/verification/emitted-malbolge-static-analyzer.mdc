@@ -158,7 +158,11 @@ executable cells, and input-dependent cycles or hangs.
   four `j` steps, binding a six-state deterministic cycle entry path through
   `(C,D)=(0,0),(1,1),(2,40),(3,37),(4,29489),(5,29489)`. This extends checked
   input-dependent cycle depth without changing the explicit worklist ceiling.
-  Repeat-heavy branch merges do not become cycle claims. Schema v25
+  The 15-word `b"u'&%$#\"!~}|{zyx"` input-plus-14-jump fixture closes in
+  3,856 states and binds a deterministic 16-state cycle entry path, exercising
+  about 94% of the reviewed 4,096-state budget without truncation. This remains
+  bounded evidence rather than automatic reachability. Repeat-heavy branch
+  merges do not become cycle claims. Schema v25
   additionally publishes exact SCC summary counts over only the admitted known
   graph: all SCCs, cyclic SCCs, cyclic states, and the largest cyclic SCC size.
   Entry-reachable wraparound now has an exact EOF-branch witness: the admitted
@@ -200,7 +204,7 @@ executable cells, and input-dependent cycles or hangs.
 - Automatic unbounded/worklist control-flow reachability, broader unbounded
   dataflow/evolved-memory equivalence, higher-level C/source-map linkage,
   wraparound beyond selected prefix/worklist evidence, and input-dependent
-  cycles deeper than the checked six-state path remain open. Nothing after the
+  cycles deeper than the checked 16-state path remain open. Nothing after the
   requested bound is inferred from prefix or initial-image admission.
 
 - Expected durable artifact surface: `verifier/`, `tests/differential/`,

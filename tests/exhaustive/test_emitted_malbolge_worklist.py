@@ -80,6 +80,26 @@ _DEEP_INPUT_CYCLE_POINTER_PATH = (
     (4, 29_489),
     (5, 29_489),
 )
+_NEAR_CAP_INPUT_CYCLE_SOURCE = tuple(b"u'&%$#\"!~}|{zyx")
+_NEAR_CAP_INPUT_CYCLE_STATE_LIMIT = 3_856
+_NEAR_CAP_INPUT_CYCLE_POINTER_PATH = (
+    (0, 0),
+    (1, 1),
+    (2, 40),
+    (3, 121),
+    (4, 29_405),
+    (5, 29_405),
+    (6, 29_405),
+    (7, 29_405),
+    (8, 29_405),
+    (9, 29_405),
+    (10, 29_405),
+    (11, 29_405),
+    (12, 29_405),
+    (13, 29_405),
+    (14, 29_405),
+    (15, 29_405),
+)
 _RECURRENCE_READ_SOURCE = tuple(b"('")
 _RECURRENCE_STATE_LIMIT = 16
 _RECURRENCE_HIGHEST_ADDRESS = 41
@@ -636,6 +656,30 @@ def test_deeper_input_dependent_jump_chain_closes_exact_cycle() -> None:
     recurrent = result.closed_recurrent_entry_path
     assert recurrent is not None
     assert recurrent == path
+    assert result.closed_recurrent_component_count == _INPUT_VALUE_COUNT
+
+
+def test_near_cap_input_dependent_jump_chain_closes_exact_cycle() -> None:
+    """Fourteen post-input jumps close within the reviewed state ceiling."""
+    result = worklist.analyze_reachability(
+        _NEAR_CAP_INPUT_CYCLE_SOURCE,
+        maximum_states=_NEAR_CAP_INPUT_CYCLE_STATE_LIMIT,
+    )
+    assert result.unique_states == _NEAR_CAP_INPUT_CYCLE_STATE_LIMIT
+    assert result.explored_states == _NEAR_CAP_INPUT_CYCLE_STATE_LIMIT
+    assert result.reachable_cycle_detected
+    assert result.maximum_first_seen_transition_index == len(
+        _NEAR_CAP_INPUT_CYCLE_POINTER_PATH
+    )
+    assert result.closed_all_paths_terminate is False
+    assert result.closed_all_paths_halt is False
+    assert not result.truncated
+    path = result.reachable_cycle_entry_path
+    assert tuple(
+        (state.code_pointer, state.data_pointer) for state in path
+    ) == _NEAR_CAP_INPUT_CYCLE_POINTER_PATH
+    assert path[-1] == result.reachable_cycle_witness[0]
+    assert result.closed_recurrent_entry_path == path
     assert result.closed_recurrent_component_count == _INPUT_VALUE_COUNT
 
 

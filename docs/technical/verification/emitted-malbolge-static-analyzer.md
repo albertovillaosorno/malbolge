@@ -151,7 +151,12 @@ terminals. The five-word `b"u'&%$"` fixture closes in 1,286 states after one
 input and four `j` steps. Its deterministic cycle entry path contains six exact
 states with `(C,D)` pairs `(0,0),(1,1),(2,40),(3,37),(4,29489),(5,29489)`,
 extending checked input-dependent cycle depth while remaining within the
-explicit worklist cap. Without this opt-in graph, a `p` whose accumulator
+explicit worklist cap. The 15-word `b"u'&%$#\"!~}|{zyx"` fixture extends
+that family through 14 post-input jumps: its exact graph closes in 3,856 states
+and the deterministic cycle entry path contains 16 states, exercising about 94%
+of the reviewed state ceiling without truncation. This is still bounded evidence
+and does not establish automatic or unbounded reachability. Without this opt-in
+graph, a `p` whose accumulator
 depends on prior input remains unresolved rather than assigned a guessed value.
 A non-graphical fetch
 is stronger: the preserved 1998 interpreter executes `continue` before decode,

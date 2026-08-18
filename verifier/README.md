@@ -92,7 +92,11 @@ five-word `b"u'&%$"` fixture closes in 1,286 states after one input and four
 `j` steps, binding a six-state exact cycle entry path through
 `(C,D)=(0,0),(1,1),(2,40),(3,37),(4,29489),(5,29489)`. This extends checked
 input-dependent cycle depth without weakening the explicit 4,096-state ceiling.
-This separates generic termination from successful historical halt. Requested
+The 15-word `b"u'&%$#\"!~}|{zyx"` input-plus-14-jump fixture closes in
+3,856 states and binds a 16-state entry path, exercising about 94% of that state
+budget without truncation. This remains bounded evidence, not automatic or
+unbounded reachability. This separates generic termination from successful
+historical halt. Requested
 worklist CLI success requires that all-path halt proof, so a closed rejection
 graph
 cannot be masked by an accepted shallower prefix. Schema v32 adds nullable
