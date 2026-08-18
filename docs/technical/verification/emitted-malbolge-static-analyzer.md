@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v30` retains exact `entry_transition` through
+`malbolge-static-image/v31` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -83,7 +83,11 @@ could still reach additional terminals. The existing `terminal_status_counts`
 remains observed known-graph evidence regardless of later truncation. Schema v30
 adds nullable `closed_all_paths_terminate`: a drained finite exact-state graph
 publishes true exactly when it is acyclic, false when a reachable directed cycle
-proves at least one nonterminating path, and null under truncation. An empty
+proves at least one nonterminating path, and null under truncation. Schema v31
+adds nullable `closed_all_paths_halt`: after the same finite closure it is true
+only when every complete terminal status is `halted`, false for any rejection or
+reachable cycle, and null under truncation. Thus termination includes rejection
+while all-path halt denotes successful historical halt. An empty
 cycle witness proves only that no cycle was found in the
 admitted known graph; under truncation it does not characterize the unexplored
 frontier. Repeat edges caused only by branch merges do not become cycle claims;

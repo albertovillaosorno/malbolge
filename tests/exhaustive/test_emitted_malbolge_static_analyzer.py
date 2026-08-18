@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v30"
+_SCHEMA = "malbolge-static-image/v31"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -318,6 +318,7 @@ class _WorklistAnalysis(Protocol):
     terminal_status_counts: tuple[tuple[str, int], ...]
     closed_terminal_status_counts: tuple[tuple[str, int], ...] | None
     closed_all_paths_terminate: bool | None
+    closed_all_paths_halt: bool | None
     terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -1654,6 +1655,8 @@ def _assert_closed_recurrent_cycle_json(
     )
     assert [state["code_pointer"] for state in path] == [0, 1, 2]
     assert path[-1] == recurrent[0]
+    assert bounded["closed_all_paths_terminate"] is False
+    assert bounded["closed_all_paths_halt"] is False
 
 
 def _assert_reachable_cycle_entry_path_json(
@@ -1724,7 +1727,6 @@ def test_worklist_cycle_detection_causes_cli_failure(tmp_path: Path) -> None:
     )
     assert bounded["known_graph_largest_cyclic_component_states"] == 1
     _assert_closed_recurrent_cycle_json(bounded)
-    assert bounded["closed_all_paths_terminate"] is False
     assert bounded["truncated"] is False
 
 
@@ -1793,6 +1795,7 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
         ("rejected-invalid-self-encryption", _WORKLIST_INPUT_VALUE_COUNT),
     )
     assert worklist.closed_all_paths_terminate is True
+    assert worklist.closed_all_paths_halt is False
     _assert_terminal_witness_object(worklist)
     assert not worklist.truncated
     assert _WORKLIST_CLOSED_LIMIT in report.analysis_limits
@@ -1815,6 +1818,7 @@ def test_report_worklist_proves_long_input_dependent_cycle() -> None:
     ) == _LONG_INPUT_CYCLE_POINTER_PATH
     assert path[-1] == worklist.reachable_cycle_witness[0]
     assert worklist.closed_all_paths_terminate is False
+    assert worklist.closed_all_paths_halt is False
     assert not worklist.truncated
 
 
@@ -1835,6 +1839,7 @@ def test_report_worklist_truncation_is_explicit() -> None:
     assert worklist.closed_recurrent_entry_path is None
     assert worklist.closed_terminal_status_counts is None
     assert worklist.closed_all_paths_terminate is None
+    assert worklist.closed_all_paths_halt is None
     assert _WORKLIST_TRUNCATED_LIMIT in report.analysis_limits
 
 
@@ -1980,6 +1985,7 @@ def test_cli_accepts_closed_worklist_request(tmp_path: Path) -> None:
         [_ENTRY_HALTED, _WORKLIST_INPUT_VALUE_COUNT]
     ]
     assert bounded["closed_all_paths_terminate"] is True
+    assert bounded["closed_all_paths_halt"] is True
     witnesses = cast(
         "list[dict[str, object]]",
         bounded["terminal_status_witnesses"],
@@ -2016,6 +2022,7 @@ def test_cli_rejects_truncated_worklist_request(tmp_path: Path) -> None:
     bounded = cast("dict[str, object]", document["bounded_worklist"])
     assert bounded["closed_terminal_status_counts"] is None
     assert bounded["closed_all_paths_terminate"] is None
+    assert bounded["closed_all_paths_halt"] is None
     assert bounded["truncated"] is True
 
 

@@ -52,6 +52,7 @@ _INPUT_OPCODE: Final = ord("/")
 _INPUT_BYTES: Final = tuple(range(256))
 _DATA_READING_INSTRUCTIONS: Final = frozenset(b"ji*p")
 _EOF_ACCUMULATOR: Final = classic.PROFILE_MEMORY_WORDS - 1
+_HALTED_STATUS: Final = "halted"
 _RECURRENCE_BASE_WORDS: Final = 2
 
 type _StateKey = tuple[
@@ -109,6 +110,7 @@ class WorklistAnalysis:
     terminal_status_counts: tuple[tuple[str, int], ...]
     closed_terminal_status_counts: tuple[tuple[str, int], ...] | None
     closed_all_paths_terminate: bool | None
+    closed_all_paths_halt: bool | None
     terminal_status_witnesses: tuple[WorklistTerminalWitness, ...]
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -721,6 +723,12 @@ class _Explorer:
                 else tuple(sorted(self.terminal_counts.items()))
             ),
             closed_all_paths_terminate=None if truncated else not has_cycle,
+            closed_all_paths_halt=(
+                None
+                if truncated
+                else not has_cycle
+                and set(self.terminal_counts) == {_HALTED_STATUS}
+            ),
             terminal_status_witnesses=_terminal_witnesses(
                 self.edges,
                 self.seen,
