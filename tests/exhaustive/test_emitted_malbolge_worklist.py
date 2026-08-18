@@ -205,6 +205,8 @@ class _WorklistAnalysis(Protocol):
     explored_wraparound_transition_count: int
     maximum_first_seen_transition_index: int
     frontier_states: int
+    frontier_state_witness: _WorklistCycleState | None
+    frontier_entry_path: tuple[_WorklistCycleState, ...] | None
     truncated: bool
 
 
@@ -441,6 +443,27 @@ def test_tiny_cap_counts_all_pending_input_frontier_states() -> None:
     assert result.explored_states == 1
     assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
     assert result.frontier_states == _INPUT_VALUE_COUNT
+    assert result.truncated
+
+
+def test_minimum_cap_reports_exact_first_unexplored_frontier_path() -> None:
+    """Truncation identifies one exact frontier state and how it was reached."""
+    result = worklist.analyze_reachability(
+        _INPUT_HALT_SOURCE,
+        maximum_states=1,
+    )
+    assert result.frontier_states == _INPUT_VALUE_COUNT
+    witness = result.frontier_state_witness
+    path = result.frontier_entry_path
+    assert witness is not None
+    assert path is not None
+    assert witness.accumulator == 0
+    assert not witness.eof_seen
+    assert path[-1] == witness
+    pointers = tuple(
+        (state.code_pointer, state.data_pointer) for state in path
+    )
+    assert pointers == ((0, 0), (1, 1))
     assert result.truncated
 
 

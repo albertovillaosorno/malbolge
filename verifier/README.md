@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v31 retains the legacy exact entry-through-fifth
+load decode. Schema v32 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -88,8 +88,13 @@ false for any rejection or reachable cycle, and null under truncation. This
 separates generic termination from successful historical halt. Requested
 worklist CLI success requires that all-path halt proof, so a closed rejection
 graph
-cannot be masked by an accepted shallower prefix. An empty cycle
-witness means no cycle was proved
+cannot be masked by an accepted shallower prefix. Schema v32 adds nullable
+`frontier_state_witness` and `frontier_entry_path`: every truncated worklist
+selects its first pending FIFO frontier state and publishes the exact entry path
+to it, including the first unadmitted successor when the cap prevents any
+successor admission. Closed worklists publish null for both fields. This makes
+the bounded unknown boundary reproducible without claiming the frontier was
+explored. An empty cycle witness means no cycle was proved
 in the admitted known graph; it says
 nothing about a truncated frontier. Repeat-heavy branch merges
 are not treated as cycles, and a proven cycle makes requested CLI analysis

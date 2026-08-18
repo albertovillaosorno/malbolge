@@ -118,6 +118,8 @@ class WorklistAnalysis:
     explored_wraparound_transition_count: int
     maximum_first_seen_transition_index: int
     frontier_states: int
+    frontier_state_witness: WorklistCycleState | None
+    frontier_entry_path: tuple[WorklistCycleState, ...] | None
     truncated: bool
 
 
@@ -654,7 +656,11 @@ class _Explorer:
         *,
         truncated: bool,
         frontier_states: int = 0,
+        frontier_path: tuple[_StateKey, ...] | None = None,
     ) -> WorklistAnalysis:
+        if truncated != (frontier_path is not None):
+            message = "worklist truncation lost its exact frontier path"
+            raise AssertionError(message)
         ordered_addresses = tuple(sorted(self.accessed_addresses))
         highest_address = ordered_addresses[-1]
         cycle_keys = _known_graph_cycle_witness(self.edges, self.seen)
@@ -745,6 +751,14 @@ class _Explorer:
                 self.maximum_first_seen_transition_index
             ),
             frontier_states=frontier_states,
+            frontier_state_witness=(
+                _cycle_state(frontier_path[-1]) if frontier_path else None
+            ),
+            frontier_entry_path=(
+                tuple(_cycle_state(key) for key in frontier_path)
+                if frontier_path
+                else None
+            ),
             truncated=truncated,
         )
 
@@ -752,6 +766,33 @@ class _Explorer:
         self.terminal_counts[status] = self.terminal_counts.get(status, 0) + 1
         states = self.terminal_states.setdefault(status, set())
         states.add(_node_key(node))
+
+    def _frontier_path(
+        self,
+        *,
+        source_key: _StateKey,
+        successor_key: _StateKey,
+    ) -> tuple[_StateKey, ...]:
+        if self.queue:
+            frontier_key = _node_key(self.queue[0])
+            path = _known_graph_shortest_path(
+                self.edges,
+                self.seen,
+                start=_INITIAL_STATE_KEY,
+                target=frontier_key,
+            )
+        else:
+            source_path = _known_graph_shortest_path(
+                self.edges,
+                self.seen,
+                start=_INITIAL_STATE_KEY,
+                target=source_key,
+            )
+            path = (*source_path, successor_key)
+        if not path:
+            message = "worklist frontier lost its exact entry path"
+            raise AssertionError(message)
+        return path
 
     def _admit_successors(
         self,
@@ -767,6 +808,10 @@ class _Explorer:
                 self.repeated_edges += 1
                 continue
             if len(self.seen) >= self.state_limit:
+                frontier_path = self._frontier_path(
+                    source_key=source_key,
+                    successor_key=key,
+                )
                 return self.result(
                     truncated=True,
                     frontier_states=(
@@ -777,6 +822,7 @@ class _Explorer:
                             start_index=index,
                         )
                     ),
+                    frontier_path=frontier_path,
                 )
             self.seen.add(key)
             self.maximum_first_seen_transition_index = max(

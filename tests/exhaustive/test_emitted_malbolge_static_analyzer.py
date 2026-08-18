@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v31"
+_SCHEMA = "malbolge-static-image/v32"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -333,6 +333,8 @@ class _WorklistAnalysis(Protocol):
     explored_wraparound_transition_count: int
     maximum_first_seen_transition_index: int
     frontier_states: int
+    frontier_state_witness: _WorklistCycleState | None
+    frontier_entry_path: tuple[_WorklistCycleState, ...] | None
     truncated: bool
 
 
@@ -2074,10 +2076,16 @@ def test_cli_rejects_truncated_worklist_request(tmp_path: Path) -> None:
     )
     assert completed.returncode == 1
     document = cast("dict[str, object]", json.loads(completed.stdout))
+    assert document["schema"] == _SCHEMA
     bounded = cast("dict[str, object]", document["bounded_worklist"])
     assert bounded["closed_terminal_status_counts"] is None
     assert bounded["closed_all_paths_terminate"] is None
     assert bounded["closed_all_paths_halt"] is None
+    witness = cast("dict[str, object]", bounded["frontier_state_witness"])
+    path = cast("list[dict[str, object]]", bounded["frontier_entry_path"])
+    assert witness["accumulator"] == 0
+    assert witness["eof_seen"] is False
+    assert path[-1] == witness
     assert bounded["truncated"] is True
 
 

@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v31` retains exact `entry_transition` through
+`malbolge-static-image/v32` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -89,8 +89,14 @@ only when every complete terminal status is `halted`, false for any rejection or
 reachable cycle, and null under truncation. Thus termination includes rejection
 while all-path halt denotes successful historical halt. When a worklist is
 requested, CLI success now requires that closed all-path halt proof; closed
-rejection graphs therefore fail even when a shallower prefix was accepted. An
-empty
+rejection graphs therefore fail even when a shallower prefix was accepted.
+Schema v32 adds nullable `frontier_state_witness` and `frontier_entry_path`. A
+truncated worklist deterministically selects its first pending FIFO frontier
+state and publishes the exact entry path to that state; if the state cap blocks
+the first successor admission, the path may end at that exact unadmitted
+successor. Closed worklists publish null for both fields. The witness identifies
+the bounded unknown boundary only and does not imply that its outgoing behavior
+was explored. An empty
 cycle witness proves only that no cycle was found in the
 admitted known graph; under truncation it does not characterize the unexplored
 frontier. Repeat edges caused only by branch merges do not become cycle claims;
