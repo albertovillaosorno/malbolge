@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v62"
+_SCHEMA = "malbolge-static-image/v63"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -468,6 +468,13 @@ class _WorklistValueDomain(Protocol):
     values: tuple[int, ...]
 
 
+class _WorklistCodeDataAliasWitness(Protocol):
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+    address: int
+    memory_value: int
+
+
 class _WorklistEvolvedReadWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -546,6 +553,15 @@ class _WorklistControlPathSourceContext(Protocol):
     initial_data_source_byte: int | None
 
 
+class _WorklistCodeDataAliasSourceContext(Protocol):
+    address: int
+    memory_value: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    entry_path_source_map: tuple[_WorklistControlPathSourceContext, ...]
+
+
 class _WorklistEvolvedReadWriterSourceContext(Protocol):
     origin_kind: str
     origin_entry_path_transition_index: int
@@ -589,6 +605,10 @@ class _WorklistAnalysis(Protocol):
     closed_all_paths_halt: bool | None
     terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
     explored_code_data_alias_transition_count: int
+    explored_code_data_alias_addresses: tuple[int, ...]
+    explored_code_data_alias_witnesses: tuple[
+        _WorklistCodeDataAliasWitness, ...
+    ]
     explored_committed_write_count: int
     explored_committed_write_addresses: tuple[int, ...]
     explored_planned_data_write_transition_count: int
@@ -708,6 +728,9 @@ class _Report(Protocol):
     bounded_continuations: tuple[_SecondTransition, ...]
     bounded_state_snapshots: tuple[_StateSnapshot, ...]
     bounded_worklist: _WorklistAnalysis | None
+    bounded_worklist_code_data_alias_source_contexts: tuple[
+        _WorklistCodeDataAliasSourceContext, ...
+    ]
     bounded_worklist_data_mutation_source_context: (
         _WorklistDataMutationSourceContext | None
     )
@@ -2346,10 +2369,19 @@ def _assert_no_data_write_noop_evidence(worklist: _WorklistAnalysis) -> None:
     assert worklist.explored_data_write_noop_witness is None
 
 
-def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
+def _assert_input_crazy_alias_evidence(worklist: _WorklistAnalysis) -> None:
     assert worklist.explored_code_data_alias_transition_count == (
         _WORKLIST_COMPLETE_STATE_LIMIT
     )
+    assert worklist.explored_code_data_alias_addresses == (0, 1)
+    witnesses = worklist.explored_code_data_alias_witnesses
+    assert tuple(witness.address for witness in witnesses) == (0, 1)
+    assert witnesses[0].memory_value == _INPUT_CRAZY_SOURCE[0]
+    assert witnesses[1].memory_value == _INPUT_CRAZY_SOURCE[1]
+
+
+def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
+    _assert_input_crazy_alias_evidence(worklist)
     assert worklist.explored_committed_write_count == 1
     assert worklist.explored_committed_write_addresses == (0,)
     assert worklist.explored_planned_data_write_transition_count == (
@@ -2379,6 +2411,30 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
         111,
     )
     assert worklist.explored_data_mutation_witness is None
+
+
+def test_worklist_alias_witnesses_map_loaded_source_and_paths() -> None:
+    """C/D alias addresses and shortest paths map to loaded source exactly."""
+    report = _ANALYZER_MODULE.analyze_source(
+        b" \n" + _INPUT_CRAZY_SOURCE,
+        worklist_state_limit=_WORKLIST_COMPLETE_STATE_LIMIT,
+    )
+    contexts = report.bounded_worklist_code_data_alias_source_contexts
+    assert tuple(context.address for context in contexts) == (0, 1)
+    assert tuple(context.memory_value for context in contexts) == tuple(
+        _INPUT_CRAZY_SOURCE
+    )
+    assert tuple(context.source_byte_offset for context in contexts) == (2, 3)
+    assert len(contexts[0].entry_path_source_map) == 1
+    assert len(contexts[1].entry_path_source_map) == len(contexts)
+    first_path = contexts[0].entry_path_source_map
+    second_path = contexts[1].entry_path_source_map
+    assert first_path[0].code_pointer == 0
+    assert first_path[0].data_pointer == 0
+    assert tuple(item.code_pointer for item in second_path) == (0, 1)
+    assert tuple(item.data_pointer for item in second_path) == (0, 1)
+    assert tuple(item.source_byte_offset for item in second_path) == (2, 3)
+    assert tuple(item.data_source_byte_offset for item in second_path) == (2, 3)
 
 
 def test_report_worklist_resolves_input_dependent_crazy() -> None:

@@ -302,6 +302,13 @@ class _WorklistValueDomain(Protocol):
     values: tuple[int, ...]
 
 
+class _WorklistCodeDataAliasWitness(Protocol):
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+    address: int
+    memory_value: int
+
+
 class _WorklistEvolvedReadWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -363,6 +370,10 @@ class _WorklistAnalysis(Protocol):
     closed_all_paths_halt: bool | None
     terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
     explored_code_data_alias_transition_count: int
+    explored_code_data_alias_addresses: tuple[int, ...]
+    explored_code_data_alias_witnesses: tuple[
+        _WorklistCodeDataAliasWitness, ...
+    ]
     explored_committed_write_count: int
     explored_committed_write_addresses: tuple[int, ...]
     explored_planned_data_write_transition_count: int
@@ -633,6 +644,21 @@ def test_input_crazy_reports_exact_encryption_input_domain() -> None:
     assert encryption_outputs == (111,)
 
 
+def _assert_two_word_alias_witnesses(
+    result: _WorklistAnalysis,
+    second_value: int,
+) -> None:
+    assert result.explored_code_data_alias_addresses == (0, 1)
+    witnesses = result.explored_code_data_alias_witnesses
+    assert tuple(witness.address for witness in witnesses) == (0, 1)
+    assert witnesses[0].memory_value == _INPUT_HALT_SOURCE[0]
+    assert len(witnesses[0].entry_path) == 1
+    assert witnesses[0].entry_path[-1] == witnesses[0].state
+    assert witnesses[1].memory_value == second_value
+    assert len(witnesses[1].entry_path) == len(witnesses)
+    assert witnesses[1].entry_path[-1] == witnesses[1].state
+
+
 def test_input_halt_reports_exact_explored_mutation_footprint() -> None:
     """Closed input reachability publishes exact committed mutation evidence."""
     result = worklist.analyze_reachability(
@@ -642,6 +668,7 @@ def test_input_halt_reports_exact_explored_mutation_footprint() -> None:
     assert result.explored_code_data_alias_transition_count == (
         _FULL_STATE_LIMIT
     )
+    _assert_two_word_alias_witnesses(result, _INPUT_HALT_SOURCE[1])
     assert result.explored_committed_write_count == 1
     assert result.explored_committed_write_addresses == (0,)
     assert result.explored_committed_data_write_transition_count == 0
@@ -669,6 +696,7 @@ def test_rejected_planned_writes_are_not_reported_as_committed() -> None:
     assert result.explored_code_data_alias_transition_count == (
         _FULL_STATE_LIMIT
     )
+    _assert_two_word_alias_witnesses(result, _INPUT_CRAZY_SOURCE[1])
     assert result.explored_committed_write_count == 1
     assert result.explored_committed_write_addresses == (0,)
     assert result.explored_committed_data_write_transition_count == 0

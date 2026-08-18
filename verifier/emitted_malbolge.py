@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v62"
+_SCHEMA: Final = "malbolge-static-image/v63"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -230,6 +230,18 @@ class BoundedWorklistControlPathSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistCodeDataAliasSourceContext:
+    """Source-linked first exact C/D alias witness for one address."""
+
+    address: int
+    memory_value: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    entry_path_source_map: tuple[BoundedWorklistControlPathSourceContext, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistEvolvedReadWriterSourceContext:
     """Source-mapped exact last writer for one evolved worklist read."""
 
@@ -272,6 +284,9 @@ class StaticImageReport:
     bounded_continuations: tuple[prefix_transfer.SecondTransition, ...]
     bounded_state_snapshots: tuple[prefix_transfer.StateSnapshot, ...]
     bounded_worklist: worklist_transfer.WorklistAnalysis | None
+    bounded_worklist_code_data_alias_source_contexts: tuple[
+        BoundedWorklistCodeDataAliasSourceContext, ...
+    ]
     bounded_worklist_data_mutation_source_context: (
         BoundedWorklistDataMutationSourceContext | None
     )
@@ -1242,6 +1257,32 @@ def _worklist_control_path_source_map(
     return tuple(contexts)
 
 
+def _worklist_code_data_alias_source_contexts(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistCodeDataAliasSourceContext, ...]:
+    if worklist is None:
+        return ()
+    contexts: list[BoundedWorklistCodeDataAliasSourceContext] = []
+    for witness in worklist.explored_code_data_alias_witnesses:
+        source = _worklist_mutation_address_source_context(
+            witness.address, cells
+        )
+        contexts.append(
+            BoundedWorklistCodeDataAliasSourceContext(
+                address=witness.address,
+                memory_value=witness.memory_value,
+                source_position=source.source_position,
+                source_byte_offset=source.source_byte_offset,
+                initial_source_byte=source.initial_source_byte,
+                entry_path_source_map=_worklist_control_path_source_map(
+                    witness.entry_path, cells
+                ),
+            )
+        )
+    return tuple(contexts)
+
+
 def _worklist_evolved_read_writer_source_context(
     witness: worklist_transfer.WorklistEvolvedReadWitness | None,
     cells: tuple[InitialCell, ...],
@@ -1388,6 +1429,9 @@ def analyze_source(
         bounded_continuations=prefix.continuations,
         bounded_state_snapshots=prefix.state_snapshots,
         bounded_worklist=worklist,
+        bounded_worklist_code_data_alias_source_contexts=(
+            _worklist_code_data_alias_source_contexts(worklist, prefix.cells)
+        ),
         bounded_worklist_data_mutation_source_context=(
             _worklist_data_mutation_source_context(worklist, prefix.cells)
         ),

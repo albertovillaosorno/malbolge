@@ -111,6 +111,16 @@ class WorklistValueDomain:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistCodeDataAliasWitness:
+    """First exact entry-reachable C/D alias state for one address."""
+
+    state: WorklistCycleState
+    entry_path: tuple[WorklistCycleState, ...]
+    address: int
+    memory_value: int
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistEvolvedReadWitness:
     """First exact read whose value differs from initial memory."""
 
@@ -186,6 +196,8 @@ class WorklistAnalysis:
     closed_all_paths_halt: bool | None
     terminal_status_witnesses: tuple[WorklistTerminalWitness, ...]
     explored_code_data_alias_transition_count: int
+    explored_code_data_alias_addresses: tuple[int, ...]
+    explored_code_data_alias_witnesses: tuple[WorklistCodeDataAliasWitness, ...]
     explored_committed_write_count: int
     explored_committed_write_addresses: tuple[int, ...]
     explored_planned_data_write_transition_count: int
@@ -885,6 +897,10 @@ class _Explorer:
     accessed_addresses: set[int]
     initial_memory: tuple[int, ...] = field(init=False, repr=False)
     terminal_states: dict[str, set[_StateKey]] = field(default_factory=dict)
+    code_data_alias_addresses: set[int] = field(default_factory=set)
+    code_data_alias_witnesses: dict[int, WorklistCodeDataAliasWitness] = field(
+        default_factory=dict
+    )
     committed_write_addresses: set[int] = field(default_factory=set)
     planned_data_write_addresses: set[int] = field(default_factory=set)
     planned_data_write_values: dict[int, set[int]] = field(default_factory=dict)
@@ -1047,6 +1063,13 @@ class _Explorer:
             ),
             explored_code_data_alias_transition_count=(
                 self.code_data_alias_transitions
+            ),
+            explored_code_data_alias_addresses=tuple(
+                sorted(self.code_data_alias_addresses)
+            ),
+            explored_code_data_alias_witnesses=tuple(
+                self.code_data_alias_witnesses[address]
+                for address in sorted(self.code_data_alias_witnesses)
             ),
             explored_committed_write_count=self.committed_writes,
             explored_committed_write_addresses=tuple(
@@ -1464,13 +1487,42 @@ class _Explorer:
         self.planned_data_write_addresses.add(address)
         _record_domain_value(self.planned_data_write_values, address, value)
 
+    def _record_code_data_alias_evidence(
+        self,
+        node: _ReachabilityNode,
+        transition: prefix_transfer.SecondTransition,
+    ) -> None:
+        if not transition.code_data_alias:
+            return
+        self.code_data_alias_transitions += 1
+        address = transition.fetched_address
+        if transition.data_address != address:
+            message = "code/data alias flag disagrees with exact addresses"
+            raise AssertionError(message)
+        self.code_data_alias_addresses.add(address)
+        if address in self.code_data_alias_witnesses:
+            return
+        key = _node_key(node)
+        path = _known_graph_shortest_path(
+            self.edges,
+            self.seen,
+            start=_INITIAL_STATE_KEY,
+            target=key,
+        )
+        if not path:
+            return
+        self.code_data_alias_witnesses[address] = WorklistCodeDataAliasWitness(
+            state=_cycle_state(key),
+            entry_path=tuple(_cycle_state(item) for item in path),
+            address=address,
+            memory_value=transition.fetched_value,
+        )
+
     def _record_mutation_evidence(
         self,
         step: prefix_transfer.SnapshotStep,
     ) -> None:
         transition = step.transition
-        if transition.code_data_alias:
-            self.code_data_alias_transitions += 1
         data_write, encryption = _committed_mutation_addresses(step)
         writes = tuple(
             address
@@ -1510,6 +1562,7 @@ class _Explorer:
         self._record_read_value_evidence(step.transition)
         self._record_evolved_read_evidence(node, step.transition)
         self._record_planned_data_write_evidence(step.transition)
+        self._record_code_data_alias_evidence(node, step.transition)
         self._record_mutation_evidence(step)
         self._record_data_mutation_evidence(node, step)
         if step.transition.pointer_wraps:

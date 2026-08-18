@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v62` retains exact `entry_transition` through
+`malbolge-static-image/v63` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -306,7 +306,11 @@ every worklist value/source context, independently of loaded-source coordinates.
 It
 also source-links changed-only evolved fetch/data-read domains: recurrence M[95]
 records initial 29,430 versus 9,810, and recurrence M[41] records initial 29,558
-versus 49,218.
+versus 49,218. Schema v63 adds exact C/D-alias address sets and one
+shortest-path witness per aliased address. A closed two-word input graph has 258
+alias
+transitions but only addresses 0 and 1. With two leading whitespace bytes those
+map to raw offsets 2 and 3; witness paths preserve both C and D source context.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema
