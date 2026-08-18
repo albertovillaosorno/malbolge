@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v26
+  offsets, stable finding codes, and explicit analysis limits. Schema v27
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -124,8 +124,15 @@ executable cells, and input-dependent cycles or hangs.
   from the canonical entry state to the selected cycle witness using only
   admitted known edges. A path proved before truncation remains exact for those
   edges but does not promote the unexplored frontier to closed reachability.
-  An empty witness under truncation does not prove the unexplored frontier
-  acyclic. Repeat-heavy branch merges do not become cycle claims. Schema v25
+  Schema v27 additionally publishes one deterministic terminal witness for each
+  observed terminal status. The witness records the exact terminal source state
+  and shortest admitted known-edge path from canonical entry; witnesses already
+  observed before truncation remain exact, while missing statuses say nothing
+  about the frontier. The `b"u="` input-dependent crazy fixture now binds its
+  257 rejection terminals to a concrete reachable rejection witness, and the
+  closed input-halt CLI fixture publishes a reachable halt witness. An empty
+  cycle witness under truncation does not prove the unexplored frontier acyclic.
+  Repeat-heavy branch merges do not become cycle claims. Schema v25
   additionally publishes exact SCC summary counts over only the admitted known
   graph: all SCCs, cyclic SCCs, cyclic states, and the largest cyclic SCC size.
   Its cycle/non-cycle verdict is checked against the independent witness search

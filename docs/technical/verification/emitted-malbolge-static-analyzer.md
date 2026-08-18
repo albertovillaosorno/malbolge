@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v26` retains exact `entry_transition` through
+`malbolge-static-image/v27` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -69,12 +69,18 @@ and the sticky EOF flag. Schema v26 additionally publishes
 entry state to the first state of that selected cycle witness using only exact
 known edges. The path may be published for a cycle already proved before a
 worklist cap is reached; it remains bounded known-graph evidence and never
-promotes an unexplored frontier to reachable or closed. An empty witness proves
-only that no cycle was found in the admitted known graph; under truncation it
-does not characterize the unexplored frontier. Repeat edges caused only by
-branch merges do not become cycle claims; a proven graph cycle also makes CLI
-acceptance nonzero. Schema v25 also publishes exact SCC summaries over only the
-admitted known-edge graph:
+promotes an unexplored frontier to reachable or closed. Schema v27 also
+publishes one `terminal_status_witnesses` entry for every terminal status
+actually observed
+by the bounded worklist. Each witness binds that status to one exact terminal
+source state and the deterministic shortest known-edge path from the canonical
+entry state. Statuses are ordered canonically; an observed witness remains exact
+if truncation occurs later, while absence never characterizes the unexplored
+frontier. An empty cycle witness proves only that no cycle was found in the
+admitted known graph; under truncation it does not characterize the unexplored
+frontier. Repeat edges caused only by branch merges do not become cycle claims;
+a proven graph cycle also makes CLI acceptance nonzero. Schema v25 also
+publishes exact SCC summaries over only the admitted known-edge graph:
 `known_graph_strong_component_count`, `known_graph_cyclic_component_count`,
 `known_graph_cyclic_state_count`, and
 `known_graph_largest_cyclic_component_states`. The SCC cycle verdict is checked
