@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v25 retains the legacy exact entry-through-fifth
+load decode. Schema v26 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -68,8 +68,12 @@ those states are explored. Schema v25 also records
 `reachable_cycle_detected` and a deterministic
 `reachable_cycle_witness` from exact directed edges in the known graph. Every
 witness state carries C/D/A, canonical sparse memory overrides, and the sticky
-EOF flag. An empty witness means no cycle was proved in the admitted known
-graph; it says nothing about a truncated frontier. Repeat-heavy branch merges
+EOF flag. Schema v26 adds `reachable_cycle_entry_path`, the deterministic
+shortest known-edge path from the canonical entry state to that selected cycle.
+A path remains exact when its edges are already known under truncation, but it
+makes no claim about the unexplored frontier. An empty witness means no cycle
+was proved in the admitted known graph; it says nothing about a truncated
+frontier. Repeat-heavy branch merges
 are not treated as cycles, and a proven cycle makes requested CLI analysis
 fail. Schema v25 also reports the known graph's exact SCC count, cyclic SCC
 count, cyclic-state count, and largest cyclic SCC size. These values use only

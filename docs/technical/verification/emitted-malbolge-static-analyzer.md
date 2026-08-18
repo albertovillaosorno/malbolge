@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v25` retains exact `entry_transition` through
+`malbolge-static-image/v26` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -64,11 +64,17 @@ nonempty frontier and makes CLI acceptance
 nonzero. Schema v25 derives `reachable_cycle_detected` and the deterministic
 `reachable_cycle_witness` from exact directed edges in the admitted known
 graph. Each witness state publishes C/D/A, canonical sparse memory overrides,
-and the sticky EOF flag. An empty witness proves only that no cycle was found in
-the admitted known graph; under truncation it does not characterize the
-unexplored frontier. Repeat edges caused only by branch merges do not become
-cycle claims; a proven graph cycle also makes CLI acceptance nonzero. Schema
-v25 also publishes exact SCC summaries over only the admitted known-edge graph:
+and the sticky EOF flag. Schema v26 additionally publishes
+`reachable_cycle_entry_path`, the deterministic shortest path from the canonical
+entry state to the first state of that selected cycle witness using only exact
+known edges. The path may be published for a cycle already proved before a
+worklist cap is reached; it remains bounded known-graph evidence and never
+promotes an unexplored frontier to reachable or closed. An empty witness proves
+only that no cycle was found in the admitted known graph; under truncation it
+does not characterize the unexplored frontier. Repeat edges caused only by
+branch merges do not become cycle claims; a proven graph cycle also makes CLI
+acceptance nonzero. Schema v25 also publishes exact SCC summaries over only the
+admitted known-edge graph:
 `known_graph_strong_component_count`, `known_graph_cyclic_component_count`,
 `known_graph_cyclic_state_count`, and
 `known_graph_largest_cyclic_component_states`. The SCC cycle verdict is checked

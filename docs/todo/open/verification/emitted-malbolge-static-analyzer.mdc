@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v25
+  offsets, stable finding codes, and explicit analysis limits. Schema v26
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -120,6 +120,10 @@ executable cells, and input-dependent cycles or hangs.
   Schema v25 detects directed cycles only from exact known-graph edges and
   publishes one deterministic `reachable_cycle_witness`. Each witness state
   carries C/D/A, canonical sparse memory overrides, and the sticky EOF flag.
+  Schema v26 adds `reachable_cycle_entry_path`, a deterministic shortest path
+  from the canonical entry state to the selected cycle witness using only
+  admitted known edges. A path proved before truncation remains exact for those
+  edges but does not promote the unexplored frontier to closed reachability.
   An empty witness under truncation does not prove the unexplored frontier
   acyclic. Repeat-heavy branch merges do not become cycle claims. Schema v25
   additionally publishes exact SCC summary counts over only the admitted known
