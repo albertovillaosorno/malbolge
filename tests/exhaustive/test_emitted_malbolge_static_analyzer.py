@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v48"
+_SCHEMA = "malbolge-static-image/v49"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -665,6 +665,12 @@ class _Report(Protocol):
         _WorklistValueSourceContext, ...
     ]
     bounded_worklist_encryption_input_value_source_map: tuple[
+        _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_committed_data_write_value_source_map: tuple[
+        _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_self_encryption_output_value_source_map: tuple[
         _WorklistValueSourceContext, ...
     ]
     bounded_exact_cycle: _ExactCycleCertificate | None
@@ -2313,6 +2319,48 @@ def test_worklist_read_domains_map_loaded_and_recurrence_source() -> None:
     assert encryption.source_byte_offset == _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
     assert encryption.initial_source_byte_in_values is True
     assert _WORKLIST_VALUE_SOURCE_MAP_LIMIT in report.analysis_limits
+
+
+def test_worklist_write_domains_map_loaded_source() -> None:
+    """Committed output domains preserve loaded source coordinates."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _LOADED_MUTATION_SOURCE_WITH_WHITESPACE,
+        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
+    )
+    data = _value_source_context(
+        report.bounded_worklist_committed_data_write_value_source_map,
+        _LOADED_MUTATION_ADDRESS,
+    )
+    assert data.source_position == _LOADED_MUTATION_ADDRESS
+    assert data.source_byte_offset == _LOADED_MUTATION_BYTE_OFFSET
+    assert data.initial_source_byte == _LOADED_MUTATION_SOURCE_BYTE
+    assert data.values
+    assert data.initial_source_byte_in_values is False
+    encryption = _value_source_context(
+        report.bounded_worklist_self_encryption_output_value_source_map, 0
+    )
+    assert encryption.source_position == 0
+    assert encryption.source_byte_offset == _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
+    assert encryption.initial_source_byte == _ENTRY_WRAP_SOURCE[0]
+    assert encryption.values == (111,)
+    assert encryption.initial_source_byte_in_values is False
+
+
+def test_worklist_write_domains_keep_recurrence_unmapped() -> None:
+    """Committed recurrence writes do not invent loaded source coordinates."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _ENTRY_WRAP_SOURCE,
+        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
+    )
+    data = _value_source_context(
+        report.bounded_worklist_committed_data_write_value_source_map,
+        _ENTRY_MUTATION_ADDRESS,
+    )
+    assert data.source_position is None
+    assert data.source_byte_offset is None
+    assert data.initial_source_byte is None
+    assert data.values
+    assert data.initial_source_byte_in_values is None
 
 
 def _assert_committed_write_role_maps(report: _Report) -> None:
