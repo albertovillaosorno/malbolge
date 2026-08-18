@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v50"
+_SCHEMA = "malbolge-static-image/v51"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -668,6 +668,9 @@ class _Report(Protocol):
         _WorklistValueSourceContext, ...
     ]
     bounded_worklist_encryption_input_value_source_map: tuple[
+        _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_planned_data_write_value_source_map: tuple[
         _WorklistValueSourceContext, ...
     ]
     bounded_worklist_committed_data_write_value_source_map: tuple[
@@ -2328,6 +2331,40 @@ def test_worklist_read_domains_map_loaded_and_recurrence_source() -> None:
     assert encryption.source_byte_offset == _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
     assert encryption.initial_source_byte_in_values is True
     assert _WORKLIST_VALUE_SOURCE_MAP_LIMIT in report.analysis_limits
+
+
+def test_rejected_planned_write_domain_maps_loaded_source() -> None:
+    """Rejected planned writes retain source context without committing."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _INPUT_CRAZY_SOURCE,
+        worklist_state_limit=_WORKLIST_COMPLETE_STATE_LIMIT,
+    )
+    context = _value_source_context(
+        report.bounded_worklist_planned_data_write_value_source_map, 1
+    )
+    assert context.source_position == 1
+    assert context.source_byte_offset == 1
+    assert context.initial_source_byte == _INPUT_CRAZY_SOURCE[1]
+    assert len(context.values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
+    assert context.initial_source_byte_in_values is False
+    assert report.bounded_worklist_committed_data_write_value_source_map == ()
+
+
+def test_recurrence_planned_write_domain_stays_unmapped() -> None:
+    """Recurrence-targeted plans do not invent loaded source coordinates."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _ENTRY_WRAP_SOURCE,
+        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
+    )
+    context = _value_source_context(
+        report.bounded_worklist_planned_data_write_value_source_map,
+        _ENTRY_MUTATION_ADDRESS,
+    )
+    assert context.source_position is None
+    assert context.source_byte_offset is None
+    assert context.initial_source_byte is None
+    assert context.values
+    assert context.initial_source_byte_in_values is None
 
 
 def test_worklist_write_domains_map_loaded_source() -> None:

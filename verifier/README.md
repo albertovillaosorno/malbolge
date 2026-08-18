@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v50 retains the legacy exact entry-through-fifth
+load decode. Schema v51 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -235,7 +235,11 @@ data-write transition count, addresses, and exact value domains before commit
 validation. Closed input-crazy has 257 planned writes at address 1 spanning 58
 values but zero committed data writes because every branch rejects; entry-wrap
 has 257 planned writes at address 40 whose value domain exactly matches its
-committed write domain.
+committed write domain. Schema v51 maps planned data-write value domains back to
+loaded source coordinates without changing commit classification. Input-crazy's
+rejected plans map to loaded position/raw offset 1 and initial byte 61 while its
+committed data-write map remains empty. Entry-wrap's planned writes target
+recurrence address 40 and remain explicitly null-mapped.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored

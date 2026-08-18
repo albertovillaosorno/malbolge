@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v50"
+_SCHEMA: Final = "malbolge-static-image/v51"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -262,6 +262,9 @@ class StaticImageReport:
         BoundedWorklistValueSourceContext, ...
     ]
     bounded_worklist_encryption_input_value_source_map: tuple[
+        BoundedWorklistValueSourceContext, ...
+    ]
+    bounded_worklist_planned_data_write_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
     ]
     bounded_worklist_committed_data_write_value_source_map: tuple[
@@ -1276,6 +1279,14 @@ def analyze_source(
                 ()
                 if worklist is None
                 else worklist.explored_encryption_input_value_domains,
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_planned_data_write_value_source_map=(
+            _worklist_value_source_map(
+                ()
+                if worklist is None
+                else worklist.explored_planned_data_write_value_domains,
                 prefix.cells,
             )
         ),
