@@ -151,9 +151,10 @@ executable cells, and input-dependent cycles or hangs.
   graph: all SCCs, cyclic SCCs, cyclic states, and the largest cyclic SCC size.
   Entry-reachable wraparound now has an exact EOF-branch witness: the admitted
   22-word `b"u'<%$#>=<;:987654321NN"` fixture writes 59,048 into M[40],
-  steers D back to 40, and wraps D to zero on transition six. This supplements
-  the older synthetic near-boundary snapshot without promoting unexplored input
-  branches to closed reachability.
+  steers D back to 40, and wraps D to zero on transition six. A 1,544-state
+  public worklist observes exactly one such wrap while remaining truncated with
+  257 frontier states. This supplements the older synthetic near-boundary
+  snapshot without promoting unexplored input branches to closed reachability.
   Its cycle/non-cycle verdict is checked against the independent witness search
   before publication. Under truncation unexplored outgoing edges may later merge
   SCCs, so these counts are not promoted to whole-program graph evidence. Once

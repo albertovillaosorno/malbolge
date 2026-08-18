@@ -85,6 +85,9 @@ _INVALID_WORKLIST_STATE_LIMIT = _MAX_WORKLIST_STATE_LIMIT + 1
 _WORKLIST_COMPLETE_STATE_LIMIT = 258
 _WORKLIST_TRUNCATED_STATE_LIMIT = 257
 _WORKLIST_INPUT_VALUE_COUNT = 257
+_ENTRY_WRAP_SOURCE = b"u'<%$#>=<;:987654321NN"
+_ENTRY_WRAP_WORKLIST_STATE_LIMIT = 1_544
+_ENTRY_WRAP_EXPLORED_STATES = 1_288
 _WORKLIST_CLOSED_LIMIT = (
     "input-dependent-reachability:258-state-worklist-closed"
 )
@@ -94,6 +97,10 @@ _WORKLIST_TRUNCATED_LIMIT = (
 _WORKLIST_WRAP_LIMIT = (
     "wraparound-reachability:16-transition-prefix-and-"
     "258-state-worklist-closed"
+)
+_ENTRY_WRAP_LIMIT = (
+    "wraparound-reachability:16-transition-prefix-and-"
+    "1544-state-worklist-truncated"
 )
 _INPUT_CRAZY_SOURCE = bytes((117, 61))
 _INPUT_HALT_SOURCE = bytes((117, 80))
@@ -1800,6 +1807,22 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     assert not worklist.truncated
     assert _WORKLIST_CLOSED_LIMIT in report.analysis_limits
     assert _WORKLIST_WRAP_LIMIT in report.analysis_limits
+
+
+def test_report_worklist_observes_entry_reachable_eof_wrap() -> None:
+    """Public bounded worklist counts the exact EOF-branch pointer wrap."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _ENTRY_WRAP_SOURCE,
+        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _ENTRY_WRAP_WORKLIST_STATE_LIMIT
+    assert worklist.explored_states == _ENTRY_WRAP_EXPLORED_STATES
+    assert worklist.explored_wraparound_transition_count == 1
+    assert worklist.frontier_states == _WORKLIST_INPUT_VALUE_COUNT
+    assert worklist.truncated
+    assert _ENTRY_WRAP_LIMIT in report.analysis_limits
 
 
 def test_report_worklist_proves_long_input_dependent_cycle() -> None:
