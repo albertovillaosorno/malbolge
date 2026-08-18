@@ -5650,7 +5650,7 @@ fn native_bootstrap_rejects_observation_counter_overflow() -> Result<(), String>
 fn native_bootstrap_compiler_emits_real_x86_64_and_aarch64_coff_objects()
 -> Result<(), String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let clang = root.join(".dependencies/llvm/22.1.8/bin/clang.exe");
+    let clang = root.join(".dependencies/llvm/22.1.8/jig-bin/clang.bin");
     if !clang.is_file() {
         return Err(format!("pinned Clang missing: {}", clang.display()));
     }
