@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v27"
+_SCHEMA = "malbolge-static-image/v28"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -304,6 +304,7 @@ class _WorklistAnalysis(Protocol):
     closed_recurrent_state_count: int | None
     closed_recurrent_largest_component_states: int | None
     closed_recurrent_cycle_witness: tuple[_WorklistCycleState, ...] | None
+    closed_recurrent_entry_path: tuple[_WorklistCycleState, ...] | None
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
@@ -1636,6 +1637,12 @@ def _assert_closed_recurrent_cycle_json(
     assert len(recurrent) == 1
     assert recurrent[0]["code_pointer"] == _FIXED_CYCLE_POINTER
     assert recurrent[0]["data_pointer"] == _FIXED_CYCLE_POINTER
+    path = cast(
+        "list[dict[str, object]]",
+        bounded["closed_recurrent_entry_path"],
+    )
+    assert [state["code_pointer"] for state in path] == [0, 1, 2]
+    assert path[-1] == recurrent[0]
 
 
 def _assert_reachable_cycle_entry_path_json(
@@ -1790,6 +1797,7 @@ def test_report_worklist_truncation_is_explicit() -> None:
     assert worklist.closed_recurrent_state_count is None
     assert worklist.closed_recurrent_largest_component_states is None
     assert worklist.closed_recurrent_cycle_witness is None
+    assert worklist.closed_recurrent_entry_path is None
     assert _WORKLIST_TRUNCATED_LIMIT in report.analysis_limits
 
 

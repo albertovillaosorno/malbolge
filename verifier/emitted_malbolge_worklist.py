@@ -104,6 +104,7 @@ class WorklistAnalysis:
     closed_recurrent_state_count: int | None
     closed_recurrent_largest_component_states: int | None
     closed_recurrent_cycle_witness: tuple[WorklistCycleState, ...] | None
+    closed_recurrent_entry_path: tuple[WorklistCycleState, ...] | None
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     terminal_status_witnesses: tuple[WorklistTerminalWitness, ...]
@@ -135,6 +136,7 @@ class _ClosedRecurrenceEvidence:
     state_count: int | None
     largest_component_states: int | None
     cycle_witness: tuple[WorklistCycleState, ...] | None
+    entry_path: tuple[WorklistCycleState, ...] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -569,10 +571,11 @@ def _closed_recurrence_evidence(
     summary: _StrongComponentSummary,
     edges: dict[_StateKey, set[_StateKey]],
     *,
+    nodes: set[_StateKey],
     truncated: bool,
 ) -> _ClosedRecurrenceEvidence:
     if truncated:
-        return _ClosedRecurrenceEvidence(None, None, None, None)
+        return _ClosedRecurrenceEvidence(None, None, None, None, None)
     components = summary.cyclic_sink_components
     witness_keys = (
         _known_graph_cycle_witness(edges, set(components[0]))
@@ -582,11 +585,25 @@ def _closed_recurrence_evidence(
     if bool(witness_keys) != bool(components):
         message = "closed recurrent SCC lost deterministic witness"
         raise AssertionError(message)
+    entry_path_keys = (
+        _known_graph_shortest_path(
+            edges,
+            nodes,
+            start=_INITIAL_STATE_KEY,
+            target=witness_keys[0],
+        )
+        if witness_keys
+        else ()
+    )
+    if bool(entry_path_keys) != bool(witness_keys):
+        message = "closed recurrent SCC lost exact entry path"
+        raise AssertionError(message)
     return _ClosedRecurrenceEvidence(
         component_count=len(components),
         state_count=sum(map(len, components)),
         largest_component_states=max(map(len, components), default=0),
         cycle_witness=tuple(_cycle_state(key) for key in witness_keys),
+        entry_path=tuple(_cycle_state(key) for key in entry_path_keys),
     )
 
 
@@ -662,6 +679,7 @@ class _Explorer:
         recurrence = _closed_recurrence_evidence(
             component_summary,
             self.edges,
+            nodes=self.seen,
             truncated=truncated,
         )
         return WorklistAnalysis(
@@ -692,6 +710,7 @@ class _Explorer:
                 recurrence.largest_component_states
             ),
             closed_recurrent_cycle_witness=recurrence.cycle_witness,
+            closed_recurrent_entry_path=recurrence.entry_path,
             input_branch_points=self.input_branch_points,
             terminal_status_counts=tuple(sorted(self.terminal_counts.items())),
             terminal_status_witnesses=_terminal_witnesses(

@@ -162,6 +162,7 @@ class _WorklistAnalysis(Protocol):
     closed_recurrent_state_count: int | None
     closed_recurrent_largest_component_states: int | None
     closed_recurrent_cycle_witness: tuple[_WorklistCycleState, ...] | None
+    closed_recurrent_entry_path: tuple[_WorklistCycleState, ...] | None
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
@@ -277,6 +278,7 @@ def _assert_no_closed_recurrence(result: _WorklistAnalysis) -> None:
     assert result.closed_recurrent_state_count == 0
     assert result.closed_recurrent_largest_component_states == 0
     assert result.closed_recurrent_cycle_witness == ()
+    assert result.closed_recurrent_entry_path == ()
 
 
 def _assert_fixed_cycle_closed_recurrence(result: _WorklistAnalysis) -> None:
@@ -290,6 +292,9 @@ def _assert_fixed_cycle_closed_recurrence(result: _WorklistAnalysis) -> None:
     assert state.code_pointer == _FIXED_CYCLE_POINTER
     assert state.data_pointer == _FIXED_CYCLE_POINTER
     assert state.memory_overrides == _FIXED_CYCLE_MEMORY_OVERRIDES
+    path = result.closed_recurrent_entry_path
+    assert path is not None
+    _assert_fixed_cycle_entry_path(path, state)
 
 
 def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
@@ -369,6 +374,7 @@ def test_input_worklist_truncates_before_unadmitted_eof_state() -> None:
     assert result.closed_recurrent_state_count is None
     assert result.closed_recurrent_largest_component_states is None
     assert result.closed_recurrent_cycle_witness is None
+    assert result.closed_recurrent_entry_path is None
     assert result.truncated
 
 
@@ -509,6 +515,39 @@ def test_known_graph_scc_summary_counts_cycle_components_exactly() -> None:
         (_GRAPH_KEY_A, _GRAPH_KEY_B),
         (_GRAPH_KEY_C,),
     )
+
+
+def test_closed_recurrence_path_targets_sink_cycle_not_first_cycle() -> None:
+    """Closed recurrence path targets the sink cycle, not an escaping cycle."""
+    edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B},
+        _GRAPH_KEY_B: {_GRAPH_KEY_A, _GRAPH_KEY_C},
+        _GRAPH_KEY_C: {_GRAPH_KEY_C},
+    }
+    nodes = {_GRAPH_KEY_A, _GRAPH_KEY_B, _GRAPH_KEY_C}
+    explorer = worklist._Explorer(
+        _INPUT_HALT_SOURCE,
+        len(nodes),
+        deque(),
+        nodes,
+        edges,
+        {},
+        {0},
+    )
+    result = explorer.run()
+    cycle_pointers = tuple(
+        state.code_pointer for state in result.reachable_cycle_witness
+    )
+    assert cycle_pointers == (0, 1)
+    assert tuple(
+        state.code_pointer for state in result.reachable_cycle_entry_path
+    ) == (0,)
+    recurrent = result.closed_recurrent_cycle_witness
+    assert recurrent is not None
+    assert tuple(state.code_pointer for state in recurrent) == (2,)
+    path = result.closed_recurrent_entry_path
+    assert path is not None
+    assert tuple(state.code_pointer for state in path) == (0, 1, 2)
 
 
 def test_cyclic_scc_with_known_escape_is_not_closed_recurrent() -> None:
