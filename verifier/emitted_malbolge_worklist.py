@@ -171,6 +171,10 @@ class WorklistAnalysis:
     explored_fetch_value_domains: tuple[WorklistValueDomain, ...]
     explored_data_read_value_domains: tuple[WorklistValueDomain, ...]
     explored_encryption_input_value_domains: tuple[WorklistValueDomain, ...]
+    explored_committed_data_write_value_domains: tuple[WorklistValueDomain, ...]
+    explored_self_encryption_output_value_domains: tuple[
+        WorklistValueDomain, ...
+    ]
     explored_data_mutation_witness: WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -744,6 +748,13 @@ def _effective_data_mutation(
     return address, previous, written, result, aliases
 
 
+def _required_exact_value(value: int | None, *, label: str) -> int:
+    if value is None:
+        message = f"{label} lost its exact value"
+        raise AssertionError(message)
+    return value
+
+
 def _record_domain_value(
     domains: dict[int, set[int]],
     address: int,
@@ -805,6 +816,12 @@ class _Explorer:
     fetch_values: dict[int, set[int]] = field(default_factory=dict)
     data_read_values: dict[int, set[int]] = field(default_factory=dict)
     encryption_input_values: dict[int, set[int]] = field(default_factory=dict)
+    committed_data_write_values: dict[int, set[int]] = field(
+        default_factory=dict
+    )
+    self_encryption_output_values: dict[int, set[int]] = field(
+        default_factory=dict
+    )
     data_mutation_witness: WorklistDataMutationWitness | None = None
     explored: int = 0
     code_data_alias_transitions: int = 0
@@ -969,6 +986,12 @@ class _Explorer:
             ),
             explored_encryption_input_value_domains=_value_domains(
                 self.encryption_input_values
+            ),
+            explored_committed_data_write_value_domains=_value_domains(
+                self.committed_data_write_values
+            ),
+            explored_self_encryption_output_value_domains=_value_domains(
+                self.self_encryption_output_values
             ),
             explored_data_mutation_witness=self.data_mutation_witness,
             explored_minimum_words=max(
@@ -1177,11 +1200,25 @@ class _Explorer:
         self.committed_writes += len(writes)
         self.committed_write_addresses.update(writes)
         if data_write is not None:
+            data_value = _required_exact_value(
+                transition.planned_data_write_value,
+                label="committed data write",
+            )
             self.committed_data_write_transitions += 1
             self.committed_data_write_addresses.add(data_write)
+            _record_domain_value(
+                self.committed_data_write_values, data_write, data_value
+            )
         if encryption is not None:
+            encryption_value = _required_exact_value(
+                transition.encryption_output,
+                label="committed self-encryption output",
+            )
             self.self_encryption_transitions += 1
             self.self_encryption_addresses.add(encryption)
+            _record_domain_value(
+                self.self_encryption_output_values, encryption, encryption_value
+            )
 
     def _process_node(self, node: _ReachabilityNode) -> WorklistAnalysis | None:
         self.explored += 1

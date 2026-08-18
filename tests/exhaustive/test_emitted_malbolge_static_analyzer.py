@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v45"
+_SCHEMA = "malbolge-static-image/v46"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -530,6 +530,12 @@ class _WorklistAnalysis(Protocol):
     explored_fetch_value_domains: tuple[_WorklistValueDomain, ...]
     explored_data_read_value_domains: tuple[_WorklistValueDomain, ...]
     explored_encryption_input_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_committed_data_write_value_domains: tuple[
+        _WorklistValueDomain, ...
+    ]
+    explored_self_encryption_output_value_domains: tuple[
+        _WorklistValueDomain, ...
+    ]
     explored_data_mutation_witness: _WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -2036,6 +2042,10 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     encryption_domain = worklist.explored_encryption_input_value_domains[1]
     encryption_values = encryption_domain.values
     assert len(encryption_values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
+    assert worklist.explored_committed_data_write_value_domains == ()
+    assert worklist.explored_self_encryption_output_value_domains[0].values == (
+        111,
+    )
     assert worklist.explored_data_mutation_witness is None
 
 
