@@ -35,14 +35,15 @@
 from __future__ import annotations
 
 import ast
-import importlib.util
-import json
-import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
-import sys
 from copy import copy
 from hashlib import sha256
+import importlib.util
+import json
 from pathlib import Path
-from typing import Protocol, cast
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+import sys
+from typing import Protocol
+from typing import cast
 
 import pytest
 from scripts.validate import target_profile

@@ -38,12 +38,13 @@
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from collections import deque
 from collections.abc import Callable
+import importlib.util
 from pathlib import Path
-from typing import Protocol, cast
+import sys
+from typing import Protocol
+from typing import cast
 
 import pytest
 

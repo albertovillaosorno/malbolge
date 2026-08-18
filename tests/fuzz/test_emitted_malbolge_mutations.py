@@ -36,12 +36,13 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
 import json
+from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from hashlib import sha256
-from pathlib import Path
-from typing import Final, cast
+from typing import Final
+from typing import cast
 
 import pytest
 

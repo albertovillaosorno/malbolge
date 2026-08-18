@@ -36,12 +36,14 @@
 
 from __future__ import annotations
 
-import json
-import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
+from dataclasses import dataclass
 from hashlib import sha256
+import json
 from pathlib import Path
-from typing import Final, Never
+import sys
+from typing import Final
+from typing import Never
 
 if __package__:
     from verifier import emitted_malbolge_classic as classic
