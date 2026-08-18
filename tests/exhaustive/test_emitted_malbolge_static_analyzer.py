@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v41"
+_SCHEMA = "malbolge-static-image/v42"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -452,6 +452,16 @@ class _WorklistDataMutationSourceContext(Protocol):
     previous_value_matches_initial_source: bool | None
 
 
+class _WorklistDataMutationValueSourceContext(Protocol):
+    address: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    previous_values: tuple[int, ...]
+    result_values: tuple[int, ...]
+    initial_source_byte_in_previous_values: bool | None
+
+
 class _WorklistMutationAddressSourceContext(Protocol):
     address: int
     source_position: int | None
@@ -584,6 +594,9 @@ class _Report(Protocol):
     )
     bounded_worklist_effective_data_mutation_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_effective_data_mutation_value_source_map: tuple[
+        _WorklistDataMutationValueSourceContext, ...
     ]
     bounded_worklist_committed_write_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
@@ -2001,6 +2014,9 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     _assert_worklist_mutation_evidence(worklist)
     assert report.bounded_worklist_data_mutation_source_context is None
     assert report.bounded_worklist_effective_data_mutation_source_map == ()
+    assert (
+        report.bounded_worklist_effective_data_mutation_value_source_map == ()
+    )
     assert worklist.terminal_status_counts == (
         ("rejected-invalid-self-encryption", _WORKLIST_INPUT_VALUE_COUNT),
     )
@@ -2080,6 +2096,21 @@ def test_report_worklist_observes_entry_reachable_eof_wrap() -> None:
     assert _ENTRY_WRAP_LIMIT in report.analysis_limits
 
 
+def _assert_loaded_mutation_value_source_context(report: _Report) -> None:
+    value_contexts = (
+        report.bounded_worklist_effective_data_mutation_value_source_map
+    )
+    assert len(value_contexts) == 1
+    context = value_contexts[0]
+    assert context.address == _LOADED_MUTATION_ADDRESS
+    assert context.source_position == _LOADED_MUTATION_ADDRESS
+    assert context.source_byte_offset == _LOADED_MUTATION_BYTE_OFFSET
+    assert context.initial_source_byte == _LOADED_MUTATION_SOURCE_BYTE
+    assert context.previous_values == (_LOADED_MUTATION_SOURCE_BYTE,)
+    assert context.result_values
+    assert context.initial_source_byte_in_previous_values is True
+
+
 def test_worklist_data_mutation_maps_back_to_loaded_source_byte() -> None:
     """Worklist mutation context preserves loaded and raw source offsets."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -2106,6 +2137,7 @@ def test_worklist_data_mutation_maps_back_to_loaded_source_byte() -> None:
     assert aggregate[0].source_position == _LOADED_MUTATION_ADDRESS
     assert aggregate[0].source_byte_offset == _LOADED_MUTATION_BYTE_OFFSET
     assert aggregate[0].initial_source_byte == _LOADED_MUTATION_SOURCE_BYTE
+    _assert_loaded_mutation_value_source_context(report)
     assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
 
 
@@ -2164,6 +2196,18 @@ def test_worklist_maps_every_committed_write_address() -> None:
     assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
 
 
+def _assert_recurrence_mutation_value_source_context(report: _Report) -> None:
+    contexts = report.bounded_worklist_effective_data_mutation_value_source_map
+    context = contexts[-1]
+    assert context.address == _MULTI_MUTATION_SECOND_ADDRESS
+    assert context.source_position is None
+    assert context.source_byte_offset is None
+    assert context.initial_source_byte is None
+    assert context.previous_values == _MULTI_MUTATION_SECOND_PREVIOUS_VALUES
+    assert context.result_values == _MULTI_MUTATION_SECOND_RESULT_VALUES
+    assert context.initial_source_byte_in_previous_values is None
+
+
 def test_worklist_maps_every_effective_mutation_address() -> None:
     """Aggregate source mapping preserves loaded versus recurrence addresses."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -2194,6 +2238,7 @@ def test_worklist_maps_every_effective_mutation_address() -> None:
     assert second.address == _MULTI_MUTATION_SECOND_ADDRESS
     assert second.previous_values == _MULTI_MUTATION_SECOND_PREVIOUS_VALUES
     assert second.result_values == _MULTI_MUTATION_SECOND_RESULT_VALUES
+    _assert_recurrence_mutation_value_source_context(report)
     assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
 
 

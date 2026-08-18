@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v41"
+_SCHEMA: Final = "malbolge-static-image/v42"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -188,6 +188,19 @@ class BoundedWorklistDataMutationSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistDataMutationValueSourceContext:
+    """Source coordinates and exact observed values for one mutation address."""
+
+    address: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    previous_values: tuple[int, ...]
+    result_values: tuple[int, ...]
+    initial_source_byte_in_previous_values: bool | None
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistMutationAddressSourceContext:
     """Source-image coordinates for one worklist mutation address."""
 
@@ -217,6 +230,9 @@ class StaticImageReport:
     )
     bounded_worklist_effective_data_mutation_source_map: tuple[
         BoundedWorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_effective_data_mutation_value_source_map: tuple[
+        BoundedWorklistDataMutationValueSourceContext, ...
     ]
     bounded_worklist_committed_write_source_map: tuple[
         BoundedWorklistMutationAddressSourceContext, ...
@@ -1031,6 +1047,36 @@ def _worklist_effective_data_mutation_source_map(
     )
 
 
+def _worklist_data_mutation_value_source_map(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistDataMutationValueSourceContext, ...]:
+    if worklist is None:
+        return ()
+    contexts: list[BoundedWorklistDataMutationValueSourceContext] = []
+    for domain in worklist.explored_effective_data_mutation_value_domains:
+        source = _worklist_mutation_address_source_context(
+            domain.address, cells
+        )
+        initial = source.initial_source_byte
+        contexts.append(
+            BoundedWorklistDataMutationValueSourceContext(
+                address=domain.address,
+                source_position=source.source_position,
+                source_byte_offset=source.source_byte_offset,
+                initial_source_byte=initial,
+                previous_values=domain.previous_values,
+                result_values=domain.result_values,
+                initial_source_byte_in_previous_values=(
+                    None
+                    if initial is None
+                    else initial in domain.previous_values
+                ),
+            )
+        )
+    return tuple(contexts)
+
+
 def _worklist_committed_write_source_map(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -1140,6 +1186,9 @@ def analyze_source(
         ),
         bounded_worklist_effective_data_mutation_source_map=(
             _worklist_effective_data_mutation_source_map(worklist, prefix.cells)
+        ),
+        bounded_worklist_effective_data_mutation_value_source_map=(
+            _worklist_data_mutation_value_source_map(worklist, prefix.cells)
         ),
         bounded_worklist_committed_write_source_map=(
             _worklist_committed_write_source_map(worklist, prefix.cells)
