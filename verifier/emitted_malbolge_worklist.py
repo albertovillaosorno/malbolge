@@ -144,6 +144,8 @@ class WorklistAnalysis:
     explored_committed_write_addresses: tuple[int, ...]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
+    explored_effective_data_mutation_transition_count: int
+    explored_effective_data_mutation_addresses: tuple[int, ...]
     explored_data_mutation_witness: WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -730,11 +732,13 @@ class _Explorer:
     terminal_states: dict[str, set[_StateKey]] = field(default_factory=dict)
     committed_write_addresses: set[int] = field(default_factory=set)
     self_encryption_addresses: set[int] = field(default_factory=set)
+    effective_data_mutation_addresses: set[int] = field(default_factory=set)
     data_mutation_witness: WorklistDataMutationWitness | None = None
     explored: int = 0
     code_data_alias_transitions: int = 0
     committed_writes: int = 0
     self_encryption_transitions: int = 0
+    effective_data_mutation_transitions: int = 0
     repeated_edges: int = 0
     input_branch_points: int = 0
     wraparound_transitions: int = 0
@@ -868,6 +872,12 @@ class _Explorer:
             explored_self_encryption_addresses=tuple(
                 sorted(self.self_encryption_addresses)
             ),
+            explored_effective_data_mutation_transition_count=(
+                self.effective_data_mutation_transitions
+            ),
+            explored_effective_data_mutation_addresses=tuple(
+                sorted(self.effective_data_mutation_addresses)
+            ),
             explored_data_mutation_witness=self.data_mutation_witness,
             explored_minimum_words=max(
                 len(self.words),
@@ -993,17 +1003,19 @@ class _Explorer:
             data_pointer_wrapped=result_data == 0,
         )
 
-    def _record_data_mutation_witness(
+    def _record_data_mutation_evidence(
         self,
         node: _ReachabilityNode,
         step: prefix_transfer.SnapshotStep,
     ) -> None:
-        if self.data_mutation_witness is not None:
-            return
         mutation = _effective_data_mutation(step)
         if mutation is None:
             return
         address, previous, written, result, aliases = mutation
+        self.effective_data_mutation_transitions += 1
+        self.effective_data_mutation_addresses.add(address)
+        if self.data_mutation_witness is not None:
+            return
         key = _node_key(node)
         path = _known_graph_shortest_path(
             self.edges,
@@ -1051,7 +1063,7 @@ class _Explorer:
         )
         self.accessed_addresses.update(_transition_accesses(step.transition))
         self._record_mutation_evidence(step)
-        self._record_data_mutation_witness(node, step)
+        self._record_data_mutation_evidence(node, step)
         if step.transition.pointer_wraps:
             self._record_wraparound(node, step.transition)
         if (

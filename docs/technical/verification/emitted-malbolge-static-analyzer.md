@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v36` retains exact `entry_transition` through
+`malbolge-static-image/v37` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -158,7 +158,14 @@ extension of the entry-wrap fixture with two leading whitespace bytes mutates
 loaded position 40 (initial byte 122), maps it to raw offset 42, and proves its
 pre-write value still matches the initial source byte. The source-map limit
 identity includes selected worklist size and closed/truncated status whenever
-this context is requested. Schema v25 adds
+this context is requested. Schema v37 adds
+`explored_effective_data_mutation_transition_count` and
+`explored_effective_data_mutation_addresses`. They count only committed data
+writes whose final value after any same-address self-encryption differs from the
+exact pre-write data value. Rejected plans and no-op committed writes are not
+classified as effective data mutation. The entry-wrap fixture has 256 effective
+explored data-mutation transitions, all at address 40; byte input 0 is the one
+committed no-op branch. Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema
 v33 adds `explored_wraparound_witness` for the first FIFO-explored wrap. The
