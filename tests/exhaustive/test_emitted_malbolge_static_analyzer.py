@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v61"
+_SCHEMA = "malbolge-static-image/v62"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -528,8 +528,10 @@ class _WorklistValueSourceContext(Protocol):
     source_position: int | None
     source_byte_offset: int | None
     initial_source_byte: int | None
+    initial_memory_value: int
     values: tuple[int, ...]
     initial_source_byte_in_values: bool | None
+    initial_memory_value_in_values: bool
 
 
 class _WorklistControlPathSourceContext(Protocol):
@@ -731,6 +733,12 @@ class _Report(Protocol):
         _WorklistValueSourceContext, ...
     ]
     bounded_worklist_encryption_input_value_source_map: tuple[
+        _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_evolved_fetch_value_source_map: tuple[
+        _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_evolved_data_read_value_source_map: tuple[
         _WorklistValueSourceContext, ...
     ]
     bounded_worklist_planned_data_write_value_source_map: tuple[
@@ -1248,6 +1256,39 @@ def _assert_evolved_data_control_source_map(report: _Report) -> None:
     assert tuple(context.source_byte_offset for context in contexts) == (
         0, 1, 2, 3
     )
+
+
+def test_worklist_maps_evolved_value_domains_against_initial_memory() -> None:
+    """Changed-only value maps retain recurrence initial-memory baselines."""
+    fetch_report = _ANALYZER_MODULE.analyze_source(
+        _LINEAGE_WRITE_SOURCE,
+        worklist_state_limit=_WORKLIST_EVOLVED_FETCH_STATE_LIMIT,
+    )
+    fetch = _value_source_context(
+        fetch_report.bounded_worklist_evolved_fetch_value_source_map,
+        _LINEAGE_FETCH_ADDRESS,
+    )
+    assert fetch.source_position is None
+    assert fetch.initial_source_byte is None
+    assert fetch.initial_memory_value == _WORKLIST_EVOLVED_FETCH_INITIAL_VALUE
+    assert fetch.values == (_LINEAGE_FETCH_VALUE,)
+    assert fetch.initial_source_byte_in_values is None
+    assert fetch.initial_memory_value_in_values is False
+
+    data_report = _ANALYZER_MODULE.analyze_source(
+        _DATA_LINEAGE_WRITE_SOURCE,
+        worklist_state_limit=_DATA_LINEAGE_WORKLIST_STATE_LIMIT,
+    )
+    data = _value_source_context(
+        data_report.bounded_worklist_evolved_data_read_value_source_map,
+        _DATA_LINEAGE_ADDRESS,
+    )
+    assert data.source_position is None
+    assert data.initial_source_byte is None
+    assert data.initial_memory_value == _DATA_LINEAGE_INITIAL_VALUE
+    assert data.values == (_DATA_LINEAGE_VALUE,)
+    assert data.initial_source_byte_in_values is None
+    assert data.initial_memory_value_in_values is False
 
 
 def test_worklist_maps_evolved_read_writer_states_to_source() -> None:
@@ -2565,20 +2606,26 @@ def _value_source_context(
     return matches[0]
 
 
-def test_worklist_read_domains_map_loaded_and_recurrence_source() -> None:
-    """Read value domains preserve loaded offsets and recurrence nullability."""
-    report = _ANALYZER_MODULE.analyze_source(
-        _LOADED_MUTATION_SOURCE_WITH_WHITESPACE,
-        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
-    )
+def _assert_loaded_fetch_value_source_context(report: _Report) -> None:
     fetch = _value_source_context(
         report.bounded_worklist_fetch_value_source_map, 0
     )
     assert fetch.source_position == 0
     assert fetch.source_byte_offset == _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
     assert fetch.initial_source_byte == _ENTRY_WRAP_SOURCE[0]
+    assert fetch.initial_memory_value == _ENTRY_WRAP_SOURCE[0]
     assert fetch.values == (_ENTRY_WRAP_SOURCE[0],)
     assert fetch.initial_source_byte_in_values is True
+    assert fetch.initial_memory_value_in_values is True
+
+
+def test_worklist_read_domains_map_loaded_and_recurrence_source() -> None:
+    """Read value domains preserve loaded offsets and recurrence nullability."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _LOADED_MUTATION_SOURCE_WITH_WHITESPACE,
+        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
+    )
+    _assert_loaded_fetch_value_source_context(report)
     loaded = _value_source_context(
         report.bounded_worklist_data_read_value_source_map,
         _LOADED_MUTATION_ADDRESS,

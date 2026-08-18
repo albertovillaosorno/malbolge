@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v61"
+_SCHEMA: Final = "malbolge-static-image/v62"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -208,8 +208,10 @@ class BoundedWorklistValueSourceContext:
     source_position: int | None
     source_byte_offset: int | None
     initial_source_byte: int | None
+    initial_memory_value: int
     values: tuple[int, ...]
     initial_source_byte_in_values: bool | None
+    initial_memory_value_in_values: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,6 +297,12 @@ class StaticImageReport:
         BoundedWorklistValueSourceContext, ...
     ]
     bounded_worklist_encryption_input_value_source_map: tuple[
+        BoundedWorklistValueSourceContext, ...
+    ]
+    bounded_worklist_evolved_fetch_value_source_map: tuple[
+        BoundedWorklistValueSourceContext, ...
+    ]
+    bounded_worklist_evolved_data_read_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
     ]
     bounded_worklist_planned_data_write_value_source_map: tuple[
@@ -1178,20 +1186,26 @@ def _worklist_value_source_map(
     cells: tuple[InitialCell, ...],
 ) -> tuple[BoundedWorklistValueSourceContext, ...]:
     contexts: list[BoundedWorklistValueSourceContext] = []
+    words = tuple(cell.source_byte for cell in cells)
     for domain in domains:
         source = _worklist_mutation_address_source_context(
             domain.address, cells
         )
         initial = source.initial_source_byte
+        initial_memory = classic.initial_memory_value(words, domain.address)
         contexts.append(
             BoundedWorklistValueSourceContext(
                 address=domain.address,
                 source_position=source.source_position,
                 source_byte_offset=source.source_byte_offset,
                 initial_source_byte=initial,
+                initial_memory_value=initial_memory,
                 values=domain.values,
                 initial_source_byte_in_values=(
                     None if initial is None else initial in domain.values
+                ),
+                initial_memory_value_in_values=(
+                    initial_memory in domain.values
                 ),
             )
         )
@@ -1417,6 +1431,22 @@ def analyze_source(
                 ()
                 if worklist is None
                 else worklist.explored_encryption_input_value_domains,
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_evolved_fetch_value_source_map=(
+            _worklist_value_source_map(
+                ()
+                if worklist is None
+                else worklist.explored_evolved_fetch_value_domains,
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_evolved_data_read_value_source_map=(
+            _worklist_value_source_map(
+                ()
+                if worklist is None
+                else worklist.explored_evolved_data_read_value_domains,
                 prefix.cells,
             )
         ),

@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v61 retains the legacy exact entry-through-fifth
+load decode. Schema v62 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -289,7 +289,12 @@ observed evolved read. The M[95] fetch therefore binds writer transition 4 value
 v61 source-maps the exact pre-transition writer state behind each evolved-read
 witness. With two leading whitespace bytes, the M[95] writer transition 4 maps
 C=3 to raw offset 5 while D=95 stays recurrence-backed; the M[41] writer
-transition 2 maps C=1 to raw offset 3 while D=41 stays recurrence-backed.
+transition 2 maps C=1 to raw offset 3 while D=41 stays recurrence-backed. Schema
+v62 adds the exact historical initial-memory value to every worklist
+value/source context, including recurrence addresses, and source-links
+changed-only evolved
+value domains. Evolved M[95] records initial 29,430 versus `(9810,)`; evolved
+M[41] records initial 29,558 versus `(49218,)`, both recurrence/null-mapped.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored
