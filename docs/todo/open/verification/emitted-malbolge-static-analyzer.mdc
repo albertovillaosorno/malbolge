@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v33
+  offsets, stable finding codes, and explicit analysis limits. Schema v34
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -191,7 +191,13 @@ executable cells, and input-dependent cycles or hangs.
   65,536 merge edges without a cycle, while `b"ut"` reaches a fixed-fetch
   self-loop beyond a two-transition prefix. Schema v25 also records exact
   explored-graph memory addresses/highest address/minimum words; truncated
-  graphs do not promote that footprint to whole-program evidence. The recurrence
+  graphs do not promote that footprint to whole-program evidence. Schema v34
+  adds explored code/data-alias transition count, committed write count and
+  addresses, and self-encryption transition count and addresses. Only exact
+  successor transitions contribute committed writes, so rejected planned writes
+  are not mislabeled as durable self-modification. Closed worklists make this
+  evidence complete for their exact reachable graph; truncation keeps it
+  explored-only and the analysis-limit identities say so. The recurrence
   fixture `b"('"` touches addresses 0, 1, 2, and 41 and requires 42 words.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema

@@ -271,6 +271,11 @@ class _WorklistAnalysis(Protocol):
     closed_all_paths_terminate: bool | None
     closed_all_paths_halt: bool | None
     terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
+    explored_code_data_alias_transition_count: int
+    explored_committed_write_count: int
+    explored_committed_write_addresses: tuple[int, ...]
+    explored_self_encryption_transition_count: int
+    explored_self_encryption_addresses: tuple[int, ...]
     explored_minimum_words: int
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
@@ -440,6 +445,39 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
     assert result.frontier_states == 0
     assert not result.truncated
+
+
+def test_input_halt_reports_exact_explored_mutation_footprint() -> None:
+    """Closed input reachability publishes exact committed mutation evidence."""
+    result = worklist.analyze_reachability(
+        _INPUT_HALT_SOURCE,
+        maximum_states=_FULL_STATE_LIMIT,
+    )
+    assert result.explored_code_data_alias_transition_count == (
+        _FULL_STATE_LIMIT
+    )
+    assert result.explored_committed_write_count == 1
+    assert result.explored_committed_write_addresses == (0,)
+    assert result.explored_self_encryption_transition_count == 1
+    assert result.explored_self_encryption_addresses == (0,)
+
+
+def test_rejected_planned_writes_are_not_reported_as_committed() -> None:
+    """Rejected crazy writes remain planned rather than committed evidence."""
+    result = worklist.analyze_reachability(
+        _INPUT_CRAZY_SOURCE,
+        maximum_states=_FULL_STATE_LIMIT,
+    )
+    assert result.terminal_status_counts == (
+        (_INVALID_ENCRYPTION_STATUS, _INPUT_VALUE_COUNT),
+    )
+    assert result.explored_code_data_alias_transition_count == (
+        _FULL_STATE_LIMIT
+    )
+    assert result.explored_committed_write_count == 1
+    assert result.explored_committed_write_addresses == (0,)
+    assert result.explored_self_encryption_transition_count == 1
+    assert result.explored_self_encryption_addresses == (0,)
 
 
 def test_worklist_memory_requirement_includes_recurrence_reads() -> None:
@@ -906,6 +944,10 @@ def test_entry_reachable_wrap_publishes_exact_event_witness() -> None:
     assert witness.result_data_pointer == 0
     assert not witness.code_pointer_wrapped
     assert witness.data_pointer_wrapped
+    assert result.explored_committed_write_addresses == (
+        0, 1, 2, 3, 4, 5, 6, 40
+    )
+    assert result.explored_self_encryption_addresses == (0, 1, 2, 3, 4, 5, 6)
 
 
 def test_eof_branch_reaches_exact_pointer_wrap_from_entry() -> None:

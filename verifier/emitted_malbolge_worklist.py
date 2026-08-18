@@ -126,6 +126,11 @@ class WorklistAnalysis:
     closed_all_paths_terminate: bool | None
     closed_all_paths_halt: bool | None
     terminal_status_witnesses: tuple[WorklistTerminalWitness, ...]
+    explored_code_data_alias_transition_count: int
+    explored_committed_write_count: int
+    explored_committed_write_addresses: tuple[int, ...]
+    explored_self_encryption_transition_count: int
+    explored_self_encryption_addresses: tuple[int, ...]
     explored_minimum_words: int
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
@@ -638,6 +643,40 @@ def _closed_recurrence_evidence(
     )
 
 
+def _exact_committed_write_address(
+    address: int | None,
+    value: int | None,
+    *,
+    label: str,
+) -> int | None:
+    if address is None:
+        return None
+    if value is None:
+        message = f"committed {label} lost its exact value"
+        raise AssertionError(message)
+    return address
+
+
+def _committed_mutation_addresses(
+    step: prefix_transfer.SnapshotStep,
+) -> tuple[int | None, int | None]:
+    if step.successor is None:
+        return None, None
+    transition = step.transition
+    return (
+        _exact_committed_write_address(
+            transition.planned_data_write_address,
+            transition.planned_data_write_value,
+            label="data write",
+        ),
+        _exact_committed_write_address(
+            transition.encryption_address,
+            transition.encryption_output,
+            label="self-encryption",
+        ),
+    )
+
+
 @dataclass(slots=True)
 class _Explorer:
     words: tuple[int, ...]
@@ -649,7 +688,12 @@ class _Explorer:
     accessed_addresses: set[int]
     initial_memory: tuple[int, ...] = field(init=False, repr=False)
     terminal_states: dict[str, set[_StateKey]] = field(default_factory=dict)
+    committed_write_addresses: set[int] = field(default_factory=set)
+    self_encryption_addresses: set[int] = field(default_factory=set)
     explored: int = 0
+    code_data_alias_transitions: int = 0
+    committed_writes: int = 0
+    self_encryption_transitions: int = 0
     repeated_edges: int = 0
     input_branch_points: int = 0
     wraparound_transitions: int = 0
@@ -769,6 +813,19 @@ class _Explorer:
                 self.edges,
                 self.seen,
                 self.terminal_states,
+            ),
+            explored_code_data_alias_transition_count=(
+                self.code_data_alias_transitions
+            ),
+            explored_committed_write_count=self.committed_writes,
+            explored_committed_write_addresses=tuple(
+                sorted(self.committed_write_addresses)
+            ),
+            explored_self_encryption_transition_count=(
+                self.self_encryption_transitions
+            ),
+            explored_self_encryption_addresses=tuple(
+                sorted(self.self_encryption_addresses)
             ),
             explored_minimum_words=max(
                 len(self.words),
@@ -894,6 +951,25 @@ class _Explorer:
             data_pointer_wrapped=result_data == 0,
         )
 
+    def _record_mutation_evidence(
+        self,
+        step: prefix_transfer.SnapshotStep,
+    ) -> None:
+        transition = step.transition
+        if transition.code_data_alias:
+            self.code_data_alias_transitions += 1
+        data_write, encryption = _committed_mutation_addresses(step)
+        writes = tuple(
+            address
+            for address in (data_write, encryption)
+            if address is not None
+        )
+        self.committed_writes += len(writes)
+        self.committed_write_addresses.update(writes)
+        if encryption is not None:
+            self.self_encryption_transitions += 1
+            self.self_encryption_addresses.add(encryption)
+
     def _process_node(self, node: _ReachabilityNode) -> WorklistAnalysis | None:
         self.explored += 1
         step = prefix_transfer.analyze_state_snapshot(
@@ -901,6 +977,7 @@ class _Explorer:
             node.snapshot,
         )
         self.accessed_addresses.update(_transition_accesses(step.transition))
+        self._record_mutation_evidence(step)
         if step.transition.pointer_wraps:
             self._record_wraparound(node, step.transition)
         if (

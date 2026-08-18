@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v33"
+_SCHEMA = "malbolge-static-image/v34"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -106,6 +106,14 @@ _WORKLIST_TRUNCATED_LIMIT = (
 _WORKLIST_WRAP_LIMIT = (
     "wraparound-reachability:16-transition-prefix-and-"
     "258-state-worklist-closed"
+)
+_WORKLIST_ALIAS_LIMIT = (
+    "code-data-aliasing:16-transition-prefix-and-"
+    "258-state-worklist-closed-explored-only"
+)
+_WORKLIST_MUTATION_LIMIT = (
+    "self-modification:16-transition-prefix-and-"
+    "258-state-worklist-closed-explored-only"
 )
 _ENTRY_WRAP_LIMIT = (
     "wraparound-reachability:16-transition-prefix-and-"
@@ -400,6 +408,11 @@ class _WorklistAnalysis(Protocol):
     closed_all_paths_terminate: bool | None
     closed_all_paths_halt: bool | None
     terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
+    explored_code_data_alias_transition_count: int
+    explored_committed_write_count: int
+    explored_committed_write_addresses: tuple[int, ...]
+    explored_self_encryption_transition_count: int
+    explored_self_encryption_addresses: tuple[int, ...]
     explored_minimum_words: int
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
@@ -1857,6 +1870,16 @@ def _assert_terminal_witness_object(worklist: _WorklistAnalysis) -> None:
     assert witness.entry_path[-1] == witness.state
 
 
+def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
+    assert worklist.explored_code_data_alias_transition_count == (
+        _WORKLIST_COMPLETE_STATE_LIMIT
+    )
+    assert worklist.explored_committed_write_count == 1
+    assert worklist.explored_committed_write_addresses == (0,)
+    assert worklist.explored_self_encryption_transition_count == 1
+    assert worklist.explored_self_encryption_addresses == (0,)
+
+
 def test_report_worklist_resolves_input_dependent_crazy() -> None:
     """Opt-in worklist resolves every byte/EOF branch after input."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -1872,6 +1895,7 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     assert worklist.explored_accessed_addresses == (0, 1)
     assert worklist.explored_wraparound_transition_count == 0
     assert worklist.explored_wraparound_witness is None
+    _assert_worklist_mutation_evidence(worklist)
     assert worklist.terminal_status_counts == (
         ("rejected-invalid-self-encryption", _WORKLIST_INPUT_VALUE_COUNT),
     )
@@ -1883,6 +1907,8 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     _assert_terminal_witness_object(worklist)
     assert not worklist.truncated
     assert _WORKLIST_CLOSED_LIMIT in report.analysis_limits
+    assert _WORKLIST_ALIAS_LIMIT in report.analysis_limits
+    assert _WORKLIST_MUTATION_LIMIT in report.analysis_limits
     assert _WORKLIST_WRAP_LIMIT in report.analysis_limits
 
 

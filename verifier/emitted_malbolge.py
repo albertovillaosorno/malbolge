@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v33"
+_SCHEMA: Final = "malbolge-static-image/v34"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -277,6 +277,21 @@ def _worklist_limit_label(
     )
 
 
+def _explored_worklist_limit_label(
+    dimension: str,
+    transition_limit: int,
+    worklist: worklist_transfer.WorklistAnalysis | None,
+) -> str:
+    prefix = f"{transition_limit}-transition-prefix-only"
+    if worklist is None:
+        return f"{dimension}:{prefix}"
+    return (
+        f"{dimension}:{transition_limit}-transition-prefix-and-"
+        f"{worklist.state_limit}-state-worklist-{_worklist_status(worklist)}-"
+        "explored-only"
+    )
+
+
 def _wraparound_limit_label(
     transition_limit: int,
     worklist: worklist_transfer.WorklistAnalysis | None,
@@ -297,11 +312,15 @@ def _analysis_limits(
 ) -> tuple[str, ...]:
     prefix = f"{transition_limit}-transition-prefix-only"
     return (
-        f"code-data-aliasing:{prefix}",
+        _explored_worklist_limit_label(
+            "code-data-aliasing", transition_limit, worklist
+        ),
         f"control-flow-reachability:{prefix}",
         f"dataflow:{prefix}",
         _worklist_limit_label(worklist),
-        f"self-modification:{prefix}",
+        _explored_worklist_limit_label(
+            "self-modification", transition_limit, worklist
+        ),
         (
             "source-map-context:"
             f"{transition_limit}-transition-memory-access-and-"

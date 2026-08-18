@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v33` retains exact `entry_transition` through
+`malbolge-static-image/v34` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -133,7 +133,15 @@ Schema v25 also publishes `explored_accessed_addresses`,
 `explored_highest_accessed_address`, and `explored_minimum_words` for worklist
 transitions. These are exact for explored states only. The recurrence-read
 fixture `b"('"` touches addresses 0, 1, 2, and 41 and therefore requires 42
-words within its closed explored graph. Schema v25 adds
+words within its closed explored graph. Schema v34 additionally publishes exact
+explored mutation evidence: code/data alias transition count, committed write
+count and addresses, and self-encryption transition count and addresses. Only a
+transition with an exact successor contributes committed writes, so a planned
+`*` or `p` write followed by invalid self-encryption remains rejection evidence
+rather than a claimed committed mutation. These fields are complete for a
+closed requested worklist and remain explicitly explored-only when the state
+cap truncates the graph. The code/data-aliasing and self-modification
+analysis-limit identities include that selected worklist scope. Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema
 v33 adds `explored_wraparound_witness` for the first FIFO-explored wrap. The
@@ -247,6 +255,9 @@ C/source-map linkage, and graphs beyond an explicit worklist cap remain open.
   from an exact earlier write without inventing a source position.
 - Bounded memory evidence counts only addresses actually touched by the analyzed
   prefix and never treats a future code/data pointer as an observed access.
+- Worklist mutation counts and address sets describe exact explored states; a
+  truncated frontier never promotes those observations to whole-program
+  mutation absence or completeness.
 - Future dynamic analyses must state their bounded assumptions rather than
   executing arbitrary guest work to completion or treating unknown as safe.
 - The verifier is tested against valid cases and deliberately mutated invalid
