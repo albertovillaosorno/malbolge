@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v60` retains exact `entry_transition` through
+`malbolge-static-image/v61` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -296,6 +296,11 @@ position 40/raw offset 42/initial byte 122. C and D provenance are independent.
 Schema v60 adds the exact committed origin value to each evolved-read witness
 and requires it to equal the later observed value. The evolved M[95] fetch binds
 9,810 to data-write transition 4; evolved M[41] binds 49,218 to transition 2.
+Schema v61 source-maps the exact pre-transition writer state selected by that
+provenance. With two leading whitespace bytes, the M[95] writer maps C=3 to raw
+offset 5 while recurrence D=95 stays null; the M[41] writer maps C=1 to raw
+offset 3 while recurrence D=41 stays null. Writer role/index/value and C/D
+source context are therefore joined in one bounded record.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

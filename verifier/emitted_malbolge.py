@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v60"
+_SCHEMA: Final = "malbolge-static-image/v61"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -228,6 +228,16 @@ class BoundedWorklistControlPathSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistEvolvedReadWriterSourceContext:
+    """Source-mapped exact last writer for one evolved worklist read."""
+
+    origin_kind: str
+    origin_entry_path_transition_index: int
+    origin_value: int
+    writer_state_source_context: BoundedWorklistControlPathSourceContext
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistTerminalControlPathSourceMap:
     """Status-labeled source map for one exact terminal witness entry path."""
 
@@ -302,6 +312,12 @@ class StaticImageReport:
     bounded_worklist_evolved_data_read_entry_path_source_map: tuple[
         BoundedWorklistControlPathSourceContext, ...
     ]
+    bounded_worklist_evolved_fetch_writer_source_context: (
+        BoundedWorklistEvolvedReadWriterSourceContext | None
+    )
+    bounded_worklist_evolved_data_read_writer_source_context: (
+        BoundedWorklistEvolvedReadWriterSourceContext | None
+    )
     bounded_worklist_data_mutation_entry_path_source_map: tuple[
         BoundedWorklistControlPathSourceContext, ...
     ]
@@ -1212,6 +1228,31 @@ def _worklist_control_path_source_map(
     return tuple(contexts)
 
 
+def _worklist_evolved_read_writer_source_context(
+    witness: worklist_transfer.WorklistEvolvedReadWitness | None,
+    cells: tuple[InitialCell, ...],
+) -> BoundedWorklistEvolvedReadWriterSourceContext | None:
+    if witness is None:
+        return None
+    state_index = witness.origin_entry_path_transition_index - 1
+    if state_index < 0 or state_index >= len(witness.entry_path) - 1:
+        message = "evolved read writer transition is outside its entry path"
+        raise AssertionError(message)
+    source_map = _worklist_control_path_source_map(witness.entry_path, cells)
+    writer_source = source_map[state_index]
+    if writer_source.entry_path_state_index != state_index:
+        message = "evolved read writer source map lost its path index"
+        raise AssertionError(message)
+    return BoundedWorklistEvolvedReadWriterSourceContext(
+        origin_kind=witness.origin_kind,
+        origin_entry_path_transition_index=(
+            witness.origin_entry_path_transition_index
+        ),
+        origin_value=witness.origin_value,
+        writer_state_source_context=writer_source,
+    )
+
+
 def _worklist_terminal_control_path_source_maps(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -1430,6 +1471,26 @@ def analyze_source(
                         )
                         else None
                     )
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_evolved_fetch_writer_source_context=(
+            _worklist_evolved_read_writer_source_context(
+                (
+                    None
+                    if worklist is None
+                    else worklist.explored_evolved_fetch_witness
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_evolved_data_read_writer_source_context=(
+            _worklist_evolved_read_writer_source_context(
+                (
+                    None
+                    if worklist is None
+                    else worklist.explored_evolved_data_read_witness
                 ),
                 prefix.cells,
             )

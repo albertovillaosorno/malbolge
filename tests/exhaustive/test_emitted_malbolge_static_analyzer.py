@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v60"
+_SCHEMA = "malbolge-static-image/v61"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -263,9 +263,19 @@ _LINEAGE_WRITE_SOURCE = b"(&&$^"
 _WORKLIST_EVOLVED_FETCH_STATE_LIMIT = 6
 _WORKLIST_EVOLVED_FETCH_INITIAL_VALUE = 29_430
 _WORKLIST_EVOLVED_FETCH_ORIGIN_TRANSITION = 4
+_WORKLIST_EVOLVED_FETCH_WRITER_STATE_INDEX = (
+    _WORKLIST_EVOLVED_FETCH_ORIGIN_TRANSITION - 1
+)
+_WORKLIST_EVOLVED_FETCH_WRITER_SOURCE_OFFSET = (
+    _WORKLIST_EVOLVED_FETCH_WRITER_STATE_INDEX + _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
+)
 _DATA_LINEAGE_WORKLIST_STATE_LIMIT = 5
 _DATA_LINEAGE_INITIAL_VALUE = 29_558
 _DATA_LINEAGE_ORIGIN_TRANSITION = 2
+_DATA_LINEAGE_WRITER_STATE_INDEX = _DATA_LINEAGE_ORIGIN_TRANSITION - 1
+_DATA_LINEAGE_WRITER_SOURCE_OFFSET = (
+    _DATA_LINEAGE_WRITER_STATE_INDEX + _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
+)
 _WORKLIST_WRITER_DATA_WRITE = "data-write"
 _LINEAGE_TRANSITION_LIMIT = 6
 _LINEAGE_FETCH_ADDRESS = 95
@@ -526,6 +536,13 @@ class _WorklistControlPathSourceContext(Protocol):
     initial_data_source_byte: int | None
 
 
+class _WorklistEvolvedReadWriterSourceContext(Protocol):
+    origin_kind: str
+    origin_entry_path_transition_index: int
+    origin_value: int
+    writer_state_source_context: _WorklistControlPathSourceContext
+
+
 class _WorklistTerminalControlPathSourceMap(Protocol):
     status: str
     entry_path_source_map: tuple[_WorklistControlPathSourceContext, ...]
@@ -723,6 +740,12 @@ class _Report(Protocol):
     bounded_worklist_evolved_data_read_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
     ]
+    bounded_worklist_evolved_fetch_writer_source_context: (
+        _WorklistEvolvedReadWriterSourceContext | None
+    )
+    bounded_worklist_evolved_data_read_writer_source_context: (
+        _WorklistEvolvedReadWriterSourceContext | None
+    )
     bounded_worklist_data_mutation_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
     ]
@@ -1148,6 +1171,48 @@ def test_bounded_data_read_lineage_tracks_recurrence_and_prior_write() -> None:
     assert final.origin_transition_index == _DATA_LINEAGE_WRITE_TRANSITION
 
 
+def _assert_evolved_fetch_writer_source_context(report: _Report) -> None:
+    context = report.bounded_worklist_evolved_fetch_writer_source_context
+    assert context is not None
+    assert context.origin_kind == _WORKLIST_WRITER_DATA_WRITE
+    assert (
+        context.origin_entry_path_transition_index
+        == _WORKLIST_EVOLVED_FETCH_ORIGIN_TRANSITION
+    )
+    assert context.origin_value == _LINEAGE_FETCH_VALUE
+    writer = context.writer_state_source_context
+    assert (
+        writer.entry_path_state_index
+        == _WORKLIST_EVOLVED_FETCH_WRITER_STATE_INDEX
+    )
+    assert writer.code_pointer == _WORKLIST_EVOLVED_FETCH_WRITER_STATE_INDEX
+    assert writer.source_position == _WORKLIST_EVOLVED_FETCH_WRITER_STATE_INDEX
+    assert (
+        writer.source_byte_offset
+        == _WORKLIST_EVOLVED_FETCH_WRITER_SOURCE_OFFSET
+    )
+    assert writer.data_pointer == _LINEAGE_FETCH_ADDRESS
+    assert writer.data_source_position is None
+
+
+def _assert_evolved_data_writer_source_context(report: _Report) -> None:
+    context = report.bounded_worklist_evolved_data_read_writer_source_context
+    assert context is not None
+    assert context.origin_kind == _WORKLIST_WRITER_DATA_WRITE
+    assert (
+        context.origin_entry_path_transition_index
+        == _DATA_LINEAGE_ORIGIN_TRANSITION
+    )
+    assert context.origin_value == _DATA_LINEAGE_VALUE
+    writer = context.writer_state_source_context
+    assert writer.entry_path_state_index == _DATA_LINEAGE_WRITER_STATE_INDEX
+    assert writer.code_pointer == _DATA_LINEAGE_WRITER_STATE_INDEX
+    assert writer.source_position == _DATA_LINEAGE_WRITER_STATE_INDEX
+    assert writer.source_byte_offset == _DATA_LINEAGE_WRITER_SOURCE_OFFSET
+    assert writer.data_pointer == _DATA_LINEAGE_ADDRESS
+    assert writer.data_source_position is None
+
+
 def _assert_evolved_fetch_control_source_map(report: _Report) -> None:
     contexts = report.bounded_worklist_evolved_fetch_entry_path_source_map
     path_indexes = tuple(context.entry_path_state_index for context in contexts)
@@ -1175,6 +1240,20 @@ def _assert_evolved_data_control_source_map(report: _Report) -> None:
     assert tuple(context.source_byte_offset for context in contexts) == (
         0, 1, 2, 3
     )
+
+
+def test_worklist_maps_evolved_read_writer_states_to_source() -> None:
+    """Last-writer state source maps preserve C offsets and recurrence D."""
+    fetch = _ANALYZER_MODULE.analyze_source(
+        b" \n" + _LINEAGE_WRITE_SOURCE,
+        worklist_state_limit=_WORKLIST_EVOLVED_FETCH_STATE_LIMIT,
+    )
+    _assert_evolved_fetch_writer_source_context(fetch)
+    data = _ANALYZER_MODULE.analyze_source(
+        b" \n" + _DATA_LINEAGE_WRITE_SOURCE,
+        worklist_state_limit=_DATA_LINEAGE_WORKLIST_STATE_LIMIT,
+    )
+    _assert_evolved_data_writer_source_context(data)
 
 
 def test_worklist_report_witnesses_evolved_fetch() -> None:
