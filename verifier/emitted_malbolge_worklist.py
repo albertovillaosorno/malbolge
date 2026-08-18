@@ -56,6 +56,8 @@ _DATA_READING_INSTRUCTIONS: Final = frozenset(b"ji*p")
 _EOF_ACCUMULATOR: Final = classic.PROFILE_MEMORY_WORDS - 1
 _HALTED_STATUS: Final = "halted"
 _RECURRENCE_BASE_WORDS: Final = 2
+_WRITER_DATA_WRITE: Final = "data-write"
+_WRITER_SELF_ENCRYPTION: Final = "self-encryption"
 
 type _StateKey = tuple[
     int,
@@ -117,6 +119,8 @@ class WorklistEvolvedReadWitness:
     address: int
     initial_value: int
     observed_value: int
+    origin_kind: str
+    origin_entry_path_transition_index: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -735,6 +739,40 @@ def _committed_mutation_addresses(
     )
 
 
+def _snapshot_from_key(
+    key: _StateKey,
+    *,
+    before_transition: int,
+) -> prefix_transfer.StateSnapshot:
+    code_pointer, data_pointer, accumulator, overrides, _ = key
+    return prefix_transfer.StateSnapshot(
+        before_transition=before_transition,
+        code_pointer=code_pointer,
+        data_pointer=data_pointer,
+        accumulator=accumulator,
+        memory_overrides=overrides,
+    )
+
+
+def _entry_path_last_writer(
+    initial_memory: tuple[int, ...],
+    path: tuple[_StateKey, ...],
+    address: int,
+) -> tuple[str, int] | None:
+    writer: tuple[str, int] | None = None
+    for transition_index, key in enumerate(path[:-1], start=1):
+        step = prefix_transfer.analyze_state_snapshot(
+            initial_memory,
+            _snapshot_from_key(key, before_transition=transition_index),
+        )
+        data_write, encryption = _committed_mutation_addresses(step)
+        if data_write == address:
+            writer = (_WRITER_DATA_WRITE, transition_index)
+        if encryption == address:
+            writer = (_WRITER_SELF_ENCRYPTION, transition_index)
+    return writer
+
+
 def _effective_data_mutation(
     step: prefix_transfer.SnapshotStep,
 ) -> tuple[int, int, int, int, bool] | None:
@@ -1154,12 +1192,19 @@ class _Explorer:
         )
         if not path:
             return None
+        writer = _entry_path_last_writer(self.initial_memory, path, address)
+        if writer is None:
+            message = "evolved read witness has no committed entry-path writer"
+            raise AssertionError(message)
+        origin_kind, origin_transition = writer
         return WorklistEvolvedReadWitness(
             state=_cycle_state(key),
             entry_path=tuple(_cycle_state(item) for item in path),
             address=address,
             initial_value=initial_value,
             observed_value=observed_value,
+            origin_kind=origin_kind,
+            origin_entry_path_transition_index=origin_transition,
         )
 
     def _record_evolved_read_evidence(

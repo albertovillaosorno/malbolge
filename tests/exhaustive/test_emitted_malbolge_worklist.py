@@ -128,6 +128,7 @@ _EVOLVED_FETCH_STATE_LIMIT = 6
 _EVOLVED_FETCH_ADDRESS = 95
 _EVOLVED_FETCH_INITIAL_VALUE = 29_430
 _EVOLVED_FETCH_OBSERVED_VALUE = 9_810
+_EVOLVED_FETCH_ORIGIN_TRANSITION = 4
 _EVOLVED_FETCH_POINTER_PATH = (
     (0, 0),
     (1, 41),
@@ -141,7 +142,9 @@ _EVOLVED_DATA_READ_STATE_LIMIT = 5
 _EVOLVED_DATA_READ_ADDRESS = 41
 _EVOLVED_DATA_READ_INITIAL_VALUE = 29_558
 _EVOLVED_DATA_READ_OBSERVED_VALUE = 49_218
+_EVOLVED_DATA_READ_ORIGIN_TRANSITION = 2
 _EVOLVED_DATA_READ_POINTER_PATH = ((0, 0), (1, 41), (2, 42), (3, 41))
+_WRITER_DATA_WRITE = "data-write"
 _RECURRENCE_READ_SOURCE = tuple(b"('")
 _RECURRENCE_STATE_LIMIT = 16
 _RECURRENCE_HIGHEST_ADDRESS = 41
@@ -292,6 +295,8 @@ class _WorklistEvolvedReadWitness(Protocol):
     address: int
     initial_value: int
     observed_value: int
+    origin_kind: str
+    origin_entry_path_transition_index: int
 
 
 class _WorklistDataMutationValueDomain(Protocol):
@@ -1104,6 +1109,13 @@ def test_worklist_witnesses_fetch_from_evolved_memory() -> None:
             _EVOLVED_FETCH_POINTER_PATH,
         ),
     )
+    witness = result.explored_evolved_fetch_witness
+    assert witness is not None
+    assert witness.origin_kind == _WRITER_DATA_WRITE
+    assert (
+        witness.origin_entry_path_transition_index
+        == _EVOLVED_FETCH_ORIGIN_TRANSITION
+    )
 
 
 def test_worklist_witnesses_data_read_from_evolved_memory() -> None:
@@ -1122,6 +1134,13 @@ def test_worklist_witnesses_data_read_from_evolved_memory() -> None:
             _EVOLVED_DATA_READ_OBSERVED_VALUE,
             _EVOLVED_DATA_READ_POINTER_PATH,
         ),
+    )
+    witness = result.explored_evolved_data_read_witness
+    assert witness is not None
+    assert witness.origin_kind == _WRITER_DATA_WRITE
+    assert (
+        witness.origin_entry_path_transition_index
+        == _EVOLVED_DATA_READ_ORIGIN_TRANSITION
     )
 
 

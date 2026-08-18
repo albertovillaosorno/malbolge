@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v47"
+_SCHEMA = "malbolge-static-image/v48"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -261,8 +261,11 @@ _ORIGIN_RECURRENCE = "recurrence-initialization"
 _LINEAGE_WRITE_SOURCE = b"(&&$^"
 _WORKLIST_EVOLVED_FETCH_STATE_LIMIT = 6
 _WORKLIST_EVOLVED_FETCH_INITIAL_VALUE = 29_430
+_WORKLIST_EVOLVED_FETCH_ORIGIN_TRANSITION = 4
 _DATA_LINEAGE_WORKLIST_STATE_LIMIT = 5
 _DATA_LINEAGE_INITIAL_VALUE = 29_558
+_DATA_LINEAGE_ORIGIN_TRANSITION = 2
+_WORKLIST_WRITER_DATA_WRITE = "data-write"
 _LINEAGE_TRANSITION_LIMIT = 6
 _LINEAGE_FETCH_ADDRESS = 95
 _LINEAGE_FETCH_VALUE = 9_810
@@ -452,6 +455,8 @@ class _WorklistEvolvedReadWitness(Protocol):
     address: int
     initial_value: int
     observed_value: int
+    origin_kind: str
+    origin_entry_path_transition_index: int
 
 
 class _WorklistDataMutationValueDomain(Protocol):
@@ -1079,6 +1084,11 @@ def test_worklist_report_witnesses_evolved_fetch() -> None:
     assert witness.address == _LINEAGE_FETCH_ADDRESS
     assert witness.initial_value == _WORKLIST_EVOLVED_FETCH_INITIAL_VALUE
     assert witness.observed_value == _LINEAGE_FETCH_VALUE
+    assert witness.origin_kind == _WORKLIST_WRITER_DATA_WRITE
+    assert (
+        witness.origin_entry_path_transition_index
+        == _WORKLIST_EVOLVED_FETCH_ORIGIN_TRANSITION
+    )
     assert witness.entry_path[-1] == witness.state
     assert not worklist.truncated
 
@@ -1096,6 +1106,11 @@ def test_worklist_report_witnesses_evolved_data_read() -> None:
     assert witness.address == _DATA_LINEAGE_ADDRESS
     assert witness.initial_value == _DATA_LINEAGE_INITIAL_VALUE
     assert witness.observed_value == _DATA_LINEAGE_VALUE
+    assert witness.origin_kind == _WORKLIST_WRITER_DATA_WRITE
+    assert (
+        witness.origin_entry_path_transition_index
+        == _DATA_LINEAGE_ORIGIN_TRANSITION
+    )
     assert witness.entry_path[-1] == witness.state
     assert not worklist.truncated
 

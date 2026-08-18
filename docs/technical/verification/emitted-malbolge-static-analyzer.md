@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v47` retains exact `entry_transition` through
+`malbolge-static-image/v48` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -232,7 +232,12 @@ M[95]=9,810 from initial 29,430; the closed five-state `b"(&&%M"` graph reaches
 a
 semantic data read M[41]=49,218 from initial 29,558. Both witnesses bind the
 exact state and shortest known entry path, directly proving bounded execution
-consumes prior-mutated memory.
+consumes prior-mutated memory. Schema v48 replays each witness's exact shortest
+entry path and reports the last committed writer kind plus its one-based path
+transition index. The evolved M[95] fetch comes from transition 4's data write;
+the evolved M[41] read comes from transition 2's data write. Writer selection
+uses commit order, so same-address self-encryption wins over an earlier data
+write in that transition.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema
