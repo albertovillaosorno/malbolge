@@ -47,6 +47,8 @@ if TYPE_CHECKING:
 
 import pytest
 from scripts.validate import main as validate_main
+from scripts.validate import tidy_build
+from scripts.validate import tidy_build_linux
 from scripts.validate import tidy_toolchain
 
 EXPECTED_ASSET = "clang+llvm-22.1.8-x86_64-pc-windows-msvc.tar.xz"
@@ -56,6 +58,7 @@ EXPECTED_SHA256 = (
 )
 EXPECTED_SIZE = 862053924
 LINUX_PLATFORM = "linux-x86_64"
+WINDOWS_PLATFORM = "windows-x86_64"
 LINUX_PROVIDER = "fedora-rpm-set-v1"
 LINUX_PLUGIN_STRATEGY = "upstream-host-loadable-module-v1"
 LINUX_ASSETS = (
@@ -345,8 +348,32 @@ def test_local_installation_matches_manifest_when_present() -> None:
     tidy_toolchain.validate_installation(identity)
 
 
+def test_linux_builder_produces_loadable_plugin_when_dev_kit_present() -> None:
+    """Exact Linux development inputs build the reviewed clang-tidy module."""
+    platform_id = tidy_toolchain.host_platform_id()
+    if platform_id != LINUX_PLATFORM:
+        pytest.skip("live Linux native-analysis build requires linux-x86_64")
+    identity = tidy_toolchain.load_identity(platform_id=platform_id)
+    roots_ready = (
+        identity.development_root.is_dir() and identity.runtime_root.is_dir()
+    )
+    if not roots_ready:
+        pytest.skip("optional local Linux LLVM development kit is absent")
+    try:
+        _ = tidy_build_linux.linux_build_tools()
+    except tidy_build_linux.LinuxBuildError as error:
+        pytest.skip(f"Linux native build tools are unavailable: {error}")
+
+    tidy_build.build(identity)
+    tidy_build.provision_clang_resources(identity)
+    tidy_build.verify_outputs(identity)
+    assert identity.plugin_library.is_file()
+
+
 def _built_plugin_identity() -> tidy_toolchain.ToolchainIdentity:
-    identity = tidy_toolchain.load_identity()
+    identity = tidy_toolchain.load_identity(
+        platform_id=tidy_toolchain.host_platform_id()
+    )
     if (
         not identity.plugin_host.is_file()
         or not identity.plugin_library.is_file()
@@ -360,9 +387,9 @@ def test_canonical_host_pairs_plugin_by_default(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The default project host probes its paired DLL before source checks."""
+    """The default project host probes its paired plugin before validation."""
     identity = _built_plugin_identity()
-    broken_plugin = tmp_path / "malbolge-tidy.dll"
+    broken_plugin = tmp_path / identity.plugin_library.name
     _ = broken_plugin.write_bytes(b"not a Windows plugin")
     accepted = tidy_toolchain.ROOT / "tests/tidy/accepted/abi_layout.c"
     monkeypatch.setattr(validate_main, "PLUGIN_LIBRARY", broken_plugin)
@@ -374,9 +401,14 @@ def test_canonical_host_pairs_plugin_by_default(
 
 
 def test_built_host_has_pinned_clang_resource_headers() -> None:
-    """Generated host layout carries the Clang builtin include resource."""
+    """Selected host resolves the exact repository-local Clang resources."""
     identity = _built_plugin_identity()
-    resource = identity.plugin_output_root / "lib" / "clang" / "22"
+    resource_root = (
+        identity.runtime_root
+        if identity.platform_id == LINUX_PLATFORM
+        else identity.plugin_output_root
+    )
+    resource = resource_root / "lib" / "clang" / "22"
 
     assert (resource / "include" / "limits.h").is_file()
 
@@ -534,6 +566,10 @@ def test_manual_validator_loads_built_plugin_additively() -> None:
     assert completed.returncode == 0, completed.stderr
 
 
+@pytest.mark.skipif(
+    tidy_toolchain.host_platform_id() != WINDOWS_PLATFORM,
+    reason="registry-bridge bypass is specific to the Windows project host",
+)
 def test_manual_validator_rejects_loader_without_plugin_registry() -> None:
     """The upstream Windows executable cannot silently bypass plugin checks."""
     identity = _built_plugin_identity()

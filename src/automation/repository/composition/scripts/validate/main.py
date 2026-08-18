@@ -58,20 +58,34 @@ ROOT = repository_root(Path(__file__))
 DEFAULT_PROFILE = (
     ROOT / "src/tooling/native-analysis/contract" / "malbolge-clang-tidy.yaml"
 )
-PINNED_LLVM = ROOT / ".dependencies" / "llvm" / "22.1.8" / "bin"
-PINNED_CLANG_RESOURCE = (
-    PINNED_LLVM.parent / "lib" / "clang" / "22"
-)
+PINNED_LLVM = ROOT / ".dependencies" / "llvm" / tidy_toolchain.LLVM_VERSION
+PINNED_CLANG_RESOURCE = PINNED_LLVM / "lib" / "clang" / "22"
+
+
+def _native_toolchain_identity() -> tidy_toolchain.ToolchainIdentity | None:
+    try:
+        return tidy_toolchain.load_identity(
+            platform_id=tidy_toolchain.host_platform_id()
+        )
+    except tidy_toolchain.ToolchainError:
+        return None
+
+
+_NATIVE_TOOLCHAIN = _native_toolchain_identity()
 PLUGIN_HOST = (
-    ROOT
-    / ".dependencies"
-    / "tools-tidy"
-    / tidy_toolchain.LLVM_VERSION
-    / "bin"
-    / "malbolge-clang-tidy.exe"
+    _NATIVE_TOOLCHAIN.plugin_host
+    if _NATIVE_TOOLCHAIN is not None
+    else PINNED_LLVM / "jig-bin" / "clang-tidy.bin"
 )
 PLUGIN_LIBRARY = (
-    PLUGIN_HOST.parent / "malbolge-tidy.dll"
+    _NATIVE_TOOLCHAIN.plugin_library
+    if _NATIVE_TOOLCHAIN is not None
+    else ROOT / ".dependencies/tools-tidy/22.1.8/bin/malbolge-tidy.so"
+)
+PINNED_CLANG_TIDY = (
+    _NATIVE_TOOLCHAIN.clang_tidy
+    if _NATIVE_TOOLCHAIN is not None
+    else PINNED_LLVM / "jig-bin" / "clang-tidy.bin"
 )
 PLUGIN_CHECKS = tidy_toolchain.PLUGIN_CHECKS
 DOOM_DIRECTORY = "doom"
@@ -119,11 +133,7 @@ def _fail(message: str) -> Never:
 def _default_clang_tidy() -> Path:
     if PLUGIN_HOST.is_file() and PLUGIN_LIBRARY.is_file():
         return PLUGIN_HOST
-    for name in ("clang-tidy.exe", "clang-tidy"):
-        candidate = PINNED_LLVM / name
-        if candidate.is_file():
-            return candidate
-    return PINNED_LLVM / "clang-tidy"
+    return PINNED_CLANG_TIDY
 
 
 def _default_plugin(clang_tidy: Path) -> Path | None:

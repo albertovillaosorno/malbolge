@@ -15,7 +15,7 @@
 // - Allows:
 //   - Inputs: pinned Clang AST nodes supplied by clang-tidy.
 //   - Outputs: documented source-located malbolge-* diagnostics.
-//   - Side effects: registration with the project clang-tidy host at DLL load.
+//   - Side effects: registration with the selected clang-tidy host at load.
 // - Split-When:
 //   - Split when a check family gains independent profile or release ownership.
 // - Merge-When:
@@ -27,7 +27,7 @@
 // - Usage:
 //   - Loaded explicitly with --load by manual guest-C validation.
 // - Defaults:
-//   - Missing host bridge leaves the module unregistered and validation fails.
+//   - Incompatible host registration leaves validation unavailable.
 //
 
 //! Clang AST checks for the deterministic Malbolge guest-C ABI.
@@ -38,7 +38,9 @@
 #include "clang/AST/Decl.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include <memory>
 #include <string>
@@ -261,6 +263,7 @@ public:
   }
 };
 
+#ifdef _WIN32
 std::unique_ptr<clang::tidy::ClangTidyModule> createModule() {
   return std::make_unique<MalbolgeTidyModule>();
 }
@@ -286,6 +289,12 @@ public:
 };
 
 ModuleRegistration Registration;
+#else
+Registry::Add<MalbolgeTidyModule> ModuleRegistration(
+    "malbolge-module",
+    "Adds deterministic Malbolge guest-C compatibility checks.");
+[[maybe_unused]] volatile int MalbolgeTidyModuleAnchorSource = 0;
+#endif
 
 } // namespace
 } // namespace malbolge::tidy

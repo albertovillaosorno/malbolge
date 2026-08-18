@@ -171,6 +171,11 @@ parts:
     kind: composition
     language: python
     responsibility: Provision exact Linux LLVM development headers from RPMs.
+  - id: part-0028
+    path: composition/scripts/validate/tidy_build_linux.py
+    kind: composition
+    language: python
+    responsibility: Build the Linux clang-tidy plugin from exact local LLVM.
 projects: []
 tests: []
 graph:

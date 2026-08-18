@@ -60,19 +60,25 @@ fn repository_root() -> PathBuf {
 }
 
 fn native_outputs(root: &Path) -> Option<NativeOutputs> {
+    let llvm = root.join(".dependencies").join("llvm").join(LLVM_VERSION);
     let output = root
         .join(".dependencies")
         .join("tools-tidy")
         .join(LLVM_VERSION);
-    let host = output.join("bin").join("malbolge-clang-tidy.exe");
-    let plugin = output.join("bin").join("malbolge-tidy.dll");
-    let resource = root
-        .join(".dependencies")
-        .join("llvm")
-        .join(LLVM_VERSION)
-        .join("lib")
-        .join("clang")
-        .join("22");
+    let (host, plugin) = if cfg!(windows) {
+        (
+            output.join("bin").join("malbolge-clang-tidy.exe"),
+            output.join("bin").join("malbolge-tidy.dll"),
+        )
+    } else if cfg!(target_os = "linux") {
+        (
+            llvm.join("jig-bin").join("clang-tidy.bin"),
+            output.join("bin").join("malbolge-tidy.so"),
+        )
+    } else {
+        return None;
+    };
+    let resource = llvm.join("lib").join("clang").join("22");
     if host.is_file() && plugin.is_file() && resource.is_dir() {
         Some(NativeOutputs { host, plugin, resource })
     } else {

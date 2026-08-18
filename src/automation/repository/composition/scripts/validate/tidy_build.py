@@ -9,7 +9,7 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Reproducible Windows construction of the pinned Malbolge clang-tidy host.
+#   - Reproducible native-analysis construction for the selected host.
 # - Must-Not:
 #   - Download LLVM, mutate extracted packages, or use an ambient C++ compiler.
 # - Allows:
@@ -17,11 +17,11 @@
 #   - Outputs: ignored build files plus canonical ignored native binaries.
 #   - Side effects: CMake/Ninja compilation inside repository runtime roots.
 # - Split-When:
-#   - Split when a second host platform needs a distinct native build protocol.
+#   - Split when another platform needs a distinct native build protocol.
 # - Merge-When:
 #   - Merge when project bootstrap owns this pinned native build lifecycle.
 # - Summary:
-#   - Build and verify the Windows clang-tidy plugin host.
+#   - Dispatch and verify the platform-native clang-tidy plugin build.
 # - Description:
 #   - Relinks LLVM 22.1.8 clang-tidy with one registry bridge for Windows DLLs.
 # - Usage:
@@ -30,7 +30,7 @@
 #   - Missing build prerequisites or unverifiable outputs fail closed.
 #
 
-"""Build the Windows Malbolge clang-tidy host and plugin deterministically."""
+"""Build and verify the platform-native Malbolge clang-tidy plugin."""
 
 from __future__ import annotations
 
@@ -48,6 +48,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(composition_root))
 
 from scripts.repository_root import repository_root
+from scripts.validate import tidy_build_linux
 from scripts.validate import tidy_toolchain
 
 ROOT: Final = repository_root(Path(__file__))
@@ -222,8 +223,13 @@ def _write_build_script(
 
 
 def build(identity: tidy_toolchain.ToolchainIdentity) -> None:
-    """Build the canonical host/plugin outputs from pinned dependencies."""
+    """Build canonical native-analysis outputs for the selected platform."""
     tidy_toolchain.validate_installation(identity)
+    if identity.platform_id == tidy_toolchain.LINUX_PLATFORM:
+        tidy_build_linux.build(identity)
+        return
+    if identity.platform_id != tidy_toolchain.WINDOWS_PLATFORM:
+        _fail(f"unsupported clang-tidy build platform: {identity.platform_id}")
     tools = visual_studio_tools()
     script = _write_build_script(tools, identity)
     windows = Path(os.environ.get("SYSTEMROOT", "C:/Windows"))
@@ -241,7 +247,9 @@ def build(identity: tidy_toolchain.ToolchainIdentity) -> None:
 def provision_clang_resources(
     identity: tidy_toolchain.ToolchainIdentity,
 ) -> None:
-    """Copy the pinned Clang builtin headers beside the generated host."""
+    """Copy Clang resources beside the generated Windows project host."""
+    if identity.platform_id == tidy_toolchain.LINUX_PLATFORM:
+        return
     resource_version = identity.llvm_version.split(".", maxsplit=1)[0]
     relative = Path("lib") / "clang" / resource_version
     source = identity.runtime_root / relative
@@ -266,14 +274,17 @@ def verify_outputs(identity: tidy_toolchain.ToolchainIdentity) -> None:
     if f"LLVM version {identity.llvm_version}" not in version:
         _fail(f"plugin host must report LLVM version {identity.llvm_version}")
 
-    exports = _checked_output(
-        [str(identity.llvm_readobj), "--coff-exports", str(host)],
-        "plugin host export inspection",
-    )
-    if f"Name: {identity.registry_bridge_export}" not in exports:
-        _fail(
-            "plugin host does not export the reviewed Windows registry bridge"
+    if identity.platform_id == tidy_toolchain.WINDOWS_PLATFORM:
+        exports = _checked_output(
+            [str(identity.llvm_readobj), "--coff-exports", str(host)],
+            "plugin host export inspection",
         )
+        if f"Name: {identity.registry_bridge_export}" not in exports:
+            message = (
+                "plugin host does not export the reviewed Windows registry "
+                "bridge"
+            )
+            _fail(message)
 
     checks = _checked_output(
         [
@@ -304,11 +315,17 @@ def main() -> int:
 
     """
     try:
-        identity = tidy_toolchain.load_identity()
+        identity = tidy_toolchain.load_identity(
+            platform_id=tidy_toolchain.host_platform_id()
+        )
         build(identity)
         provision_clang_resources(identity)
         verify_outputs(identity)
-    except (BuildError, tidy_toolchain.ToolchainError) as error:
+    except (
+        BuildError,
+        tidy_build_linux.LinuxBuildError,
+        tidy_toolchain.ToolchainError,
+    ) as error:
         _ = sys.stderr.write(f"error: {error}\n")
         return 1
     message = f"clang-tidy plugin ready: {identity.plugin_library}"
