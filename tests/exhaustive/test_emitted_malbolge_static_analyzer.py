@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v38"
+_SCHEMA = "malbolge-static-image/v39"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -86,6 +86,14 @@ _WORKLIST_COMPLETE_STATE_LIMIT = 258
 _WORKLIST_TRUNCATED_STATE_LIMIT = 257
 _WORKLIST_INPUT_VALUE_COUNT = 257
 _ENTRY_WRAP_SOURCE = b"u'<%$#>=<;:987654321NN"
+_ENTRY_WRAP_SOURCE_WITH_WHITESPACE = b" \n" + _ENTRY_WRAP_SOURCE
+_ENTRY_WRAP_LOADED_WRITE_ADDRESSES = (0, 1, 2, 3, 4, 5, 6)
+_ENTRY_WRAP_RECURRENCE_WRITE_ADDRESS = 40
+_ENTRY_WRAP_COMMITTED_WRITE_ADDRESSES = (
+    *_ENTRY_WRAP_LOADED_WRITE_ADDRESSES,
+    _ENTRY_WRAP_RECURRENCE_WRITE_ADDRESS,
+)
+_ENTRY_WRAP_SOURCE_OFFSET_SHIFT = 2
 _ENTRY_WRAP_POINTER_PATH = (
     (0, 0),
     (1, 1),
@@ -147,7 +155,7 @@ _ENTRY_WRAP_LIMIT = (
 _WORKLIST_MUTATION_SOURCE_MAP_LIMIT = (
     "source-map-context:16-transition-memory-access-and-"
     "fetch-data-read-and-encryption-input-value-lineage-and-"
-    "1544-state-worklist-truncated-data-mutation-evidence"
+    "1544-state-worklist-truncated-worklist-mutation-evidence"
 )
 _INPUT_CRAZY_SOURCE = bytes((117, 61))
 _INPUT_HALT_SOURCE = bytes((117, 80))
@@ -559,6 +567,9 @@ class _Report(Protocol):
         _WorklistDataMutationSourceContext | None
     )
     bounded_worklist_effective_data_mutation_source_map: tuple[
+        _WorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_committed_write_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
     ]
     bounded_exact_cycle: _ExactCycleCertificate | None
@@ -2060,6 +2071,41 @@ def test_worklist_data_mutation_maps_back_to_loaded_source_byte() -> None:
     assert aggregate[0].source_position == _LOADED_MUTATION_ADDRESS
     assert aggregate[0].source_byte_offset == _LOADED_MUTATION_BYTE_OFFSET
     assert aggregate[0].initial_source_byte == _LOADED_MUTATION_SOURCE_BYTE
+    assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
+
+
+def test_worklist_maps_every_committed_write_address() -> None:
+    """Committed data and encryption writes retain exact source coordinates."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _ENTRY_WRAP_SOURCE_WITH_WHITESPACE,
+        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.explored_committed_write_addresses == (
+        _ENTRY_WRAP_COMMITTED_WRITE_ADDRESSES
+    )
+    contexts = report.bounded_worklist_committed_write_source_map
+    assert tuple(context.address for context in contexts) == (
+        _ENTRY_WRAP_COMMITTED_WRITE_ADDRESSES
+    )
+    loaded = contexts[:-1]
+    recurrence = contexts[-1]
+    assert tuple(context.source_position for context in loaded) == (
+        _ENTRY_WRAP_LOADED_WRITE_ADDRESSES
+    )
+    assert tuple(context.source_byte_offset for context in loaded) == tuple(
+        address + _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
+        for address in _ENTRY_WRAP_LOADED_WRITE_ADDRESSES
+    )
+    assert tuple(context.initial_source_byte for context in loaded) == tuple(
+        _ENTRY_WRAP_SOURCE[address]
+        for address in _ENTRY_WRAP_LOADED_WRITE_ADDRESSES
+    )
+    assert recurrence.address == _ENTRY_WRAP_RECURRENCE_WRITE_ADDRESS
+    assert recurrence.source_position is None
+    assert recurrence.source_byte_offset is None
+    assert recurrence.initial_source_byte is None
     assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
 
 

@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v38 retains the legacy exact entry-through-fifth
+load decode. Schema v39 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -168,6 +168,13 @@ with two leading whitespace bytes, address 40 maps to raw offset 42 while 41
 remains recurrence-derived. The source-map limit now names worklist
 `data-mutation-evidence` because it covers both the first witness and aggregate
 address map.
+Schema v39 adds `bounded_worklist_committed_write_source_map`, applying the same
+loaded-source coordinates to every distinct committed write address, including
+self-encryption as well as data writes. The whitespace-prefixed entry-wrap
+fixture maps committed addresses 0 through 6 to raw offsets 2 through 8 and
+retains recurrence address 40 with null source coordinates. The source-map limit
+therefore names broader `worklist-mutation-evidence`, covering first/effective
+data mutation evidence plus the complete explored committed-write footprint.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored
