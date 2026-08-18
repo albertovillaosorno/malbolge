@@ -210,8 +210,10 @@ class WorklistAnalysis:
     ]
     explored_evolved_fetch_transition_count: int
     explored_evolved_fetch_addresses: tuple[int, ...]
+    explored_evolved_fetch_value_domains: tuple[WorklistValueDomain, ...]
     explored_evolved_data_read_transition_count: int
     explored_evolved_data_read_addresses: tuple[int, ...]
+    explored_evolved_data_read_value_domains: tuple[WorklistValueDomain, ...]
     explored_evolved_fetch_witness: WorklistEvolvedReadWitness | None
     explored_evolved_data_read_witness: WorklistEvolvedReadWitness | None
     explored_data_write_noop_witness: WorklistDataWriteNoopWitness | None
@@ -898,7 +900,9 @@ class _Explorer:
         default_factory=dict
     )
     evolved_fetch_addresses: set[int] = field(default_factory=set)
+    evolved_fetch_values: dict[int, set[int]] = field(default_factory=dict)
     evolved_data_read_addresses: set[int] = field(default_factory=set)
+    evolved_data_read_values: dict[int, set[int]] = field(default_factory=dict)
     evolved_fetch_witness: WorklistEvolvedReadWitness | None = None
     evolved_data_read_witness: WorklistEvolvedReadWitness | None = None
     data_write_noop_witness: WorklistDataWriteNoopWitness | None = None
@@ -1098,11 +1102,17 @@ class _Explorer:
             explored_evolved_fetch_addresses=tuple(
                 sorted(self.evolved_fetch_addresses)
             ),
+            explored_evolved_fetch_value_domains=_value_domains(
+                self.evolved_fetch_values
+            ),
             explored_evolved_data_read_transition_count=(
                 self.evolved_data_read_transitions
             ),
             explored_evolved_data_read_addresses=tuple(
                 sorted(self.evolved_data_read_addresses)
+            ),
+            explored_evolved_data_read_value_domains=_value_domains(
+                self.evolved_data_read_values
             ),
             explored_evolved_fetch_witness=self.evolved_fetch_witness,
             explored_evolved_data_read_witness=self.evolved_data_read_witness,
@@ -1276,6 +1286,9 @@ class _Explorer:
             return
         self.evolved_fetch_transitions += 1
         self.evolved_fetch_addresses.add(address)
+        _record_domain_value(
+            self.evolved_fetch_values, address, transition.fetched_value
+        )
         if self.evolved_fetch_witness is None:
             self.evolved_fetch_witness = self._evolved_read_witness(
                 node,
@@ -1298,6 +1311,7 @@ class _Explorer:
             return
         self.evolved_data_read_transitions += 1
         self.evolved_data_read_addresses.add(address)
+        _record_domain_value(self.evolved_data_read_values, address, data_value)
         if self.evolved_data_read_witness is None:
             self.evolved_data_read_witness = self._evolved_read_witness(
                 node,

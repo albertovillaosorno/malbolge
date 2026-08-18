@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v54` retains exact `entry_transition` through
+`malbolge-static-image/v55` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -269,7 +269,12 @@ distinct address sets for evolved fetches and semantic data reads. The closed
 `b"(&&$^"` graph has one evolved fetch at address 95; closed `b"(&&%M"` has one
 evolved data read at address 41. Entry-wrap observes zero evolved fetches and
 256 evolved data-read transitions at address 40. Aggregate absence remains only
-an explored-graph statement under truncation.
+an explored-graph statement under truncation. Schema v55 adds exact per-address
+domains containing only values that differ from immutable initial memory. The
+closed evolved-fetch graph reports value 9,810 at address 95; the closed
+evolved-data-read graph reports 49,218 at address 41. Entry-wrap's 256 evolved
+data-read values at address 40 equal the exact 256 effective-mutation final
+values and exclude initial/no-op value 29,524.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

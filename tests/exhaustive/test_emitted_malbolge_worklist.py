@@ -378,8 +378,10 @@ class _WorklistAnalysis(Protocol):
     ]
     explored_evolved_fetch_transition_count: int
     explored_evolved_fetch_addresses: tuple[int, ...]
+    explored_evolved_fetch_value_domains: tuple[_WorklistValueDomain, ...]
     explored_evolved_data_read_transition_count: int
     explored_evolved_data_read_addresses: tuple[int, ...]
+    explored_evolved_data_read_value_domains: tuple[_WorklistValueDomain, ...]
     explored_evolved_fetch_witness: _WorklistEvolvedReadWitness | None
     explored_evolved_data_read_witness: _WorklistEvolvedReadWitness | None
     explored_data_write_noop_witness: _WorklistDataWriteNoopWitness | None
@@ -1141,6 +1143,9 @@ def test_worklist_witnesses_fetch_from_evolved_memory() -> None:
     assert result.reachable_cycle_detected
     assert result.explored_evolved_fetch_transition_count == 1
     assert result.explored_evolved_fetch_addresses == (_EVOLVED_FETCH_ADDRESS,)
+    assert _domain_values(
+        result.explored_evolved_fetch_value_domains, _EVOLVED_FETCH_ADDRESS
+    ) == (_EVOLVED_FETCH_OBSERVED_VALUE,)
     assert result.explored_evolved_data_read_transition_count == 0
     assert result.explored_evolved_data_read_addresses == ()
     _assert_evolved_read_witness(
@@ -1175,6 +1180,10 @@ def test_worklist_witnesses_data_read_from_evolved_memory() -> None:
     assert result.explored_evolved_data_read_addresses == (
         _EVOLVED_DATA_READ_ADDRESS,
     )
+    assert _domain_values(
+        result.explored_evolved_data_read_value_domains,
+        _EVOLVED_DATA_READ_ADDRESS,
+    ) == (_EVOLVED_DATA_READ_OBSERVED_VALUE,)
     _assert_evolved_read_witness(
         result.explored_evolved_data_read_witness,
         (
@@ -1257,6 +1266,12 @@ def _assert_entry_evolved_read_counts(result: _WorklistAnalysis) -> None:
     assert result.explored_evolved_data_read_addresses == (
         _ENTRY_MUTATION_ADDRESS,
     )
+    evolved_values = _domain_values(
+        result.explored_evolved_data_read_value_domains,
+        _ENTRY_MUTATION_ADDRESS,
+    )
+    mutation_domain = result.explored_effective_data_mutation_value_domains[0]
+    assert evolved_values == mutation_domain.result_values
 
 
 def _assert_entry_data_mutation_evidence(result: _WorklistAnalysis) -> None:
