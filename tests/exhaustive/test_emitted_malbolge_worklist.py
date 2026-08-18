@@ -299,6 +299,7 @@ class _WorklistEvolvedReadWitness(Protocol):
     observed_value: int
     origin_kind: str
     origin_entry_path_transition_index: int
+    origin_value: int
 
 
 class _WorklistDataMutationValueDomain(Protocol):
@@ -1127,6 +1128,7 @@ def _assert_evolved_read_witness(
     assert witness.address == address
     assert witness.initial_value == initial_value
     assert witness.observed_value == observed_value
+    assert witness.origin_value == observed_value
     assert witness.entry_path[-1] == witness.state
     assert tuple(
         (state.code_pointer, state.data_pointer) for state in witness.entry_path

@@ -121,6 +121,7 @@ class WorklistEvolvedReadWitness:
     observed_value: int
     origin_kind: str
     origin_entry_path_transition_index: int
+    origin_value: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -779,22 +780,36 @@ def _snapshot_from_key(
     )
 
 
+def _required_exact_value(value: int | None, *, label: str) -> int:
+    if value is None:
+        message = f"{label} lost its exact value"
+        raise AssertionError(message)
+    return value
+
+
 def _entry_path_last_writer(
     initial_memory: tuple[int, ...],
     path: tuple[_StateKey, ...],
     address: int,
-) -> tuple[str, int] | None:
-    writer: tuple[str, int] | None = None
+) -> tuple[str, int, int] | None:
+    writer: tuple[str, int, int] | None = None
     for transition_index, key in enumerate(path[:-1], start=1):
         step = prefix_transfer.analyze_state_snapshot(
             initial_memory,
             _snapshot_from_key(key, before_transition=transition_index),
         )
+        transition = step.transition
         data_write, encryption = _committed_mutation_addresses(step)
         if data_write == address:
-            writer = (_WRITER_DATA_WRITE, transition_index)
+            value = _required_exact_value(
+                transition.planned_data_write_value, label="writer data write"
+            )
+            writer = (_WRITER_DATA_WRITE, transition_index, value)
         if encryption == address:
-            writer = (_WRITER_SELF_ENCRYPTION, transition_index)
+            value = _required_exact_value(
+                transition.encryption_output, label="writer self-encryption"
+            )
+            writer = (_WRITER_SELF_ENCRYPTION, transition_index, value)
     return writer
 
 
@@ -820,13 +835,6 @@ def _committed_data_mutation(
         message = "committed data mutation lost its final value"
         raise AssertionError(message)
     return address, previous, written, result, aliases
-
-
-def _required_exact_value(value: int | None, *, label: str) -> int:
-    if value is None:
-        message = f"{label} lost its exact value"
-        raise AssertionError(message)
-    return value
 
 
 def _record_domain_value(
@@ -1265,7 +1273,12 @@ class _Explorer:
         if writer is None:
             message = "evolved read witness has no committed entry-path writer"
             raise AssertionError(message)
-        origin_kind, origin_transition = writer
+        origin_kind, origin_transition, origin_value = writer
+        if origin_value != observed_value:
+            message = (
+                "evolved read value disagrees with its last committed writer"
+            )
+            raise AssertionError(message)
         return WorklistEvolvedReadWitness(
             state=_cycle_state(key),
             entry_path=tuple(_cycle_state(item) for item in path),
@@ -1274,6 +1287,7 @@ class _Explorer:
             observed_value=observed_value,
             origin_kind=origin_kind,
             origin_entry_path_transition_index=origin_transition,
+            origin_value=origin_value,
         )
 
     def _record_evolved_fetch_evidence(

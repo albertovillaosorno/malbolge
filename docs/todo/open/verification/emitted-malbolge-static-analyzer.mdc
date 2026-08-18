@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v59
+  offsets, stable finding codes, and explicit analysis limits. Schema v60
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -299,7 +299,9 @@ executable cells, and input-dependent cycles or hangs.
   recurrence/null while the one-word-longer frontier C=0..15 is fully loaded.
   Schema v59 adds D-pointer source coordinates to each control-path state. Short
   entry-wrap D=40 remains recurrence/null; the 41-word fixture maps D=40 to
-  loaded position 40/raw offset 42/initial byte 122.
+  loaded position 40/raw offset 42/initial byte 122. Schema v60 adds the exact
+  committed origin value to evolved-read last-writer provenance and requires it
+  to equal the later read: 9,810 for M[95] and 49,218 for M[41].
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact
@@ -345,7 +347,8 @@ executable cells, and input-dependent cycles or hangs.
   loaded source, recurrence, and prior data-write evidence, explicit finite
   worklist closure/truncation evidence, mutation and planned/committed write
   domains, source-linked worklist value maps, final no-op partition/witnesses,
-  evolved fetch/data-read witnesses with last-writer provenance and entry-path
+  evolved fetch/data-read witnesses with value-checked last-writer provenance
+  and entry-path
   C/D source maps, mutation/no-op/wrap and graph-level C/D paths, evolved read
   transition/address counts and changed-value
   domains, explicit bounded analysis

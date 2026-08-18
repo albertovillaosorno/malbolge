@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v59"
+_SCHEMA = "malbolge-static-image/v60"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -458,6 +458,7 @@ class _WorklistEvolvedReadWitness(Protocol):
     observed_value: int
     origin_kind: str
     origin_entry_path_transition_index: int
+    origin_value: int
 
 
 class _WorklistDataMutationValueDomain(Protocol):
@@ -1198,6 +1199,7 @@ def test_worklist_report_witnesses_evolved_fetch() -> None:
     assert worklist.explored_evolved_data_read_transition_count == 0
     assert worklist.explored_evolved_data_read_addresses == ()
     assert witness.observed_value == _LINEAGE_FETCH_VALUE
+    assert witness.origin_value == _LINEAGE_FETCH_VALUE
     assert witness.origin_kind == _WORKLIST_WRITER_DATA_WRITE
     assert (
         witness.origin_entry_path_transition_index
@@ -1230,6 +1232,7 @@ def test_worklist_report_witnesses_evolved_data_read() -> None:
     assert data_domain.address == _DATA_LINEAGE_ADDRESS
     assert data_domain.values == (_DATA_LINEAGE_VALUE,)
     assert witness.observed_value == _DATA_LINEAGE_VALUE
+    assert witness.origin_value == _DATA_LINEAGE_VALUE
     assert witness.origin_kind == _WORKLIST_WRITER_DATA_WRITE
     assert (
         witness.origin_entry_path_transition_index

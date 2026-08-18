@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v59 retains the legacy exact entry-through-fifth
+load decode. Schema v60 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -278,7 +278,10 @@ Schema v59 adds parallel D-pointer source coordinates to every control-path
 state. Short entry-wrap D=40 remains recurrence/null-mapped, while the 41-word
 loaded mutation fixture maps D=40 to loaded position 40/raw offset 42 and
 initial byte 122. C and D source provenance therefore stay independently
-explicit.
+explicit. Schema v60 extends evolved-read last-writer provenance with the exact
+committed origin value. Replay fails closed if that value differs from the later
+observed evolved read. The M[95] fetch therefore binds writer transition 4 value
+9,810, and the M[41] data read binds writer transition 2 value 49,218.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored
