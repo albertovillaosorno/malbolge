@@ -22,10 +22,14 @@ fully hermetic Linux linker/sysroot packaging remain outside this P0 slice.
 
 Bootstrap consumes the repository's pinned Python, Rust, Git, and Jig version
 authorities plus already-installed host Rustup, Git, and linker observations.
-Python keeps native platform launchers and publishes byte-identical neutral Jig
-aliases below `.dependencies`. Matching Git and already-installed Rustup
-channels are imported below repository-local versioned roots. Missing Rustup
-channels are observations only; bootstrap does not download them.
+Python keeps native platform launchers and publishes neutral Jig aliases below
+`.dependencies`. On POSIX, basedpyright and Ruff retain byte-identical aliases,
+while the pytest alias is a repository-local shell wrapper that binds
+`PYTHONPYCACHEPREFIX` below `.cache` before invoking the same pinned local
+Python/pytest environment. Windows retains native binary aliases. Matching Git
+and already-installed Rustup channels are imported below repository-local
+versioned roots. Missing Rustup channels are observations only; bootstrap does
+not download them.
 
 Jig consumes only repository-local validation aliases. Linux Rust linking
 receives a generated `cc` adapter that names the observed host linker explicitly
@@ -37,7 +41,7 @@ executable layout behind the same neutral Jig-facing paths where applicable.
 ## Invariants
 
 - Jig-facing Python, Git, and Rust executable authority resolves below
-  `.dependencies`.
+  `.dependencies`; POSIX Jig-driven pytest bytecode resolves below `.cache`.
 - Bootstrap never downloads a missing Rustup channel as a side effect of
   inspection.
 - Linux host-linker observation is explicit and is not described as a hermetic

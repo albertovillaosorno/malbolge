@@ -38,6 +38,7 @@ import hashlib
 import json
 import os
 import stat
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -82,6 +83,8 @@ POSIX_HEADER = "#!/bin/sh\nset -eu\n"
 CACHE_VARIABLE = "PYTHONPYCACHEPREFIX"
 POSIX_PYTHON_EXEC = 'exec "$SCRIPT_DIR/python" "$@"'
 POSIX_PYTEST_EXEC = 'exec "$SCRIPT_DIR/python" -m pytest "$@"'
+POSIX_JIG_PYTEST_EXEC = '../bin/python" -m pytest "$@"'
+POSIX_JIG_PYTEST_PROBE_ARGV = "-m pytest --probe"
 LINUX_AARCH64 = "linux-aarch64"
 UV_VERSION = "0.11.16"
 PIP_REQUIREMENT_PREFIX = "pip=="
@@ -427,10 +430,66 @@ def test_jig_tool_aliases_copy_native_validation_tools(tmp_path: Path) -> None:
     )
     alias_root = layout.environment / "jig-bin"
     assert all(path.parent == alias_root for _, path in aliases)
-    assert {name: path.read_bytes() for name, path in aliases} == {
-        name: native[name] for name in native
+    copied = {
+        name: path.read_bytes()
+        for name, path in aliases
+        if name != POSIX_PYTEST
     }
+    assert copied == {name: native[name] for name in ("basedpyright", "ruff")}
     assert all(path.stat().st_mode & stat.S_IXUSR for _, path in aliases)
+
+
+def test_posix_jig_pytest_alias_is_cache_bound(tmp_path: Path) -> None:
+    """Jig's POSIX pytest alias keeps bytecode under the repository cache."""
+    layout = python_validation.validation_layout(tmp_path, windows=False)
+    layout.scripts.mkdir(parents=True)
+    for name in ("basedpyright", "pytest", "ruff"):
+        path = layout.scripts / name
+        _ = path.write_text(name, encoding="ascii")
+        _ = path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+    aliases = dict(
+        python_validation.write_jig_tool_aliases(layout, windows=False)
+    )
+
+    pytest_alias = aliases["pytest"]
+    text = pytest_alias.read_text(encoding="ascii")
+    assert text.startswith(POSIX_HEADER)
+    assert CACHE_VARIABLE in text
+    assert POSIX_JIG_PYTEST_EXEC in text
+    assert pytest_alias.stat().st_mode & stat.S_IXUSR
+
+
+def test_posix_jig_pytest_alias_needs_no_ambient_path(tmp_path: Path) -> None:
+    """Jig's pytest wrapper runs with only shell builtins on hermetic PATH."""
+    layout = python_validation.validation_layout(tmp_path, windows=False)
+    layout.scripts.mkdir(parents=True)
+    probe = tmp_path / "pytest-probe.txt"
+    probe_script = """#!/bin/sh
+printf "%s\n" "$PYTHONPYCACHEPREFIX" > "$PROBE_OUTPUT"
+printf "%s\n" "$*" >> "$PROBE_OUTPUT"
+"""
+    _ = layout.python.write_text(probe_script, encoding="ascii")
+    _ = layout.python.chmod(layout.python.stat().st_mode | stat.S_IXUSR)
+    for name in ("basedpyright", "pytest", "ruff"):
+        path = layout.scripts / name
+        _ = path.write_text(name, encoding="ascii")
+        _ = path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    aliases = dict(
+        python_validation.write_jig_tool_aliases(layout, windows=False)
+    )
+
+    pytest_alias = aliases["pytest"]
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [str(pytest_alias), "--probe"],
+        check=False,
+        env={"PATH": "", "PROBE_OUTPUT": str(probe)},
+    )
+
+    assert completed.returncode == os.EX_OK
+    cache, argv = probe.read_text(encoding="utf-8").splitlines()
+    assert os.path.realpath(cache) == str(tmp_path / ".cache/python/pycache")
+    assert argv == POSIX_JIG_PYTEST_PROBE_ARGV
 
 
 def test_posix_launchers_are_executable_and_cache_bound(tmp_path: Path) -> None:

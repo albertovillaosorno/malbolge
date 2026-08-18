@@ -88,6 +88,7 @@ UV_RELEASE_BASE: Final = (
 )
 UV_SCHEMA_VERSION: Final = 1
 URL_SUFFIX_MARKERS: Final = frozenset(("?", "#"))
+PYTEST_TOOL_ID: Final = "pytest"
 
 
 @dataclass(frozen=True, slots=True)
@@ -479,6 +480,24 @@ def _posix_launcher_text(*, pytest: bool) -> str:
     )
 
 
+def _posix_jig_pytest_alias_text() -> str:
+    cache = (
+        'export PYTHONPYCACHEPREFIX="'
+        '$SCRIPT_DIR/../../../../.cache/python/pycache"'
+    )
+    return (
+        "#!/bin/sh\n"
+        "set -eu\n"
+        'case "$0" in\n'
+        '    */*) SCRIPT_DIR=${0%/*} ;;\n'
+        '    *) SCRIPT_DIR=. ;;\n'
+        'esac\n'
+        'SCRIPT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR" && pwd)\n'
+        f"{cache}\n"
+        'exec "$SCRIPT_DIR/../bin/python" -m pytest "$@"\n'
+    )
+
+
 def _make_executable(path: Path) -> None:
     mode = path.stat().st_mode
     _ = path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -536,7 +555,14 @@ def write_jig_tool_aliases(
         if not source.is_file():
             _fail(f"missing provisioned tool for Jig alias: {source}")
         target = alias_root / f"{tool_id}.bin"
-        _ = target.write_bytes(source.read_bytes())
+        if tool_id == PYTEST_TOOL_ID and not windows:
+            _ = target.write_text(
+                _posix_jig_pytest_alias_text(),
+                encoding="ascii",
+                newline="\n",
+            )
+        else:
+            _ = target.write_bytes(source.read_bytes())
         if not windows:
             _make_executable(target)
         aliases.append((tool_id, target))
