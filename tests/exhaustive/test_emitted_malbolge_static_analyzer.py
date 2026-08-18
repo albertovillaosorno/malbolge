@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v65"
+_SCHEMA = "malbolge-static-image/v66"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -223,6 +223,7 @@ _MERGED_INPUT_CYCLE_SOURCE = b"".join(
 _MERGED_INPUT_CYCLE_STATE_LIMIT = 591
 _MERGED_INPUT_CYCLE_PATH_LENGTH = 41
 _MERGED_INPUT_CYCLE_STATE_MERGES = 255
+_MERGED_INPUT_CYCLE_CYCLE_CLOSING_REPEATS = 2
 _MERGED_INPUT_CYCLE_MERGE_SOURCE_POINTER = (2, 40)
 _MERGED_INPUT_CYCLE_MERGE_TARGET_POINTER = (3, 41)
 _OVER_CAP_INPUT_CYCLE_SOURCE = b"u'&%$#\"!~}|{zyxw"
@@ -606,6 +607,7 @@ class _WorklistAnalysis(Protocol):
     explored_states: int
     repeated_state_edges: int
     explored_state_merge_transition_count: int
+    explored_cycle_closing_repeated_edge_count: int
     explored_state_merge_witness: _WorklistStateMergeWitness | None
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[_WorklistCycleState, ...]
@@ -3022,6 +3024,10 @@ def test_report_worklist_proves_near_cap_input_cycle() -> None:
     assert worklist is not None
     assert worklist.unique_states == _NEAR_CAP_INPUT_CYCLE_STATE_LIMIT
     assert worklist.explored_state_merge_transition_count == 0
+    assert (
+        worklist.explored_cycle_closing_repeated_edge_count
+        == _WORKLIST_INPUT_VALUE_COUNT
+    )
     assert worklist.explored_state_merge_witness is None
     assert report.bounded_worklist_state_merge_source_context is None
     assert worklist.reachable_cycle_detected
@@ -3045,6 +3051,15 @@ def _assert_branch_merge_evidence(
     assert (
         worklist.explored_state_merge_transition_count
         == _MERGED_INPUT_CYCLE_STATE_MERGES
+    )
+    assert (
+        worklist.explored_cycle_closing_repeated_edge_count
+        == _MERGED_INPUT_CYCLE_CYCLE_CLOSING_REPEATS
+    )
+    assert (
+        worklist.explored_state_merge_transition_count
+        + worklist.explored_cycle_closing_repeated_edge_count
+        == worklist.repeated_state_edges
     )
     merge = worklist.explored_state_merge_witness
     assert merge is not None

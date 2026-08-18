@@ -188,6 +188,7 @@ class WorklistAnalysis:
     explored_states: int
     repeated_state_edges: int
     explored_state_merge_transition_count: int
+    explored_cycle_closing_repeated_edge_count: int
     explored_state_merge_witness: WorklistStateMergeWitness | None
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[WorklistCycleState, ...]
@@ -974,6 +975,7 @@ class _Explorer:
     evolved_data_read_transitions: int = 0
     repeated_edges: int = 0
     state_merge_transitions: int = 0
+    cycle_closing_repeated_edges: int = 0
     state_merge_witness: WorklistStateMergeWitness | None = None
     input_branch_points: int = 0
     wraparound_transitions: int = 0
@@ -1055,6 +1057,9 @@ class _Explorer:
             explored_states=self.explored,
             repeated_state_edges=self.repeated_edges,
             explored_state_merge_transition_count=self.state_merge_transitions,
+            explored_cycle_closing_repeated_edge_count=(
+                self.cycle_closing_repeated_edges
+            ),
             explored_state_merge_witness=self.state_merge_witness,
             reachable_cycle_detected=has_cycle,
             reachable_cycle_witness=tuple(
@@ -1263,6 +1268,7 @@ class _Explorer:
             target=source_key,
         )
         if target_key in source_path:
+            self.cycle_closing_repeated_edges += 1
             return
         self.state_merge_transitions += 1
         if self.state_merge_witness is not None:

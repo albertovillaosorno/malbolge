@@ -112,6 +112,9 @@ _MERGED_INPUT_CYCLE_STATE_LIMIT = 591
 _MERGED_INPUT_CYCLE_PATH_LENGTH = 41
 _MERGED_INPUT_CYCLE_REPEATED_EDGES = 257
 _MERGED_INPUT_CYCLE_STATE_MERGES = 255
+_MERGED_INPUT_CYCLE_CYCLE_CLOSING_REPEATS = (
+    _MERGED_INPUT_CYCLE_REPEATED_EDGES - _MERGED_INPUT_CYCLE_STATE_MERGES
+)
 _MERGED_INPUT_CYCLE_MERGE_SOURCE_POINTER = (2, 40)
 _MERGED_INPUT_CYCLE_MERGE_TARGET_POINTER = (3, 41)
 _OVER_CAP_INPUT_CYCLE_SOURCE = tuple(b"u'&%$#\"!~}|{zyxw")
@@ -362,6 +365,7 @@ class _WorklistAnalysis(Protocol):
     explored_states: int
     repeated_state_edges: int
     explored_state_merge_transition_count: int
+    explored_cycle_closing_repeated_edge_count: int
     explored_state_merge_witness: _WorklistStateMergeWitness | None
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[_WorklistCycleState, ...]
@@ -978,6 +982,9 @@ def test_near_cap_input_dependent_jump_chain_closes_exact_cycle() -> None:
     assert result.unique_states == _NEAR_CAP_INPUT_CYCLE_STATE_LIMIT
     assert result.explored_states == _NEAR_CAP_INPUT_CYCLE_STATE_LIMIT
     assert result.explored_state_merge_transition_count == 0
+    assert (
+        result.explored_cycle_closing_repeated_edge_count == _INPUT_VALUE_COUNT
+    )
     assert result.explored_state_merge_witness is None
     assert result.reachable_cycle_detected
     assert result.maximum_first_seen_transition_index == len(
@@ -995,6 +1002,22 @@ def test_near_cap_input_dependent_jump_chain_closes_exact_cycle() -> None:
     assert result.closed_recurrent_component_count == _INPUT_VALUE_COUNT
 
 
+def _assert_merged_repeated_edge_partition(result: _WorklistAnalysis) -> None:
+    assert (
+        result.explored_state_merge_transition_count
+        == _MERGED_INPUT_CYCLE_STATE_MERGES
+    )
+    assert (
+        result.explored_cycle_closing_repeated_edge_count
+        == _MERGED_INPUT_CYCLE_CYCLE_CLOSING_REPEATS
+    )
+    assert (
+        result.explored_state_merge_transition_count
+        + result.explored_cycle_closing_repeated_edge_count
+        == result.repeated_state_edges
+    )
+
+
 def test_input_branch_merge_closes_deeper_cycle_with_small_graph() -> None:
     """Rotate after input merges branches before a deeper exact cycle."""
     result = worklist.analyze_reachability(
@@ -1005,10 +1028,7 @@ def test_input_branch_merge_closes_deeper_cycle_with_small_graph() -> None:
     assert result.explored_states == _MERGED_INPUT_CYCLE_STATE_LIMIT
     assert result.input_branch_points == 1
     assert result.repeated_state_edges == _MERGED_INPUT_CYCLE_REPEATED_EDGES
-    assert (
-        result.explored_state_merge_transition_count
-        == _MERGED_INPUT_CYCLE_STATE_MERGES
-    )
+    _assert_merged_repeated_edge_partition(result)
     merge = result.explored_state_merge_witness
     assert merge is not None
     source_pointer = (
