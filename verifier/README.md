@@ -130,8 +130,9 @@ a fixed-fetch self-loop. Schema v25 additionally records exact explored-graph
 memory addresses, the highest accessed address, and minimum word capacity under
 `bounded_worklist`; truncation keeps that footprint explicitly incomplete.
 Schema v34 also records exact mutation evidence over explored worklist states:
-`explored_code_data_alias_transition_count`, committed write count and addresses,
-and self-encryption transition count and addresses. A write is committed evidence
+`explored_code_data_alias_transition_count`, committed write count and
+addresses, and self-encryption transition count and addresses. A write is
+committed evidence
 only when the exact transition has a successor; a planned data write on an
 invalid-self-encryption rejection is therefore not promoted to a committed
 mutation. Closed worklists cover the complete reachable exact-state graph under
