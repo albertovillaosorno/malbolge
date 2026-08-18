@@ -1998,6 +1998,38 @@ def test_cli_accepts_closed_worklist_request(tmp_path: Path) -> None:
     assert bounded["truncated"] is False
 
 
+def test_cli_rejects_closed_worklist_that_proves_only_rejections(
+    tmp_path: Path,
+) -> None:
+    """Closed worklist rejection proof overrides a shallow accepted prefix."""
+    source = tmp_path / "input-crazy.malbolge"
+    _ = source.write_bytes(_INPUT_CRAZY_SOURCE)
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            str(_ANALYZER),
+            "--transition-limit",
+            "1",
+            "--worklist-state-limit",
+            str(_WORKLIST_COMPLETE_STATE_LIMIT),
+            str(source),
+        ],
+        cwd=_ROOT,
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 1
+    assert not completed.stderr
+    document = cast("dict[str, object]", json.loads(completed.stdout))
+    bounded = cast("dict[str, object]", document["bounded_worklist"])
+    assert bounded["closed_all_paths_terminate"] is True
+    assert bounded["closed_all_paths_halt"] is False
+    assert bounded["truncated"] is False
+
+
 def test_cli_rejects_truncated_worklist_request(tmp_path: Path) -> None:
     """Requested graph exploration cannot succeed after state truncation."""
     source = tmp_path / "input-halt-truncated.malbolge"

@@ -1031,9 +1031,7 @@ def _continuations_accepted(
 
 def _bounded_worklist_accepted(report: StaticImageReport) -> bool:
     worklist = report.bounded_worklist
-    return worklist is None or (
-        not worklist.truncated and not worklist.reachable_cycle_detected
-    )
+    return worklist is None or worklist.closed_all_paths_halt is True
 
 
 def _bounded_prefix_accepted(report: StaticImageReport) -> bool:

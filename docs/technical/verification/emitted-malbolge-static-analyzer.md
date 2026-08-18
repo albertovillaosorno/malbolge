@@ -87,7 +87,10 @@ proves at least one nonterminating path, and null under truncation. Schema v31
 adds nullable `closed_all_paths_halt`: after the same finite closure it is true
 only when every complete terminal status is `halted`, false for any rejection or
 reachable cycle, and null under truncation. Thus termination includes rejection
-while all-path halt denotes successful historical halt. An empty
+while all-path halt denotes successful historical halt. When a worklist is
+requested, CLI success now requires that closed all-path halt proof; closed
+rejection graphs therefore fail even when a shallower prefix was accepted. An
+empty
 cycle witness proves only that no cycle was found in the
 admitted known graph; under truncation it does not characterize the unexplored
 frontier. Repeat edges caused only by branch merges do not become cycle claims;

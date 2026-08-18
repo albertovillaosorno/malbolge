@@ -85,7 +85,10 @@ iff it is acyclic, false when a reachable cycle proves a nonterminating path,
 and null under truncation. Schema v31 adds nullable `closed_all_paths_halt`: it
 is true only after closure when every complete terminal status is `halted`,
 false for any rejection or reachable cycle, and null under truncation. This
-separates generic termination from successful historical halt. An empty cycle
+separates generic termination from successful historical halt. Requested
+worklist CLI success requires that all-path halt proof, so a closed rejection
+graph
+cannot be masked by an accepted shallower prefix. An empty cycle
 witness means no cycle was proved
 in the admitted known graph; it says
 nothing about a truncated frontier. Repeat-heavy branch merges
