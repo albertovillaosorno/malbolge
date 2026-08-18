@@ -155,6 +155,7 @@ _ENTRY_MUTATION_ADDRESS = 40
 _ENTRY_MUTATION_PREVIOUS_VALUE = 29_524
 _ENTRY_MUTATION_RESULT_VALUE = 29_523
 _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT = 256
+_ENTRY_COMMITTED_DATA_WRITE_COUNT = 257
 _WRAP_WRITE_TRANSITION = 3
 _SECOND_TRANSITION = 2
 _GRAPH_KEY_A: _WorklistStateKey = (0, 0, 0, (), False)
@@ -290,6 +291,8 @@ class _WorklistAnalysis(Protocol):
     explored_code_data_alias_transition_count: int
     explored_committed_write_count: int
     explored_committed_write_addresses: tuple[int, ...]
+    explored_committed_data_write_transition_count: int
+    explored_committed_data_write_addresses: tuple[int, ...]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
     explored_effective_data_mutation_transition_count: int
@@ -477,6 +480,8 @@ def test_input_halt_reports_exact_explored_mutation_footprint() -> None:
     )
     assert result.explored_committed_write_count == 1
     assert result.explored_committed_write_addresses == (0,)
+    assert result.explored_committed_data_write_transition_count == 0
+    assert result.explored_committed_data_write_addresses == ()
     assert result.explored_self_encryption_transition_count == 1
     assert result.explored_self_encryption_addresses == (0,)
     assert result.explored_effective_data_mutation_transition_count == 0
@@ -498,6 +503,8 @@ def test_rejected_planned_writes_are_not_reported_as_committed() -> None:
     )
     assert result.explored_committed_write_count == 1
     assert result.explored_committed_write_addresses == (0,)
+    assert result.explored_committed_data_write_transition_count == 0
+    assert result.explored_committed_data_write_addresses == ()
     assert result.explored_self_encryption_transition_count == 1
     assert result.explored_self_encryption_addresses == (0,)
     assert result.explored_effective_data_mutation_transition_count == 0
@@ -956,6 +963,12 @@ def _assert_entry_data_mutation_evidence(result: _WorklistAnalysis) -> None:
         0, 1, 2, 3, 4, 5, 6, 40
     )
     assert result.explored_self_encryption_addresses == (0, 1, 2, 3, 4, 5, 6)
+    assert result.explored_committed_data_write_transition_count == (
+        _ENTRY_COMMITTED_DATA_WRITE_COUNT
+    )
+    assert result.explored_committed_data_write_addresses == (
+        _ENTRY_MUTATION_ADDRESS,
+    )
     assert result.explored_effective_data_mutation_transition_count == (
         _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT
     )

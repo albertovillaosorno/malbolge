@@ -142,6 +142,8 @@ class WorklistAnalysis:
     explored_code_data_alias_transition_count: int
     explored_committed_write_count: int
     explored_committed_write_addresses: tuple[int, ...]
+    explored_committed_data_write_transition_count: int
+    explored_committed_data_write_addresses: tuple[int, ...]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
     explored_effective_data_mutation_transition_count: int
@@ -731,12 +733,14 @@ class _Explorer:
     initial_memory: tuple[int, ...] = field(init=False, repr=False)
     terminal_states: dict[str, set[_StateKey]] = field(default_factory=dict)
     committed_write_addresses: set[int] = field(default_factory=set)
+    committed_data_write_addresses: set[int] = field(default_factory=set)
     self_encryption_addresses: set[int] = field(default_factory=set)
     effective_data_mutation_addresses: set[int] = field(default_factory=set)
     data_mutation_witness: WorklistDataMutationWitness | None = None
     explored: int = 0
     code_data_alias_transitions: int = 0
     committed_writes: int = 0
+    committed_data_write_transitions: int = 0
     self_encryption_transitions: int = 0
     effective_data_mutation_transitions: int = 0
     repeated_edges: int = 0
@@ -865,6 +869,12 @@ class _Explorer:
             explored_committed_write_count=self.committed_writes,
             explored_committed_write_addresses=tuple(
                 sorted(self.committed_write_addresses)
+            ),
+            explored_committed_data_write_transition_count=(
+                self.committed_data_write_transitions
+            ),
+            explored_committed_data_write_addresses=tuple(
+                sorted(self.committed_data_write_addresses)
             ),
             explored_self_encryption_transition_count=(
                 self.self_encryption_transitions
@@ -1051,6 +1061,9 @@ class _Explorer:
         )
         self.committed_writes += len(writes)
         self.committed_write_addresses.update(writes)
+        if data_write is not None:
+            self.committed_data_write_transitions += 1
+            self.committed_data_write_addresses.add(data_write)
         if encryption is not None:
             self.self_encryption_transitions += 1
             self.self_encryption_addresses.add(encryption)

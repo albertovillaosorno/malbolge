@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v39"
+_SCHEMA = "malbolge-static-image/v40"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -108,6 +108,7 @@ _ENTRY_MUTATION_ADDRESS = 40
 _ENTRY_MUTATION_PREVIOUS_VALUE = 29_524
 _ENTRY_MUTATION_RESULT_VALUE = 29_523
 _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT = 256
+_ENTRY_COMMITTED_DATA_WRITE_COUNT = 257
 _LOADED_MUTATION_SOURCE = (
     b"u'<%$#>=<;:987654321NN"
     b".-,+*)('&%$#\"!~}|{z"
@@ -474,6 +475,8 @@ class _WorklistAnalysis(Protocol):
     explored_code_data_alias_transition_count: int
     explored_committed_write_count: int
     explored_committed_write_addresses: tuple[int, ...]
+    explored_committed_data_write_transition_count: int
+    explored_committed_data_write_addresses: tuple[int, ...]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
     explored_effective_data_mutation_transition_count: int
@@ -570,6 +573,12 @@ class _Report(Protocol):
         _WorklistMutationAddressSourceContext, ...
     ]
     bounded_worklist_committed_write_source_map: tuple[
+        _WorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_committed_data_write_source_map: tuple[
+        _WorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_self_encryption_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
     ]
     bounded_exact_cycle: _ExactCycleCertificate | None
@@ -1951,6 +1960,8 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     )
     assert worklist.explored_committed_write_count == 1
     assert worklist.explored_committed_write_addresses == (0,)
+    assert worklist.explored_committed_data_write_transition_count == 0
+    assert worklist.explored_committed_data_write_addresses == ()
     assert worklist.explored_self_encryption_transition_count == 1
     assert worklist.explored_self_encryption_addresses == (0,)
     assert worklist.explored_effective_data_mutation_transition_count == 0
@@ -2003,6 +2014,12 @@ def _assert_entry_wrap_mutation_context(
     assert mutation.result_value == _ENTRY_MUTATION_RESULT_VALUE
     assert mutation.entry_path[-1] == mutation.state
     assert mutation.state.accumulator == _ENTRY_MUTATION_ACCUMULATOR
+    assert worklist.explored_committed_data_write_transition_count == (
+        _ENTRY_COMMITTED_DATA_WRITE_COUNT
+    )
+    assert worklist.explored_committed_data_write_addresses == (
+        _ENTRY_MUTATION_ADDRESS,
+    )
     assert worklist.explored_effective_data_mutation_transition_count == (
         _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT
     )
@@ -2074,6 +2091,25 @@ def test_worklist_data_mutation_maps_back_to_loaded_source_byte() -> None:
     assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
 
 
+def _assert_committed_write_role_maps(report: _Report) -> None:
+    data_contexts = report.bounded_worklist_committed_data_write_source_map
+    assert len(data_contexts) == 1
+    assert data_contexts[0].address == _ENTRY_WRAP_RECURRENCE_WRITE_ADDRESS
+    assert data_contexts[0].source_position is None
+    encryption_contexts = report.bounded_worklist_self_encryption_source_map
+    assert tuple(context.address for context in encryption_contexts) == (
+        _ENTRY_WRAP_LOADED_WRITE_ADDRESSES
+    )
+    encryption_offsets = tuple(
+        context.source_byte_offset for context in encryption_contexts
+    )
+    expected_offsets = tuple(
+        address + _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
+        for address in _ENTRY_WRAP_LOADED_WRITE_ADDRESSES
+    )
+    assert encryption_offsets == expected_offsets
+
+
 def test_worklist_maps_every_committed_write_address() -> None:
     """Committed data and encryption writes retain exact source coordinates."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -2106,6 +2142,7 @@ def test_worklist_maps_every_committed_write_address() -> None:
     assert recurrence.source_position is None
     assert recurrence.source_byte_offset is None
     assert recurrence.initial_source_byte is None
+    _assert_committed_write_role_maps(report)
     assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
 
 
