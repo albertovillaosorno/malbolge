@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v28` retains exact `entry_transition` through
+`malbolge-static-image/v29` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -76,7 +76,12 @@ by the bounded worklist. Each witness binds that status to one exact terminal
 source state and the deterministic shortest known-edge path from the canonical
 entry state. Statuses are ordered canonically; an observed witness remains exact
 if truncation occurs later, while absence never characterizes the unexplored
-frontier. An empty cycle witness proves only that no cycle was found in the
+frontier. Schema v29 adds `closed_terminal_status_counts`: after the worklist
+queue drains, it repeats the complete canonical terminal-status counts and may
+therefore be empty; a truncated worklist publishes `null` because unseen states
+could still reach additional terminals. The existing `terminal_status_counts`
+remains observed known-graph evidence regardless of later truncation. An empty
+cycle witness proves only that no cycle was found in the
 admitted known graph; under truncation it does not characterize the unexplored
 frontier. Repeat edges caused only by branch merges do not become cycle claims;
 a proven graph cycle also makes CLI acceptance nonzero. Schema v25 also
