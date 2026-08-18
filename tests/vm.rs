@@ -94,9 +94,17 @@ mod tracing;
 use std::env::join_paths;
 use std::ffi::OsString;
 use std::fmt::{Debug, Display};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 type TestResult<Value = ()> = Result<Value, String>;
+
+fn validation_python(root: &Path) -> PathBuf {
+    if cfg!(windows) {
+        root.join(".dependencies/python/3.14.6/Scripts/python-jig.cmd")
+    } else {
+        root.join(".dependencies/python/3.14.6/bin/python-jig")
+    }
+}
 
 fn accelerator_python_path(root: &Path) -> TestResult<OsString> {
     join_paths([

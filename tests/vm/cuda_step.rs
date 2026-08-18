@@ -37,7 +37,7 @@
 //! Rust traces.
 
 use std::io::Write as _;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use malbolge::{
@@ -47,6 +47,7 @@ use malbolge::{
 
 use crate::{
     TestResult, accelerator_python_path, check_equal, normalize_result,
+    validation_python,
 };
 
 const PROTOCOL: &str = "MBSTEP1";
@@ -207,7 +208,7 @@ fn expected_words(trace: &StepTrace) -> TestResult<Vec<u32>> {
 
 fn run_cuda_worker(request: &str) -> TestResult<WorkerBatch> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let python = python_wrapper(root);
+    let python = validation_python(root);
     let mut child = Command::new(&python)
         .args(["-m", "accelerator.cuda.classic_step_worker"])
         .current_dir(root)
@@ -327,10 +328,6 @@ fn optional_byte_words(value: Option<u8>) -> [u32; 2] {
 
 fn optional_word_words(value: Option<Word>) -> [u32; 2] {
     value.map_or([0, 0], |word| [1, u32::from(word.value())])
-}
-
-fn python_wrapper(root: &Path) -> PathBuf {
-    root.join(".dependencies/python/3.14.6/Scripts/python-jig.cmd")
 }
 
 fn registers(

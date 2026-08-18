@@ -37,7 +37,7 @@
 
 use std::io::Write as _;
 use std::iter::repeat_n;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use malbolge::{
@@ -52,6 +52,7 @@ use malbolge::{
 
 use crate::{
     TestResult, accelerator_python_path, check_equal, normalize_result,
+    validation_python,
 };
 
 const MAGIC: &[u8; 8] = b"MBPRN2\0\0";
@@ -651,7 +652,7 @@ fn encode_request(bytes: &mut Vec<u8>, fixture: &RunFixture) -> TestResult {
 
 fn run_cuda_worker(request: &[u8]) -> TestResult<WorkerBatch> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let python = python_wrapper(root);
+    let python = validation_python(root);
     let mut child = Command::new(&python)
         .args(["-m", "accelerator.cuda.profile_run_worker"])
         .current_dir(root)
@@ -848,8 +849,4 @@ const fn termination_code(termination: Option<Termination>) -> u32 {
 fn usize_u32(value: usize) -> TestResult<u32> {
     u32::try_from(value)
         .map_err(|_error| String::from("profile resident counter exceeds u32"))
-}
-
-fn python_wrapper(root: &Path) -> PathBuf {
-    root.join(".dependencies/python/3.14.6/Scripts/python-jig.cmd")
 }
