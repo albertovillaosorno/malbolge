@@ -182,7 +182,8 @@ executable cells, and input-dependent cycles or hangs.
   v33 additionally publishes the first FIFO-explored wrap witness with its exact
   source state, shortest known entry path, result pointers, and separate C/D
   wrap booleans. A missing witness says only that no wrap was observed in the
-  explored graph. A canonical C/D=59,048 snapshot proves one wrap to zero without
+  explored graph. A canonical C/D=59,048 snapshot proves one wrap to zero
+  without
   claiming entry reachability. The two-word `b"u="` input-then-crazy fixture
   closes in 258 states and resolves
   every byte/EOF branch concretely. A truncated requested worklist or a proven
