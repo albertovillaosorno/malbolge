@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v43"
+_SCHEMA = "malbolge-static-image/v44"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -85,6 +85,7 @@ _INVALID_WORKLIST_STATE_LIMIT = _MAX_WORKLIST_STATE_LIMIT + 1
 _WORKLIST_COMPLETE_STATE_LIMIT = 258
 _WORKLIST_TRUNCATED_STATE_LIMIT = 257
 _WORKLIST_INPUT_VALUE_COUNT = 257
+_INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT = 58
 _ENTRY_WRAP_SOURCE = b"u'<%$#>=<;:987654321NN"
 _ENTRY_WRAP_SOURCE_WITH_WHITESPACE = b" \n" + _ENTRY_WRAP_SOURCE
 _ENTRY_WRAP_LOADED_WRITE_ADDRESSES = (0, 1, 2, 3, 4, 5, 6)
@@ -436,6 +437,11 @@ class _WorklistWrapWitness(Protocol):
     data_pointer_wrapped: bool
 
 
+class _WorklistValueDomain(Protocol):
+    address: int
+    values: tuple[int, ...]
+
+
 class _WorklistDataMutationValueDomain(Protocol):
     address: int
     previous_values: tuple[int, ...]
@@ -512,6 +518,9 @@ class _WorklistAnalysis(Protocol):
     explored_effective_data_mutation_value_domains: tuple[
         _WorklistDataMutationValueDomain, ...
     ]
+    explored_fetch_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_data_read_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_encryption_input_value_domains: tuple[_WorklistValueDomain, ...]
     explored_data_mutation_witness: _WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -2001,6 +2010,14 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     assert worklist.explored_effective_data_mutation_transition_count == 0
     assert worklist.explored_effective_data_mutation_addresses == ()
     assert worklist.explored_effective_data_mutation_value_domains == ()
+    fetch_addresses = tuple(
+        domain.address for domain in worklist.explored_fetch_value_domains
+    )
+    assert fetch_addresses == (0, 1)
+    assert worklist.explored_data_read_value_domains[0].values == (61,)
+    encryption_domain = worklist.explored_encryption_input_value_domains[1]
+    encryption_values = encryption_domain.values
+    assert len(encryption_values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
     assert worklist.explored_data_mutation_witness is None
 
 

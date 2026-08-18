@@ -101,6 +101,14 @@ class WorklistWrapWitness:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistValueDomain:
+    """Exact observed values for one explored memory address."""
+
+    address: int
+    values: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistDataMutationValueDomain:
     """Exact observed pre-write and final values for one mutated address."""
 
@@ -160,6 +168,9 @@ class WorklistAnalysis:
     explored_effective_data_mutation_value_domains: tuple[
         WorklistDataMutationValueDomain, ...
     ]
+    explored_fetch_value_domains: tuple[WorklistValueDomain, ...]
+    explored_data_read_value_domains: tuple[WorklistValueDomain, ...]
+    explored_encryption_input_value_domains: tuple[WorklistValueDomain, ...]
     explored_data_mutation_witness: WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -741,6 +752,18 @@ def _record_domain_value(
     domains.setdefault(address, set()).add(value)
 
 
+def _value_domains(
+    observed: dict[int, set[int]],
+) -> tuple[WorklistValueDomain, ...]:
+    return tuple(
+        WorklistValueDomain(
+            address=address,
+            values=tuple(sorted(observed[address])),
+        )
+        for address in sorted(observed)
+    )
+
+
 def _data_mutation_value_domains(
     previous_values: dict[int, set[int]],
     result_values: dict[int, set[int]],
@@ -779,6 +802,9 @@ class _Explorer:
     effective_data_mutation_result_values: dict[int, set[int]] = field(
         default_factory=dict
     )
+    fetch_values: dict[int, set[int]] = field(default_factory=dict)
+    data_read_values: dict[int, set[int]] = field(default_factory=dict)
+    encryption_input_values: dict[int, set[int]] = field(default_factory=dict)
     data_mutation_witness: WorklistDataMutationWitness | None = None
     explored: int = 0
     code_data_alias_transitions: int = 0
@@ -937,6 +963,11 @@ class _Explorer:
                     self.effective_data_mutation_result_values,
                 )
             ),
+            explored_fetch_value_domains=_value_domains(self.fetch_values),
+            explored_data_read_value_domains=_value_domains(self.data_read_values),
+            explored_encryption_input_value_domains=_value_domains(
+                self.encryption_input_values
+            ),
             explored_data_mutation_witness=self.data_mutation_witness,
             explored_minimum_words=max(
                 len(self.words),
@@ -1062,6 +1093,33 @@ class _Explorer:
             data_pointer_wrapped=result_data == 0,
         )
 
+    def _record_read_value_evidence(
+        self,
+        transition: prefix_transfer.SecondTransition,
+    ) -> None:
+        _record_domain_value(
+            self.fetch_values,
+            transition.fetched_address,
+            transition.fetched_value,
+        )
+        if transition.decoded_byte in _DATA_READING_INSTRUCTIONS:
+            data_value = transition.data_value
+            if data_value is None:
+                message = "semantic data read lost its exact value"
+                raise AssertionError(message)
+            _record_domain_value(
+                self.data_read_values, transition.data_address, data_value
+            )
+        if (
+            transition.encryption_address is not None
+            and transition.encryption_input is not None
+        ):
+            _record_domain_value(
+                self.encryption_input_values,
+                transition.encryption_address,
+                transition.encryption_input,
+            )
+
     def _record_data_mutation_evidence(
         self,
         node: _ReachabilityNode,
@@ -1130,6 +1188,7 @@ class _Explorer:
             node.snapshot,
         )
         self.accessed_addresses.update(_transition_accesses(step.transition))
+        self._record_read_value_evidence(step.transition)
         self._record_mutation_evidence(step)
         self._record_data_mutation_evidence(node, step)
         if step.transition.pointer_wraps:

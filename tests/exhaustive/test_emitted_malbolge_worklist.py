@@ -159,6 +159,10 @@ _ENTRY_COMMITTED_DATA_WRITE_COUNT = 257
 _ENTRY_MUTATION_RESULT_DOMAIN_COUNT = 256
 _ENTRY_MUTATION_RESULT_DOMAIN_MINIMUM = 29_269
 _ENTRY_MUTATION_RESULT_DOMAIN_MAXIMUM = 59_048
+_ENTRY_DATA_READ_DOMAIN_COUNT = 257
+_INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT = 58
+_INPUT_CRAZY_ENCRYPTION_DOMAIN_MINIMUM = 32
+_INPUT_CRAZY_ENCRYPTION_DOMAIN_MAXIMUM = 29_555
 _WRAP_WRITE_TRANSITION = 3
 _SECOND_TRANSITION = 2
 _GRAPH_KEY_A: _WorklistStateKey = (0, 0, 0, (), False)
@@ -258,6 +262,11 @@ class _WorklistWrapWitness(Protocol):
     data_pointer_wrapped: bool
 
 
+class _WorklistValueDomain(Protocol):
+    address: int
+    values: tuple[int, ...]
+
+
 class _WorklistDataMutationValueDomain(Protocol):
     address: int
     previous_values: tuple[int, ...]
@@ -309,6 +318,9 @@ class _WorklistAnalysis(Protocol):
     explored_effective_data_mutation_value_domains: tuple[
         _WorklistDataMutationValueDomain, ...
     ]
+    explored_fetch_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_data_read_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_encryption_input_value_domains: tuple[_WorklistValueDomain, ...]
     explored_data_mutation_witness: _WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -479,6 +491,49 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
     assert result.frontier_states == 0
     assert not result.truncated
+
+
+def _domain_values(
+    domains: tuple[_WorklistValueDomain, ...],
+    address: int,
+) -> tuple[int, ...]:
+    matches = tuple(
+        domain.values for domain in domains if domain.address == address
+    )
+    assert len(matches) == 1
+    return matches[0]
+
+
+def test_input_halt_reports_exact_read_value_domains() -> None:
+    """Closed input reachability publishes exact explored read values."""
+    result = worklist.analyze_reachability(
+        _INPUT_HALT_SOURCE,
+        maximum_states=_FULL_STATE_LIMIT,
+    )
+    fetch_addresses = tuple(
+        domain.address for domain in result.explored_fetch_value_domains
+    )
+    assert fetch_addresses == (0, 1)
+    assert _domain_values(result.explored_fetch_value_domains, 0) == (117,)
+    assert _domain_values(result.explored_fetch_value_domains, 1) == (80,)
+    assert result.explored_data_read_value_domains == ()
+    encryption_values = _domain_values(
+        result.explored_encryption_input_value_domains, 0
+    )
+    assert encryption_values == (117,)
+
+
+def test_input_crazy_reports_exact_encryption_input_domain() -> None:
+    """Rejected branches retain exact explored encryption-input values."""
+    result = worklist.analyze_reachability(
+        _INPUT_CRAZY_SOURCE,
+        maximum_states=_FULL_STATE_LIMIT,
+    )
+    values = _domain_values(result.explored_encryption_input_value_domains, 1)
+    assert len(values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
+    assert values[0] == _INPUT_CRAZY_ENCRYPTION_DOMAIN_MINIMUM
+    assert values[-1] == _INPUT_CRAZY_ENCRYPTION_DOMAIN_MAXIMUM
+    assert _domain_values(result.explored_data_read_value_domains, 1) == (61,)
 
 
 def test_input_halt_reports_exact_explored_mutation_footprint() -> None:
@@ -1002,6 +1057,13 @@ def _assert_entry_data_mutation_evidence(result: _WorklistAnalysis) -> None:
         _ENTRY_MUTATION_ADDRESS,
     )
     _assert_entry_mutation_value_domain(result)
+    data_values = _domain_values(
+        result.explored_data_read_value_domains, _ENTRY_MUTATION_ADDRESS
+    )
+    assert len(data_values) == _ENTRY_DATA_READ_DOMAIN_COUNT
+    assert data_values[0] == _ENTRY_MUTATION_RESULT_DOMAIN_MINIMUM
+    assert data_values[-1] == _ENTRY_MUTATION_RESULT_DOMAIN_MAXIMUM
+    assert _ENTRY_MUTATION_PREVIOUS_VALUE in data_values
     mutation = result.explored_data_mutation_witness
     assert mutation is not None
     assert tuple(

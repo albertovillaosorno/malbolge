@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v43` retains exact `entry_transition` through
+`malbolge-static-image/v44` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -204,7 +204,14 @@ a null initial-byte match result. This preserves the loaded-versus-recurrence
 source-map boundary while exposing bounded value-flow evidence. Schema v43
 updates the `dataflow` analysis-limit identity to include the requested worklist
 size, closed/truncated status, and explored-only scope when worklist evidence is
-present. Prefix-only analysis keeps its existing identity unchanged.
+present. Prefix-only analysis keeps its existing identity unchanged. Schema v44
+adds exact per-address observed value domains for instruction fetches, semantic
+data reads, and self-encryption inputs across the explored worklist. The closed
+input-crazy graph records 58 encryption-input values at address 1 despite those
+branches rejecting; the truncated entry-wrap graph records 257 semantic
+data-read values at address 40. Ordering is canonical by address and value. A
+truncated worklist does not imply its observed value domains are complete beyond
+the frontier.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema
