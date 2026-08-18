@@ -253,8 +253,8 @@ statement under truncation. Schema v54 adds exact explored transition counts and
 distinct addresses for evolved instruction fetches and semantic data reads.
 The closed six-state `b"(&&$^"` graph has one evolved fetch at address 95; the
 closed five-state `b"(&&%M"` graph has one evolved data read at address 41.
-Entry-wrap
-has no evolved fetches and 256 evolved data-read transitions at address 40.
+Entry-wrap has no evolved fetches and 256 evolved data-read transitions at
+address 40.
 Truncation keeps aggregate absence explored-only. Schema v55 adds exact
 per-address value domains containing only evolved fetch/data-read values. The
 closed fetch fixture reports `(9810,)` at address 95 and the closed data-read

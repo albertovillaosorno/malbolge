@@ -301,9 +301,10 @@ executable cells, and input-dependent cycles or hangs.
   closure. This does not
   close automatic or unbounded input-dependent cycle analysis.
 - Automatic unbounded/worklist control-flow reachability, broader unbounded
-  dataflow/evolved-memory equivalence, higher-level C/source-map linkage,
-  wraparound beyond selected prefix/worklist evidence, and input-dependent
-  cycles deeper than the checked 16-state path remain open. Nothing after the
+  dataflow/evolved-memory equivalence, control-flow/source-map linkage beyond
+  per-address bounded context, wraparound beyond selected prefix/worklist
+  evidence, and input-dependent cycles deeper than the checked 16-state path
+  remain open. Nothing after the
   requested bound is inferred from prefix or initial-image admission.
 
 - Expected durable artifact surface: `verifier/`, `tests/differential/`,
@@ -328,6 +329,10 @@ executable cells, and input-dependent cycles or hangs.
   recurrence-backed memory requirements, exact
   loaded-source/raw-offset bounded
   fetch/read/write/encryption context, exact bounded fetch-value lineage through
-  loaded source, recurrence, and prior data-write evidence,
-  explicit bounded analysis limits, CLI second/third/fourth rejection status,
-  and CLI missing-source failure.
+  loaded source, recurrence, and prior data-write evidence, explicit finite
+  worklist closure/truncation evidence, mutation and planned/committed write
+  domains, source-linked worklist value maps, final no-op partition/witnesses,
+  evolved fetch/data-read witnesses with last-writer provenance, evolved read
+  transition/address counts and changed-value domains, explicit bounded analysis
+  limits, CLI second/third/fourth rejection status, and CLI missing-source
+  failure.
