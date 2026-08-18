@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v55
+  offsets, stable finding codes, and explicit analysis limits. Schema v56
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -286,7 +286,11 @@ executable cells, and input-dependent cycles or hangs.
   changed-value
   domains: 9,810 at address 95, 49,218 at address 41, and 256 entry-wrap values
   at address 40 matching its effective-mutation final domain while excluding
-  initial/no-op 29,524.
+  initial/no-op 29,524. Schema v56 maps each evolved-read witness entry-path C
+  pointer to loaded source coordinates where available. The evolved-fetch path
+  maps C=0 through 4 to raw offsets 0 through 4 and keeps recurrence C=95
+  unmapped; the evolved-data path maps C=0 through 3 entirely to loaded source.
+  The source-map suffix becomes `worklist-value-and-control-path-evidence`.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact
@@ -302,7 +306,7 @@ executable cells, and input-dependent cycles or hangs.
   close automatic or unbounded input-dependent cycle analysis.
 - Automatic unbounded/worklist control-flow reachability, broader unbounded
   dataflow/evolved-memory equivalence, control-flow/source-map linkage beyond
-  per-address bounded context, wraparound beyond selected prefix/worklist
+  evolved-read witness entry paths, wraparound beyond selected prefix/worklist
   evidence, and input-dependent cycles deeper than the checked 16-state path
   remain open. Nothing after the
   requested bound is inferred from prefix or initial-image admission.
@@ -332,7 +336,8 @@ executable cells, and input-dependent cycles or hangs.
   loaded source, recurrence, and prior data-write evidence, explicit finite
   worklist closure/truncation evidence, mutation and planned/committed write
   domains, source-linked worklist value maps, final no-op partition/witnesses,
-  evolved fetch/data-read witnesses with last-writer provenance, evolved read
-  transition/address counts and changed-value domains, explicit bounded analysis
+  evolved fetch/data-read witnesses with last-writer provenance and entry-path
+  C/source maps, evolved read transition/address counts and changed-value
+  domains, explicit bounded analysis
   limits, CLI second/third/fourth rejection status, and CLI missing-source
   failure.

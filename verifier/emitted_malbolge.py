@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v55"
+_SCHEMA: Final = "malbolge-static-image/v56"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -213,6 +213,18 @@ class BoundedWorklistValueSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistControlPathSourceContext:
+    """Source coordinates for one state on a worklist witness entry path."""
+
+    entry_path_state_index: int
+    code_pointer: int
+    data_pointer: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistMutationAddressSourceContext:
     """Source-image coordinates for one worklist mutation address."""
 
@@ -272,6 +284,12 @@ class StaticImageReport:
     ]
     bounded_worklist_self_encryption_output_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
+    ]
+    bounded_worklist_evolved_fetch_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_evolved_data_read_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
     ]
     bounded_exact_cycle: prefix_transfer.ExactCycleCertificate | None
     bounded_memory_requirement: BoundedMemoryRequirement | None
@@ -386,7 +404,7 @@ def _source_map_limit_label(
         return prefix
     return (
         f"{prefix}-and-{worklist.state_limit}-state-worklist-"
-        f"{_worklist_status(worklist)}-worklist-value-evidence"
+        f"{_worklist_status(worklist)}-worklist-value-and-control-path-evidence"
     )
 
 
@@ -1132,6 +1150,29 @@ def _worklist_value_source_map(
     return tuple(contexts)
 
 
+def _worklist_control_path_source_map(
+    witness: worklist_transfer.WorklistEvolvedReadWitness | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistControlPathSourceContext, ...]:
+    if witness is None:
+        return ()
+    contexts: list[BoundedWorklistControlPathSourceContext] = []
+    for index, state in enumerate(witness.entry_path):
+        code_pointer = state.code_pointer
+        source = _worklist_mutation_address_source_context(code_pointer, cells)
+        contexts.append(
+            BoundedWorklistControlPathSourceContext(
+                entry_path_state_index=index,
+                code_pointer=code_pointer,
+                data_pointer=state.data_pointer,
+                source_position=source.source_position,
+                source_byte_offset=source.source_byte_offset,
+                initial_source_byte=source.initial_source_byte,
+            )
+        )
+    return tuple(contexts)
+
+
 def _worklist_committed_write_source_map(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -1303,6 +1344,26 @@ def analyze_source(
                 ()
                 if worklist is None
                 else worklist.explored_self_encryption_output_value_domains,
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_evolved_fetch_entry_path_source_map=(
+            _worklist_control_path_source_map(
+                (
+                    None
+                    if worklist is None
+                    else worklist.explored_evolved_fetch_witness
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_evolved_data_read_entry_path_source_map=(
+            _worklist_control_path_source_map(
+                (
+                    None
+                    if worklist is None
+                    else worklist.explored_evolved_data_read_witness
+                ),
                 prefix.cells,
             )
         ),

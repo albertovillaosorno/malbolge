@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v55"
+_SCHEMA = "malbolge-static-image/v56"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -170,7 +170,7 @@ _ENTRY_DATAFLOW_LIMIT = (
 _WORKLIST_VALUE_SOURCE_MAP_LIMIT = (
     "source-map-context:16-transition-memory-access-and-"
     "fetch-data-read-and-encryption-input-value-lineage-and-"
-    "1544-state-worklist-truncated-worklist-value-evidence"
+    "1544-state-worklist-truncated-worklist-value-and-control-path-evidence"
 )
 _INPUT_CRAZY_SOURCE = bytes((117, 61))
 _INPUT_HALT_SOURCE = bytes((117, 80))
@@ -513,6 +513,15 @@ class _WorklistValueSourceContext(Protocol):
     initial_source_byte_in_values: bool | None
 
 
+class _WorklistControlPathSourceContext(Protocol):
+    entry_path_state_index: int
+    code_pointer: int
+    data_pointer: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+
+
 class _WorklistMutationAddressSourceContext(Protocol):
     address: int
     source_position: int | None
@@ -698,6 +707,12 @@ class _Report(Protocol):
     ]
     bounded_worklist_self_encryption_output_value_source_map: tuple[
         _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_evolved_fetch_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_evolved_data_read_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
     ]
     bounded_exact_cycle: _ExactCycleCertificate | None
     bounded_memory_requirement: _BoundedMemoryRequirement | None
@@ -1103,6 +1118,35 @@ def test_bounded_data_read_lineage_tracks_recurrence_and_prior_write() -> None:
     assert final.origin_transition_index == _DATA_LINEAGE_WRITE_TRANSITION
 
 
+def _assert_evolved_fetch_control_source_map(report: _Report) -> None:
+    contexts = report.bounded_worklist_evolved_fetch_entry_path_source_map
+    path_indexes = tuple(context.entry_path_state_index for context in contexts)
+    assert path_indexes == tuple(range(len(contexts)))
+    assert tuple(context.code_pointer for context in contexts) == (
+        0, 1, 2, 3, 4, 95
+    )
+    assert tuple(context.source_byte_offset for context in contexts) == (
+        0, 1, 2, 3, 4, None
+    )
+    assert tuple(context.initial_source_byte for context in contexts) == (
+        *_LINEAGE_WRITE_SOURCE,
+        None,
+    )
+
+
+def _assert_evolved_data_control_source_map(report: _Report) -> None:
+    contexts = report.bounded_worklist_evolved_data_read_entry_path_source_map
+    assert tuple(context.entry_path_state_index for context in contexts) == (
+        0, 1, 2, 3
+    )
+    assert tuple(context.code_pointer for context in contexts) == (0, 1, 2, 3)
+    source_positions = tuple(context.source_position for context in contexts)
+    assert source_positions == (0, 1, 2, 3)
+    assert tuple(context.source_byte_offset for context in contexts) == (
+        0, 1, 2, 3
+    )
+
+
 def test_worklist_report_witnesses_evolved_fetch() -> None:
     """Public worklist report exposes the first changed instruction fetch."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -1131,6 +1175,7 @@ def test_worklist_report_witnesses_evolved_fetch() -> None:
         == _WORKLIST_EVOLVED_FETCH_ORIGIN_TRANSITION
     )
     assert witness.entry_path[-1] == witness.state
+    _assert_evolved_fetch_control_source_map(report)
     assert not worklist.truncated
 
 
@@ -1162,6 +1207,7 @@ def test_worklist_report_witnesses_evolved_data_read() -> None:
         == _DATA_LINEAGE_ORIGIN_TRANSITION
     )
     assert witness.entry_path[-1] == witness.state
+    _assert_evolved_data_control_source_map(report)
     assert not worklist.truncated
 
 

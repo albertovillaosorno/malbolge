@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v55` retains exact `entry_transition` through
+`malbolge-static-image/v56` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -274,7 +274,12 @@ domains containing only values that differ from immutable initial memory. The
 closed evolved-fetch graph reports value 9,810 at address 95; the closed
 evolved-data-read graph reports 49,218 at address 41. Entry-wrap's 256 evolved
 data-read values at address 40 equal the exact 256 effective-mutation final
-values and exclude initial/no-op value 29,524.
+values and exclude initial/no-op value 29,524. Schema v56 links evolved-read
+witness control flow to source coordinates by mapping every entry-path state's C
+pointer. The six-state evolved-fetch path maps C=0 through 4 to loaded/raw
+positions 0 through 4 and leaves recurrence C=95 null-mapped. The evolved-data
+read path maps C=0 through 3 entirely to loaded source. The source-map suffix
+becomes `worklist-value-and-control-path-evidence`.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema
