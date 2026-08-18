@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v27
+  offsets, stable finding codes, and explicit analysis limits. Schema v28
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -140,8 +140,11 @@ executable cells, and input-dependent cycles or hangs.
   SCCs, so these counts are not promoted to whole-program graph evidence. Once
   the queue drains completely, schema v25 also publishes cyclic sink-SCC counts,
   recurrent-state count, largest recurrent component size, and one deterministic
-  recurrent cycle witness. Truncated worklists publish those fields as null,
-  never zero, because unexplored outgoing edges may invalidate sink closure.
+  recurrent cycle witness. Schema v28 binds that selected recurrent witness to
+  `closed_recurrent_entry_path`, the shortest exact path from canonical entry.
+  A synthetic A↔B cycle with an escape to C↺ proves the recurrent path targets C
+  rather than the first general cycle. Truncated worklists publish all closed-
+  recurrence fields, including the path, as null rather than implying closure.
   Schema v25 represents each proven non-graphical fixed fetch as an exact
   self-loop edge. The three-word `b"utO"` two-input-then-halt fixture exercises
   65,536 merge edges without a cycle, while `b"ut"` reaches a fixed-fetch

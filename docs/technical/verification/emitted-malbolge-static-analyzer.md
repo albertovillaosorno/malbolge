@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v27` retains exact `entry_transition` through
+`malbolge-static-image/v28` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -90,9 +90,13 @@ outgoing edges may later merge components, so the report does not promote the
 partial SCC partition to whole-program evidence. After a complete queue drain,
 schema v25 additionally identifies cyclic sink SCCs as exact closed recurrent
 regions and publishes their component/state counts, largest size, and one
-deterministic cycle witness. Those four fields are `null` under truncation,
-because an unexplored outgoing edge could invalidate apparent sink closure.
-Schema v25 models a provable
+deterministic cycle witness. Schema v28 adds `closed_recurrent_entry_path`, the
+deterministic shortest known-edge path from canonical entry to that selected
+recurrent witness. A closed acyclic graph publishes an empty path; truncation
+publishes `null` alongside the other closed-recurrence fields because unknown
+outgoing edges may invalidate sink closure. A synthetic escaping-cycle fixture
+proves this path targets the recurrent sink rather than blindly reusing the
+first general cycle witness. Schema v25 models a provable
 non-graphical fixed fetch as an exact self-loop edge instead of a terminal
 status. The three-word `b"utO"` fixture
 (two inputs then halt) exercises 65,536 merge edges without a graph cycle, while

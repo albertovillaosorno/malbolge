@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v27 retains the legacy exact entry-through-fifth
+load decode. Schema v28 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -84,8 +84,10 @@ count, cyclic-state count, and largest cyclic SCC size. These values use only
 admitted known edges; a truncated frontier may later connect components, so they
 are not whole-program SCC claims. A fully drained worklist additionally
 publishes cyclic sink-SCC counts, recurrent-state count, largest recurrent size,
-and one deterministic recurrent witness. Truncation publishes those fields as
-null because unknown outgoing edges could invalidate sink closure. Historical
+and one deterministic recurrent witness. Schema v28 adds the nullable
+`closed_recurrent_entry_path`: an exact shortest entry path only after graph
+closure. A closed acyclic graph uses an empty path; truncation uses null because
+unknown outgoing edges could invalidate sink recurrence. Historical
 fixed-fetch cycles become exact
 self-loop graph edges rather than terminal states. Thus `b"utO"`
 (two inputs then halt) has many merge edges but no cycle, while `b"ut"` reaches
