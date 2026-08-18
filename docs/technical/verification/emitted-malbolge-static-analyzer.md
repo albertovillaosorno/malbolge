@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v34` retains exact `entry_transition` through
+`malbolge-static-image/v35` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -141,7 +141,15 @@ transition with an exact successor contributes committed writes, so a planned
 rather than a claimed committed mutation. These fields are complete for a
 closed requested worklist and remain explicitly explored-only when the state
 cap truncates the graph. The code/data-aliasing and self-modification
-analysis-limit identities include that selected worklist scope. Schema v25 adds
+analysis-limit identities include that selected worklist scope. Schema v35
+adds `explored_data_mutation_witness` for the first FIFO-explored committed data
+write whose final memory value differs from the exact pre-write data value. It
+records the source state and shortest entry path, address, previous value,
+planned write value, final value after any same-address self-encryption, and
+alias flag. The entry-wrap fixture's first such event is the byte-1 branch at
+`(C,D,A)=(2,40,1)`, which changes M[40] from 29,524 to 29,523. A null witness
+means no effective data mutation was observed in explored states and makes no
+claim across a truncated frontier. Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema
 v33 adds `explored_wraparound_witness` for the first FIFO-explored wrap. The

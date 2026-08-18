@@ -101,6 +101,19 @@ class WorklistWrapWitness:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistDataMutationWitness:
+    """First exact explored effective data mutation and its entry path."""
+
+    state: WorklistCycleState
+    entry_path: tuple[WorklistCycleState, ...]
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistAnalysis:
     """Deterministic summary of one bounded exact-state exploration."""
 
@@ -131,6 +144,7 @@ class WorklistAnalysis:
     explored_committed_write_addresses: tuple[int, ...]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
+    explored_data_mutation_witness: WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
@@ -677,6 +691,32 @@ def _committed_mutation_addresses(
     )
 
 
+def _effective_data_mutation(
+    step: prefix_transfer.SnapshotStep,
+) -> tuple[int, int, int, int, bool] | None:
+    transition = step.transition
+    address = transition.planned_data_write_address
+    written = transition.planned_data_write_value
+    if step.successor is None or address is None:
+        return None
+    previous = transition.data_value
+    if (
+        written is None
+        or previous is None
+        or address != transition.data_address
+    ):
+        message = "committed data mutation lost exact data values"
+        raise AssertionError(message)
+    aliases = transition.data_write_aliases_encryption
+    result = transition.encryption_output if aliases else written
+    if result is None:
+        message = "committed data mutation lost its final value"
+        raise AssertionError(message)
+    if result == previous:
+        return None
+    return address, previous, written, result, aliases
+
+
 @dataclass(slots=True)
 class _Explorer:
     words: tuple[int, ...]
@@ -690,6 +730,7 @@ class _Explorer:
     terminal_states: dict[str, set[_StateKey]] = field(default_factory=dict)
     committed_write_addresses: set[int] = field(default_factory=set)
     self_encryption_addresses: set[int] = field(default_factory=set)
+    data_mutation_witness: WorklistDataMutationWitness | None = None
     explored: int = 0
     code_data_alias_transitions: int = 0
     committed_writes: int = 0
@@ -827,6 +868,7 @@ class _Explorer:
             explored_self_encryption_addresses=tuple(
                 sorted(self.self_encryption_addresses)
             ),
+            explored_data_mutation_witness=self.data_mutation_witness,
             explored_minimum_words=max(
                 len(self.words),
                 highest_address + 1,
@@ -951,6 +993,37 @@ class _Explorer:
             data_pointer_wrapped=result_data == 0,
         )
 
+    def _record_data_mutation_witness(
+        self,
+        node: _ReachabilityNode,
+        step: prefix_transfer.SnapshotStep,
+    ) -> None:
+        if self.data_mutation_witness is not None:
+            return
+        mutation = _effective_data_mutation(step)
+        if mutation is None:
+            return
+        address, previous, written, result, aliases = mutation
+        key = _node_key(node)
+        path = _known_graph_shortest_path(
+            self.edges,
+            self.seen,
+            start=_INITIAL_STATE_KEY,
+            target=key,
+        )
+        if not path:
+            message = "data mutation witness lost its exact entry path"
+            raise AssertionError(message)
+        self.data_mutation_witness = WorklistDataMutationWitness(
+            state=_cycle_state(key),
+            entry_path=tuple(_cycle_state(item) for item in path),
+            address=address,
+            previous_value=previous,
+            written_value=written,
+            result_value=result,
+            aliases_self_encryption=aliases,
+        )
+
     def _record_mutation_evidence(
         self,
         step: prefix_transfer.SnapshotStep,
@@ -978,6 +1051,7 @@ class _Explorer:
         )
         self.accessed_addresses.update(_transition_accesses(step.transition))
         self._record_mutation_evidence(step)
+        self._record_data_mutation_witness(node, step)
         if step.transition.pointer_wraps:
             self._record_wraparound(node, step.transition)
         if (

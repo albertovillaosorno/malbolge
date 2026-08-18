@@ -149,6 +149,11 @@ _ENTRY_WRAP_WITNESS_STATE_LIMIT = 1_544
 _ENTRY_WRAP_SOURCE = tuple(b"u'<%$#>=<;:987654321NN")
 _ENTRY_WRAP_POINTER_PATH = ((0, 0), (1, 1), (2, 40), (3, 41), (4, 79), (5, 40))
 _ENTRY_WRAP_RESULT_CODE_POINTER = 6
+_ENTRY_MUTATION_POINTER_PATH = ((0, 0), (1, 1), (2, 40))
+_ENTRY_MUTATION_ACCUMULATOR = 1
+_ENTRY_MUTATION_ADDRESS = 40
+_ENTRY_MUTATION_PREVIOUS_VALUE = 29_524
+_ENTRY_MUTATION_RESULT_VALUE = 29_523
 _WRAP_WRITE_TRANSITION = 3
 _SECOND_TRANSITION = 2
 _GRAPH_KEY_A: _WorklistStateKey = (0, 0, 0, (), False)
@@ -248,6 +253,16 @@ class _WorklistWrapWitness(Protocol):
     data_pointer_wrapped: bool
 
 
+class _WorklistDataMutationWitness(Protocol):
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+
+
 class _WorklistAnalysis(Protocol):
     state_limit: int
     unique_states: int
@@ -276,6 +291,7 @@ class _WorklistAnalysis(Protocol):
     explored_committed_write_addresses: tuple[int, ...]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
+    explored_data_mutation_witness: _WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
@@ -460,6 +476,7 @@ def test_input_halt_reports_exact_explored_mutation_footprint() -> None:
     assert result.explored_committed_write_addresses == (0,)
     assert result.explored_self_encryption_transition_count == 1
     assert result.explored_self_encryption_addresses == (0,)
+    assert result.explored_data_mutation_witness is None
 
 
 def test_rejected_planned_writes_are_not_reported_as_committed() -> None:
@@ -478,6 +495,7 @@ def test_rejected_planned_writes_are_not_reported_as_committed() -> None:
     assert result.explored_committed_write_addresses == (0,)
     assert result.explored_self_encryption_transition_count == 1
     assert result.explored_self_encryption_addresses == (0,)
+    assert result.explored_data_mutation_witness is None
 
 
 def test_worklist_memory_requirement_includes_recurrence_reads() -> None:
@@ -948,6 +966,20 @@ def test_entry_reachable_wrap_publishes_exact_event_witness() -> None:
         0, 1, 2, 3, 4, 5, 6, 40
     )
     assert result.explored_self_encryption_addresses == (0, 1, 2, 3, 4, 5, 6)
+    mutation = result.explored_data_mutation_witness
+    assert mutation is not None
+    assert tuple(
+        (state.code_pointer, state.data_pointer)
+        for state in mutation.entry_path
+    ) == _ENTRY_MUTATION_POINTER_PATH
+    assert mutation.entry_path[-1] == mutation.state
+    assert mutation.state.accumulator == _ENTRY_MUTATION_ACCUMULATOR
+    assert not mutation.state.eof_seen
+    assert mutation.address == _ENTRY_MUTATION_ADDRESS
+    assert mutation.previous_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert mutation.written_value == _ENTRY_MUTATION_RESULT_VALUE
+    assert mutation.result_value == _ENTRY_MUTATION_RESULT_VALUE
+    assert not mutation.aliases_self_encryption
 
 
 def test_eof_branch_reaches_exact_pointer_wrap_from_entry() -> None:

@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v34"
+_SCHEMA = "malbolge-static-image/v35"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -95,6 +95,10 @@ _ENTRY_WRAP_POINTER_PATH = (
     (5, 40),
 )
 _ENTRY_WRAP_RESULT_CODE_POINTER = 6
+_ENTRY_MUTATION_ACCUMULATOR = 1
+_ENTRY_MUTATION_ADDRESS = 40
+_ENTRY_MUTATION_PREVIOUS_VALUE = 29_524
+_ENTRY_MUTATION_RESULT_VALUE = 29_523
 _ENTRY_WRAP_WORKLIST_STATE_LIMIT = 1_544
 _ENTRY_WRAP_EXPLORED_STATES = 1_288
 _WORKLIST_CLOSED_LIMIT = (
@@ -385,6 +389,16 @@ class _WorklistWrapWitness(Protocol):
     data_pointer_wrapped: bool
 
 
+class _WorklistDataMutationWitness(Protocol):
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+
+
 class _WorklistAnalysis(Protocol):
     state_limit: int
     unique_states: int
@@ -413,6 +427,7 @@ class _WorklistAnalysis(Protocol):
     explored_committed_write_addresses: tuple[int, ...]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
+    explored_data_mutation_witness: _WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
@@ -1878,6 +1893,7 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     assert worklist.explored_committed_write_addresses == (0,)
     assert worklist.explored_self_encryption_transition_count == 1
     assert worklist.explored_self_encryption_addresses == (0,)
+    assert worklist.explored_data_mutation_witness is None
 
 
 def test_report_worklist_resolves_input_dependent_crazy() -> None:
@@ -1933,6 +1949,13 @@ def test_report_worklist_observes_entry_reachable_eof_wrap() -> None:
     assert witness.result_data_pointer == 0
     assert not witness.code_pointer_wrapped
     assert witness.data_pointer_wrapped
+    mutation = worklist.explored_data_mutation_witness
+    assert mutation is not None
+    assert mutation.address == _ENTRY_MUTATION_ADDRESS
+    assert mutation.previous_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert mutation.result_value == _ENTRY_MUTATION_RESULT_VALUE
+    assert mutation.entry_path[-1] == mutation.state
+    assert mutation.state.accumulator == _ENTRY_MUTATION_ACCUMULATOR
     assert worklist.frontier_states == _WORKLIST_INPUT_VALUE_COUNT
     assert worklist.truncated
     assert _ENTRY_WRAP_LIMIT in report.analysis_limits
