@@ -92,6 +92,9 @@ _EOF_ACCUMULATOR = 59_048
 _WRAP_ADDRESS = 59_048
 _WRAP_SOURCE_VALUE = 52
 _WRAP_STATE_LIMIT = 1
+_ENTRY_WRAP_SOURCE = tuple(b"u'<%$#>=<;:987654321NN")
+_ENTRY_WRAP_POINTER_PATH = ((0, 0), (1, 1), (2, 40), (3, 41), (4, 79), (5, 40))
+_WRAP_WRITE_TRANSITION = 3
 _SECOND_TRANSITION = 2
 _GRAPH_KEY_A: _WorklistStateKey = (0, 0, 0, (), False)
 _GRAPH_KEY_B: _WorklistStateKey = (1, 0, 0, (), False)
@@ -108,7 +111,10 @@ _WORKLIST_MODULE = _ROOT / "verifier" / "emitted_malbolge_worklist.py"
 
 
 class _Snapshot(Protocol):
+    code_pointer: int
+    data_pointer: int
     accumulator: int | None
+    memory_overrides: tuple[tuple[int, int], ...]
 
 
 type _SnapshotFactory = Callable[
@@ -123,8 +129,23 @@ type _SnapshotFactory = Callable[
 ]
 
 
+class _Transition(Protocol):
+    pointer_wraps: bool
+    result_data_pointer: int | None
+
+
+class _SnapshotStep(Protocol):
+    transition: _Transition
+
+
 class _PrefixModule(Protocol):
     StateSnapshot: _SnapshotFactory
+
+    def analyze_state_snapshot(
+        self,
+        words: tuple[int, ...],
+        snapshot: _Snapshot,
+    ) -> _SnapshotStep: ...
 
 
 class _ReachabilityNode(Protocol):
@@ -234,6 +255,12 @@ class _WorklistModule(Protocol):
         snapshot: _Snapshot,
         *,
         eof_seen: bool,
+    ) -> tuple[_ReachabilityNode, ...]: ...
+
+    def _successors(
+        self,
+        node: _ReachabilityNode,
+        step: _SnapshotStep,
     ) -> tuple[_ReachabilityNode, ...]: ...
 
     def _known_graph_strong_components(
@@ -660,6 +687,45 @@ def test_explorer_counts_exact_pointer_wrap_transition() -> None:
     assert result.explored_highest_accessed_address == _WRAP_ADDRESS
     assert result.explored_minimum_words == _WRAP_ADDRESS + 1
     assert result.truncated
+
+
+def test_eof_branch_reaches_exact_pointer_wrap_from_entry() -> None:
+    """EOF self-modification reaches a real D=59048 successor wrap."""
+    admission = worklist.analyze_reachability(
+        _ENTRY_WRAP_SOURCE,
+        maximum_states=_WRAP_STATE_LIMIT,
+    )
+    assert admission.truncated
+    node = worklist._ReachabilityNode(
+        snapshot=prefix_transfer.StateSnapshot(1, 0, 0, 0, ()),
+        eof_seen=False,
+    )
+    final_step: _SnapshotStep | None = None
+    for transition_index, expected_pointers in enumerate(
+        _ENTRY_WRAP_POINTER_PATH,
+        start=1,
+    ):
+        assert (node.snapshot.code_pointer, node.snapshot.data_pointer) == (
+            expected_pointers
+        )
+        step = prefix_transfer.analyze_state_snapshot(
+            _ENTRY_WRAP_SOURCE,
+            node.snapshot,
+        )
+        final_step = step
+        successors = worklist._successors(node, step)
+        if transition_index == 1:
+            node = next(
+                successor for successor in successors if successor.eof_seen
+            )
+        else:
+            assert len(successors) == 1
+            node = successors[0]
+        if transition_index == _WRAP_WRITE_TRANSITION:
+            assert (40, _WRAP_ADDRESS) in node.snapshot.memory_overrides
+    assert final_step is not None
+    assert final_step.transition.pointer_wraps
+    assert final_step.transition.result_data_pointer == 0
 
 
 def test_worklist_state_limit_is_fail_closed() -> None:

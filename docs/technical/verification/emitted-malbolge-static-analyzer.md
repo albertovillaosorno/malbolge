@@ -125,8 +125,11 @@ words within its closed explored graph. Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. A
 canonical near-boundary snapshot proves C/D=59,048 advance to zero and is
-counted exactly without implying that entry reaches that snapshot. The two-word
-`b"u="` fixture (input then crazy) closes in 258 states,
+counted exactly without implying that entry reaches that snapshot. Separately,
+the admitted 22-word `b"u'<%$#>=<;:987654321NN"` fixture proves a real
+entry-reachable wrap on its EOF branch: input sets A=59,048, `p` writes 59,048
+to M[40], two `j` steps steer D back to 40, and the sixth transition wraps D to
+zero. The two-word `b"u="` fixture (input then crazy) closes in 258 states,
 resolving all 257 byte/EOF branches to concrete invalid-self-encryption
 terminals. Without this opt-in graph, a `p` whose accumulator depends on prior
 input remains unresolved rather than assigned a guessed value. A non-graphical
