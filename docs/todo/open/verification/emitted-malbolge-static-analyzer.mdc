@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v63
+  offsets, stable finding codes, and explicit analysis limits. Schema v64
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -317,7 +317,9 @@ executable cells, and input-dependent cycles or hangs.
   49,218. Schema v63 publishes exact C/D alias address sets and first shortest
   witnesses. Two-word input graphs have 258 alias transitions at addresses 0 and
   1; with two leading whitespace bytes those map to raw offsets 2 and 3 together
-  with each witness path.
+  with each witness path. Schema v64 splits observed wrap counts into C, D, and
+  simultaneous categories. The synthetic boundary state wraps both; the
+  entry-reachable fixture has one D-only wrap before its truncated frontier.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact

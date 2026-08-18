@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v63"
+_SCHEMA = "malbolge-static-image/v64"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -648,6 +648,9 @@ class _WorklistAnalysis(Protocol):
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
     explored_wraparound_transition_count: int
+    explored_code_pointer_wrap_transition_count: int
+    explored_data_pointer_wrap_transition_count: int
+    explored_simultaneous_pointer_wrap_transition_count: int
     explored_wraparound_witness: _WorklistWrapWitness | None
     maximum_first_seen_transition_index: int
     frontier_states: int
@@ -2589,6 +2592,9 @@ def test_report_worklist_observes_entry_reachable_eof_wrap() -> None:
     assert worklist.unique_states == _ENTRY_WRAP_WORKLIST_STATE_LIMIT
     assert worklist.explored_states == _ENTRY_WRAP_EXPLORED_STATES
     assert worklist.explored_wraparound_transition_count == 1
+    assert worklist.explored_code_pointer_wrap_transition_count == 0
+    assert worklist.explored_data_pointer_wrap_transition_count == 1
+    assert worklist.explored_simultaneous_pointer_wrap_transition_count == 0
     witness = worklist.explored_wraparound_witness
     assert witness is not None
     assert tuple(

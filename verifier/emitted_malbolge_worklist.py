@@ -235,6 +235,9 @@ class WorklistAnalysis:
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
     explored_wraparound_transition_count: int
+    explored_code_pointer_wrap_transition_count: int
+    explored_data_pointer_wrap_transition_count: int
+    explored_simultaneous_pointer_wrap_transition_count: int
     explored_wraparound_witness: WorklistWrapWitness | None
     maximum_first_seen_transition_index: int
     frontier_states: int
@@ -825,6 +828,22 @@ def _entry_path_last_writer(
     return writer
 
 
+def _pointer_wrap_result(
+    transition: prefix_transfer.SecondTransition,
+) -> tuple[int, int, bool, bool]:
+    result_code = transition.result_code_pointer
+    result_data = transition.result_data_pointer
+    if result_code is None or result_data is None:
+        message = "pointer wrap lost exact successor pointers"
+        raise AssertionError(message)
+    code_wrapped = result_code == 0
+    data_wrapped = result_data == 0
+    if not code_wrapped and not data_wrapped:
+        message = "pointer-wrap flag lacks an exact wrapped pointer"
+        raise AssertionError(message)
+    return result_code, result_data, code_wrapped, data_wrapped
+
+
 def _committed_data_mutation(
     step: prefix_transfer.SnapshotStep,
 ) -> tuple[int, int, int, int, bool] | None:
@@ -944,6 +963,9 @@ class _Explorer:
     repeated_edges: int = 0
     input_branch_points: int = 0
     wraparound_transitions: int = 0
+    code_pointer_wrap_transitions: int = 0
+    data_pointer_wrap_transitions: int = 0
+    simultaneous_pointer_wrap_transitions: int = 0
     wraparound_witness: WorklistWrapWitness | None = None
     maximum_first_seen_transition_index: int = 1
 
@@ -1156,6 +1178,15 @@ class _Explorer:
             explored_highest_accessed_address=highest_address,
             explored_accessed_addresses=ordered_addresses,
             explored_wraparound_transition_count=self.wraparound_transitions,
+            explored_code_pointer_wrap_transition_count=(
+                self.code_pointer_wrap_transitions
+            ),
+            explored_data_pointer_wrap_transition_count=(
+                self.data_pointer_wrap_transitions
+            ),
+            explored_simultaneous_pointer_wrap_transition_count=(
+                self.simultaneous_pointer_wrap_transitions
+            ),
             explored_wraparound_witness=self.wraparound_witness,
             maximum_first_seen_transition_index=(
                 self.maximum_first_seen_transition_index
@@ -1250,13 +1281,17 @@ class _Explorer:
         transition: prefix_transfer.SecondTransition,
     ) -> None:
         self.wraparound_transitions += 1
+        result_code, result_data, code_wrapped, data_wrapped = (
+            _pointer_wrap_result(transition)
+        )
+        if code_wrapped:
+            self.code_pointer_wrap_transitions += 1
+        if data_wrapped:
+            self.data_pointer_wrap_transitions += 1
+        if code_wrapped and data_wrapped:
+            self.simultaneous_pointer_wrap_transitions += 1
         if self.wraparound_witness is not None:
             return
-        result_code = transition.result_code_pointer
-        result_data = transition.result_data_pointer
-        if result_code is None or result_data is None:
-            message = "pointer wrap lost exact successor pointers"
-            raise AssertionError(message)
         key = _node_key(node)
         path = _known_graph_shortest_path(
             self.edges,
@@ -1269,8 +1304,8 @@ class _Explorer:
             entry_path=tuple(_cycle_state(item) for item in path),
             result_code_pointer=result_code,
             result_data_pointer=result_data,
-            code_pointer_wrapped=result_code == 0,
-            data_pointer_wrapped=result_data == 0,
+            code_pointer_wrapped=code_wrapped,
+            data_pointer_wrapped=data_wrapped,
         )
 
     def _evolved_read_witness(

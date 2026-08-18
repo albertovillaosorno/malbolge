@@ -413,6 +413,9 @@ class _WorklistAnalysis(Protocol):
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
     explored_wraparound_transition_count: int
+    explored_code_pointer_wrap_transition_count: int
+    explored_data_pointer_wrap_transition_count: int
+    explored_simultaneous_pointer_wrap_transition_count: int
     explored_wraparound_witness: _WorklistWrapWitness | None
     maximum_first_seen_transition_index: int
     frontier_states: int
@@ -1178,6 +1181,9 @@ def test_explorer_counts_exact_pointer_wrap_transition() -> None:
     )
     result = explorer.run()
     assert result.explored_wraparound_transition_count == 1
+    assert result.explored_code_pointer_wrap_transition_count == 1
+    assert result.explored_data_pointer_wrap_transition_count == 1
+    assert result.explored_simultaneous_pointer_wrap_transition_count == 1
     assert result.explored_highest_accessed_address == _WRAP_ADDRESS
     assert result.explored_minimum_words == _WRAP_ADDRESS + 1
     assert result.truncated
@@ -1395,6 +1401,9 @@ def test_entry_reachable_wrap_publishes_exact_event_witness() -> None:
         maximum_states=_ENTRY_WRAP_WITNESS_STATE_LIMIT,
     )
     assert result.explored_wraparound_transition_count == 1
+    assert result.explored_code_pointer_wrap_transition_count == 0
+    assert result.explored_data_pointer_wrap_transition_count == 1
+    assert result.explored_simultaneous_pointer_wrap_transition_count == 0
     witness = result.explored_wraparound_witness
     assert witness is not None
     assert tuple(
