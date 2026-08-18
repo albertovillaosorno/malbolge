@@ -161,6 +161,10 @@ _ENTRY_WRAP_LIMIT = (
     "wraparound-reachability:16-transition-prefix-and-"
     "1544-state-worklist-truncated"
 )
+_ENTRY_DATAFLOW_LIMIT = (
+    "dataflow:16-transition-prefix-and-"
+    "1544-state-worklist-truncated-explored-only"
+)
 _WORKLIST_MUTATION_SOURCE_MAP_LIMIT = (
     "source-map-context:16-transition-memory-access-and-"
     "fetch-data-read-and-encryption-input-value-lineage-and-"
@@ -2101,6 +2105,7 @@ def test_report_worklist_observes_entry_reachable_eof_wrap() -> None:
     assert worklist.frontier_states == _WORKLIST_INPUT_VALUE_COUNT
     assert worklist.truncated
     assert _ENTRY_WRAP_LIMIT in report.analysis_limits
+    assert _ENTRY_DATAFLOW_LIMIT in report.analysis_limits
 
 
 def _assert_loaded_mutation_value_source_context(report: _Report) -> None:
