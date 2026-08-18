@@ -2251,6 +2251,52 @@ def test_cli_rejects_truncated_worklist_request(tmp_path: Path) -> None:
     assert bounded["truncated"] is True
 
 
+def test_cli_rejects_maximum_truncated_worklist(tmp_path: Path) -> None:
+    """CLI maximum publishes exact frontier evidence and exits nonzero."""
+    source = tmp_path / "maximum-truncated.malbolge"
+    _ = source.write_bytes(_OVER_CAP_INPUT_CYCLE_SOURCE)
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [
+            sys.executable,
+            str(_ANALYZER),
+            "--worklist-state-limit",
+            str(_MAX_WORKLIST_STATE_LIMIT),
+            str(source),
+        ],
+        cwd=_ROOT,
+        check=False,
+        capture_output=True,
+        shell=False,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 1
+    assert not completed.stderr
+    document = cast("dict[str, object]", json.loads(completed.stdout))
+    bounded = cast("dict[str, object]", document["bounded_worklist"])
+    assert bounded["unique_states"] == _MAX_WORKLIST_STATE_LIMIT
+    assert bounded["explored_states"] == _OVER_CAP_EXPLORED_STATES
+    assert bounded["frontier_states"] == _WORKLIST_INPUT_VALUE_COUNT
+    assert bounded["maximum_first_seen_transition_index"] == (
+        _OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION
+    )
+    assert bounded["reachable_cycle_detected"] is False
+    assert bounded["closed_all_paths_terminate"] is None
+    assert bounded["closed_all_paths_halt"] is None
+    witness = cast("dict[str, object]", bounded["frontier_state_witness"])
+    path = cast("list[dict[str, object]]", bounded["frontier_entry_path"])
+    assert witness["accumulator"] == _OVER_CAP_FRONTIER_ACCUMULATOR
+    assert witness["eof_seen"] is False
+    assert path[-1] == witness
+    pointers = tuple(
+        (state["code_pointer"], state["data_pointer"]) for state in path
+    )
+    assert pointers == _OVER_CAP_FRONTIER_POINTER_PATH
+    assert bounded["truncated"] is True
+    limits = cast("list[str]", document["analysis_limits"])
+    assert _MAX_WORKLIST_TRUNCATED_LIMIT in limits
+
+
 def test_cli_accepts_explicit_extended_transition_limit(tmp_path: Path) -> None:
     """CLI can request exact reachability beyond the default sixteen steps."""
     source = tmp_path / "extended-prefix.malbolge"
