@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v57"
+_SCHEMA = "malbolge-static-image/v58"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -522,6 +522,11 @@ class _WorklistControlPathSourceContext(Protocol):
     initial_source_byte: int | None
 
 
+class _WorklistTerminalControlPathSourceMap(Protocol):
+    status: str
+    entry_path_source_map: tuple[_WorklistControlPathSourceContext, ...]
+
+
 class _WorklistMutationAddressSourceContext(Protocol):
     address: int
     source_position: int | None
@@ -722,6 +727,18 @@ class _Report(Protocol):
     ]
     bounded_worklist_wraparound_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_cycle_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_closed_recurrent_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_frontier_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_terminal_entry_path_source_maps: tuple[
+        _WorklistTerminalControlPathSourceMap, ...
     ]
     bounded_exact_cycle: _ExactCycleCertificate | None
     bounded_memory_requirement: _BoundedMemoryRequirement | None
@@ -2693,6 +2710,57 @@ def test_report_worklist_proves_deeper_input_dependent_cycle() -> None:
     assert worklist.closed_all_paths_terminate is False
     assert worklist.closed_all_paths_halt is False
     assert not worklist.truncated
+
+
+def test_worklist_maps_closed_cycle_and_recurrent_control_paths() -> None:
+    """Closed cycle paths distinguish loaded and recurrence source."""
+    report = _ANALYZER_MODULE.analyze_source(
+        b" \n" + _NEAR_CAP_INPUT_CYCLE_SOURCE,
+        worklist_state_limit=_NEAR_CAP_INPUT_CYCLE_STATE_LIMIT,
+    )
+    cycle = report.bounded_worklist_cycle_entry_path_source_map
+    recurrent = report.bounded_worklist_closed_recurrent_entry_path_source_map
+    expected_pointers = tuple(range(16))
+    expected_offsets = (*range(2, 17), None)
+    assert tuple(context.code_pointer for context in cycle) == expected_pointers
+    cycle_offsets = tuple(context.source_byte_offset for context in cycle)
+    assert cycle_offsets == expected_offsets
+    recurrent_pointers = tuple(context.code_pointer for context in recurrent)
+    assert recurrent_pointers == expected_pointers
+    recurrent_offsets = tuple(
+        context.source_byte_offset for context in recurrent
+    )
+    assert recurrent_offsets == expected_offsets
+
+
+def test_worklist_maps_truncated_frontier_control_path() -> None:
+    """Truncated frontier C path keeps every loaded source position exact."""
+    report = _ANALYZER_MODULE.analyze_source(
+        b" \n" + _OVER_CAP_INPUT_CYCLE_SOURCE,
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    frontier = report.bounded_worklist_frontier_entry_path_source_map
+    frontier_pointers = tuple(context.code_pointer for context in frontier)
+    assert frontier_pointers == tuple(range(16))
+    assert tuple(context.source_byte_offset for context in frontier) == tuple(
+        range(2, 18)
+    )
+
+
+def test_worklist_maps_terminal_control_path_with_status() -> None:
+    """Terminal source paths remain status-labeled and source-linked."""
+    report = _ANALYZER_MODULE.analyze_source(
+        b" \n" + _INPUT_CRAZY_SOURCE,
+        worklist_state_limit=_WORKLIST_COMPLETE_STATE_LIMIT,
+    )
+    maps = report.bounded_worklist_terminal_entry_path_source_maps
+    assert len(maps) == 1
+    assert maps[0].status == _ENTRY_INVALID_ENCRYPTION
+    contexts = maps[0].entry_path_source_map
+    assert tuple(context.code_pointer for context in contexts) == (0, 1)
+    assert tuple(context.source_byte_offset for context in contexts) == (2, 3)
+    assert report.bounded_worklist_cycle_entry_path_source_map == ()
+    assert report.bounded_worklist_frontier_entry_path_source_map == ()
 
 
 def test_report_worklist_proves_near_cap_input_cycle() -> None:

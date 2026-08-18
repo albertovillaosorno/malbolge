@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v57"
+_SCHEMA: Final = "malbolge-static-image/v58"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -225,6 +225,14 @@ class BoundedWorklistControlPathSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistTerminalControlPathSourceMap:
+    """Status-labeled source map for one exact terminal witness entry path."""
+
+    status: str
+    entry_path_source_map: tuple[BoundedWorklistControlPathSourceContext, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistMutationAddressSourceContext:
     """Source-image coordinates for one worklist mutation address."""
 
@@ -299,6 +307,18 @@ class StaticImageReport:
     ]
     bounded_worklist_wraparound_entry_path_source_map: tuple[
         BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_cycle_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_closed_recurrent_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_frontier_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_terminal_entry_path_source_maps: tuple[
+        BoundedWorklistTerminalControlPathSourceMap, ...
     ]
     bounded_exact_cycle: prefix_transfer.ExactCycleCertificate | None
     bounded_memory_requirement: BoundedMemoryRequirement | None
@@ -1182,6 +1202,23 @@ def _worklist_control_path_source_map(
     return tuple(contexts)
 
 
+def _worklist_terminal_control_path_source_maps(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistTerminalControlPathSourceMap, ...]:
+    if worklist is None:
+        return ()
+    return tuple(
+        BoundedWorklistTerminalControlPathSourceMap(
+            status=witness.status,
+            entry_path_source_map=_worklist_control_path_source_map(
+                witness.entry_path, cells
+            ),
+        )
+        for witness in worklist.terminal_status_witnesses
+    )
+
+
 def _worklist_committed_write_source_map(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -1419,6 +1456,35 @@ def analyze_source(
                 ),
                 prefix.cells,
             )
+        ),
+        bounded_worklist_cycle_entry_path_source_map=(
+            _worklist_control_path_source_map(
+                (
+                    None
+                    if worklist is None
+                    else worklist.reachable_cycle_entry_path
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_closed_recurrent_entry_path_source_map=(
+            _worklist_control_path_source_map(
+                (
+                    None
+                    if worklist is None
+                    else worklist.closed_recurrent_entry_path
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_frontier_entry_path_source_map=(
+            _worklist_control_path_source_map(
+                None if worklist is None else worklist.frontier_entry_path,
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_terminal_entry_path_source_maps=(
+            _worklist_terminal_control_path_source_maps(worklist, prefix.cells)
         ),
         bounded_exact_cycle=prefix.exact_cycle,
         bounded_memory_requirement=_bounded_memory_requirement(
