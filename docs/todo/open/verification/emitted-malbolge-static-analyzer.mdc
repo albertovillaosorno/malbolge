@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v64
+  offsets, stable finding codes, and explicit analysis limits. Schema v65
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -320,6 +320,11 @@ executable cells, and input-dependent cycles or hangs.
   with each witness path. Schema v64 splits observed wrap counts into C, D, and
   simultaneous categories. The synthetic boundary state wraps both; the
   entry-reachable fixture has one D-only wrap before its truncated frontier.
+  Schema v65 separates non-cycle repeated-state merges from cycle-closing
+  repeats.
+  The 41-state fixture has 257 repeated edges and 255 exact merges, with both
+  shortest paths source-mapped for the first merge; the near-cap jump family has
+  zero merges despite 257 repeated edges.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact
@@ -364,7 +369,8 @@ executable cells, and input-dependent cycles or hangs.
   fetch/read/write/encryption context, exact bounded fetch-value lineage through
   loaded source, recurrence, and prior data-write evidence, explicit finite
   worklist closure/truncation evidence including a 41-state branch-merged
-  cycle path, mutation and planned/committed write
+  cycle path and source-mapped state-merge witness, mutation and
+  planned/committed write
   domains, source-linked worklist value maps with recurrence initial-memory
   baselines, final no-op partition/witnesses,
   evolved fetch/data-read witnesses with value-checked last-writer provenance,

@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v64` retains exact `entry_transition` through
+`malbolge-static-image/v65` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -315,7 +315,11 @@ Schema v64 decomposes the explored pointer-wrap total into exact code-pointer,
 data-pointer, and simultaneous-wrap transition counts. The canonical synthetic
 near-boundary state wraps both pointers; the entry-reachable fixture observes
 one D-only wrap and no C/simultaneous wrap before its explicit frontier
-truncation.
+truncation. Schema v65 classifies repeated-state edges that merge distinct entry
+paths separately from back-edges into the source path. The branch-merged
+41-state fixture has 257 repeated edges and 255 exact state merges. Its first
+merge records both shortest paths and source-maps them, while the near-cap jump
+family has zero state merges despite 257 cycle-closing repeated edges.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v64"
+_SCHEMA = "malbolge-static-image/v65"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -222,6 +222,9 @@ _MERGED_INPUT_CYCLE_SOURCE = b"".join(
 )
 _MERGED_INPUT_CYCLE_STATE_LIMIT = 591
 _MERGED_INPUT_CYCLE_PATH_LENGTH = 41
+_MERGED_INPUT_CYCLE_STATE_MERGES = 255
+_MERGED_INPUT_CYCLE_MERGE_SOURCE_POINTER = (2, 40)
+_MERGED_INPUT_CYCLE_MERGE_TARGET_POINTER = (3, 41)
 _OVER_CAP_INPUT_CYCLE_SOURCE = b"u'&%$#\"!~}|{zyxw"
 _OVER_CAP_EXPLORED_STATES = 3_840
 _OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION = 17
@@ -468,6 +471,13 @@ class _WorklistValueDomain(Protocol):
     values: tuple[int, ...]
 
 
+class _WorklistStateMergeWitness(Protocol):
+    source_state: _WorklistCycleState
+    source_entry_path: tuple[_WorklistCycleState, ...]
+    target_state: _WorklistCycleState
+    existing_target_entry_path: tuple[_WorklistCycleState, ...]
+
+
 class _WorklistCodeDataAliasWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -553,6 +563,15 @@ class _WorklistControlPathSourceContext(Protocol):
     initial_data_source_byte: int | None
 
 
+class _WorklistStateMergeSourceContext(Protocol):
+    source_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+    target_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+
+
 class _WorklistCodeDataAliasSourceContext(Protocol):
     address: int
     memory_value: int
@@ -586,6 +605,8 @@ class _WorklistAnalysis(Protocol):
     unique_states: int
     explored_states: int
     repeated_state_edges: int
+    explored_state_merge_transition_count: int
+    explored_state_merge_witness: _WorklistStateMergeWitness | None
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[_WorklistCycleState, ...]
     reachable_cycle_entry_path: tuple[_WorklistCycleState, ...]
@@ -731,6 +752,9 @@ class _Report(Protocol):
     bounded_continuations: tuple[_SecondTransition, ...]
     bounded_state_snapshots: tuple[_StateSnapshot, ...]
     bounded_worklist: _WorklistAnalysis | None
+    bounded_worklist_state_merge_source_context: (
+        _WorklistStateMergeSourceContext | None
+    )
     bounded_worklist_code_data_alias_source_contexts: tuple[
         _WorklistCodeDataAliasSourceContext, ...
     ]
@@ -2997,6 +3021,9 @@ def test_report_worklist_proves_near_cap_input_cycle() -> None:
     worklist = report.bounded_worklist
     assert worklist is not None
     assert worklist.unique_states == _NEAR_CAP_INPUT_CYCLE_STATE_LIMIT
+    assert worklist.explored_state_merge_transition_count == 0
+    assert worklist.explored_state_merge_witness is None
+    assert report.bounded_worklist_state_merge_source_context is None
     assert worklist.reachable_cycle_detected
     assert worklist.maximum_first_seen_transition_index == len(
         _NEAR_CAP_INPUT_CYCLE_POINTER_PATH
@@ -3011,6 +3038,44 @@ def test_report_worklist_proves_near_cap_input_cycle() -> None:
     assert not worklist.truncated
 
 
+def _assert_branch_merge_evidence(
+    report: _Report,
+    worklist: _WorklistAnalysis,
+) -> None:
+    assert (
+        worklist.explored_state_merge_transition_count
+        == _MERGED_INPUT_CYCLE_STATE_MERGES
+    )
+    merge = worklist.explored_state_merge_witness
+    assert merge is not None
+    source_pointer = (
+        merge.source_state.code_pointer,
+        merge.source_state.data_pointer,
+    )
+    target_pointer = (
+        merge.target_state.code_pointer,
+        merge.target_state.data_pointer,
+    )
+    assert source_pointer == _MERGED_INPUT_CYCLE_MERGE_SOURCE_POINTER
+    assert target_pointer == _MERGED_INPUT_CYCLE_MERGE_TARGET_POINTER
+    source_context = report.bounded_worklist_state_merge_source_context
+    assert source_context is not None
+    source_path = source_context.source_entry_path_source_map
+    target_path = source_context.target_entry_path_source_map
+    assert tuple(item.code_pointer for item in source_path) == (0, 1, 2)
+    assert tuple(item.data_pointer for item in source_path) == (0, 1, 40)
+    assert tuple(item.code_pointer for item in target_path) == (0, 1, 2, 3)
+    assert tuple(item.data_pointer for item in target_path) == (0, 1, 40, 41)
+    assert (
+        source_path[-1].data_source_position
+        == _MERGED_INPUT_CYCLE_MERGE_SOURCE_POINTER[1]
+    )
+    assert (
+        target_path[-1].data_source_position
+        == _MERGED_INPUT_CYCLE_MERGE_TARGET_POINTER[1]
+    )
+
+
 def test_report_worklist_proves_branch_merged_deeper_cycle() -> None:
     """Public worklist closes a 41-state input-dependent cycle path."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -3021,6 +3086,7 @@ def test_report_worklist_proves_branch_merged_deeper_cycle() -> None:
     assert worklist is not None
     assert worklist.unique_states == _MERGED_INPUT_CYCLE_STATE_LIMIT
     assert worklist.input_branch_points == 1
+    _assert_branch_merge_evidence(report, worklist)
     assert worklist.reachable_cycle_detected
     path = worklist.reachable_cycle_entry_path
     assert len(path) == _MERGED_INPUT_CYCLE_PATH_LENGTH

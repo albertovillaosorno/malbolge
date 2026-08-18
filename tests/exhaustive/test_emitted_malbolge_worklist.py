@@ -111,6 +111,9 @@ _MERGED_INPUT_CYCLE_SOURCE = tuple(
 _MERGED_INPUT_CYCLE_STATE_LIMIT = 591
 _MERGED_INPUT_CYCLE_PATH_LENGTH = 41
 _MERGED_INPUT_CYCLE_REPEATED_EDGES = 257
+_MERGED_INPUT_CYCLE_STATE_MERGES = 255
+_MERGED_INPUT_CYCLE_MERGE_SOURCE_POINTER = (2, 40)
+_MERGED_INPUT_CYCLE_MERGE_TARGET_POINTER = (3, 41)
 _OVER_CAP_INPUT_CYCLE_SOURCE = tuple(b"u'&%$#\"!~}|{zyxw")
 _MAX_WORKLIST_STATE_LIMIT = 4_096
 _OVER_CAP_EXPLORED_STATES = 3_840
@@ -302,6 +305,13 @@ class _WorklistValueDomain(Protocol):
     values: tuple[int, ...]
 
 
+class _WorklistStateMergeWitness(Protocol):
+    source_state: _WorklistCycleState
+    source_entry_path: tuple[_WorklistCycleState, ...]
+    target_state: _WorklistCycleState
+    existing_target_entry_path: tuple[_WorklistCycleState, ...]
+
+
 class _WorklistCodeDataAliasWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -351,6 +361,8 @@ class _WorklistAnalysis(Protocol):
     unique_states: int
     explored_states: int
     repeated_state_edges: int
+    explored_state_merge_transition_count: int
+    explored_state_merge_witness: _WorklistStateMergeWitness | None
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[_WorklistCycleState, ...]
     reachable_cycle_entry_path: tuple[_WorklistCycleState, ...]
@@ -965,6 +977,8 @@ def test_near_cap_input_dependent_jump_chain_closes_exact_cycle() -> None:
     )
     assert result.unique_states == _NEAR_CAP_INPUT_CYCLE_STATE_LIMIT
     assert result.explored_states == _NEAR_CAP_INPUT_CYCLE_STATE_LIMIT
+    assert result.explored_state_merge_transition_count == 0
+    assert result.explored_state_merge_witness is None
     assert result.reachable_cycle_detected
     assert result.maximum_first_seen_transition_index == len(
         _NEAR_CAP_INPUT_CYCLE_POINTER_PATH
@@ -991,6 +1005,24 @@ def test_input_branch_merge_closes_deeper_cycle_with_small_graph() -> None:
     assert result.explored_states == _MERGED_INPUT_CYCLE_STATE_LIMIT
     assert result.input_branch_points == 1
     assert result.repeated_state_edges == _MERGED_INPUT_CYCLE_REPEATED_EDGES
+    assert (
+        result.explored_state_merge_transition_count
+        == _MERGED_INPUT_CYCLE_STATE_MERGES
+    )
+    merge = result.explored_state_merge_witness
+    assert merge is not None
+    source_pointer = (
+        merge.source_state.code_pointer,
+        merge.source_state.data_pointer,
+    )
+    target_pointer = (
+        merge.target_state.code_pointer,
+        merge.target_state.data_pointer,
+    )
+    assert source_pointer == _MERGED_INPUT_CYCLE_MERGE_SOURCE_POINTER
+    assert target_pointer == _MERGED_INPUT_CYCLE_MERGE_TARGET_POINTER
+    assert merge.source_entry_path[-1] == merge.source_state
+    assert merge.existing_target_entry_path[-1] == merge.target_state
     assert result.maximum_first_seen_transition_index == (
         _MERGED_INPUT_CYCLE_PATH_LENGTH
     )

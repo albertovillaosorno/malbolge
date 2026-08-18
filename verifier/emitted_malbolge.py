@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v64"
+_SCHEMA: Final = "malbolge-static-image/v65"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -230,6 +230,18 @@ class BoundedWorklistControlPathSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistStateMergeSourceContext:
+    """Source maps for the first exact non-cycle repeated-state merge edge."""
+
+    source_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+    target_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistCodeDataAliasSourceContext:
     """Source-linked first exact C/D alias witness for one address."""
 
@@ -284,6 +296,9 @@ class StaticImageReport:
     bounded_continuations: tuple[prefix_transfer.SecondTransition, ...]
     bounded_state_snapshots: tuple[prefix_transfer.StateSnapshot, ...]
     bounded_worklist: worklist_transfer.WorklistAnalysis | None
+    bounded_worklist_state_merge_source_context: (
+        BoundedWorklistStateMergeSourceContext | None
+    )
     bounded_worklist_code_data_alias_source_contexts: tuple[
         BoundedWorklistCodeDataAliasSourceContext, ...
     ]
@@ -1257,6 +1272,23 @@ def _worklist_control_path_source_map(
     return tuple(contexts)
 
 
+def _worklist_state_merge_source_context(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> BoundedWorklistStateMergeSourceContext | None:
+    if worklist is None or worklist.explored_state_merge_witness is None:
+        return None
+    witness = worklist.explored_state_merge_witness
+    return BoundedWorklistStateMergeSourceContext(
+        source_entry_path_source_map=_worklist_control_path_source_map(
+            witness.source_entry_path, cells
+        ),
+        target_entry_path_source_map=_worklist_control_path_source_map(
+            witness.existing_target_entry_path, cells
+        ),
+    )
+
+
 def _worklist_code_data_alias_source_contexts(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -1429,6 +1461,9 @@ def analyze_source(
         bounded_continuations=prefix.continuations,
         bounded_state_snapshots=prefix.state_snapshots,
         bounded_worklist=worklist,
+        bounded_worklist_state_merge_source_context=(
+            _worklist_state_merge_source_context(worklist, prefix.cells)
+        ),
         bounded_worklist_code_data_alias_source_contexts=(
             _worklist_code_data_alias_source_contexts(worklist, prefix.cells)
         ),

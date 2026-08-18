@@ -111,6 +111,16 @@ class WorklistValueDomain:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistStateMergeWitness:
+    """First exact repeated edge that merges distinct entry paths."""
+
+    source_state: WorklistCycleState
+    source_entry_path: tuple[WorklistCycleState, ...]
+    target_state: WorklistCycleState
+    existing_target_entry_path: tuple[WorklistCycleState, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistCodeDataAliasWitness:
     """First exact entry-reachable C/D alias state for one address."""
 
@@ -177,6 +187,8 @@ class WorklistAnalysis:
     unique_states: int
     explored_states: int
     repeated_state_edges: int
+    explored_state_merge_transition_count: int
+    explored_state_merge_witness: WorklistStateMergeWitness | None
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[WorklistCycleState, ...]
     reachable_cycle_entry_path: tuple[WorklistCycleState, ...]
@@ -961,6 +973,8 @@ class _Explorer:
     evolved_fetch_transitions: int = 0
     evolved_data_read_transitions: int = 0
     repeated_edges: int = 0
+    state_merge_transitions: int = 0
+    state_merge_witness: WorklistStateMergeWitness | None = None
     input_branch_points: int = 0
     wraparound_transitions: int = 0
     code_pointer_wrap_transitions: int = 0
@@ -1040,6 +1054,8 @@ class _Explorer:
             unique_states=len(self.seen),
             explored_states=self.explored,
             repeated_state_edges=self.repeated_edges,
+            explored_state_merge_transition_count=self.state_merge_transitions,
+            explored_state_merge_witness=self.state_merge_witness,
             reachable_cycle_detected=has_cycle,
             reachable_cycle_witness=tuple(
                 _cycle_state(key) for key in cycle_keys
@@ -1235,6 +1251,40 @@ class _Explorer:
             raise AssertionError(message)
         return path
 
+    def _record_state_merge(
+        self,
+        source_key: _StateKey,
+        target_key: _StateKey,
+    ) -> None:
+        source_path = _known_graph_shortest_path(
+            self.edges,
+            self.seen,
+            start=_INITIAL_STATE_KEY,
+            target=source_key,
+        )
+        if target_key in source_path:
+            return
+        self.state_merge_transitions += 1
+        if self.state_merge_witness is not None:
+            return
+        target_path = _known_graph_shortest_path(
+            self.edges,
+            self.seen,
+            start=_INITIAL_STATE_KEY,
+            target=target_key,
+        )
+        if not source_path or not target_path:
+            message = "state merge lost an exact known entry path"
+            raise AssertionError(message)
+        self.state_merge_witness = WorklistStateMergeWitness(
+            source_state=_cycle_state(source_key),
+            source_entry_path=tuple(_cycle_state(item) for item in source_path),
+            target_state=_cycle_state(target_key),
+            existing_target_entry_path=tuple(
+                _cycle_state(item) for item in target_path
+            ),
+        )
+
     def _admit_successors(
         self,
         source: _ReachabilityNode,
@@ -1245,6 +1295,7 @@ class _Explorer:
         for index, successor in enumerate(successors):
             key = _node_key(successor)
             if key in self.seen:
+                self._record_state_merge(source_key, key)
                 source_edges.add(key)
                 self.repeated_edges += 1
                 continue
