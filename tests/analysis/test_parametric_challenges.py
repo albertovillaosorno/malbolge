@@ -50,6 +50,7 @@ from typing import cast
 import pytest
 from scripts.validate import c_abi_source
 from scripts.validate import c_frontend_build
+from scripts.validate import c_frontend_build_linux
 from scripts.validate import c_libc_source
 from scripts.validate import target_profile
 
@@ -99,6 +100,8 @@ _CLANG = _ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
 _FRONTEND_RESOURCE_DIR = _ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
 _GUEST_INCLUDE = _ROOT / "src/runtime/guest-c-library/contract/include"
 _WINDOWS_OS_NAME = "nt"
+_WINDOWS_PLATFORM = "windows-x86_64"
+_LINUX_PLATFORM = "linux-x86_64"
 _ARITHMETIC_DAG_FAMILY = "arithmetic-dag"
 _BRANCH_MIX_FAMILY = "branch-mix"
 _BINARY_TREE_FAMILY = "binary-tree"
@@ -114,6 +117,27 @@ _GRID_ACCUMULATE_FAMILY = "grid-accumulate"
 _LAYOUT_CHAIN_FAMILY = "layout-chain"
 _TERNARY_FOLD_FAMILY = "ternary-fold"
 _NESTED_STATE_FAMILY = "nested-state"
+
+
+def _linux_frontend_build_tools_available() -> bool:
+    try:
+        _ = c_frontend_build_linux.linux_build_tools()
+    except c_frontend_build_linux.LinuxFrontendBuildError:
+        return False
+    return True
+
+
+def _normalized_frontend_available() -> bool:
+    if c_frontend_build.EXECUTABLE.is_file():
+        return True
+    if c_frontend_build.HOST_PLATFORM_ID == _WINDOWS_PLATFORM:
+        return True
+    return (
+        c_frontend_build.HOST_PLATFORM_ID == _LINUX_PLATFORM
+        and _linux_frontend_build_tools_available()
+    )
+
+
 _FAMILIES = (
     _ARITHMETIC_DAG_FAMILY,
     _BRANCH_MIX_FAMILY,
@@ -591,8 +615,8 @@ def test_generated_source_is_admitted_by_current_c_profile(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME,
-    reason="reviewed normalized C frontend is Windows x86-64",
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
 )
 def test_branch_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
@@ -629,8 +653,8 @@ def test_branch_family_is_admitted_by_normalized_frontend(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME,
-    reason="reviewed normalized C frontend is Windows x86-64",
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
 )
 def test_call_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
@@ -667,8 +691,8 @@ def test_call_family_is_admitted_by_normalized_frontend(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME,
-    reason="reviewed normalized C frontend is Windows x86-64",
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
 )
 def test_memory_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
@@ -706,8 +730,8 @@ def test_memory_family_is_admitted_by_normalized_frontend(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME,
-    reason="reviewed normalized C frontend is Windows x86-64",
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
 )
 def test_pointer_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
@@ -754,8 +778,8 @@ def test_pointer_family_is_admitted_by_normalized_frontend(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME,
-    reason="reviewed normalized C frontend is Windows x86-64",
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
 )
 def test_stream_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
@@ -796,8 +820,8 @@ def test_stream_family_is_admitted_by_normalized_frontend(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME,
-    reason="reviewed normalized C frontend is Windows x86-64",
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
 )
 def test_graph_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
@@ -835,8 +859,8 @@ def test_graph_family_is_admitted_by_normalized_frontend(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME,
-    reason="reviewed normalized C frontend is Windows x86-64",
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
 )
 def test_layout_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
@@ -877,8 +901,8 @@ def test_layout_family_is_admitted_by_normalized_frontend(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME,
-    reason="reviewed normalized C frontend is Windows x86-64",
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
 )
 def test_ternary_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
@@ -918,8 +942,8 @@ def test_ternary_family_is_admitted_by_normalized_frontend(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME,
-    reason="reviewed normalized C frontend is Windows x86-64",
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
 )
 def test_sort_reduce_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
@@ -963,8 +987,8 @@ def test_sort_reduce_family_is_admitted_by_normalized_frontend(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME,
-    reason="reviewed normalized C frontend is Windows x86-64",
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
 )
 def test_binary_tree_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
@@ -1004,8 +1028,8 @@ def test_binary_tree_family_is_admitted_by_normalized_frontend(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME,
-    reason="reviewed normalized C frontend is Windows x86-64",
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
 )
 def test_grid_accumulate_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,
@@ -1045,8 +1069,8 @@ def test_grid_accumulate_family_is_admitted_by_normalized_frontend(
 
 
 @pytest.mark.skipif(
-    os.name != _WINDOWS_OS_NAME,
-    reason="reviewed normalized C frontend is Windows x86-64",
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
 )
 def test_nested_state_family_is_admitted_by_normalized_frontend(
     tmp_path: Path,

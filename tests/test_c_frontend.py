@@ -25,9 +25,9 @@
 # - Description:
 #   - Proves source IDs, hashes, locations, constants, types, and failures.
 # - Usage:
-#   - Collected by the repository Python test suite on Windows.
+#   - Collected by the repository Python suite on supported native hosts.
 # - Defaults:
-#   - Other hosts skip because the reviewed LLVM development asset is Windows.
+#   - Unsupported hosts skip; supported hosts use exact local LLVM inputs.
 #
 
 """End-to-end tests for the exact normalized C frontend."""
@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from typing import Final
@@ -45,6 +44,8 @@ from typing import cast
 import pytest
 from scripts.repository_root import repository_root
 from scripts.validate import c_frontend_build
+from scripts.validate import c_frontend_build_linux
+from scripts.validate import tidy_toolchain
 
 ROOT: Final = repository_root(Path(__file__))
 FIXTURES: Final = ROOT / "tests" / "compiler" / "c-frontend"
@@ -211,9 +212,30 @@ EXPECTED_CONTRACT_KEYS: Final = frozenset(
     }
 )
 
+
+def _linux_build_tools_available() -> bool:
+    try:
+        _ = c_frontend_build_linux.linux_build_tools()
+    except c_frontend_build_linux.LinuxFrontendBuildError:
+        return False
+    return True
+
+
+def _frontend_available() -> bool:
+    artifact_ready = c_frontend_build.EXECUTABLE.is_file()
+    windows_ready = (
+        c_frontend_build.HOST_PLATFORM_ID == tidy_toolchain.WINDOWS_PLATFORM
+    )
+    linux_ready = (
+        c_frontend_build.HOST_PLATFORM_ID == tidy_toolchain.LINUX_PLATFORM
+        and _linux_build_tools_available()
+    )
+    return artifact_ready or windows_ready or linux_ready
+
+
 pytestmark = pytest.mark.skipif(
-    os.name != WINDOWS_OS_NAME,
-    reason="reviewed Clang frontend development kit is Windows x86-64",
+    not _frontend_available(),
+    reason="reviewed platform-native Clang frontend is unavailable",
 )
 
 

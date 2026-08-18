@@ -9,11 +9,11 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Reproducible Windows build of the pinned normalized C frontend executable.
+#   - Reproducible platform-native build of the normalized C frontend.
 # - Must-Not:
 #   - Download LLVM, edit extracted packages, or use ambient LLVM/C++ compilers.
 # - Allows:
-#   - Inputs: validated LLVM 22.1.8 roots and local Visual Studio build tools.
+#   - Inputs: validated LLVM 22.1.8 roots and platform-native build tools.
 #   - Outputs: ignored native build state and one canonical frontend executable.
 #   - Side effects: CMake/Ninja compilation under repository runtime roots only.
 # - Split-When:
@@ -23,7 +23,7 @@
 # - Summary:
 #   - Build and verify the exact Clang C frontend adapter.
 # - Description:
-#   - Reuses reviewed LLVM and Visual Studio identity from native analysis.
+#   - Reuses reviewed LLVM identity and platform-native build boundaries.
 # - Usage:
 #   - Run as `python -m scripts.validate.c_frontend_build`.
 # - Defaults:
@@ -46,6 +46,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(composition_root))
 
 from scripts.repository_root import repository_root
+from scripts.validate import c_frontend_build_linux
 from scripts.validate import tidy_build
 from scripts.validate import tidy_toolchain
 
@@ -57,7 +58,13 @@ BUILD_ROOT: Final = (
 OUTPUT_ROOT: Final = (
     ROOT / ".dependencies" / "compiler-c-frontend" / tidy_toolchain.LLVM_VERSION
 )
-EXECUTABLE: Final = OUTPUT_ROOT / "bin" / "malbolge-c-frontend.exe"
+HOST_PLATFORM_ID: Final = tidy_toolchain.host_platform_id()
+EXECUTABLE_NAME: Final = (
+    "malbolge-c-frontend.exe"
+    if HOST_PLATFORM_ID == tidy_toolchain.WINDOWS_PLATFORM
+    else "malbolge-c-frontend"
+)
+EXECUTABLE: Final = OUTPUT_ROOT / "bin" / EXECUTABLE_NAME
 
 
 class FrontendBuildError(RuntimeError):
@@ -135,10 +142,7 @@ def _write_build_script(
     return script
 
 
-def build() -> None:
-    """Build and verify the exact native frontend executable."""
-    identity = tidy_toolchain.load_identity()
-    tidy_toolchain.validate_installation(identity)
+def _build_windows(identity: tidy_toolchain.ToolchainIdentity) -> None:
     tools = tidy_build.visual_studio_tools()
     script = _write_build_script(tools, identity)
     windows = Path(os.environ.get("SYSTEMROOT", "C:/Windows"))
@@ -146,6 +150,18 @@ def build() -> None:
     completed = _run([str(command_shell), "/d", "/c", str(script.resolve())])
     if completed.returncode != 0:
         _fail(f"C frontend build failed with status {completed.returncode}")
+
+
+def build() -> None:
+    """Build and verify the exact native frontend executable."""
+    identity = tidy_toolchain.load_identity(platform_id=HOST_PLATFORM_ID)
+    tidy_toolchain.validate_installation(identity)
+    if identity.platform_id == tidy_toolchain.LINUX_PLATFORM:
+        c_frontend_build_linux.build(identity, output_root=OUTPUT_ROOT)
+    elif identity.platform_id == tidy_toolchain.WINDOWS_PLATFORM:
+        _build_windows(identity)
+    else:
+        _fail(f"unsupported C frontend build platform: {identity.platform_id}")
     if not EXECUTABLE.is_file():
         _fail(f"C frontend executable missing: {EXECUTABLE}")
     version = _run([str(EXECUTABLE), "--version"], capture=True)
@@ -165,6 +181,7 @@ def main() -> int:
         build()
     except (
         FrontendBuildError,
+        c_frontend_build_linux.LinuxFrontendBuildError,
         tidy_build.BuildError,
         tidy_toolchain.ToolchainError,
     ) as error:

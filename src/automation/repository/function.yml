@@ -176,6 +176,11 @@ parts:
     kind: composition
     language: python
     responsibility: Build the Linux clang-tidy plugin from exact local LLVM.
+  - id: part-0029
+    path: composition/scripts/validate/c_frontend_build_linux.py
+    kind: composition
+    language: python
+    responsibility: Build the Linux normalized C frontend from exact local LLVM.
 projects: []
 tests: []
 graph:
