@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v42"
+_SCHEMA = "malbolge-static-image/v43"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -147,6 +147,10 @@ _WORKLIST_WRAP_LIMIT = (
 )
 _WORKLIST_ALIAS_LIMIT = (
     "code-data-aliasing:16-transition-prefix-and-"
+    "258-state-worklist-closed-explored-only"
+)
+_WORKLIST_DATAFLOW_LIMIT = (
+    "dataflow:16-transition-prefix-and-"
     "258-state-worklist-closed-explored-only"
 )
 _WORKLIST_MUTATION_LIMIT = (
@@ -2027,10 +2031,13 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     assert worklist.closed_all_paths_halt is False
     _assert_terminal_witness_object(worklist)
     assert not worklist.truncated
-    assert _WORKLIST_CLOSED_LIMIT in report.analysis_limits
-    assert _WORKLIST_ALIAS_LIMIT in report.analysis_limits
-    assert _WORKLIST_MUTATION_LIMIT in report.analysis_limits
-    assert _WORKLIST_WRAP_LIMIT in report.analysis_limits
+    assert {
+        _WORKLIST_CLOSED_LIMIT,
+        _WORKLIST_ALIAS_LIMIT,
+        _WORKLIST_DATAFLOW_LIMIT,
+        _WORKLIST_MUTATION_LIMIT,
+        _WORKLIST_WRAP_LIMIT,
+    }.issubset(report.analysis_limits)
 
 
 def _assert_entry_wrap_mutation_context(

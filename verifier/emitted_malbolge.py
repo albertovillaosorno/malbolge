@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v42"
+_SCHEMA: Final = "malbolge-static-image/v43"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -384,7 +384,7 @@ def _analysis_limits(
             "code-data-aliasing", transition_limit, worklist
         ),
         f"control-flow-reachability:{prefix}",
-        f"dataflow:{prefix}",
+        _explored_worklist_limit_label("dataflow", transition_limit, worklist),
         _worklist_limit_label(worklist),
         _explored_worklist_limit_label(
             "self-modification", transition_limit, worklist

@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v42` retains exact `entry_transition` through
+`malbolge-static-image/v43` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -201,7 +201,10 @@ address belongs to the source image. It also records whether the initial source
 byte occurs in the observed pre-write domain. Loaded address 40 in the 41-word
 fixture reports true; recurrence address 41 carries null source coordinates and
 a null initial-byte match result. This preserves the loaded-versus-recurrence
-source-map boundary while exposing bounded value-flow evidence.
+source-map boundary while exposing bounded value-flow evidence. Schema v43
+updates the `dataflow` analysis-limit identity to include the requested worklist
+size, closed/truncated status, and explored-only scope when worklist evidence is
+present. Prefix-only analysis keeps its existing identity unchanged.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema
