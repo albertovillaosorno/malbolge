@@ -61,6 +61,15 @@ _INPUT_HALT_SOURCE = (117, 80)
 _INPUT_CRAZY_SOURCE = (117, 61)
 _DOUBLE_INPUT_HALT_SOURCE = (117, 116, 79)
 _DOUBLE_INPUT_FIXED_CYCLE_SOURCE = (117, 116)
+_LONG_INPUT_CYCLE_SOURCE = (117, 39, 38, 37)
+_LONG_INPUT_CYCLE_STATE_LIMIT = 1_029
+_LONG_INPUT_CYCLE_POINTER_PATH = (
+    (0, 0),
+    (1, 1),
+    (2, 40),
+    (3, 29_490),
+    (4, 29_489),
+)
 _RECURRENCE_READ_SOURCE = tuple(b"('")
 _RECURRENCE_STATE_LIMIT = 16
 _RECURRENCE_HIGHEST_ADDRESS = 41
@@ -457,6 +466,27 @@ def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:
     _assert_fixed_cycle_closed_recurrence(result)
     assert result.terminal_status_counts == ()
     assert not result.truncated
+
+
+def test_long_input_dependent_jump_chain_reaches_exact_cycle() -> None:
+    """One input plus three jumps reaches a cycle after five exact states."""
+    result = worklist.analyze_reachability(
+        _LONG_INPUT_CYCLE_SOURCE,
+        maximum_states=_LONG_INPUT_CYCLE_STATE_LIMIT,
+    )
+    assert result.unique_states == _LONG_INPUT_CYCLE_STATE_LIMIT
+    assert result.explored_states == _LONG_INPUT_CYCLE_STATE_LIMIT
+    assert result.reachable_cycle_detected
+    assert not result.truncated
+    path = result.reachable_cycle_entry_path
+    assert tuple(
+        (state.code_pointer, state.data_pointer) for state in path
+    ) == _LONG_INPUT_CYCLE_POINTER_PATH
+    assert path[-1] == result.reachable_cycle_witness[0]
+    recurrent = result.closed_recurrent_entry_path
+    assert recurrent is not None
+    assert recurrent == path
+    assert result.closed_recurrent_component_count == _INPUT_VALUE_COUNT
 
 
 def test_input_domain_becomes_eof_only_after_eof() -> None:

@@ -98,6 +98,15 @@ _WORKLIST_WRAP_LIMIT = (
 _INPUT_CRAZY_SOURCE = bytes((117, 61))
 _INPUT_HALT_SOURCE = bytes((117, 80))
 _DOUBLE_INPUT_CYCLE_SOURCE = bytes((117, 116))
+_LONG_INPUT_CYCLE_SOURCE = bytes((117, 39, 38, 37))
+_LONG_INPUT_CYCLE_STATE_LIMIT = 1_029
+_LONG_INPUT_CYCLE_POINTER_PATH = (
+    (0, 0),
+    (1, 1),
+    (2, 40),
+    (3, 29_490),
+    (4, 29_489),
+)
 _DOUBLE_INPUT_CYCLE_STATE_LIMIT = 515
 _FIXED_CYCLE_POINTER = 2
 _FIXED_CYCLE_ENCRYPTED_ZERO = 111
@@ -1781,6 +1790,24 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     assert not worklist.truncated
     assert _WORKLIST_CLOSED_LIMIT in report.analysis_limits
     assert _WORKLIST_WRAP_LIMIT in report.analysis_limits
+
+
+def test_report_worklist_proves_long_input_dependent_cycle() -> None:
+    """Public worklist evidence reaches a cycle after three post-input jumps."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _LONG_INPUT_CYCLE_SOURCE,
+        worklist_state_limit=_LONG_INPUT_CYCLE_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _LONG_INPUT_CYCLE_STATE_LIMIT
+    assert worklist.reachable_cycle_detected
+    path = worklist.reachable_cycle_entry_path
+    assert tuple(
+        (state.code_pointer, state.data_pointer) for state in path
+    ) == _LONG_INPUT_CYCLE_POINTER_PATH
+    assert path[-1] == worklist.reachable_cycle_witness[0]
+    assert not worklist.truncated
 
 
 def test_report_worklist_truncation_is_explicit() -> None:
