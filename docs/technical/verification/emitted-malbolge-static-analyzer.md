@@ -51,7 +51,10 @@ that the selected finite trace established no exact concrete repeat. It does
 not prove that longer or input-dependent execution is acyclic.
 Schema v25 adds opt-in `bounded_worklist` evidence under an explicit
 `worklist_state_limit` from 1 through 4,096, also exposed as
-`--worklist-state-limit N`. Input branches cover all 256 byte values plus EOF;
+`--worklist-state-limit N`. The worklist transfer owns and enforces that
+ceiling; the public analyzer reuses it so direct calls cannot bypass the reviewed
+bound.
+Input branches cover all 256 byte values plus EOF;
 a separate EOF-state bit prevents later ordinary bytes after EOF. Canonical
 `(C,D,A,memory,EOF-state)` nodes are explored FIFO and deduplicated. The
 immutable 59,049-word initial image is expanded once per requested worklist and

@@ -136,7 +136,9 @@ _SCC_COMPONENT_COUNT = 3
 _SCC_CYCLIC_COMPONENT_COUNT = 2
 _SCC_CYCLIC_STATE_COUNT = 3
 _SCC_LARGEST_CYCLIC_COMPONENT_STATES = 2
-_STATE_LIMIT_MESSAGE = "worklist state limit must be a positive exact integer"
+_STATE_LIMIT_MESSAGE = (
+    "worklist state limit must be an exact integer from 1 through 4096"
+)
 _ADMISSION_MESSAGE = "worklist source is not an admitted classic image"
 _ROOT = Path(__file__).resolve().parents[2]
 _WORKLIST_MODULE = _ROOT / "verifier" / "emitted_malbolge_worklist.py"
@@ -895,7 +897,7 @@ def test_eof_branch_reaches_exact_pointer_wrap_from_entry() -> None:
 
 def test_worklist_state_limit_is_fail_closed() -> None:
     """State budgets accept positive exact integers only."""
-    for invalid in (0, -1, True):
+    for invalid in (4_097, 0, -1, True):
         with pytest.raises(ValueError, match=_STATE_LIMIT_MESSAGE):
             _ = worklist.analyze_reachability(
                 _INPUT_HALT_SOURCE,

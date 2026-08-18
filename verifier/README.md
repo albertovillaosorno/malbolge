@@ -56,7 +56,9 @@ sparse evolved-memory overrides; input-derived unknown `A` remains null rather
 than being guessed. A null cycle field means only that this selected finite
 prefix did not establish an exact concrete repeat; it does not prove a longer
 or input-dependent cycle absent. An optional exact-state worklist can be
-requested with `--worklist-state-limit N`, where `N` is 1 through 4,096. It
+requested with `--worklist-state-limit N`, where `N` is 1 through 4,096. The
+direct worklist transfer API enforces the same reviewed ceiling, and the public
+analyzer reuses that transfer-owned limit rather than duplicating policy. It
 branches historical input into all 256 byte values plus EOF, keeps EOF sticky
 for later reads, deduplicates `(C,D,A,memory,EOF-state)`, and reports either
 closed reachability or explicit frontier truncation in `bounded_worklist`. The

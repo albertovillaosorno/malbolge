@@ -81,7 +81,7 @@ _DEFAULT_TOTAL_TRANSITION_LIMIT: Final = 16
 _MAX_TOTAL_TRANSITION_LIMIT: Final = 256
 _TRANSITION_LIMIT_OPTION: Final = "--transition-limit"
 _WORKLIST_LIMIT_OPTION: Final = "--worklist-state-limit"
-_MAX_WORKLIST_STATE_LIMIT: Final = 4_096
+_MAX_WORKLIST_STATE_LIMIT: Final = worklist_transfer.MAXIMUM_STATE_LIMIT
 
 
 @dataclass(frozen=True, slots=True)

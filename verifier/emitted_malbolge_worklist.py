@@ -47,6 +47,8 @@ else:
     import emitted_malbolge_classic as classic
     import emitted_malbolge_prefix as prefix_transfer
 
+MAXIMUM_STATE_LIMIT: Final = 4_096
+
 _ALLOWED_INSTRUCTIONS: Final = frozenset(b"ji*p</vo")
 _INPUT_OPCODE: Final = ord("/")
 _INPUT_BYTES: Final = tuple(range(256))
@@ -165,9 +167,12 @@ class _ReachabilityNode:
 
 
 def _state_limit(value: object) -> int:
-    if type(value) is int and value > 0:
+    if type(value) is int and 1 <= value <= MAXIMUM_STATE_LIMIT:
         return value
-    message = "worklist state limit must be a positive exact integer"
+    message = (
+        "worklist state limit must be an exact integer from 1 through "
+        f"{MAXIMUM_STATE_LIMIT}"
+    )
     raise ValueError(message)
 
 

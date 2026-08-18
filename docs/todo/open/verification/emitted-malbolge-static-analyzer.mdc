@@ -109,8 +109,10 @@ executable cells, and input-dependent cycles or hangs.
   acyclic. Public CLI acceptance rejects any published exact-cycle certificate;
   white-box exact-state tests cover canonical memory identity and certificate
   fields. Schema v25 also adds an opt-in exact worklist under a reviewed
-  1-through-4,096 unique-state cap. It branches input across all 256 byte values
-  plus EOF, keeps EOF sticky, deduplicates canonical
+  1-through-4,096 unique-state cap. The transfer module owns and enforces that
+  ceiling, and the public analyzer reuses it so direct calls cannot bypass the
+  reviewed bound. It branches input across all 256 byte values plus EOF, keeps
+  EOF sticky, deduplicates canonical
   `(C,D,A,memory,EOF-state)` nodes, and reports closed versus truncated graph
   evidence. The worklist expands immutable initial memory once per request and
   reuses it beneath sparse evolved-memory overrides, preventing recurrence reads
