@@ -80,6 +80,14 @@ def test_shared_notation_is_not_a_standalone_document() -> None:
     assert validator.DOCUMENT_MARKER not in text
 
 
+def test_math_documents_do_not_double_escape_control_words() -> None:
+    """LaTeX commands remain commands rather than escaped line-break text."""
+    forbidden = (r"\\begin", r"\\binom")
+    for source in validator.document_sources():
+        text = source.read_text(encoding="utf-8")
+        assert not any(token in text for token in forbidden), source
+
+
 def test_build_outputs_are_cache_only_and_source_specific() -> None:
     """Map LaTeX artifacts beneath cache, never beside source."""
     for source in validator.document_sources():
