@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v37"
+_SCHEMA = "malbolge-static-image/v38"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -110,6 +110,16 @@ _LOADED_MUTATION_BYTE_OFFSET = 42
 _LOADED_MUTATION_SOURCE_BYTE = 122
 _LOADED_MUTATION_PREVIOUS_VALUE = 122
 _LOADED_MUTATION_RESULT_VALUE = 29_525
+_MULTI_MUTATION_SOURCE = (
+    b"u'<$$#>=<;:987654321NN"
+    b".-,+*)('&%$#\"!~}|{z"
+)
+_MULTI_MUTATION_SOURCE_WITH_WHITESPACE = b" \n" + _MULTI_MUTATION_SOURCE
+_MULTI_MUTATION_ADDRESSES = (40, 41)
+_MULTI_MUTATION_LOADED_ADDRESS = 40
+_MULTI_MUTATION_LOADED_BYTE_OFFSET = 42
+_MULTI_MUTATION_LOADED_SOURCE_BYTE = 122
+_MULTI_MUTATION_RECURRENCE_ADDRESS = 41
 _ENTRY_WRAP_WORKLIST_STATE_LIMIT = 1_544
 _ENTRY_WRAP_EXPLORED_STATES = 1_288
 _WORKLIST_CLOSED_LIMIT = (
@@ -137,7 +147,7 @@ _ENTRY_WRAP_LIMIT = (
 _WORKLIST_MUTATION_SOURCE_MAP_LIMIT = (
     "source-map-context:16-transition-memory-access-and-"
     "fetch-data-read-and-encryption-input-value-lineage-and-"
-    "1544-state-worklist-truncated-data-mutation-witness"
+    "1544-state-worklist-truncated-data-mutation-evidence"
 )
 _INPUT_CRAZY_SOURCE = bytes((117, 61))
 _INPUT_HALT_SOURCE = bytes((117, 80))
@@ -423,6 +433,13 @@ class _WorklistDataMutationSourceContext(Protocol):
     previous_value_matches_initial_source: bool | None
 
 
+class _WorklistMutationAddressSourceContext(Protocol):
+    address: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+
+
 class _WorklistAnalysis(Protocol):
     state_limit: int
     unique_states: int
@@ -541,6 +558,9 @@ class _Report(Protocol):
     bounded_worklist_data_mutation_source_context: (
         _WorklistDataMutationSourceContext | None
     )
+    bounded_worklist_effective_data_mutation_source_map: tuple[
+        _WorklistMutationAddressSourceContext, ...
+    ]
     bounded_exact_cycle: _ExactCycleCertificate | None
     bounded_memory_requirement: _BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[_BoundedFetchSourceContext, ...]
@@ -1944,6 +1964,7 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     assert worklist.explored_wraparound_witness is None
     _assert_worklist_mutation_evidence(worklist)
     assert report.bounded_worklist_data_mutation_source_context is None
+    assert report.bounded_worklist_effective_data_mutation_source_map == ()
     assert worklist.terminal_status_counts == (
         ("rejected-invalid-self-encryption", _WORKLIST_INPUT_VALUE_COUNT),
     )
@@ -2033,6 +2054,37 @@ def test_worklist_data_mutation_maps_back_to_loaded_source_byte() -> None:
     assert context.source_byte_offset == _LOADED_MUTATION_BYTE_OFFSET
     assert context.initial_source_byte == _LOADED_MUTATION_SOURCE_BYTE
     assert context.previous_value_matches_initial_source is True
+    aggregate = report.bounded_worklist_effective_data_mutation_source_map
+    assert len(aggregate) == 1
+    assert aggregate[0].address == _LOADED_MUTATION_ADDRESS
+    assert aggregate[0].source_position == _LOADED_MUTATION_ADDRESS
+    assert aggregate[0].source_byte_offset == _LOADED_MUTATION_BYTE_OFFSET
+    assert aggregate[0].initial_source_byte == _LOADED_MUTATION_SOURCE_BYTE
+    assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
+
+
+def test_worklist_maps_every_effective_mutation_address() -> None:
+    """Aggregate source mapping preserves loaded versus recurrence addresses."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _MULTI_MUTATION_SOURCE_WITH_WHITESPACE,
+        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.explored_effective_data_mutation_addresses == (
+        _MULTI_MUTATION_ADDRESSES
+    )
+    contexts = report.bounded_worklist_effective_data_mutation_source_map
+    assert len(contexts) == len(_MULTI_MUTATION_ADDRESSES)
+    loaded, recurrence = contexts
+    assert loaded.address == _MULTI_MUTATION_LOADED_ADDRESS
+    assert loaded.source_position == _MULTI_MUTATION_LOADED_ADDRESS
+    assert loaded.source_byte_offset == _MULTI_MUTATION_LOADED_BYTE_OFFSET
+    assert loaded.initial_source_byte == _MULTI_MUTATION_LOADED_SOURCE_BYTE
+    assert recurrence.address == _MULTI_MUTATION_RECURRENCE_ADDRESS
+    assert recurrence.source_position is None
+    assert recurrence.source_byte_offset is None
+    assert recurrence.initial_source_byte is None
     assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
 
 

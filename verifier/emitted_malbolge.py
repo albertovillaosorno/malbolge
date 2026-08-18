@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v37"
+_SCHEMA: Final = "malbolge-static-image/v38"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -188,6 +188,16 @@ class BoundedWorklistDataMutationSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistMutationAddressSourceContext:
+    """Source-image coordinates for one worklist mutation address."""
+
+    address: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class StaticImageReport:
     """Bounded report that never implies dynamic guest execution."""
 
@@ -205,6 +215,9 @@ class StaticImageReport:
     bounded_worklist_data_mutation_source_context: (
         BoundedWorklistDataMutationSourceContext | None
     )
+    bounded_worklist_effective_data_mutation_source_map: tuple[
+        BoundedWorklistMutationAddressSourceContext, ...
+    ]
     bounded_exact_cycle: prefix_transfer.ExactCycleCertificate | None
     bounded_memory_requirement: BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[BoundedFetchSourceContext, ...]
@@ -318,7 +331,7 @@ def _source_map_limit_label(
         return prefix
     return (
         f"{prefix}-and-{worklist.state_limit}-state-worklist-"
-        f"{_worklist_status(worklist)}-data-mutation-witness"
+        f"{_worklist_status(worklist)}-data-mutation-evidence"
     )
 
 
@@ -977,6 +990,38 @@ def _worklist_data_mutation_source_context(
     )
 
 
+def _worklist_mutation_address_source_context(
+    address: int,
+    cells: tuple[InitialCell, ...],
+) -> BoundedWorklistMutationAddressSourceContext:
+    if address >= len(cells):
+        return BoundedWorklistMutationAddressSourceContext(
+            address=address,
+            source_position=None,
+            source_byte_offset=None,
+            initial_source_byte=None,
+        )
+    cell = cells[address]
+    return BoundedWorklistMutationAddressSourceContext(
+        address=address,
+        source_position=cell.position,
+        source_byte_offset=cell.byte_offset,
+        initial_source_byte=cell.source_byte,
+    )
+
+
+def _worklist_effective_data_mutation_source_map(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistMutationAddressSourceContext, ...]:
+    if worklist is None:
+        return ()
+    return tuple(
+        _worklist_mutation_address_source_context(address, cells)
+        for address in worklist.explored_effective_data_mutation_addresses
+    )
+
+
 def analyze_source(
     source: bytes,
     *,
@@ -1047,6 +1092,9 @@ def analyze_source(
         bounded_worklist=worklist,
         bounded_worklist_data_mutation_source_context=(
             _worklist_data_mutation_source_context(worklist, prefix.cells)
+        ),
+        bounded_worklist_effective_data_mutation_source_map=(
+            _worklist_effective_data_mutation_source_map(worklist, prefix.cells)
         ),
         bounded_exact_cycle=prefix.exact_cycle,
         bounded_memory_requirement=_bounded_memory_requirement(
