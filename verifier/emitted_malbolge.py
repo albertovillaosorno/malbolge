@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v44"
+_SCHEMA: Final = "malbolge-static-image/v45"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -201,6 +201,18 @@ class BoundedWorklistDataMutationValueSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistValueSourceContext:
+    """Source coordinates for one exact explored worklist value domain."""
+
+    address: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    values: tuple[int, ...]
+    initial_source_byte_in_values: bool | None
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistMutationAddressSourceContext:
     """Source-image coordinates for one worklist mutation address."""
 
@@ -242,6 +254,15 @@ class StaticImageReport:
     ]
     bounded_worklist_self_encryption_source_map: tuple[
         BoundedWorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_fetch_value_source_map: tuple[
+        BoundedWorklistValueSourceContext, ...
+    ]
+    bounded_worklist_data_read_value_source_map: tuple[
+        BoundedWorklistValueSourceContext, ...
+    ]
+    bounded_worklist_encryption_input_value_source_map: tuple[
+        BoundedWorklistValueSourceContext, ...
     ]
     bounded_exact_cycle: prefix_transfer.ExactCycleCertificate | None
     bounded_memory_requirement: BoundedMemoryRequirement | None
@@ -356,7 +377,7 @@ def _source_map_limit_label(
         return prefix
     return (
         f"{prefix}-and-{worklist.state_limit}-state-worklist-"
-        f"{_worklist_status(worklist)}-worklist-mutation-evidence"
+        f"{_worklist_status(worklist)}-worklist-value-evidence"
     )
 
 
@@ -1077,6 +1098,31 @@ def _worklist_data_mutation_value_source_map(
     return tuple(contexts)
 
 
+def _worklist_value_source_map(
+    domains: tuple[worklist_transfer.WorklistValueDomain, ...],
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistValueSourceContext, ...]:
+    contexts: list[BoundedWorklistValueSourceContext] = []
+    for domain in domains:
+        source = _worklist_mutation_address_source_context(
+            domain.address, cells
+        )
+        initial = source.initial_source_byte
+        contexts.append(
+            BoundedWorklistValueSourceContext(
+                address=domain.address,
+                source_position=source.source_position,
+                source_byte_offset=source.source_byte_offset,
+                initial_source_byte=initial,
+                values=domain.values,
+                initial_source_byte_in_values=(
+                    None if initial is None else initial in domain.values
+                ),
+            )
+        )
+    return tuple(contexts)
+
+
 def _worklist_committed_write_source_map(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -1198,6 +1244,34 @@ def analyze_source(
         ),
         bounded_worklist_self_encryption_source_map=(
             _worklist_self_encryption_source_map(worklist, prefix.cells)
+        ),
+        bounded_worklist_fetch_value_source_map=(
+            _worklist_value_source_map(
+                (
+                    ()
+                    if worklist is None
+                    else worklist.explored_fetch_value_domains
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_data_read_value_source_map=(
+            _worklist_value_source_map(
+                (
+                    ()
+                    if worklist is None
+                    else worklist.explored_data_read_value_domains
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_encryption_input_value_source_map=(
+            _worklist_value_source_map(
+                ()
+                if worklist is None
+                else worklist.explored_encryption_input_value_domains,
+                prefix.cells,
+            )
         ),
         bounded_exact_cycle=prefix.exact_cycle,
         bounded_memory_requirement=_bounded_memory_requirement(

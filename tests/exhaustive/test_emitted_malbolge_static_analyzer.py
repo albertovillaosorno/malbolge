@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v44"
+_SCHEMA = "malbolge-static-image/v45"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -166,10 +166,10 @@ _ENTRY_DATAFLOW_LIMIT = (
     "dataflow:16-transition-prefix-and-"
     "1544-state-worklist-truncated-explored-only"
 )
-_WORKLIST_MUTATION_SOURCE_MAP_LIMIT = (
+_WORKLIST_VALUE_SOURCE_MAP_LIMIT = (
     "source-map-context:16-transition-memory-access-and-"
     "fetch-data-read-and-encryption-input-value-lineage-and-"
-    "1544-state-worklist-truncated-worklist-mutation-evidence"
+    "1544-state-worklist-truncated-worklist-value-evidence"
 )
 _INPUT_CRAZY_SOURCE = bytes((117, 61))
 _INPUT_HALT_SOURCE = bytes((117, 80))
@@ -476,6 +476,15 @@ class _WorklistDataMutationValueSourceContext(Protocol):
     initial_source_byte_in_previous_values: bool | None
 
 
+class _WorklistValueSourceContext(Protocol):
+    address: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    values: tuple[int, ...]
+    initial_source_byte_in_values: bool | None
+
+
 class _WorklistMutationAddressSourceContext(Protocol):
     address: int
     source_position: int | None
@@ -623,6 +632,15 @@ class _Report(Protocol):
     ]
     bounded_worklist_self_encryption_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_fetch_value_source_map: tuple[
+        _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_data_read_value_source_map: tuple[
+        _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_encryption_input_value_source_map: tuple[
+        _WorklistValueSourceContext, ...
     ]
     bounded_exact_cycle: _ExactCycleCertificate | None
     bounded_memory_requirement: _BoundedMemoryRequirement | None
@@ -2042,6 +2060,9 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     assert (
         report.bounded_worklist_effective_data_mutation_value_source_map == ()
     )
+    assert report.bounded_worklist_fetch_value_source_map
+    assert report.bounded_worklist_data_read_value_source_map
+    assert report.bounded_worklist_encryption_input_value_source_map
     assert worklist.terminal_status_counts == (
         ("rejected-invalid-self-encryption", _WORKLIST_INPUT_VALUE_COUNT),
     )
@@ -2167,7 +2188,58 @@ def test_worklist_data_mutation_maps_back_to_loaded_source_byte() -> None:
     assert aggregate[0].source_byte_offset == _LOADED_MUTATION_BYTE_OFFSET
     assert aggregate[0].initial_source_byte == _LOADED_MUTATION_SOURCE_BYTE
     _assert_loaded_mutation_value_source_context(report)
-    assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
+    assert _WORKLIST_VALUE_SOURCE_MAP_LIMIT in report.analysis_limits
+
+
+def _value_source_context(
+    contexts: tuple[_WorklistValueSourceContext, ...],
+    address: int,
+) -> _WorklistValueSourceContext:
+    matches = tuple(
+        context for context in contexts if context.address == address
+    )
+    assert len(matches) == 1
+    return matches[0]
+
+
+def test_worklist_read_domains_map_loaded_and_recurrence_source() -> None:
+    """Read value domains preserve loaded offsets and recurrence nullability."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _LOADED_MUTATION_SOURCE_WITH_WHITESPACE,
+        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
+    )
+    fetch = _value_source_context(
+        report.bounded_worklist_fetch_value_source_map, 0
+    )
+    assert fetch.source_position == 0
+    assert fetch.source_byte_offset == _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
+    assert fetch.initial_source_byte == _ENTRY_WRAP_SOURCE[0]
+    assert fetch.values == (_ENTRY_WRAP_SOURCE[0],)
+    assert fetch.initial_source_byte_in_values is True
+    loaded = _value_source_context(
+        report.bounded_worklist_data_read_value_source_map,
+        _LOADED_MUTATION_ADDRESS,
+    )
+    assert loaded.source_position == _LOADED_MUTATION_ADDRESS
+    assert loaded.source_byte_offset == _LOADED_MUTATION_BYTE_OFFSET
+    assert loaded.initial_source_byte == _LOADED_MUTATION_SOURCE_BYTE
+    assert loaded.values == (_LOADED_MUTATION_SOURCE_BYTE,)
+    assert loaded.initial_source_byte_in_values is True
+    recurrence = _value_source_context(
+        report.bounded_worklist_data_read_value_source_map,
+        _MULTI_MUTATION_RECURRENCE_ADDRESS,
+    )
+    assert recurrence.source_position is None
+    assert recurrence.source_byte_offset is None
+    assert recurrence.initial_source_byte is None
+    assert recurrence.values == (_MULTI_MUTATION_SECOND_PREVIOUS_VALUES)
+    assert recurrence.initial_source_byte_in_values is None
+    encryption = _value_source_context(
+        report.bounded_worklist_encryption_input_value_source_map, 0
+    )
+    assert encryption.source_byte_offset == _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
+    assert encryption.initial_source_byte_in_values is True
+    assert _WORKLIST_VALUE_SOURCE_MAP_LIMIT in report.analysis_limits
 
 
 def _assert_committed_write_role_maps(report: _Report) -> None:
@@ -2222,7 +2294,7 @@ def test_worklist_maps_every_committed_write_address() -> None:
     assert recurrence.source_byte_offset is None
     assert recurrence.initial_source_byte is None
     _assert_committed_write_role_maps(report)
-    assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
+    assert _WORKLIST_VALUE_SOURCE_MAP_LIMIT in report.analysis_limits
 
 
 def _assert_recurrence_mutation_value_source_context(report: _Report) -> None:
@@ -2268,7 +2340,7 @@ def test_worklist_maps_every_effective_mutation_address() -> None:
     assert second.previous_values == _MULTI_MUTATION_SECOND_PREVIOUS_VALUES
     assert second.result_values == _MULTI_MUTATION_SECOND_RESULT_VALUES
     _assert_recurrence_mutation_value_source_context(report)
-    assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
+    assert _WORKLIST_VALUE_SOURCE_MAP_LIMIT in report.analysis_limits
 
 
 def test_report_worklist_proves_long_input_dependent_cycle() -> None:
