@@ -157,9 +157,14 @@ extending checked input-dependent cycle depth while remaining within the
 explicit worklist cap. The 15-word `b"u'&%$#\"!~}|{zyx"` fixture extends
 that family through 14 post-input jumps: its exact graph closes in 3,856 states
 and the deterministic cycle entry path contains 16 states, exercising about 94%
-of the reviewed state ceiling without truncation. This is still bounded evidence
-and does not establish automatic or unbounded reachability. Without this opt-in
-graph, a `p` whose accumulator
+of the reviewed state ceiling without truncation. The one-word-longer
+`b"u'&%$#\"!~}|{zyxw"` fixture reaches the 4,096-state maximum after
+3,840 states are explored. It leaves 257 exact frontier states and records
+first-seen depth 17, publishes the deterministic path to the first unexplored
+state, and
+keeps cycle/all-path claims unknown across that frontier. This is still bounded
+evidence and does not establish automatic or unbounded reachability. Without
+this opt-in graph, a `p` whose accumulator
 depends on prior input remains unresolved rather than assigned a guessed value.
 A non-graphical fetch
 is stronger: the preserved 1998 interpreter executes `continue` before decode,

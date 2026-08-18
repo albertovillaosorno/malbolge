@@ -153,6 +153,31 @@ _NEAR_CAP_INPUT_CYCLE_POINTER_PATH = (
     (14, 29_405),
     (15, 29_405),
 )
+_OVER_CAP_INPUT_CYCLE_SOURCE = b"u'&%$#\"!~}|{zyxw"
+_OVER_CAP_EXPLORED_STATES = 3_840
+_OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION = 17
+_OVER_CAP_FRONTIER_ACCUMULATOR = 241
+_OVER_CAP_FRONTIER_POINTER_PATH = (
+    (0, 0),
+    (1, 1),
+    (2, 40),
+    (3, 29_407),
+    (4, 120),
+    (5, 29_407),
+    (6, 120),
+    (7, 29_407),
+    (8, 120),
+    (9, 29_407),
+    (10, 120),
+    (11, 29_407),
+    (12, 120),
+    (13, 29_407),
+    (14, 120),
+    (15, 29_407),
+)
+_MAX_WORKLIST_TRUNCATED_LIMIT = (
+    "input-dependent-reachability:4096-state-worklist-truncated"
+)
 _DOUBLE_INPUT_CYCLE_STATE_LIMIT = 515
 _FIXED_CYCLE_POINTER = 2
 _FIXED_CYCLE_ENCRYPTED_ZERO = 111
@@ -1951,6 +1976,37 @@ def test_report_worklist_proves_near_cap_input_cycle() -> None:
     assert worklist.closed_all_paths_terminate is False
     assert worklist.closed_all_paths_halt is False
     assert not worklist.truncated
+
+
+def test_report_worklist_truncates_at_reviewed_maximum() -> None:
+    """Public maximum keeps deeper input reachability explicitly unknown."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _OVER_CAP_INPUT_CYCLE_SOURCE,
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _MAX_WORKLIST_STATE_LIMIT
+    assert worklist.explored_states == _OVER_CAP_EXPLORED_STATES
+    assert worklist.frontier_states == _WORKLIST_TRUNCATED_STATE_LIMIT
+    assert worklist.maximum_first_seen_transition_index == (
+        _OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION
+    )
+    assert not worklist.reachable_cycle_detected
+    assert worklist.closed_all_paths_terminate is None
+    assert worklist.closed_all_paths_halt is None
+    assert worklist.truncated
+    witness = worklist.frontier_state_witness
+    path = worklist.frontier_entry_path
+    assert witness is not None
+    assert path is not None
+    assert witness.accumulator == _OVER_CAP_FRONTIER_ACCUMULATOR
+    assert not witness.eof_seen
+    assert path[-1] == witness
+    assert tuple(
+        (state.code_pointer, state.data_pointer) for state in path
+    ) == _OVER_CAP_FRONTIER_POINTER_PATH
+    assert _MAX_WORKLIST_TRUNCATED_LIMIT in report.analysis_limits
 
 
 def test_report_worklist_truncation_is_explicit() -> None:

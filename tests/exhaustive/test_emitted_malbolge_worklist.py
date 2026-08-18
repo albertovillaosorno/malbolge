@@ -100,6 +100,29 @@ _NEAR_CAP_INPUT_CYCLE_POINTER_PATH = (
     (14, 29_405),
     (15, 29_405),
 )
+_OVER_CAP_INPUT_CYCLE_SOURCE = tuple(b"u'&%$#\"!~}|{zyxw")
+_MAX_WORKLIST_STATE_LIMIT = 4_096
+_OVER_CAP_EXPLORED_STATES = 3_840
+_OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION = 17
+_OVER_CAP_FRONTIER_ACCUMULATOR = 241
+_OVER_CAP_FRONTIER_POINTER_PATH = (
+    (0, 0),
+    (1, 1),
+    (2, 40),
+    (3, 29_407),
+    (4, 120),
+    (5, 29_407),
+    (6, 120),
+    (7, 29_407),
+    (8, 120),
+    (9, 29_407),
+    (10, 120),
+    (11, 29_407),
+    (12, 120),
+    (13, 29_407),
+    (14, 120),
+    (15, 29_407),
+)
 _RECURRENCE_READ_SOURCE = tuple(b"('")
 _RECURRENCE_STATE_LIMIT = 16
 _RECURRENCE_HIGHEST_ADDRESS = 41
@@ -685,6 +708,35 @@ def test_near_cap_input_dependent_jump_chain_closes_exact_cycle() -> None:
     assert result.closed_recurrent_component_count == _INPUT_VALUE_COUNT
 
 
+def test_reviewed_state_ceiling_truncates_deeper_jump_chain() -> None:
+    """The 4,096-state maximum stops before silently closing a deeper graph."""
+    result = worklist.analyze_reachability(
+        _OVER_CAP_INPUT_CYCLE_SOURCE,
+        maximum_states=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    assert result.unique_states == _MAX_WORKLIST_STATE_LIMIT
+    assert result.explored_states == _OVER_CAP_EXPLORED_STATES
+    assert result.frontier_states == _INPUT_VALUE_COUNT
+    assert result.maximum_first_seen_transition_index == (
+        _OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION
+    )
+    assert not result.reachable_cycle_detected
+    assert result.reachable_cycle_witness == ()
+    assert result.closed_all_paths_terminate is None
+    assert result.closed_all_paths_halt is None
+    assert result.truncated
+    witness = result.frontier_state_witness
+    path = result.frontier_entry_path
+    assert witness is not None
+    assert path is not None
+    assert witness.accumulator == _OVER_CAP_FRONTIER_ACCUMULATOR
+    assert not witness.eof_seen
+    assert path[-1] == witness
+    assert tuple(
+        (state.code_pointer, state.data_pointer) for state in path
+    ) == _OVER_CAP_FRONTIER_POINTER_PATH
+
+
 def test_input_domain_becomes_eof_only_after_eof() -> None:
     """Historical EOF state cannot branch back to later ordinary bytes."""
     snapshot = prefix_transfer.StateSnapshot(
@@ -896,7 +948,7 @@ def test_eof_branch_reaches_exact_pointer_wrap_from_entry() -> None:
 
 
 def test_worklist_state_limit_is_fail_closed() -> None:
-    """State budgets accept positive exact integers only."""
+    """State budgets accept only the reviewed exact interval."""
     for invalid in (4_097, 0, -1, True):
         with pytest.raises(ValueError, match=_STATE_LIMIT_MESSAGE):
             _ = worklist.analyze_reachability(
