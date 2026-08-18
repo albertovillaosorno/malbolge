@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v53
+  offsets, stable finding codes, and explicit analysis limits. Schema v54
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -279,7 +279,10 @@ executable cells, and input-dependent cycles or hangs.
   first FIFO entry-reachable final no-op witness. Entry-wrap byte 0 records
   address 40, previous/planned/final value 29,524, no encryption alias, and
   shortest pointer path `(0,0),(1,1),(2,40)`. A null witness stays explored-only
-  under truncation.
+  under truncation. Schema v54 adds exact evolved fetch/data-read transition
+  counts and address sets. Closed `b"(&&$^"` has one evolved fetch at 95; closed
+  `b"(&&%M"` has one evolved data read at 41; entry-wrap has 256 evolved data
+  reads at address 40 and no evolved fetches.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact

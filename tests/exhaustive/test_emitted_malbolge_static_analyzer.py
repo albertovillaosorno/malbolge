@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v53"
+_SCHEMA = "malbolge-static-image/v54"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -569,6 +569,10 @@ class _WorklistAnalysis(Protocol):
     explored_self_encryption_output_value_domains: tuple[
         _WorklistValueDomain, ...
     ]
+    explored_evolved_fetch_transition_count: int
+    explored_evolved_fetch_addresses: tuple[int, ...]
+    explored_evolved_data_read_transition_count: int
+    explored_evolved_data_read_addresses: tuple[int, ...]
     explored_evolved_fetch_witness: _WorklistEvolvedReadWitness | None
     explored_evolved_data_read_witness: _WorklistEvolvedReadWitness | None
     explored_data_write_noop_witness: _WorklistDataWriteNoopWitness | None
@@ -1109,6 +1113,12 @@ def test_worklist_report_witnesses_evolved_fetch() -> None:
     assert witness is not None
     assert witness.address == _LINEAGE_FETCH_ADDRESS
     assert witness.initial_value == _WORKLIST_EVOLVED_FETCH_INITIAL_VALUE
+    assert worklist.explored_evolved_fetch_transition_count == 1
+    assert worklist.explored_evolved_fetch_addresses == (
+        _LINEAGE_FETCH_ADDRESS,
+    )
+    assert worklist.explored_evolved_data_read_transition_count == 0
+    assert worklist.explored_evolved_data_read_addresses == ()
     assert witness.observed_value == _LINEAGE_FETCH_VALUE
     assert witness.origin_kind == _WORKLIST_WRITER_DATA_WRITE
     assert (
@@ -1131,6 +1141,12 @@ def test_worklist_report_witnesses_evolved_data_read() -> None:
     assert witness is not None
     assert witness.address == _DATA_LINEAGE_ADDRESS
     assert witness.initial_value == _DATA_LINEAGE_INITIAL_VALUE
+    assert worklist.explored_evolved_fetch_transition_count == 0
+    assert worklist.explored_evolved_fetch_addresses == ()
+    assert worklist.explored_evolved_data_read_transition_count == 1
+    assert worklist.explored_evolved_data_read_addresses == (
+        _DATA_LINEAGE_ADDRESS,
+    )
     assert witness.observed_value == _DATA_LINEAGE_VALUE
     assert witness.origin_kind == _WORKLIST_WRITER_DATA_WRITE
     assert (

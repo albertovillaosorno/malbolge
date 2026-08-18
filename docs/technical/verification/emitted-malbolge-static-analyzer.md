@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v53` retains exact `entry_transition` through
+`malbolge-static-image/v54` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -264,7 +264,12 @@ byte-0 branch has address 40 with previous/planned/final value 29,524 and
 shortest entry path `(C,D)=(0,0),(1,1),(2,40)`; it does not alias
 self-encryption. A null
 witness means only that no final no-op was observed in the explored graph unless
-the worklist is closed.
+the worklist is closed. Schema v54 adds exact explored transition counts and
+distinct address sets for evolved fetches and semantic data reads. The closed
+`b"(&&$^"` graph has one evolved fetch at address 95; closed `b"(&&%M"` has one
+evolved data read at address 41. Entry-wrap observes zero evolved fetches and
+256 evolved data-read transitions at address 40. Aggregate absence remains only
+an explored-graph statement under truncation.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

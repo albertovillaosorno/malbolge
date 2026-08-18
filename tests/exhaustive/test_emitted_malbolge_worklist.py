@@ -376,6 +376,10 @@ class _WorklistAnalysis(Protocol):
     explored_self_encryption_output_value_domains: tuple[
         _WorklistValueDomain, ...
     ]
+    explored_evolved_fetch_transition_count: int
+    explored_evolved_fetch_addresses: tuple[int, ...]
+    explored_evolved_data_read_transition_count: int
+    explored_evolved_data_read_addresses: tuple[int, ...]
     explored_evolved_fetch_witness: _WorklistEvolvedReadWitness | None
     explored_evolved_data_read_witness: _WorklistEvolvedReadWitness | None
     explored_data_write_noop_witness: _WorklistDataWriteNoopWitness | None
@@ -1135,6 +1139,10 @@ def test_worklist_witnesses_fetch_from_evolved_memory() -> None:
     )
     assert not result.truncated
     assert result.reachable_cycle_detected
+    assert result.explored_evolved_fetch_transition_count == 1
+    assert result.explored_evolved_fetch_addresses == (_EVOLVED_FETCH_ADDRESS,)
+    assert result.explored_evolved_data_read_transition_count == 0
+    assert result.explored_evolved_data_read_addresses == ()
     _assert_evolved_read_witness(
         result.explored_evolved_fetch_witness,
         (
@@ -1161,6 +1169,12 @@ def test_worklist_witnesses_data_read_from_evolved_memory() -> None:
     )
     assert not result.truncated
     assert result.terminal_status_counts == (("halted", 1),)
+    assert result.explored_evolved_fetch_transition_count == 0
+    assert result.explored_evolved_fetch_addresses == ()
+    assert result.explored_evolved_data_read_transition_count == 1
+    assert result.explored_evolved_data_read_addresses == (
+        _EVOLVED_DATA_READ_ADDRESS,
+    )
     _assert_evolved_read_witness(
         result.explored_evolved_data_read_witness,
         (
@@ -1234,6 +1248,17 @@ def _assert_entry_write_value_domains(result: _WorklistAnalysis) -> None:
     assert encryption_outputs == (111,)
 
 
+def _assert_entry_evolved_read_counts(result: _WorklistAnalysis) -> None:
+    assert result.explored_evolved_fetch_transition_count == 0
+    assert result.explored_evolved_fetch_addresses == ()
+    assert result.explored_evolved_data_read_transition_count == (
+        _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT
+    )
+    assert result.explored_evolved_data_read_addresses == (
+        _ENTRY_MUTATION_ADDRESS,
+    )
+
+
 def _assert_entry_data_mutation_evidence(result: _WorklistAnalysis) -> None:
     assert result.explored_committed_write_addresses == (
         0, 1, 2, 3, 4, 5, 6, 40
@@ -1260,6 +1285,7 @@ def _assert_entry_data_mutation_evidence(result: _WorklistAnalysis) -> None:
     assert result.explored_effective_data_mutation_transition_count == (
         _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT
     )
+    _assert_entry_evolved_read_counts(result)
     assert result.explored_effective_data_mutation_addresses == (
         _ENTRY_MUTATION_ADDRESS,
     )

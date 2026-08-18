@@ -208,6 +208,10 @@ class WorklistAnalysis:
     explored_self_encryption_output_value_domains: tuple[
         WorklistValueDomain, ...
     ]
+    explored_evolved_fetch_transition_count: int
+    explored_evolved_fetch_addresses: tuple[int, ...]
+    explored_evolved_data_read_transition_count: int
+    explored_evolved_data_read_addresses: tuple[int, ...]
     explored_evolved_fetch_witness: WorklistEvolvedReadWitness | None
     explored_evolved_data_read_witness: WorklistEvolvedReadWitness | None
     explored_data_write_noop_witness: WorklistDataWriteNoopWitness | None
@@ -893,6 +897,8 @@ class _Explorer:
     self_encryption_output_values: dict[int, set[int]] = field(
         default_factory=dict
     )
+    evolved_fetch_addresses: set[int] = field(default_factory=set)
+    evolved_data_read_addresses: set[int] = field(default_factory=set)
     evolved_fetch_witness: WorklistEvolvedReadWitness | None = None
     evolved_data_read_witness: WorklistEvolvedReadWitness | None = None
     data_write_noop_witness: WorklistDataWriteNoopWitness | None = None
@@ -905,6 +911,8 @@ class _Explorer:
     committed_data_write_noop_transitions: int = 0
     self_encryption_transitions: int = 0
     effective_data_mutation_transitions: int = 0
+    evolved_fetch_transitions: int = 0
+    evolved_data_read_transitions: int = 0
     repeated_edges: int = 0
     input_branch_points: int = 0
     wraparound_transitions: int = 0
@@ -1084,6 +1092,18 @@ class _Explorer:
             explored_self_encryption_output_value_domains=_value_domains(
                 self.self_encryption_output_values
             ),
+            explored_evolved_fetch_transition_count=(
+                self.evolved_fetch_transitions
+            ),
+            explored_evolved_fetch_addresses=tuple(
+                sorted(self.evolved_fetch_addresses)
+            ),
+            explored_evolved_data_read_transition_count=(
+                self.evolved_data_read_transitions
+            ),
+            explored_evolved_data_read_addresses=tuple(
+                sorted(self.evolved_data_read_addresses)
+            ),
             explored_evolved_fetch_witness=self.evolved_fetch_witness,
             explored_evolved_data_read_witness=self.evolved_data_read_witness,
             explored_data_write_noop_witness=self.data_write_noop_witness,
@@ -1246,29 +1266,52 @@ class _Explorer:
             origin_entry_path_transition_index=origin_transition,
         )
 
+    def _record_evolved_fetch_evidence(
+        self,
+        node: _ReachabilityNode,
+        transition: prefix_transfer.SecondTransition,
+    ) -> None:
+        address = transition.fetched_address
+        if transition.fetched_value == self.initial_memory[address]:
+            return
+        self.evolved_fetch_transitions += 1
+        self.evolved_fetch_addresses.add(address)
+        if self.evolved_fetch_witness is None:
+            self.evolved_fetch_witness = self._evolved_read_witness(
+                node,
+                address=address,
+                observed_value=transition.fetched_value,
+            )
+
+    def _record_evolved_data_read_evidence(
+        self,
+        node: _ReachabilityNode,
+        transition: prefix_transfer.SecondTransition,
+    ) -> None:
+        if transition.decoded_byte not in _DATA_READING_INSTRUCTIONS:
+            return
+        data_value = _required_exact_value(
+            transition.data_value, label="semantic data read"
+        )
+        address = transition.data_address
+        if data_value == self.initial_memory[address]:
+            return
+        self.evolved_data_read_transitions += 1
+        self.evolved_data_read_addresses.add(address)
+        if self.evolved_data_read_witness is None:
+            self.evolved_data_read_witness = self._evolved_read_witness(
+                node,
+                address=address,
+                observed_value=data_value,
+            )
+
     def _record_evolved_read_evidence(
         self,
         node: _ReachabilityNode,
         transition: prefix_transfer.SecondTransition,
     ) -> None:
-        if self.evolved_fetch_witness is None:
-            self.evolved_fetch_witness = self._evolved_read_witness(
-                node,
-                address=transition.fetched_address,
-                observed_value=transition.fetched_value,
-            )
-        if (
-            self.evolved_data_read_witness is None
-            and transition.decoded_byte in _DATA_READING_INSTRUCTIONS
-        ):
-            data_value = _required_exact_value(
-                transition.data_value, label="semantic data read"
-            )
-            self.evolved_data_read_witness = self._evolved_read_witness(
-                node,
-                address=transition.data_address,
-                observed_value=data_value,
-            )
+        self._record_evolved_fetch_evidence(node, transition)
+        self._record_evolved_data_read_evidence(node, transition)
 
     def _record_read_value_evidence(
         self,
