@@ -1,6 +1,6 @@
 ---
 id: "cuda-linux-runtime-and-hermetic-toolchain"
-status: "active"
+status: "completed"
 lane: "4"
 priority: "p0"
 area: "accelerator"
@@ -14,6 +14,10 @@ adr_paths:
 scope:
   - "accelerator/cuda/"
   - "scripts/bootstrap/"
+  - "scripts/validate/"
+  - "tooling/native-analysis/"
+  - "compiler/c-frontend/"
+  - "tools/tidy/"
   - ".jig/version/rust-toolchain.toml"
   - ".jig/lang/python/pyrightconfig.json"
   - "tests/"
@@ -82,13 +86,26 @@ fallback, verifier authority, and existing Windows support.
   `b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e`;
   deterministic Windows loader tests remain active even when live Windows
   hardware is unavailable on the Linux host.
-- Remaining P0 blocker: shared LLVM/Clang 22.1.8 validation paths still encode
-  Windows executable names such as `clang.exe`, `clang-tidy.exe`, and
-  `clang-format.exe`. Fedora already supplies exact Clang 22.1.8, but it has not
-  yet been admitted through a repository-local platform-neutral LLVM toolchain
-  contract. The P0 remains active until that shared validation/toolchain surface
-  stops assuming Windows and the final exhaustive Jig gate passes with the
-  admitted Linux paths.
+- Linux native-analysis now selects an exact platform identity. Three Fedora 44
+  LLVM/Clang 22.1.8 development RPMs are size/SHA-256 admitted and publish a
+  marker-bound 73 MiB repository-local development root. Ordinary bootstrap
+  remains offline; `--provision-llvm-development` is the explicit opt-in.
+- Commit `9dae6c71` builds `malbolge-tidy.so` with CMake/Ninja and exact local
+  LLVM inputs. Upstream `clang-tidy.bin --load` registers exactly the five
+  reviewed Malbolge checks. Python native-analysis evidence is 45 passed with
+  one Windows-only registry-bridge bypass skip; Rust `tidy_profile` is 3/3.
+- Commit `efcba2f9` builds the normalized C frontend as a Linux ELF with the
+  relocatable RUNPATH `$ORIGIN/../../../llvm/22.1.8/lib`. Its frontend/generator
+  evidence is 189 passed with one genuinely Windows-only NTFS-junction skip;
+  the parametric challenge suite itself is 177 passed / 1 skip.
+- The remaining `.exe`, `.dll`, COFF, Windows sanitizer, and Windows adapter
+  references are explicitly platform-specific evidence or implementation
+  branches, not shared Linux toolchain authority. No Linux support path depends
+  on them.
+- This Fedora host cannot rerun the retained live Windows RTX 4060 hardware
+  suite. Windows support is preserved through the unchanged manifest identity,
+  deterministic platform-loader/build branches, and retained historical
+  evidence; no new Windows performance or live-device claim is made here.
 - Required durable artifacts: platform loader tests, Linux CUDA package
   manifest, native toolchain resolution, exact fallback tests, and retained
   Linux device evidence.

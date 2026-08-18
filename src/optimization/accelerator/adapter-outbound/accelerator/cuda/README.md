@@ -928,15 +928,14 @@ The repository pins CUDA 13.3 Update 1 for Windows x86-64 through
 the recorded NVIDIA SHA-256. The active adapter requires no third-party Python
 packages beyond the repository's pinned Python runtime.
 
-This is not yet a cross-platform runtime. `runtime.py` currently uses
-`ctypes.WinDLL`, `nvcuda.dll`, a versioned NVRTC `.dll`, and a literal 13.3.1
-repository path. The pending [CUDA Linux runtime and hermetic toolchain
+The runtime is now platform-selected. Windows retains `ctypes.WinDLL`,
+`nvcuda.dll`, and its reviewed NVRTC DLL identity; Linux uses `ctypes.CDLL`,
+`libcuda.so.1`, repository-local NVRTC/builtins ELF libraries, and the separate
+Linux manifest. The completed [CUDA Linux runtime and hermetic toolchain
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 contract](../../../../../../docs/technical/integrations/accelerators/cuda-linux-runtime-and-toolchain.md)
-requires `ctypes.CDLL` plus reviewed `.so` identities on Linux and moves CUDA
-release/path selection into per-platform manifests. The project initializer
-reports a non-Windows CUDA manifest mismatch as unsupported rather than claiming
-fallback support.
+also binds the Linux LLVM development kit, clang-tidy module, and normalized C
+frontend without changing CPU/verifier authority.
 
 Development evidence on an NVIDIA GeForce RTX 4060 (`sm_89`, 8,188 MiB) runs
 NVRTC-generated PTX through the Driver API and matches the CPU reference for

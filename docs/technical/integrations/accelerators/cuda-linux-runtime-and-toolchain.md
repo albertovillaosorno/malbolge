@@ -2,7 +2,7 @@
 
 ## Status
 
-Active P0 implementation
+Completed
 
 ## Purpose
 
@@ -15,7 +15,8 @@ authority.
 This contract governs:
 
 - `accelerator/cuda/`
-- `scripts/bootstrap/`
+- `scripts/bootstrap/` and native validation/build orchestration
+- `tooling/native-analysis/`, `compiler/c-frontend/`, and `tools/tidy/`
 - `.jig/version/rust-toolchain.toml`
 - `.jig/lang/python/pyrightconfig.json`
 - CUDA and bootstrap tests under `tests/`
@@ -55,13 +56,20 @@ comparison set passes 113 tests. These are correctness/support observations;
 there is no Linux performance claim and retained Windows ticket-admission timing
 profiles remain Windows-specific.
 
-The remaining P0 work is the shared LLVM development-toolchain surface. Fedora
-provides Clang, clang-tidy, and clang-format 22.1.8, but repository validation
-still contains Windows-only `.dependencies/llvm/22.1.8/bin/*.exe` authority
-in multiple C/LLVM paths. The P0 therefore remains active until LLVM admission
-and
-shared validation paths are platform-neutral; CUDA runtime execution itself is
-no longer the blocker.
+The LLVM development-toolchain surface is now platform-neutral where shared
+validation requires it. Linux admits exact Fedora 44 LLVM/Clang 22.1.8
+development RPM bytes into
+`.dependencies/llvm-dev/22.1.8`; the runtime remains
+under `.dependencies/llvm/22.1.8`. CMake/Ninja builds the clang-tidy plugin as a
+loadable ELF module and the normalized C frontend as a relocatable ELF whose
+RUNPATH resolves the repository-local LLVM libraries. Windows retains its
+reviewed MSVC/DIA registry-bridge branch.
+
+The P0 is complete. Remaining Windows `.exe`/`.dll`, COFF, sanitizer, and
+adapter paths are explicitly Windows-scoped evidence or implementation branches
+rather
+than shared Linux authority. No new Windows live-device result is claimed from
+this Fedora session.
 
 ## Invariants
 

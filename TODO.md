@@ -15,15 +15,6 @@ labels belong here.
 
 ## P0 — Authority and governance
 
-### TODO - CUDA Linux runtime and hermetic toolchain
-
-Port the exact CUDA runtime and repository-local development toolchains to Linux
-while preserving platform-specific ABI loading, exact package identity, CPU
-fallback, verifier authority, and existing Windows support.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/cuda-linux-runtime-and-hermetic-toolchain.mdc](docs/todo/open/accelerator/cuda-linux-runtime-and-hermetic-toolchain.mdc)
-
 ## P1 — Semantic and language foundations
 
 ### TODO - Emitted Malbolge static analyzer

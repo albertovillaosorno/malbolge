@@ -50,8 +50,9 @@ download only the standalone uv bootstrap executable; optional Rust and LLVM
 components remain diagnostic and are never downloaded implicitly. CUDA 13.3.1
 now has
 separate Windows and Linux x86-64 package manifests. The Linux runtime is live
-with repository-local NVRTC; the active CUDA P0 remains open for the shared
-platform-neutral LLVM/validation toolchain surface.
+with repository-local NVRTC, exact LLVM development inputs, a loadable
+clang-tidy module, and the normalized C frontend; the Linux CUDA/toolchain P0 is
+complete.
 
 ## Semantic authority
 
