@@ -1308,15 +1308,35 @@ def _staging_path(output_root: Path) -> Path:
     return staging
 
 
-def _claim_staging(staging: Path) -> None:
+def _claim_staging(staging: Path) -> tuple[int, int]:
     try:
         staging.mkdir()
+        status = staging.stat(follow_symlinks=False)
     except FileExistsError as error:
         message = f"staging path already exists: {staging}"
         _fail(message, error)
     except OSError as error:
         message = f"staging path cannot be created: {staging}"
         _fail(message, error)
+    if not staging.is_dir(follow_symlinks=False):
+        message = f"claimed staging path is no longer a directory: {staging}"
+        _fail(message)
+    return (status.st_dev, status.st_ino)
+
+
+def _cleanup_claimed_staging(
+    staging: Path,
+    identity: tuple[int, int],
+) -> None:
+    try:
+        status = staging.stat(follow_symlinks=False)
+    except OSError:
+        return
+    if (status.st_dev, status.st_ino) != identity:
+        return
+    if not staging.is_dir(follow_symlinks=False):
+        return
+    shutil.rmtree(staging, ignore_errors=True)
 
 
 def _write_staging(staging: Path, generated: GeneratedChallenge) -> None:
@@ -1389,12 +1409,12 @@ def write_challenge(identity: ChallengeIdentity, output_root: Path) -> None:
     if _existing_output_is_replay(admitted_output, generated):
         return
     staging = _staging_path(admitted_output)
-    _claim_staging(staging)
+    staging_identity = _claim_staging(staging)
     try:
         _write_staging(staging, generated)
         _publish_staging_no_replace(staging, admitted_output)
     except OSError as error:
-        shutil.rmtree(staging, ignore_errors=True)
+        _cleanup_claimed_staging(staging, staging_identity)
         message = f"challenge publication failed: {error}"
         _fail(message, error)
 

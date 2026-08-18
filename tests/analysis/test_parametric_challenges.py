@@ -1563,6 +1563,46 @@ def test_unknown_platform_publication_fails_closed(tmp_path: Path) -> None:
     assert not output.exists()
 
 
+def test_late_staging_replacement_is_not_deleted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Never remove a staging path replaced after this writer claimed it."""
+    output = tmp_path / "challenge"
+    staging = tmp_path / ".challenge.staging"
+    claimed = tmp_path / "claimed-staging"
+    sentinel = staging / "other-writer.txt"
+    write_staging = cast(
+        "Callable[[Path, _GeneratedChallenge], None]",
+        vars(_GENERATOR_MODULE)["_write_staging"],
+    )
+
+    def replace_after_write(
+        candidate: Path,
+        generated: _GeneratedChallenge,
+    ) -> None:
+        write_staging(candidate, generated)
+        _ = candidate.rename(claimed)
+        candidate.mkdir()
+        _ = sentinel.write_text(_SENTINEL, encoding="utf-8")
+        message = "simulated late staging replacement"
+        raise OSError(message)
+
+    monkeypatch.setattr(
+        _GENERATOR_MODULE,
+        "_write_staging",
+        replace_after_write,
+    )
+    with pytest.raises(
+        _GENERATOR_MODULE.ChallengeError,
+        match="challenge publication failed",
+    ):
+        _GENERATOR_MODULE.write_challenge(_identity(), output)
+    assert sentinel.read_text(encoding="utf-8") == _SENTINEL
+    assert (claimed / "manifest.json").is_file()
+    assert not output.exists()
+
+
 def test_raced_final_output_file_is_preserved(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
