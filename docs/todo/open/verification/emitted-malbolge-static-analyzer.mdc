@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v49
+  offsets, stable finding codes, and explicit analysis limits. Schema v50
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -265,6 +265,10 @@ executable cells, and input-dependent cycles or hangs.
   coordinates when available. Loaded position 40 maps to raw offset 42 and its
   write outputs exclude initial byte 122; loaded position 0 self-encrypts from
   initial 117 to output 111. Recurrence-targeted writes remain null-mapped.
+  Schema v50 separately records planned data-write count, addresses, and exact
+  value domains before commit validation. Closed input-crazy has 257 plans at
+  address 1 spanning 58 values but no committed data writes; entry-wrap has 257
+  planned writes at address 40 whose domain equals its committed domain.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact

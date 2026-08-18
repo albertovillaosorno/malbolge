@@ -341,6 +341,9 @@ class _WorklistAnalysis(Protocol):
     explored_code_data_alias_transition_count: int
     explored_committed_write_count: int
     explored_committed_write_addresses: tuple[int, ...]
+    explored_planned_data_write_transition_count: int
+    explored_planned_data_write_addresses: tuple[int, ...]
+    explored_planned_data_write_value_domains: tuple[_WorklistValueDomain, ...]
     explored_committed_data_write_transition_count: int
     explored_committed_data_write_addresses: tuple[int, ...]
     explored_self_encryption_transition_count: int
@@ -557,6 +560,9 @@ def test_input_halt_reports_exact_read_value_domains() -> None:
     assert _domain_values(result.explored_fetch_value_domains, 0) == (117,)
     assert _domain_values(result.explored_fetch_value_domains, 1) == (80,)
     assert result.explored_data_read_value_domains == ()
+    assert result.explored_planned_data_write_transition_count == 0
+    assert result.explored_planned_data_write_addresses == ()
+    assert result.explored_planned_data_write_value_domains == ()
     assert result.explored_committed_data_write_value_domains == ()
     encryption_outputs = _domain_values(
         result.explored_self_encryption_output_value_domains, 0
@@ -579,6 +585,14 @@ def test_input_crazy_reports_exact_encryption_input_domain() -> None:
     assert values[0] == _INPUT_CRAZY_ENCRYPTION_DOMAIN_MINIMUM
     assert values[-1] == _INPUT_CRAZY_ENCRYPTION_DOMAIN_MAXIMUM
     assert _domain_values(result.explored_data_read_value_domains, 1) == (61,)
+    assert result.explored_planned_data_write_transition_count == (
+        _INPUT_VALUE_COUNT
+    )
+    assert result.explored_planned_data_write_addresses == (1,)
+    planned_values = _domain_values(
+        result.explored_planned_data_write_value_domains, 1
+    )
+    assert planned_values == values
     assert result.explored_committed_data_write_value_domains == ()
     encryption_outputs = _domain_values(
         result.explored_self_encryption_output_value_domains, 0
@@ -1164,11 +1178,21 @@ def _assert_entry_write_value_domains(result: _WorklistAnalysis) -> None:
     assert data_values[0] == _ENTRY_MUTATION_RESULT_DOMAIN_MINIMUM
     assert data_values[-1] == _ENTRY_MUTATION_RESULT_DOMAIN_MAXIMUM
     assert _ENTRY_MUTATION_PREVIOUS_VALUE in data_values
+    planned_values = _domain_values(
+        result.explored_planned_data_write_value_domains,
+        _ENTRY_MUTATION_ADDRESS,
+    )
     write_values = _domain_values(
         result.explored_committed_data_write_value_domains,
         _ENTRY_MUTATION_ADDRESS,
     )
-    assert write_values == data_values
+    assert result.explored_planned_data_write_transition_count == (
+        _ENTRY_COMMITTED_DATA_WRITE_COUNT
+    )
+    assert result.explored_planned_data_write_addresses == (
+        _ENTRY_MUTATION_ADDRESS,
+    )
+    assert planned_values == write_values == data_values
     encryption_outputs = _domain_values(
         result.explored_self_encryption_output_value_domains, 0
     )

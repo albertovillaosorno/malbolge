@@ -174,6 +174,9 @@ class WorklistAnalysis:
     explored_code_data_alias_transition_count: int
     explored_committed_write_count: int
     explored_committed_write_addresses: tuple[int, ...]
+    explored_planned_data_write_transition_count: int
+    explored_planned_data_write_addresses: tuple[int, ...]
+    explored_planned_data_write_value_domains: tuple[WorklistValueDomain, ...]
     explored_committed_data_write_transition_count: int
     explored_committed_data_write_addresses: tuple[int, ...]
     explored_self_encryption_transition_count: int
@@ -855,6 +858,8 @@ class _Explorer:
     initial_memory: tuple[int, ...] = field(init=False, repr=False)
     terminal_states: dict[str, set[_StateKey]] = field(default_factory=dict)
     committed_write_addresses: set[int] = field(default_factory=set)
+    planned_data_write_addresses: set[int] = field(default_factory=set)
+    planned_data_write_values: dict[int, set[int]] = field(default_factory=dict)
     committed_data_write_addresses: set[int] = field(default_factory=set)
     self_encryption_addresses: set[int] = field(default_factory=set)
     effective_data_mutation_addresses: set[int] = field(default_factory=set)
@@ -879,6 +884,7 @@ class _Explorer:
     explored: int = 0
     code_data_alias_transitions: int = 0
     committed_writes: int = 0
+    planned_data_write_transitions: int = 0
     committed_data_write_transitions: int = 0
     self_encryption_transitions: int = 0
     effective_data_mutation_transitions: int = 0
@@ -1008,6 +1014,15 @@ class _Explorer:
             explored_committed_write_count=self.committed_writes,
             explored_committed_write_addresses=tuple(
                 sorted(self.committed_write_addresses)
+            ),
+            explored_planned_data_write_transition_count=(
+                self.planned_data_write_transitions
+            ),
+            explored_planned_data_write_addresses=tuple(
+                sorted(self.planned_data_write_addresses)
+            ),
+            explored_planned_data_write_value_domains=_value_domains(
+                self.planned_data_write_values
             ),
             explored_committed_data_write_transition_count=(
                 self.committed_data_write_transitions
@@ -1297,6 +1312,20 @@ class _Explorer:
             aliases_self_encryption=aliases,
         )
 
+    def _record_planned_data_write_evidence(
+        self,
+        transition: prefix_transfer.SecondTransition,
+    ) -> None:
+        address = transition.planned_data_write_address
+        if address is None:
+            return
+        value = _required_exact_value(
+            transition.planned_data_write_value, label="planned data write"
+        )
+        self.planned_data_write_transitions += 1
+        self.planned_data_write_addresses.add(address)
+        _record_domain_value(self.planned_data_write_values, address, value)
+
     def _record_mutation_evidence(
         self,
         step: prefix_transfer.SnapshotStep,
@@ -1342,6 +1371,7 @@ class _Explorer:
         self.accessed_addresses.update(_transition_accesses(step.transition))
         self._record_read_value_evidence(step.transition)
         self._record_evolved_read_evidence(node, step.transition)
+        self._record_planned_data_write_evidence(step.transition)
         self._record_mutation_evidence(step)
         self._record_data_mutation_evidence(node, step)
         if step.transition.pointer_wraps:

@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v49"
+_SCHEMA = "malbolge-static-image/v50"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -535,6 +535,9 @@ class _WorklistAnalysis(Protocol):
     explored_code_data_alias_transition_count: int
     explored_committed_write_count: int
     explored_committed_write_addresses: tuple[int, ...]
+    explored_planned_data_write_transition_count: int
+    explored_planned_data_write_addresses: tuple[int, ...]
+    explored_planned_data_write_value_domains: tuple[_WorklistValueDomain, ...]
     explored_committed_data_write_transition_count: int
     explored_committed_data_write_addresses: tuple[int, ...]
     explored_self_encryption_transition_count: int
@@ -2096,6 +2099,12 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     )
     assert worklist.explored_committed_write_count == 1
     assert worklist.explored_committed_write_addresses == (0,)
+    assert worklist.explored_planned_data_write_transition_count == (
+        _WORKLIST_INPUT_VALUE_COUNT
+    )
+    assert worklist.explored_planned_data_write_addresses == (1,)
+    planned_domain = worklist.explored_planned_data_write_value_domains[0]
+    assert len(planned_domain.values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
     assert worklist.explored_committed_data_write_transition_count == 0
     assert worklist.explored_committed_data_write_addresses == ()
     assert worklist.explored_self_encryption_transition_count == 1

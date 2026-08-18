@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v49` retains exact `entry_transition` through
+`malbolge-static-image/v50` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -243,6 +243,12 @@ fixture, address 40 data writes map to loaded position 40/raw offset 42 and do
 not contain initial source byte 122. Self-encryption at loaded position 0 maps
 to raw offset 2 and has output 111 rather than initial byte 117. A recurrence
 write at address 40 in the short entry-wrap fixture remains explicitly unmapped.
+Schema v50 adds planned data-write transition count, addresses, and exact value
+domains independently of commit success. The closed input-crazy graph has 257
+planned writes at address 1 spanning 58 values and no committed data writes
+because all 257 branches reject. Entry-wrap has 257 planned writes at address 40
+and its planned values equal its committed write values. This makes rejected
+plans observable without mislabeling them as durable mutation.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema
