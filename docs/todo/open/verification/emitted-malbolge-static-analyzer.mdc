@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v29
+  offsets, stable finding codes, and explicit analysis limits. Schema v30
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -131,7 +131,11 @@ executable cells, and input-dependent cycles or hangs.
   about the frontier. Schema v29 adds nullable `closed_terminal_status_counts`:
   closed worklists publish the complete canonical terminal counts, including an
   empty tuple when no terminal is reachable, while truncated worklists publish
-  null. The `b"u="` input-dependent crazy fixture now binds its
+  null. Schema v30 adds nullable `closed_all_paths_terminate`: a drained exact
+  finite-state worklist reports true iff the reachable graph is acyclic, false
+  when a reachable directed cycle proves a nonterminating path, and null while
+  any frontier remains unexplored. The `b"u="` input-dependent crazy fixture
+  now binds its
   257 rejection terminals to a concrete reachable rejection witness, and the
   closed input-halt CLI fixture publishes a reachable halt witness. An empty
   cycle witness under truncation does not prove the unexplored frontier acyclic.

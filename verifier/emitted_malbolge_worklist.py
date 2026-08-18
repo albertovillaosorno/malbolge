@@ -108,6 +108,7 @@ class WorklistAnalysis:
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
     closed_terminal_status_counts: tuple[tuple[str, int], ...] | None
+    closed_all_paths_terminate: bool | None
     terminal_status_witnesses: tuple[WorklistTerminalWitness, ...]
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -719,6 +720,7 @@ class _Explorer:
                 if truncated
                 else tuple(sorted(self.terminal_counts.items()))
             ),
+            closed_all_paths_terminate=None if truncated else not has_cycle,
             terminal_status_witnesses=_terminal_witnesses(
                 self.edges,
                 self.seen,
