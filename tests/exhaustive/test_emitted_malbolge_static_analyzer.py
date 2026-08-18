@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v46"
+_SCHEMA = "malbolge-static-image/v47"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -259,6 +259,10 @@ _ACCESS_ENCRYPTION = "self-encryption"
 _ORIGIN_LOADED_SOURCE = "loaded-source"
 _ORIGIN_RECURRENCE = "recurrence-initialization"
 _LINEAGE_WRITE_SOURCE = b"(&&$^"
+_WORKLIST_EVOLVED_FETCH_STATE_LIMIT = 6
+_WORKLIST_EVOLVED_FETCH_INITIAL_VALUE = 29_430
+_DATA_LINEAGE_WORKLIST_STATE_LIMIT = 5
+_DATA_LINEAGE_INITIAL_VALUE = 29_558
 _LINEAGE_TRANSITION_LIMIT = 6
 _LINEAGE_FETCH_ADDRESS = 95
 _LINEAGE_FETCH_VALUE = 9_810
@@ -442,6 +446,14 @@ class _WorklistValueDomain(Protocol):
     values: tuple[int, ...]
 
 
+class _WorklistEvolvedReadWitness(Protocol):
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+    address: int
+    initial_value: int
+    observed_value: int
+
+
 class _WorklistDataMutationValueDomain(Protocol):
     address: int
     previous_values: tuple[int, ...]
@@ -536,6 +548,8 @@ class _WorklistAnalysis(Protocol):
     explored_self_encryption_output_value_domains: tuple[
         _WorklistValueDomain, ...
     ]
+    explored_evolved_fetch_witness: _WorklistEvolvedReadWitness | None
+    explored_evolved_data_read_witness: _WorklistEvolvedReadWitness | None
     explored_data_mutation_witness: _WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -1050,6 +1064,40 @@ def test_bounded_data_read_lineage_tracks_recurrence_and_prior_write() -> None:
     assert final.data_value == _DATA_LINEAGE_VALUE
     assert final.origin_kind == _ACCESS_DATA_WRITE
     assert final.origin_transition_index == _DATA_LINEAGE_WRITE_TRANSITION
+
+
+def test_worklist_report_witnesses_evolved_fetch() -> None:
+    """Public worklist report exposes the first changed instruction fetch."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _LINEAGE_WRITE_SOURCE,
+        worklist_state_limit=_WORKLIST_EVOLVED_FETCH_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    witness = worklist.explored_evolved_fetch_witness
+    assert witness is not None
+    assert witness.address == _LINEAGE_FETCH_ADDRESS
+    assert witness.initial_value == _WORKLIST_EVOLVED_FETCH_INITIAL_VALUE
+    assert witness.observed_value == _LINEAGE_FETCH_VALUE
+    assert witness.entry_path[-1] == witness.state
+    assert not worklist.truncated
+
+
+def test_worklist_report_witnesses_evolved_data_read() -> None:
+    """Public worklist report exposes the first changed semantic data read."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _DATA_LINEAGE_WRITE_SOURCE,
+        worklist_state_limit=_DATA_LINEAGE_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    witness = worklist.explored_evolved_data_read_witness
+    assert witness is not None
+    assert witness.address == _DATA_LINEAGE_ADDRESS
+    assert witness.initial_value == _DATA_LINEAGE_INITIAL_VALUE
+    assert witness.observed_value == _DATA_LINEAGE_VALUE
+    assert witness.entry_path[-1] == witness.state
+    assert not worklist.truncated
 
 
 def _assert_source_access(

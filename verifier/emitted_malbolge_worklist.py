@@ -109,6 +109,17 @@ class WorklistValueDomain:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistEvolvedReadWitness:
+    """First exact read whose value differs from initial memory."""
+
+    state: WorklistCycleState
+    entry_path: tuple[WorklistCycleState, ...]
+    address: int
+    initial_value: int
+    observed_value: int
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistDataMutationValueDomain:
     """Exact observed pre-write and final values for one mutated address."""
 
@@ -175,6 +186,8 @@ class WorklistAnalysis:
     explored_self_encryption_output_value_domains: tuple[
         WorklistValueDomain, ...
     ]
+    explored_evolved_fetch_witness: WorklistEvolvedReadWitness | None
+    explored_evolved_data_read_witness: WorklistEvolvedReadWitness | None
     explored_data_mutation_witness: WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -822,6 +835,8 @@ class _Explorer:
     self_encryption_output_values: dict[int, set[int]] = field(
         default_factory=dict
     )
+    evolved_fetch_witness: WorklistEvolvedReadWitness | None = None
+    evolved_data_read_witness: WorklistEvolvedReadWitness | None = None
     data_mutation_witness: WorklistDataMutationWitness | None = None
     explored: int = 0
     code_data_alias_transitions: int = 0
@@ -993,6 +1008,8 @@ class _Explorer:
             explored_self_encryption_output_value_domains=_value_domains(
                 self.self_encryption_output_values
             ),
+            explored_evolved_fetch_witness=self.evolved_fetch_witness,
+            explored_evolved_data_read_witness=self.evolved_data_read_witness,
             explored_data_mutation_witness=self.data_mutation_witness,
             explored_minimum_words=max(
                 len(self.words),
@@ -1118,6 +1135,57 @@ class _Explorer:
             data_pointer_wrapped=result_data == 0,
         )
 
+    def _evolved_read_witness(
+        self,
+        node: _ReachabilityNode,
+        *,
+        address: int,
+        observed_value: int,
+    ) -> WorklistEvolvedReadWitness | None:
+        initial_value = self.initial_memory[address]
+        if observed_value == initial_value:
+            return None
+        key = _node_key(node)
+        path = _known_graph_shortest_path(
+            self.edges,
+            self.seen,
+            start=_INITIAL_STATE_KEY,
+            target=key,
+        )
+        if not path:
+            return None
+        return WorklistEvolvedReadWitness(
+            state=_cycle_state(key),
+            entry_path=tuple(_cycle_state(item) for item in path),
+            address=address,
+            initial_value=initial_value,
+            observed_value=observed_value,
+        )
+
+    def _record_evolved_read_evidence(
+        self,
+        node: _ReachabilityNode,
+        transition: prefix_transfer.SecondTransition,
+    ) -> None:
+        if self.evolved_fetch_witness is None:
+            self.evolved_fetch_witness = self._evolved_read_witness(
+                node,
+                address=transition.fetched_address,
+                observed_value=transition.fetched_value,
+            )
+        if (
+            self.evolved_data_read_witness is None
+            and transition.decoded_byte in _DATA_READING_INSTRUCTIONS
+        ):
+            data_value = _required_exact_value(
+                transition.data_value, label="semantic data read"
+            )
+            self.evolved_data_read_witness = self._evolved_read_witness(
+                node,
+                address=transition.data_address,
+                observed_value=data_value,
+            )
+
     def _record_read_value_evidence(
         self,
         transition: prefix_transfer.SecondTransition,
@@ -1228,6 +1296,7 @@ class _Explorer:
         )
         self.accessed_addresses.update(_transition_accesses(step.transition))
         self._record_read_value_evidence(step.transition)
+        self._record_evolved_read_evidence(node, step.transition)
         self._record_mutation_evidence(step)
         self._record_data_mutation_evidence(node, step)
         if step.transition.pointer_wraps:

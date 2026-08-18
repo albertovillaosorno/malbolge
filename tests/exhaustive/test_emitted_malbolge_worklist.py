@@ -123,6 +123,25 @@ _OVER_CAP_FRONTIER_POINTER_PATH = (
     (14, 120),
     (15, 29_407),
 )
+_EVOLVED_FETCH_SOURCE = tuple(b"(&&$^")
+_EVOLVED_FETCH_STATE_LIMIT = 6
+_EVOLVED_FETCH_ADDRESS = 95
+_EVOLVED_FETCH_INITIAL_VALUE = 29_430
+_EVOLVED_FETCH_OBSERVED_VALUE = 9_810
+_EVOLVED_FETCH_POINTER_PATH = (
+    (0, 0),
+    (1, 41),
+    (2, 42),
+    (3, 95),
+    (4, 96),
+    (95, 97),
+)
+_EVOLVED_DATA_READ_SOURCE = tuple(b"(&&%M")
+_EVOLVED_DATA_READ_STATE_LIMIT = 5
+_EVOLVED_DATA_READ_ADDRESS = 41
+_EVOLVED_DATA_READ_INITIAL_VALUE = 29_558
+_EVOLVED_DATA_READ_OBSERVED_VALUE = 49_218
+_EVOLVED_DATA_READ_POINTER_PATH = ((0, 0), (1, 41), (2, 42), (3, 41))
 _RECURRENCE_READ_SOURCE = tuple(b"('")
 _RECURRENCE_STATE_LIMIT = 16
 _RECURRENCE_HIGHEST_ADDRESS = 41
@@ -267,6 +286,14 @@ class _WorklistValueDomain(Protocol):
     values: tuple[int, ...]
 
 
+class _WorklistEvolvedReadWitness(Protocol):
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+    address: int
+    initial_value: int
+    observed_value: int
+
+
 class _WorklistDataMutationValueDomain(Protocol):
     address: int
     previous_values: tuple[int, ...]
@@ -327,6 +354,8 @@ class _WorklistAnalysis(Protocol):
     explored_self_encryption_output_value_domains: tuple[
         _WorklistValueDomain, ...
     ]
+    explored_evolved_fetch_witness: _WorklistEvolvedReadWitness | None
+    explored_evolved_data_read_witness: _WorklistEvolvedReadWitness | None
     explored_data_mutation_witness: _WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -1041,6 +1070,59 @@ def test_explorer_counts_exact_pointer_wrap_transition() -> None:
     assert result.explored_highest_accessed_address == _WRAP_ADDRESS
     assert result.explored_minimum_words == _WRAP_ADDRESS + 1
     assert result.truncated
+
+
+def _assert_evolved_read_witness(
+    witness: _WorklistEvolvedReadWitness | None,
+    expected: tuple[int, int, int, tuple[tuple[int, int], ...]],
+) -> None:
+    address, initial_value, observed_value, pointer_path = expected
+    assert witness is not None
+    assert witness.address == address
+    assert witness.initial_value == initial_value
+    assert witness.observed_value == observed_value
+    assert witness.entry_path[-1] == witness.state
+    assert tuple(
+        (state.code_pointer, state.data_pointer) for state in witness.entry_path
+    ) == pointer_path
+
+
+def test_worklist_witnesses_fetch_from_evolved_memory() -> None:
+    """Closed worklist proves a later instruction fetch uses a prior write."""
+    result = worklist.analyze_reachability(
+        _EVOLVED_FETCH_SOURCE,
+        maximum_states=_EVOLVED_FETCH_STATE_LIMIT,
+    )
+    assert not result.truncated
+    assert result.reachable_cycle_detected
+    _assert_evolved_read_witness(
+        result.explored_evolved_fetch_witness,
+        (
+            _EVOLVED_FETCH_ADDRESS,
+            _EVOLVED_FETCH_INITIAL_VALUE,
+            _EVOLVED_FETCH_OBSERVED_VALUE,
+            _EVOLVED_FETCH_POINTER_PATH,
+        ),
+    )
+
+
+def test_worklist_witnesses_data_read_from_evolved_memory() -> None:
+    """Closed worklist proves a semantic data read uses a prior write."""
+    result = worklist.analyze_reachability(
+        _EVOLVED_DATA_READ_SOURCE,
+        maximum_states=_EVOLVED_DATA_READ_STATE_LIMIT,
+    )
+    assert not result.truncated
+    assert result.terminal_status_counts == (("halted", 1),)
+    _assert_evolved_read_witness(
+        result.explored_evolved_data_read_witness,
+        (
+            _EVOLVED_DATA_READ_ADDRESS,
+            _EVOLVED_DATA_READ_INITIAL_VALUE,
+            _EVOLVED_DATA_READ_OBSERVED_VALUE,
+            _EVOLVED_DATA_READ_POINTER_PATH,
+        ),
+    )
 
 
 def _assert_entry_mutation_value_domain(result: _WorklistAnalysis) -> None:
