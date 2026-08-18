@@ -510,10 +510,12 @@ printf "%s\n" "$*" >> "$PROBE_OUTPUT"
         (layout.pytest_launcher, "-m pytest --probe"),
     )
     for launcher, expected_argv in cases:
+        # jig-ignore-next-line: reviewed subprocess call needs Ruff policy ID
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
             [str(launcher), "--probe"],
             check=False,
             env={"PATH": "", "PROBE_OUTPUT": str(probe)},
+            shell=False,
         )
 
         assert completed.returncode == os.EX_OK
