@@ -150,6 +150,12 @@ class _SnapshotStep(Protocol):
     transition: _Transition
 
 
+class _ClassicModule(Protocol):
+    PROFILE_MEMORY_WORDS: int
+
+    def crazy(self, data: int, accumulator: int) -> int: ...
+
+
 class _PrefixModule(Protocol):
     StateSnapshot: _SnapshotFactory
 
@@ -261,6 +267,7 @@ type _ExplorerFactory = Callable[
 
 
 class _WorklistModule(Protocol):
+    classic: _ClassicModule
     prefix_transfer: _PrefixModule
     _ReachabilityNode: _ReachabilityNodeFactory
     _Explorer: _ExplorerFactory
@@ -558,6 +565,29 @@ def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:
     assert result.closed_all_paths_terminate is False
     assert result.closed_all_paths_halt is False
     assert not result.truncated
+
+
+def test_worklist_materializes_initial_memory_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Recurrence initialization is shared across exact worklist states."""
+    original_crazy = worklist.classic.crazy
+    crazy_calls = 0
+
+    def counting_crazy(data: int, accumulator: int) -> int:
+        nonlocal crazy_calls
+        crazy_calls += 1
+        return original_crazy(data, accumulator)
+
+    monkeypatch.setattr(worklist.classic, "crazy", counting_crazy)
+    result = worklist.analyze_reachability(
+        _LONG_INPUT_CYCLE_SOURCE,
+        maximum_states=_LONG_INPUT_CYCLE_STATE_LIMIT,
+    )
+    assert not result.truncated
+    assert crazy_calls == (
+        worklist.classic.PROFILE_MEMORY_WORDS - len(_LONG_INPUT_CYCLE_SOURCE)
+    )
 
 
 def test_long_input_dependent_jump_chain_reaches_exact_cycle() -> None:

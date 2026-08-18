@@ -112,7 +112,10 @@ executable cells, and input-dependent cycles or hangs.
   1-through-4,096 unique-state cap. It branches input across all 256 byte values
   plus EOF, keeps EOF sticky, deduplicates canonical
   `(C,D,A,memory,EOF-state)` nodes, and reports closed versus truncated graph
-  evidence. `input_branch_points` counts only real byte-plus-EOF expansions; an
+  evidence. The worklist expands immutable initial memory once per request and
+  reuses it beneath sparse evolved-memory overrides, preventing recurrence reads
+  from rebuilding the same initial prefix per exact state. `input_branch_points`
+  counts only real byte-plus-EOF expansions; an
   EOF-sticky input transition has one successor and is not a branch point.
   `maximum_first_seen_transition_index` advances on unique-state admission, so
   truncated queued states retain their exact first-seen depth before

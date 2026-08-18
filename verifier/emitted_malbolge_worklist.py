@@ -182,6 +182,13 @@ def _validate_words(words: tuple[int, ...]) -> None:
             raise AssertionError(message)
 
 
+def _expanded_initial_memory(words: tuple[int, ...]) -> tuple[int, ...]:
+    memory = list(words)
+    while len(memory) < classic.PROFILE_MEMORY_WORDS:
+        memory.append(classic.crazy(memory[-2], memory[-1]))
+    return tuple(memory)
+
+
 def _node_key(node: _ReachabilityNode) -> _StateKey:
     snapshot = node.snapshot
     accumulator = snapshot.accumulator
@@ -635,6 +642,7 @@ class _Explorer:
     edges: dict[_StateKey, set[_StateKey]]
     terminal_counts: dict[str, int]
     accessed_addresses: set[int]
+    initial_memory: tuple[int, ...] = field(init=False, repr=False)
     terminal_states: dict[str, set[_StateKey]] = field(default_factory=dict)
     explored: int = 0
     repeated_edges: int = 0
@@ -642,6 +650,9 @@ class _Explorer:
     wraparound_transitions: int = 0
     wraparound_witness: WorklistWrapWitness | None = None
     maximum_first_seen_transition_index: int = 1
+
+    def __post_init__(self) -> None:
+        self.initial_memory = _expanded_initial_memory(self.words)
 
     @classmethod
     def create(cls, words: tuple[int, ...], state_limit: int) -> _Explorer:
@@ -880,7 +891,10 @@ class _Explorer:
 
     def _process_node(self, node: _ReachabilityNode) -> WorklistAnalysis | None:
         self.explored += 1
-        step = prefix_transfer.analyze_state_snapshot(self.words, node.snapshot)
+        step = prefix_transfer.analyze_state_snapshot(
+            self.initial_memory,
+            node.snapshot,
+        )
         self.accessed_addresses.update(_transition_accesses(step.transition))
         if step.transition.pointer_wraps:
             self._record_wraparound(node, step.transition)

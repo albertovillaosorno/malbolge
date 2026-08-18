@@ -54,6 +54,9 @@ Schema v25 adds opt-in `bounded_worklist` evidence under an explicit
 `--worklist-state-limit N`. Input branches cover all 256 byte values plus EOF;
 a separate EOF-state bit prevents later ordinary bytes after EOF. Canonical
 `(C,D,A,memory,EOF-state)` nodes are explored FIFO and deduplicated. The
+immutable 59,049-word initial image is expanded once per requested worklist and
+shared beneath each state's sparse evolved-memory overrides; recurrence-backed
+reads therefore do not rebuild the same initial prefix for every state. The
 `input_branch_points` metric counts only non-EOF input states that actually
 expand to byte-plus-EOF alternatives; an EOF-sticky input has one successor. A
 `maximum_first_seen_transition_index` is updated when each unique successor is

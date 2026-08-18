@@ -60,6 +60,9 @@ requested with `--worklist-state-limit N`, where `N` is 1 through 4,096. It
 branches historical input into all 256 byte values plus EOF, keeps EOF sticky
 for later reads, deduplicates `(C,D,A,memory,EOF-state)`, and reports either
 closed reachability or explicit frontier truncation in `bounded_worklist`. The
+worklist expands the immutable 59,049-word initial memory once per request and
+reuses it beneath sparse evolved-memory overrides, avoiding repeated recurrence
+construction without changing exact state identity. The
 `input_branch_points` count includes only real byte-plus-EOF expansions; an
 EOF-sticky `/` transition has one successor and is not counted as a branch.
 `maximum_first_seen_transition_index` advances when a unique state is admitted,
