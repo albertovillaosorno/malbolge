@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v58` retains exact `entry_transition` through
+`malbolge-static-image/v59` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -289,6 +289,10 @@ The closed near-cap cycle/recurrent path maps C=0..14 to loaded source and
 leaves recurrence C=15 null-mapped; the one-word-longer truncated frontier maps
 C=0..15
 all to loaded source. Terminal path maps preserve the terminal status label.
+Schema v59 adds loaded-source coordinates for each control-path state's D
+pointer in parallel with C. The short entry-wrap mutation/no-op path keeps D=40
+recurrence/null, while the 41-word loaded-mutation fixture maps D=40 to loaded
+position 40/raw offset 42/initial byte 122. C and D provenance are independent.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

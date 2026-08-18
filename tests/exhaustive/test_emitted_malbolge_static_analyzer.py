@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v58"
+_SCHEMA = "malbolge-static-image/v59"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -520,6 +520,9 @@ class _WorklistControlPathSourceContext(Protocol):
     source_position: int | None
     source_byte_offset: int | None
     initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
 
 
 class _WorklistTerminalControlPathSourceMap(Protocol):
@@ -2352,6 +2355,12 @@ def _assert_entry_wrap_control_source_maps(report: _Report) -> None:
     assert tuple(context.code_pointer for context in mutation) == (0, 1, 2)
     mutation_offsets = tuple(context.source_byte_offset for context in mutation)
     assert mutation_offsets == (2, 3, 4)
+    assert tuple(context.data_source_byte_offset for context in noop) == (
+        2, 3, None
+    )
+    assert tuple(context.data_source_byte_offset for context in mutation) == (
+        2, 3, None
+    )
     assert tuple(context.code_pointer for context in wrap) == (0, 1, 2, 3, 4, 5)
     assert tuple(context.source_byte_offset for context in wrap) == (
         2, 3, 4, 5, 6, 7
@@ -2366,6 +2375,20 @@ def test_worklist_maps_mutation_noop_and_wrap_control_paths() -> None:
     )
     _assert_entry_wrap_control_source_maps(report)
     assert _WORKLIST_VALUE_SOURCE_MAP_LIMIT in report.analysis_limits
+
+
+def test_control_path_maps_loaded_data_pointer_source() -> None:
+    """Control-path D source mapping reaches loaded position 40 exactly."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _LOADED_MUTATION_SOURCE_WITH_WHITESPACE,
+        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
+    )
+    contexts = report.bounded_worklist_data_mutation_entry_path_source_map
+    final = contexts[-1]
+    assert final.data_pointer == _LOADED_MUTATION_ADDRESS
+    assert final.data_source_position == _LOADED_MUTATION_ADDRESS
+    assert final.data_source_byte_offset == _LOADED_MUTATION_BYTE_OFFSET
+    assert final.initial_data_source_byte == _LOADED_MUTATION_SOURCE_BYTE
 
 
 def test_report_worklist_observes_entry_reachable_eof_wrap() -> None:
@@ -2759,6 +2782,9 @@ def test_worklist_maps_terminal_control_path_with_status() -> None:
     contexts = maps[0].entry_path_source_map
     assert tuple(context.code_pointer for context in contexts) == (0, 1)
     assert tuple(context.source_byte_offset for context in contexts) == (2, 3)
+    assert tuple(context.data_source_byte_offset for context in contexts) == (
+        2, 3
+    )
     assert report.bounded_worklist_cycle_entry_path_source_map == ()
     assert report.bounded_worklist_frontier_entry_path_source_map == ()
 

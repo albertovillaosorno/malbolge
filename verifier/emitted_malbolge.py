@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v58"
+_SCHEMA: Final = "malbolge-static-image/v59"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -222,6 +222,9 @@ class BoundedWorklistControlPathSourceContext:
     source_position: int | None
     source_byte_offset: int | None
     initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1188,15 +1191,22 @@ def _worklist_control_path_source_map(
     contexts: list[BoundedWorklistControlPathSourceContext] = []
     for index, state in enumerate(path):
         code_pointer = state.code_pointer
+        data_pointer = state.data_pointer
         source = _worklist_mutation_address_source_context(code_pointer, cells)
+        data_source = _worklist_mutation_address_source_context(
+            data_pointer, cells
+        )
         contexts.append(
             BoundedWorklistControlPathSourceContext(
                 entry_path_state_index=index,
                 code_pointer=code_pointer,
-                data_pointer=state.data_pointer,
+                data_pointer=data_pointer,
                 source_position=source.source_position,
                 source_byte_offset=source.source_byte_offset,
                 initial_source_byte=source.initial_source_byte,
+                data_source_position=data_source.source_position,
+                data_source_byte_offset=data_source.source_byte_offset,
+                initial_data_source_byte=data_source.initial_source_byte,
             )
         )
     return tuple(contexts)
