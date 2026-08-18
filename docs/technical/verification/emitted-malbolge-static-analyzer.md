@@ -144,9 +144,13 @@ zero. A 1,544-state public worklist reaches that branch and reports one explored
 wrap while retaining a 257-state frontier and `truncated=true`. The two-word
 `b"u="` fixture (input then crazy) closes in 258 states,
 resolving all 257 byte/EOF branches to concrete invalid-self-encryption
-terminals. Without this opt-in graph, a `p` whose accumulator depends on prior
-input remains unresolved rather than assigned a guessed value. A non-graphical
-fetch
+terminals. The five-word `b"u'&%$"` fixture closes in 1,286 states after one
+input and four `j` steps. Its deterministic cycle entry path contains six exact
+states with `(C,D)` pairs `(0,0),(1,1),(2,40),(3,37),(4,29489),(5,29489)`,
+extending checked input-dependent cycle depth while remaining within the
+explicit worklist cap. Without this opt-in graph, a `p` whose accumulator
+depends on prior input remains unresolved rather than assigned a guessed value.
+A non-graphical fetch
 is stronger: the preserved 1998 interpreter executes `continue` before decode,
 encryption, or pointer advancement, so the unchanged C/D state proves a fixed
 fetch cycle. The two-word `b"c'"` fixture reaches exactly that third-step state

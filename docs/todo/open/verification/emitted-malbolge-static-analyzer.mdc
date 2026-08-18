@@ -151,6 +151,10 @@ executable cells, and input-dependent cycles or hangs.
   257 rejection terminals to a concrete reachable rejection witness, and the
   closed input-halt CLI fixture publishes a reachable halt witness. An empty
   cycle witness under truncation does not prove the unexplored frontier acyclic.
+  The five-word `b"u'&%$"` fixture closes in 1,286 states after one input and
+  four `j` steps, binding a six-state deterministic cycle entry path through
+  `(C,D)=(0,0),(1,1),(2,40),(3,37),(4,29489),(5,29489)`. This extends checked
+  input-dependent cycle depth without changing the explicit worklist ceiling.
   Repeat-heavy branch merges do not become cycle claims. Schema v25
   additionally publishes exact SCC summary counts over only the admitted known
   graph: all SCCs, cyclic SCCs, cyclic states, and the largest cyclic SCC size.
@@ -192,9 +196,8 @@ executable cells, and input-dependent cycles or hangs.
   close automatic or unbounded input-dependent cycle analysis.
 - Automatic unbounded/worklist control-flow reachability, broader unbounded
   dataflow/evolved-memory equivalence, higher-level C/source-map linkage,
-  wraparound beyond selected prefix/worklist evidence, and longer
-  input-dependent cycles
-  remain open. Nothing after the
+  wraparound beyond selected prefix/worklist evidence, and input-dependent
+  cycles deeper than the checked six-state path remain open. Nothing after the
   requested bound is inferred from prefix or initial-image admission.
 
 - Expected durable artifact surface: `verifier/`, `tests/differential/`,

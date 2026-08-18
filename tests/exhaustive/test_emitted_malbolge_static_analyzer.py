@@ -123,6 +123,16 @@ _LONG_INPUT_CYCLE_POINTER_PATH = (
     (3, 29_490),
     (4, 29_489),
 )
+_DEEP_INPUT_CYCLE_SOURCE = b"u'&%$"
+_DEEP_INPUT_CYCLE_STATE_LIMIT = 1_286
+_DEEP_INPUT_CYCLE_POINTER_PATH = (
+    (0, 0),
+    (1, 1),
+    (2, 40),
+    (3, 37),
+    (4, 29_489),
+    (5, 29_489),
+)
 _DOUBLE_INPUT_CYCLE_STATE_LIMIT = 515
 _FIXED_CYCLE_POINTER = 2
 _FIXED_CYCLE_ENCRYPTED_ZERO = 111
@@ -1871,6 +1881,29 @@ def test_report_worklist_proves_long_input_dependent_cycle() -> None:
     assert tuple(
         (state.code_pointer, state.data_pointer) for state in path
     ) == _LONG_INPUT_CYCLE_POINTER_PATH
+    assert path[-1] == worklist.reachable_cycle_witness[0]
+    assert worklist.closed_all_paths_terminate is False
+    assert worklist.closed_all_paths_halt is False
+    assert not worklist.truncated
+
+
+def test_report_worklist_proves_deeper_input_dependent_cycle() -> None:
+    """Public worklist closes a six-state input-dependent cycle path."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _DEEP_INPUT_CYCLE_SOURCE,
+        worklist_state_limit=_DEEP_INPUT_CYCLE_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _DEEP_INPUT_CYCLE_STATE_LIMIT
+    assert worklist.reachable_cycle_detected
+    assert worklist.maximum_first_seen_transition_index == len(
+        _DEEP_INPUT_CYCLE_POINTER_PATH
+    )
+    path = worklist.reachable_cycle_entry_path
+    assert tuple(
+        (state.code_pointer, state.data_pointer) for state in path
+    ) == _DEEP_INPUT_CYCLE_POINTER_PATH
     assert path[-1] == worklist.reachable_cycle_witness[0]
     assert worklist.closed_all_paths_terminate is False
     assert worklist.closed_all_paths_halt is False
