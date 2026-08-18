@@ -38,13 +38,12 @@
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 from collections import deque
 from collections.abc import Callable
-import importlib.util
 from pathlib import Path
-import sys
-from typing import Protocol
-from typing import cast
+from typing import Protocol, cast
 
 import pytest
 
@@ -174,6 +173,7 @@ class _WorklistAnalysis(Protocol):
     closed_recurrent_entry_path: tuple[_WorklistCycleState, ...] | None
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
+    closed_terminal_status_counts: tuple[tuple[str, int], ...] | None
     terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -325,6 +325,10 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     _assert_no_closed_recurrence(result)
     assert result.input_branch_points == 1
     assert result.terminal_status_counts == (("halted", _INPUT_VALUE_COUNT),)
+    assert result.closed_terminal_status_counts == ((
+        "halted",
+        _INPUT_VALUE_COUNT,
+    ),)
     assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
     assert result.frontier_states == 0
     assert not result.truncated
@@ -355,6 +359,9 @@ def test_input_crazy_worklist_resolves_every_input_branch() -> None:
     assert result.terminal_status_counts == (
         ("rejected-invalid-self-encryption", _INPUT_VALUE_COUNT),
     )
+    assert result.closed_terminal_status_counts == (
+        ("rejected-invalid-self-encryption", _INPUT_VALUE_COUNT),
+    )
     witnesses = result.terminal_status_witnesses
     assert len(witnesses) == 1
     witness = witnesses[0]
@@ -378,6 +385,7 @@ def test_input_worklist_truncates_before_unadmitted_eof_state() -> None:
     assert result.explored_states == 1
     assert result.input_branch_points == 1
     assert result.terminal_status_counts == ()
+    assert result.closed_terminal_status_counts is None
     assert result.frontier_states == _INPUT_VALUE_COUNT
     assert result.closed_recurrent_component_count is None
     assert result.closed_recurrent_state_count is None
@@ -465,6 +473,7 @@ def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:
     assert result.known_graph_largest_cyclic_component_states == 1
     _assert_fixed_cycle_closed_recurrence(result)
     assert result.terminal_status_counts == ()
+    assert result.closed_terminal_status_counts == ()
     assert not result.truncated
 
 

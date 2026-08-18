@@ -35,15 +35,14 @@
 from __future__ import annotations
 
 import ast
-from copy import copy
-from hashlib import sha256
 import importlib.util
 import json
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from typing import Protocol
-from typing import cast
+from copy import copy
+from hashlib import sha256
+from pathlib import Path
+from typing import Protocol, cast
 
 import pytest
 from scripts.validate import target_profile
@@ -66,7 +65,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v28"
+_SCHEMA = "malbolge-static-image/v29"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -316,6 +315,7 @@ class _WorklistAnalysis(Protocol):
     closed_recurrent_entry_path: tuple[_WorklistCycleState, ...] | None
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
+    closed_terminal_status_counts: tuple[tuple[str, int], ...] | None
     terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -1786,6 +1786,9 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     assert worklist.terminal_status_counts == (
         ("rejected-invalid-self-encryption", _WORKLIST_INPUT_VALUE_COUNT),
     )
+    assert worklist.closed_terminal_status_counts == (
+        ("rejected-invalid-self-encryption", _WORKLIST_INPUT_VALUE_COUNT),
+    )
     _assert_terminal_witness_object(worklist)
     assert not worklist.truncated
     assert _WORKLIST_CLOSED_LIMIT in report.analysis_limits
@@ -1825,6 +1828,7 @@ def test_report_worklist_truncation_is_explicit() -> None:
     assert worklist.closed_recurrent_largest_component_states is None
     assert worklist.closed_recurrent_cycle_witness is None
     assert worklist.closed_recurrent_entry_path is None
+    assert worklist.closed_terminal_status_counts is None
     assert _WORKLIST_TRUNCATED_LIMIT in report.analysis_limits
 
 
@@ -1966,6 +1970,9 @@ def test_cli_accepts_closed_worklist_request(tmp_path: Path) -> None:
     document = cast("dict[str, object]", json.loads(completed.stdout))
     bounded = cast("dict[str, object]", document["bounded_worklist"])
     assert bounded["unique_states"] == _WORKLIST_COMPLETE_STATE_LIMIT
+    assert bounded["closed_terminal_status_counts"] == [
+        [_ENTRY_HALTED, _WORKLIST_INPUT_VALUE_COUNT]
+    ]
     witnesses = cast(
         "list[dict[str, object]]",
         bounded["terminal_status_witnesses"],
@@ -2000,6 +2007,7 @@ def test_cli_rejects_truncated_worklist_request(tmp_path: Path) -> None:
     assert completed.returncode == 1
     document = cast("dict[str, object]", json.loads(completed.stdout))
     bounded = cast("dict[str, object]", document["bounded_worklist"])
+    assert bounded["closed_terminal_status_counts"] is None
     assert bounded["truncated"] is True
 
 

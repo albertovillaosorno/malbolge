@@ -36,8 +36,7 @@
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
-from dataclasses import field
+from dataclasses import dataclass, field
 from typing import Final
 
 if __package__:
@@ -107,6 +106,7 @@ class WorklistAnalysis:
     closed_recurrent_entry_path: tuple[WorklistCycleState, ...] | None
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
+    closed_terminal_status_counts: tuple[tuple[str, int], ...] | None
     terminal_status_witnesses: tuple[WorklistTerminalWitness, ...]
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -713,6 +713,11 @@ class _Explorer:
             closed_recurrent_entry_path=recurrence.entry_path,
             input_branch_points=self.input_branch_points,
             terminal_status_counts=tuple(sorted(self.terminal_counts.items())),
+            closed_terminal_status_counts=(
+                None
+                if truncated
+                else tuple(sorted(self.terminal_counts.items()))
+            ),
             terminal_status_witnesses=_terminal_witnesses(
                 self.edges,
                 self.seen,

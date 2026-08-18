@@ -36,14 +36,12 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
-from hashlib import sha256
 import json
-from pathlib import Path
 import sys
-from typing import Final
-from typing import Never
+from dataclasses import asdict, dataclass
+from hashlib import sha256
+from pathlib import Path
+from typing import Final, Never
 
 if __package__:
     from verifier import emitted_malbolge_classic as classic
@@ -59,7 +57,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v28"
+_SCHEMA: Final = "malbolge-static-image/v29"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"

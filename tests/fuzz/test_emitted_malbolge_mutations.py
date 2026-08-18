@@ -36,19 +36,18 @@
 
 from __future__ import annotations
 
-from hashlib import sha256
 import json
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from typing import Final
-from typing import cast
+from hashlib import sha256
+from pathlib import Path
+from typing import Final, cast
 
 import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _ANALYZER = _ROOT / "verifier" / "emitted_malbolge.py"
-_SCHEMA: Final = "malbolge-static-image/v28"
+_SCHEMA: Final = "malbolge-static-image/v29"
 _DECODE_CODE: Final = "MALBOLGE-STATIC-004"
 _GRAPHICAL_START: Final = 33
 _XLAT1: Final = (
