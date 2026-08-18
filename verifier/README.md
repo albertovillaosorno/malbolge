@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v52 retains the legacy exact entry-through-fifth
+load decode. Schema v53 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -244,7 +244,12 @@ committed data writes by their final post-encryption effect. It publishes final
 no-op count and addresses beside effective mutation count. Entry-wrap has one
 final no-op and 256 effective mutations at address 40, exactly partitioning its
 257 committed data writes. Closed input-halt/crazy have no committed data-write
-no-ops.
+no-ops. Schema v53 adds `explored_data_write_noop_witness` for the first
+FIFO-explored entry-reachable committed data-write final no-op. Entry-wrap's
+byte-0 branch reaches address 40 with previous, planned, and final value
+29,524; its shortest entry path has `(C,D)` pairs `(0,0),(1,1),(2,40)` and does
+not alias self-encryption. A missing witness remains only an explored-graph
+statement under truncation.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored

@@ -133,6 +133,19 @@ class WorklistDataMutationValueDomain:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistDataWriteNoopWitness:
+    """First exact entry-reachable committed data-write final no-op."""
+
+    state: WorklistCycleState
+    entry_path: tuple[WorklistCycleState, ...]
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistDataMutationWitness:
     """First exact explored effective data mutation and its entry path."""
 
@@ -197,6 +210,7 @@ class WorklistAnalysis:
     ]
     explored_evolved_fetch_witness: WorklistEvolvedReadWitness | None
     explored_evolved_data_read_witness: WorklistEvolvedReadWitness | None
+    explored_data_write_noop_witness: WorklistDataWriteNoopWitness | None
     explored_data_mutation_witness: WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -881,6 +895,7 @@ class _Explorer:
     )
     evolved_fetch_witness: WorklistEvolvedReadWitness | None = None
     evolved_data_read_witness: WorklistEvolvedReadWitness | None = None
+    data_write_noop_witness: WorklistDataWriteNoopWitness | None = None
     data_mutation_witness: WorklistDataMutationWitness | None = None
     explored: int = 0
     code_data_alias_transitions: int = 0
@@ -1071,6 +1086,7 @@ class _Explorer:
             ),
             explored_evolved_fetch_witness=self.evolved_fetch_witness,
             explored_evolved_data_read_witness=self.evolved_data_read_witness,
+            explored_data_write_noop_witness=self.data_write_noop_witness,
             explored_data_mutation_witness=self.data_mutation_witness,
             explored_minimum_words=max(
                 len(self.words),
@@ -1281,6 +1297,47 @@ class _Explorer:
                 transition.encryption_input,
             )
 
+    def _data_write_noop_witness(
+        self,
+        node: _ReachabilityNode,
+        mutation: tuple[int, int, int, int, bool],
+    ) -> WorklistDataWriteNoopWitness | None:
+        address, previous, written, result, aliases = mutation
+        key = _node_key(node)
+        path = _known_graph_shortest_path(
+            self.edges,
+            self.seen,
+            start=_INITIAL_STATE_KEY,
+            target=key,
+        )
+        if not path:
+            return None
+        return WorklistDataWriteNoopWitness(
+            state=_cycle_state(key),
+            entry_path=tuple(_cycle_state(item) for item in path),
+            address=address,
+            previous_value=previous,
+            written_value=written,
+            result_value=result,
+            aliases_self_encryption=aliases,
+        )
+
+    def _record_data_write_noop_evidence(
+        self,
+        node: _ReachabilityNode,
+        mutation: tuple[int, int, int, int, bool],
+    ) -> bool:
+        address, previous, _, result, _ = mutation
+        if result != previous:
+            return False
+        self.committed_data_write_noop_transitions += 1
+        self.committed_data_write_noop_addresses.add(address)
+        if self.data_write_noop_witness is None:
+            self.data_write_noop_witness = self._data_write_noop_witness(
+                node, mutation
+            )
+        return True
+
     def _record_data_mutation_evidence(
         self,
         node: _ReachabilityNode,
@@ -1289,11 +1346,9 @@ class _Explorer:
         mutation = _committed_data_mutation(step)
         if mutation is None:
             return
-        address, previous, written, result, aliases = mutation
-        if result == previous:
-            self.committed_data_write_noop_transitions += 1
-            self.committed_data_write_noop_addresses.add(address)
+        if self._record_data_write_noop_evidence(node, mutation):
             return
+        address, previous, written, result, aliases = mutation
         self.effective_data_mutation_transitions += 1
         self.effective_data_mutation_addresses.add(address)
         _record_domain_value(

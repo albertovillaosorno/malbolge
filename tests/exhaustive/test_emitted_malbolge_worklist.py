@@ -179,6 +179,7 @@ _ENTRY_MUTATION_RESULT_VALUE = 29_523
 _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT = 256
 _ENTRY_COMMITTED_DATA_WRITE_COUNT = 257
 _ENTRY_NOOP_DATA_WRITE_COUNT = 1
+_ENTRY_NOOP_POINTER_PATH = ((0, 0), (1, 1), (2, 40))
 _ENTRY_MUTATION_RESULT_DOMAIN_COUNT = 256
 _ENTRY_MUTATION_RESULT_DOMAIN_MINIMUM = 29_269
 _ENTRY_MUTATION_RESULT_DOMAIN_MAXIMUM = 59_048
@@ -306,6 +307,16 @@ class _WorklistDataMutationValueDomain(Protocol):
     result_values: tuple[int, ...]
 
 
+class _WorklistDataWriteNoopWitness(Protocol):
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+
+
 class _WorklistDataMutationWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -367,6 +378,7 @@ class _WorklistAnalysis(Protocol):
     ]
     explored_evolved_fetch_witness: _WorklistEvolvedReadWitness | None
     explored_evolved_data_read_witness: _WorklistEvolvedReadWitness | None
+    explored_data_write_noop_witness: _WorklistDataWriteNoopWitness | None
     explored_data_mutation_witness: _WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -618,6 +630,7 @@ def test_input_halt_reports_exact_explored_mutation_footprint() -> None:
     assert result.explored_committed_data_write_addresses == ()
     assert result.explored_committed_data_write_noop_transition_count == 0
     assert result.explored_committed_data_write_noop_addresses == ()
+    assert result.explored_data_write_noop_witness is None
     assert result.explored_self_encryption_transition_count == 1
     assert result.explored_self_encryption_addresses == (0,)
     assert result.explored_effective_data_mutation_transition_count == 0
@@ -644,6 +657,7 @@ def test_rejected_planned_writes_are_not_reported_as_committed() -> None:
     assert result.explored_committed_data_write_addresses == ()
     assert result.explored_committed_data_write_noop_transition_count == 0
     assert result.explored_committed_data_write_noop_addresses == ()
+    assert result.explored_data_write_noop_witness is None
     assert result.explored_self_encryption_transition_count == 1
     assert result.explored_self_encryption_addresses == (0,)
     assert result.explored_effective_data_mutation_transition_count == 0
@@ -1165,6 +1179,20 @@ def test_worklist_witnesses_data_read_from_evolved_memory() -> None:
     )
 
 
+def _assert_entry_noop_witness(result: _WorklistAnalysis) -> None:
+    witness = result.explored_data_write_noop_witness
+    assert witness is not None
+    assert witness.address == _ENTRY_MUTATION_ADDRESS
+    assert witness.previous_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert witness.written_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert witness.result_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert not witness.aliases_self_encryption
+    assert witness.entry_path[-1] == witness.state
+    assert tuple(
+        (state.code_pointer, state.data_pointer) for state in witness.entry_path
+    ) == _ENTRY_NOOP_POINTER_PATH
+
+
 def _assert_entry_mutation_value_domain(result: _WorklistAnalysis) -> None:
     domains = result.explored_effective_data_mutation_value_domains
     assert len(domains) == 1
@@ -1223,6 +1251,7 @@ def _assert_entry_data_mutation_evidence(result: _WorklistAnalysis) -> None:
     assert result.explored_committed_data_write_noop_addresses == (
         _ENTRY_MUTATION_ADDRESS,
     )
+    _assert_entry_noop_witness(result)
     assert (
         result.explored_effective_data_mutation_transition_count
         + result.explored_committed_data_write_noop_transition_count

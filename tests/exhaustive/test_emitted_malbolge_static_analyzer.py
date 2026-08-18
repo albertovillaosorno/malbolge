@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v52"
+_SCHEMA = "malbolge-static-image/v53"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -466,6 +466,16 @@ class _WorklistDataMutationValueDomain(Protocol):
     result_values: tuple[int, ...]
 
 
+class _WorklistDataWriteNoopWitness(Protocol):
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+
+
 class _WorklistDataMutationWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -561,6 +571,7 @@ class _WorklistAnalysis(Protocol):
     ]
     explored_evolved_fetch_witness: _WorklistEvolvedReadWitness | None
     explored_evolved_data_read_witness: _WorklistEvolvedReadWitness | None
+    explored_data_write_noop_witness: _WorklistDataWriteNoopWitness | None
     explored_data_mutation_witness: _WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -2099,6 +2110,12 @@ def _assert_terminal_witness_object(worklist: _WorklistAnalysis) -> None:
     assert witness.entry_path[-1] == witness.state
 
 
+def _assert_no_data_write_noop_evidence(worklist: _WorklistAnalysis) -> None:
+    assert worklist.explored_committed_data_write_noop_transition_count == 0
+    assert worklist.explored_committed_data_write_noop_addresses == ()
+    assert worklist.explored_data_write_noop_witness is None
+
+
 def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     assert worklist.explored_code_data_alias_transition_count == (
         _WORKLIST_COMPLETE_STATE_LIMIT
@@ -2113,8 +2130,7 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     assert len(planned_domain.values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
     assert worklist.explored_committed_data_write_transition_count == 0
     assert worklist.explored_committed_data_write_addresses == ()
-    assert worklist.explored_committed_data_write_noop_transition_count == 0
-    assert worklist.explored_committed_data_write_noop_addresses == ()
+    _assert_no_data_write_noop_evidence(worklist)
     assert worklist.explored_self_encryption_transition_count == 1
     assert worklist.explored_self_encryption_addresses == (0,)
     assert worklist.explored_effective_data_mutation_transition_count == 0
@@ -2178,6 +2194,22 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     }.issubset(report.analysis_limits)
 
 
+def _assert_entry_noop_context(worklist: _WorklistAnalysis) -> None:
+    assert worklist.explored_committed_data_write_noop_transition_count == (
+        _ENTRY_NOOP_DATA_WRITE_COUNT
+    )
+    assert worklist.explored_committed_data_write_noop_addresses == (
+        _ENTRY_MUTATION_ADDRESS,
+    )
+    witness = worklist.explored_data_write_noop_witness
+    assert witness is not None
+    assert witness.address == _ENTRY_MUTATION_ADDRESS
+    assert witness.previous_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert witness.written_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert witness.result_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert witness.entry_path[-1] == witness.state
+
+
 def _assert_entry_wrap_mutation_context(
     report: _Report,
     worklist: _WorklistAnalysis,
@@ -2195,12 +2227,7 @@ def _assert_entry_wrap_mutation_context(
     assert worklist.explored_committed_data_write_addresses == (
         _ENTRY_MUTATION_ADDRESS,
     )
-    assert worklist.explored_committed_data_write_noop_transition_count == (
-        _ENTRY_NOOP_DATA_WRITE_COUNT
-    )
-    assert worklist.explored_committed_data_write_noop_addresses == (
-        _ENTRY_MUTATION_ADDRESS,
-    )
+    _assert_entry_noop_context(worklist)
     assert worklist.explored_effective_data_mutation_transition_count == (
         _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT
     )
