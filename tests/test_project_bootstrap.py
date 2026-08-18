@@ -492,6 +492,37 @@ printf "%s\n" "$*" >> "$PROBE_OUTPUT"
     assert argv == POSIX_JIG_PYTEST_PROBE_ARGV
 
 
+def test_posix_launchers_need_no_ambient_path(tmp_path: Path) -> None:
+    """POSIX Python launchers resolve themselves with shell builtins only."""
+    layout = python_validation.validation_layout(tmp_path, windows=False)
+    layout.scripts.mkdir(parents=True)
+    probe = tmp_path / "launcher-probe.txt"
+    probe_script = """#!/bin/sh
+printf "%s\n" "$PYTHONPYCACHEPREFIX" > "$PROBE_OUTPUT"
+printf "%s\n" "$*" >> "$PROBE_OUTPUT"
+"""
+    _ = layout.python.write_text(probe_script, encoding="ascii")
+    _ = layout.python.chmod(layout.python.stat().st_mode | stat.S_IXUSR)
+    python_validation.write_launchers(layout, windows=False)
+
+    cases = (
+        (layout.python_launcher, "--probe"),
+        (layout.pytest_launcher, "-m pytest --probe"),
+    )
+    for launcher, expected_argv in cases:
+        completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            [str(launcher), "--probe"],
+            check=False,
+            env={"PATH": "", "PROBE_OUTPUT": str(probe)},
+        )
+
+        assert completed.returncode == os.EX_OK
+        cache, argv = probe.read_text(encoding="utf-8").splitlines()
+        expected_cache = tmp_path / ".cache/python/pycache"
+        assert os.path.realpath(cache) == str(expected_cache)
+        assert argv == expected_argv
+
+
 def test_posix_launchers_are_executable_and_cache_bound(tmp_path: Path) -> None:
     """POSIX launchers use the local interpreter and repository cache."""
     layout = python_validation.validation_layout(tmp_path, windows=False)

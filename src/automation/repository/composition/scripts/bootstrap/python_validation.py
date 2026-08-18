@@ -461,6 +461,16 @@ def _windows_launcher_text(*, pytest: bool) -> str:
     return f"@echo off\r\n{cache_line}\r\n{invocation}\r\n"
 
 
+def _posix_script_directory_text() -> str:
+    return (
+        'case "$0" in\n'
+        '    */*) SCRIPT_DIR=${0%/*} ;;\n'
+        '    *) SCRIPT_DIR=. ;;\n'
+        'esac\n'
+        'SCRIPT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR" && pwd)\n'
+    )
+
+
 def _posix_launcher_text(*, pytest: bool) -> str:
     invocation = (
         'exec "$SCRIPT_DIR/python" -m pytest "$@"'
@@ -474,7 +484,7 @@ def _posix_launcher_text(*, pytest: bool) -> str:
     return (
         "#!/bin/sh\n"
         "set -eu\n"
-        'SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\n'
+        f"{_posix_script_directory_text()}"
         f"{cache}\n"
         f"{invocation}\n"
     )
@@ -488,11 +498,7 @@ def _posix_jig_pytest_alias_text() -> str:
     return (
         "#!/bin/sh\n"
         "set -eu\n"
-        'case "$0" in\n'
-        '    */*) SCRIPT_DIR=${0%/*} ;;\n'
-        '    *) SCRIPT_DIR=. ;;\n'
-        'esac\n'
-        'SCRIPT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR" && pwd)\n'
+        f"{_posix_script_directory_text()}"
         f"{cache}\n"
         'exec "$SCRIPT_DIR/../bin/python" -m pytest "$@"\n'
     )
