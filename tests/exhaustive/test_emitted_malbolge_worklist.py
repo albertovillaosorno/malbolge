@@ -100,6 +100,17 @@ _NEAR_CAP_INPUT_CYCLE_POINTER_PATH = (
     (14, 29_405),
     (15, 29_405),
 )
+_MERGED_INPUT_CYCLE_SOURCE = tuple(
+    b"".join(
+        (
+            b"u'%%$#\"!~}|{zyxwvutsrqponmlkjihgfedcba`_^]\\",
+            b"[ZYXWVUTSRQPONMLKJIHGFED",
+        )
+    )
+)
+_MERGED_INPUT_CYCLE_STATE_LIMIT = 591
+_MERGED_INPUT_CYCLE_PATH_LENGTH = 41
+_MERGED_INPUT_CYCLE_REPEATED_EDGES = 257
 _OVER_CAP_INPUT_CYCLE_SOURCE = tuple(b"u'&%$#\"!~}|{zyxw")
 _MAX_WORKLIST_STATE_LIMIT = 4_096
 _OVER_CAP_EXPLORED_STATES = 3_840
@@ -937,6 +948,31 @@ def test_near_cap_input_dependent_jump_chain_closes_exact_cycle() -> None:
     assert path[-1] == result.reachable_cycle_witness[0]
     assert result.closed_recurrent_entry_path == path
     assert result.closed_recurrent_component_count == _INPUT_VALUE_COUNT
+
+
+def test_input_branch_merge_closes_deeper_cycle_with_small_graph() -> None:
+    """Rotate after input merges branches before a deeper exact cycle."""
+    result = worklist.analyze_reachability(
+        _MERGED_INPUT_CYCLE_SOURCE,
+        maximum_states=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    assert result.unique_states == _MERGED_INPUT_CYCLE_STATE_LIMIT
+    assert result.explored_states == _MERGED_INPUT_CYCLE_STATE_LIMIT
+    assert result.input_branch_points == 1
+    assert result.repeated_state_edges == _MERGED_INPUT_CYCLE_REPEATED_EDGES
+    assert result.maximum_first_seen_transition_index == (
+        _MERGED_INPUT_CYCLE_PATH_LENGTH
+    )
+    assert result.reachable_cycle_detected
+    path = result.reachable_cycle_entry_path
+    assert len(path) == _MERGED_INPUT_CYCLE_PATH_LENGTH
+    assert tuple(state.code_pointer for state in path) == tuple(
+        range(_MERGED_INPUT_CYCLE_PATH_LENGTH)
+    )
+    assert path[-1] == result.reachable_cycle_witness[0]
+    assert result.closed_all_paths_terminate is False
+    assert result.closed_all_paths_halt is False
+    assert not result.truncated
 
 
 def test_reviewed_state_ceiling_truncates_deeper_jump_chain() -> None:

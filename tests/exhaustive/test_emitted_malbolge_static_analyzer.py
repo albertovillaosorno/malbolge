@@ -214,6 +214,14 @@ _NEAR_CAP_INPUT_CYCLE_POINTER_PATH = (
     (14, 29_405),
     (15, 29_405),
 )
+_MERGED_INPUT_CYCLE_SOURCE = b"".join(
+    (
+        b"u'%%$#\"!~}|{zyxwvutsrqponmlkjihgfedcba`_^]\\",
+        b"[ZYXWVUTSRQPONMLKJIHGFED",
+    )
+)
+_MERGED_INPUT_CYCLE_STATE_LIMIT = 591
+_MERGED_INPUT_CYCLE_PATH_LENGTH = 41
 _OVER_CAP_INPUT_CYCLE_SOURCE = b"u'&%$#\"!~}|{zyxw"
 _OVER_CAP_EXPLORED_STATES = 3_840
 _OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION = 17
@@ -2889,6 +2897,31 @@ def test_report_worklist_proves_near_cap_input_cycle() -> None:
         (state.code_pointer, state.data_pointer) for state in path
     ) == _NEAR_CAP_INPUT_CYCLE_POINTER_PATH
     assert path[-1] == worklist.reachable_cycle_witness[0]
+    assert worklist.closed_all_paths_terminate is False
+    assert worklist.closed_all_paths_halt is False
+    assert not worklist.truncated
+
+
+def test_report_worklist_proves_branch_merged_deeper_cycle() -> None:
+    """Public worklist closes a 41-state input-dependent cycle path."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _MERGED_INPUT_CYCLE_SOURCE,
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _MERGED_INPUT_CYCLE_STATE_LIMIT
+    assert worklist.input_branch_points == 1
+    assert worklist.reachable_cycle_detected
+    path = worklist.reachable_cycle_entry_path
+    assert len(path) == _MERGED_INPUT_CYCLE_PATH_LENGTH
+    assert tuple(state.code_pointer for state in path) == tuple(
+        range(_MERGED_INPUT_CYCLE_PATH_LENGTH)
+    )
+    source_map = report.bounded_worklist_cycle_entry_path_source_map
+    assert tuple(context.source_position for context in source_map) == tuple(
+        range(_MERGED_INPUT_CYCLE_PATH_LENGTH)
+    )
     assert worklist.closed_all_paths_terminate is False
     assert worklist.closed_all_paths_halt is False
     assert not worklist.truncated

@@ -162,8 +162,12 @@ executable cells, and input-dependent cycles or hangs.
   input-dependent cycle depth without changing the explicit worklist ceiling.
   The 15-word `b"u'&%$#\"!~}|{zyx"` input-plus-14-jump fixture closes in
   3,856 states and binds a deterministic 16-state cycle entry path, exercising
-  about 94% of the reviewed 4,096-state budget without truncation. The
-  one-word-longer `b"u'&%$#\"!~}|{zyxw"` fixture reaches the maximum after
+  about 94% of the reviewed 4,096-state budget without truncation. A separate
+  67-word `/ j *` plus 64-`j` fixture merges the 257 input branches after
+  rotate;
+  it closes in only 591 states and proves a 41-state C=0..40 cycle entry path
+  without raising the cap. The one-word-longer `b"u'&%$#\"!~}|{zyxw"` fixture
+  reaches the maximum after
   3,840 explored states, leaves 257 exact frontier states, records first-seen
   depth 17, and remains explicitly unknown for cycle/all-path closure across the
   frontier. This remains bounded evidence rather than automatic reachability.
@@ -322,7 +326,7 @@ executable cells, and input-dependent cycles or hangs.
 - Automatic unbounded/worklist control-flow reachability, broader unbounded
   dataflow/evolved-memory equivalence, control-flow/source-map linkage beyond
   the selected bounded witness set, wraparound beyond selected prefix/worklist
-  evidence, and input-dependent cycles deeper than the checked 16-state path
+  evidence, and input-dependent cycles deeper than the checked 41-state path
   remain open. Nothing after the
   requested bound is inferred from prefix or initial-image admission.
 
@@ -349,7 +353,8 @@ executable cells, and input-dependent cycles or hangs.
   loaded-source/raw-offset bounded
   fetch/read/write/encryption context, exact bounded fetch-value lineage through
   loaded source, recurrence, and prior data-write evidence, explicit finite
-  worklist closure/truncation evidence, mutation and planned/committed write
+  worklist closure/truncation evidence including a 41-state branch-merged
+  cycle path, mutation and planned/committed write
   domains, source-linked worklist value maps, final no-op partition/witnesses,
   evolved fetch/data-read witnesses with value-checked last-writer provenance,
   writer-state and entry-path C/D source maps, mutation/no-op/wrap and
