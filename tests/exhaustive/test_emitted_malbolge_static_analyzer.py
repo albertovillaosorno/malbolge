@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v40"
+_SCHEMA = "malbolge-static-image/v41"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -109,6 +109,10 @@ _ENTRY_MUTATION_PREVIOUS_VALUE = 29_524
 _ENTRY_MUTATION_RESULT_VALUE = 29_523
 _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT = 256
 _ENTRY_COMMITTED_DATA_WRITE_COUNT = 257
+_ENTRY_MUTATION_RESULT_DOMAIN_COUNT = 256
+_MULTI_MUTATION_SECOND_ADDRESS = 41
+_MULTI_MUTATION_SECOND_PREVIOUS_VALUES = (29_409,)
+_MULTI_MUTATION_SECOND_RESULT_VALUES = (9_803,)
 _LOADED_MUTATION_SOURCE = (
     b"u'<%$#>=<;:987654321NN"
     b".-,+*)('&%$#\"!~}|{z"
@@ -424,6 +428,12 @@ class _WorklistWrapWitness(Protocol):
     data_pointer_wrapped: bool
 
 
+class _WorklistDataMutationValueDomain(Protocol):
+    address: int
+    previous_values: tuple[int, ...]
+    result_values: tuple[int, ...]
+
+
 class _WorklistDataMutationWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -481,6 +491,9 @@ class _WorklistAnalysis(Protocol):
     explored_self_encryption_addresses: tuple[int, ...]
     explored_effective_data_mutation_transition_count: int
     explored_effective_data_mutation_addresses: tuple[int, ...]
+    explored_effective_data_mutation_value_domains: tuple[
+        _WorklistDataMutationValueDomain, ...
+    ]
     explored_data_mutation_witness: _WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -1966,6 +1979,7 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     assert worklist.explored_self_encryption_addresses == (0,)
     assert worklist.explored_effective_data_mutation_transition_count == 0
     assert worklist.explored_effective_data_mutation_addresses == ()
+    assert worklist.explored_effective_data_mutation_value_domains == ()
     assert worklist.explored_data_mutation_witness is None
 
 
@@ -2026,6 +2040,10 @@ def _assert_entry_wrap_mutation_context(
     assert worklist.explored_effective_data_mutation_addresses == (
         _ENTRY_MUTATION_ADDRESS,
     )
+    domains = worklist.explored_effective_data_mutation_value_domains
+    assert len(domains) == 1
+    assert domains[0].previous_values == (_ENTRY_MUTATION_PREVIOUS_VALUE,)
+    assert len(domains[0].result_values) == _ENTRY_MUTATION_RESULT_DOMAIN_COUNT
     context = report.bounded_worklist_data_mutation_source_context
     assert context is not None
     assert context.address == _ENTRY_MUTATION_ADDRESS
@@ -2168,6 +2186,14 @@ def test_worklist_maps_every_effective_mutation_address() -> None:
     assert recurrence.source_position is None
     assert recurrence.source_byte_offset is None
     assert recurrence.initial_source_byte is None
+    domains = worklist.explored_effective_data_mutation_value_domains
+    assert tuple(domain.address for domain in domains) == (
+        _MULTI_MUTATION_ADDRESSES
+    )
+    second = domains[-1]
+    assert second.address == _MULTI_MUTATION_SECOND_ADDRESS
+    assert second.previous_values == _MULTI_MUTATION_SECOND_PREVIOUS_VALUES
+    assert second.result_values == _MULTI_MUTATION_SECOND_RESULT_VALUES
     assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
 
 

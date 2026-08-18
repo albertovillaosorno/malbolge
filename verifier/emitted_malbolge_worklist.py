@@ -101,6 +101,15 @@ class WorklistWrapWitness:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistDataMutationValueDomain:
+    """Exact observed pre-write and final values for one mutated address."""
+
+    address: int
+    previous_values: tuple[int, ...]
+    result_values: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistDataMutationWitness:
     """First exact explored effective data mutation and its entry path."""
 
@@ -148,6 +157,9 @@ class WorklistAnalysis:
     explored_self_encryption_addresses: tuple[int, ...]
     explored_effective_data_mutation_transition_count: int
     explored_effective_data_mutation_addresses: tuple[int, ...]
+    explored_effective_data_mutation_value_domains: tuple[
+        WorklistDataMutationValueDomain, ...
+    ]
     explored_data_mutation_witness: WorklistDataMutationWitness | None
     explored_minimum_words: int
     explored_highest_accessed_address: int
@@ -721,6 +733,31 @@ def _effective_data_mutation(
     return address, previous, written, result, aliases
 
 
+def _record_domain_value(
+    domains: dict[int, set[int]],
+    address: int,
+    value: int,
+) -> None:
+    domains.setdefault(address, set()).add(value)
+
+
+def _data_mutation_value_domains(
+    previous_values: dict[int, set[int]],
+    result_values: dict[int, set[int]],
+) -> tuple[WorklistDataMutationValueDomain, ...]:
+    if previous_values.keys() != result_values.keys():
+        message = "data mutation value domains lost an observed address"
+        raise AssertionError(message)
+    return tuple(
+        WorklistDataMutationValueDomain(
+            address=address,
+            previous_values=tuple(sorted(previous_values[address])),
+            result_values=tuple(sorted(result_values[address])),
+        )
+        for address in sorted(previous_values)
+    )
+
+
 @dataclass(slots=True)
 class _Explorer:
     words: tuple[int, ...]
@@ -736,6 +773,12 @@ class _Explorer:
     committed_data_write_addresses: set[int] = field(default_factory=set)
     self_encryption_addresses: set[int] = field(default_factory=set)
     effective_data_mutation_addresses: set[int] = field(default_factory=set)
+    effective_data_mutation_previous_values: dict[int, set[int]] = field(
+        default_factory=dict
+    )
+    effective_data_mutation_result_values: dict[int, set[int]] = field(
+        default_factory=dict
+    )
     data_mutation_witness: WorklistDataMutationWitness | None = None
     explored: int = 0
     code_data_alias_transitions: int = 0
@@ -888,6 +931,12 @@ class _Explorer:
             explored_effective_data_mutation_addresses=tuple(
                 sorted(self.effective_data_mutation_addresses)
             ),
+            explored_effective_data_mutation_value_domains=(
+                _data_mutation_value_domains(
+                    self.effective_data_mutation_previous_values,
+                    self.effective_data_mutation_result_values,
+                )
+            ),
             explored_data_mutation_witness=self.data_mutation_witness,
             explored_minimum_words=max(
                 len(self.words),
@@ -1024,6 +1073,12 @@ class _Explorer:
         address, previous, written, result, aliases = mutation
         self.effective_data_mutation_transitions += 1
         self.effective_data_mutation_addresses.add(address)
+        _record_domain_value(
+            self.effective_data_mutation_previous_values, address, previous
+        )
+        _record_domain_value(
+            self.effective_data_mutation_result_values, address, result
+        )
         if self.data_mutation_witness is not None:
             return
         key = _node_key(node)
