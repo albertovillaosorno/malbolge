@@ -73,6 +73,7 @@ _DOUBLE_INPUT_UNIQUE_STATES = 515
 _DOUBLE_INPUT_REPEATED_EDGES = 65_536
 _DOUBLE_INPUT_CYCLE_EDGES = 65_793
 _FIXED_CYCLE_POINTER = 2
+_FIXED_CYCLE_ENTRY_PATH_STATES = 3
 _FIXED_CYCLE_MEMORY_OVERRIDES = ((0, 111), (1, 69))
 _INPUT_VALUE_COUNT = 257
 _BYTE_VALUE_COUNT = 256
@@ -145,6 +146,7 @@ class _WorklistAnalysis(Protocol):
     repeated_state_edges: int
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[_WorklistCycleState, ...]
+    reachable_cycle_entry_path: tuple[_WorklistCycleState, ...]
     known_graph_strong_component_count: int
     known_graph_cyclic_component_count: int
     known_graph_cyclic_state_count: int
@@ -390,6 +392,20 @@ def test_double_input_merges_are_not_silently_discarded() -> None:
     assert not result.truncated
 
 
+def _assert_fixed_cycle_entry_path(
+    path: tuple[_WorklistCycleState, ...],
+    cycle: _WorklistCycleState,
+) -> None:
+    assert len(path) == _FIXED_CYCLE_ENTRY_PATH_STATES
+    assert (path[0].code_pointer, path[0].data_pointer) == (0, 0)
+    assert path[0].accumulator == 0
+    assert path[0].memory_overrides == ()
+    assert (path[1].code_pointer, path[1].data_pointer) == (1, 1)
+    assert path[1].accumulator == 0
+    assert path[1].memory_overrides == ((0, 111),)
+    assert path[2] == cycle
+
+
 def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:
     """Historical non-graphical continue is an exact self-loop edge."""
     result = worklist.analyze_reachability(
@@ -406,6 +422,7 @@ def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:
     assert cycle.accumulator == 0
     assert cycle.memory_overrides == _FIXED_CYCLE_MEMORY_OVERRIDES
     assert not cycle.eof_seen
+    _assert_fixed_cycle_entry_path(result.reachable_cycle_entry_path, cycle)
     assert (
         result.known_graph_strong_component_count
         == _DOUBLE_INPUT_UNIQUE_STATES

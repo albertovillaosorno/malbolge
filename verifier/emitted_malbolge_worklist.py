@@ -61,6 +61,8 @@ type _StateKey = tuple[
     bool,
 ]
 
+_INITIAL_STATE_KEY: Final[_StateKey] = (0, 0, 0, (), False)
+
 
 @dataclass(frozen=True, slots=True)
 class WorklistCycleState:
@@ -83,6 +85,7 @@ class WorklistAnalysis:
     repeated_state_edges: int
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[WorklistCycleState, ...]
+    reachable_cycle_entry_path: tuple[WorklistCycleState, ...]
     known_graph_strong_component_count: int
     known_graph_cyclic_component_count: int
     known_graph_cyclic_state_count: int
@@ -458,6 +461,41 @@ def _known_graph_has_cycle(
     return bool(cycle)
 
 
+def _reconstruct_known_path(
+    parents: dict[_StateKey, _StateKey | None],
+    target: _StateKey,
+) -> tuple[_StateKey, ...]:
+    if target not in parents:
+        return ()
+    reverse_path: list[_StateKey] = []
+    cursor: _StateKey | None = target
+    while cursor is not None:
+        reverse_path.append(cursor)
+        cursor = parents[cursor]
+    return tuple(reversed(reverse_path))
+
+
+def _known_graph_shortest_path(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+    *,
+    start: _StateKey,
+    target: _StateKey,
+) -> tuple[_StateKey, ...]:
+    if start not in nodes or target not in nodes:
+        return ()
+    parents: dict[_StateKey, _StateKey | None] = {start: None}
+    queue = deque((start,))
+    while queue and target not in parents:
+        source = queue.popleft()
+        for successor in _known_targets(source, edges, nodes):
+            if successor in parents:
+                continue
+            parents[successor] = source
+            queue.append(successor)
+    return _reconstruct_known_path(parents, target)
+
+
 def _cycle_state(key: _StateKey) -> WorklistCycleState:
     code_pointer, data_pointer, accumulator, memory_overrides, eof_seen = key
     return WorklistCycleState(
@@ -540,6 +578,19 @@ class _Explorer:
         ordered_addresses = tuple(sorted(self.accessed_addresses))
         highest_address = ordered_addresses[-1]
         cycle_keys = _known_graph_cycle_witness(self.edges, self.seen)
+        entry_path_keys = (
+            _known_graph_shortest_path(
+                self.edges,
+                self.seen,
+                start=_INITIAL_STATE_KEY,
+                target=cycle_keys[0],
+            )
+            if cycle_keys
+            else ()
+        )
+        if bool(entry_path_keys) != bool(cycle_keys):
+            message = "reachable cycle lost its exact entry path"
+            raise AssertionError(message)
         component_summary = _known_graph_strong_component_summary(
             self.edges, self.seen
         )
@@ -562,6 +613,9 @@ class _Explorer:
             reachable_cycle_detected=has_cycle,
             reachable_cycle_witness=tuple(
                 _cycle_state(key) for key in cycle_keys
+            ),
+            reachable_cycle_entry_path=tuple(
+                _cycle_state(key) for key in entry_path_keys
             ),
             known_graph_strong_component_count=(
                 component_summary.component_count
