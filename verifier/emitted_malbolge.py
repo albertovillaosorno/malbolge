@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v35"
+_SCHEMA: Final = "malbolge-static-image/v36"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -177,6 +177,17 @@ class BoundedMemoryAccessSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistDataMutationSourceContext:
+    """Source-image coordinates for the first worklist data mutation."""
+
+    address: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    previous_value_matches_initial_source: bool | None
+
+
+@dataclass(frozen=True, slots=True)
 class StaticImageReport:
     """Bounded report that never implies dynamic guest execution."""
 
@@ -191,6 +202,9 @@ class StaticImageReport:
     bounded_continuations: tuple[prefix_transfer.SecondTransition, ...]
     bounded_state_snapshots: tuple[prefix_transfer.StateSnapshot, ...]
     bounded_worklist: worklist_transfer.WorklistAnalysis | None
+    bounded_worklist_data_mutation_source_context: (
+        BoundedWorklistDataMutationSourceContext | None
+    )
     bounded_exact_cycle: prefix_transfer.ExactCycleCertificate | None
     bounded_memory_requirement: BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[BoundedFetchSourceContext, ...]
@@ -292,6 +306,22 @@ def _explored_worklist_limit_label(
     )
 
 
+def _source_map_limit_label(
+    transition_limit: int,
+    worklist: worklist_transfer.WorklistAnalysis | None,
+) -> str:
+    prefix = (
+        f"source-map-context:{transition_limit}-transition-memory-access-and-"
+        "fetch-data-read-and-encryption-input-value-lineage"
+    )
+    if worklist is None:
+        return prefix
+    return (
+        f"{prefix}-and-{worklist.state_limit}-state-worklist-"
+        f"{_worklist_status(worklist)}-data-mutation-witness"
+    )
+
+
 def _wraparound_limit_label(
     transition_limit: int,
     worklist: worklist_transfer.WorklistAnalysis | None,
@@ -321,11 +351,7 @@ def _analysis_limits(
         _explored_worklist_limit_label(
             "self-modification", transition_limit, worklist
         ),
-        (
-            "source-map-context:"
-            f"{transition_limit}-transition-memory-access-and-"
-            "fetch-data-read-and-encryption-input-value-lineage"
-        ),
+        _source_map_limit_label(transition_limit, worklist),
         _wraparound_limit_label(transition_limit, worklist),
     )
 
@@ -921,6 +947,36 @@ def _bounded_memory_access_source_map(
     return tuple(contexts)
 
 
+def _worklist_data_mutation_source_context(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> BoundedWorklistDataMutationSourceContext | None:
+    witness = (
+        None if worklist is None else worklist.explored_data_mutation_witness
+    )
+    if witness is None:
+        return None
+    address = witness.address
+    if address >= len(cells):
+        source_position = None
+        source_byte_offset = None
+        initial_source_byte = None
+        previous_matches = None
+    else:
+        cell = cells[address]
+        source_position = cell.position
+        source_byte_offset = cell.byte_offset
+        initial_source_byte = cell.source_byte
+        previous_matches = witness.previous_value == cell.source_byte
+    return BoundedWorklistDataMutationSourceContext(
+        address=address,
+        source_position=source_position,
+        source_byte_offset=source_byte_offset,
+        initial_source_byte=initial_source_byte,
+        previous_value_matches_initial_source=previous_matches,
+    )
+
+
 def analyze_source(
     source: bytes,
     *,
@@ -989,6 +1045,9 @@ def analyze_source(
         bounded_continuations=prefix.continuations,
         bounded_state_snapshots=prefix.state_snapshots,
         bounded_worklist=worklist,
+        bounded_worklist_data_mutation_source_context=(
+            _worklist_data_mutation_source_context(worklist, prefix.cells)
+        ),
         bounded_exact_cycle=prefix.exact_cycle,
         bounded_memory_requirement=_bounded_memory_requirement(
             required,

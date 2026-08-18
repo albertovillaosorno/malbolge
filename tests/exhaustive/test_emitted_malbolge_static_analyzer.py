@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v35"
+_SCHEMA = "malbolge-static-image/v36"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -99,6 +99,16 @@ _ENTRY_MUTATION_ACCUMULATOR = 1
 _ENTRY_MUTATION_ADDRESS = 40
 _ENTRY_MUTATION_PREVIOUS_VALUE = 29_524
 _ENTRY_MUTATION_RESULT_VALUE = 29_523
+_LOADED_MUTATION_SOURCE = (
+    b"u'<%$#>=<;:987654321NN"
+    b".-,+*)('&%$#\"!~}|{z"
+)
+_LOADED_MUTATION_SOURCE_WITH_WHITESPACE = b" \n" + _LOADED_MUTATION_SOURCE
+_LOADED_MUTATION_ADDRESS = 40
+_LOADED_MUTATION_BYTE_OFFSET = 42
+_LOADED_MUTATION_SOURCE_BYTE = 122
+_LOADED_MUTATION_PREVIOUS_VALUE = 122
+_LOADED_MUTATION_RESULT_VALUE = 29_525
 _ENTRY_WRAP_WORKLIST_STATE_LIMIT = 1_544
 _ENTRY_WRAP_EXPLORED_STATES = 1_288
 _WORKLIST_CLOSED_LIMIT = (
@@ -122,6 +132,11 @@ _WORKLIST_MUTATION_LIMIT = (
 _ENTRY_WRAP_LIMIT = (
     "wraparound-reachability:16-transition-prefix-and-"
     "1544-state-worklist-truncated"
+)
+_WORKLIST_MUTATION_SOURCE_MAP_LIMIT = (
+    "source-map-context:16-transition-memory-access-and-"
+    "fetch-data-read-and-encryption-input-value-lineage-and-"
+    "1544-state-worklist-truncated-data-mutation-witness"
 )
 _INPUT_CRAZY_SOURCE = bytes((117, 61))
 _INPUT_HALT_SOURCE = bytes((117, 80))
@@ -399,6 +414,14 @@ class _WorklistDataMutationWitness(Protocol):
     aliases_self_encryption: bool
 
 
+class _WorklistDataMutationSourceContext(Protocol):
+    address: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    previous_value_matches_initial_source: bool | None
+
+
 class _WorklistAnalysis(Protocol):
     state_limit: int
     unique_states: int
@@ -512,6 +535,9 @@ class _Report(Protocol):
     bounded_continuations: tuple[_SecondTransition, ...]
     bounded_state_snapshots: tuple[_StateSnapshot, ...]
     bounded_worklist: _WorklistAnalysis | None
+    bounded_worklist_data_mutation_source_context: (
+        _WorklistDataMutationSourceContext | None
+    )
     bounded_exact_cycle: _ExactCycleCertificate | None
     bounded_memory_requirement: _BoundedMemoryRequirement | None
     bounded_fetch_source_map: tuple[_BoundedFetchSourceContext, ...]
@@ -1912,6 +1938,7 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     assert worklist.explored_wraparound_transition_count == 0
     assert worklist.explored_wraparound_witness is None
     _assert_worklist_mutation_evidence(worklist)
+    assert report.bounded_worklist_data_mutation_source_context is None
     assert worklist.terminal_status_counts == (
         ("rejected-invalid-self-encryption", _WORKLIST_INPUT_VALUE_COUNT),
     )
@@ -1926,6 +1953,26 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     assert _WORKLIST_ALIAS_LIMIT in report.analysis_limits
     assert _WORKLIST_MUTATION_LIMIT in report.analysis_limits
     assert _WORKLIST_WRAP_LIMIT in report.analysis_limits
+
+
+def _assert_entry_wrap_mutation_context(
+    report: _Report,
+    worklist: _WorklistAnalysis,
+) -> None:
+    mutation = worklist.explored_data_mutation_witness
+    assert mutation is not None
+    assert mutation.address == _ENTRY_MUTATION_ADDRESS
+    assert mutation.previous_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert mutation.result_value == _ENTRY_MUTATION_RESULT_VALUE
+    assert mutation.entry_path[-1] == mutation.state
+    assert mutation.state.accumulator == _ENTRY_MUTATION_ACCUMULATOR
+    context = report.bounded_worklist_data_mutation_source_context
+    assert context is not None
+    assert context.address == _ENTRY_MUTATION_ADDRESS
+    assert context.source_position is None
+    assert context.source_byte_offset is None
+    assert context.initial_source_byte is None
+    assert context.previous_value_matches_initial_source is None
 
 
 def test_report_worklist_observes_entry_reachable_eof_wrap() -> None:
@@ -1949,16 +1996,33 @@ def test_report_worklist_observes_entry_reachable_eof_wrap() -> None:
     assert witness.result_data_pointer == 0
     assert not witness.code_pointer_wrapped
     assert witness.data_pointer_wrapped
-    mutation = worklist.explored_data_mutation_witness
-    assert mutation is not None
-    assert mutation.address == _ENTRY_MUTATION_ADDRESS
-    assert mutation.previous_value == _ENTRY_MUTATION_PREVIOUS_VALUE
-    assert mutation.result_value == _ENTRY_MUTATION_RESULT_VALUE
-    assert mutation.entry_path[-1] == mutation.state
-    assert mutation.state.accumulator == _ENTRY_MUTATION_ACCUMULATOR
+    _assert_entry_wrap_mutation_context(report, worklist)
     assert worklist.frontier_states == _WORKLIST_INPUT_VALUE_COUNT
     assert worklist.truncated
     assert _ENTRY_WRAP_LIMIT in report.analysis_limits
+
+
+def test_worklist_data_mutation_maps_back_to_loaded_source_byte() -> None:
+    """Worklist mutation context preserves loaded and raw source offsets."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _LOADED_MUTATION_SOURCE_WITH_WHITESPACE,
+        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    mutation = worklist.explored_data_mutation_witness
+    assert mutation is not None
+    assert mutation.address == _LOADED_MUTATION_ADDRESS
+    assert mutation.previous_value == _LOADED_MUTATION_PREVIOUS_VALUE
+    assert mutation.result_value == _LOADED_MUTATION_RESULT_VALUE
+    context = report.bounded_worklist_data_mutation_source_context
+    assert context is not None
+    assert context.address == _LOADED_MUTATION_ADDRESS
+    assert context.source_position == _LOADED_MUTATION_ADDRESS
+    assert context.source_byte_offset == _LOADED_MUTATION_BYTE_OFFSET
+    assert context.initial_source_byte == _LOADED_MUTATION_SOURCE_BYTE
+    assert context.previous_value_matches_initial_source is True
+    assert _WORKLIST_MUTATION_SOURCE_MAP_LIMIT in report.analysis_limits
 
 
 def test_report_worklist_proves_long_input_dependent_cycle() -> None:

@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v35
+  offsets, stable finding codes, and explicit analysis limits. Schema v36
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -202,8 +202,14 @@ executable cells, and input-dependent cycles or hangs.
   shortest entry path, address, previous/planned/final values, and same-address
   self-encryption alias flag. The entry-wrap fixture proves the first event on
   its byte-1 branch changes M[40] from 29,524 to 29,523; a null witness remains
-  explored-only under truncation. The recurrence fixture `b"('"` touches
-  addresses 0, 1, 2, and 41 and requires 42 words.
+  explored-only under truncation. Schema v36 maps that first mutation witness
+  back to loaded source coordinates when possible, including raw byte offset,
+  initial byte, and whether the pre-write value still matches the initial byte.
+  Recurrence addresses remain unmapped, and the source-map analysis-limit
+  identity binds the selected worklist size/status. A 41-word admitted extension
+  with two leading whitespace bytes proves loaded position 40 maps to raw offset
+  42. The recurrence fixture `b"('"` touches addresses 0, 1, 2, and 41 and
+  requires 42 words.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact

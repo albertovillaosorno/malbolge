@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v35` retains exact `entry_transition` through
+`malbolge-static-image/v36` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -149,7 +149,16 @@ planned write value, final value after any same-address self-encryption, and
 alias flag. The entry-wrap fixture's first such event is the byte-1 branch at
 `(C,D,A)=(2,40,1)`, which changes M[40] from 29,524 to 29,523. A null witness
 means no effective data mutation was observed in explored states and makes no
-claim across a truncated frontier. Schema v25 adds
+claim across a truncated frontier. Schema v36 adds
+`bounded_worklist_data_mutation_source_context`, which maps the witness address
+back to loaded position/raw byte offset/initial byte when it belongs to the
+loaded source image and reports whether the pre-write value still matches that
+initial byte. Recurrence addresses stay explicitly unmapped. A 41-word admitted
+extension of the entry-wrap fixture with two leading whitespace bytes mutates
+loaded position 40 (initial byte 122), maps it to raw offset 42, and proves its
+pre-write value still matches the initial source byte. The source-map limit
+identity includes selected worklist size and closed/truncated status whenever
+this context is requested. Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema
 v33 adds `explored_wraparound_witness` for the first FIFO-explored wrap. The
@@ -260,7 +269,10 @@ C/source-map linkage, and graphs beyond an explicit worklist cap remain open.
   loaded image; recurrence addresses remain explicitly unmapped instead of
   receiving invented offsets. Fetch-value lineage is independent of source
   coordinates and may therefore identify a recurrence address as originating
-  from an exact earlier write without inventing a source position.
+  from an exact earlier write without inventing a source position. Worklist data
+  mutation context follows the same rule: only loaded-image addresses receive
+  source coordinates, and its limit identity carries the selected worklist
+  frontier.
 - Bounded memory evidence counts only addresses actually touched by the analyzed
   prefix and never treats a future code/data pointer as an observed access.
 - Worklist mutation counts and address sets describe exact explored states; a
