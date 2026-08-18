@@ -964,7 +964,9 @@ class _Explorer:
                 )
             ),
             explored_fetch_value_domains=_value_domains(self.fetch_values),
-            explored_data_read_value_domains=_value_domains(self.data_read_values),
+            explored_data_read_value_domains=_value_domains(
+                self.data_read_values
+            ),
             explored_encryption_input_value_domains=_value_domains(
                 self.encryption_input_values
             ),
