@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v56"
+_SCHEMA = "malbolge-static-image/v57"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -712,6 +712,15 @@ class _Report(Protocol):
         _WorklistControlPathSourceContext, ...
     ]
     bounded_worklist_evolved_data_read_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_data_mutation_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_data_write_noop_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_wraparound_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
     ]
     bounded_exact_cycle: _ExactCycleCertificate | None
@@ -2315,6 +2324,31 @@ def _assert_entry_wrap_mutation_context(
     assert context.source_byte_offset is None
     assert context.initial_source_byte is None
     assert context.previous_value_matches_initial_source is None
+
+
+def _assert_entry_wrap_control_source_maps(report: _Report) -> None:
+    noop = report.bounded_worklist_data_write_noop_entry_path_source_map
+    mutation = report.bounded_worklist_data_mutation_entry_path_source_map
+    wrap = report.bounded_worklist_wraparound_entry_path_source_map
+    assert tuple(context.code_pointer for context in noop) == (0, 1, 2)
+    assert tuple(context.source_byte_offset for context in noop) == (2, 3, 4)
+    assert tuple(context.code_pointer for context in mutation) == (0, 1, 2)
+    mutation_offsets = tuple(context.source_byte_offset for context in mutation)
+    assert mutation_offsets == (2, 3, 4)
+    assert tuple(context.code_pointer for context in wrap) == (0, 1, 2, 3, 4, 5)
+    assert tuple(context.source_byte_offset for context in wrap) == (
+        2, 3, 4, 5, 6, 7
+    )
+
+
+def test_worklist_maps_mutation_noop_and_wrap_control_paths() -> None:
+    """Mutation and wrap witness C paths preserve loaded source offsets."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _ENTRY_WRAP_SOURCE_WITH_WHITESPACE,
+        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
+    )
+    _assert_entry_wrap_control_source_maps(report)
+    assert _WORKLIST_VALUE_SOURCE_MAP_LIMIT in report.analysis_limits
 
 
 def test_report_worklist_observes_entry_reachable_eof_wrap() -> None:

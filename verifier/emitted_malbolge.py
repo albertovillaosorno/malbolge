@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v56"
+_SCHEMA: Final = "malbolge-static-image/v57"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -289,6 +289,15 @@ class StaticImageReport:
         BoundedWorklistControlPathSourceContext, ...
     ]
     bounded_worklist_evolved_data_read_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_data_mutation_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_data_write_noop_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_wraparound_entry_path_source_map: tuple[
         BoundedWorklistControlPathSourceContext, ...
     ]
     bounded_exact_cycle: prefix_transfer.ExactCycleCertificate | None
@@ -1151,13 +1160,13 @@ def _worklist_value_source_map(
 
 
 def _worklist_control_path_source_map(
-    witness: worklist_transfer.WorklistEvolvedReadWitness | None,
+    path: tuple[worklist_transfer.WorklistCycleState, ...] | None,
     cells: tuple[InitialCell, ...],
 ) -> tuple[BoundedWorklistControlPathSourceContext, ...]:
-    if witness is None:
+    if path is None:
         return ()
     contexts: list[BoundedWorklistControlPathSourceContext] = []
-    for index, state in enumerate(witness.entry_path):
+    for index, state in enumerate(path):
         code_pointer = state.code_pointer
         source = _worklist_mutation_address_source_context(code_pointer, cells)
         contexts.append(
@@ -1352,7 +1361,11 @@ def analyze_source(
                 (
                     None
                     if worklist is None
-                    else worklist.explored_evolved_fetch_witness
+                    else (
+                        worklist.explored_evolved_fetch_witness.entry_path
+                        if worklist.explored_evolved_fetch_witness is not None
+                        else None
+                    )
                 ),
                 prefix.cells,
             )
@@ -1362,7 +1375,47 @@ def analyze_source(
                 (
                     None
                     if worklist is None
-                    else worklist.explored_evolved_data_read_witness
+                    else (
+                        worklist.explored_evolved_data_read_witness.entry_path
+                        if (
+                            worklist.explored_evolved_data_read_witness
+                            is not None
+                        )
+                        else None
+                    )
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_data_mutation_entry_path_source_map=(
+            _worklist_control_path_source_map(
+                (
+                    None
+                    if worklist is None
+                    or worklist.explored_data_mutation_witness is None
+                    else worklist.explored_data_mutation_witness.entry_path
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_data_write_noop_entry_path_source_map=(
+            _worklist_control_path_source_map(
+                (
+                    None
+                    if worklist is None
+                    or worklist.explored_data_write_noop_witness is None
+                    else worklist.explored_data_write_noop_witness.entry_path
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_wraparound_entry_path_source_map=(
+            _worklist_control_path_source_map(
+                (
+                    None
+                    if worklist is None
+                    or worklist.explored_wraparound_witness is None
+                    else worklist.explored_wraparound_witness.entry_path
                 ),
                 prefix.cells,
             )
