@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from dataclasses import field
 from typing import Final
 
 if __package__:
@@ -66,13 +67,22 @@ _INITIAL_STATE_KEY: Final[_StateKey] = (0, 0, 0, (), False)
 
 @dataclass(frozen=True, slots=True)
 class WorklistCycleState:
-    """One exact state in a deterministic known-graph cycle witness."""
+    """One exact state in deterministic known-graph witness evidence."""
 
     code_pointer: int
     data_pointer: int
     accumulator: int
     memory_overrides: tuple[tuple[int, int], ...]
     eof_seen: bool
+
+
+@dataclass(frozen=True, slots=True)
+class WorklistTerminalWitness:
+    """One observed terminal status with an exact shortest entry path."""
+
+    status: str
+    state: WorklistCycleState
+    entry_path: tuple[WorklistCycleState, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +106,7 @@ class WorklistAnalysis:
     closed_recurrent_cycle_witness: tuple[WorklistCycleState, ...] | None
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
+    terminal_status_witnesses: tuple[WorklistTerminalWitness, ...]
     explored_minimum_words: int
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
@@ -496,6 +507,27 @@ def _known_graph_shortest_path(
     return _reconstruct_known_path(parents, target)
 
 
+def _known_graph_shortest_path_to_any(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+    *,
+    start: _StateKey,
+    targets: set[_StateKey],
+) -> tuple[_StateKey, ...]:
+    parents: dict[_StateKey, _StateKey | None] = {start: None}
+    queue = deque((start,))
+    while queue:
+        source = queue.popleft()
+        if source in targets:
+            return _reconstruct_known_path(parents, source)
+        for successor in _known_targets(source, edges, nodes):
+            if successor in parents:
+                continue
+            parents[successor] = source
+            queue.append(successor)
+    return ()
+
+
 def _cycle_state(key: _StateKey) -> WorklistCycleState:
     code_pointer, data_pointer, accumulator, memory_overrides, eof_seen = key
     return WorklistCycleState(
@@ -505,6 +537,32 @@ def _cycle_state(key: _StateKey) -> WorklistCycleState:
         memory_overrides=memory_overrides,
         eof_seen=eof_seen,
     )
+
+
+def _terminal_witnesses(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+    terminal_states: dict[str, set[_StateKey]],
+) -> tuple[WorklistTerminalWitness, ...]:
+    witnesses: list[WorklistTerminalWitness] = []
+    for status, targets in sorted(terminal_states.items()):
+        path = _known_graph_shortest_path_to_any(
+            edges,
+            nodes,
+            start=_INITIAL_STATE_KEY,
+            targets=targets,
+        )
+        if not path:
+            message = "observed terminal lost its exact entry path"
+            raise AssertionError(message)
+        witnesses.append(
+            WorklistTerminalWitness(
+                status=status,
+                state=_cycle_state(path[-1]),
+                entry_path=tuple(_cycle_state(key) for key in path),
+            )
+        )
+    return tuple(witnesses)
 
 
 def _closed_recurrence_evidence(
@@ -541,6 +599,7 @@ class _Explorer:
     edges: dict[_StateKey, set[_StateKey]]
     terminal_counts: dict[str, int]
     accessed_addresses: set[int]
+    terminal_states: dict[str, set[_StateKey]] = field(default_factory=dict)
     explored: int = 0
     repeated_edges: int = 0
     input_branch_points: int = 0
@@ -635,6 +694,11 @@ class _Explorer:
             closed_recurrent_cycle_witness=recurrence.cycle_witness,
             input_branch_points=self.input_branch_points,
             terminal_status_counts=tuple(sorted(self.terminal_counts.items())),
+            terminal_status_witnesses=_terminal_witnesses(
+                self.edges,
+                self.seen,
+                self.terminal_states,
+            ),
             explored_minimum_words=max(
                 len(self.words),
                 highest_address + 1,
@@ -649,8 +713,10 @@ class _Explorer:
             truncated=truncated,
         )
 
-    def _record_terminal(self, status: str) -> None:
+    def _record_terminal(self, status: str, node: _ReachabilityNode) -> None:
         self.terminal_counts[status] = self.terminal_counts.get(status, 0) + 1
+        states = self.terminal_states.setdefault(status, set())
+        states.add(_node_key(node))
 
     def _admit_successors(
         self,
@@ -701,7 +767,7 @@ class _Explorer:
         successors = _successors(node, step)
         if successors:
             return self._admit_successors(node, successors)
-        self._record_terminal(step.transition.status)
+        self._record_terminal(step.transition.status, node)
         return None
 
     def run(self) -> WorklistAnalysis:

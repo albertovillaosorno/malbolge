@@ -76,6 +76,7 @@ _FIXED_CYCLE_POINTER = 2
 _FIXED_CYCLE_ENTRY_PATH_STATES = 3
 _FIXED_CYCLE_MEMORY_OVERRIDES = ((0, 111), (1, 69))
 _INPUT_VALUE_COUNT = 257
+_INVALID_ENCRYPTION_STATUS = "rejected-invalid-self-encryption"
 _BYTE_VALUE_COUNT = 256
 _DOUBLE_INPUT_BRANCH_POINTS = 1 + _BYTE_VALUE_COUNT
 _EOF_ACCUMULATOR = 59_048
@@ -139,6 +140,12 @@ class _WorklistCycleState(Protocol):
     eof_seen: bool
 
 
+class _WorklistTerminalWitness(Protocol):
+    status: str
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+
+
 class _WorklistAnalysis(Protocol):
     state_limit: int
     unique_states: int
@@ -157,6 +164,7 @@ class _WorklistAnalysis(Protocol):
     closed_recurrent_cycle_witness: tuple[_WorklistCycleState, ...] | None
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
+    terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
     explored_minimum_words: int
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
@@ -333,6 +341,16 @@ def test_input_crazy_worklist_resolves_every_input_branch() -> None:
     assert result.terminal_status_counts == (
         ("rejected-invalid-self-encryption", _INPUT_VALUE_COUNT),
     )
+    witnesses = result.terminal_status_witnesses
+    assert len(witnesses) == 1
+    witness = witnesses[0]
+    assert witness.status == _INVALID_ENCRYPTION_STATUS
+    assert (witness.state.code_pointer, witness.state.data_pointer) == (1, 1)
+    assert witness.state.accumulator == 0
+    assert witness.state.memory_overrides == ((0, 111),)
+    assert not witness.state.eof_seen
+    assert witness.entry_path[0].code_pointer == 0
+    assert witness.entry_path[-1] == witness.state
     assert not result.truncated
 
 

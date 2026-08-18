@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v26"
+_SCHEMA = "malbolge-static-image/v27"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -282,6 +282,12 @@ class _WorklistCycleState(Protocol):
     eof_seen: bool
 
 
+class _WorklistTerminalWitness(Protocol):
+    status: str
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+
+
 class _WorklistAnalysis(Protocol):
     state_limit: int
     unique_states: int
@@ -300,6 +306,7 @@ class _WorklistAnalysis(Protocol):
     closed_recurrent_cycle_witness: tuple[_WorklistCycleState, ...] | None
     input_branch_points: int
     terminal_status_counts: tuple[tuple[str, int], ...]
+    terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
     explored_minimum_words: int
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
@@ -1737,6 +1744,15 @@ def test_report_accepts_reviewed_maximum_transition_limit() -> None:
     assert last.next_fetch_address == _MAX_TOTAL_TRANSITION_LIMIT
 
 
+def _assert_terminal_witness_object(worklist: _WorklistAnalysis) -> None:
+    assert len(worklist.terminal_status_witnesses) == 1
+    witness = worklist.terminal_status_witnesses[0]
+    assert witness.status == _ENTRY_INVALID_ENCRYPTION
+    assert (witness.state.code_pointer, witness.state.data_pointer) == (1, 1)
+    assert witness.state.accumulator == 0
+    assert witness.entry_path[-1] == witness.state
+
+
 def test_report_worklist_resolves_input_dependent_crazy() -> None:
     """Opt-in worklist resolves every byte/EOF branch after input."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -1754,6 +1770,7 @@ def test_report_worklist_resolves_input_dependent_crazy() -> None:
     assert worklist.terminal_status_counts == (
         ("rejected-invalid-self-encryption", _WORKLIST_INPUT_VALUE_COUNT),
     )
+    _assert_terminal_witness_object(worklist)
     assert not worklist.truncated
     assert _WORKLIST_CLOSED_LIMIT in report.analysis_limits
     assert _WORKLIST_WRAP_LIMIT in report.analysis_limits
@@ -1914,6 +1931,15 @@ def test_cli_accepts_closed_worklist_request(tmp_path: Path) -> None:
     document = cast("dict[str, object]", json.loads(completed.stdout))
     bounded = cast("dict[str, object]", document["bounded_worklist"])
     assert bounded["unique_states"] == _WORKLIST_COMPLETE_STATE_LIMIT
+    witnesses = cast(
+        "list[dict[str, object]]",
+        bounded["terminal_status_witnesses"],
+    )
+    assert len(witnesses) == 1
+    assert witnesses[0]["status"] == _ENTRY_HALTED
+    entry_path = cast("list[dict[str, object]]", witnesses[0]["entry_path"])
+    assert entry_path[0]["code_pointer"] == 0
+    assert entry_path[-1] == witnesses[0]["state"]
     assert bounded["truncated"] is False
 
 

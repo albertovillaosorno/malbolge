@@ -48,7 +48,7 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _ANALYZER = _ROOT / "verifier" / "emitted_malbolge.py"
-_SCHEMA: Final = "malbolge-static-image/v26"
+_SCHEMA: Final = "malbolge-static-image/v27"
 _DECODE_CODE: Final = "MALBOLGE-STATIC-004"
 _GRAPHICAL_START: Final = 33
 _XLAT1: Final = (
