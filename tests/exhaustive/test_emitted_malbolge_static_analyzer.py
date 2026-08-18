@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v51"
+_SCHEMA = "malbolge-static-image/v52"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -110,6 +110,7 @@ _ENTRY_MUTATION_PREVIOUS_VALUE = 29_524
 _ENTRY_MUTATION_RESULT_VALUE = 29_523
 _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT = 256
 _ENTRY_COMMITTED_DATA_WRITE_COUNT = 257
+_ENTRY_NOOP_DATA_WRITE_COUNT = 1
 _ENTRY_MUTATION_RESULT_DOMAIN_COUNT = 256
 _MULTI_MUTATION_SECOND_ADDRESS = 41
 _MULTI_MUTATION_SECOND_PREVIOUS_VALUES = (29_409,)
@@ -540,6 +541,8 @@ class _WorklistAnalysis(Protocol):
     explored_planned_data_write_value_domains: tuple[_WorklistValueDomain, ...]
     explored_committed_data_write_transition_count: int
     explored_committed_data_write_addresses: tuple[int, ...]
+    explored_committed_data_write_noop_transition_count: int
+    explored_committed_data_write_noop_addresses: tuple[int, ...]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
     explored_effective_data_mutation_transition_count: int
@@ -2110,6 +2113,8 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     assert len(planned_domain.values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
     assert worklist.explored_committed_data_write_transition_count == 0
     assert worklist.explored_committed_data_write_addresses == ()
+    assert worklist.explored_committed_data_write_noop_transition_count == 0
+    assert worklist.explored_committed_data_write_noop_addresses == ()
     assert worklist.explored_self_encryption_transition_count == 1
     assert worklist.explored_self_encryption_addresses == (0,)
     assert worklist.explored_effective_data_mutation_transition_count == 0
@@ -2188,6 +2193,12 @@ def _assert_entry_wrap_mutation_context(
         _ENTRY_COMMITTED_DATA_WRITE_COUNT
     )
     assert worklist.explored_committed_data_write_addresses == (
+        _ENTRY_MUTATION_ADDRESS,
+    )
+    assert worklist.explored_committed_data_write_noop_transition_count == (
+        _ENTRY_NOOP_DATA_WRITE_COUNT
+    )
+    assert worklist.explored_committed_data_write_noop_addresses == (
         _ENTRY_MUTATION_ADDRESS,
     )
     assert worklist.explored_effective_data_mutation_transition_count == (

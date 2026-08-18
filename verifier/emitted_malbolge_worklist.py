@@ -179,6 +179,8 @@ class WorklistAnalysis:
     explored_planned_data_write_value_domains: tuple[WorklistValueDomain, ...]
     explored_committed_data_write_transition_count: int
     explored_committed_data_write_addresses: tuple[int, ...]
+    explored_committed_data_write_noop_transition_count: int
+    explored_committed_data_write_noop_addresses: tuple[int, ...]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
     explored_effective_data_mutation_transition_count: int
@@ -776,7 +778,7 @@ def _entry_path_last_writer(
     return writer
 
 
-def _effective_data_mutation(
+def _committed_data_mutation(
     step: prefix_transfer.SnapshotStep,
 ) -> tuple[int, int, int, int, bool] | None:
     transition = step.transition
@@ -797,8 +799,6 @@ def _effective_data_mutation(
     if result is None:
         message = "committed data mutation lost its final value"
         raise AssertionError(message)
-    if result == previous:
-        return None
     return address, previous, written, result, aliases
 
 
@@ -861,6 +861,7 @@ class _Explorer:
     planned_data_write_addresses: set[int] = field(default_factory=set)
     planned_data_write_values: dict[int, set[int]] = field(default_factory=dict)
     committed_data_write_addresses: set[int] = field(default_factory=set)
+    committed_data_write_noop_addresses: set[int] = field(default_factory=set)
     self_encryption_addresses: set[int] = field(default_factory=set)
     effective_data_mutation_addresses: set[int] = field(default_factory=set)
     effective_data_mutation_previous_values: dict[int, set[int]] = field(
@@ -886,6 +887,7 @@ class _Explorer:
     committed_writes: int = 0
     planned_data_write_transitions: int = 0
     committed_data_write_transitions: int = 0
+    committed_data_write_noop_transitions: int = 0
     self_encryption_transitions: int = 0
     effective_data_mutation_transitions: int = 0
     repeated_edges: int = 0
@@ -1029,6 +1031,12 @@ class _Explorer:
             ),
             explored_committed_data_write_addresses=tuple(
                 sorted(self.committed_data_write_addresses)
+            ),
+            explored_committed_data_write_noop_transition_count=(
+                self.committed_data_write_noop_transitions
+            ),
+            explored_committed_data_write_noop_addresses=tuple(
+                sorted(self.committed_data_write_noop_addresses)
             ),
             explored_self_encryption_transition_count=(
                 self.self_encryption_transitions
@@ -1278,10 +1286,14 @@ class _Explorer:
         node: _ReachabilityNode,
         step: prefix_transfer.SnapshotStep,
     ) -> None:
-        mutation = _effective_data_mutation(step)
+        mutation = _committed_data_mutation(step)
         if mutation is None:
             return
         address, previous, written, result, aliases = mutation
+        if result == previous:
+            self.committed_data_write_noop_transitions += 1
+            self.committed_data_write_noop_addresses.add(address)
+            return
         self.effective_data_mutation_transitions += 1
         self.effective_data_mutation_addresses.add(address)
         _record_domain_value(
