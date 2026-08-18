@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v32 retains the legacy exact entry-through-fifth
+load decode. Schema v33 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -114,7 +114,12 @@ a fixed-fetch self-loop. Schema v25 additionally records exact explored-graph
 memory addresses, the highest accessed address, and minimum word capacity under
 `bounded_worklist`; truncation keeps that footprint explicitly incomplete.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
-binds the wraparound analysis-limit string to the requested worklist scope. The
+binds the wraparound analysis-limit string to the requested worklist scope.
+Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored
+event. It binds the exact source state and entry path to the resulting C/D
+pointers and states separately which pointer wrapped. A null witness means no
+wrap was observed in the explored graph; under truncation it says nothing about
+the remaining frontier. The
 `b"u="` input-then-crazy fixture closes in 258 states: every byte/EOF branch
 resolves concretely instead of retaining an unknown accumulator.
 A four-word `b"('&%"` fixture uses it to prove a recurrence-backed fifth

@@ -87,6 +87,18 @@ class WorklistTerminalWitness:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistWrapWitness:
+    """First exact explored pointer-wrap event and its entry path."""
+
+    state: WorklistCycleState
+    entry_path: tuple[WorklistCycleState, ...]
+    result_code_pointer: int
+    result_data_pointer: int
+    code_pointer_wrapped: bool
+    data_pointer_wrapped: bool
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistAnalysis:
     """Deterministic summary of one bounded exact-state exploration."""
 
@@ -116,6 +128,7 @@ class WorklistAnalysis:
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
     explored_wraparound_transition_count: int
+    explored_wraparound_witness: WorklistWrapWitness | None
     maximum_first_seen_transition_index: int
     frontier_states: int
     frontier_state_witness: WorklistCycleState | None
@@ -627,6 +640,7 @@ class _Explorer:
     repeated_edges: int = 0
     input_branch_points: int = 0
     wraparound_transitions: int = 0
+    wraparound_witness: WorklistWrapWitness | None = None
     maximum_first_seen_transition_index: int = 1
 
     @classmethod
@@ -747,6 +761,7 @@ class _Explorer:
             explored_highest_accessed_address=highest_address,
             explored_accessed_addresses=ordered_addresses,
             explored_wraparound_transition_count=self.wraparound_transitions,
+            explored_wraparound_witness=self.wraparound_witness,
             maximum_first_seen_transition_index=(
                 self.maximum_first_seen_transition_index
             ),
@@ -834,12 +849,41 @@ class _Explorer:
             self.queue.append(successor)
         return None
 
+    def _record_wraparound(
+        self,
+        node: _ReachabilityNode,
+        transition: prefix_transfer.SecondTransition,
+    ) -> None:
+        self.wraparound_transitions += 1
+        if self.wraparound_witness is not None:
+            return
+        result_code = transition.result_code_pointer
+        result_data = transition.result_data_pointer
+        if result_code is None or result_data is None:
+            message = "pointer wrap lost exact successor pointers"
+            raise AssertionError(message)
+        key = _node_key(node)
+        path = _known_graph_shortest_path(
+            self.edges,
+            self.seen,
+            start=_INITIAL_STATE_KEY,
+            target=key,
+        )
+        self.wraparound_witness = WorklistWrapWitness(
+            state=_cycle_state(key),
+            entry_path=tuple(_cycle_state(item) for item in path),
+            result_code_pointer=result_code,
+            result_data_pointer=result_data,
+            code_pointer_wrapped=result_code == 0,
+            data_pointer_wrapped=result_data == 0,
+        )
+
     def _process_node(self, node: _ReachabilityNode) -> WorklistAnalysis | None:
         self.explored += 1
         step = prefix_transfer.analyze_state_snapshot(self.words, node.snapshot)
         self.accessed_addresses.update(_transition_accesses(step.transition))
         if step.transition.pointer_wraps:
-            self.wraparound_transitions += 1
+            self._record_wraparound(node, step.transition)
         if (
             step.transition.decoded_byte == _INPUT_OPCODE
             and not node.eof_seen

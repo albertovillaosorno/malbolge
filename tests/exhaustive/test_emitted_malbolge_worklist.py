@@ -92,8 +92,10 @@ _EOF_ACCUMULATOR = 59_048
 _WRAP_ADDRESS = 59_048
 _WRAP_SOURCE_VALUE = 52
 _WRAP_STATE_LIMIT = 1
+_ENTRY_WRAP_WITNESS_STATE_LIMIT = 1_544
 _ENTRY_WRAP_SOURCE = tuple(b"u'<%$#>=<;:987654321NN")
 _ENTRY_WRAP_POINTER_PATH = ((0, 0), (1, 1), (2, 40), (3, 41), (4, 79), (5, 40))
+_ENTRY_WRAP_RESULT_CODE_POINTER = 6
 _WRAP_WRITE_TRANSITION = 3
 _SECOND_TRANSITION = 2
 _GRAPH_KEY_A: _WorklistStateKey = (0, 0, 0, (), False)
@@ -176,6 +178,15 @@ class _WorklistTerminalWitness(Protocol):
     entry_path: tuple[_WorklistCycleState, ...]
 
 
+class _WorklistWrapWitness(Protocol):
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+    result_code_pointer: int
+    result_data_pointer: int
+    code_pointer_wrapped: bool
+    data_pointer_wrapped: bool
+
+
 class _WorklistAnalysis(Protocol):
     state_limit: int
     unique_states: int
@@ -203,6 +214,7 @@ class _WorklistAnalysis(Protocol):
     explored_highest_accessed_address: int
     explored_accessed_addresses: tuple[int, ...]
     explored_wraparound_transition_count: int
+    explored_wraparound_witness: _WorklistWrapWitness | None
     maximum_first_seen_transition_index: int
     frontier_states: int
     frontier_state_witness: _WorklistCycleState | None
@@ -710,6 +722,26 @@ def test_explorer_counts_exact_pointer_wrap_transition() -> None:
     assert result.explored_highest_accessed_address == _WRAP_ADDRESS
     assert result.explored_minimum_words == _WRAP_ADDRESS + 1
     assert result.truncated
+
+
+def test_entry_reachable_wrap_publishes_exact_event_witness() -> None:
+    """The first reachable wrap binds its source path and result pointers."""
+    result = worklist.analyze_reachability(
+        _ENTRY_WRAP_SOURCE,
+        maximum_states=_ENTRY_WRAP_WITNESS_STATE_LIMIT,
+    )
+    assert result.explored_wraparound_transition_count == 1
+    witness = result.explored_wraparound_witness
+    assert witness is not None
+    assert tuple(
+        (state.code_pointer, state.data_pointer) for state in witness.entry_path
+    ) == _ENTRY_WRAP_POINTER_PATH
+    assert witness.entry_path[-1] == witness.state
+    assert witness.state.eof_seen
+    assert witness.result_code_pointer == _ENTRY_WRAP_RESULT_CODE_POINTER
+    assert witness.result_data_pointer == 0
+    assert not witness.code_pointer_wrapped
+    assert witness.data_pointer_wrapped
 
 
 def test_eof_branch_reaches_exact_pointer_wrap_from_entry() -> None:

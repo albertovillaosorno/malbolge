@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v32` retains exact `entry_transition` through
+`malbolge-static-image/v33` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -129,9 +129,14 @@ transitions. These are exact for explored states only. The recurrence-read
 fixture `b"('"` touches addresses 0, 1, 2, and 41 and therefore requires 42
 words within its closed explored graph. Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
-analysis-limit identity to include a requested closed/truncated worklist. A
-canonical near-boundary snapshot proves C/D=59,048 advance to zero and is
-counted exactly without implying that entry reaches that snapshot. Separately,
+analysis-limit identity to include a requested closed/truncated worklist. Schema
+v33 adds `explored_wraparound_witness` for the first FIFO-explored wrap. The
+witness records the exact source state, its shortest known entry path, resulting
+C/D pointers, and separate code/data wrap booleans. A null witness means only
+that the explored graph contains no observed wrap; truncation never promotes
+that absence across the frontier. A canonical near-boundary snapshot proves
+C/D=59,048 advance to zero and is counted exactly without implying that entry
+reaches that snapshot. Separately,
 the admitted 22-word `b"u'<%$#>=<;:987654321NN"` fixture proves a real
 entry-reachable wrap on its EOF branch: input sets A=59,048, `p` writes 59,048
 to M[40], two `j` steps steer D back to 40, and the sixth transition wraps D to

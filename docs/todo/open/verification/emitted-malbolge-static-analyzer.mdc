@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v32
+  offsets, stable finding codes, and explicit analysis limits. Schema v33
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -178,10 +178,13 @@ executable cells, and input-dependent cycles or hangs.
   graphs do not promote that footprint to whole-program evidence. The recurrence
   fixture `b"('"` touches addresses 0, 1, 2, and 41 and requires 42 words.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
-  wraparound analysis limits to both selected prefix and worklist scopes. A
-  canonical C/D=59,048 snapshot proves one wrap to zero without claiming entry
-  reachability. The two-word `b"u="` input-then-crazy fixture closes in 258
-  states and resolves
+  wraparound analysis limits to both selected prefix and worklist scopes. Schema
+  v33 additionally publishes the first FIFO-explored wrap witness with its exact
+  source state, shortest known entry path, result pointers, and separate C/D
+  wrap booleans. A missing witness says only that no wrap was observed in the
+  explored graph. A canonical C/D=59,048 snapshot proves one wrap to zero without
+  claiming entry reachability. The two-word `b"u="` input-then-crazy fixture
+  closes in 258 states and resolves
   every byte/EOF branch concretely. A truncated requested worklist or a proven
   known-graph cycle returns nonzero from the CLI rather than implying safe graph
   closure. This does not
