@@ -459,6 +459,15 @@ class _WorklistDataMutationValueDomain(Protocol):
     result_values: tuple[int, ...]
 
 
+class _WorklistDataWriteNoopObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+
+
 class _WorklistDataWriteNoopWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -553,6 +562,9 @@ class _WorklistAnalysis(Protocol):
     explored_committed_data_write_addresses: tuple[int, ...]
     explored_committed_data_write_noop_transition_count: int
     explored_committed_data_write_noop_addresses: tuple[int, ...]
+    explored_committed_data_write_noop_observations: tuple[
+        _WorklistDataWriteNoopObservation, ...
+    ]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
     explored_effective_data_mutation_transition_count: int
@@ -816,6 +828,16 @@ class _WorklistModule(Protocol):
         self,
         terminal_states: dict[str, set[_WorklistStateKey]],
         edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+    ) -> None: ...
+
+    def _assert_data_write_noop_observations(
+        self,
+        evidence: tuple[
+            int,
+            set[int],
+            dict[_WorklistStateKey, tuple[int, int, int, int, bool]],
+            set[_WorklistStateKey],
+        ],
     ) -> None: ...
 
     def _assert_data_mutation_observations(
@@ -1189,6 +1211,7 @@ def test_input_halt_reports_exact_explored_mutation_footprint() -> None:
     assert result.explored_committed_data_write_addresses == ()
     assert result.explored_committed_data_write_noop_transition_count == 0
     assert result.explored_committed_data_write_noop_addresses == ()
+    assert result.explored_committed_data_write_noop_observations == ()
     assert result.explored_data_write_noop_witness is None
     assert result.explored_self_encryption_transition_count == 1
     assert result.explored_self_encryption_addresses == (0,)
@@ -1218,6 +1241,7 @@ def test_rejected_planned_writes_are_not_reported_as_committed() -> None:
     assert result.explored_committed_data_write_addresses == ()
     assert result.explored_committed_data_write_noop_transition_count == 0
     assert result.explored_committed_data_write_noop_addresses == ()
+    assert result.explored_committed_data_write_noop_observations == ()
     assert result.explored_data_write_noop_witness is None
     assert result.explored_self_encryption_transition_count == 1
     assert result.explored_self_encryption_addresses == (0,)
@@ -1555,6 +1579,27 @@ def test_write_partition_rejects_committed_address_drift() -> None:
     with pytest.raises(AssertionError, match="addresses disagree"):
         worklist._assert_committed_write_address_partition(
             ({0}, {40}, set(), {0}, {40})
+        )
+
+
+def test_data_write_noop_observations_reject_count_drift() -> None:
+    """Final no-op counts must match exact explored states."""
+    with pytest.raises(AssertionError, match="exact states"):
+        worklist._assert_data_write_noop_observations(
+            (1, {40}, {}, {_GRAPH_KEY_A})
+        )
+
+
+def test_data_write_noop_observations_reject_memory_change() -> None:
+    """Final no-op observations cannot retain an effective mutation."""
+    with pytest.raises(AssertionError, match="changed memory"):
+        worklist._assert_data_write_noop_observations(
+            (
+                1,
+                {40},
+                {_GRAPH_KEY_A: (40, 29_524, 29_523, 29_523, False)},
+                {_GRAPH_KEY_A},
+            )
         )
 
 
@@ -2419,6 +2464,23 @@ def test_worklist_witnesses_data_read_from_evolved_memory() -> None:
     )
 
 
+def _assert_entry_noop_observations(result: _WorklistAnalysis) -> None:
+    observations = result.explored_committed_data_write_noop_observations
+    assert len(observations) == _ENTRY_NOOP_DATA_WRITE_COUNT
+    observation = observations[0]
+    assert observation.address == _ENTRY_MUTATION_ADDRESS
+    assert observation.previous_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert observation.written_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert observation.result_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert not observation.aliases_self_encryption
+    state = observation.state
+    assert (state.code_pointer, state.data_pointer) == (
+        _ENTRY_NOOP_POINTER_PATH[-1]
+    )
+    assert state.accumulator == 0
+    assert not state.eof_seen
+
+
 def _assert_entry_noop_witness(result: _WorklistAnalysis) -> None:
     witness = result.explored_data_write_noop_witness
     assert witness is not None
@@ -2572,6 +2634,7 @@ def _assert_entry_data_mutation_evidence(result: _WorklistAnalysis) -> None:
     assert result.explored_committed_data_write_noop_addresses == (
         _ENTRY_MUTATION_ADDRESS,
     )
+    _assert_entry_noop_observations(result)
     _assert_entry_noop_witness(result)
     assert (
         result.explored_effective_data_mutation_transition_count

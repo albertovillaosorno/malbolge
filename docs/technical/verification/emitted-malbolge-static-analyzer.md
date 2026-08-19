@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v85` retains exact `entry_transition` through
+`malbolge-static-image/v86` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -473,6 +473,16 @@ all from previous value 29,524, with 256 distinct final values and no
 self-encryption alias. Public contexts map C, D, and mutation address
 independently. The graph's one committed final no-op stays in the existing
 no-op partition, preserving the exact committed-write split under truncation.
+Schema v86 retains every exact explored committed data-write final no-op state,
+including address, pre-write value, planned written value, final committed
+value, and same-address self-encryption alias identity. Result construction
+requires the exact state count/address projection to match the no-op aggregate
+and requires every final value to equal its pre-write value. Entry-wrap has one
+C=2/D=40/address-40 observation with previous=written=final=29,524 and no alias;
+its 256 changed results remain in the effective-mutation partition. Public
+contexts map C, D, and write address independently. The existing first no-op
+witness retains the sole shortest entry path, and truncation never promotes
+unexplored frontier states into exact no-op evidence.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

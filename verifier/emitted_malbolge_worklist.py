@@ -241,6 +241,18 @@ class WorklistDataMutationValueDomain:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistDataWriteNoopObservation:
+    """One exact explored committed data-write final no-op."""
+
+    state: WorklistCycleState
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistDataWriteNoopWitness:
     """First exact entry-reachable committed data-write final no-op."""
 
@@ -344,6 +356,9 @@ class WorklistAnalysis:
     explored_committed_data_write_addresses: tuple[int, ...]
     explored_committed_data_write_noop_transition_count: int
     explored_committed_data_write_noop_addresses: tuple[int, ...]
+    explored_committed_data_write_noop_observations: tuple[
+        WorklistDataWriteNoopObservation, ...
+    ]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
     explored_effective_data_mutation_transition_count: int
@@ -1577,6 +1592,33 @@ def _data_mutation_observation_projection(
     return addresses, previous_values, result_values
 
 
+def _assert_data_write_noop_observations(
+    evidence: tuple[
+        int,
+        set[int],
+        dict[_StateKey, tuple[int, int, int, int, bool]],
+        set[_StateKey],
+    ],
+) -> None:
+    count, addresses, observations, seen = evidence
+    if count != len(observations):
+        message = "final no-op count disagrees with exact states"
+        raise AssertionError(message)
+    if not set(observations) <= seen:
+        message = "final no-op evidence retained an unknown state"
+        raise AssertionError(message)
+    if any(
+        previous != result
+        for _, previous, _, result, _ in observations.values()
+    ):
+        message = "final no-op observation changed memory"
+        raise AssertionError(message)
+    projected_addresses = {item[0] for item in observations.values()}
+    if addresses != projected_addresses:
+        message = "final no-op addresses disagree with exact states"
+        raise AssertionError(message)
+
+
 def _assert_data_mutation_observations(
     evidence: tuple[
         int,
@@ -1821,6 +1863,9 @@ class _Explorer:
     )
     committed_data_write_addresses: set[int] = field(default_factory=set)
     committed_data_write_noop_addresses: set[int] = field(default_factory=set)
+    committed_data_write_noop_state_values: dict[
+        _StateKey, tuple[int, int, int, int, bool]
+    ] = field(default_factory=dict)
     self_encryption_addresses: set[int] = field(default_factory=set)
     effective_data_mutation_addresses: set[int] = field(default_factory=set)
     effective_data_mutation_previous_values: dict[int, set[int]] = field(
@@ -2076,10 +2121,13 @@ class _Explorer:
             self.committed_data_write_values,
             label="committed data write",
         )
-        _assert_observed_address_summary(
-            self.committed_data_write_noop_transitions,
-            self.committed_data_write_noop_addresses,
-            label="committed data-write final no-op",
+        _assert_data_write_noop_observations(
+            (
+                self.committed_data_write_noop_transitions,
+                self.committed_data_write_noop_addresses,
+                self.committed_data_write_noop_state_values,
+                self.seen,
+            )
         )
         _assert_observed_value_domains(
             self.self_encryption_transitions,
@@ -2369,6 +2417,25 @@ class _Explorer:
             ),
             explored_committed_data_write_noop_addresses=tuple(
                 sorted(self.committed_data_write_noop_addresses)
+            ),
+            explored_committed_data_write_noop_observations=tuple(
+                WorklistDataWriteNoopObservation(
+                    state=_cycle_state(key),
+                    address=self.committed_data_write_noop_state_values[key][0],
+                    previous_value=(
+                        self.committed_data_write_noop_state_values[key][1]
+                    ),
+                    written_value=(
+                        self.committed_data_write_noop_state_values[key][2]
+                    ),
+                    result_value=(
+                        self.committed_data_write_noop_state_values[key][3]
+                    ),
+                    aliases_self_encryption=(
+                        self.committed_data_write_noop_state_values[key][4]
+                    ),
+                )
+                for key in sorted(self.committed_data_write_noop_state_values)
             ),
             explored_self_encryption_transition_count=(
                 self.self_encryption_transitions
@@ -3057,8 +3124,13 @@ class _Explorer:
         address, previous, _, result, _ = mutation
         if result != previous:
             return False
+        key = _node_key(node)
+        if key in self.committed_data_write_noop_state_values:
+            message = "final no-op state was explored more than once"
+            raise AssertionError(message)
         self.committed_data_write_noop_transitions += 1
         self.committed_data_write_noop_addresses.add(address)
+        self.committed_data_write_noop_state_values[key] = mutation
         if self.data_write_noop_witness is None:
             self.data_write_noop_witness = self._data_write_noop_witness(
                 node, mutation

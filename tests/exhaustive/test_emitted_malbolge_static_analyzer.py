@@ -67,7 +67,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v85"
+_SCHEMA = "malbolge-static-image/v86"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _EOF_ACCUMULATOR = 59_048
@@ -651,6 +651,15 @@ class _WorklistDataMutationValueDomain(Protocol):
     result_values: tuple[int, ...]
 
 
+class _WorklistDataWriteNoopObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+
+
 class _WorklistDataWriteNoopWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -678,6 +687,22 @@ class _WorklistDataMutationWitness(Protocol):
     written_value: int
     result_value: int
     aliases_self_encryption: bool
+
+
+class _WorklistDataWriteNoopObservationSourceContext(Protocol):
+    observation_index: int
+    state: _WorklistCycleState
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+    source_position: int | None
+    source_byte_offset: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    write_source_position: int | None
+    write_source_byte_offset: int | None
 
 
 class _WorklistDataMutationObservationSourceContext(Protocol):
@@ -997,6 +1022,9 @@ class _WorklistAnalysis(Protocol):
     explored_committed_data_write_addresses: tuple[int, ...]
     explored_committed_data_write_noop_transition_count: int
     explored_committed_data_write_noop_addresses: tuple[int, ...]
+    explored_committed_data_write_noop_observations: tuple[
+        _WorklistDataWriteNoopObservation, ...
+    ]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
     explored_effective_data_mutation_transition_count: int
@@ -1180,6 +1208,9 @@ class _Report(Protocol):
     ]
     bounded_worklist_effective_data_mutation_observation_source_contexts: tuple[
         _WorklistDataMutationObservationSourceContext, ...
+    ]
+    bounded_worklist_data_write_noop_observation_source_contexts: tuple[
+        _WorklistDataWriteNoopObservationSourceContext, ...
     ]
     bounded_worklist_committed_write_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
@@ -3282,6 +3313,28 @@ def _assert_entry_noop_context(worklist: _WorklistAnalysis) -> None:
     assert witness.entry_path[-1] == witness.state
 
 
+def _assert_entry_noop_observation_source_map(report: _Report) -> None:
+    contexts = (
+        report.bounded_worklist_data_write_noop_observation_source_contexts
+    )
+    assert len(contexts) == _ENTRY_NOOP_DATA_WRITE_COUNT
+    context = contexts[0]
+    assert context.observation_index == 0
+    assert context.address == _ENTRY_MUTATION_ADDRESS
+    assert context.previous_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert context.written_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert context.result_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+    assert not context.aliases_self_encryption
+    assert (context.state.code_pointer, context.state.data_pointer) == (2, 40)
+    noop_code_pointer = _ENTRY_WRAP_POINTER_PATH[2][0]
+    assert context.source_position == noop_code_pointer
+    assert context.source_byte_offset == noop_code_pointer
+    assert context.data_source_position is None
+    assert context.data_source_byte_offset is None
+    assert context.write_source_position is None
+    assert context.write_source_byte_offset is None
+
+
 def _assert_entry_evolved_data_observation_source_map(
     report: _Report,
 ) -> None:
@@ -3484,6 +3537,7 @@ def test_report_worklist_observes_entry_reachable_eof_wrap() -> None:
     assert not witness.code_pointer_wrapped
     assert witness.data_pointer_wrapped
     _assert_entry_wrap_mutation_context(report, worklist)
+    _assert_entry_noop_observation_source_map(report)
     assert worklist.frontier_states == _WORKLIST_INPUT_VALUE_COUNT
     assert worklist.truncated
     assert _ENTRY_WRAP_LIMIT in report.analysis_limits
