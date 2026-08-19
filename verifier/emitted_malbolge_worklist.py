@@ -151,6 +151,15 @@ class WorklistStateMergeWitness:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistCodeDataAliasObservation:
+    """One exact explored C/D alias state and fetched memory value."""
+
+    state: WorklistCycleState
+    address: int
+    memory_value: int
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistCodeDataAliasWitness:
     """First exact entry-reachable C/D alias state for one address."""
 
@@ -269,6 +278,9 @@ class WorklistAnalysis:
     explored_data_pointer_addresses: tuple[int, ...]
     explored_code_data_alias_transition_count: int
     explored_code_data_alias_addresses: tuple[int, ...]
+    explored_code_data_alias_observations: tuple[
+        WorklistCodeDataAliasObservation, ...
+    ]
     explored_code_data_alias_witnesses: tuple[WorklistCodeDataAliasWitness, ...]
     explored_committed_write_count: int
     explored_committed_write_addresses: tuple[int, ...]
@@ -1138,6 +1150,23 @@ def _committed_data_mutation(
     return address, previous, written, result, aliases
 
 
+def _assert_code_data_alias_observations(
+    transition_count: int,
+    addresses: set[int],
+    observations: dict[_StateKey, int],
+) -> None:
+    if transition_count != len(observations):
+        message = "code/data alias count disagrees with exact alias states"
+        raise AssertionError(message)
+    observed_addresses = {state[0] for state in observations}
+    if addresses != observed_addresses:
+        message = "code/data alias addresses disagree with exact alias states"
+        raise AssertionError(message)
+    if any(state[0] != state[1] for state in observations):
+        message = "code/data alias observation lost exact C=D identity"
+        raise AssertionError(message)
+
+
 def _assert_input_branch_evidence(
     branch_count: int,
     branch_states: set[_StateKey],
@@ -1431,6 +1460,9 @@ class _Explorer:
     explored_code_pointer_addresses: set[int] = field(default_factory=set)
     explored_data_pointer_addresses: set[int] = field(default_factory=set)
     code_data_alias_addresses: set[int] = field(default_factory=set)
+    code_data_alias_state_values: dict[_StateKey, int] = field(
+        default_factory=dict
+    )
     code_data_alias_witnesses: dict[int, WorklistCodeDataAliasWitness] = field(
         default_factory=dict
     )
@@ -1709,6 +1741,11 @@ class _Explorer:
             self.input_branch_states,
             self.seen,
         )
+        _assert_code_data_alias_observations(
+            self.code_data_alias_transitions,
+            self.code_data_alias_addresses,
+            self.code_data_alias_state_values,
+        )
         ordered_addresses = tuple(sorted(self.accessed_addresses))
         highest_address = ordered_addresses[-1]
         cycle_keys = _known_graph_cycle_witness(self.edges, self.seen)
@@ -1859,6 +1896,14 @@ class _Explorer:
             ),
             explored_code_data_alias_addresses=tuple(
                 sorted(self.code_data_alias_addresses)
+            ),
+            explored_code_data_alias_observations=tuple(
+                WorklistCodeDataAliasObservation(
+                    state=_cycle_state(key),
+                    address=key[0],
+                    memory_value=self.code_data_alias_state_values[key],
+                )
+                for key in sorted(self.code_data_alias_state_values)
             ),
             explored_code_data_alias_witnesses=tuple(
                 self.code_data_alias_witnesses[address]
@@ -2525,22 +2570,37 @@ class _Explorer:
         self.planned_data_write_addresses.add(address)
         _record_domain_value(self.planned_data_write_values, address, value)
 
+    def _record_code_data_alias_observation(
+        self,
+        node: _ReachabilityNode,
+        transition: prefix_transfer.SecondTransition,
+    ) -> tuple[int, _StateKey] | None:
+        if not transition.code_data_alias:
+            return None
+        address = transition.fetched_address
+        if transition.data_address != address:
+            message = "code/data alias flag disagrees with exact addresses"
+            raise AssertionError(message)
+        key = _node_key(node)
+        if key in self.code_data_alias_state_values:
+            message = "code/data alias state was explored more than once"
+            raise AssertionError(message)
+        self.code_data_alias_transitions += 1
+        self.code_data_alias_addresses.add(address)
+        self.code_data_alias_state_values[key] = transition.fetched_value
+        return address, key
+
     def _record_code_data_alias_evidence(
         self,
         node: _ReachabilityNode,
         transition: prefix_transfer.SecondTransition,
     ) -> None:
-        if not transition.code_data_alias:
+        observation = self._record_code_data_alias_observation(node, transition)
+        if observation is None:
             return
-        self.code_data_alias_transitions += 1
-        address = transition.fetched_address
-        if transition.data_address != address:
-            message = "code/data alias flag disagrees with exact addresses"
-            raise AssertionError(message)
-        self.code_data_alias_addresses.add(address)
+        address, key = observation
         if address in self.code_data_alias_witnesses:
             return
-        key = _node_key(node)
         path = _known_graph_shortest_path(
             self.edges,
             self.seen,

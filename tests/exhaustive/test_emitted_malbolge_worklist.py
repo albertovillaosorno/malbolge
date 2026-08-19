@@ -395,6 +395,12 @@ class _WorklistStateMergeWitness(Protocol):
     existing_target_entry_path: tuple[_WorklistCycleState, ...]
 
 
+class _WorklistCodeDataAliasObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    memory_value: int
+
+
 class _WorklistCodeDataAliasWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -493,6 +499,9 @@ class _WorklistAnalysis(Protocol):
     explored_data_pointer_addresses: tuple[int, ...]
     explored_code_data_alias_transition_count: int
     explored_code_data_alias_addresses: tuple[int, ...]
+    explored_code_data_alias_observations: tuple[
+        _WorklistCodeDataAliasObservation, ...
+    ]
     explored_code_data_alias_witnesses: tuple[
         _WorklistCodeDataAliasWitness, ...
     ]
@@ -680,6 +689,13 @@ class _WorklistModule(Protocol):
         *,
         label: str,
         require_witness: bool,
+    ) -> None: ...
+
+    def _assert_code_data_alias_observations(
+        self,
+        transition_count: int,
+        addresses: set[int],
+        observations: dict[_WorklistStateKey, int],
     ) -> None: ...
 
     def _assert_input_branch_evidence(
@@ -947,11 +963,34 @@ def test_input_crazy_reports_exact_encryption_input_domain() -> None:
     assert encryption_outputs == (111,)
 
 
+def _assert_two_word_alias_observations(
+    result: _WorklistAnalysis,
+    second_value: int,
+) -> None:
+    observations = result.explored_code_data_alias_observations
+    assert len(observations) == _FULL_STATE_LIMIT
+    assert observations[0].address == 0
+    assert observations[0].memory_value == _INPUT_HALT_SOURCE[0]
+    first_state = observations[0].state
+    assert (first_state.code_pointer, first_state.data_pointer) == (0, 0)
+    remaining = observations[1:]
+    assert len(remaining) == _INPUT_VALUE_COUNT
+    assert all(item.address == 1 for item in remaining)
+    assert all(item.memory_value == second_value for item in remaining)
+    assert all(
+        (item.state.code_pointer, item.state.data_pointer) == (1, 1)
+        for item in remaining
+    )
+    assert remaining[-1].state.accumulator == _EOF_ACCUMULATOR
+    assert remaining[-1].state.eof_seen
+
+
 def _assert_two_word_alias_witnesses(
     result: _WorklistAnalysis,
     second_value: int,
 ) -> None:
     assert result.explored_code_data_alias_addresses == (0, 1)
+    _assert_two_word_alias_observations(result, second_value)
     witnesses = result.explored_code_data_alias_witnesses
     assert tuple(witness.address for witness in witnesses) == (0, 1)
     assert witnesses[0].memory_value == _INPUT_HALT_SOURCE[0]
@@ -1639,6 +1678,16 @@ def test_input_domain_becomes_eof_only_after_eof() -> None:
     successor = successors[0]
     assert successor.eof_seen
     assert successor.snapshot.accumulator == _EOF_ACCUMULATOR
+
+
+def test_alias_observation_invariant_rejects_count_state_drift() -> None:
+    """Alias transition totals must equal the exact observed alias states."""
+    with pytest.raises(AssertionError, match="exact alias states"):
+        worklist._assert_code_data_alias_observations(
+            1,
+            {0},
+            {},
+        )
 
 
 def test_input_branch_invariant_rejects_count_state_drift() -> None:

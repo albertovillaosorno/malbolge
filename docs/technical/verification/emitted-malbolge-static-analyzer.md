@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v79` retains exact `entry_transition` through
+`malbolge-static-image/v80` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -412,6 +412,13 @@ invalid-self-encryption terminals at loaded C/D=1, while a truncated graph
 publishes only terminal endpoints explored before its exact frontier. Closure
 therefore promotes the bounded endpoint set to complete reachable terminal
 evidence only when the graph itself is closed.
+Schema v80 retains every exact explored C=D alias observation as state, alias
+address, and fetched value. Result construction requires the observation count
+to equal the alias-transition count, the observation addresses to equal the
+reported alias-address set, and every exact state to preserve C=D. Public
+source contexts map C and D independently. A closed two-word input graph has
+258 observations spanning addresses 0 and 1; first-witness paths remain one per
+address rather than one per observation.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

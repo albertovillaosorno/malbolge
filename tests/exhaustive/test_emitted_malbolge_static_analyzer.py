@@ -67,7 +67,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v79"
+_SCHEMA = "malbolge-static-image/v80"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -579,6 +579,12 @@ class _WorklistStateMergeWitness(Protocol):
     existing_target_entry_path: tuple[_WorklistCycleState, ...]
 
 
+class _WorklistCodeDataAliasObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    memory_value: int
+
+
 class _WorklistCodeDataAliasWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -746,6 +752,19 @@ class _WorklistStateMergeSourceContext(Protocol):
     ]
 
 
+class _WorklistCodeDataAliasObservationSourceContext(Protocol):
+    alias_state_index: int
+    state: _WorklistCycleState
+    address: int
+    memory_value: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+
+
 class _WorklistCodeDataAliasSourceContext(Protocol):
     address: int
     memory_value: int
@@ -837,6 +856,9 @@ class _WorklistAnalysis(Protocol):
     explored_data_pointer_addresses: tuple[int, ...]
     explored_code_data_alias_transition_count: int
     explored_code_data_alias_addresses: tuple[int, ...]
+    explored_code_data_alias_observations: tuple[
+        _WorklistCodeDataAliasObservation, ...
+    ]
     explored_code_data_alias_witnesses: tuple[
         _WorklistCodeDataAliasWitness, ...
     ]
@@ -999,6 +1021,9 @@ class _Report(Protocol):
     ]
     bounded_worklist_explored_data_pointer_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_code_data_alias_observation_source_contexts: tuple[
+        _WorklistCodeDataAliasObservationSourceContext, ...
     ]
     bounded_worklist_code_data_alias_source_contexts: tuple[
         _WorklistCodeDataAliasSourceContext, ...
@@ -2885,12 +2910,45 @@ def test_worklist_maps_changed_encryption_inputs_without_commit_claim() -> None:
     assert worklist.explored_committed_data_write_value_domains == ()
 
 
+def _assert_alias_observation_source_contexts(report: _Report) -> None:
+    observations = (
+        report.bounded_worklist_code_data_alias_observation_source_contexts
+    )
+    assert len(observations) == _WORKLIST_COMPLETE_STATE_LIMIT
+    first = observations[0]
+    assert first.alias_state_index == 0
+    assert first.address == 0
+    assert first.memory_value == _INPUT_CRAZY_SOURCE[0]
+    assert first.source_byte_offset == _SOURCE_WHITESPACE_PREFIX_BYTES
+    assert first.data_source_byte_offset == _SOURCE_WHITESPACE_PREFIX_BYTES
+    remaining = observations[1:]
+    assert len(remaining) == _WORKLIST_INPUT_VALUE_COUNT
+    assert all(item.address == 1 for item in remaining)
+    assert all(
+        item.memory_value == _INPUT_CRAZY_SOURCE[1]
+        for item in remaining
+    )
+    assert all(
+        item.source_byte_offset == _SECOND_LOADED_SOURCE_BYTE_OFFSET
+        for item in remaining
+    )
+    assert all(
+        item.data_source_byte_offset == _SECOND_LOADED_SOURCE_BYTE_OFFSET
+        for item in remaining
+    )
+    assert all(
+        item.state.code_pointer == item.state.data_pointer
+        for item in observations
+    )
+
+
 def test_worklist_alias_witnesses_map_loaded_source_and_paths() -> None:
     """C/D alias addresses and shortest paths map to loaded source exactly."""
     report = _ANALYZER_MODULE.analyze_source(
         b" \n" + _INPUT_CRAZY_SOURCE,
         worklist_state_limit=_WORKLIST_COMPLETE_STATE_LIMIT,
     )
+    _assert_alias_observation_source_contexts(report)
     contexts = report.bounded_worklist_code_data_alias_source_contexts
     assert tuple(context.address for context in contexts) == (0, 1)
     assert tuple(context.memory_value for context in contexts) == tuple(

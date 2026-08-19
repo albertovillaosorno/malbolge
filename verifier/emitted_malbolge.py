@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v79"
+_SCHEMA: Final = "malbolge-static-image/v80"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -326,6 +326,22 @@ class BoundedWorklistStateMergeSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistCodeDataAliasObservationSourceContext:
+    """Source coordinates for one exact explored C/D alias observation."""
+
+    alias_state_index: int
+    state: worklist_transfer.WorklistCycleState
+    address: int
+    memory_value: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistCodeDataAliasSourceContext:
     """Source-linked first exact C/D alias witness for one address."""
 
@@ -415,6 +431,9 @@ class StaticImageReport:
     ]
     bounded_worklist_explored_data_pointer_source_map: tuple[
         BoundedWorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_code_data_alias_observation_source_contexts: tuple[
+        BoundedWorklistCodeDataAliasObservationSourceContext, ...
     ]
     bounded_worklist_code_data_alias_source_contexts: tuple[
         BoundedWorklistCodeDataAliasSourceContext, ...
@@ -1616,6 +1635,39 @@ def _worklist_state_merge_source_context(
     )
 
 
+def _worklist_code_data_alias_observation_source_contexts(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistCodeDataAliasObservationSourceContext, ...]:
+    if worklist is None:
+        return ()
+    contexts: list[BoundedWorklistCodeDataAliasObservationSourceContext] = []
+    for index, observation in enumerate(
+        worklist.explored_code_data_alias_observations
+    ):
+        source = _worklist_mutation_address_source_context(
+            observation.state.code_pointer, cells
+        )
+        data_source = _worklist_mutation_address_source_context(
+            observation.state.data_pointer, cells
+        )
+        contexts.append(
+            BoundedWorklistCodeDataAliasObservationSourceContext(
+                alias_state_index=index,
+                state=observation.state,
+                address=observation.address,
+                memory_value=observation.memory_value,
+                source_position=source.source_position,
+                source_byte_offset=source.source_byte_offset,
+                initial_source_byte=source.initial_source_byte,
+                data_source_position=data_source.source_position,
+                data_source_byte_offset=data_source.source_byte_offset,
+                initial_data_source_byte=data_source.initial_source_byte,
+            )
+        )
+    return tuple(contexts)
+
+
 def _worklist_code_data_alias_source_contexts(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -1944,6 +1996,11 @@ def analyze_source(
                     else worklist.explored_data_pointer_addresses
                 ),
                 prefix.cells,
+            )
+        ),
+        bounded_worklist_code_data_alias_observation_source_contexts=(
+            _worklist_code_data_alias_observation_source_contexts(
+                worklist, prefix.cells
             )
         ),
         bounded_worklist_code_data_alias_source_contexts=(
