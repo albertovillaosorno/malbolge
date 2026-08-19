@@ -156,6 +156,10 @@ _OVER_CAP_FRONTIER_POINTER_PATH = (
     (14, 120),
     (15, 29_407),
 )
+_OVER_CAP_FRONTIER_LOADED_CODE_POINTER = 15
+_OVER_CAP_FRONTIER_RECURRENCE_CODE_POINTER = 16
+_OVER_CAP_FRONTIER_LOADED_STATE_COUNT = 16
+_OVER_CAP_FRONTIER_RECURRENCE_STATE_COUNT = 241
 _EVOLVED_FETCH_SOURCE = tuple(b"(&&$^")
 _EVOLVED_FETCH_STATE_LIMIT = 6
 _EVOLVED_FETCH_ADDRESS = 95
@@ -546,6 +550,7 @@ class _WorklistAnalysis(Protocol):
     explored_simultaneous_pointer_wrap_witness: _WorklistWrapWitness | None
     maximum_first_seen_transition_index: int
     frontier_states: int
+    frontier_state_set: tuple[_WorklistCycleState, ...]
     frontier_state_witness: _WorklistCycleState | None
     frontier_entry_path: tuple[_WorklistCycleState, ...] | None
     truncated: bool
@@ -671,6 +676,7 @@ class _WorklistModule(Protocol):
     def _assert_frontier_evidence(
         self,
         frontier_states: int,
+        frontier_state_keys: tuple[_WorklistStateKey, ...],
         frontier_path: tuple[_WorklistStateKey, ...] | None,
         *,
         truncated: bool,
@@ -801,6 +807,7 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     assert result.closed_all_paths_halt is True
     assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
     assert result.frontier_states == 0
+    assert result.frontier_state_set == ()
     assert not result.truncated
 
 
@@ -1030,6 +1037,10 @@ def test_input_worklist_truncates_before_unadmitted_eof_state() -> None:
     assert result.closed_all_paths_terminate is None
     assert result.closed_all_paths_halt is None
     assert result.frontier_states == _INPUT_VALUE_COUNT
+    assert len(result.frontier_state_set) == _INPUT_VALUE_COUNT
+    assert result.frontier_state_set[0].accumulator == 0
+    assert result.frontier_state_set[-1].accumulator == _EOF_ACCUMULATOR
+    assert result.frontier_state_set[-1].eof_seen
     assert result.closed_recurrent_component_count is None
     assert result.closed_recurrent_state_count is None
     assert result.closed_recurrent_largest_component_states is None
@@ -1048,6 +1059,7 @@ def test_tiny_cap_counts_all_pending_input_frontier_states() -> None:
     assert result.explored_states == 1
     assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
     assert result.frontier_states == _INPUT_VALUE_COUNT
+    assert len(result.frontier_state_set) == _INPUT_VALUE_COUNT
     assert result.truncated
 
 
@@ -1064,6 +1076,7 @@ def test_minimum_cap_reports_exact_first_unexplored_frontier_path() -> None:
     assert path is not None
     assert witness.accumulator == 0
     assert not witness.eof_seen
+    assert witness in result.frontier_state_set
     assert path[-1] == witness
     pointers = tuple(
         (state.code_pointer, state.data_pointer) for state in path
@@ -1482,6 +1495,19 @@ def test_double_jump_branch_merge_closes_124_state_cycle() -> None:
     assert not result.truncated
 
 
+def _assert_over_cap_frontier_state_set(result: _WorklistAnalysis) -> None:
+    frontier = result.frontier_state_set
+    assert len(frontier) == _INPUT_VALUE_COUNT
+    assert sum(
+        state.code_pointer == _OVER_CAP_FRONTIER_LOADED_CODE_POINTER
+        for state in frontier
+    ) == _OVER_CAP_FRONTIER_LOADED_STATE_COUNT
+    assert sum(
+        state.code_pointer == _OVER_CAP_FRONTIER_RECURRENCE_CODE_POINTER
+        for state in frontier
+    ) == _OVER_CAP_FRONTIER_RECURRENCE_STATE_COUNT
+
+
 def test_reviewed_state_ceiling_truncates_deeper_jump_chain() -> None:
     """The 4,096-state maximum stops before silently closing a deeper graph."""
     result = worklist.analyze_reachability(
@@ -1491,6 +1517,7 @@ def test_reviewed_state_ceiling_truncates_deeper_jump_chain() -> None:
     assert result.unique_states == _MAX_WORKLIST_STATE_LIMIT
     assert result.explored_states == _OVER_CAP_EXPLORED_STATES
     assert result.frontier_states == _INPUT_VALUE_COUNT
+    _assert_over_cap_frontier_state_set(result)
     assert result.maximum_first_seen_transition_index == (
         _OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION
     )
@@ -1552,6 +1579,18 @@ def test_frontier_invariant_rejects_truncation_without_states() -> None:
     with pytest.raises(AssertionError, match="frontier state count"):
         worklist._assert_frontier_evidence(
             0,
+            (_GRAPH_KEY_A,),
+            (_GRAPH_KEY_A,),
+            truncated=True,
+        )
+
+
+def test_frontier_invariant_rejects_count_set_drift() -> None:
+    """Numeric frontier size must equal the exact frontier state set."""
+    with pytest.raises(AssertionError, match="exact frontier set"):
+        worklist._assert_frontier_evidence(
+            2,
+            (_GRAPH_KEY_A,),
             (_GRAPH_KEY_A,),
             truncated=True,
         )

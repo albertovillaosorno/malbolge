@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v77 retains the legacy exact entry-through-fifth
+load decode. Schema v78 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -390,6 +390,14 @@ recurrent, or frontier entry path. The branch-merged deep cycle links its
 single initial branch to index 0 of both closed paths; the whitespace-prefixed
 truncated fixture links the same exact branch to frontier index 0 and raw source
 offset 2.
+Schema v78 publishes the exact deduplicated unexplored frontier state set when
+a worklist truncates, with the numeric frontier count derived from that set. A
+source context maps every frontier state's C/D independently while the existing
+first-frontier path remains the only serialized entry path. The 4,096-state
+over-cap fixture has 257 frontier states: 16 at loaded C=15 and 241 at
+recurrence C=16; the adjacent restoration fixture has exactly loaded C=1665
+plus recurrence
+C=1666. Closed graphs publish an empty frontier set.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored

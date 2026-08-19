@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v77"
+_SCHEMA = "malbolge-static-image/v78"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -287,6 +287,9 @@ _OVER_CAP_FRONTIER_POINTER_PATH = (
     (14, 120),
     (15, 29_407),
 )
+_OVER_CAP_FRONTIER_LOADED_SOURCE_POSITION = 15
+_OVER_CAP_FRONTIER_LOADED_STATE_COUNT = 16
+_OVER_CAP_FRONTIER_RECURRENCE_STATE_COUNT = 241
 _MAX_WORKLIST_TRUNCATED_LIMIT = (
     "input-dependent-reachability:4096-state-worklist-truncated"
 )
@@ -652,6 +655,17 @@ class _WorklistInputBranchSourceContext(Protocol):
     frontier_entry_path_state_index: int | None
 
 
+class _WorklistFrontierStateSourceContext(Protocol):
+    frontier_state_index: int
+    state: _WorklistCycleState
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+
+
 class _WorklistWrapTransitionSourceContext(Protocol):
     source_code_pointer: int
     source_data_pointer: int
@@ -849,6 +863,7 @@ class _WorklistAnalysis(Protocol):
     explored_simultaneous_pointer_wrap_witness: _WorklistWrapWitness | None
     maximum_first_seen_transition_index: int
     frontier_states: int
+    frontier_state_set: tuple[_WorklistCycleState, ...]
     frontier_state_witness: _WorklistCycleState | None
     frontier_entry_path: tuple[_WorklistCycleState, ...] | None
     truncated: bool
@@ -1054,6 +1069,9 @@ class _Report(Protocol):
     ]
     bounded_worklist_closed_recurrent_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_frontier_state_source_contexts: tuple[
+        _WorklistFrontierStateSourceContext, ...
     ]
     bounded_worklist_frontier_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
@@ -3548,6 +3566,19 @@ def test_worklist_maps_loaded_cycle_body_with_recurrence_data_pointer() -> None:
     assert all(item.states[0].data_source_position is None for item in known)
 
 
+def _assert_over_cap_frontier_source_contexts(report: _Report) -> None:
+    contexts = report.bounded_worklist_frontier_state_source_contexts
+    assert len(contexts) == _WORKLIST_TRUNCATED_STATE_LIMIT
+    assert sum(
+        item.source_position == _OVER_CAP_FRONTIER_LOADED_SOURCE_POSITION
+        for item in contexts
+    ) == _OVER_CAP_FRONTIER_LOADED_STATE_COUNT
+    assert sum(
+        item.source_position is None for item in contexts
+    ) == _OVER_CAP_FRONTIER_RECURRENCE_STATE_COUNT
+    assert all(item.data_source_position is None for item in contexts)
+
+
 def test_worklist_maps_truncated_frontier_control_path() -> None:
     """Truncated frontier C path keeps every loaded source position exact."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -3555,6 +3586,7 @@ def test_worklist_maps_truncated_frontier_control_path() -> None:
         worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
     )
     frontier = report.bounded_worklist_frontier_entry_path_source_map
+    _assert_over_cap_frontier_source_contexts(report)
     branches = report.bounded_worklist_input_branch_source_contexts
     assert len(branches) == 1
     assert branches[0].source_position == 0
@@ -3859,6 +3891,19 @@ def test_report_worklist_truncates_adjacent_restored_deep_cycle() -> None:
     assert worklist.unique_states == _MAX_WORKLIST_STATE_LIMIT
     assert worklist.explored_states == _MAX_WORKLIST_STATE_LIMIT - 1
     assert worklist.frontier_states == _RESTORED_DEEP_CYCLE_FRONTIER_STATES
+    assert len(worklist.frontier_state_set) == (
+        _RESTORED_DEEP_CYCLE_FRONTIER_STATES
+    )
+    frontier_sources = report.bounded_worklist_frontier_state_source_contexts
+    assert len(frontier_sources) == _RESTORED_DEEP_CYCLE_FRONTIER_STATES
+    assert tuple(item.state.code_pointer for item in frontier_sources) == (
+        _RESTORED_DEEP_CYCLE_SOURCE_WORDS,
+        _RESTORED_DEEP_CYCLE_OVER_CAP_SOURCE_WORDS,
+    )
+    assert frontier_sources[0].source_position == (
+        _RESTORED_DEEP_CYCLE_SOURCE_WORDS
+    )
+    assert frontier_sources[1].source_position is None
     assert worklist.truncated
     assert not worklist.reachable_cycle_detected
     assert worklist.maximum_first_seen_transition_index == (
@@ -3902,6 +3947,10 @@ def test_report_worklist_truncates_at_reviewed_maximum() -> None:
     assert worklist.unique_states == _MAX_WORKLIST_STATE_LIMIT
     assert worklist.explored_states == _OVER_CAP_EXPLORED_STATES
     assert worklist.frontier_states == _WORKLIST_TRUNCATED_STATE_LIMIT
+    assert len(worklist.frontier_state_set) == _WORKLIST_TRUNCATED_STATE_LIMIT
+    assert len(report.bounded_worklist_frontier_state_source_contexts) == (
+        _WORKLIST_TRUNCATED_STATE_LIMIT
+    )
     assert worklist.maximum_first_seen_transition_index == (
         _OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION
     )

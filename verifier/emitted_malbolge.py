@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v77"
+_SCHEMA: Final = "malbolge-static-image/v78"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -244,6 +244,20 @@ class BoundedWorklistInputBranchSourceContext:
     reachable_cycle_entry_path_state_index: int | None
     closed_recurrent_entry_path_state_index: int | None
     frontier_entry_path_state_index: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class BoundedWorklistFrontierStateSourceContext:
+    """Source coordinates for one exact unexplored frontier state."""
+
+    frontier_state_index: int
+    state: worklist_transfer.WorklistCycleState
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -494,6 +508,9 @@ class StaticImageReport:
     ]
     bounded_worklist_closed_recurrent_entry_path_source_map: tuple[
         BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_frontier_state_source_contexts: tuple[
+        BoundedWorklistFrontierStateSourceContext, ...
     ]
     bounded_worklist_frontier_entry_path_source_map: tuple[
         BoundedWorklistControlPathSourceContext, ...
@@ -1687,6 +1704,35 @@ def _worklist_wrap_witness_entry_path_source_map(
     return _worklist_control_path_source_map(witness.entry_path, cells)
 
 
+def _worklist_frontier_state_source_contexts(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistFrontierStateSourceContext, ...]:
+    if worklist is None:
+        return ()
+    contexts: list[BoundedWorklistFrontierStateSourceContext] = []
+    for index, state in enumerate(worklist.frontier_state_set):
+        source = _worklist_mutation_address_source_context(
+            state.code_pointer, cells
+        )
+        data_source = _worklist_mutation_address_source_context(
+            state.data_pointer, cells
+        )
+        contexts.append(
+            BoundedWorklistFrontierStateSourceContext(
+                frontier_state_index=index,
+                state=state,
+                source_position=source.source_position,
+                source_byte_offset=source.source_byte_offset,
+                initial_source_byte=source.initial_source_byte,
+                data_source_position=data_source.source_position,
+                data_source_byte_offset=data_source.source_byte_offset,
+                initial_data_source_byte=data_source.initial_source_byte,
+            )
+        )
+    return tuple(contexts)
+
+
 def _worklist_terminal_control_path_source_maps(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -2155,6 +2201,9 @@ def analyze_source(
                 ),
                 prefix.cells,
             )
+        ),
+        bounded_worklist_frontier_state_source_contexts=(
+            _worklist_frontier_state_source_contexts(worklist, prefix.cells)
         ),
         bounded_worklist_frontier_entry_path_source_map=(
             _worklist_control_path_source_map(

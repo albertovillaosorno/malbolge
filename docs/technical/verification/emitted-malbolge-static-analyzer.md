@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v77` retains exact `entry_transition` through
+`malbolge-static-image/v78` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -396,6 +396,14 @@ closed paths. The whitespace-prefixed truncated graph instead links that branch
 to frontier index 0 and raw source offset 2. These are explicit bounded path
 links; absent indices do not prove an input branch unreachable beyond a
 frontier.
+Schema v78 retains the complete exact unexplored frontier state set at the
+first state-cap truncation. The published count is derived from the deduplicated
+set, the first frontier witness/path endpoint must belong to it, and every
+frontier state's C/D pointers receive independent source coordinates. The
+4,096-state over-cap fixture retains 257 states: 16 at loaded C=15 and 241 at
+recurrence C=16. The adjacent restoration fixture retains loaded C=1665 and
+recurrence C=1666 as its exact two-state frontier. These states have not been
+explored, so the map is boundary evidence rather than successor behavior proof.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

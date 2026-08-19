@@ -329,6 +329,7 @@ class WorklistAnalysis:
     explored_simultaneous_pointer_wrap_witness: WorklistWrapWitness | None
     maximum_first_seen_transition_index: int
     frontier_states: int
+    frontier_state_set: tuple[WorklistCycleState, ...]
     frontier_state_witness: WorklistCycleState | None
     frontier_entry_path: tuple[WorklistCycleState, ...] | None
     truncated: bool
@@ -468,18 +469,18 @@ def _transition_accesses(
     return accesses
 
 
-def _unseen_successor_count(
+def _unseen_successor_keys(
     successors: tuple[_ReachabilityNode, ...],
     seen: set[_StateKey],
     *,
     start_index: int,
-) -> int:
+) -> tuple[_StateKey, ...]:
     unseen = {
         _node_key(successor)
         for successor in successors[start_index:]
         if _node_key(successor) not in seen
     }
-    return len(unseen)
+    return tuple(sorted(unseen))
 
 
 def _known_targets(
@@ -1124,15 +1125,25 @@ def _assert_input_branch_evidence(
 
 def _assert_frontier_evidence(
     frontier_states: int,
+    frontier_state_keys: tuple[_StateKey, ...],
     frontier_path: tuple[_StateKey, ...] | None,
     *,
     truncated: bool,
 ) -> None:
-    if truncated != (frontier_states > 0):
-        message = "worklist truncation disagrees with frontier state count"
+    if frontier_states != len(frontier_state_keys):
+        message = "frontier state count disagrees with exact frontier set"
+        raise AssertionError(message)
+    if truncated != bool(frontier_state_keys):
+        message = "worklist truncation disagrees with exact frontier states"
         raise AssertionError(message)
     if truncated != (frontier_path is not None):
         message = "worklist truncation lost its exact frontier path"
+        raise AssertionError(message)
+    if (
+        frontier_path is not None
+        and frontier_path[-1] not in frontier_state_keys
+    ):
+        message = "worklist frontier path endpoint is outside exact frontier"
         raise AssertionError(message)
 
 
@@ -1532,11 +1543,12 @@ class _Explorer:
         self,
         *,
         truncated: bool,
-        frontier_states: int = 0,
+        frontier_state_keys: tuple[_StateKey, ...] = (),
         frontier_path: tuple[_StateKey, ...] | None = None,
     ) -> WorklistAnalysis:
         _assert_frontier_evidence(
-            frontier_states,
+            len(frontier_state_keys),
+            frontier_state_keys,
             frontier_path,
             truncated=truncated,
         )
@@ -1859,7 +1871,10 @@ class _Explorer:
             maximum_first_seen_transition_index=(
                 self.maximum_first_seen_transition_index
             ),
-            frontier_states=frontier_states,
+            frontier_states=len(frontier_state_keys),
+            frontier_state_set=tuple(
+                _cycle_state(key) for key in frontier_state_keys
+            ),
             frontier_state_witness=(
                 _cycle_state(frontier_path[-1]) if frontier_path else None
             ),
@@ -1969,16 +1984,21 @@ class _Explorer:
                     source_key=source_key,
                     successor_key=key,
                 )
+                frontier_state_keys = tuple(
+                    sorted(
+                        {
+                            *(_node_key(node) for node in self.queue),
+                            *_unseen_successor_keys(
+                                successors,
+                                self.seen,
+                                start_index=index,
+                            ),
+                        }
+                    )
+                )
                 return self.result(
                     truncated=True,
-                    frontier_states=(
-                        len(self.queue)
-                        + _unseen_successor_count(
-                            successors,
-                            self.seen,
-                            start_index=index,
-                        )
-                    ),
+                    frontier_state_keys=frontier_state_keys,
                     frontier_path=frontier_path,
                 )
             self.seen.add(key)
