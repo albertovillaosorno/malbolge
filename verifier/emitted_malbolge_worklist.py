@@ -189,6 +189,15 @@ class WorklistNonGraphicalFetchWitness:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistPlannedDataWriteObservation:
+    """One exact explored planned data-write state and value."""
+
+    state: WorklistCycleState
+    address: int
+    value: int
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistChangedEncryptionInputObservation:
     """One exact changed-from-initial self-encryption input state."""
 
@@ -316,6 +325,9 @@ class WorklistAnalysis:
     explored_planned_data_write_transition_count: int
     explored_planned_data_write_addresses: tuple[int, ...]
     explored_planned_data_write_value_domains: tuple[WorklistValueDomain, ...]
+    explored_planned_data_write_observations: tuple[
+        WorklistPlannedDataWriteObservation, ...
+    ]
     explored_committed_data_write_transition_count: int
     explored_committed_data_write_addresses: tuple[int, ...]
     explored_committed_data_write_noop_transition_count: int
@@ -1284,6 +1296,43 @@ def _assert_terminal_graph_endpoints(
                 raise AssertionError(message)
 
 
+def _planned_data_write_projection(
+    observations: dict[_StateKey, tuple[int, int]],
+) -> tuple[set[int], dict[int, set[int]]]:
+    addresses = {address for address, _ in observations.values()}
+    values: dict[int, set[int]] = {}
+    for address, value in observations.values():
+        values.setdefault(address, set()).add(value)
+    return addresses, values
+
+
+def _assert_planned_data_write_observations(
+    evidence: tuple[
+        int,
+        set[int],
+        dict[int, set[int]],
+        dict[_StateKey, tuple[int, int]],
+        set[_StateKey],
+    ],
+) -> None:
+    transition_count, addresses, values, observations, seen = evidence
+    if transition_count != len(observations):
+        message = "planned data-write count disagrees with exact states"
+        raise AssertionError(message)
+    if not set(observations) <= seen:
+        message = "planned data-write evidence retained an unknown state"
+        raise AssertionError(message)
+    projected_addresses, projected_values = _planned_data_write_projection(
+        observations
+    )
+    if addresses != projected_addresses:
+        message = "planned data-write addresses disagree with exact states"
+        raise AssertionError(message)
+    if values != projected_values:
+        message = "planned data-write domains disagree with exact states"
+        raise AssertionError(message)
+
+
 def _changed_encryption_input_projection(
     observations: dict[_StateKey, tuple[int, int]],
 ) -> tuple[set[int], dict[int, set[int]]]:
@@ -1703,6 +1752,9 @@ class _Explorer:
     committed_write_addresses: set[int] = field(default_factory=set)
     planned_data_write_addresses: set[int] = field(default_factory=set)
     planned_data_write_values: dict[int, set[int]] = field(default_factory=dict)
+    planned_data_write_state_values: dict[_StateKey, tuple[int, int]] = field(
+        default_factory=dict
+    )
     committed_data_write_addresses: set[int] = field(default_factory=set)
     committed_data_write_noop_addresses: set[int] = field(default_factory=set)
     self_encryption_addresses: set[int] = field(default_factory=set)
@@ -1941,6 +1993,15 @@ class _Explorer:
             self.planned_data_write_addresses,
             self.planned_data_write_values,
             label="planned data write",
+        )
+        _assert_planned_data_write_observations(
+            (
+                self.planned_data_write_transitions,
+                self.planned_data_write_addresses,
+                self.planned_data_write_values,
+                self.planned_data_write_state_values,
+                self.seen,
+            )
         )
         _assert_observed_value_domains(
             self.committed_data_write_transitions,
@@ -2211,6 +2272,14 @@ class _Explorer:
             ),
             explored_planned_data_write_value_domains=_value_domains(
                 self.planned_data_write_values
+            ),
+            explored_planned_data_write_observations=tuple(
+                WorklistPlannedDataWriteObservation(
+                    state=_cycle_state(key),
+                    address=self.planned_data_write_state_values[key][0],
+                    value=self.planned_data_write_state_values[key][1],
+                )
+                for key in sorted(self.planned_data_write_state_values)
             ),
             explored_committed_data_write_transition_count=(
                 self.committed_data_write_transitions
@@ -2943,6 +3012,7 @@ class _Explorer:
 
     def _record_planned_data_write_evidence(
         self,
+        node: _ReachabilityNode,
         transition: prefix_transfer.SecondTransition,
     ) -> None:
         address = transition.planned_data_write_address
@@ -2951,9 +3021,14 @@ class _Explorer:
         value = _required_exact_value(
             transition.planned_data_write_value, label="planned data write"
         )
+        key = _node_key(node)
+        if key in self.planned_data_write_state_values:
+            message = "planned data-write state was explored more than once"
+            raise AssertionError(message)
         self.planned_data_write_transitions += 1
         self.planned_data_write_addresses.add(address)
         _record_domain_value(self.planned_data_write_values, address, value)
+        self.planned_data_write_state_values[key] = (address, value)
 
     def _record_code_data_alias_observation(
         self,
@@ -3046,7 +3121,7 @@ class _Explorer:
         self.accessed_addresses.update(_transition_accesses(step.transition))
         self._record_read_value_evidence(node, step.transition)
         self._record_evolved_read_evidence(node, step.transition)
-        self._record_planned_data_write_evidence(step.transition)
+        self._record_planned_data_write_evidence(node, step.transition)
         self._record_code_data_alias_evidence(node, step.transition)
         self._record_mutation_evidence(step)
         self._record_data_mutation_evidence(node, step)

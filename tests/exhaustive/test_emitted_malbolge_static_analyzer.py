@@ -67,7 +67,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v83"
+_SCHEMA = "malbolge-static-image/v84"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _EOF_ACCUMULATOR = 59_048
@@ -614,6 +614,12 @@ class _WorklistNonGraphicalFetchWitness(Protocol):
     value: int
 
 
+class _WorklistPlannedDataWriteObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    value: int
+
+
 class _WorklistChangedEncryptionInputObservation(Protocol):
     state: _WorklistCycleState
     address: int
@@ -816,6 +822,22 @@ class _WorklistCodeDataAliasSourceContext(Protocol):
     entry_path_source_map: tuple[_WorklistControlPathSourceContext, ...]
 
 
+class _WorklistPlannedDataWriteObservationSourceContext(Protocol):
+    observation_index: int
+    state: _WorklistCycleState
+    address: int
+    value: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+    write_source_position: int | None
+    write_source_byte_offset: int | None
+    initial_write_source_byte: int | None
+
+
 class _WorklistChangedEncryptionInputObservationSourceContext(Protocol):
     observation_index: int
     state: _WorklistCycleState
@@ -943,6 +965,9 @@ class _WorklistAnalysis(Protocol):
     explored_planned_data_write_transition_count: int
     explored_planned_data_write_addresses: tuple[int, ...]
     explored_planned_data_write_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_planned_data_write_observations: tuple[
+        _WorklistPlannedDataWriteObservation, ...
+    ]
     explored_committed_data_write_transition_count: int
     explored_committed_data_write_addresses: tuple[int, ...]
     explored_committed_data_write_noop_transition_count: int
@@ -1181,6 +1206,9 @@ class _Report(Protocol):
     ]
     bounded_worklist_planned_data_write_value_source_map: tuple[
         _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_planned_data_write_observation_source_contexts: tuple[
+        _WorklistPlannedDataWriteObservationSourceContext, ...
     ]
     bounded_worklist_committed_data_write_value_source_map: tuple[
         _WorklistValueSourceContext, ...
@@ -3004,6 +3032,37 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     assert worklist.explored_data_mutation_witness is None
 
 
+def _assert_planned_write_matches_changed_encryption(
+    report: _Report,
+) -> None:
+    planned = (
+        report.bounded_worklist_planned_data_write_observation_source_contexts
+    )
+    changed = (
+        report
+        .bounded_worklist_changed_encryption_input_observation_source_contexts
+    )
+    assert len(planned) == _WORKLIST_INPUT_VALUE_COUNT
+    assert len(changed) == len(planned)
+    assert tuple(item.observation_index for item in planned) == tuple(
+        range(_WORKLIST_INPUT_VALUE_COUNT)
+    )
+    assert all(item.source_position == 1 for item in planned)
+    assert all(item.data_source_position == 1 for item in planned)
+    assert all(item.write_source_position == 1 for item in planned)
+    assert all(
+        item.write_source_byte_offset == _SECOND_LOADED_SOURCE_BYTE_OFFSET
+        for item in planned
+    )
+    planned_projection = tuple(
+        (item.state, item.address, item.value) for item in planned
+    )
+    changed_projection = tuple(
+        (item.state, item.address, item.observed_value) for item in changed
+    )
+    assert planned_projection == changed_projection
+
+
 def _assert_changed_encryption_input_observation_source_map(
     report: _Report,
 ) -> None:
@@ -3071,6 +3130,7 @@ def test_worklist_maps_changed_encryption_inputs_without_commit_claim() -> None:
     assert len(changed.values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
     assert changed.initial_memory_value_in_values is False
     _assert_changed_encryption_input_observation_source_map(report)
+    _assert_planned_write_matches_changed_encryption(report)
     assert worklist.explored_committed_data_write_transition_count == 0
     assert worklist.explored_committed_data_write_value_domains == ()
 
@@ -3486,6 +3546,14 @@ def test_rejected_planned_write_domain_maps_loaded_source() -> None:
     assert context.initial_source_byte == _INPUT_CRAZY_SOURCE[1]
     assert len(context.values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
     assert context.initial_source_byte_in_values is False
+    observations = (
+        report.bounded_worklist_planned_data_write_observation_source_contexts
+    )
+    assert len(observations) == _WORKLIST_INPUT_VALUE_COUNT
+    assert all(item.address == 1 for item in observations)
+    assert all(item.source_position == 1 for item in observations)
+    assert all(item.data_source_position == 1 for item in observations)
+    assert all(item.write_source_position == 1 for item in observations)
     assert report.bounded_worklist_committed_data_write_value_source_map == ()
 
 

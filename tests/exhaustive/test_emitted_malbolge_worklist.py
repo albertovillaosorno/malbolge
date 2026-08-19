@@ -422,6 +422,12 @@ class _WorklistNonGraphicalFetchWitness(Protocol):
     value: int
 
 
+class _WorklistPlannedDataWriteObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    value: int
+
+
 class _WorklistChangedEncryptionInputObservation(Protocol):
     state: _WorklistCycleState
     address: int
@@ -531,6 +537,9 @@ class _WorklistAnalysis(Protocol):
     explored_planned_data_write_transition_count: int
     explored_planned_data_write_addresses: tuple[int, ...]
     explored_planned_data_write_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_planned_data_write_observations: tuple[
+        _WorklistPlannedDataWriteObservation, ...
+    ]
     explored_committed_data_write_transition_count: int
     explored_committed_data_write_addresses: tuple[int, ...]
     explored_committed_data_write_noop_transition_count: int
@@ -710,6 +719,17 @@ class _WorklistModule(Protocol):
         values: dict[int, set[int]],
         *,
         label: str,
+    ) -> None: ...
+
+    def _assert_planned_data_write_observations(
+        self,
+        evidence: tuple[
+            int,
+            set[int],
+            dict[int, set[int]],
+            dict[_WorklistStateKey, tuple[int, int]],
+            set[_WorklistStateKey],
+        ],
     ) -> None: ...
 
     def _assert_changed_encryption_input_observations(
@@ -971,6 +991,7 @@ def test_input_halt_reports_exact_read_value_domains() -> None:
     assert result.explored_planned_data_write_transition_count == 0
     assert result.explored_planned_data_write_addresses == ()
     assert result.explored_planned_data_write_value_domains == ()
+    assert result.explored_planned_data_write_observations == ()
     assert result.explored_committed_data_write_value_domains == ()
     encryption_outputs = _domain_values(
         result.explored_self_encryption_output_value_domains, 0
@@ -992,6 +1013,26 @@ def test_input_halt_reports_exact_read_value_domains() -> None:
         result.explored_changed_from_initial_encryption_input_value_domains
         == ()
     )
+
+
+def _assert_input_crazy_planned_write_observations(
+    result: _WorklistAnalysis,
+    values: tuple[int, ...],
+) -> None:
+    planned = result.explored_planned_data_write_observations
+    changed = result.explored_changed_from_initial_encryption_input_observations
+    assert len(planned) == _INPUT_VALUE_COUNT
+    assert len(changed) == len(planned)
+    assert all(item.address == 1 for item in planned)
+    assert {item.value for item in planned} == set(values)
+    planned_projection = tuple(
+        (item.state, item.address, item.value) for item in planned
+    )
+    changed_projection = tuple(
+        (item.state, item.address, item.observed_value) for item in changed
+    )
+    assert planned_projection == changed_projection
+    assert planned[-1].state.eof_seen
 
 
 def _assert_changed_encryption_input_observations(
@@ -1062,6 +1103,7 @@ def test_input_crazy_reports_exact_encryption_input_domain() -> None:
         result.explored_planned_data_write_value_domains, 1
     )
     assert planned_values == values
+    _assert_input_crazy_planned_write_observations(result, values)
     assert result.explored_committed_data_write_value_domains == ()
     encryption_outputs = _domain_values(
         result.explored_self_encryption_output_value_domains, 0
@@ -1408,6 +1450,14 @@ def test_changed_read_invariant_rejects_under_counted_values() -> None:
             {1},
             {1: {32, 33}},
             label="changed encryption input",
+        )
+
+
+def test_planned_write_observation_invariant_rejects_count_drift() -> None:
+    """Planned-write counts must match exact explored write states."""
+    with pytest.raises(AssertionError, match="exact states"):
+        worklist._assert_planned_data_write_observations(
+            (1, {0}, {0: {1}}, {}, {_GRAPH_KEY_A})
         )
 
 
