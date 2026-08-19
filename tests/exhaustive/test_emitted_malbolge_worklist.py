@@ -505,6 +505,9 @@ class _WorklistAnalysis(Protocol):
     explored_data_pointer_wrap_transition_count: int
     explored_simultaneous_pointer_wrap_transition_count: int
     explored_wraparound_witness: _WorklistWrapWitness | None
+    explored_code_pointer_wrap_witness: _WorklistWrapWitness | None
+    explored_data_pointer_wrap_witness: _WorklistWrapWitness | None
+    explored_simultaneous_pointer_wrap_witness: _WorklistWrapWitness | None
     maximum_first_seen_transition_index: int
     frontier_states: int
     frontier_state_witness: _WorklistCycleState | None
@@ -1475,6 +1478,17 @@ def test_explorer_counts_exact_pointer_wrap_transition() -> None:
     assert result.explored_code_pointer_wrap_transition_count == 1
     assert result.explored_data_pointer_wrap_transition_count == 1
     assert result.explored_simultaneous_pointer_wrap_transition_count == 1
+    generic = result.explored_wraparound_witness
+    code = result.explored_code_pointer_wrap_witness
+    data = result.explored_data_pointer_wrap_witness
+    simultaneous = result.explored_simultaneous_pointer_wrap_witness
+    assert generic is not None
+    assert code == generic
+    assert data == generic
+    assert simultaneous == generic
+    assert generic.entry_path == ()
+    assert generic.code_pointer_wrapped
+    assert generic.data_pointer_wrapped
     assert result.explored_highest_accessed_address == _WRAP_ADDRESS
     assert result.explored_minimum_words == _WRAP_ADDRESS + 1
     assert result.truncated
@@ -1754,6 +1768,9 @@ def test_entry_reachable_wrap_publishes_exact_event_witness() -> None:
     assert result.explored_simultaneous_pointer_wrap_transition_count == 0
     witness = result.explored_wraparound_witness
     assert witness is not None
+    assert result.explored_code_pointer_wrap_witness is None
+    assert result.explored_data_pointer_wrap_witness == witness
+    assert result.explored_simultaneous_pointer_wrap_witness is None
     assert tuple(
         (state.code_pointer, state.data_pointer) for state in witness.entry_path
     ) == _ENTRY_WRAP_POINTER_PATH

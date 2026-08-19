@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v72` retains exact `entry_transition` through
+`malbolge-static-image/v73` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -359,7 +359,13 @@ supplies the known-graph counts; closed recurrent SCCs publish the same scalar
 only after queue closure. The synthetic escaping graph yields cyclic counts
 `(1,3)` and recurrent `(3)`, near-cap's 257 SCCs all report 16, and the
 124-state deep graph's two SCCs both report 124. Truncation keeps
-closed-recurrent depth evidence null.
+closed-recurrent depth evidence null. Schema v73 adds role-specific first wrap
+witnesses for C, D, and simultaneous C+D pointer wrap in addition to the
+existing first observed wrap. The synthetic boundary state proves simultaneous
+class assignment but remains intentionally pathless because it is not
+entry-reachable evidence. The real EOF wrap fixture fills only the D class and
+source-maps that exact reachable D-wrap entry path. Absent class witnesses
+remain explored-only absence under truncation.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

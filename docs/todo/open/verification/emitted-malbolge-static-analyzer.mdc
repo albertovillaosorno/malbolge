@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v72
+  offsets, stable finding codes, and explicit analysis limits. Schema v73
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -355,7 +355,11 @@ executable cells, and input-dependent cycles or hangs.
   cyclic SCC without serializing duplicate full paths. The escaping synthetic
   graph reports `(1,3)` for known cycles and `(3)` for the recurrent sink;
   near-cap reports 16 for all 257 cyclic SCCs and the deep graph reports 124 for
-  both. Closed-recurrent depth counts stay null under truncation.
+  both. Closed-recurrent depth counts stay null under truncation. Schema v73
+  adds first C-wrap, D-wrap, and simultaneous-wrap witnesses. The synthetic
+  boundary event fills all three classes but remains pathless; the real EOF
+  fixture fills only D-wrap and source-maps that reachable path. Missing class
+  witnesses under truncation remain explored-only absence.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact
@@ -409,7 +413,7 @@ executable cells, and input-dependent cycles or hangs.
   evolved fetch/data-read witnesses with value-checked last-writer provenance,
   writer-state and entry-path C/D source maps, cycle-body and aggregate explored
   C/D source maps, source-mapped cyclic SCC components with compact entry depth,
-  mutation/no-op/wrap and
+  role-specific wrap witnesses, mutation/no-op/wrap and
   graph-level C/D paths, evolved read
   transition/address counts, initial-value read partitions, changed encryption
   inputs, and changed-value domains, explicit bounded analysis

@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v72"
+_SCHEMA: Final = "malbolge-static-image/v73"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -419,6 +419,15 @@ class StaticImageReport:
         BoundedWorklistControlPathSourceContext, ...
     ]
     bounded_worklist_wraparound_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_code_pointer_wrap_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_data_pointer_wrap_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_simultaneous_pointer_wrap_entry_path_source_map: tuple[
         BoundedWorklistControlPathSourceContext, ...
     ]
     bounded_worklist_cycle_witness_source_map: tuple[
@@ -1535,6 +1544,15 @@ def _worklist_changed_encryption_input_value_source_map(
     return _worklist_value_source_map(domains, cells)
 
 
+def _worklist_wrap_witness_entry_path_source_map(
+    witness: worklist_transfer.WorklistWrapWitness | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistControlPathSourceContext, ...]:
+    if witness is None:
+        return ()
+    return _worklist_control_path_source_map(witness.entry_path, cells)
+
+
 def _worklist_terminal_control_path_source_maps(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -1879,12 +1897,41 @@ def analyze_source(
             )
         ),
         bounded_worklist_wraparound_entry_path_source_map=(
-            _worklist_control_path_source_map(
+            _worklist_wrap_witness_entry_path_source_map(
                 (
                     None
                     if worklist is None
-                    or worklist.explored_wraparound_witness is None
-                    else worklist.explored_wraparound_witness.entry_path
+                    else worklist.explored_wraparound_witness
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_code_pointer_wrap_entry_path_source_map=(
+            _worklist_wrap_witness_entry_path_source_map(
+                (
+                    None
+                    if worklist is None
+                    else worklist.explored_code_pointer_wrap_witness
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_data_pointer_wrap_entry_path_source_map=(
+            _worklist_wrap_witness_entry_path_source_map(
+                (
+                    None
+                    if worklist is None
+                    else worklist.explored_data_pointer_wrap_witness
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_simultaneous_pointer_wrap_entry_path_source_map=(
+            _worklist_wrap_witness_entry_path_source_map(
+                (
+                    None
+                    if worklist is None
+                    else worklist.explored_simultaneous_pointer_wrap_witness
                 ),
                 prefix.cells,
             )

@@ -292,6 +292,9 @@ class WorklistAnalysis:
     explored_data_pointer_wrap_transition_count: int
     explored_simultaneous_pointer_wrap_transition_count: int
     explored_wraparound_witness: WorklistWrapWitness | None
+    explored_code_pointer_wrap_witness: WorklistWrapWitness | None
+    explored_data_pointer_wrap_witness: WorklistWrapWitness | None
+    explored_simultaneous_pointer_wrap_witness: WorklistWrapWitness | None
     maximum_first_seen_transition_index: int
     frontier_states: int
     frontier_state_witness: WorklistCycleState | None
@@ -1106,6 +1109,9 @@ class _Explorer:
     data_pointer_wrap_transitions: int = 0
     simultaneous_pointer_wrap_transitions: int = 0
     wraparound_witness: WorklistWrapWitness | None = None
+    code_pointer_wrap_witness: WorklistWrapWitness | None = None
+    data_pointer_wrap_witness: WorklistWrapWitness | None = None
+    simultaneous_pointer_wrap_witness: WorklistWrapWitness | None = None
     maximum_first_seen_transition_index: int = 1
 
     def __post_init__(self) -> None:
@@ -1421,6 +1427,15 @@ class _Explorer:
                 self.simultaneous_pointer_wrap_transitions
             ),
             explored_wraparound_witness=self.wraparound_witness,
+            explored_code_pointer_wrap_witness=(
+                self.code_pointer_wrap_witness
+            ),
+            explored_data_pointer_wrap_witness=(
+                self.data_pointer_wrap_witness
+            ),
+            explored_simultaneous_pointer_wrap_witness=(
+                self.simultaneous_pointer_wrap_witness
+            ),
             maximum_first_seen_transition_index=(
                 self.maximum_first_seen_transition_index
             ),
@@ -1556,6 +1571,56 @@ class _Explorer:
             self.queue.append(successor)
         return None
 
+    def _record_wrap_counts(
+        self,
+        *,
+        code_wrapped: bool,
+        data_wrapped: bool,
+    ) -> None:
+        if code_wrapped:
+            self.code_pointer_wrap_transitions += 1
+        if data_wrapped:
+            self.data_pointer_wrap_transitions += 1
+        if code_wrapped and data_wrapped:
+            self.simultaneous_pointer_wrap_transitions += 1
+
+    def _wrap_witness_needed(
+        self,
+        *,
+        code_wrapped: bool,
+        data_wrapped: bool,
+    ) -> bool:
+        simultaneous = code_wrapped and data_wrapped
+        return (
+            self.wraparound_witness is None
+            or (code_wrapped and self.code_pointer_wrap_witness is None)
+            or (data_wrapped and self.data_pointer_wrap_witness is None)
+            or (
+                simultaneous
+                and self.simultaneous_pointer_wrap_witness is None
+            )
+        )
+
+    def _remember_wrap_witness(self, witness: WorklistWrapWitness) -> None:
+        if self.wraparound_witness is None:
+            self.wraparound_witness = witness
+        if (
+            witness.code_pointer_wrapped
+            and self.code_pointer_wrap_witness is None
+        ):
+            self.code_pointer_wrap_witness = witness
+        if (
+            witness.data_pointer_wrapped
+            and self.data_pointer_wrap_witness is None
+        ):
+            self.data_pointer_wrap_witness = witness
+        if (
+            witness.code_pointer_wrapped
+            and witness.data_pointer_wrapped
+            and self.simultaneous_pointer_wrap_witness is None
+        ):
+            self.simultaneous_pointer_wrap_witness = witness
+
     def _record_wraparound(
         self,
         node: _ReachabilityNode,
@@ -1565,13 +1630,14 @@ class _Explorer:
         result_code, result_data, code_wrapped, data_wrapped = (
             _pointer_wrap_result(transition)
         )
-        if code_wrapped:
-            self.code_pointer_wrap_transitions += 1
-        if data_wrapped:
-            self.data_pointer_wrap_transitions += 1
-        if code_wrapped and data_wrapped:
-            self.simultaneous_pointer_wrap_transitions += 1
-        if self.wraparound_witness is not None:
+        self._record_wrap_counts(
+            code_wrapped=code_wrapped,
+            data_wrapped=data_wrapped,
+        )
+        if not self._wrap_witness_needed(
+            code_wrapped=code_wrapped,
+            data_wrapped=data_wrapped,
+        ):
             return
         key = _node_key(node)
         path = _known_graph_shortest_path(
@@ -1580,13 +1646,15 @@ class _Explorer:
             start=_INITIAL_STATE_KEY,
             target=key,
         )
-        self.wraparound_witness = WorklistWrapWitness(
-            state=_cycle_state(key),
-            entry_path=tuple(_cycle_state(item) for item in path),
-            result_code_pointer=result_code,
-            result_data_pointer=result_data,
-            code_pointer_wrapped=code_wrapped,
-            data_pointer_wrapped=data_wrapped,
+        self._remember_wrap_witness(
+            WorklistWrapWitness(
+                state=_cycle_state(key),
+                entry_path=tuple(_cycle_state(item) for item in path),
+                result_code_pointer=result_code,
+                result_data_pointer=result_data,
+                code_pointer_wrapped=code_wrapped,
+                data_pointer_wrapped=data_wrapped,
+            )
         )
 
     def _evolved_read_witness(

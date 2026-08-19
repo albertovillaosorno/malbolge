@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v72"
+_SCHEMA = "malbolge-static-image/v73"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -777,6 +777,9 @@ class _WorklistAnalysis(Protocol):
     explored_data_pointer_wrap_transition_count: int
     explored_simultaneous_pointer_wrap_transition_count: int
     explored_wraparound_witness: _WorklistWrapWitness | None
+    explored_code_pointer_wrap_witness: _WorklistWrapWitness | None
+    explored_data_pointer_wrap_witness: _WorklistWrapWitness | None
+    explored_simultaneous_pointer_wrap_witness: _WorklistWrapWitness | None
     maximum_first_seen_transition_index: int
     frontier_states: int
     frontier_state_witness: _WorklistCycleState | None
@@ -944,6 +947,15 @@ class _Report(Protocol):
         _WorklistControlPathSourceContext, ...
     ]
     bounded_worklist_wraparound_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_code_pointer_wrap_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_data_pointer_wrap_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_simultaneous_pointer_wrap_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
     ]
     bounded_worklist_cycle_witness_source_map: tuple[
@@ -2812,6 +2824,13 @@ def _assert_entry_wrap_control_source_maps(report: _Report) -> None:
     noop = report.bounded_worklist_data_write_noop_entry_path_source_map
     mutation = report.bounded_worklist_data_mutation_entry_path_source_map
     wrap = report.bounded_worklist_wraparound_entry_path_source_map
+    data_wrap = report.bounded_worklist_data_pointer_wrap_entry_path_source_map
+    assert data_wrap == wrap
+    assert report.bounded_worklist_code_pointer_wrap_entry_path_source_map == ()
+    assert (
+        report.bounded_worklist_simultaneous_pointer_wrap_entry_path_source_map
+        == ()
+    )
     assert tuple(context.code_pointer for context in noop) == (0, 1, 2)
     assert tuple(context.source_byte_offset for context in noop) == (2, 3, 4)
     assert tuple(context.code_pointer for context in mutation) == (0, 1, 2)
@@ -2853,6 +2872,14 @@ def test_control_path_maps_loaded_data_pointer_source() -> None:
     assert final.initial_data_source_byte == _LOADED_MUTATION_SOURCE_BYTE
 
 
+def _assert_data_only_wrap_witness(worklist: _WorklistAnalysis) -> None:
+    witness = worklist.explored_wraparound_witness
+    assert witness is not None
+    assert worklist.explored_code_pointer_wrap_witness is None
+    assert worklist.explored_data_pointer_wrap_witness == witness
+    assert worklist.explored_simultaneous_pointer_wrap_witness is None
+
+
 def test_report_worklist_observes_entry_reachable_eof_wrap() -> None:
     """Public bounded worklist counts the exact EOF-branch pointer wrap."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -2867,6 +2894,7 @@ def test_report_worklist_observes_entry_reachable_eof_wrap() -> None:
     assert worklist.explored_code_pointer_wrap_transition_count == 0
     assert worklist.explored_data_pointer_wrap_transition_count == 1
     assert worklist.explored_simultaneous_pointer_wrap_transition_count == 0
+    _assert_data_only_wrap_witness(worklist)
     witness = worklist.explored_wraparound_witness
     assert witness is not None
     assert tuple(
