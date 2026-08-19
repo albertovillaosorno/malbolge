@@ -783,6 +783,14 @@ class _WorklistModule(Protocol):
         ],
     ) -> None: ...
 
+    def _assert_observation_state_partition(
+        self,
+        initial_states: set[_WorklistStateKey],
+        changed_states: set[_WorklistStateKey],
+        *,
+        label: str,
+    ) -> None: ...
+
     def _assert_initial_value_observations(
         self,
         evidence: tuple[
@@ -1693,6 +1701,16 @@ def test_write_partition_rejects_unclassified_data_write_address() -> None:
     with pytest.raises(AssertionError, match="no-op/effective classes"):
         worklist._assert_committed_write_address_partition(
             ({0, 40}, {40}, set(), {0}, set())
+        )
+
+
+def test_read_partition_rejects_overlapping_exact_state_classes() -> None:
+    """Value-equality complements cannot classify the same state twice."""
+    with pytest.raises(AssertionError, match="exact state classes overlap"):
+        worklist._assert_observation_state_partition(
+            {_GRAPH_KEY_A},
+            {_GRAPH_KEY_A},
+            label="fetch value partition",
         )
 
 

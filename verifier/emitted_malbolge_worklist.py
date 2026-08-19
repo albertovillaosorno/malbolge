@@ -1463,6 +1463,26 @@ def _initial_value_observation_addresses(
     return addresses
 
 
+def _assert_observation_state_partition(
+    initial_states: set[_StateKey],
+    changed_states: set[_StateKey],
+    *,
+    label: str,
+) -> None:
+    if initial_states & changed_states:
+        message = f"{label} exact state classes overlap"
+        raise AssertionError(message)
+
+
+def _assert_read_observation_state_partitions(
+    partitions: tuple[tuple[set[_StateKey], set[_StateKey], str], ...],
+) -> None:
+    for initial_states, changed_states, label in partitions:
+        _assert_observation_state_partition(
+            initial_states, changed_states, label=label
+        )
+
+
 def _assert_initial_value_observations(
     evidence: tuple[
         int,
@@ -2248,6 +2268,25 @@ class _Explorer:
                 self.seen,
             ),
             self.initial_memory,
+        )
+        _assert_read_observation_state_partitions(
+            (
+                (
+                    set(self.initial_value_fetch_state_values),
+                    set(self.evolved_fetch_state_values),
+                    "fetch value partition",
+                ),
+                (
+                    set(self.initial_value_data_read_state_values),
+                    set(self.evolved_data_read_state_values),
+                    "data-read value partition",
+                ),
+                (
+                    set(self.initial_value_encryption_input_state_values),
+                    set(self.changed_from_initial_encryption_input_state_values),
+                    "encryption-input value partition",
+                ),
+            )
         )
 
     def _assert_write_evidence_invariants(self) -> None:
