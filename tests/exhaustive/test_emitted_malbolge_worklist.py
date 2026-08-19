@@ -338,6 +338,15 @@ class _WorklistWrapWitness(Protocol):
     data_pointer_wrapped: bool
 
 
+type _WrapCounts = tuple[int, int, int, int]
+type _WrapWitnesses = tuple[
+    _WorklistWrapWitness | None,
+    _WorklistWrapWitness | None,
+    _WorklistWrapWitness | None,
+    _WorklistWrapWitness | None,
+]
+
+
 class _WorklistValueDomain(Protocol):
     address: int
     values: tuple[int, ...]
@@ -595,6 +604,12 @@ class _WorklistModule(Protocol):
         edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
         nodes: set[_WorklistStateKey],
     ) -> tuple[_WorklistStateKey, ...]: ...
+
+    def _assert_wrap_evidence_invariants(
+        self,
+        counts: _WrapCounts,
+        witnesses: _WrapWitnesses,
+    ) -> None: ...
 
     def _node_key(self, node: _ReachabilityNode) -> _WorklistStateKey: ...
 
@@ -1451,6 +1466,24 @@ def test_cycle_witness_is_stable_across_graph_insertion_order() -> None:
     expected = (_GRAPH_KEY_C, _GRAPH_KEY_D)
     assert worklist._known_graph_cycle_witness(first_edges, nodes) == expected
     assert worklist._known_graph_cycle_witness(second_edges, nodes) == expected
+
+
+def test_wrap_evidence_rejects_inconsistent_class_counts() -> None:
+    """Wrap class inclusion-exclusion is checked before publication."""
+    with pytest.raises(AssertionError, match="class counts disagree"):
+        worklist._assert_wrap_evidence_invariants(
+            (2, 1, 1, 1),
+            (None, None, None, None),
+        )
+
+
+def test_wrap_evidence_rejects_missing_class_witness() -> None:
+    """A nonzero wrap class cannot silently lose its first exact witness."""
+    with pytest.raises(AssertionError, match="witness presence"):
+        worklist._assert_wrap_evidence_invariants(
+            (1, 0, 1, 0),
+            (None, None, None, None),
+        )
 
 
 def test_explorer_counts_exact_pointer_wrap_transition() -> None:

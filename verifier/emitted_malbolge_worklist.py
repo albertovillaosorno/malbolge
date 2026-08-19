@@ -961,6 +961,82 @@ def _pointer_wrap_result(
     return result_code, result_data, code_wrapped, data_wrapped
 
 
+type _WrapCounts = tuple[int, int, int, int]
+type _WrapWitnesses = tuple[
+    WorklistWrapWitness | None,
+    WorklistWrapWitness | None,
+    WorklistWrapWitness | None,
+    WorklistWrapWitness | None,
+]
+
+
+def _assert_wrap_witness_flags(
+    witness: WorklistWrapWitness,
+    *,
+    require_code_wrap: bool = False,
+    require_data_wrap: bool = False,
+) -> None:
+    code_result_wrapped = witness.result_code_pointer == 0
+    data_result_wrapped = witness.result_data_pointer == 0
+    if (
+        code_result_wrapped != witness.code_pointer_wrapped
+        or data_result_wrapped != witness.data_pointer_wrapped
+    ):
+        message = "pointer-wrap witness flags disagree with result pointers"
+        raise AssertionError(message)
+    if not witness.code_pointer_wrapped and not witness.data_pointer_wrapped:
+        message = "pointer-wrap witness lacks a wrapped pointer"
+        raise AssertionError(message)
+    if require_code_wrap and not witness.code_pointer_wrapped:
+        message = "code-pointer wrap witness lacks a code-pointer wrap"
+        raise AssertionError(message)
+    if require_data_wrap and not witness.data_pointer_wrapped:
+        message = "data-pointer wrap witness lacks a data-pointer wrap"
+        raise AssertionError(message)
+
+
+def _assert_wrap_count_partition(counts: _WrapCounts) -> None:
+    total, code, data, simultaneous = counts
+    if simultaneous > min(code, data):
+        message = "simultaneous wrap count exceeds a pointer-wrap class"
+        raise AssertionError(message)
+    if code + data - simultaneous != total:
+        message = "pointer-wrap class counts disagree with total wraps"
+        raise AssertionError(message)
+
+
+def _assert_wrap_witness_presence(
+    counts: _WrapCounts,
+    witnesses: _WrapWitnesses,
+) -> None:
+    labels = ("generic", "code-pointer", "data-pointer", "simultaneous")
+    for label, count, witness in zip(labels, counts, witnesses, strict=True):
+        if (count > 0) != (witness is not None):
+            message = f"{label} wrap count disagrees with witness presence"
+            raise AssertionError(message)
+
+
+def _assert_wrap_evidence_invariants(
+    counts: _WrapCounts,
+    witnesses: _WrapWitnesses,
+) -> None:
+    _assert_wrap_count_partition(counts)
+    _assert_wrap_witness_presence(counts, witnesses)
+    generic, code, data, simultaneous = witnesses
+    if generic is not None:
+        _assert_wrap_witness_flags(generic)
+    if code is not None:
+        _assert_wrap_witness_flags(code, require_code_wrap=True)
+    if data is not None:
+        _assert_wrap_witness_flags(data, require_data_wrap=True)
+    if simultaneous is not None:
+        _assert_wrap_witness_flags(
+            simultaneous,
+            require_code_wrap=True,
+            require_data_wrap=True,
+        )
+
+
 def _committed_data_mutation(
     step: prefix_transfer.SnapshotStep,
 ) -> tuple[int, int, int, int, bool] | None:
@@ -1217,6 +1293,20 @@ class _Explorer:
             truncated=truncated,
         )
         self._assert_read_partition_invariants()
+        _assert_wrap_evidence_invariants(
+            (
+                self.wraparound_transitions,
+                self.code_pointer_wrap_transitions,
+                self.data_pointer_wrap_transitions,
+                self.simultaneous_pointer_wrap_transitions,
+            ),
+            (
+                self.wraparound_witness,
+                self.code_pointer_wrap_witness,
+                self.data_pointer_wrap_witness,
+                self.simultaneous_pointer_wrap_witness,
+            ),
+        )
         return WorklistAnalysis(
             state_limit=self.state_limit,
             unique_states=len(self.seen),
