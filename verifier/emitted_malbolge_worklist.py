@@ -189,6 +189,16 @@ class WorklistNonGraphicalFetchWitness:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistChangedEncryptionInputObservation:
+    """One exact changed-from-initial self-encryption input state."""
+
+    state: WorklistCycleState
+    address: int
+    initial_value: int
+    observed_value: int
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistEvolvedReadObservation:
     """One exact explored read whose value differs from initial memory."""
 
@@ -336,6 +346,9 @@ class WorklistAnalysis:
     explored_changed_from_initial_encryption_input_addresses: tuple[int, ...]
     explored_changed_from_initial_encryption_input_value_domains: tuple[
         WorklistValueDomain, ...
+    ]
+    explored_changed_from_initial_encryption_input_observations: tuple[
+        WorklistChangedEncryptionInputObservation, ...
     ]
     explored_committed_data_write_value_domains: tuple[WorklistValueDomain, ...]
     explored_self_encryption_output_value_domains: tuple[
@@ -1271,6 +1284,75 @@ def _assert_terminal_graph_endpoints(
                 raise AssertionError(message)
 
 
+def _changed_encryption_input_projection(
+    observations: dict[_StateKey, tuple[int, int]],
+) -> tuple[set[int], dict[int, set[int]]]:
+    addresses = {address for address, _ in observations.values()}
+    values: dict[int, set[int]] = {}
+    for address, observed_value in observations.values():
+        values.setdefault(address, set()).add(observed_value)
+    return addresses, values
+
+
+def _assert_changed_encryption_input_projection(
+    evidence: tuple[
+        int,
+        set[int],
+        dict[int, set[int]],
+        dict[_StateKey, tuple[int, int]],
+        set[_StateKey],
+    ],
+) -> None:
+    transition_count, addresses, values, observations, seen = evidence
+    if transition_count != len(observations):
+        message = (
+            "changed encryption-input count disagrees with exact states"
+        )
+        raise AssertionError(message)
+    if not set(observations) <= seen:
+        message = "changed encryption-input evidence retained an unknown state"
+        raise AssertionError(message)
+    projected_addresses, projected_values = (
+        _changed_encryption_input_projection(observations)
+    )
+    if addresses != projected_addresses:
+        message = (
+            "changed encryption-input addresses disagree with exact states"
+        )
+        raise AssertionError(message)
+    if values != projected_values:
+        message = "changed encryption-input domains disagree with exact states"
+        raise AssertionError(message)
+
+
+def _assert_changed_encryption_input_initial_difference(
+    observations: dict[_StateKey, tuple[int, int]],
+    initial_memory: tuple[int, ...],
+) -> None:
+    if any(
+        observed_value == initial_memory[address]
+        for address, observed_value in observations.values()
+    ):
+        message = "changed encryption-input observation equals initial memory"
+        raise AssertionError(message)
+
+
+def _assert_changed_encryption_input_observations(
+    evidence: tuple[
+        int,
+        set[int],
+        dict[int, set[int]],
+        dict[_StateKey, tuple[int, int]],
+        set[_StateKey],
+    ],
+    initial_memory: tuple[int, ...],
+) -> None:
+    _assert_changed_encryption_input_projection(evidence)
+    _assert_changed_encryption_input_initial_difference(
+        evidence[3], initial_memory
+    )
+
+
 def _assert_observed_address_summary(
     transition_count: int,
     addresses: set[int],
@@ -1651,6 +1733,9 @@ class _Explorer:
     changed_from_initial_encryption_input_values: dict[int, set[int]] = field(
         default_factory=dict
     )
+    changed_from_initial_encryption_input_state_values: dict[
+        _StateKey, tuple[int, int]
+    ] = field(default_factory=dict)
     committed_data_write_values: dict[int, set[int]] = field(
         default_factory=dict
     )
@@ -1833,6 +1918,16 @@ class _Explorer:
             self.changed_from_initial_encryption_input_addresses,
             self.changed_from_initial_encryption_input_values,
             label="changed encryption input",
+        )
+        _assert_changed_encryption_input_observations(
+            (
+                self.changed_from_initial_encryption_input_transitions,
+                self.changed_from_initial_encryption_input_addresses,
+                self.changed_from_initial_encryption_input_values,
+                self.changed_from_initial_encryption_input_state_values,
+                self.seen,
+            ),
+            self.initial_memory,
         )
 
     def _assert_write_evidence_invariants(self) -> None:
@@ -2192,6 +2287,29 @@ class _Explorer:
             explored_changed_from_initial_encryption_input_value_domains=(
                 _value_domains(
                     self.changed_from_initial_encryption_input_values
+                )
+            ),
+            explored_changed_from_initial_encryption_input_observations=tuple(
+                WorklistChangedEncryptionInputObservation(
+                    state=_cycle_state(key),
+                    address=(
+                        self.changed_from_initial_encryption_input_state_values[
+                            key
+                        ][0]
+                    ),
+                    initial_value=self.initial_memory[
+                        self.changed_from_initial_encryption_input_state_values[
+                            key
+                        ][0]
+                    ],
+                    observed_value=(
+                        self.changed_from_initial_encryption_input_state_values[
+                            key
+                        ][1]
+                    ),
+                )
+                for key in sorted(
+                    self.changed_from_initial_encryption_input_state_values
                 )
             ),
             explored_committed_data_write_value_domains=_value_domains(
@@ -2686,6 +2804,26 @@ class _Explorer:
             value=value,
         )
 
+    def _record_changed_encryption_input_observation(
+        self,
+        node: _ReachabilityNode,
+        address: int,
+        value: int,
+    ) -> None:
+        key = _node_key(node)
+        states = self.changed_from_initial_encryption_input_state_values
+        if key in states:
+            message = (
+                "changed encryption-input state was explored more than once"
+            )
+            raise AssertionError(message)
+        self.changed_from_initial_encryption_input_transitions += 1
+        self.changed_from_initial_encryption_input_addresses.add(address)
+        _record_domain_value(
+            self.changed_from_initial_encryption_input_values, address, value
+        )
+        states[key] = (address, value)
+
     def _record_read_value_evidence(
         self,
         node: _ReachabilityNode,
@@ -2717,14 +2855,8 @@ class _Explorer:
                 self.initial_value_encryption_input_transitions += 1
                 self.initial_value_encryption_input_addresses.add(address)
             else:
-                self.changed_from_initial_encryption_input_transitions += 1
-                self.changed_from_initial_encryption_input_addresses.add(
-                    address
-                )
-                _record_domain_value(
-                    self.changed_from_initial_encryption_input_values,
-                    address,
-                    value,
+                self._record_changed_encryption_input_observation(
+                    node, address, value
                 )
 
     def _data_write_noop_witness(

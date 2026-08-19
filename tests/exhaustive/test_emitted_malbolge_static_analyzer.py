@@ -67,7 +67,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v82"
+_SCHEMA = "malbolge-static-image/v83"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _EOF_ACCUMULATOR = 59_048
@@ -614,6 +614,13 @@ class _WorklistNonGraphicalFetchWitness(Protocol):
     value: int
 
 
+class _WorklistChangedEncryptionInputObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    initial_value: int
+    observed_value: int
+
+
 class _WorklistEvolvedReadObservation(Protocol):
     state: _WorklistCycleState
     address: int
@@ -809,6 +816,23 @@ class _WorklistCodeDataAliasSourceContext(Protocol):
     entry_path_source_map: tuple[_WorklistControlPathSourceContext, ...]
 
 
+class _WorklistChangedEncryptionInputObservationSourceContext(Protocol):
+    observation_index: int
+    state: _WorklistCycleState
+    address: int
+    initial_value: int
+    observed_value: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+    encryption_source_position: int | None
+    encryption_source_byte_offset: int | None
+    initial_encryption_source_byte: int | None
+
+
 class _WorklistEvolvedReadObservationSourceContext(Protocol):
     observation_index: int
     state: _WorklistCycleState
@@ -949,6 +973,9 @@ class _WorklistAnalysis(Protocol):
     explored_changed_from_initial_encryption_input_addresses: tuple[int, ...]
     explored_changed_from_initial_encryption_input_value_domains: tuple[
         _WorklistValueDomain, ...
+    ]
+    explored_changed_from_initial_encryption_input_observations: tuple[
+        _WorklistChangedEncryptionInputObservation, ...
     ]
     explored_committed_data_write_value_domains: tuple[
         _WorklistValueDomain, ...
@@ -1130,6 +1157,9 @@ class _Report(Protocol):
     ]
     bounded_worklist_changed_encryption_input_value_source_map: (
         tuple[_WorklistValueSourceContext, ...]
+    )
+    bounded_worklist_changed_encryption_input_observation_source_contexts: (
+        tuple[_WorklistChangedEncryptionInputObservationSourceContext, ...]
     )
     bounded_worklist_initial_value_fetch_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
@@ -2974,6 +3004,37 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     assert worklist.explored_data_mutation_witness is None
 
 
+def _assert_changed_encryption_input_observation_source_map(
+    report: _Report,
+) -> None:
+    contexts = (
+        report
+        .bounded_worklist_changed_encryption_input_observation_source_contexts
+    )
+    assert len(contexts) == _INPUT_CRAZY_CHANGED_ENCRYPTION_INPUT_COUNT
+    assert tuple(item.observation_index for item in contexts) == tuple(
+        range(_INPUT_CRAZY_CHANGED_ENCRYPTION_INPUT_COUNT)
+    )
+    assert all(item.address == 1 for item in contexts)
+    assert all(
+        item.initial_value == _INPUT_CRAZY_SOURCE[1] for item in contexts
+    )
+    assert all(item.source_position == 1 for item in contexts)
+    assert all(
+        item.source_byte_offset == _SECOND_LOADED_SOURCE_BYTE_OFFSET
+        for item in contexts
+    )
+    assert all(item.data_source_position == 1 for item in contexts)
+    assert all(
+        item.encryption_source_position == 1 for item in contexts
+    )
+    assert all(
+        item.encryption_source_byte_offset == _SECOND_LOADED_SOURCE_BYTE_OFFSET
+        for item in contexts
+    )
+    assert contexts[-1].state.eof_seen
+
+
 def test_worklist_maps_changed_encryption_inputs_without_commit_claim() -> None:
     """Rejected changed encryption inputs remain value-only bounded evidence."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -3009,6 +3070,7 @@ def test_worklist_maps_changed_encryption_inputs_without_commit_claim() -> None:
     assert changed.initial_memory_value == _INPUT_CRAZY_SOURCE[1]
     assert len(changed.values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
     assert changed.initial_memory_value_in_values is False
+    _assert_changed_encryption_input_observation_source_map(report)
     assert worklist.explored_committed_data_write_transition_count == 0
     assert worklist.explored_committed_data_write_value_domains == ()
 

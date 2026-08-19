@@ -422,6 +422,13 @@ class _WorklistNonGraphicalFetchWitness(Protocol):
     value: int
 
 
+class _WorklistChangedEncryptionInputObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    initial_value: int
+    observed_value: int
+
+
 class _WorklistEvolvedReadObservation(Protocol):
     state: _WorklistCycleState
     address: int
@@ -554,6 +561,9 @@ class _WorklistAnalysis(Protocol):
     explored_changed_from_initial_encryption_input_addresses: tuple[int, ...]
     explored_changed_from_initial_encryption_input_value_domains: tuple[
         _WorklistValueDomain, ...
+    ]
+    explored_changed_from_initial_encryption_input_observations: tuple[
+        _WorklistChangedEncryptionInputObservation, ...
     ]
     explored_committed_data_write_value_domains: tuple[
         _WorklistValueDomain, ...
@@ -700,6 +710,18 @@ class _WorklistModule(Protocol):
         values: dict[int, set[int]],
         *,
         label: str,
+    ) -> None: ...
+
+    def _assert_changed_encryption_input_observations(
+        self,
+        evidence: tuple[
+            int,
+            set[int],
+            dict[int, set[int]],
+            dict[_WorklistStateKey, tuple[int, int]],
+            set[_WorklistStateKey],
+        ],
+        initial_memory: tuple[int, ...],
     ) -> None: ...
 
     def _assert_evolved_read_observation_evidence(
@@ -972,6 +994,29 @@ def test_input_halt_reports_exact_read_value_domains() -> None:
     )
 
 
+def _assert_changed_encryption_input_observations(
+    result: _WorklistAnalysis,
+    values: tuple[int, ...],
+) -> None:
+    observations = (
+        result.explored_changed_from_initial_encryption_input_observations
+    )
+    assert len(observations) == _INPUT_CRAZY_CHANGED_ENCRYPTION_INPUT_COUNT
+    assert all(item.address == 1 for item in observations)
+    assert all(
+        item.initial_value == _INPUT_CRAZY_SOURCE[1] for item in observations
+    )
+    assert all(
+        (item.state.code_pointer, item.state.data_pointer) == (1, 1)
+        for item in observations
+    )
+    assert {item.observed_value for item in observations} == set(values)
+    assert observations[0].state.accumulator == 0
+    assert not observations[0].state.eof_seen
+    assert observations[-1].state.accumulator == _EOF_ACCUMULATOR
+    assert observations[-1].state.eof_seen
+
+
 def test_input_crazy_reports_exact_encryption_input_domain() -> None:
     """Rejected branches retain exact explored encryption-input values."""
     result = worklist.analyze_reachability(
@@ -1002,6 +1047,7 @@ def test_input_crazy_reports_exact_encryption_input_domain() -> None:
         result.explored_changed_from_initial_encryption_input_value_domains, 1
     )
     assert changed == values
+    _assert_changed_encryption_input_observations(result, values)
     assert (
         result.explored_initial_value_encryption_input_transition_count
         + result.explored_changed_from_initial_encryption_input_transition_count
@@ -1362,6 +1408,24 @@ def test_changed_read_invariant_rejects_under_counted_values() -> None:
             {1},
             {1: {32, 33}},
             label="changed encryption input",
+        )
+
+
+def test_changed_encryption_observation_rejects_count_drift() -> None:
+    """Changed encryption counts must match exact explored states."""
+    with pytest.raises(AssertionError, match="exact states"):
+        worklist._assert_changed_encryption_input_observations(
+            (1, {0}, {0: {1}}, {}, {_GRAPH_KEY_A}),
+            (0,),
+        )
+
+
+def test_changed_encryption_observation_rejects_initial_value() -> None:
+    """Changed encryption observations cannot equal initial memory."""
+    with pytest.raises(AssertionError, match="equals initial memory"):
+        worklist._assert_changed_encryption_input_observations(
+            (1, {0}, {0: {0}}, {_GRAPH_KEY_A: (0, 0)}, {_GRAPH_KEY_A}),
+            (0,),
         )
 
 
