@@ -58,6 +58,7 @@ type _WorklistStateKey = tuple[
 
 
 _INPUT_HALT_SOURCE = (117, 80)
+_ENTRY_SELF_ENCRYPTION_OUTPUT = 111
 _INPUT_CRAZY_SOURCE = (117, 61)
 _DOUBLE_INPUT_HALT_SOURCE = (117, 116, 79)
 _DOUBLE_INPUT_FIXED_CYCLE_SOURCE = (117, 116)
@@ -428,6 +429,14 @@ class _WorklistPlannedDataWriteObservation(Protocol):
     value: int
 
 
+class _WorklistSelfEncryptionObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    input_value: int
+    output_value: int
+    data_write_aliases_encryption: bool
+
+
 class _WorklistChangedEncryptionInputObservation(Protocol):
     state: _WorklistCycleState
     address: int
@@ -567,6 +576,9 @@ class _WorklistAnalysis(Protocol):
     ]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
+    explored_self_encryption_observations: tuple[
+        _WorklistSelfEncryptionObservation, ...
+    ]
     explored_effective_data_mutation_transition_count: int
     explored_effective_data_mutation_addresses: tuple[int, ...]
     explored_effective_data_mutation_value_domains: tuple[
@@ -828,6 +840,17 @@ class _WorklistModule(Protocol):
         self,
         terminal_states: dict[str, set[_WorklistStateKey]],
         edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+    ) -> None: ...
+
+    def _assert_self_encryption_observations(
+        self,
+        evidence: tuple[
+            int,
+            set[int],
+            dict[int, set[int]],
+            dict[_WorklistStateKey, tuple[int, int, int, bool]],
+            set[_WorklistStateKey],
+        ],
     ) -> None: ...
 
     def _assert_data_write_noop_observations(
@@ -1195,6 +1218,22 @@ def _assert_two_word_alias_witnesses(
     assert witnesses[1].entry_path[-1] == witnesses[1].state
 
 
+def _assert_single_committed_self_encryption(
+    result: _WorklistAnalysis,
+) -> None:
+    observations = result.explored_self_encryption_observations
+    assert len(observations) == 1
+    observation = observations[0]
+    assert observation.address == 0
+    assert observation.input_value == _INPUT_HALT_SOURCE[0]
+    assert observation.output_value == _ENTRY_SELF_ENCRYPTION_OUTPUT
+    assert not observation.data_write_aliases_encryption
+    state = observation.state
+    assert (state.code_pointer, state.data_pointer) == (0, 0)
+    assert state.accumulator == 0
+    assert not state.eof_seen
+
+
 def test_input_halt_reports_exact_explored_mutation_footprint() -> None:
     """Closed input reachability publishes exact committed mutation evidence."""
     result = worklist.analyze_reachability(
@@ -1215,6 +1254,7 @@ def test_input_halt_reports_exact_explored_mutation_footprint() -> None:
     assert result.explored_data_write_noop_witness is None
     assert result.explored_self_encryption_transition_count == 1
     assert result.explored_self_encryption_addresses == (0,)
+    _assert_single_committed_self_encryption(result)
     assert result.explored_effective_data_mutation_transition_count == 0
     assert result.explored_effective_data_mutation_addresses == ()
     assert result.explored_effective_data_mutation_value_domains == ()
@@ -1245,6 +1285,7 @@ def test_rejected_planned_writes_are_not_reported_as_committed() -> None:
     assert result.explored_data_write_noop_witness is None
     assert result.explored_self_encryption_transition_count == 1
     assert result.explored_self_encryption_addresses == (0,)
+    _assert_single_committed_self_encryption(result)
     assert result.explored_effective_data_mutation_transition_count == 0
     assert result.explored_effective_data_mutation_addresses == ()
     assert result.explored_effective_data_mutation_value_domains == ()
@@ -1579,6 +1620,28 @@ def test_write_partition_rejects_committed_address_drift() -> None:
     with pytest.raises(AssertionError, match="addresses disagree"):
         worklist._assert_committed_write_address_partition(
             ({0}, {40}, set(), {0}, {40})
+        )
+
+
+def test_self_encryption_observations_reject_count_drift() -> None:
+    """Committed self-encryption counts must match exact explored states."""
+    with pytest.raises(AssertionError, match="exact committed states"):
+        worklist._assert_self_encryption_observations(
+            (1, {0}, {0: {111}}, {}, {_GRAPH_KEY_A})
+        )
+
+
+def test_self_encryption_observations_reject_output_drift() -> None:
+    """Committed self-encryption output must match classic encryption."""
+    with pytest.raises(AssertionError, match="classic encryption"):
+        worklist._assert_self_encryption_observations(
+            (
+                1,
+                {0},
+                {0: {111}},
+                {_GRAPH_KEY_A: (0, 117, 112, False)},
+                {_GRAPH_KEY_A},
+            )
         )
 
 

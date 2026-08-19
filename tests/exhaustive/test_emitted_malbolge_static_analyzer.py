@@ -67,7 +67,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v86"
+_SCHEMA = "malbolge-static-image/v87"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _EOF_ACCUMULATOR = 59_048
@@ -189,6 +189,7 @@ _WORKLIST_VALUE_SOURCE_MAP_LIMIT = (
 )
 _INPUT_CRAZY_SOURCE = bytes((117, 61))
 _INPUT_HALT_SOURCE = bytes((117, 80))
+_ENTRY_SELF_ENCRYPTION_OUTPUT = 111
 _DOUBLE_INPUT_CYCLE_SOURCE = bytes((117, 116))
 _LONG_INPUT_CYCLE_SOURCE = bytes((117, 39, 38, 37))
 _LONG_INPUT_CYCLE_STATE_LIMIT = 1_029
@@ -620,6 +621,14 @@ class _WorklistPlannedDataWriteObservation(Protocol):
     value: int
 
 
+class _WorklistSelfEncryptionObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    input_value: int
+    output_value: int
+    data_write_aliases_encryption: bool
+
+
 class _WorklistChangedEncryptionInputObservation(Protocol):
     state: _WorklistCycleState
     address: int
@@ -687,6 +696,21 @@ class _WorklistDataMutationWitness(Protocol):
     written_value: int
     result_value: int
     aliases_self_encryption: bool
+
+
+class _WorklistSelfEncryptionObservationSourceContext(Protocol):
+    observation_index: int
+    state: _WorklistCycleState
+    address: int
+    input_value: int
+    output_value: int
+    data_write_aliases_encryption: bool
+    source_position: int | None
+    source_byte_offset: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    encryption_source_position: int | None
+    encryption_source_byte_offset: int | None
 
 
 class _WorklistDataWriteNoopObservationSourceContext(Protocol):
@@ -1027,6 +1051,9 @@ class _WorklistAnalysis(Protocol):
     ]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
+    explored_self_encryption_observations: tuple[
+        _WorklistSelfEncryptionObservation, ...
+    ]
     explored_effective_data_mutation_transition_count: int
     explored_effective_data_mutation_addresses: tuple[int, ...]
     explored_effective_data_mutation_value_domains: tuple[
@@ -1220,6 +1247,9 @@ class _Report(Protocol):
     ]
     bounded_worklist_self_encryption_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_self_encryption_observation_source_contexts: tuple[
+        _WorklistSelfEncryptionObservationSourceContext, ...
     ]
     bounded_worklist_fetch_value_source_map: tuple[
         _WorklistValueSourceContext, ...
@@ -3061,6 +3091,20 @@ def _assert_input_crazy_alias_evidence(worklist: _WorklistAnalysis) -> None:
     assert witnesses[1].memory_value == _INPUT_CRAZY_SOURCE[1]
 
 
+def _assert_worklist_self_encryption_evidence(
+    worklist: _WorklistAnalysis,
+) -> None:
+    assert worklist.explored_self_encryption_transition_count == 1
+    assert worklist.explored_self_encryption_addresses == (0,)
+    observations = worklist.explored_self_encryption_observations
+    assert len(observations) == 1
+    observation = observations[0]
+    assert observation.address == 0
+    assert observation.input_value == _INPUT_CRAZY_SOURCE[0]
+    assert observation.output_value == _ENTRY_SELF_ENCRYPTION_OUTPUT
+    assert not observation.data_write_aliases_encryption
+
+
 def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     _assert_input_crazy_alias_evidence(worklist)
     assert worklist.explored_committed_write_count == 1
@@ -3074,8 +3118,7 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
     assert worklist.explored_committed_data_write_transition_count == 0
     assert worklist.explored_committed_data_write_addresses == ()
     _assert_no_data_write_noop_evidence(worklist)
-    assert worklist.explored_self_encryption_transition_count == 1
-    assert worklist.explored_self_encryption_addresses == (0,)
+    _assert_worklist_self_encryption_evidence(worklist)
     assert worklist.explored_effective_data_mutation_transition_count == 0
     assert worklist.explored_effective_data_mutation_addresses == ()
     assert worklist.explored_effective_data_mutation_value_domains == ()
@@ -3123,6 +3166,31 @@ def _assert_planned_write_matches_changed_encryption(
         (item.state, item.address, item.observed_value) for item in changed
     )
     assert planned_projection == changed_projection
+
+
+def _assert_single_committed_self_encryption_source_context(
+    report: _Report,
+) -> None:
+    contexts = (
+        report.bounded_worklist_self_encryption_observation_source_contexts
+    )
+    assert len(contexts) == 1
+    context = contexts[0]
+    assert context.observation_index == 0
+    assert context.address == 0
+    assert context.input_value == _INPUT_CRAZY_SOURCE[0]
+    assert context.output_value == _ENTRY_SELF_ENCRYPTION_OUTPUT
+    assert not context.data_write_aliases_encryption
+    assert (context.state.code_pointer, context.state.data_pointer) == (0, 0)
+    assert context.source_position == 0
+    assert context.source_byte_offset == _SOURCE_WHITESPACE_PREFIX_BYTES
+    assert context.data_source_position == 0
+    assert context.data_source_byte_offset == _SOURCE_WHITESPACE_PREFIX_BYTES
+    assert context.encryption_source_position == 0
+    assert (
+        context.encryption_source_byte_offset
+        == _SOURCE_WHITESPACE_PREFIX_BYTES
+    )
 
 
 def _assert_changed_encryption_input_observation_source_map(
@@ -3191,6 +3259,7 @@ def test_worklist_maps_changed_encryption_inputs_without_commit_claim() -> None:
     assert changed.initial_memory_value == _INPUT_CRAZY_SOURCE[1]
     assert len(changed.values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
     assert changed.initial_memory_value_in_values is False
+    _assert_single_committed_self_encryption_source_context(report)
     _assert_changed_encryption_input_observation_source_map(report)
     _assert_planned_write_matches_changed_encryption(report)
     assert worklist.explored_committed_data_write_transition_count == 0

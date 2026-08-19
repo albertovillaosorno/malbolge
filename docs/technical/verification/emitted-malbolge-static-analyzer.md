@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v86` retains exact `entry_transition` through
+`malbolge-static-image/v87` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -483,6 +483,15 @@ its 256 changed results remain in the effective-mutation partition. Public
 contexts map C, D, and write address independently. The existing first no-op
 witness retains the sole shortest entry path, and truncation never promotes
 unexplored frontier states into exact no-op evidence.
+Schema v87 retains every exact explored committed self-encryption state as
+state, encryption address, input/output pair, and same-step data-write alias
+identity. Exact observations must reproduce the committed self-encryption count,
+address set, and output domains; each pair is also checked against the classic
+encryption table. The closed `b"u="` graph has one committed observation at
+C=D=address 0 with input 117/output 111, while its 257 later invalid encryption
+attempts remain rejected input/planned-write evidence. Public contexts map C, D,
+and the encryption address independently. This is committed-write evidence only
+and never promotes a rejected transition or unexplored frontier state.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

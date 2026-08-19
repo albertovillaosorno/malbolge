@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v86"
+_SCHEMA: Final = "malbolge-static-image/v87"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -174,6 +174,24 @@ class BoundedMemoryAccessSourceContext:
     source_position: int | None
     source_byte_offset: int | None
     initial_source_byte: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class BoundedWorklistSelfEncryptionObservationSourceContext:
+    """Source coordinates for one exact committed self-encryption."""
+
+    observation_index: int
+    state: worklist_transfer.WorklistCycleState
+    address: int
+    input_value: int
+    output_value: int
+    data_write_aliases_encryption: bool
+    source_position: int | None
+    source_byte_offset: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    encryption_source_position: int | None
+    encryption_source_byte_offset: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -574,6 +592,9 @@ class StaticImageReport:
     ]
     bounded_worklist_self_encryption_source_map: tuple[
         BoundedWorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_self_encryption_observation_source_contexts: tuple[
+        BoundedWorklistSelfEncryptionObservationSourceContext, ...
     ]
     bounded_worklist_fetch_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
@@ -1437,6 +1458,48 @@ def _bounded_memory_access_source_map(
                 transition_index,
                 _prefix_accesses(transition),
                 prefix.cells,
+            )
+        )
+    return tuple(contexts)
+
+
+def _worklist_self_encryption_observation_source_contexts(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistSelfEncryptionObservationSourceContext, ...]:
+    if worklist is None:
+        return ()
+    contexts: list[BoundedWorklistSelfEncryptionObservationSourceContext] = []
+    for index, observation in enumerate(
+        worklist.explored_self_encryption_observations
+    ):
+        source = _worklist_mutation_address_source_context(
+            observation.state.code_pointer, cells
+        )
+        data_source = _worklist_mutation_address_source_context(
+            observation.state.data_pointer, cells
+        )
+        encryption_source = _worklist_mutation_address_source_context(
+            observation.address, cells
+        )
+        contexts.append(
+            BoundedWorklistSelfEncryptionObservationSourceContext(
+                observation_index=index,
+                state=observation.state,
+                address=observation.address,
+                input_value=observation.input_value,
+                output_value=observation.output_value,
+                data_write_aliases_encryption=(
+                    observation.data_write_aliases_encryption
+                ),
+                source_position=source.source_position,
+                source_byte_offset=source.source_byte_offset,
+                data_source_position=data_source.source_position,
+                data_source_byte_offset=data_source.source_byte_offset,
+                encryption_source_position=encryption_source.source_position,
+                encryption_source_byte_offset=(
+                    encryption_source.source_byte_offset
+                ),
             )
         )
     return tuple(contexts)
@@ -2403,6 +2466,11 @@ def analyze_source(
         ),
         bounded_worklist_self_encryption_source_map=(
             _worklist_self_encryption_source_map(worklist, prefix.cells)
+        ),
+        bounded_worklist_self_encryption_observation_source_contexts=(
+            _worklist_self_encryption_observation_source_contexts(
+                worklist, prefix.cells
+            )
         ),
         bounded_worklist_fetch_value_source_map=(
             _worklist_value_source_map(

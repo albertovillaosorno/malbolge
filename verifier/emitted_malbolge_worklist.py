@@ -198,6 +198,17 @@ class WorklistPlannedDataWriteObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistSelfEncryptionObservation:
+    """One exact explored committed self-encryption transition."""
+
+    state: WorklistCycleState
+    address: int
+    input_value: int
+    output_value: int
+    data_write_aliases_encryption: bool
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistChangedEncryptionInputObservation:
     """One exact changed-from-initial self-encryption input state."""
 
@@ -361,6 +372,9 @@ class WorklistAnalysis:
     ]
     explored_self_encryption_transition_count: int
     explored_self_encryption_addresses: tuple[int, ...]
+    explored_self_encryption_observations: tuple[
+        WorklistSelfEncryptionObservation, ...
+    ]
     explored_effective_data_mutation_transition_count: int
     explored_effective_data_mutation_addresses: tuple[int, ...]
     explored_effective_data_mutation_value_domains: tuple[
@@ -1592,6 +1606,49 @@ def _data_mutation_observation_projection(
     return addresses, previous_values, result_values
 
 
+def _self_encryption_observation_projection(
+    observations: dict[_StateKey, tuple[int, int, int, bool]],
+) -> tuple[set[int], dict[int, set[int]]]:
+    addresses: set[int] = set()
+    outputs: dict[int, set[int]] = {}
+    for address, input_value, output_value, _ in observations.values():
+        if classic.encrypt(input_value) != output_value:
+            message = "self-encryption observation violates classic encryption"
+            raise AssertionError(message)
+        addresses.add(address)
+        _record_domain_value(outputs, address, output_value)
+    return addresses, outputs
+
+
+def _assert_self_encryption_observations(
+    evidence: tuple[
+        int,
+        set[int],
+        dict[int, set[int]],
+        dict[_StateKey, tuple[int, int, int, bool]],
+        set[_StateKey],
+    ],
+) -> None:
+    count, addresses, output_values, observations, seen = evidence
+    if count != len(observations):
+        message = "self-encryption count disagrees with exact committed states"
+        raise AssertionError(message)
+    if not set(observations) <= seen:
+        message = "self-encryption evidence retained an unknown graph state"
+        raise AssertionError(message)
+    projected_addresses, projected_outputs = (
+        _self_encryption_observation_projection(observations)
+    )
+    if addresses != projected_addresses:
+        message = (
+            "self-encryption addresses disagree with exact committed states"
+        )
+        raise AssertionError(message)
+    if output_values != projected_outputs:
+        message = "self-encryption outputs disagree with exact committed states"
+        raise AssertionError(message)
+
+
 def _assert_data_write_noop_observations(
     evidence: tuple[
         int,
@@ -1867,6 +1924,9 @@ class _Explorer:
         _StateKey, tuple[int, int, int, int, bool]
     ] = field(default_factory=dict)
     self_encryption_addresses: set[int] = field(default_factory=set)
+    self_encryption_state_values: dict[
+        _StateKey, tuple[int, int, int, bool]
+    ] = field(default_factory=dict)
     effective_data_mutation_addresses: set[int] = field(default_factory=set)
     effective_data_mutation_previous_values: dict[int, set[int]] = field(
         default_factory=dict
@@ -2134,6 +2194,15 @@ class _Explorer:
             self.self_encryption_addresses,
             self.self_encryption_output_values,
             label="self-encryption output",
+        )
+        _assert_self_encryption_observations(
+            (
+                self.self_encryption_transitions,
+                self.self_encryption_addresses,
+                self.self_encryption_output_values,
+                self.self_encryption_state_values,
+                self.seen,
+            )
         )
         _assert_data_mutation_domains(
             self.effective_data_mutation_transitions,
@@ -2442,6 +2511,18 @@ class _Explorer:
             ),
             explored_self_encryption_addresses=tuple(
                 sorted(self.self_encryption_addresses)
+            ),
+            explored_self_encryption_observations=tuple(
+                WorklistSelfEncryptionObservation(
+                    state=_cycle_state(key),
+                    address=self.self_encryption_state_values[key][0],
+                    input_value=self.self_encryption_state_values[key][1],
+                    output_value=self.self_encryption_state_values[key][2],
+                    data_write_aliases_encryption=(
+                        self.self_encryption_state_values[key][3]
+                    ),
+                )
+                for key in sorted(self.self_encryption_state_values)
             ),
             explored_effective_data_mutation_transition_count=(
                 self.effective_data_mutation_transitions
@@ -3261,6 +3342,7 @@ class _Explorer:
 
     def _record_mutation_evidence(
         self,
+        node: _ReachabilityNode,
         step: prefix_transfer.SnapshotStep,
     ) -> None:
         transition = step.transition
@@ -3283,12 +3365,26 @@ class _Explorer:
                 self.committed_data_write_values, data_write, data_value
             )
         if encryption is not None:
+            encryption_input = _required_exact_value(
+                transition.encryption_input,
+                label="committed self-encryption input",
+            )
             encryption_value = _required_exact_value(
                 transition.encryption_output,
                 label="committed self-encryption output",
             )
+            key = _node_key(node)
+            if key in self.self_encryption_state_values:
+                message = "committed self-encryption state was explored twice"
+                raise AssertionError(message)
             self.self_encryption_transitions += 1
             self.self_encryption_addresses.add(encryption)
+            self.self_encryption_state_values[key] = (
+                encryption,
+                encryption_input,
+                encryption_value,
+                transition.data_write_aliases_encryption,
+            )
             _record_domain_value(
                 self.self_encryption_output_values, encryption, encryption_value
             )
@@ -3306,7 +3402,7 @@ class _Explorer:
         self._record_evolved_read_evidence(node, step.transition)
         self._record_planned_data_write_evidence(node, step.transition)
         self._record_code_data_alias_evidence(node, step.transition)
-        self._record_mutation_evidence(step)
+        self._record_mutation_evidence(node, step)
         self._record_data_mutation_evidence(node, step)
         if step.transition.pointer_wraps:
             self._record_wraparound(node, step.transition)
