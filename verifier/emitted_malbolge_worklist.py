@@ -219,6 +219,15 @@ class WorklistChangedEncryptionInputObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistInitialValueObservation:
+    """One exact explored read equal to immutable initial memory."""
+
+    state: WorklistCycleState
+    address: int
+    value: int
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistEvolvedReadObservation:
     """One exact explored read whose value differs from initial memory."""
 
@@ -398,6 +407,9 @@ class WorklistAnalysis:
     explored_encryption_input_transition_count: int
     explored_initial_value_encryption_input_transition_count: int
     explored_initial_value_encryption_input_addresses: tuple[int, ...]
+    explored_initial_value_encryption_input_observations: tuple[
+        WorklistInitialValueObservation, ...
+    ]
     explored_changed_from_initial_encryption_input_transition_count: int
     explored_changed_from_initial_encryption_input_addresses: tuple[int, ...]
     explored_changed_from_initial_encryption_input_value_domains: tuple[
@@ -412,6 +424,9 @@ class WorklistAnalysis:
     ]
     explored_initial_value_fetch_transition_count: int
     explored_initial_value_fetch_addresses: tuple[int, ...]
+    explored_initial_value_fetch_observations: tuple[
+        WorklistInitialValueObservation, ...
+    ]
     explored_evolved_fetch_transition_count: int
     explored_evolved_fetch_addresses: tuple[int, ...]
     explored_evolved_fetch_value_domains: tuple[WorklistValueDomain, ...]
@@ -421,6 +436,9 @@ class WorklistAnalysis:
     explored_data_read_transition_count: int
     explored_initial_value_data_read_transition_count: int
     explored_initial_value_data_read_addresses: tuple[int, ...]
+    explored_initial_value_data_read_observations: tuple[
+        WorklistInitialValueObservation, ...
+    ]
     explored_evolved_data_read_transition_count: int
     explored_evolved_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_value_domains: tuple[WorklistValueDomain, ...]
@@ -1430,6 +1448,47 @@ def _assert_changed_encryption_input_initial_difference(
         raise AssertionError(message)
 
 
+def _initial_value_observation_addresses(
+    observations: dict[_StateKey, tuple[int, int]],
+    initial_memory: tuple[int, ...],
+    *,
+    label: str,
+) -> set[int]:
+    addresses: set[int] = set()
+    for address, value in observations.values():
+        if value != initial_memory[address]:
+            message = f"{label} observation differs from initial memory"
+            raise AssertionError(message)
+        addresses.add(address)
+    return addresses
+
+
+def _assert_initial_value_observations(
+    evidence: tuple[
+        int,
+        set[int],
+        dict[_StateKey, tuple[int, int]],
+        set[_StateKey],
+    ],
+    initial_memory: tuple[int, ...],
+    *,
+    label: str,
+) -> None:
+    count, addresses, observations, seen = evidence
+    if count != len(observations):
+        message = f"{label} count disagrees with exact states"
+        raise AssertionError(message)
+    if not set(observations) <= seen:
+        message = f"{label} evidence retained an unknown graph state"
+        raise AssertionError(message)
+    projected = _initial_value_observation_addresses(
+        observations, initial_memory, label=label
+    )
+    if addresses != projected:
+        message = f"{label} addresses disagree with exact states"
+        raise AssertionError(message)
+
+
 def _assert_changed_encryption_input_observations(
     evidence: tuple[
         int,
@@ -1892,6 +1951,19 @@ def _data_mutation_value_domains(
     )
 
 
+def _record_initial_value_observation(
+    node: _ReachabilityNode,
+    observations: dict[_StateKey, tuple[int, int]],
+    evidence: tuple[int, int, str],
+) -> None:
+    address, value, label = evidence
+    key = _node_key(node)
+    if key in observations:
+        message = f"{label} state was explored more than once"
+        raise AssertionError(message)
+    observations[key] = (address, value)
+
+
 @dataclass(slots=True)
 class _Explorer:
     words: tuple[int, ...]
@@ -1951,6 +2023,9 @@ class _Explorer:
     initial_value_encryption_input_addresses: set[int] = field(
         default_factory=set
     )
+    initial_value_encryption_input_state_values: dict[
+        _StateKey, tuple[int, int]
+    ] = field(default_factory=dict)
     changed_from_initial_encryption_input_addresses: set[int] = field(
         default_factory=set
     )
@@ -1967,12 +2042,18 @@ class _Explorer:
         default_factory=dict
     )
     initial_value_fetch_addresses: set[int] = field(default_factory=set)
+    initial_value_fetch_state_values: dict[
+        _StateKey, tuple[int, int]
+    ] = field(default_factory=dict)
     evolved_fetch_addresses: set[int] = field(default_factory=set)
     evolved_fetch_values: dict[int, set[int]] = field(default_factory=dict)
     evolved_fetch_state_values: dict[_StateKey, tuple[int, int]] = field(
         default_factory=dict
     )
     initial_value_data_read_addresses: set[int] = field(default_factory=set)
+    initial_value_data_read_state_values: dict[
+        _StateKey, tuple[int, int]
+    ] = field(default_factory=dict)
     evolved_data_read_addresses: set[int] = field(default_factory=set)
     evolved_data_read_values: dict[int, set[int]] = field(default_factory=dict)
     evolved_data_read_state_values: dict[_StateKey, tuple[int, int]] = field(
@@ -2070,9 +2151,14 @@ class _Explorer:
                 "total inputs"
             )
             raise AssertionError(message)
-        _assert_observed_address_summary(
-            self.initial_value_fetch_transitions,
-            self.initial_value_fetch_addresses,
+        _assert_initial_value_observations(
+            (
+                self.initial_value_fetch_transitions,
+                self.initial_value_fetch_addresses,
+                self.initial_value_fetch_state_values,
+                self.seen,
+            ),
+            self.initial_memory,
             label="initial-value fetch",
         )
         _assert_observed_value_domains(
@@ -2101,9 +2187,14 @@ class _Explorer:
             label="evolved fetch",
             require_witness=_INITIAL_STATE_KEY in self.seen,
         )
-        _assert_observed_address_summary(
-            self.initial_value_data_read_transitions,
-            self.initial_value_data_read_addresses,
+        _assert_initial_value_observations(
+            (
+                self.initial_value_data_read_transitions,
+                self.initial_value_data_read_addresses,
+                self.initial_value_data_read_state_values,
+                self.seen,
+            ),
+            self.initial_memory,
             label="initial-value data read",
         )
         _assert_observed_value_domains(
@@ -2132,9 +2223,14 @@ class _Explorer:
             label="evolved data read",
             require_witness=_INITIAL_STATE_KEY in self.seen,
         )
-        _assert_observed_address_summary(
-            self.initial_value_encryption_input_transitions,
-            self.initial_value_encryption_input_addresses,
+        _assert_initial_value_observations(
+            (
+                self.initial_value_encryption_input_transitions,
+                self.initial_value_encryption_input_addresses,
+                self.initial_value_encryption_input_state_values,
+                self.seen,
+            ),
+            self.initial_memory,
             label="initial-value encryption input",
         )
         _assert_observed_value_domains(
@@ -2591,6 +2687,20 @@ class _Explorer:
             explored_initial_value_encryption_input_addresses=tuple(
                 sorted(self.initial_value_encryption_input_addresses)
             ),
+            explored_initial_value_encryption_input_observations=tuple(
+                WorklistInitialValueObservation(
+                    state=_cycle_state(key),
+                    address=(
+                        self.initial_value_encryption_input_state_values[key][0]
+                    ),
+                    value=(
+                        self.initial_value_encryption_input_state_values[key][1]
+                    ),
+                )
+                for key in sorted(
+                    self.initial_value_encryption_input_state_values
+                )
+            ),
             explored_changed_from_initial_encryption_input_transition_count=(
                 self.changed_from_initial_encryption_input_transitions
             ),
@@ -2637,6 +2747,14 @@ class _Explorer:
             explored_initial_value_fetch_addresses=tuple(
                 sorted(self.initial_value_fetch_addresses)
             ),
+            explored_initial_value_fetch_observations=tuple(
+                WorklistInitialValueObservation(
+                    state=_cycle_state(key),
+                    address=self.initial_value_fetch_state_values[key][0],
+                    value=self.initial_value_fetch_state_values[key][1],
+                )
+                for key in sorted(self.initial_value_fetch_state_values)
+            ),
             explored_evolved_fetch_transition_count=(
                 self.evolved_fetch_transitions
             ),
@@ -2663,6 +2781,14 @@ class _Explorer:
             ),
             explored_initial_value_data_read_addresses=tuple(
                 sorted(self.initial_value_data_read_addresses)
+            ),
+            explored_initial_value_data_read_observations=tuple(
+                WorklistInitialValueObservation(
+                    state=_cycle_state(key),
+                    address=self.initial_value_data_read_state_values[key][0],
+                    value=self.initial_value_data_read_state_values[key][1],
+                )
+                for key in sorted(self.initial_value_data_read_state_values)
             ),
             explored_evolved_data_read_transition_count=(
                 self.evolved_data_read_transitions
@@ -3006,6 +3132,11 @@ class _Explorer:
     ) -> None:
         address = transition.fetched_address
         if transition.fetched_value == self.initial_memory[address]:
+            _record_initial_value_observation(
+                node,
+                self.initial_value_fetch_state_values,
+                (address, transition.fetched_value, "initial-value fetch"),
+            )
             self.initial_value_fetch_transitions += 1
             self.initial_value_fetch_addresses.add(address)
             return
@@ -3042,6 +3173,11 @@ class _Explorer:
         )
         address = transition.data_address
         if data_value == self.initial_memory[address]:
+            _record_initial_value_observation(
+                node,
+                self.initial_value_data_read_state_values,
+                (address, data_value, "initial-value data read"),
+            )
             self.initial_value_data_read_transitions += 1
             self.initial_value_data_read_addresses.add(address)
             return
@@ -3165,6 +3301,11 @@ class _Explorer:
             self.encryption_input_transitions += 1
             _record_domain_value(self.encryption_input_values, address, value)
             if value == self.initial_memory[address]:
+                _record_initial_value_observation(
+                    node,
+                    self.initial_value_encryption_input_state_values,
+                    (address, value, "initial-value encryption input"),
+                )
                 self.initial_value_encryption_input_transitions += 1
                 self.initial_value_encryption_input_addresses.add(address)
             else:

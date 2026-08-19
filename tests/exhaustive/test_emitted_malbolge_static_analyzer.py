@@ -67,7 +67,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v87"
+_SCHEMA = "malbolge-static-image/v88"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _EOF_ACCUMULATOR = 59_048
@@ -636,6 +636,12 @@ class _WorklistChangedEncryptionInputObservation(Protocol):
     observed_value: int
 
 
+class _WorklistInitialValueObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    value: int
+
+
 class _WorklistEvolvedReadObservation(Protocol):
     state: _WorklistCycleState
     address: int
@@ -929,6 +935,22 @@ class _WorklistChangedEncryptionInputObservationSourceContext(Protocol):
     initial_encryption_source_byte: int | None
 
 
+class _WorklistInitialValueObservationSourceContext(Protocol):
+    observation_index: int
+    state: _WorklistCycleState
+    address: int
+    value: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+    value_source_position: int | None
+    value_source_byte_offset: int | None
+    initial_value_source_byte: int | None
+
+
 class _WorklistEvolvedReadObservationSourceContext(Protocol):
     observation_index: int
     state: _WorklistCycleState
@@ -1077,6 +1099,9 @@ class _WorklistAnalysis(Protocol):
     explored_encryption_input_transition_count: int
     explored_initial_value_encryption_input_transition_count: int
     explored_initial_value_encryption_input_addresses: tuple[int, ...]
+    explored_initial_value_encryption_input_observations: tuple[
+        _WorklistInitialValueObservation, ...
+    ]
     explored_changed_from_initial_encryption_input_transition_count: int
     explored_changed_from_initial_encryption_input_addresses: tuple[int, ...]
     explored_changed_from_initial_encryption_input_value_domains: tuple[
@@ -1093,6 +1118,9 @@ class _WorklistAnalysis(Protocol):
     ]
     explored_initial_value_fetch_transition_count: int
     explored_initial_value_fetch_addresses: tuple[int, ...]
+    explored_initial_value_fetch_observations: tuple[
+        _WorklistInitialValueObservation, ...
+    ]
     explored_evolved_fetch_transition_count: int
     explored_evolved_fetch_addresses: tuple[int, ...]
     explored_evolved_fetch_value_domains: tuple[_WorklistValueDomain, ...]
@@ -1102,6 +1130,9 @@ class _WorklistAnalysis(Protocol):
     explored_data_read_transition_count: int
     explored_initial_value_data_read_transition_count: int
     explored_initial_value_data_read_addresses: tuple[int, ...]
+    explored_initial_value_data_read_observations: tuple[
+        _WorklistInitialValueObservation, ...
+    ]
     explored_evolved_data_read_transition_count: int
     explored_evolved_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_value_domains: tuple[_WorklistValueDomain, ...]
@@ -1272,6 +1303,9 @@ class _Report(Protocol):
     bounded_worklist_initial_value_encryption_input_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
     ]
+    bounded_worklist_initial_encryption_input_observation_source_contexts: (
+        tuple[_WorklistInitialValueObservationSourceContext, ...]
+    )
     bounded_worklist_changed_encryption_input_value_source_map: (
         tuple[_WorklistValueSourceContext, ...]
     )
@@ -1281,6 +1315,9 @@ class _Report(Protocol):
     bounded_worklist_initial_value_fetch_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
     ]
+    bounded_worklist_initial_value_fetch_observation_source_contexts: tuple[
+        _WorklistInitialValueObservationSourceContext, ...
+    ]
     bounded_worklist_evolved_fetch_value_source_map: tuple[
         _WorklistValueSourceContext, ...
     ]
@@ -1289,6 +1326,9 @@ class _Report(Protocol):
     ]
     bounded_worklist_initial_value_data_read_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_initial_value_data_read_observation_source_contexts: tuple[
+        _WorklistInitialValueObservationSourceContext, ...
     ]
     bounded_worklist_evolved_data_read_value_source_map: tuple[
         _WorklistValueSourceContext, ...
@@ -3193,6 +3233,61 @@ def _assert_single_committed_self_encryption_source_context(
     )
 
 
+def _assert_input_crazy_initial_value_source_contexts(
+    report: _Report,
+) -> None:
+    fetches = (
+        report.bounded_worklist_initial_value_fetch_observation_source_contexts
+    )
+    assert len(fetches) == _WORKLIST_COMPLETE_STATE_LIMIT
+    first_fetch = fetches[0]
+    assert (first_fetch.address, first_fetch.value) == (
+        0,
+        _INPUT_CRAZY_SOURCE[0],
+    )
+    assert first_fetch.source_byte_offset == _SOURCE_WHITESPACE_PREFIX_BYTES
+    assert (
+        first_fetch.value_source_byte_offset
+        == _SOURCE_WHITESPACE_PREFIX_BYTES
+    )
+    branch_fetches = fetches[1:]
+    assert len(branch_fetches) == _WORKLIST_INPUT_VALUE_COUNT
+    assert all(item.address == 1 for item in branch_fetches)
+    assert all(item.value == _INPUT_CRAZY_SOURCE[1] for item in branch_fetches)
+    assert all(
+        item.source_byte_offset == _SECOND_LOADED_SOURCE_BYTE_OFFSET
+        for item in branch_fetches
+    )
+    assert all(
+        item.value_source_byte_offset == _SECOND_LOADED_SOURCE_BYTE_OFFSET
+        for item in branch_fetches
+    )
+    reads = (
+        report
+        .bounded_worklist_initial_value_data_read_observation_source_contexts
+    )
+    assert len(reads) == _WORKLIST_INPUT_VALUE_COUNT
+    assert all(item.address == 1 for item in reads)
+    assert all(item.value == _INPUT_CRAZY_SOURCE[1] for item in reads)
+    assert all(
+        item.value_source_byte_offset == _SECOND_LOADED_SOURCE_BYTE_OFFSET
+        for item in reads
+    )
+    encryption = (
+        report
+        .bounded_worklist_initial_encryption_input_observation_source_contexts
+    )
+    assert len(encryption) == 1
+    assert (encryption[0].address, encryption[0].value) == (
+        0,
+        _INPUT_CRAZY_SOURCE[0],
+    )
+    assert (
+        encryption[0].value_source_byte_offset
+        == _SOURCE_WHITESPACE_PREFIX_BYTES
+    )
+
+
 def _assert_changed_encryption_input_observation_source_map(
     report: _Report,
 ) -> None:
@@ -3232,6 +3327,7 @@ def test_worklist_maps_changed_encryption_inputs_without_commit_claim() -> None:
     )
     worklist = report.bounded_worklist
     assert worklist is not None
+    _assert_input_crazy_initial_value_source_contexts(report)
     assert (
         worklist.explored_encryption_input_transition_count
         == _INPUT_CRAZY_ENCRYPTION_INPUT_COUNT

@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v87` retains exact `entry_transition` through
+`malbolge-static-image/v88` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -492,6 +492,15 @@ C=D=address 0 with input 117/output 111, while its 257 later invalid encryption
 attempts remain rejected input/planned-write evidence. Public contexts map C, D,
 and the encryption address independently. This is committed-write evidence only
 and never promotes a rejected transition or unexplored frontier state.
+Schema v88 retains every exact explored initial-value-equal fetch, semantic data
+read, and self-encryption input state. Each state is checked against immutable
+initial memory, and its exact state count/address projection must reproduce the
+existing initial-value aggregate. Closed `b"u="` has 258 initial-value fetch
+states, 257 initial-value data-read states at address 1, and one initial-value
+encryption-input state at address 0; the 257 changed encryption-input states
+remain the disjoint value-different complement. Public contexts source-map C,
+D, and the observed-value address independently. As in schema v70, equality is
+value equality rather than provenance, and truncation remains explored-only.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

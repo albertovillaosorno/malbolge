@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v87
+  offsets, stable finding codes, and explicit analysis limits. Schema v88
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -464,6 +464,15 @@ executable cells, and input-dependent cycles or hangs.
   recheck classic encryption. Closed `b"u="` publishes only its initial
   address-0 input-117/output-111 commit; 257 later invalid attempts remain
   rejected evidence. Public contexts source-map C/D/encryption roles.
+  Schema v88 retains exact explored initial-value-equal fetch, semantic
+  data-read,
+  and encryption-input states. Closed `b"u="` publishes 258 fetch states, 257
+  address-1 data-read states, and one address-0 encryption-input state; its 257
+  changed encryption inputs remain separate. Exact state evidence reproduces
+  initial-value count/address summaries and source-maps C/D/value roles.
+  Equality
+  remains value equality rather than provenance; frontier states remain
+  unexplored.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact

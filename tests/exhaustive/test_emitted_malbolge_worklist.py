@@ -444,6 +444,12 @@ class _WorklistChangedEncryptionInputObservation(Protocol):
     observed_value: int
 
 
+class _WorklistInitialValueObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    value: int
+
+
 class _WorklistEvolvedReadObservation(Protocol):
     state: _WorklistCycleState
     address: int
@@ -602,6 +608,9 @@ class _WorklistAnalysis(Protocol):
     explored_encryption_input_transition_count: int
     explored_initial_value_encryption_input_transition_count: int
     explored_initial_value_encryption_input_addresses: tuple[int, ...]
+    explored_initial_value_encryption_input_observations: tuple[
+        _WorklistInitialValueObservation, ...
+    ]
     explored_changed_from_initial_encryption_input_transition_count: int
     explored_changed_from_initial_encryption_input_addresses: tuple[int, ...]
     explored_changed_from_initial_encryption_input_value_domains: tuple[
@@ -618,6 +627,9 @@ class _WorklistAnalysis(Protocol):
     ]
     explored_initial_value_fetch_transition_count: int
     explored_initial_value_fetch_addresses: tuple[int, ...]
+    explored_initial_value_fetch_observations: tuple[
+        _WorklistInitialValueObservation, ...
+    ]
     explored_evolved_fetch_transition_count: int
     explored_evolved_fetch_addresses: tuple[int, ...]
     explored_evolved_fetch_value_domains: tuple[_WorklistValueDomain, ...]
@@ -627,6 +639,9 @@ class _WorklistAnalysis(Protocol):
     explored_data_read_transition_count: int
     explored_initial_value_data_read_transition_count: int
     explored_initial_value_data_read_addresses: tuple[int, ...]
+    explored_initial_value_data_read_observations: tuple[
+        _WorklistInitialValueObservation, ...
+    ]
     explored_evolved_data_read_transition_count: int
     explored_evolved_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_value_domains: tuple[_WorklistValueDomain, ...]
@@ -766,6 +781,19 @@ class _WorklistModule(Protocol):
             dict[_WorklistStateKey, tuple[int, int]],
             set[_WorklistStateKey],
         ],
+    ) -> None: ...
+
+    def _assert_initial_value_observations(
+        self,
+        evidence: tuple[
+            int,
+            set[int],
+            dict[_WorklistStateKey, tuple[int, int]],
+            set[_WorklistStateKey],
+        ],
+        initial_memory: tuple[int, ...],
+        *,
+        label: str,
     ) -> None: ...
 
     def _assert_changed_encryption_input_observations(
@@ -1127,12 +1155,49 @@ def _assert_changed_encryption_input_observations(
     assert observations[-1].state.eof_seen
 
 
+def _assert_input_crazy_initial_value_observations(
+    result: _WorklistAnalysis,
+) -> None:
+    fetches = result.explored_initial_value_fetch_observations
+    assert len(fetches) == _FULL_STATE_LIMIT
+    assert (fetches[0].address, fetches[0].value) == (0, _INPUT_CRAZY_SOURCE[0])
+    assert (
+        fetches[0].state.code_pointer,
+        fetches[0].state.data_pointer,
+    ) == (0, 0)
+    remaining_fetches = fetches[1:]
+    assert len(remaining_fetches) == _INPUT_VALUE_COUNT
+    assert all(item.address == 1 for item in remaining_fetches)
+    assert all(
+        item.value == _INPUT_CRAZY_SOURCE[1] for item in remaining_fetches
+    )
+    assert all(
+        (item.state.code_pointer, item.state.data_pointer) == (1, 1)
+        for item in remaining_fetches
+    )
+    reads = result.explored_initial_value_data_read_observations
+    assert len(reads) == _INPUT_VALUE_COUNT
+    assert all(item.address == 1 for item in reads)
+    assert all(item.value == _INPUT_CRAZY_SOURCE[1] for item in reads)
+    encryption = result.explored_initial_value_encryption_input_observations
+    assert len(encryption) == 1
+    assert (encryption[0].address, encryption[0].value) == (
+        0,
+        _INPUT_CRAZY_SOURCE[0],
+    )
+    assert (
+        encryption[0].state.code_pointer,
+        encryption[0].state.data_pointer,
+    ) == (0, 0)
+
+
 def test_input_crazy_reports_exact_encryption_input_domain() -> None:
     """Rejected branches retain exact explored encryption-input values."""
     result = worklist.analyze_reachability(
         _INPUT_CRAZY_SOURCE,
         maximum_states=_FULL_STATE_LIMIT,
     )
+    _assert_input_crazy_initial_value_observations(result)
     values = _domain_values(result.explored_encryption_input_value_domains, 1)
     assert len(values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
     assert values[0] == _INPUT_CRAZY_ENCRYPTION_DOMAIN_MINIMUM
@@ -1628,6 +1693,26 @@ def test_write_partition_rejects_unclassified_data_write_address() -> None:
     with pytest.raises(AssertionError, match="no-op/effective classes"):
         worklist._assert_committed_write_address_partition(
             ({0, 40}, {40}, set(), {0}, set())
+        )
+
+
+def test_initial_value_observations_reject_count_drift() -> None:
+    """Initial-value counts must match their exact state observations."""
+    with pytest.raises(AssertionError, match="exact states"):
+        worklist._assert_initial_value_observations(
+            (1, {0}, {}, {_GRAPH_KEY_A}),
+            (117,),
+            label="initial-value fetch",
+        )
+
+
+def test_initial_value_observations_reject_changed_value() -> None:
+    """Initial-value observations must equal immutable initial memory."""
+    with pytest.raises(AssertionError, match="differs from initial memory"):
+        worklist._assert_initial_value_observations(
+            (1, {0}, {_GRAPH_KEY_A: (0, 116)}, {_GRAPH_KEY_A}),
+            (117,),
+            label="initial-value fetch",
         )
 
 
