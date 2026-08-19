@@ -1105,6 +1105,42 @@ def _committed_data_mutation(
     return address, previous, written, result, aliases
 
 
+def _assert_frontier_evidence(
+    frontier_states: int,
+    frontier_path: tuple[_StateKey, ...] | None,
+    *,
+    truncated: bool,
+) -> None:
+    if truncated != (frontier_states > 0):
+        message = "worklist truncation disagrees with frontier state count"
+        raise AssertionError(message)
+    if truncated != (frontier_path is not None):
+        message = "worklist truncation lost its exact frontier path"
+        raise AssertionError(message)
+
+
+def _assert_terminal_evidence(
+    counts: dict[str, int],
+    terminal_states: dict[str, set[_StateKey]],
+    seen: set[_StateKey],
+) -> None:
+    if set(counts) != set(terminal_states):
+        message = "terminal status counts disagree with terminal state classes"
+        raise AssertionError(message)
+    if any(count <= 0 for count in counts.values()):
+        message = "terminal status count must remain positive"
+        raise AssertionError(message)
+    if any(
+        count != len(terminal_states[status])
+        for status, count in counts.items()
+    ):
+        message = "terminal status count disagrees with exact terminal states"
+        raise AssertionError(message)
+    if any(not states <= seen for states in terminal_states.values()):
+        message = "terminal evidence retained an unknown graph state"
+        raise AssertionError(message)
+
+
 def _assert_non_graphical_fetch_domains(
     transition_count: int,
     addresses: set[int],
@@ -1354,9 +1390,16 @@ class _Explorer:
         frontier_states: int = 0,
         frontier_path: tuple[_StateKey, ...] | None = None,
     ) -> WorklistAnalysis:
-        if truncated != (frontier_path is not None):
-            message = "worklist truncation lost its exact frontier path"
-            raise AssertionError(message)
+        _assert_frontier_evidence(
+            frontier_states,
+            frontier_path,
+            truncated=truncated,
+        )
+        _assert_terminal_evidence(
+            self.terminal_counts,
+            self.terminal_states,
+            self.seen,
+        )
         ordered_addresses = tuple(sorted(self.accessed_addresses))
         highest_address = ordered_addresses[-1]
         cycle_keys = _known_graph_cycle_witness(self.edges, self.seen)

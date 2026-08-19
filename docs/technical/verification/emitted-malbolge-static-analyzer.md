@@ -425,7 +425,10 @@ times total, restoring its original graphical value before C reaches it. The
 worklist then closes at exactly 4,096 unique/explored states with no frontier
 and proves a 1,666-state C=0..1665 entry path. The final C=1665 recurrence
 fetch is non-graphical; its source-mapped witness keeps C=0..1664 loaded and
-only the recurrence endpoint source-null. The one-word-longer
+only the recurrence endpoint source-null. The adjacent 1,666-word restoration
+image instead reaches 4,096 unique states after 4,095 explored states, retains
+a two-state frontier with the full loaded C=0..1665 source path, and reports
+`truncated=true`. The one-word-longer
 `b"u'&%$#\"!~}|{zyxw"` fixture reaches the 4,096-state maximum after
 3,840 states are explored. It leaves 257 exact frontier states and records
 first-seen depth 17, publishes the deterministic path to the first unexplored

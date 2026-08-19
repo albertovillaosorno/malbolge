@@ -111,7 +111,10 @@ more times so the branch-collapsing M[123] rotate completes its ten-rotation
 orbit before C reaches that cell. The exact graph then uses all 4,096 reviewed
 states, drains its queue with no frontier, and proves a 1,666-state C=0..1665
 cycle entry path. Its final recurrence fetch at C=1665 is non-graphical, so this
-extends checked input-dependent depth without raising the state ceiling.
+extends checked input-dependent depth without raising the state ceiling. The
+adjacent 1,666-word image reaches the same 4,096 unique-state ceiling after
+4,095 explored states, retains a two-state frontier, and reports truncation
+instead of falsely promoting the unfinished graph to closure.
 The one-word-longer
 `b"u'&%$#\"!~}|{zyxw"` fixture reaches the reviewed 4,096-state maximum
 after 3,840 explored states, leaves 257 exact frontier states, and remains

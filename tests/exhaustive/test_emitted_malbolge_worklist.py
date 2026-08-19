@@ -631,6 +631,21 @@ class _WorklistModule(Protocol):
         nodes: set[_WorklistStateKey],
     ) -> tuple[_WorklistStateKey, ...]: ...
 
+    def _assert_frontier_evidence(
+        self,
+        frontier_states: int,
+        frontier_path: tuple[_WorklistStateKey, ...] | None,
+        *,
+        truncated: bool,
+    ) -> None: ...
+
+    def _assert_terminal_evidence(
+        self,
+        counts: dict[str, int],
+        terminal_states: dict[str, set[_WorklistStateKey]],
+        seen: set[_WorklistStateKey],
+    ) -> None: ...
+
     def _assert_non_graphical_fetch_domains(
         self,
         transition_count: int,
@@ -1425,6 +1440,26 @@ def test_input_domain_becomes_eof_only_after_eof() -> None:
     successor = successors[0]
     assert successor.eof_seen
     assert successor.snapshot.accumulator == _EOF_ACCUMULATOR
+
+
+def test_frontier_invariant_rejects_truncation_without_states() -> None:
+    """Truncation cannot be published with an empty numeric frontier."""
+    with pytest.raises(AssertionError, match="frontier state count"):
+        worklist._assert_frontier_evidence(
+            0,
+            (_GRAPH_KEY_A,),
+            truncated=True,
+        )
+
+
+def test_terminal_invariant_rejects_count_state_drift() -> None:
+    """Terminal status totals must equal their exact terminal-state sets."""
+    with pytest.raises(AssertionError, match="exact terminal states"):
+        worklist._assert_terminal_evidence(
+            {"halted": 2},
+            {"halted": {_GRAPH_KEY_A}},
+            {_GRAPH_KEY_A},
+        )
 
 
 def test_known_graph_cycle_detection_rejects_merge_only_heuristics() -> None:

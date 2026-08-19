@@ -256,6 +256,8 @@ _DOUBLE_JUMP_MERGED_LOADED_CYCLE_INITIAL_BYTE = 39
 _DOUBLE_JUMP_MERGED_LOADED_NON_GRAPHICAL_VALUE = 13
 _DOUBLE_JUMP_MERGED_CYCLE_DATA_POINTER = 243
 _RESTORED_DEEP_CYCLE_SOURCE_WORDS = 1_665
+_RESTORED_DEEP_CYCLE_OVER_CAP_SOURCE_WORDS = 1_666
+_RESTORED_DEEP_CYCLE_FRONTIER_STATES = 2
 _RESTORED_DEEP_CYCLE_PATH_STATES = 1_666
 _RESTORED_DEEP_CYCLE_ROTATION_LOOPS = 9
 _RESTORED_DEEP_CYCLE_ROTATION_STRIDE = 12
@@ -1260,8 +1262,10 @@ def _source_byte_for_decode(decoded: int, position: int) -> int:
     return ((index - position) % _DECODE_PERIOD) + _GRAPHICAL_START
 
 
-def _restored_deep_input_cycle_source() -> bytes:
-    decoded = [ord("o")] * _RESTORED_DEEP_CYCLE_SOURCE_WORDS
+def _restored_deep_input_cycle_source(
+    source_words: int = _RESTORED_DEEP_CYCLE_SOURCE_WORDS,
+) -> bytes:
+    decoded = [ord("o")] * source_words
     decoded[:4] = map(ord, "/jj*")
     for index in range(_RESTORED_DEEP_CYCLE_ROTATION_LOOPS):
         base = 4 + _RESTORED_DEEP_CYCLE_ROTATION_STRIDE * index
@@ -3783,6 +3787,42 @@ def test_report_worklist_closes_reviewed_ceiling_deep_input_cycle() -> None:
     assert source_path[-1].source_position is None
     assert worklist.closed_all_paths_terminate is False
     assert worklist.closed_all_paths_halt is False
+
+
+def _assert_restored_deep_frontier_source_map(report: _Report) -> None:
+    path = report.bounded_worklist_frontier_entry_path_source_map
+    assert len(path) == _RESTORED_DEEP_CYCLE_PATH_STATES
+    assert all(
+        context.source_position == index
+        for index, context in enumerate(path)
+    )
+    assert path[-1].code_pointer == _RESTORED_DEEP_CYCLE_SOURCE_WORDS
+    assert path[-1].source_position == _RESTORED_DEEP_CYCLE_SOURCE_WORDS
+
+
+def test_report_worklist_truncates_adjacent_restored_deep_cycle() -> None:
+    """One more loaded word crosses the exact reviewed state ceiling."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _restored_deep_input_cycle_source(
+            _RESTORED_DEEP_CYCLE_OVER_CAP_SOURCE_WORDS
+        ),
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _MAX_WORKLIST_STATE_LIMIT
+    assert worklist.explored_states == _MAX_WORKLIST_STATE_LIMIT - 1
+    assert worklist.frontier_states == _RESTORED_DEEP_CYCLE_FRONTIER_STATES
+    assert worklist.truncated
+    assert not worklist.reachable_cycle_detected
+    assert worklist.maximum_first_seen_transition_index == (
+        _RESTORED_DEEP_CYCLE_PATH_STATES
+    )
+    assert worklist.frontier_entry_path is not None
+    assert len(worklist.frontier_entry_path) == _RESTORED_DEEP_CYCLE_PATH_STATES
+    assert worklist.closed_all_paths_terminate is None
+    assert worklist.closed_all_paths_halt is None
+    _assert_restored_deep_frontier_source_map(report)
 
 
 def test_report_worklist_proves_124_state_input_cycle() -> None:

@@ -175,6 +175,9 @@ executable cells, and input-dependent cycles or hangs.
   proves
   a 1,666-state C=0..1665 path. Its final recurrence fetch is non-graphical; the
   source-mapped witness keeps C=0..1664 loaded and only C=1665 source-null. The
+  adjacent 1,666-word image hits 4,096 unique states after 4,095 explored
+  states, retains a two-state loaded frontier path through C=1665, and reports
+  truncation rather than closure. The
   one-word-longer `b"u'&%$#\"!~}|{zyxw"` fixture
   reaches the maximum after
   3,840 explored states, leaves 257 exact frontier states, records first-seen
