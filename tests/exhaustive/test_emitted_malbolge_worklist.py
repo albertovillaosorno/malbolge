@@ -383,6 +383,13 @@ class _WorklistCodeDataAliasWitness(Protocol):
     memory_value: int
 
 
+class _WorklistNonGraphicalFetchWitness(Protocol):
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+    address: int
+    value: int
+
+
 class _WorklistEvolvedReadWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -488,6 +495,9 @@ class _WorklistAnalysis(Protocol):
     explored_non_graphical_fetch_transition_count: int
     explored_non_graphical_fetch_addresses: tuple[int, ...]
     explored_non_graphical_fetch_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_non_graphical_fetch_witness: (
+        _WorklistNonGraphicalFetchWitness | None
+    )
     explored_data_read_value_domains: tuple[_WorklistValueDomain, ...]
     explored_encryption_input_value_domains: tuple[_WorklistValueDomain, ...]
     explored_encryption_input_transition_count: int
@@ -1037,6 +1047,13 @@ def _assert_fixed_non_graphical_fetch_evidence(
         result.explored_non_graphical_fetch_value_domains,
         _FIXED_CYCLE_POINTER,
     ) == (_FIXED_CYCLE_NON_GRAPHICAL_VALUE,)
+    witness = result.explored_non_graphical_fetch_witness
+    assert witness is not None
+    assert witness.address == _FIXED_CYCLE_POINTER
+    assert witness.value == _FIXED_CYCLE_NON_GRAPHICAL_VALUE
+    assert len(witness.entry_path) == _FIXED_CYCLE_ENTRY_PATH_STATES
+    assert witness.entry_path[-1] == witness.state
+    assert witness.state.code_pointer == _FIXED_CYCLE_POINTER
 
 
 def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:

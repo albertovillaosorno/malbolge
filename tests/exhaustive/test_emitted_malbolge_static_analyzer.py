@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v75"
+_SCHEMA = "malbolge-static-image/v76"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -543,6 +543,13 @@ class _WorklistCodeDataAliasWitness(Protocol):
     memory_value: int
 
 
+class _WorklistNonGraphicalFetchWitness(Protocol):
+    state: _WorklistCycleState
+    entry_path: tuple[_WorklistCycleState, ...]
+    address: int
+    value: int
+
+
 class _WorklistEvolvedReadWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -767,6 +774,9 @@ class _WorklistAnalysis(Protocol):
     explored_non_graphical_fetch_transition_count: int
     explored_non_graphical_fetch_addresses: tuple[int, ...]
     explored_non_graphical_fetch_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_non_graphical_fetch_witness: (
+        _WorklistNonGraphicalFetchWitness | None
+    )
     explored_data_read_value_domains: tuple[_WorklistValueDomain, ...]
     explored_encryption_input_value_domains: tuple[_WorklistValueDomain, ...]
     explored_encryption_input_transition_count: int
@@ -929,6 +939,9 @@ class _Report(Protocol):
     ]
     bounded_worklist_non_graphical_fetch_value_source_map: tuple[
         _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_non_graphical_fetch_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
     ]
     bounded_worklist_data_read_value_source_map: tuple[
         _WorklistValueSourceContext, ...
@@ -3399,6 +3412,19 @@ def test_worklist_maps_loaded_explored_control_pointer_boundary() -> None:
     )
 
 
+def _assert_loaded_non_graphical_fetch_entry_path(report: _Report) -> None:
+    path = report.bounded_worklist_non_graphical_fetch_entry_path_source_map
+    assert len(path) == _DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH
+    assert tuple(item.code_pointer for item in path) == tuple(
+        range(_DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH)
+    )
+    assert tuple(item.source_position for item in path) == tuple(
+        range(_DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH)
+    )
+    assert path[-1].code_pointer == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+    assert path[-1].source_byte_offset == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+
+
 def test_worklist_maps_loaded_non_graphical_executable_fetch() -> None:
     """Evolved invalid executable cell retains its loaded source coordinate."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -3428,6 +3454,12 @@ def test_worklist_maps_loaded_non_graphical_executable_fetch() -> None:
     assert context.values == (_DOUBLE_JUMP_MERGED_LOADED_NON_GRAPHICAL_VALUE,)
     assert context.initial_source_byte_in_values is False
     assert context.initial_memory_value_in_values is False
+    witness = worklist.explored_non_graphical_fetch_witness
+    assert witness is not None
+    assert witness.address == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+    assert witness.value == _DOUBLE_JUMP_MERGED_LOADED_NON_GRAPHICAL_VALUE
+    assert len(witness.entry_path) == _DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH
+    _assert_loaded_non_graphical_fetch_entry_path(report)
 
 
 def test_worklist_maps_loaded_cycle_body_with_recurrence_data_pointer() -> None:

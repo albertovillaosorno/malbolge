@@ -153,6 +153,16 @@ class WorklistCodeDataAliasWitness:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistNonGraphicalFetchWitness:
+    """First exact reachable non-graphical executable fetch."""
+
+    state: WorklistCycleState
+    entry_path: tuple[WorklistCycleState, ...]
+    address: int
+    value: int
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistEvolvedReadWitness:
     """First exact read whose value differs from initial memory."""
 
@@ -270,6 +280,9 @@ class WorklistAnalysis:
     explored_non_graphical_fetch_transition_count: int
     explored_non_graphical_fetch_addresses: tuple[int, ...]
     explored_non_graphical_fetch_value_domains: tuple[WorklistValueDomain, ...]
+    explored_non_graphical_fetch_witness: (
+        WorklistNonGraphicalFetchWitness | None
+    )
     explored_data_read_value_domains: tuple[WorklistValueDomain, ...]
     explored_encryption_input_value_domains: tuple[WorklistValueDomain, ...]
     explored_encryption_input_transition_count: int
@@ -1164,6 +1177,7 @@ class _Explorer:
     non_graphical_fetch_values: dict[int, set[int]] = field(
         default_factory=dict
     )
+    non_graphical_fetch_witness: WorklistNonGraphicalFetchWitness | None = None
     data_read_values: dict[int, set[int]] = field(default_factory=dict)
     encryption_input_values: dict[int, set[int]] = field(default_factory=dict)
     initial_value_encryption_input_addresses: set[int] = field(
@@ -1481,6 +1495,7 @@ class _Explorer:
             explored_non_graphical_fetch_value_domains=_value_domains(
                 self.non_graphical_fetch_values
             ),
+            explored_non_graphical_fetch_witness=self.non_graphical_fetch_witness,
             explored_data_read_value_domains=_value_domains(
                 self.data_read_values
             ),
@@ -1909,6 +1924,7 @@ class _Explorer:
 
     def _record_non_graphical_fetch_evidence(
         self,
+        node: _ReachabilityNode,
         transition: prefix_transfer.SecondTransition,
     ) -> None:
         if transition.decoded_byte is not None:
@@ -1916,19 +1932,36 @@ class _Explorer:
         if classic.is_graphical(transition.fetched_value):
             message = "non-graphical fetch retained a graphical memory value"
             raise AssertionError(message)
+        address = transition.fetched_address
+        value = transition.fetched_value
         self.non_graphical_fetch_transitions += 1
-        self.non_graphical_fetch_addresses.add(transition.fetched_address)
-        _record_domain_value(
-            self.non_graphical_fetch_values,
-            transition.fetched_address,
-            transition.fetched_value,
+        self.non_graphical_fetch_addresses.add(address)
+        _record_domain_value(self.non_graphical_fetch_values, address, value)
+        if self.non_graphical_fetch_witness is not None:
+            return
+        key = _node_key(node)
+        path = _known_graph_shortest_path(
+            self.edges,
+            self.seen,
+            start=_INITIAL_STATE_KEY,
+            target=key,
+        )
+        if not path:
+            message = "non-graphical fetch witness lost its exact entry path"
+            raise AssertionError(message)
+        self.non_graphical_fetch_witness = WorklistNonGraphicalFetchWitness(
+            state=_cycle_state(key),
+            entry_path=tuple(_cycle_state(item) for item in path),
+            address=address,
+            value=value,
         )
 
     def _record_read_value_evidence(
         self,
+        node: _ReachabilityNode,
         transition: prefix_transfer.SecondTransition,
     ) -> None:
-        self._record_non_graphical_fetch_evidence(transition)
+        self._record_non_graphical_fetch_evidence(node, transition)
         _record_domain_value(
             self.fetch_values,
             transition.fetched_address,
@@ -2134,7 +2167,7 @@ class _Explorer:
             node.snapshot,
         )
         self.accessed_addresses.update(_transition_accesses(step.transition))
-        self._record_read_value_evidence(step.transition)
+        self._record_read_value_evidence(node, step.transition)
         self._record_evolved_read_evidence(node, step.transition)
         self._record_planned_data_write_evidence(step.transition)
         self._record_code_data_alias_evidence(node, step.transition)
