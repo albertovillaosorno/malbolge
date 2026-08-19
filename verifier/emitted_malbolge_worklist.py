@@ -254,6 +254,18 @@ class WorklistDataWriteNoopWitness:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistDataMutationObservation:
+    """One exact explored effective committed data mutation."""
+
+    state: WorklistCycleState
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistDataMutationWitness:
     """First exact explored effective data mutation and its entry path."""
 
@@ -338,6 +350,9 @@ class WorklistAnalysis:
     explored_effective_data_mutation_addresses: tuple[int, ...]
     explored_effective_data_mutation_value_domains: tuple[
         WorklistDataMutationValueDomain, ...
+    ]
+    explored_effective_data_mutation_observations: tuple[
+        WorklistDataMutationObservation, ...
     ]
     explored_fetch_value_domains: tuple[WorklistValueDomain, ...]
     explored_non_graphical_fetch_transition_count: int
@@ -1549,6 +1564,55 @@ def _assert_evolved_read_witness(
         _assert_evolved_read_witness_endpoint(values, witness, label=label)
 
 
+def _data_mutation_observation_projection(
+    observations: dict[_StateKey, tuple[int, int, int, int, bool]],
+) -> tuple[set[int], dict[int, set[int]], dict[int, set[int]]]:
+    addresses: set[int] = set()
+    previous_values: dict[int, set[int]] = {}
+    result_values: dict[int, set[int]] = {}
+    for address, previous, _, result, _ in observations.values():
+        addresses.add(address)
+        previous_values.setdefault(address, set()).add(previous)
+        result_values.setdefault(address, set()).add(result)
+    return addresses, previous_values, result_values
+
+
+def _assert_data_mutation_observations(
+    evidence: tuple[
+        int,
+        set[int],
+        dict[int, set[int]],
+        dict[int, set[int]],
+        dict[_StateKey, tuple[int, int, int, int, bool]],
+        set[_StateKey],
+    ],
+) -> None:
+    (
+        count,
+        addresses,
+        previous_values,
+        result_values,
+        observations,
+        seen,
+    ) = evidence
+    if count != len(observations):
+        message = "effective mutation count disagrees with exact states"
+        raise AssertionError(message)
+    if not set(observations) <= seen:
+        message = "effective mutation evidence retained an unknown state"
+        raise AssertionError(message)
+    if any(
+        previous == result
+        for _, previous, _, result, _ in observations.values()
+    ):
+        message = "effective mutation observation became a final no-op"
+        raise AssertionError(message)
+    projected = _data_mutation_observation_projection(observations)
+    if projected != (addresses, previous_values, result_values):
+        message = "effective mutation domains disagree with exact states"
+        raise AssertionError(message)
+
+
 def _assert_data_mutation_domains(
     transition_count: int,
     addresses: set[int],
@@ -1765,6 +1829,9 @@ class _Explorer:
     effective_data_mutation_result_values: dict[int, set[int]] = field(
         default_factory=dict
     )
+    effective_data_mutation_state_values: dict[
+        _StateKey, tuple[int, int, int, int, bool]
+    ] = field(default_factory=dict)
     fetch_values: dict[int, set[int]] = field(default_factory=dict)
     non_graphical_fetch_addresses: set[int] = field(default_factory=set)
     non_graphical_fetch_values: dict[int, set[int]] = field(
@@ -2025,6 +2092,16 @@ class _Explorer:
             self.effective_data_mutation_addresses,
             previous_values=self.effective_data_mutation_previous_values,
             result_values=self.effective_data_mutation_result_values,
+        )
+        _assert_data_mutation_observations(
+            (
+                self.effective_data_mutation_transitions,
+                self.effective_data_mutation_addresses,
+                self.effective_data_mutation_previous_values,
+                self.effective_data_mutation_result_values,
+                self.effective_data_mutation_state_values,
+                self.seen,
+            )
         )
         _assert_committed_write_count_partition(
             (
@@ -2310,6 +2387,25 @@ class _Explorer:
                     self.effective_data_mutation_previous_values,
                     self.effective_data_mutation_result_values,
                 )
+            ),
+            explored_effective_data_mutation_observations=tuple(
+                WorklistDataMutationObservation(
+                    state=_cycle_state(key),
+                    address=self.effective_data_mutation_state_values[key][0],
+                    previous_value=(
+                        self.effective_data_mutation_state_values[key][1]
+                    ),
+                    written_value=(
+                        self.effective_data_mutation_state_values[key][2]
+                    ),
+                    result_value=(
+                        self.effective_data_mutation_state_values[key][3]
+                    ),
+                    aliases_self_encryption=(
+                        self.effective_data_mutation_state_values[key][4]
+                    ),
+                )
+                for key in sorted(self.effective_data_mutation_state_values)
             ),
             explored_fetch_value_domains=_value_domains(self.fetch_values),
             explored_non_graphical_fetch_transition_count=(
@@ -2969,6 +3065,20 @@ class _Explorer:
             )
         return True
 
+    def _record_data_mutation_observation(
+        self,
+        node: _ReachabilityNode,
+        mutation: tuple[int, int, int, int, bool],
+    ) -> None:
+        address, previous, written, result, aliases = mutation
+        key = _node_key(node)
+        if key in self.effective_data_mutation_state_values:
+            message = "effective mutation state was explored more than once"
+            raise AssertionError(message)
+        self.effective_data_mutation_state_values[key] = (
+            address, previous, written, result, aliases
+        )
+
     def _record_data_mutation_evidence(
         self,
         node: _ReachabilityNode,
@@ -2988,6 +3098,7 @@ class _Explorer:
         _record_domain_value(
             self.effective_data_mutation_result_values, address, result
         )
+        self._record_data_mutation_observation(node, mutation)
         if self.data_mutation_witness is not None:
             return
         key = _node_key(node)

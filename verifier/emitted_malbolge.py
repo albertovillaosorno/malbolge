@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v84"
+_SCHEMA: Final = "malbolge-static-image/v85"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -174,6 +174,25 @@ class BoundedMemoryAccessSourceContext:
     source_position: int | None
     source_byte_offset: int | None
     initial_source_byte: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class BoundedWorklistDataMutationObservationSourceContext:
+    """Source coordinates for one exact effective committed mutation."""
+
+    observation_index: int
+    state: worklist_transfer.WorklistCycleState
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+    source_position: int | None
+    source_byte_offset: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    mutation_source_position: int | None
+    mutation_source_byte_offset: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -521,6 +540,9 @@ class StaticImageReport:
     ]
     bounded_worklist_effective_data_mutation_value_source_map: tuple[
         BoundedWorklistDataMutationValueSourceContext, ...
+    ]
+    bounded_worklist_effective_data_mutation_observation_source_contexts: tuple[
+        BoundedWorklistDataMutationObservationSourceContext, ...
     ]
     bounded_worklist_committed_write_source_map: tuple[
         BoundedWorklistMutationAddressSourceContext, ...
@@ -1398,6 +1420,45 @@ def _bounded_memory_access_source_map(
     return tuple(contexts)
 
 
+def _worklist_data_mutation_observation_source_contexts(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistDataMutationObservationSourceContext, ...]:
+    if worklist is None:
+        return ()
+    contexts: list[BoundedWorklistDataMutationObservationSourceContext] = []
+    for index, observation in enumerate(
+        worklist.explored_effective_data_mutation_observations
+    ):
+        source = _worklist_mutation_address_source_context(
+            observation.state.code_pointer, cells
+        )
+        data_source = _worklist_mutation_address_source_context(
+            observation.state.data_pointer, cells
+        )
+        mutation_source = _worklist_mutation_address_source_context(
+            observation.address, cells
+        )
+        contexts.append(
+            BoundedWorklistDataMutationObservationSourceContext(
+                observation_index=index,
+                state=observation.state,
+                address=observation.address,
+                previous_value=observation.previous_value,
+                written_value=observation.written_value,
+                result_value=observation.result_value,
+                aliases_self_encryption=observation.aliases_self_encryption,
+                source_position=source.source_position,
+                source_byte_offset=source.source_byte_offset,
+                data_source_position=data_source.source_position,
+                data_source_byte_offset=data_source.source_byte_offset,
+                mutation_source_position=mutation_source.source_position,
+                mutation_source_byte_offset=mutation_source.source_byte_offset,
+            )
+        )
+    return tuple(contexts)
+
+
 def _worklist_data_mutation_source_context(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -2262,6 +2323,11 @@ def analyze_source(
         ),
         bounded_worklist_effective_data_mutation_value_source_map=(
             _worklist_data_mutation_value_source_map(worklist, prefix.cells)
+        ),
+        bounded_worklist_effective_data_mutation_observation_source_contexts=(
+            _worklist_data_mutation_observation_source_contexts(
+                worklist, prefix.cells
+            )
         ),
         bounded_worklist_committed_write_source_map=(
             _worklist_committed_write_source_map(worklist, prefix.cells)

@@ -469,6 +469,15 @@ class _WorklistDataWriteNoopWitness(Protocol):
     aliases_self_encryption: bool
 
 
+class _WorklistDataMutationObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+
+
 class _WorklistDataMutationWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -550,6 +559,9 @@ class _WorklistAnalysis(Protocol):
     explored_effective_data_mutation_addresses: tuple[int, ...]
     explored_effective_data_mutation_value_domains: tuple[
         _WorklistDataMutationValueDomain, ...
+    ]
+    explored_effective_data_mutation_observations: tuple[
+        _WorklistDataMutationObservation, ...
     ]
     explored_fetch_value_domains: tuple[_WorklistValueDomain, ...]
     explored_non_graphical_fetch_transition_count: int
@@ -804,6 +816,18 @@ class _WorklistModule(Protocol):
         self,
         terminal_states: dict[str, set[_WorklistStateKey]],
         edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+    ) -> None: ...
+
+    def _assert_data_mutation_observations(
+        self,
+        evidence: tuple[
+            int,
+            set[int],
+            dict[int, set[int]],
+            dict[int, set[int]],
+            dict[_WorklistStateKey, tuple[int, int, int, int, bool]],
+            set[_WorklistStateKey],
+        ],
     ) -> None: ...
 
     def _assert_data_mutation_domains(
@@ -1171,6 +1195,7 @@ def test_input_halt_reports_exact_explored_mutation_footprint() -> None:
     assert result.explored_effective_data_mutation_transition_count == 0
     assert result.explored_effective_data_mutation_addresses == ()
     assert result.explored_effective_data_mutation_value_domains == ()
+    assert result.explored_effective_data_mutation_observations == ()
     assert result.explored_data_mutation_witness is None
 
 
@@ -1530,6 +1555,14 @@ def test_write_partition_rejects_committed_address_drift() -> None:
     with pytest.raises(AssertionError, match="addresses disagree"):
         worklist._assert_committed_write_address_partition(
             ({0}, {40}, set(), {0}, {40})
+        )
+
+
+def test_data_mutation_observations_reject_count_drift() -> None:
+    """Effective mutation counts must match exact explored states."""
+    with pytest.raises(AssertionError, match="exact states"):
+        worklist._assert_data_mutation_observations(
+            (1, {40}, {40: {29_524}}, {40: {29_523}}, {}, {_GRAPH_KEY_A})
         )
 
 
@@ -2400,6 +2433,29 @@ def _assert_entry_noop_witness(result: _WorklistAnalysis) -> None:
     ) == _ENTRY_NOOP_POINTER_PATH
 
 
+def _assert_entry_mutation_observations(
+    result: _WorklistAnalysis,
+) -> None:
+    observations = result.explored_effective_data_mutation_observations
+    assert len(observations) == _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT
+    assert all(item.address == _ENTRY_MUTATION_ADDRESS for item in observations)
+    assert all(
+        item.previous_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+        for item in observations
+    )
+    assert all(
+        (item.state.code_pointer, item.state.data_pointer) == (2, 40)
+        for item in observations
+    )
+    assert all(not item.aliases_self_encryption for item in observations)
+    assert all(item.written_value == item.result_value for item in observations)
+    domain = result.explored_effective_data_mutation_value_domains[0]
+    observed_results = {item.result_value for item in observations}
+    assert observed_results == set(domain.result_values)
+    assert observations[-1].state.eof_seen
+    assert observations[-1].result_value == _EOF_ACCUMULATOR
+
+
 def _assert_entry_mutation_value_domain(result: _WorklistAnalysis) -> None:
     domains = result.explored_effective_data_mutation_value_domains
     assert len(domains) == 1
@@ -2410,6 +2466,7 @@ def _assert_entry_mutation_value_domain(result: _WorklistAnalysis) -> None:
     assert domain.result_values[0] == _ENTRY_MUTATION_RESULT_DOMAIN_MINIMUM
     assert domain.result_values[-1] == _ENTRY_MUTATION_RESULT_DOMAIN_MAXIMUM
     assert _ENTRY_MUTATION_RESULT_VALUE in domain.result_values
+    _assert_entry_mutation_observations(result)
 
 
 def _assert_entry_write_value_domains(result: _WorklistAnalysis) -> None:

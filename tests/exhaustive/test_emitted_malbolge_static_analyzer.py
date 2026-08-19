@@ -67,7 +67,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v84"
+_SCHEMA = "malbolge-static-image/v85"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _EOF_ACCUMULATOR = 59_048
@@ -661,6 +661,15 @@ class _WorklistDataWriteNoopWitness(Protocol):
     aliases_self_encryption: bool
 
 
+class _WorklistDataMutationObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+
+
 class _WorklistDataMutationWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -669,6 +678,22 @@ class _WorklistDataMutationWitness(Protocol):
     written_value: int
     result_value: int
     aliases_self_encryption: bool
+
+
+class _WorklistDataMutationObservationSourceContext(Protocol):
+    observation_index: int
+    state: _WorklistCycleState
+    address: int
+    previous_value: int
+    written_value: int
+    result_value: int
+    aliases_self_encryption: bool
+    source_position: int | None
+    source_byte_offset: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    mutation_source_position: int | None
+    mutation_source_byte_offset: int | None
 
 
 class _WorklistDataMutationSourceContext(Protocol):
@@ -979,6 +1004,9 @@ class _WorklistAnalysis(Protocol):
     explored_effective_data_mutation_value_domains: tuple[
         _WorklistDataMutationValueDomain, ...
     ]
+    explored_effective_data_mutation_observations: tuple[
+        _WorklistDataMutationObservation, ...
+    ]
     explored_fetch_value_domains: tuple[_WorklistValueDomain, ...]
     explored_non_graphical_fetch_transition_count: int
     explored_non_graphical_fetch_addresses: tuple[int, ...]
@@ -1149,6 +1177,9 @@ class _Report(Protocol):
     ]
     bounded_worklist_effective_data_mutation_value_source_map: tuple[
         _WorklistDataMutationValueSourceContext, ...
+    ]
+    bounded_worklist_effective_data_mutation_observation_source_contexts: tuple[
+        _WorklistDataMutationObservationSourceContext, ...
     ]
     bounded_worklist_committed_write_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
@@ -3280,6 +3311,34 @@ def _assert_entry_evolved_data_observation_source_map(
     assert contexts[-1].observed_value == _EOF_ACCUMULATOR
 
 
+def _assert_entry_mutation_observation_source_map(report: _Report) -> None:
+    contexts = (
+        report
+        .bounded_worklist_effective_data_mutation_observation_source_contexts
+    )
+    assert len(contexts) == _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT
+    assert tuple(item.observation_index for item in contexts) == tuple(
+        range(_ENTRY_EFFECTIVE_DATA_MUTATION_COUNT)
+    )
+    assert all(item.address == _ENTRY_MUTATION_ADDRESS for item in contexts)
+    assert all(
+        item.previous_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+        for item in contexts
+    )
+    mutation_code_pointer = _ENTRY_WRAP_POINTER_PATH[2][0]
+    assert all(
+        item.source_position == mutation_code_pointer for item in contexts
+    )
+    assert all(
+        item.source_byte_offset == mutation_code_pointer for item in contexts
+    )
+    assert all(item.data_source_position is None for item in contexts)
+    assert all(item.mutation_source_position is None for item in contexts)
+    assert all(not item.aliases_self_encryption for item in contexts)
+    assert contexts[-1].state.eof_seen
+    assert contexts[-1].result_value == _EOF_ACCUMULATOR
+
+
 def _assert_entry_wrap_mutation_context(
     report: _Report,
     worklist: _WorklistAnalysis,
@@ -3315,6 +3374,7 @@ def _assert_entry_wrap_mutation_context(
     assert context.source_byte_offset is None
     assert context.initial_source_byte is None
     assert context.previous_value_matches_initial_source is None
+    _assert_entry_mutation_observation_source_map(report)
     _assert_entry_evolved_data_observation_source_map(report)
 
 
