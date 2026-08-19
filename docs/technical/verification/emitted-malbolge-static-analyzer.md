@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v66` retains exact `entry_transition` through
+`malbolge-static-image/v67` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -323,7 +323,11 @@ family has zero state merges despite 257 cycle-closing repeated edges. Schema
 v66 publishes that cycle-closing count directly and checks the exact partition.
 The merged graph has
 255 merges plus 2 cycle-closing repeats; near-cap has 0 plus 257, and each sum
-equals the existing repeated-state-edge total.
+equals the existing repeated-state-edge total. Schema v67 adds the first exact
+cycle-closing repeated-edge witness: source state, shortest entry path, target
+state, and target index within that path. The branch-merged fixture's target is
+loaded C=40 and maps to source position 40; the near-cap target is recurrence
+C=15 and therefore remains source-null.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

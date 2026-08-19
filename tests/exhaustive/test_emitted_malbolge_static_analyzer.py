@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v66"
+_SCHEMA = "malbolge-static-image/v67"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -472,6 +472,13 @@ class _WorklistValueDomain(Protocol):
     values: tuple[int, ...]
 
 
+class _WorklistCycleClosingRepeatedEdgeWitness(Protocol):
+    source_state: _WorklistCycleState
+    source_entry_path: tuple[_WorklistCycleState, ...]
+    target_state: _WorklistCycleState
+    target_entry_path_state_index: int
+
+
 class _WorklistStateMergeWitness(Protocol):
     source_state: _WorklistCycleState
     source_entry_path: tuple[_WorklistCycleState, ...]
@@ -564,6 +571,14 @@ class _WorklistControlPathSourceContext(Protocol):
     initial_data_source_byte: int | None
 
 
+class _WorklistCycleClosingRepeatedEdgeSourceContext(Protocol):
+    source_entry_path_source_map: tuple[
+        _WorklistControlPathSourceContext, ...
+    ]
+    target_entry_path_state_index: int
+    target_state_source_context: _WorklistControlPathSourceContext
+
+
 class _WorklistStateMergeSourceContext(Protocol):
     source_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
@@ -608,6 +623,9 @@ class _WorklistAnalysis(Protocol):
     repeated_state_edges: int
     explored_state_merge_transition_count: int
     explored_cycle_closing_repeated_edge_count: int
+    explored_cycle_closing_repeated_edge_witness: (
+        _WorklistCycleClosingRepeatedEdgeWitness | None
+    )
     explored_state_merge_witness: _WorklistStateMergeWitness | None
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[_WorklistCycleState, ...]
@@ -754,6 +772,9 @@ class _Report(Protocol):
     bounded_continuations: tuple[_SecondTransition, ...]
     bounded_state_snapshots: tuple[_StateSnapshot, ...]
     bounded_worklist: _WorklistAnalysis | None
+    bounded_worklist_cycle_closing_repeated_edge_source_context: (
+        _WorklistCycleClosingRepeatedEdgeSourceContext | None
+    )
     bounded_worklist_state_merge_source_context: (
         _WorklistStateMergeSourceContext | None
     )
@@ -3014,6 +3035,25 @@ def test_worklist_maps_terminal_control_path_with_status() -> None:
     assert report.bounded_worklist_frontier_entry_path_source_map == ()
 
 
+def _assert_cycle_closing_source_context(
+    report: _Report,
+    worklist: _WorklistAnalysis,
+    *,
+    expected_code_pointer: int,
+    expected_source_position: int | None,
+) -> None:
+    closing = worklist.explored_cycle_closing_repeated_edge_witness
+    assert closing is not None
+    source = report.bounded_worklist_cycle_closing_repeated_edge_source_context
+    assert source is not None
+    assert source.target_entry_path_state_index == (
+        len(source.source_entry_path_source_map) - 1
+    )
+    target_source = source.target_state_source_context
+    assert target_source.code_pointer == expected_code_pointer
+    assert target_source.source_position == expected_source_position
+
+
 def test_report_worklist_proves_near_cap_input_cycle() -> None:
     """Public worklist closes a 16-state cycle path near its state cap."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -3030,6 +3070,12 @@ def test_report_worklist_proves_near_cap_input_cycle() -> None:
     )
     assert worklist.explored_state_merge_witness is None
     assert report.bounded_worklist_state_merge_source_context is None
+    _assert_cycle_closing_source_context(
+        report,
+        worklist,
+        expected_code_pointer=_NEAR_CAP_INPUT_CYCLE_POINTER_PATH[-1][0],
+        expected_source_position=None,
+    )
     assert worklist.reachable_cycle_detected
     assert worklist.maximum_first_seen_transition_index == len(
         _NEAR_CAP_INPUT_CYCLE_POINTER_PATH
@@ -3060,6 +3106,12 @@ def _assert_branch_merge_evidence(
         worklist.explored_state_merge_transition_count
         + worklist.explored_cycle_closing_repeated_edge_count
         == worklist.repeated_state_edges
+    )
+    _assert_cycle_closing_source_context(
+        report,
+        worklist,
+        expected_code_pointer=_MERGED_INPUT_CYCLE_PATH_LENGTH - 1,
+        expected_source_position=_MERGED_INPUT_CYCLE_PATH_LENGTH - 1,
     )
     merge = worklist.explored_state_merge_witness
     assert merge is not None

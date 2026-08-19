@@ -308,6 +308,13 @@ class _WorklistValueDomain(Protocol):
     values: tuple[int, ...]
 
 
+class _WorklistCycleClosingRepeatedEdgeWitness(Protocol):
+    source_state: _WorklistCycleState
+    source_entry_path: tuple[_WorklistCycleState, ...]
+    target_state: _WorklistCycleState
+    target_entry_path_state_index: int
+
+
 class _WorklistStateMergeWitness(Protocol):
     source_state: _WorklistCycleState
     source_entry_path: tuple[_WorklistCycleState, ...]
@@ -366,6 +373,9 @@ class _WorklistAnalysis(Protocol):
     repeated_state_edges: int
     explored_state_merge_transition_count: int
     explored_cycle_closing_repeated_edge_count: int
+    explored_cycle_closing_repeated_edge_witness: (
+        _WorklistCycleClosingRepeatedEdgeWitness | None
+    )
     explored_state_merge_witness: _WorklistStateMergeWitness | None
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[_WorklistCycleState, ...]
@@ -973,6 +983,17 @@ def test_deeper_input_dependent_jump_chain_closes_exact_cycle() -> None:
     assert result.closed_recurrent_component_count == _INPUT_VALUE_COUNT
 
 
+def _assert_cycle_closing_self_loop_witness(
+    witness: _WorklistCycleClosingRepeatedEdgeWitness | None,
+) -> None:
+    assert witness is not None
+    assert witness.source_state == witness.target_state
+    assert witness.source_entry_path[-1] == witness.source_state
+    assert witness.target_entry_path_state_index == (
+        len(witness.source_entry_path) - 1
+    )
+
+
 def test_near_cap_input_dependent_jump_chain_closes_exact_cycle() -> None:
     """Fourteen post-input jumps close within the reviewed state ceiling."""
     result = worklist.analyze_reachability(
@@ -984,6 +1005,9 @@ def test_near_cap_input_dependent_jump_chain_closes_exact_cycle() -> None:
     assert result.explored_state_merge_transition_count == 0
     assert (
         result.explored_cycle_closing_repeated_edge_count == _INPUT_VALUE_COUNT
+    )
+    _assert_cycle_closing_self_loop_witness(
+        result.explored_cycle_closing_repeated_edge_witness
     )
     assert result.explored_state_merge_witness is None
     assert result.reachable_cycle_detected
@@ -1015,6 +1039,9 @@ def _assert_merged_repeated_edge_partition(result: _WorklistAnalysis) -> None:
         result.explored_state_merge_transition_count
         + result.explored_cycle_closing_repeated_edge_count
         == result.repeated_state_edges
+    )
+    _assert_cycle_closing_self_loop_witness(
+        result.explored_cycle_closing_repeated_edge_witness
     )
 
 

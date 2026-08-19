@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v66 retains the legacy exact entry-through-fifth
+load decode. Schema v67 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -313,6 +313,11 @@ merges despite 257 repeated edges. Schema v66 makes the complementary repeated
 edge class explicit: the merged fixture has 255 merges plus 2 cycle-closing
 repeats, while the near-cap jump family has 0 merges plus 257 cycle-closing
 repeats. In both cases the partition exactly equals `repeated_state_edges`.
+Schema v67 publishes the first cycle-closing repeated-edge witness with its
+source state, shortest entry path, target state, and target index on that path.
+The 41-state branch-merged fixture closes at loaded C=40 and source-maps that
+target; the near-cap jump fixture closes at recurrence C=15, which stays
+explicitly source-null.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored

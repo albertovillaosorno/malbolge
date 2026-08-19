@@ -111,6 +111,16 @@ class WorklistValueDomain:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistCycleClosingRepeatedEdgeWitness:
+    """First exact repeated edge whose target lies on the source entry path."""
+
+    source_state: WorklistCycleState
+    source_entry_path: tuple[WorklistCycleState, ...]
+    target_state: WorklistCycleState
+    target_entry_path_state_index: int
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistStateMergeWitness:
     """First exact repeated edge that merges distinct entry paths."""
 
@@ -189,6 +199,9 @@ class WorklistAnalysis:
     repeated_state_edges: int
     explored_state_merge_transition_count: int
     explored_cycle_closing_repeated_edge_count: int
+    explored_cycle_closing_repeated_edge_witness: (
+        WorklistCycleClosingRepeatedEdgeWitness | None
+    )
     explored_state_merge_witness: WorklistStateMergeWitness | None
     reachable_cycle_detected: bool
     reachable_cycle_witness: tuple[WorklistCycleState, ...]
@@ -976,6 +989,9 @@ class _Explorer:
     repeated_edges: int = 0
     state_merge_transitions: int = 0
     cycle_closing_repeated_edges: int = 0
+    cycle_closing_repeated_edge_witness: (
+        WorklistCycleClosingRepeatedEdgeWitness | None
+    ) = None
     state_merge_witness: WorklistStateMergeWitness | None = None
     input_branch_points: int = 0
     wraparound_transitions: int = 0
@@ -1059,6 +1075,9 @@ class _Explorer:
             explored_state_merge_transition_count=self.state_merge_transitions,
             explored_cycle_closing_repeated_edge_count=(
                 self.cycle_closing_repeated_edges
+            ),
+            explored_cycle_closing_repeated_edge_witness=(
+                self.cycle_closing_repeated_edge_witness
             ),
             explored_state_merge_witness=self.state_merge_witness,
             reachable_cycle_detected=has_cycle,
@@ -1269,6 +1288,18 @@ class _Explorer:
         )
         if target_key in source_path:
             self.cycle_closing_repeated_edges += 1
+            if self.cycle_closing_repeated_edge_witness is None:
+                target_index = source_path.index(target_key)
+                self.cycle_closing_repeated_edge_witness = (
+                    WorklistCycleClosingRepeatedEdgeWitness(
+                        source_state=_cycle_state(source_key),
+                        source_entry_path=tuple(
+                            _cycle_state(item) for item in source_path
+                        ),
+                        target_state=_cycle_state(target_key),
+                        target_entry_path_state_index=target_index,
+                    )
+                )
             return
         self.state_merge_transitions += 1
         if self.state_merge_witness is not None:

@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v66"
+_SCHEMA: Final = "malbolge-static-image/v67"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -230,6 +230,17 @@ class BoundedWorklistControlPathSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistCycleClosingRepeatedEdgeSourceContext:
+    """Source map for the first exact cycle-closing repeated edge."""
+
+    source_entry_path_source_map: tuple[
+        BoundedWorklistControlPathSourceContext, ...
+    ]
+    target_entry_path_state_index: int
+    target_state_source_context: BoundedWorklistControlPathSourceContext
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistStateMergeSourceContext:
     """Source maps for the first exact non-cycle repeated-state merge edge."""
 
@@ -296,6 +307,9 @@ class StaticImageReport:
     bounded_continuations: tuple[prefix_transfer.SecondTransition, ...]
     bounded_state_snapshots: tuple[prefix_transfer.StateSnapshot, ...]
     bounded_worklist: worklist_transfer.WorklistAnalysis | None
+    bounded_worklist_cycle_closing_repeated_edge_source_context: (
+        BoundedWorklistCycleClosingRepeatedEdgeSourceContext | None
+    )
     bounded_worklist_state_merge_source_context: (
         BoundedWorklistStateMergeSourceContext | None
     )
@@ -1272,6 +1286,40 @@ def _worklist_control_path_source_map(
     return tuple(contexts)
 
 
+def _worklist_cycle_closing_repeated_edge_source_context(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> BoundedWorklistCycleClosingRepeatedEdgeSourceContext | None:
+    if (
+        worklist is None
+        or worklist.explored_cycle_closing_repeated_edge_witness is None
+    ):
+        return None
+    witness = worklist.explored_cycle_closing_repeated_edge_witness
+    source_map = _worklist_control_path_source_map(
+        witness.source_entry_path, cells
+    )
+    target_index = witness.target_entry_path_state_index
+    if target_index < 0 or target_index >= len(source_map):
+        message = (
+            "cycle-closing repeated edge target is outside its source path"
+        )
+        raise AssertionError(message)
+    target_source = source_map[target_index]
+    target_state = witness.target_state
+    if (
+        target_source.code_pointer != target_state.code_pointer
+        or target_source.data_pointer != target_state.data_pointer
+    ):
+        message = "cycle-closing repeated edge source map lost its target state"
+        raise AssertionError(message)
+    return BoundedWorklistCycleClosingRepeatedEdgeSourceContext(
+        source_entry_path_source_map=source_map,
+        target_entry_path_state_index=target_index,
+        target_state_source_context=target_source,
+    )
+
+
 def _worklist_state_merge_source_context(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -1461,6 +1509,11 @@ def analyze_source(
         bounded_continuations=prefix.continuations,
         bounded_state_snapshots=prefix.state_snapshots,
         bounded_worklist=worklist,
+        bounded_worklist_cycle_closing_repeated_edge_source_context=(
+            _worklist_cycle_closing_repeated_edge_source_context(
+                worklist, prefix.cells
+            )
+        ),
         bounded_worklist_state_merge_source_context=(
             _worklist_state_merge_source_context(worklist, prefix.cells)
         ),
