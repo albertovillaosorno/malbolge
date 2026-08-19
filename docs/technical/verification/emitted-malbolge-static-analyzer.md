@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v76` retains exact `entry_transition` through
+`malbolge-static-image/v77` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -387,6 +387,15 @@ state and its shortest entry path, then source-maps that path. The recurrence
 position 123 after 124 states and maps every C position 0 through 123 to loaded
 source, directly connecting invalid executable evidence to the bounded control
 path. This remains a first-witness link, not exhaustive unbounded reachability.
+Schema v77 retains the exact explored input-branch states in deterministic state
+order and source-maps each state's C/D pointers independently. Each source
+context also records the exact state index when that branch lies on the selected
+reachable-cycle, closed-recurrent, or frontier entry path. The 41-state
+branch-merged cycle places its single initial input branch at index 0 of both
+closed paths. The whitespace-prefixed truncated graph instead links that branch
+to frontier index 0 and raw source offset 2. These are explicit bounded path
+links; absent indices do not prove an input branch unreachable beyond a
+frontier.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v76"
+_SCHEMA: Final = "malbolge-static-image/v77"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -227,6 +227,23 @@ class BoundedWorklistControlPathSourceContext:
     data_source_position: int | None
     data_source_byte_offset: int | None
     initial_data_source_byte: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class BoundedWorklistInputBranchSourceContext:
+    """Source and selected-path context for one exact explored input branch."""
+
+    input_branch_state_index: int
+    state: worklist_transfer.WorklistCycleState
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+    reachable_cycle_entry_path_state_index: int | None
+    closed_recurrent_entry_path_state_index: int | None
+    frontier_entry_path_state_index: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -456,6 +473,9 @@ class StaticImageReport:
     ]
     bounded_worklist_wraparound_transition_source_map: tuple[
         BoundedWorklistWrapTransitionSourceContext, ...
+    ]
+    bounded_worklist_input_branch_source_contexts: tuple[
+        BoundedWorklistInputBranchSourceContext, ...
     ]
     bounded_worklist_cycle_witness_source_map: tuple[
         BoundedWorklistCycleStateSourceContext, ...
@@ -1420,6 +1440,60 @@ def _worklist_cycle_closing_repeated_edge_source_context(
     )
 
 
+def _worklist_path_state_index(
+    path: tuple[worklist_transfer.WorklistCycleState, ...] | None,
+    state: worklist_transfer.WorklistCycleState,
+) -> int | None:
+    if path is None:
+        return None
+    try:
+        return path.index(state)
+    except ValueError:
+        return None
+
+
+def _worklist_input_branch_source_contexts(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistInputBranchSourceContext, ...]:
+    if worklist is None:
+        return ()
+    contexts: list[BoundedWorklistInputBranchSourceContext] = []
+    for index, state in enumerate(worklist.input_branch_states):
+        source = _worklist_mutation_address_source_context(
+            state.code_pointer, cells
+        )
+        data_source = _worklist_mutation_address_source_context(
+            state.data_pointer, cells
+        )
+        contexts.append(
+            BoundedWorklistInputBranchSourceContext(
+                input_branch_state_index=index,
+                state=state,
+                source_position=source.source_position,
+                source_byte_offset=source.source_byte_offset,
+                initial_source_byte=source.initial_source_byte,
+                data_source_position=data_source.source_position,
+                data_source_byte_offset=data_source.source_byte_offset,
+                initial_data_source_byte=data_source.initial_source_byte,
+                reachable_cycle_entry_path_state_index=(
+                    _worklist_path_state_index(
+                        worklist.reachable_cycle_entry_path, state
+                    )
+                ),
+                closed_recurrent_entry_path_state_index=(
+                    _worklist_path_state_index(
+                        worklist.closed_recurrent_entry_path, state
+                    )
+                ),
+                frontier_entry_path_state_index=_worklist_path_state_index(
+                    worklist.frontier_entry_path, state
+                ),
+            )
+        )
+    return tuple(contexts)
+
+
 def _worklist_cycle_state_source_map(
     states: tuple[worklist_transfer.WorklistCycleState, ...] | None,
     cells: tuple[InitialCell, ...],
@@ -2021,6 +2095,9 @@ def analyze_source(
         ),
         bounded_worklist_wraparound_transition_source_map=(
             _worklist_wraparound_transition_source_map(worklist, prefix.cells)
+        ),
+        bounded_worklist_input_branch_source_contexts=(
+            _worklist_input_branch_source_contexts(worklist, prefix.cells)
         ),
         bounded_worklist_cycle_witness_source_map=(
             _worklist_cycle_state_source_map(

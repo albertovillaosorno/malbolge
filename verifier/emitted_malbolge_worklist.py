@@ -250,6 +250,7 @@ class WorklistAnalysis:
     closed_recurrent_cycle_witness: tuple[WorklistCycleState, ...] | None
     closed_recurrent_entry_path: tuple[WorklistCycleState, ...] | None
     input_branch_points: int
+    input_branch_states: tuple[WorklistCycleState, ...]
     terminal_status_counts: tuple[tuple[str, int], ...]
     closed_terminal_status_counts: tuple[tuple[str, int], ...] | None
     closed_all_paths_terminate: bool | None
@@ -1105,6 +1106,22 @@ def _committed_data_mutation(
     return address, previous, written, result, aliases
 
 
+def _assert_input_branch_evidence(
+    branch_count: int,
+    branch_states: set[_StateKey],
+    seen: set[_StateKey],
+) -> None:
+    if branch_count != len(branch_states):
+        message = "input branch count disagrees with exact branch states"
+        raise AssertionError(message)
+    if not branch_states <= seen:
+        message = "input branch evidence retained an unknown graph state"
+        raise AssertionError(message)
+    if any(state[-1] for state in branch_states):
+        message = "input branch evidence retained an EOF-seen state"
+        raise AssertionError(message)
+
+
 def _assert_frontier_evidence(
     frontier_states: int,
     frontier_path: tuple[_StateKey, ...] | None,
@@ -1396,6 +1413,7 @@ class _Explorer:
     ) = None
     state_merge_witness: WorklistStateMergeWitness | None = None
     input_branch_points: int = 0
+    input_branch_states: set[_StateKey] = field(default_factory=set)
     wraparound_transitions: int = 0
     code_pointer_wrap_transitions: int = 0
     data_pointer_wrap_transitions: int = 0
@@ -1527,6 +1545,11 @@ class _Explorer:
             self.terminal_states,
             self.seen,
         )
+        _assert_input_branch_evidence(
+            self.input_branch_points,
+            self.input_branch_states,
+            self.seen,
+        )
         ordered_addresses = tuple(sorted(self.accessed_addresses))
         highest_address = ordered_addresses[-1]
         cycle_keys = _known_graph_cycle_witness(self.edges, self.seen)
@@ -1641,6 +1664,9 @@ class _Explorer:
             closed_recurrent_cycle_witness=recurrence.cycle_witness,
             closed_recurrent_entry_path=recurrence.entry_path,
             input_branch_points=self.input_branch_points,
+            input_branch_states=tuple(
+                _cycle_state(key) for key in sorted(self.input_branch_states)
+            ),
             terminal_status_counts=tuple(sorted(self.terminal_counts.items())),
             closed_terminal_status_counts=(
                 None
@@ -2415,6 +2441,7 @@ class _Explorer:
             and not node.eof_seen
         ):
             self.input_branch_points += 1
+            self.input_branch_states.add(_node_key(node))
         successors = _successors(node, step)
         if successors:
             return self._admit_successors(node, successors)

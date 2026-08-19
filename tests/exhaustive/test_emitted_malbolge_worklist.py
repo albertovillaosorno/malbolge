@@ -463,6 +463,7 @@ class _WorklistAnalysis(Protocol):
     closed_recurrent_cycle_witness: tuple[_WorklistCycleState, ...] | None
     closed_recurrent_entry_path: tuple[_WorklistCycleState, ...] | None
     input_branch_points: int
+    input_branch_states: tuple[_WorklistCycleState, ...]
     terminal_status_counts: tuple[tuple[str, int], ...]
     closed_terminal_status_counts: tuple[tuple[str, int], ...] | None
     closed_all_paths_terminate: bool | None
@@ -660,6 +661,13 @@ class _WorklistModule(Protocol):
         require_witness: bool,
     ) -> None: ...
 
+    def _assert_input_branch_evidence(
+        self,
+        branch_count: int,
+        branch_states: set[_WorklistStateKey],
+        seen: set[_WorklistStateKey],
+    ) -> None: ...
+
     def _assert_frontier_evidence(
         self,
         frontier_states: int,
@@ -752,6 +760,19 @@ def _assert_fixed_cycle_closed_recurrence(result: _WorklistAnalysis) -> None:
     _assert_fixed_cycle_entry_path(path, state)
 
 
+def _assert_initial_input_branch_state(result: _WorklistAnalysis) -> None:
+    assert result.input_branch_points == 1
+    assert len(result.input_branch_states) == 1
+    branch = result.input_branch_states[0]
+    assert (branch.code_pointer, branch.data_pointer, branch.accumulator) == (
+        0,
+        0,
+        0,
+    )
+    assert branch.memory_overrides == ()
+    assert not branch.eof_seen
+
+
 def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     """One input then halt closes exactly 256 byte states plus EOF."""
     result = worklist.analyze_reachability(
@@ -770,7 +791,7 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     assert result.known_graph_largest_cyclic_component_states == 0
     assert result.known_graph_cyclic_components == ()
     _assert_no_closed_recurrence(result)
-    assert result.input_branch_points == 1
+    _assert_initial_input_branch_state(result)
     assert result.terminal_status_counts == (("halted", _INPUT_VALUE_COUNT),)
     assert result.closed_terminal_status_counts == ((
         "halted",
@@ -1070,6 +1091,11 @@ def test_double_input_merges_are_not_silently_discarded() -> None:
     assert result.known_graph_largest_cyclic_component_states == 0
     _assert_no_closed_recurrence(result)
     assert result.input_branch_points == _DOUBLE_INPUT_BRANCH_POINTS
+    assert len(result.input_branch_states) == _DOUBLE_INPUT_BRANCH_POINTS
+    assert result.input_branch_states[0].code_pointer == 0
+    second_branch_states = result.input_branch_states[1:]
+    assert all(state.code_pointer == 1 for state in second_branch_states)
+    assert all(not state.eof_seen for state in result.input_branch_states)
     assert result.terminal_status_counts == (
         ("halted", _INPUT_VALUE_COUNT),
     )
@@ -1509,6 +1535,16 @@ def test_input_domain_becomes_eof_only_after_eof() -> None:
     successor = successors[0]
     assert successor.eof_seen
     assert successor.snapshot.accumulator == _EOF_ACCUMULATOR
+
+
+def test_input_branch_invariant_rejects_count_state_drift() -> None:
+    """Input branch totals cannot diverge from their exact state set."""
+    with pytest.raises(AssertionError, match="branch count"):
+        worklist._assert_input_branch_evidence(
+            1,
+            set(),
+            {_GRAPH_KEY_A},
+        )
 
 
 def test_frontier_invariant_rejects_truncation_without_states() -> None:
