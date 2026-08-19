@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v70` retains exact `entry_transition` through
+`malbolge-static-image/v71` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -345,7 +345,15 @@ semantic data read is likewise partitioned; fail-closed invariants require each
 partition to sum to its exact explored total. This is deliberately value
 equality rather than provenance: a write/reversion could equal the initial
 value. The report source-maps the initial-value-equal address sets where loaded
-source coordinates exist and leaves recurrence addresses null.
+source coordinates exist and leaves recurrence addresses null. Schema v71
+extends the same exact initial-value partition to self-encryption inputs. The
+non-equal class is named changed-from-initial because a same-transition planned
+data write can affect the encryption input before commit validation. Closed
+input-crazy has 258 encryption inputs: one initial-value-equal entry input at
+address 0 and 257 changed inputs at address 1 spanning 58 exact values. Every
+changed branch rejects invalid self-encryption, so zero data writes commit; the
+report therefore keeps changed-input value evidence separate from committed
+memory provenance and source-maps both classes.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

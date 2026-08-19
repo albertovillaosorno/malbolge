@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v70"
+_SCHEMA: Final = "malbolge-static-image/v71"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -372,6 +372,12 @@ class StaticImageReport:
     bounded_worklist_encryption_input_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
     ]
+    bounded_worklist_initial_value_encryption_input_source_map: tuple[
+        BoundedWorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_changed_from_initial_encryption_input_value_source_map: (
+        tuple[BoundedWorklistValueSourceContext, ...]
+    )
     bounded_worklist_initial_value_fetch_source_map: tuple[
         BoundedWorklistMutationAddressSourceContext, ...
     ]
@@ -1687,6 +1693,30 @@ def analyze_source(
                 ()
                 if worklist is None
                 else worklist.explored_encryption_input_value_domains,
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_initial_value_encryption_input_source_map=(
+            _worklist_address_source_map(
+                (
+                    ()
+                    if worklist is None
+                    else (
+                        worklist.explored_initial_value_encryption_input_addresses
+                    )
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_changed_from_initial_encryption_input_value_source_map=(
+            _worklist_value_source_map(
+                (
+                    ()
+                    if worklist is None
+                    else (
+                        worklist.explored_changed_from_initial_encryption_input_value_domains
+                    )
+                ),
                 prefix.cells,
             )
         ),

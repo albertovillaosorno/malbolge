@@ -234,6 +234,9 @@ _ENTRY_DATA_READ_DOMAIN_COUNT = 257
 _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT = 58
 _INPUT_CRAZY_ENCRYPTION_DOMAIN_MINIMUM = 32
 _INPUT_CRAZY_ENCRYPTION_DOMAIN_MAXIMUM = 29_555
+_INPUT_CRAZY_ENCRYPTION_INPUT_COUNT = 258
+_INPUT_CRAZY_INITIAL_ENCRYPTION_INPUT_COUNT = 1
+_INPUT_CRAZY_CHANGED_ENCRYPTION_INPUT_COUNT = 257
 _WRAP_WRITE_TRANSITION = 3
 _SECOND_TRANSITION = 2
 _GRAPH_KEY_A: _WorklistStateKey = (0, 0, 0, (), False)
@@ -457,6 +460,14 @@ class _WorklistAnalysis(Protocol):
     explored_fetch_value_domains: tuple[_WorklistValueDomain, ...]
     explored_data_read_value_domains: tuple[_WorklistValueDomain, ...]
     explored_encryption_input_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_encryption_input_transition_count: int
+    explored_initial_value_encryption_input_transition_count: int
+    explored_initial_value_encryption_input_addresses: tuple[int, ...]
+    explored_changed_from_initial_encryption_input_transition_count: int
+    explored_changed_from_initial_encryption_input_addresses: tuple[int, ...]
+    explored_changed_from_initial_encryption_input_value_domains: tuple[
+        _WorklistValueDomain, ...
+    ]
     explored_committed_data_write_value_domains: tuple[
         _WorklistValueDomain, ...
     ]
@@ -695,6 +706,18 @@ def test_input_halt_reports_exact_read_value_domains() -> None:
         result.explored_encryption_input_value_domains, 0
     )
     assert encryption_values == (117,)
+    assert result.explored_encryption_input_transition_count == 1
+    assert result.explored_initial_value_encryption_input_transition_count == 1
+    assert result.explored_initial_value_encryption_input_addresses == (0,)
+    assert (
+        result.explored_changed_from_initial_encryption_input_transition_count
+        == 0
+    )
+    assert result.explored_changed_from_initial_encryption_input_addresses == ()
+    assert (
+        result.explored_changed_from_initial_encryption_input_value_domains
+        == ()
+    )
 
 
 def test_input_crazy_reports_exact_encryption_input_domain() -> None:
@@ -707,6 +730,31 @@ def test_input_crazy_reports_exact_encryption_input_domain() -> None:
     assert len(values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
     assert values[0] == _INPUT_CRAZY_ENCRYPTION_DOMAIN_MINIMUM
     assert values[-1] == _INPUT_CRAZY_ENCRYPTION_DOMAIN_MAXIMUM
+    assert (
+        result.explored_encryption_input_transition_count
+        == _INPUT_CRAZY_ENCRYPTION_INPUT_COUNT
+    )
+    assert (
+        result.explored_initial_value_encryption_input_transition_count
+        == _INPUT_CRAZY_INITIAL_ENCRYPTION_INPUT_COUNT
+    )
+    assert result.explored_initial_value_encryption_input_addresses == (0,)
+    assert (
+        result.explored_changed_from_initial_encryption_input_transition_count
+        == _INPUT_CRAZY_CHANGED_ENCRYPTION_INPUT_COUNT
+    )
+    assert (
+        result.explored_changed_from_initial_encryption_input_addresses == (1,)
+    )
+    changed = _domain_values(
+        result.explored_changed_from_initial_encryption_input_value_domains, 1
+    )
+    assert changed == values
+    assert (
+        result.explored_initial_value_encryption_input_transition_count
+        + result.explored_changed_from_initial_encryption_input_transition_count
+        == result.explored_encryption_input_transition_count
+    )
     assert _domain_values(result.explored_data_read_value_domains, 1) == (61,)
     assert result.explored_planned_data_write_transition_count == (
         _INPUT_VALUE_COUNT

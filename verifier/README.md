@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v70 retains the legacy exact entry-through-fifth
+load decode. Schema v71 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -337,10 +337,16 @@ queue closure. Schema v70 partitions every explored instruction fetch into
 initial-value-equal or evolved-value classes and every semantic data read into
 the same two classes. Internal invariants require those counts to sum to
 explored states and total semantic data reads respectively. Equality to initial
-memory is
-reported only as value equality, never as proof that the cell was unmodified;
+memory is reported only as value equality, never as proof that the cell was
+unmodified;
 source maps cover the initial-value-equal address sets with recurrence addresses
-left null.
+left null. Schema v71 applies the same exact initial-value partition to
+self-encryption inputs, but names the non-equal side `changed-from-initial`
+rather than evolved-memory provenance. The closed input-crazy graph has 258
+self-encryption inputs: entry is initial-value-equal at address 0, while all 257
+post-input branches are changed at address 1 across 58 exact values. Those
+branches all reject, so the changed input evidence remains distinct from a
+committed data-write claim. The report source-maps both classes.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored

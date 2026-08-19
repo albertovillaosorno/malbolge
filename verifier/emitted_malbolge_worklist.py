@@ -251,6 +251,14 @@ class WorklistAnalysis:
     explored_fetch_value_domains: tuple[WorklistValueDomain, ...]
     explored_data_read_value_domains: tuple[WorklistValueDomain, ...]
     explored_encryption_input_value_domains: tuple[WorklistValueDomain, ...]
+    explored_encryption_input_transition_count: int
+    explored_initial_value_encryption_input_transition_count: int
+    explored_initial_value_encryption_input_addresses: tuple[int, ...]
+    explored_changed_from_initial_encryption_input_transition_count: int
+    explored_changed_from_initial_encryption_input_addresses: tuple[int, ...]
+    explored_changed_from_initial_encryption_input_value_domains: tuple[
+        WorklistValueDomain, ...
+    ]
     explored_committed_data_write_value_domains: tuple[WorklistValueDomain, ...]
     explored_self_encryption_output_value_domains: tuple[
         WorklistValueDomain, ...
@@ -990,6 +998,15 @@ class _Explorer:
     fetch_values: dict[int, set[int]] = field(default_factory=dict)
     data_read_values: dict[int, set[int]] = field(default_factory=dict)
     encryption_input_values: dict[int, set[int]] = field(default_factory=dict)
+    initial_value_encryption_input_addresses: set[int] = field(
+        default_factory=set
+    )
+    changed_from_initial_encryption_input_addresses: set[int] = field(
+        default_factory=set
+    )
+    changed_from_initial_encryption_input_values: dict[int, set[int]] = field(
+        default_factory=dict
+    )
     committed_data_write_values: dict[int, set[int]] = field(
         default_factory=dict
     )
@@ -1014,6 +1031,9 @@ class _Explorer:
     committed_data_write_noop_transitions: int = 0
     self_encryption_transitions: int = 0
     effective_data_mutation_transitions: int = 0
+    encryption_input_transitions: int = 0
+    initial_value_encryption_input_transitions: int = 0
+    changed_from_initial_encryption_input_transitions: int = 0
     initial_value_fetch_transitions: int = 0
     evolved_fetch_transitions: int = 0
     data_read_transitions: int = 0
@@ -1072,6 +1092,16 @@ class _Explorer:
         )
         if data_partition != self.data_read_transitions:
             message = "explored data-read partition disagrees with total reads"
+            raise AssertionError(message)
+        encryption_partition = (
+            self.initial_value_encryption_input_transitions
+            + self.changed_from_initial_encryption_input_transitions
+        )
+        if encryption_partition != self.encryption_input_transitions:
+            message = (
+                "explored encryption-input partition disagrees with "
+                "total inputs"
+            )
             raise AssertionError(message)
 
     def result(
@@ -1241,6 +1271,24 @@ class _Explorer:
             ),
             explored_encryption_input_value_domains=_value_domains(
                 self.encryption_input_values
+            ),
+            explored_encryption_input_transition_count=(
+                self.encryption_input_transitions
+            ),
+            explored_initial_value_encryption_input_transition_count=(
+                self.initial_value_encryption_input_transitions
+            ),
+            explored_initial_value_encryption_input_addresses=tuple(
+                sorted(self.initial_value_encryption_input_addresses)
+            ),
+            explored_changed_from_initial_encryption_input_transition_count=(
+                self.changed_from_initial_encryption_input_transitions
+            ),
+            explored_changed_from_initial_encryption_input_addresses=tuple(
+                sorted(self.changed_from_initial_encryption_input_addresses)
+            ),
+            explored_changed_from_initial_encryption_input_value_domains=(
+                _value_domains(self.changed_from_initial_encryption_input_values)
             ),
             explored_committed_data_write_value_domains=_value_domains(
                 self.committed_data_write_values
@@ -1585,11 +1633,21 @@ class _Explorer:
             transition.encryption_address is not None
             and transition.encryption_input is not None
         ):
-            _record_domain_value(
-                self.encryption_input_values,
-                transition.encryption_address,
-                transition.encryption_input,
-            )
+            address = transition.encryption_address
+            value = transition.encryption_input
+            self.encryption_input_transitions += 1
+            _record_domain_value(self.encryption_input_values, address, value)
+            if value == self.initial_memory[address]:
+                self.initial_value_encryption_input_transitions += 1
+                self.initial_value_encryption_input_addresses.add(address)
+            else:
+                self.changed_from_initial_encryption_input_transitions += 1
+                self.changed_from_initial_encryption_input_addresses.add(address)
+                _record_domain_value(
+                    self.changed_from_initial_encryption_input_values,
+                    address,
+                    value,
+                )
 
     def _data_write_noop_witness(
         self,

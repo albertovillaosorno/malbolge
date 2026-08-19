@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v70"
+_SCHEMA = "malbolge-static-image/v71"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -86,6 +86,9 @@ _WORKLIST_COMPLETE_STATE_LIMIT = 258
 _WORKLIST_TRUNCATED_STATE_LIMIT = 257
 _WORKLIST_INPUT_VALUE_COUNT = 257
 _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT = 58
+_INPUT_CRAZY_ENCRYPTION_INPUT_COUNT = 258
+_INPUT_CRAZY_INITIAL_ENCRYPTION_INPUT_COUNT = 1
+_INPUT_CRAZY_CHANGED_ENCRYPTION_INPUT_COUNT = 257
 _ENTRY_WRAP_SOURCE = b"u'<%$#>=<;:987654321NN"
 _ENTRY_WRAP_SOURCE_WITH_WHITESPACE = b" \n" + _ENTRY_WRAP_SOURCE
 _ENTRY_WRAP_LOADED_WRITE_ADDRESSES = (0, 1, 2, 3, 4, 5, 6)
@@ -730,6 +733,14 @@ class _WorklistAnalysis(Protocol):
     explored_fetch_value_domains: tuple[_WorklistValueDomain, ...]
     explored_data_read_value_domains: tuple[_WorklistValueDomain, ...]
     explored_encryption_input_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_encryption_input_transition_count: int
+    explored_initial_value_encryption_input_transition_count: int
+    explored_initial_value_encryption_input_addresses: tuple[int, ...]
+    explored_changed_from_initial_encryption_input_transition_count: int
+    explored_changed_from_initial_encryption_input_addresses: tuple[int, ...]
+    explored_changed_from_initial_encryption_input_value_domains: tuple[
+        _WorklistValueDomain, ...
+    ]
     explored_committed_data_write_value_domains: tuple[
         _WorklistValueDomain, ...
     ]
@@ -880,6 +891,12 @@ class _Report(Protocol):
     bounded_worklist_encryption_input_value_source_map: tuple[
         _WorklistValueSourceContext, ...
     ]
+    bounded_worklist_initial_value_encryption_input_source_map: tuple[
+        _WorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_changed_from_initial_encryption_input_value_source_map: (
+        tuple[_WorklistValueSourceContext, ...]
+    )
     bounded_worklist_initial_value_fetch_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
     ]
@@ -2623,6 +2640,45 @@ def _assert_worklist_mutation_evidence(worklist: _WorklistAnalysis) -> None:
         111,
     )
     assert worklist.explored_data_mutation_witness is None
+
+
+def test_worklist_maps_changed_encryption_inputs_without_commit_claim() -> None:
+    """Rejected changed encryption inputs remain value-only bounded evidence."""
+    report = _ANALYZER_MODULE.analyze_source(
+        b" \n" + _INPUT_CRAZY_SOURCE,
+        worklist_state_limit=_WORKLIST_COMPLETE_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert (
+        worklist.explored_encryption_input_transition_count
+        == _INPUT_CRAZY_ENCRYPTION_INPUT_COUNT
+    )
+    assert (
+        worklist.explored_initial_value_encryption_input_transition_count
+        == _INPUT_CRAZY_INITIAL_ENCRYPTION_INPUT_COUNT
+    )
+    assert (
+        worklist.explored_changed_from_initial_encryption_input_transition_count
+        == _INPUT_CRAZY_CHANGED_ENCRYPTION_INPUT_COUNT
+    )
+    initial_map = (
+        report.bounded_worklist_initial_value_encryption_input_source_map
+    )
+    assert tuple(item.address for item in initial_map) == (0,)
+    assert initial_map[0].source_byte_offset == _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
+    changed_map = (
+        report.bounded_worklist_changed_from_initial_encryption_input_value_source_map
+    )
+    assert len(changed_map) == 1
+    changed = changed_map[0]
+    assert changed.address == 1
+    assert changed.source_byte_offset == _ENTRY_WRAP_SOURCE_OFFSET_SHIFT + 1
+    assert changed.initial_memory_value == _INPUT_CRAZY_SOURCE[1]
+    assert len(changed.values) == _INPUT_CRAZY_ENCRYPTION_DOMAIN_COUNT
+    assert changed.initial_memory_value_in_values is False
+    assert worklist.explored_committed_data_write_transition_count == 0
+    assert worklist.explored_committed_data_write_value_domains == ()
 
 
 def test_worklist_alias_witnesses_map_loaded_source_and_paths() -> None:
