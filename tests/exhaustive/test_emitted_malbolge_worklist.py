@@ -347,6 +347,15 @@ type _WrapWitnesses = tuple[
 ]
 
 
+class _WorklistWrapTransitionSignature(Protocol):
+    source_code_pointer: int
+    source_data_pointer: int
+    result_code_pointer: int
+    result_data_pointer: int
+    code_pointer_wrapped: bool
+    data_pointer_wrapped: bool
+
+
 class _WorklistValueDomain(Protocol):
     address: int
     values: tuple[int, ...]
@@ -513,6 +522,9 @@ class _WorklistAnalysis(Protocol):
     explored_code_pointer_wrap_transition_count: int
     explored_data_pointer_wrap_transition_count: int
     explored_simultaneous_pointer_wrap_transition_count: int
+    explored_wraparound_transition_signatures: tuple[
+        _WorklistWrapTransitionSignature, ...
+    ]
     explored_wraparound_witness: _WorklistWrapWitness | None
     explored_code_pointer_wrap_witness: _WorklistWrapWitness | None
     explored_data_pointer_wrap_witness: _WorklistWrapWitness | None
@@ -1468,6 +1480,45 @@ def test_cycle_witness_is_stable_across_graph_insertion_order() -> None:
     assert worklist._known_graph_cycle_witness(second_edges, nodes) == expected
 
 
+def _assert_wrap_signature(
+    signature: _WorklistWrapTransitionSignature,
+    expected: tuple[int, int, int, int, bool, bool],
+) -> None:
+    actual = (
+        signature.source_code_pointer,
+        signature.source_data_pointer,
+        signature.result_code_pointer,
+        signature.result_data_pointer,
+        signature.code_pointer_wrapped,
+        signature.data_pointer_wrapped,
+    )
+    assert actual == expected
+
+
+def _assert_simultaneous_wrap_evidence(result: _WorklistAnalysis) -> None:
+    assert result.explored_wraparound_transition_count == 1
+    assert result.explored_code_pointer_wrap_transition_count == 1
+    assert result.explored_data_pointer_wrap_transition_count == 1
+    assert result.explored_simultaneous_pointer_wrap_transition_count == 1
+    signatures = result.explored_wraparound_transition_signatures
+    assert len(signatures) == 1
+    _assert_wrap_signature(
+        signatures[0],
+        (_WRAP_ADDRESS, _WRAP_ADDRESS, 0, 0, True, True),
+    )
+    generic = result.explored_wraparound_witness
+    code = result.explored_code_pointer_wrap_witness
+    data = result.explored_data_pointer_wrap_witness
+    simultaneous = result.explored_simultaneous_pointer_wrap_witness
+    assert generic is not None
+    assert code == generic
+    assert data == generic
+    assert simultaneous == generic
+    assert generic.entry_path == ()
+    assert generic.code_pointer_wrapped
+    assert generic.data_pointer_wrapped
+
+
 def test_wrap_evidence_rejects_inconsistent_class_counts() -> None:
     """Wrap class inclusion-exclusion is checked before publication."""
     with pytest.raises(AssertionError, match="class counts disagree"):
@@ -1507,21 +1558,7 @@ def test_explorer_counts_exact_pointer_wrap_transition() -> None:
         set(),
     )
     result = explorer.run()
-    assert result.explored_wraparound_transition_count == 1
-    assert result.explored_code_pointer_wrap_transition_count == 1
-    assert result.explored_data_pointer_wrap_transition_count == 1
-    assert result.explored_simultaneous_pointer_wrap_transition_count == 1
-    generic = result.explored_wraparound_witness
-    code = result.explored_code_pointer_wrap_witness
-    data = result.explored_data_pointer_wrap_witness
-    simultaneous = result.explored_simultaneous_pointer_wrap_witness
-    assert generic is not None
-    assert code == generic
-    assert data == generic
-    assert simultaneous == generic
-    assert generic.entry_path == ()
-    assert generic.code_pointer_wrapped
-    assert generic.data_pointer_wrapped
+    _assert_simultaneous_wrap_evidence(result)
     assert result.explored_highest_accessed_address == _WRAP_ADDRESS
     assert result.explored_minimum_words == _WRAP_ADDRESS + 1
     assert result.truncated
@@ -1799,6 +1836,20 @@ def test_entry_reachable_wrap_publishes_exact_event_witness() -> None:
     assert result.explored_code_pointer_wrap_transition_count == 0
     assert result.explored_data_pointer_wrap_transition_count == 1
     assert result.explored_simultaneous_pointer_wrap_transition_count == 0
+    signatures = result.explored_wraparound_transition_signatures
+    assert len(signatures) == 1
+    source_code, source_data = _ENTRY_WRAP_POINTER_PATH[-1]
+    _assert_wrap_signature(
+        signatures[0],
+        (
+            source_code,
+            source_data,
+            _ENTRY_WRAP_RESULT_CODE_POINTER,
+            0,
+            False,
+            True,
+        ),
+    )
     witness = result.explored_wraparound_witness
     assert witness is not None
     assert result.explored_code_pointer_wrap_witness is None

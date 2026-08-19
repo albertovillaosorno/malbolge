@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v73"
+_SCHEMA = "malbolge-static-image/v74"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -506,6 +506,15 @@ class _WorklistWrapWitness(Protocol):
     data_pointer_wrapped: bool
 
 
+class _WorklistWrapTransitionSignature(Protocol):
+    source_code_pointer: int
+    source_data_pointer: int
+    result_code_pointer: int
+    result_data_pointer: int
+    code_pointer_wrapped: bool
+    data_pointer_wrapped: bool
+
+
 class _WorklistValueDomain(Protocol):
     address: int
     values: tuple[int, ...]
@@ -602,6 +611,21 @@ class _WorklistControlPathSourceContext(Protocol):
     entry_path_state_index: int
     code_pointer: int
     data_pointer: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+
+
+class _WorklistWrapTransitionSourceContext(Protocol):
+    source_code_pointer: int
+    source_data_pointer: int
+    result_code_pointer: int
+    result_data_pointer: int
+    code_pointer_wrapped: bool
+    data_pointer_wrapped: bool
     source_position: int | None
     source_byte_offset: int | None
     initial_source_byte: int | None
@@ -776,6 +800,9 @@ class _WorklistAnalysis(Protocol):
     explored_code_pointer_wrap_transition_count: int
     explored_data_pointer_wrap_transition_count: int
     explored_simultaneous_pointer_wrap_transition_count: int
+    explored_wraparound_transition_signatures: tuple[
+        _WorklistWrapTransitionSignature, ...
+    ]
     explored_wraparound_witness: _WorklistWrapWitness | None
     explored_code_pointer_wrap_witness: _WorklistWrapWitness | None
     explored_data_pointer_wrap_witness: _WorklistWrapWitness | None
@@ -957,6 +984,9 @@ class _Report(Protocol):
     ]
     bounded_worklist_simultaneous_pointer_wrap_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_wraparound_transition_source_map: tuple[
+        _WorklistWrapTransitionSourceContext, ...
     ]
     bounded_worklist_cycle_witness_source_map: tuple[
         _WorklistCycleStateSourceContext, ...
@@ -2820,6 +2850,25 @@ def _assert_entry_wrap_mutation_context(
     assert context.previous_value_matches_initial_source is None
 
 
+def _assert_entry_wrap_signature_source_map(report: _Report) -> None:
+    signatures = report.bounded_worklist_wraparound_transition_source_map
+    assert len(signatures) == 1
+    signature = signatures[0]
+    source_code, source_data = _ENTRY_WRAP_POINTER_PATH[-1]
+    assert signature.source_code_pointer == source_code
+    assert signature.source_data_pointer == source_data
+    assert signature.result_code_pointer == _ENTRY_WRAP_RESULT_CODE_POINTER
+    assert signature.result_data_pointer == 0
+    assert not signature.code_pointer_wrapped
+    assert signature.data_pointer_wrapped
+    assert signature.source_position == source_code
+    assert signature.source_byte_offset == (
+        _ENTRY_WRAP_SOURCE_OFFSET_SHIFT + source_code
+    )
+    assert signature.data_source_position is None
+    assert signature.data_source_byte_offset is None
+
+
 def _assert_entry_wrap_control_source_maps(report: _Report) -> None:
     noop = report.bounded_worklist_data_write_noop_entry_path_source_map
     mutation = report.bounded_worklist_data_mutation_entry_path_source_map
@@ -2855,6 +2904,7 @@ def test_worklist_maps_mutation_noop_and_wrap_control_paths() -> None:
         worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
     )
     _assert_entry_wrap_control_source_maps(report)
+    _assert_entry_wrap_signature_source_map(report)
     assert _WORKLIST_VALUE_SOURCE_MAP_LIMIT in report.analysis_limits
 
 

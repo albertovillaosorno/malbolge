@@ -103,6 +103,18 @@ class WorklistWrapWitness:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistWrapTransitionSignature:
+    """One distinct exact explored pointer-wrap transition shape."""
+
+    source_code_pointer: int
+    source_data_pointer: int
+    result_code_pointer: int
+    result_data_pointer: int
+    code_pointer_wrapped: bool
+    data_pointer_wrapped: bool
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistValueDomain:
     """Exact observed values for one explored memory address."""
 
@@ -291,6 +303,9 @@ class WorklistAnalysis:
     explored_code_pointer_wrap_transition_count: int
     explored_data_pointer_wrap_transition_count: int
     explored_simultaneous_pointer_wrap_transition_count: int
+    explored_wraparound_transition_signatures: tuple[
+        WorklistWrapTransitionSignature, ...
+    ]
     explored_wraparound_witness: WorklistWrapWitness | None
     explored_code_pointer_wrap_witness: WorklistWrapWitness | None
     explored_data_pointer_wrap_witness: WorklistWrapWitness | None
@@ -961,6 +976,19 @@ def _pointer_wrap_result(
     return result_code, result_data, code_wrapped, data_wrapped
 
 
+def _wrap_transition_signature_key(
+    signature: WorklistWrapTransitionSignature,
+) -> tuple[int, int, int, int, bool, bool]:
+    return (
+        signature.source_code_pointer,
+        signature.source_data_pointer,
+        signature.result_code_pointer,
+        signature.result_data_pointer,
+        signature.code_pointer_wrapped,
+        signature.data_pointer_wrapped,
+    )
+
+
 type _WrapCounts = tuple[int, int, int, int]
 type _WrapWitnesses = tuple[
     WorklistWrapWitness | None,
@@ -1184,6 +1212,9 @@ class _Explorer:
     code_pointer_wrap_transitions: int = 0
     data_pointer_wrap_transitions: int = 0
     simultaneous_pointer_wrap_transitions: int = 0
+    wraparound_transition_signatures: set[
+        WorklistWrapTransitionSignature
+    ] = field(default_factory=set)
     wraparound_witness: WorklistWrapWitness | None = None
     code_pointer_wrap_witness: WorklistWrapWitness | None = None
     data_pointer_wrap_witness: WorklistWrapWitness | None = None
@@ -1516,6 +1547,12 @@ class _Explorer:
             explored_simultaneous_pointer_wrap_transition_count=(
                 self.simultaneous_pointer_wrap_transitions
             ),
+            explored_wraparound_transition_signatures=tuple(
+                sorted(
+                    self.wraparound_transition_signatures,
+                    key=_wrap_transition_signature_key,
+                )
+            ),
             explored_wraparound_witness=self.wraparound_witness,
             explored_code_pointer_wrap_witness=(
                 self.code_pointer_wrap_witness
@@ -1723,6 +1760,16 @@ class _Explorer:
         self._record_wrap_counts(
             code_wrapped=code_wrapped,
             data_wrapped=data_wrapped,
+        )
+        self.wraparound_transition_signatures.add(
+            WorklistWrapTransitionSignature(
+                source_code_pointer=node.snapshot.code_pointer,
+                source_data_pointer=node.snapshot.data_pointer,
+                result_code_pointer=result_code,
+                result_data_pointer=result_data,
+                code_pointer_wrapped=code_wrapped,
+                data_pointer_wrapped=data_wrapped,
+            )
         )
         if not self._wrap_witness_needed(
             code_wrapped=code_wrapped,

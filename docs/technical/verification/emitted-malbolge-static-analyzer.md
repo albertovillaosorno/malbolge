@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v73` retains exact `entry_transition` through
+`malbolge-static-image/v74` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -366,6 +366,12 @@ class assignment but remains intentionally pathless because it is not
 entry-reachable evidence. The real EOF wrap fixture fills only the D class and
 source-maps that exact reachable D-wrap entry path. Absent class witnesses
 remain explored-only absence under truncation.
+Schema v74 additionally publishes the sorted distinct explored wrap-transition
+signatures rather than only first witnesses. Each signature records source and
+result C/D plus wrap-role flags, and the analyzer source-maps source C/D
+independently. On the real EOF D-wrap, source C=5 maps to loaded raw offset 7
+while source D=40 remains recurrence/source-null. Under truncation this remains
+only the set observed in explored states, never a complete reachability claim.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema
