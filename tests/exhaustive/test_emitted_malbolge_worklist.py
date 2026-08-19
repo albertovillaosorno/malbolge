@@ -631,6 +631,19 @@ class _WorklistModule(Protocol):
         nodes: set[_WorklistStateKey],
     ) -> tuple[_WorklistStateKey, ...]: ...
 
+    def _assert_non_graphical_fetch_domains(
+        self,
+        transition_count: int,
+        addresses: set[int],
+        values: dict[int, set[int]],
+    ) -> None: ...
+
+    def _assert_non_graphical_fetch_witness(
+        self,
+        values: dict[int, set[int]],
+        witness: _WorklistNonGraphicalFetchWitness | None,
+    ) -> None: ...
+
     def _assert_wrap_evidence_invariants(
         self,
         counts: _WrapCounts,
@@ -1054,6 +1067,35 @@ def _assert_fixed_non_graphical_fetch_evidence(
     assert len(witness.entry_path) == _FIXED_CYCLE_ENTRY_PATH_STATES
     assert witness.entry_path[-1] == witness.state
     assert witness.state.code_pointer == _FIXED_CYCLE_POINTER
+
+
+def test_non_graphical_fetch_invariant_rejects_domain_address_drift() -> None:
+    """Invalid-fetch address summaries cannot diverge from value domains."""
+    with pytest.raises(AssertionError, match="addresses disagree"):
+        worklist._assert_non_graphical_fetch_domains(
+            1,
+            {_FIXED_CYCLE_POINTER},
+            {_FIXED_CYCLE_POINTER + 1: {_FIXED_CYCLE_NON_GRAPHICAL_VALUE}},
+        )
+
+
+def test_non_graphical_fetch_invariant_rejects_graphical_domain_value() -> None:
+    """Invalid-fetch domains fail closed if a graphical value is retained."""
+    with pytest.raises(AssertionError, match="graphical value"):
+        worklist._assert_non_graphical_fetch_domains(
+            1,
+            {_FIXED_CYCLE_POINTER},
+            {_FIXED_CYCLE_POINTER: {ord("A")}},
+        )
+
+
+def test_non_graphical_fetch_invariant_rejects_missing_witness() -> None:
+    """Observed invalid fetches cannot silently lose the first exact witness."""
+    with pytest.raises(AssertionError, match="witness presence"):
+        worklist._assert_non_graphical_fetch_witness(
+            {_FIXED_CYCLE_POINTER: {_FIXED_CYCLE_NON_GRAPHICAL_VALUE}},
+            None,
+        )
 
 
 def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:

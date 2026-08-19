@@ -1105,6 +1105,60 @@ def _committed_data_mutation(
     return address, previous, written, result, aliases
 
 
+def _assert_non_graphical_fetch_domains(
+    transition_count: int,
+    addresses: set[int],
+    values: dict[int, set[int]],
+) -> None:
+    if addresses != set(values):
+        message = "non-graphical fetch addresses disagree with value domains"
+        raise AssertionError(message)
+    distinct_observations = sum(len(domain) for domain in values.values())
+    if transition_count < distinct_observations:
+        message = "non-graphical fetch count cannot cover its value domains"
+        raise AssertionError(message)
+    if (transition_count > 0) != bool(values):
+        message = "non-graphical fetch count disagrees with observed domains"
+        raise AssertionError(message)
+    if any(
+        classic.is_graphical(value)
+        for domain in values.values()
+        for value in domain
+    ):
+        message = "non-graphical fetch domain retained a graphical value"
+        raise AssertionError(message)
+
+
+def _assert_non_graphical_fetch_witness_endpoint(
+    values: dict[int, set[int]],
+    witness: WorklistNonGraphicalFetchWitness,
+) -> None:
+    if not witness.entry_path or witness.entry_path[-1] != witness.state:
+        message = "non-graphical fetch witness lost its exact entry endpoint"
+        raise AssertionError(message)
+    if witness.state.code_pointer != witness.address:
+        message = (
+            "non-graphical fetch witness address disagrees with code pointer"
+        )
+        raise AssertionError(message)
+    if witness.value not in values.get(witness.address, set()):
+        message = (
+            "non-graphical fetch witness value is outside observed domains"
+        )
+        raise AssertionError(message)
+
+
+def _assert_non_graphical_fetch_witness(
+    values: dict[int, set[int]],
+    witness: WorklistNonGraphicalFetchWitness | None,
+) -> None:
+    if bool(values) != (witness is not None):
+        message = "non-graphical fetch evidence disagrees with witness presence"
+        raise AssertionError(message)
+    if witness is not None:
+        _assert_non_graphical_fetch_witness_endpoint(values, witness)
+
+
 def _record_domain_value(
     domains: dict[int, set[int]],
     address: int,
@@ -1346,6 +1400,15 @@ class _Explorer:
             truncated=truncated,
         )
         self._assert_read_partition_invariants()
+        _assert_non_graphical_fetch_domains(
+            self.non_graphical_fetch_transitions,
+            self.non_graphical_fetch_addresses,
+            self.non_graphical_fetch_values,
+        )
+        _assert_non_graphical_fetch_witness(
+            self.non_graphical_fetch_values,
+            self.non_graphical_fetch_witness,
+        )
         _assert_wrap_evidence_invariants(
             (
                 self.wraparound_transitions,
