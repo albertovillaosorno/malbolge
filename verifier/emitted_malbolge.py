@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v68"
+_SCHEMA: Final = "malbolge-static-image/v69"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -245,6 +245,14 @@ class BoundedWorklistCycleStateSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistCycleComponentSourceMap:
+    """Source map for every exact state in one bounded cyclic SCC."""
+
+    component_index: int
+    states: tuple[BoundedWorklistCycleStateSourceContext, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistCycleClosingRepeatedEdgeSourceContext:
     """Source map for the first exact cycle-closing repeated edge."""
 
@@ -328,6 +336,12 @@ class StaticImageReport:
     bounded_worklist_state_merge_source_context: (
         BoundedWorklistStateMergeSourceContext | None
     )
+    bounded_worklist_explored_code_pointer_source_map: tuple[
+        BoundedWorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_explored_data_pointer_source_map: tuple[
+        BoundedWorklistMutationAddressSourceContext, ...
+    ]
     bounded_worklist_code_data_alias_source_contexts: tuple[
         BoundedWorklistCodeDataAliasSourceContext, ...
     ]
@@ -400,6 +414,12 @@ class StaticImageReport:
     bounded_worklist_closed_recurrent_cycle_witness_source_map: tuple[
         BoundedWorklistCycleStateSourceContext, ...
     ]
+    bounded_worklist_known_graph_cyclic_component_source_maps: tuple[
+        BoundedWorklistCycleComponentSourceMap, ...
+    ]
+    bounded_worklist_closed_recurrent_component_source_maps: (
+        tuple[BoundedWorklistCycleComponentSourceMap, ...] | None
+    )
     bounded_worklist_cycle_entry_path_source_map: tuple[
         BoundedWorklistControlPathSourceContext, ...
     ]
@@ -1204,6 +1224,16 @@ def _worklist_mutation_address_source_context(
     )
 
 
+def _worklist_address_source_map(
+    addresses: tuple[int, ...],
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistMutationAddressSourceContext, ...]:
+    return tuple(
+        _worklist_mutation_address_source_context(address, cells)
+        for address in addresses
+    )
+
+
 def _worklist_effective_data_mutation_source_map(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -1369,6 +1399,23 @@ def _worklist_cycle_state_source_map(
             )
         )
     return tuple(contexts)
+
+
+def _worklist_cycle_component_source_maps(
+    components: (
+        tuple[tuple[worklist_transfer.WorklistCycleState, ...], ...] | None
+    ),
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistCycleComponentSourceMap, ...] | None:
+    if components is None:
+        return None
+    return tuple(
+        BoundedWorklistCycleComponentSourceMap(
+            component_index=index,
+            states=_worklist_cycle_state_source_map(component, cells),
+        )
+        for index, component in enumerate(components)
+    )
 
 
 def _worklist_state_merge_source_context(
@@ -1568,6 +1615,26 @@ def analyze_source(
         bounded_worklist_state_merge_source_context=(
             _worklist_state_merge_source_context(worklist, prefix.cells)
         ),
+        bounded_worklist_explored_code_pointer_source_map=(
+            _worklist_address_source_map(
+                (
+                    ()
+                    if worklist is None
+                    else worklist.explored_code_pointer_addresses
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_explored_data_pointer_source_map=(
+            _worklist_address_source_map(
+                (
+                    ()
+                    if worklist is None
+                    else worklist.explored_data_pointer_addresses
+                ),
+                prefix.cells,
+            )
+        ),
         bounded_worklist_code_data_alias_source_contexts=(
             _worklist_code_data_alias_source_contexts(worklist, prefix.cells)
         ),
@@ -1755,6 +1822,21 @@ def analyze_source(
                     else worklist.closed_recurrent_cycle_witness
                 ),
                 prefix.cells,
+            )
+        ),
+        bounded_worklist_known_graph_cyclic_component_source_maps=(
+            ()
+            if worklist is None
+            else _worklist_cycle_component_source_maps(
+                worklist.known_graph_cyclic_components, prefix.cells
+            )
+            or ()
+        ),
+        bounded_worklist_closed_recurrent_component_source_maps=(
+            None
+            if worklist is None
+            else _worklist_cycle_component_source_maps(
+                worklist.closed_recurrent_components, prefix.cells
             )
         ),
         bounded_worklist_cycle_entry_path_source_map=(

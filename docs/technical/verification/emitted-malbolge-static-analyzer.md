@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v68` retains exact `entry_transition` through
+`malbolge-static-image/v69` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -330,7 +330,15 @@ loaded C=40 and maps to source position 40; the near-cap target is recurrence
 C=15 and therefore remains source-null. Schema v68 separately source-maps each
 state in the selected reachable-cycle and closed-recurrent cycle bodies. A
 124-byte deep variant has body `(C,D)=(123,243)`: C maps to loaded source byte
-39 while D remains recurrence/source-null.
+39 while D remains recurrence/source-null. Schema v69 records the exact distinct
+C and D pointer addresses of every explored state and maps each address back to
+loaded source where possible. The near-cap graph has C=0..15 and D addresses
+`(0,1,40,121,29405)`; only C=0..14 and D=0,1 are loaded. Under truncation these
+are explicitly explored-state domains and do not include unprocessed frontier
+states. Schema v69 also publishes every cyclic SCC as exact ordered cycle states
+and source-maps each state. Known-graph cyclic components remain partial under
+truncation; the closed-recurrent component map is nullable and is emitted only
+after complete queue drainage, matching the existing closed-recurrence contract.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

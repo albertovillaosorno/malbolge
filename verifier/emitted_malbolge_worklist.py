@@ -210,9 +210,15 @@ class WorklistAnalysis:
     known_graph_cyclic_component_count: int
     known_graph_cyclic_state_count: int
     known_graph_largest_cyclic_component_states: int
+    known_graph_cyclic_components: tuple[
+        tuple[WorklistCycleState, ...], ...
+    ]
     closed_recurrent_component_count: int | None
     closed_recurrent_state_count: int | None
     closed_recurrent_largest_component_states: int | None
+    closed_recurrent_components: (
+        tuple[tuple[WorklistCycleState, ...], ...] | None
+    )
     closed_recurrent_cycle_witness: tuple[WorklistCycleState, ...] | None
     closed_recurrent_entry_path: tuple[WorklistCycleState, ...] | None
     input_branch_points: int
@@ -221,6 +227,8 @@ class WorklistAnalysis:
     closed_all_paths_terminate: bool | None
     closed_all_paths_halt: bool | None
     terminal_status_witnesses: tuple[WorklistTerminalWitness, ...]
+    explored_code_pointer_addresses: tuple[int, ...]
+    explored_data_pointer_addresses: tuple[int, ...]
     explored_code_data_alias_transition_count: int
     explored_code_data_alias_addresses: tuple[int, ...]
     explored_code_data_alias_witnesses: tuple[WorklistCodeDataAliasWitness, ...]
@@ -280,6 +288,7 @@ class _StrongComponentSummary:
     cyclic_component_count: int
     cyclic_state_count: int
     largest_cyclic_component_states: int
+    cyclic_components: tuple[tuple[_StateKey, ...], ...]
     cyclic_sink_components: tuple[tuple[_StateKey, ...], ...]
 
 
@@ -290,6 +299,7 @@ class _ClosedRecurrenceEvidence:
     component_count: int | None
     state_count: int | None
     largest_component_states: int | None
+    components: tuple[tuple[WorklistCycleState, ...], ...] | None
     cycle_witness: tuple[WorklistCycleState, ...] | None
     entry_path: tuple[WorklistCycleState, ...] | None
 
@@ -563,6 +573,7 @@ def _known_graph_strong_component_summary(
         cyclic_component_count=len(cyclic_sizes),
         cyclic_state_count=sum(cyclic_sizes),
         largest_cyclic_component_states=max(cyclic_sizes, default=0),
+        cyclic_components=cyclic_components,
         cyclic_sink_components=cyclic_sinks,
     )
 
@@ -706,6 +717,15 @@ def _cycle_state(key: _StateKey) -> WorklistCycleState:
     )
 
 
+def _cycle_components(
+    components: tuple[tuple[_StateKey, ...], ...],
+) -> tuple[tuple[WorklistCycleState, ...], ...]:
+    return tuple(
+        tuple(_cycle_state(key) for key in component)
+        for component in components
+    )
+
+
 def _terminal_witnesses(
     edges: dict[_StateKey, set[_StateKey]],
     nodes: set[_StateKey],
@@ -740,7 +760,7 @@ def _closed_recurrence_evidence(
     truncated: bool,
 ) -> _ClosedRecurrenceEvidence:
     if truncated:
-        return _ClosedRecurrenceEvidence(None, None, None, None, None)
+        return _ClosedRecurrenceEvidence(None, None, None, None, None, None)
     components = summary.cyclic_sink_components
     witness_keys = (
         _known_graph_cycle_witness(edges, set(components[0]))
@@ -767,6 +787,7 @@ def _closed_recurrence_evidence(
         component_count=len(components),
         state_count=sum(map(len, components)),
         largest_component_states=max(map(len, components), default=0),
+        components=_cycle_components(components),
         cycle_witness=tuple(_cycle_state(key) for key in witness_keys),
         entry_path=tuple(_cycle_state(key) for key in entry_path_keys),
     )
@@ -942,6 +963,8 @@ class _Explorer:
     accessed_addresses: set[int]
     initial_memory: tuple[int, ...] = field(init=False, repr=False)
     terminal_states: dict[str, set[_StateKey]] = field(default_factory=dict)
+    explored_code_pointer_addresses: set[int] = field(default_factory=set)
+    explored_data_pointer_addresses: set[int] = field(default_factory=set)
     code_data_alias_addresses: set[int] = field(default_factory=set)
     code_data_alias_witnesses: dict[int, WorklistCodeDataAliasWitness] = field(
         default_factory=dict
@@ -1097,11 +1120,15 @@ class _Explorer:
             known_graph_largest_cyclic_component_states=(
                 component_summary.largest_cyclic_component_states
             ),
+            known_graph_cyclic_components=_cycle_components(
+                component_summary.cyclic_components
+            ),
             closed_recurrent_component_count=recurrence.component_count,
             closed_recurrent_state_count=recurrence.state_count,
             closed_recurrent_largest_component_states=(
                 recurrence.largest_component_states
             ),
+            closed_recurrent_components=recurrence.components,
             closed_recurrent_cycle_witness=recurrence.cycle_witness,
             closed_recurrent_entry_path=recurrence.entry_path,
             input_branch_points=self.input_branch_points,
@@ -1122,6 +1149,12 @@ class _Explorer:
                 self.edges,
                 self.seen,
                 self.terminal_states,
+            ),
+            explored_code_pointer_addresses=tuple(
+                sorted(self.explored_code_pointer_addresses)
+            ),
+            explored_data_pointer_addresses=tuple(
+                sorted(self.explored_data_pointer_addresses)
             ),
             explored_code_data_alias_transition_count=(
                 self.code_data_alias_transitions
@@ -1677,6 +1710,8 @@ class _Explorer:
 
     def _process_node(self, node: _ReachabilityNode) -> WorklistAnalysis | None:
         self.explored += 1
+        self.explored_code_pointer_addresses.add(node.snapshot.code_pointer)
+        self.explored_data_pointer_addresses.add(node.snapshot.data_pointer)
         step = prefix_transfer.analyze_state_snapshot(
             self.initial_memory,
             node.snapshot,

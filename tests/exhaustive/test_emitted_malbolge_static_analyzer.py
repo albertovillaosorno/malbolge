@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v68"
+_SCHEMA = "malbolge-static-image/v69"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -214,6 +214,7 @@ _NEAR_CAP_INPUT_CYCLE_POINTER_PATH = (
     (14, 29_405),
     (15, 29_405),
 )
+_NEAR_CAP_INPUT_CYCLE_DATA_POINTER_ADDRESSES = (0, 1, 40, 121, 29_405)
 _MERGED_INPUT_CYCLE_SOURCE = b"".join(
     (
         b"u'%%$#\"!~}|{zyxwvutsrqponmlkjihgfedcba`_^]\\",
@@ -235,6 +236,7 @@ _DOUBLE_JUMP_MERGED_CYCLE_SOURCE = b"".join(
 )
 _DOUBLE_JUMP_MERGED_CYCLE_STATE_LIMIT = 1_012
 _DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH = 124
+_DOUBLE_JUMP_MERGED_CYCLIC_COMPONENT_COUNT = 2
 _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS = 123
 _DOUBLE_JUMP_MERGED_CYCLE_INITIAL_VALUE = 29_486
 _DOUBLE_JUMP_MERGED_CYCLE_EVOLVED_VALUE = 49_194
@@ -602,6 +604,11 @@ class _WorklistCycleStateSourceContext(Protocol):
     initial_data_source_byte: int | None
 
 
+class _WorklistCycleComponentSourceMap(Protocol):
+    component_index: int
+    states: tuple[_WorklistCycleStateSourceContext, ...]
+
+
 class _WorklistCycleClosingRepeatedEdgeSourceContext(Protocol):
     source_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
@@ -665,9 +672,15 @@ class _WorklistAnalysis(Protocol):
     known_graph_cyclic_component_count: int
     known_graph_cyclic_state_count: int
     known_graph_largest_cyclic_component_states: int
+    known_graph_cyclic_components: tuple[
+        tuple[_WorklistCycleState, ...], ...
+    ]
     closed_recurrent_component_count: int | None
     closed_recurrent_state_count: int | None
     closed_recurrent_largest_component_states: int | None
+    closed_recurrent_components: (
+        tuple[tuple[_WorklistCycleState, ...], ...] | None
+    )
     closed_recurrent_cycle_witness: tuple[_WorklistCycleState, ...] | None
     closed_recurrent_entry_path: tuple[_WorklistCycleState, ...] | None
     input_branch_points: int
@@ -676,6 +689,8 @@ class _WorklistAnalysis(Protocol):
     closed_all_paths_terminate: bool | None
     closed_all_paths_halt: bool | None
     terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
+    explored_code_pointer_addresses: tuple[int, ...]
+    explored_data_pointer_addresses: tuple[int, ...]
     explored_code_data_alias_transition_count: int
     explored_code_data_alias_addresses: tuple[int, ...]
     explored_code_data_alias_witnesses: tuple[
@@ -809,6 +824,12 @@ class _Report(Protocol):
     bounded_worklist_state_merge_source_context: (
         _WorklistStateMergeSourceContext | None
     )
+    bounded_worklist_explored_code_pointer_source_map: tuple[
+        _WorklistMutationAddressSourceContext, ...
+    ]
+    bounded_worklist_explored_data_pointer_source_map: tuple[
+        _WorklistMutationAddressSourceContext, ...
+    ]
     bounded_worklist_code_data_alias_source_contexts: tuple[
         _WorklistCodeDataAliasSourceContext, ...
     ]
@@ -881,6 +902,12 @@ class _Report(Protocol):
     bounded_worklist_closed_recurrent_cycle_witness_source_map: tuple[
         _WorklistCycleStateSourceContext, ...
     ]
+    bounded_worklist_known_graph_cyclic_component_source_maps: tuple[
+        _WorklistCycleComponentSourceMap, ...
+    ]
+    bounded_worklist_closed_recurrent_component_source_maps: (
+        tuple[_WorklistCycleComponentSourceMap, ...] | None
+    )
     bounded_worklist_cycle_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
     ]
@@ -3018,6 +3045,38 @@ def test_report_worklist_proves_deeper_input_dependent_cycle() -> None:
     assert not worklist.truncated
 
 
+def test_worklist_maps_all_explored_control_pointer_addresses() -> None:
+    """Explored C/D domains map loaded addresses without mapping recurrence."""
+    report = _ANALYZER_MODULE.analyze_source(
+        b" \n" + _NEAR_CAP_INPUT_CYCLE_SOURCE,
+        worklist_state_limit=_NEAR_CAP_INPUT_CYCLE_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.explored_code_pointer_addresses == tuple(range(16))
+    assert (
+        worklist.explored_data_pointer_addresses
+        == _NEAR_CAP_INPUT_CYCLE_DATA_POINTER_ADDRESSES
+    )
+    code_map = report.bounded_worklist_explored_code_pointer_source_map
+    assert tuple(context.address for context in code_map) == tuple(range(16))
+    assert tuple(context.source_byte_offset for context in code_map) == (
+        *range(2, 17),
+        None,
+    )
+    data_map = report.bounded_worklist_explored_data_pointer_source_map
+    assert tuple(context.address for context in data_map) == (
+        _NEAR_CAP_INPUT_CYCLE_DATA_POINTER_ADDRESSES
+    )
+    assert tuple(context.source_byte_offset for context in data_map) == (
+        2,
+        3,
+        None,
+        None,
+        None,
+    )
+
+
 def _assert_recurrence_cycle_body_source_map(report: _Report) -> None:
     cycle_body = report.bounded_worklist_cycle_witness_source_map
     recurrent_body = (
@@ -3031,6 +3090,16 @@ def _assert_recurrence_cycle_body_source_map(report: _Report) -> None:
     assert body.data_pointer == _NEAR_CAP_INPUT_CYCLE_POINTER_PATH[-1][1]
     assert body.source_position is None
     assert body.data_source_position is None
+    known = report.bounded_worklist_known_graph_cyclic_component_source_maps
+    closed = report.bounded_worklist_closed_recurrent_component_source_maps
+    assert closed is not None
+    assert known == closed
+    assert len(known) == _WORKLIST_INPUT_VALUE_COUNT
+    assert tuple(item.component_index for item in known) == tuple(
+        range(_WORKLIST_INPUT_VALUE_COUNT)
+    )
+    assert all(len(item.states) == 1 for item in known)
+    assert all(item.states[0].source_position is None for item in known)
 
 
 def test_worklist_maps_closed_cycle_and_recurrent_control_paths() -> None:
@@ -3053,6 +3122,29 @@ def test_worklist_maps_closed_cycle_and_recurrent_control_paths() -> None:
     )
     assert recurrent_offsets == expected_offsets
     _assert_recurrence_cycle_body_source_map(report)
+
+
+def test_worklist_maps_loaded_explored_control_pointer_boundary() -> None:
+    """Deep loaded C domain stays source-linked while later D values do not."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _DOUBLE_JUMP_MERGED_LOADED_CYCLE_SOURCE,
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    code_map = report.bounded_worklist_explored_code_pointer_source_map
+    assert tuple(context.address for context in code_map) == tuple(range(124))
+    assert tuple(context.source_position for context in code_map) == tuple(
+        range(124)
+    )
+    data_map = {
+        context.address: context
+        for context in report.bounded_worklist_explored_data_pointer_source_map
+    }
+    assert data_map[_DOUBLE_JUMP_MERGED_CYCLE_ADDRESS].source_position == (
+        _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+    )
+    assert (
+        data_map[_DOUBLE_JUMP_MERGED_CYCLE_DATA_POINTER].source_position is None
+    )
 
 
 def test_worklist_maps_loaded_cycle_body_with_recurrence_data_pointer() -> None:
@@ -3080,6 +3172,17 @@ def test_worklist_maps_loaded_cycle_body_with_recurrence_data_pointer() -> None:
     assert context.data_source_position is None
     assert context.data_source_byte_offset is None
     assert context.initial_data_source_byte is None
+    known = report.bounded_worklist_known_graph_cyclic_component_source_maps
+    closed = report.bounded_worklist_closed_recurrent_component_source_maps
+    assert closed is not None
+    assert known == closed
+    assert len(known) == _DOUBLE_JUMP_MERGED_CYCLIC_COMPONENT_COUNT
+    assert all(len(item.states) == 1 for item in known)
+    assert all(
+        item.states[0].source_position == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+        for item in known
+    )
+    assert all(item.states[0].data_source_position is None for item in known)
 
 
 def test_worklist_maps_truncated_frontier_control_path() -> None:
@@ -3094,6 +3197,14 @@ def test_worklist_maps_truncated_frontier_control_path() -> None:
     assert tuple(context.source_byte_offset for context in frontier) == tuple(
         range(2, 18)
     )
+    known_components = (
+        report.bounded_worklist_known_graph_cyclic_component_source_maps
+    )
+    closed_components = (
+        report.bounded_worklist_closed_recurrent_component_source_maps
+    )
+    assert known_components == ()
+    assert closed_components is None
 
 
 def test_worklist_maps_terminal_control_path_with_status() -> None:

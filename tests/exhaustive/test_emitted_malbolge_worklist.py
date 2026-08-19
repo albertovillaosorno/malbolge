@@ -100,6 +100,7 @@ _NEAR_CAP_INPUT_CYCLE_POINTER_PATH = (
     (14, 29_405),
     (15, 29_405),
 )
+_NEAR_CAP_INPUT_CYCLE_DATA_POINTER_ADDRESSES = (0, 1, 40, 121, 29_405)
 _MERGED_INPUT_CYCLE_SOURCE = tuple(
     b"".join(
         (
@@ -399,9 +400,15 @@ class _WorklistAnalysis(Protocol):
     known_graph_cyclic_component_count: int
     known_graph_cyclic_state_count: int
     known_graph_largest_cyclic_component_states: int
+    known_graph_cyclic_components: tuple[
+        tuple[_WorklistCycleState, ...], ...
+    ]
     closed_recurrent_component_count: int | None
     closed_recurrent_state_count: int | None
     closed_recurrent_largest_component_states: int | None
+    closed_recurrent_components: (
+        tuple[tuple[_WorklistCycleState, ...], ...] | None
+    )
     closed_recurrent_cycle_witness: tuple[_WorklistCycleState, ...] | None
     closed_recurrent_entry_path: tuple[_WorklistCycleState, ...] | None
     input_branch_points: int
@@ -410,6 +417,8 @@ class _WorklistAnalysis(Protocol):
     closed_all_paths_terminate: bool | None
     closed_all_paths_halt: bool | None
     terminal_status_witnesses: tuple[_WorklistTerminalWitness, ...]
+    explored_code_pointer_addresses: tuple[int, ...]
+    explored_data_pointer_addresses: tuple[int, ...]
     explored_code_data_alias_transition_count: int
     explored_code_data_alias_addresses: tuple[int, ...]
     explored_code_data_alias_witnesses: tuple[
@@ -470,6 +479,7 @@ class _StrongComponentSummary(Protocol):
     cyclic_component_count: int
     cyclic_state_count: int
     largest_cyclic_component_states: int
+    cyclic_components: tuple[tuple[_WorklistStateKey, ...], ...]
     cyclic_sink_components: tuple[tuple[_WorklistStateKey, ...], ...]
 
 
@@ -574,6 +584,7 @@ def _assert_no_closed_recurrence(result: _WorklistAnalysis) -> None:
     assert result.closed_recurrent_component_count == 0
     assert result.closed_recurrent_state_count == 0
     assert result.closed_recurrent_largest_component_states == 0
+    assert result.closed_recurrent_components == ()
     assert result.closed_recurrent_cycle_witness == ()
     assert result.closed_recurrent_entry_path == ()
 
@@ -582,6 +593,10 @@ def _assert_fixed_cycle_closed_recurrence(result: _WorklistAnalysis) -> None:
     assert result.closed_recurrent_component_count == _INPUT_VALUE_COUNT
     assert result.closed_recurrent_state_count == _INPUT_VALUE_COUNT
     assert result.closed_recurrent_largest_component_states == 1
+    components = result.closed_recurrent_components
+    assert components is not None
+    assert len(components) == _INPUT_VALUE_COUNT
+    assert all(len(component) == 1 for component in components)
     witness = result.closed_recurrent_cycle_witness
     assert witness is not None
     assert len(witness) == 1
@@ -610,6 +625,7 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     assert result.known_graph_cyclic_component_count == 0
     assert result.known_graph_cyclic_state_count == 0
     assert result.known_graph_largest_cyclic_component_states == 0
+    assert result.known_graph_cyclic_components == ()
     _assert_no_closed_recurrence(result)
     assert result.input_branch_points == 1
     assert result.terminal_status_counts == (("halted", _INPUT_VALUE_COUNT),)
@@ -1017,6 +1033,11 @@ def test_near_cap_input_dependent_jump_chain_closes_exact_cycle() -> None:
     )
     assert result.unique_states == _NEAR_CAP_INPUT_CYCLE_STATE_LIMIT
     assert result.explored_states == _NEAR_CAP_INPUT_CYCLE_STATE_LIMIT
+    assert result.explored_code_pointer_addresses == tuple(range(16))
+    assert (
+        result.explored_data_pointer_addresses
+        == _NEAR_CAP_INPUT_CYCLE_DATA_POINTER_ADDRESSES
+    )
     assert result.explored_state_merge_transition_count == 0
     assert (
         result.explored_cycle_closing_repeated_edge_count == _INPUT_VALUE_COUNT
@@ -1156,6 +1177,8 @@ def test_reviewed_state_ceiling_truncates_deeper_jump_chain() -> None:
     )
     assert not result.reachable_cycle_detected
     assert result.reachable_cycle_witness == ()
+    assert result.known_graph_cyclic_components == ()
+    assert result.closed_recurrent_components is None
     assert result.closed_all_paths_terminate is None
     assert result.closed_all_paths_halt is None
     assert result.truncated
@@ -1223,6 +1246,10 @@ def test_known_graph_scc_summary_counts_cycle_components_exactly() -> None:
         summary.largest_cyclic_component_states
         == _SCC_LARGEST_CYCLIC_COMPONENT_STATES
     )
+    assert summary.cyclic_components == (
+        (_GRAPH_KEY_A, _GRAPH_KEY_B),
+        (_GRAPH_KEY_C,),
+    )
     assert summary.cyclic_sink_components == (
         (_GRAPH_KEY_A, _GRAPH_KEY_B),
         (_GRAPH_KEY_C,),
@@ -1247,6 +1274,17 @@ def test_closed_recurrence_path_targets_sink_cycle_not_first_cycle() -> None:
         {0},
     )
     result = explorer.run()
+    known_components = tuple(
+        tuple(state.code_pointer for state in component)
+        for component in result.known_graph_cyclic_components
+    )
+    assert known_components == ((0, 1), (2,))
+    recurrent_components = result.closed_recurrent_components
+    assert recurrent_components is not None
+    assert tuple(
+        tuple(state.code_pointer for state in component)
+        for component in recurrent_components
+    ) == ((2,),)
     cycle_pointers = tuple(
         state.code_pointer for state in result.reachable_cycle_witness
     )

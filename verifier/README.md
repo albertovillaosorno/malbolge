@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v68 retains the legacy exact entry-through-fifth
+load decode. Schema v69 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -326,6 +326,14 @@ target; the near-cap jump fixture closes at recurrence C=15, which stays
 explicitly source-null. Schema v68 source-maps the selected reachable-cycle and
 closed-recurrent cycle bodies themselves. The 124-byte deep variant maps body
 C=123 to loaded source byte 39 while D=243 remains recurrence/source-null.
+Schema v69 additionally records the complete distinct C and D pointer addresses
+from explored states and source-maps those domains. Near-cap C=0..14 is loaded
+while C=15 is recurrence; its D domain is `(0,1,40,121,29405)`. Truncation keeps
+these sets explored-only rather than including queued frontier states. Schema
+v69 also publishes every cyclic SCC as an ordered tuple of exact cycle states
+with source maps. Known-graph components remain bounded evidence under
+truncation; closed-recurrent component maps are nullable and exist only after
+queue closure.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored
