@@ -106,6 +106,12 @@ closes in
 recurrence M[123] from 29,486 to 49,194; the later evolved fetch at C=123
 observes that exact data-write value and becomes a fixed non-graphical
 self-loop.
+A generated 1,665-word restoration fixture repeats `j`/`*` data routing nine
+more times so the branch-collapsing M[123] rotate completes its ten-rotation
+orbit before C reaches that cell. The exact graph then uses all 4,096 reviewed
+states, drains its queue with no frontier, and proves a 1,666-state C=0..1665
+cycle entry path. Its final recurrence fetch at C=1665 is non-graphical, so this
+extends checked input-dependent depth without raising the state ceiling.
 The one-word-longer
 `b"u'&%$#\"!~}|{zyxw"` fixture reaches the reviewed 4,096-state maximum
 after 3,840 explored states, leaves 257 exact frontier states, and remains

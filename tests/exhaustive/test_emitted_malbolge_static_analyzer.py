@@ -255,6 +255,13 @@ _DOUBLE_JUMP_MERGED_LOADED_CYCLE_SOURCE = (
 _DOUBLE_JUMP_MERGED_LOADED_CYCLE_INITIAL_BYTE = 39
 _DOUBLE_JUMP_MERGED_LOADED_NON_GRAPHICAL_VALUE = 13
 _DOUBLE_JUMP_MERGED_CYCLE_DATA_POINTER = 243
+_RESTORED_DEEP_CYCLE_SOURCE_WORDS = 1_665
+_RESTORED_DEEP_CYCLE_PATH_STATES = 1_666
+_RESTORED_DEEP_CYCLE_ROTATION_LOOPS = 9
+_RESTORED_DEEP_CYCLE_ROTATION_STRIDE = 12
+_RESTORED_DEEP_CYCLE_ROTATION_JUMP_OFFSET = 10
+_RESTORED_DEEP_CYCLE_ROTATION_OFFSET = 11
+_RESTORED_DEEP_CYCLE_INVALID_VALUE = 29_434
 _OVER_CAP_INPUT_CYCLE_SOURCE = b"u'&%$#\"!~}|{zyxw"
 _OVER_CAP_EXPLORED_STATES = 3_840
 _OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION = 17
@@ -1251,6 +1258,19 @@ def _historical_load_instructions() -> frozenset[int]:
 def _source_byte_for_decode(decoded: int, position: int) -> int:
     index = _TEST_XLAT1.index(decoded)
     return ((index - position) % _DECODE_PERIOD) + _GRAPHICAL_START
+
+
+def _restored_deep_input_cycle_source() -> bytes:
+    decoded = [ord("o")] * _RESTORED_DEEP_CYCLE_SOURCE_WORDS
+    decoded[:4] = map(ord, "/jj*")
+    for index in range(_RESTORED_DEEP_CYCLE_ROTATION_LOOPS):
+        base = 4 + _RESTORED_DEEP_CYCLE_ROTATION_STRIDE * index
+        decoded[base + _RESTORED_DEEP_CYCLE_ROTATION_JUMP_OFFSET] = ord("j")
+        decoded[base + _RESTORED_DEEP_CYCLE_ROTATION_OFFSET] = ord("*")
+    return bytes(
+        _source_byte_for_decode(opcode, position)
+        for position, opcode in enumerate(decoded)
+    )
 
 
 def test_report_hash_binds_exact_source_bytes() -> None:
@@ -3723,6 +3743,46 @@ def _assert_124_state_evolved_fetch_evidence(
         _DOUBLE_JUMP_MERGED_CYCLE_WRITER_CODE_POINTER
     )
     assert writer_state.data_pointer == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+
+
+def test_report_worklist_closes_reviewed_ceiling_deep_input_cycle() -> None:
+    """A restored data cell carries input reachability to the reviewed cap."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _restored_deep_input_cycle_source(),
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _MAX_WORKLIST_STATE_LIMIT
+    assert worklist.explored_states == _MAX_WORKLIST_STATE_LIMIT
+    assert worklist.frontier_states == 0
+    assert not worklist.truncated
+    assert worklist.maximum_first_seen_transition_index == (
+        _RESTORED_DEEP_CYCLE_PATH_STATES
+    )
+    path = worklist.reachable_cycle_entry_path
+    assert len(path) == _RESTORED_DEEP_CYCLE_PATH_STATES
+    assert tuple(state.code_pointer for state in path) == tuple(
+        range(_RESTORED_DEEP_CYCLE_PATH_STATES)
+    )
+    assert path[-1] == worklist.reachable_cycle_witness[0]
+    witness = worklist.explored_non_graphical_fetch_witness
+    assert witness is not None
+    assert witness.address == _RESTORED_DEEP_CYCLE_SOURCE_WORDS
+    assert witness.value == _RESTORED_DEEP_CYCLE_INVALID_VALUE
+    assert len(witness.entry_path) == _RESTORED_DEEP_CYCLE_PATH_STATES
+    source_path = (
+        report.bounded_worklist_non_graphical_fetch_entry_path_source_map
+    )
+    assert len(source_path) == _RESTORED_DEEP_CYCLE_PATH_STATES
+    assert all(
+        context.source_position == index
+        for index, context in enumerate(source_path[:-1])
+    )
+    assert source_path[-1].code_pointer == _RESTORED_DEEP_CYCLE_SOURCE_WORDS
+    assert source_path[-1].source_position is None
+    assert worklist.closed_all_paths_terminate is False
+    assert worklist.closed_all_paths_halt is False
 
 
 def test_report_worklist_proves_124_state_input_cycle() -> None:

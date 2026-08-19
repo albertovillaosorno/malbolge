@@ -419,7 +419,13 @@ A separate 123-byte `/jj*` plus 119-`o` fixture closes in 1,012 states and
 proves a 124-state C=0..123 path. Transition 4 mutates recurrence M[123] from
 29,486
 to 49,194; the eventual evolved instruction fetch observes the same value and
-forms a fixed non-graphical self-loop. The one-word-longer
+forms a fixed non-graphical self-loop. A generated 1,665-word restoration
+fixture uses nine additional data-return `j`/`*` pairs to rotate M[123] ten
+times total, restoring its original graphical value before C reaches it. The
+worklist then closes at exactly 4,096 unique/explored states with no frontier
+and proves a 1,666-state C=0..1665 entry path. The final C=1665 recurrence
+fetch is non-graphical; its source-mapped witness keeps C=0..1664 loaded and
+only the recurrence endpoint source-null. The one-word-longer
 `b"u'&%$#\"!~}|{zyxw"` fixture reaches the 4,096-state maximum after
 3,840 states are explored. It leaves 257 exact frontier states and records
 first-seen depth 17, publishes the deterministic path to the first unexplored

@@ -169,7 +169,12 @@ executable cells, and input-dependent cycles or hangs.
   without raising the cap. A separate 123-byte `/jj*` plus 119-`o` fixture
   closes in 1,012 states and proves a 124-state C=0..123 path. Transition 4
   mutates recurrence M[123] from 29,486 to 49,194; the later evolved fetch reads
-  that exact value before entering a fixed non-graphical self-loop. The
+  that exact value before entering a fixed non-graphical self-loop. A generated
+  1,665-word restoration fixture rotates M[123] ten times total before C reaches
+  it, closes at exactly 4,096 unique/explored states with no frontier, and
+  proves
+  a 1,666-state C=0..1665 path. Its final recurrence fetch is non-graphical; the
+  source-mapped witness keeps C=0..1664 loaded and only C=1665 source-null. The
   one-word-longer `b"u'&%$#\"!~}|{zyxw"` fixture
   reaches the maximum after
   3,840 explored states, leaves 257 exact frontier states, records first-seen
@@ -391,7 +396,7 @@ executable cells, and input-dependent cycles or hangs.
 - Automatic unbounded/worklist control-flow reachability, broader unbounded
   dataflow/evolved-memory equivalence, control-flow/source-map linkage beyond
   the selected bounded witness set, wraparound beyond selected prefix/worklist
-  evidence, and input-dependent cycles deeper than the checked 124-state path
+  evidence, and input-dependent cycles deeper than the checked 1,666-state path
   remain open. Nothing after the
   requested bound is inferred from prefix or initial-image admission.
 
@@ -418,8 +423,9 @@ executable cells, and input-dependent cycles or hangs.
   loaded-source/raw-offset bounded
   fetch/read/write/encryption context, exact bounded fetch-value lineage through
   loaded source, recurrence, and prior data-write evidence, explicit finite
-  worklist closure/truncation evidence including 41-state and 124-state
-  branch-merged cycle paths plus source-mapped merge and cycle-closing-edge
+  worklist closure/truncation evidence including 41-state, 124-state, and
+  reviewed-ceiling 1,666-state branch-merged cycle paths plus source-mapped
+  merge and cycle-closing-edge
   witnesses, mutation
   and
   planned/committed write
