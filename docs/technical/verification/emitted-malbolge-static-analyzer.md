@@ -460,7 +460,14 @@ graph closes in 4,095 states and proves a 1,793-state path whose loaded C
 coordinates are `0,1,2,3,58..1845`; only recurrence C=1846 is source-null and
 non-graphical at value 29,441. The adjacent 1,847-word image reaches 4,096
 unique states after 4,095 explored states and retains two C=1847 frontier states
-instead of claiming closure. The one-word-longer
+instead of claiming closure. A generated 3,582-word late-input fixture keeps C
+sequential through loaded position 3579 before `/j*` resolves the input branch.
+Its exact graph uses all 4,096 reviewed states with no frontier and proves a
+3,583-state C=0..3582 path; C=0..3581 remain loaded/source-mapped and only
+recurrence C=3582 is source-null and non-graphical at value 29,421. The adjacent
+3,583-word image reaches 4,096 unique states after 4,095 explored states,
+retains two exact C=3583 frontier states distinguished by EOF history, and
+keeps cycle/closure claims unknown beyond that frontier. The one-word-longer
 `b"u'&%$#\"!~}|{zyxw"` fixture reaches the 4,096-state maximum after
 3,840 states are explored. It leaves 257 exact frontier states and records
 first-seen depth 17, publishes the deterministic path to the first unexplored

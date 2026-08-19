@@ -42,6 +42,7 @@ import json
 from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from typing import Final
 from typing import Protocol
 from typing import cast
 
@@ -279,7 +280,16 @@ _JUMP_OVER_MUTATION_CYCLE_TARGET = 58
 _JUMP_OVER_MUTATION_CYCLE_INVALID_VALUE = 29_441
 _JUMP_OVER_MUTATION_CYCLE_NON_GRAPHICAL_FETCH_COUNT = 2
 _JUMP_OVER_MUTATION_CYCLE_SKIPPED_CELL = 40
-_JUMP_OVER_MUTATION_CYCLE_FRONTIER_DATA_POSITION = 1_831
+_JUMP_OVER_MUTATION_CYCLE_FRONTIER_DATA_POSITION: Final = 1_831
+_LATE_INPUT_CYCLE_SOURCE_WORDS = 3_582
+_LATE_INPUT_CYCLE_OVER_CAP_SOURCE_WORDS = 3_583
+_LATE_INPUT_CYCLE_INPUT_POSITION = 3_579
+_LATE_INPUT_CYCLE_OVER_CAP_INPUT_POSITION = 3_580
+_LATE_INPUT_CYCLE_PATH_STATES = 3_583
+_LATE_INPUT_CYCLE_OVER_CAP_PATH_STATES = 3_584
+_LATE_INPUT_CYCLE_FRONTIER_STATES = 2
+_LATE_INPUT_CYCLE_INVALID_VALUE = 29_421
+_LATE_INPUT_CYCLE_NON_GRAPHICAL_FETCH_COUNT = 2
 _OVER_CAP_INPUT_CYCLE_SOURCE = b"u'&%$#\"!~}|{zyxw"
 _OVER_CAP_EXPLORED_STATES = 3_840
 _OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION = 17
@@ -1360,6 +1370,17 @@ def _jump_over_mutation_deep_input_cycle_source(
     decoded = [ord("o")] * source_words
     decoded[:4] = map(ord, "/j*i")
     decoded[_JUMP_OVER_MUTATION_CYCLE_DATA_CELL] = ord("i")
+    return bytes(
+        _source_byte_for_decode(opcode, position)
+        for position, opcode in enumerate(decoded)
+    )
+
+
+def _late_input_deep_cycle_source(
+    source_words: int = _LATE_INPUT_CYCLE_SOURCE_WORDS,
+) -> bytes:
+    decoded = [ord("o")] * source_words
+    decoded[-3:] = map(ord, "/j*")
     return bytes(
         _source_byte_for_decode(opcode, position)
         for position, opcode in enumerate(decoded)
@@ -3898,6 +3919,136 @@ def _assert_124_state_evolved_fetch_evidence(
         _DOUBLE_JUMP_MERGED_CYCLE_WRITER_CODE_POINTER
     )
     assert writer_state.data_pointer == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+
+
+def _assert_late_input_branch_context(
+    report: _Report,
+    source_position: int,
+    path_state_index: int,
+    *,
+    frontier: bool,
+) -> None:
+    contexts = report.bounded_worklist_input_branch_source_contexts
+    assert len(contexts) == 1
+    context = contexts[0]
+    assert context.source_position == source_position
+    assert context.source_byte_offset == source_position
+    if frontier:
+        assert context.reachable_cycle_entry_path_state_index is None
+        assert context.closed_recurrent_entry_path_state_index is None
+        assert context.frontier_entry_path_state_index == path_state_index
+    else:
+        assert (
+            context.reachable_cycle_entry_path_state_index == path_state_index
+        )
+        assert (
+            context.closed_recurrent_entry_path_state_index == path_state_index
+        )
+        assert context.frontier_entry_path_state_index is None
+
+
+def _assert_late_input_loaded_path(
+    contexts: tuple[_WorklistControlPathSourceContext, ...],
+    path_states: int,
+) -> None:
+    assert len(contexts) == path_states
+    assert all(
+        context.code_pointer == index
+        for index, context in enumerate(contexts)
+    )
+    assert all(
+        context.source_position == index
+        for index, context in enumerate(contexts[:-1])
+    )
+    assert contexts[-1].source_position is None
+
+
+def test_report_worklist_proves_3583_state_late_input_cycle() -> None:
+    """A late input uses the reviewed cap for a 3,583-state exact path."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _late_input_deep_cycle_source(),
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _MAX_WORKLIST_STATE_LIMIT
+    assert worklist.explored_states == _MAX_WORKLIST_STATE_LIMIT
+    assert worklist.frontier_states == 0
+    assert worklist.frontier_state_set == ()
+    assert not worklist.truncated
+    assert worklist.reachable_cycle_detected
+    assert worklist.maximum_first_seen_transition_index == (
+        _LATE_INPUT_CYCLE_PATH_STATES
+    )
+    path = worklist.reachable_cycle_entry_path
+    assert len(path) == _LATE_INPUT_CYCLE_PATH_STATES
+    assert tuple(state.code_pointer for state in path) == tuple(
+        range(_LATE_INPUT_CYCLE_PATH_STATES)
+    )
+    assert path[-1] == worklist.reachable_cycle_witness[0]
+    assert worklist.explored_non_graphical_fetch_transition_count == (
+        _LATE_INPUT_CYCLE_NON_GRAPHICAL_FETCH_COUNT
+    )
+    assert worklist.explored_non_graphical_fetch_addresses == (
+        _LATE_INPUT_CYCLE_SOURCE_WORDS,
+    )
+    witness = worklist.explored_non_graphical_fetch_witness
+    assert witness is not None
+    assert witness.value == _LATE_INPUT_CYCLE_INVALID_VALUE
+    _assert_late_input_loaded_path(
+        report.bounded_worklist_cycle_entry_path_source_map,
+        _LATE_INPUT_CYCLE_PATH_STATES,
+    )
+    _assert_late_input_branch_context(
+        report,
+        _LATE_INPUT_CYCLE_INPUT_POSITION,
+        _LATE_INPUT_CYCLE_INPUT_POSITION,
+        frontier=False,
+    )
+    assert worklist.closed_all_paths_terminate is False
+    assert worklist.closed_all_paths_halt is False
+
+
+def test_report_worklist_truncates_adjacent_late_input_cycle() -> None:
+    """One more late-input word leaves the exact two-state frontier."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _late_input_deep_cycle_source(_LATE_INPUT_CYCLE_OVER_CAP_SOURCE_WORDS),
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _MAX_WORKLIST_STATE_LIMIT
+    assert worklist.explored_states == _MAX_WORKLIST_STATE_LIMIT - 1
+    assert worklist.frontier_states == _LATE_INPUT_CYCLE_FRONTIER_STATES
+    assert len(worklist.frontier_state_set) == _LATE_INPUT_CYCLE_FRONTIER_STATES
+    assert {state.eof_seen for state in worklist.frontier_state_set} == {
+        False,
+        True,
+    }
+    assert all(
+        state.code_pointer == _LATE_INPUT_CYCLE_OVER_CAP_SOURCE_WORDS
+        for state in worklist.frontier_state_set
+    )
+    assert worklist.truncated
+    assert not worklist.reachable_cycle_detected
+    assert worklist.maximum_first_seen_transition_index == (
+        _LATE_INPUT_CYCLE_OVER_CAP_PATH_STATES
+    )
+    _assert_late_input_loaded_path(
+        report.bounded_worklist_frontier_entry_path_source_map,
+        _LATE_INPUT_CYCLE_OVER_CAP_PATH_STATES,
+    )
+    _assert_late_input_branch_context(
+        report,
+        _LATE_INPUT_CYCLE_OVER_CAP_INPUT_POSITION,
+        _LATE_INPUT_CYCLE_OVER_CAP_INPUT_POSITION,
+        frontier=True,
+    )
+    frontier_sources = report.bounded_worklist_frontier_state_source_contexts
+    assert len(frontier_sources) == _LATE_INPUT_CYCLE_FRONTIER_STATES
+    assert all(item.source_position is None for item in frontier_sources)
+    assert worklist.closed_all_paths_terminate is None
+    assert worklist.closed_all_paths_halt is None
 
 
 def _jump_over_mutation_code_path(end: int) -> tuple[int, ...]:

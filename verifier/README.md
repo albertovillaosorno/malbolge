@@ -120,6 +120,13 @@ C=58 after the branch-collapsing M[40] rotate, skipping that mutated code cell.
 It closes in 4,095 states and proves a 1,793-state cycle entry path ending at
 the recurrence-backed non-graphical C=1846 fetch. The adjacent 1,847-word image
 hits the 4,096-state ceiling with a two-state frontier and remains truncated.
+A generated 3,582-word late-input fixture places `/j*` in its final three
+loaded cells. The exact walk reaches input at C=3579 before branching, then
+closes at all 4,096 reviewed states and proves a 3,583-state C=0..3582 cycle
+entry path whose final recurrence fetch is non-graphical. The adjacent
+3,583-word image reaches the same state ceiling after 4,095 explored states,
+retains exactly two C=3583 frontier states for the byte/EOF histories, and stays
+explicitly truncated.
 The one-word-longer
 `b"u'&%$#\"!~}|{zyxw"` fixture reaches the reviewed 4,096-state maximum
 after 3,840 explored states, leaves 257 exact frontier states, and remains
