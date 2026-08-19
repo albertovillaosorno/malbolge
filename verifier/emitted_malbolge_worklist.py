@@ -1495,7 +1495,9 @@ class _Explorer:
             explored_non_graphical_fetch_value_domains=_value_domains(
                 self.non_graphical_fetch_values
             ),
-            explored_non_graphical_fetch_witness=self.non_graphical_fetch_witness,
+            explored_non_graphical_fetch_witness=(
+                self.non_graphical_fetch_witness
+            ),
             explored_data_read_value_domains=_value_domains(
                 self.data_read_values
             ),
