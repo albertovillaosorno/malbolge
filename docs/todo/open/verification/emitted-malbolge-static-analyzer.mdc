@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v67
+  offsets, stable finding codes, and explicit analysis limits. Schema v68
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -332,7 +332,9 @@ executable cells, and input-dependent cycles or hangs.
   cycle-closing repeat count: merged is 255+2=257; near-cap is 0+257=257.
   Schema v67 adds the first cycle-closing repeated-edge witness and source map.
   The 41-state target is loaded C=40/source position 40; near-cap C=15 remains
-  recurrence/source-null.
+  recurrence/source-null. Schema v68 source-maps reachable and closed-recurrent
+  cycle bodies. In the 124-byte deep variant, body C=123 maps to loaded byte 39
+  while D=243 remains recurrence/source-null.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact
@@ -384,8 +386,8 @@ executable cells, and input-dependent cycles or hangs.
   domains, source-linked worklist value maps with recurrence initial-memory
   baselines, final no-op partition/witnesses,
   evolved fetch/data-read witnesses with value-checked last-writer provenance,
-  writer-state and entry-path C/D source maps, mutation/no-op/wrap and
-  graph-level C/D paths, evolved read
+  writer-state and entry-path C/D source maps, cycle-body C/D source maps,
+  mutation/no-op/wrap and graph-level C/D paths, evolved read
   transition/address counts and changed-value
   domains, explicit bounded analysis
   limits, CLI second/third/fourth rejection status, and CLI missing-source

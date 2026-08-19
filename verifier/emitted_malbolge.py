@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v67"
+_SCHEMA: Final = "malbolge-static-image/v68"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -230,6 +230,21 @@ class BoundedWorklistControlPathSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistCycleStateSourceContext:
+    """Source coordinates for one state in an exact worklist cycle body."""
+
+    cycle_state_index: int
+    code_pointer: int
+    data_pointer: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistCycleClosingRepeatedEdgeSourceContext:
     """Source map for the first exact cycle-closing repeated edge."""
 
@@ -378,6 +393,12 @@ class StaticImageReport:
     ]
     bounded_worklist_wraparound_entry_path_source_map: tuple[
         BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_cycle_witness_source_map: tuple[
+        BoundedWorklistCycleStateSourceContext, ...
+    ]
+    bounded_worklist_closed_recurrent_cycle_witness_source_map: tuple[
+        BoundedWorklistCycleStateSourceContext, ...
     ]
     bounded_worklist_cycle_entry_path_source_map: tuple[
         BoundedWorklistControlPathSourceContext, ...
@@ -1320,6 +1341,36 @@ def _worklist_cycle_closing_repeated_edge_source_context(
     )
 
 
+def _worklist_cycle_state_source_map(
+    states: tuple[worklist_transfer.WorklistCycleState, ...] | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistCycleStateSourceContext, ...]:
+    if states is None:
+        return ()
+    contexts: list[BoundedWorklistCycleStateSourceContext] = []
+    for index, state in enumerate(states):
+        source = _worklist_mutation_address_source_context(
+            state.code_pointer, cells
+        )
+        data_source = _worklist_mutation_address_source_context(
+            state.data_pointer, cells
+        )
+        contexts.append(
+            BoundedWorklistCycleStateSourceContext(
+                cycle_state_index=index,
+                code_pointer=state.code_pointer,
+                data_pointer=state.data_pointer,
+                source_position=source.source_position,
+                source_byte_offset=source.source_byte_offset,
+                initial_source_byte=source.initial_source_byte,
+                data_source_position=data_source.source_position,
+                data_source_byte_offset=data_source.source_byte_offset,
+                initial_data_source_byte=data_source.initial_source_byte,
+            )
+        )
+    return tuple(contexts)
+
+
 def _worklist_state_merge_source_context(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -1686,6 +1737,22 @@ def analyze_source(
                     if worklist is None
                     or worklist.explored_wraparound_witness is None
                     else worklist.explored_wraparound_witness.entry_path
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_cycle_witness_source_map=(
+            _worklist_cycle_state_source_map(
+                None if worklist is None else worklist.reachable_cycle_witness,
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_closed_recurrent_cycle_witness_source_map=(
+            _worklist_cycle_state_source_map(
+                (
+                    None
+                    if worklist is None
+                    else worklist.closed_recurrent_cycle_witness
                 ),
                 prefix.cells,
             )

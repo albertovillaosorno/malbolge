@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v67"
+_SCHEMA = "malbolge-static-image/v68"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -240,6 +240,11 @@ _DOUBLE_JUMP_MERGED_CYCLE_INITIAL_VALUE = 29_486
 _DOUBLE_JUMP_MERGED_CYCLE_EVOLVED_VALUE = 49_194
 _DOUBLE_JUMP_MERGED_CYCLE_WRITER_TRANSITION = 4
 _DOUBLE_JUMP_MERGED_CYCLE_WRITER_CODE_POINTER = 3
+_DOUBLE_JUMP_MERGED_LOADED_CYCLE_SOURCE = (
+    _DOUBLE_JUMP_MERGED_CYCLE_SOURCE + b"'"
+)
+_DOUBLE_JUMP_MERGED_LOADED_CYCLE_INITIAL_BYTE = 39
+_DOUBLE_JUMP_MERGED_CYCLE_DATA_POINTER = 243
 _OVER_CAP_INPUT_CYCLE_SOURCE = b"u'&%$#\"!~}|{zyxw"
 _OVER_CAP_EXPLORED_STATES = 3_840
 _OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION = 17
@@ -585,6 +590,18 @@ class _WorklistControlPathSourceContext(Protocol):
     initial_data_source_byte: int | None
 
 
+class _WorklistCycleStateSourceContext(Protocol):
+    cycle_state_index: int
+    code_pointer: int
+    data_pointer: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+
+
 class _WorklistCycleClosingRepeatedEdgeSourceContext(Protocol):
     source_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
@@ -857,6 +874,12 @@ class _Report(Protocol):
     ]
     bounded_worklist_wraparound_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_cycle_witness_source_map: tuple[
+        _WorklistCycleStateSourceContext, ...
+    ]
+    bounded_worklist_closed_recurrent_cycle_witness_source_map: tuple[
+        _WorklistCycleStateSourceContext, ...
     ]
     bounded_worklist_cycle_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
@@ -2995,6 +3018,21 @@ def test_report_worklist_proves_deeper_input_dependent_cycle() -> None:
     assert not worklist.truncated
 
 
+def _assert_recurrence_cycle_body_source_map(report: _Report) -> None:
+    cycle_body = report.bounded_worklist_cycle_witness_source_map
+    recurrent_body = (
+        report.bounded_worklist_closed_recurrent_cycle_witness_source_map
+    )
+    assert len(cycle_body) == 1
+    assert cycle_body == recurrent_body
+    body = cycle_body[0]
+    assert body.cycle_state_index == 0
+    assert body.code_pointer == _NEAR_CAP_INPUT_CYCLE_POINTER_PATH[-1][0]
+    assert body.data_pointer == _NEAR_CAP_INPUT_CYCLE_POINTER_PATH[-1][1]
+    assert body.source_position is None
+    assert body.data_source_position is None
+
+
 def test_worklist_maps_closed_cycle_and_recurrent_control_paths() -> None:
     """Closed cycle paths distinguish loaded and recurrence source."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -3014,6 +3052,34 @@ def test_worklist_maps_closed_cycle_and_recurrent_control_paths() -> None:
         context.source_byte_offset for context in recurrent
     )
     assert recurrent_offsets == expected_offsets
+    _assert_recurrence_cycle_body_source_map(report)
+
+
+def test_worklist_maps_loaded_cycle_body_with_recurrence_data_pointer() -> None:
+    """Cycle-body mapping keeps loaded C and recurrence D independent."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _DOUBLE_JUMP_MERGED_LOADED_CYCLE_SOURCE,
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    cycle = report.bounded_worklist_cycle_witness_source_map
+    recurrent = (
+        report.bounded_worklist_closed_recurrent_cycle_witness_source_map
+    )
+    assert len(cycle) == 1
+    assert cycle == recurrent
+    context = cycle[0]
+    assert context.cycle_state_index == 0
+    assert context.code_pointer == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+    assert context.data_pointer == _DOUBLE_JUMP_MERGED_CYCLE_DATA_POINTER
+    assert context.source_position == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+    assert context.source_byte_offset == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+    assert (
+        context.initial_source_byte
+        == _DOUBLE_JUMP_MERGED_LOADED_CYCLE_INITIAL_BYTE
+    )
+    assert context.data_source_position is None
+    assert context.data_source_byte_offset is None
+    assert context.initial_data_source_byte is None
 
 
 def test_worklist_maps_truncated_frontier_control_path() -> None:
