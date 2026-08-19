@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v80
+  offsets, stable finding codes, and explicit analysis limits. Schema v81
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -419,6 +419,13 @@ executable cells, and input-dependent cycles or hangs.
   first-witness paths remain one per address rather than per observation. At a
   257-state pre-terminal cap only the explored C=D=0 entry alias is retained;
   frontier alternatives remain unexplored.
+  Schema v81 retains every exact explored non-graphical executable-fetch state
+  and value, requires exact projection to its aggregate count/address/value
+  evidence, and requires each state to keep the historical non-progress
+  self-loop. Closed `b"ut"` publishes all 257 byte/EOF fixed-fetch states at
+  recurrence C/D=2 while one shortest path remains representative. A loaded
+  cycle separately source-maps each observation's loaded C and recurrence D;
+  truncated frontiers are never promoted to explored invalid-fetch evidence.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact

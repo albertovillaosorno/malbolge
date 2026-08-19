@@ -67,7 +67,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v80"
+_SCHEMA = "malbolge-static-image/v81"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _EOF_ACCUMULATOR = 59_048
@@ -593,6 +593,12 @@ class _WorklistCodeDataAliasWitness(Protocol):
     memory_value: int
 
 
+class _WorklistNonGraphicalFetchObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    value: int
+
+
 class _WorklistNonGraphicalFetchWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -766,6 +772,19 @@ class _WorklistCodeDataAliasObservationSourceContext(Protocol):
     initial_data_source_byte: int | None
 
 
+class _WorklistNonGraphicalFetchObservationSourceContext(Protocol):
+    observation_index: int
+    state: _WorklistCycleState
+    address: int
+    value: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+
+
 class _WorklistCodeDataAliasSourceContext(Protocol):
     address: int
     memory_value: int
@@ -883,6 +902,9 @@ class _WorklistAnalysis(Protocol):
     explored_non_graphical_fetch_transition_count: int
     explored_non_graphical_fetch_addresses: tuple[int, ...]
     explored_non_graphical_fetch_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_non_graphical_fetch_observations: tuple[
+        _WorklistNonGraphicalFetchObservation, ...
+    ]
     explored_non_graphical_fetch_witness: (
         _WorklistNonGraphicalFetchWitness | None
     )
@@ -1052,6 +1074,9 @@ class _Report(Protocol):
     ]
     bounded_worklist_non_graphical_fetch_value_source_map: tuple[
         _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_non_graphical_fetch_observation_source_contexts: tuple[
+        _WorklistNonGraphicalFetchObservationSourceContext, ...
     ]
     bounded_worklist_non_graphical_fetch_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
@@ -3618,6 +3643,37 @@ def _assert_loaded_non_graphical_fetch_entry_path(report: _Report) -> None:
     assert path[-1].source_byte_offset == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
 
 
+def _assert_loaded_non_graphical_fetch_observations(
+    report: _Report,
+) -> None:
+    observations = (
+        report.bounded_worklist_non_graphical_fetch_observation_source_contexts
+    )
+    assert len(observations) == _DOUBLE_JUMP_MERGED_NON_GRAPHICAL_FETCH_COUNT
+    assert tuple(item.observation_index for item in observations) == (0, 1)
+    assert all(
+        item.address == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+        for item in observations
+    )
+    assert all(
+        item.value == _DOUBLE_JUMP_MERGED_LOADED_NON_GRAPHICAL_VALUE
+        for item in observations
+    )
+    assert all(
+        item.source_position == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+        for item in observations
+    )
+    assert all(item.data_source_position is None for item in observations)
+    assert all(
+        item.state.code_pointer == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+        for item in observations
+    )
+    assert all(
+        item.state.data_pointer == _DOUBLE_JUMP_MERGED_CYCLE_DATA_POINTER
+        for item in observations
+    )
+
+
 def test_worklist_maps_loaded_non_graphical_executable_fetch() -> None:
     """Evolved invalid executable cell retains its loaded source coordinate."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -3647,6 +3703,7 @@ def test_worklist_maps_loaded_non_graphical_executable_fetch() -> None:
     assert context.values == (_DOUBLE_JUMP_MERGED_LOADED_NON_GRAPHICAL_VALUE,)
     assert context.initial_source_byte_in_values is False
     assert context.initial_memory_value_in_values is False
+    _assert_loaded_non_graphical_fetch_observations(report)
     witness = worklist.explored_non_graphical_fetch_witness
     assert witness is not None
     assert witness.address == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS

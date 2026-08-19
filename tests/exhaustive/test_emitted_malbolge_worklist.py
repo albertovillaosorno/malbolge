@@ -409,6 +409,12 @@ class _WorklistCodeDataAliasWitness(Protocol):
     memory_value: int
 
 
+class _WorklistNonGraphicalFetchObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    value: int
+
+
 class _WorklistNonGraphicalFetchWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -526,6 +532,9 @@ class _WorklistAnalysis(Protocol):
     explored_non_graphical_fetch_transition_count: int
     explored_non_graphical_fetch_addresses: tuple[int, ...]
     explored_non_graphical_fetch_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_non_graphical_fetch_observations: tuple[
+        _WorklistNonGraphicalFetchObservation, ...
+    ]
     explored_non_graphical_fetch_witness: (
         _WorklistNonGraphicalFetchWitness | None
     )
@@ -752,6 +761,22 @@ class _WorklistModule(Protocol):
         transition_count: int,
         addresses: set[int],
         values: dict[int, set[int]],
+    ) -> None: ...
+
+    def _assert_non_graphical_fetch_observation_projection(
+        self,
+        evidence: tuple[
+            int,
+            set[int],
+            dict[int, set[int]],
+            dict[_WorklistStateKey, int],
+        ],
+    ) -> None: ...
+
+    def _assert_non_graphical_fetch_observation_edges(
+        self,
+        observations: dict[_WorklistStateKey, int],
+        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
     ) -> None: ...
 
     def _assert_non_graphical_fetch_witness(
@@ -1267,6 +1292,21 @@ def _assert_fixed_non_graphical_fetch_evidence(
         result.explored_non_graphical_fetch_value_domains,
         _FIXED_CYCLE_POINTER,
     ) == (_FIXED_CYCLE_NON_GRAPHICAL_VALUE,)
+    observations = result.explored_non_graphical_fetch_observations
+    assert len(observations) == _INPUT_VALUE_COUNT
+    assert all(item.address == _FIXED_CYCLE_POINTER for item in observations)
+    assert all(
+        item.value == _FIXED_CYCLE_NON_GRAPHICAL_VALUE for item in observations
+    )
+    assert all(
+        (item.state.code_pointer, item.state.data_pointer)
+        == (_FIXED_CYCLE_POINTER, _FIXED_CYCLE_POINTER)
+        for item in observations
+    )
+    assert observations[0].state.accumulator == 0
+    assert not observations[0].state.eof_seen
+    assert observations[-1].state.accumulator == _EOF_ACCUMULATOR
+    assert observations[-1].state.eof_seen
     witness = result.explored_non_graphical_fetch_witness
     assert witness is not None
     assert witness.address == _FIXED_CYCLE_POINTER
@@ -1360,6 +1400,28 @@ def test_non_graphical_fetch_invariant_rejects_graphical_domain_value() -> None:
             1,
             {_FIXED_CYCLE_POINTER},
             {_FIXED_CYCLE_POINTER: {ord("A")}},
+        )
+
+
+def test_non_graphical_fetch_observation_rejects_count_drift() -> None:
+    """Invalid-fetch counts must equal exact explored fetch states."""
+    with pytest.raises(AssertionError, match="exact fetch states"):
+        worklist._assert_non_graphical_fetch_observation_projection(
+            (
+                1,
+                {_GRAPH_KEY_A[0]},
+                {_GRAPH_KEY_A[0]: {_FIXED_CYCLE_NON_GRAPHICAL_VALUE}},
+                {},
+            )
+        )
+
+
+def test_non_graphical_fetch_observation_requires_self_loop() -> None:
+    """Invalid executable fetches must retain exact non-progress edges."""
+    with pytest.raises(AssertionError, match="self-loop edge"):
+        worklist._assert_non_graphical_fetch_observation_edges(
+            {_GRAPH_KEY_A: _FIXED_CYCLE_NON_GRAPHICAL_VALUE},
+            {_GRAPH_KEY_A: {_GRAPH_KEY_B}, _GRAPH_KEY_B: set()},
         )
 
 

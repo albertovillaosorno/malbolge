@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v80 retains the legacy exact entry-through-fifth
+load decode. Schema v81 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -423,6 +423,13 @@ at address 1. Existing per-address alias witnesses remain the only serialized
 entry paths, so exhaustive endpoint evidence does not duplicate path history.
 At a 257-state cap only the explored C=D=0 entry alias is retained; the 257
 frontier alternatives are not promoted to alias observations.
+Schema v81 retains every exact explored non-graphical executable-fetch state
+and fetched value. The exact observations must project back to the reported
+transition count, address set, and value domains, and every observation must
+remain an exact self-loop under the historical non-progress rule. Closed
+`b"ut"` publishes all 257 byte/EOF fixed-fetch states at recurrence C/D=2 while
+keeping one representative shortest path; the loaded-cycle fixture independently
+source-maps each invalid-fetch state's loaded C and recurrence-backed D.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored

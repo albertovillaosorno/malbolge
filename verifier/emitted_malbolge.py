@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v80"
+_SCHEMA: Final = "malbolge-static-image/v81"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -342,6 +342,22 @@ class BoundedWorklistCodeDataAliasObservationSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistNonGraphicalFetchObservationSourceContext:
+    """Source coordinates for one exact non-graphical executable fetch."""
+
+    observation_index: int
+    state: worklist_transfer.WorklistCycleState
+    address: int
+    value: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistCodeDataAliasSourceContext:
     """Source-linked first exact C/D alias witness for one address."""
 
@@ -461,6 +477,9 @@ class StaticImageReport:
     ]
     bounded_worklist_non_graphical_fetch_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
+    ]
+    bounded_worklist_non_graphical_fetch_observation_source_contexts: tuple[
+        BoundedWorklistNonGraphicalFetchObservationSourceContext, ...
     ]
     bounded_worklist_non_graphical_fetch_entry_path_source_map: tuple[
         BoundedWorklistControlPathSourceContext, ...
@@ -1668,6 +1687,41 @@ def _worklist_code_data_alias_observation_source_contexts(
     return tuple(contexts)
 
 
+def _worklist_non_graphical_fetch_observation_source_contexts(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistNonGraphicalFetchObservationSourceContext, ...]:
+    if worklist is None:
+        return ()
+    contexts: list[
+        BoundedWorklistNonGraphicalFetchObservationSourceContext
+    ] = []
+    for index, observation in enumerate(
+        worklist.explored_non_graphical_fetch_observations
+    ):
+        source = _worklist_mutation_address_source_context(
+            observation.state.code_pointer, cells
+        )
+        data_source = _worklist_mutation_address_source_context(
+            observation.state.data_pointer, cells
+        )
+        contexts.append(
+            BoundedWorklistNonGraphicalFetchObservationSourceContext(
+                observation_index=index,
+                state=observation.state,
+                address=observation.address,
+                value=observation.value,
+                source_position=source.source_position,
+                source_byte_offset=source.source_byte_offset,
+                initial_source_byte=source.initial_source_byte,
+                data_source_position=data_source.source_position,
+                data_source_byte_offset=data_source.source_byte_offset,
+                initial_data_source_byte=data_source.initial_source_byte,
+            )
+        )
+    return tuple(contexts)
+
+
 def _worklist_code_data_alias_source_contexts(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -2042,6 +2096,11 @@ def analyze_source(
                     else worklist.explored_non_graphical_fetch_value_domains
                 ),
                 prefix.cells,
+            )
+        ),
+        bounded_worklist_non_graphical_fetch_observation_source_contexts=(
+            _worklist_non_graphical_fetch_observation_source_contexts(
+                worklist, prefix.cells
             )
         ),
         bounded_worklist_non_graphical_fetch_entry_path_source_map=(

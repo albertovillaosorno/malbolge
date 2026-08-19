@@ -160,6 +160,15 @@ class WorklistCodeDataAliasObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistNonGraphicalFetchObservation:
+    """One exact explored non-graphical executable fetch state and value."""
+
+    state: WorklistCycleState
+    address: int
+    value: int
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistCodeDataAliasWitness:
     """First exact entry-reachable C/D alias state for one address."""
 
@@ -302,6 +311,9 @@ class WorklistAnalysis:
     explored_non_graphical_fetch_transition_count: int
     explored_non_graphical_fetch_addresses: tuple[int, ...]
     explored_non_graphical_fetch_value_domains: tuple[WorklistValueDomain, ...]
+    explored_non_graphical_fetch_observations: tuple[
+        WorklistNonGraphicalFetchObservation, ...
+    ]
     explored_non_graphical_fetch_witness: (
         WorklistNonGraphicalFetchWitness | None
     )
@@ -1393,6 +1405,45 @@ def _assert_non_graphical_fetch_domains(
         raise AssertionError(message)
 
 
+def _assert_non_graphical_fetch_observation_projection(
+    evidence: tuple[
+        int,
+        set[int],
+        dict[int, set[int]],
+        dict[_StateKey, int],
+    ],
+) -> None:
+    transition_count, addresses, values, observations = evidence
+    if transition_count != len(observations):
+        message = (
+            "non-graphical fetch count disagrees with exact fetch states"
+        )
+        raise AssertionError(message)
+    observed_addresses = {state[0] for state in observations}
+    if addresses != observed_addresses:
+        message = (
+            "non-graphical fetch addresses disagree with exact fetch states"
+        )
+        raise AssertionError(message)
+    projected_values: dict[int, set[int]] = {}
+    for state, value in observations.items():
+        projected_values.setdefault(state[0], set()).add(value)
+    if values != projected_values:
+        message = (
+            "non-graphical fetch value domains disagree with exact fetch states"
+        )
+        raise AssertionError(message)
+
+
+def _assert_non_graphical_fetch_observation_edges(
+    observations: dict[_StateKey, int],
+    edges: dict[_StateKey, set[_StateKey]],
+) -> None:
+    if any(edges.get(state) != {state} for state in observations):
+        message = "non-graphical fetch state lost its exact self-loop edge"
+        raise AssertionError(message)
+
+
 def _assert_non_graphical_fetch_witness_endpoint(
     values: dict[int, set[int]],
     witness: WorklistNonGraphicalFetchWitness,
@@ -1496,6 +1547,9 @@ class _Explorer:
     fetch_values: dict[int, set[int]] = field(default_factory=dict)
     non_graphical_fetch_addresses: set[int] = field(default_factory=set)
     non_graphical_fetch_values: dict[int, set[int]] = field(
+        default_factory=dict
+    )
+    non_graphical_fetch_state_values: dict[_StateKey, int] = field(
         default_factory=dict
     )
     non_graphical_fetch_witness: WorklistNonGraphicalFetchWitness | None = None
@@ -1732,6 +1786,22 @@ class _Explorer:
             message = "committed data-write addresses escape planned writes"
             raise AssertionError(message)
 
+    def _assert_non_graphical_fetch_evidence(self) -> None:
+        evidence = (
+            self.non_graphical_fetch_transitions,
+            self.non_graphical_fetch_addresses,
+            self.non_graphical_fetch_values,
+            self.non_graphical_fetch_state_values,
+        )
+        _assert_non_graphical_fetch_domains(*evidence[:3])
+        _assert_non_graphical_fetch_observation_projection(evidence)
+        _assert_non_graphical_fetch_observation_edges(
+            self.non_graphical_fetch_state_values, self.edges
+        )
+        _assert_non_graphical_fetch_witness(
+            self.non_graphical_fetch_values, self.non_graphical_fetch_witness
+        )
+
     def result(
         self,
         *,
@@ -1808,15 +1878,7 @@ class _Explorer:
         )
         self._assert_read_partition_invariants()
         self._assert_write_evidence_invariants()
-        _assert_non_graphical_fetch_domains(
-            self.non_graphical_fetch_transitions,
-            self.non_graphical_fetch_addresses,
-            self.non_graphical_fetch_values,
-        )
-        _assert_non_graphical_fetch_witness(
-            self.non_graphical_fetch_values,
-            self.non_graphical_fetch_witness,
-        )
+        self._assert_non_graphical_fetch_evidence()
         _assert_wrap_evidence_invariants(
             (
                 self.wraparound_transitions,
@@ -1979,6 +2041,14 @@ class _Explorer:
             ),
             explored_non_graphical_fetch_value_domains=_value_domains(
                 self.non_graphical_fetch_values
+            ),
+            explored_non_graphical_fetch_observations=tuple(
+                WorklistNonGraphicalFetchObservation(
+                    state=_cycle_state(key),
+                    address=key[0],
+                    value=self.non_graphical_fetch_state_values[key],
+                )
+                for key in sorted(self.non_graphical_fetch_state_values)
             ),
             explored_non_graphical_fetch_witness=(
                 self.non_graphical_fetch_witness
@@ -2417,24 +2487,39 @@ class _Explorer:
         self._record_evolved_fetch_evidence(node, transition)
         self._record_evolved_data_read_evidence(node, transition)
 
-    def _record_non_graphical_fetch_evidence(
+    def _record_non_graphical_fetch_observation(
         self,
         node: _ReachabilityNode,
         transition: prefix_transfer.SecondTransition,
-    ) -> None:
+    ) -> tuple[_StateKey, int, int] | None:
         if transition.decoded_byte is not None:
-            return
+            return None
         if classic.is_graphical(transition.fetched_value):
             message = "non-graphical fetch retained a graphical memory value"
+            raise AssertionError(message)
+        key = _node_key(node)
+        if key in self.non_graphical_fetch_state_values:
+            message = "non-graphical fetch state was explored more than once"
             raise AssertionError(message)
         address = transition.fetched_address
         value = transition.fetched_value
         self.non_graphical_fetch_transitions += 1
         self.non_graphical_fetch_addresses.add(address)
         _record_domain_value(self.non_graphical_fetch_values, address, value)
-        if self.non_graphical_fetch_witness is not None:
+        self.non_graphical_fetch_state_values[key] = value
+        return key, address, value
+
+    def _record_non_graphical_fetch_evidence(
+        self,
+        node: _ReachabilityNode,
+        transition: prefix_transfer.SecondTransition,
+    ) -> None:
+        observation = self._record_non_graphical_fetch_observation(
+            node, transition
+        )
+        if observation is None or self.non_graphical_fetch_witness is not None:
             return
-        key = _node_key(node)
+        key, address, value = observation
         path = _known_graph_shortest_path(
             self.edges,
             self.seen,
