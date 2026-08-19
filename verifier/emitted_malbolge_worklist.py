@@ -2283,7 +2283,9 @@ class _Explorer:
                 ),
                 (
                     set(self.initial_value_encryption_input_state_values),
-                    set(self.changed_from_initial_encryption_input_state_values),
+                    set(
+                        self.changed_from_initial_encryption_input_state_values
+                    ),
                     "encryption-input value partition",
                 ),
             )
