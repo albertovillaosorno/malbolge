@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v81"
+_SCHEMA: Final = "malbolge-static-image/v82"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -370,6 +370,26 @@ class BoundedWorklistCodeDataAliasSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistEvolvedReadObservationSourceContext:
+    """Source coordinates for one exact changed worklist read."""
+
+    observation_index: int
+    state: worklist_transfer.WorklistCycleState
+    address: int
+    initial_value: int
+    observed_value: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+    read_source_position: int | None
+    read_source_byte_offset: int | None
+    initial_read_source_byte: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistEvolvedReadWriterSourceContext:
     """Source-mapped exact last writer for one evolved worklist read."""
 
@@ -502,11 +522,17 @@ class StaticImageReport:
     bounded_worklist_evolved_fetch_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
     ]
+    bounded_worklist_evolved_fetch_observation_source_contexts: tuple[
+        BoundedWorklistEvolvedReadObservationSourceContext, ...
+    ]
     bounded_worklist_initial_value_data_read_source_map: tuple[
         BoundedWorklistMutationAddressSourceContext, ...
     ]
     bounded_worklist_evolved_data_read_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
+    ]
+    bounded_worklist_evolved_data_read_observation_source_contexts: tuple[
+        BoundedWorklistEvolvedReadObservationSourceContext, ...
     ]
     bounded_worklist_planned_data_write_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
@@ -1748,6 +1774,42 @@ def _worklist_code_data_alias_source_contexts(
     return tuple(contexts)
 
 
+def _worklist_evolved_read_observation_source_contexts(
+    observations: tuple[worklist_transfer.WorklistEvolvedReadObservation, ...],
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistEvolvedReadObservationSourceContext, ...]:
+    contexts: list[BoundedWorklistEvolvedReadObservationSourceContext] = []
+    for index, observation in enumerate(observations):
+        source = _worklist_mutation_address_source_context(
+            observation.state.code_pointer, cells
+        )
+        data_source = _worklist_mutation_address_source_context(
+            observation.state.data_pointer, cells
+        )
+        read_source = _worklist_mutation_address_source_context(
+            observation.address, cells
+        )
+        contexts.append(
+            BoundedWorklistEvolvedReadObservationSourceContext(
+                observation_index=index,
+                state=observation.state,
+                address=observation.address,
+                initial_value=observation.initial_value,
+                observed_value=observation.observed_value,
+                source_position=source.source_position,
+                source_byte_offset=source.source_byte_offset,
+                initial_source_byte=source.initial_source_byte,
+                data_source_position=data_source.source_position,
+                data_source_byte_offset=data_source.source_byte_offset,
+                initial_data_source_byte=data_source.initial_source_byte,
+                read_source_position=read_source.source_position,
+                read_source_byte_offset=read_source.source_byte_offset,
+                initial_read_source_byte=read_source.initial_source_byte,
+            )
+        )
+    return tuple(contexts)
+
+
 def _worklist_evolved_read_writer_source_context(
     witness: worklist_transfer.WorklistEvolvedReadWitness | None,
     cells: tuple[InitialCell, ...],
@@ -2164,6 +2226,14 @@ def analyze_source(
                 prefix.cells,
             )
         ),
+        bounded_worklist_evolved_fetch_observation_source_contexts=(
+            _worklist_evolved_read_observation_source_contexts(
+                ()
+                if worklist is None
+                else worklist.explored_evolved_fetch_observations,
+                prefix.cells,
+            )
+        ),
         bounded_worklist_initial_value_data_read_source_map=(
             _worklist_address_source_map(
                 (
@@ -2179,6 +2249,14 @@ def analyze_source(
                 ()
                 if worklist is None
                 else worklist.explored_evolved_data_read_value_domains,
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_evolved_data_read_observation_source_contexts=(
+            _worklist_evolved_read_observation_source_contexts(
+                ()
+                if worklist is None
+                else worklist.explored_evolved_data_read_observations,
                 prefix.cells,
             )
         ),

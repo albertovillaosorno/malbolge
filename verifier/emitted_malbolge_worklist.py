@@ -189,6 +189,16 @@ class WorklistNonGraphicalFetchWitness:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistEvolvedReadObservation:
+    """One exact explored read whose value differs from initial memory."""
+
+    state: WorklistCycleState
+    address: int
+    initial_value: int
+    observed_value: int
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistEvolvedReadWitness:
     """First exact read whose value differs from initial memory."""
 
@@ -336,12 +346,18 @@ class WorklistAnalysis:
     explored_evolved_fetch_transition_count: int
     explored_evolved_fetch_addresses: tuple[int, ...]
     explored_evolved_fetch_value_domains: tuple[WorklistValueDomain, ...]
+    explored_evolved_fetch_observations: tuple[
+        WorklistEvolvedReadObservation, ...
+    ]
     explored_data_read_transition_count: int
     explored_initial_value_data_read_transition_count: int
     explored_initial_value_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_transition_count: int
     explored_evolved_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_value_domains: tuple[WorklistValueDomain, ...]
+    explored_evolved_data_read_observations: tuple[
+        WorklistEvolvedReadObservation, ...
+    ]
     explored_evolved_fetch_witness: WorklistEvolvedReadWitness | None
     explored_evolved_data_read_witness: WorklistEvolvedReadWitness | None
     explored_data_write_noop_witness: WorklistDataWriteNoopWitness | None
@@ -1290,6 +1306,77 @@ def _assert_observed_value_domains(
         raise AssertionError(message)
 
 
+def _evolved_read_observation_projection(
+    observations: dict[_StateKey, tuple[int, int]],
+) -> tuple[set[int], dict[int, set[int]]]:
+    addresses = {address for address, _ in observations.values()}
+    values: dict[int, set[int]] = {}
+    for address, observed_value in observations.values():
+        values.setdefault(address, set()).add(observed_value)
+    return addresses, values
+
+
+def _assert_evolved_read_observation_projection(
+    evidence: tuple[
+        int,
+        set[int],
+        dict[int, set[int]],
+        dict[_StateKey, tuple[int, int]],
+        set[_StateKey],
+    ],
+    *,
+    label: str,
+) -> None:
+    transition_count, addresses, values, observations, seen = evidence
+    if transition_count != len(observations):
+        message = f"{label} count disagrees with exact observed states"
+        raise AssertionError(message)
+    if not set(observations) <= seen:
+        message = f"{label} retained an unknown explored state"
+        raise AssertionError(message)
+    projected_addresses, projected_values = (
+        _evolved_read_observation_projection(observations)
+    )
+    if addresses != projected_addresses:
+        message = f"{label} addresses disagree with exact observed states"
+        raise AssertionError(message)
+    if values != projected_values:
+        message = f"{label} value domains disagree with exact observed states"
+        raise AssertionError(message)
+
+
+def _assert_evolved_read_observation_initial_difference(
+    observations: dict[_StateKey, tuple[int, int]],
+    initial_memory: tuple[int, ...],
+    *,
+    label: str,
+) -> None:
+    if any(
+        observed_value == initial_memory[address]
+        for address, observed_value in observations.values()
+    ):
+        message = f"{label} observation no longer differs from initial memory"
+        raise AssertionError(message)
+
+
+def _assert_evolved_read_observation_evidence(
+    evidence: tuple[
+        int,
+        set[int],
+        dict[int, set[int]],
+        dict[_StateKey, tuple[int, int]],
+        set[_StateKey],
+    ],
+    initial_memory: tuple[int, ...],
+    *,
+    label: str,
+) -> None:
+    _assert_evolved_read_observation_projection(evidence, label=label)
+    _assert_evolved_read_observation_initial_difference(
+        evidence[3], initial_memory, label=label
+    )
+
+
 def _assert_evolved_read_witness_endpoint(
     values: dict[int, set[int]],
     witness: WorklistEvolvedReadWitness,
@@ -1573,9 +1660,15 @@ class _Explorer:
     initial_value_fetch_addresses: set[int] = field(default_factory=set)
     evolved_fetch_addresses: set[int] = field(default_factory=set)
     evolved_fetch_values: dict[int, set[int]] = field(default_factory=dict)
+    evolved_fetch_state_values: dict[_StateKey, tuple[int, int]] = field(
+        default_factory=dict
+    )
     initial_value_data_read_addresses: set[int] = field(default_factory=set)
     evolved_data_read_addresses: set[int] = field(default_factory=set)
     evolved_data_read_values: dict[int, set[int]] = field(default_factory=dict)
+    evolved_data_read_state_values: dict[_StateKey, tuple[int, int]] = field(
+        default_factory=dict
+    )
     evolved_fetch_witness: WorklistEvolvedReadWitness | None = None
     evolved_data_read_witness: WorklistEvolvedReadWitness | None = None
     data_write_noop_witness: WorklistDataWriteNoopWitness | None = None
@@ -1679,6 +1772,17 @@ class _Explorer:
             self.evolved_fetch_values,
             label="evolved fetch",
         )
+        _assert_evolved_read_observation_evidence(
+            (
+                self.evolved_fetch_transitions,
+                self.evolved_fetch_addresses,
+                self.evolved_fetch_values,
+                self.evolved_fetch_state_values,
+                self.seen,
+            ),
+            self.initial_memory,
+            label="evolved fetch",
+        )
         _assert_evolved_read_witness(
             (
                 self.evolved_fetch_transitions,
@@ -1697,6 +1801,17 @@ class _Explorer:
             self.evolved_data_read_transitions,
             self.evolved_data_read_addresses,
             self.evolved_data_read_values,
+            label="evolved data read",
+        )
+        _assert_evolved_read_observation_evidence(
+            (
+                self.evolved_data_read_transitions,
+                self.evolved_data_read_addresses,
+                self.evolved_data_read_values,
+                self.evolved_data_read_state_values,
+                self.seen,
+            ),
+            self.initial_memory,
             label="evolved data read",
         )
         _assert_evolved_read_witness(
@@ -2100,6 +2215,17 @@ class _Explorer:
             explored_evolved_fetch_value_domains=_value_domains(
                 self.evolved_fetch_values
             ),
+            explored_evolved_fetch_observations=tuple(
+                WorklistEvolvedReadObservation(
+                    state=_cycle_state(key),
+                    address=self.evolved_fetch_state_values[key][0],
+                    initial_value=self.initial_memory[
+                        self.evolved_fetch_state_values[key][0]
+                    ],
+                    observed_value=self.evolved_fetch_state_values[key][1],
+                )
+                for key in sorted(self.evolved_fetch_state_values)
+            ),
             explored_data_read_transition_count=self.data_read_transitions,
             explored_initial_value_data_read_transition_count=(
                 self.initial_value_data_read_transitions
@@ -2115,6 +2241,17 @@ class _Explorer:
             ),
             explored_evolved_data_read_value_domains=_value_domains(
                 self.evolved_data_read_values
+            ),
+            explored_evolved_data_read_observations=tuple(
+                WorklistEvolvedReadObservation(
+                    state=_cycle_state(key),
+                    address=self.evolved_data_read_state_values[key][0],
+                    initial_value=self.initial_memory[
+                        self.evolved_data_read_state_values[key][0]
+                    ],
+                    observed_value=self.evolved_data_read_state_values[key][1],
+                )
+                for key in sorted(self.evolved_data_read_state_values)
             ),
             explored_evolved_fetch_witness=self.evolved_fetch_witness,
             explored_evolved_data_read_witness=self.evolved_data_read_witness,
@@ -2441,10 +2578,18 @@ class _Explorer:
             self.initial_value_fetch_transitions += 1
             self.initial_value_fetch_addresses.add(address)
             return
+        key = _node_key(node)
+        if key in self.evolved_fetch_state_values:
+            message = "evolved fetch state was explored more than once"
+            raise AssertionError(message)
         self.evolved_fetch_transitions += 1
         self.evolved_fetch_addresses.add(address)
         _record_domain_value(
             self.evolved_fetch_values, address, transition.fetched_value
+        )
+        self.evolved_fetch_state_values[key] = (
+            address,
+            transition.fetched_value,
         )
         if self.evolved_fetch_witness is None:
             self.evolved_fetch_witness = self._evolved_read_witness(
@@ -2469,9 +2614,14 @@ class _Explorer:
             self.initial_value_data_read_transitions += 1
             self.initial_value_data_read_addresses.add(address)
             return
+        key = _node_key(node)
+        if key in self.evolved_data_read_state_values:
+            message = "evolved data-read state was explored more than once"
+            raise AssertionError(message)
         self.evolved_data_read_transitions += 1
         self.evolved_data_read_addresses.add(address)
         _record_domain_value(self.evolved_data_read_values, address, data_value)
+        self.evolved_data_read_state_values[key] = (address, data_value)
         if self.evolved_data_read_witness is None:
             self.evolved_data_read_witness = self._evolved_read_witness(
                 node,

@@ -422,6 +422,13 @@ class _WorklistNonGraphicalFetchWitness(Protocol):
     value: int
 
 
+class _WorklistEvolvedReadObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    initial_value: int
+    observed_value: int
+
+
 class _WorklistEvolvedReadWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -559,12 +566,18 @@ class _WorklistAnalysis(Protocol):
     explored_evolved_fetch_transition_count: int
     explored_evolved_fetch_addresses: tuple[int, ...]
     explored_evolved_fetch_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_evolved_fetch_observations: tuple[
+        _WorklistEvolvedReadObservation, ...
+    ]
     explored_data_read_transition_count: int
     explored_initial_value_data_read_transition_count: int
     explored_initial_value_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_transition_count: int
     explored_evolved_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_evolved_data_read_observations: tuple[
+        _WorklistEvolvedReadObservation, ...
+    ]
     explored_evolved_fetch_witness: _WorklistEvolvedReadWitness | None
     explored_evolved_data_read_witness: _WorklistEvolvedReadWitness | None
     explored_data_write_noop_witness: _WorklistDataWriteNoopWitness | None
@@ -685,6 +698,20 @@ class _WorklistModule(Protocol):
         transition_count: int,
         addresses: set[int],
         values: dict[int, set[int]],
+        *,
+        label: str,
+    ) -> None: ...
+
+    def _assert_evolved_read_observation_evidence(
+        self,
+        evidence: tuple[
+            int,
+            set[int],
+            dict[int, set[int]],
+            dict[_WorklistStateKey, tuple[int, int]],
+            set[_WorklistStateKey],
+        ],
+        initial_memory: tuple[int, ...],
         *,
         label: str,
     ) -> None: ...
@@ -1335,6 +1362,26 @@ def test_changed_read_invariant_rejects_under_counted_values() -> None:
             {1},
             {1: {32, 33}},
             label="changed encryption input",
+        )
+
+
+def test_evolved_read_observation_invariant_rejects_count_drift() -> None:
+    """Changed-read counts must equal their exact explored state set."""
+    with pytest.raises(AssertionError, match="exact observed states"):
+        worklist._assert_evolved_read_observation_evidence(
+            (1, {0}, {0: {1}}, {}, {_GRAPH_KEY_A}),
+            (0,),
+            label="evolved read",
+        )
+
+
+def test_evolved_read_observation_rejects_initial_value() -> None:
+    """Changed-read observations cannot equal immutable initial memory."""
+    with pytest.raises(AssertionError, match="differs from initial memory"):
+        worklist._assert_evolved_read_observation_evidence(
+            (1, {0}, {0: {0}}, {_GRAPH_KEY_A: (0, 0)}, {_GRAPH_KEY_A}),
+            (0,),
+            label="evolved read",
         )
 
 
@@ -2064,6 +2111,22 @@ def test_explorer_counts_exact_pointer_wrap_transition() -> None:
     assert result.truncated
 
 
+def _assert_single_evolved_read_observation(
+    observations: tuple[_WorklistEvolvedReadObservation, ...],
+    expected: tuple[int, int, int, tuple[int, int, int]],
+) -> None:
+    address, initial_value, observed_value, pointers = expected
+    assert len(observations) == 1
+    observation = observations[0]
+    assert observation.address == address
+    assert observation.initial_value == initial_value
+    assert observation.observed_value == observed_value
+    state = observation.state
+    actual = (state.code_pointer, state.data_pointer, state.accumulator)
+    assert actual == pointers
+    assert not state.eof_seen
+
+
 def _assert_evolved_read_witness(
     witness: _WorklistEvolvedReadWitness | None,
     expected: tuple[int, int, int, tuple[tuple[int, int], ...]],
@@ -2104,6 +2167,16 @@ def test_worklist_witnesses_fetch_from_evolved_memory() -> None:
     assert _domain_values(
         result.explored_evolved_fetch_value_domains, _EVOLVED_FETCH_ADDRESS
     ) == (_EVOLVED_FETCH_OBSERVED_VALUE,)
+    _assert_single_evolved_read_observation(
+        result.explored_evolved_fetch_observations,
+        (
+            _EVOLVED_FETCH_ADDRESS,
+            _EVOLVED_FETCH_INITIAL_VALUE,
+            _EVOLVED_FETCH_OBSERVED_VALUE,
+            (95, 97, _EVOLVED_FETCH_OBSERVED_VALUE),
+        ),
+    )
+    assert result.explored_evolved_data_read_observations == ()
     assert result.explored_data_read_transition_count == (
         _EVOLVED_FETCH_DATA_READ_COUNT
     )
@@ -2171,6 +2244,16 @@ def test_worklist_witnesses_data_read_from_evolved_memory() -> None:
         result.explored_evolved_data_read_value_domains,
         _EVOLVED_DATA_READ_ADDRESS,
     ) == (_EVOLVED_DATA_READ_OBSERVED_VALUE,)
+    assert result.explored_evolved_fetch_observations == ()
+    _assert_single_evolved_read_observation(
+        result.explored_evolved_data_read_observations,
+        (
+            _EVOLVED_DATA_READ_ADDRESS,
+            _EVOLVED_DATA_READ_INITIAL_VALUE,
+            _EVOLVED_DATA_READ_OBSERVED_VALUE,
+            (3, 41, _EVOLVED_DATA_READ_OBSERVED_VALUE),
+        ),
+    )
     _assert_evolved_read_witness(
         result.explored_evolved_data_read_witness,
         (
@@ -2244,6 +2327,27 @@ def _assert_entry_write_value_domains(result: _WorklistAnalysis) -> None:
     assert encryption_outputs == (111,)
 
 
+def _assert_entry_evolved_data_read_observations(
+    result: _WorklistAnalysis,
+) -> None:
+    observations = result.explored_evolved_data_read_observations
+    assert len(observations) == _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT
+    assert all(item.address == _ENTRY_MUTATION_ADDRESS for item in observations)
+    assert all(
+        item.initial_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+        for item in observations
+    )
+    assert all(
+        (item.state.code_pointer, item.state.data_pointer) == (5, 40)
+        for item in observations
+    )
+    observed_values = tuple(item.observed_value for item in observations)
+    mutation_domain = result.explored_effective_data_mutation_value_domains[0]
+    assert set(observed_values) == set(mutation_domain.result_values)
+    assert observations[-1].state.eof_seen
+    assert observations[-1].observed_value == _EOF_ACCUMULATOR
+
+
 def _assert_entry_evolved_read_counts(result: _WorklistAnalysis) -> None:
     assert result.explored_initial_value_fetch_transition_count == (
         _ENTRY_WRAP_EXPLORED_STATES
@@ -2276,6 +2380,8 @@ def _assert_entry_evolved_read_counts(result: _WorklistAnalysis) -> None:
     )
     mutation_domain = result.explored_effective_data_mutation_value_domains[0]
     assert evolved_values == mutation_domain.result_values
+    assert result.explored_evolved_fetch_observations == ()
+    _assert_entry_evolved_data_read_observations(result)
 
 
 def _assert_entry_data_mutation_evidence(result: _WorklistAnalysis) -> None:

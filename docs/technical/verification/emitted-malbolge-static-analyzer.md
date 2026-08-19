@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v81` retains exact `entry_transition` through
+`malbolge-static-image/v82` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -432,6 +432,16 @@ recurrence C/D=2 while preserving only one shortest representative path. The
 loaded-cycle fixture separately maps each observation's loaded C and
 recurrence-backed D, so the exhaustive endpoint set adds state/source linkage
 without duplicating entry paths or making claims beyond a truncated frontier.
+Schema v82 retains every exact explored evolved fetch and evolved semantic
+data-read state, including the read address plus immutable initial and observed
+values. The exact observations must project to the aggregate evolved-read
+count, address set, and value domains, belong to explored graph states, and
+remain different from initial memory. Source contexts map the state's C and D
+pointers separately from the actual read address. The entry-wrap graph has 256
+such data-read states at C=5/D=40/read=40, all with initial value 29,524 and
+256 distinct changed values; its final EOF observation reads 59,048. Existing
+first-writer witnesses remain compact provenance paths rather than one path per
+observation, and truncated frontiers remain outside this explored evidence.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

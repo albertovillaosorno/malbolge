@@ -67,7 +67,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v81"
+_SCHEMA = "malbolge-static-image/v82"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _EOF_ACCUMULATOR = 59_048
@@ -112,6 +112,10 @@ _ENTRY_WRAP_POINTER_PATH = (
     (5, 40),
 )
 _ENTRY_WRAP_RESULT_CODE_POINTER = 6
+_ENTRY_WRAP_OBSERVATION_SOURCE_POSITION = _ENTRY_WRAP_POINTER_PATH[-1][0]
+_ENTRY_WRAP_OBSERVATION_SOURCE_OFFSET = (
+    _ENTRY_WRAP_OBSERVATION_SOURCE_POSITION
+)
 _ENTRY_MUTATION_ACCUMULATOR = 1
 _ENTRY_MUTATION_ADDRESS = 40
 _ENTRY_MUTATION_PREVIOUS_VALUE = 29_524
@@ -376,6 +380,10 @@ _LINEAGE_WRITE_TRANSITION = 4
 _DATA_LINEAGE_WRITE_SOURCE = b"(&&%M"
 _DATA_LINEAGE_TRANSITION_LIMIT = 5
 _DATA_LINEAGE_READ_TRANSITION = 4
+_DATA_LINEAGE_OBSERVATION_SOURCE_POSITION = _DATA_LINEAGE_READ_TRANSITION - 1
+_DATA_LINEAGE_OBSERVATION_SOURCE_OFFSET = (
+    _DATA_LINEAGE_OBSERVATION_SOURCE_POSITION + _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
+)
 _DATA_LINEAGE_WRITE_TRANSITION = 2
 _DATA_LINEAGE_ADDRESS = 41
 _DATA_LINEAGE_VALUE = 49_218
@@ -606,6 +614,13 @@ class _WorklistNonGraphicalFetchWitness(Protocol):
     value: int
 
 
+class _WorklistEvolvedReadObservation(Protocol):
+    state: _WorklistCycleState
+    address: int
+    initial_value: int
+    observed_value: int
+
+
 class _WorklistEvolvedReadWitness(Protocol):
     state: _WorklistCycleState
     entry_path: tuple[_WorklistCycleState, ...]
@@ -794,6 +809,23 @@ class _WorklistCodeDataAliasSourceContext(Protocol):
     entry_path_source_map: tuple[_WorklistControlPathSourceContext, ...]
 
 
+class _WorklistEvolvedReadObservationSourceContext(Protocol):
+    observation_index: int
+    state: _WorklistCycleState
+    address: int
+    initial_value: int
+    observed_value: int
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+    read_source_position: int | None
+    read_source_byte_offset: int | None
+    initial_read_source_byte: int | None
+
+
 class _WorklistEvolvedReadWriterSourceContext(Protocol):
     origin_kind: str
     origin_entry_path_transition_index: int
@@ -929,12 +961,18 @@ class _WorklistAnalysis(Protocol):
     explored_evolved_fetch_transition_count: int
     explored_evolved_fetch_addresses: tuple[int, ...]
     explored_evolved_fetch_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_evolved_fetch_observations: tuple[
+        _WorklistEvolvedReadObservation, ...
+    ]
     explored_data_read_transition_count: int
     explored_initial_value_data_read_transition_count: int
     explored_initial_value_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_transition_count: int
     explored_evolved_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_evolved_data_read_observations: tuple[
+        _WorklistEvolvedReadObservation, ...
+    ]
     explored_evolved_fetch_witness: _WorklistEvolvedReadWitness | None
     explored_evolved_data_read_witness: _WorklistEvolvedReadWitness | None
     explored_data_write_noop_witness: _WorklistDataWriteNoopWitness | None
@@ -1099,11 +1137,17 @@ class _Report(Protocol):
     bounded_worklist_evolved_fetch_value_source_map: tuple[
         _WorklistValueSourceContext, ...
     ]
+    bounded_worklist_evolved_fetch_observation_source_contexts: tuple[
+        _WorklistEvolvedReadObservationSourceContext, ...
+    ]
     bounded_worklist_initial_value_data_read_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
     ]
     bounded_worklist_evolved_data_read_value_source_map: tuple[
         _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_evolved_data_read_observation_source_contexts: tuple[
+        _WorklistEvolvedReadObservationSourceContext, ...
     ]
     bounded_worklist_planned_data_write_value_source_map: tuple[
         _WorklistValueSourceContext, ...
@@ -1760,8 +1804,41 @@ def test_worklist_maps_evolved_value_domains_against_initial_memory() -> None:
     assert data.initial_memory_value_in_values is False
 
 
+def _assert_evolved_read_observation_source_maps() -> None:
+    fetch_report = _ANALYZER_MODULE.analyze_source(
+        b" \n" + _LINEAGE_WRITE_SOURCE,
+        worklist_state_limit=_WORKLIST_EVOLVED_FETCH_STATE_LIMIT,
+    )
+    fetch = (
+        fetch_report.bounded_worklist_evolved_fetch_observation_source_contexts
+    )
+    assert len(fetch) == 1
+    assert fetch[0].source_position is None
+    assert fetch[0].data_source_position is None
+    assert fetch[0].read_source_position is None
+    assert fetch[0].address == _LINEAGE_FETCH_ADDRESS
+    assert fetch[0].observed_value == _LINEAGE_FETCH_VALUE
+
+    data_report = _ANALYZER_MODULE.analyze_source(
+        b" \n" + _DATA_LINEAGE_WRITE_SOURCE,
+        worklist_state_limit=_DATA_LINEAGE_WORKLIST_STATE_LIMIT,
+    )
+    data = (
+        data_report
+        .bounded_worklist_evolved_data_read_observation_source_contexts
+    )
+    assert len(data) == 1
+    assert data[0].source_position == _DATA_LINEAGE_OBSERVATION_SOURCE_POSITION
+    assert data[0].source_byte_offset == _DATA_LINEAGE_OBSERVATION_SOURCE_OFFSET
+    assert data[0].data_source_position is None
+    assert data[0].read_source_position is None
+    assert data[0].address == _DATA_LINEAGE_ADDRESS
+    assert data[0].observed_value == _DATA_LINEAGE_VALUE
+
+
 def test_worklist_maps_evolved_read_writer_states_to_source() -> None:
     """Last-writer state source maps preserve C offsets and recurrence D."""
+    _assert_evolved_read_observation_source_maps()
     fetch = _ANALYZER_MODULE.analyze_source(
         b" \n" + _LINEAGE_WRITE_SOURCE,
         worklist_state_limit=_WORKLIST_EVOLVED_FETCH_STATE_LIMIT,
@@ -3052,6 +3129,35 @@ def _assert_entry_noop_context(worklist: _WorklistAnalysis) -> None:
     assert witness.entry_path[-1] == witness.state
 
 
+def _assert_entry_evolved_data_observation_source_map(
+    report: _Report,
+) -> None:
+    contexts = (
+        report.bounded_worklist_evolved_data_read_observation_source_contexts
+    )
+    assert len(contexts) == _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT
+    assert tuple(item.observation_index for item in contexts) == tuple(
+        range(_ENTRY_EFFECTIVE_DATA_MUTATION_COUNT)
+    )
+    assert all(item.address == _ENTRY_MUTATION_ADDRESS for item in contexts)
+    assert all(
+        item.initial_value == _ENTRY_MUTATION_PREVIOUS_VALUE
+        for item in contexts
+    )
+    assert all(
+        item.source_position == _ENTRY_WRAP_OBSERVATION_SOURCE_POSITION
+        for item in contexts
+    )
+    assert all(
+        item.source_byte_offset == _ENTRY_WRAP_OBSERVATION_SOURCE_OFFSET
+        for item in contexts
+    )
+    assert all(item.data_source_position is None for item in contexts)
+    assert all(item.read_source_position is None for item in contexts)
+    assert contexts[-1].state.eof_seen
+    assert contexts[-1].observed_value == _EOF_ACCUMULATOR
+
+
 def _assert_entry_wrap_mutation_context(
     report: _Report,
     worklist: _WorklistAnalysis,
@@ -3087,6 +3193,7 @@ def _assert_entry_wrap_mutation_context(
     assert context.source_byte_offset is None
     assert context.initial_source_byte is None
     assert context.previous_value_matches_initial_source is None
+    _assert_entry_evolved_data_observation_source_map(report)
 
 
 def _assert_entry_wrap_signature_source_map(report: _Report) -> None:
