@@ -162,6 +162,11 @@ _EVOLVED_FETCH_ADDRESS = 95
 _EVOLVED_FETCH_INITIAL_VALUE = 29_430
 _EVOLVED_FETCH_OBSERVED_VALUE = 9_810
 _EVOLVED_FETCH_ORIGIN_TRANSITION = 4
+_EVOLVED_FETCH_INITIAL_VALUE_FETCH_COUNT = _EVOLVED_FETCH_STATE_LIMIT - 1
+_EVOLVED_FETCH_INITIAL_VALUE_FETCH_ADDRESSES = (0, 1, 2, 3, 4)
+_EVOLVED_FETCH_DATA_READ_COUNT = 5
+_EVOLVED_FETCH_INITIAL_VALUE_DATA_READ_COUNT = 5
+_EVOLVED_FETCH_INITIAL_VALUE_DATA_READ_ADDRESSES = (0, 41, 42, 95, 96)
 _EVOLVED_FETCH_POINTER_PATH = (
     (0, 0),
     (1, 41),
@@ -176,6 +181,11 @@ _EVOLVED_DATA_READ_ADDRESS = 41
 _EVOLVED_DATA_READ_INITIAL_VALUE = 29_558
 _EVOLVED_DATA_READ_OBSERVED_VALUE = 49_218
 _EVOLVED_DATA_READ_ORIGIN_TRANSITION = 2
+_EVOLVED_DATA_READ_INITIAL_VALUE_FETCH_COUNT = _EVOLVED_DATA_READ_STATE_LIMIT
+_EVOLVED_DATA_READ_INITIAL_VALUE_FETCH_ADDRESSES = (0, 1, 2, 3, 4)
+_EVOLVED_DATA_READ_TOTAL_DATA_READ_COUNT = 4
+_EVOLVED_DATA_READ_INITIAL_VALUE_DATA_READ_COUNT = 3
+_EVOLVED_DATA_READ_INITIAL_VALUE_DATA_READ_ADDRESSES = (0, 41, 42)
 _EVOLVED_DATA_READ_POINTER_PATH = ((0, 0), (1, 41), (2, 42), (3, 41))
 _WRITER_DATA_WRITE = "data-write"
 _RECURRENCE_READ_SOURCE = tuple(b"('")
@@ -201,6 +211,7 @@ _WRAP_ADDRESS = 59_048
 _WRAP_SOURCE_VALUE = 52
 _WRAP_STATE_LIMIT = 1
 _ENTRY_WRAP_WITNESS_STATE_LIMIT = 1_544
+_ENTRY_WRAP_EXPLORED_STATES = 1_288
 _ENTRY_WRAP_SOURCE = tuple(b"u'<%$#>=<;:987654321NN")
 _ENTRY_WRAP_POINTER_PATH = ((0, 0), (1, 1), (2, 40), (3, 41), (4, 79), (5, 40))
 _ENTRY_WRAP_RESULT_CODE_POINTER = 6
@@ -210,6 +221,9 @@ _ENTRY_MUTATION_ADDRESS = 40
 _ENTRY_MUTATION_PREVIOUS_VALUE = 29_524
 _ENTRY_MUTATION_RESULT_VALUE = 29_523
 _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT = 256
+_ENTRY_DATA_READ_TRANSITION_COUNT = 1_285
+_ENTRY_INITIAL_VALUE_DATA_READ_COUNT = 1_029
+_ENTRY_INITIAL_VALUE_DATA_READ_ADDRESSES = (1, 40, 41, 79)
 _ENTRY_COMMITTED_DATA_WRITE_COUNT = 257
 _ENTRY_NOOP_DATA_WRITE_COUNT = 1
 _ENTRY_NOOP_POINTER_PATH = ((0, 0), (1, 1), (2, 40))
@@ -449,9 +463,14 @@ class _WorklistAnalysis(Protocol):
     explored_self_encryption_output_value_domains: tuple[
         _WorklistValueDomain, ...
     ]
+    explored_initial_value_fetch_transition_count: int
+    explored_initial_value_fetch_addresses: tuple[int, ...]
     explored_evolved_fetch_transition_count: int
     explored_evolved_fetch_addresses: tuple[int, ...]
     explored_evolved_fetch_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_data_read_transition_count: int
+    explored_initial_value_data_read_transition_count: int
+    explored_initial_value_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_transition_count: int
     explored_evolved_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_value_domains: tuple[_WorklistValueDomain, ...]
@@ -1387,11 +1406,31 @@ def test_worklist_witnesses_fetch_from_evolved_memory() -> None:
     )
     assert not result.truncated
     assert result.reachable_cycle_detected
+    assert result.explored_initial_value_fetch_transition_count == (
+        _EVOLVED_FETCH_INITIAL_VALUE_FETCH_COUNT
+    )
+    assert result.explored_initial_value_fetch_addresses == (
+        _EVOLVED_FETCH_INITIAL_VALUE_FETCH_ADDRESSES
+    )
+    assert (
+        result.explored_initial_value_fetch_transition_count
+        + result.explored_evolved_fetch_transition_count
+        == result.explored_states
+    )
     assert result.explored_evolved_fetch_transition_count == 1
     assert result.explored_evolved_fetch_addresses == (_EVOLVED_FETCH_ADDRESS,)
     assert _domain_values(
         result.explored_evolved_fetch_value_domains, _EVOLVED_FETCH_ADDRESS
     ) == (_EVOLVED_FETCH_OBSERVED_VALUE,)
+    assert result.explored_data_read_transition_count == (
+        _EVOLVED_FETCH_DATA_READ_COUNT
+    )
+    assert result.explored_initial_value_data_read_transition_count == (
+        _EVOLVED_FETCH_INITIAL_VALUE_DATA_READ_COUNT
+    )
+    assert result.explored_initial_value_data_read_addresses == (
+        _EVOLVED_FETCH_INITIAL_VALUE_DATA_READ_ADDRESSES
+    )
     assert result.explored_evolved_data_read_transition_count == 0
     assert result.explored_evolved_data_read_addresses == ()
     _assert_evolved_read_witness(
@@ -1420,8 +1459,28 @@ def test_worklist_witnesses_data_read_from_evolved_memory() -> None:
     )
     assert not result.truncated
     assert result.terminal_status_counts == (("halted", 1),)
+    assert result.explored_initial_value_fetch_transition_count == (
+        _EVOLVED_DATA_READ_INITIAL_VALUE_FETCH_COUNT
+    )
+    assert result.explored_initial_value_fetch_addresses == (
+        _EVOLVED_DATA_READ_INITIAL_VALUE_FETCH_ADDRESSES
+    )
     assert result.explored_evolved_fetch_transition_count == 0
     assert result.explored_evolved_fetch_addresses == ()
+    assert result.explored_data_read_transition_count == (
+        _EVOLVED_DATA_READ_TOTAL_DATA_READ_COUNT
+    )
+    assert result.explored_initial_value_data_read_transition_count == (
+        _EVOLVED_DATA_READ_INITIAL_VALUE_DATA_READ_COUNT
+    )
+    assert result.explored_initial_value_data_read_addresses == (
+        _EVOLVED_DATA_READ_INITIAL_VALUE_DATA_READ_ADDRESSES
+    )
+    assert (
+        result.explored_initial_value_data_read_transition_count
+        + result.explored_evolved_data_read_transition_count
+        == result.explored_data_read_transition_count
+    )
     assert result.explored_evolved_data_read_transition_count == 1
     assert result.explored_evolved_data_read_addresses == (
         _EVOLVED_DATA_READ_ADDRESS,
@@ -1504,8 +1563,25 @@ def _assert_entry_write_value_domains(result: _WorklistAnalysis) -> None:
 
 
 def _assert_entry_evolved_read_counts(result: _WorklistAnalysis) -> None:
+    assert result.explored_initial_value_fetch_transition_count == (
+        _ENTRY_WRAP_EXPLORED_STATES
+    )
     assert result.explored_evolved_fetch_transition_count == 0
     assert result.explored_evolved_fetch_addresses == ()
+    assert result.explored_data_read_transition_count == (
+        _ENTRY_DATA_READ_TRANSITION_COUNT
+    )
+    assert result.explored_initial_value_data_read_transition_count == (
+        _ENTRY_INITIAL_VALUE_DATA_READ_COUNT
+    )
+    assert result.explored_initial_value_data_read_addresses == (
+        _ENTRY_INITIAL_VALUE_DATA_READ_ADDRESSES
+    )
+    assert (
+        result.explored_initial_value_data_read_transition_count
+        + result.explored_evolved_data_read_transition_count
+        == result.explored_data_read_transition_count
+    )
     assert result.explored_evolved_data_read_transition_count == (
         _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT
     )

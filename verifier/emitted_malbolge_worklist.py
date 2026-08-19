@@ -255,9 +255,14 @@ class WorklistAnalysis:
     explored_self_encryption_output_value_domains: tuple[
         WorklistValueDomain, ...
     ]
+    explored_initial_value_fetch_transition_count: int
+    explored_initial_value_fetch_addresses: tuple[int, ...]
     explored_evolved_fetch_transition_count: int
     explored_evolved_fetch_addresses: tuple[int, ...]
     explored_evolved_fetch_value_domains: tuple[WorklistValueDomain, ...]
+    explored_data_read_transition_count: int
+    explored_initial_value_data_read_transition_count: int
+    explored_initial_value_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_transition_count: int
     explored_evolved_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_value_domains: tuple[WorklistValueDomain, ...]
@@ -991,8 +996,10 @@ class _Explorer:
     self_encryption_output_values: dict[int, set[int]] = field(
         default_factory=dict
     )
+    initial_value_fetch_addresses: set[int] = field(default_factory=set)
     evolved_fetch_addresses: set[int] = field(default_factory=set)
     evolved_fetch_values: dict[int, set[int]] = field(default_factory=dict)
+    initial_value_data_read_addresses: set[int] = field(default_factory=set)
     evolved_data_read_addresses: set[int] = field(default_factory=set)
     evolved_data_read_values: dict[int, set[int]] = field(default_factory=dict)
     evolved_fetch_witness: WorklistEvolvedReadWitness | None = None
@@ -1007,7 +1014,10 @@ class _Explorer:
     committed_data_write_noop_transitions: int = 0
     self_encryption_transitions: int = 0
     effective_data_mutation_transitions: int = 0
+    initial_value_fetch_transitions: int = 0
     evolved_fetch_transitions: int = 0
+    data_read_transitions: int = 0
+    initial_value_data_read_transitions: int = 0
     evolved_data_read_transitions: int = 0
     repeated_edges: int = 0
     state_merge_transitions: int = 0
@@ -1048,6 +1058,21 @@ class _Explorer:
             terminal_counts={},
             accessed_addresses=set(),
         )
+
+    def _assert_read_partition_invariants(self) -> None:
+        fetch_partition = self.initial_value_fetch_transitions + (
+            self.evolved_fetch_transitions
+        )
+        if fetch_partition != self.explored:
+            message = "explored fetch partition disagrees with explored states"
+            raise AssertionError(message)
+        data_partition = (
+            self.initial_value_data_read_transitions
+            + self.evolved_data_read_transitions
+        )
+        if data_partition != self.data_read_transitions:
+            message = "explored data-read partition disagrees with total reads"
+            raise AssertionError(message)
 
     def result(
         self,
@@ -1090,6 +1115,7 @@ class _Explorer:
             nodes=self.seen,
             truncated=truncated,
         )
+        self._assert_read_partition_invariants()
         return WorklistAnalysis(
             state_limit=self.state_limit,
             unique_states=len(self.seen),
@@ -1222,6 +1248,12 @@ class _Explorer:
             explored_self_encryption_output_value_domains=_value_domains(
                 self.self_encryption_output_values
             ),
+            explored_initial_value_fetch_transition_count=(
+                self.initial_value_fetch_transitions
+            ),
+            explored_initial_value_fetch_addresses=tuple(
+                sorted(self.initial_value_fetch_addresses)
+            ),
             explored_evolved_fetch_transition_count=(
                 self.evolved_fetch_transitions
             ),
@@ -1230,6 +1262,13 @@ class _Explorer:
             ),
             explored_evolved_fetch_value_domains=_value_domains(
                 self.evolved_fetch_values
+            ),
+            explored_data_read_transition_count=self.data_read_transitions,
+            explored_initial_value_data_read_transition_count=(
+                self.initial_value_data_read_transitions
+            ),
+            explored_initial_value_data_read_addresses=tuple(
+                sorted(self.initial_value_data_read_addresses)
             ),
             explored_evolved_data_read_transition_count=(
                 self.evolved_data_read_transitions
@@ -1476,6 +1515,8 @@ class _Explorer:
     ) -> None:
         address = transition.fetched_address
         if transition.fetched_value == self.initial_memory[address]:
+            self.initial_value_fetch_transitions += 1
+            self.initial_value_fetch_addresses.add(address)
             return
         self.evolved_fetch_transitions += 1
         self.evolved_fetch_addresses.add(address)
@@ -1496,11 +1537,14 @@ class _Explorer:
     ) -> None:
         if transition.decoded_byte not in _DATA_READING_INSTRUCTIONS:
             return
+        self.data_read_transitions += 1
         data_value = _required_exact_value(
             transition.data_value, label="semantic data read"
         )
         address = transition.data_address
         if data_value == self.initial_memory[address]:
+            self.initial_value_data_read_transitions += 1
+            self.initial_value_data_read_addresses.add(address)
             return
         self.evolved_data_read_transitions += 1
         self.evolved_data_read_addresses.add(address)

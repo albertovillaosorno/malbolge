@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v69"
+_SCHEMA = "malbolge-static-image/v70"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -109,6 +109,9 @@ _ENTRY_MUTATION_ADDRESS = 40
 _ENTRY_MUTATION_PREVIOUS_VALUE = 29_524
 _ENTRY_MUTATION_RESULT_VALUE = 29_523
 _ENTRY_EFFECTIVE_DATA_MUTATION_COUNT = 256
+_ENTRY_DATA_READ_TRANSITION_COUNT = 1_285
+_ENTRY_INITIAL_VALUE_DATA_READ_COUNT = 1_029
+_ENTRY_INITIAL_VALUE_DATA_READ_ADDRESSES = (1, 40, 41, 79)
 _ENTRY_COMMITTED_DATA_WRITE_COUNT = 257
 _ENTRY_NOOP_DATA_WRITE_COUNT = 1
 _ENTRY_MUTATION_RESULT_DOMAIN_COUNT = 256
@@ -296,6 +299,13 @@ _LINEAGE_WRITE_SOURCE = b"(&&$^"
 _WORKLIST_EVOLVED_FETCH_STATE_LIMIT = 6
 _WORKLIST_EVOLVED_FETCH_INITIAL_VALUE = 29_430
 _WORKLIST_EVOLVED_FETCH_ORIGIN_TRANSITION = 4
+_WORKLIST_EVOLVED_FETCH_INITIAL_VALUE_FETCH_COUNT = (
+    _WORKLIST_EVOLVED_FETCH_STATE_LIMIT - 1
+)
+_WORKLIST_EVOLVED_FETCH_INITIAL_VALUE_FETCH_ADDRESSES = (0, 1, 2, 3, 4)
+_WORKLIST_EVOLVED_FETCH_DATA_READ_COUNT = 5
+_WORKLIST_EVOLVED_FETCH_INITIAL_VALUE_DATA_READ_COUNT = 5
+_WORKLIST_EVOLVED_FETCH_INITIAL_VALUE_DATA_READ_ADDRESSES = (0, 41, 42, 95, 96)
 _WORKLIST_EVOLVED_FETCH_WRITER_STATE_INDEX = (
     _WORKLIST_EVOLVED_FETCH_ORIGIN_TRANSITION - 1
 )
@@ -305,6 +315,11 @@ _WORKLIST_EVOLVED_FETCH_WRITER_SOURCE_OFFSET = (
 _DATA_LINEAGE_WORKLIST_STATE_LIMIT = 5
 _DATA_LINEAGE_INITIAL_VALUE = 29_558
 _DATA_LINEAGE_ORIGIN_TRANSITION = 2
+_DATA_LINEAGE_INITIAL_VALUE_FETCH_COUNT = _DATA_LINEAGE_WORKLIST_STATE_LIMIT
+_DATA_LINEAGE_INITIAL_VALUE_FETCH_ADDRESSES = (0, 1, 2, 3, 4)
+_DATA_LINEAGE_TOTAL_DATA_READ_COUNT = 4
+_DATA_LINEAGE_INITIAL_VALUE_DATA_READ_COUNT = 3
+_DATA_LINEAGE_INITIAL_VALUE_DATA_READ_ADDRESSES = (0, 41, 42)
 _DATA_LINEAGE_WRITER_STATE_INDEX = _DATA_LINEAGE_ORIGIN_TRANSITION - 1
 _DATA_LINEAGE_WRITER_SOURCE_OFFSET = (
     _DATA_LINEAGE_WRITER_STATE_INDEX + _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
@@ -721,9 +736,14 @@ class _WorklistAnalysis(Protocol):
     explored_self_encryption_output_value_domains: tuple[
         _WorklistValueDomain, ...
     ]
+    explored_initial_value_fetch_transition_count: int
+    explored_initial_value_fetch_addresses: tuple[int, ...]
     explored_evolved_fetch_transition_count: int
     explored_evolved_fetch_addresses: tuple[int, ...]
     explored_evolved_fetch_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_data_read_transition_count: int
+    explored_initial_value_data_read_transition_count: int
+    explored_initial_value_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_transition_count: int
     explored_evolved_data_read_addresses: tuple[int, ...]
     explored_evolved_data_read_value_domains: tuple[_WorklistValueDomain, ...]
@@ -860,8 +880,14 @@ class _Report(Protocol):
     bounded_worklist_encryption_input_value_source_map: tuple[
         _WorklistValueSourceContext, ...
     ]
+    bounded_worklist_initial_value_fetch_source_map: tuple[
+        _WorklistMutationAddressSourceContext, ...
+    ]
     bounded_worklist_evolved_fetch_value_source_map: tuple[
         _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_initial_value_data_read_source_map: tuple[
+        _WorklistMutationAddressSourceContext, ...
     ]
     bounded_worklist_evolved_data_read_value_source_map: tuple[
         _WorklistValueSourceContext, ...
@@ -1395,6 +1421,40 @@ def _assert_evolved_data_control_source_map(report: _Report) -> None:
     )
 
 
+def test_worklist_maps_initial_value_equal_read_addresses() -> None:
+    """Equality partitions map loaded addresses without implying provenance."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _ENTRY_WRAP_SOURCE_WITH_WHITESPACE,
+        worklist_state_limit=_ENTRY_WRAP_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.explored_data_read_transition_count == (
+        _ENTRY_DATA_READ_TRANSITION_COUNT
+    )
+    assert worklist.explored_initial_value_data_read_transition_count == (
+        _ENTRY_INITIAL_VALUE_DATA_READ_COUNT
+    )
+    assert worklist.explored_initial_value_data_read_addresses == (
+        _ENTRY_INITIAL_VALUE_DATA_READ_ADDRESSES
+    )
+    fetch_map = report.bounded_worklist_initial_value_fetch_source_map
+    assert tuple(context.address for context in fetch_map) == tuple(range(7))
+    assert tuple(context.source_byte_offset for context in fetch_map) == tuple(
+        range(2, 9)
+    )
+    data_map = report.bounded_worklist_initial_value_data_read_source_map
+    assert tuple(context.address for context in data_map) == (
+        _ENTRY_INITIAL_VALUE_DATA_READ_ADDRESSES
+    )
+    assert tuple(context.source_byte_offset for context in data_map) == (
+        3,
+        None,
+        None,
+        None,
+    )
+
+
 def test_worklist_maps_evolved_value_domains_against_initial_memory() -> None:
     """Changed-only value maps retain recurrence initial-memory baselines."""
     fetch_report = _ANALYZER_MODULE.analyze_source(
@@ -1442,6 +1502,42 @@ def test_worklist_maps_evolved_read_writer_states_to_source() -> None:
     _assert_evolved_data_writer_source_context(data)
 
 
+def _assert_evolved_fetch_read_partition(worklist: _WorklistAnalysis) -> None:
+    assert worklist.explored_initial_value_fetch_transition_count == (
+        _WORKLIST_EVOLVED_FETCH_INITIAL_VALUE_FETCH_COUNT
+    )
+    assert worklist.explored_initial_value_fetch_addresses == (
+        _WORKLIST_EVOLVED_FETCH_INITIAL_VALUE_FETCH_ADDRESSES
+    )
+    assert worklist.explored_data_read_transition_count == (
+        _WORKLIST_EVOLVED_FETCH_DATA_READ_COUNT
+    )
+    assert worklist.explored_initial_value_data_read_transition_count == (
+        _WORKLIST_EVOLVED_FETCH_INITIAL_VALUE_DATA_READ_COUNT
+    )
+    assert worklist.explored_initial_value_data_read_addresses == (
+        _WORKLIST_EVOLVED_FETCH_INITIAL_VALUE_DATA_READ_ADDRESSES
+    )
+
+
+def _assert_evolved_data_read_partition(worklist: _WorklistAnalysis) -> None:
+    assert worklist.explored_initial_value_fetch_transition_count == (
+        _DATA_LINEAGE_INITIAL_VALUE_FETCH_COUNT
+    )
+    assert worklist.explored_initial_value_fetch_addresses == (
+        _DATA_LINEAGE_INITIAL_VALUE_FETCH_ADDRESSES
+    )
+    assert worklist.explored_data_read_transition_count == (
+        _DATA_LINEAGE_TOTAL_DATA_READ_COUNT
+    )
+    assert worklist.explored_initial_value_data_read_transition_count == (
+        _DATA_LINEAGE_INITIAL_VALUE_DATA_READ_COUNT
+    )
+    assert worklist.explored_initial_value_data_read_addresses == (
+        _DATA_LINEAGE_INITIAL_VALUE_DATA_READ_ADDRESSES
+    )
+
+
 def test_worklist_report_witnesses_evolved_fetch() -> None:
     """Public worklist report exposes the first changed instruction fetch."""
     report = _ANALYZER_MODULE.analyze_source(
@@ -1454,6 +1550,7 @@ def test_worklist_report_witnesses_evolved_fetch() -> None:
     assert witness is not None
     assert witness.address == _LINEAGE_FETCH_ADDRESS
     assert witness.initial_value == _WORKLIST_EVOLVED_FETCH_INITIAL_VALUE
+    _assert_evolved_fetch_read_partition(worklist)
     assert worklist.explored_evolved_fetch_transition_count == 1
     assert worklist.explored_evolved_fetch_addresses == (
         _LINEAGE_FETCH_ADDRESS,
@@ -1487,6 +1584,7 @@ def test_worklist_report_witnesses_evolved_data_read() -> None:
     assert witness is not None
     assert witness.address == _DATA_LINEAGE_ADDRESS
     assert witness.initial_value == _DATA_LINEAGE_INITIAL_VALUE
+    _assert_evolved_data_read_partition(worklist)
     assert worklist.explored_evolved_fetch_transition_count == 0
     assert worklist.explored_evolved_fetch_addresses == ()
     assert worklist.explored_evolved_data_read_transition_count == 1

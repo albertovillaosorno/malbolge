@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v69"
+_SCHEMA: Final = "malbolge-static-image/v70"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -372,8 +372,14 @@ class StaticImageReport:
     bounded_worklist_encryption_input_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
     ]
+    bounded_worklist_initial_value_fetch_source_map: tuple[
+        BoundedWorklistMutationAddressSourceContext, ...
+    ]
     bounded_worklist_evolved_fetch_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
+    ]
+    bounded_worklist_initial_value_data_read_source_map: tuple[
+        BoundedWorklistMutationAddressSourceContext, ...
     ]
     bounded_worklist_evolved_data_read_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
@@ -1684,11 +1690,31 @@ def analyze_source(
                 prefix.cells,
             )
         ),
+        bounded_worklist_initial_value_fetch_source_map=(
+            _worklist_address_source_map(
+                (
+                    ()
+                    if worklist is None
+                    else worklist.explored_initial_value_fetch_addresses
+                ),
+                prefix.cells,
+            )
+        ),
         bounded_worklist_evolved_fetch_value_source_map=(
             _worklist_value_source_map(
                 ()
                 if worklist is None
                 else worklist.explored_evolved_fetch_value_domains,
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_initial_value_data_read_source_map=(
+            _worklist_address_source_map(
+                (
+                    ()
+                    if worklist is None
+                    else worklist.explored_initial_value_data_read_addresses
+                ),
                 prefix.cells,
             )
         ),

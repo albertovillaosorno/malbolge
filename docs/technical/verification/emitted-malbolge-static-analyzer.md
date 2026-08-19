@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v69` retains exact `entry_transition` through
+`malbolge-static-image/v70` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -339,6 +339,13 @@ states. Schema v69 also publishes every cyclic SCC as exact ordered cycle states
 and source-maps each state. Known-graph cyclic components remain partial under
 truncation; the closed-recurrent component map is nullable and is emitted only
 after complete queue drainage, matching the existing closed-recurrence contract.
+Schema v70 partitions explored reads by equality against immutable initial
+memory. Every explored fetch is either initial-value-equal or evolved, and every
+semantic data read is likewise partitioned; fail-closed invariants require each
+partition to sum to its exact explored total. This is deliberately value
+equality rather than provenance: a write/reversion could equal the initial
+value. The report source-maps the initial-value-equal address sets where loaded
+source coordinates exist and leaves recurrence addresses null.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

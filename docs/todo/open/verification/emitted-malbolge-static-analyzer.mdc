@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v69
+  offsets, stable finding codes, and explicit analysis limits. Schema v70
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -341,7 +341,11 @@ executable cells, and input-dependent cycles or hangs.
   keeps both domains explored-only. Schema v69 also publishes exact
   source-mapped cyclic SCC components. Known-graph components remain bounded
   under truncation;
-  closed-recurrent component maps stay null until queue closure.
+  closed-recurrent component maps stay null until queue closure. Schema v70
+  partitions explored fetches and semantic data reads into initial-value-equal
+  versus evolved counts/address sets, checks both sums exactly, and source-maps
+  the initial-value-equal addresses. Equality is not promoted to unmodified
+  provenance; recurrence source coordinates remain null.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact
@@ -396,7 +400,7 @@ executable cells, and input-dependent cycles or hangs.
   writer-state and entry-path C/D source maps, cycle-body and aggregate explored
   C/D source maps, source-mapped cyclic SCC components, mutation/no-op/wrap and
   graph-level C/D paths, evolved read
-  transition/address counts and changed-value
-  domains, explicit bounded analysis
+  transition/address counts, initial-value-equal/evolved read partitions, and
+  changed-value domains, explicit bounded analysis
   limits, CLI second/third/fourth rejection status, and CLI missing-source
   failure.
