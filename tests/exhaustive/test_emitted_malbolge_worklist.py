@@ -1623,6 +1623,14 @@ def test_write_partition_rejects_committed_address_drift() -> None:
         )
 
 
+def test_write_partition_rejects_unclassified_data_write_address() -> None:
+    """Every committed data-write address must belong to its final class."""
+    with pytest.raises(AssertionError, match="no-op/effective classes"):
+        worklist._assert_committed_write_address_partition(
+            ({0, 40}, {40}, set(), {0}, set())
+        )
+
+
 def test_self_encryption_observations_reject_count_drift() -> None:
     """Committed self-encryption counts must match exact explored states."""
     with pytest.raises(AssertionError, match="exact committed states"):

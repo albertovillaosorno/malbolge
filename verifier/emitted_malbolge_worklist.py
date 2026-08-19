@@ -1754,11 +1754,11 @@ def _assert_committed_write_address_partition(
     if committed != data_write | self_encryption:
         message = "committed write addresses disagree with mutation classes"
         raise AssertionError(message)
-    if not noop <= data_write:
-        message = "data-write no-op addresses escape committed data writes"
-        raise AssertionError(message)
-    if not effective <= data_write:
-        message = "effective mutation addresses escape committed data writes"
+    if data_write != noop | effective:
+        message = (
+            "committed data-write addresses disagree with "
+            "no-op/effective classes"
+        )
         raise AssertionError(message)
 
 
