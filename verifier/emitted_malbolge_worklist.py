@@ -1016,6 +1016,16 @@ type _WrapWitnesses = tuple[
 ]
 
 
+type _WriteCounts = tuple[int, int, int, int, int]
+type _WriteAddressSets = tuple[
+    set[int],
+    set[int],
+    set[int],
+    set[int],
+    set[int],
+]
+
+
 def _assert_wrap_witness_flags(
     witness: WorklistWrapWitness,
     *,
@@ -1243,6 +1253,56 @@ def _assert_evolved_read_witness(
         raise AssertionError(message)
     if witness is not None:
         _assert_evolved_read_witness_endpoint(values, witness, label=label)
+
+
+def _assert_data_mutation_domains(
+    transition_count: int,
+    addresses: set[int],
+    *,
+    previous_values: dict[int, set[int]],
+    result_values: dict[int, set[int]],
+) -> None:
+    _assert_observed_value_domains(
+        transition_count,
+        addresses,
+        previous_values,
+        label="effective data mutation previous value",
+    )
+    _assert_observed_value_domains(
+        transition_count,
+        addresses,
+        result_values,
+        label="effective data mutation result value",
+    )
+
+
+def _assert_committed_write_count_partition(
+    counts: _WriteCounts,
+) -> None:
+    committed, data_write, noop, self_encryption, effective = counts
+    if committed != data_write + self_encryption:
+        message = "committed write count disagrees with mutation classes"
+        raise AssertionError(message)
+    if data_write != noop + effective:
+        message = (
+            "committed data writes disagree with no-op/effective partition"
+        )
+        raise AssertionError(message)
+
+
+def _assert_committed_write_address_partition(
+    address_sets: _WriteAddressSets,
+) -> None:
+    committed, data_write, noop, self_encryption, effective = address_sets
+    if committed != data_write | self_encryption:
+        message = "committed write addresses disagree with mutation classes"
+        raise AssertionError(message)
+    if not noop <= data_write:
+        message = "data-write no-op addresses escape committed data writes"
+        raise AssertionError(message)
+    if not effective <= data_write:
+        message = "effective mutation addresses escape committed data writes"
+        raise AssertionError(message)
 
 
 def _assert_non_graphical_fetch_domains(
@@ -1539,6 +1599,72 @@ class _Explorer:
             label="changed encryption input",
         )
 
+    def _assert_write_evidence_invariants(self) -> None:
+        _assert_observed_address_summary(
+            self.committed_writes,
+            self.committed_write_addresses,
+            label="committed write",
+        )
+        _assert_observed_value_domains(
+            self.planned_data_write_transitions,
+            self.planned_data_write_addresses,
+            self.planned_data_write_values,
+            label="planned data write",
+        )
+        _assert_observed_value_domains(
+            self.committed_data_write_transitions,
+            self.committed_data_write_addresses,
+            self.committed_data_write_values,
+            label="committed data write",
+        )
+        _assert_observed_address_summary(
+            self.committed_data_write_noop_transitions,
+            self.committed_data_write_noop_addresses,
+            label="committed data-write final no-op",
+        )
+        _assert_observed_value_domains(
+            self.self_encryption_transitions,
+            self.self_encryption_addresses,
+            self.self_encryption_output_values,
+            label="self-encryption output",
+        )
+        _assert_data_mutation_domains(
+            self.effective_data_mutation_transitions,
+            self.effective_data_mutation_addresses,
+            previous_values=self.effective_data_mutation_previous_values,
+            result_values=self.effective_data_mutation_result_values,
+        )
+        _assert_committed_write_count_partition(
+            (
+                self.committed_writes,
+                self.committed_data_write_transitions,
+                self.committed_data_write_noop_transitions,
+                self.self_encryption_transitions,
+                self.effective_data_mutation_transitions,
+            )
+        )
+        _assert_committed_write_address_partition(
+            (
+                self.committed_write_addresses,
+                self.committed_data_write_addresses,
+                self.committed_data_write_noop_addresses,
+                self.self_encryption_addresses,
+                self.effective_data_mutation_addresses,
+            )
+        )
+        if (
+            self.committed_data_write_transitions
+            > self.planned_data_write_transitions
+        ):
+            message = "committed data writes exceed planned write evidence"
+            raise AssertionError(message)
+        if not (
+            self.committed_data_write_addresses
+            <= self.planned_data_write_addresses
+        ):
+            message = "committed data-write addresses escape planned writes"
+            raise AssertionError(message)
+
     def result(
         self,
         *,
@@ -1605,6 +1731,7 @@ class _Explorer:
             truncated=truncated,
         )
         self._assert_read_partition_invariants()
+        self._assert_write_evidence_invariants()
         _assert_non_graphical_fetch_domains(
             self.non_graphical_fetch_transitions,
             self.non_graphical_fetch_addresses,

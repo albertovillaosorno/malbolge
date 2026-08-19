@@ -352,6 +352,16 @@ type _WrapWitnesses = tuple[
 ]
 
 
+type _WriteCounts = tuple[int, int, int, int, int]
+type _WriteAddressSets = tuple[
+    set[int],
+    set[int],
+    set[int],
+    set[int],
+    set[int],
+]
+
+
 class _WorklistWrapTransitionSignature(Protocol):
     source_code_pointer: int
     source_data_pointer: int
@@ -687,6 +697,25 @@ class _WorklistModule(Protocol):
         counts: dict[str, int],
         terminal_states: dict[str, set[_WorklistStateKey]],
         seen: set[_WorklistStateKey],
+    ) -> None: ...
+
+    def _assert_data_mutation_domains(
+        self,
+        transition_count: int,
+        addresses: set[int],
+        *,
+        previous_values: dict[int, set[int]],
+        result_values: dict[int, set[int]],
+    ) -> None: ...
+
+    def _assert_committed_write_count_partition(
+        self,
+        counts: _WriteCounts,
+    ) -> None: ...
+
+    def _assert_committed_write_address_partition(
+        self,
+        address_sets: _WriteAddressSets,
     ) -> None: ...
 
     def _assert_non_graphical_fetch_domains(
@@ -1189,6 +1218,33 @@ def test_evolved_read_invariant_rejects_missing_witness() -> None:
             ),
             label="evolved data read",
             require_witness=True,
+        )
+
+
+def test_write_partition_rejects_committed_count_drift() -> None:
+    """Committed mutation slots must equal data-write plus encryption slots."""
+    with pytest.raises(AssertionError, match="mutation classes"):
+        worklist._assert_committed_write_count_partition(
+            (2, 1, 0, 0, 1)
+        )
+
+
+def test_write_partition_rejects_committed_address_drift() -> None:
+    """Committed addresses must equal data-write/self-encryption union."""
+    with pytest.raises(AssertionError, match="addresses disagree"):
+        worklist._assert_committed_write_address_partition(
+            ({0}, {40}, set(), {0}, {40})
+        )
+
+
+def test_data_mutation_domains_reject_result_address_drift() -> None:
+    """Effective mutation domains must retain identical exact addresses."""
+    with pytest.raises(AssertionError, match="addresses disagree"):
+        worklist._assert_data_mutation_domains(
+            1,
+            {40},
+            previous_values={40: {29_524}},
+            result_values={41: {29_523}},
         )
 
 
