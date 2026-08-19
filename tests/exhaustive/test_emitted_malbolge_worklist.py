@@ -631,6 +631,35 @@ class _WorklistModule(Protocol):
         nodes: set[_WorklistStateKey],
     ) -> tuple[_WorklistStateKey, ...]: ...
 
+    def _assert_observed_address_summary(
+        self,
+        transition_count: int,
+        addresses: set[int],
+        *,
+        label: str,
+    ) -> None: ...
+
+    def _assert_observed_value_domains(
+        self,
+        transition_count: int,
+        addresses: set[int],
+        values: dict[int, set[int]],
+        *,
+        label: str,
+    ) -> None: ...
+
+    def _assert_evolved_read_witness(
+        self,
+        evidence: tuple[
+            int,
+            dict[int, set[int]],
+            _WorklistEvolvedReadWitness | None,
+        ],
+        *,
+        label: str,
+        require_witness: bool,
+    ) -> None: ...
+
     def _assert_frontier_evidence(
         self,
         frontier_states: int,
@@ -1082,6 +1111,46 @@ def _assert_fixed_non_graphical_fetch_evidence(
     assert len(witness.entry_path) == _FIXED_CYCLE_ENTRY_PATH_STATES
     assert witness.entry_path[-1] == witness.state
     assert witness.state.code_pointer == _FIXED_CYCLE_POINTER
+
+
+def test_changed_read_invariant_rejects_domain_address_drift() -> None:
+    """Changed-read address summaries must equal their value-domain keys."""
+    with pytest.raises(AssertionError, match="addresses disagree"):
+        worklist._assert_observed_value_domains(
+            1,
+            {_EVOLVED_FETCH_ADDRESS},
+            {_EVOLVED_FETCH_ADDRESS + 1: {_EVOLVED_FETCH_OBSERVED_VALUE}},
+            label="evolved fetch",
+        )
+
+
+def test_changed_read_invariant_rejects_under_counted_values() -> None:
+    """A transition count must cover every distinct changed value observed."""
+    with pytest.raises(AssertionError, match="cannot cover"):
+        worklist._assert_observed_value_domains(
+            1,
+            {1},
+            {1: {32, 33}},
+            label="changed encryption input",
+        )
+
+
+def test_evolved_read_invariant_rejects_missing_witness() -> None:
+    """Observed evolved reads cannot silently lose their first exact witness."""
+    with pytest.raises(AssertionError, match="witness presence"):
+        worklist._assert_evolved_read_witness(
+            (
+                1,
+                {
+                    _EVOLVED_DATA_READ_ADDRESS: {
+                        _EVOLVED_DATA_READ_OBSERVED_VALUE
+                    }
+                },
+                None,
+            ),
+            label="evolved data read",
+            require_witness=True,
+        )
 
 
 def test_non_graphical_fetch_invariant_rejects_domain_address_drift() -> None:

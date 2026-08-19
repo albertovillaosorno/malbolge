@@ -1141,6 +1141,82 @@ def _assert_terminal_evidence(
         raise AssertionError(message)
 
 
+def _assert_observed_address_summary(
+    transition_count: int,
+    addresses: set[int],
+    *,
+    label: str,
+) -> None:
+    if transition_count < len(addresses):
+        message = f"{label} count cannot cover its distinct addresses"
+        raise AssertionError(message)
+    if (transition_count > 0) != bool(addresses):
+        message = f"{label} count disagrees with observed addresses"
+        raise AssertionError(message)
+
+
+def _assert_observed_value_domains(
+    transition_count: int,
+    addresses: set[int],
+    values: dict[int, set[int]],
+    *,
+    label: str,
+) -> None:
+    _assert_observed_address_summary(
+        transition_count,
+        addresses,
+        label=label,
+    )
+    if addresses != set(values):
+        message = f"{label} addresses disagree with value domains"
+        raise AssertionError(message)
+    distinct_observations = sum(len(domain) for domain in values.values())
+    if transition_count < distinct_observations:
+        message = f"{label} count cannot cover its value domains"
+        raise AssertionError(message)
+
+
+def _assert_evolved_read_witness_endpoint(
+    values: dict[int, set[int]],
+    witness: WorklistEvolvedReadWitness,
+    *,
+    label: str,
+) -> None:
+    if not witness.entry_path or witness.entry_path[-1] != witness.state:
+        message = f"{label} witness lost its exact entry endpoint"
+        raise AssertionError(message)
+    if witness.observed_value not in values.get(witness.address, set()):
+        message = f"{label} witness value is outside observed domains"
+        raise AssertionError(message)
+    if witness.initial_value == witness.observed_value:
+        message = f"{label} witness no longer differs from initial memory"
+        raise AssertionError(message)
+    if witness.origin_value != witness.observed_value:
+        message = f"{label} witness value disagrees with its exact writer"
+        raise AssertionError(message)
+
+
+def _assert_evolved_read_witness(
+    evidence: tuple[
+        int,
+        dict[int, set[int]],
+        WorklistEvolvedReadWitness | None,
+    ],
+    *,
+    label: str,
+    require_witness: bool,
+) -> None:
+    transition_count, values, witness = evidence
+    if witness is not None and transition_count == 0:
+        message = f"{label} witness exists without evolved read evidence"
+        raise AssertionError(message)
+    if require_witness and transition_count > 0 and witness is None:
+        message = f"{label} evidence disagrees with witness presence"
+        raise AssertionError(message)
+    if witness is not None:
+        _assert_evolved_read_witness_endpoint(values, witness, label=label)
+
+
 def _assert_non_graphical_fetch_domains(
     transition_count: int,
     addresses: set[int],
@@ -1382,6 +1458,57 @@ class _Explorer:
                 "total inputs"
             )
             raise AssertionError(message)
+        _assert_observed_address_summary(
+            self.initial_value_fetch_transitions,
+            self.initial_value_fetch_addresses,
+            label="initial-value fetch",
+        )
+        _assert_observed_value_domains(
+            self.evolved_fetch_transitions,
+            self.evolved_fetch_addresses,
+            self.evolved_fetch_values,
+            label="evolved fetch",
+        )
+        _assert_evolved_read_witness(
+            (
+                self.evolved_fetch_transitions,
+                self.evolved_fetch_values,
+                self.evolved_fetch_witness,
+            ),
+            label="evolved fetch",
+            require_witness=_INITIAL_STATE_KEY in self.seen,
+        )
+        _assert_observed_address_summary(
+            self.initial_value_data_read_transitions,
+            self.initial_value_data_read_addresses,
+            label="initial-value data read",
+        )
+        _assert_observed_value_domains(
+            self.evolved_data_read_transitions,
+            self.evolved_data_read_addresses,
+            self.evolved_data_read_values,
+            label="evolved data read",
+        )
+        _assert_evolved_read_witness(
+            (
+                self.evolved_data_read_transitions,
+                self.evolved_data_read_values,
+                self.evolved_data_read_witness,
+            ),
+            label="evolved data read",
+            require_witness=_INITIAL_STATE_KEY in self.seen,
+        )
+        _assert_observed_address_summary(
+            self.initial_value_encryption_input_transitions,
+            self.initial_value_encryption_input_addresses,
+            label="initial-value encryption input",
+        )
+        _assert_observed_value_domains(
+            self.changed_from_initial_encryption_input_transitions,
+            self.changed_from_initial_encryption_input_addresses,
+            self.changed_from_initial_encryption_input_values,
+            label="changed encryption input",
+        )
 
     def result(
         self,
