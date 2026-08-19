@@ -425,9 +425,9 @@ args = ["check", "--config", ".jig/lang/python/ruff.toml", "."]
 [validation.rust_nightly_clippy]
 capability = "rust-clippy"
 tool = "rust_nightly_cargo_clippy"
-config_files = [".jig/lang/rust/clippy.toml", "Cargo.toml"]
+config_files = [".jig/lang/rust/clippy.toml", "Cargo.lock", "Cargo.toml"]
 # jig-ignore-next-line: indivisible reviewed identifier
-args = ["--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]
+args = ["--locked", "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]
 
 [validation.rust_nightly_format]
 capability = "rustfmt"
@@ -439,8 +439,8 @@ args = ["--all", "--", "--check", "--config-path", ".jig/lang/rust/.rustfmt.toml
 [validation.rust_stable_check]
 capability = "rust-check"
 tool = "rust_stable_cargo"
-config_files = [".cargo/config.toml", "Cargo.toml"]
-args = ["check", "--workspace", "--all-features"]
+config_files = [".cargo/config.toml", "Cargo.lock", "Cargo.toml"]
+args = ["check", "--locked", "--workspace", "--all-features"]
 
 [portability]
 # jig-ignore-next-line: indivisible reviewed identifier
