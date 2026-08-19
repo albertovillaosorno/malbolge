@@ -375,7 +375,7 @@ class StaticImageReport:
     bounded_worklist_initial_value_encryption_input_source_map: tuple[
         BoundedWorklistMutationAddressSourceContext, ...
     ]
-    bounded_worklist_changed_from_initial_encryption_input_value_source_map: (
+    bounded_worklist_changed_encryption_input_value_source_map: (
         tuple[BoundedWorklistValueSourceContext, ...]
     )
     bounded_worklist_initial_value_fetch_source_map: tuple[
@@ -1498,6 +1498,28 @@ def _worklist_evolved_read_writer_source_context(
     )
 
 
+def _worklist_initial_encryption_input_source_map(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistMutationAddressSourceContext, ...]:
+    if worklist is None:
+        return ()
+    addresses = worklist.explored_initial_value_encryption_input_addresses
+    return _worklist_address_source_map(addresses, cells)
+
+
+def _worklist_changed_encryption_input_value_source_map(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistValueSourceContext, ...]:
+    if worklist is None:
+        return ()
+    domains = (
+        worklist.explored_changed_from_initial_encryption_input_value_domains
+    )
+    return _worklist_value_source_map(domains, cells)
+
+
 def _worklist_terminal_control_path_source_maps(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -1697,26 +1719,14 @@ def analyze_source(
             )
         ),
         bounded_worklist_initial_value_encryption_input_source_map=(
-            _worklist_address_source_map(
-                (
-                    ()
-                    if worklist is None
-                    else (
-                        worklist.explored_initial_value_encryption_input_addresses
-                    )
-                ),
+            _worklist_initial_encryption_input_source_map(
+                worklist,
                 prefix.cells,
             )
         ),
-        bounded_worklist_changed_from_initial_encryption_input_value_source_map=(
-            _worklist_value_source_map(
-                (
-                    ()
-                    if worklist is None
-                    else (
-                        worklist.explored_changed_from_initial_encryption_input_value_domains
-                    )
-                ),
+        bounded_worklist_changed_encryption_input_value_source_map=(
+            _worklist_changed_encryption_input_value_source_map(
+                worklist,
                 prefix.cells,
             )
         ),

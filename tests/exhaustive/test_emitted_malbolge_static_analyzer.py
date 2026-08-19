@@ -894,7 +894,7 @@ class _Report(Protocol):
     bounded_worklist_initial_value_encryption_input_source_map: tuple[
         _WorklistMutationAddressSourceContext, ...
     ]
-    bounded_worklist_changed_from_initial_encryption_input_value_source_map: (
+    bounded_worklist_changed_encryption_input_value_source_map: (
         tuple[_WorklistValueSourceContext, ...]
     )
     bounded_worklist_initial_value_fetch_source_map: tuple[
@@ -2668,7 +2668,7 @@ def test_worklist_maps_changed_encryption_inputs_without_commit_claim() -> None:
     assert tuple(item.address for item in initial_map) == (0,)
     assert initial_map[0].source_byte_offset == _ENTRY_WRAP_SOURCE_OFFSET_SHIFT
     changed_map = (
-        report.bounded_worklist_changed_from_initial_encryption_input_value_source_map
+        report.bounded_worklist_changed_encryption_input_value_source_map
     )
     assert len(changed_map) == 1
     changed = changed_map[0]

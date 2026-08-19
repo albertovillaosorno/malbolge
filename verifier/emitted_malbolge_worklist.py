@@ -1288,7 +1288,9 @@ class _Explorer:
                 sorted(self.changed_from_initial_encryption_input_addresses)
             ),
             explored_changed_from_initial_encryption_input_value_domains=(
-                _value_domains(self.changed_from_initial_encryption_input_values)
+                _value_domains(
+                    self.changed_from_initial_encryption_input_values
+                )
             ),
             explored_committed_data_write_value_domains=_value_domains(
                 self.committed_data_write_values
@@ -1642,7 +1644,9 @@ class _Explorer:
                 self.initial_value_encryption_input_addresses.add(address)
             else:
                 self.changed_from_initial_encryption_input_transitions += 1
-                self.changed_from_initial_encryption_input_addresses.add(address)
+                self.changed_from_initial_encryption_input_addresses.add(
+                    address
+                )
                 _record_domain_value(
                     self.changed_from_initial_encryption_input_values,
                     address,
