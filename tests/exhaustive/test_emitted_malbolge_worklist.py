@@ -117,6 +117,21 @@ _MERGED_INPUT_CYCLE_CYCLE_CLOSING_REPEATS = (
 )
 _MERGED_INPUT_CYCLE_MERGE_SOURCE_POINTER = (2, 40)
 _MERGED_INPUT_CYCLE_MERGE_TARGET_POINTER = (3, 41)
+_DOUBLE_JUMP_MERGED_CYCLE_SOURCE = tuple(
+    b"".join(
+        (
+            b"u'&$@?>=<;:9876543210/.-,+*)('&%$#\"!~}|{zyxw",
+            b"vutsrqponmlkjihgfedcba`_^]\\[ZYXWVUTSRQPONMLK",
+            b"JIHGFEDCBA@?>=<;:9876543210/.-,+*)(",
+        )
+    )
+)
+_DOUBLE_JUMP_MERGED_CYCLE_STATE_LIMIT = 1_012
+_DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH = 124
+_DOUBLE_JUMP_MERGED_CYCLE_ADDRESS = 123
+_DOUBLE_JUMP_MERGED_CYCLE_INITIAL_VALUE = 29_486
+_DOUBLE_JUMP_MERGED_CYCLE_EVOLVED_VALUE = 49_194
+_DOUBLE_JUMP_MERGED_CYCLE_WRITER_TRANSITION = 4
 _OVER_CAP_INPUT_CYCLE_SOURCE = tuple(b"u'&%$#\"!~}|{zyxw")
 _MAX_WORKLIST_STATE_LIMIT = 4_096
 _OVER_CAP_EXPLORED_STATES = 3_840
@@ -1080,6 +1095,48 @@ def test_input_branch_merge_closes_deeper_cycle_with_small_graph() -> None:
         range(_MERGED_INPUT_CYCLE_PATH_LENGTH)
     )
     assert path[-1] == result.reachable_cycle_witness[0]
+    assert result.closed_all_paths_terminate is False
+    assert result.closed_all_paths_halt is False
+    assert not result.truncated
+
+
+def test_double_jump_branch_merge_closes_124_state_cycle() -> None:
+    """A second pre-merge jump pushes the evolved fixed fetch to C=123."""
+    result = worklist.analyze_reachability(
+        _DOUBLE_JUMP_MERGED_CYCLE_SOURCE,
+        maximum_states=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    assert result.unique_states == _DOUBLE_JUMP_MERGED_CYCLE_STATE_LIMIT
+    assert result.explored_states == _DOUBLE_JUMP_MERGED_CYCLE_STATE_LIMIT
+    assert result.input_branch_points == 1
+    assert (
+        result.explored_state_merge_transition_count
+        == _MERGED_INPUT_CYCLE_STATE_MERGES
+    )
+    assert (
+        result.explored_cycle_closing_repeated_edge_count
+        == _MERGED_INPUT_CYCLE_CYCLE_CLOSING_REPEATS
+    )
+    assert result.maximum_first_seen_transition_index == (
+        _DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH
+    )
+    path = result.reachable_cycle_entry_path
+    assert len(path) == _DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH
+    assert tuple(state.code_pointer for state in path) == tuple(
+        range(_DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH)
+    )
+    assert path[-1] == result.reachable_cycle_witness[0]
+    evolved = result.explored_evolved_fetch_witness
+    assert evolved is not None
+    assert evolved.state == path[-1]
+    assert evolved.address == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+    assert evolved.initial_value == _DOUBLE_JUMP_MERGED_CYCLE_INITIAL_VALUE
+    assert evolved.observed_value == _DOUBLE_JUMP_MERGED_CYCLE_EVOLVED_VALUE
+    assert evolved.origin_kind == _WRITER_DATA_WRITE
+    assert (
+        evolved.origin_entry_path_transition_index
+        == _DOUBLE_JUMP_MERGED_CYCLE_WRITER_TRANSITION
+    )
     assert result.closed_all_paths_terminate is False
     assert result.closed_all_paths_halt is False
     assert not result.truncated

@@ -226,6 +226,20 @@ _MERGED_INPUT_CYCLE_STATE_MERGES = 255
 _MERGED_INPUT_CYCLE_CYCLE_CLOSING_REPEATS = 2
 _MERGED_INPUT_CYCLE_MERGE_SOURCE_POINTER = (2, 40)
 _MERGED_INPUT_CYCLE_MERGE_TARGET_POINTER = (3, 41)
+_DOUBLE_JUMP_MERGED_CYCLE_SOURCE = b"".join(
+    (
+        b"u'&$@?>=<;:9876543210/.-,+*)('&%$#\"!~}|{zyxw",
+        b"vutsrqponmlkjihgfedcba`_^]\\[ZYXWVUTSRQPONMLK",
+        b"JIHGFEDCBA@?>=<;:9876543210/.-,+*)(",
+    )
+)
+_DOUBLE_JUMP_MERGED_CYCLE_STATE_LIMIT = 1_012
+_DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH = 124
+_DOUBLE_JUMP_MERGED_CYCLE_ADDRESS = 123
+_DOUBLE_JUMP_MERGED_CYCLE_INITIAL_VALUE = 29_486
+_DOUBLE_JUMP_MERGED_CYCLE_EVOLVED_VALUE = 49_194
+_DOUBLE_JUMP_MERGED_CYCLE_WRITER_TRANSITION = 4
+_DOUBLE_JUMP_MERGED_CYCLE_WRITER_CODE_POINTER = 3
 _OVER_CAP_INPUT_CYCLE_SOURCE = b"u'&%$#\"!~}|{zyxw"
 _OVER_CAP_EXPLORED_STATES = 3_840
 _OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION = 17
@@ -3166,6 +3180,61 @@ def test_report_worklist_proves_branch_merged_deeper_cycle() -> None:
     )
     assert worklist.closed_all_paths_terminate is False
     assert worklist.closed_all_paths_halt is False
+    assert not worklist.truncated
+
+
+def _assert_124_state_evolved_fetch_evidence(
+    report: _Report,
+    worklist: _WorklistAnalysis,
+) -> None:
+    path = worklist.reachable_cycle_entry_path
+    evolved = worklist.explored_evolved_fetch_witness
+    assert evolved is not None
+    assert evolved.state == path[-1]
+    assert evolved.address == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+    assert evolved.initial_value == _DOUBLE_JUMP_MERGED_CYCLE_INITIAL_VALUE
+    assert evolved.observed_value == _DOUBLE_JUMP_MERGED_CYCLE_EVOLVED_VALUE
+    assert (
+        evolved.origin_entry_path_transition_index
+        == _DOUBLE_JUMP_MERGED_CYCLE_WRITER_TRANSITION
+    )
+    source_map = report.bounded_worklist_cycle_entry_path_source_map
+    assert len(source_map) == _DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH
+    assert source_map[-2].source_position == (
+        _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS - 1
+    )
+    assert source_map[-1].code_pointer == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+    assert source_map[-1].source_position is None
+    writer = report.bounded_worklist_evolved_fetch_writer_source_context
+    assert writer is not None
+    assert writer.origin_entry_path_transition_index == (
+        _DOUBLE_JUMP_MERGED_CYCLE_WRITER_TRANSITION
+    )
+    assert writer.origin_value == _DOUBLE_JUMP_MERGED_CYCLE_EVOLVED_VALUE
+    writer_state = writer.writer_state_source_context
+    assert writer_state.code_pointer == (
+        _DOUBLE_JUMP_MERGED_CYCLE_WRITER_CODE_POINTER
+    )
+    assert writer_state.data_pointer == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+
+
+def test_report_worklist_proves_124_state_input_cycle() -> None:
+    """Public worklist links a deep evolved fetch back to its exact writer."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _DOUBLE_JUMP_MERGED_CYCLE_SOURCE,
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _DOUBLE_JUMP_MERGED_CYCLE_STATE_LIMIT
+    assert worklist.maximum_first_seen_transition_index == (
+        _DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH
+    )
+    path = worklist.reachable_cycle_entry_path
+    assert tuple(state.code_pointer for state in path) == tuple(
+        range(_DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH)
+    )
+    _assert_124_state_evolved_fetch_evidence(report, worklist)
     assert not worklist.truncated
 
 

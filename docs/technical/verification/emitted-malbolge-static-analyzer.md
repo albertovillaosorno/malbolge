@@ -356,7 +356,11 @@ of the reviewed state ceiling without truncation. A separate 67-word fixture
 decodes as `/ j *` followed by 64 `j` instructions. Rotate after the first jump
 merges the 257 input branches; the exact graph closes in 591 states and proves a
 41-state cycle entry path with C=0..40, without increasing the 4,096-state cap.
-The one-word-longer
+A separate 123-byte `/jj*` plus 119-`o` fixture closes in 1,012 states and
+proves a 124-state C=0..123 path. Transition 4 mutates recurrence M[123] from
+29,486
+to 49,194; the eventual evolved instruction fetch observes the same value and
+forms a fixed non-graphical self-loop. The one-word-longer
 `b"u'&%$#\"!~}|{zyxw"` fixture reaches the 4,096-state maximum after
 3,840 states are explored. It leaves 257 exact frontier states and records
 first-seen depth 17, publishes the deterministic path to the first unexplored

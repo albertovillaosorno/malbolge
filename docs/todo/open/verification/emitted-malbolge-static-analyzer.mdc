@@ -166,7 +166,11 @@ executable cells, and input-dependent cycles or hangs.
   67-word `/ j *` plus 64-`j` fixture merges the 257 input branches after
   rotate;
   it closes in only 591 states and proves a 41-state C=0..40 cycle entry path
-  without raising the cap. The one-word-longer `b"u'&%$#\"!~}|{zyxw"` fixture
+  without raising the cap. A separate 123-byte `/jj*` plus 119-`o` fixture
+  closes in 1,012 states and proves a 124-state C=0..123 path. Transition 4
+  mutates recurrence M[123] from 29,486 to 49,194; the later evolved fetch reads
+  that exact value before entering a fixed non-graphical self-loop. The
+  one-word-longer `b"u'&%$#\"!~}|{zyxw"` fixture
   reaches the maximum after
   3,840 explored states, leaves 257 exact frontier states, records first-seen
   depth 17, and remains explicitly unknown for cycle/all-path closure across the
@@ -345,7 +349,7 @@ executable cells, and input-dependent cycles or hangs.
 - Automatic unbounded/worklist control-flow reachability, broader unbounded
   dataflow/evolved-memory equivalence, control-flow/source-map linkage beyond
   the selected bounded witness set, wraparound beyond selected prefix/worklist
-  evidence, and input-dependent cycles deeper than the checked 41-state path
+  evidence, and input-dependent cycles deeper than the checked 124-state path
   remain open. Nothing after the
   requested bound is inferred from prefix or initial-image admission.
 
@@ -372,8 +376,9 @@ executable cells, and input-dependent cycles or hangs.
   loaded-source/raw-offset bounded
   fetch/read/write/encryption context, exact bounded fetch-value lineage through
   loaded source, recurrence, and prior data-write evidence, explicit finite
-  worklist closure/truncation evidence including a 41-state branch-merged
-  cycle path plus source-mapped merge and cycle-closing-edge witnesses, mutation
+  worklist closure/truncation evidence including 41-state and 124-state
+  branch-merged cycle paths plus source-mapped merge and cycle-closing-edge
+  witnesses, mutation
   and
   planned/committed write
   domains, source-linked worklist value maps with recurrence initial-memory

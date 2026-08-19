@@ -99,8 +99,14 @@ The 15-word `b"u'&%$#\"!~}|{zyx"` input-plus-14-jump fixture closes in
 budget without truncation. A separate 67-word `/ j *` then 64-`j` fixture uses
 rotate after the first jump to merge the 257 input branches. Its graph closes in
 only 591 states and proves a 41-state cycle entry path with C=0..40, extending
-checked input-dependent depth without raising the 4,096-state ceiling. The
-one-word-longer
+checked input-dependent depth without raising the 4,096-state ceiling. A
+separate 123-byte `/jj*` plus 119-`o` fixture uses two pre-merge jumps and
+closes in
+1,012 states with a 124-state C=0..123 entry path. Transition 4 changes
+recurrence M[123] from 29,486 to 49,194; the later evolved fetch at C=123
+observes that exact data-write value and becomes a fixed non-graphical
+self-loop.
+The one-word-longer
 `b"u'&%$#\"!~}|{zyxw"` fixture reaches the reviewed 4,096-state maximum
 after 3,840 explored states, leaves 257 exact frontier states, and remains
 explicitly truncated with no cycle or all-path conclusion. This remains bounded
