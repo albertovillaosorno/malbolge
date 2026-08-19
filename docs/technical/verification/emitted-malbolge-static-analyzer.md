@@ -408,8 +408,10 @@ Schema v79 retains every exact explored terminal state grouped by status and
 source-maps each terminal state's C/D pointers independently. The existing
 status-labeled terminal witness remains one shortest entry path; endpoint sets
 do not duplicate those paths. Closed `b"u="` publishes all 257 rejected
-invalid-self-encryption terminals at loaded C/D=1, while a truncated graph
-publishes only terminal endpoints explored before its exact frontier. Closure
+invalid-self-encryption terminals at loaded C/D=1; closed `b"uP"` independently
+publishes all 257 halted endpoints at the same loaded coordinates. A truncated
+graph publishes only terminal endpoints explored before its exact frontier.
+Closure
 therefore promotes the bounded endpoint set to complete reachable terminal
 evidence only when the graph itself is closed.
 Schema v80 retains every exact explored C=D alias observation as state, alias
@@ -418,7 +420,9 @@ to equal the alias-transition count, the observation addresses to equal the
 reported alias-address set, and every exact state to preserve C=D. Public
 source contexts map C and D independently. A closed two-word input graph has
 258 observations spanning addresses 0 and 1; first-witness paths remain one per
-address rather than one per observation.
+address rather than one per observation. At the 257-state pre-terminal cap,
+only the explored C=D=0 entry alias is retained; frontier alternatives remain
+unexplored boundary evidence.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

@@ -1229,6 +1229,20 @@ def _assert_terminal_evidence(
         raise AssertionError(message)
 
 
+def _assert_terminal_graph_endpoints(
+    terminal_states: dict[str, set[_StateKey]],
+    edges: dict[_StateKey, set[_StateKey]],
+) -> None:
+    for states in terminal_states.values():
+        for state in states:
+            if state not in edges:
+                message = "terminal evidence is missing its graph node"
+                raise AssertionError(message)
+            if edges[state]:
+                message = "terminal graph endpoint retained an outgoing edge"
+                raise AssertionError(message)
+
+
 def _assert_observed_address_summary(
     transition_count: int,
     addresses: set[int],
@@ -1735,6 +1749,10 @@ class _Explorer:
             self.terminal_counts,
             self.terminal_states,
             self.seen,
+        )
+        _assert_terminal_graph_endpoints(
+            self.terminal_states,
+            self.edges,
         )
         _assert_input_branch_evidence(
             self.input_branch_points,

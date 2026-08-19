@@ -409,13 +409,16 @@ executable cells, and input-dependent cycles or hangs.
   states remain unexplored boundary evidence, not inferred successor behavior.
   Schema v79 retains every exact explored terminal state grouped by status and
   source-maps each endpoint's C/D pointers. Closed `b"u="` publishes all 257
-  invalid-self-encryption terminal endpoints at loaded C/D=1; truncation retains
+  invalid-self-encryption terminal endpoints at loaded C/D=1; closed `b"uP"`
+  independently publishes all 257 halted endpoints there. Truncation retains
   only terminals actually explored before its frontier. One shortest path per
   status remains the representative terminal path witness.
   Schema v80 retains every exact explored C=D alias observation with its full
   state, address, and fetched value, and source-maps both pointer endpoints. A
   closed two-word input graph publishes 258 observations across addresses 0/1;
-  first-witness paths remain one per address rather than per observation.
+  first-witness paths remain one per address rather than per observation. At a
+  257-state pre-terminal cap only the explored C=D=0 entry alias is retained;
+  frontier alternatives remain unexplored.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact

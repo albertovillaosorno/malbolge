@@ -209,6 +209,7 @@ _FIXED_CYCLE_MEMORY_OVERRIDES = ((0, 111), (1, 69))
 _FIXED_CYCLE_NON_GRAPHICAL_VALUE = 29_412
 _INPUT_VALUE_COUNT = 257
 _INVALID_ENCRYPTION_STATUS = "rejected-invalid-self-encryption"
+_HALTED_STATUS = "halted"
 _BYTE_VALUE_COUNT = 256
 _DOUBLE_INPUT_BRANCH_POINTS = 1 + _BYTE_VALUE_COUNT
 _EOF_ACCUMULATOR = 59_048
@@ -721,6 +722,12 @@ class _WorklistModule(Protocol):
         seen: set[_WorklistStateKey],
     ) -> None: ...
 
+    def _assert_terminal_graph_endpoints(
+        self,
+        terminal_states: dict[str, set[_WorklistStateKey]],
+        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+    ) -> None: ...
+
     def _assert_data_mutation_domains(
         self,
         transition_count: int,
@@ -856,6 +863,7 @@ def test_input_halt_worklist_closes_all_byte_and_eof_states() -> None:
     ),)
     assert result.closed_all_paths_terminate is True
     assert result.closed_all_paths_halt is True
+    _assert_input_halt_terminal_state_set(result)
     assert result.maximum_first_seen_transition_index == _SECOND_TRANSITION
     assert result.frontier_states == 0
     assert result.frontier_state_set == ()
@@ -1081,6 +1089,19 @@ def _assert_input_crazy_terminal_state_set(result: _WorklistAnalysis) -> None:
     assert states[-1].eof_seen
 
 
+def _assert_input_halt_terminal_state_set(result: _WorklistAnalysis) -> None:
+    state_sets = result.terminal_status_state_sets
+    assert len(state_sets) == 1
+    assert state_sets[0].status == _HALTED_STATUS
+    states = state_sets[0].states
+    assert len(states) == _INPUT_VALUE_COUNT
+    assert (states[0].code_pointer, states[0].data_pointer) == (1, 1)
+    assert states[0].accumulator == 0
+    assert not states[0].eof_seen
+    assert states[-1].accumulator == _EOF_ACCUMULATOR
+    assert states[-1].eof_seen
+
+
 def test_input_crazy_worklist_resolves_every_input_branch() -> None:
     """Input-dependent crazy becomes concrete over byte plus EOF states."""
     result = worklist.analyze_reachability(
@@ -1111,6 +1132,19 @@ def test_input_crazy_worklist_resolves_every_input_branch() -> None:
     assert not result.truncated
 
 
+def _assert_truncated_alias_observation(result: _WorklistAnalysis) -> None:
+    observations = result.explored_code_data_alias_observations
+    assert len(observations) == 1
+    alias = observations[0]
+    alias_identity = (
+        alias.address,
+        alias.state.code_pointer,
+        alias.state.data_pointer,
+    )
+    assert alias_identity == (0, 0, 0)
+    assert not alias.state.eof_seen
+
+
 def test_input_worklist_truncates_before_unadmitted_eof_state() -> None:
     """The exact unique-state cap stops before silently dropping a branch."""
     result = worklist.analyze_reachability(
@@ -1120,6 +1154,7 @@ def test_input_worklist_truncates_before_unadmitted_eof_state() -> None:
     assert result.unique_states == _TRUNCATED_STATE_LIMIT
     assert result.explored_states == 1
     assert result.input_branch_points == 1
+    _assert_truncated_alias_observation(result)
     assert result.terminal_status_counts == ()
     assert result.terminal_status_state_sets == ()
     assert result.closed_terminal_status_counts is None
@@ -1729,6 +1764,24 @@ def test_terminal_invariant_rejects_count_state_drift() -> None:
             {"halted": 2},
             {"halted": {_GRAPH_KEY_A}},
             {_GRAPH_KEY_A},
+        )
+
+
+def test_terminal_graph_invariant_rejects_missing_node() -> None:
+    """Terminal evidence cannot refer to a state absent from the graph."""
+    with pytest.raises(AssertionError, match="missing its graph node"):
+        worklist._assert_terminal_graph_endpoints(
+            {"halted": {_GRAPH_KEY_A}},
+            {},
+        )
+
+
+def test_terminal_graph_invariant_rejects_outgoing_edge() -> None:
+    """A terminal endpoint cannot retain an outgoing graph edge."""
+    with pytest.raises(AssertionError, match="outgoing edge"):
+        worklist._assert_terminal_graph_endpoints(
+            {"halted": {_GRAPH_KEY_A}},
+            {_GRAPH_KEY_A: {_GRAPH_KEY_B}, _GRAPH_KEY_B: set()},
         )
 
 

@@ -413,13 +413,16 @@ C=1666. Closed graphs publish an empty frontier set.
 Schema v79 publishes every exact explored terminal endpoint grouped by status.
 Each endpoint receives independent C/D source coordinates, while the existing
 status witness retains only one shortest entry path. The closed `b"u="` graph
-publishes all 257 invalid-self-encryption terminals at loaded C/D=1; truncated
+publishes all 257 invalid-self-encryption terminals at loaded C/D=1, while
+closed `b"uP"` independently publishes all 257 halted endpoints there. Truncated
 graphs publish only terminal endpoints actually explored before the frontier.
 Schema v80 retains every exact explored C=D alias observation, including its
 full state and fetched value, and source-maps both pointer endpoints. The closed
 two-word input graph publishes 258 alias observations: one at address 0 and 257
 at address 1. Existing per-address alias witnesses remain the only serialized
 entry paths, so exhaustive endpoint evidence does not duplicate path history.
+At a 257-state cap only the explored C=D=0 entry alias is retained; the 257
+frontier alternatives are not promoted to alias observations.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored

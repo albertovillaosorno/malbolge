@@ -70,6 +70,7 @@ _FORBIDDEN_DECODE_BYTE = 43
 _SCHEMA = "malbolge-static-image/v80"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
+_EOF_ACCUMULATOR = 59_048
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
 _THIRD_STUCK = "stuck-non-graphical-fetch"
 _SECOND_INPUT_UNRESOLVED = "unresolved-input-dependent-accumulator"
@@ -3790,6 +3791,61 @@ def test_worklist_maps_terminal_control_path_with_status() -> None:
     assert report.bounded_worklist_frontier_entry_path_source_map == ()
 
 
+def _assert_halt_terminal_state_source_contexts(report: _Report) -> None:
+    maps = report.bounded_worklist_terminal_state_source_maps
+    assert len(maps) == 1
+    assert maps[0].status == _ENTRY_HALTED
+    contexts = maps[0].state_source_contexts
+    assert len(contexts) == _WORKLIST_INPUT_VALUE_COUNT
+    first = contexts[0]
+    last = contexts[-1]
+    assert (first.terminal_state_index, last.terminal_state_index) == (
+        0,
+        _WORKLIST_INPUT_VALUE_COUNT - 1,
+    )
+    assert all(
+        context.source_position == _SECOND_LOADED_SOURCE_POSITION
+        for context in contexts
+    )
+    assert all(
+        context.source_byte_offset == _SECOND_LOADED_SOURCE_BYTE_OFFSET
+        for context in contexts
+    )
+    assert all(
+        context.data_source_position == _SECOND_LOADED_SOURCE_POSITION
+        for context in contexts
+    )
+    assert all(
+        context.data_source_byte_offset == _SECOND_LOADED_SOURCE_BYTE_OFFSET
+        for context in contexts
+    )
+    assert first.state.accumulator == 0
+    assert not first.state.eof_seen
+    assert last.state.accumulator == _EOF_ACCUMULATOR
+    assert last.state.eof_seen
+
+
+def test_worklist_maps_all_halted_terminal_states() -> None:
+    """Closed halt endpoints retain exact status and source coordinates."""
+    report = _ANALYZER_MODULE.analyze_source(
+        b" \n" + _INPUT_HALT_SOURCE,
+        worklist_state_limit=_WORKLIST_COMPLETE_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.closed_terminal_status_counts == (
+        (_ENTRY_HALTED, _WORKLIST_INPUT_VALUE_COUNT),
+    )
+    assert worklist.closed_all_paths_halt is True
+    _assert_halt_terminal_state_source_contexts(report)
+    path_maps = report.bounded_worklist_terminal_entry_path_source_maps
+    assert len(path_maps) == 1
+    assert path_maps[0].status == _ENTRY_HALTED
+    path = path_maps[0].entry_path_source_map
+    assert tuple(context.code_pointer for context in path) == (0, 1)
+    assert tuple(context.source_byte_offset for context in path) == (2, 3)
+
+
 def _assert_cycle_closing_source_context(
     report: _Report,
     worklist: _WorklistAnalysis,
@@ -4385,6 +4441,17 @@ def test_report_worklist_truncation_is_explicit() -> None:
     assert worklist.closed_recurrent_cycle_witness is None
     assert worklist.closed_recurrent_entry_path is None
     assert worklist.closed_terminal_status_counts is None
+    assert worklist.terminal_status_state_sets == ()
+    assert report.bounded_worklist_terminal_state_source_maps == ()
+    assert report.bounded_worklist_terminal_entry_path_source_maps == ()
+    alias_contexts = (
+        report.bounded_worklist_code_data_alias_observation_source_contexts
+    )
+    assert len(alias_contexts) == 1
+    assert alias_contexts[0].alias_state_index == 0
+    assert alias_contexts[0].address == 0
+    assert alias_contexts[0].source_position == 0
+    assert alias_contexts[0].data_source_position == 0
     assert worklist.closed_all_paths_terminate is None
     assert worklist.closed_all_paths_halt is None
     assert _WORKLIST_TRUNCATED_LIMIT in report.analysis_limits
