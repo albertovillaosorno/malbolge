@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v78` retains exact `entry_transition` through
+`malbolge-static-image/v79` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -404,6 +404,14 @@ frontier state's C/D pointers receive independent source coordinates. The
 recurrence C=16. The adjacent restoration fixture retains loaded C=1665 and
 recurrence C=1666 as its exact two-state frontier. These states have not been
 explored, so the map is boundary evidence rather than successor behavior proof.
+Schema v79 retains every exact explored terminal state grouped by status and
+source-maps each terminal state's C/D pointers independently. The existing
+status-labeled terminal witness remains one shortest entry path; endpoint sets
+do not duplicate those paths. Closed `b"u="` publishes all 257 rejected
+invalid-self-encryption terminals at loaded C/D=1, while a truncated graph
+publishes only terminal endpoints explored before its exact frontier. Closure
+therefore promotes the bounded endpoint set to complete reachable terminal
+evidence only when the graph itself is closed.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema
@@ -445,7 +453,14 @@ fetch is non-graphical; its source-mapped witness keeps C=0..1664 loaded and
 only the recurrence endpoint source-null. The adjacent 1,666-word restoration
 image instead reaches 4,096 unique states after 4,095 explored states, retains
 a two-state frontier with the full loaded C=0..1665 source path, and reports
-`truncated=true`. The one-word-longer
+`truncated=true`. A generated 1,846-word `/j*i` fixture takes a different
+route: after input, jump, and rotate collapse the byte branches, C=3 executes
+`i` with loaded M[41]=57 and resumes at C=58, bypassing mutated M[40]. Its exact
+graph closes in 4,095 states and proves a 1,793-state path whose loaded C
+coordinates are `0,1,2,3,58..1845`; only recurrence C=1846 is source-null and
+non-graphical at value 29,441. The adjacent 1,847-word image reaches 4,096
+unique states after 4,095 explored states and retains two C=1847 frontier states
+instead of claiming closure. The one-word-longer
 `b"u'&%$#\"!~}|{zyxw"` fixture reaches the 4,096-state maximum after
 3,840 states are explored. It leaves 257 exact frontier states and records
 first-seen depth 17, publishes the deterministic path to the first unexplored

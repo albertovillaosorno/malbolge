@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v78"
+_SCHEMA: Final = "malbolge-static-image/v79"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -348,6 +348,30 @@ class BoundedWorklistEvolvedReadWriterSourceContext:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundedWorklistTerminalStateSourceContext:
+    """Source coordinates for one exact explored terminal state."""
+
+    terminal_state_index: int
+    state: worklist_transfer.WorklistCycleState
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class BoundedWorklistTerminalStateSourceMap:
+    """Status-labeled source endpoints for all exact explored terminals."""
+
+    status: str
+    state_source_contexts: tuple[
+        BoundedWorklistTerminalStateSourceContext, ...
+    ]
+
+
+@dataclass(frozen=True, slots=True)
 class BoundedWorklistTerminalControlPathSourceMap:
     """Status-labeled source map for one exact terminal witness entry path."""
 
@@ -514,6 +538,9 @@ class StaticImageReport:
     ]
     bounded_worklist_frontier_entry_path_source_map: tuple[
         BoundedWorklistControlPathSourceContext, ...
+    ]
+    bounded_worklist_terminal_state_source_maps: tuple[
+        BoundedWorklistTerminalStateSourceMap, ...
     ]
     bounded_worklist_terminal_entry_path_source_maps: tuple[
         BoundedWorklistTerminalControlPathSourceMap, ...
@@ -1733,6 +1760,43 @@ def _worklist_frontier_state_source_contexts(
     return tuple(contexts)
 
 
+def _worklist_terminal_state_source_maps(
+    worklist: worklist_transfer.WorklistAnalysis | None,
+    cells: tuple[InitialCell, ...],
+) -> tuple[BoundedWorklistTerminalStateSourceMap, ...]:
+    if worklist is None:
+        return ()
+    maps: list[BoundedWorklistTerminalStateSourceMap] = []
+    for state_set in worklist.terminal_status_state_sets:
+        contexts: list[BoundedWorklistTerminalStateSourceContext] = []
+        for index, state in enumerate(state_set.states):
+            source = _worklist_mutation_address_source_context(
+                state.code_pointer, cells
+            )
+            data_source = _worklist_mutation_address_source_context(
+                state.data_pointer, cells
+            )
+            contexts.append(
+                BoundedWorklistTerminalStateSourceContext(
+                    terminal_state_index=index,
+                    state=state,
+                    source_position=source.source_position,
+                    source_byte_offset=source.source_byte_offset,
+                    initial_source_byte=source.initial_source_byte,
+                    data_source_position=data_source.source_position,
+                    data_source_byte_offset=data_source.source_byte_offset,
+                    initial_data_source_byte=data_source.initial_source_byte,
+                )
+            )
+        maps.append(
+            BoundedWorklistTerminalStateSourceMap(
+                status=state_set.status,
+                state_source_contexts=tuple(contexts),
+            )
+        )
+    return tuple(maps)
+
+
 def _worklist_terminal_control_path_source_maps(
     worklist: worklist_transfer.WorklistAnalysis | None,
     cells: tuple[InitialCell, ...],
@@ -2210,6 +2274,9 @@ def analyze_source(
                 None if worklist is None else worklist.frontier_entry_path,
                 prefix.cells,
             )
+        ),
+        bounded_worklist_terminal_state_source_maps=(
+            _worklist_terminal_state_source_maps(worklist, prefix.cells)
         ),
         bounded_worklist_terminal_entry_path_source_maps=(
             _worklist_terminal_control_path_source_maps(worklist, prefix.cells)

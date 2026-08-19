@@ -371,6 +371,11 @@ class _WorklistWrapTransitionSignature(Protocol):
     data_pointer_wrapped: bool
 
 
+class _WorklistTerminalStateSet(Protocol):
+    status: str
+    states: tuple[_WorklistCycleState, ...]
+
+
 class _WorklistValueDomain(Protocol):
     address: int
     values: tuple[int, ...]
@@ -479,6 +484,7 @@ class _WorklistAnalysis(Protocol):
     input_branch_points: int
     input_branch_states: tuple[_WorklistCycleState, ...]
     terminal_status_counts: tuple[tuple[str, int], ...]
+    terminal_status_state_sets: tuple[_WorklistTerminalStateSet, ...]
     closed_terminal_status_counts: tuple[tuple[str, int], ...] | None
     closed_all_paths_terminate: bool | None
     closed_all_paths_halt: bool | None
@@ -1023,6 +1029,19 @@ def test_worklist_memory_requirement_includes_recurrence_reads() -> None:
     assert result.explored_accessed_addresses == _RECURRENCE_ACCESSES
 
 
+def _assert_input_crazy_terminal_state_set(result: _WorklistAnalysis) -> None:
+    state_sets = result.terminal_status_state_sets
+    assert len(state_sets) == 1
+    assert state_sets[0].status == _INVALID_ENCRYPTION_STATUS
+    states = state_sets[0].states
+    assert len(states) == _INPUT_VALUE_COUNT
+    assert (states[0].code_pointer, states[0].data_pointer) == (1, 1)
+    assert states[0].accumulator == 0
+    assert not states[0].eof_seen
+    assert states[-1].accumulator == _EOF_ACCUMULATOR
+    assert states[-1].eof_seen
+
+
 def test_input_crazy_worklist_resolves_every_input_branch() -> None:
     """Input-dependent crazy becomes concrete over byte plus EOF states."""
     result = worklist.analyze_reachability(
@@ -1039,6 +1058,7 @@ def test_input_crazy_worklist_resolves_every_input_branch() -> None:
     )
     assert result.closed_all_paths_terminate is True
     assert result.closed_all_paths_halt is False
+    _assert_input_crazy_terminal_state_set(result)
     witnesses = result.terminal_status_witnesses
     assert len(witnesses) == 1
     witness = witnesses[0]
@@ -1062,6 +1082,7 @@ def test_input_worklist_truncates_before_unadmitted_eof_state() -> None:
     assert result.explored_states == 1
     assert result.input_branch_points == 1
     assert result.terminal_status_counts == ()
+    assert result.terminal_status_state_sets == ()
     assert result.closed_terminal_status_counts is None
     assert result.closed_all_paths_terminate is None
     assert result.closed_all_paths_halt is None

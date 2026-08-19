@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v78 retains the legacy exact entry-through-fifth
+load decode. Schema v79 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -114,7 +114,12 @@ cycle entry path. Its final recurrence fetch at C=1665 is non-graphical, so this
 extends checked input-dependent depth without raising the state ceiling. The
 adjacent 1,666-word image reaches the same 4,096 unique-state ceiling after
 4,095 explored states, retains a two-state frontier, and reports truncation
-instead of falsely promoting the unfinished graph to closure.
+instead of falsely promoting the unfinished graph to closure. A generated
+1,846-word `/j*i` fixture instead uses loaded M[41]=57 to jump from C=3 to
+C=58 after the branch-collapsing M[40] rotate, skipping that mutated code cell.
+It closes in 4,095 states and proves a 1,793-state cycle entry path ending at
+the recurrence-backed non-graphical C=1846 fetch. The adjacent 1,847-word image
+hits the 4,096-state ceiling with a two-state frontier and remains truncated.
 The one-word-longer
 `b"u'&%$#\"!~}|{zyxw"` fixture reaches the reviewed 4,096-state maximum
 after 3,840 explored states, leaves 257 exact frontier states, and remains
@@ -398,6 +403,11 @@ over-cap fixture has 257 frontier states: 16 at loaded C=15 and 241 at
 recurrence C=16; the adjacent restoration fixture has exactly loaded C=1665
 plus recurrence
 C=1666. Closed graphs publish an empty frontier set.
+Schema v79 publishes every exact explored terminal endpoint grouped by status.
+Each endpoint receives independent C/D source coordinates, while the existing
+status witness retains only one shortest entry path. The closed `b"u="` graph
+publishes all 257 invalid-self-encryption terminals at loaded C/D=1; truncated
+graphs publish only terminal endpoints actually explored before the frontier.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored

@@ -115,6 +115,14 @@ class WorklistWrapTransitionSignature:
 
 
 @dataclass(frozen=True, slots=True)
+class WorklistTerminalStateSet:
+    """Exact explored terminal states for one status."""
+
+    status: str
+    states: tuple[WorklistCycleState, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class WorklistValueDomain:
     """Exact observed values for one explored memory address."""
 
@@ -252,6 +260,7 @@ class WorklistAnalysis:
     input_branch_points: int
     input_branch_states: tuple[WorklistCycleState, ...]
     terminal_status_counts: tuple[tuple[str, int], ...]
+    terminal_status_state_sets: tuple[WorklistTerminalStateSet, ...]
     closed_terminal_status_counts: tuple[tuple[str, int], ...] | None
     closed_all_paths_terminate: bool | None
     closed_all_paths_halt: bool | None
@@ -816,6 +825,18 @@ def _cycle_components(
     return tuple(
         tuple(_cycle_state(key) for key in component)
         for component in components
+    )
+
+
+def _terminal_state_sets(
+    terminal_states: dict[str, set[_StateKey]],
+) -> tuple[WorklistTerminalStateSet, ...]:
+    return tuple(
+        WorklistTerminalStateSet(
+            status=status,
+            states=tuple(_cycle_state(key) for key in sorted(states)),
+        )
+        for status, states in sorted(terminal_states.items())
     )
 
 
@@ -1807,6 +1828,9 @@ class _Explorer:
                 _cycle_state(key) for key in sorted(self.input_branch_states)
             ),
             terminal_status_counts=tuple(sorted(self.terminal_counts.items())),
+            terminal_status_state_sets=_terminal_state_sets(
+                self.terminal_states
+            ),
             closed_terminal_status_counts=(
                 None
                 if truncated

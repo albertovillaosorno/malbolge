@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v78"
+_SCHEMA = "malbolge-static-image/v79"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -99,6 +99,8 @@ _ENTRY_WRAP_COMMITTED_WRITE_ADDRESSES = (
 )
 _ENTRY_WRAP_SOURCE_OFFSET_SHIFT = 2
 _SOURCE_WHITESPACE_PREFIX_BYTES = 2
+_SECOND_LOADED_SOURCE_POSITION = 1
+_SECOND_LOADED_SOURCE_BYTE_OFFSET = 3
 _ENTRY_WRAP_POINTER_PATH = (
     (0, 0),
     (1, 1),
@@ -265,6 +267,19 @@ _RESTORED_DEEP_CYCLE_ROTATION_STRIDE = 12
 _RESTORED_DEEP_CYCLE_ROTATION_JUMP_OFFSET = 10
 _RESTORED_DEEP_CYCLE_ROTATION_OFFSET = 11
 _RESTORED_DEEP_CYCLE_INVALID_VALUE = 29_434
+_JUMP_OVER_MUTATION_CYCLE_SOURCE_WORDS = 1_846
+_JUMP_OVER_MUTATION_CYCLE_OVER_CAP_SOURCE_WORDS = 1_847
+_JUMP_OVER_MUTATION_CYCLE_UNIQUE_STATES = 4_095
+_JUMP_OVER_MUTATION_CYCLE_PATH_STATES = 1_793
+_JUMP_OVER_MUTATION_CYCLE_OVER_CAP_PATH_STATES = 1_794
+_JUMP_OVER_MUTATION_CYCLE_FRONTIER_STATES = 2
+_JUMP_OVER_MUTATION_CYCLE_DATA_CELL = 41
+_JUMP_OVER_MUTATION_CYCLE_DATA_VALUE = 57
+_JUMP_OVER_MUTATION_CYCLE_TARGET = 58
+_JUMP_OVER_MUTATION_CYCLE_INVALID_VALUE = 29_441
+_JUMP_OVER_MUTATION_CYCLE_NON_GRAPHICAL_FETCH_COUNT = 2
+_JUMP_OVER_MUTATION_CYCLE_SKIPPED_CELL = 40
+_JUMP_OVER_MUTATION_CYCLE_FRONTIER_DATA_POSITION = 1_831
 _OVER_CAP_INPUT_CYCLE_SOURCE = b"u'&%$#\"!~}|{zyxw"
 _OVER_CAP_EXPLORED_STATES = 3_840
 _OVER_CAP_MAXIMUM_FIRST_SEEN_TRANSITION = 17
@@ -530,6 +545,11 @@ class _WorklistWrapTransitionSignature(Protocol):
     data_pointer_wrapped: bool
 
 
+class _WorklistTerminalStateSet(Protocol):
+    status: str
+    states: tuple[_WorklistCycleState, ...]
+
+
 class _WorklistValueDomain(Protocol):
     address: int
     values: tuple[int, ...]
@@ -732,6 +752,22 @@ class _WorklistEvolvedReadWriterSourceContext(Protocol):
     writer_state_source_context: _WorklistControlPathSourceContext
 
 
+class _WorklistTerminalStateSourceContext(Protocol):
+    terminal_state_index: int
+    state: _WorklistCycleState
+    source_position: int | None
+    source_byte_offset: int | None
+    initial_source_byte: int | None
+    data_source_position: int | None
+    data_source_byte_offset: int | None
+    initial_data_source_byte: int | None
+
+
+class _WorklistTerminalStateSourceMap(Protocol):
+    status: str
+    state_source_contexts: tuple[_WorklistTerminalStateSourceContext, ...]
+
+
 class _WorklistTerminalControlPathSourceMap(Protocol):
     status: str
     entry_path_source_map: tuple[_WorklistControlPathSourceContext, ...]
@@ -782,6 +818,7 @@ class _WorklistAnalysis(Protocol):
     input_branch_points: int
     input_branch_states: tuple[_WorklistCycleState, ...]
     terminal_status_counts: tuple[tuple[str, int], ...]
+    terminal_status_state_sets: tuple[_WorklistTerminalStateSet, ...]
     closed_terminal_status_counts: tuple[tuple[str, int], ...] | None
     closed_all_paths_terminate: bool | None
     closed_all_paths_halt: bool | None
@@ -1076,6 +1113,9 @@ class _Report(Protocol):
     bounded_worklist_frontier_entry_path_source_map: tuple[
         _WorklistControlPathSourceContext, ...
     ]
+    bounded_worklist_terminal_state_source_maps: tuple[
+        _WorklistTerminalStateSourceMap, ...
+    ]
     bounded_worklist_terminal_entry_path_source_maps: tuple[
         _WorklistTerminalControlPathSourceMap, ...
     ]
@@ -1308,6 +1348,18 @@ def _restored_deep_input_cycle_source(
         base = 4 + _RESTORED_DEEP_CYCLE_ROTATION_STRIDE * index
         decoded[base + _RESTORED_DEEP_CYCLE_ROTATION_JUMP_OFFSET] = ord("j")
         decoded[base + _RESTORED_DEEP_CYCLE_ROTATION_OFFSET] = ord("*")
+    return bytes(
+        _source_byte_for_decode(opcode, position)
+        for position, opcode in enumerate(decoded)
+    )
+
+
+def _jump_over_mutation_deep_input_cycle_source(
+    source_words: int = _JUMP_OVER_MUTATION_CYCLE_SOURCE_WORDS,
+) -> bytes:
+    decoded = [ord("o")] * source_words
+    decoded[:4] = map(ord, "/j*i")
+    decoded[_JUMP_OVER_MUTATION_CYCLE_DATA_CELL] = ord("i")
     return bytes(
         _source_byte_for_decode(opcode, position)
         for position, opcode in enumerate(decoded)
@@ -3625,6 +3677,27 @@ def test_worklist_maps_terminal_control_path_with_status() -> None:
         b" \n" + _INPUT_CRAZY_SOURCE,
         worklist_state_limit=_WORKLIST_COMPLETE_STATE_LIMIT,
     )
+    state_maps = report.bounded_worklist_terminal_state_source_maps
+    assert len(state_maps) == 1
+    assert state_maps[0].status == _ENTRY_INVALID_ENCRYPTION
+    state_contexts = state_maps[0].state_source_contexts
+    assert len(state_contexts) == _WORKLIST_INPUT_VALUE_COUNT
+    assert all(
+        context.source_position == _SECOND_LOADED_SOURCE_POSITION
+        for context in state_contexts
+    )
+    assert all(
+        context.source_byte_offset == _SECOND_LOADED_SOURCE_BYTE_OFFSET
+        for context in state_contexts
+    )
+    assert all(
+        context.data_source_position == _SECOND_LOADED_SOURCE_POSITION
+        for context in state_contexts
+    )
+    assert all(
+        context.data_source_byte_offset == _SECOND_LOADED_SOURCE_BYTE_OFFSET
+        for context in state_contexts
+    )
     maps = report.bounded_worklist_terminal_entry_path_source_maps
     assert len(maps) == 1
     assert maps[0].status == _ENTRY_INVALID_ENCRYPTION
@@ -3825,6 +3898,122 @@ def _assert_124_state_evolved_fetch_evidence(
         _DOUBLE_JUMP_MERGED_CYCLE_WRITER_CODE_POINTER
     )
     assert writer_state.data_pointer == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+
+
+def _jump_over_mutation_code_path(end: int) -> tuple[int, ...]:
+    return (0, 1, 2, 3, *range(_JUMP_OVER_MUTATION_CYCLE_TARGET, end + 1))
+
+
+def _assert_jump_over_cycle_path(report: _Report) -> None:
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _JUMP_OVER_MUTATION_CYCLE_UNIQUE_STATES
+    assert worklist.explored_states == _JUMP_OVER_MUTATION_CYCLE_UNIQUE_STATES
+    assert worklist.frontier_states == 0
+    assert worklist.frontier_state_set == ()
+    assert not worklist.truncated
+    assert worklist.reachable_cycle_detected
+    assert worklist.maximum_first_seen_transition_index == (
+        _JUMP_OVER_MUTATION_CYCLE_PATH_STATES
+    )
+    path = worklist.reachable_cycle_entry_path
+    assert len(path) == _JUMP_OVER_MUTATION_CYCLE_PATH_STATES
+    expected_code = _jump_over_mutation_code_path(
+        _JUMP_OVER_MUTATION_CYCLE_SOURCE_WORDS
+    )
+    assert tuple(state.code_pointer for state in path) == expected_code
+    assert _JUMP_OVER_MUTATION_CYCLE_SKIPPED_CELL not in expected_code
+    assert path[-1] == worklist.reachable_cycle_witness[0]
+    assert worklist.closed_all_paths_terminate is False
+    assert worklist.closed_all_paths_halt is False
+
+
+def _assert_jump_over_invalid_fetch(report: _Report) -> None:
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.explored_non_graphical_fetch_transition_count == (
+        _JUMP_OVER_MUTATION_CYCLE_NON_GRAPHICAL_FETCH_COUNT
+    )
+    assert worklist.explored_non_graphical_fetch_addresses == (
+        _JUMP_OVER_MUTATION_CYCLE_SOURCE_WORDS,
+    )
+    witness = worklist.explored_non_graphical_fetch_witness
+    assert witness is not None
+    assert witness.address == _JUMP_OVER_MUTATION_CYCLE_SOURCE_WORDS
+    assert witness.value == _JUMP_OVER_MUTATION_CYCLE_INVALID_VALUE
+    source_map = report.bounded_worklist_cycle_entry_path_source_map
+    assert len(source_map) == _JUMP_OVER_MUTATION_CYCLE_PATH_STATES
+    expected_code = _jump_over_mutation_code_path(
+        _JUMP_OVER_MUTATION_CYCLE_SOURCE_WORDS
+    )
+    assert tuple(item.code_pointer for item in source_map) == expected_code
+    assert all(
+        item.source_position == item.code_pointer for item in source_map[:-1]
+    )
+    assert source_map[-1].source_position is None
+
+
+def test_report_worklist_proves_1793_state_jump_over_cycle() -> None:
+    """A loaded indirect jump skips the branch-collapse mutation cell."""
+    source = _jump_over_mutation_deep_input_cycle_source()
+    assert source[_JUMP_OVER_MUTATION_CYCLE_DATA_CELL] == (
+        _JUMP_OVER_MUTATION_CYCLE_DATA_VALUE
+    )
+    report = _ANALYZER_MODULE.analyze_source(
+        source,
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    _assert_jump_over_cycle_path(report)
+    _assert_jump_over_invalid_fetch(report)
+
+
+def test_report_worklist_truncates_adjacent_jump_over_cycle() -> None:
+    """One extra loaded word crosses the jump-over fixture's state budget."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _jump_over_mutation_deep_input_cycle_source(
+            _JUMP_OVER_MUTATION_CYCLE_OVER_CAP_SOURCE_WORDS
+        ),
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.unique_states == _MAX_WORKLIST_STATE_LIMIT
+    assert worklist.explored_states == _JUMP_OVER_MUTATION_CYCLE_UNIQUE_STATES
+    assert worklist.frontier_states == _JUMP_OVER_MUTATION_CYCLE_FRONTIER_STATES
+    assert len(worklist.frontier_state_set) == (
+        _JUMP_OVER_MUTATION_CYCLE_FRONTIER_STATES
+    )
+    assert all(
+        state.code_pointer == _JUMP_OVER_MUTATION_CYCLE_OVER_CAP_SOURCE_WORDS
+        for state in worklist.frontier_state_set
+    )
+    assert {state.eof_seen for state in worklist.frontier_state_set} == {
+        False,
+        True,
+    }
+    assert worklist.truncated
+    assert not worklist.reachable_cycle_detected
+    assert worklist.maximum_first_seen_transition_index == (
+        _JUMP_OVER_MUTATION_CYCLE_OVER_CAP_PATH_STATES
+    )
+    assert worklist.closed_all_paths_terminate is None
+    assert worklist.closed_all_paths_halt is None
+    path = report.bounded_worklist_frontier_entry_path_source_map
+    assert len(path) == _JUMP_OVER_MUTATION_CYCLE_OVER_CAP_PATH_STATES
+    expected_code = _jump_over_mutation_code_path(
+        _JUMP_OVER_MUTATION_CYCLE_OVER_CAP_SOURCE_WORDS
+    )
+    assert tuple(item.code_pointer for item in path) == expected_code
+    assert all(item.source_position == item.code_pointer for item in path[:-1])
+    assert path[-1].source_position is None
+    contexts = report.bounded_worklist_frontier_state_source_contexts
+    assert len(contexts) == _JUMP_OVER_MUTATION_CYCLE_FRONTIER_STATES
+    assert all(item.source_position is None for item in contexts)
+    assert all(
+        item.data_source_position
+        == _JUMP_OVER_MUTATION_CYCLE_FRONTIER_DATA_POSITION
+        for item in contexts
+    )
 
 
 def test_report_worklist_closes_reviewed_ceiling_deep_input_cycle() -> None:
