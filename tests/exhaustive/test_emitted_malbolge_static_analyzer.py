@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v71"
+_SCHEMA = "malbolge-static-image/v72"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -624,6 +624,7 @@ class _WorklistCycleStateSourceContext(Protocol):
 
 class _WorklistCycleComponentSourceMap(Protocol):
     component_index: int
+    minimum_entry_path_state_count: int
     states: tuple[_WorklistCycleStateSourceContext, ...]
 
 
@@ -693,11 +694,17 @@ class _WorklistAnalysis(Protocol):
     known_graph_cyclic_components: tuple[
         tuple[_WorklistCycleState, ...], ...
     ]
+    known_graph_cyclic_component_minimum_entry_path_state_counts: (
+        tuple[int, ...]
+    )
     closed_recurrent_component_count: int | None
     closed_recurrent_state_count: int | None
     closed_recurrent_largest_component_states: int | None
     closed_recurrent_components: (
         tuple[tuple[_WorklistCycleState, ...], ...] | None
+    )
+    closed_recurrent_component_minimum_entry_path_state_counts: (
+        tuple[int, ...] | None
     )
     closed_recurrent_cycle_witness: tuple[_WorklistCycleState, ...] | None
     closed_recurrent_entry_path: tuple[_WorklistCycleState, ...] | None
@@ -3253,6 +3260,11 @@ def _assert_recurrence_cycle_body_source_map(report: _Report) -> None:
         range(_WORKLIST_INPUT_VALUE_COUNT)
     )
     assert all(len(item.states) == 1 for item in known)
+    assert all(
+        item.minimum_entry_path_state_count
+        == len(_NEAR_CAP_INPUT_CYCLE_POINTER_PATH)
+        for item in known
+    )
     assert all(item.states[0].source_position is None for item in known)
 
 
@@ -3333,6 +3345,11 @@ def test_worklist_maps_loaded_cycle_body_with_recurrence_data_pointer() -> None:
     assert len(known) == _DOUBLE_JUMP_MERGED_CYCLIC_COMPONENT_COUNT
     assert all(len(item.states) == 1 for item in known)
     assert all(
+        item.minimum_entry_path_state_count
+        == _DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH
+        for item in known
+    )
+    assert all(
         item.states[0].source_position == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
         for item in known
     )
@@ -3359,6 +3376,16 @@ def test_worklist_maps_truncated_frontier_control_path() -> None:
     )
     assert known_components == ()
     assert closed_components is None
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert (
+        worklist.known_graph_cyclic_component_minimum_entry_path_state_counts
+        == ()
+    )
+    assert (
+        worklist.closed_recurrent_component_minimum_entry_path_state_counts
+        is None
+    )
 
 
 def test_worklist_maps_terminal_control_path_with_status() -> None:

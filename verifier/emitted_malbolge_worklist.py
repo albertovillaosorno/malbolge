@@ -213,11 +213,17 @@ class WorklistAnalysis:
     known_graph_cyclic_components: tuple[
         tuple[WorklistCycleState, ...], ...
     ]
+    known_graph_cyclic_component_minimum_entry_path_state_counts: (
+        tuple[int, ...]
+    )
     closed_recurrent_component_count: int | None
     closed_recurrent_state_count: int | None
     closed_recurrent_largest_component_states: int | None
     closed_recurrent_components: (
         tuple[tuple[WorklistCycleState, ...], ...] | None
+    )
+    closed_recurrent_component_minimum_entry_path_state_counts: (
+        tuple[int, ...] | None
     )
     closed_recurrent_cycle_witness: tuple[WorklistCycleState, ...] | None
     closed_recurrent_entry_path: tuple[WorklistCycleState, ...] | None
@@ -313,6 +319,7 @@ class _ClosedRecurrenceEvidence:
     state_count: int | None
     largest_component_states: int | None
     components: tuple[tuple[WorklistCycleState, ...], ...] | None
+    minimum_entry_path_state_counts: tuple[int, ...] | None
     cycle_witness: tuple[WorklistCycleState, ...] | None
     entry_path: tuple[WorklistCycleState, ...] | None
 
@@ -719,6 +726,43 @@ def _known_graph_shortest_path_to_any(
     return ()
 
 
+def _known_graph_shortest_distances(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+    *,
+    start: _StateKey,
+) -> dict[_StateKey, int]:
+    if start not in nodes:
+        return {}
+    distances = {start: 0}
+    queue = deque((start,))
+    while queue:
+        source = queue.popleft()
+        distance = distances[source] + 1
+        for successor in _known_targets(source, edges, nodes):
+            if successor in distances:
+                continue
+            distances[successor] = distance
+            queue.append(successor)
+    return distances
+
+
+def _component_minimum_entry_path_state_counts(
+    components: tuple[tuple[_StateKey, ...], ...],
+    distances: dict[_StateKey, int],
+) -> tuple[int, ...]:
+    counts: list[int] = []
+    for component in components:
+        component_distances = tuple(
+            distances[key] for key in component if key in distances
+        )
+        if not component_distances:
+            message = "cyclic SCC lost entry reachability"
+            raise AssertionError(message)
+        counts.append(min(component_distances) + 1)
+    return tuple(counts)
+
+
 def _cycle_state(key: _StateKey) -> WorklistCycleState:
     code_pointer, data_pointer, accumulator, memory_overrides, eof_seen = key
     return WorklistCycleState(
@@ -773,8 +817,15 @@ def _closed_recurrence_evidence(
     truncated: bool,
 ) -> _ClosedRecurrenceEvidence:
     if truncated:
-        return _ClosedRecurrenceEvidence(None, None, None, None, None, None)
+        return _ClosedRecurrenceEvidence(
+            None, None, None, None, None, None, None
+        )
     components = summary.cyclic_sink_components
+    distances = _known_graph_shortest_distances(
+        edges,
+        nodes,
+        start=_INITIAL_STATE_KEY,
+    )
     witness_keys = (
         _known_graph_cycle_witness(edges, set(components[0]))
         if components
@@ -801,6 +852,9 @@ def _closed_recurrence_evidence(
         state_count=sum(map(len, components)),
         largest_component_states=max(map(len, components), default=0),
         components=_cycle_components(components),
+        minimum_entry_path_state_counts=(
+            _component_minimum_entry_path_state_counts(components, distances)
+        ),
         cycle_witness=tuple(_cycle_state(key) for key in witness_keys),
         entry_path=tuple(_cycle_state(key) for key in entry_path_keys),
     )
@@ -1139,6 +1193,17 @@ class _Explorer:
         if has_cycle != bool(component_summary.cyclic_component_count):
             message = "known-graph cycle and SCC evidence disagree"
             raise AssertionError(message)
+        distances = _known_graph_shortest_distances(
+            self.edges,
+            self.seen,
+            start=_INITIAL_STATE_KEY,
+        )
+        cyclic_component_entry_counts = (
+            _component_minimum_entry_path_state_counts(
+                component_summary.cyclic_components,
+                distances,
+            )
+        )
         recurrence = _closed_recurrence_evidence(
             component_summary,
             self.edges,
@@ -1179,12 +1244,18 @@ class _Explorer:
             known_graph_cyclic_components=_cycle_components(
                 component_summary.cyclic_components
             ),
+            known_graph_cyclic_component_minimum_entry_path_state_counts=(
+                cyclic_component_entry_counts
+            ),
             closed_recurrent_component_count=recurrence.component_count,
             closed_recurrent_state_count=recurrence.state_count,
             closed_recurrent_largest_component_states=(
                 recurrence.largest_component_states
             ),
             closed_recurrent_components=recurrence.components,
+            closed_recurrent_component_minimum_entry_path_state_counts=(
+                recurrence.minimum_entry_path_state_counts
+            ),
             closed_recurrent_cycle_witness=recurrence.cycle_witness,
             closed_recurrent_entry_path=recurrence.entry_path,
             input_branch_points=self.input_branch_points,

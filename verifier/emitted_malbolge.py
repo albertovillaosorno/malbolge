@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v71"
+_SCHEMA: Final = "malbolge-static-image/v72"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -249,6 +249,7 @@ class BoundedWorklistCycleComponentSourceMap:
     """Source map for every exact state in one bounded cyclic SCC."""
 
     component_index: int
+    minimum_entry_path_state_count: int
     states: tuple[BoundedWorklistCycleStateSourceContext, ...]
 
 
@@ -1417,13 +1418,27 @@ def _worklist_cycle_component_source_maps(
     components: (
         tuple[tuple[worklist_transfer.WorklistCycleState, ...], ...] | None
     ),
+    minimum_entry_path_state_counts: tuple[int, ...] | None,
     cells: tuple[InitialCell, ...],
 ) -> tuple[BoundedWorklistCycleComponentSourceMap, ...] | None:
     if components is None:
+        if minimum_entry_path_state_counts is not None:
+            message = (
+                "nullable cyclic SCC depth evidence disagrees with components"
+            )
+            raise AssertionError(message)
         return None
+    if minimum_entry_path_state_counts is None or len(components) != len(
+        minimum_entry_path_state_counts
+    ):
+        message = "cyclic SCC depth evidence disagrees with component count"
+        raise AssertionError(message)
     return tuple(
         BoundedWorklistCycleComponentSourceMap(
             component_index=index,
+            minimum_entry_path_state_count=(
+                minimum_entry_path_state_counts[index]
+            ),
             states=_worklist_cycle_state_source_map(component, cells),
         )
         for index, component in enumerate(components)
@@ -1894,7 +1909,10 @@ def analyze_source(
             ()
             if worklist is None
             else _worklist_cycle_component_source_maps(
-                worklist.known_graph_cyclic_components, prefix.cells
+                worklist.known_graph_cyclic_components,
+                worklist.
+                known_graph_cyclic_component_minimum_entry_path_state_counts,
+                prefix.cells,
             )
             or ()
         ),
@@ -1902,7 +1920,10 @@ def analyze_source(
             None
             if worklist is None
             else _worklist_cycle_component_source_maps(
-                worklist.closed_recurrent_components, prefix.cells
+                worklist.closed_recurrent_components,
+                worklist.
+                closed_recurrent_component_minimum_entry_path_state_counts,
+                prefix.cells,
             )
         ),
         bounded_worklist_cycle_entry_path_source_map=(

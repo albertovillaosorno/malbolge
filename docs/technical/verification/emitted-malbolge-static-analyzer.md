@@ -30,7 +30,7 @@ C-locale whitespace bytes, graphical ASCII boundary, two-word recurrence base,
 canonical JSON and include the exact historical profile identity/capacity,
 required source words, SHA-256 of the exact raw source bytes, admitted initial
 cells with original byte offsets, stable findings, and analysis limits. Schema
-`malbolge-static-image/v71` retains exact `entry_transition` through
+`malbolge-static-image/v72` retains exact `entry_transition` through
 `fifth_transition` compatibility fields and `bounded_continuations`, and adds
 nullable `bounded_exact_cycle` evidence.
 Sixteen transitions remain the default, while one explicit finite request
@@ -353,7 +353,13 @@ input-crazy has 258 encryption inputs: one initial-value-equal entry input at
 address 0 and 257 changed inputs at address 1 spanning 58 exact values. Every
 changed branch rejects invalid self-encryption, so zero data writes commit; the
 report therefore keeps changed-input value evidence separate from committed
-memory provenance and source-maps both classes.
+memory provenance and source-maps both classes. Schema v72 attaches a compact
+minimum entry-path state count to every exact cyclic SCC. One bounded BFS
+supplies the known-graph counts; closed recurrent SCCs publish the same scalar
+only after queue closure. The synthetic escaping graph yields cyclic counts
+`(1,3)` and recurrent `(3)`, near-cap's 257 SCCs all report 16, and the
+124-state deep graph's two SCCs both report 124. Truncation keeps
+closed-recurrent depth evidence null.
 Schema v25 adds
 `explored_wraparound_transition_count` and changes the report's wraparound
 analysis-limit identity to include a requested closed/truncated worklist. Schema

@@ -8,7 +8,7 @@ only the bounded result its contract can establish.
 `emitted_malbolge.py` implements the first slice of the emitted-Malbolge static
 analyzer. It checks the `malbolge-1998` initial source image: exact C-locale
 whitespace, graphical ASCII, historical profile capacity, and position-dependent
-load decode. Schema v71 retains the legacy exact entry-through-fifth
+load decode. Schema v72 retains the legacy exact entry-through-fifth
 fields, `bounded_continuations`, and adds nullable `bounded_exact_cycle`
 evidence. Sixteen transitions remain the default; callers may request a finite
 total limit from 1 through 256. The
@@ -346,7 +346,13 @@ rather than evolved-memory provenance. The closed input-crazy graph has 258
 self-encryption inputs: entry is initial-value-equal at address 0, while all 257
 post-input branches are changed at address 1 across 58 exact values. Those
 branches all reject, so the changed input evidence remains distinct from a
-committed data-write claim. The report source-maps both classes.
+committed data-write claim. The report source-maps both classes. Schema v72 adds
+one compact minimum entry-path state count per cyclic SCC, avoiding redundant
+full paths for hundreds of input-dependent components. The synthetic escaping
+cycle has cyclic counts `(1,3)` and recurrent sink count `(3)`; near-cap's 257
+cyclic components are all reached at 16 states, and the deep graph's two cyclic
+components are both reached at 124. Closed-recurrent depth counts remain null
+under truncation.
 Schema v25 also counts exact explored transitions whose C or D pointer wraps and
 binds the wraparound analysis-limit string to the requested worklist scope.
 Schema v33 adds `explored_wraparound_witness` for the first such FIFO-explored

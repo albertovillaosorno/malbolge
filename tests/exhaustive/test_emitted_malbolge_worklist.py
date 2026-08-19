@@ -247,6 +247,8 @@ _SCC_COMPONENT_COUNT = 3
 _SCC_CYCLIC_COMPONENT_COUNT = 2
 _SCC_CYCLIC_STATE_COUNT = 3
 _SCC_LARGEST_CYCLIC_COMPONENT_STATES = 2
+_ESCAPING_CYCLIC_COMPONENT_ENTRY_COUNTS = (1, 3)
+_ESCAPING_RECURRENT_COMPONENT_ENTRY_COUNTS = (3,)
 _STATE_LIMIT_MESSAGE = (
     "worklist state limit must be an exact integer from 1 through 4096"
 )
@@ -420,11 +422,17 @@ class _WorklistAnalysis(Protocol):
     known_graph_cyclic_components: tuple[
         tuple[_WorklistCycleState, ...], ...
     ]
+    known_graph_cyclic_component_minimum_entry_path_state_counts: (
+        tuple[int, ...]
+    )
     closed_recurrent_component_count: int | None
     closed_recurrent_state_count: int | None
     closed_recurrent_largest_component_states: int | None
     closed_recurrent_components: (
         tuple[tuple[_WorklistCycleState, ...], ...] | None
+    )
+    closed_recurrent_component_minimum_entry_path_state_counts: (
+        tuple[int, ...] | None
     )
     closed_recurrent_cycle_witness: tuple[_WorklistCycleState, ...] | None
     closed_recurrent_entry_path: tuple[_WorklistCycleState, ...] | None
@@ -615,6 +623,10 @@ def _assert_no_closed_recurrence(result: _WorklistAnalysis) -> None:
     assert result.closed_recurrent_state_count == 0
     assert result.closed_recurrent_largest_component_states == 0
     assert result.closed_recurrent_components == ()
+    assert (
+        result.closed_recurrent_component_minimum_entry_path_state_counts
+        == ()
+    )
     assert result.closed_recurrent_cycle_witness == ()
     assert result.closed_recurrent_entry_path == ()
 
@@ -1127,6 +1139,16 @@ def test_near_cap_input_dependent_jump_chain_closes_exact_cycle() -> None:
     assert path[-1] == result.reachable_cycle_witness[0]
     assert result.closed_recurrent_entry_path == path
     assert result.closed_recurrent_component_count == _INPUT_VALUE_COUNT
+    assert (
+        result.known_graph_cyclic_component_minimum_entry_path_state_counts
+        == (
+            (len(_NEAR_CAP_INPUT_CYCLE_POINTER_PATH),) * _INPUT_VALUE_COUNT
+        )
+    )
+    assert (
+        result.closed_recurrent_component_minimum_entry_path_state_counts
+        == (len(_NEAR_CAP_INPUT_CYCLE_POINTER_PATH),) * _INPUT_VALUE_COUNT
+    )
 
 
 def _assert_merged_repeated_edge_partition(result: _WorklistAnalysis) -> None:
@@ -1214,6 +1236,16 @@ def test_double_jump_branch_merge_closes_124_state_cycle() -> None:
         range(_DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH)
     )
     assert path[-1] == result.reachable_cycle_witness[0]
+    assert (
+        result.known_graph_cyclic_component_minimum_entry_path_state_counts
+        == (
+            (_DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH,) * 2
+        )
+    )
+    assert (
+        result.closed_recurrent_component_minimum_entry_path_state_counts
+        == (_DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH,) * 2
+    )
     evolved = result.explored_evolved_fetch_witness
     assert evolved is not None
     assert evolved.state == path[-1]
@@ -1245,7 +1277,15 @@ def test_reviewed_state_ceiling_truncates_deeper_jump_chain() -> None:
     assert not result.reachable_cycle_detected
     assert result.reachable_cycle_witness == ()
     assert result.known_graph_cyclic_components == ()
+    assert (
+        result.known_graph_cyclic_component_minimum_entry_path_state_counts
+        == ()
+    )
     assert result.closed_recurrent_components is None
+    assert (
+        result.closed_recurrent_component_minimum_entry_path_state_counts
+        is None
+    )
     assert result.closed_all_paths_terminate is None
     assert result.closed_all_paths_halt is None
     assert result.truncated
@@ -1352,6 +1392,16 @@ def test_closed_recurrence_path_targets_sink_cycle_not_first_cycle() -> None:
         tuple(state.code_pointer for state in component)
         for component in recurrent_components
     ) == ((2,),)
+    assert (
+        result.known_graph_cyclic_component_minimum_entry_path_state_counts
+        == (
+            _ESCAPING_CYCLIC_COMPONENT_ENTRY_COUNTS
+        )
+    )
+    assert (
+        result.closed_recurrent_component_minimum_entry_path_state_counts
+        == _ESCAPING_RECURRENT_COMPONENT_ENTRY_COUNTS
+    )
     cycle_pointers = tuple(
         state.code_pointer for state in result.reachable_cycle_witness
     )
