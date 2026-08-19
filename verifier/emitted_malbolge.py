@@ -59,7 +59,7 @@ else:
 _PROFILE_ID: Final = "malbolge-1998"
 _PROFILE_VERSION: Final = "1998"
 _RECURRENCE_BASE_WORDS: Final = 2
-_SCHEMA: Final = "malbolge-static-image/v74"
+_SCHEMA: Final = "malbolge-static-image/v75"
 _LEXICAL_CODE: Final = "MALBOLGE-STATIC-001"
 _RECURRENCE_CODE: Final = "MALBOLGE-STATIC-002"
 _CAPACITY_CODE: Final = "MALBOLGE-STATIC-003"
@@ -383,6 +383,9 @@ class StaticImageReport:
         BoundedWorklistMutationAddressSourceContext, ...
     ]
     bounded_worklist_fetch_value_source_map: tuple[
+        BoundedWorklistValueSourceContext, ...
+    ]
+    bounded_worklist_non_graphical_fetch_value_source_map: tuple[
         BoundedWorklistValueSourceContext, ...
     ]
     bounded_worklist_data_read_value_source_map: tuple[
@@ -1783,6 +1786,16 @@ def analyze_source(
                     ()
                     if worklist is None
                     else worklist.explored_fetch_value_domains
+                ),
+                prefix.cells,
+            )
+        ),
+        bounded_worklist_non_graphical_fetch_value_source_map=(
+            _worklist_value_source_map(
+                (
+                    ()
+                    if worklist is None
+                    else worklist.explored_non_graphical_fetch_value_domains
                 ),
                 prefix.cells,
             )

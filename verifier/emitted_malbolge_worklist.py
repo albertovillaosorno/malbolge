@@ -267,6 +267,9 @@ class WorklistAnalysis:
         WorklistDataMutationValueDomain, ...
     ]
     explored_fetch_value_domains: tuple[WorklistValueDomain, ...]
+    explored_non_graphical_fetch_transition_count: int
+    explored_non_graphical_fetch_addresses: tuple[int, ...]
+    explored_non_graphical_fetch_value_domains: tuple[WorklistValueDomain, ...]
     explored_data_read_value_domains: tuple[WorklistValueDomain, ...]
     explored_encryption_input_value_domains: tuple[WorklistValueDomain, ...]
     explored_encryption_input_transition_count: int
@@ -1157,6 +1160,10 @@ class _Explorer:
         default_factory=dict
     )
     fetch_values: dict[int, set[int]] = field(default_factory=dict)
+    non_graphical_fetch_addresses: set[int] = field(default_factory=set)
+    non_graphical_fetch_values: dict[int, set[int]] = field(
+        default_factory=dict
+    )
     data_read_values: dict[int, set[int]] = field(default_factory=dict)
     encryption_input_values: dict[int, set[int]] = field(default_factory=dict)
     initial_value_encryption_input_addresses: set[int] = field(
@@ -1192,6 +1199,7 @@ class _Explorer:
     committed_data_write_noop_transitions: int = 0
     self_encryption_transitions: int = 0
     effective_data_mutation_transitions: int = 0
+    non_graphical_fetch_transitions: int = 0
     encryption_input_transitions: int = 0
     initial_value_encryption_input_transitions: int = 0
     changed_from_initial_encryption_input_transitions: int = 0
@@ -1464,6 +1472,15 @@ class _Explorer:
                 )
             ),
             explored_fetch_value_domains=_value_domains(self.fetch_values),
+            explored_non_graphical_fetch_transition_count=(
+                self.non_graphical_fetch_transitions
+            ),
+            explored_non_graphical_fetch_addresses=tuple(
+                sorted(self.non_graphical_fetch_addresses)
+            ),
+            explored_non_graphical_fetch_value_domains=_value_domains(
+                self.non_graphical_fetch_values
+            ),
             explored_data_read_value_domains=_value_domains(
                 self.data_read_values
             ),
@@ -1890,10 +1907,28 @@ class _Explorer:
         self._record_evolved_fetch_evidence(node, transition)
         self._record_evolved_data_read_evidence(node, transition)
 
+    def _record_non_graphical_fetch_evidence(
+        self,
+        transition: prefix_transfer.SecondTransition,
+    ) -> None:
+        if transition.decoded_byte is not None:
+            return
+        if classic.is_graphical(transition.fetched_value):
+            message = "non-graphical fetch retained a graphical memory value"
+            raise AssertionError(message)
+        self.non_graphical_fetch_transitions += 1
+        self.non_graphical_fetch_addresses.add(transition.fetched_address)
+        _record_domain_value(
+            self.non_graphical_fetch_values,
+            transition.fetched_address,
+            transition.fetched_value,
+        )
+
     def _record_read_value_evidence(
         self,
         transition: prefix_transfer.SecondTransition,
     ) -> None:
+        self._record_non_graphical_fetch_evidence(transition)
         _record_domain_value(
             self.fetch_values,
             transition.fetched_address,

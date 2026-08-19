@@ -66,7 +66,7 @@ _LEXICAL_CODE = "MALBOLGE-STATIC-001"
 _DECODE_CODE = "MALBOLGE-STATIC-004"
 _GRAPHICAL_INVALID_BYTE = 33
 _FORBIDDEN_DECODE_BYTE = 43
-_SCHEMA = "malbolge-static-image/v74"
+_SCHEMA = "malbolge-static-image/v75"
 _ENTRY_CONTINUED = "continued"
 _ENTRY_HALTED = "halted"
 _ENTRY_INVALID_ENCRYPTION = "rejected-invalid-self-encryption"
@@ -242,6 +242,7 @@ _DOUBLE_JUMP_MERGED_CYCLE_SOURCE = b"".join(
 )
 _DOUBLE_JUMP_MERGED_CYCLE_STATE_LIMIT = 1_012
 _DOUBLE_JUMP_MERGED_CYCLE_PATH_LENGTH = 124
+_DOUBLE_JUMP_MERGED_NON_GRAPHICAL_FETCH_COUNT = 2
 _DOUBLE_JUMP_MERGED_CYCLIC_COMPONENT_COUNT = 2
 _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS = 123
 _DOUBLE_JUMP_MERGED_CYCLE_INITIAL_VALUE = 29_486
@@ -252,6 +253,7 @@ _DOUBLE_JUMP_MERGED_LOADED_CYCLE_SOURCE = (
     _DOUBLE_JUMP_MERGED_CYCLE_SOURCE + b"'"
 )
 _DOUBLE_JUMP_MERGED_LOADED_CYCLE_INITIAL_BYTE = 39
+_DOUBLE_JUMP_MERGED_LOADED_NON_GRAPHICAL_VALUE = 13
 _DOUBLE_JUMP_MERGED_CYCLE_DATA_POINTER = 243
 _OVER_CAP_INPUT_CYCLE_SOURCE = b"u'&%$#\"!~}|{zyxw"
 _OVER_CAP_EXPLORED_STATES = 3_840
@@ -762,6 +764,9 @@ class _WorklistAnalysis(Protocol):
         _WorklistDataMutationValueDomain, ...
     ]
     explored_fetch_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_non_graphical_fetch_transition_count: int
+    explored_non_graphical_fetch_addresses: tuple[int, ...]
+    explored_non_graphical_fetch_value_domains: tuple[_WorklistValueDomain, ...]
     explored_data_read_value_domains: tuple[_WorklistValueDomain, ...]
     explored_encryption_input_value_domains: tuple[_WorklistValueDomain, ...]
     explored_encryption_input_transition_count: int
@@ -920,6 +925,9 @@ class _Report(Protocol):
         _WorklistMutationAddressSourceContext, ...
     ]
     bounded_worklist_fetch_value_source_map: tuple[
+        _WorklistValueSourceContext, ...
+    ]
+    bounded_worklist_non_graphical_fetch_value_source_map: tuple[
         _WorklistValueSourceContext, ...
     ]
     bounded_worklist_data_read_value_source_map: tuple[
@@ -3389,6 +3397,37 @@ def test_worklist_maps_loaded_explored_control_pointer_boundary() -> None:
     assert (
         data_map[_DOUBLE_JUMP_MERGED_CYCLE_DATA_POINTER].source_position is None
     )
+
+
+def test_worklist_maps_loaded_non_graphical_executable_fetch() -> None:
+    """Evolved invalid executable cell retains its loaded source coordinate."""
+    report = _ANALYZER_MODULE.analyze_source(
+        _DOUBLE_JUMP_MERGED_LOADED_CYCLE_SOURCE,
+        worklist_state_limit=_MAX_WORKLIST_STATE_LIMIT,
+    )
+    worklist = report.bounded_worklist
+    assert worklist is not None
+    assert worklist.explored_non_graphical_fetch_transition_count == (
+        _DOUBLE_JUMP_MERGED_NON_GRAPHICAL_FETCH_COUNT
+    )
+    assert worklist.explored_non_graphical_fetch_addresses == (
+        _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS,
+    )
+    contexts = report.bounded_worklist_non_graphical_fetch_value_source_map
+    assert len(contexts) == 1
+    context = contexts[0]
+    assert context.address == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+    assert context.source_position == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+    assert context.source_byte_offset == _DOUBLE_JUMP_MERGED_CYCLE_ADDRESS
+    assert context.initial_source_byte == (
+        _DOUBLE_JUMP_MERGED_LOADED_CYCLE_INITIAL_BYTE
+    )
+    assert context.initial_memory_value == (
+        _DOUBLE_JUMP_MERGED_LOADED_CYCLE_INITIAL_BYTE
+    )
+    assert context.values == (_DOUBLE_JUMP_MERGED_LOADED_NON_GRAPHICAL_VALUE,)
+    assert context.initial_source_byte_in_values is False
+    assert context.initial_memory_value_in_values is False
 
 
 def test_worklist_maps_loaded_cycle_body_with_recurrence_data_pointer() -> None:

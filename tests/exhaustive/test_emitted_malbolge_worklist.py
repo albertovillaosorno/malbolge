@@ -202,6 +202,7 @@ _DOUBLE_INPUT_CYCLE_EDGES = 65_793
 _FIXED_CYCLE_POINTER = 2
 _FIXED_CYCLE_ENTRY_PATH_STATES = 3
 _FIXED_CYCLE_MEMORY_OVERRIDES = ((0, 111), (1, 69))
+_FIXED_CYCLE_NON_GRAPHICAL_VALUE = 29_412
 _INPUT_VALUE_COUNT = 257
 _INVALID_ENCRYPTION_STATUS = "rejected-invalid-self-encryption"
 _BYTE_VALUE_COUNT = 256
@@ -484,6 +485,9 @@ class _WorklistAnalysis(Protocol):
         _WorklistDataMutationValueDomain, ...
     ]
     explored_fetch_value_domains: tuple[_WorklistValueDomain, ...]
+    explored_non_graphical_fetch_transition_count: int
+    explored_non_graphical_fetch_addresses: tuple[int, ...]
+    explored_non_graphical_fetch_value_domains: tuple[_WorklistValueDomain, ...]
     explored_data_read_value_domains: tuple[_WorklistValueDomain, ...]
     explored_encryption_input_value_domains: tuple[_WorklistValueDomain, ...]
     explored_encryption_input_transition_count: int
@@ -1019,6 +1023,22 @@ def _assert_fixed_cycle_entry_path(
     assert path[2] == cycle
 
 
+def _assert_fixed_non_graphical_fetch_evidence(
+    result: _WorklistAnalysis,
+) -> None:
+    assert (
+        result.explored_non_graphical_fetch_transition_count
+        == _INPUT_VALUE_COUNT
+    )
+    assert result.explored_non_graphical_fetch_addresses == (
+        _FIXED_CYCLE_POINTER,
+    )
+    assert _domain_values(
+        result.explored_non_graphical_fetch_value_domains,
+        _FIXED_CYCLE_POINTER,
+    ) == (_FIXED_CYCLE_NON_GRAPHICAL_VALUE,)
+
+
 def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:
     """Historical non-graphical continue is an exact self-loop edge."""
     result = worklist.analyze_reachability(
@@ -1036,6 +1056,7 @@ def test_fixed_fetch_becomes_an_exact_worklist_self_cycle() -> None:
     assert cycle.memory_overrides == _FIXED_CYCLE_MEMORY_OVERRIDES
     assert not cycle.eof_seen
     _assert_fixed_cycle_entry_path(result.reachable_cycle_entry_path, cycle)
+    _assert_fixed_non_graphical_fetch_evidence(result)
     assert (
         result.known_graph_strong_component_count
         == _DOUBLE_INPUT_UNIQUE_STATES

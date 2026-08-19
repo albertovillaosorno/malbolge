@@ -48,7 +48,7 @@ executable cells, and input-dependent cycles or hangs.
   historical memory-capacity overflow, and position-dependent initial decode.
 - Reports bind `malbolge-1998`, its version/capacity, the exact raw-source
   SHA-256, loaded source-word count, initial decoded cells plus original byte
-  offsets, stable finding codes, and explicit analysis limits. Schema v74
+  offsets, stable finding codes, and explicit analysis limits. Schema v75
   keeps the exact entry-through-fifth compatibility fields, one generic
   `bounded_continuations` trace, and nullable `bounded_exact_cycle` evidence.
   Sixteen transitions remain the default,
@@ -365,6 +365,11 @@ executable cells, and input-dependent cycles or hangs.
   independently. The real D-wrap maps loaded C=5 to raw offset 7 while
   recurrence D=40 stays source-null; truncation keeps the signature set
   explored-only.
+  Schema v75 explicitly reports reachable non-graphical executable fetch count,
+  addresses, exact value domains, and source-linked value contexts. Closed
+  `b"ut"` has 257 such fetches at recurrence `M[2]=29412`; the loaded deep
+  fixture has two at position 123 with evolved invalid value 13 versus initial
+  source byte/value 39. Truncation keeps these observations explored-only.
   Schema v25 counts exact wrap transitions in explored worklist states and binds
   wraparound analysis limits to both selected prefix and worklist scopes. Schema
   v33 additionally publishes the first FIFO-explored wrap witness with its exact
@@ -420,7 +425,8 @@ executable cells, and input-dependent cycles or hangs.
   C/D source maps, source-mapped cyclic SCC components with compact entry depth,
   role-specific wrap witnesses, mutation/no-op/wrap and
   graph-level C/D paths, evolved read
-  transition/address counts, initial-value read partitions, changed encryption
-  inputs, and changed-value domains, explicit bounded analysis
+  transition/address counts, reachable non-graphical executable fetch domains,
+  initial-value read partitions, changed encryption inputs, and changed-value
+  domains, explicit bounded analysis
   limits, CLI second/third/fourth rejection status, and CLI missing-source
   failure.
