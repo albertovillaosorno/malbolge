@@ -377,6 +377,18 @@ type _CommittedWriteStateSets = tuple[
     set[_WorklistStateKey],
     set[_WorklistStateKey],
 ]
+type _FrontierStop = tuple[
+    _WorklistStateKey,
+    _WorklistStateKey,
+    tuple[_WorklistStateKey, ...],
+]
+type _FrontierBindingEvidence = tuple[
+    bool,
+    tuple[_WorklistStateKey, ...],
+    tuple[_WorklistStateKey, ...] | None,
+    tuple[_WorklistStateKey, ...],
+    _FrontierStop | None,
+]
 
 
 type _CodeDataAliasWitnessEvidence = tuple[
@@ -956,6 +968,15 @@ class _WorklistModule(Protocol):
         frontier_path: tuple[_WorklistStateKey, ...] | None,
         *,
         truncated: bool,
+    ) -> None: ...
+
+    def _assert_frontier_graph_binding(
+        self,
+        evidence: _FrontierBindingEvidence,
+        graph: tuple[
+            dict[_WorklistStateKey, set[_WorklistStateKey]],
+            set[_WorklistStateKey],
+        ],
     ) -> None: ...
 
     def _assert_terminal_evidence(
@@ -2759,6 +2780,60 @@ def test_frontier_invariant_rejects_empty_exact_path() -> None:
             (_GRAPH_KEY_A,),
             (),
             truncated=True,
+        )
+
+
+def test_frontier_binding_rejects_runtime_boundary_drift() -> None:
+    """Published frontier states equal queued plus blocked runtime states."""
+    with pytest.raises(AssertionError, match="runtime boundary"):
+        worklist._assert_frontier_graph_binding(
+            (
+                True,
+                (_GRAPH_KEY_C,),
+                (_GRAPH_KEY_A, _GRAPH_KEY_C),
+                (_GRAPH_KEY_B,),
+                (_GRAPH_KEY_A, _GRAPH_KEY_C, (_GRAPH_KEY_C,)),
+            ),
+            (
+                {_GRAPH_KEY_A: {_GRAPH_KEY_B}, _GRAPH_KEY_B: set()},
+                {_GRAPH_KEY_A, _GRAPH_KEY_B},
+            ),
+        )
+
+
+def test_frontier_binding_rejects_later_fifo_witness() -> None:
+    """A queued FIFO state takes precedence over the blocked successor."""
+    with pytest.raises(AssertionError, match="exact FIFO entry path"):
+        worklist._assert_frontier_graph_binding(
+            (
+                True,
+                (_GRAPH_KEY_B, _GRAPH_KEY_C),
+                (_GRAPH_KEY_A, _GRAPH_KEY_C),
+                (_GRAPH_KEY_B,),
+                (_GRAPH_KEY_A, _GRAPH_KEY_C, (_GRAPH_KEY_C,)),
+            ),
+            (
+                {_GRAPH_KEY_A: {_GRAPH_KEY_B}, _GRAPH_KEY_B: set()},
+                {_GRAPH_KEY_A, _GRAPH_KEY_B},
+            ),
+        )
+
+
+def test_frontier_binding_rejects_stale_blocked_successor_path() -> None:
+    """An unadmitted witness extends the final path to its true source."""
+    with pytest.raises(AssertionError, match="exact FIFO entry path"):
+        worklist._assert_frontier_graph_binding(
+            (
+                True,
+                (_GRAPH_KEY_C,),
+                (_GRAPH_KEY_A, _GRAPH_KEY_C),
+                (),
+                (_GRAPH_KEY_B, _GRAPH_KEY_C, (_GRAPH_KEY_C,)),
+            ),
+            (
+                {_GRAPH_KEY_A: {_GRAPH_KEY_B}, _GRAPH_KEY_B: set()},
+                {_GRAPH_KEY_A, _GRAPH_KEY_B},
+            ),
         )
 
 

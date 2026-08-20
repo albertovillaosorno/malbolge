@@ -1663,6 +1663,14 @@ type _WorklistStateEvidence = tuple[
     set[_StateKey],
     int,
 ]
+type _FrontierStop = tuple[_StateKey, _StateKey, tuple[_StateKey, ...]]
+type _FrontierBindingEvidence = tuple[
+    bool,
+    tuple[_StateKey, ...],
+    tuple[_StateKey, ...] | None,
+    tuple[_StateKey, ...],
+    _FrontierStop | None,
+]
 
 
 def _assert_pending_state_partition(
@@ -1761,6 +1769,74 @@ def _assert_frontier_evidence(
         frontier_path,
         truncated=truncated,
     )
+
+
+def _assert_frontier_stop(stop: _FrontierStop, seen: set[_StateKey]) -> None:
+    source_key, blocked_key, unseen_keys = stop
+    if source_key not in seen:
+        message = "worklist frontier stop source is not admitted"
+        raise AssertionError(message)
+    if unseen_keys != tuple(sorted(set(unseen_keys))):
+        message = "worklist blocked successor set is not canonical"
+        raise AssertionError(message)
+    if blocked_key not in unseen_keys:
+        message = "worklist frontier stop lost its blocked successor"
+        raise AssertionError(message)
+    if set(unseen_keys) & seen:
+        message = "worklist blocked successor set contains an admitted state"
+        raise AssertionError(message)
+
+
+def _expected_frontier_path(
+    pending_keys: tuple[_StateKey, ...],
+    stop: _FrontierStop,
+    graph: _KnownGraph,
+) -> tuple[_StateKey, ...]:
+    edges, seen = graph
+    source_key, blocked_key, _ = stop
+    target = pending_keys[0] if pending_keys else source_key
+    path = _known_graph_shortest_path(
+        edges, seen, start=_INITIAL_STATE_KEY, target=target
+    )
+    if not path:
+        message = "worklist frontier stop lost its admitted entry path"
+        raise AssertionError(message)
+    if pending_keys:
+        return path
+    return (*path, blocked_key)
+
+
+def _frontier_runtime_stop(
+    evidence: _FrontierBindingEvidence,
+) -> _FrontierStop | None:
+    truncated, frontier_keys, frontier_path, pending_keys, stop = evidence
+    if truncated != (stop is not None):
+        message = "worklist truncation disagrees with its runtime stop"
+        raise AssertionError(message)
+    closed_evidence = (frontier_keys, frontier_path, pending_keys)
+    if stop is None and any(closed_evidence):
+        message = "closed worklist retained runtime frontier evidence"
+        raise AssertionError(message)
+    return stop
+
+
+def _assert_frontier_graph_binding(
+    evidence: _FrontierBindingEvidence,
+    graph: _KnownGraph,
+) -> None:
+    _, frontier_keys, frontier_path, pending_keys, _ = evidence
+    stop = _frontier_runtime_stop(evidence)
+    if stop is None:
+        return
+    _assert_frontier_stop(stop, graph[1])
+    expected_keys = tuple(sorted({*pending_keys, *stop[2]}))
+    if frontier_keys != expected_keys:
+        message = "worklist exact frontier disagrees with runtime boundary"
+        raise AssertionError(message)
+    expected_path = _expected_frontier_path(pending_keys, stop, graph)
+    if frontier_path != expected_path:
+        message = "worklist frontier witness lost its exact FIFO entry path"
+        raise AssertionError(message)
 
 
 def _assert_terminal_state_classes_disjoint(
@@ -2727,6 +2803,7 @@ class _Explorer:
     terminal_counts: dict[str, int]
     accessed_addresses: set[int]
     initial_memory: tuple[int, ...] = field(init=False, repr=False)
+    frontier_stop: _FrontierStop | None = None
     terminal_states: dict[str, set[_StateKey]] = field(default_factory=dict)
     explored_code_pointer_addresses: set[int] = field(default_factory=set)
     explored_data_pointer_addresses: set[int] = field(default_factory=set)
@@ -3783,15 +3860,17 @@ class _Explorer:
                     source_key=source_key,
                     successor_key=key,
                 )
+                unseen_keys = _unseen_successor_keys(
+                    successors,
+                    self.seen,
+                    start_index=index,
+                )
+                self.frontier_stop = (source_key, key, unseen_keys)
                 frontier_state_keys = tuple(
                     sorted(
                         {
                             *(_node_key(node) for node in self.queue),
-                            *_unseen_successor_keys(
-                                successors,
-                                self.seen,
-                                start_index=index,
-                            ),
+                            *unseen_keys,
                         }
                     )
                 )
@@ -4391,6 +4470,33 @@ class _Explorer:
         return self.result(truncated=False)
 
 
+def _assert_result_frontier_binding(
+    result: WorklistAnalysis,
+    explorer: _Explorer,
+    pending_keys: tuple[_StateKey, ...],
+) -> None:
+    frontier_keys = tuple(
+        _cycle_state_key(state) for state in result.frontier_state_set
+    )
+    frontier_path = (
+        None
+        if result.frontier_entry_path is None
+        else tuple(
+            _cycle_state_key(state) for state in result.frontier_entry_path
+        )
+    )
+    _assert_frontier_graph_binding(
+        (
+            result.truncated,
+            frontier_keys,
+            frontier_path,
+            pending_keys,
+            explorer.frontier_stop,
+        ),
+        (explorer.edges, explorer.seen),
+    )
+
+
 def analyze_reachability(
     words: tuple[int, ...],
     *,
@@ -4412,6 +4518,7 @@ def analyze_reachability(
         truncated=result.truncated,
     )
     _assert_known_graph_integrity(explorer.edges, explorer.seen)
+    _assert_result_frontier_binding(result, explorer, pending_state_keys)
     _assert_repeated_edge_witnesses(
         (
             explorer.state_merge_transitions,
