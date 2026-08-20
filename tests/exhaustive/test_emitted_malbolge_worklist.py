@@ -57,6 +57,14 @@ type _WorklistStateKey = tuple[
 ]
 
 
+type _WorklistStateEvidence = tuple[
+    int,
+    tuple[_WorklistStateKey, ...],
+    set[_WorklistStateKey],
+    int,
+]
+
+
 _INPUT_HALT_SOURCE = (117, 80)
 _ENTRY_SELF_ENCRYPTION_OUTPUT = 111
 _INPUT_CRAZY_SOURCE = (117, 61)
@@ -730,6 +738,19 @@ class _WorklistModule(Protocol):
         node: _ReachabilityNode,
         step: _SnapshotStep,
     ) -> tuple[_ReachabilityNode, ...]: ...
+
+    def _assert_known_graph_integrity(
+        self,
+        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+        nodes: set[_WorklistStateKey],
+    ) -> None: ...
+
+    def _assert_worklist_state_partition(
+        self,
+        evidence: _WorklistStateEvidence,
+        *,
+        truncated: bool,
+    ) -> None: ...
 
     def _known_graph_strong_components(
         self,
@@ -2354,6 +2375,42 @@ def test_terminal_invariant_rejects_count_state_drift() -> None:
             {"halted": 2},
             {"halted": {_GRAPH_KEY_A}},
             {_GRAPH_KEY_A},
+        )
+
+
+def test_known_graph_integrity_rejects_missing_admitted_node() -> None:
+    """Every admitted state must retain its exact graph node."""
+    with pytest.raises(AssertionError, match="nodes disagree"):
+        worklist._assert_known_graph_integrity(
+            {_GRAPH_KEY_A: set()},
+            {_GRAPH_KEY_A, _GRAPH_KEY_B},
+        )
+
+
+def test_known_graph_integrity_rejects_unadmitted_edge_target() -> None:
+    """Known graph edges cannot silently point outside admitted states."""
+    with pytest.raises(AssertionError, match="unadmitted state"):
+        worklist._assert_known_graph_integrity(
+            {_GRAPH_KEY_A: {_GRAPH_KEY_B}},
+            {_GRAPH_KEY_A},
+        )
+
+
+def test_worklist_state_partition_rejects_unaccounted_admission() -> None:
+    """Admitted states must equal explored plus pending queue states."""
+    with pytest.raises(AssertionError, match="do not partition"):
+        worklist._assert_worklist_state_partition(
+            (1, (), {_GRAPH_KEY_A, _GRAPH_KEY_B}, 2),
+            truncated=True,
+        )
+
+
+def test_worklist_state_partition_rejects_early_truncation() -> None:
+    """Truncation is valid only after the exact state cap is reached."""
+    with pytest.raises(AssertionError, match="state limit"):
+        worklist._assert_worklist_state_partition(
+            (1, (_GRAPH_KEY_B,), {_GRAPH_KEY_A, _GRAPH_KEY_B}, 3),
+            truncated=True,
         )
 
 

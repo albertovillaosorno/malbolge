@@ -619,6 +619,22 @@ def _unseen_successor_keys(
     return tuple(sorted(unseen))
 
 
+def _assert_known_graph_integrity(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+) -> None:
+    if set(edges) != nodes:
+        message = "known graph nodes disagree with admitted states"
+        raise AssertionError(message)
+    if any(
+        target not in nodes
+        for targets in edges.values()
+        for target in targets
+    ):
+        message = "known graph edge targets an unadmitted state"
+        raise AssertionError(message)
+
+
 def _known_targets(
     source: _StateKey,
     edges: dict[_StateKey, set[_StateKey]],
@@ -1295,6 +1311,48 @@ def _assert_code_data_alias_observations(
         raise AssertionError(message)
     if any(state[0] != state[1] for state in observations):
         message = "code/data alias observation lost exact C=D identity"
+        raise AssertionError(message)
+
+
+type _WorklistStateEvidence = tuple[
+    int,
+    tuple[_StateKey, ...],
+    set[_StateKey],
+    int,
+]
+
+
+def _assert_pending_state_partition(
+    explored: int,
+    pending_state_keys: tuple[_StateKey, ...],
+    seen: set[_StateKey],
+) -> None:
+    if len(pending_state_keys) != len(set(pending_state_keys)):
+        message = "pending worklist states are not deduplicated"
+        raise AssertionError(message)
+    if not set(pending_state_keys) <= seen:
+        message = "pending worklist retained an unadmitted state"
+        raise AssertionError(message)
+    if explored + len(pending_state_keys) != len(seen):
+        message = "explored and pending states do not partition admitted states"
+        raise AssertionError(message)
+
+
+def _assert_worklist_state_partition(
+    evidence: _WorklistStateEvidence,
+    *,
+    truncated: bool,
+) -> None:
+    explored, pending_state_keys, seen, state_limit = evidence
+    if not 1 <= explored <= len(seen) <= state_limit:
+        message = "worklist state counts exceed admitted-state bounds"
+        raise AssertionError(message)
+    _assert_pending_state_partition(explored, pending_state_keys, seen)
+    if truncated and len(seen) != state_limit:
+        message = "worklist truncated before reaching its state limit"
+        raise AssertionError(message)
+    if not truncated and pending_state_keys:
+        message = "closed worklist retained pending states"
         raise AssertionError(message)
 
 
@@ -3731,4 +3789,12 @@ def analyze_reachability(
     """
     state_limit = _state_limit(maximum_states)
     _validate_words(words)
-    return _Explorer.create(words, state_limit).run()
+    explorer = _Explorer.create(words, state_limit)
+    result = explorer.run()
+    pending_state_keys = tuple(_node_key(node) for node in explorer.queue)
+    _assert_worklist_state_partition(
+        (explorer.explored, pending_state_keys, explorer.seen, state_limit),
+        truncated=result.truncated,
+    )
+    _assert_known_graph_integrity(explorer.edges, explorer.seen)
+    return result
