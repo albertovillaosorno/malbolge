@@ -1346,6 +1346,17 @@ type _CodeDataAliasWitnessEvidence = tuple[
 ]
 
 
+type _WriteObservation = tuple[int, int, int, int, bool]
+type _RepresentativeWriteWitness = (
+    WorklistDataWriteNoopWitness | WorklistDataMutationWitness
+)
+type _RepresentativeWriteWitnessEvidence = tuple[
+    dict[_StateKey, _WriteObservation],
+    _RepresentativeWriteWitness | None,
+    str,
+]
+
+
 def _assert_code_data_alias_witness(
     evidence: tuple[int, WorklistCodeDataAliasWitness, dict[_StateKey, int]],
     edges: dict[_StateKey, set[_StateKey]],
@@ -1383,6 +1394,60 @@ def _assert_code_data_alias_witnesses(
         _assert_code_data_alias_witness(
             (address, witness, observations), edges, seen
         )
+
+
+def _assert_representative_write_witness_endpoint(
+    evidence: tuple[
+        dict[_StateKey, _WriteObservation],
+        _RepresentativeWriteWitness,
+        str,
+    ],
+    edges: dict[_StateKey, set[_StateKey]],
+    seen: set[_StateKey],
+) -> None:
+    observations, witness, label = evidence
+    key = _cycle_state_key(witness.state)
+    if key != next(iter(observations)):
+        message = f"{label} witness is not the first FIFO observation"
+        raise AssertionError(message)
+    observation = (
+        witness.address,
+        witness.previous_value,
+        witness.written_value,
+        witness.result_value,
+        witness.aliases_self_encryption,
+    )
+    if observations.get(key) != observation:
+        message = f"{label} witness lost its exact observation"
+        raise AssertionError(message)
+    expected_path = tuple(
+        _cycle_state(item)
+        for item in _known_graph_shortest_path(
+            edges, seen, start=_INITIAL_STATE_KEY, target=key
+        )
+    )
+    if witness.entry_path != expected_path:
+        message = f"{label} witness lost its exact shortest path"
+        raise AssertionError(message)
+
+
+def _assert_representative_write_witness(
+    evidence: _RepresentativeWriteWitnessEvidence,
+    edges: dict[_StateKey, set[_StateKey]],
+    seen: set[_StateKey],
+) -> None:
+    observations, witness, label = evidence
+    if witness is None:
+        if observations:
+            message = f"{label} observations lost their representative witness"
+            raise AssertionError(message)
+        return
+    if not observations:
+        message = f"{label} witness exists without exact observations"
+        raise AssertionError(message)
+    _assert_representative_write_witness_endpoint(
+        (observations, witness, label), edges, seen
+    )
 
 
 type _WorklistStateEvidence = tuple[
@@ -3896,6 +3961,24 @@ def analyze_reachability(
             explorer.code_data_alias_addresses,
             explorer.code_data_alias_state_values,
             explorer.code_data_alias_witnesses,
+        ),
+        explorer.edges,
+        explorer.seen,
+    )
+    _assert_representative_write_witness(
+        (
+            explorer.committed_data_write_noop_state_values,
+            explorer.data_write_noop_witness,
+            "data-write no-op",
+        ),
+        explorer.edges,
+        explorer.seen,
+    )
+    _assert_representative_write_witness(
+        (
+            explorer.effective_data_mutation_state_values,
+            explorer.data_mutation_witness,
+            "data mutation",
         ),
         explorer.edges,
         explorer.seen,

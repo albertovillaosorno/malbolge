@@ -534,6 +534,17 @@ class _WorklistDataMutationWitness(Protocol):
     aliases_self_encryption: bool
 
 
+type _WriteObservation = tuple[int, int, int, int, bool]
+type _RepresentativeWriteWitness = (
+    _WorklistDataWriteNoopWitness | _WorklistDataMutationWitness
+)
+type _RepresentativeWriteWitnessEvidence = tuple[
+    dict[_WorklistStateKey, _WriteObservation],
+    _RepresentativeWriteWitness | None,
+    str,
+]
+
+
 class _WorklistAnalysis(Protocol):
     state_limit: int
     unique_states: int
@@ -899,6 +910,13 @@ class _WorklistModule(Protocol):
     def _assert_code_data_alias_witnesses(
         self,
         evidence: _CodeDataAliasWitnessEvidence,
+        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+        seen: set[_WorklistStateKey],
+    ) -> None: ...
+
+    def _assert_representative_write_witness(
+        self,
+        evidence: _RepresentativeWriteWitnessEvidence,
         edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
         seen: set[_WorklistStateKey],
     ) -> None: ...
@@ -2359,6 +2377,16 @@ def test_alias_witness_invariant_rejects_missing_address_witness() -> None:
     with pytest.raises(AssertionError, match="witness coverage"):
         worklist._assert_code_data_alias_witnesses(
             ({_GRAPH_KEY_A[0]}, {_GRAPH_KEY_A: 0}, {}),
+            {_GRAPH_KEY_A: set()},
+            {_GRAPH_KEY_A},
+        )
+
+
+def test_write_witness_invariant_rejects_missing_representative() -> None:
+    """Exact write observations must retain their representative witness."""
+    with pytest.raises(AssertionError, match="representative witness"):
+        worklist._assert_representative_write_witness(
+            ({_GRAPH_KEY_A: (0, 1, 2, 3, False)}, None, "data mutation"),
             {_GRAPH_KEY_A: set()},
             {_GRAPH_KEY_A},
         )
