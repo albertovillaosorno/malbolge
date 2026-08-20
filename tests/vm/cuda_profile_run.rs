@@ -35,7 +35,7 @@
 
 //! Full-state current-profile differential checks for resident CUDA execution.
 
-use std::io::Write as _;
+use std::io::{BufReader, Read, Write as _};
 use std::iter::repeat_n;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -74,42 +74,48 @@ const TEST_XLAT1: &[u8; TABLE_LEN] =
 type ProductBackendBatch = Option<Vec<Option<ProfileBatchBackendCompletion>>>;
 type WorkerBatch = Option<Vec<RunSnapshot>>;
 
-struct BinaryReader<'data> {
-    data: &'data [u8],
-    offset: usize,
+struct BinaryReader<Reader> {
+    reader: Reader,
 }
 
-impl<'data> BinaryReader<'data> {
-    fn finish(&self) -> TestResult {
-        check_equal(
-            &self.offset,
-            &self.data.len(),
-            "profile CUDA trailing response bytes",
-        )
+impl<Reader: Read> BinaryReader<Reader> {
+    fn finish(&mut self) -> TestResult {
+        let mut trailing = [0u8; 1];
+        match self.reader.read(&mut trailing) {
+            Ok(0) => Ok(()),
+            Ok(_count) => {
+                Err(String::from("profile CUDA trailing response bytes"))
+            },
+            Err(error) => Err(format!("profile CUDA response finish: {error}")),
+        }
     }
 
-    const fn new(data: &'data [u8]) -> Self {
-        Self { data, offset: 0 }
+    const fn new(reader: Reader) -> Self {
+        Self { reader }
     }
 
-    fn take(&mut self, count: usize) -> TestResult<&'data [u8]> {
-        let end = self.offset.checked_add(count).ok_or_else(|| {
-            String::from("profile CUDA response offset overflow")
+    fn take(&mut self, count: usize) -> TestResult<Vec<u8>> {
+        let mut value = vec![0u8; count];
+        self.reader.read_exact(&mut value).map_err(|error| {
+            format!("truncated profile CUDA response: {error}")
         })?;
-        let value = self
-            .data
-            .get(self.offset..end)
-            .ok_or_else(|| String::from("truncated profile CUDA response"))?;
-        self.offset = end;
         Ok(value)
     }
 
     fn u32(&mut self) -> TestResult<u32> {
-        let raw = self.take(size_of::<u32>())?;
-        let bytes: [u8; 4] = raw
-            .try_into()
-            .map_err(|_error| String::from("profile CUDA u32 width"))?;
+        let mut bytes = [0u8; size_of::<u32>()];
+        self.reader
+            .read_exact(&mut bytes)
+            .map_err(|error| format!("truncated profile CUDA u32: {error}"))?;
         Ok(u32::from_le_bytes(bytes))
+    }
+
+    fn words(&mut self, count: usize) -> TestResult<Vec<u32>> {
+        let mut words = Vec::with_capacity(count);
+        for _word in 0..count {
+            words.push(self.u32()?);
+        }
+        Ok(words)
     }
 }
 
@@ -672,22 +678,37 @@ fn run_cuda_worker(request: Vec<u8>) -> TestResult<WorkerBatch> {
         .map_err(|error| format!("profile CUDA worker stdin: {error}"))?;
     drop(request);
     drop(stdin);
-    let output = child
-        .wait_with_output()
+    let stdout = child.stdout.take().ok_or_else(|| {
+        String::from("profile CUDA worker stdout unavailable")
+    })?;
+    let mut stderr = child.stderr.take().ok_or_else(|| {
+        String::from("profile CUDA worker stderr unavailable")
+    })?;
+    let parsed = parse_worker_output(BufReader::new(stdout));
+    let status = child
+        .wait()
         .map_err(|error| format!("profile CUDA worker wait: {error}"))?;
-    if !output.status.success() {
+    let mut diagnostics = Vec::new();
+    let _: usize = stderr
+        .read_to_end(&mut diagnostics)
+        .map_err(|error| format!("profile CUDA worker stderr: {error}"))?;
+    if !status.success() {
         return Err(format!(
             "profile CUDA worker failed: {}",
-            String::from_utf8_lossy(&output.stderr)
+            String::from_utf8_lossy(&diagnostics)
         ));
     }
-    parse_worker_output(&output.stdout)
+    parsed
 }
 
-fn parse_worker_output(data: &[u8]) -> TestResult<WorkerBatch> {
-    let mut reader = BinaryReader::new(data);
+fn parse_worker_output<Reader>(stream: Reader) -> TestResult<WorkerBatch>
+where
+    Reader: Read,
+{
+    let mut reader = BinaryReader::new(stream);
+    let magic = reader.take(MAGIC.len())?;
     check_equal(
-        &reader.take(MAGIC.len())?,
+        &magic.as_slice(),
         &MAGIC.as_slice(),
         "profile CUDA response magic",
     )?;
@@ -714,10 +735,13 @@ fn parse_worker_output(data: &[u8]) -> TestResult<WorkerBatch> {
     Ok(Some(results))
 }
 
-fn parse_result(
-    reader: &mut BinaryReader<'_>,
+fn parse_result<Reader>(
+    reader: &mut BinaryReader<Reader>,
     memory_words: usize,
-) -> TestResult<RunSnapshot> {
+) -> TestResult<RunSnapshot>
+where
+    Reader: Read,
+{
     let status = reader.u32()?;
     let error = reader.u32()?;
     let accumulator = reader.u32()?;
@@ -730,11 +754,8 @@ fn parse_result(
     let error_pointer = reader.u32()?;
     let error_value = reader.u32()?;
     let steps = reader.u32()?;
-    let mut memory = Vec::with_capacity(memory_words);
-    for _word in 0..memory_words {
-        memory.push(reader.u32()?);
-    }
-    let output = reader.take(output_len)?.to_vec();
+    let memory = reader.words(memory_words)?;
+    let output = reader.take(output_len)?;
     Ok(RunSnapshot {
         accumulator,
         code_pointer,

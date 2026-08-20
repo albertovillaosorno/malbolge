@@ -49,7 +49,6 @@ from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from typing import BinaryIO
 
     from accelerator.profile_run import ProfileRunResult
@@ -150,7 +149,7 @@ def main() -> int:
     output = sys.stdout.buffer
     _ = output.write(_response_prefix(RESPONSE_RESULTS, len(results)))
     for result in results:
-        _write_result(output.write, result)
+        _write_result(output, result)
     return 0
 
 
@@ -215,10 +214,10 @@ def _response_prefix(kind: int, count: int) -> bytes:
 
 
 def _write_result(
-    write: Callable[[bytes], int],
+    output: BinaryIO,
     result: ProfileRunResult,
 ) -> None:
-    _ = write(
+    _ = output.write(
         _u32_bytes(
             int(result.status),
             int(result.error),
@@ -233,8 +232,8 @@ def _write_result(
             result.steps,
         )
     )
-    _ = write(_word_bytes(result.memory))
-    _ = write(bytes(result.output_bytes))
+    _write_words(output, result.memory)
+    _ = output.write(bytes(result.output_bytes))
 
 
 def _u32_bytes(*values: int) -> bytes:
@@ -257,15 +256,16 @@ def _words_from_bytes(data: bytearray, count: int) -> array[int]:
     return words
 
 
-def _word_bytes(values: array[int]) -> bytes:
+def _write_words(output: BinaryIO, values: array[int]) -> None:
     if values.typecode != WORD_TYPECODE or values.itemsize != U32_BYTES:
         message = "scalable resident result memory is not 32-bit unsigned"
         raise ProfileRunProtocolError(message)
     if sys.byteorder == LITTLE_ENDIAN:
-        return values.tobytes()
+        _ = output.write(memoryview(values).cast("B"))
+        return
     copy = array(WORD_TYPECODE, values)
     copy.byteswap()
-    return copy.tobytes()
+    _ = output.write(memoryview(copy).cast("B"))
 
 
 if __name__ == "__main__":
