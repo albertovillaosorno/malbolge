@@ -38,12 +38,13 @@
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from collections import deque
 from collections.abc import Callable
+import importlib.util
 from pathlib import Path
-from typing import Protocol, cast
+import sys
+from typing import Protocol
+from typing import cast
 
 import pytest
 
@@ -1008,11 +1009,15 @@ class _WorklistModule(Protocol):
 
     def _assert_repeated_edge_graph_binding(
         self,
-        source_key: _WorklistStateKey,
-        target_key: _WorklistStateKey,
-        source_path: tuple[_WorklistStateKey, ...],
-        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
-        seen: set[_WorklistStateKey],
+        binding: tuple[
+            _WorklistStateKey,
+            _WorklistStateKey,
+            tuple[_WorklistStateKey, ...],
+        ],
+        graph: tuple[
+            dict[_WorklistStateKey, set[_WorklistStateKey]],
+            set[_WorklistStateKey],
+        ],
         *,
         cycle_closing: bool,
         label: str,
@@ -1821,11 +1826,8 @@ def test_repeated_edge_binding_rejects_missing_exact_edge() -> None:
     }
     with pytest.raises(AssertionError, match="exact repeated graph edge"):
         worklist._assert_repeated_edge_graph_binding(
-            _GRAPH_KEY_B,
-            _GRAPH_KEY_A,
-            (_GRAPH_KEY_A, _GRAPH_KEY_B),
-            edges,
-            {_GRAPH_KEY_A, _GRAPH_KEY_B},
+            (_GRAPH_KEY_B, _GRAPH_KEY_A, (_GRAPH_KEY_A, _GRAPH_KEY_B)),
+            (edges, {_GRAPH_KEY_A, _GRAPH_KEY_B}),
             cycle_closing=True,
             label="cycle-closing repeated edge",
         )
@@ -1839,11 +1841,8 @@ def test_repeated_edge_binding_rejects_wrong_class() -> None:
     }
     with pytest.raises(AssertionError, match="repeated-edge class"):
         worklist._assert_repeated_edge_graph_binding(
-            _GRAPH_KEY_A,
-            _GRAPH_KEY_B,
-            (_GRAPH_KEY_A,),
-            edges,
-            {_GRAPH_KEY_A, _GRAPH_KEY_B},
+            (_GRAPH_KEY_A, _GRAPH_KEY_B, (_GRAPH_KEY_A,)),
+            (edges, {_GRAPH_KEY_A, _GRAPH_KEY_B}),
             cycle_closing=True,
             label="cycle-closing repeated edge",
         )
@@ -1857,11 +1856,8 @@ def test_repeated_edge_binding_rejects_noncanonical_source_path() -> None:
     }
     with pytest.raises(AssertionError, match="shortest source path"):
         worklist._assert_repeated_edge_graph_binding(
-            _GRAPH_KEY_B,
-            _GRAPH_KEY_A,
-            (_GRAPH_KEY_B,),
-            edges,
-            {_GRAPH_KEY_A, _GRAPH_KEY_B},
+            (_GRAPH_KEY_B, _GRAPH_KEY_A, (_GRAPH_KEY_B,)),
+            (edges, {_GRAPH_KEY_A, _GRAPH_KEY_B}),
             cycle_closing=True,
             label="cycle-closing repeated edge",
         )

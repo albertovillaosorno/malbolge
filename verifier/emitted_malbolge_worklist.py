@@ -36,7 +36,8 @@
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field
 from typing import Final
 
 if __package__:
@@ -2122,16 +2123,26 @@ def _assert_repeated_edge_witness_presence(
         raise AssertionError(message)
 
 
+type _KnownGraph = tuple[
+    dict[_StateKey, set[_StateKey]],
+    set[_StateKey],
+]
+type _RepeatedEdgeBinding = tuple[
+    _StateKey,
+    _StateKey,
+    tuple[_StateKey, ...],
+]
+
+
 def _assert_repeated_edge_graph_binding(
-    source_key: _StateKey,
-    target_key: _StateKey,
-    source_path: tuple[_StateKey, ...],
-    edges: dict[_StateKey, set[_StateKey]],
-    seen: set[_StateKey],
+    binding: _RepeatedEdgeBinding,
+    graph: _KnownGraph,
     *,
     cycle_closing: bool,
     label: str,
 ) -> None:
+    source_key, target_key, source_path = binding
+    edges, seen = graph
     if source_key not in seen or target_key not in seen:
         message = f"{label} witness references an unadmitted state"
         raise AssertionError(message)
@@ -2158,6 +2169,61 @@ type _RepeatedEdgeWitnessEvidence = tuple[
 ]
 
 
+def _assert_state_merge_witness(
+    witness: WorklistStateMergeWitness | None,
+    graph: _KnownGraph,
+) -> None:
+    if witness is None:
+        return
+    edges, seen = graph
+    source_key = _cycle_state_key(witness.source_state)
+    target_key = _cycle_state_key(witness.target_state)
+    source_path = tuple(
+        _cycle_state_key(state) for state in witness.source_entry_path
+    )
+    _assert_repeated_edge_graph_binding(
+        (source_key, target_key, source_path),
+        graph,
+        cycle_closing=False,
+        label="state-merge repeated edge",
+    )
+    target_path = tuple(
+        _cycle_state_key(state) for state in witness.existing_target_entry_path
+    )
+    expected_target_path = _known_graph_shortest_path(
+        edges, seen, start=_INITIAL_STATE_KEY, target=target_key
+    )
+    if target_path != expected_target_path:
+        message = "state-merge witness lost its exact shortest target path"
+        raise AssertionError(message)
+
+
+def _assert_cycle_closing_repeated_edge_witness(
+    witness: WorklistCycleClosingRepeatedEdgeWitness | None,
+    graph: _KnownGraph,
+) -> None:
+    if witness is None:
+        return
+    source_key = _cycle_state_key(witness.source_state)
+    target_key = _cycle_state_key(witness.target_state)
+    source_path = tuple(
+        _cycle_state_key(state) for state in witness.source_entry_path
+    )
+    _assert_repeated_edge_graph_binding(
+        (source_key, target_key, source_path),
+        graph,
+        cycle_closing=True,
+        label="cycle-closing repeated edge",
+    )
+    target_index = witness.target_entry_path_state_index
+    if not 0 <= target_index < len(source_path):
+        message = "cycle-closing witness target index is outside its path"
+        raise AssertionError(message)
+    if source_path[target_index] != target_key:
+        message = "cycle-closing witness target index lost its exact state"
+        raise AssertionError(message)
+
+
 def _assert_repeated_edge_witnesses(
     evidence: _RepeatedEdgeWitnessEvidence,
     edges: dict[_StateKey, set[_StateKey]],
@@ -2170,54 +2236,9 @@ def _assert_repeated_edge_witnesses(
     _assert_repeated_edge_witness_presence(
         cycle_count, cycle_witness, label="cycle-closing repeated edge"
     )
-    if merge_witness is not None:
-        source_key = _cycle_state_key(merge_witness.source_state)
-        target_key = _cycle_state_key(merge_witness.target_state)
-        source_path = tuple(
-            _cycle_state_key(state) for state in merge_witness.source_entry_path
-        )
-        _assert_repeated_edge_graph_binding(
-            source_key,
-            target_key,
-            source_path,
-            edges,
-            seen,
-            cycle_closing=False,
-            label="state-merge repeated edge",
-        )
-        target_path = tuple(
-            _cycle_state_key(state)
-            for state in merge_witness.existing_target_entry_path
-        )
-        expected_target_path = _known_graph_shortest_path(
-            edges, seen, start=_INITIAL_STATE_KEY, target=target_key
-        )
-        if target_path != expected_target_path:
-            message = "state-merge witness lost its exact shortest target path"
-            raise AssertionError(message)
-    if cycle_witness is not None:
-        source_key = _cycle_state_key(cycle_witness.source_state)
-        target_key = _cycle_state_key(cycle_witness.target_state)
-        source_path = tuple(
-            _cycle_state_key(state)
-            for state in cycle_witness.source_entry_path
-        )
-        _assert_repeated_edge_graph_binding(
-            source_key,
-            target_key,
-            source_path,
-            edges,
-            seen,
-            cycle_closing=True,
-            label="cycle-closing repeated edge",
-        )
-        target_index = cycle_witness.target_entry_path_state_index
-        if not 0 <= target_index < len(source_path):
-            message = "cycle-closing witness target index is outside its path"
-            raise AssertionError(message)
-        if source_path[target_index] != target_key:
-            message = "cycle-closing witness target index lost its exact state"
-            raise AssertionError(message)
+    graph = (edges, seen)
+    _assert_state_merge_witness(merge_witness, graph)
+    _assert_cycle_closing_repeated_edge_witness(cycle_witness, graph)
 
 
 def _assert_committed_write_terminal_partition(
