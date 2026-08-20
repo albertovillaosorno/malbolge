@@ -2403,34 +2403,53 @@ def _assert_non_graphical_fetch_observation_edges(
         raise AssertionError(message)
 
 
+type _NonGraphicalFetchWitnessEvidence = tuple[
+    dict[_StateKey, int],
+    WorklistNonGraphicalFetchWitness | None,
+]
+
+
 def _assert_non_graphical_fetch_witness_endpoint(
-    values: dict[int, set[int]],
-    witness: WorklistNonGraphicalFetchWitness,
+    evidence: tuple[dict[_StateKey, int], WorklistNonGraphicalFetchWitness],
+    graph: _KnownGraph,
 ) -> None:
+    observations, witness = evidence
+    edges, seen = graph
+    key = _cycle_state_key(witness.state)
+    if key != next(iter(observations)):
+        message = (
+            "non-graphical fetch witness is not the first FIFO observation"
+        )
+        raise AssertionError(message)
+    if witness.address != key[0] or observations.get(key) != witness.value:
+        message = "non-graphical fetch witness lost its exact observation"
+        raise AssertionError(message)
+    expected_path = tuple(
+        _cycle_state(item)
+        for item in _known_graph_shortest_path(
+            edges, seen, start=_INITIAL_STATE_KEY, target=key
+        )
+    )
+    if witness.entry_path != expected_path:
+        message = "non-graphical fetch witness lost its exact shortest path"
+        raise AssertionError(message)
     if not witness.entry_path or witness.entry_path[-1] != witness.state:
         message = "non-graphical fetch witness lost its exact entry endpoint"
-        raise AssertionError(message)
-    if witness.state.code_pointer != witness.address:
-        message = (
-            "non-graphical fetch witness address disagrees with code pointer"
-        )
-        raise AssertionError(message)
-    if witness.value not in values.get(witness.address, set()):
-        message = (
-            "non-graphical fetch witness value is outside observed domains"
-        )
         raise AssertionError(message)
 
 
 def _assert_non_graphical_fetch_witness(
-    values: dict[int, set[int]],
-    witness: WorklistNonGraphicalFetchWitness | None,
+    evidence: _NonGraphicalFetchWitnessEvidence,
+    graph: _KnownGraph,
 ) -> None:
-    if bool(values) != (witness is not None):
+    observations, witness = evidence
+    if bool(observations) != (witness is not None):
         message = "non-graphical fetch evidence disagrees with witness presence"
         raise AssertionError(message)
     if witness is not None:
-        _assert_non_graphical_fetch_witness_endpoint(values, witness)
+        _assert_non_graphical_fetch_witness_endpoint(
+            (observations, witness), graph
+        )
 
 
 def _record_domain_value(
@@ -2924,7 +2943,11 @@ class _Explorer:
             self.non_graphical_fetch_state_values, self.edges
         )
         _assert_non_graphical_fetch_witness(
-            self.non_graphical_fetch_values, self.non_graphical_fetch_witness
+            (
+                self.non_graphical_fetch_state_values,
+                self.non_graphical_fetch_witness,
+            ),
+            (self.edges, self.seen),
         )
 
     def result(

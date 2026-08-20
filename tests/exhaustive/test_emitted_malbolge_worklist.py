@@ -1092,8 +1092,14 @@ class _WorklistModule(Protocol):
 
     def _assert_non_graphical_fetch_witness(
         self,
-        values: dict[int, set[int]],
-        witness: _WorklistNonGraphicalFetchWitness | None,
+        evidence: tuple[
+            dict[_WorklistStateKey, int],
+            _WorklistNonGraphicalFetchWitness | None,
+        ],
+        graph: tuple[
+            dict[_WorklistStateKey, set[_WorklistStateKey]],
+            set[_WorklistStateKey],
+        ],
     ) -> None: ...
 
     def _assert_wrap_evidence_invariants(
@@ -1103,6 +1109,10 @@ class _WorklistModule(Protocol):
     ) -> None: ...
 
     def _node_key(self, node: _ReachabilityNode) -> _WorklistStateKey: ...
+
+    def _cycle_state_key(
+        self, state: _WorklistCycleState
+    ) -> _WorklistStateKey: ...
 
 
 def _load_worklist() -> _WorklistModule:
@@ -2120,8 +2130,69 @@ def test_non_graphical_fetch_invariant_rejects_missing_witness() -> None:
     """Observed invalid fetches cannot silently lose the first exact witness."""
     with pytest.raises(AssertionError, match="witness presence"):
         worklist._assert_non_graphical_fetch_witness(
-            {_FIXED_CYCLE_POINTER: {_FIXED_CYCLE_NON_GRAPHICAL_VALUE}},
-            None,
+            ({_GRAPH_KEY_A: _FIXED_CYCLE_NON_GRAPHICAL_VALUE}, None),
+            ({_GRAPH_KEY_A: {_GRAPH_KEY_A}}, {_GRAPH_KEY_A}),
+        )
+
+
+def test_non_graphical_fetch_witness_rejects_observation_drift() -> None:
+    """The first invalid-fetch witness stays bound to its exact state/value."""
+    result = worklist.analyze_reachability(
+        _DOUBLE_INPUT_FIXED_CYCLE_SOURCE,
+        maximum_states=_DOUBLE_INPUT_UNIQUE_STATES,
+    )
+    witness = result.explored_non_graphical_fetch_witness
+    assert witness is not None
+    key = worklist._cycle_state_key(witness.state)
+    with pytest.raises(AssertionError, match="exact observation"):
+        worklist._assert_non_graphical_fetch_witness(
+            ({key: witness.value + 1}, witness),
+            ({key: {key}}, {key}),
+        )
+
+
+def test_non_graphical_fetch_witness_rejects_later_observation() -> None:
+    """The representative invalid-fetch witness must remain first in FIFO."""
+    result = worklist.analyze_reachability(
+        _DOUBLE_INPUT_FIXED_CYCLE_SOURCE,
+        maximum_states=_DOUBLE_INPUT_UNIQUE_STATES,
+    )
+    witness = result.explored_non_graphical_fetch_witness
+    assert witness is not None
+    key = worklist._cycle_state_key(witness.state)
+    other = next(
+        worklist._cycle_state_key(item.state)
+        for item in result.explored_non_graphical_fetch_observations
+        if worklist._cycle_state_key(item.state) != key
+    )
+    observations = {other: witness.value, key: witness.value}
+    edges = {other: {other}, key: {key}}
+    with pytest.raises(AssertionError, match="first FIFO observation"):
+        worklist._assert_non_graphical_fetch_witness(
+            (observations, witness),
+            (edges, {other, key}),
+        )
+
+
+def test_non_graphical_fetch_witness_rejects_stale_shortest_path() -> None:
+    """The invalid-fetch witness path stays canonical in the final graph."""
+    result = worklist.analyze_reachability(
+        _DOUBLE_INPUT_FIXED_CYCLE_SOURCE,
+        maximum_states=_DOUBLE_INPUT_UNIQUE_STATES,
+    )
+    witness = result.explored_non_graphical_fetch_witness
+    assert witness is not None
+    path = tuple(worklist._cycle_state_key(item) for item in witness.entry_path)
+    assert len(path) == _FIXED_CYCLE_ENTRY_PATH_STATES
+    edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        path[0]: {path[1], path[-1]},
+        path[1]: {path[-1]},
+        path[-1]: {path[-1]},
+    }
+    with pytest.raises(AssertionError, match="exact shortest path"):
+        worklist._assert_non_graphical_fetch_witness(
+            ({path[-1]: witness.value}, witness),
+            (edges, set(path)),
         )
 
 
