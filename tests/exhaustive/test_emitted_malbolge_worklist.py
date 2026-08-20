@@ -2704,7 +2704,7 @@ def test_terminal_witness_invariant_rejects_stale_shortest_path() -> None:
     witnesses = worklist._terminal_witnesses(
         initial_edges, nodes, terminal_states
     )
-    final_edges = {
+    final_edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
         _GRAPH_KEY_A: {_GRAPH_KEY_B, _GRAPH_KEY_C},
         _GRAPH_KEY_B: {_GRAPH_KEY_C},
         _GRAPH_KEY_C: set(),
