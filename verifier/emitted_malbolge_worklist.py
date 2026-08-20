@@ -1338,6 +1338,17 @@ def _assert_frontier_evidence(
         raise AssertionError(message)
 
 
+def _assert_terminal_state_classes_disjoint(
+    terminal_states: dict[str, set[_StateKey]],
+) -> None:
+    classified: set[_StateKey] = set()
+    for states in terminal_states.values():
+        if classified & states:
+            message = "terminal state classes overlap"
+            raise AssertionError(message)
+        classified |= states
+
+
 def _assert_terminal_evidence(
     counts: dict[str, int],
     terminal_states: dict[str, set[_StateKey]],
@@ -1358,6 +1369,7 @@ def _assert_terminal_evidence(
     if any(not states <= seen for states in terminal_states.values()):
         message = "terminal evidence retained an unknown graph state"
         raise AssertionError(message)
+    _assert_terminal_state_classes_disjoint(terminal_states)
 
 
 def _assert_terminal_graph_endpoints(

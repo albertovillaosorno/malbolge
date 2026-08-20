@@ -2335,6 +2335,19 @@ def test_terminal_invariant_rejects_count_state_drift() -> None:
         )
 
 
+def test_terminal_invariant_rejects_overlapping_state_classes() -> None:
+    """One explored terminal state cannot carry two terminal statuses."""
+    with pytest.raises(AssertionError, match="terminal state classes overlap"):
+        worklist._assert_terminal_evidence(
+            {"halted": 1, "invalid": 1},
+            {
+                "halted": {_GRAPH_KEY_A},
+                "invalid": {_GRAPH_KEY_A},
+            },
+            {_GRAPH_KEY_A},
+        )
+
+
 def test_terminal_graph_invariant_rejects_missing_node() -> None:
     """Terminal evidence cannot refer to a state absent from the graph."""
     with pytest.raises(AssertionError, match="missing its graph node"):
