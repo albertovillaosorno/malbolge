@@ -38,13 +38,12 @@
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 from collections import deque
 from collections.abc import Callable
-import importlib.util
 from pathlib import Path
-import sys
-from typing import Protocol
-from typing import cast
+from typing import Protocol, cast
 
 import pytest
 
@@ -417,6 +416,14 @@ class _WorklistStateMergeWitness(Protocol):
     source_entry_path: tuple[_WorklistCycleState, ...]
     target_state: _WorklistCycleState
     existing_target_entry_path: tuple[_WorklistCycleState, ...]
+
+
+type _RepeatedEdgeWitnessEvidence = tuple[
+    int,
+    _WorklistStateMergeWitness | None,
+    int,
+    _WorklistCycleClosingRepeatedEdgeWitness | None,
+]
 
 
 class _WorklistCodeDataAliasObservation(Protocol):
@@ -997,6 +1004,25 @@ class _WorklistModule(Protocol):
         repeated_edges: int,
         state_merge_transitions: int,
         cycle_closing_repeated_edges: int,
+    ) -> None: ...
+
+    def _assert_repeated_edge_graph_binding(
+        self,
+        source_key: _WorklistStateKey,
+        target_key: _WorklistStateKey,
+        source_path: tuple[_WorklistStateKey, ...],
+        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+        seen: set[_WorklistStateKey],
+        *,
+        cycle_closing: bool,
+        label: str,
+    ) -> None: ...
+
+    def _assert_repeated_edge_witnesses(
+        self,
+        evidence: _RepeatedEdgeWitnessEvidence,
+        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+        seen: set[_WorklistStateKey],
     ) -> None: ...
 
     def _assert_committed_write_terminal_partition(
@@ -1775,6 +1801,70 @@ def test_repeated_edge_partition_rejects_count_drift() -> None:
     """Repeated-edge subclasses must exactly partition the aggregate count."""
     with pytest.raises(AssertionError, match="partition the aggregate"):
         worklist._assert_repeated_edge_partition(3, 1, 1)
+
+
+def test_repeated_edge_witness_invariant_rejects_missing_merge() -> None:
+    """Observed repeated-edge classes must retain representative witnesses."""
+    with pytest.raises(AssertionError, match="lost their representative"):
+        worklist._assert_repeated_edge_witnesses(
+            (1, None, 0, None),
+            {_GRAPH_KEY_A: set()},
+            {_GRAPH_KEY_A},
+        )
+
+
+def test_repeated_edge_binding_rejects_missing_exact_edge() -> None:
+    """A repeated-edge witness must still identify an exact graph edge."""
+    edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B},
+        _GRAPH_KEY_B: set(),
+    }
+    with pytest.raises(AssertionError, match="exact repeated graph edge"):
+        worklist._assert_repeated_edge_graph_binding(
+            _GRAPH_KEY_B,
+            _GRAPH_KEY_A,
+            (_GRAPH_KEY_A, _GRAPH_KEY_B),
+            edges,
+            {_GRAPH_KEY_A, _GRAPH_KEY_B},
+            cycle_closing=True,
+            label="cycle-closing repeated edge",
+        )
+
+
+def test_repeated_edge_binding_rejects_wrong_class() -> None:
+    """A merge cannot masquerade as a cycle-closing repeated edge."""
+    edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B},
+        _GRAPH_KEY_B: set(),
+    }
+    with pytest.raises(AssertionError, match="repeated-edge class"):
+        worklist._assert_repeated_edge_graph_binding(
+            _GRAPH_KEY_A,
+            _GRAPH_KEY_B,
+            (_GRAPH_KEY_A,),
+            edges,
+            {_GRAPH_KEY_A, _GRAPH_KEY_B},
+            cycle_closing=True,
+            label="cycle-closing repeated edge",
+        )
+
+
+def test_repeated_edge_binding_rejects_noncanonical_source_path() -> None:
+    """Repeated-edge witnesses retain the canonical shortest source path."""
+    edges = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B},
+        _GRAPH_KEY_B: {_GRAPH_KEY_A},
+    }
+    with pytest.raises(AssertionError, match="shortest source path"):
+        worklist._assert_repeated_edge_graph_binding(
+            _GRAPH_KEY_B,
+            _GRAPH_KEY_A,
+            (_GRAPH_KEY_B,),
+            edges,
+            {_GRAPH_KEY_A, _GRAPH_KEY_B},
+            cycle_closing=True,
+            label="cycle-closing repeated edge",
+        )
 
 
 def test_committed_write_partition_rejects_terminal_overlap() -> None:
