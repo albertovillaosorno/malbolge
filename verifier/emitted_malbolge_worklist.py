@@ -1190,6 +1190,13 @@ type _WriteAddressSets = tuple[
 ]
 
 
+type _CommittedWriteStateSets = tuple[
+    set[_StateKey],
+    set[_StateKey],
+    set[_StateKey],
+]
+
+
 def _assert_wrap_witness_flags(
     witness: WorklistWrapWitness,
     *,
@@ -1963,6 +1970,21 @@ def _assert_data_mutation_domains(
     )
 
 
+def _assert_committed_write_terminal_partition(
+    state_sets: _CommittedWriteStateSets,
+    terminal_states: dict[str, set[_StateKey]],
+) -> None:
+    committed_states = {
+        state for states in state_sets for state in states
+    }
+    terminal_endpoints = {
+        state for states in terminal_states.values() for state in states
+    }
+    if committed_states & terminal_endpoints:
+        message = "committed write states overlap terminal endpoints"
+        raise AssertionError(message)
+
+
 def _assert_committed_write_count_partition(
     counts: _WriteCounts,
 ) -> None:
@@ -2520,6 +2542,14 @@ class _Explorer:
                 self.effective_data_mutation_state_values,
                 self.committed_data_write_values,
             )
+        )
+        _assert_committed_write_terminal_partition(
+            (
+                set(self.committed_data_write_noop_state_values),
+                set(self.effective_data_mutation_state_values),
+                set(self.self_encryption_state_values),
+            ),
+            self.terminal_states,
         )
         _assert_committed_write_count_partition(
             (

@@ -372,6 +372,13 @@ type _WriteAddressSets = tuple[
 ]
 
 
+type _CommittedWriteStateSets = tuple[
+    set[_WorklistStateKey],
+    set[_WorklistStateKey],
+    set[_WorklistStateKey],
+]
+
+
 class _WorklistWrapTransitionSignature(Protocol):
     source_code_pointer: int
     source_data_pointer: int
@@ -951,6 +958,12 @@ class _WorklistModule(Protocol):
         *,
         previous_values: dict[int, set[int]],
         result_values: dict[int, set[int]],
+    ) -> None: ...
+
+    def _assert_committed_write_terminal_partition(
+        self,
+        state_sets: _CommittedWriteStateSets,
+        terminal_states: dict[str, set[_WorklistStateKey]],
     ) -> None: ...
 
     def _assert_committed_write_count_partition(
@@ -1544,6 +1557,10 @@ def test_minimum_cap_reports_exact_first_unexplored_frontier_path() -> None:
         (state.code_pointer, state.data_pointer) for state in path
     )
     assert pointers == ((0, 0), (1, 1))
+    assert result.explored_committed_write_count == 1
+    assert result.explored_self_encryption_transition_count == 1
+    assert result.terminal_status_counts == ()
+    assert result.terminal_status_state_sets == ()
     assert result.truncated
 
 
@@ -1712,6 +1729,15 @@ def test_evolved_read_invariant_rejects_missing_witness() -> None:
             ),
             label="evolved data read",
             require_witness=True,
+        )
+
+
+def test_committed_write_partition_rejects_terminal_overlap() -> None:
+    """A terminal endpoint cannot also publish a committed write."""
+    with pytest.raises(AssertionError, match="terminal endpoints"):
+        worklist._assert_committed_write_terminal_partition(
+            ({_GRAPH_KEY_A}, set(), set()),
+            {_HALTED_STATUS: {_GRAPH_KEY_A}},
         )
 
 
