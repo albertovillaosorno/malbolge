@@ -857,6 +857,8 @@ class _WorklistModule(Protocol):
         transition_count: int,
         addresses: set[int],
         observations: dict[_WorklistStateKey, int],
+        *,
+        seen: set[_WorklistStateKey],
     ) -> None: ...
 
     def _assert_input_branch_evidence(
@@ -955,6 +957,8 @@ class _WorklistModule(Protocol):
             dict[int, set[int]],
             dict[_WorklistStateKey, int],
         ],
+        *,
+        seen: set[_WorklistStateKey],
     ) -> None: ...
 
     def _assert_non_graphical_fetch_observation_edges(
@@ -1887,7 +1891,22 @@ def test_non_graphical_fetch_observation_rejects_count_drift() -> None:
                 {_GRAPH_KEY_A[0]},
                 {_GRAPH_KEY_A[0]: {_FIXED_CYCLE_NON_GRAPHICAL_VALUE}},
                 {},
-            )
+            ),
+            seen=set(),
+        )
+
+
+def test_non_graphical_fetch_observation_rejects_unknown_state() -> None:
+    """Invalid-fetch observations must belong to the explored graph."""
+    with pytest.raises(AssertionError, match="unknown graph state"):
+        worklist._assert_non_graphical_fetch_observation_projection(
+            (
+                1,
+                {_GRAPH_KEY_A[0]},
+                {_GRAPH_KEY_A[0]: {_FIXED_CYCLE_NON_GRAPHICAL_VALUE}},
+                {_GRAPH_KEY_A: _FIXED_CYCLE_NON_GRAPHICAL_VALUE},
+            ),
+            seen={_GRAPH_KEY_B},
         )
 
 
@@ -2259,6 +2278,18 @@ def test_alias_observation_invariant_rejects_count_state_drift() -> None:
             1,
             {0},
             {},
+            seen=set(),
+        )
+
+
+def test_alias_observation_invariant_rejects_unknown_state() -> None:
+    """Alias observations must belong to the explored graph."""
+    with pytest.raises(AssertionError, match="unknown graph state"):
+        worklist._assert_code_data_alias_observations(
+            1,
+            {_GRAPH_KEY_A[0]},
+            {_GRAPH_KEY_A: 0},
+            seen={_GRAPH_KEY_B},
         )
 
 

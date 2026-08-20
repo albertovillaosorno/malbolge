@@ -1265,14 +1265,30 @@ def _committed_data_mutation(
     return address, previous, written, result, aliases
 
 
+def _assert_known_observation_states(
+    observations: set[_StateKey],
+    seen: set[_StateKey],
+    *,
+    label: str,
+) -> None:
+    if not observations <= seen:
+        message = f"{label} retained an unknown graph state"
+        raise AssertionError(message)
+
+
 def _assert_code_data_alias_observations(
     transition_count: int,
     addresses: set[int],
     observations: dict[_StateKey, int],
+    *,
+    seen: set[_StateKey],
 ) -> None:
     if transition_count != len(observations):
         message = "code/data alias count disagrees with exact alias states"
         raise AssertionError(message)
+    _assert_known_observation_states(
+        set(observations), seen, label="code/data alias evidence"
+    )
     observed_addresses = {state[0] for state in observations}
     if addresses != observed_addresses:
         message = "code/data alias addresses disagree with exact alias states"
@@ -1913,6 +1929,8 @@ def _assert_non_graphical_fetch_observation_projection(
         dict[int, set[int]],
         dict[_StateKey, int],
     ],
+    *,
+    seen: set[_StateKey],
 ) -> None:
     transition_count, addresses, values, observations = evidence
     if transition_count != len(observations):
@@ -1920,6 +1938,9 @@ def _assert_non_graphical_fetch_observation_projection(
             "non-graphical fetch count disagrees with exact fetch states"
         )
         raise AssertionError(message)
+    _assert_known_observation_states(
+        set(observations), seen, label="non-graphical fetch evidence"
+    )
     observed_addresses = {state[0] for state in observations}
     if addresses != observed_addresses:
         message = (
@@ -2445,7 +2466,10 @@ class _Explorer:
             self.non_graphical_fetch_state_values,
         )
         _assert_non_graphical_fetch_domains(*evidence[:3])
-        _assert_non_graphical_fetch_observation_projection(evidence)
+        _assert_non_graphical_fetch_observation_projection(
+            evidence,
+            seen=self.seen,
+        )
         _assert_non_graphical_fetch_observation_edges(
             self.non_graphical_fetch_state_values, self.edges
         )
@@ -2484,6 +2508,7 @@ class _Explorer:
             self.code_data_alias_transitions,
             self.code_data_alias_addresses,
             self.code_data_alias_state_values,
+            seen=self.seen,
         )
         ordered_addresses = tuple(sorted(self.accessed_addresses))
         highest_address = ordered_addresses[-1]
