@@ -897,13 +897,26 @@ class _WorklistModule(Protocol):
     def _assert_evolved_read_witness(
         self,
         evidence: tuple[
-            int,
-            dict[int, set[int]],
+            dict[_WorklistStateKey, tuple[int, int]],
             _WorklistEvolvedReadWitness | None,
+            bool,
+        ],
+        initial_memory: tuple[int, ...],
+        graph: tuple[
+            dict[_WorklistStateKey, set[_WorklistStateKey]],
+            set[_WorklistStateKey],
         ],
         *,
         label: str,
-        require_witness: bool,
+    ) -> None: ...
+
+    def _assert_evolved_read_witness_writer(
+        self,
+        witness: _WorklistEvolvedReadWitness,
+        initial_memory: tuple[int, ...],
+        path: tuple[_WorklistStateKey, ...],
+        *,
+        label: str,
     ) -> None: ...
 
     def _assert_code_data_alias_observations(
@@ -1113,6 +1126,10 @@ class _WorklistModule(Protocol):
     def _cycle_state_key(
         self, state: _WorklistCycleState
     ) -> _WorklistStateKey: ...
+
+    def _expanded_initial_memory(
+        self, words: tuple[int, ...]
+    ) -> tuple[int, ...]: ...
 
 
 def _load_worklist() -> _WorklistModule:
@@ -1815,19 +1832,106 @@ def test_evolved_read_observation_rejects_initial_value() -> None:
 
 def test_evolved_read_invariant_rejects_missing_witness() -> None:
     """Observed evolved reads cannot silently lose their first exact witness."""
+    observations = {
+        _GRAPH_KEY_A: (
+            _EVOLVED_DATA_READ_ADDRESS,
+            _EVOLVED_DATA_READ_OBSERVED_VALUE,
+        )
+    }
+    edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_A: set()
+    }
     with pytest.raises(AssertionError, match="witness presence"):
         worklist._assert_evolved_read_witness(
-            (
-                1,
-                {
-                    _EVOLVED_DATA_READ_ADDRESS: {
-                        _EVOLVED_DATA_READ_OBSERVED_VALUE
-                    }
-                },
-                None,
-            ),
+            (observations, None, True),
+            (0,),
+            (edges, {_GRAPH_KEY_A}),
             label="evolved data read",
-            require_witness=True,
+        )
+
+
+def test_evolved_read_witness_rejects_observation_drift() -> None:
+    """An evolved-read witness stays bound to its exact state/value pair."""
+    result = worklist.analyze_reachability(
+        _EVOLVED_FETCH_SOURCE, maximum_states=_EVOLVED_FETCH_STATE_LIMIT
+    )
+    witness = result.explored_evolved_fetch_witness
+    assert witness is not None
+    key = worklist._cycle_state_key(witness.state)
+    initial_memory = worklist._expanded_initial_memory(_EVOLVED_FETCH_SOURCE)
+    with pytest.raises(AssertionError, match="exact observation"):
+        worklist._assert_evolved_read_witness(
+            (
+                {key: (witness.address, witness.observed_value + 1)},
+                witness,
+                True,
+            ),
+            initial_memory,
+            ({key: {key}}, {key}),
+            label="evolved fetch",
+        )
+
+
+def test_evolved_read_witness_rejects_later_fifo_observation() -> None:
+    """A normal evolved-read witness must remain the first FIFO observation."""
+    result = worklist.analyze_reachability(
+        _EVOLVED_FETCH_SOURCE, maximum_states=_EVOLVED_FETCH_STATE_LIMIT
+    )
+    witness = result.explored_evolved_fetch_witness
+    assert witness is not None
+    key = worklist._cycle_state_key(witness.state)
+    earlier = worklist._cycle_state_key(witness.entry_path[0])
+    observations = {
+        earlier: (witness.address, witness.observed_value),
+        key: (witness.address, witness.observed_value),
+    }
+    with pytest.raises(AssertionError, match="first FIFO observation"):
+        worklist._assert_evolved_read_witness(
+            (observations, witness, True),
+            worklist._expanded_initial_memory(_EVOLVED_FETCH_SOURCE),
+            ({earlier: {key}, key: {key}}, {earlier, key}),
+            label="evolved fetch",
+        )
+
+
+def test_evolved_read_witness_rejects_stale_shortest_path() -> None:
+    """An evolved-read witness path stays canonical in the final graph."""
+    result = worklist.analyze_reachability(
+        _EVOLVED_FETCH_SOURCE, maximum_states=_EVOLVED_FETCH_STATE_LIMIT
+    )
+    witness = result.explored_evolved_fetch_witness
+    assert witness is not None
+    path = tuple(worklist._cycle_state_key(item) for item in witness.entry_path)
+    edges = {item: {path[index + 1]} for index, item in enumerate(path[:-1])}
+    edges[path[0]].add(path[-1])
+    edges[path[-1]] = {path[-1]}
+    with pytest.raises(AssertionError, match="exact shortest path"):
+        worklist._assert_evolved_read_witness(
+            (
+                {path[-1]: (witness.address, witness.observed_value)},
+                witness,
+                True,
+            ),
+            worklist._expanded_initial_memory(_EVOLVED_FETCH_SOURCE),
+            (edges, set(path)),
+            label="evolved fetch",
+        )
+
+
+def test_evolved_read_witness_rejects_writer_drift() -> None:
+    """An evolved-read witness retains the exact writer on its entry path."""
+    result = worklist.analyze_reachability(
+        _EVOLVED_FETCH_SOURCE, maximum_states=_EVOLVED_FETCH_STATE_LIMIT
+    )
+    witness = result.explored_evolved_fetch_witness
+    assert witness is not None
+    path = tuple(worklist._cycle_state_key(item) for item in witness.entry_path)
+    with pytest.raises(AssertionError, match="exact entry-path writer"):
+        worklist._assert_evolved_read_witness_writer(
+            witness,
+            worklist._expanded_initial_memory(_EVOLVED_FETCH_SOURCE),
+            (path[0], path[-1]),
+            label="evolved fetch",
         )
 
 

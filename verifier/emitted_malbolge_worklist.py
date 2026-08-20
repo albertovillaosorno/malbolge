@@ -1972,45 +1972,107 @@ def _assert_evolved_read_observation_evidence(
     )
 
 
-def _assert_evolved_read_witness_endpoint(
-    values: dict[int, set[int]],
+type _EvolvedReadWitnessEvidence = tuple[
+    dict[_StateKey, tuple[int, int]],
+    WorklistEvolvedReadWitness | None,
+    bool,
+]
+type _EvolvedReadWitnessBinding = tuple[
+    dict[_StateKey, tuple[int, int]],
+    WorklistEvolvedReadWitness,
+    tuple[int, ...],
+    bool,
+]
+
+
+def _assert_evolved_read_witness_writer(
     witness: WorklistEvolvedReadWitness,
+    initial_memory: tuple[int, ...],
+    path: tuple[_StateKey, ...],
     *,
     label: str,
 ) -> None:
-    if not witness.entry_path or witness.entry_path[-1] != witness.state:
-        message = f"{label} witness lost its exact entry endpoint"
-        raise AssertionError(message)
-    if witness.observed_value not in values.get(witness.address, set()):
-        message = f"{label} witness value is outside observed domains"
-        raise AssertionError(message)
-    if witness.initial_value == witness.observed_value:
-        message = f"{label} witness no longer differs from initial memory"
+    writer = _entry_path_last_writer(initial_memory, path, witness.address)
+    expected = (
+        witness.origin_kind,
+        witness.origin_entry_path_transition_index,
+        witness.origin_value,
+    )
+    if writer != expected:
+        message = f"{label} witness lost its exact entry-path writer"
         raise AssertionError(message)
     if witness.origin_value != witness.observed_value:
         message = f"{label} witness value disagrees with its exact writer"
         raise AssertionError(message)
 
 
-def _assert_evolved_read_witness(
-    evidence: tuple[
-        int,
-        dict[int, set[int]],
-        WorklistEvolvedReadWitness | None,
-    ],
+def _assert_evolved_read_witness_observation(
+    binding: _EvolvedReadWitnessBinding,
     *,
     label: str,
-    require_witness: bool,
 ) -> None:
-    transition_count, values, witness = evidence
-    if witness is not None and transition_count == 0:
-        message = f"{label} witness exists without evolved read evidence"
+    observations, witness, initial_memory, require_first = binding
+    key = _cycle_state_key(witness.state)
+    if require_first and key != next(iter(observations)):
+        message = f"{label} witness is not the first FIFO observation"
         raise AssertionError(message)
-    if require_witness and transition_count > 0 and witness is None:
+    expected_observation = (witness.address, witness.observed_value)
+    if observations.get(key) != expected_observation:
+        message = f"{label} witness lost its exact observation"
+        raise AssertionError(message)
+    if initial_memory[witness.address] != witness.initial_value:
+        message = f"{label} witness lost its exact initial value"
+        raise AssertionError(message)
+    if witness.initial_value == witness.observed_value:
+        message = f"{label} witness no longer differs from initial memory"
+        raise AssertionError(message)
+
+
+def _assert_evolved_read_witness_path(
+    witness: WorklistEvolvedReadWitness,
+    initial_memory: tuple[int, ...],
+    graph: _KnownGraph,
+    *,
+    label: str,
+) -> None:
+    edges, seen = graph
+    key = _cycle_state_key(witness.state)
+    path = _known_graph_shortest_path(
+        edges, seen, start=_INITIAL_STATE_KEY, target=key
+    )
+    if witness.entry_path != tuple(_cycle_state(item) for item in path):
+        message = f"{label} witness lost its exact shortest path"
+        raise AssertionError(message)
+    if not witness.entry_path or witness.entry_path[-1] != witness.state:
+        message = f"{label} witness lost its exact entry endpoint"
+        raise AssertionError(message)
+    _assert_evolved_read_witness_writer(
+        witness, initial_memory, path, label=label
+    )
+
+
+def _assert_evolved_read_witness(
+    evidence: _EvolvedReadWitnessEvidence,
+    initial_memory: tuple[int, ...],
+    graph: _KnownGraph,
+    *,
+    label: str,
+) -> None:
+    observations, witness, require_witness = evidence
+    if witness is not None and not observations:
+        message = f"{label} witness exists without exact evolved observations"
+        raise AssertionError(message)
+    if require_witness and observations and witness is None:
         message = f"{label} evidence disagrees with witness presence"
         raise AssertionError(message)
     if witness is not None:
-        _assert_evolved_read_witness_endpoint(values, witness, label=label)
+        _assert_evolved_read_witness_observation(
+            (observations, witness, initial_memory, require_witness),
+            label=label,
+        )
+        _assert_evolved_read_witness_path(
+            witness, initial_memory, graph, label=label
+        )
 
 
 def _data_mutation_observation_projection(
@@ -2718,12 +2780,13 @@ class _Explorer:
         )
         _assert_evolved_read_witness(
             (
-                self.evolved_fetch_transitions,
-                self.evolved_fetch_values,
+                self.evolved_fetch_state_values,
                 self.evolved_fetch_witness,
+                _INITIAL_STATE_KEY in self.seen,
             ),
+            self.initial_memory,
+            (self.edges, self.seen),
             label="evolved fetch",
-            require_witness=_INITIAL_STATE_KEY in self.seen,
         )
         _assert_initial_value_observations(
             (
@@ -2754,12 +2817,13 @@ class _Explorer:
         )
         _assert_evolved_read_witness(
             (
-                self.evolved_data_read_transitions,
-                self.evolved_data_read_values,
+                self.evolved_data_read_state_values,
                 self.evolved_data_read_witness,
+                _INITIAL_STATE_KEY in self.seen,
             ),
+            self.initial_memory,
+            (self.edges, self.seen),
             label="evolved data read",
-            require_witness=_INITIAL_STATE_KEY in self.seen,
         )
         _assert_initial_value_observations(
             (
