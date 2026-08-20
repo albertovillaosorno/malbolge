@@ -1121,6 +1121,29 @@ class _WorklistModule(Protocol):
         witnesses: _WrapWitnesses,
     ) -> None: ...
 
+    def _assert_wrap_observations(
+        self,
+        evidence: tuple[
+            _WrapCounts,
+            set[_WorklistWrapTransitionSignature],
+            dict[_WorklistStateKey, _WorklistWrapTransitionSignature],
+        ],
+        *,
+        seen: set[_WorklistStateKey],
+    ) -> None: ...
+
+    def _assert_wrap_witness_binding(
+        self,
+        binding: tuple[_WorklistWrapWitness | None, bool, bool, str],
+        observations: dict[
+            _WorklistStateKey, _WorklistWrapTransitionSignature
+        ],
+        graph: tuple[
+            dict[_WorklistStateKey, set[_WorklistStateKey]],
+            set[_WorklistStateKey],
+        ],
+    ) -> None: ...
+
     def _node_key(self, node: _ReachabilityNode) -> _WorklistStateKey: ...
 
     def _cycle_state_key(
@@ -3081,6 +3104,15 @@ def test_wrap_evidence_rejects_missing_class_witness() -> None:
         )
 
 
+def test_wrap_observation_invariant_rejects_count_state_drift() -> None:
+    """Wrap transition totals must equal the exact explored wrap states."""
+    with pytest.raises(AssertionError, match="exact observation states"):
+        worklist._assert_wrap_observations(
+            ((1, 0, 1, 0), set(), {}),
+            seen=set(),
+        )
+
+
 def test_explorer_counts_exact_pointer_wrap_transition() -> None:
     """A canonical near-boundary state records C/D wrap to zero."""
     snapshot = prefix_transfer.StateSnapshot(
@@ -3469,6 +3501,47 @@ def _assert_entry_data_mutation_evidence(result: _WorklistAnalysis) -> None:
     assert mutation.written_value == _ENTRY_MUTATION_RESULT_VALUE
     assert mutation.result_value == _ENTRY_MUTATION_RESULT_VALUE
     assert not mutation.aliases_self_encryption
+
+
+def test_wrap_witness_binding_rejects_later_fifo_observation() -> None:
+    """The generic wrap witness must remain the first exact FIFO event."""
+    result = worklist.analyze_reachability(
+        _ENTRY_WRAP_SOURCE,
+        maximum_states=_ENTRY_WRAP_WITNESS_STATE_LIMIT,
+    )
+    witness = result.explored_wraparound_witness
+    assert witness is not None
+    signature = result.explored_wraparound_transition_signatures[0]
+    key = worklist._cycle_state_key(witness.state)
+    earlier = (key[0], key[1], key[2] + 1, key[3], key[4])
+    observations = {earlier: signature, key: signature}
+    with pytest.raises(AssertionError, match="first FIFO observation"):
+        worklist._assert_wrap_witness_binding(
+            (witness, False, False, "pointer-wrap"),
+            observations,
+            ({earlier: set(), key: set()}, {earlier, key}),
+        )
+
+
+def test_wrap_witness_binding_rejects_stale_shortest_path() -> None:
+    """The first wrap witness path stays canonical in the final graph."""
+    result = worklist.analyze_reachability(
+        _ENTRY_WRAP_SOURCE,
+        maximum_states=_ENTRY_WRAP_WITNESS_STATE_LIMIT,
+    )
+    witness = result.explored_wraparound_witness
+    assert witness is not None
+    signature = result.explored_wraparound_transition_signatures[0]
+    path = tuple(worklist._cycle_state_key(item) for item in witness.entry_path)
+    edges = {item: {path[index + 1]} for index, item in enumerate(path[:-1])}
+    edges[path[0]].add(path[-1])
+    edges[path[-1]] = set()
+    with pytest.raises(AssertionError, match="exact shortest path"):
+        worklist._assert_wrap_witness_binding(
+            (witness, False, False, "pointer-wrap"),
+            {path[-1]: signature},
+            (edges, set(path)),
+        )
 
 
 def test_entry_reachable_wrap_publishes_exact_event_witness() -> None:

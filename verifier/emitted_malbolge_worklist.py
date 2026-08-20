@@ -1250,6 +1250,13 @@ type _WrapWitnesses = tuple[
     WorklistWrapWitness | None,
     WorklistWrapWitness | None,
 ]
+type _WrapObservations = dict[_StateKey, WorklistWrapTransitionSignature]
+type _WrapObservationEvidence = tuple[
+    _WrapCounts,
+    set[WorklistWrapTransitionSignature],
+    _WrapObservations,
+]
+type _WrapWitnessBinding = tuple[WorklistWrapWitness | None, bool, bool, str]
 
 
 type _WriteCounts = tuple[int, int, int, int, int]
@@ -1334,6 +1341,152 @@ def _assert_wrap_evidence_invariants(
             require_code_wrap=True,
             require_data_wrap=True,
         )
+
+
+def _assert_wrap_observation_signature(
+    key: _StateKey,
+    signature: WorklistWrapTransitionSignature,
+) -> None:
+    source_pointers = (
+        signature.source_code_pointer,
+        signature.source_data_pointer,
+    )
+    if source_pointers != key[:2]:
+        message = "pointer-wrap observation lost its exact source state"
+        raise AssertionError(message)
+    code_result_wrapped = signature.result_code_pointer == 0
+    data_result_wrapped = signature.result_data_pointer == 0
+    if (
+        code_result_wrapped != signature.code_pointer_wrapped
+        or data_result_wrapped != signature.data_pointer_wrapped
+    ):
+        message = "pointer-wrap observation flags disagree with result pointers"
+        raise AssertionError(message)
+    if (
+        not signature.code_pointer_wrapped
+        and not signature.data_pointer_wrapped
+    ):
+        message = "pointer-wrap observation lacks a wrapped pointer"
+        raise AssertionError(message)
+
+
+def _assert_wrap_observations(
+    evidence: _WrapObservationEvidence,
+    *,
+    seen: set[_StateKey],
+) -> None:
+    counts, signatures, observations = evidence
+    if counts[0] != len(observations):
+        message = "pointer-wrap count disagrees with exact observation states"
+        raise AssertionError(message)
+    _assert_known_observation_states(
+        set(observations), seen, label="pointer-wrap evidence"
+    )
+    for key, signature in observations.items():
+        _assert_wrap_observation_signature(key, signature)
+    observed_counts = (
+        len(observations),
+        sum(item.code_pointer_wrapped for item in observations.values()),
+        sum(item.data_pointer_wrapped for item in observations.values()),
+        sum(
+            item.code_pointer_wrapped and item.data_pointer_wrapped
+            for item in observations.values()
+        ),
+    )
+    if observed_counts != counts:
+        message = "pointer-wrap class counts disagree with exact observations"
+        raise AssertionError(message)
+    if set(observations.values()) != signatures:
+        message = "pointer-wrap signatures disagree with exact observations"
+        raise AssertionError(message)
+
+
+def _first_wrap_observation(
+    observations: _WrapObservations,
+    *,
+    require_code_wrap: bool = False,
+    require_data_wrap: bool = False,
+) -> tuple[_StateKey, WorklistWrapTransitionSignature] | None:
+    for key, signature in observations.items():
+        if require_code_wrap and not signature.code_pointer_wrapped:
+            continue
+        if require_data_wrap and not signature.data_pointer_wrapped:
+            continue
+        return key, signature
+    return None
+
+
+def _required_wrap_observation(
+    observations: _WrapObservations,
+    *,
+    require_code_wrap: bool,
+    require_data_wrap: bool,
+    label: str,
+) -> tuple[_StateKey, WorklistWrapTransitionSignature]:
+    expected = _first_wrap_observation(
+        observations,
+        require_code_wrap=require_code_wrap,
+        require_data_wrap=require_data_wrap,
+    )
+    if expected is None:
+        message = f"{label} witness has no exact observation"
+        raise AssertionError(message)
+    return expected
+
+
+def _assert_wrap_witness_binding(
+    binding: _WrapWitnessBinding,
+    observations: _WrapObservations,
+    graph: _KnownGraph,
+) -> None:
+    witness, require_code_wrap, require_data_wrap, label = binding
+    if witness is None:
+        return
+    key, signature = _required_wrap_observation(
+        observations,
+        require_code_wrap=require_code_wrap,
+        require_data_wrap=require_data_wrap,
+        label=label,
+    )
+    if _cycle_state_key(witness.state) != key:
+        message = f"{label} witness is not the first FIFO observation"
+        raise AssertionError(message)
+    if WorklistWrapTransitionSignature(
+        source_code_pointer=witness.state.code_pointer,
+        source_data_pointer=witness.state.data_pointer,
+        result_code_pointer=witness.result_code_pointer,
+        result_data_pointer=witness.result_data_pointer,
+        code_pointer_wrapped=witness.code_pointer_wrapped,
+        data_pointer_wrapped=witness.data_pointer_wrapped,
+    ) != signature:
+        message = f"{label} witness lost its exact transition signature"
+        raise AssertionError(message)
+    edges, seen = graph
+    expected_path = tuple(
+        _cycle_state(item)
+        for item in _known_graph_shortest_path(
+            edges, seen, start=_INITIAL_STATE_KEY, target=key
+        )
+    )
+    if witness.entry_path != expected_path:
+        message = f"{label} witness lost its exact shortest path"
+        raise AssertionError(message)
+
+
+def _assert_wrap_witness_bindings(
+    witnesses: _WrapWitnesses,
+    observations: _WrapObservations,
+    graph: _KnownGraph,
+) -> None:
+    generic, code, data, simultaneous = witnesses
+    bindings: tuple[_WrapWitnessBinding, ...] = (
+        (generic, False, False, "pointer-wrap"),
+        (code, True, False, "code-pointer wrap"),
+        (data, False, True, "data-pointer wrap"),
+        (simultaneous, True, True, "simultaneous pointer-wrap"),
+    )
+    for binding in bindings:
+        _assert_wrap_witness_binding(binding, observations, graph)
 
 
 def _committed_data_mutation(
@@ -2696,6 +2849,7 @@ class _Explorer:
     wraparound_transition_signatures: set[
         WorklistWrapTransitionSignature
     ] = field(default_factory=set)
+    wraparound_state_signatures: _WrapObservations = field(default_factory=dict)
     wraparound_witness: WorklistWrapWitness | None = None
     code_pointer_wrap_witness: WorklistWrapWitness | None = None
     data_pointer_wrap_witness: WorklistWrapWitness | None = None
@@ -3014,6 +3168,34 @@ class _Explorer:
             (self.edges, self.seen),
         )
 
+    def _assert_wrap_result_evidence(self) -> None:
+        wrap_counts = (
+            self.wraparound_transitions,
+            self.code_pointer_wrap_transitions,
+            self.data_pointer_wrap_transitions,
+            self.simultaneous_pointer_wrap_transitions,
+        )
+        wrap_witnesses = (
+            self.wraparound_witness,
+            self.code_pointer_wrap_witness,
+            self.data_pointer_wrap_witness,
+            self.simultaneous_pointer_wrap_witness,
+        )
+        _assert_wrap_evidence_invariants(wrap_counts, wrap_witnesses)
+        _assert_wrap_observations(
+            (
+                wrap_counts,
+                self.wraparound_transition_signatures,
+                self.wraparound_state_signatures,
+            ),
+            seen=self.seen,
+        )
+        _assert_wrap_witness_bindings(
+            wrap_witnesses,
+            self.wraparound_state_signatures,
+            (self.edges, self.seen),
+        )
+
     def result(
         self,
         *,
@@ -3092,20 +3274,7 @@ class _Explorer:
         self._assert_read_partition_invariants()
         self._assert_write_evidence_invariants()
         self._assert_non_graphical_fetch_evidence()
-        _assert_wrap_evidence_invariants(
-            (
-                self.wraparound_transitions,
-                self.code_pointer_wrap_transitions,
-                self.data_pointer_wrap_transitions,
-                self.simultaneous_pointer_wrap_transitions,
-            ),
-            (
-                self.wraparound_witness,
-                self.code_pointer_wrap_witness,
-                self.data_pointer_wrap_witness,
-                self.simultaneous_pointer_wrap_witness,
-            ),
-        )
+        self._assert_wrap_result_evidence()
         return WorklistAnalysis(
             state_limit=self.state_limit,
             unique_states=len(self.seen),
@@ -3704,22 +3873,25 @@ class _Explorer:
             code_wrapped=code_wrapped,
             data_wrapped=data_wrapped,
         )
-        self.wraparound_transition_signatures.add(
-            WorklistWrapTransitionSignature(
-                source_code_pointer=node.snapshot.code_pointer,
-                source_data_pointer=node.snapshot.data_pointer,
-                result_code_pointer=result_code,
-                result_data_pointer=result_data,
-                code_pointer_wrapped=code_wrapped,
-                data_pointer_wrapped=data_wrapped,
-            )
+        key = _node_key(node)
+        if key in self.wraparound_state_signatures:
+            message = "pointer-wrap state was explored more than once"
+            raise AssertionError(message)
+        signature = WorklistWrapTransitionSignature(
+            source_code_pointer=node.snapshot.code_pointer,
+            source_data_pointer=node.snapshot.data_pointer,
+            result_code_pointer=result_code,
+            result_data_pointer=result_data,
+            code_pointer_wrapped=code_wrapped,
+            data_pointer_wrapped=data_wrapped,
         )
+        self.wraparound_transition_signatures.add(signature)
+        self.wraparound_state_signatures[key] = signature
         if not self._wrap_witness_needed(
             code_wrapped=code_wrapped,
             data_wrapped=data_wrapped,
         ):
             return
-        key = _node_key(node)
         path = _known_graph_shortest_path(
             self.edges,
             self.seen,
