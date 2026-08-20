@@ -2719,6 +2719,35 @@ def test_alias_witness_invariant_rejects_missing_address_witness() -> None:
         )
 
 
+def test_alias_witness_invariant_rejects_later_fifo_observation() -> None:
+    """Each alias-address witness stays bound to its first FIFO state."""
+    result = worklist.analyze_reachability(
+        _INPUT_HALT_SOURCE,
+        maximum_states=_FULL_STATE_LIMIT,
+    )
+    witness = next(
+        item for item in result.explored_code_data_alias_witnesses
+        if item.address == 1
+    )
+    key = worklist._cycle_state_key(witness.state)
+    earlier = (key[0], key[1], key[2] + 1, key[3], key[4])
+    path = tuple(worklist._cycle_state_key(item) for item in witness.entry_path)
+    edges = {item: {path[index + 1]} for index, item in enumerate(path[:-1])}
+    edges[path[0]].add(earlier)
+    edges[path[-1]] = set()
+    edges[earlier] = set()
+    with pytest.raises(AssertionError, match="first FIFO observation"):
+        worklist._assert_code_data_alias_witnesses(
+            (
+                {witness.address},
+                {earlier: witness.memory_value, key: witness.memory_value},
+                {witness.address: witness},
+            ),
+            edges,
+            set(edges),
+        )
+
+
 def test_write_witness_invariant_rejects_missing_representative() -> None:
     """Exact write observations must retain their representative witness."""
     with pytest.raises(AssertionError, match="representative witness"):

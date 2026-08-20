@@ -1577,6 +1577,20 @@ def _assert_code_data_alias_witness(
     if observations.get(key) != witness.memory_value:
         message = "code/data alias witness lost its exact observation"
         raise AssertionError(message)
+    first_key = next(
+        (
+            observed_key
+            for observed_key in observations
+            if observed_key[0] == address and observed_key[1] == address
+        ),
+        None,
+    )
+    if key != first_key:
+        message = (
+            "code/data alias witness is not the first FIFO observation "
+            "for its address"
+        )
+        raise AssertionError(message)
     expected_path = tuple(
         _cycle_state(item)
         for item in _known_graph_shortest_path(
