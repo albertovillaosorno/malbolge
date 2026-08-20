@@ -884,6 +884,26 @@ def _reconstruct_known_path(
     return tuple(reversed(reverse_path))
 
 
+def _known_graph_shortest_path_parents(
+    edges: dict[_StateKey, set[_StateKey]],
+    nodes: set[_StateKey],
+    *,
+    start: _StateKey,
+) -> dict[_StateKey, _StateKey | None]:
+    if start not in nodes:
+        return {}
+    parents: dict[_StateKey, _StateKey | None] = {start: None}
+    queue = deque((start,))
+    while queue:
+        source = queue.popleft()
+        for successor in _known_targets(source, edges, nodes):
+            if successor in parents:
+                continue
+            parents[successor] = source
+            queue.append(successor)
+    return parents
+
+
 def _known_graph_shortest_path(
     edges: dict[_StateKey, set[_StateKey]],
     nodes: set[_StateKey],
@@ -2482,6 +2502,12 @@ def _assert_repeated_edge_witness_presence(
         raise AssertionError(message)
 
 
+type _RepeatedEdgeObservation = tuple[_StateKey, _StateKey]
+type _RepeatedEdgeObservationEvidence = tuple[
+    int,
+    tuple[_RepeatedEdgeObservation, ...],
+    _RepeatedEdgeObservation | None,
+]
 type _RepeatedEdgeBinding = tuple[
     _StateKey,
     _StateKey,
@@ -2489,7 +2515,7 @@ type _RepeatedEdgeBinding = tuple[
 ]
 
 
-def _assert_repeated_edge_graph_binding(
+def _assert_repeated_edge_graph_class(
     binding: _RepeatedEdgeBinding,
     graph: _KnownGraph,
     *,
@@ -2504,22 +2530,41 @@ def _assert_repeated_edge_graph_binding(
     if target_key not in edges.get(source_key, set()):
         message = f"{label} witness lost its exact repeated graph edge"
         raise AssertionError(message)
-    expected_source_path = _known_graph_shortest_path(
-        edges, seen, start=_INITIAL_STATE_KEY, target=source_key
-    )
-    if source_path != expected_source_path:
-        message = f"{label} witness lost its exact shortest source path"
-        raise AssertionError(message)
     target_on_source_path = target_key in source_path
     if target_on_source_path != cycle_closing:
         message = f"{label} witness disagrees with its repeated-edge class"
         raise AssertionError(message)
 
 
+def _assert_repeated_edge_graph_binding(
+    binding: _RepeatedEdgeBinding,
+    graph: _KnownGraph,
+    *,
+    cycle_closing: bool,
+    label: str,
+) -> None:
+    source_key, _, source_path = binding
+    edges, seen = graph
+    expected_source_path = _known_graph_shortest_path(
+        edges, seen, start=_INITIAL_STATE_KEY, target=source_key
+    )
+    if source_path != expected_source_path:
+        message = f"{label} witness lost its exact shortest source path"
+        raise AssertionError(message)
+    _assert_repeated_edge_graph_class(
+        binding,
+        graph,
+        cycle_closing=cycle_closing,
+        label=label,
+    )
+
+
 type _RepeatedEdgeWitnessEvidence = tuple[
     int,
+    tuple[_RepeatedEdgeObservation, ...],
     WorklistStateMergeWitness | None,
     int,
+    tuple[_RepeatedEdgeObservation, ...],
     WorklistCycleClosingRepeatedEdgeWitness | None,
 ]
 
@@ -2579,12 +2624,51 @@ def _assert_cycle_closing_repeated_edge_witness(
         raise AssertionError(message)
 
 
+def _assert_repeated_edge_observations(
+    evidence: _RepeatedEdgeObservationEvidence,
+    graph: _KnownGraph,
+    *,
+    cycle_closing: bool,
+    label: str,
+) -> None:
+    count, observations, witness_edge = evidence
+    if len(observations) != count:
+        message = f"{label} count disagrees with exact repeated-edge events"
+        raise AssertionError(message)
+    parents = _known_graph_shortest_path_parents(
+        graph[0], graph[1], start=_INITIAL_STATE_KEY
+    )
+    source_paths: dict[_StateKey, tuple[_StateKey, ...]] = {}
+    for source_key, target_key in observations:
+        source_path = source_paths.get(source_key)
+        if source_path is None:
+            source_path = _reconstruct_known_path(parents, source_key)
+            source_paths[source_key] = source_path
+        _assert_repeated_edge_graph_class(
+            (source_key, target_key, source_path),
+            graph,
+            cycle_closing=cycle_closing,
+            label=label,
+        )
+    first_event = observations[0] if observations else None
+    if witness_edge != first_event:
+        message = f"{label} witness is not the first FIFO repeated edge"
+        raise AssertionError(message)
+
+
 def _assert_repeated_edge_witnesses(
     evidence: _RepeatedEdgeWitnessEvidence,
     edges: dict[_StateKey, set[_StateKey]],
     seen: set[_StateKey],
 ) -> None:
-    merge_count, merge_witness, cycle_count, cycle_witness = evidence
+    (
+        merge_count,
+        merge_observations,
+        merge_witness,
+        cycle_count,
+        cycle_observations,
+        cycle_witness,
+    ) = evidence
     _assert_repeated_edge_witness_presence(
         merge_count, merge_witness, label="state-merge repeated edge"
     )
@@ -2592,6 +2676,34 @@ def _assert_repeated_edge_witnesses(
         cycle_count, cycle_witness, label="cycle-closing repeated edge"
     )
     graph = (edges, seen)
+    merge_edge = (
+        None
+        if merge_witness is None
+        else (
+            _cycle_state_key(merge_witness.source_state),
+            _cycle_state_key(merge_witness.target_state),
+        )
+    )
+    cycle_edge = (
+        None
+        if cycle_witness is None
+        else (
+            _cycle_state_key(cycle_witness.source_state),
+            _cycle_state_key(cycle_witness.target_state),
+        )
+    )
+    _assert_repeated_edge_observations(
+        (merge_count, merge_observations, merge_edge),
+        graph,
+        cycle_closing=False,
+        label="state-merge repeated edge",
+    )
+    _assert_repeated_edge_observations(
+        (cycle_count, cycle_observations, cycle_edge),
+        graph,
+        cycle_closing=True,
+        label="cycle-closing repeated edge",
+    )
     _assert_state_merge_witness(merge_witness, graph)
     _assert_cycle_closing_repeated_edge_witness(cycle_witness, graph)
 
@@ -2926,7 +3038,13 @@ class _Explorer:
     evolved_data_read_transitions: int = 0
     repeated_edges: int = 0
     state_merge_transitions: int = 0
+    state_merge_observations: list[_RepeatedEdgeObservation] = field(
+        default_factory=list
+    )
     cycle_closing_repeated_edges: int = 0
+    cycle_closing_repeated_edge_observations: list[
+        _RepeatedEdgeObservation
+    ] = field(default_factory=list)
     cycle_closing_repeated_edge_witness: (
         WorklistCycleClosingRepeatedEdgeWitness | None
     ) = None
@@ -3820,6 +3938,9 @@ class _Explorer:
             target=source_key,
         )
         if target_key in source_path:
+            self.cycle_closing_repeated_edge_observations.append(
+                (source_key, target_key)
+            )
             self.cycle_closing_repeated_edges += 1
             if self.cycle_closing_repeated_edge_witness is None:
                 target_index = source_path.index(target_key)
@@ -3834,6 +3955,7 @@ class _Explorer:
                     )
                 )
             return
+        self.state_merge_observations.append((source_key, target_key))
         self.state_merge_transitions += 1
         if self.state_merge_witness is not None:
             return
@@ -4536,8 +4658,10 @@ def analyze_reachability(
     _assert_repeated_edge_witnesses(
         (
             explorer.state_merge_transitions,
+            tuple(explorer.state_merge_observations),
             explorer.state_merge_witness,
             explorer.cycle_closing_repeated_edges,
+            tuple(explorer.cycle_closing_repeated_edge_observations),
             explorer.cycle_closing_repeated_edge_witness,
         ),
         explorer.edges,

@@ -431,10 +431,18 @@ class _WorklistStateMergeWitness(Protocol):
     existing_target_entry_path: tuple[_WorklistCycleState, ...]
 
 
+type _RepeatedEdgeObservation = tuple[_WorklistStateKey, _WorklistStateKey]
+type _RepeatedEdgeObservationEvidence = tuple[
+    int,
+    tuple[_RepeatedEdgeObservation, ...],
+    _RepeatedEdgeObservation | None,
+]
 type _RepeatedEdgeWitnessEvidence = tuple[
     int,
+    tuple[_RepeatedEdgeObservation, ...],
     _WorklistStateMergeWitness | None,
     int,
+    tuple[_RepeatedEdgeObservation, ...],
     _WorklistCycleClosingRepeatedEdgeWitness | None,
 ]
 
@@ -1067,6 +1075,18 @@ class _WorklistModule(Protocol):
             _WorklistStateKey,
             tuple[_WorklistStateKey, ...],
         ],
+        graph: tuple[
+            dict[_WorklistStateKey, set[_WorklistStateKey]],
+            set[_WorklistStateKey],
+        ],
+        *,
+        cycle_closing: bool,
+        label: str,
+    ) -> None: ...
+
+    def _assert_repeated_edge_observations(
+        self,
+        evidence: _RepeatedEdgeObservationEvidence,
         graph: tuple[
             dict[_WorklistStateKey, set[_WorklistStateKey]],
             set[_WorklistStateKey],
@@ -1989,9 +2009,47 @@ def test_repeated_edge_witness_invariant_rejects_missing_merge() -> None:
     """Observed repeated-edge classes must retain representative witnesses."""
     with pytest.raises(AssertionError, match="lost their representative"):
         worklist._assert_repeated_edge_witnesses(
-            (1, None, 0, None),
-            {_GRAPH_KEY_A: set()},
+            (1, ((_GRAPH_KEY_A, _GRAPH_KEY_A),), None, 0, (), None),
+            {_GRAPH_KEY_A: {_GRAPH_KEY_A}},
             {_GRAPH_KEY_A},
+        )
+
+
+def test_repeated_edge_observation_invariant_rejects_count_drift() -> None:
+    """Repeated-edge class counts must equal retained exact events."""
+    with pytest.raises(AssertionError, match="exact repeated-edge events"):
+        worklist._assert_repeated_edge_observations(
+            (
+                2,
+                ((_GRAPH_KEY_A, _GRAPH_KEY_A),),
+                (_GRAPH_KEY_A, _GRAPH_KEY_A),
+            ),
+            ({_GRAPH_KEY_A: {_GRAPH_KEY_A}}, {_GRAPH_KEY_A}),
+            cycle_closing=True,
+            label="cycle-closing repeated edge",
+        )
+
+
+def test_repeated_edge_observation_invariant_rejects_later_witness() -> None:
+    """A repeated-edge representative must remain the first FIFO event."""
+    edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B, _GRAPH_KEY_C},
+        _GRAPH_KEY_B: set(),
+        _GRAPH_KEY_C: set(),
+    }
+    with pytest.raises(AssertionError, match="first FIFO repeated edge"):
+        worklist._assert_repeated_edge_observations(
+            (
+                2,
+                (
+                    (_GRAPH_KEY_A, _GRAPH_KEY_B),
+                    (_GRAPH_KEY_A, _GRAPH_KEY_C),
+                ),
+                (_GRAPH_KEY_A, _GRAPH_KEY_C),
+            ),
+            (edges, {_GRAPH_KEY_A, _GRAPH_KEY_B, _GRAPH_KEY_C}),
+            cycle_closing=False,
+            label="state-merge repeated edge",
         )
 
 
