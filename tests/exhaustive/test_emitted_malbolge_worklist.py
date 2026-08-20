@@ -2422,6 +2422,15 @@ def test_known_graph_integrity_rejects_unadmitted_edge_target() -> None:
         )
 
 
+def test_known_graph_integrity_rejects_unreachable_admitted_node() -> None:
+    """Every admitted graph state must remain reachable from entry."""
+    with pytest.raises(AssertionError, match="unreachable admitted"):
+        worklist._assert_known_graph_integrity(
+            {_GRAPH_KEY_A: set(), _GRAPH_KEY_B: set()},
+            {_GRAPH_KEY_A, _GRAPH_KEY_B},
+        )
+
+
 def test_worklist_state_partition_rejects_unaccounted_admission() -> None:
     """Admitted states must equal explored plus pending queue states."""
     with pytest.raises(AssertionError, match="do not partition"):

@@ -633,6 +633,14 @@ def _assert_known_graph_integrity(
     ):
         message = "known graph edge targets an unadmitted state"
         raise AssertionError(message)
+    reachable = set(
+        _known_graph_shortest_distances(
+            edges, nodes, start=_INITIAL_STATE_KEY
+        )
+    )
+    if reachable != nodes:
+        message = "known graph retained an unreachable admitted state"
+        raise AssertionError(message)
 
 
 def _known_targets(
