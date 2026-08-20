@@ -77,6 +77,11 @@ type _ReadValueDomainEvidence = tuple[
     dict[int, set[int]],
     _ReadObservationPartition,
 ]
+type _PlannedDataWriteSemanticEvidence = tuple[
+    _ReadObservationPartition,
+    _ReadObservationPartition,
+    dict[_WorklistStateKey, tuple[int, int]],
+]
 type _FetchDerivedStateEvidence = tuple[
     _ReadObservationPartition,
     _ReadObservationPartition,
@@ -906,6 +911,11 @@ class _WorklistModule(Protocol):
             dict[_WorklistStateKey, tuple[int, int]],
             set[_WorklistStateKey],
         ],
+    ) -> None: ...
+
+    def _assert_planned_data_write_semantics(
+        self,
+        evidence: _PlannedDataWriteSemanticEvidence,
     ) -> None: ...
 
     def _assert_committed_data_write_state_partition(
@@ -2100,6 +2110,30 @@ def test_planned_write_observation_invariant_rejects_count_drift() -> None:
         worklist._assert_planned_data_write_observations(
             (1, {0}, {0: {1}}, {}, {_GRAPH_KEY_A})
         )
+
+
+def test_planned_write_semantics_rejects_crazy_value_drift() -> None:
+    """A p plan must equal crazy(D-value, A) for the exact source state."""
+    state: _WorklistStateKey = (0, 1, 7, (), False)
+    evidence: _PlannedDataWriteSemanticEvidence = (
+        ({state: (0, 62)}, {}),
+        ({state: (1, 5)}, {}),
+        {state: (1, 999)},
+    )
+    with pytest.raises(AssertionError, match="exact semantics"):
+        worklist._assert_planned_data_write_semantics(evidence)
+
+
+def test_planned_write_semantics_rejects_missing_rotate_state() -> None:
+    """Every decoded rotate state must retain its exact planned D write."""
+    state: _WorklistStateKey = (0, 1, 0, (), False)
+    evidence: _PlannedDataWriteSemanticEvidence = (
+        ({state: (0, 39)}, {}),
+        ({state: (1, 5)}, {}),
+        {},
+    )
+    with pytest.raises(AssertionError, match="exact semantics"):
+        worklist._assert_planned_data_write_semantics(evidence)
 
 
 def test_changed_encryption_observation_rejects_count_drift() -> None:

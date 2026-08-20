@@ -54,6 +54,7 @@ _INPUT_OPCODE: Final = ord("/")
 _HALT_OPCODE: Final = ord("v")
 _INPUT_BYTES: Final = tuple(range(256))
 _DATA_READING_INSTRUCTIONS: Final = frozenset(b"ji*p")
+_DATA_WRITE_INSTRUCTIONS: Final = frozenset(b"*p")
 _EOF_ACCUMULATOR: Final = classic.PROFILE_MEMORY_WORDS - 1
 _HALTED_STATUS: Final = "halted"
 _RECURRENCE_BASE_WORDS: Final = 2
@@ -2350,6 +2351,52 @@ def _merged_read_observations(
     return initial | changed
 
 
+type _PlannedDataWriteSemanticEvidence = tuple[
+    _ReadObservationPartition,
+    _ReadObservationPartition,
+    dict[_StateKey, tuple[int, int]],
+]
+
+
+def _planned_data_write_semantic_projection(
+    fetch_partition: _ReadObservationPartition,
+    data_read_partition: _ReadObservationPartition,
+) -> dict[_StateKey, tuple[int, int]]:
+    fetches = _merged_read_observations(fetch_partition)
+    data_reads = _merged_read_observations(data_read_partition)
+    projected: dict[_StateKey, tuple[int, int]] = {}
+    for state, (fetch_address, fetch_value) in fetches.items():
+        decoded = classic.decode(fetch_value, fetch_address)
+        if decoded not in _DATA_WRITE_INSTRUCTIONS:
+            continue
+        data_observation = data_reads.get(state)
+        if data_observation is None:
+            message = "planned data-write source lacks an exact data read"
+            raise AssertionError(message)
+        data_address, data_value = data_observation
+        planned_value = (
+            classic.rotate(data_value)
+            if decoded == ord("*")
+            else classic.crazy(data_value, state[2])
+        )
+        projected[state] = (data_address, planned_value)
+    return projected
+
+
+def _assert_planned_data_write_semantics(
+    evidence: _PlannedDataWriteSemanticEvidence,
+) -> None:
+    fetch_partition, data_read_partition, observations = evidence
+    expected = _planned_data_write_semantic_projection(
+        fetch_partition, data_read_partition
+    )
+    if observations != expected:
+        message = (
+            "planned data-write observations disagree with exact semantics"
+        )
+        raise AssertionError(message)
+
+
 type _FetchDerivedStateEvidence = tuple[
     _ReadObservationPartition,
     _ReadObservationPartition,
@@ -3653,6 +3700,19 @@ class _Explorer:
                 self.planned_data_write_values,
                 self.planned_data_write_state_values,
                 self.explored_state_keys,
+            )
+        )
+        _assert_planned_data_write_semantics(
+            (
+                (
+                    self.initial_value_fetch_state_values,
+                    self.evolved_fetch_state_values,
+                ),
+                (
+                    self.initial_value_data_read_state_values,
+                    self.evolved_data_read_state_values,
+                ),
+                self.planned_data_write_state_values,
             )
         )
         _assert_observed_value_domains(
