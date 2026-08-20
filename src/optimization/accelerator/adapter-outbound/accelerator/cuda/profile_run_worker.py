@@ -50,6 +50,7 @@ from accelerator.profile_run import ProfileRunRequest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import BinaryIO
 
     from accelerator.profile_run import ProfileRunResult
 
@@ -67,28 +68,28 @@ class ProfileRunProtocolError(ValueError):
 
 @dataclass(slots=True)
 class _BinaryReader:
-    data: memoryview
-    offset: int = 0
+    stream: BinaryIO
 
     def finish(self) -> None:
-        if self.offset != len(self.data):
+        if self.stream.read(1):
             message = "trailing scalable resident protocol bytes"
             raise ProfileRunProtocolError(message)
 
-    def take(self, byte_count: int) -> memoryview:
-        end = self.offset + byte_count
-        if end > len(self.data):
-            message = "truncated scalable resident protocol payload"
-            raise ProfileRunProtocolError(message)
-        value = self.data[self.offset : end]
-        self.offset = end
+    def take(self, byte_count: int) -> bytearray:
+        value = bytearray()
+        while len(value) < byte_count:
+            chunk = self.stream.read(byte_count - len(value))
+            if not chunk:
+                message = "truncated scalable resident protocol payload"
+                raise ProfileRunProtocolError(message)
+            value.extend(chunk)
         return value
 
     def u32(self) -> int:
         return int.from_bytes(self.take(U32_BYTES), LITTLE_ENDIAN)
 
     def words(self, count: int) -> array[int]:
-        return _words_from_view(self.take(count * U32_BYTES), count)
+        return _words_from_bytes(self.take(count * U32_BYTES), count)
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,7 +132,7 @@ def main() -> int:
 
     """
     try:
-        geometry, requests = _parse_requests(sys.stdin.buffer.read())
+        geometry, requests = parse_requests(sys.stdin.buffer)
         with CudaProfileRunAdapter(geometry) as adapter:
             results = adapter.evaluate(requests)
     except AcceleratorUnavailableError as error:
@@ -153,10 +154,19 @@ def main() -> int:
     return 0
 
 
-def _parse_requests(
-    data: bytes,
+def parse_requests(
+    stream: BinaryIO,
 ) -> tuple[ProfileRunGeometry, tuple[ProfileRunRequest, ...]]:
-    reader = _BinaryReader(memoryview(data))
+    """Decode one complete worker request stream without aggregate buffering.
+
+    Returns:
+        Validated geometry and decoded requests in protocol order.
+
+    Raises:
+        ProfileRunProtocolError: If framing or payload data is malformed.
+
+    """
+    reader = _BinaryReader(stream)
     if bytes(reader.take(len(MAGIC))) != MAGIC:
         message = "invalid scalable resident protocol magic"
         raise ProfileRunProtocolError(message)
@@ -228,12 +238,11 @@ def _write_result(
 
 
 def _u32_bytes(*values: int) -> bytes:
-    return b"".join(
-        value.to_bytes(U32_BYTES, LITTLE_ENDIAN) for value in values
-    )
+    encoded = (value.to_bytes(U32_BYTES, LITTLE_ENDIAN) for value in values)
+    return b"".join(encoded)
 
 
-def _words_from_view(data: memoryview, count: int) -> array[int]:
+def _words_from_bytes(data: bytearray, count: int) -> array[int]:
     expected = count * U32_BYTES
     if len(data) != expected:
         message = "scalable resident word payload has wrong width"

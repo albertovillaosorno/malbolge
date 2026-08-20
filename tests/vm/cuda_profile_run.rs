@@ -51,8 +51,8 @@ use malbolge::{
 };
 
 use crate::{
-    TestResult, accelerator_python_path, check_equal, normalize_result,
-    validation_python,
+    TestResult, accelerator_python_path, check_equal, cuda_test_guard,
+    normalize_result, validation_python,
 };
 
 const MAGIC: &[u8; 8] = b"MBPRN2\0\0";
@@ -183,11 +183,11 @@ fn cuda_resident_current_profile_matches_complete_normative_states()
     let fixtures = fixtures()?;
     let request = encode_batch(&fixtures)?;
     let expected = fixtures
-        .iter()
-        .cloned()
+        .into_iter()
         .map(oracle_run)
         .collect::<TestResult<Vec<_>>>()?;
-    let Some(observed) = run_cuda_worker(&request)? else {
+    let _cuda_guard = cuda_test_guard()?;
+    let Some(observed) = run_cuda_worker(request)? else {
         return Ok(());
     };
     compare_batches(&observed, &expected)
@@ -197,6 +197,7 @@ fn cuda_resident_current_profile_matches_complete_normative_states()
 fn cuda_current_profile_routes_through_product_batch_port() -> TestResult {
     let requests = product_profile_requests()?;
     let expected = execute_profile_batch(requests.clone());
+    let _cuda_guard = cuda_test_guard()?;
     let mut backend = CudaProfileProductBackend::new();
     let (observed, report) =
         execute_profile_batch_with_backend_report(requests, &mut backend);
@@ -241,7 +242,7 @@ fn try_cuda_profile_product_batch(
         return Ok(Some(repeat_n(None, requests.len()).collect()));
     }
     let encoded = encode_profile_product_batch(requests)?;
-    let Some(snapshots) = run_cuda_worker(&encoded)? else {
+    let Some(snapshots) = run_cuda_worker(encoded)? else {
         return Ok(None);
     };
     check_equal(
@@ -650,7 +651,7 @@ fn encode_request(bytes: &mut Vec<u8>, fixture: &RunFixture) -> TestResult {
     Ok(())
 }
 
-fn run_cuda_worker(request: &[u8]) -> TestResult<WorkerBatch> {
+fn run_cuda_worker(request: Vec<u8>) -> TestResult<WorkerBatch> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let python = validation_python(root);
     let mut child = Command::new(&python)
@@ -667,8 +668,9 @@ fn run_cuda_worker(request: &[u8]) -> TestResult<WorkerBatch> {
         .take()
         .ok_or_else(|| String::from("profile CUDA worker stdin unavailable"))?;
     stdin
-        .write_all(request)
+        .write_all(&request)
         .map_err(|error| format!("profile CUDA worker stdin: {error}"))?;
+    drop(request);
     drop(stdin);
     let output = child
         .wait_with_output()

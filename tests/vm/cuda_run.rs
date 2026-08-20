@@ -50,8 +50,8 @@ use malbolge::{
 };
 
 use crate::{
-    TestResult, accelerator_python_path, check_equal, normalize_result,
-    validation_python,
+    TestResult, accelerator_python_path, check_equal, cuda_test_guard,
+    normalize_result, validation_python,
 };
 
 const MAGIC: &[u8; 8] = b"MBRUN1\0\0";
@@ -184,6 +184,7 @@ fn cuda_resident_classic_runs_match_complete_interpreter_states() -> TestResult
         .cloned()
         .map(oracle_run)
         .collect::<TestResult<Vec<_>>>()?;
+    let _cuda_guard = cuda_test_guard()?;
     let Some(observed) = run_cuda_worker(&request)? else {
         return Ok(());
     };
@@ -194,6 +195,7 @@ fn cuda_resident_classic_runs_match_complete_interpreter_states() -> TestResult
 fn cuda_classic_routes_through_product_batch_port() -> TestResult {
     let requests = product_batch_requests()?;
     let expected = execute_batch(requests.clone());
+    let _cuda_guard = cuda_test_guard()?;
     let mut backend = CudaProductBackend::new();
     let (observed, report) =
         execute_batch_with_backend_report(requests, &mut backend);

@@ -46,8 +46,8 @@ use malbolge::{
 };
 
 use crate::{
-    TestResult, accelerator_python_path, check_equal, normalize_result,
-    validation_python,
+    TestResult, accelerator_python_path, check_equal, cuda_test_guard,
+    normalize_result, validation_python,
 };
 
 const PROTOCOL: &str = "MBSTEP1";
@@ -76,6 +76,7 @@ struct ProtocolRequest {
 fn cuda_compact_classic_steps_match_interpreter_rust_traces() -> TestResult {
     let mut fixtures = fixtures()?;
     let (request_text, expected) = oracle_batch(&mut fixtures)?;
+    let _cuda_guard = cuda_test_guard()?;
     let Some(observed) = run_cuda_worker(&request_text)? else {
         return Ok(());
     };

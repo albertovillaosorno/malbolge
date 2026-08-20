@@ -9,25 +9,26 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Cargo composition for VM integration-test modules.
+//   - Cargo composition and shared resource guards for VM integration tests.
 // - Must-Not:
 //   - Contain VM behavior assertions or duplicate conformance fixtures.
 // - Allows:
 //   - Inputs: package-local VM test modules.
 //   - Outputs: one Cargo-discoverable VM integration-test target.
-//   - Side effects: test module composition only.
+//   - Side effects: module composition and process-local test synchronization.
 // - Split-When:
 //   - Split when another test responsibility requires its own Cargo target.
 // - Merge-When:
 //   - Merge when VM conformance no longer needs nested test organization.
 // - Summary:
-//   - Thin Cargo composition root for VM integration tests.
+//   - Cargo composition root plus shared test-resource synchronization.
 // - Description:
-//   - Keeps Cargo target discovery separate from responsibility-oriented tests.
+//   - Keeps Cargo discovery and cross-module resource guards outside VM
+//     behavior.
 // - Usage:
 //   - Auto-discovered by Cargo and delegates executable tests to `tests/vm/`.
 // - Defaults:
-//   - Contains no executable test logic of its own.
+//   - Contains no VM behavior assertions; CUDA tests share one process mutex.
 //
 
 //! Cargo composition root for VM integration tests.
@@ -95,8 +96,17 @@ use std::env::join_paths;
 use std::ffi::OsString;
 use std::fmt::{Debug, Display};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
+
+static CUDA_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 type TestResult<Value = ()> = Result<Value, String>;
+
+fn cuda_test_guard() -> TestResult<MutexGuard<'static, ()>> {
+    CUDA_TEST_MUTEX
+        .lock()
+        .map_err(|error| format!("CUDA test serialization poisoned: {error}"))
+}
 
 fn validation_python(root: &Path) -> PathBuf {
     if cfg!(windows) {
