@@ -813,6 +813,19 @@ class _WorklistModule(Protocol):
         data_pointer_addresses: set[int],
     ) -> None: ...
 
+    def _assert_explored_accessed_addresses(
+        self,
+        accessed_addresses: set[int],
+        evidence: tuple[
+            set[_WorklistStateKey],
+            dict[_WorklistStateKey, tuple[int, int]],
+            dict[_WorklistStateKey, tuple[int, int]],
+            dict[_WorklistStateKey, tuple[int, int]],
+            dict[_WorklistStateKey, tuple[int, int]],
+            dict[_WorklistStateKey, tuple[int, int]],
+        ],
+    ) -> None: ...
+
     def _known_graph_strong_components(
         self,
         edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
@@ -3032,6 +3045,15 @@ def test_explored_pointer_domains_reject_frontier_address() -> None:
             {_GRAPH_KEY_A},
             {_GRAPH_KEY_A[0], _GRAPH_KEY_B[0]},
             {_GRAPH_KEY_A[1]},
+        )
+
+
+def test_explored_accesses_reject_unobserved_address() -> None:
+    """Footprint summaries cannot retain an address absent from exact roles."""
+    with pytest.raises(AssertionError, match="exact explored roles"):
+        worklist._assert_explored_accessed_addresses(
+            {_GRAPH_KEY_A[0], _GRAPH_KEY_B[0]},
+            ({_GRAPH_KEY_A}, {}, {}, {}, {}, {}),
         )
 
 

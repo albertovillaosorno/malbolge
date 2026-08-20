@@ -1783,6 +1783,42 @@ def _assert_explored_pointer_domains(
         raise AssertionError(message)
 
 
+type _ExploredAccessEvidence = tuple[
+    set[_StateKey],
+    dict[_StateKey, tuple[int, int]],
+    dict[_StateKey, tuple[int, int]],
+    dict[_StateKey, tuple[int, int]],
+    dict[_StateKey, tuple[int, int]],
+    dict[_StateKey, tuple[int, int]],
+]
+
+
+def _assert_explored_accessed_addresses(
+    accessed_addresses: set[int],
+    evidence: _ExploredAccessEvidence,
+) -> None:
+    (
+        explored_state_keys,
+        initial_data_reads,
+        evolved_data_reads,
+        planned_writes,
+        initial_encryption_inputs,
+        changed_encryption_inputs,
+    ) = evidence
+    expected = {state[0] for state in explored_state_keys}
+    for observations in (
+        initial_data_reads,
+        evolved_data_reads,
+        planned_writes,
+        initial_encryption_inputs,
+        changed_encryption_inputs,
+    ):
+        expected.update(address for address, _ in observations.values())
+    if accessed_addresses != expected:
+        message = "accessed-address summary disagrees with exact explored roles"
+        raise AssertionError(message)
+
+
 def _assert_input_branch_evidence(
     branch_count: int,
     branch_states: set[_StateKey],
@@ -3463,6 +3499,25 @@ class _Explorer:
             (self.edges, self.seen),
         )
 
+    def _assert_explored_state_evidence(self) -> None:
+        _assert_explored_pointer_domains(
+            self.explored_state_keys,
+            self.explored_code_pointer_addresses,
+            self.explored_data_pointer_addresses,
+        )
+        if self.explored_state_keys:
+            _assert_explored_accessed_addresses(
+                self.accessed_addresses,
+                (
+                    self.explored_state_keys,
+                    self.initial_value_data_read_state_values,
+                    self.evolved_data_read_state_values,
+                    self.planned_data_write_state_values,
+                    self.initial_value_encryption_input_state_values,
+                    self.changed_from_initial_encryption_input_state_values,
+                ),
+            )
+
     def result(
         self,
         *,
@@ -3476,11 +3531,7 @@ class _Explorer:
             frontier_path,
             truncated=truncated,
         )
-        _assert_explored_pointer_domains(
-            self.explored_state_keys,
-            self.explored_code_pointer_addresses,
-            self.explored_data_pointer_addresses,
-        )
+        self._assert_explored_state_evidence()
         _assert_terminal_evidence(
             self.terminal_counts,
             self.terminal_states,
