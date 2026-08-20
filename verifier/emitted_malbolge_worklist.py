@@ -66,6 +66,10 @@ type _StateKey = tuple[
     tuple[tuple[int, int], ...],
     bool,
 ]
+type _KnownGraph = tuple[
+    dict[_StateKey, set[_StateKey]],
+    set[_StateKey],
+]
 
 _INITIAL_STATE_KEY: Final[_StateKey] = (0, 0, 0, (), False)
 
@@ -1001,6 +1005,54 @@ def _terminal_state_sets(
     )
 
 
+type _TerminalWitnessEvidence = tuple[
+    dict[str, set[_StateKey]],
+    tuple[WorklistTerminalWitness, ...],
+]
+
+
+def _assert_terminal_witness(
+    witness: WorklistTerminalWitness,
+    terminal_states: dict[str, set[_StateKey]],
+    graph: _KnownGraph,
+) -> None:
+    edges, nodes = graph
+    state_key = _cycle_state_key(witness.state)
+    if state_key not in terminal_states[witness.status]:
+        message = "terminal witness lost its exact terminal state class"
+        raise AssertionError(message)
+    expected_path = tuple(
+        _cycle_state(key)
+        for key in _known_graph_shortest_path_to_any(
+            edges,
+            nodes,
+            start=_INITIAL_STATE_KEY,
+            targets=terminal_states[witness.status],
+        )
+    )
+    if witness.entry_path != expected_path:
+        message = "terminal witness lost its exact shortest path"
+        raise AssertionError(message)
+    if not witness.entry_path or witness.entry_path[-1] != witness.state:
+        message = "terminal witness lost its exact entry endpoint"
+        raise AssertionError(message)
+
+
+def _assert_terminal_witnesses(
+    evidence: _TerminalWitnessEvidence,
+    graph: _KnownGraph,
+) -> None:
+    terminal_states, witnesses = evidence
+    statuses = tuple(witness.status for witness in witnesses)
+    if statuses != tuple(sorted(terminal_states)):
+        message = (
+            "terminal witness statuses disagree with terminal state classes"
+        )
+        raise AssertionError(message)
+    for witness in witnesses:
+        _assert_terminal_witness(witness, terminal_states, graph)
+
+
 def _terminal_witnesses(
     edges: dict[_StateKey, set[_StateKey]],
     nodes: set[_StateKey],
@@ -1024,7 +1076,9 @@ def _terminal_witnesses(
                 entry_path=tuple(_cycle_state(key) for key in path),
             )
         )
-    return tuple(witnesses)
+    result = tuple(witnesses)
+    _assert_terminal_witnesses((terminal_states, result), (edges, nodes))
+    return result
 
 
 def _closed_recurrence_evidence(
@@ -2123,10 +2177,6 @@ def _assert_repeated_edge_witness_presence(
         raise AssertionError(message)
 
 
-type _KnownGraph = tuple[
-    dict[_StateKey, set[_StateKey]],
-    set[_StateKey],
-]
 type _RepeatedEdgeBinding = tuple[
     _StateKey,
     _StateKey,

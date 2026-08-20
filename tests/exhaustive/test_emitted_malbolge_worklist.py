@@ -958,6 +958,25 @@ class _WorklistModule(Protocol):
         edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
     ) -> None: ...
 
+    def _terminal_witnesses(
+        self,
+        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+        nodes: set[_WorklistStateKey],
+        terminal_states: dict[str, set[_WorklistStateKey]],
+    ) -> tuple[_WorklistTerminalWitness, ...]: ...
+
+    def _assert_terminal_witnesses(
+        self,
+        evidence: tuple[
+            dict[str, set[_WorklistStateKey]],
+            tuple[_WorklistTerminalWitness, ...],
+        ],
+        graph: tuple[
+            dict[_WorklistStateKey, set[_WorklistStateKey]],
+            set[_WorklistStateKey],
+        ],
+    ) -> None: ...
+
     def _assert_self_encryption_observations(
         self,
         evidence: tuple[
@@ -2628,6 +2647,72 @@ def test_terminal_graph_invariant_rejects_outgoing_edge() -> None:
         worklist._assert_terminal_graph_endpoints(
             {"halted": {_GRAPH_KEY_A}},
             {_GRAPH_KEY_A: {_GRAPH_KEY_B}, _GRAPH_KEY_B: set()},
+        )
+
+
+def test_terminal_witness_invariant_rejects_missing_status() -> None:
+    """Each exact terminal status must retain one representative witness."""
+    edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B, _GRAPH_KEY_C},
+        _GRAPH_KEY_B: set(),
+        _GRAPH_KEY_C: set(),
+    }
+    nodes = set(edges)
+    witnesses = worklist._terminal_witnesses(
+        edges, nodes, {_HALTED_STATUS: {_GRAPH_KEY_B}}
+    )
+    with pytest.raises(AssertionError, match="statuses disagree"):
+        worklist._assert_terminal_witnesses(
+            (
+                {
+                    _HALTED_STATUS: {_GRAPH_KEY_B},
+                    _INVALID_ENCRYPTION_STATUS: {_GRAPH_KEY_C},
+                },
+                witnesses,
+            ),
+            (edges, nodes),
+        )
+
+
+def test_terminal_witness_invariant_rejects_state_class_drift() -> None:
+    """A terminal witness must remain inside its exact status class."""
+    edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B, _GRAPH_KEY_C},
+        _GRAPH_KEY_B: set(),
+        _GRAPH_KEY_C: set(),
+    }
+    nodes = set(edges)
+    witnesses = worklist._terminal_witnesses(
+        edges, nodes, {_HALTED_STATUS: {_GRAPH_KEY_B}}
+    )
+    with pytest.raises(AssertionError, match="exact terminal state class"):
+        worklist._assert_terminal_witnesses(
+            ({_HALTED_STATUS: {_GRAPH_KEY_C}}, witnesses),
+            (edges, nodes),
+        )
+
+
+def test_terminal_witness_invariant_rejects_stale_shortest_path() -> None:
+    """A terminal witness path must remain canonical for the final graph."""
+    initial_edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B},
+        _GRAPH_KEY_B: {_GRAPH_KEY_C},
+        _GRAPH_KEY_C: set(),
+    }
+    nodes = set(initial_edges)
+    terminal_states = {_HALTED_STATUS: {_GRAPH_KEY_C}}
+    witnesses = worklist._terminal_witnesses(
+        initial_edges, nodes, terminal_states
+    )
+    final_edges = {
+        _GRAPH_KEY_A: {_GRAPH_KEY_B, _GRAPH_KEY_C},
+        _GRAPH_KEY_B: {_GRAPH_KEY_C},
+        _GRAPH_KEY_C: set(),
+    }
+    with pytest.raises(AssertionError, match="exact shortest path"):
+        worklist._assert_terminal_witnesses(
+            (terminal_states, witnesses),
+            (final_edges, nodes),
         )
 
 
