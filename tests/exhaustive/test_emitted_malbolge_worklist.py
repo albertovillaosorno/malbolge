@@ -783,6 +783,16 @@ class _WorklistModule(Protocol):
         ],
     ) -> None: ...
 
+    def _assert_committed_data_write_state_partition(
+        self,
+        evidence: tuple[
+            dict[_WorklistStateKey, tuple[int, int]],
+            dict[_WorklistStateKey, tuple[int, int, int, int, bool]],
+            dict[_WorklistStateKey, tuple[int, int, int, int, bool]],
+            dict[int, set[int]],
+        ],
+    ) -> None: ...
+
     def _assert_observation_state_partition(
         self,
         initial_states: set[_WorklistStateKey],
@@ -1701,6 +1711,58 @@ def test_write_partition_rejects_unclassified_data_write_address() -> None:
     with pytest.raises(AssertionError, match="no-op/effective classes"):
         worklist._assert_committed_write_address_partition(
             ({0, 40}, {40}, set(), {0}, set())
+        )
+
+
+def test_write_state_partition_rejects_overlapping_outcomes() -> None:
+    """A committed data-write state cannot be both no-op and effective."""
+    with pytest.raises(AssertionError, match="exact state classes overlap"):
+        worklist._assert_committed_data_write_state_partition(
+            (
+                {_GRAPH_KEY_A: (40, 29_524)},
+                {_GRAPH_KEY_A: (40, 29_524, 29_524, 29_524, False)},
+                {_GRAPH_KEY_A: (40, 29_524, 29_524, 29_523, False)},
+                {40: {29_524}},
+            )
+        )
+
+
+def test_write_state_partition_rejects_unplanned_commit() -> None:
+    """Every committed data-write state must have exact planning evidence."""
+    with pytest.raises(AssertionError, match="states escape planned writes"):
+        worklist._assert_committed_data_write_state_partition(
+            (
+                {_GRAPH_KEY_A: (40, 29_524)},
+                {},
+                {_GRAPH_KEY_B: (40, 29_524, 29_523, 29_522, False)},
+                {40: {29_523}},
+            )
+        )
+
+
+def test_write_state_partition_rejects_planned_value_drift() -> None:
+    """Committed address/value evidence must match its exact planned write."""
+    with pytest.raises(AssertionError, match="disagrees with planned write"):
+        worklist._assert_committed_data_write_state_partition(
+            (
+                {_GRAPH_KEY_A: (40, 29_523)},
+                {_GRAPH_KEY_A: (40, 29_524, 29_524, 29_524, False)},
+                {},
+                {40: {29_524}},
+            )
+        )
+
+
+def test_write_state_partition_rejects_committed_value_domain_drift() -> None:
+    """Committed value domains must project from exact final observations."""
+    with pytest.raises(AssertionError, match="domains disagree"):
+        worklist._assert_committed_data_write_state_partition(
+            (
+                {_GRAPH_KEY_A: (40, 29_524)},
+                {_GRAPH_KEY_A: (40, 29_524, 29_524, 29_524, False)},
+                {},
+                {40: {29_523}},
+            )
         )
 
 

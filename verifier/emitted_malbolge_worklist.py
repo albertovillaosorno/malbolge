@@ -1474,6 +1474,47 @@ def _assert_observation_state_partition(
         raise AssertionError(message)
 
 
+def _committed_data_write_value_projection(
+    planned: dict[_StateKey, tuple[int, int]],
+    committed: dict[_StateKey, tuple[int, int, int, int, bool]],
+) -> dict[int, set[int]]:
+    projected: dict[int, set[int]] = {}
+    for state, observation in committed.items():
+        address = observation[0]
+        written = observation[2]
+        if planned[state] != (address, written):
+            message = "committed data-write disagrees with planned write"
+            raise AssertionError(message)
+        projected.setdefault(address, set()).add(written)
+    return projected
+
+
+def _assert_committed_data_write_state_partition(
+    evidence: tuple[
+        dict[_StateKey, tuple[int, int]],
+        dict[_StateKey, tuple[int, int, int, int, bool]],
+        dict[_StateKey, tuple[int, int, int, int, bool]],
+        dict[int, set[int]],
+    ],
+) -> None:
+    planned, noops, effective, committed_values = evidence
+    _assert_observation_state_partition(
+        set(noops),
+        set(effective),
+        label="committed data-write outcome partition",
+    )
+    committed = noops | effective
+    if not set(committed) <= set(planned):
+        message = "committed data-write states escape planned writes"
+        raise AssertionError(message)
+    projected_values = _committed_data_write_value_projection(
+        planned, committed
+    )
+    if committed_values != projected_values:
+        message = "committed data-write domains disagree with exact states"
+        raise AssertionError(message)
+
+
 def _assert_read_observation_state_partitions(
     partitions: tuple[tuple[set[_StateKey], set[_StateKey], str], ...],
 ) -> None:
@@ -2355,6 +2396,14 @@ class _Explorer:
                 self.effective_data_mutation_result_values,
                 self.effective_data_mutation_state_values,
                 self.seen,
+            )
+        )
+        _assert_committed_data_write_state_partition(
+            (
+                self.planned_data_write_state_values,
+                self.committed_data_write_noop_state_values,
+                self.effective_data_mutation_state_values,
+                self.committed_data_write_values,
             )
         )
         _assert_committed_write_count_partition(
