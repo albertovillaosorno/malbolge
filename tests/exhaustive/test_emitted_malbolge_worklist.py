@@ -69,6 +69,14 @@ type _ReadObservationPartition = tuple[
     _ReadValueObservations,
     _ReadValueObservations,
 ]
+type _ReadValueDomainEvidence = tuple[
+    dict[int, set[int]],
+    _ReadObservationPartition,
+    dict[int, set[int]],
+    _ReadObservationPartition,
+    dict[int, set[int]],
+    _ReadObservationPartition,
+]
 type _FetchDerivedStateEvidence = tuple[
     _ReadObservationPartition,
     _ReadObservationPartition,
@@ -949,6 +957,12 @@ class _WorklistModule(Protocol):
             dict[_WorklistStateKey, tuple[int, int]],
             dict[_WorklistStateKey, tuple[int, int]],
         ],
+    ) -> None: ...
+
+    def _assert_read_value_domain_evidence(
+        self,
+        evidence: _ReadValueDomainEvidence,
+        initial_memory: tuple[int, ...],
     ) -> None: ...
 
     def _assert_fetch_derived_state_evidence(
@@ -1973,6 +1987,36 @@ def test_data_read_observation_address_rejects_non_data_pointer() -> None:
         worklist._assert_data_read_observation_addresses(
             ({_GRAPH_KEY_A: (_GRAPH_KEY_A[1] + 1, 1)}, {})
         )
+
+
+def test_read_value_evidence_rejects_fetch_state_memory_drift() -> None:
+    """Exact fetch values must equal the source state's sparse memory."""
+    state: _WorklistStateKey = (0, 1, 0, ((0, 69),), False)
+    evidence: _ReadValueDomainEvidence = (
+        {0: {68}},
+        ({state: (0, 68)}, {}),
+        {},
+        ({}, {}),
+        {},
+        ({}, {}),
+    )
+    with pytest.raises(AssertionError, match="exact state memory"):
+        worklist._assert_read_value_domain_evidence(evidence, (68, 40))
+
+
+def test_read_value_evidence_rejects_data_state_memory_drift() -> None:
+    """Exact semantic D-read values must equal the source state's memory."""
+    state: _WorklistStateKey = (0, 1, 0, ((1, 12_345),), False)
+    evidence: _ReadValueDomainEvidence = (
+        {},
+        ({}, {}),
+        {1: {54_321}},
+        ({state: (1, 54_321)}, {}),
+        {},
+        ({}, {}),
+    )
+    with pytest.raises(AssertionError, match="exact state memory"):
+        worklist._assert_read_value_domain_evidence(evidence, (40, 1))
 
 
 def test_fetch_derived_evidence_rejects_alias_value_drift() -> None:

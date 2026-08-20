@@ -2261,6 +2261,34 @@ def _assert_data_read_observation_addresses(
         raise AssertionError(message)
 
 
+def _state_memory_value(
+    state: _StateKey,
+    address: int,
+    initial_memory: tuple[int, ...],
+) -> int:
+    for override_address, override_value in state[3]:
+        if override_address == address:
+            return override_value
+        if override_address > address:
+            break
+    return initial_memory[address]
+
+
+def _assert_observation_state_memory(
+    observations: _ReadObservationPartition,
+    initial_memory: tuple[int, ...],
+    *,
+    label: str,
+) -> None:
+    if any(
+        value != _state_memory_value(state, address, initial_memory)
+        for state_observations in observations
+        for state, (address, value) in state_observations.items()
+    ):
+        message = f"{label} observation disagrees with exact state memory"
+        raise AssertionError(message)
+
+
 type _ReadValueDomainEvidence = tuple[
     dict[int, set[int]],
     _ReadObservationPartition,
@@ -2273,6 +2301,7 @@ type _ReadValueDomainEvidence = tuple[
 
 def _assert_read_value_domain_evidence(
     evidence: _ReadValueDomainEvidence,
+    initial_memory: tuple[int, ...],
 ) -> None:
     (
         fetch_values,
@@ -2299,6 +2328,16 @@ def _assert_read_value_domain_evidence(
     )
     _assert_fetch_observation_addresses(fetch_observations)
     _assert_data_read_observation_addresses(data_read_observations)
+    _assert_observation_state_memory(
+        fetch_observations,
+        initial_memory,
+        label="fetch",
+    )
+    _assert_observation_state_memory(
+        data_read_observations,
+        initial_memory,
+        label="data read",
+    )
 
 
 def _merged_read_observations(
@@ -3581,7 +3620,8 @@ class _Explorer:
                 data_read_partition,
                 self.encryption_input_values,
                 encryption_input_partition,
-            )
+            ),
+            self.initial_memory,
         )
         _assert_fetch_derived_state_evidence(
             (
