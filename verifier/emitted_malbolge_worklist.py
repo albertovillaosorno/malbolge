@@ -2175,6 +2175,100 @@ def _assert_fetch_observation_coverage(
         raise AssertionError(message)
 
 
+type _ReadValueObservations = dict[_StateKey, tuple[int, int]]
+type _ReadObservationPartition = tuple[
+    _ReadValueObservations,
+    _ReadValueObservations,
+]
+
+
+def _observation_value_domain_projection(
+    observations: tuple[_ReadValueObservations, ...],
+) -> dict[int, set[int]]:
+    projected: dict[int, set[int]] = {}
+    for state_observations in observations:
+        for address, value in state_observations.values():
+            projected.setdefault(address, set()).add(value)
+    return projected
+
+
+def _assert_observation_value_domains(
+    values: dict[int, set[int]],
+    observations: tuple[_ReadValueObservations, ...],
+    *,
+    label: str,
+) -> None:
+    if values != _observation_value_domain_projection(observations):
+        message = f"{label} value domains disagree with exact observations"
+        raise AssertionError(message)
+
+
+def _assert_fetch_observation_addresses(
+    observations: _ReadObservationPartition,
+) -> None:
+    if any(
+        address != state[0]
+        for state_observations in observations
+        for state, (address, _) in state_observations.items()
+    ):
+        message = "fetch observation address disagrees with exact code pointer"
+        raise AssertionError(message)
+
+
+def _assert_data_read_observation_addresses(
+    observations: _ReadObservationPartition,
+) -> None:
+    if any(
+        address != state[1]
+        for state_observations in observations
+        for state, (address, _) in state_observations.items()
+    ):
+        message = (
+            "data-read observation address disagrees with exact data pointer"
+        )
+        raise AssertionError(message)
+
+
+type _ReadValueDomainEvidence = tuple[
+    dict[int, set[int]],
+    _ReadObservationPartition,
+    dict[int, set[int]],
+    _ReadObservationPartition,
+    dict[int, set[int]],
+    _ReadObservationPartition,
+]
+
+
+def _assert_read_value_domain_evidence(
+    evidence: _ReadValueDomainEvidence,
+) -> None:
+    (
+        fetch_values,
+        fetch_observations,
+        data_read_values,
+        data_read_observations,
+        encryption_input_values,
+        encryption_input_observations,
+    ) = evidence
+    _assert_observation_value_domains(
+        fetch_values,
+        fetch_observations,
+        label="fetch",
+    )
+    _assert_observation_value_domains(
+        data_read_values,
+        data_read_observations,
+        label="data read",
+    )
+    _assert_observation_value_domains(
+        encryption_input_values,
+        encryption_input_observations,
+        label="encryption input",
+    )
+    _assert_fetch_observation_addresses(fetch_observations)
+    _assert_data_read_observation_addresses(data_read_observations)
+
+
 def _assert_initial_value_observations(
     evidence: tuple[
         int,
@@ -3179,7 +3273,7 @@ class _Explorer:
             accessed_addresses=set(),
         )
 
-    def _assert_read_partition_invariants(self) -> None:
+    def _assert_read_transition_count_partitions(self) -> None:
         fetch_partition = self.initial_value_fetch_transitions + (
             self.evolved_fetch_transitions
         )
@@ -3203,6 +3297,9 @@ class _Explorer:
                 "total inputs"
             )
             raise AssertionError(message)
+
+    def _assert_read_partition_invariants(self) -> None:
+        self._assert_read_transition_count_partitions()
         _assert_initial_value_observations(
             (
                 self.initial_value_fetch_transitions,
@@ -3326,6 +3423,25 @@ class _Explorer:
                         self.changed_from_initial_encryption_input_state_values
                     ),
                     "encryption-input value partition",
+                ),
+            )
+        )
+        _assert_read_value_domain_evidence(
+            (
+                self.fetch_values,
+                (
+                    self.initial_value_fetch_state_values,
+                    self.evolved_fetch_state_values,
+                ),
+                self.data_read_values,
+                (
+                    self.initial_value_data_read_state_values,
+                    self.evolved_data_read_state_values,
+                ),
+                self.encryption_input_values,
+                (
+                    self.initial_value_encryption_input_state_values,
+                    self.changed_from_initial_encryption_input_state_values,
                 ),
             )
         )

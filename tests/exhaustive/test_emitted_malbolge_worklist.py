@@ -903,6 +903,32 @@ class _WorklistModule(Protocol):
         explored_state_keys: set[_WorklistStateKey],
     ) -> None: ...
 
+    def _assert_observation_value_domains(
+        self,
+        values: dict[int, set[int]],
+        observations: tuple[
+            dict[_WorklistStateKey, tuple[int, int]], ...
+        ],
+        *,
+        label: str,
+    ) -> None: ...
+
+    def _assert_fetch_observation_addresses(
+        self,
+        observations: tuple[
+            dict[_WorklistStateKey, tuple[int, int]],
+            dict[_WorklistStateKey, tuple[int, int]],
+        ],
+    ) -> None: ...
+
+    def _assert_data_read_observation_addresses(
+        self,
+        observations: tuple[
+            dict[_WorklistStateKey, tuple[int, int]],
+            dict[_WorklistStateKey, tuple[int, int]],
+        ],
+    ) -> None: ...
+
     def _assert_initial_value_observations(
         self,
         evidence: tuple[
@@ -1883,6 +1909,42 @@ def test_fetch_observation_coverage_rejects_missing_explored_state() -> None:
             {_GRAPH_KEY_A},
             set(),
             {_GRAPH_KEY_A, _GRAPH_KEY_B},
+        )
+
+
+def test_read_value_domains_reject_unobserved_value() -> None:
+    """Full read domains cannot retain values absent from exact states."""
+    with pytest.raises(AssertionError, match="exact observations"):
+        worklist._assert_observation_value_domains(
+            {_GRAPH_KEY_A[0]: {1, 2}},
+            ({_GRAPH_KEY_A: (_GRAPH_KEY_A[0], 1)},),
+            label="fetch",
+        )
+
+
+def test_read_value_domains_reject_missing_observed_value() -> None:
+    """Full read domains cannot omit values retained by exact states."""
+    with pytest.raises(AssertionError, match="exact observations"):
+        worklist._assert_observation_value_domains(
+            {_GRAPH_KEY_A[0]: {1}},
+            ({_GRAPH_KEY_A: (_GRAPH_KEY_A[0], 1)}, {_GRAPH_KEY_B: (0, 2)}),
+            label="fetch",
+        )
+
+
+def test_fetch_observation_address_rejects_non_code_pointer() -> None:
+    """Every exact fetch address must equal its state's code pointer."""
+    with pytest.raises(AssertionError, match="exact code pointer"):
+        worklist._assert_fetch_observation_addresses(
+            ({_GRAPH_KEY_A: (_GRAPH_KEY_A[0] + 1, 1)}, {})
+        )
+
+
+def test_data_read_observation_address_rejects_non_data_pointer() -> None:
+    """Every exact semantic read address must equal its state's data pointer."""
+    with pytest.raises(AssertionError, match="exact data pointer"):
+        worklist._assert_data_read_observation_addresses(
+            ({_GRAPH_KEY_A: (_GRAPH_KEY_A[1] + 1, 1)}, {})
         )
 
 
