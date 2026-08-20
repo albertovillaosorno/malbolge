@@ -1,5 +1,5 @@
 # Copyright:
-#   - Copyright (c) 2026 Alberto Villa Osorno.
+#   - Copyright © 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
 #   - MIT
 # Confidential:
@@ -160,7 +160,7 @@ def _generated_header(output_path: Path) -> str:
         f"//   - {display_path}",
         "//",
         "// Copyright:",
-        "//   - Copyright (c) 2026 Alberto Villa Osorno.",
+        "//   - Copyright © 2026 Alberto Villa Osorno.",
         "// SPDX-License-Identifier:",
         "//   - MIT",
         "// Confidential:",

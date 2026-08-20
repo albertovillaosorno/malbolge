@@ -4,7 +4,7 @@
 //   - src/runtime/virtual-machine/adapter-outbound/c/malbolge_host_capability.h
 //
 // Copyright:
-//   - Copyright (c) 2026 Alberto Villa Osorno.
+//   - Copyright © 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
 //   - MIT
 // Confidential:

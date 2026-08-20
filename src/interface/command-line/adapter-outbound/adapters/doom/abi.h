@@ -4,7 +4,7 @@
 //   - src/interface/command-line/adapter-outbound/adapters/doom/abi.h
 //
 // Copyright:
-//   - Copyright (c) 2026 Alberto Villa Osorno.
+//   - Copyright © 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
 //   - MIT
 // Confidential:

@@ -1,5 +1,5 @@
 # Copyright:
-#   - Copyright (c) 2026 Alberto Villa Osorno.
+#   - Copyright © 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
 #   - MIT
 # Confidential:
@@ -915,7 +915,7 @@ def render_rust_projection(document: JsonObject) -> str:
     historical_index = profile_ids.index(HISTORICAL_PROFILE)
     lines = [
         "// Copyright:",
-        "//   - Copyright (c) 2026 Alberto Villa Osorno.",
+        "//   - Copyright © 2026 Alberto Villa Osorno.",
         "// SPDX-License-Identifier:",
         "//   - MIT",
         "// Confidential:",

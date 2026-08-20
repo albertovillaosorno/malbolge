@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Alberto Villa Osorno.
+// Copyright © 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier: MIT
 //
 // Candidate source for the future GitHub Linguist Malbolge sample.

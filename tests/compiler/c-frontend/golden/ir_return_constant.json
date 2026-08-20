@@ -12,7 +12,7 @@
   },
   "source": {
     "id": "fixtures/ir-return.c",
-    "sha256": "1e88054415f34e800039677eeba7ca71e082dbcce6e0dbe28def3eb3c1de87f8"
+    "sha256": "e1a42c56b3951df45a2e2c27c7b2df69eb5b1261d59de2b0c963e02e001dbc93"
   },
   "nodes": [
     {
@@ -21,12 +21,12 @@
       "kind": "function-declaration",
       "span": {
         "begin": {
-          "byte": 1208,
+          "byte": 1207,
           "line": 35,
           "column": 1
         },
         "end": {
-          "byte": 1236,
+          "byte": 1235,
           "line": 35,
           "column": 29
         }
@@ -44,12 +44,12 @@
       "kind": "compound-statement",
       "span": {
         "begin": {
-          "byte": 1223,
+          "byte": 1222,
           "line": 35,
           "column": 16
         },
         "end": {
-          "byte": 1236,
+          "byte": 1235,
           "line": 35,
           "column": 29
         }
@@ -61,12 +61,12 @@
       "kind": "return-statement",
       "span": {
         "begin": {
-          "byte": 1225,
+          "byte": 1224,
           "line": 35,
           "column": 18
         },
         "end": {
-          "byte": 1233,
+          "byte": 1232,
           "line": 35,
           "column": 26
         }
@@ -78,12 +78,12 @@
       "kind": "integer-literal",
       "span": {
         "begin": {
-          "byte": 1232,
+          "byte": 1231,
           "line": 35,
           "column": 25
         },
         "end": {
-          "byte": 1233,
+          "byte": 1232,
           "line": 35,
           "column": 26
         }

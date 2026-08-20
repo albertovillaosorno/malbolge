@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Alberto Villa Osorno.
+// Copyright © 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier: MIT
 #ifndef MALBOLGE_DOOM_PROBE_LIMITS_H
 #define MALBOLGE_DOOM_PROBE_LIMITS_H

@@ -173,7 +173,7 @@ selectors = ["directory:tests"]
 # jig-ignore-next-line: indivisible reviewed identifier
 adapters = ["c:c:slash-line", "cpp:cpp:slash-line", "cu:cuda:slash-line", "py:python:python", "rs:rust:slash-line", "tex:latex:percent-line"]
 confidential = false
-copyright = "Copyright (c) 2026 Alberto Villa Osorno."
+copyright = "Copyright © 2026 Alberto Villa Osorno."
 # jig-ignore-next-line: indivisible reviewed identifier
 exempt_paths = ["src/interface/command-line/adapter-outbound/adapters/doom/windows.c", "src/interoperability/historical-malbolge/adapter-outbound/main.c", "src/research/algorithms/domain/algorithms/search-pruning-and-state-canonicalization/exact_duplicate.rs", "src/tooling/language-support/contract/sample.c", "tests/function/algorithms/domain/search-pruning-and-state-canonicalization/exact_duplicate.rs"]
 extensions = ["c", "cpp", "cu", "py", "rs", "tex"]

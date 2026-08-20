@@ -1,5 +1,5 @@
 // Copyright:
-//   - Copyright (c) 2026 Alberto Villa Osorno.
+//   - Copyright © 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
 //   - MIT
 // Confidential:
@@ -62,9 +62,9 @@ const LOWERING_GOLDEN_PATH: &str =
     "tests/compiler/typed-ir/golden/ir-return-constant.hex";
 const LOWERING_SOURCE_ID: &str = "fixtures/ir-return.c";
 const LOWERING_SOURCE_HASH: [u8; 32] = [
-    0x1e, 0x88, 0x05, 0x44, 0x15, 0xf3, 0x4e, 0x80, 0x00, 0x39, 0x67, 0x7e,
-    0xeb, 0xa7, 0xca, 0x71, 0xe0, 0x82, 0xdb, 0xcc, 0xe6, 0xe0, 0xdb, 0xe2,
-    0x8d, 0xef, 0x3e, 0xb3, 0xc1, 0xde, 0x87, 0xf8,
+    0xe1, 0xa4, 0x2c, 0x56, 0xb3, 0x95, 0x1d, 0xf4, 0x5a, 0x2e, 0x2c, 0x27,
+    0xc7, 0xb2, 0xdf, 0x69, 0xeb, 0x5b, 0x12, 0x61, 0xd5, 0x9d, 0xe2, 0xb0,
+    0xc9, 0x63, 0xe0, 0x2e, 0x00, 0x1d, 0xbc, 0x93,
 ];
 const SOURCE_HASH: [u8; 32] = [0x5a; 32];
 const BOOL_TYPE: TypeId = TypeId::new(0);
@@ -106,17 +106,17 @@ fn frontend_function(
     constant_decimal: &str,
 ) -> FrontendReturnIntegerFunction {
     FrontendReturnIntegerFunction::new(FrontendReturnIntegerFunctionSpec {
-        body_span: frontend_span(1223, 16, 1236, 29),
+        body_span: frontend_span(1222, 16, 1235, 29),
         constant_decimal: String::from(constant_decimal),
         definition: String::from("definition"),
-        function_span: frontend_span(1208, 1, 1236, 29),
+        function_span: frontend_span(1207, 1, 1235, 29),
         inline_specified: false,
         linkage: String::from("external"),
         name: String::from("main"),
-        return_span: frontend_span(1225, 18, 1233, 26),
+        return_span: frontend_span(1224, 18, 1232, 26),
         signature: String::from(signature),
         storage_class: String::from("none"),
-        value_span: frontend_span(1232, 25, 1233, 26),
+        value_span: frontend_span(1231, 25, 1232, 26),
         value_type: String::from(value_type),
     })
 }
@@ -921,8 +921,8 @@ fn normalized_frontend_return_constant_lowers_with_exact_provenance() {
             assert_eq!(
                 function.map(Function::span),
                 Some(SourceSpan::new(
-                    SourcePosition::new(1208, 35, 1),
-                    SourcePosition::new(1236, 35, 29),
+                    SourcePosition::new(1207, 35, 1),
+                    SourcePosition::new(1235, 35, 29),
                 ))
             );
             let blocks = function.map(Function::blocks).unwrap_or_default();
@@ -930,8 +930,8 @@ fn normalized_frontend_return_constant_lowers_with_exact_provenance() {
             assert_eq!(
                 block.map(BasicBlock::span),
                 Some(SourceSpan::new(
-                    SourcePosition::new(1223, 35, 16),
-                    SourcePosition::new(1236, 35, 29),
+                    SourcePosition::new(1222, 35, 16),
+                    SourcePosition::new(1235, 35, 29),
                 ))
             );
             canonical_debug_text(&module)
