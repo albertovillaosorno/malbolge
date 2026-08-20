@@ -64,6 +64,19 @@ type _WorklistStateEvidence = tuple[
     set[_WorklistStateKey],
     int,
 ]
+type _ReadValueObservations = dict[_WorklistStateKey, tuple[int, int]]
+type _ReadObservationPartition = tuple[
+    _ReadValueObservations,
+    _ReadValueObservations,
+]
+type _FetchDerivedStateEvidence = tuple[
+    _ReadObservationPartition,
+    _ReadObservationPartition,
+    _ReadObservationPartition,
+    dict[_WorklistStateKey, int],
+    dict[_WorklistStateKey, int],
+    set[_WorklistStateKey],
+]
 
 
 _INPUT_HALT_SOURCE = (117, 80)
@@ -927,6 +940,11 @@ class _WorklistModule(Protocol):
             dict[_WorklistStateKey, tuple[int, int]],
             dict[_WorklistStateKey, tuple[int, int]],
         ],
+    ) -> None: ...
+
+    def _assert_fetch_derived_state_evidence(
+        self,
+        evidence: _FetchDerivedStateEvidence,
     ) -> None: ...
 
     def _assert_initial_value_observations(
@@ -1946,6 +1964,81 @@ def test_data_read_observation_address_rejects_non_data_pointer() -> None:
         worklist._assert_data_read_observation_addresses(
             ({_GRAPH_KEY_A: (_GRAPH_KEY_A[1] + 1, 1)}, {})
         )
+
+
+def test_fetch_derived_evidence_rejects_alias_value_drift() -> None:
+    """C=D alias values must equal the exact fetched value for that state."""
+    value = _INPUT_HALT_SOURCE[0]
+    evidence: _FetchDerivedStateEvidence = (
+        ({_GRAPH_KEY_A: (0, value)}, {}),
+        ({}, {}),
+        ({_GRAPH_KEY_A: (0, value)}, {}),
+        {_GRAPH_KEY_A: value + 1},
+        {},
+        {_GRAPH_KEY_A},
+    )
+    with pytest.raises(AssertionError, match="alias evidence"):
+        worklist._assert_fetch_derived_state_evidence(evidence)
+
+
+def test_fetch_derived_evidence_rejects_non_graphical_omission() -> None:
+    """Every non-graphical fetch must retain invalid-fetch evidence."""
+    value = _FIXED_CYCLE_NON_GRAPHICAL_VALUE
+    evidence: _FetchDerivedStateEvidence = (
+        ({_GRAPH_KEY_B: (_GRAPH_KEY_B[0], value)}, {}),
+        ({}, {}),
+        ({}, {}),
+        {},
+        {},
+        set(),
+    )
+    with pytest.raises(AssertionError, match="non-graphical fetch evidence"):
+        worklist._assert_fetch_derived_state_evidence(evidence)
+
+
+def test_fetch_derived_evidence_rejects_missing_data_read() -> None:
+    """Decoded j/i/*/p fetch states must exactly equal semantic read states."""
+    value = ord("(")
+    evidence: _FetchDerivedStateEvidence = (
+        ({_GRAPH_KEY_A: (0, value)}, {}),
+        ({}, {}),
+        ({_GRAPH_KEY_A: (0, value)}, {}),
+        {_GRAPH_KEY_A: value},
+        {},
+        set(),
+    )
+    with pytest.raises(AssertionError, match="data-read states"):
+        worklist._assert_fetch_derived_state_evidence(evidence)
+
+
+def test_fetch_derived_evidence_rejects_missing_encryption_input() -> None:
+    """Every graphical non-halt fetch retains an encryption-input state."""
+    value = _INPUT_HALT_SOURCE[0]
+    evidence: _FetchDerivedStateEvidence = (
+        ({_GRAPH_KEY_A: (0, value)}, {}),
+        ({}, {}),
+        ({}, {}),
+        {_GRAPH_KEY_A: value},
+        {},
+        {_GRAPH_KEY_A},
+    )
+    with pytest.raises(AssertionError, match="encryption-input states"):
+        worklist._assert_fetch_derived_state_evidence(evidence)
+
+
+def test_fetch_derived_evidence_rejects_missing_input_branch() -> None:
+    """Decoded slash states branch exactly while EOF has not become sticky."""
+    value = _INPUT_HALT_SOURCE[0]
+    evidence: _FetchDerivedStateEvidence = (
+        ({_GRAPH_KEY_A: (0, value)}, {}),
+        ({}, {}),
+        ({_GRAPH_KEY_A: (0, value)}, {}),
+        {_GRAPH_KEY_A: value},
+        {},
+        set(),
+    )
+    with pytest.raises(AssertionError, match="input branch states"):
+        worklist._assert_fetch_derived_state_evidence(evidence)
 
 
 def test_planned_write_observation_invariant_rejects_count_drift() -> None:

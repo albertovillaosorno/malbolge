@@ -51,6 +51,7 @@ MAXIMUM_STATE_LIMIT: Final = 4_096
 
 _ALLOWED_INSTRUCTIONS: Final = frozenset(b"ji*p</vo")
 _INPUT_OPCODE: Final = ord("/")
+_HALT_OPCODE: Final = ord("v")
 _INPUT_BYTES: Final = tuple(range(256))
 _DATA_READING_INSTRUCTIONS: Final = frozenset(b"ji*p")
 _EOF_ACCUMULATOR: Final = classic.PROFILE_MEMORY_WORDS - 1
@@ -2269,6 +2270,109 @@ def _assert_read_value_domain_evidence(
     _assert_data_read_observation_addresses(data_read_observations)
 
 
+def _merged_read_observations(
+    observations: _ReadObservationPartition,
+) -> _ReadValueObservations:
+    initial, changed = observations
+    if set(initial) & set(changed):
+        message = "read observation partition overlaps exact states"
+        raise AssertionError(message)
+    return initial | changed
+
+
+type _FetchDerivedStateEvidence = tuple[
+    _ReadObservationPartition,
+    _ReadObservationPartition,
+    _ReadObservationPartition,
+    dict[_StateKey, int],
+    dict[_StateKey, int],
+    set[_StateKey],
+]
+type _FetchDerivedProjection = tuple[
+    dict[_StateKey, int],
+    dict[_StateKey, int],
+    set[_StateKey],
+    set[_StateKey],
+    set[_StateKey],
+]
+
+
+def _fetch_derived_state_projection(
+    fetch_observations: _ReadValueObservations,
+) -> _FetchDerivedProjection:
+    decoded = {
+        state: classic.decode(value, address)
+        for state, (address, value) in fetch_observations.items()
+    }
+    aliases = {
+        state: fetch_observations[state][1]
+        for state in fetch_observations
+        if state[0] == state[1]
+    }
+    non_graphical = {
+        state: fetch_observations[state][1]
+        for state, value in decoded.items()
+        if value is None
+    }
+    data_reads = {
+        state
+        for state, value in decoded.items()
+        if value in _DATA_READING_INSTRUCTIONS
+    }
+    encryption_inputs = {
+        state
+        for state, value in decoded.items()
+        if value is not None and value != _HALT_OPCODE
+    }
+    input_branches = {
+        state
+        for state, value in decoded.items()
+        if value == _INPUT_OPCODE and not state[-1]
+    }
+    return (
+        aliases,
+        non_graphical,
+        data_reads,
+        encryption_inputs,
+        input_branches,
+    )
+
+
+def _assert_fetch_derived_state_evidence(
+    evidence: _FetchDerivedStateEvidence,
+) -> None:
+    (
+        fetch_partition,
+        data_read_partition,
+        encryption_input_partition,
+        alias_observations,
+        non_graphical_observations,
+        input_branch_states,
+    ) = evidence
+    _assert_fetch_observation_addresses(fetch_partition)
+    actual: _FetchDerivedProjection = (
+        alias_observations,
+        non_graphical_observations,
+        set(_merged_read_observations(data_read_partition)),
+        set(_merged_read_observations(encryption_input_partition)),
+        input_branch_states,
+    )
+    expected = _fetch_derived_state_projection(
+        _merged_read_observations(fetch_partition)
+    )
+    labels = (
+        "code/data alias evidence",
+        "non-graphical fetch evidence",
+        "data-read states",
+        "encryption-input states",
+        "input branch states",
+    )
+    for observed, required, label in zip(actual, expected, labels, strict=True):
+        if observed != required:
+            message = f"{label} disagrees with exact fetch states"
+            raise AssertionError(message)
+
+
 def _assert_initial_value_observations(
     evidence: tuple[
         int,
@@ -3426,23 +3530,36 @@ class _Explorer:
                 ),
             )
         )
+        fetch_partition = (
+            self.initial_value_fetch_state_values,
+            self.evolved_fetch_state_values,
+        )
+        data_read_partition = (
+            self.initial_value_data_read_state_values,
+            self.evolved_data_read_state_values,
+        )
+        encryption_input_partition = (
+            self.initial_value_encryption_input_state_values,
+            self.changed_from_initial_encryption_input_state_values,
+        )
         _assert_read_value_domain_evidence(
             (
                 self.fetch_values,
-                (
-                    self.initial_value_fetch_state_values,
-                    self.evolved_fetch_state_values,
-                ),
+                fetch_partition,
                 self.data_read_values,
-                (
-                    self.initial_value_data_read_state_values,
-                    self.evolved_data_read_state_values,
-                ),
+                data_read_partition,
                 self.encryption_input_values,
-                (
-                    self.initial_value_encryption_input_state_values,
-                    self.changed_from_initial_encryption_input_state_values,
-                ),
+                encryption_input_partition,
+            )
+        )
+        _assert_fetch_derived_state_evidence(
+            (
+                fetch_partition,
+                data_read_partition,
+                encryption_input_partition,
+                self.code_data_alias_state_values,
+                self.non_graphical_fetch_state_values,
+                self.input_branch_states,
             )
         )
 
