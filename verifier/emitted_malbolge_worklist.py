@@ -968,6 +968,23 @@ def _known_graph_shortest_distances(
     return distances
 
 
+def _assert_maximum_first_seen_transition_index(
+    transition_index: int,
+    distances: dict[_StateKey, int],
+    nodes: set[_StateKey],
+) -> None:
+    if not distances or set(distances) != nodes:
+        message = "maximum first-seen depth lost admitted graph reachability"
+        raise AssertionError(message)
+    expected = max(distances.values()) + 1
+    if transition_index != expected:
+        message = (
+            "maximum first-seen transition index disagrees with "
+            "known graph depth"
+        )
+        raise AssertionError(message)
+
+
 def _component_minimum_entry_path_state_counts(
     components: tuple[tuple[_StateKey, ...], ...],
     distances: dict[_StateKey, int],
@@ -982,6 +999,20 @@ def _component_minimum_entry_path_state_counts(
             raise AssertionError(message)
         counts.append(min(component_distances) + 1)
     return tuple(counts)
+
+
+def _assert_graph_depth_evidence(
+    transition_index: int,
+    components: tuple[tuple[_StateKey, ...], ...],
+    distances: dict[_StateKey, int],
+    *,
+    nodes: set[_StateKey],
+) -> tuple[int, ...]:
+    if _INITIAL_STATE_KEY in nodes:
+        _assert_maximum_first_seen_transition_index(
+            transition_index, distances, nodes
+        )
+    return _component_minimum_entry_path_state_counts(components, distances)
 
 
 def _cycle_state(key: _StateKey) -> WorklistCycleState:
@@ -3815,11 +3846,11 @@ class _Explorer:
             self.seen,
             start=_INITIAL_STATE_KEY,
         )
-        cyclic_component_entry_counts = (
-            _component_minimum_entry_path_state_counts(
-                component_summary.cyclic_components,
-                distances,
-            )
+        cyclic_component_entry_counts = _assert_graph_depth_evidence(
+            self.maximum_first_seen_transition_index,
+            component_summary.cyclic_components,
+            distances,
+            nodes=self.seen,
         )
         recurrence = _closed_recurrence_evidence(
             component_summary,

@@ -759,6 +759,8 @@ class _StrongComponentSummary(Protocol):
 
 
 class _Explorer(Protocol):
+    maximum_first_seen_transition_index: int
+
     def run(self) -> _WorklistAnalysis:
         """Return one exact bounded exploration summary."""
         ...
@@ -809,6 +811,13 @@ class _WorklistModule(Protocol):
     def _assert_known_graph_integrity(
         self,
         edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
+        nodes: set[_WorklistStateKey],
+    ) -> None: ...
+
+    def _assert_maximum_first_seen_transition_index(
+        self,
+        transition_index: int,
+        distances: dict[_WorklistStateKey, int],
         nodes: set[_WorklistStateKey],
     ) -> None: ...
 
@@ -3154,6 +3163,26 @@ def test_known_graph_integrity_rejects_unreachable_admitted_node() -> None:
         )
 
 
+def test_first_seen_depth_rejects_transition_index_drift() -> None:
+    """The admission-depth metric must equal maximum shortest depth plus one."""
+    with pytest.raises(AssertionError, match="known graph depth"):
+        worklist._assert_maximum_first_seen_transition_index(
+            2,
+            {_GRAPH_KEY_A: 0, _GRAPH_KEY_B: 1, _GRAPH_KEY_C: 2},
+            {_GRAPH_KEY_A, _GRAPH_KEY_B, _GRAPH_KEY_C},
+        )
+
+
+def test_first_seen_depth_rejects_incomplete_distance_map() -> None:
+    """Depth evidence must cover every admitted exact graph state."""
+    with pytest.raises(AssertionError, match="admitted graph reachability"):
+        worklist._assert_maximum_first_seen_transition_index(
+            1,
+            {_GRAPH_KEY_A: 0},
+            {_GRAPH_KEY_A, _GRAPH_KEY_B},
+        )
+
+
 def test_worklist_state_partition_rejects_unaccounted_admission() -> None:
     """Admitted states must equal explored plus pending queue states."""
     with pytest.raises(AssertionError, match="do not partition"):
@@ -3372,6 +3401,7 @@ def test_closed_recurrence_path_targets_sink_cycle_not_first_cycle() -> None:
         {},
         {0},
     )
+    explorer.maximum_first_seen_transition_index = 3
     result = explorer.run()
     known_components = tuple(
         tuple(state.code_pointer for state in component)
