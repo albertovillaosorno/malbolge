@@ -1314,6 +1314,31 @@ def _assert_input_branch_evidence(
         raise AssertionError(message)
 
 
+def _assert_frontier_path_shape(
+    frontier_state_keys: tuple[_StateKey, ...],
+    frontier_path: tuple[_StateKey, ...],
+) -> None:
+    if not frontier_path:
+        message = "worklist frontier path is empty"
+        raise AssertionError(message)
+    if frontier_path[-1] not in frontier_state_keys:
+        message = "worklist frontier path endpoint is outside exact frontier"
+        raise AssertionError(message)
+
+
+def _assert_frontier_path_evidence(
+    frontier_state_keys: tuple[_StateKey, ...],
+    frontier_path: tuple[_StateKey, ...] | None,
+    *,
+    truncated: bool,
+) -> None:
+    if truncated != (frontier_path is not None):
+        message = "worklist truncation lost its exact frontier path"
+        raise AssertionError(message)
+    if frontier_path is not None:
+        _assert_frontier_path_shape(frontier_state_keys, frontier_path)
+
+
 def _assert_frontier_evidence(
     frontier_states: int,
     frontier_state_keys: tuple[_StateKey, ...],
@@ -1324,18 +1349,17 @@ def _assert_frontier_evidence(
     if frontier_states != len(frontier_state_keys):
         message = "frontier state count disagrees with exact frontier set"
         raise AssertionError(message)
+    if frontier_state_keys != tuple(sorted(set(frontier_state_keys))):
+        message = "exact frontier state set is not canonical and deduplicated"
+        raise AssertionError(message)
     if truncated != bool(frontier_state_keys):
         message = "worklist truncation disagrees with exact frontier states"
         raise AssertionError(message)
-    if truncated != (frontier_path is not None):
-        message = "worklist truncation lost its exact frontier path"
-        raise AssertionError(message)
-    if (
-        frontier_path is not None
-        and frontier_path[-1] not in frontier_state_keys
-    ):
-        message = "worklist frontier path endpoint is outside exact frontier"
-        raise AssertionError(message)
+    _assert_frontier_path_evidence(
+        frontier_state_keys,
+        frontier_path,
+        truncated=truncated,
+    )
 
 
 def _assert_terminal_state_classes_disjoint(

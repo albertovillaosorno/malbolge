@@ -2325,6 +2325,28 @@ def test_frontier_invariant_rejects_count_set_drift() -> None:
         )
 
 
+def test_frontier_invariant_rejects_duplicate_exact_states() -> None:
+    """The published exact frontier state tuple must remain deduplicated."""
+    with pytest.raises(AssertionError, match="canonical and deduplicated"):
+        worklist._assert_frontier_evidence(
+            2,
+            (_GRAPH_KEY_A, _GRAPH_KEY_A),
+            (_GRAPH_KEY_A,),
+            truncated=True,
+        )
+
+
+def test_frontier_invariant_rejects_empty_exact_path() -> None:
+    """A truncated frontier must fail closed on an empty path witness."""
+    with pytest.raises(AssertionError, match="frontier path is empty"):
+        worklist._assert_frontier_evidence(
+            1,
+            (_GRAPH_KEY_A,),
+            (),
+            truncated=True,
+        )
+
+
 def test_terminal_invariant_rejects_count_state_drift() -> None:
     """Terminal status totals must equal their exact terminal-state sets."""
     with pytest.raises(AssertionError, match="exact terminal states"):
