@@ -992,6 +992,13 @@ class _WorklistModule(Protocol):
         result_values: dict[int, set[int]],
     ) -> None: ...
 
+    def _assert_repeated_edge_partition(
+        self,
+        repeated_edges: int,
+        state_merge_transitions: int,
+        cycle_closing_repeated_edges: int,
+    ) -> None: ...
+
     def _assert_committed_write_terminal_partition(
         self,
         state_sets: _CommittedWriteStateSets,
@@ -1762,6 +1769,12 @@ def test_evolved_read_invariant_rejects_missing_witness() -> None:
             label="evolved data read",
             require_witness=True,
         )
+
+
+def test_repeated_edge_partition_rejects_count_drift() -> None:
+    """Repeated-edge subclasses must exactly partition the aggregate count."""
+    with pytest.raises(AssertionError, match="partition the aggregate"):
+        worklist._assert_repeated_edge_partition(3, 1, 1)
 
 
 def test_committed_write_partition_rejects_terminal_overlap() -> None:

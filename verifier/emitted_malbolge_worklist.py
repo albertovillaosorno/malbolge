@@ -2099,6 +2099,16 @@ def _assert_data_mutation_domains(
     )
 
 
+def _assert_repeated_edge_partition(
+    repeated_edges: int,
+    state_merge_transitions: int,
+    cycle_closing_repeated_edges: int,
+) -> None:
+    if repeated_edges != state_merge_transitions + cycle_closing_repeated_edges:
+        message = "repeated edge classes do not partition the aggregate count"
+        raise AssertionError(message)
+
+
 def _assert_committed_write_terminal_partition(
     state_sets: _CommittedWriteStateSets,
     terminal_states: dict[str, set[_StateKey]],
@@ -2671,6 +2681,11 @@ class _Explorer:
                 self.effective_data_mutation_state_values,
                 self.committed_data_write_values,
             )
+        )
+        _assert_repeated_edge_partition(
+            self.repeated_edges,
+            self.state_merge_transitions,
+            self.cycle_closing_repeated_edges,
         )
         _assert_committed_write_terminal_partition(
             (
