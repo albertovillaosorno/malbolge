@@ -379,6 +379,13 @@ type _CommittedWriteStateSets = tuple[
 ]
 
 
+type _CodeDataAliasWitnessEvidence = tuple[
+    set[int],
+    dict[_WorklistStateKey, int],
+    dict[int, _WorklistCodeDataAliasWitness],
+]
+
+
 class _WorklistWrapTransitionSignature(Protocol):
     source_code_pointer: int
     source_data_pointer: int
@@ -886,6 +893,13 @@ class _WorklistModule(Protocol):
         addresses: set[int],
         observations: dict[_WorklistStateKey, int],
         *,
+        seen: set[_WorklistStateKey],
+    ) -> None: ...
+
+    def _assert_code_data_alias_witnesses(
+        self,
+        evidence: _CodeDataAliasWitnessEvidence,
+        edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
         seen: set[_WorklistStateKey],
     ) -> None: ...
 
@@ -2337,6 +2351,16 @@ def test_alias_observation_invariant_rejects_unknown_state() -> None:
             {_GRAPH_KEY_A[0]},
             {_GRAPH_KEY_A: 0},
             seen={_GRAPH_KEY_B},
+        )
+
+
+def test_alias_witness_invariant_rejects_missing_address_witness() -> None:
+    """Every observed alias address must retain one exact witness."""
+    with pytest.raises(AssertionError, match="witness coverage"):
+        worklist._assert_code_data_alias_witnesses(
+            ({_GRAPH_KEY_A[0]}, {_GRAPH_KEY_A: 0}, {}),
+            {_GRAPH_KEY_A: set()},
+            {_GRAPH_KEY_A},
         )
 
 

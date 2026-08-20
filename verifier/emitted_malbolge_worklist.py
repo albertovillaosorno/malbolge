@@ -970,6 +970,16 @@ def _cycle_state(key: _StateKey) -> WorklistCycleState:
     )
 
 
+def _cycle_state_key(state: WorklistCycleState) -> _StateKey:
+    return (
+        state.code_pointer,
+        state.data_pointer,
+        state.accumulator,
+        state.memory_overrides,
+        state.eof_seen,
+    )
+
+
 def _cycle_components(
     components: tuple[tuple[_StateKey, ...], ...],
 ) -> tuple[tuple[WorklistCycleState, ...], ...]:
@@ -1327,6 +1337,52 @@ def _assert_code_data_alias_observations(
     if any(state[0] != state[1] for state in observations):
         message = "code/data alias observation lost exact C=D identity"
         raise AssertionError(message)
+
+
+type _CodeDataAliasWitnessEvidence = tuple[
+    set[int],
+    dict[_StateKey, int],
+    dict[int, WorklistCodeDataAliasWitness],
+]
+
+
+def _assert_code_data_alias_witness(
+    evidence: tuple[int, WorklistCodeDataAliasWitness, dict[_StateKey, int]],
+    edges: dict[_StateKey, set[_StateKey]],
+    seen: set[_StateKey],
+) -> None:
+    address, witness, observations = evidence
+    if witness.address != address:
+        message = "code/data alias witness key disagrees with its address"
+        raise AssertionError(message)
+    key = _cycle_state_key(witness.state)
+    if observations.get(key) != witness.memory_value:
+        message = "code/data alias witness lost its exact observation"
+        raise AssertionError(message)
+    expected_path = tuple(
+        _cycle_state(item)
+        for item in _known_graph_shortest_path(
+            edges, seen, start=_INITIAL_STATE_KEY, target=key
+        )
+    )
+    if witness.entry_path != expected_path:
+        message = "code/data alias witness lost its exact shortest path"
+        raise AssertionError(message)
+
+
+def _assert_code_data_alias_witnesses(
+    evidence: _CodeDataAliasWitnessEvidence,
+    edges: dict[_StateKey, set[_StateKey]],
+    seen: set[_StateKey],
+) -> None:
+    addresses, observations, witnesses = evidence
+    if set(witnesses) != addresses:
+        message = "code/data alias addresses disagree with witness coverage"
+        raise AssertionError(message)
+    for address, witness in witnesses.items():
+        _assert_code_data_alias_witness(
+            (address, witness, observations), edges, seen
+        )
 
 
 type _WorklistStateEvidence = tuple[
@@ -3835,4 +3891,13 @@ def analyze_reachability(
         truncated=result.truncated,
     )
     _assert_known_graph_integrity(explorer.edges, explorer.seen)
+    _assert_code_data_alias_witnesses(
+        (
+            explorer.code_data_alias_addresses,
+            explorer.code_data_alias_state_values,
+            explorer.code_data_alias_witnesses,
+        ),
+        explorer.edges,
+        explorer.seen,
+    )
     return result
