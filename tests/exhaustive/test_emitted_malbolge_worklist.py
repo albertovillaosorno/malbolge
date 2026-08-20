@@ -59,6 +59,7 @@ type _WorklistStateKey = tuple[
 
 type _WorklistStateEvidence = tuple[
     int,
+    set[_WorklistStateKey],
     tuple[_WorklistStateKey, ...],
     set[_WorklistStateKey],
     int,
@@ -805,6 +806,13 @@ class _WorklistModule(Protocol):
         truncated: bool,
     ) -> None: ...
 
+    def _assert_explored_pointer_domains(
+        self,
+        explored_state_keys: set[_WorklistStateKey],
+        code_pointer_addresses: set[int],
+        data_pointer_addresses: set[int],
+    ) -> None: ...
+
     def _known_graph_strong_components(
         self,
         edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
@@ -873,6 +881,13 @@ class _WorklistModule(Protocol):
         changed_states: set[_WorklistStateKey],
         *,
         label: str,
+    ) -> None: ...
+
+    def _assert_fetch_observation_coverage(
+        self,
+        initial_states: set[_WorklistStateKey],
+        evolved_states: set[_WorklistStateKey],
+        explored_state_keys: set[_WorklistStateKey],
     ) -> None: ...
 
     def _assert_initial_value_observations(
@@ -1845,6 +1860,16 @@ def test_changed_read_invariant_rejects_under_counted_values() -> None:
             {1},
             {1: {32, 33}},
             label="changed encryption input",
+        )
+
+
+def test_fetch_observation_coverage_rejects_missing_explored_state() -> None:
+    """Fetch observations must cover every exact processed worklist state."""
+    with pytest.raises(AssertionError, match="cover exact explored states"):
+        worklist._assert_fetch_observation_coverage(
+            {_GRAPH_KEY_A},
+            set(),
+            {_GRAPH_KEY_A, _GRAPH_KEY_B},
         )
 
 
@@ -2965,7 +2990,7 @@ def test_worklist_state_partition_rejects_unaccounted_admission() -> None:
     """Admitted states must equal explored plus pending queue states."""
     with pytest.raises(AssertionError, match="do not partition"):
         worklist._assert_worklist_state_partition(
-            (1, (), {_GRAPH_KEY_A, _GRAPH_KEY_B}, 2),
+            (1, {_GRAPH_KEY_A}, (), {_GRAPH_KEY_A, _GRAPH_KEY_B}, 2),
             truncated=True,
         )
 
@@ -2974,8 +2999,39 @@ def test_worklist_state_partition_rejects_early_truncation() -> None:
     """Truncation is valid only after the exact state cap is reached."""
     with pytest.raises(AssertionError, match="state limit"):
         worklist._assert_worklist_state_partition(
-            (1, (_GRAPH_KEY_B,), {_GRAPH_KEY_A, _GRAPH_KEY_B}, 3),
+            (
+                1,
+                {_GRAPH_KEY_A},
+                (_GRAPH_KEY_B,),
+                {_GRAPH_KEY_A, _GRAPH_KEY_B},
+                3,
+            ),
             truncated=True,
+        )
+
+
+def test_worklist_state_partition_rejects_explored_count_drift() -> None:
+    """Explored-state count must equal the retained exact processed states."""
+    with pytest.raises(AssertionError, match="exact explored states"):
+        worklist._assert_worklist_state_partition(
+            (
+                1,
+                {_GRAPH_KEY_A, _GRAPH_KEY_B},
+                (),
+                {_GRAPH_KEY_A, _GRAPH_KEY_B},
+                2,
+            ),
+            truncated=False,
+        )
+
+
+def test_explored_pointer_domains_reject_frontier_address() -> None:
+    """Pointer domains cannot absorb an admitted but unexplored frontier."""
+    with pytest.raises(AssertionError, match="code-pointer domain"):
+        worklist._assert_explored_pointer_domains(
+            {_GRAPH_KEY_A},
+            {_GRAPH_KEY_A[0], _GRAPH_KEY_B[0]},
+            {_GRAPH_KEY_A[1]},
         )
 
 

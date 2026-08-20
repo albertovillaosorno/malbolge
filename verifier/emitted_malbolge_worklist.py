@@ -1693,6 +1693,7 @@ def _assert_representative_write_witness(
 
 type _WorklistStateEvidence = tuple[
     int,
+    set[_StateKey],
     tuple[_StateKey, ...],
     set[_StateKey],
     int,
@@ -1707,18 +1708,33 @@ type _FrontierBindingEvidence = tuple[
 ]
 
 
+def _assert_partition_membership(
+    explored_state_keys: set[_StateKey],
+    pending_states: set[_StateKey],
+    seen: set[_StateKey],
+) -> None:
+    if not explored_state_keys <= seen:
+        message = "explored worklist retained an unadmitted state"
+        raise AssertionError(message)
+    if not pending_states <= seen:
+        message = "pending worklist retained an unadmitted state"
+        raise AssertionError(message)
+
+
 def _assert_pending_state_partition(
-    explored: int,
+    explored_state_keys: set[_StateKey],
     pending_state_keys: tuple[_StateKey, ...],
     seen: set[_StateKey],
 ) -> None:
-    if len(pending_state_keys) != len(set(pending_state_keys)):
+    pending_states = set(pending_state_keys)
+    if len(pending_state_keys) != len(pending_states):
         message = "pending worklist states are not deduplicated"
         raise AssertionError(message)
-    if not set(pending_state_keys) <= seen:
-        message = "pending worklist retained an unadmitted state"
+    _assert_partition_membership(explored_state_keys, pending_states, seen)
+    if explored_state_keys & pending_states:
+        message = "explored and pending worklist states overlap"
         raise AssertionError(message)
-    if explored + len(pending_state_keys) != len(seen):
+    if explored_state_keys | pending_states != seen:
         message = "explored and pending states do not partition admitted states"
         raise AssertionError(message)
 
@@ -1728,16 +1744,42 @@ def _assert_worklist_state_partition(
     *,
     truncated: bool,
 ) -> None:
-    explored, pending_state_keys, seen, state_limit = evidence
+    (
+        explored,
+        explored_state_keys,
+        pending_state_keys,
+        seen,
+        state_limit,
+    ) = evidence
     if not 1 <= explored <= len(seen) <= state_limit:
         message = "worklist state counts exceed admitted-state bounds"
         raise AssertionError(message)
-    _assert_pending_state_partition(explored, pending_state_keys, seen)
+    if explored != len(explored_state_keys):
+        message = "explored state count disagrees with exact explored states"
+        raise AssertionError(message)
+    _assert_pending_state_partition(
+        explored_state_keys, pending_state_keys, seen
+    )
     if truncated and len(seen) != state_limit:
         message = "worklist truncated before reaching its state limit"
         raise AssertionError(message)
     if not truncated and pending_state_keys:
         message = "closed worklist retained pending states"
+        raise AssertionError(message)
+
+
+def _assert_explored_pointer_domains(
+    explored_state_keys: set[_StateKey],
+    code_pointer_addresses: set[int],
+    data_pointer_addresses: set[int],
+) -> None:
+    expected_code = {state[0] for state in explored_state_keys}
+    if code_pointer_addresses != expected_code:
+        message = "code-pointer domain disagrees with exact explored states"
+        raise AssertionError(message)
+    expected_data = {state[1] for state in explored_state_keys}
+    if data_pointer_addresses != expected_data:
+        message = "data-pointer domain disagrees with exact explored states"
         raise AssertionError(message)
 
 
@@ -2085,6 +2127,16 @@ def _assert_read_observation_state_partitions(
         _assert_observation_state_partition(
             initial_states, changed_states, label=label
         )
+
+
+def _assert_fetch_observation_coverage(
+    initial_states: set[_StateKey],
+    evolved_states: set[_StateKey],
+    explored_state_keys: set[_StateKey],
+) -> None:
+    if initial_states | evolved_states != explored_state_keys:
+        message = "fetch observations do not cover exact explored states"
+        raise AssertionError(message)
 
 
 def _assert_initial_value_observations(
@@ -3020,6 +3072,7 @@ class _Explorer:
     data_write_noop_witness: WorklistDataWriteNoopWitness | None = None
     data_mutation_witness: WorklistDataMutationWitness | None = None
     explored: int = 0
+    explored_state_keys: set[_StateKey] = field(default_factory=set)
     code_data_alias_transitions: int = 0
     committed_writes: int = 0
     planned_data_write_transitions: int = 0
@@ -3119,7 +3172,7 @@ class _Explorer:
                 self.initial_value_fetch_transitions,
                 self.initial_value_fetch_addresses,
                 self.initial_value_fetch_state_values,
-                self.seen,
+                self.explored_state_keys,
             ),
             self.initial_memory,
             label="initial-value fetch",
@@ -3136,7 +3189,7 @@ class _Explorer:
                 self.evolved_fetch_addresses,
                 self.evolved_fetch_values,
                 self.evolved_fetch_state_values,
-                self.seen,
+                self.explored_state_keys,
             ),
             self.initial_memory,
             label="evolved fetch",
@@ -3156,7 +3209,7 @@ class _Explorer:
                 self.initial_value_data_read_transitions,
                 self.initial_value_data_read_addresses,
                 self.initial_value_data_read_state_values,
-                self.seen,
+                self.explored_state_keys,
             ),
             self.initial_memory,
             label="initial-value data read",
@@ -3173,7 +3226,7 @@ class _Explorer:
                 self.evolved_data_read_addresses,
                 self.evolved_data_read_values,
                 self.evolved_data_read_state_values,
-                self.seen,
+                self.explored_state_keys,
             ),
             self.initial_memory,
             label="evolved data read",
@@ -3193,7 +3246,7 @@ class _Explorer:
                 self.initial_value_encryption_input_transitions,
                 self.initial_value_encryption_input_addresses,
                 self.initial_value_encryption_input_state_values,
-                self.seen,
+                self.explored_state_keys,
             ),
             self.initial_memory,
             label="initial-value encryption input",
@@ -3210,9 +3263,14 @@ class _Explorer:
                 self.changed_from_initial_encryption_input_addresses,
                 self.changed_from_initial_encryption_input_values,
                 self.changed_from_initial_encryption_input_state_values,
-                self.seen,
+                self.explored_state_keys,
             ),
             self.initial_memory,
+        )
+        _assert_fetch_observation_coverage(
+            set(self.initial_value_fetch_state_values),
+            set(self.evolved_fetch_state_values),
+            self.explored_state_keys,
         )
         _assert_read_observation_state_partitions(
             (
@@ -3254,7 +3312,7 @@ class _Explorer:
                 self.planned_data_write_addresses,
                 self.planned_data_write_values,
                 self.planned_data_write_state_values,
-                self.seen,
+                self.explored_state_keys,
             )
         )
         _assert_observed_value_domains(
@@ -3268,7 +3326,7 @@ class _Explorer:
                 self.committed_data_write_noop_transitions,
                 self.committed_data_write_noop_addresses,
                 self.committed_data_write_noop_state_values,
-                self.seen,
+                self.explored_state_keys,
             )
         )
         _assert_observed_value_domains(
@@ -3283,7 +3341,7 @@ class _Explorer:
                 self.self_encryption_addresses,
                 self.self_encryption_output_values,
                 self.self_encryption_state_values,
-                self.seen,
+                self.explored_state_keys,
             )
         )
         _assert_data_mutation_domains(
@@ -3299,7 +3357,7 @@ class _Explorer:
                 self.effective_data_mutation_previous_values,
                 self.effective_data_mutation_result_values,
                 self.effective_data_mutation_state_values,
-                self.seen,
+                self.explored_state_keys,
             )
         )
         _assert_committed_data_write_state_partition(
@@ -3364,7 +3422,7 @@ class _Explorer:
         _assert_non_graphical_fetch_domains(*evidence[:3])
         _assert_non_graphical_fetch_observation_projection(
             evidence,
-            seen=self.seen,
+            seen=self.explored_state_keys,
         )
         _assert_non_graphical_fetch_observation_edges(
             self.non_graphical_fetch_state_values, self.edges
@@ -3397,7 +3455,7 @@ class _Explorer:
                 self.wraparound_transition_signatures,
                 self.wraparound_state_signatures,
             ),
-            seen=self.seen,
+            seen=self.explored_state_keys,
         )
         _assert_wrap_witness_bindings(
             wrap_witnesses,
@@ -3418,10 +3476,15 @@ class _Explorer:
             frontier_path,
             truncated=truncated,
         )
+        _assert_explored_pointer_domains(
+            self.explored_state_keys,
+            self.explored_code_pointer_addresses,
+            self.explored_data_pointer_addresses,
+        )
         _assert_terminal_evidence(
             self.terminal_counts,
             self.terminal_states,
-            self.seen,
+            self.explored_state_keys,
         )
         _assert_terminal_graph_endpoints(
             self.terminal_states,
@@ -3430,13 +3493,13 @@ class _Explorer:
         _assert_input_branch_evidence(
             self.input_branch_points,
             self.input_branch_states,
-            self.seen,
+            self.explored_state_keys,
         )
         _assert_code_data_alias_observations(
             self.code_data_alias_transitions,
             self.code_data_alias_addresses,
             self.code_data_alias_state_values,
-            seen=self.seen,
+            seen=self.explored_state_keys,
         )
         ordered_addresses = tuple(sorted(self.accessed_addresses))
         highest_address = ordered_addresses[-1]
@@ -4570,6 +4633,11 @@ class _Explorer:
             )
 
     def _process_node(self, node: _ReachabilityNode) -> WorklistAnalysis | None:
+        key = _node_key(node)
+        if key in self.explored_state_keys:
+            message = "worklist state was explored more than once"
+            raise AssertionError(message)
+        self.explored_state_keys.add(key)
         self.explored += 1
         self.explored_code_pointer_addresses.add(node.snapshot.code_pointer)
         self.explored_data_pointer_addresses.add(node.snapshot.data_pointer)
@@ -4650,7 +4718,13 @@ def analyze_reachability(
     result = explorer.run()
     pending_state_keys = tuple(_node_key(node) for node in explorer.queue)
     _assert_worklist_state_partition(
-        (explorer.explored, pending_state_keys, explorer.seen, state_limit),
+        (
+            explorer.explored,
+            explorer.explored_state_keys,
+            pending_state_keys,
+            explorer.seen,
+            state_limit,
+        ),
         truncated=result.truncated,
     )
     _assert_known_graph_integrity(explorer.edges, explorer.seen)
