@@ -1884,16 +1884,27 @@ def _assert_explored_accessed_addresses(
 def _assert_input_branch_evidence(
     branch_count: int,
     branch_states: set[_StateKey],
-    seen: set[_StateKey],
+    explored_states: set[_StateKey],
+    initial_memory: tuple[int, ...],
 ) -> None:
     if branch_count != len(branch_states):
         message = "input branch count disagrees with exact branch states"
         raise AssertionError(message)
-    if not branch_states <= seen:
-        message = "input branch evidence retained an unknown graph state"
+    if not branch_states <= explored_states:
+        message = "input branch evidence retained an unexplored graph state"
         raise AssertionError(message)
-    if any(state[-1] for state in branch_states):
-        message = "input branch evidence retained an EOF-seen state"
+    expected = {
+        state
+        for state in explored_states
+        if not state[-1]
+        and prefix_transfer.analyze_state_snapshot(
+            initial_memory,
+            _snapshot_from_key(state, before_transition=1),
+        ).transition.decoded_byte
+        == _INPUT_OPCODE
+    }
+    if branch_states != expected:
+        message = "input branch states disagree with exact transfer semantics"
         raise AssertionError(message)
 
 
@@ -4270,6 +4281,7 @@ class _Explorer:
             self.input_branch_points,
             self.input_branch_states,
             self.explored_state_keys,
+            self.initial_memory,
         )
         _assert_code_data_alias_observations(
             self.code_data_alias_transitions,

@@ -1115,7 +1115,8 @@ class _WorklistModule(Protocol):
         self,
         branch_count: int,
         branch_states: set[_WorklistStateKey],
-        seen: set[_WorklistStateKey],
+        explored_states: set[_WorklistStateKey],
+        initial_memory: tuple[int, ...],
     ) -> None: ...
 
     def _assert_frontier_evidence(
@@ -3242,11 +3243,37 @@ def test_write_witness_invariant_rejects_missing_representative() -> None:
 
 def test_input_branch_invariant_rejects_count_state_drift() -> None:
     """Input branch totals cannot diverge from their exact state set."""
+    initial_memory = worklist._expanded_initial_memory(_INPUT_HALT_SOURCE)
     with pytest.raises(AssertionError, match="branch count"):
         worklist._assert_input_branch_evidence(
             1,
             set(),
             {_GRAPH_KEY_A},
+            initial_memory,
+        )
+
+
+def test_input_branch_invariant_rejects_missing_semantic_branch() -> None:
+    """Every explored non-EOF input state must be retained as a branch."""
+    initial_memory = worklist._expanded_initial_memory(_INPUT_HALT_SOURCE)
+    with pytest.raises(AssertionError, match="exact transfer semantics"):
+        worklist._assert_input_branch_evidence(
+            0,
+            set(),
+            {_GRAPH_KEY_A},
+            initial_memory,
+        )
+
+
+def test_input_branch_invariant_rejects_forged_semantic_branch() -> None:
+    """A non-input explored state cannot masquerade as an input branch."""
+    initial_memory = worklist._expanded_initial_memory(_INPUT_HALT_SOURCE)
+    with pytest.raises(AssertionError, match="exact transfer semantics"):
+        worklist._assert_input_branch_evidence(
+            1,
+            {_GRAPH_KEY_B},
+            {_GRAPH_KEY_B},
+            initial_memory,
         )
 
 
