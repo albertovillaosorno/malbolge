@@ -1885,6 +1885,7 @@ def _assert_input_branch_evidence(
     branch_count: int,
     branch_states: set[_StateKey],
     explored_states: set[_StateKey],
+    *,
     initial_memory: tuple[int, ...],
 ) -> None:
     if branch_count != len(branch_states):
@@ -4284,7 +4285,7 @@ class _Explorer:
             self.input_branch_points,
             self.input_branch_states,
             self.explored_state_keys,
-            self.initial_memory,
+            initial_memory=self.initial_memory,
         )
         _assert_code_data_alias_observations(
             self.code_data_alias_transitions,

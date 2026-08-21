@@ -1116,6 +1116,7 @@ class _WorklistModule(Protocol):
         branch_count: int,
         branch_states: set[_WorklistStateKey],
         explored_states: set[_WorklistStateKey],
+        *,
         initial_memory: tuple[int, ...],
     ) -> None: ...
 
@@ -3249,7 +3250,7 @@ def test_input_branch_invariant_rejects_count_state_drift() -> None:
             1,
             set(),
             {_GRAPH_KEY_A},
-            initial_memory,
+            initial_memory=initial_memory,
         )
 
 
@@ -3261,7 +3262,7 @@ def test_input_branch_invariant_rejects_missing_semantic_branch() -> None:
             0,
             set(),
             {_GRAPH_KEY_A},
-            initial_memory,
+            initial_memory=initial_memory,
         )
 
 
@@ -3273,7 +3274,7 @@ def test_input_branch_invariant_rejects_forged_semantic_branch() -> None:
             1,
             {_GRAPH_KEY_B},
             {_GRAPH_KEY_B},
-            initial_memory,
+            initial_memory=initial_memory,
         )
 
 
