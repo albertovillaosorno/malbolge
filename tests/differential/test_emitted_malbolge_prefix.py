@@ -439,6 +439,8 @@ def _assert_stuck_effects(document: dict[str, object]) -> None:
     assert document["encryption_address"] is None
     assert document["encryption_input"] is None
     assert document["encryption_output"] is None
+    assert document["data_write_aliases_encryption"] is False
+    assert document["pointer_wraps"] is False
     assert document["provable_cycle"] is True
 
 
@@ -533,12 +535,18 @@ def test_two_transition_cli_matches_independent_historical_model(
     first: int,
     second: int,
 ) -> None:
-    """Compare every second opcode after exact output/input entry semantics."""
+    """Compare every second opcode after output, input, or jump entry."""
     source_tuple = (_source_byte(first, 0), _source_byte(second, 1))
     source = bytes(source_tuple)
+    data_pointer = source_tuple[0] + 1 if first == ord("j") else 1
     expected = _expected_second(first, second, source_tuple)
     returncode, document = _report(tmp_path, source)
     observed = cast("dict[str, object]", document["second_transition"])
+    assert observed["fetched_address"] == 1
+    assert observed["fetched_value"] == source_tuple[1]
+    assert observed["data_address"] == data_pointer
+    assert observed["data_value"] == _initial_memory(source_tuple, data_pointer)
+    assert observed["code_data_alias"] == (data_pointer == 1)
     _assert_second(observed, expected)
     _assert_third_prefix(document["third_transition"], source_tuple, expected)
     assert document["fourth_transition"] is None
@@ -606,13 +614,14 @@ def _assert_fourth_reference_transition(
     assert document["status"] == _STATUS_STUCK
     assert document["fetched_address"] == _FOURTH_FETCH_ADDRESS
     assert document["fetched_value"] == expected_fetch
-    assert document["decoded_byte"] is None
     assert document["data_address"] == _FOURTH_FINAL_DATA_ADDRESS
-    assert document["data_value"] is None
+    assert document["code_data_alias"] is False
+    _assert_stuck_effects(document)
+    assert document["input_dependent_accumulator"] is False
+    assert document["result_accumulator"] == 0
     assert document["result_code_pointer"] == _FOURTH_FETCH_ADDRESS
     assert document["result_data_pointer"] == _FOURTH_FINAL_DATA_ADDRESS
     assert document["next_fetch_address"] == _FOURTH_FETCH_ADDRESS
-    assert document["provable_cycle"] is True
 
 
 def test_fourth_transition_matches_independent_recurrence_model(
