@@ -82,6 +82,12 @@ type _PlannedDataWriteSemanticEvidence = tuple[
     _ReadObservationPartition,
     dict[_WorklistStateKey, tuple[int, int]],
 ]
+type _EncryptionInputSemanticEvidence = tuple[
+    _ReadObservationPartition,
+    _ReadObservationPartition,
+    dict[_WorklistStateKey, tuple[int, int]],
+    _ReadObservationPartition,
+]
 type _FetchDerivedStateEvidence = tuple[
     _ReadObservationPartition,
     _ReadObservationPartition,
@@ -916,6 +922,12 @@ class _WorklistModule(Protocol):
     def _assert_planned_data_write_semantics(
         self,
         evidence: _PlannedDataWriteSemanticEvidence,
+    ) -> None: ...
+
+    def _assert_encryption_input_semantics(
+        self,
+        evidence: _EncryptionInputSemanticEvidence,
+        initial_memory: tuple[int, ...],
     ) -> None: ...
 
     def _assert_committed_data_write_state_partition(
@@ -2134,6 +2146,33 @@ def test_planned_write_semantics_rejects_missing_rotate_state() -> None:
     )
     with pytest.raises(AssertionError, match="exact semantics"):
         worklist._assert_planned_data_write_semantics(evidence)
+
+
+def test_encryption_input_semantics_rejects_jump_code_target_drift() -> None:
+    """An i transition encrypts the exact post-jump code address."""
+    state: _WorklistStateKey = (0, 1, 0, (), False)
+    evidence: _EncryptionInputSemanticEvidence = (
+        ({state: (0, 98)}, {}),
+        ({state: (1, 5)}, {}),
+        {},
+        ({state: (0, 98)}, {}),
+    )
+    initial_memory = (98, 5, 0, 0, 0, 12_345)
+    with pytest.raises(AssertionError, match="exact semantics"):
+        worklist._assert_encryption_input_semantics(evidence, initial_memory)
+
+
+def test_encryption_input_semantics_rejects_aliased_write_value_drift() -> None:
+    """A same-address p write becomes the exact encryption input."""
+    state: _WorklistStateKey = (0, 0, 29_457, ((0, 62),), False)
+    evidence: _EncryptionInputSemanticEvidence = (
+        ({state: (0, 62)}, {}),
+        ({state: (0, 62)}, {}),
+        {state: (0, 125)},
+        ({state: (0, 62)}, {}),
+    )
+    with pytest.raises(AssertionError, match="exact semantics"):
+        worklist._assert_encryption_input_semantics(evidence, (62,))
 
 
 def test_changed_encryption_observation_rejects_count_drift() -> None:

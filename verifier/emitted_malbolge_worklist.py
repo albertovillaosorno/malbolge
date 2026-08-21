@@ -2397,6 +2397,75 @@ def _assert_planned_data_write_semantics(
         raise AssertionError(message)
 
 
+type _EncryptionInputSemanticEvidence = tuple[
+    _ReadObservationPartition,
+    _ReadObservationPartition,
+    dict[_StateKey, tuple[int, int]],
+    _ReadObservationPartition,
+]
+
+
+def _encryption_address(
+    state: _StateKey,
+    decoded: int,
+    data_reads: _ReadValueObservations,
+) -> int:
+    if decoded != ord("i"):
+        return state[0]
+    data_observation = data_reads.get(state)
+    if data_observation is None:
+        message = "jump-code encryption source lacks an exact data read"
+        raise AssertionError(message)
+    return data_observation[1]
+
+
+def _encryption_input_value(
+    state: _StateKey,
+    address: int,
+    planned: dict[_StateKey, tuple[int, int]],
+    *,
+    initial_memory: tuple[int, ...],
+) -> int:
+    planned_write = planned.get(state)
+    if planned_write is not None and planned_write[0] == address:
+        return planned_write[1]
+    return _state_memory_value(state, address, initial_memory)
+
+
+def _encryption_input_semantic_projection(
+    evidence: _EncryptionInputSemanticEvidence,
+    initial_memory: tuple[int, ...],
+) -> _ReadValueObservations:
+    fetch_partition, data_read_partition, planned, _ = evidence
+    data_reads = _merged_read_observations(data_read_partition)
+    projected: _ReadValueObservations = {}
+    for state, observation in _merged_read_observations(
+        fetch_partition
+    ).items():
+        decoded = classic.decode(observation[1], observation[0])
+        if decoded is None or decoded == _HALT_OPCODE:
+            continue
+        address = _encryption_address(state, decoded, data_reads)
+        projected[state] = (
+            address,
+            _encryption_input_value(
+                state, address, planned, initial_memory=initial_memory
+            ),
+        )
+    return projected
+
+
+def _assert_encryption_input_semantics(
+    evidence: _EncryptionInputSemanticEvidence,
+    initial_memory: tuple[int, ...],
+) -> None:
+    observations = _merged_read_observations(evidence[3])
+    expected = _encryption_input_semantic_projection(evidence, initial_memory)
+    if observations != expected:
+        message = "encryption-input observations disagree with exact semantics"
+        raise AssertionError(message)
+
+
 type _FetchDerivedStateEvidence = tuple[
     _ReadObservationPartition,
     _ReadObservationPartition,
@@ -3714,6 +3783,24 @@ class _Explorer:
                 ),
                 self.planned_data_write_state_values,
             )
+        )
+        _assert_encryption_input_semantics(
+            (
+                (
+                    self.initial_value_fetch_state_values,
+                    self.evolved_fetch_state_values,
+                ),
+                (
+                    self.initial_value_data_read_state_values,
+                    self.evolved_data_read_state_values,
+                ),
+                self.planned_data_write_state_values,
+                (
+                    self.initial_value_encryption_input_state_values,
+                    self.changed_from_initial_encryption_input_state_values,
+                ),
+            ),
+            self.initial_memory,
         )
         _assert_observed_value_domains(
             self.committed_data_write_transitions,
