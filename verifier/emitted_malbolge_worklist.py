@@ -2823,6 +2823,108 @@ def _data_mutation_observation_projection(
     return addresses, previous_values, result_values
 
 
+type _SelfEncryptionObservation = tuple[int, int, int, bool]
+type _SelfEncryptionSemanticEvidence = tuple[
+    _ReadObservationPartition,
+    dict[_StateKey, tuple[int, int]],
+    dict[_StateKey, _SelfEncryptionObservation],
+]
+
+
+def _self_encryption_semantic_projection(
+    evidence: _SelfEncryptionSemanticEvidence,
+) -> dict[_StateKey, _SelfEncryptionObservation]:
+    encryption_input_partition, planned, _ = evidence
+    projected: dict[_StateKey, _SelfEncryptionObservation] = {}
+    for state, (address, input_value) in _merged_read_observations(
+        encryption_input_partition
+    ).items():
+        output_value = classic.encrypt(input_value)
+        if output_value is None:
+            continue
+        planned_write = planned.get(state)
+        aliases = planned_write is not None and planned_write[0] == address
+        projected[state] = (address, input_value, output_value, aliases)
+    return projected
+
+
+def _assert_self_encryption_semantics(
+    evidence: _SelfEncryptionSemanticEvidence,
+) -> None:
+    expected = _self_encryption_semantic_projection(evidence)
+    if evidence[2] != expected:
+        message = "self-encryption observations disagree with exact semantics"
+        raise AssertionError(message)
+
+
+type _CommittedDataWriteSemanticEvidence = tuple[
+    _ReadObservationPartition,
+    dict[_StateKey, tuple[int, int]],
+    dict[_StateKey, _SelfEncryptionObservation],
+    dict[_StateKey, _WriteObservation],
+    dict[_StateKey, _WriteObservation],
+]
+
+
+def _committed_data_write_observation(
+    state: _StateKey,
+    planned_write: tuple[int, int],
+    data_reads: _ReadValueObservations,
+    *,
+    self_encryptions: dict[_StateKey, _SelfEncryptionObservation],
+) -> _WriteObservation | None:
+    encryption = self_encryptions.get(state)
+    if encryption is None:
+        return None
+    data_read = data_reads.get(state)
+    if data_read is None:
+        message = "committed data-write source lacks an exact data read"
+        raise AssertionError(message)
+    address, written = planned_write
+    read_address, previous = data_read
+    if read_address != address:
+        message = "committed data-write address disagrees with exact data read"
+        raise AssertionError(message)
+    aliases = encryption[3]
+    result = encryption[2] if aliases else written
+    return address, previous, written, result, aliases
+
+
+def _committed_data_write_semantic_projection(
+    evidence: _CommittedDataWriteSemanticEvidence,
+) -> tuple[
+    dict[_StateKey, _WriteObservation],
+    dict[_StateKey, _WriteObservation],
+]:
+    data_read_partition, planned, self_encryptions, _, _ = evidence
+    data_reads = _merged_read_observations(data_read_partition)
+    noops: dict[_StateKey, _WriteObservation] = {}
+    effective: dict[_StateKey, _WriteObservation] = {}
+    for state, planned_write in planned.items():
+        observation = _committed_data_write_observation(
+            state,
+            planned_write,
+            data_reads,
+            self_encryptions=self_encryptions,
+        )
+        if observation is None:
+            continue
+        target = noops if observation[1] == observation[3] else effective
+        target[state] = observation
+    return noops, effective
+
+
+def _assert_committed_data_write_semantics(
+    evidence: _CommittedDataWriteSemanticEvidence,
+) -> None:
+    expected = _committed_data_write_semantic_projection(evidence)
+    if (evidence[3], evidence[4]) != expected:
+        message = (
+            "committed data-write observations disagree with exact semantics"
+        )
+        raise AssertionError(message)
+
+
 def _self_encryption_observation_projection(
     observations: dict[_StateKey, tuple[int, int, int, bool]],
 ) -> tuple[set[int], dict[int, set[int]]]:
@@ -3831,6 +3933,16 @@ class _Explorer:
                 self.explored_state_keys,
             )
         )
+        _assert_self_encryption_semantics(
+            (
+                (
+                    self.initial_value_encryption_input_state_values,
+                    self.changed_from_initial_encryption_input_state_values,
+                ),
+                self.planned_data_write_state_values,
+                self.self_encryption_state_values,
+            )
+        )
         _assert_data_mutation_domains(
             self.effective_data_mutation_transitions,
             self.effective_data_mutation_addresses,
@@ -3853,6 +3965,18 @@ class _Explorer:
                 self.committed_data_write_noop_state_values,
                 self.effective_data_mutation_state_values,
                 self.committed_data_write_values,
+            )
+        )
+        _assert_committed_data_write_semantics(
+            (
+                (
+                    self.initial_value_data_read_state_values,
+                    self.evolved_data_read_state_values,
+                ),
+                self.planned_data_write_state_values,
+                self.self_encryption_state_values,
+                self.committed_data_write_noop_state_values,
+                self.effective_data_mutation_state_values,
             )
         )
         _assert_repeated_edge_partition(

@@ -596,6 +596,19 @@ class _WorklistDataMutationWitness(Protocol):
 
 
 type _WriteObservation = tuple[int, int, int, int, bool]
+type _SelfEncryptionObservation = tuple[int, int, int, bool]
+type _SelfEncryptionSemanticEvidence = tuple[
+    _ReadObservationPartition,
+    dict[_WorklistStateKey, tuple[int, int]],
+    dict[_WorklistStateKey, _SelfEncryptionObservation],
+]
+type _CommittedDataWriteSemanticEvidence = tuple[
+    _ReadObservationPartition,
+    dict[_WorklistStateKey, tuple[int, int]],
+    dict[_WorklistStateKey, _SelfEncryptionObservation],
+    dict[_WorklistStateKey, _WriteObservation],
+    dict[_WorklistStateKey, _WriteObservation],
+]
 type _RepresentativeWriteWitness = (
     _WorklistDataWriteNoopWitness | _WorklistDataMutationWitness
 )
@@ -1145,6 +1158,16 @@ class _WorklistModule(Protocol):
             dict[_WorklistStateKey, tuple[int, int, int, bool]],
             set[_WorklistStateKey],
         ],
+    ) -> None: ...
+
+    def _assert_self_encryption_semantics(
+        self,
+        evidence: _SelfEncryptionSemanticEvidence,
+    ) -> None: ...
+
+    def _assert_committed_data_write_semantics(
+        self,
+        evidence: _CommittedDataWriteSemanticEvidence,
     ) -> None: ...
 
     def _assert_data_write_noop_observations(
@@ -2552,6 +2575,56 @@ def test_self_encryption_observations_reject_output_drift() -> None:
                 {_GRAPH_KEY_A},
             )
         )
+
+
+def test_self_encryption_semantics_rejects_missing_valid_commit() -> None:
+    """Every valid exact encryption input must retain its committed output."""
+    evidence: _SelfEncryptionSemanticEvidence = (
+        ({_GRAPH_KEY_A: (0, 117)}, {}),
+        {},
+        {},
+    )
+    with pytest.raises(AssertionError, match="exact semantics"):
+        worklist._assert_self_encryption_semantics(evidence)
+
+
+def test_self_encryption_semantics_rejects_alias_flag_drift() -> None:
+    """Committed self-encryption alias identity follows the exact write plan."""
+    evidence: _SelfEncryptionSemanticEvidence = (
+        ({_GRAPH_KEY_A: (0, 117)}, {}),
+        {},
+        {_GRAPH_KEY_A: (0, 117, 111, True)},
+    )
+    with pytest.raises(AssertionError, match="exact semantics"):
+        worklist._assert_self_encryption_semantics(evidence)
+
+
+def test_committed_write_semantics_rejects_previous_value_drift() -> None:
+    """Committed data-write previous values equal the exact source D read."""
+    state: _WorklistStateKey = (0, 1, 7, (), False)
+    evidence: _CommittedDataWriteSemanticEvidence = (
+        ({state: (1, 5)}, {}),
+        {state: (1, 29_528)},
+        {state: (0, 62, 76, False)},
+        {},
+        {state: (1, 999, 29_528, 29_528, False)},
+    )
+    with pytest.raises(AssertionError, match="exact semantics"):
+        worklist._assert_committed_data_write_semantics(evidence)
+
+
+def test_committed_write_semantics_rejects_aliased_final_value_drift() -> None:
+    """Same-address self-encryption supplies the committed final value."""
+    state: _WorklistStateKey = (0, 0, 29_457, ((0, 62),), False)
+    evidence: _CommittedDataWriteSemanticEvidence = (
+        ({state: (0, 62)}, {}),
+        {state: (0, 125)},
+        {state: (0, 125, 105, True)},
+        {},
+        {state: (0, 62, 125, 125, True)},
+    )
+    with pytest.raises(AssertionError, match="exact semantics"):
+        worklist._assert_committed_data_write_semantics(evidence)
 
 
 def test_data_write_noop_observations_reject_count_drift() -> None:
