@@ -508,7 +508,9 @@ executable cells, and input-dependent cycles or hangs.
   to the interpreter's `i`/`v` ordering, graphical-but-forbidden positional
   decode, byte-exact CLI/library report parity, exact second-step input, halt,
   invalid self-encryption and input-dependent-crazy fixtures, a 25-case public
-  CLI differential spanning recurrence-backed entry `j`, 16 seeded invalid
+  CLI differential spanning recurrence-backed entry `j`, a 32-case graphical
+  third-transition CLI differential across `j`, `<`, `/`, and `o` carried
+  second-step states and every third opcode, 16 seeded invalid
   positional mutations with byte-exact replay, exact third/fourth/fifth-step
   halt or fixed-fetch-cycle evidence, default-16, explicit-32 transition-17+
   and maximum-256 sequential-output continuation evidence, bounded

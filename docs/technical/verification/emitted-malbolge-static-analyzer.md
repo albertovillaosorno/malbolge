@@ -681,7 +681,9 @@ Unreadable source fails before a semantic report is emitted.
   classification anchored to the preserved interpreter order, positional decode
   rejection, exact second-step input/no-op/halt/invalid-encryption fixtures,
   explicit input-dependent-crazy unresolved evidence, a 25-case public CLI
-  differential including recurrence-backed entry `j`, 16 seeded invalid
+  differential including recurrence-backed entry `j`, a 32-case graphical
+  third-transition CLI differential across `j`, `<`, `/`, and `o` carried
+  second-step states and every third opcode, 16 seeded invalid
   positional mutations with byte-exact replay, exact third/fourth/fifth-step
   halt or fixed-fetch-cycle evidence, recurrence-backed bounded memory
   requirements, default-16 plus explicit-32 and maximum-256 sequential-output

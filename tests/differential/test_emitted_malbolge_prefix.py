@@ -113,7 +113,15 @@ class _ReferenceMemory:
 
 @dataclass(frozen=True, slots=True)
 class _PlanContext:
+    code_pointer: int
     data: int
+    data_pointer: int
+    accumulator: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class _ReferenceState:
+    code_pointer: int
     data_pointer: int
     accumulator: int | None
 
@@ -177,7 +185,7 @@ def _initial_memory(source: tuple[int, ...], address: int) -> int:
 def _base_plan(context: _PlanContext) -> _ReferencePlan:
     return _ReferencePlan(
         context.accumulator,
-        1,
+        context.code_pointer,
         context.data_pointer,
         input_dependent=context.accumulator is None,
     )
@@ -186,7 +194,7 @@ def _base_plan(context: _PlanContext) -> _ReferencePlan:
 def _plan_jump_data(context: _PlanContext) -> _ReferencePlan:
     return _ReferencePlan(
         context.accumulator,
-        1,
+        context.code_pointer,
         context.data,
         input_dependent=context.accumulator is None,
     )
@@ -205,7 +213,7 @@ def _plan_rotate(context: _PlanContext) -> _ReferencePlan:
     value = _rotate(context.data)
     return _ReferencePlan(
         value,
-        1,
+        context.code_pointer,
         context.data_pointer,
         context.data_pointer,
         value,
@@ -217,7 +225,7 @@ def _plan_crazy(context: _PlanContext) -> _ReferencePlan:
     if accumulator is None:
         return _ReferencePlan(
             None,
-            1,
+            context.code_pointer,
             context.data_pointer,
             input_dependent=True,
             unresolved=True,
@@ -225,7 +233,7 @@ def _plan_crazy(context: _PlanContext) -> _ReferencePlan:
     value = _crazy(context.data, accumulator)
     return _ReferencePlan(
         value,
-        1,
+        context.code_pointer,
         context.data_pointer,
         context.data_pointer,
         value,
@@ -235,7 +243,7 @@ def _plan_crazy(context: _PlanContext) -> _ReferencePlan:
 def _plan_input(context: _PlanContext) -> _ReferencePlan:
     return _ReferencePlan(
         None,
-        1,
+        context.code_pointer,
         context.data_pointer,
         input_dependent=True,
     )
@@ -244,7 +252,7 @@ def _plan_input(context: _PlanContext) -> _ReferencePlan:
 def _plan_halt(context: _PlanContext) -> _ReferencePlan:
     return _ReferencePlan(
         context.accumulator,
-        1,
+        context.code_pointer,
         context.data_pointer,
         input_dependent=context.accumulator is None,
         halted=True,
@@ -261,14 +269,14 @@ _PLANNERS: Final[dict[int, Callable[[_PlanContext], _ReferencePlan]]] = {
 }
 
 
-def _plan_second(
+def _plan_transition(
     decoded: int,
     data: int,
-    data_pointer: int,
-    *,
-    accumulator: int | None,
+    state: _ReferenceState,
 ) -> _ReferencePlan:
-    context = _PlanContext(data, data_pointer, accumulator)
+    context = _PlanContext(
+        state.code_pointer, data, state.data_pointer, state.accumulator
+    )
     planner = _PLANNERS.get(decoded, _base_plan)
     return planner(context)
 
@@ -293,17 +301,17 @@ def _terminal_expected(decoded: int, plan: _ReferencePlan) -> _ExpectedSecond:
 
 
 def _resolved_expected(
-    source: tuple[int, int],
+    memory: _ReferenceMemory,
     decoded: int,
     plan: _ReferencePlan,
     *,
-    initial_data_pointer: int,
+    initial_state: _ReferenceState,
 ) -> _ExpectedSecond:
     aliases = plan.write_address == plan.code_pointer
     if aliases and plan.write_value is not None:
         encryption_input = plan.write_value
     else:
-        encryption_input = _initial_memory(source, plan.code_pointer)
+        encryption_input = memory.read(plan.code_pointer)
     if not _GRAPHICAL_START <= encryption_input <= _GRAPHICAL_END:
         return _ExpectedSecond(
             status=_STATUS_REJECTED,
@@ -316,8 +324,8 @@ def _resolved_expected(
             aliases_encryption=aliases,
             input_dependent=plan.input_dependent,
             accumulator=plan.accumulator,
-            code_pointer=1,
-            data_pointer=initial_data_pointer,
+            code_pointer=initial_state.code_pointer,
+            data_pointer=initial_state.data_pointer,
             next_fetch=None,
         )
     encryption_output = _XLAT2[encryption_input - _GRAPHICAL_START]
@@ -343,29 +351,27 @@ def _resolved_expected(
 def _expected_second(
     first: int,
     second: int,
-    source: tuple[int, int],
+    source: tuple[int, ...],
 ) -> _ExpectedSecond:
     accumulator = None if first == ord("/") else 0
     data_pointer = source[0] + 1 if first == ord("j") else 1
     data = _initial_memory(source, data_pointer)
-    plan = _plan_second(
-        second,
-        data,
-        data_pointer,
-        accumulator=accumulator,
-    )
+    initial_state = _ReferenceState(1, data_pointer, accumulator)
+    plan = _plan_transition(second, data, initial_state)
     if plan.halted or plan.unresolved:
         return _terminal_expected(second, plan)
+    entry_encryption = _XLAT2[source[0] - _GRAPHICAL_START]
+    memory = _ReferenceMemory(source).commit(0, entry_encryption)
     return _resolved_expected(
-        source,
+        memory,
         second,
         plan,
-        initial_data_pointer=data_pointer,
+        initial_state=initial_state,
     )
 
 
 def _memory_after_second(
-    source: tuple[int, int],
+    source: tuple[int, ...],
     expected: _ExpectedSecond,
 ) -> _ReferenceMemory:
     entry_encryption = _XLAT2[source[0] - _GRAPHICAL_START]
@@ -375,6 +381,34 @@ def _memory_after_second(
         expected.encryption_address,
         expected.encryption_output,
     )
+
+
+def _decode_memory_value(value: int, address: int) -> int | None:
+    if not _GRAPHICAL_START <= value <= _GRAPHICAL_END:
+        return None
+    return _XLAT1[(value - _GRAPHICAL_START + address) % len(_XLAT1)]
+
+
+def _expected_followup(
+    memory: _ReferenceMemory,
+    state: _ReferenceState,
+) -> tuple[_ExpectedSecond, int, int]:
+    fetched = memory.read(state.code_pointer)
+    decoded = _decode_memory_value(fetched, state.code_pointer)
+    if decoded is None:
+        message = "graphical followup fixture decoded non-graphically"
+        raise AssertionError(message)
+    data = memory.read(state.data_pointer)
+    plan = _plan_transition(decoded, data, state)
+    if plan.halted or plan.unresolved:
+        return _terminal_expected(decoded, plan), fetched, data
+    expected = _resolved_expected(
+        memory,
+        decoded,
+        plan,
+        initial_state=state,
+    )
+    return expected, fetched, data
 
 
 def _assert_stuck_addresses(
@@ -434,11 +468,17 @@ def _expected_cli_code(expected: _ExpectedSecond) -> int:
 def _report(
     tmp_path: Path,
     source: bytes,
+    *,
+    transition_limit: int | None = None,
 ) -> tuple[int, dict[str, object]]:
     path = tmp_path / "prefix.malbolge"
     _ = path.write_bytes(source)
+    command = [sys.executable, str(_ANALYZER)]
+    if transition_limit is not None:
+        command.extend(("--transition-limit", str(transition_limit)))
+    command.append(str(path))
     completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        [sys.executable, str(_ANALYZER), str(path)],
+        command,
         cwd=_ROOT,
         check=False,
         capture_output=True,
@@ -495,6 +535,58 @@ def test_two_transition_cli_matches_independent_historical_model(
     assert document["fourth_transition"] is None
     assert document["fifth_transition"] is None
     assert returncode == _expected_cli_code(expected)
+
+
+_THIRD_REACHABLE_SECOND_INSTRUCTIONS: Final = tuple(b"j</o")
+_THIRD_CASES: Final = tuple(
+    (second, third)
+    for second in _THIRD_REACHABLE_SECOND_INSTRUCTIONS
+    for third in _SECOND_INSTRUCTIONS
+)
+
+
+@pytest.mark.parametrize(("second", "third"), _THIRD_CASES)
+def test_three_transition_cli_matches_independent_historical_model(
+    tmp_path: Path,
+    second: int,
+    third: int,
+) -> None:
+    """Compare every graphical third opcode across distinct carried states."""
+    source_tuple = (
+        _source_byte(ord("<"), 0),
+        _source_byte(second, 1),
+        _source_byte(third, 2),
+    )
+    first_expected = _expected_second(ord("<"), second, source_tuple)
+    assert first_expected.status == _STATUS_CONTINUED
+    assert first_expected.code_pointer is not None
+    assert first_expected.data_pointer is not None
+    expected, fetched, data = _expected_followup(
+        _memory_after_second(source_tuple, first_expected),
+        _ReferenceState(
+            first_expected.code_pointer,
+            first_expected.data_pointer,
+            first_expected.accumulator,
+        ),
+    )
+    assert expected.decoded == third
+    returncode, document = _report(
+        tmp_path, bytes(source_tuple), transition_limit=3
+    )
+    _assert_second(
+        cast("dict[str, object]", document["second_transition"]), first_expected
+    )
+    observed = cast("dict[str, object]", document["third_transition"])
+    assert observed["fetched_address"] == first_expected.code_pointer
+    assert observed["fetched_value"] == fetched
+    assert observed["data_address"] == first_expected.data_pointer
+    assert observed["data_value"] == data
+    assert observed["code_data_alias"] == (
+        first_expected.code_pointer == first_expected.data_pointer
+    )
+    _assert_second(observed, expected)
+    expected_success = expected.status in {_STATUS_CONTINUED, _STATUS_HALTED}
+    assert returncode == (0 if expected_success else 1)
 
 
 def _assert_fourth_reference_transition(
