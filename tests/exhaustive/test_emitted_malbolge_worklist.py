@@ -88,6 +88,11 @@ type _EncryptionInputSemanticEvidence = tuple[
     dict[_WorklistStateKey, tuple[int, int]],
     _ReadObservationPartition,
 ]
+type _TerminalSemanticEvidence = tuple[
+    _ReadObservationPartition,
+    _ReadObservationPartition,
+    dict[str, set[_WorklistStateKey]],
+]
 type _FetchDerivedStateEvidence = tuple[
     _ReadObservationPartition,
     _ReadObservationPartition,
@@ -1122,6 +1127,11 @@ class _WorklistModule(Protocol):
         counts: dict[str, int],
         terminal_states: dict[str, set[_WorklistStateKey]],
         seen: set[_WorklistStateKey],
+    ) -> None: ...
+
+    def _assert_terminal_semantics(
+        self,
+        evidence: _TerminalSemanticEvidence,
     ) -> None: ...
 
     def _assert_terminal_graph_endpoints(
@@ -3324,6 +3334,28 @@ def test_terminal_invariant_rejects_count_state_drift() -> None:
             {"halted": {_GRAPH_KEY_A}},
             {_GRAPH_KEY_A},
         )
+
+
+def test_terminal_semantics_rejects_false_halt_label() -> None:
+    """A graphical continuing fetch cannot be retained as a halt endpoint."""
+    evidence: _TerminalSemanticEvidence = (
+        ({_GRAPH_KEY_A: (0, 117)}, {}),
+        ({_GRAPH_KEY_A: (0, 117)}, {}),
+        {_HALTED_STATUS: {_GRAPH_KEY_A}},
+    )
+    with pytest.raises(AssertionError, match="exact semantics"):
+        worklist._assert_terminal_semantics(evidence)
+
+
+def test_terminal_semantics_rejects_missing_invalid_encryption() -> None:
+    """An invalid exact encryption input must retain its rejection endpoint."""
+    evidence: _TerminalSemanticEvidence = (
+        ({_GRAPH_KEY_A: (0, 117)}, {}),
+        ({_GRAPH_KEY_A: (0, 5)}, {}),
+        {},
+    )
+    with pytest.raises(AssertionError, match="exact semantics"):
+        worklist._assert_terminal_semantics(evidence)
 
 
 def test_known_graph_integrity_rejects_missing_admitted_node() -> None:

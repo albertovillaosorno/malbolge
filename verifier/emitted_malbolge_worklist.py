@@ -57,6 +57,7 @@ _DATA_READING_INSTRUCTIONS: Final = frozenset(b"ji*p")
 _DATA_WRITE_INSTRUCTIONS: Final = frozenset(b"*p")
 _EOF_ACCUMULATOR: Final = classic.PROFILE_MEMORY_WORDS - 1
 _HALTED_STATUS: Final = "halted"
+_INVALID_ENCRYPTION_STATUS: Final = "rejected-invalid-self-encryption"
 _RECURRENCE_BASE_WORDS: Final = 2
 _WRITER_DATA_WRITE: Final = "data-write"
 _WRITER_SELF_ENCRYPTION: Final = "self-encryption"
@@ -2466,6 +2467,41 @@ def _assert_encryption_input_semantics(
         raise AssertionError(message)
 
 
+type _TerminalSemanticEvidence = tuple[
+    _ReadObservationPartition,
+    _ReadObservationPartition,
+    dict[str, set[_StateKey]],
+]
+
+
+def _terminal_semantic_projection(
+    evidence: _TerminalSemanticEvidence,
+) -> dict[str, set[_StateKey]]:
+    fetch_partition, encryption_input_partition, _ = evidence
+    encryptions = _merged_read_observations(encryption_input_partition)
+    projected: dict[str, set[_StateKey]] = {}
+    for state, (address, value) in _merged_read_observations(
+        fetch_partition
+    ).items():
+        decoded = classic.decode(value, address)
+        if decoded == _HALT_OPCODE:
+            projected.setdefault(_HALTED_STATUS, set()).add(state)
+            continue
+        encryption = encryptions.get(state)
+        if encryption is not None and classic.encrypt(encryption[1]) is None:
+            projected.setdefault(_INVALID_ENCRYPTION_STATUS, set()).add(state)
+    return projected
+
+
+def _assert_terminal_semantics(
+    evidence: _TerminalSemanticEvidence,
+) -> None:
+    expected = _terminal_semantic_projection(evidence)
+    if evidence[2] != expected:
+        message = "terminal state classes disagree with exact semantics"
+        raise AssertionError(message)
+
+
 type _FetchDerivedStateEvidence = tuple[
     _ReadObservationPartition,
     _ReadObservationPartition,
@@ -3903,6 +3939,19 @@ class _Explorer:
                 ),
             ),
             self.initial_memory,
+        )
+        _assert_terminal_semantics(
+            (
+                (
+                    self.initial_value_fetch_state_values,
+                    self.evolved_fetch_state_values,
+                ),
+                (
+                    self.initial_value_encryption_input_state_values,
+                    self.changed_from_initial_encryption_input_state_values,
+                ),
+                self.terminal_states,
+            )
         )
         _assert_observed_value_domains(
             self.committed_data_write_transitions,
