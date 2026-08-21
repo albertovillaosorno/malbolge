@@ -23,9 +23,10 @@
 # - Merge-When:
 #   - Another verifier differential owns the same bounded public surface.
 # - Summary:
-#   - Compares schema-v7 bounded transitions to independent 1998 semantics.
+#   - Compares bounded CLI transitions to independent 1998 semantics.
 # - Description:
-#   - Covers every admitted second opcode after exact output or input entry.
+#   - Covers every admitted second opcode after exact output, input, or jump
+#     entry, plus every third opcode after four carried second-step states.
 # - Usage:
 #   - Collected by repository pytest validation.
 # - Defaults:
