@@ -539,8 +539,10 @@ Independent verification evidence remains outside the verifier implementation.
 The public CLI is compared with test-local 1998 models by a 25-case bounded
 prefix differential, a 32-case graphical third-transition matrix, a 24-case
 graphical fourth-transition matrix, a separate 24-case graphical
-fifth-transition matrix across `/oo`, `j*p`, and `o<o` carried histories, and a
+fifth-transition matrix across `/oo`, `j*p`, and `o<o` carried histories, a
 separate 24-case graphical sixth-transition matrix across `/oo<`, `j*pj`, and
-`o<o<` carried histories. Sixteen deterministic positional-decode mutations
-separately prove byte-exact rejection and replay. These finite samples do not
-extend the analyzer's unbounded reachability claims.
+`o<o<` carried histories, and a separate 24-case graphical seventh-transition
+matrix across `/oo<j`, `j*pj*`, and `o<o<<` carried histories. Sixteen
+deterministic positional-decode mutations separately prove byte-exact rejection
+and replay. These finite samples do not extend the analyzer's unbounded
+reachability claims.

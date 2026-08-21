@@ -690,9 +690,11 @@ Unreadable source fails before a semantic report is emitted.
   carried fourth-step histories and every fifth opcode, and a separate 24-case
   graphical sixth-transition CLI differential across `/oo<`, `j*pj`, and
   `o<o<` carried fifth-step histories and every sixth opcode through
-  `bounded_continuations`, 16 seeded invalid
-  positional mutations with byte-exact replay, exact
-  third/fourth/fifth/sixth-step
+  `bounded_continuations`, and a separate 24-case graphical seventh-transition
+  CLI differential across `/oo<j`, `j*pj*`, and `o<o<<` carried sixth-step
+  histories and every seventh opcode through `bounded_continuations`, 16 seeded
+  invalid positional mutations with byte-exact replay, exact
+  third/fourth/fifth/sixth/seventh-step
   halt or fixed-fetch-cycle evidence, recurrence-backed bounded memory
   requirements, default-16 plus explicit-32 and maximum-256 sequential-output
   bound fixtures, bounded loaded-source/raw-offset fetch/read/write/encryption
