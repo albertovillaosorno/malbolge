@@ -154,6 +154,8 @@ class _ExpectedSecond:
     code_pointer: int | None
     data_pointer: int | None
     next_fetch: int | None
+    pointer_wraps: bool = False
+    provable_cycle: bool = False
 
 
 def _source_byte(decoded: int, position: int) -> int:
@@ -346,6 +348,10 @@ def _resolved_expected(
         code_pointer=code_pointer,
         data_pointer=data_pointer,
         next_fetch=code_pointer,
+        pointer_wraps=(
+            plan.code_pointer == _MEMORY_WORDS - 1
+            or plan.data_pointer == _MEMORY_WORDS - 1
+        ),
     )
 
 
@@ -510,6 +516,8 @@ def _assert_second(
     assert observed["result_code_pointer"] == expected.code_pointer
     assert observed["result_data_pointer"] == expected.data_pointer
     assert observed["next_fetch_address"] == expected.next_fetch
+    assert observed["pointer_wraps"] == expected.pointer_wraps
+    assert observed["provable_cycle"] == expected.provable_cycle
 
 
 _CASES: Final = tuple(
