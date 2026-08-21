@@ -26,7 +26,8 @@
 #   - Compares bounded CLI transitions to independent 1998 semantics.
 # - Description:
 #   - Covers every admitted second opcode after exact output, input, or jump
-#     entry, plus every third opcode after four carried second-step states.
+#     entry, plus every third opcode after four carried second-step states,
+#     and every fourth opcode after three carried third-step histories.
 # - Usage:
 #   - Collected by repository pytest validation.
 # - Defaults:
@@ -156,6 +157,22 @@ class _ExpectedSecond:
     next_fetch: int | None
     pointer_wraps: bool = False
     provable_cycle: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _ExpectedObservation:
+    transition: _ExpectedSecond
+    fetched_address: int
+    fetched_value: int
+    data_address: int
+    data_value: int
+
+
+@dataclass(frozen=True, slots=True)
+class _ExpectedFourthTrace:
+    second: _ExpectedSecond
+    third: _ExpectedObservation
+    fourth: _ExpectedObservation
 
 
 def _source_byte(decoded: int, position: int) -> int:
@@ -377,17 +394,24 @@ def _expected_second(
     )
 
 
+def _memory_after_expected_transition(
+    memory: _ReferenceMemory,
+    expected: _ExpectedSecond,
+) -> _ReferenceMemory:
+    result = memory.commit(expected.write_address, expected.write_value)
+    return result.commit(
+        expected.encryption_address,
+        expected.encryption_output,
+    )
+
+
 def _memory_after_second(
     source: tuple[int, ...],
     expected: _ExpectedSecond,
 ) -> _ReferenceMemory:
     entry_encryption = _XLAT2[source[0] - _GRAPHICAL_START]
     memory = _ReferenceMemory(source).commit(0, entry_encryption)
-    memory = memory.commit(expected.write_address, expected.write_value)
-    return memory.commit(
-        expected.encryption_address,
-        expected.encryption_output,
-    )
+    return _memory_after_expected_transition(memory, expected)
 
 
 def _decode_memory_value(value: int, address: int) -> int | None:
@@ -416,6 +440,34 @@ def _expected_followup(
         initial_state=state,
     )
     return expected, fetched, data
+
+
+def _expected_observation(
+    memory: _ReferenceMemory,
+    state: _ReferenceState,
+) -> _ExpectedObservation:
+    transition, fetched, data = _expected_followup(memory, state)
+    return _ExpectedObservation(
+        transition,
+        state.code_pointer,
+        fetched,
+        state.data_pointer,
+        data,
+    )
+
+
+def _assert_observation(
+    observed: dict[str, object],
+    expected: _ExpectedObservation,
+) -> None:
+    assert observed["fetched_address"] == expected.fetched_address
+    assert observed["fetched_value"] == expected.fetched_value
+    assert observed["data_address"] == expected.data_address
+    assert observed["data_value"] == expected.data_value
+    assert observed["code_data_alias"] == (
+        expected.fetched_address == expected.data_address
+    )
+    _assert_second(observed, expected.transition)
 
 
 def _assert_stuck_addresses(
@@ -603,6 +655,92 @@ def test_three_transition_cli_matches_independent_historical_model(
     )
     _assert_second(observed, expected)
     expected_success = expected.status in {_STATUS_CONTINUED, _STATUS_HALTED}
+    assert returncode == (0 if expected_success else 1)
+
+
+_FOURTH_TRANSITION_LIMIT: Final = 4
+_FOURTH_GRAPHICAL_HISTORIES: Final = (
+    (ord("/"), ord("o")),
+    (ord("j"), ord("*")),
+    (ord("o"), ord("<")),
+)
+_FOURTH_GRAPHICAL_CASES: Final = tuple(
+    (history, fourth)
+    for history in _FOURTH_GRAPHICAL_HISTORIES
+    for fourth in _SECOND_INSTRUCTIONS
+)
+
+
+def _expected_fourth_trace(
+    source: tuple[int, ...],
+    second_opcode: int,
+) -> _ExpectedFourthTrace:
+    second = _expected_second(ord("<"), second_opcode, source)
+    assert second.status == _STATUS_CONTINUED
+    assert second.code_pointer is not None
+    assert second.data_pointer is not None
+    memory = _memory_after_second(source, second)
+    third = _expected_observation(
+        memory,
+        _ReferenceState(
+            second.code_pointer,
+            second.data_pointer,
+            second.accumulator,
+        ),
+    )
+    assert third.transition.status == _STATUS_CONTINUED
+    assert third.transition.code_pointer is not None
+    assert third.transition.data_pointer is not None
+    memory = _memory_after_expected_transition(memory, third.transition)
+    fourth = _expected_observation(
+        memory,
+        _ReferenceState(
+            third.transition.code_pointer,
+            third.transition.data_pointer,
+            third.transition.accumulator,
+        ),
+    )
+    return _ExpectedFourthTrace(second, third, fourth)
+
+
+@pytest.mark.parametrize(("history", "fourth"), _FOURTH_GRAPHICAL_CASES)
+def test_four_transition_cli_matches_independent_historical_model(
+    tmp_path: Path,
+    history: tuple[int, int],
+    fourth: int,
+) -> None:
+    """Compare every fourth opcode across three distinct carried histories."""
+    second, third = history
+    source_tuple = (
+        _source_byte(ord("<"), 0),
+        _source_byte(second, 1),
+        _source_byte(third, 2),
+        _source_byte(fourth, 3),
+    )
+    expected = _expected_fourth_trace(source_tuple, second)
+    assert expected.third.transition.decoded == third
+    assert expected.fourth.transition.decoded == fourth
+    returncode, document = _report(
+        tmp_path, bytes(source_tuple), transition_limit=_FOURTH_TRANSITION_LIMIT
+    )
+    _assert_second(
+        cast("dict[str, object]", document["second_transition"]),
+        expected.second,
+    )
+    _assert_observation(
+        cast("dict[str, object]", document["third_transition"]),
+        expected.third,
+    )
+    _assert_observation(
+        cast("dict[str, object]", document["fourth_transition"]),
+        expected.fourth,
+    )
+    assert document["bounded_transition_limit"] == _FOURTH_TRANSITION_LIMIT
+    assert document["fifth_transition"] is None
+    expected_success = expected.fourth.transition.status in {
+        _STATUS_CONTINUED,
+        _STATUS_HALTED,
+    }
     assert returncode == (0 if expected_success else 1)
 
 

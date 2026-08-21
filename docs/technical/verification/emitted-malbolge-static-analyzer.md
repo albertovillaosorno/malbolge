@@ -683,7 +683,9 @@ Unreadable source fails before a semantic report is emitted.
   explicit input-dependent-crazy unresolved evidence, a 25-case public CLI
   differential including recurrence-backed entry `j`, a 32-case graphical
   third-transition CLI differential across `j`, `<`, `/`, and `o` carried
-  second-step states and every third opcode, 16 seeded invalid
+  second-step states and every third opcode, a 24-case graphical
+  fourth-transition CLI differential across `/o`, `j*`, and `o<` carried
+  third-step histories and every fourth opcode, 16 seeded invalid
   positional mutations with byte-exact replay, exact third/fourth/fifth-step
   halt or fixed-fetch-cycle evidence, recurrence-backed bounded memory
   requirements, default-16 plus explicit-32 and maximum-256 sequential-output
