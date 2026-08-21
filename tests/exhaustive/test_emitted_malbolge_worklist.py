@@ -427,6 +427,12 @@ type _FrontierBindingEvidence = tuple[
     tuple[_WorklistStateKey, ...],
     _FrontierStop | None,
 ]
+type _KnownGraphSemanticEvidence = tuple[
+    tuple[int, ...],
+    dict[_WorklistStateKey, set[_WorklistStateKey]],
+    set[_WorklistStateKey],
+    _FrontierStop | None,
+]
 
 
 type _CodeDataAliasWitnessEvidence = tuple[
@@ -852,6 +858,11 @@ class _WorklistModule(Protocol):
         self,
         edges: dict[_WorklistStateKey, set[_WorklistStateKey]],
         nodes: set[_WorklistStateKey],
+    ) -> None: ...
+
+    def _assert_known_graph_semantics(
+        self,
+        evidence: _KnownGraphSemanticEvidence,
     ) -> None: ...
 
     def _assert_maximum_first_seen_transition_index(
@@ -3367,6 +3378,69 @@ def test_terminal_semantics_rejects_missing_invalid_encryption() -> None:
     )
     with pytest.raises(AssertionError, match="exact semantics"):
         worklist._assert_terminal_semantics(evidence)
+
+
+def _input_halt_semantic_successor_graph() -> tuple[
+    tuple[int, ...],
+    dict[_WorklistStateKey, set[_WorklistStateKey]],
+]:
+    initial_memory = worklist._expanded_initial_memory(_INPUT_HALT_SOURCE)
+    node = worklist._ReachabilityNode(
+        snapshot=prefix_transfer.StateSnapshot(1, 0, 0, 0, ()),
+        eof_seen=False,
+    )
+    step = prefix_transfer.analyze_state_snapshot(initial_memory, node.snapshot)
+    successor_keys = tuple(
+        worklist._node_key(successor)
+        for successor in worklist._successors(node, step)
+    )
+    edges = {_GRAPH_KEY_A: set(successor_keys)}
+    edges.update({key: set() for key in successor_keys})
+    return initial_memory, edges
+
+
+def test_known_graph_semantics_accepts_exact_transfer_graph() -> None:
+    """A complete exact graph satisfies independently replayed semantics."""
+    initial_memory, edges = _input_halt_semantic_successor_graph()
+    worklist._assert_known_graph_integrity(edges, set(edges))
+    worklist._assert_known_graph_semantics(
+        (initial_memory, edges, set(edges), None)
+    )
+
+
+def test_known_graph_semantics_rejects_missing_transfer_edge() -> None:
+    """A complete source cannot omit one exact transfer successor."""
+    initial_memory, edges = _input_halt_semantic_successor_graph()
+    edges[_GRAPH_KEY_A].remove(next(iter(edges[_GRAPH_KEY_A])))
+    with pytest.raises(AssertionError, match="exact transfer semantics"):
+        worklist._assert_known_graph_semantics(
+            (initial_memory, edges, set(edges), None)
+        )
+
+
+def test_known_graph_semantics_rejects_forged_terminal_edge() -> None:
+    """An admitted edge must still be an exact transfer successor."""
+    initial_memory, edges = _input_halt_semantic_successor_graph()
+    terminal = next(key for key in edges if key != _GRAPH_KEY_A)
+    edges[terminal].add(_GRAPH_KEY_A)
+    worklist._assert_known_graph_integrity(edges, set(edges))
+    with pytest.raises(AssertionError, match="exact transfer semantics"):
+        worklist._assert_known_graph_semantics(
+            (initial_memory, edges, set(edges), None)
+        )
+
+
+def test_known_graph_semantics_rejects_forged_frontier_block() -> None:
+    """The runtime frontier block must be an exact transfer successor."""
+    initial_memory = worklist._expanded_initial_memory(_INPUT_HALT_SOURCE)
+    edges: dict[_WorklistStateKey, set[_WorklistStateKey]] = {
+        _GRAPH_KEY_A: set()
+    }
+    stop: _FrontierStop = (_GRAPH_KEY_A, _GRAPH_KEY_B, (_GRAPH_KEY_B,))
+    with pytest.raises(AssertionError, match="exact transfer semantics"):
+        worklist._assert_known_graph_semantics(
+            (initial_memory, edges, {_GRAPH_KEY_A}, stop)
+        )
 
 
 def test_known_graph_integrity_rejects_missing_admitted_node() -> None:

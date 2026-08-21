@@ -1762,6 +1762,12 @@ type _FrontierBindingEvidence = tuple[
     tuple[_StateKey, ...],
     _FrontierStop | None,
 ]
+type _KnownGraphSemanticEvidence = tuple[
+    tuple[int, ...],
+    dict[_StateKey, set[_StateKey]],
+    set[_StateKey],
+    _FrontierStop | None,
+]
 
 
 def _assert_partition_membership(
@@ -2005,6 +2011,75 @@ def _assert_frontier_graph_binding(
     if frontier_path != expected_path:
         message = "worklist frontier witness lost its exact FIFO entry path"
         raise AssertionError(message)
+
+
+def _semantic_successor_keys(
+    initial_memory: tuple[int, ...],
+    state: _StateKey,
+) -> tuple[_StateKey, ...]:
+    node = _ReachabilityNode(
+        snapshot=_snapshot_from_key(state, before_transition=1),
+        eof_seen=state[-1],
+    )
+    step = prefix_transfer.analyze_state_snapshot(initial_memory, node.snapshot)
+    return tuple(_node_key(successor) for successor in _successors(node, step))
+
+
+def _assert_complete_state_successors(
+    expected: tuple[_StateKey, ...],
+    actual: set[_StateKey],
+) -> None:
+    if actual != set(expected):
+        message = "known graph edges disagree with exact transfer semantics"
+        raise AssertionError(message)
+
+
+def _assert_frontier_state_successors(
+    expected: tuple[_StateKey, ...],
+    actual: set[_StateKey],
+    stop: _FrontierStop,
+    *,
+    admitted: set[_StateKey],
+) -> None:
+    _, blocked, unseen = stop
+    if expected.count(blocked) != 1:
+        message = (
+            "frontier blocked state disagrees with exact transfer semantics"
+        )
+        raise AssertionError(message)
+    blocked_index = expected.index(blocked)
+    if actual != set(expected[:blocked_index]):
+        message = "frontier known edges disagree with exact transfer semantics"
+        raise AssertionError(message)
+    expected_unseen = tuple(
+        sorted({key for key in expected[blocked_index:] if key not in admitted})
+    )
+    if unseen != expected_unseen:
+        message = (
+            "frontier unseen states disagree with exact transfer semantics"
+        )
+        raise AssertionError(message)
+
+
+def _assert_known_graph_semantics(
+    evidence: _KnownGraphSemanticEvidence,
+) -> None:
+    initial_memory, edges, explored_states, stop = evidence
+    if stop is not None and stop[0] not in explored_states:
+        message = "frontier source lacks exact explored transfer semantics"
+        raise AssertionError(message)
+    admitted = set(edges)
+    for state in explored_states:
+        expected = _semantic_successor_keys(initial_memory, state)
+        if stop is not None and state == stop[0]:
+            _assert_frontier_state_successors(
+                expected,
+                edges[state],
+                stop,
+                admitted=admitted,
+            )
+        else:
+            _assert_complete_state_successors(expected, edges[state])
 
 
 def _assert_terminal_state_classes_disjoint(
@@ -5429,6 +5504,14 @@ def analyze_reachability(
         truncated=result.truncated,
     )
     _assert_known_graph_integrity(explorer.edges, explorer.seen)
+    _assert_known_graph_semantics(
+        (
+            explorer.initial_memory,
+            explorer.edges,
+            explorer.explored_state_keys,
+            explorer.frontier_stop,
+        )
+    )
     _assert_result_frontier_binding(result, explorer, pending_state_keys)
     _assert_repeated_edge_witnesses(
         (
