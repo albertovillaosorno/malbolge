@@ -1424,6 +1424,28 @@ def _assert_wrap_observation_signature(
         raise AssertionError(message)
 
 
+def _assert_wrap_observation_semantics(
+    observations: _WrapObservations,
+    initial_memory: tuple[int, ...],
+) -> None:
+    for state, signature in observations.items():
+        step = prefix_transfer.analyze_state_snapshot(
+            initial_memory,
+            _snapshot_from_key(state, before_transition=1),
+        )
+        transition = step.transition
+        if not transition.pointer_wraps:
+            message = "pointer-wrap observation source does not wrap"
+            raise AssertionError(message)
+        expected = (*state[:2], *_pointer_wrap_result(transition))
+        if _wrap_transition_signature_key(signature) != expected:
+            message = (
+                "pointer-wrap observation disagrees with exact "
+                "transfer semantics"
+            )
+            raise AssertionError(message)
+
+
 def _assert_wrap_observations(
     evidence: _WrapObservationEvidence,
     *,
@@ -4116,6 +4138,10 @@ class _Explorer:
                 self.wraparound_state_signatures,
             ),
             seen=self.explored_state_keys,
+        )
+        _assert_wrap_observation_semantics(
+            self.wraparound_state_signatures,
+            self.initial_memory,
         )
         _assert_wrap_witness_bindings(
             wrap_witnesses,

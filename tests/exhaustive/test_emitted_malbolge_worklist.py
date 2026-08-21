@@ -822,6 +822,9 @@ class _WorklistModule(Protocol):
     prefix_transfer: _PrefixModule
     _ReachabilityNode: _ReachabilityNodeFactory
     _Explorer: _ExplorerFactory
+    WorklistWrapTransitionSignature: Callable[
+        ..., _WorklistWrapTransitionSignature
+    ]
 
     def analyze_reachability(
         self,
@@ -1321,6 +1324,14 @@ class _WorklistModule(Protocol):
         ],
         *,
         seen: set[_WorklistStateKey],
+    ) -> None: ...
+
+    def _assert_wrap_observation_semantics(
+        self,
+        observations: dict[
+            _WorklistStateKey, _WorklistWrapTransitionSignature
+        ],
+        initial_memory: tuple[int, ...],
     ) -> None: ...
 
     def _assert_wrap_witness_binding(
@@ -3757,6 +3768,31 @@ def test_wrap_observation_invariant_rejects_count_state_drift() -> None:
         worklist._assert_wrap_observations(
             ((1, 0, 1, 0), set(), {}),
             seen=set(),
+        )
+
+
+def test_wrap_observation_semantics_rejects_forged_result_pointer() -> None:
+    """Exact wrap results must replay from their retained source state."""
+    result = worklist.analyze_reachability(
+        _ENTRY_WRAP_SOURCE,
+        maximum_states=_ENTRY_WRAP_WITNESS_STATE_LIMIT,
+    )
+    witness = result.explored_wraparound_witness
+    assert witness is not None
+    state = worklist._cycle_state_key(witness.state)
+    signature = result.explored_wraparound_transition_signatures[0]
+    forged = worklist.WorklistWrapTransitionSignature(
+        source_code_pointer=signature.source_code_pointer,
+        source_data_pointer=signature.source_data_pointer,
+        result_code_pointer=signature.result_code_pointer + 100,
+        result_data_pointer=signature.result_data_pointer,
+        code_pointer_wrapped=signature.code_pointer_wrapped,
+        data_pointer_wrapped=signature.data_pointer_wrapped,
+    )
+    with pytest.raises(AssertionError, match="exact transfer semantics"):
+        worklist._assert_wrap_observation_semantics(
+            {state: forged},
+            worklist._expanded_initial_memory(_ENTRY_WRAP_SOURCE),
         )
 
 
