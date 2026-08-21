@@ -3457,6 +3457,18 @@ def test_known_graph_semantics_rejects_forged_terminal_edge() -> None:
         )
 
 
+def test_known_graph_semantics_rejects_pending_state_edge() -> None:
+    """An admitted but unexplored state cannot publish outgoing edges."""
+    initial_memory, edges = _input_halt_semantic_successor_graph()
+    pending = next(key for key in edges if key != _GRAPH_KEY_A)
+    edges[pending].add(_GRAPH_KEY_A)
+    worklist._assert_known_graph_integrity(edges, set(edges))
+    with pytest.raises(AssertionError, match="unexplored state"):
+        worklist._assert_known_graph_semantics(
+            (initial_memory, edges, {_GRAPH_KEY_A}, None)
+        )
+
+
 def test_known_graph_semantics_rejects_forged_frontier_block() -> None:
     """The runtime frontier block must be an exact transfer successor."""
     initial_memory = worklist._expanded_initial_memory(_INPUT_HALT_SOURCE)

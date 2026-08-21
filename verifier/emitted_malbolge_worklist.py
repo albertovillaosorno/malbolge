@@ -2080,6 +2080,9 @@ def _assert_known_graph_semantics(
         message = "frontier source lacks exact explored transfer semantics"
         raise AssertionError(message)
     admitted = set(edges)
+    if any(edges[state] for state in admitted - explored_states):
+        message = "unexplored state published outgoing known-graph edges"
+        raise AssertionError(message)
     for state in explored_states:
         expected = _semantic_successor_keys(initial_memory, state)
         if stop is not None and state == stop[0]:
