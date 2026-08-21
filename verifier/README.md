@@ -536,8 +536,10 @@ distinguishes inputs that have the same loaded-word semantics, including
 whitespace-only mutations, without treating the hash as semantic proof.
 
 Independent verification evidence remains outside the verifier implementation.
-The public CLI is compared with a test-local 1998 model by a 25-case bounded
-prefix differential, a 32-case graphical third-transition matrix, and a 24-case
-graphical fourth-transition matrix. Sixteen deterministic positional-decode
-mutations separately prove byte-exact rejection and replay. These finite
-samples do not extend the analyzer's unbounded reachability claims.
+The public CLI is compared with test-local 1998 models by a 25-case bounded
+prefix differential, a 32-case graphical third-transition matrix, a 24-case
+graphical fourth-transition matrix, and a separate 24-case graphical
+fifth-transition matrix across `/oo`, `j*p`, and `o<o` carried histories.
+Sixteen deterministic positional-decode mutations separately prove byte-exact
+rejection and replay. These finite samples do not extend the analyzer's
+unbounded reachability claims.
