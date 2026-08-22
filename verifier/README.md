@@ -541,8 +541,12 @@ prefix differential, a 32-case graphical third-transition matrix, a 24-case
 graphical fourth-transition matrix, a separate 24-case graphical
 fifth-transition matrix across `/oo`, `j*p`, and `o<o` carried histories, a
 separate 24-case graphical sixth-transition matrix across `/oo<`, `j*pj`, and
-`o<o<` carried histories, and a separate 24-case graphical seventh-transition
-matrix across `/oo<j`, `j*pj*`, and `o<o<<` carried histories. Sixteen
+`o<o<` carried histories, a separate 24-case graphical seventh-transition
+matrix across `/oo<j`, `j*pj*`, and `o<o<<` carried histories, and a separate
+24-case graphical eighth-transition matrix across `/oo<jj`, `j*pj*p`, and
+`o<o<<<` carried histories. Source widths are independent images: extending a
+source can change recurrence-backed earlier state, so a carried opcode history
+does not assert state identity with the shorter-source matrix. Sixteen
 deterministic positional-decode mutations separately prove byte-exact rejection
 and replay. These finite samples do not extend the analyzer's unbounded
 reachability claims.

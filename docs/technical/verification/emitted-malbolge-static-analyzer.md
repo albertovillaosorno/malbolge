@@ -692,15 +692,21 @@ Unreadable source fails before a semantic report is emitted.
   `o<o<` carried fifth-step histories and every sixth opcode through
   `bounded_continuations`, and a separate 24-case graphical seventh-transition
   CLI differential across `/oo<j`, `j*pj*`, and `o<o<<` carried sixth-step
-  histories and every seventh opcode through `bounded_continuations`, 16 seeded
-  invalid positional mutations with byte-exact replay, exact
-  third/fourth/fifth/sixth/seventh-step
+  histories and every seventh opcode through `bounded_continuations`, and a
+  separate 24-case graphical eighth-transition CLI differential across
+  `/oo<jj`, `j*pj*p`, and `o<o<<<` carried opcode histories and every eighth
+  opcode through `bounded_continuations`, 16 seeded invalid positional mutations
+  with byte-exact replay, exact
+  third/fourth/fifth/sixth/seventh/eighth-step
   halt or fixed-fetch-cycle evidence, recurrence-backed bounded memory
   requirements, default-16 plus explicit-32 and maximum-256 sequential-output
   bound fixtures, bounded loaded-source/raw-offset fetch/read/write/encryption
   provenance, exact loaded/recurrence/prior-data-write fetch-value lineage,
   byte-exact CLI/library report parity, bounded analysis limits, CLI
   second/third/fourth rejection status, and CLI read failure.
+- Differential source widths are independent images: extending a source can
+  change recurrence-backed earlier state, so a carried opcode history does not
+  assert state identity with the shorter-source matrix.
 
 ## References
 
