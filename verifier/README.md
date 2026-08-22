@@ -549,7 +549,11 @@ matrix across `/oo<jjj`, `j*pj*pp`, and `o<o<<<<` carried histories, plus a
 separate 24-case graphical tenth-transition matrix across `/oo<jjjj`,
 `j*pj*ppp`, and `o<o<<<<<` carried histories, plus a separate 24-case graphical
 eleventh-transition matrix across `/oo<jjjjj`, `j*pj*pppp`, and `o<o<<<<<<`
-carried histories. Source widths are independent images: extending a
+carried histories, plus a separate 24-case graphical twelfth-transition matrix
+across `/oo<jjjjjj`, `j*pj*ppppj`, and `o<o<<<<<</` carried histories. The
+twelfth alias row keeps C=D for all eight final opcodes, and its `*` case uses
+the planned data write as same-address self-encryption input before rejection.
+Source widths are independent images: extending a
 source can change recurrence-backed earlier state, so a carried opcode history
 does not assert state identity with the shorter-source matrix. Sixteen
 deterministic positional-decode mutations separately prove byte-exact rejection
