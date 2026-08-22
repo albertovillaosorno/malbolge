@@ -553,9 +553,13 @@ carried histories, plus a separate 24-case graphical twelfth-transition matrix
 across `/oo<jjjjjj`, `j*pj*ppppj`, and `o<o<<<<<</` carried histories. The
 twelfth alias row keeps C=D for all eight final opcodes, and its `*` case uses
 the planned data write as same-address self-encryption input before rejection.
-Source widths are independent images: extending a
-source can change recurrence-backed earlier state, so a carried opcode history
-does not assert state identity with the shorter-source matrix. Sixteen
-deterministic positional-decode mutations separately prove byte-exact rejection
+A separate 24-case graphical thirteenth-transition matrix spans
+`/oo<jjjjjjj`, `j*pj*ppppj/`, and `o<o<<<<<</o` across every final opcode. The
+thirteenth alias row again keeps C=D for all eight final opcodes; its `*` case
+plans `M[12]=19723` and consumes that same-address value as self-encryption input
+before deterministic rejection. Source widths are independent images:
+extending a source can change recurrence-backed earlier state, so a carried
+opcode history does not assert state identity with the shorter-source matrix.
+Sixteen deterministic positional-decode mutations separately prove byte-exact rejection
 and replay. These finite samples do not extend the analyzer's unbounded
 reachability claims.
