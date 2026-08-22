@@ -527,9 +527,12 @@ executable cells, and input-dependent cycles or hangs.
   `o<o<<<<` carried opcode histories and every ninth opcode through
   `bounded_continuations`, and a separate 24-case graphical tenth-transition
   CLI differential across `/oo<jjjj`, `j*pj*ppp`, and `o<o<<<<<` carried
-  opcode histories and every tenth opcode through `bounded_continuations`,
-  16 seeded invalid positional mutations with byte-exact replay, exact
-  third/fourth/fifth/sixth/seventh/eighth/ninth/tenth-step
+  opcode histories and every tenth opcode through `bounded_continuations`, and
+  a separate 24-case graphical eleventh-transition CLI differential across
+  `/oo<jjjjj`, `j*pj*pppp`, and `o<o<<<<<<` carried opcode histories and every
+  eleventh opcode through `bounded_continuations`, 16 seeded invalid positional
+  mutations with byte-exact replay, exact
+  third/fourth/fifth/sixth/seventh/eighth/ninth/tenth/eleventh-step
   halt or fixed-fetch-cycle evidence, default-16, explicit-32 transition-17+
   and maximum-256 sequential-output continuation evidence, bounded
   recurrence-backed memory requirements, exact
