@@ -626,6 +626,12 @@ spans `/oo<jjjjjjj*jjjjjjjjjjjj`, `j*pj*ppppj/*jjjjjjjjjjjj`, and
 Final `*` plans `M[25]=36`, uses that same-address write as self-encryption
 input, encrypts it to 38, and continues. Final `p` plans `M[25]=29484`, uses
 that same-address write as self-encryption input, and rejects deterministically
+as non-graphical. A separate 24-case graphical twenty-seventh-transition matrix
+spans `/oo<jjjjjjj*jjjjjjjjjjjjj`, `j*pj*ppppj/*jjjjjjjjjjjjj`, and
+`o<o<<<<<</o<*oooooooooooo`. Its alias row keeps C=D for all eight final
+opcodes.
+Final `*` and `p` plan `M[26]=39401` and `M[26]=29484`, respectively. Each
+same-address write becomes self-encryption input and deterministically rejects
 as non-graphical. Source widths are
 independent images: extending a source can change recurrence-backed earlier
 state, so a carried opcode history does not assert state identity with the
