@@ -427,7 +427,7 @@ capability = "rust-clippy"
 tool = "rust_nightly_cargo_clippy"
 config_files = [".jig/lang/rust/clippy.toml", "Cargo.lock", "Cargo.toml"]
 # jig-ignore-next-line: indivisible reviewed identifier
-args = ["--locked", "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]
+args = ["--no-deps", "--locked", "--workspace", "--all-targets", "--all-features", "--", "-D", "warnings"]
 
 [validation.rust_nightly_format]
 capability = "rustfmt"
