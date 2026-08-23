@@ -587,7 +587,13 @@ as non-graphical. A separate 24-case graphical nineteenth-transition matrix
 spans `/oo<jjjjjjj*jjjjj`, `j*pj*ppppj/*jjjjj`, and `o<o<<<<<</o<*oooo`. Its
 alias row keeps C=D for all eight final opcodes; final `*` and `p` plan
 `M[18]=19721` and `M[18]=29492`, respectively. Each same-address write becomes
-self-encryption input and deterministically rejects as non-graphical. Source
+self-encryption input and deterministically rejects as non-graphical. A
+separate 24-case graphical twentieth-transition matrix spans
+`/oo<jjjjjjj*jjjjjj`, `j*pj*ppppj/*jjjjjj`, and `o<o<<<<<</o<*ooooo`. Its
+alias row keeps C=D for all eight final opcodes; final `*` plans `M[19]=38`,
+uses that same-address write as self-encryption input, encrypts it to 113, and
+continues. Final `p` plans `M[19]=29490`, uses that same-address write as
+self-encryption input, and rejects deterministically as non-graphical. Source
 widths are
 independent images: extending a source can change recurrence-backed earlier
 state, so a carried opcode history does not assert state identity with the
