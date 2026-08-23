@@ -17,15 +17,6 @@ labels belong here.
 
 ## P1 — Semantic and language foundations
 
-### TODO - Emitted Malbolge static analyzer
-
-Analyze generated Malbolge for lexical and address validity, self-modification,
-control-flow reachability, code/data aliasing, wraparound, dataflow, invalid
-executable cells, and input-dependent cycles or hangs.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/verification/emitted-malbolge-static-analyzer.mdc](docs/todo/open/verification/emitted-malbolge-static-analyzer.mdc)
-
 ### TODO - Malbolge-specific optimization mathematics
 
 Derive algebraic decompositions, lookup-table factorizations, state reductions,

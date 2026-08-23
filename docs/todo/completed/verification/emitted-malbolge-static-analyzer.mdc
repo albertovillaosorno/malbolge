@@ -1,6 +1,6 @@
 ---
 id: "emitted-malbolge-static-analyzer"
-status: "active"
+status: "completed"
 lane: "6"
 priority: "p1"
 area: "verification"
@@ -685,3 +685,20 @@ executable cells, and input-dependent cycles or hangs.
 - Differential source widths are independent images: extending a source can
   change recurrence-backed earlier state, so a carried opcode history does not
   assert state identity with the shorter-source matrix.
+- **Completion:** Completed on 2026-08-23 after the bounded prefix transfer,
+  exact-state worklist, source-linked mutation/dataflow evidence, valid/invalid
+  differential coverage, exhaustive/fuzz evidence, and repository-owned native
+  validation satisfied the objective. `malbolge-static-image/v88` is the stable
+  completed schema for this bounded analyzer. The finite prefix engine applies
+  the
+  same generic transfer for every requested bound from 1 through 256, and the
+  worklist already enforces its reviewed 4,096-state frontier semantics.
+  Transition-specific matrices after the twenty-ninth step were intentionally
+  stopped because they instantiate the same closed transfer loop without adding
+  a schema field, semantic branch, or analyzer capability. Future evidence may
+  add regression cases only when it exercises a distinct semantic boundary or
+  fixes a demonstrated defect; it must not imply unbounded reachability. The
+  exhaustive `jig validate --root .` collection completed on the Linux host, but
+  its policy result remains blocked by unrelated platform/toolchain skips (for
+  example Windows-only Clang/CUDA/NTFS fixtures); those skips are not analyzer
+  acceptance gaps and are not weakened or bypassed here.
