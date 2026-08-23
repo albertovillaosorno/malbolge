@@ -798,8 +798,15 @@ Unreadable source fails before a semantic report is emitted.
   twenty-fifth opcode through `bounded_continuations`. Its third carried history
   keeps C=D for all eight final opcodes. Final `*` and `p` plan `M[24]=19719`
   and `M[24]=29486`, respectively. Each same-address write becomes
-  self-encryption input and deterministically rejects as non-graphical. Sixteen
-  seeded invalid positional
+  self-encryption input and deterministically rejects as non-graphical. A
+  separate 24-case graphical twenty-sixth-transition CLI differential spans
+  `/oo<jjjjjjj*jjjjjjjjjjjj`, `j*pj*ppppj/*jjjjjjjjjjjj`, and
+  `o<o<<<<<</o<*ooooooooooo`. It covers every twenty-sixth opcode through
+  `bounded_continuations`. Its third carried history keeps C=D for all eight
+  final opcodes. Final `*` plans `M[25]=36`, consumes that same-address write as
+  self-encryption input, encrypts it to 38, and continues. Final `p` plans
+  `M[25]=29484`, consumes that same-address write as self-encryption input, and
+  deterministically rejects as non-graphical. Sixteen seeded invalid positional
   mutations retain byte-exact replay, alongside exact halt or
   fixed-fetch-cycle evidence from transitions three through sixteen,
   recurrence-backed bounded memory
