@@ -583,7 +583,12 @@ eighteenth-transition matrix spans `/oo<jjjjjjj*jjjj`, `j*pj*ppppj/*jjjj`,
 and `o<o<<<<<</o<*ooo`. Its alias row keeps C=D for all eight final opcodes;
 final `*` and `p` plan `M[17]=39404` and `M[17]=29502`, respectively. Each
 same-address write becomes self-encryption input and deterministically rejects
-as non-graphical. Source widths are
+as non-graphical. A separate 24-case graphical nineteenth-transition matrix
+spans `/oo<jjjjjjj*jjjjj`, `j*pj*ppppj/*jjjjj`, and `o<o<<<<<</o<*oooo`. Its
+alias row keeps C=D for all eight final opcodes; final `*` and `p` plan
+`M[18]=19721` and `M[18]=29492`, respectively. Each same-address write becomes
+self-encryption input and deterministically rejects as non-graphical. Source
+widths are
 independent images: extending a source can change recurrence-backed earlier
 state, so a carried opcode history does not assert state identity with the
 shorter-source matrix. Sixteen deterministic positional-decode mutations
