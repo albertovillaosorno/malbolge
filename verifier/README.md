@@ -632,7 +632,12 @@ spans `/oo<jjjjjjj*jjjjjjjjjjjjj`, `j*pj*ppppj/*jjjjjjjjjjjjj`, and
 opcodes.
 Final `*` and `p` plan `M[26]=39401` and `M[26]=29484`, respectively. Each
 same-address write becomes self-encryption input and deterministically rejects
-as non-graphical. Source widths are
+as non-graphical. A separate 24-case graphical twenty-eighth-transition matrix
+spans `/oo<jjjjjjj*jjjjjjjjjjjjjj`, `j*pj*ppppj/*jjjjjjjjjjjjjj`, and
+`o<o<<<<<</o<*ooooooooooooo`. Its alias row keeps C=D for all eight final
+opcodes. Final `*` and `p` plan `M[27]=19718` and `M[27]=29492`, respectively.
+Each same-address write becomes self-encryption input and deterministically
+rejects as non-graphical. Source widths are
 independent images: extending a source can change recurrence-backed earlier
 state, so a carried opcode history does not assert state identity with the
 shorter-source matrix. Sixteen deterministic positional-decode mutations
