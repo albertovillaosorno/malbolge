@@ -578,7 +578,12 @@ beyond the default 16-transition depth. Its alias row keeps C=D for all eight
 final opcodes; final `*` plans `M[16]=39`, uses that same-address write as
 self-encryption input, encrypts it to 116, and continues. Final `p` plans
 `M[16]=29502`, uses that same-address write as self-encryption input, and
-rejects deterministically as non-graphical. Source widths are
+rejects deterministically as non-graphical. A separate 24-case graphical
+eighteenth-transition matrix spans `/oo<jjjjjjj*jjjj`, `j*pj*ppppj/*jjjj`,
+and `o<o<<<<<</o<*ooo`. Its alias row keeps C=D for all eight final opcodes;
+final `*` and `p` plan `M[17]=39404` and `M[17]=29502`, respectively. Each
+same-address write becomes self-encryption input and deterministically rejects
+as non-graphical. Source widths are
 independent images: extending a source can change recurrence-backed earlier
 state, so a carried opcode history does not assert state identity with the
 shorter-source matrix. Sixteen deterministic positional-decode mutations
