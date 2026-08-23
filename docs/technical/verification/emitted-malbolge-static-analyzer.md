@@ -715,10 +715,23 @@ Unreadable source fails before a semantic report is emitted.
   `bounded_continuations`. Its third carried history again keeps C=D for all
   eight final opcodes; the thirteenth `*` plans `M[12]=19723` and uses that
   same-address write as self-encryption input before deterministic
-  invalid-encryption rejection. Sixteen seeded invalid positional
-  mutations retain byte-exact replay, alongside exact
-  third/fourth/fifth/sixth/seventh/eighth/ninth/tenth/eleventh/twelfth/thirteenth-step
-  halt or fixed-fetch-cycle evidence, recurrence-backed bounded memory
+  invalid-encryption rejection. A separate 24-case graphical
+  fourteenth-transition CLI differential across `/oo<jjjjjjj*`,
+  `j*pj*ppppj/*`, and `o<o<<<<<</o<` carried opcode histories covers
+  every fourteenth opcode through `bounded_continuations`. Its third
+  carried history keeps C=D for all eight final opcodes; the
+  fourteenth `*` plans `M[13]=40`, consumes that same-address write as
+  self-encryption input, encrypts it to 121, and continues. A separate
+  24-case graphical fifteenth-transition CLI differential across
+  `/oo<jjjjjjj*j`, `j*pj*ppppj/*j`, and `o<o<<<<<</o<*` carried opcode
+  histories covers every fifteenth opcode through `bounded_continuations`.
+  Its third carried history keeps C=D for all eight final opcodes; final
+  `*` and `p` plan `M[14]=39405` and `M[14]=29502`, respectively. Each
+  same-address write becomes self-encryption input and deterministically
+  rejects as non-graphical. Sixteen seeded invalid positional
+  mutations retain byte-exact replay, alongside exact halt or
+  fixed-fetch-cycle evidence from transitions three through fifteen,
+  recurrence-backed bounded memory
   requirements, default-16 plus explicit-32 and maximum-256 sequential-output
   bound fixtures, bounded loaded-source/raw-offset fetch/read/write/encryption
   provenance, exact loaded/recurrence/prior-data-write fetch-value lineage,

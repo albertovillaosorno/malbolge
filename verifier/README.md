@@ -556,10 +556,19 @@ the planned data write as same-address self-encryption input before rejection.
 A separate 24-case graphical thirteenth-transition matrix spans
 `/oo<jjjjjjj`, `j*pj*ppppj/`, and `o<o<<<<<</o` across every final opcode. The
 thirteenth alias row again keeps C=D for all eight final opcodes; its `*` case
-plans `M[12]=19723` and consumes that same-address value as self-encryption input
-before deterministic rejection. Source widths are independent images:
-extending a source can change recurrence-backed earlier state, so a carried
-opcode history does not assert state identity with the shorter-source matrix.
-Sixteen deterministic positional-decode mutations separately prove byte-exact rejection
-and replay. These finite samples do not extend the analyzer's unbounded
-reachability claims.
+plans `M[12]=19723` and consumes that same-address value as
+self-encryption input before deterministic rejection. A separate 24-case
+graphical fourteenth-transition matrix spans `/oo<jjjjjjj*`,
+`j*pj*ppppj/*`, and `o<o<<<<<</o<` across every final opcode. Its alias row
+keeps C=D for all eight final opcodes; final `*` plans `M[13]=40`, uses that
+same-address write as self-encryption input, encrypts it to 121, and continues.
+A separate 24-case graphical fifteenth-transition matrix spans
+`/oo<jjjjjjj*j`, `j*pj*ppppj/*j`, and `o<o<<<<<</o<*`. Its alias row keeps
+C=D for all eight final opcodes; final `*` and `p` plan `M[14]=39405` and
+`M[14]=29502`, respectively. Each same-address write becomes self-encryption
+input and deterministically rejects as non-graphical. Source widths are
+independent images: extending a source can change recurrence-backed earlier
+state, so a carried opcode history does not assert state identity with the
+shorter-source matrix. Sixteen deterministic positional-decode mutations
+separately prove byte-exact rejection and replay. These finite samples do not
+extend the analyzer's unbounded reachability claims.
