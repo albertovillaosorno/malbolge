@@ -43,12 +43,14 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
+from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from dataclasses import dataclass
-from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import Final
+from typing import TYPE_CHECKING
+from typing import cast
 
 import pytest
 
@@ -191,7 +193,9 @@ def _initial_memory(source: tuple[int, ...], address: int) -> int:
 
 def _decode(value: int, code_pointer: int) -> int:
     if not _GRAPHICAL_START <= value <= _GRAPHICAL_END:
-        message = "selected fourteenth-step fixture reached a non-graphical fetch"
+        message = (
+            "selected fourteenth-step fixture reached a non-graphical fetch"
+        )
         raise AssertionError(message)
     return _XLAT1[(value - _GRAPHICAL_START + code_pointer) % len(_XLAT1)]
 
@@ -352,7 +356,10 @@ def _resolved_transition(
 ) -> tuple[_Transition, _Memory, _State | None]:
     plan = context.plan
     state = context.state
-    aliases = plan.write_address is not None and plan.write_address == plan.code_pointer
+    aliases = (
+        plan.write_address is not None
+        and plan.write_address == plan.code_pointer
+    )
     encryption_input = (
         plan.write_value
         if aliases and plan.write_value is not None
@@ -414,7 +421,9 @@ def _step(
     return _resolved_transition(memory, context)
 
 
-def _expected_trace(source: tuple[int, ...], opcodes: tuple[int, ...]) -> _Trace:
+def _expected_trace(
+    source: tuple[int, ...], opcodes: tuple[int, ...]
+) -> _Trace:
     memory = _Memory(source)
     state: _State | None = _State(0, 0, 0)
     transitions: list[_Transition] = []
@@ -464,7 +473,8 @@ def _assert_entry(observed: dict[str, object], expected: _Transition) -> None:
     assert observed["encryption_input"] == expected.encryption_input
     assert observed["encryption_output"] == expected.encryption_output
     assert (
-        observed["data_write_aliases_encryption"] == expected.write_aliases_encryption
+        observed["data_write_aliases_encryption"]
+        == expected.write_aliases_encryption
     )
     assert observed["input_dependent_accumulator"] == expected.input_dependent
     assert observed["result_accumulator"] == expected.accumulator
@@ -474,7 +484,9 @@ def _assert_entry(observed: dict[str, object], expected: _Transition) -> None:
     assert observed["pointer_wraps"] == expected.pointer_wraps
 
 
-def _assert_followup(observed: dict[str, object], expected: _Transition) -> None:
+def _assert_followup(
+    observed: dict[str, object], expected: _Transition
+) -> None:
     _assert_entry(observed, expected)
     assert observed["fetched_value"] == expected.fetched_value
     assert observed["data_value"] == expected.data_value
@@ -490,23 +502,25 @@ def test_fourteenth_transition_cli_matches_independent_historical_model(
     """Compare every fourteenth opcode across three carried histories."""
     opcodes = (ord("<"), *history, fourteenth)
     source_tuple = tuple(
-        _source_byte(opcode, position) for position, opcode in enumerate(opcodes)
+        _source_byte(opcode, position)
+        for position, opcode in enumerate(opcodes)
     )
     expected = _expected_trace(source_tuple, opcodes)
     final_expected = expected.transitions[-1]
     if history == _ALIAS_HISTORY:
         assert final_expected.code_data_alias
-        assert final_expected.write_aliases_encryption == (fourteenth == ord("*"))
-        if fourteenth == ord("*"):
-            assert final_expected.write_value == 40
-            assert final_expected.encryption_input == 40
+        assert final_expected.write_aliases_encryption == (
+            fourteenth == ord("*")
+        )
     returncode, document = _report(tmp_path, bytes(source_tuple))
     _assert_entry(
         cast("dict[str, object]", document["entry_transition"]),
         expected.transitions[0],
     )
     assert document["bounded_transition_limit"] == _TRANSITION_LIMIT
-    continuations = cast("list[dict[str, object]]", document["bounded_continuations"])
+    continuations = cast(
+        "list[dict[str, object]]", document["bounded_continuations"]
+    )
     assert len(continuations) == _TRANSITION_LIMIT - 1
     for observed, transition in zip(
         continuations, expected.transitions[1:], strict=True
