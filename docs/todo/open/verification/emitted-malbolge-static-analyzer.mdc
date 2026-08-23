@@ -646,7 +646,15 @@ executable cells, and input-dependent cycles or hangs.
   `bounded_continuations`. Its third carried history keeps C=D for all eight
   final opcodes. Final `*` and `p` plan `M[27]=19718` and `M[27]=29492`,
   respectively. Each same-address write becomes self-encryption input and
-  deterministically rejects as non-graphical. Sixteen seeded invalid positional
+  deterministically rejects as non-graphical. A separate 24-case graphical
+  twenty-ninth-transition CLI differential spans `/oo<jjjjjjj*jjjjjjjjjjjjjjj`,
+  `j*pj*ppppj/*jjjjjjjjjjjjjjj`, and `o<o<<<<<</o<*oooooooooooooo`. It covers
+  every twenty-ninth opcode through `bounded_continuations`. Its third carried
+  history keeps C=D for all eight final opcodes. Final `*` plans `M[28]=35`,
+  consumes that same-address write as self-encryption input, encrypts it to 93,
+  and continues. Final `p` plans `M[28]=29490`, consumes that same-address write
+  as self-encryption input, and deterministically rejects as non-graphical.
+  Sixteen seeded invalid positional
   mutations retain byte-exact replay, alongside exact halt or
   fixed-fetch-cycle evidence from transitions three through sixteen,
   default-16, explicit-32 transition-17+ and maximum-256 sequential-output
