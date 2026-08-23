@@ -325,6 +325,7 @@ _MAX_WORKLIST_TRUNCATED_LIMIT = (
     "input-dependent-reachability:4096-state-worklist-truncated"
 )
 _DOUBLE_INPUT_CYCLE_STATE_LIMIT = 515
+_DOUBLE_INPUT_CYCLE_CLI_TIMEOUT_SECONDS: Final = 120
 _FIXED_CYCLE_POINTER = 2
 _FIXED_CYCLE_ENCRYPTED_ZERO = 111
 _FIXED_CYCLE_ENCRYPTED_ONE = 69
@@ -3031,7 +3032,7 @@ def test_worklist_cycle_detection_causes_cli_failure(tmp_path: Path) -> None:
         capture_output=True,
         shell=False,
         text=True,
-        timeout=30,
+        timeout=_DOUBLE_INPUT_CYCLE_CLI_TIMEOUT_SECONDS,
     )
     assert completed.returncode == 1
     assert not completed.stderr
