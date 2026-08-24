@@ -137,6 +137,27 @@ exactly those $2^k$ data words without testing any of the other $3^N-2^k$
 words. This is a finite search-space identity, not a claim about membership in
 an incomplete external corpus or about wall-clock speed.
 
+The same doubleton positions form an exact binary hypercube. Let
+$J=\{j_0,\ldots,j_{k-1}\}$ contain the positions with $r_i=2$, let
+$H_3(x,y)=|\{i:x_i\neq y_i\}|$ be trit Hamming distance, and define
+$U_{a,t}(b)$ by selecting bit $b_h$ from the ordered doubleton $D_{j_h}$ while
+holding every singleton position fixed. For the binary-reflected Gray code
+$G_k(r)=\operatorname{bits}_k(r\mathbin{\oplus}\lfloor r/2\rfloor)$,
+\begin{equation}
+  U_{a,t}:\{0,1\}^k
+    \overset{\sim}{\longrightarrow}
+    \{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t\},
+  \qquad
+  H_3\!\left(U_{a,t}(G_k(r)),U_{a,t}(G_k(r+1))\right)=1,
+  \quad 0\leq r<2^k-1.
+  \label{eq:optimization-crazy-profile-preimage-gray-enumeration}
+\end{equation}
+Thus a complete-domain preimage traversal can visit all $2^k$ compatible data
+words exactly once with one trit change between consecutive candidates and no
+visits to the other $3^N-2^k$ words. This is an exact traversal identity for
+reachable fixed pairs at checked widths $1\leq N\leq14$; it does not assert
+external-corpus membership or a wall-clock speedup.
+
 The complete one-trit crazy table has no accumulator/target pair with more than
 two compatible data trits, so $\mu(\alpha,\tau)\leq2$. Combining that fact with
 the exact product formula yields the global classic fixed-target bound

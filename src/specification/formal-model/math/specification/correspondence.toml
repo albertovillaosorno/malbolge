@@ -219,6 +219,16 @@ mechanism = "independent-local-inverse-product-plus-mixed-radix-bijection"
 evidence = ["tests/mathematics/test_crazy_preimage_rank.py::test_local_inverse_sets_are_only_empty_singleton_or_doubleton", "tests/mathematics/test_crazy_preimage_rank.py::test_preimage_rank_is_structurally_exact_through_width_fourteen", "tests/mathematics/test_crazy_preimage_rank.py::test_preimage_rank_matches_brute_force_for_every_small_pair", "tests/mathematics/test_crazy_preimage_rank.py::test_preimage_rank_exhausts_maximum_checked_preimage"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-gray-enumeration"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-preimage-gray-enumeration"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "reachable fixed accumulator/target pairs at widths 1 through 14 with exhaustive all-pair brute force through width 4 and all 16384 width-14 ambiguity masks"
+mechanism = "independent-local-inverse-hypercube-plus-gray-order"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_gray.py::test_gray_code_is_single_bit_through_width_fourteen", "tests/mathematics/test_crazy_preimage_gray.py::test_gray_preimages_match_brute_force_for_every_small_pair", "tests/mathematics/test_crazy_preimage_gray.py::test_every_width_fourteen_ambiguity_mask_has_exact_cube_dimension", "tests/mathematics/test_crazy_preimage_gray.py::test_maximum_preimage_cube_is_exhausted_by_one_trit_gray_steps"]
+
+[[correspondence]]
 id = "optimization-crazy-preimage-bound"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-bound"

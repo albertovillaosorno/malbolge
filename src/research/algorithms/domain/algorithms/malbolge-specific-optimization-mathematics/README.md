@@ -46,5 +46,7 @@ whole machine states whose later semantics still need cell or pointer identity.
 Reachable fixed crazy pairs also admit a constructive full-domain inverse: each
 local inverse set has radix one or two, so mixed-radix rank/unrank enumerates
 exactly the `2^k` preimages for checked width `N<=14` without scanning the other
-`3^N-2^k` data words. This says nothing about incomplete corpus membership or
-wall-clock speed.
+`3^N-2^k` data words. The `k` doubleton positions form an exact binary
+hypercube, so binary-reflected Gray order visits every compatible word exactly
+once while changing one trit between consecutive candidates. This says nothing
+about incomplete corpus membership or wall-clock speed.

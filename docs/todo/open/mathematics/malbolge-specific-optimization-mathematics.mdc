@@ -30,14 +30,16 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize twenty-eight exact reductions: classic
+- The proved slices now formalize twenty-nine exact reductions: classic
   five-trit
   crazy factorization, profile-width crazy chunking, exact decode sum-class
   canonicalization,
   exact classic rotate lookup, graphical self-encryption orbit
   canonicalization, classic rotate-history canonicalization,
   exact classic rotate minimal-period partition, exact
-  crazy-target preimage cardinality, the tight global 1,024-preimage bound,
+  crazy-target preimage cardinality, constructive mixed-radix preimage
+  rank/unrank, exact one-trit Gray traversal of each preimage hypercube, the
+  tight global 1,024-preimage bound,
   the exact zero-or-power-of-two preimage spectrum, the accumulator-specific
   `2^(10-n2(a))` worst-target bound, and the exact
   `2^(10-n2(a))*3^n2(a)` reachable-target count, the exact checked-width
@@ -56,9 +58,9 @@ force or stochastic optimization begins.
   preimage-budget exceedance sum, its width-indexed generalization, and the
   exact minimum complete-preimage budget needed to cover any integer target
   from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. The first
-  four are consumed by runtime paths; the twenty-four search reductions carry
+  four are consumed by runtime paths; the twenty-five search reductions carry
   no inherited runtime speedup claim.
-- Twenty-eight optimization research equations are registered in
+- Twenty-nine optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -92,7 +94,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes twenty-eight labelled optimization
+- Current mathematical evidence includes twenty-nine labelled optimization
   equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, the exact 94-class decode quotient across all 8,836
@@ -101,7 +103,8 @@ force or stochastic optimization begins.
   `3/6/240/58,800`
   minimal-period partition, exact full-domain crazy-target
   preimage counts including impossible targets, constructive mixed-radix
-  preimage rank/unrank through width 14, the exhaustive tight global
+  preimage rank/unrank through width 14, exact Gray traversal across all
+  16,384 width-14 ambiguity masks, the exhaustive tight global
   1,024-preimage ceiling, the exact `{0,1,2,4,...,1024}` cardinality spectrum,
   the accumulator-specific `2^(10-n2(a))` maximum, the exact
   `2^(10-n2(a))*3^n2(a)` reachable-target count, the exact checked-width
