@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes thirty-two exact reductions: classic five-trit crazy factorization,
+formalizes thirty-three exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -70,7 +70,8 @@ partition, exact crazy-target preimage cardinality, constructive mixed-radix
 preimage rank/unrank through width 14, exact one-trit Gray traversal of
 preimage hypercubes, exact `2^k-1` minimum aggregate trit-edit cost for
 bijective complete traversal, exact binary-cube one-trit neighborhood
-structure plus exact binomial distance shells/balls and diameter, the tight
+structure plus exact binomial distance shells/balls, diameter, and shortest-
+path lower bounds/counts, the tight
 classic 1,024-preimage global
 bound, the exact zero-or-power-of-two preimage spectrum,
 the accumulator-specific `2^(10-n2(a))` worst-target bound, and the exact
@@ -123,6 +124,8 @@ has `k*2^(k-1)` edges when `k>0` (zero when `k=0`). These are exact
 complete-domain graph/edit identities, not wall-clock lower bounds. Moreover,
 from any compatible word the exact distance-`j` shell has `C(k,j)` words, a
 radius-`r` ball has `sum_{j=0}^r C(k,j)`, and the cube diameter is exactly `k`.
+For endpoints at trit distance `j`, every in-cube one-trit mutation path needs
+at least `j` steps, and exactly `j!` shortest paths attain that lower bound.
 The existing all-one target under
 accumulator zero therefore has exactly 1,024 data-word preimages, while a zero
 target under accumulator zero has none. Exhausting all 59,049 accumulator words
@@ -186,7 +189,7 @@ These timing results support H1 only for the admitted CPU table-factorization
 slice. The self-encryption/rotate-history and exact rotate-period reductions,
 crazy preimage count, constructive preimage ranking, exact Gray traversal,
 exact Gray edit optimality, exact preimage-cube neighborhood graph, and exact
-preimage-cube distance shells/balls,
+preimage-cube distance shells/balls and exact mutation geodesics,
 global preimage bound,
 discrete preimage spectrum, accumulator-specific
 worst-target bound, reachable-target count, fixed-accumulator target preimage
@@ -215,7 +218,8 @@ self-encryption, classic rotate-history canonicalization, exact rotate minimal-
 period canonicalization, crazy-target preimage cardinality, constructive
 preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, and exact binomial
-distance shells/balls and diameter, tight 1,024-preimage bound, discrete
+distance shells/balls, diameter, and exact mutation geodesics, tight 1,024-
+preimage bound, discrete
 cardinality spectrum,
 accumulator-specific worst-target bound, reachable-target count, exact
 fixed-accumulator target preimage distribution, fixed-accumulator budget

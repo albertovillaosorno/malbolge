@@ -218,6 +218,23 @@ binomial number of compatible candidates, independently of the ambient
 $3^N$ data-word domain. This is a bounded search-space identity, not an
 external-corpus or wall-clock performance claim.
 
+The same coordinates give an exact mutation-step lower bound between any two
+compatible words. If $x$ and $y$ differ in $j=H_3(x,y)$ trits, every path in
+$G_{a,t}$ from $x$ to $y$ changes at most one differing coordinate per edge, so
+it has at least $j$ edges. Flipping those $j$ coordinates once each attains the
+bound, and every ordering of the $j$ flips is distinct. Therefore
+\begin{equation}
+  \operatorname{dist}_{G_{a,t}}(x,y)=H_3(x,y)=j,
+  \qquad
+  \#\operatorname{Geo}_{G_{a,t}}(x,y)=j!,
+  \quad 0\leq j\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-preimage-cube-geodesic}
+\end{equation}
+For $j=0$, the unique zero-edge path gives $0!=1$. This is an exact lower bound
+on one-trit mutation steps inside a fixed complete-domain preimage cube and an
+exact count of minimizing paths; it is not a wall-clock or external-corpus
+claim.
+
 The complete one-trit crazy table has no accumulator/target pair with more than
 two compatible data trits, so $\mu(\alpha,\tau)\leq2$. Combining that fact with
 the exact product formula yields the global classic fixed-target bound
