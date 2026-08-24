@@ -357,12 +357,12 @@ no timing or runtime-speed conclusion.
 The same ordered classes can be inverted to answer an exact coverage-budget
 question. Define
 \[
-  C_N(k)=\sum_{j=0}^{k}inom{N}{j}2^j5^{N-j}.
+  C_N(k)=\sum_{j=0}^{k}\binom{N}{j}2^j5^{N-j}.
 \]
 For an integer target $Q\in\{0,\ldots,7^N\}$, the least nonnegative complete-
 preimage budget that covers at least $Q$ reachable accumulator/target pairs is
-egin{equation}
-  B_N(Q)=egin{cases}
+\begin{equation}
+  B_N(Q)=\begin{cases}
     0, & Q=0,\
     \min\{2^k:C_N(k)\geq Q,\ 0\leq k\leq N\}, & 1\leq Q\leq7^N,
   \end{cases}
