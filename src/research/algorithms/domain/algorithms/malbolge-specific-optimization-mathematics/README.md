@@ -32,3 +32,5 @@ unreachable complement directly from the normative trit table. The checked
 width family also admits an exact inverse planning bound: for any requested
 reachable-pair coverage target, the minimum complete-preimage enumeration budget
 is zero or the first power-of-two class whose cumulative count reaches it.
+Classic rotate history also has an exact per-word canonical refinement: minimal
+periods are 1, 2, 5, or 10 with exact class sizes 3, 6, 240, and 58,800.

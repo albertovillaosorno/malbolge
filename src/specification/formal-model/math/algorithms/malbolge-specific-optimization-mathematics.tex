@@ -454,11 +454,30 @@ $k\in\mathbb{N}$,
   R^k(x)=R^{k\bmod 10}(x).
   \label{eq:optimization-rotate-history}
 \end{equation}
-This does not claim that every word has minimal period ten; repeated-trit words
-may have a proper divisor as their period. It only gives a safe canonical bound:
-a search state tracking repeated rotate updates to one otherwise unchanged
-classic data cell needs at most the residue modulo ten. Intervening writes or a
-changed data-pointer identity fall outside the reduction.
+This gives a safe universal canonical bound, but the exact period can be
+sharpened per word. Define
+\[
+  p(x)=\min\{d\in\{1,2,5,10\}:R^d(x)=x\}.
+\]
+Every rotation period divides ten, and exhaustive classification of the classic
+word domain gives
+\begin{equation}
+  \left|\{x:p(x)=d\}\right|=
+  \begin{cases}
+    3, & d=1,\\
+    6, & d=2,\\
+    240, & d=5,\\
+    58800, & d=10.
+  \end{cases}
+  \qquad
+  R^k(x)=R^{k\bmod p(x)}(x).
+  \label{eq:optimization-rotate-minimal-period}
+\end{equation}
+The counts partition all $3^{10}=59049$ classic words. Therefore a search state
+tracking repeated rotate updates to one otherwise unchanged classic data cell
+may use the word-specific residue modulo $p(x)$ instead of the universal residue
+modulo ten. Intervening writes or a changed data-pointer identity fall outside
+this reduction, and the result carries no runtime-speed claim.
 
 \section{Verified candidate boundary}
 

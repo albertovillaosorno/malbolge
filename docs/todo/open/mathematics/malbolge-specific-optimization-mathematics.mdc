@@ -30,11 +30,12 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize twenty-five exact reductions: classic
+- The proved slices now formalize twenty-six exact reductions: classic
   five-trit
   crazy factorization, profile-width crazy chunking, decode phase reduction,
   exact classic rotate lookup, graphical self-encryption orbit
-  canonicalization, classic rotate-history canonicalization, exact
+  canonicalization, classic rotate-history canonicalization,
+  exact classic rotate minimal-period partition, exact
   crazy-target preimage cardinality, the tight global 1,024-preimage bound,
   the exact zero-or-power-of-two preimage spectrum, the accumulator-specific
   `2^(10-n2(a))` worst-target bound, and the exact
@@ -53,9 +54,9 @@ force or stochastic optimization begins.
   preimage-budget exceedance sum, its width-indexed generalization, and the
   exact minimum complete-preimage budget needed to cover any integer target
   from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. The first
-  four are consumed by runtime paths; the twenty-one search reductions carry
+  four are consumed by runtime paths; the twenty-two search reductions carry
   no inherited runtime speedup claim.
-- Twenty-five optimization research equations are registered in
+- Twenty-six optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -89,11 +90,12 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes twenty-five labelled optimization
+- Current mathematical evidence includes twenty-six labelled optimization
   equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, an exhaustive six-orbit encryption partition, exhaustive
-  two-cycle classic rotate-history reduction, exact full-domain crazy-target
+  two-cycle classic rotate-history reduction, the exact `3/6/240/58,800`
+  minimal-period partition, exact full-domain crazy-target
   preimage counts including impossible targets, the exhaustive tight global
   1,024-preimage ceiling, the exact `{0,1,2,4,...,1024}` cardinality spectrum,
   the accumulator-specific `2^(10-n2(a))` maximum, the exact

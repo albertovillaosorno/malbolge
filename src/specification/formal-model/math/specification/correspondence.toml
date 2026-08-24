@@ -28,6 +28,15 @@ mechanism = "exhaustive-rotation-orbit"
 evidence = ["tests/exhaustive/math_correspondence.rs::classic_rotation_history_reduces_modulo_ten_trits"]
 
 [[correspondence]]
+id = "optimization-rotate-minimal-period"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-rotate-minimal-period"
+domain = "all 59049 classic ten-trit words and two full ten-visit rotation cycles"
+mechanism = "independent-exhaustive-minimal-period-classification"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_rotate_minimal_period.py::test_classic_rotate_minimal_period_partition_is_exact", "tests/mathematics/test_rotate_minimal_period.py::test_classic_rotate_uses_each_words_minimal_period_residue"]
+
+[[correspondence]]
 id = "classic-word-domain"
 tex = "src/specification/formal-model/math/specification/malbolge-1998.tex"
 label = "eq:classic-word-domain"
