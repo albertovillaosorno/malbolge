@@ -39,6 +39,7 @@ from itertools import pairwise
 
 _MAXIMUM_TRITS = 14
 _EXHAUSTIVE_TRITS = 4
+_BINARY_RADIX = 2
 _RADIX = 3
 _INDEPENDENT_CRAZY_TRIT = (
     (1, 0, 0),
@@ -81,6 +82,13 @@ def _gray_code(rank: int) -> int:
     return rank ^ (rank >> 1)
 
 
+def _cube_dimension(choices_by_position: tuple[tuple[int, ...], ...]) -> int:
+    return sum(
+        len(choices) == _BINARY_RADIX
+        for choices in choices_by_position
+    )
+
+
 def _cube_data(
     target: int,
     accumulator: int,
@@ -89,8 +97,8 @@ def _cube_data(
     cube_code: int,
 ) -> int:
     choices_by_position = _choice_sets(target, accumulator, trit_count)
-    dimension = sum(len(choices) == 2 for choices in choices_by_position)
-    if cube_code < 0 or cube_code >= _integer_power(2, dimension):
+    dimension = _cube_dimension(choices_by_position)
+    if cube_code < 0 or cube_code >= _integer_power(_BINARY_RADIX, dimension):
         raise ValueError
     data = 0
     place = 1
@@ -162,7 +170,7 @@ def _pair_from_ambiguity_mask(mask: int) -> tuple[int, int]:
 def test_gray_code_is_single_bit_through_width_fourteen() -> None:
     """Every checked binary cube has a complete one-bit Gray traversal."""
     for dimension in range(_MAXIMUM_TRITS + 1):
-        size = _integer_power(2, dimension)
+        size = _integer_power(_BINARY_RADIX, dimension)
         codes = tuple(_gray_code(rank) for rank in range(size))
         assert set(codes) == set(range(size))
         for left, right in pairwise(codes):
@@ -171,57 +179,65 @@ def test_gray_code_is_single_bit_through_width_fourteen() -> None:
             assert difference & (difference - 1) == 0
 
 
+def _check_small_pair_gray(
+    target: int,
+    accumulator: int,
+    trit_count: int,
+) -> None:
+    choices = _choice_sets(target, accumulator, trit_count)
+    if any(not local for local in choices):
+        return
+    dimension = _cube_dimension(choices)
+    size = _integer_power(_BINARY_RADIX, dimension)
+    observed = tuple(
+        _cube_data(
+            target,
+            accumulator,
+            trit_count=trit_count,
+            cube_code=_gray_code(rank),
+        )
+        for rank in range(size)
+    )
+    expected = _brute_preimages(target, accumulator, trit_count)
+    assert set(observed) == set(expected)
+    assert len(observed) == len(set(observed)) == size
+    assert all(
+        _trit_distance(left, right, trit_count) == 1
+        for left, right in pairwise(observed)
+    )
+
+
 def test_gray_preimages_match_brute_force_for_every_small_pair() -> None:
     """Every reachable pair through width four is exactly one Gray cube."""
     for trit_count in range(1, _EXHAUSTIVE_TRITS + 1):
         domain = _integer_power(_RADIX, trit_count)
         for accumulator in range(domain):
             for target in range(domain):
-                choices = _choice_sets(target, accumulator, trit_count)
-                if any(not local for local in choices):
-                    continue
-                dimension = sum(len(local) == 2 for local in choices)
-                size = _integer_power(2, dimension)
-                observed = tuple(
-                    _cube_data(
-                        target,
-                        accumulator,
-                        trit_count=trit_count,
-                        cube_code=_gray_code(rank),
-                    )
-                    for rank in range(size)
-                )
-                expected = _brute_preimages(target, accumulator, trit_count)
-                assert set(observed) == set(expected)
-                assert len(observed) == len(set(observed)) == size
-                assert all(
-                    _trit_distance(left, right, trit_count) == 1
-                    for left, right in pairwise(observed)
-                )
+                _check_small_pair_gray(target, accumulator, trit_count)
 
 
 def test_every_width_fourteen_ambiguity_mask_has_exact_cube_dimension() -> None:
     """All 16,384 ambiguity masks induce the predicted binary dimension."""
-    for mask in range(_integer_power(2, _MAXIMUM_TRITS)):
+    for mask in range(_integer_power(_BINARY_RADIX, _MAXIMUM_TRITS)):
         accumulator, target = _pair_from_ambiguity_mask(mask)
         choices = _choice_sets(target, accumulator, _MAXIMUM_TRITS)
         observed_mask = sum(
-            (1 << position) if len(local) == 2 else 0
+            (1 << position) if len(local) == _BINARY_RADIX else 0
             for position, local in enumerate(choices)
         )
         assert observed_mask == mask
         dimension = mask.bit_count()
-        assert _integer_power(2, dimension) == _integer_power(
-            2,
-            sum(len(local) == 2 for local in choices),
+        assert _integer_power(_BINARY_RADIX, dimension) == _integer_power(
+            _BINARY_RADIX,
+            _cube_dimension(choices),
         )
 
 
 def test_maximum_preimage_cube_is_exhausted_by_one_trit_gray_steps() -> None:
     """The dimension-fourteen case visits all 16,384 preimages exactly once."""
-    mask = _integer_power(2, _MAXIMUM_TRITS) - 1
+    mask = _integer_power(_BINARY_RADIX, _MAXIMUM_TRITS) - 1
     accumulator, target = _pair_from_ambiguity_mask(mask)
-    size = _integer_power(2, _MAXIMUM_TRITS)
+    size = _integer_power(_BINARY_RADIX, _MAXIMUM_TRITS)
     observed = tuple(
         _cube_data(
             target,
