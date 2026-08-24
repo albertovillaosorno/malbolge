@@ -14,8 +14,8 @@
 #   - Import production rotate helpers or claim unchanged state across writes.
 # - Allows:
 #   - Inputs: every classic ten-trit word and finite rotate visit counts.
-# - Outputs: exact period-class and canonical-residue assertions.
-# - Side effects: none.
+#   - Outputs: exact period-class and canonical-residue assertions.
+#   - Side effects: none.
 # - Split-When:
 #   - Another state canonicalization needs independent executable state.
 # - Merge-When:
