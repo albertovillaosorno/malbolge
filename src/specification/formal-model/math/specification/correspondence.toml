@@ -249,6 +249,16 @@ mechanism = "independent-small-pair-adjacency-plus-hypercube-degree-accounting"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_graph.py::test_small_pairs_match_cube_adjacency", "tests/mathematics/test_crazy_preimage_cube_graph.py::test_checked_cube_dimensions_have_exact_degree_and_edges"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-distance"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-preimage-cube-distance"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "reachable fixed accumulator/target preimage cubes at widths 1 through 14 with exhaustive distance shells through width 4"
+mechanism = "independent-small-pair-distance-shells-plus-binomial-cube-counting"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_distance.py::test_small_pairs_have_exact_binomial_distance_shells", "tests/mathematics/test_crazy_preimage_cube_distance.py::test_checked_cube_dimensions_have_exact_radius_balls_and_diameter"]
+
+[[correspondence]]
 id = "optimization-crazy-preimage-bound"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-bound"

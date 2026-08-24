@@ -52,5 +52,7 @@ once while changing one trit between consecutive candidates. Among bijective
 complete traversals, this also attains the exact minimum aggregate trit-edit
 cost `2^k-1`. The same cube coordinates give the exact one-trit mutation graph:
 every preimage has degree `k`, with `k*2^(k-1)` total edges for `k>0` and zero
-for `k=0`. These metric/graph results say nothing about incomplete corpus
-membership or wall-clock speed.
+for `k=0`. Distance shells are also exact: every origin has `C(k,j)` compatible
+words at trit distance `j`, radius `r` contains `sum_{j=0}^r C(k,j)` words, and
+the diameter is `k`. These metric/graph results say nothing about incomplete
+corpus membership or wall-clock speed.

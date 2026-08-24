@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes thirty-one exact reductions: classic five-trit crazy factorization,
+formalizes thirty-two exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -70,7 +70,8 @@ partition, exact crazy-target preimage cardinality, constructive mixed-radix
 preimage rank/unrank through width 14, exact one-trit Gray traversal of
 preimage hypercubes, exact `2^k-1` minimum aggregate trit-edit cost for
 bijective complete traversal, exact binary-cube one-trit neighborhood
-structure, the tight classic 1,024-preimage global
+structure plus exact binomial distance shells/balls and diameter, the tight
+classic 1,024-preimage global
 bound, the exact zero-or-power-of-two preimage spectrum,
 the accumulator-specific `2^(10-n2(a))` worst-target bound, and the exact
 `2^(10-n2(a))*3^n2(a)` reachable-target count, the exact checked-width fixed-
@@ -119,8 +120,10 @@ therefore costs at least `2^k-1` trit edits; Gray order attains that bound
 exactly. The same coordinates identify the one-trit mutation graph with
 `Q_k`: every preimage has exactly `k` valid one-trit neighbors, and the graph
 has `k*2^(k-1)` edges when `k>0` (zero when `k=0`). These are exact
-complete-domain graph/edit identities, not wall-clock lower bounds. The
-existing all-one target under
+complete-domain graph/edit identities, not wall-clock lower bounds. Moreover,
+from any compatible word the exact distance-`j` shell has `C(k,j)` words, a
+radius-`r` ball has `sum_{j=0}^r C(k,j)`, and the cube diameter is exactly `k`.
+The existing all-one target under
 accumulator zero therefore has exactly 1,024 data-word preimages, while a zero
 target under accumulator zero has none. Exhausting all 59,049 accumulator words
 through an independent trit relation proves no fixed classic accumulator/target
@@ -182,7 +185,8 @@ host/workload, crazy improved from a 77,456,700 ns scalar median to 7,423,600 ns
 These timing results support H1 only for the admitted CPU table-factorization
 slice. The self-encryption/rotate-history and exact rotate-period reductions,
 crazy preimage count, constructive preimage ranking, exact Gray traversal,
-exact Gray edit optimality, and exact preimage-cube neighborhood graph,
+exact Gray edit optimality, exact preimage-cube neighborhood graph, and exact
+preimage-cube distance shells/balls,
 global preimage bound,
 discrete preimage spectrum, accumulator-specific
 worst-target bound, reachable-target count, fixed-accumulator target preimage
@@ -210,8 +214,9 @@ Retain the four proved table/factorization reductions plus the exact
 self-encryption, classic rotate-history canonicalization, exact rotate minimal-
 period canonicalization, crazy-target preimage cardinality, constructive
 preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
-optimality, and exact one-trit cube neighborhood graph, tight 1,024-preimage
-bound, discrete cardinality spectrum,
+optimality, exact one-trit cube neighborhood graph, and exact binomial
+distance shells/balls and diameter, tight 1,024-preimage bound, discrete
+cardinality spectrum,
 accumulator-specific worst-target bound, reachable-target count, exact
 fixed-accumulator target preimage distribution, fixed-accumulator budget
 exceedance, exact accumulator-class
