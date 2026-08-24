@@ -111,6 +111,32 @@ for $a=0$ and the all-one-trit target $t=\sum_{i=0}^{9}3^i$, every digit has
 $\mu(0,1)=2$, so the exact full-domain cardinality is $2^{10}=1024$. If any
 factor is zero, no classic data word can reach the target for that accumulator.
 
+The same digit independence gives a constructive inverse canonical form at
+checked widths $1\leq N\leq14$. For a reachable fixed pair $(a,t)$ define the
+ordered local inverse set
+\[
+  D_i(a,t)=\{\delta\in\{0,1,2\}:\CrazyN{1}{\delta}{a_i}=t_i\},
+  \qquad r_i=|D_i(a,t)|\in\{1,2\}.
+\]
+Let $q_i(\delta)$ be the zero-based index of $\delta$ in the increasing order
+of $D_i$, and let $R_i=\prod_{h=0}^{i-1}r_h$ with $R_0=1$. Then
+\begin{equation}
+  \operatorname{rank}_{a,t}(d)
+    =\sum_{i=0}^{N-1}q_i(d_i)R_i,
+  \qquad
+  \{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t\}
+    \overset{\sim}{\longrightarrow}
+  \left\{0,\ldots,\prod_{i=0}^{N-1}r_i-1\right\}.
+  \label{eq:optimization-crazy-profile-preimage-ranking}
+\end{equation}
+The inverse decodes the rank in the mixed radices $r_0,\ldots,r_{N-1}$ and
+selects the corresponding element of each $D_i$. If exactly $k$ local inverse
+sets are doubletons, the canonical domain has exactly $2^k$ ranks. A procedure
+whose contract is complete-domain preimage enumeration may therefore construct
+exactly those $2^k$ data words without testing any of the other $3^N-2^k$
+words. This is a finite search-space identity, not a claim about membership in
+an incomplete external corpus or about wall-clock speed.
+
 The complete one-trit crazy table has no accumulator/target pair with more than
 two compatible data trits, so $\mu(\alpha,\tau)\leq2$. Combining that fact with
 the exact product formula yields the global classic fixed-target bound

@@ -61,13 +61,14 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes twenty-seven exact reductions: classic five-trit crazy factorization,
+formalizes twenty-eight exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
 classic rotate-history canonicalization, exact classic rotate minimal-period
-partition, exact crazy-target preimage cardinality, the tight classic
-1,024-preimage global bound, the exact zero-or-power-of-two preimage spectrum,
+partition, exact crazy-target preimage cardinality, constructive mixed-radix
+preimage rank/unrank through width 14, the tight classic 1,024-preimage global
+bound, the exact zero-or-power-of-two preimage spectrum,
 the accumulator-specific `2^(10-n2(a))` worst-target bound, and the exact
 `2^(10-n2(a))*3^n2(a)` reachable-target count, the exact checked-width fixed-
 accumulator target distribution `C(N-m,k)*3^m` over preimage class `2^k`, and
@@ -102,7 +103,10 @@ classes 1, 2, 5, and 10, containing 3, 6, 240, and 58,800 words respectively.
 Search may therefore retain visits modulo the exact minimal period rather than
 always modulo ten. For fixed classic
 crazy accumulator/target words, the exact full-data-domain preimage count is the
-product of the ten per-trit multiplicities. The existing all-one target under
+product of the ten per-trit multiplicities. For checked widths one through 14,
+the ordered local inverse sets also give a constructive mixed-radix rank/unrank
+bijection over exactly the complete-domain preimages, so a complete enumerator
+does not need to test unrelated data words. The existing all-one target under
 accumulator zero therefore has exactly 1,024 data-word preimages, while a zero
 target under accumulator zero has none. Exhausting all 59,049 accumulator words
 through an independent trit relation proves no fixed classic accumulator/target
@@ -163,8 +167,8 @@ host/workload, crazy improved from a 77,456,700 ns scalar median to 7,423,600 ns
 (10.43x), and rotate improved from 15,260,300 ns to 10,141,700 ns (1.50x).
 These timing results support H1 only for the admitted CPU table-factorization
 slice. The self-encryption/rotate-history and exact rotate-period reductions,
-crazy preimage count,
-global preimage bound, discrete preimage spectrum, accumulator-specific
+crazy preimage count and constructive preimage ranking, global preimage bound,
+discrete preimage spectrum, accumulator-specific
 worst-target bound, reachable-target count, fixed-accumulator target preimage
 distribution, accumulator-class partition, global reachable-pair count,
 classic/profile-width preimage-pair distributions and constructive reachable-
@@ -188,8 +192,8 @@ Each experiment must narrow these threats before drawing a conclusion.
 
 Retain the four proved table/factorization reductions plus the exact
 self-encryption, classic rotate-history canonicalization, exact rotate minimal-
-period canonicalization, crazy-target
-preimage cardinality, tight 1,024-preimage bound, discrete cardinality spectrum,
+period canonicalization, crazy-target preimage cardinality, constructive
+preimage rank/unrank, tight 1,024-preimage bound, discrete cardinality spectrum,
 accumulator-specific worst-target bound, reachable-target count, exact
 fixed-accumulator target preimage distribution, fixed-accumulator budget
 exceedance, exact accumulator-class

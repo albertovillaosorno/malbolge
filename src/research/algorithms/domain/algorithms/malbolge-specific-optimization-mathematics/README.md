@@ -42,3 +42,9 @@ The classic decode reduction is exact at the opcode boundary: preserved `xlat1`
 is a 94-byte permutation, so all 8,836 graphical cell/phase pairs quotient into
 94 equal classes keyed by `(cell-33+phase) mod 94`. This does not canonicalize
 whole machine states whose later semantics still need cell or pointer identity.
+
+Reachable fixed crazy pairs also admit a constructive full-domain inverse: each
+local inverse set has radix one or two, so mixed-radix rank/unrank enumerates
+exactly the `2^k` preimages for checked width `N<=14` without scanning the other
+`3^N-2^k` data words. This says nothing about incomplete corpus membership or
+wall-clock speed.
