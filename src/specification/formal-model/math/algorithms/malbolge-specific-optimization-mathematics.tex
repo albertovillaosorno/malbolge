@@ -278,6 +278,30 @@ planning
 evidence only for this bounded width family; it does not assert candidate-corpus
 membership or runtime speedup.
 
+The $7^N$ reachable-pair count also admits a constructive canonical index.
+Let
+\[
+  L=\{(a,t)\in\{0,1,2\}^2:\exists d\in\{0,1,2\},\ \gamma(d,a)=t\}.
+\]
+The independent trit relation gives $|L|=7$. Let
+$q:L\to\{0,\ldots,6\}$ be the lexicographic bijection. For a width-$N$
+reachable accumulator/target pair with trit pairs $(a_i,t_i)$, define
+\begin{equation}
+  \operatorname{rank}_N(a,t)
+    =\sum_{i=0}^{N-1}q(a_i,t_i)7^i,
+  \qquad
+  \operatorname{rank}_N:
+    L^N\overset{\sim}{\longrightarrow}\{0,\ldots,7^N-1\},
+  \quad 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-reachable-pair-ranking}
+\end{equation}
+The inverse decodes the rank in base seven and applies $q^{-1}$ digitwise.
+Therefore a complete enumeration whose domain is exactly the reachable
+accumulator/target pairs may enumerate $7^N$ canonical codes directly and never
+visit the $9^N-7^N$ impossible pairs. The bijection preserves pair identity; it
+does not equate distinct reachable pairs, infer external-corpus membership, or
+claim a runtime speedup.
+
 A uniformly chosen reachable accumulator/target pair therefore has exact mean
 complete-domain preimage cardinality
 \begin{equation}

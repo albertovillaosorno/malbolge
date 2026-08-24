@@ -34,3 +34,6 @@ reachable-pair coverage target, the minimum complete-preimage enumeration budget
 is zero or the first power-of-two class whose cumulative count reaches it.
 Classic rotate history also has an exact per-word canonical refinement: minimal
 periods are 1, 2, 5, or 10 with exact class sizes 3, 6, 240, and 58,800.
+The reachable crazy pair domain also has a constructive base-seven canonical
+index: each reachable per-trit accumulator/target pair is one of seven symbols,
+so checked width `N` ranks bijectively into `0..7^N-1`.

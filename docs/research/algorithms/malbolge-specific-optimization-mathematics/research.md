@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes twenty-six exact reductions: classic five-trit crazy factorization,
+formalizes twenty-seven exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, decode phase reduction, classic rotate
 lookup, graphical self-encryption orbit canonicalization,
 classic rotate-history canonicalization, exact classic rotate minimal-period
@@ -75,6 +75,7 @@ the exact `C(10,k)*2^(10-k)` cardinality of accumulator class `k`, the exact
 count of reachable accumulator/target pairs, and the exact
 `C(10,k)*2^k*5^(10-k)` count of pairs in preimage class `2^k`, the exact
 profile-width `C(N,k)*2^k*5^(N-k)` distribution for `1<=N<=14`, the exact
+base-seven canonical rank/unrank over all `7^N` reachable pairs, the exact
 reachable-pair mean preimage size `(9/7)^N`, exact second moment `(13/7)^N`
 and variance `(13/7)^N-(9/7)^(2N)`, the exact Binomial(N, 2/7) law for
 `log2` preimage cardinality with mean `2N/7` and variance `10N/49`, the exact
@@ -120,6 +121,11 @@ preimages; its class sum is `7^10`, while weighting by preimage size gives
 `59,049^2`, accounting for every classic `(data, accumulator)` input pair. The
 same independent trit convolution now checks every width 1 through 14 against
 `C(N,k)*2^k*5^(N-k)`, with class sum `7^N` and weighted sum `9^N`.
+The seven reachable local accumulator/target symbols also lift to an exact
+base-seven rank/unrank bijection over the full `7^N` reachable-pair domain. A
+complete reachable-pair enumeration can therefore use canonical codes
+`0..7^N-1` without visiting an impossible pair; distinct reachable pairs remain
+distinct.
 The complement `9^10-7^10 = 3,204,309,152` is therefore globally impossible
 before any data-word enumeration. Summing preimage classes above a supplied
 budget gives an exact planning lower bound for complete preimage enumeration:
@@ -153,8 +159,9 @@ crazy preimage count,
 global preimage bound, discrete preimage spectrum, accumulator-specific
 worst-target bound, reachable-target count, fixed-accumulator target preimage
 distribution, accumulator-class partition, global reachable-pair count,
-classic/profile-width preimage-pair distributions,
-profile-width mean/variance preimage evidence, the exact Binomial(N, 2/7)
+classic/profile-width preimage-pair distributions and constructive reachable-
+pair ranking, profile-width mean/variance preimage evidence, the exact
+Binomial(N, 2/7)
 log-preimage exponent law, classic/profile-width unreachable-pair counts,
 and classic/profile-width preimage-budget exceedance plus exact minimum-coverage
 budget bounds are correctness-proved search
@@ -179,7 +186,8 @@ accumulator-specific worst-target bound, reachable-target count, exact
 fixed-accumulator target preimage distribution, fixed-accumulator budget
 exceedance, exact accumulator-class
 partition, global reachable-pair count, exact classic and
-profile-width preimage-pair distributions, exact profile-width mean/variance
+profile-width preimage-pair distributions, constructive reachable-pair ranking,
+exact profile-width mean/variance
 preimage evidence, the exact Binomial(N, 2/7) log-preimage exponent law, exact
 classic/profile-width unreachable-pair counts, and
 exact

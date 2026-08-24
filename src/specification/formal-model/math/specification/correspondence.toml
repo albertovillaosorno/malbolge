@@ -305,6 +305,16 @@ mechanism = "width-indexed-trit-convolution-plus-binomial-closed-form"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_profile_width_preimage_pair_distribution_matches_closed_form"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-reachable-pair-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-reachable-pair-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "reachable accumulator/target pairs at bounded trit widths 1 through 14 under the independent crazy trit relation"
+mechanism = "independent-seven-symbol-local-bijection-lifted-to-base-seven-ranking"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_reachable_rank.py::test_local_reachable_crazy_pair_alphabet_is_exact", "tests/mathematics/test_crazy_reachable_rank.py::test_reachable_crazy_pair_rank_is_exact_for_checked_widths", "tests/mathematics/test_crazy_reachable_rank.py::test_reachable_crazy_pair_rank_exhausts_small_widths"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-mean-preimage-count"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-profile-mean-preimage-count"
