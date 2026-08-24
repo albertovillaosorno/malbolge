@@ -50,5 +50,7 @@ exactly the `2^k` preimages for checked width `N<=14` without scanning the other
 hypercube, so binary-reflected Gray order visits every compatible word exactly
 once while changing one trit between consecutive candidates. Among bijective
 complete traversals, this also attains the exact minimum aggregate trit-edit
-cost `2^k-1`. This metric result says nothing about incomplete corpus membership
-or wall-clock speed.
+cost `2^k-1`. The same cube coordinates give the exact one-trit mutation graph:
+every preimage has degree `k`, with `k*2^(k-1)` total edges for `k>0` and zero
+for `k=0`. These metric/graph results say nothing about incomplete corpus
+membership or wall-clock speed.

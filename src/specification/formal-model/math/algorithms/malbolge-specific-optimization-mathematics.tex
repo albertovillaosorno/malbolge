@@ -181,6 +181,26 @@ minimum only for bijective complete-domain preimage traversal under trit Hamming
 cost; it is not a wall-clock lower bound and does not constrain incomplete or
 revisiting external-corpus searches.
 
+The same cube coordinates identify the exact one-trit mutation graph. For a
+reachable fixed pair, let $G_{a,t}$ have the compatible data words as vertices
+and an edge $\{x,y\}$ exactly when $H_3(x,y)=1$. Under $U_{a,t}$, two vertices
+are adjacent exactly when their binary coordinates differ in one bit, so
+$G_{a,t}\cong Q_k$. Consequently every compatible word has degree $k$ and
+\begin{equation}
+  \deg_{G_{a,t}}(d)=k,\qquad
+  |E(G_{a,t})|=
+  \begin{cases}
+    0, & k=0,\\
+    k2^{k-1}, & 1\leq k\leq N,
+  \end{cases}
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-preimage-cube-graph}
+\end{equation}
+Thus a fixed-pair local search can generate every valid one-trit neighbor by
+flipping one ambiguous cube coordinate rather than scanning unrelated data
+words. This is an exact complete-domain neighborhood identity; it does not
+assert external-corpus membership or a wall-clock speedup.
+
 The complete one-trit crazy table has no accumulator/target pair with more than
 two compatible data trits, so $\mu(\alpha,\tau)\leq2$. Combining that fact with
 the exact product formula yields the global classic fixed-target bound

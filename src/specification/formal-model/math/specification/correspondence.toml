@@ -239,6 +239,16 @@ mechanism = "distinct-vertex-path-lower-bound-plus-gray-attainment"
 evidence = ["tests/mathematics/test_crazy_preimage_gray_optimality.py::test_gray_cube_attains_path_lower_bound", "tests/mathematics/test_crazy_preimage_gray_optimality.py::test_small_cube_paths_cannot_beat_lower_bound", "tests/mathematics/test_crazy_preimage_gray_optimality.py::test_gray_path_cost_is_two_to_k_minus_one", "tests/mathematics/test_crazy_preimage_gray.py::test_gray_preimages_match_brute_force_for_every_small_pair"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-graph"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-preimage-cube-graph"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "reachable fixed accumulator/target preimage cubes at widths 1 through 14 with exhaustive all-pair adjacency through width 4"
+mechanism = "independent-small-pair-adjacency-plus-hypercube-degree-accounting"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_graph.py::test_small_pairs_match_cube_adjacency", "tests/mathematics/test_crazy_preimage_cube_graph.py::test_checked_cube_dimensions_have_exact_degree_and_edges"]
+
+[[correspondence]]
 id = "optimization-crazy-preimage-bound"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-bound"
