@@ -426,14 +426,25 @@ count only; it does not infer corpus membership or search/runtime cost.
 
 \section{Decode phase reduction}
 
-For graphical cell $m$, decode depends on the code pointer only through its
-residue modulo 94:
+For graphical cell $m$, define the exact decode sum class
+\[
+  s(m,c)=(m-33+c)\bmod94.
+\]
+The preserved historical $X_1$ table is a permutation of all 94 graphical
+bytes. Hence
 \begin{equation}
-  \DecodeOp(m,c)=\DecodeOp(m,c\bmod94).
+  \DecodeOp(m,c)=X_1[s(m,c)],
+  \qquad
+  \DecodeOp(m,c)=\DecodeOp(m',c')
+  \Longleftrightarrow s(m,c)=s(m',c').
   \label{eq:optimization-decode-phase}
 \end{equation}
-The runtime may therefore precompute one 94-value code phase and a
-$94\times94$ graphical-cell/phase table without changing decode semantics.
+Thus the $94\times94=8836$ graphical-cell/code-phase pairs form exactly 94
+decode-equivalence classes of size 94. A boundary whose only observable is the
+decoded opcode may retain $s(m,c)$ instead of the pair $(m,c\bmod94)$. This does
+not identify whole machine states: raw cell or code-pointer identity must remain
+when encryption, control flow, source location, or another downstream semantic
+uses them separately.
 
 
 \section{Self-encryption orbit canonicalization}

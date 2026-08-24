@@ -32,7 +32,8 @@ force or stochastic optimization begins.
 
 - The proved slices now formalize twenty-seven exact reductions: classic
   five-trit
-  crazy factorization, profile-width crazy chunking, decode phase reduction,
+  crazy factorization, profile-width crazy chunking, exact decode sum-class
+  canonicalization,
   exact classic rotate lookup, graphical self-encryption orbit
   canonicalization, classic rotate-history canonicalization,
   exact classic rotate minimal-period partition, exact
@@ -94,8 +95,10 @@ force or stochastic optimization begins.
 - Current mathematical evidence includes twenty-seven labelled optimization
   equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
-  identical checksums, an exhaustive six-orbit encryption partition, exhaustive
-  two-cycle classic rotate-history reduction, the exact `3/6/240/58,800`
+  identical checksums, the exact 94-class decode quotient across all 8,836
+  graphical cell/phase pairs, an exhaustive six-orbit encryption partition,
+  exhaustive two-cycle classic rotate-history reduction, the exact
+  `3/6/240/58,800`
   minimal-period partition, exact full-domain crazy-target
   preimage counts including impossible targets, the exhaustive tight global
   1,024-preimage ceiling, the exact `{0,1,2,4,...,1024}` cardinality spectrum,

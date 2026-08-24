@@ -37,3 +37,8 @@ periods are 1, 2, 5, or 10 with exact class sizes 3, 6, 240, and 58,800.
 The reachable crazy pair domain also has a constructive base-seven canonical
 index: each reachable per-trit accumulator/target pair is one of seven symbols,
 so checked width `N` ranks bijectively into `0..7^N-1`.
+
+The classic decode reduction is exact at the opcode boundary: preserved `xlat1`
+is a 94-byte permutation, so all 8,836 graphical cell/phase pairs quotient into
+94 equal classes keyed by `(cell-33+phase) mod 94`. This does not canonicalize
+whole machine states whose later semantics still need cell or pointer identity.

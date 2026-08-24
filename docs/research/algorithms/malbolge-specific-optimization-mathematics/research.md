@@ -62,7 +62,8 @@ implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
 formalizes twenty-seven exact reductions: classic five-trit crazy factorization,
-general profile-width crazy chunking, decode phase reduction, classic rotate
+general profile-width crazy chunking, exact decode sum-class canonicalization,
+classic rotate
 lookup, graphical self-encryption orbit canonicalization,
 classic rotate-history canonicalization, exact classic rotate minimal-period
 partition, exact crazy-target preimage cardinality, the tight classic
@@ -85,6 +86,12 @@ sum for reachable pairs whose full preimage set exceeds a nonnegative
 enumeration budget, its exact width-indexed generalization for `1<=N<=14`, and
 the exact minimum complete-preimage budget needed to cover any integer target
 from 0 through `7^N` reachable pairs across the same checked widths.
+The preserved historical decode table is a permutation of all 94 graphical
+bytes. Exhausting all 8,836 graphical cell/code-phase pairs therefore proves
+that `(cell-33+phase) mod 94` is a complete decode key: the pairs partition into
+94 exact classes of size 94. This quotient applies only where the decoded opcode
+is the observable; it does not erase raw cell or code-pointer identity needed by
+later machine semantics.
 The encryption
 table is proved to partition the complete
 graphical domain into cycles of lengths 2, 4, 5, 6, 9, and 68, so repeated
@@ -141,7 +148,8 @@ general semantic equivalence between accumulator/target pairs.
 `src/specification/formal-model/math/specification/correspondence.toml` binds
 those equations to exhaustive or composite executable evidence. The classic
 crazy/rotate finite domains are checked exhaustively; decode is checked across
-every classic code pointer and all 94 graphical cells; current 14-trit crazy
+all 8,836 graphical cell/phase pairs and its historical table is independently
+proved injective; current 14-trit crazy
 chunking is checked against scalar fixtures and real profile execution; and the
 self-encryption result independently partitions all 94 graphical cells, checks
 every table transition against the VM-owned encryption helper, and then checks

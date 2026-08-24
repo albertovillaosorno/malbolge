@@ -398,10 +398,11 @@ evidence = ["tests/optimizer/test_crazy_target_search.py::test_unreachable_accum
 id = "optimization-decode-phase"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-decode-phase"
-domain = "all classic code pointers and all 94 graphical cell values"
-mechanism = "exhaustive"
-# jig-ignore-next-line: indivisible reviewed identifier
-evidence = ["tests/vm/tables.rs::decode_table_matches_scalar_definition_for_every_position"]
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all 8836 graphical cell/code-phase pairs plus the preserved historical xlat1 table"
+mechanism = "historical-permutation-plus-exhaustive-sum-class-quotient"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/vm/tables.rs::decode_table_matches_scalar_definition_for_every_position", "tests/mathematics/test_decode_sum_class.py::test_historical_xlat1_is_exact_graphical_permutation", "tests/mathematics/test_decode_sum_class.py::test_decode_pairs_partition_into_exact_sum_classes", "tests/mathematics/test_decode_sum_class.py::test_decode_equality_is_exactly_sum_class_equality"]
 
 [[correspondence]]
 id = "optimization-encryption-orbit"
