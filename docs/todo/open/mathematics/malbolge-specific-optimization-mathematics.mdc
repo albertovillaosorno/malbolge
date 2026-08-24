@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize twenty-four exact reductions: classic
+- The proved slices now formalize twenty-five exact reductions: classic
   five-trit
   crazy factorization, profile-width crazy chunking, decode phase reduction,
   exact classic rotate lookup, graphical self-encryption orbit
@@ -50,11 +50,12 @@ force or stochastic optimization begins.
   Binomial(N, 2/7) log-preimage exponent law with mean `2N/7` and variance
   `10N/49`, the exact `9^10-7^10`
   unreachable-pair count and `9^N-7^N` generalization, the exact classic
-  preimage-budget exceedance sum, and its width-indexed generalization. The
-  first
-  four are consumed by runtime paths; the twenty search reductions carry
+  preimage-budget exceedance sum, its width-indexed generalization, and the
+  exact minimum complete-preimage budget needed to cover any integer target
+  from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. The first
+  four are consumed by runtime paths; the twenty-one search reductions carry
   no inherited runtime speedup claim.
-- Twenty-four optimization research equations are registered in
+- Twenty-five optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -88,7 +89,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes twenty-four labelled optimization
+- Current mathematical evidence includes twenty-five labelled optimization
   equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, an exhaustive six-orbit encryption partition, exhaustive
@@ -109,6 +110,7 @@ force or stochastic optimization begins.
   `9^10-7^10 = 3,204,309,152` unreachable-pair count, its exact
   width-1-through-14 `9^N-7^N` complement, and exact classic/width-indexed
   counts of reachable pairs whose full preimage set exceeds any
-  nonnegative enumeration budget, and explicit bounded conclusions. Broader
+  nonnegative enumeration budget, the exact inverse minimum budget for every
+  reachable-pair coverage target, and explicit bounded conclusions. Broader
   universal lower-bound/search
   mathematics remains open.

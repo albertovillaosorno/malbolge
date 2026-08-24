@@ -354,6 +354,29 @@ same complete-domain assumption as the classic equation. It does not claim that
 a search over an incomplete corpus must enumerate every preimage, and it carries
 no timing or runtime-speed conclusion.
 
+The same ordered classes can be inverted to answer an exact coverage-budget
+question. Define
+\[
+  C_N(k)=\sum_{j=0}^{k}inom{N}{j}2^j5^{N-j}.
+\]
+For an integer target $Q\in\{0,\ldots,7^N\}$, the least nonnegative complete-
+preimage budget that covers at least $Q$ reachable accumulator/target pairs is
+egin{equation}
+  B_N(Q)=egin{cases}
+    0, & Q=0,\
+    \min\{2^k:C_N(k)\geq Q,\ 0\leq k\leq N\}, & 1\leq Q\leq7^N,
+  \end{cases}
+  \qquad 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-minimum-coverage-budget}
+\end{equation}
+Because positive preimage sizes are exactly the powers of two, for $k\geq1$
+no integer budget below $2^k$ covers a class beyond $k-1$; for $k=0$, budget
+zero covers no positive-preimage pair and budget one reaches the first class.
+Thus the selected power of two is minimal among all integer budgets, not merely
+among class labels. This is exact planning evidence only for procedures that
+promise complete-preimage enumeration; it does not model incomplete corpora or
+imply runtime speedup.
+
 The unreachable accumulator/target region is the exact complement of the
 reachable region inside the complete $9^{10}$ pair domain:
 \begin{equation}

@@ -336,6 +336,16 @@ mechanism = "width-indexed-binomial-threshold-sum-vs-independent-convolution"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_profile_width_preimage_budget_exceedance_matches_closed_form"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-minimum-coverage-budget"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-minimum-coverage-budget"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "bounded trit widths 1 through 14 and integer reachable-pair coverage targets 0 through 7^N under complete-preimage enumeration"
+mechanism = "independent-convolution-cumulative-class-inversion"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_optimization_coverage_budget.py::test_profile_width_minimum_coverage_budget_matches_independent_classes", "tests/mathematics/test_optimization_coverage_budget.py::test_profile_width_coverage_changes_only_at_power_of_two_budgets"]
+
+[[correspondence]]
 id = "optimization-crazy-preimage-budget-exceedance"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-budget-exceedance"

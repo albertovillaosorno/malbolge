@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes twenty-four exact reductions: classic five-trit crazy factorization,
+formalizes twenty-five exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, decode phase reduction, classic rotate
 lookup, graphical self-encryption orbit canonicalization, classic rotate-history
 canonicalization, exact crazy-target preimage cardinality, the tight classic
@@ -80,7 +80,9 @@ and variance `(13/7)^N-(9/7)^(2N)`, the exact Binomial(N, 2/7) law for
 `9^10-7^10 = 3,204,309,152` unreachable-pair count, its exact `9^N-7^N`
 generalization for `1<=N<=14`, and the exact classic threshold
 sum for reachable pairs whose full preimage set exceeds a nonnegative
-enumeration budget, and its exact width-indexed generalization for `1<=N<=14`.
+enumeration budget, its exact width-indexed generalization for `1<=N<=14`, and
+the exact minimum complete-preimage budget needed to cover any integer target
+from 0 through `7^N` reachable pairs across the same checked widths.
 The encryption
 table is proved to partition the complete
 graphical domain into cycles of lengths 2, 4, 5, 6, 9, and 68, so repeated
@@ -119,6 +121,9 @@ The complement `9^10-7^10 = 3,204,309,152` is therefore globally impossible
 before any data-word enumeration. Summing preimage classes above a supplied
 budget gives an exact planning lower bound for complete preimage enumeration:
 budget 0 exceeds all `7^10` reachable pairs, while budget 1,024 exceeds none.
+Inverting the same ordered classes gives the least integer complete-preimage
+budget for every requested reachable-pair coverage target at widths 1 through
+14; the threshold is always zero for zero coverage or one exact power of two.
 This lower bound does not apply to search procedures that do not promise
 complete preimage enumeration. Sharing these planning cardinalities does not
 imply
@@ -147,9 +152,8 @@ distribution, accumulator-class partition, global reachable-pair count,
 classic/profile-width preimage-pair distributions,
 profile-width mean/variance preimage evidence, the exact Binomial(N, 2/7)
 log-preimage exponent law, classic/profile-width unreachable-pair counts,
-and classic/profile-width
-preimage-budget
-exceedance bounds are correctness-proved search
+and classic/profile-width preimage-budget exceedance plus exact minimum-coverage
+budget bounds are correctness-proved search
 reductions, not
 measured performance results. None
 of these results establishes a universal speedup or proves broader synthesis
@@ -174,9 +178,8 @@ profile-width preimage-pair distributions, exact profile-width mean/variance
 preimage evidence, the exact Binomial(N, 2/7) log-preimage exponent law, exact
 classic/profile-width unreachable-pair counts, and
 exact
-classic/profile-width preimage-budget
-exceedance bounds as valid
-optimization building blocks.
+classic/profile-width preimage-budget exceedance bounds, and exact
+profile-width minimum coverage budgets as valid optimization building blocks.
 Continue the research for broader canonical forms, universal synthesis lower
 bounds, and search-space
 reductions; those remain unproved and receive no performance claim from this

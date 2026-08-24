@@ -28,4 +28,7 @@ correspondence manifest; all are correctness/search-bound results,
 not benchmark-derived speedup claims. The optimizer exposes both state-level
 counts, the complete eleven-class accumulator partition, the global
 reachable-pair count, all eleven nonzero preimage-pair classes, and the exact
-unreachable complement directly from the normative trit table.
+unreachable complement directly from the normative trit table. The checked
+width family also admits an exact inverse planning bound: for any requested
+reachable-pair coverage target, the minimum complete-preimage enumeration budget
+is zero or the first power-of-two class whose cumulative count reaches it.
