@@ -48,5 +48,7 @@ local inverse set has radix one or two, so mixed-radix rank/unrank enumerates
 exactly the `2^k` preimages for checked width `N<=14` without scanning the other
 `3^N-2^k` data words. The `k` doubleton positions form an exact binary
 hypercube, so binary-reflected Gray order visits every compatible word exactly
-once while changing one trit between consecutive candidates. This says nothing
-about incomplete corpus membership or wall-clock speed.
+once while changing one trit between consecutive candidates. Among bijective
+complete traversals, this also attains the exact minimum aggregate trit-edit
+cost `2^k-1`. This metric result says nothing about incomplete corpus membership
+or wall-clock speed.

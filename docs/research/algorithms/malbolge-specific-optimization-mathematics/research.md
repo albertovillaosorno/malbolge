@@ -61,14 +61,15 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes twenty-nine exact reductions: classic five-trit crazy factorization,
+formalizes thirty exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
 classic rotate-history canonicalization, exact classic rotate minimal-period
 partition, exact crazy-target preimage cardinality, constructive mixed-radix
 preimage rank/unrank through width 14, exact one-trit Gray traversal of
-preimage hypercubes, the tight classic 1,024-preimage global
+preimage hypercubes, exact `2^k-1` minimum aggregate trit-edit cost for
+bijective complete traversal, the tight classic 1,024-preimage global
 bound, the exact zero-or-power-of-two preimage spectrum,
 the accumulator-specific `2^(10-n2(a))` worst-target bound, and the exact
 `2^(10-n2(a))*3^n2(a)` reachable-target count, the exact checked-width fixed-
@@ -111,7 +112,10 @@ does not need to test unrelated data words. The doubleton positions are also
 exact binary coordinates: binary-reflected Gray order traverses all compatible
 words exactly once and changes one trit between consecutive candidates. This
 hypercube result is checked against every reachable pair through width four,
-every width-14 ambiguity mask, and the complete 16,384-word maximal cube. The
+every width-14 ambiguity mask, and the complete 16,384-word maximal cube. Any
+bijective traversal of `2^k` distinct preimages has `2^k-1` transitions and
+therefore costs at least `2^k-1` trit edits; Gray order attains that bound
+exactly. This is an edit-metric result, not a wall-clock lower bound. The
 existing all-one target under
 accumulator zero therefore has exactly 1,024 data-word preimages, while a zero
 target under accumulator zero has none. Exhausting all 59,049 accumulator words
@@ -173,8 +177,8 @@ host/workload, crazy improved from a 77,456,700 ns scalar median to 7,423,600 ns
 (10.43x), and rotate improved from 15,260,300 ns to 10,141,700 ns (1.50x).
 These timing results support H1 only for the admitted CPU table-factorization
 slice. The self-encryption/rotate-history and exact rotate-period reductions,
-crazy preimage count, constructive preimage ranking, and exact Gray traversal,
-global preimage bound,
+crazy preimage count, constructive preimage ranking, exact Gray traversal,
+and exact Gray edit optimality, global preimage bound,
 discrete preimage spectrum, accumulator-specific
 worst-target bound, reachable-target count, fixed-accumulator target preimage
 distribution, accumulator-class partition, global reachable-pair count,
@@ -200,8 +204,8 @@ Each experiment must narrow these threats before drawing a conclusion.
 Retain the four proved table/factorization reductions plus the exact
 self-encryption, classic rotate-history canonicalization, exact rotate minimal-
 period canonicalization, crazy-target preimage cardinality, constructive
-preimage rank/unrank, exact preimage-hypercube Gray traversal, tight 1,024-
-preimage bound, discrete cardinality spectrum,
+preimage rank/unrank, exact preimage-hypercube Gray traversal and edit
+optimality, tight 1,024-preimage bound, discrete cardinality spectrum,
 accumulator-specific worst-target bound, reachable-target count, exact
 fixed-accumulator target preimage distribution, fixed-accumulator budget
 exceedance, exact accumulator-class

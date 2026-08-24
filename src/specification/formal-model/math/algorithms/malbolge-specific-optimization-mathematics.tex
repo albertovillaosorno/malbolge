@@ -158,6 +158,29 @@ visits to the other $3^N-2^k$ words. This is an exact traversal identity for
 reachable fixed pairs at checked widths $1\leq N\leq14$; it does not assert
 external-corpus membership or a wall-clock speedup.
 
+This Gray traversal is also edit-optimal under trit Hamming distance. For any
+bijection
+\[
+  \pi:\{0,\ldots,2^k-1\}
+    \overset{\sim}{\longrightarrow}
+    \{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t\},
+\]
+define its aggregate trit-edit cost by
+$E_3(\pi)=\sum_{r=0}^{2^k-2}H_3(\pi(r),\pi(r+1))$. Consecutive values of a
+bijection are distinct, so every summand is at least one. The Gray bijection
+$\pi_G(r)=U_{a,t}(G_k(r))$ attains equality term by term, hence
+\begin{equation}
+  \min_{\pi}E_3(\pi)=2^k-1,
+  \qquad
+  E_3(\pi_G)=2^k-1,
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-preimage-gray-optimality}
+\end{equation}
+The zero-dimensional case has one preimage and zero edits. This is an exact
+minimum only for bijective complete-domain preimage traversal under trit Hamming
+cost; it is not a wall-clock lower bound and does not constrain incomplete or
+revisiting external-corpus searches.
+
 The complete one-trit crazy table has no accumulator/target pair with more than
 two compatible data trits, so $\mu(\alpha,\tau)\leq2$. Combining that fact with
 the exact product formula yields the global classic fixed-target bound
