@@ -65,6 +65,7 @@ defined, reproducible original-interpreter behavior.
   `ProfileMachine::from_state()` validates exact initial
   memory/register state, while `ProfileMachineState` checkpoints additionally
   preserve input cursor, committed output, and termination through restoration;
+
   invalid cursor state fails closed. Current max-address execution proves
   self-encryption precedes pointer wrap. The declared repository-wide
   `jig validate --root .` retirement gate now passes.

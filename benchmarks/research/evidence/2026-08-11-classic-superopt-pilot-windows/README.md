@@ -25,4 +25,5 @@ two-word challenge limit external validity. In particular, the nearly equal
 full-corpus medians do not support a general throughput advantage. The
 preregistered plan names dispersion as `observed-range`; benchmark protocol v1
 serializes the same min/max interval under its `min-max` dispersion vocabulary
+
 and keeps `observed-range` as the uncertainty method.

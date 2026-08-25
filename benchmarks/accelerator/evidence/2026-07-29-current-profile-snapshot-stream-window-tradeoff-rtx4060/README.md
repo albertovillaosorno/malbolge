@@ -75,4 +75,5 @@ before the next window. Window one is the minimum-memory route; window eight is 
 measured balanced point on this RTX 4060. The fixed host budget remains authoritative,
 and page-lock fallback is unchanged. No generator, background worker, stream overlap,
 or asynchronous copy is introduced; those require a separate lifetime and ordering
+
 contract. Broader live-hardware repetition remains open.

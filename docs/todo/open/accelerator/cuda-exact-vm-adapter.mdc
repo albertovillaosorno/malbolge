@@ -62,6 +62,7 @@ batches.
   members before protocol encoding or CUDA work. Hardware-neutral primitive
   batches now also require the exact kind enum and immutable tuple arrays.
   Primitive candidate bridges validate exact kind, adapter call surface, and
+
   immutable capability identity during construction. Ordinary and prepared
   outputs require an exact primitive result record before capability or payload
   access; tuple results require immutable storage before evidence packing. Rust
@@ -97,6 +98,7 @@ batches.
   snapshot
   profiler now separates host-array allocation, state/memory/output D-to-H,
   decode,
+
   and total while preserving ordinary snapshot ownership. Retained RTX 4060
   batches
   1/8/32 measure 3.1616/65.7829/271.1391 ms; batch 1 is 96.489% transfer and
@@ -107,6 +109,7 @@ batches.
   ordinary snapshots remain fresh and independent. Retained batches 1/8/32
   improve
   2.586x/2.667x/2.712x with crossover 1/2/2; batch-one margin is marginal and
+
   workspace hot paths are transfer-dominated. Retained evidence under
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `benchmarks/accelerator/evidence/2026-07-28-current-profile-snapshot-host-registration-tradeoff-rtx4060/`
@@ -129,6 +132,7 @@ batches.
   next registered memory bank during current callback work and reports
   synchronous
   fallback for one-bank or registration failure. Six live tests cover delivery,
+
   fallback, pending-prefetch failure recovery, and release. Evidence under
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/`
@@ -145,6 +149,7 @@ batches.
   257-candidate corpus through live CUDA, records CUDA as actual search
   execution,
   matches the CPU reference proposals, and leaves final admission to the CPU
+
   verifier. The retained complete-domain benchmark covers 59,049 candidates with
   15 samples per backend. CPU median is 401.185 ms and CUDA median is 412.570 ms
   on the RTX 4060, yielding 0.972x CUDA/CPU and rejecting the speedup hypothesis
@@ -153,6 +158,7 @@ batches.
   about 57.0% host-side and 42.5% backend evaluation. Batch construction plus
   proposal selection consume about 173.081 ms. Reusable prepared search state is
   now active and crosses CPU to CUDA under exact strategy identity; forged or
+
   mismatched state fails closed, and acceptance remains CPU-owned. Prepared
   execution removes repeated batch construction/validation. Retained evidence
   records CUDA ordinary/prepared medians of 306.872/162.693 ms (1.886x), while
@@ -160,6 +166,7 @@ batches.
   outside
   timed intervals. The prepared phase profile attributes 81.2% of CUDA median
   total time to backend evaluation and 18.7% to proposal selection; proof/result
+
   validation is negligible. CUDA primitive results now use fixed-width packed
   evidence with request-order identity, eliminating per-candidate evidence
   objects
@@ -168,11 +175,13 @@ batches.
   improvements of 1.333x/1.784x over pre-packed routes. Backend evaluation falls
   2.058x and selection 1.432x. Packed CUDA prepared remains about 18.0% slower
   than
+
   packed CPU. Prepared rotate state now carries one validated decoded
   `PrimitiveBatch` from CPU-neutral strategy preparation into matching CUDA
   execution. Forged or mismatched state fails before backend work. Retained CUDA
   prepared median is 57.296 ms, 1.592x faster than the packed baseline; backend
   evaluation improves 2.083x. Ordinary CUDA regresses 3.7%, and prepared CUDA
+
   remains 32.8% slower than CPU. Prepared exact primitives now retain one
   proof-bound device input/output allocation, rebuild only for different proof
   identity, and expose build/evaluation/reuse/resident counters. Ordinary
@@ -185,6 +194,7 @@ batches.
   46.331 ms. Prepared CPU/CUDA search now shares an immutable exact
   59,049-member
   proposal index, eliminating repeated dictionary construction without weakening
+
   payload membership. Retained CUDA prepared median is 17.970 ms, 1.899x faster
   than the resident baseline and 1.491x faster than CPU; selection improves
   3.939x
@@ -198,6 +208,7 @@ batches.
   and 2.470x faster than CPU. Selection improves 948.452x to 12.4 us, while
   backend
   evaluation remains 5.239 ms. Exact min/max result validation now replaces the
+
   Python per-value loop without weakening domain checks. Retained CUDA prepared
   median is 4.929 ms (1.254x better), and backend evaluation improves 1.330x to
   3.940 ms. Prepared CPU now has a scalar-derived full-domain lookup table with
@@ -211,6 +222,7 @@ batches.
   Retained CUDA prepared median is 2.036 ms (2.343x better), and backend
   evaluation improves 2.147x to 1.802 ms. CUDA is 1.621x faster than same-run
   CPU;
+
   CPU phases stay effectively flat. Packed validation now uses
   `u32le-broadword-domain-v1` repeated high-bit/threshold/carry masks;
   first/last
@@ -221,6 +233,7 @@ batches.
   same-run CPU; CPU phase regressions remain controls. Public resident-CUDA and
   neutral packed-encoding profiles now expose launch/sync, D-to-H, immutable
   bytes,
+
   validation subphases, and totals. The full-domain profiler requires
   byte-identical
   CPU evidence and 1/16/16/15 counters. Prepared state now retains immutable CPU
@@ -229,6 +242,7 @@ batches.
   search
   proofs require all 59,049 reference words plus existing counters. The profiler
   now
+
   measures exact compare and visible residuals. Retained CUDA prepared is 0.488
   ms
   (2.407x), backend/total are 0.215/0.238 ms (3.999x/3.729x), validation is
@@ -241,12 +255,14 @@ batches.
   build,
   reuse, and strict crossover with all exact proofs. Retained warm/cold
   crossover is
+
   6/3/2/1 and 106/38/5/2. Full-domain warm one-shot saves 10.703 ms; cold
   crosses on
   run two. Incremental Python state retains/peaks at 16.063/19.040 MiB versus
   0.901 MiB exact buffers. Component tracing selected the duplicate prepared
   membership frozenset. Its proof-bound sorted-reference replacement uses binary
   ID
+
   search plus exact payload equality and records stable benchmark identity.
   Retained version-2 evidence shows 91.945% lower component retention, 1.137x
   faster
@@ -256,6 +272,7 @@ batches.
   for
   scale memory/preparation. Warm/cold crossover is 7/3/2/1 and 108/38/5/1. This
   is
+
   the retained version-2 baseline.
   Retained version-3 evidence under
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
@@ -275,6 +292,7 @@ batches.
   0.0177 ms versus 15.8507/155.4303 ms. Exact hit lookup is the retained cost:
   17.755 microseconds versus 2.625 microseconds in version 2 and 0.266
   microseconds
+
   copied (6.763x/66.844x slower). Exact miss lookup improves to 0.636
   microseconds
   from 2.785 microseconds in version 2, but remains 3.094x slower than
@@ -299,6 +317,7 @@ batches.
   clean `81d82cf` baseline, CPU ordinary/prepared improve from 139.517/3.316 ms
   to
   132.848/3.261 ms (1.050x/1.017x), while CUDA ordinary/prepared improve from
+
   152.055/0.449 ms to 144.440/0.429 ms (1.053x/1.047x). Phase totals are 2.9664
   ms
   CPU (1.006x) and 0.2654 ms CUDA (1.099x). CPU and CUDA both prove one session
@@ -321,6 +340,7 @@ batches.
   (1.395x). CUDA prepared throughput is the retained contextual negative at
   0.479 versus 0.429 ms (0.896x); the separate prepared CUDA phase total changes
   only from 0.2654 to 0.2676 ms (0.992x), so no prepared-execution effect is
+
   attributed to the builder. The fixed bitset raises one-candidate peak from
   2,664
   to 8,391 bytes and 64-candidate warm crossover from 3 to 4 runs; promotion is
@@ -347,6 +367,7 @@ batches.
   (1.245x), and separate CPU/CUDA phase totals are 2.9659/0.2723 ms versus
   2.9535/0.2676 ms (0.996x/0.983x). No prepared-execution effect is attributed
   to
+
   the builder. One-candidate peak stays 8,391 bytes; at 64 candidates peak falls
   8,788 to 8,635 bytes while sub-millisecond ordinary timing varies upward; at
   1,024
@@ -358,6 +379,7 @@ batches.
   peak
   occurs when that retained batch coexists with candidate-state creation (~237
   KiB
+
   incremental) or selector creation (~253 KiB incremental). Reducing this
   post-builder
   coexistence without weakening exact reference, selection, membership, or
@@ -372,6 +394,7 @@ batches.
   selector preparation changes from 3.7642 to 3.9644 ms, a retained 5.318%
   regression. Complete preparation peak falls from 962,052 to 946,675 bytes
   (1.598%); retained state remains 710,647 bytes. Cold/warm preparation changes
+
   from 64.606/65.101 to 64.465/64.780 ms and full-domain crossover remains 1/1.
   At one candidate, the native selector retains 56 bytes more and peaks 240
   bytes
@@ -403,6 +426,7 @@ batches.
   backend
   execution; wrong evaluator, fabricated member, oversized projection, forged
   proof,
+
   wrong evidence, and fabricated proposal still fail closed. Against the
   immediate
   clean version-7 baseline, cold/warm preparation improves from 64.4648/64.7804
@@ -418,6 +442,7 @@ batches.
   prepared-phase
   speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual
   controls and
+
   are not attributed to projection. Projection is not universal tiny-batch
   policy: at
   one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm
@@ -451,6 +476,7 @@ compare
 legacy membership revalidation with the proof route: 2.3/4.3 microseconds for
 empty
 (0.535x), 20.0/7.5 microseconds for one item (2.667x), 1.0356/0.1581 ms for
+
 64 items (6.550x), and 16.8647/2.5298 ms for 1,024 items (6.666x). The empty
 proof adds 144 retained and 64 peak bytes; from one item upward retained memory
 is
@@ -463,6 +489,7 @@ stays
 throughput
 regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU
 prepared
+
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The
 proof
@@ -472,6 +499,7 @@ non-invertible multiposition search. Neutral digitwise preparation projects the
 full 59,049-member accumulator-zero/target-29,524 corpus to exactly 1,024
 positions;
 a live CUDA prepared route retains resident cardinality 1,024 and matches CPU
+
 before independent admission. Fourteen strategy plus three CLI tests cover the
 boundary. `classic-crazy-target-search-submission-v1` now retains the projection
 across a nested candidate ticket; seven tests include live exact publication and
@@ -487,6 +515,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   stream-specific synchronization, and deterministic destruction before
   publication
   or fallback. Launch failure destroys the stream; synchronization failure still
+
   attempts destruction; runtime close drains pending streams. Five deterministic
   tests cover identities, distinct handles, selected wait, and both failure
   cleanup
@@ -519,6 +548,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   ticket's same nonblocking stream. Five deterministic runtime tests cover
   ordering, leases, and partial-failure cleanup; four live candidate routes
   cover no synchronous-copy use, crazy exactness, reverse waiting, and teardown
+
   fallback. Retained evidence under
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-throughput-rtx4060/`
@@ -530,6 +560,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   attribute physical transfer/kernel overlap.
   Opt-in `cuda-independent-stream-ticket-transfer-timeline-v1` now records four
   contiguous CUDA events around upload, exact kernel, and download on each
+
   streamed ticket. Three deterministic tests cover phase order, active lifetime,
   and failed-kernel cleanup; one live RTX 4060 test preserves CPU-equal output
   and monotonic phases. Retained evidence under
@@ -544,6 +575,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   universal claim that CUDA hardware can never overlap transfers and kernels.
   Neutral search submission lifetime now exists, and
   `classic-rotate-target-search-submission-v1` is the first concrete CUDA-backed
+
   strategy ticket. It retains full-batch selector/projection proof while
   submitting
   only zero or one preimage candidate. Eight tests include three live
@@ -554,6 +586,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   tests include two live exact-hint/teardown-empty routes while trusted
   admission
   remains separate. Crazy-target prepared search and its proof-bound submission
+
   ticket are exact on live CUDA. The retained matrix at
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `benchmarks/accelerator/evidence/2026-07-29-crazy-target-performance-matrix-rtx4060/`
@@ -567,6 +600,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   workload identity plus exact output, lower candidate median, and a strict
   paired-win majority; malformed or duplicate route records fail closed. Plans
   preserve input order, minimize chunk count, then measured median cost, and
+
   prefer synchronous ties. Opt-in
   `evidence-bound-ticket-route-admission-report-v1` publishes one immutable
   assessment per retained route in input order. It distinguishes context
@@ -575,6 +609,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   with zero selected counts; the report records selected chunks/tickets,
   fallback
   tickets, synchronous/streamed totals, and the unchanged plan. It reads no
+
   additional evidence, performs no online learning, and changes no default.
   `bounded-ticket-admission-telemetry-v1` retains completed reports in one
   caller-owned positive-capacity FIFO. The independent
@@ -583,6 +618,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   text. Both snapshots expose sequence IDs, eviction counts,
   measured/estimated duration delta, and selected-route usage. Malformed
   reports,
+
   timings, or foreign failures fail before mutation.
   `TicketAdmissionAttemptTelemetry` pairs the FIFOs; a separate CUDA attempt
   executor records exactly one outcome before returning or re-raising the same
@@ -590,6 +626,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   `ticket-admission-telemetry-document-v1` captures both snapshots as compact,
   sorted-key schema-v1 JSON. Bounded decoding rejects duplicate, unknown,
   oversized, noncanonical, and inconsistent state; explicit writes use atomic
+
   replacement and restoration preserves sequence/eviction state.
   `caller-owned-ticket-admission-telemetry-store-v1` defines an explicit
   put/get/remove/snapshot port and bounded in-memory adapter. It defaults to
@@ -597,6 +634,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   canonical bytes. Exact duplicates are
   idempotent, limits remain immutable, snapshots are fingerprint-ordered, and
   removal releases budgets. Invalid input, overflow, collisions, and retained
+
   decode failures fail closed. There is no filesystem I/O, automatic loading,
   summary, merge, recommendation, lineage inference, or route change.
   `ticket-admission-telemetry-schema-migration-v1` publishes an explicit
@@ -608,6 +646,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   the required schema-v1 identity and SHA-256 fingerprint. Versioned decoding
   defaults to 2 MiB outer bytes, 1 MiB embedded source bytes, and 4,096
   observations
+
   per FIFO. Upgrade and downgrade are caller-invoked; schema-v1 bytes remain
   unchanged. Schema-v2 adds no telemetry semantics. There is no automatic
   migration,
@@ -618,6 +657,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   document
   and groups exact execution contexts into integer outcomes, estimate
   comparisons,
+
   retention ranges, stable failure counts, and sorted evidence appearances.
   `offline-ticket-admission-telemetry-collection-v1` defaults to 4,096-document
   and 16 MiB canonical-input bounds. It counts exact-byte duplicates once,
@@ -626,6 +666,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   sequence ranges overlap; collisions fail closed.
   `offline-ticket-admission-telemetry-overlap-v1` compares two validated
   documents
+
   in fingerprint order. Completed and failed FIFOs expose retained and overlap
   ranges, matching counts, conflicting sequence IDs, capacity equality, and
   exact
@@ -639,6 +680,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   nonconflicting pairs with at least one exact retained match, retains isolated
   documents, fingerprints components, and distinguishes direct cliques from
   transitive bridges. Connectivity is not pairwise equivalence or recorder
+
   lineage. `authenticated-ticket-admission-telemetry-lineage-v1` separately
   binds
   the exact document fingerprint to caller-supplied recorder, completed/failed
@@ -649,12 +691,14 @@ retains 75 samples: CUDA prepared/ticket medians are
   forks, bad predecessor links, MAC/document mismatch, and collisions fail
   closed.
   Different recorder or stream identities remain separate lineages; ordered gaps
+
   are common lineage without a direct link. Key legitimacy remains caller-owned.
   `caller-owned-ticket-admission-telemetry-lineage-trust-v1` builds an explicit
   in-memory set of at most 256 unique keys sorted by identity. Inclusive capture
   windows select the exact HMAC key, and independently verified items may cross
   a
   rotation. Duplicate identities, malformed windows, unknown or out-of-window
+
   keys, and incorrect secrets fail closed; secret fields are hidden from `repr`.
   `ticket-admission-telemetry-lineage-trust-manifest-v1` persists only key IDs,
   opaque key-reference IDs, and inclusive windows as bounded canonical JSON. It
@@ -666,6 +710,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   `explicit-ticket-admission-telemetry-lineage-secret-provider-v1` accepts one
   caller-supplied synchronous port, validates the manifest and request budget
   before
+
   calls, and sends one immutable canonical-order request per entry. Typed
   `unavailable` or `failed` outcomes stop without retry; repeated explicit
   resolution calls the provider again. Secrets remain hidden and unverified
@@ -675,6 +720,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   implements one reusable bounded caller-owned synchronous provider over
   explicit
   immutable secret entries. Each hidden key is bound to one canonical manifest
+
   fingerprint, key reference, key identity, and inclusive capture window. The
   service
   permits 256 entries by default and 4096 at the supported maximum, sorts
@@ -690,6 +736,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   returns `unavailable`; a known binding with conflicting key/window metadata
   returns
   `failed`; and an exact binding returns `resolved` with unchanged hidden bytes.
+
   Request index remains ordering context rather than a secret binding. Repeated
   calls
   validate and resolve again without mutation or an external cache. The service
@@ -706,6 +753,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   nonsecret
   preflight, exact request/result validators, one result materializer, and one
   final
+
   trust materializer; both routes share those contracts. Manifest validation,
   provider identity, and the request budget complete before the first `await`.
   The
@@ -713,6 +761,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   Cancellation propagates directly; ordinary provider exceptions become stable
   errors
   without vendor text; typed non-success stops the walk without retry. Repeated
+
   explicit resolutions await again. The port creates no event loop, task,
   thread,
   executor, worker, cache, lifecycle, discovery, refresh, persistence,
@@ -733,6 +782,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   validate it again. The adapter reads no environment, file, network, process
   credential state, external secret store, or hosted API and adds no retry,
   cache,
+
   refresh, persistence, logging, worker, certificate, PKI, algorithm, or policy.
   `explicit-file-ticket-admission-telemetry-lineage-secret-provider-v1`
   implements one bounded read-only provider over caller-supplied absolute
@@ -745,6 +795,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   returns
   `unavailable`; conflicting key/window metadata returns `failed`; all three
   outcomes
+
   occur before any open. An exact match opens the selected path once and reads
   at most
   `max_secret_bytes + 1` bytes. A missing file returns `unavailable`; other read
@@ -754,6 +805,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   trailing
   newlines, are preserved. Repeated calls reopen and reread the file, so
   rotation is
+
   caller-controlled and no secret cache exists. The provider does not discover
   paths,
   write files, scan directories, inspect ownership or permissions, validate
@@ -766,6 +818,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   Construction and every call revalidate the adapter identity, hidden wrapped
   provider, copied provider identity, secret count, entry and byte limits, and
   callable offloader. Each request is fully validated before the first await; a
+
   provider-identity mismatch returns typed `failed` without awaiting. An exact
   request awaits the offloader once with the same immutable provider and
   request.
@@ -776,6 +829,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   Returned results reuse the shared exact type and enum validation; nonresolved
   results cannot carry secret bytes, while resolved bytes must use the exact
   bytes
+
   type and remain within the wrapped provider's 32-to-4096-byte bound. Repeated
   calls offload and reread again. The adapter creates no event loop, task,
   thread,
@@ -788,6 +842,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   attestations bind the exact schema-v1 document fingerprint, algorithm,
   recorder,
   completed/failed streams, capture sequence, public-key ID, SHA-256 of exact
+
   caller-owned public-key bytes, and an optional HMAC or signature predecessor.
   Signers return typed `signed`, `unavailable`, or `failed`; verifiers return
   `verified`, `invalid`, `unavailable`, or `failed`. Each explicit operation
@@ -798,6 +853,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   plus
   an explicit HMAC-to-signature transition. This boundary supplies no concrete
   signature algorithm, key generation, private-key storage, certificate chain,
+
   PKI, trust discovery, provider lifecycle, or cryptographic security claim.
   `caller-owned-ticket-admission-telemetry-lineage-signature-trust-v1` builds
   an explicit in-memory set of at most 256 unique `(algorithm_id,
@@ -812,6 +868,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   independently
   verified items preserve same-key, public-key rotation, algorithm rotation,
   ordered
+
   gap, and fork checks. Duplicate identities, malformed windows, invalid key
   bytes,
   fingerprint mismatch, unknown identities, out-of-window captures, and tampered
@@ -823,6 +880,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   algorithm identity, public-key identity, one opaque public-key reference, the
   required exact public-key fingerprint, and inclusive capture windows as
   canonical
+
   key-free JSON. It defaults to 256 entries and 64 KiB, sorts by composite
   identity,
   requires globally unique references, publishes a stable SHA-256 fingerprint,
@@ -837,6 +895,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   or
   excessive coverage, reference or fingerprint mismatch, and storage failures
   fail
+
   closed. No public-key bytes, provider, certificate, PKI, trust discovery,
   algorithm selection, or policy authority are supplied.
   `explicit-ticket-admission-telemetry-lineage-public-key-provider-v1` accepts
@@ -849,6 +908,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   the
   manifest/provider identities, algorithm/key/reference identities, required
   exact
+
   public-key fingerprint, capture window, and request index. Providers return
   typed
   `resolved`, `unavailable`, or `failed` results. Each entry is called exactly
@@ -860,6 +920,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   provider discovery, built-in key service, retry, cache, persistence, hidden
   worker,
   certificate validation, PKI, algorithm selection, or policy authority is
+
   supplied.
   `explicit-async-ticket-admission-telemetry-lineage-public-key-provider-v1`
   accepts one caller-supplied async provider and reuses the synchronous request,
@@ -873,6 +934,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   hidden
   parallelism; each entry is awaited exactly once and repeated explicit
   resolution
+
   performs a fresh walk. Typed non-success stops without retry. Ordinary
   provider
   exceptions become stable boundary errors without vendor text, while
@@ -883,6 +945,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   session,
   concurrency policy, discovery, retry, cache, persistence, certificate
   validation,
+
   PKI, algorithm selection, or admission authority.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `explicit-async-batch-ticket-admission-telemetry-lineage-public-key-provider-v1`
@@ -900,6 +963,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   matching
   cardinality, validates every shared typed item result, propagates
   cancellation, and
+
   converts ordinary provider exceptions to stable errors without vendor text.
   Reversed,
   missing, excessive, foreign, nonresolved-with-bytes, or fingerprint-mismatched
@@ -923,6 +987,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   carry
   a hidden callable batch provider. The existing canonical batch boundary then
   runs
+
   once. Every opened session receives exactly one `close` request with a stable
   `completed`, `failed`, or `cancelled` reason; close outcomes are `closed` or
   `failed`. Opening exceptions become stable errors without vendor text and
@@ -930,6 +995,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   cancellation propagates without closing. After opening, failure or
   cancellation
   attempts one close. Cancellation propagates only after successful close; close
+
   failure replaces the preceding outcome and fails closed. No built-in service,
   event loop, task, discovery, retry, cache, persistence, certificate
   validation,
@@ -944,6 +1010,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   exact public-key SHA-256 fingerprint, rejects duplicate composite identities
   and
   references, and sorts entries by reference identity. Key bytes are hidden from
+
   representations. Every explicit lookup revalidates service identity, count,
   tuple,
   ordering, metadata, and exact key bytes. An absent reference returns typed
@@ -952,6 +1019,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   window returns typed `failed`; only an exact request returns `resolved`. Empty
   services are valid and resolve nothing. The object is reusable caller-owned
   memory,
+
   not an automatic or hidden cache. It performs no file, environment, network,
   discovery, mutation, retry, persistence, async adaptation, certificate
   validation,
@@ -974,6 +1042,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   existing sequential async boundary still performs manifest preflight,
   canonical
   ordering, fingerprint checks, stable exception wrapping, and trust
+
   construction.
   Empty manifests perform no lookup, while explicit adapter construction already
   validates the service. The adapter creates no event loop, task, sleep,
@@ -999,6 +1068,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   one
   hidden positional result tuple, preserving typed `resolved`, `unavailable`,
   and
+
   `failed` outcomes. Direct empty batches are valid. The existing batch trust
   boundary
   still performs manifest preflight, one nonempty provider await, exact
@@ -1024,6 +1094,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   `failed`
   without replacing active state. Close requests require the exact persisted
   manifest
+
   fingerprint, provider identity, and request count. A mismatch returns `failed`
   and
   retains active state; an exact close returns `closed`, clears the active
@@ -1040,6 +1111,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   PKI, algorithm selection, or policy operation.
   `ticket-admission-telemetry-lineage-public-key-bundle-v1` persists one
   explicit
+
   bounded public-key service as canonical compact UTF-8 JSON. Unlike the
   key-free
   trust manifest, this separate document intentionally contains public-key bytes
@@ -1054,6 +1126,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   and
   is bounded by 256 entries and 1 MiB by default. Explicit writes atomically
   replace
+
   one caller-selected path. Explicit reads consume at most the configured byte
   limit.
   Each explicit load rereads the path, fingerprints canonical bytes, and builds
@@ -1066,6 +1139,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   policy
   operation.
   `explicit-ticket-admission-telemetry-lineage-public-key-bundle-fetcher-v1`
+
   defines one synchronous transport-neutral fetch boundary. The caller
   constructs an
   exact immutable request binding source identity, resource identity, provider
@@ -1077,6 +1151,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   typed
   `fetched`, `unavailable`, or `failed` result enum. Nonfetched results cannot
   carry
+
   bytes. A fetched result requires exact nonempty bytes within the requested
   limit,
   canonical bundle decoding, a newly materialized caller-owned memory provider,
@@ -1105,6 +1180,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   become
   stable async-boundary errors without vendor text, while cancellation
   propagates
+
   directly. Repeated explicit invocations await the transport again and retain
   no
   cache. The boundary creates no event loop, task, worker, concurrency policy,
@@ -1127,6 +1203,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   and
   closes once. Status 200 may return `fetched`; 404 and 410 return
   `unavailable`; all
+
   other statuses, including redirects, return `failed`. Successful responses
   require
   JSON content type with optional UTF-8 charset, absent or identity content
@@ -1145,6 +1222,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   `offloaded-async-https-ticket-admission-lineage-public-key-bundle-fetcher-v1`
   adapts the exact synchronous HTTPS fetcher to the shared async port through
   one
+
   caller-supplied offloader. Construction and every call fully revalidate the
   wrapped
   HTTPS fetcher, stable adapter identity, copied fetcher/source/resource
@@ -1155,6 +1233,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   matched request awaits the offloader exactly once with the same exact fetcher
   and
   request. The caller alone decides whether that await runs inline, in a thread,
+
   through an executor, or through another scheduling mechanism. Cancellation
   propagates directly. Ordinary offloader exceptions become stable adapter
   errors
@@ -1164,6 +1243,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   they reach
   the outer async materialization boundary. Repeated calls revalidate and
   offload
+
   again. The adapter creates no event loop, task, thread, executor, worker,
   retry,
   redirect, cache, trust root, credential, hosted-service policy, algorithm
@@ -1177,6 +1257,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   authorization-provider
   identity, callable provider, and positive byte limit before the provider is
   called.
+
   The default limit is 4096 ASCII bytes and the supported maximum is 16384. One
   immutable request carries only the bundle fingerprint and nonsecret provider,
   resource, and source identities. Each successful preflight makes exactly one
@@ -1185,6 +1266,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   vendor text; nonresolved outcomes cannot carry credential text. A resolved
   value
   must be exact nonempty ASCII field text containing only spaces and visible
+
   characters, with no edge spaces and no normalization. The value is hidden from
   representations and returned only in caller-owned state with its exact byte
   count
@@ -1200,6 +1282,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   `explicit-async-ticket-admission-lineage-https-authorization-provider-v1`
   defines one caller-driven async port for resolving the same bounded opaque
   HTTPS
+
   `Authorization` value. The synchronous port now exposes one immutable
   nonsecret
   preflight plus one exact result materializer, and both sync and async
@@ -1213,6 +1296,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   One successful preflight awaits the caller-supplied provider exactly once with
   the
   same exact immutable request. The provider controls whether that await
+
   suspends.
   Cancellation propagates directly. Ordinary provider exceptions become stable
   async
@@ -1224,6 +1308,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   metadata as
   the synchronous path. Repeated explicit resolutions await again with no cache
   or
+
   refresh. The port creates no event loop, task, thread, executor, worker,
   retry,
   discovery, refresh, header injection, hosted-service policy, certificate rule,
@@ -1241,6 +1326,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   4096
   at the supported maximum, requires canonical deterministic ordering, and
   rejects
+
   duplicate request bindings. Construction and every call revalidate the exact
   service
   type and identity, provider identity, limits, entry tuple, shared request
@@ -1259,6 +1345,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   performs no
   discovery, refresh, retry, persistence, logging, task creation, certificate
   rule,
+
   PKI operation, algorithm choice, or admission-policy operation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `offloaded-async-file-ticket-admission-lineage-https-authorization-provider-v1`
@@ -1274,6 +1361,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   offloader exactly once with the same exact provider and immutable request. The
   caller alone chooses whether the file read completes inline, suspends, or runs
   in
+
   a caller-owned thread or executor. Cancellation propagates directly. Ordinary
   offloader exceptions become stable adapter errors without path or vendor text.
   Returned results are revalidated after the await, including exact result type
@@ -1281,6 +1369,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   enum, nonresolved payload absence, canonical ASCII text, and the wrapped
   provider
   byte limit for resolved values. Repeated calls offload and reread the file so
+
   rotation and removal remain visible without a cache. The adapter creates no
   event
   loop, task, thread, executor, worker, discovery, retry, refresh, persistence,
@@ -1294,6 +1383,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   perform no file I/O; every call revalidates the exact service, provider
   identity,
   copied authorization count, entry and byte limits, canonical ordering, request
+
   metadata, and absolute paths before lookup. A provider-identity mismatch
   returns
   typed `failed` without I/O, while an unmatched request returns `unavailable`.
@@ -1306,6 +1396,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   bytes, and NUL return `failed` without path or system text. Valid ASCII text
   is
   revalidated through the shared Authorization materializer without trimming or
+
   normalization. Repeated calls reread the file so rotation and removal remain
   visible without a cache. The provider performs no discovery, writes,
   permission
@@ -1329,6 +1420,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   provider-identity
   mismatch returns typed `failed`; a valid unmatched request returns
   `unavailable`;
+
   only an exact match performs one lookup of the caller-named variable. A
   missing
   variable returns `unavailable`; an operating-system or Unicode lookup failure,
@@ -1346,6 +1438,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   chooses an
   Authorization scheme, refreshes credentials, validates certificates,
   distributes
+
   PKI, selects algorithms, or changes admission policy.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `offloaded-async-environment-ticket-admission-lineage-https-authorization-provider-v1`
@@ -1361,6 +1454,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   the offloader exactly once with the same exact provider and immutable request.
   The caller alone chooses whether the environment read completes inline, runs
   in
+
   a thread or executor, or suspends by another mechanism. Cancellation
   propagates
   directly. Ordinary offloader exceptions become stable adapter errors without
@@ -1368,6 +1462,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   exact enum and type, nonresolved payload absence, and bounded canonical ASCII
   text for resolved values. Repeated calls offload and reread the environment,
   so
+
   rotation and removal remain visible without a cache. The adapter creates no
   event
   loop, task, thread, executor, worker, discovery, refresh, retry, persistence,
@@ -1383,6 +1478,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   entry limit, and authorization-provider identity. A direct await delegates
   once to
   the same synchronous memory lookup and returns the same typed `resolved`,
+
   `unavailable`, or `failed` result before any other caller task can run. The
   shared
   async Authorization boundary can therefore materialize the exact hidden value
@@ -1400,6 +1496,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   rule, PKI operation, algorithm choice, or admission-policy operation.
   `authorized-https-ticket-admission-lineage-public-key-bundle-fetcher-v1`
   binds one exact synchronous HTTPS fetcher to one exact caller-owned resolved
+
   Authorization value. Construction and every call revalidate the wrapped HTTPS
   fetcher, resolved Authorization value, stable adapter identity, copied byte
   count,
@@ -1420,6 +1517,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   hidden state, normalizes or selects a scheme, logs credential text, discovers
   an
   endpoint, creates workers, owns a hosted-service API, validates certificates,
+
   distributes PKI, selects a signature algorithm, or changes admission policy.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `offloaded-async-authorized-https-ticket-admission-lineage-key-bundle-fetcher-v1`
@@ -1440,6 +1538,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   typed
   result and request byte limit. The caller alone decides whether blocking work
   runs
+
   inline, in a thread, through an executor, or by another scheduling mechanism.
   Cancellation propagates directly. Ordinary offloader exceptions become stable
   adapter errors without vendor text. Repeated calls offload again but never
@@ -1449,6 +1548,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   worker, retry, redirect, cache, trust root, credential provider,
   hosted-service
   policy, certificate rule, PKI operation, algorithm choice, or admission-policy
+
   operation.
   The built-in HMAC-secret implementations are the bounded caller-owned memory
   service, its inline sequential async adapter, the explicit read-only file
@@ -1474,6 +1574,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   No bundle or session is loaded automatically; there is no
   discovery, retry, retained
   cache, persistence, automatic trust
+
   loading, snapshot merge, route recommendation, or policy authority. There is
   no
   hidden worker or
@@ -1484,6 +1585,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects
   groups 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the
   packed workload SHA-256, reverse-waits each group, restores input order, and
+
   closes every ticket. One thousand seven hundred eighty-nine
   admission/telemetry/persistence/store/migration/summary/collection/overlap/
   index/components/lineage/trust/manifest/provider/memory-secret-provider/
@@ -1539,6 +1641,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   and
   NVML display build `610.88`; `cuda-host-runtime-identity-v1` measures Windows
   11
+
   Professional build `10.0.26200`, `x86_64`, and CPython `3.14.6`. Missing or
   failed optional NVML or host measurement leaves ordinary CUDA available but
   this
@@ -1547,6 +1650,7 @@ retains 75 samples: CUDA prepared/ticket medians are
   query/hash failures, NVML lifetimes, host validation, exact live host
   measurement,
   and one live CUDA route. Other hosts, Python versions, driver builds, devices,
+
   and workloads remain open. The global synchronous default does not change.
   Other synthesis/search/hint strategies, event-instrumentation controls,
   additional device/workload admission profiles, and broader hardware remain

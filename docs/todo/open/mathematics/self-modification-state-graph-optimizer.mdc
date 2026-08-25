@@ -165,6 +165,7 @@ VM evidence.
   every claim
   fails exact reprojection. Admitted shortcut/deopt results equal the
   verified-region baseline. Production `execution/ir/` owns effect IR v3;
+
   host-code artifacts remain open.
 
 ## Acceptance

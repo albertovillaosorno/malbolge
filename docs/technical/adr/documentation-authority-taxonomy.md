@@ -95,9 +95,15 @@ A second `index.md` catalog is not maintained. Catalog H2 sections are exactly:
 
 Family records are Markdown-only. ADRs use the exact H2 sequence:
 
-1. `Status`; 2. `Decision ID`; 3. `Context`; 4. `Decision`; 5. `Advantages`; 6.
-   `Disadvantages`; 7. `Consequences`; 8. `Rejected Alternatives`; and 9.
-   `Evidence`.
+1. `Status`;
+1. `Decision ID`;
+1. `Context`;
+1. `Decision`;
+1. `Advantages`;
+1. `Disadvantages`;
+1. `Consequences`;
+1. `Rejected Alternatives`; and
+1. `Evidence`.
 
 Ordinary technical records use `Status`, `Purpose`, `Scope`, `Current Behavior`,
 `Invariants`, `Failure Behavior`, `Verification`, and `References`. Technical

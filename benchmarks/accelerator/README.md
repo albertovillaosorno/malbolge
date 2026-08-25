@@ -122,6 +122,7 @@ Retained RTX 4060 evidence is under
 Median totals are 3.1616/65.7829/271.1391 ms for batches 1/8/32. Batch 1 is
 transfer-dominated (96.489%); batches 8/32 are allocation-dominated
 (62.419%/63.872%) with memory transfer at 37.248%/35.962%. Named coverage is at
+
 least 99.817%. This is descriptive attribution, not a speedup claim.
 
 `profile_snapshot_workspace_tradeoff.py` compares ordinary fresh independent
@@ -259,6 +260,7 @@ prepared intervals; ticket batch/selector preparation is intentionally inside
 its
 one-shot interval. One warmup precedes 15 retained samples with cyclic
 first-route
+
 rotation. Every result must contain the same 1,024 proposals and pass
 independent
 CPU admission. CPU/CUDA prepared sessions must each report one build, 16
@@ -278,6 +280,7 @@ contains
 grouped routes submit all tickets first and wait in reverse order. Groups 2/4/8
 retain identical total work and exact byte output. Preparation, CPU reference,
 CUDA
+
 adapter/NVRTC setup, and post-timing validation are outside intervals. One
 warmup
 precedes 15 samples per route with cyclic first-route rotation. The
@@ -315,6 +318,7 @@ peak concurrency. Event-origin setup, preparation, CPU reference, validation,
 and
 origin destruction are outside retained intervals. One warmup precedes 15
 samples
+
 per group with cyclic first-group rotation. The preregistered group-eight
 hypothesis
 requires significant overlap in more than seven samples.
@@ -350,6 +354,7 @@ streamed submit/wait, and streamed submit-all/reverse-wait. Group one retains
 the
 two sequential routes. Every interval includes allocation, optional host
 registration, H-to-D, isolated kernel launch, synchronization, D-to-H, immutable
+
 result construction, unregistration, and free. Preparation, adapter/NVRTC setup,
 CPU reference, and byte-exact validation remain outside retained timings. One
 warmup precedes fifteen samples per route with cyclic first-route rotation.
@@ -392,6 +397,7 @@ SHA-256, display build `610.88`, Windows 11 Professional build `10.0.26200`,
 `x86_64`, and CPython `3.14.6`. It writes only to stdout; runtime code loads the
 product manifest and never reads benchmark evidence. Twelve manifest tests
 require generated/tracked byte equality, allow distinct runtime variants for one
+
 capability/workload, and reject malformed or duplicate exact profile contexts.
 
 Run with:
@@ -412,6 +418,7 @@ kernel intervals. Event-origin setup, preparation, CPU reference, exact
 validation,
 and origin destruction are outside retained intervals; per-ticket event
 creation,
+
 recording, elapsed queries, and destruction remain inside wall time. One warmup
 precedes fifteen retained samples per group with cyclic first-group rotation.
 
@@ -451,6 +458,7 @@ CPU ordinary/prepared medians are 368.3588/22.4264 ms
 CPU prepared in the same run. The one-shot CUDA ticket median is 185.7629 ms,
 1.270x faster than CUDA ordinary with 15/15 wins, but 9.137x slower than
 amortized CUDA prepared. It makes no compiler, synthesis, cross-device,
+
 kernel-overlap, or independent-stream claim.
 
 The retained RTX 4060 run is under
@@ -495,6 +503,7 @@ adapter prepares and validates immutable request/batch state before timing; the
 identical strategy-bound proof is then reused by both CPU and CUDA. Preparation,
 adapter construction, and NVRTC setup are outside timed intervals. One warmup
 precedes 15 fixed interleaved samples of all four routes. Every sample still
+
 checks exact proposal identity and independent CPU admission.
 
 Run with:
@@ -517,6 +526,7 @@ prepared
 CPU. Preparation is outside all timed samples, and every route preserves exact
 proposal identity plus independent CPU admission.
 `search_prepared_phase_profile.py` attributes the amortized prepared path after
+
 request/batch construction and validation have already completed. It retains
 strategy-proof validation, backend evaluation, proposal selection, result
 validation, and inclusive total time for 15 fixed interleaved CPU-then-CUDA
@@ -545,6 +555,7 @@ and 31.912 ms in proposal selection. Named phases cover at least 99.6% of both
 medians; candidate-evaluation result transport/materialization selected the next
 measured optimization boundary. The active implementation now supports
 fixed-width
+
 packed candidate evidence. The retained post-change throughput and phase bundles
 are under `evidence/2026-07-28-packed-search-rtx4060/` and
 `evidence/2026-07-28-packed-search-phase-profile-rtx4060/`. The active prepared
@@ -552,6 +563,7 @@ rotate path now also stores one validated decoded `PrimitiveBatch`. Retained
 post-change throughput and phase evidence is under
 `evidence/2026-07-28-prepared-primitive-search-rtx4060/` and
 `evidence/2026-07-28-prepared-primitive-search-phase-profile-rtx4060/`. Prepared
+
 CPU/CUDA medians improve 1.792x/1.592x, while ordinary routes regress 6.6%/3.7%.
 
 The active prepared CUDA implementation now retains one proof-bound input/output
@@ -592,12 +604,14 @@ the
 full scan. Retained post-commit evidence is under
 `evidence/2026-07-28-direct-rotate-selection-rtx4060/` and
 `evidence/2026-07-28-direct-rotate-selection-phase-profile-rtx4060/`. Prepared
+
 CPU/CUDA medians reach 15.266/6.182 ms, while selection reaches 13.2/12.4 us.
 Backend phases move only about 3.5%, identifying primitive execution as the next
 boundary. The active bridge now validates primitive result domain through exact
 tuple extrema while preserving negative/overflow failure. These direct-selection
 records are the pre-change baseline. Retained post-change evidence is under
 `evidence/2026-07-28-extrema-validation-search-rtx4060/` and
+
 `evidence/2026-07-28-extrema-validation-search-phase-profile-rtx4060/`. Prepared
 CPU/CUDA medians improve 1.086x/1.254x and backend phases improve 1.091x/1.330x;
 ordinary controls remain essentially flat/slightly slower.
@@ -613,6 +627,7 @@ under `evidence/2026-07-28-cpu-rotate-table-search-rtx4060/` and
 `evidence/2026-07-28-cpu-rotate-table-search-phase-profile-rtx4060/`. CPU
 prepared
 reaches 3.313 ms, a 4.243x improvement, and CPU backend evaluation reaches
+
 2.906 ms, a 4.540x improvement. CPU prepared is 1.440x faster than same-run
 CUDA;
 CPU ordinary remains effectively unchanged and CUDA phases move only about 1.8%.
@@ -628,6 +643,7 @@ adapters. Both benchmark programs now require
 CPU-table, membership, and selector proofs. Retained post-commit evidence is
 under
 `evidence/2026-07-28-packed-cuda-primitive-search-rtx4060/` and
+
 `evidence/2026-07-28-packed-cuda-primitive-search-phase-profile-rtx4060/`. CUDA
 prepared reaches 2.036 ms, a 2.343x improvement, and CUDA backend evaluation
 reaches
@@ -647,6 +663,7 @@ is under `evidence/2026-07-28-broadword-packed-validation-search-rtx4060/` and
 `evidence/2026-07-28-broadword-packed-validation-search-phase-profile-rtx4060/`.
 CUDA prepared reaches 1.175 ms, a 1.733x improvement, while CUDA backend
 evaluation
+
 reaches 0.860 ms (2.095x) and CUDA total 0.886 ms (2.057x). CUDA prepared is
 2.706x
 faster than same-run CPU. CPU phase regressions are retained as controls and are
@@ -672,6 +689,7 @@ byte
 creation, capability/shape contract, exact byte comparison, result construction,
 visible residuals, layer totals, and end-to-end total. Search throughput and
 phase
+
 profiles emit and validate both identities plus `prepared_reference_word_count`.
 All full-domain runs must observe 59,049 reference words and the existing
 CPU-table/session/membership/selector proofs. First/last in-domain corruption
@@ -682,6 +700,7 @@ fail closed. Retained post-commit evidence is under
 `evidence/2026-07-28-prepared-reference-primitive-phase-profile-rtx4060/`. CUDA
 prepared reaches 0.488 ms (2.407x), backend evaluation reaches 0.215 ms
 (3.999x),
+
 and search total reaches 0.238 ms (3.729x). Exact validation reaches 0.0278 ms
 (23.590x), exact compare 0.0180 ms, and primitive end-to-end 0.1935 ms (4.488x).
 The one-time 236,196-byte CPU reference is outside retained intervals. A
@@ -713,6 +732,7 @@ batch-builder
 identities in the proof record.
 Workload construction, CUDA/NVRTC adapter setup, and trusted result admission
 are
+
 outside timed intervals. Fresh-build timing includes resident allocation/upload
 and
 one exact search. Memory tracing excludes the prebuilt workload, global rotate
@@ -729,6 +749,7 @@ exact rotate table. Every sample preserves ordinary/prepared validator IDs, one
 exact admitted proposal, proof-bound reference/membership/selector counts, and
 fresh/reused CUDA session counters. Retained evidence is under
 `evidence/2026-07-28-prepared-search-crossover-rtx4060/`. Warm crossover is
+
 6/3/2/1 and cold crossover is 106/38/5/2 across the four scales. Full-domain
 warm
 preparation plus first search is 212.140 ms versus 222.842 ms ordinary; cold
@@ -740,6 +761,7 @@ target. The active index identity is
 `identity-sorted-candidate-reference-binary-search-v1`: it stores sorted
 references
 to existing immutable candidate items and checks exact ID/payload membership by
+
 binary search. Retained version-2 evidence is under
 `evidence/2026-07-28-compact-membership-crossover-rtx4060/`. At full domain the
 compact component retains 473,352 bytes versus 5,876,552 bytes for the copied
@@ -749,6 +771,7 @@ Complete
 prepared state falls from 16.063/19.040 MiB retained/peak to 10.910/14.080 MiB.
 Compact hit/miss lookup is 2.625/2.785 microseconds versus 0.265/0.201
 microseconds,
+
 9.898x/13.856x slower. Warm crossover is 7/3/2/1 and cold crossover 108/38/5/1.
 The result promotes compact membership for scale memory/preparation while
 retaining
@@ -771,6 +794,7 @@ version 2 and 11,180,412 bytes for the same-run copied set; its preparation is
 0.0177 ms versus 15.8507/155.4303 ms. Exact hit lookup is the retained cost:
 17.755 microseconds versus 2.625 microseconds in version 2 and 0.266
 microseconds
+
 copied (6.763x/66.844x slower). Exact miss lookup improves to 0.636 microseconds
 from 2.785 microseconds in version 2, but remains 3.094x slower than copied-set
 miss lookup. The promotion is not universal: one-candidate memory grows
@@ -791,6 +815,7 @@ transient peak. Full-domain cold/warm crossover remains 1/1. Against the
 immediate
 clean `81d82cf` baseline, CPU ordinary/prepared improve from 139.517/3.316 ms to
 132.848/3.261 ms (1.050x/1.017x), while CUDA ordinary/prepared improve from
+
 152.055/0.449 ms to 144.440/0.429 ms (1.053x/1.047x). Phase totals are 2.9664 ms
 CPU (1.006x) and 0.2654 ms CUDA (1.099x). CPU and CUDA both prove one session
 build, 16 evaluations, 15 reuses, rotate kind, and 59,049 resident words; CUDA
@@ -812,6 +837,7 @@ ordinary/prepared improve from 132.848/3.261 ms to 90.869/3.108 ms
 (1.395x). CUDA prepared throughput is the retained contextual negative at
 0.479 versus 0.429 ms (0.896x); the separate prepared CUDA phase total changes
 only from 0.2654 to 0.2676 ms (0.992x), so no prepared-execution effect is
+
 attributed to the builder. The fixed bitset raises one-candidate peak from 2,664
 to 8,391 bytes and 64-candidate warm crossover from 3 to 4 runs; promotion is
 for
@@ -834,6 +860,7 @@ is
 3.267 versus 3.108 ms (0.952x), CUDA throughput is 0.385 versus 0.479 ms
 (1.245x), and separate CPU/CUDA phase totals are 2.9659/0.2723 ms versus
 2.9535/0.2676 ms (0.996x/0.983x). No prepared-execution effect is attributed to
+
 the builder. One-candidate peak stays 8,391 bytes; at 64 candidates peak falls
 8,788 to 8,635 bytes while sub-millisecond ordinary timing varies upward; at
 1,024
@@ -842,6 +869,7 @@ builder, storage, validator, membership, proposal, admission, cardinality, and
 CPU/CUDA session proofs pass. Component attribution now places the builder phase
 near 710,190 bytes peak while retaining 473,546 bytes. The overall ~962 KiB peak
 occurs when that retained batch coexists with candidate-state creation (~237 KiB
+
 incremental) or selector creation (~253 KiB incremental). Reducing this
 post-builder
 coexistence without weakening exact reference, selection, membership, or
@@ -856,6 +884,7 @@ candidates, selector peak falls from 252,597 to 1,885 bytes (99.254%), while
 selector preparation changes from 3.7642 to 3.9644 ms, a retained 5.318%
 regression. Complete preparation peak falls from 962,052 to 946,675 bytes
 (1.598%); retained state remains 710,647 bytes. Cold/warm preparation changes
+
 from 64.606/65.101 to 64.465/64.780 ms and full-domain crossover remains 1/1.
 At one candidate, the native selector retains 56 bytes more and peaks 240 bytes
 higher; total one- and 64-candidate peaks are unchanged. CUDA ordinary, fresh
@@ -882,6 +911,7 @@ CPU/CUDA word while full membership remains 59,049. Empty projections skip
 backend
 execution; wrong evaluator, fabricated member, oversized projection, forged
 proof,
+
 wrong evidence, and fabricated proposal still fail closed. Against the immediate
 clean version-7 baseline, cold/warm preparation improves from 64.4648/64.7804 ms
 to
@@ -894,6 +924,7 @@ Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total
 prepared-phase
 speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls
 and
+
 are not attributed to projection. Projection is not universal tiny-batch policy:
 at
 one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm
@@ -926,6 +957,7 @@ compare
 legacy membership revalidation with the proof route: 2.3/4.3 microseconds for
 empty
 (0.535x), 20.0/7.5 microseconds for one item (2.667x), 1.0356/0.1581 ms for
+
 64 items (6.550x), and 16.8647/2.5298 ms for 1,024 items (6.666x). The empty
 proof adds 144 retained and 64 peak bytes; from one item upward retained memory
 is
@@ -938,6 +970,7 @@ stays
 throughput
 regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU
 prepared
+
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The
 proof
@@ -948,6 +981,7 @@ workload
 projects exactly 1,024 positions without heuristic filtering and retains
 CPU/CUDA,
 search-ticket, and independent-admission evidence. New strategy families, ROCm,
+
 and broader representative comparisons remain separate work.
 
 Run the projected prepared-search measurements with:

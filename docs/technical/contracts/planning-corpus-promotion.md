@@ -15,6 +15,7 @@ records for external evidence. Populate each TODO's `contract` and `adr_paths`
 with real authorities as those records are created. Proposed or unresolved
 choices remain visibly proposed; implementation details remain in their owning
 technical documents. No global catch-all ADR, duplicate authority, or
+
 chat-history archive is created during promotion.
 
 ## Contract

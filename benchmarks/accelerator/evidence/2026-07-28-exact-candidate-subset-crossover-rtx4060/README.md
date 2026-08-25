@@ -114,4 +114,5 @@ throughput regression remains an explicit tradeoff because CPU phase total and a
 preparation, memory, crossover, CUDA, and proof obligations are preserved. The next
 production step is to apply this contract only when a real non-invertible or
 multi-position strategy can supply exact positions; heuristic filtering remains
+
 inadmissible.

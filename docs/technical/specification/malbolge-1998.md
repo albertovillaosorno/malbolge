@@ -35,6 +35,7 @@ interview's colloquial phrase “stopping execution” does not replace the exac
 control flow in the preserved source: the original loop executes `continue`
 before decode, encryption, or pointer advancement. Portable bounded APIs model
 that exact defined behavior as one non-progress step rather than guest
+
 termination.
 
 Historical host-C undefined behavior is not authoritative. The safe contract

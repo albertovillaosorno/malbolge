@@ -15,6 +15,7 @@ unresolved record, valid local links, and no accidental global `docs/adr/`.
 Scaffolding, configuration, and concurrent Jig development may exist before this
 gate, but new product implementation work starts only after the documentation
 baseline is reviewable. Documentation and planning commits may precede this
+
 gate. Passing it authorizes product implementation commits; subsequent
 implementation proceeds TODO by TODO with its governing documents already
 available.

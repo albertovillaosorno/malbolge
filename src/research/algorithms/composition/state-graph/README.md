@@ -75,6 +75,7 @@ addresses fit within the explicit 24-bit research capacity. Reads therefore
 inspect at most four radix levels before either finding an override or falling
 back to the root; writes validate trace `before` values and path-copy only the
 affected radix nodes. `tests/i.rs` reconstructs real current checkpoints and
+
 exercises 4096 distinct overrides.
 
 Post-commit evidence at `ec459d0` promotes the radix as the current-profile
@@ -97,6 +98,7 @@ digests incrementally, and uses the resulting constant-size digest only for
 bucket selection. Exact output/scalar/radix equality still confirms every merge.
 Foreign roots fail closed instead of triggering a complete memory comparison.
 `tests/s.rs` reconstructs every current checkpoint exactly, forces digest
+
 collisions, and verifies exact replay deduplication.
 
 Post-commit identity evidence at `f317f3e` promotes the lineage-bound
@@ -128,6 +130,7 @@ the prior complete-`Vec` clone rises from about 84 ns to 20.83 microseconds. At
 penalty is accepted because persistent append removes history-length scaling
 from
 ordinary state updates. Native-region safety/guards are now the next state-graph
+
 research boundary.
 
 `region.rs` introduces the first verifier-admitted native-shortcut class without
@@ -138,6 +141,7 @@ reused,
 and only when `accepts_entry()` confirms exact incremental-state equality.
 Digest
 identity is never a guard. Mutated entries deopt/reject, tampered claims fail
+
 reverification, and normative transition errors never produce verified regions.
 This is deliberately an exact-state specialization baseline; broader dependency
 guards remain research.
@@ -167,6 +171,7 @@ applied to the candidate while memory outside the verified write set is
 preserved. `tests/r.rs` proves an irrelevant-memory variant fails the exact
 guard
 but safely reuses the region and matches direct VM execution exactly; changing a
+
 live-in dependency fails closed.
 
 `artifact.rs` is the portable effect-IR trust-boundary bridge. Its untrusted
@@ -176,5 +181,6 @@ schema version, profile fingerprint, verifier-derived live-ins, step budget,
 outcome, and compact state-changing effects. Admission independently reprojects
 every effect from `VerifiedExactRegion` traces and compares every field exactly.
 Only the verified artifact type may execute; guard miss retains the same
+
 normative deoptimization path. Research remains the verifier/oracle bridge. This
 is not yet architecture machine code or a stable cross-process cache format.

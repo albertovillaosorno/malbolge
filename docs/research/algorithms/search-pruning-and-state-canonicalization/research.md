@@ -50,6 +50,7 @@ byte
 equality and retains the first occurrence of each class. Hash equality, prefix
 relations, similar lengths, and heuristic state keys are explicitly excluded.
 The rule is rejected as unsound if any two byte-distinct inputs share a
+
 representative. A corpus with no duplicates is the required null case and must
 show zero reduction in candidate evaluations.
 

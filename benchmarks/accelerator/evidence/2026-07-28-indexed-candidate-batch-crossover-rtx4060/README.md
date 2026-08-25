@@ -131,6 +131,7 @@ lookup improves from 2.785 to
 (4.382x), but remains
 3.094x slower than copied-set miss lookup.
 Only one proposal is admitted in this workload, so full-route results include this
+
 cost rather than extrapolating 4,096 repeated hits.
 
 ## Decision and interpretation boundary
@@ -149,4 +150,5 @@ storage, imports, and adapter/NVRTC setup. Version-2 full-state numbers are a
 retained prior-run control; active/copied component measurements are same-run.
 The next retained-memory boundary is the prepared primitive Python integer tuple.
 This evidence does not establish synthesis, stochastic search, compiler, ROCm,
+
 multi-device, or cross-host behavior.

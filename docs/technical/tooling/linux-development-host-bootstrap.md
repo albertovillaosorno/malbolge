@@ -28,6 +28,7 @@ while the pytest alias is a repository-local shell wrapper that binds
 `PYTHONPYCACHEPREFIX` below `.cache` before invoking the same pinned local
 Python/pytest environment. Windows retains native binary aliases. Matching Git
 and already-installed Rustup channels are imported below repository-local
+
 versioned roots. Missing Rustup channels are observations only; bootstrap does
 not download them.
 

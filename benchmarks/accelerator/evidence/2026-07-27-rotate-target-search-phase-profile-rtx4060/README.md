@@ -11,6 +11,7 @@ The run used a clean detached worktree at source commit
 profiles for CUDA. The fixed backend blocks and diagnostic instrumentation mean
 this evidence is for phase attribution, not a replacement CPU/CUDA speedup claim.
 The interleaved ordinary-throughput comparison remains separately retained under
+
 `../2026-07-27-rotate-target-search-rtx4060/`.
 
 ## Protocol

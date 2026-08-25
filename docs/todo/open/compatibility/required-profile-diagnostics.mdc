@@ -76,6 +76,7 @@ historical-profile constraint.
   profile automatically.
   Direct public error construction admits only the exact enum, canonical
   immutable dimensions, and a real rejected preflight pair with the same
+
   precedence. Canonical revalidation now contains unavailable/invalid authority
   failures inside `ProfileRequirementValidationError` rather than leaking raw
   filesystem/parser exceptions. Canonical profile parsing also validates
@@ -116,6 +117,7 @@ historical-profile constraint.
   `compile_preflighted_clang_c23()` product adapter now owns external compiler
   invocation and exposes no raw compile entry point: it applies the same gates
   before spawning Clang, streams C23 over stdin, captures opaque object bytes,
+
   and preserves `002`/`001` ahead of missing-compiler launch failure. Admitted
   x86-64 and AArch64 fixtures compile through pinned Clang and retain structural
   COFF admission.
@@ -128,6 +130,7 @@ historical-profile constraint.
   by construction rather than treated as a reachable retry state: every
   `NativeRetry` suffix came from an already published verified direct sequence,
   whose immutable steps passed profile-capacity preflight. A focused regression
+
   rejects an overflow step as `MALBOLGE-PROFILE-002` before plan publication.
 - Raw `.malbolge` CLI invocation uses `ExecutionMachine`, and recognized
   capsule invocation uses `ProfileMachine` with the capsule-selected profile. A
@@ -140,6 +143,7 @@ historical-profile constraint.
   routing now has equivalent capacity precedence evidence: a 59,050-word
   historical request emits `002`, records safe-Rust admission rejection, and
   never calls the optional backend. Sequential and parallel profile batches keep
+
   that exact typed rejection equal. Logical-task orchestration preserves the
   same `002` plus rejected task identity through parallel execution/join while a
   later independent task still runs. Equivalent program-memory requirements for

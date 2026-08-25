@@ -87,6 +87,7 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   independently parsed raw metadata chain after every operation. ASan/UBSan and
   path-sensitive Clang analysis are clean. Cross-ABI object-symbol checks
   prevent compiler-injected library helpers from becoming hidden runtime
+
   dependencies.
 - Implemented frame evidence: the runtime consumes the canonical
   `malbolge-c32-v1` 32-byte hidden frame layout directly from ABI authority. Its
@@ -120,6 +121,7 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   pointer representations with guest natural alignment; transactional resolution
   consumes dynamic fields plus the main promoted argument with rollback on late
   failure. Scalar execution covers `d/i/u/o/x/X/b/B/c/p/%`, including explicit
+
   post-promotion narrowing. `%p` deterministically prints the guest object-
   pointer encoding (`0` for null; lowercase `0x...` for non-null) without a
   host address or dereference. `%lc` fails closed pending `wint_t` authority,
@@ -127,6 +129,7 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   callable host formatting dependency. Public `snprintf`/`vsnprintf` remain
   unavailable because compiler lowering has not yet bridged source `va_list`
   state into the canonical cursor, `%s/%n` still require guest-memory execution,
+
   and floating conversion execution is intentionally not implemented yet.
 - Implemented exact-math evidence: `fabs`, `floor`, `ceil`, and `trunc` are
   ordinary guest C over ABI-fixed binary64 representation, preserve signed-zero

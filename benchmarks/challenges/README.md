@@ -26,6 +26,7 @@ lookups, while `ternary-fold` performs explicit base-three work.
 `nested-state` uses a fixed four-lane inner loop. In contrast,
 `grid-accumulate/v1` emits only O(nodes) token/source data but executes an exact
 `nodes * nodes` live nested accumulation, with an independent O(nodes)
+
 closed-form modulo-`2^32` oracle. This separates generated runtime-work growth
 from generator/oracle complexity.
 
@@ -54,6 +55,7 @@ than silently replacing unrelated state. Linked-ancestor rejection runs before
 replay
 recognition, and replay also requires all three artifact leaves to be ordinary
 files rather than symlinks or junctions. Byte-identical external state therefore
+
 cannot make a redirected output admissible. Repeating an identical identity at
 an already-published ordinary directory is an idempotent replay. Generated C
 is required to pass the current repository C ABI/libc preflight; all thirteen

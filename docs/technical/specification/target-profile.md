@@ -50,6 +50,7 @@ I/O and geometry as the annual current profile, but remains a distinct immutable
 artifact identity. The current
 profile does not inherit historical C undefined behavior, non-progress as a
 modern termination policy, or the ten-trit resource ceiling merely because its
+
 I/O is source-compatible with the original interpreter.
 
 `src/automation/repository/composition/scripts/validate/target_profile.py`

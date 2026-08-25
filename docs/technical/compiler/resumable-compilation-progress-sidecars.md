@@ -28,6 +28,7 @@ pointer to the latest committed generation. A persistent
 `program.malbolge.progress.json.lock` file coordinates sidecar writers; its
 contents carry no recovery semantics and the operating-system lock is released
 when the owning process exits. The final requested path is never replaced until
+
 the artifact is complete and independently verified.
 
 ## Current Behavior
@@ -50,6 +51,7 @@ an exact string instead of accepting byte/bytearray aliases or leaking decoder
 limit remain inside the stable sidecar error boundary, and impossible UTC
 calendar timestamps are reported the same way.
 `ProgressTimer` validates every phase and monotonic-clock sample before mutating
+
 timing evidence. Non-callable clocks and callback failures remain inside the
 stable sidecar error boundary. Snapshotting also revalidates its internal
 anchors and accumulated phase partition, so directly constructed or corrupted
@@ -75,6 +77,7 @@ verification, serialization, and checkpoint phases to construct the exact timing
 fields without UTC arithmetic. Child-process crash fixtures now terminate
 publication after the checkpoint and immediately before the sidecar commit.
 Product CLI/compiler integration, portable compiler-state serialization, broader
+
 power-loss injection, and CPU/CUDA resume equivalence remain unimplemented.
 
 ### Sidecar Schema
@@ -168,6 +171,7 @@ stale, overwritten, or incompatible generation data is rejected with a stable
 diagnostic and never guessed into validity. Sidecar reads, writer-lock
 lifecycle, and mutable or immutable publication failures are likewise translated
 into the
+
 stable sidecar error boundary rather than leaking host filesystem exceptions.
 
 If checkpoint persistence fails, the job may continue only when the caller

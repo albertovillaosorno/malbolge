@@ -170,6 +170,7 @@ descriptor flag bit `0x00000001` declares `AVAILABLE`, bit `0x00000002`
 declares `MAY_BLOCK`, and bit `0x00000004` declares `PARTIAL_PROGRESS`;
 unknown bits fail closed. Each descriptor represents one contiguous supported
 version interval. A family with intentionally discontinuous compatibility must
+
 use a new family identity rather than imply support for the hole. Discovery
 distinguishes an unknown family, an unsupported semantic version, and a known
 but unavailable capability. A serialized registry is the concatenation of zero
@@ -178,6 +179,7 @@ malformed. Registry scanning inspects each descriptor's version prefix before
 assuming the version-one stride, preserving an unsupported-version diagnostic
 for future descriptor sizes. Discovery validates the entire serialized registry
 before returning a match, so a malformed later record cannot be hidden by an
+
 earlier requested identity.
 
 ### Canonical capability payload primitives
@@ -194,6 +196,7 @@ of the containing capability payload, never a host pointer or guest-machine
 absolute address. A schema supplies a minimum payload-data offset so a span
 cannot point back into its fixed header. The shared validators reject overflow,
 out-of-record ranges, and schema-specific noncanonical layouts as
+
 `INVALID_PAYLOAD`/`InvalidPayload` before a host effect.
 
 Booleans are not an implicit C representation. A capability that declares a
@@ -246,6 +249,7 @@ A request with `NONBLOCKING` asks the adapter not to wait. If the requested wait
 cannot complete without blocking, `WOULD_BLOCK` is the canonical response and
 carries no result bytes. `PARTIAL` is never valid for version one. Host timer
 failure and cancellation use the generic `HOST_ERROR` and `CANCELLED` statuses.
+
 No sleep request exposes a native timer handle or host scheduler identity.
 
 #### Execution telemetry `0x00000600`
@@ -276,6 +280,7 @@ identity and `instruction` is the active instruction text. Observation must not
 change guest memory, scheduling, diagnostics, or external-effect ordering.
 Instrumentation first discovers the capability; if it is absent or unavailable,
 it omits telemetry instead of submitting a required call. Once a telemetry frame
+
 is submitted, ordinary fail-closed admission rules apply.
 
 #### Relative mouse capture `0x00000601`

@@ -54,6 +54,7 @@ select a value. The validator builds the predecessor graph and proves every
 block reachable from the declared entry, computes dominators, checks every phi
 against the exact predecessor set, and validates SSA dominance at instruction,
 terminator, and phi-edge use points. Loop backedges therefore use predecessor-
+
 edge semantics rather than ordinary block-entry use semantics.
 
 The closed type vocabulary covers scalar integers through 64 bits, binary32,
@@ -80,6 +81,7 @@ generic object pointer, so it may bitcast to or from concrete object pointers
 without becoming dereferenceable as `void`. Integer conversion is likewise
 object-pointer-only and exactly
 32 bits so the ABI encoding is neither implicitly truncated nor widened; any
+
 further integer-width change requires a separate explicit cast. Function-pointer
 identity is introduced by `FunctionAddress` and preserved through typed
 function-pointer values. Truth-value conversion remains valid for either pointer
@@ -87,6 +89,7 @@ namespace and is explicit through `PointerToBool`.
 Equal-width non-boolean integer representation conversion has its own operation.
 Automatic allocation has active-function-frame lifetime, consumes an explicit
 ABI `u32` byte count, and returns an object pointer with a positive power-of-two
+
 alignment no greater than 16 bytes. Loads and stores require an exact object
 pointee type. Boolean arithmetic is rejected; normalized C integer promotions
 must be represented explicitly before integer arithmetic, bitwise/shift work,
@@ -103,6 +106,7 @@ type.
 Direct calls name dense module-local functions; indirect calls consume a
 dominance-valid SSA pointer whose pointee is the exact invoked signature.
 `FunctionAddress` is the explicit bridge from a module-local function ID to that
+
 pointer value.
 
 ### Canonical object layout
@@ -134,6 +138,7 @@ the result of an overflow-relevant signed binary instruction rather than an
 arbitrary
 signed value. Admission verifies record shape and references but does not
 discharge the obligation. Later stages must preserve, prove, or materialize each
+
 obligation according to their own documented contract.
 
 ### Normalized frontend lowering

@@ -11,6 +11,7 @@ for every trial. Seeded first-hit evaluations are 250, 1709, 642, 1142, 189,
 1861, 506, and 804 for seeds 0 through 7. Four seeds improve on enumeration and
 four are worse. The seeded median is 723 evaluations, versus 706 for enumeration.
 Every schedule exhausts all 8,836 candidates, verifies the same ten accepted
+
 sources, and retains best quality 1.
 
 This is a mixed/null replication result that materially weakens the seed-zero

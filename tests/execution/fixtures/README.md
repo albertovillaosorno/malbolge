@@ -48,6 +48,7 @@ fetched-terminal pairs bind `C=5` and an 8-word memory requirement: halt-fetch
 requires `memory[5]=76`, which the VM-owned profile decoder maps to `v`, while
 non-graphical requires `memory[5]=0`. The no-operation pair requires 9 words,
 binds `memory[5]=77`, VM-classifies it as no-op, encrypts it to 65, and advances
+
 `C=5`/`D=7` to 6/8 without changing accumulator, counters, or termination. The
 jump-data pair requires the exact 125-word exit footprint, binds code/data
 live-ins
@@ -60,12 +61,14 @@ to 33 and advances `C/D` to 12/8. The rotate pair requires 9 words, binds
 encrypted code value 122, and advances `A/C/D` to 1594326/6/8. The crazy
 pair also requires 9 words, binds `A=20`, `memory[5]=57`, and
 `memory[7]=10`, writes Crazy result 2391494 and encrypted code value 91, and
+
 advances `A/C/D` to 2391494/6/8. The output pair requires 9 words, binds
 `A=0xdeadbea8`, `memory[5]=112`, and output index 3, writes encrypted code 68
 plus byte `0xa8`, and advances `C/D/output_len` to 6/8/4. Both input forms
 require 9 words and bind `memory[5]=94`, encrypted code 57, and `C/D=6/8`.
 The byte form binds cursor 2 and byte `0x41`, commits `A=65`, and advances the
 cursor to 3. The EOF form binds `input_len=cursor=2`, commits `A=4782968`, and
+
 leaves the cursor unchanged without requiring a non-null input pointer. Every
 memory-backed fixture guards its exact metadata-bound IR footprint before
 dereferencing guest memory.

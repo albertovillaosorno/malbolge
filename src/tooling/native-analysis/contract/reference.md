@@ -58,6 +58,7 @@ Both the ABI Clang parser and the clang-tidy executable must report the pinned
 LLVM 22.1.8 version. Alternate executable paths are useful for controlled
 testing only when they preserve that version boundary; an arbitrary host LLVM
 installation is rejected before source validation. The validator also supplies
+
 the pinned LLVM 22 Clang resource directory explicitly.
 
 ## Pinned plugin build
@@ -126,6 +127,7 @@ and hard warnings. The canonical plugin adds its reviewed checks without
 removing that baseline.
 The wrapper owns the closed target ABI, libc availability policy, and their
 source-located preflights. The current lane-7 plugin still does not prove the
+
 complete C-to-Malbolge contract. Semantic lowerability and executable guest
 runtime
 facilities, determinism, and resource proofs remain later project-owned work.

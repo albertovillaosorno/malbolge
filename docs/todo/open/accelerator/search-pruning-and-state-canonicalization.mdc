@@ -67,6 +67,7 @@ raw hardware scale.
   identity; duplicate corpus bytes roundtrip unchanged, while budget is consumed
   only by stable first representatives. Python production tests and the five
   Rust
+
   research adversarials both pass. The hardware-neutral generic layer is also
   now bounded by a maximality argument: any two byte-distinct payloads can be
   separated by a legal trusted verifier, so no coarser universal equivalence is

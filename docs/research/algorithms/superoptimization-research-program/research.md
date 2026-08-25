@@ -62,6 +62,7 @@ the evaluation budget, not the logical candidate count. The shared
 candidate count and evaluation budget through one caller-supplied trusted
 verifier. It records evaluation-count time-to-first, total verified count, best
 verified quality/index, and an explicit no-verified-candidate outcome after the
+
 full budget. The companion
 `finite-verifier-gated-dual-bound-comparison-v1` also applies the preregistered
 wall-clock bound to both schedules through an injected monotonic nanosecond
@@ -73,6 +74,7 @@ now concrete before measurements: candidate indices bijectively enumerate all
 $94^2=8,836$ two-graphical-byte classic sources in lexicographic order. The
 independent `classic-two-word-no-io-halt-v1` verifier accepts only sources that
 halt in one or two exact semantic transitions without prior input or output;
+
 quality is the transition count to halt, so one is better than two. This is a
 whole-program miniature, not reusable internal-block equivalence, and search
 order never grants acceptance authority.
@@ -84,6 +86,7 @@ schedule metrics, rejects result/plan bound drift, requires the result candidate
 count and provenance workload SHA-256 to match the frozen concrete challenge,
 and delegates core commit/outcome/path validation to the repository's
 experiment-manifest authority. It does not write evidence or discover
+
 provenance. The `pilot.py` orchestration layer separately revalidates the plan's
 challenge/verifier/workload identity before constructing the exact dual-bound
 request and wiring only the concrete semantic verifier into the runner. Import,
@@ -93,6 +96,7 @@ repetitions, fixed enumeration-then-seeded ordering, no warmup, retain-all
 outlier policy, median center, and observed-range evidence before the first run.
 The first measured pilot is retained under
 `benchmarks/research/evidence/2026-08-11-classic-superopt-pilot-windows/` and
+
 binds pre-run commit `23dd86d6`.
 
 A second technique is now measured under its separately frozen protocol.
@@ -104,6 +108,7 @@ and semantic drift is a rejection condition. The registered 10,000-observation
 challenge spans all 94 graphical encryption starts plus deterministic classic
 rotate samples. The paired protocol was committed before measurement at
 `9ff48346`, fixes raw-then-canonicalized order, retains all five repetitions,
+
 and uses no warmup deletion. The retained run preserves one exact semantic
 digest while reducing unique states and independent verifier calls from 10,000
 to 6,496 (35.04%). Host timing moves the other way: medians are 96,384,900 ns
@@ -118,6 +123,7 @@ challenge
 spans preimage cardinalities 0, 1, 2, ..., 1,024 with a fixed zero accumulator.
 Every paired run preserves the same complete independent preimage-set digest.
 Candidate work falls from 708,588 full-domain checks to 2,047 projected checks
+
 (99.71%). The source-pinned five-pair timing run at `5fbea346` is negative on
 its recorded Windows/Python host: baseline median strategy time is
 2,298,684,800 ns and exact projection median is 2,931,140,300 ns, about 1.28
@@ -137,6 +143,7 @@ verifier/corpus before search measurement; it is not comparative search
 evidence.
 Schedule tests lock natural enumeration, exact seed replay,
 no-replacement membership, seed separation, fail-closed dimensions, and sparse
+
 operation over the maximum unsigned-64 logical corpus. Runner tests additionally
 prove equal scheduled evaluation counts, verifier-gated first/best evidence,
 full-budget retained null outcomes, and fail-closed malformed verifier quality.
@@ -146,6 +153,7 @@ deterministic rendering, shared schema-v1 admission, retained verified/null
 schedule metrics, plan/result bound closure, candidate-corpus/workload closure,
 and shared commit-shape authority. Pilot-orchestration tests additionally prove
 plan-to-request identity and fail-closed workload/verifier drift without
+
 executing a candidate. Measurement tests lock the five-repetition retain-all
 protocol without real timing; recorded-evidence tests then validate the tracked
 run/benchmark records and recompute exact semantic and median timing results
@@ -155,6 +163,7 @@ retained evidence. History-canonicalization tests inject the repository classic
 verifier successor across all 94 graphical starts, recover orbit periods
 `2,4,5,6,9,68`, verify modulo-ten rotate history, and fail closed on unproved
 applicability or malformed injected orbits. Challenge/runner tests lock the
+
 10,000-observation workload hash and exact semantic digest. Synthetic-clock
 measurement tests freeze protocol mechanics without real timing, while retained
 evidence tests validate the shared run/benchmark authorities and recompute the
@@ -182,6 +191,7 @@ both reached best quality 1. Deterministic enumeration first verified candidate
 705 at evaluation 706, while the seeded order first verified candidate 4576 at
 evaluation 250. That evaluation-count difference is exact for the frozen corpus
 and schedule identities. Median first-hit elapsed time was 18,506,300 ns for
+
 enumeration and 6,119,900 ns for seeded order. Median full-corpus time was
 227,928,500 ns versus 227,433,600 ns, with overlapping observed ranges, so this
 pilot does not establish a total-throughput advantage.
@@ -224,6 +234,7 @@ evidence, not sufficient basis to promote stochastic search to product
 architecture or generalize beyond the recorded challenge/seed/host. The
 history-residue study separately supports exact state/verifier reduction but
 shows a clear timing loss in this Python implementation. The crazy-preimage run
+
 likewise supports exact candidate pruning while showing a slower median here.
 Neither technique is promoted as a runtime optimization on this evidence alone.
 

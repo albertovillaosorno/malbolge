@@ -47,6 +47,7 @@ non-progress, and rejected transitions report no memory change.
 The public `profile_cell_is_graphical()` predicate owns the profile-width
 33-through-126 decode boundary used by tracing, execution, and verified native
 eligibility. `decode_profile_instruction()` owns the corresponding positional
+
 translation and reduces wider code pointers by the normative 94-position phase.
 `profile_cell_decodes_to_no_operation()` owns no-op classification,
 `encrypt_profile_cell()` owns the post-step `XLAT2` transformation, and
@@ -62,6 +63,7 @@ code fetch, optional data-pointer read, and optional encryption-target read, for
 a
 maximum of three semantic reads per request. Rejected transitions retain reads
 completed before the error; diagnostic/delta bookkeeping reads are excluded.
+
 `step()` discards this evidence and `step_traced()` publishes it.
 `TraceInput::EndOfInput` remains
 profile-neutral: current traces record EOF accumulator 4,782,968 rather than
@@ -76,6 +78,7 @@ locations; bare/inline hashes remain code. `format_annotated_source()` inserts
 deterministic LF wrapping. `Machine`, `ExecutionMachine`, and `ProfileMachine`
 provide explicit annotated constructors, while every existing `from_source()`
 entry point retains canonical raw semantics. Canonicalized bytes still pass
+
 through the ordinary selected-profile loader before execution.
 
 The classic execution facade carries an explicit canonical target-profile
@@ -97,6 +100,7 @@ the
 full input stream, consumed-input cursor, committed output, and stable
 termination
 reason. `snapshot_state()` clones that complete state, and `from_snapshot()`
+
 restores it without semantic reset. Construction never truncates or wraps
 invalid
 host values, and an input cursor beyond its stream is rejected before checkpoint

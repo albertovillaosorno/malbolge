@@ -63,6 +63,7 @@ Non-empty input and output storage must also be disjoint so guest output cannot
 overwrite unread immutable input. These rules prevent initialization from
 overwriting bytes that it still needs to consume or from installing
 self-referential I/O storage. Checked entry points reject a null machine or
+
 required result pointer with `MALBOLGE_DIAGNOSTIC_INVALID_ARGUMENT`. The void
 `malbolge_machine_init_state` helper performs no mutation when its machine,
 stream pairing, output pairing, machine-aliasing storage, or fill word is
@@ -78,6 +79,7 @@ input/output-disjoint alias rules enforced at construction. A violation returns
 mutated. Optional trace storage and bounded-run metadata outputs are writable
 auxiliary ranges, so they must not alias the machine or its declared streams;
 the two bounded-run metadata outputs must also be disjoint. Alias rejection
+
 leaves those auxiliary outputs untouched. Bounded runs count only committed or
 terminating semantic steps; a rejected transition returns its diagnostic without
 increasing `steps_executed`.

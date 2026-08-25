@@ -31,4 +31,5 @@ decoding, transactional dynamic-field/argument resolution, and scalar
 canonical guest pointer encoding rather than a host address. Source `va_list`
 bridging remains compiler-lowering work; guest-memory and floating formatting
 plus
+
 correctly-rounded transcendental math remain open.

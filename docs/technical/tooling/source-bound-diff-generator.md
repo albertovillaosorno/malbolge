@@ -62,6 +62,7 @@ plans, and source-bound shares require immutable exact records. Cryptographic
 key, nonce, plaintext, AAD, and payload fields require exact bytes. Invalid
 direct Python construction fails through the owning domain error rather than
 relying on coercion or leaking `TypeError`, `AttributeError`, or
+
 `OverflowError`. Compatible consumer mappers and output postconditions also
 wrap callback failures and reject foreign return records before publication.
 
@@ -92,6 +93,7 @@ then excluded from static snapshots/source binding, and are copied recursively
 from
 the runtime candidate into staging. Symlinks and special entries still fail
 closed. Recursive snapshot and passthrough enumeration also surfaces filesystem
+
 scan failures instead of treating an inaccessible subtree as absent.
 The matcher used for source-span reuse remains separate from canonical identity
 and
@@ -126,6 +128,7 @@ their offsets. Duplicate SHA-256 digests count once for coverage, and a
 deterministic
 minimum-rolling-hash fallback prevents a non-empty sparse input from producing
 no
+
 evidence.
 
 This primitive does not by itself admit a tree. Tree-level distribution rules,
@@ -153,6 +156,7 @@ not over a global anchor bag. Policy separately requires a minimum number of
 files
 with at least one real matching anchor and per-file coverage at or above the
 configured threshold. This prevents one concentrated region from satisfying the
+
 distributed lineage requirement.
 
 Synthetic tests exercise exact and insertion-compatible admission, unrelated
@@ -213,6 +217,7 @@ already
 `fixed`, or `unknown`; present defects route a named correction to apply, fixed
 defects route that correction to skip, and unknown state fails closed. Bug
 probes
+
 therefore remain deliberately separate from identity probes.
 
 `gate.py` combines source-lineage and behavior evidence conjunctively.
@@ -235,6 +240,7 @@ explicit timeouts, expected exit status, bounded stdout/stderr capture, optional
 stdin, plus explicit flags selecting stdout and/or process exit code into the
 observation transcript. A command may instead require one exact exit code when
 its
+
 return value is a success precondition rather than behavior data.
 
 A probe batch copies the candidate source into an isolated temporary mirror
@@ -257,6 +263,7 @@ transcripts must differ. Those two digests become the portable `present` and
 `fixed`
 baselines. Candidate execution matching neither baseline produces `unknown` and
 fails closed. Compatibility programs contribute success/failure rather than an
+
 identity digest. Application-specific harnesses and logical tool resolution
 remain
 consumer policy; the generic engine only owns execution and transcript
@@ -273,6 +280,7 @@ MIT
 freestanding harness and minimal standard-header shims. `lld-link` produces a
 no-CRT x86-64 PE with a private entry point. The process exit code encodes
 selected
+
 `FixedMul`/`FixedDiv` results and becomes the transcript observation.
 
 A local read-only smoke over the historical ignored source and the local
@@ -309,6 +317,7 @@ exact
 canonical anchor window and whose context also binds the source path, anchor
 digest,
 share coordinate, and transform context. A SHA-256 commitment rejects incorrect
+
 reconstruction. Recovery independently enforces the configured minimum number of
 distinct source files, so many surviving anchors from one large file cannot
 satisfy
@@ -359,6 +368,7 @@ context, output paths, expected hashes, source paths, segment types, offsets,
 and
 lengths are authenticated as AAD. The 256-bit payload key is then bound to
 canonical
+
 source anchors. Recovery must unlock that key and authenticate the full payload
 before
 the transactional exact materializer can create its staging output.
@@ -378,6 +388,7 @@ unchanged. The generated 4,655,420-byte Rust source also compiled through Rust
 with `-D warnings --emit=obj`; executable linking on this workstation is blocked
 only
 by absent Windows SDK import libraries. All smoke outputs were deleted
+
 afterward.
 
 After the DOOM source revision was hard-pinned, the product recipe moved back to
@@ -394,6 +405,7 @@ clean mirror byte-for-byte, while the WAD was copied from the runtime input. The
 temporary mirror, transform, executable, and output were deleted afterward. The
 unexpected entry was subsequently removed explicitly, and the accepted real
 oracle
+
 and transform were regenerated.
 
 Shamir coefficients and the payload key are derived deterministically to
@@ -436,6 +448,7 @@ inside an otherwise stable source range and preserves whole-file candidate
 differences
 for source-copy instructions. Missing, duplicate, reversed, or contracted
 placement
+
 evidence rejects transactionally.
 
 This is deliberately a placement primitive, not compatible admission. Synthetic
@@ -452,6 +465,7 @@ literals remain local authoring material until compatible protection/emission
 wraps
 this layer. Exact and relocatable plan records now reject boolean range aliases,
 mutable segment collections, foreign plan/instruction records, and non-Path
+
 filesystem roots before placement begins.
 
 ### Mapped Semantic Compatible Placement
@@ -482,6 +496,7 @@ replacement. Format-only oracle differences produce zero edits. A changed
 required
 semantic region remains fail-closed; later bug routing may explicitly skip a
 named
+
 correction when behavior evidence classifies that defect as already fixed.
 
 A read-only equivalence smoke over the original and normalized local trees
@@ -507,6 +522,7 @@ behavior `apply` or `skip` route and rejects routes for unbound corrections.
 Skipped edits preserve upstream fixes while unconditional semantic edits still
 apply. Consumer domains still need to author those bindings, and target-only
 bytes remain local authoring material until compatible source-bound
+
 serialization exists.
 
 The first full DOOM compatible-authoring smoke exposed a scalability defect in

@@ -38,6 +38,7 @@ truthy foreign values cannot become acceptance. Neutral requests and ordinary
 records require exact string identities,
 immutable tuple/bytes storage, exact u64 fields, and exact capability metadata.
 Backend evidence, proposals, hints, or packed wrappers with mutable, duck-typed,
+
 or foreign runtime representation fail before publication or admission.
 Candidate, search, and verification submissions validate exact direct
 batch/request and route state, structural adapter surfaces, and preferred
@@ -47,11 +48,13 @@ checks before backend work. Exact result records are required
 before structural result validation: invalid preferred records fall back or
 complete empty, while mandatory references fail with cached typed errors. CPU
 candidate/search adapter constructors require exact nonempty identities and
+
 callable handlers. Direct CPU candidate evidence is validated before return, as
 CPU search proposals already are. Evaluated-search bindings likewise validate
 identities before callback composition.
 `CpuSearchExecutionAdapter` supplies the mandatory portable callback path.
 The same boundary separates candidate-evaluation evidence and optional
+
 verification hints from candidate acceptance.
 
 ### Implementation Status
@@ -63,6 +66,7 @@ one
 mandatory `cpu-reference` implementation and an optional preferred backend.
 Algorithm/backend overrides are explicit and unsupported combinations fail
 before search starts. `SearchRunIdentity` records both configured and actual
+
 backend IDs, so a CPU fallback cannot be mislabeled as accelerated evidence.
 `src/optimization/accelerator/application/accelerator/search_config.py` adds
 versioned `schema_version = 1` TOML selection
@@ -75,12 +79,14 @@ validate exact selection, mandatory CPU reference, selected preferred route,
 and capability alignment before request or backend work. The first concrete
 strategy is
 `deterministic-corpus-enumeration-v1`, bound to the mandatory CPU reference
+
 through the same registry. Candidate evidence can independently feed optional
 verification-assist hints through CPU or CUDA without granting either backend
 acceptance authority. `EvaluatedSearchExecutionAdapter` now binds deterministic
 batch construction and proposal selection to a replaceable candidate evaluator.
 Construction validates exact strategy/prepared records, the adapter call
 surface, and every callback before request preparation. Runtime capability and
+
 candidate result records are validated before selection. Selected proposals must
 be byte-identical members of the evaluated batch and the
 evaluation count cannot exceed the search budget. The concrete
@@ -91,6 +97,7 @@ evaluation. CUDA and CPU produce identical proposals over a deterministic
 a
 separate CPU verifier recomputes acceptance.
 `src/optimization/optimizer/application/optimizer/cli.py` now exposes the
+
 same registry externally through `python -m optimizer.cli`. It reads versioned
 TOML configuration plus canonical binary problem bytes, accepts explicit
 algorithm/backend overrides, and emits deterministic JSON with configuration
@@ -102,6 +109,7 @@ back through the normal CPU reference path while retaining configured CUDA
 identity. Unsupported pairs such as deterministic corpus enumeration plus CUDA
 fail explicitly instead of changing strategy. Malformed typed command arguments
 return the same stable configuration-error status instead of terminating an
+
 embedded `main(argv)` caller through `argparse`. The first retained side-by-side
 performance record uses the complete 59,049-word classic domain with 15 retained
 samples per backend, one warmup, fixed CPU-then-CUDA interleaving, retain-all
@@ -112,6 +120,7 @@ rejected
 for this host-heavy route; no CUDA performance benefit is claimed. A separate
 phase profile retains 15 profiles per backend and explains 97.5% of CPU and
 99.5%
+
 of CUDA median total time through named phases. For CUDA, host-side phases
 account
 for about 57.0% of median total time while backend evaluation accounts for about
@@ -124,6 +133,7 @@ reuse that proof; forged or different strategy bindings fail closed.
 `search_prepared()` and `profile_prepared_search()` preserve untrusted proposal
 and result validation while removing repeated batch construction and validation
 from the amortized path. Rotate-target selection additionally decodes only the
+
 validated target/header. The retained four-route comparison records CPU
 ordinary/prepared medians of 293.564/148.590 ms (1.976x) and CUDA
 ordinary/prepared medians of 306.872/162.693 ms (1.886x). Prepared CUDA remains
@@ -131,6 +141,7 @@ about 9.5% slower than prepared CPU, so reusable state is beneficial without
 establishing a CUDA advantage. Preparation is outside timed intervals. The
 prepared-path profile attributes 79.9% of CPU and 81.2% of CUDA median total
 time
+
 to backend evaluation, with proposal selection at 19.6% and 18.7%.
 Strategy-proof
 and result validation are negligible. `PackedCandidateEvidence` now implements
@@ -142,6 +153,7 @@ remain
 valid; packed width/size/mixed representation failures are rejected. Primitive
 selectors iterate packed u32 evidence without materializing per-item bytes,
 while
+
 verification-assist materializes only when producing explicit hint objects.
 Retained packed evidence lowers CPU ordinary/prepared medians to
 211.693/77.309 ms and CUDA medians to 230.144/91.199 ms. Relative to pre-packed
@@ -153,12 +165,14 @@ with an optional candidate-state preparer and backend-specific prepared
 evaluator.
 Rotate preparation validates and decodes one hardware-neutral `PrimitiveBatch`
 once; matching CPU/CUDA strategies reuse it, while forged type/kind/evaluator
+
 state or a distinct preparer fails closed. Generic strategies without candidate
 state retain their previous behavior. Retained prepared medians are 43.129 ms
 CPU
 and 57.296 ms CUDA, 1.792x/1.592x faster than the packed prepared baseline.
 Ordinary routes regress 6.6%/3.7%, and prepared CUDA remains 32.8% slower than
 CPU.
+
 Backend evaluation falls 2.801x/2.083x while selection is unchanged.
 `PreparedPrimitiveBatch` now adds repository-sealed validation proof below the
 candidate strategy. CPU prepared evaluation consumes it directly; CUDA keeps one
@@ -166,6 +180,7 @@ proof-bound input/output allocation resident and rebuilds only for a different
 proof object. Ordinary execution remains one-shot. Session statistics and
 benchmark
 assertions expose actual build/reuse counts rather than inferring residence from
+
 timing. Retained resident evidence records 34.132 ms CUDA prepared versus
 46.232 ms CPU prepared (1.355x CUDA/CPU) and a 1.679x improvement over the prior
 CUDA prepared baseline. CUDA backend evaluation improves 3.252x to 9.922 ms, but
@@ -177,6 +192,7 @@ CPU/CUDA
 proposal validation reuses the index, while ordinary execution retains the
 one-shot
 dictionary path. Fabricated payloads still fail closed, and benchmarks require
+
 59,049 indexed members. Retained prepared medians are 26.797 ms CPU and 17.970
 ms
 CUDA, improvements of 1.725x/1.899x over the resident baseline; CUDA is 1.491x
@@ -186,6 +202,7 @@ attribution. `PreparedProposalSelection` now adds strategy-owned preparation,
 selection, and state-count callbacks to the strategy identity. Rotate target
 state
 uses the exact inverse of the classic rotate bijection and records only preimage
+
 positions that survive pruning, seed order, and budget. Prepared selection reads
 and validates packed evidence only at those positions; ordinary search retains
 the
@@ -194,6 +211,7 @@ remain
 fail-closed. Benchmarks require one canonical position. Retained prepared
 medians
 are 15.266 ms CPU and 6.182 ms CUDA, improvements of 1.755x/2.907x over indexed
+
 membership; CUDA is 2.470x faster in the same run. Selection improves
 894.008x/948.452x to 13.2/12.4 us. Ordinary controls improve only 1.022x/1.015x
 and
@@ -201,6 +219,7 @@ backend phases only 1.034x/1.035x, strongly bounding attribution. Primitive
 backend
 execution selected the next neutral boundary. Primitive result validation now
 uses
+
 exact tuple minimum/maximum bounds rather than an interpreted per-value loop.
 Both negative and above-domain evidence still fail before packing. Retained
 prepared medians improve 1.086x CPU and 1.254x CUDA; backend evaluation improves
@@ -208,6 +227,7 @@ prepared medians improve 1.086x CPU and 1.254x CUDA; backend evaluation improves
 now
 uses a cached 59,049-entry table generated exclusively from the scalar
 reference.
+
 Ordinary CPU evaluation remains scalar. An exhaustive classic-domain test and
 benchmark diagnostics require exact equality, 16 prepared evaluations, and full
 table cardinality. Retained CPU prepared median falls from 14.058 to 3.313 ms
@@ -216,6 +236,7 @@ ordinary
 is effectively unchanged; same-run CPU prepared is 1.440x faster than CUDA
 prepared.
 `PackedPrimitiveResult` now extends the neutral result contract with canonical
+
 little-endian u32 bytes while preserving tuple compatibility. Prepared CUDA
 exposes
 the resident host output without tuple materialization or repacking. The bridge
@@ -223,12 +244,14 @@ still validates capability identity, exact result count, and every word's
 classic
 bound before candidate evidence acceptance. Ordinary CUDA and CPU paths remain
 tuple-based. Benchmarks require 16 packed CUDA evaluations plus all prior
+
 proofs.
 Retained CUDA prepared median falls from 4.769 to 2.036 ms (2.343x), and CUDA
 backend evaluation from 3.868 to 1.802 ms (2.147x). CPU prepared/backend change
 only
 1.004x/1.005x, and ordinary controls remain effectively flat. CUDA prepared is
 1.621x faster than same-run CPU. Packed validation now has stable identity
+
 `u32le-broadword-domain-v1`. A repeated high-word mask establishes unsigned
 16-bit
 lanes; adding `0xffff - 59048` independently in each 32-bit lane sets bit 16
@@ -240,6 +263,7 @@ and
 benchmarks require the identity. Retained CUDA prepared median falls from 2.036
 to 1.175 ms (1.733x), CUDA backend evaluation from 1.802 to 0.860 ms (2.095x),
 and
+
 CUDA total from 1.824 to 0.886 ms (2.057x). CUDA is 2.706x faster than same-run
 CPU.
 CPU phase regressions remain contextual controls. Public diagnostic records now
@@ -247,6 +271,7 @@ cover resident CUDA launch/sync, transfer, immutable-byte materialization, and
 total
 plus neutral packed contract, masks, integer decode, high-mask, threshold,
 diagnostic, result construction, and total. The dedicated full-domain profiler
+
 historically requires exact CPU packed equality around broadword validation. The
 active prepared strategy now retains immutable CPU-reference bytes once during
 preparation and validates every prepared backend result with
@@ -255,6 +280,7 @@ preparation and validates every prepared backend result with
 count
 precede equality; first/final in-domain drift fails closed with a precise
 mismatch.
+
 A generic proof-bound candidate-state count exposes all 59,049 reference words.
 Benchmarks require both IDs and all existing CPU-table, CUDA-session,
 membership,
@@ -268,6 +294,7 @@ improve
 costs,
 not timed execution. The active crossover benchmark measures fresh-process and
 warm-process preparation, incremental Python memory, first resident execution,
+
 steady reuse, and strict amortization at four corpus sizes. Validator
 identities,
 exact proposal/admission, reference/membership/selector counts, and CUDA
@@ -275,6 +302,7 @@ counters
 remain required. Retained warm crossover is 6/3/2/1 and cold crossover is
 106/38/5/2. Full-domain warm preparation plus first search is 212.140 ms versus
 222.842 ms ordinary; cold crosses on run two. Incremental Python state
+
 retains/peaks at 16.063/19.040 MiB versus 0.901 MiB exact buffers. Component
 tracing selected the duplicate membership frozenset for the first safe
 compaction. Prepared membership now uses
@@ -284,6 +312,7 @@ references to the original immutable batch items. Binary search locates logical
 IDs
 and exact payload equality preserves anti-fabrication semantics.
 Forged/cross-batch
+
 indexes fail closed. Retained version-2 evidence under
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-28-compact-membership-crossover-rtx4060/`
@@ -293,6 +322,7 @@ hit/miss
 lookup regresses 9.898x/13.856x versus the copied set, so promotion is
 explicitly for
 scale memory/preparation. Warm/cold crossover is 7/3/2/1 and 108/38/5/1. This is
+
 the retained version-2 baseline.
 Retained version-3 evidence under
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
@@ -311,6 +341,7 @@ version 2 and 11,180,412 bytes for the same-run copied set; its preparation is
 0.0177 ms versus 15.8507/155.4303 ms. Exact hit lookup is the retained cost:
 17.755 microseconds versus 2.625 microseconds in version 2 and 0.266
 microseconds
+
 copied (6.763x/66.844x slower). Exact miss lookup improves to 0.636 microseconds
 from 2.785 microseconds in version 2, but remains 3.094x slower than copied-set
 miss lookup. The promotion is not universal: one-candidate memory grows
@@ -331,6 +362,7 @@ transient peak. Full-domain cold/warm crossover remains 1/1. Against the
 immediate
 clean `81d82cf` baseline, CPU ordinary/prepared improve from 139.517/3.316 ms to
 132.848/3.261 ms (1.050x/1.017x), while CUDA ordinary/prepared improve from
+
 152.055/0.449 ms to 144.440/0.429 ms (1.053x/1.047x). Phase totals are 2.9664 ms
 CPU (1.006x) and 0.2654 ms CUDA (1.099x). CPU and CUDA both prove one session
 build, 16 evaluations, 15 reuses, rotate kind, and 59,049 resident words; CUDA
@@ -352,6 +384,7 @@ ordinary/prepared improve from 132.848/3.261 ms to 90.869/3.108 ms
 (1.395x). CUDA prepared throughput is the retained contextual negative at
 0.479 versus 0.429 ms (0.896x); the separate prepared CUDA phase total changes
 only from 0.2654 to 0.2676 ms (0.992x), so no prepared-execution effect is
+
 attributed to the builder. The fixed bitset raises one-candidate peak from 2,664
 to 8,391 bytes and 64-candidate warm crossover from 3 to 4 runs; promotion is
 for
@@ -374,6 +407,7 @@ is
 3.267 versus 3.108 ms (0.952x), CUDA throughput is 0.385 versus 0.479 ms
 (1.245x), and separate CPU/CUDA phase totals are 2.9659/0.2723 ms versus
 2.9535/0.2676 ms (0.996x/0.983x). No prepared-execution effect is attributed to
+
 the builder. One-candidate peak stays 8,391 bytes; at 64 candidates peak falls
 8,788 to 8,635 bytes while sub-millisecond ordinary timing varies upward; at
 1,024
@@ -382,6 +416,7 @@ builder, storage, validator, membership, proposal, admission, cardinality, and
 CPU/CUDA session proofs pass. Component attribution now places the builder phase
 near 710,190 bytes peak while retaining 473,546 bytes. The overall ~962 KiB peak
 occurs when that retained batch coexists with candidate-state creation (~237 KiB
+
 incremental) or selector creation (~253 KiB incremental). Reducing this
 post-builder
 coexistence without weakening exact reference, selection, membership, or
@@ -396,6 +431,7 @@ candidates, selector peak falls from 252,597 to 1,885 bytes (99.254%), while
 selector preparation changes from 3.7642 to 3.9644 ms, a retained 5.318%
 regression. Complete preparation peak falls from 962,052 to 946,675 bytes
 (1.598%); retained state remains 710,647 bytes. Cold/warm preparation changes
+
 from 64.606/65.101 to 64.465/64.780 ms and full-domain crossover remains 1/1.
 At one candidate, the native selector retains 56 bytes more and peaks 240 bytes
 higher; total one- and 64-candidate peaks are unchanged. CUDA ordinary, fresh
@@ -422,6 +458,7 @@ CPU/CUDA word while full membership remains 59,049. Empty projections skip
 backend
 execution; wrong evaluator, fabricated member, oversized projection, forged
 proof,
+
 wrong evidence, and fabricated proposal still fail closed. Against the immediate
 clean version-7 baseline, cold/warm preparation improves from 64.4648/64.7804 ms
 to
@@ -434,6 +471,7 @@ Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total
 prepared-phase
 speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls
 and
+
 are not attributed to projection. Projection is not universal tiny-batch policy:
 at
 one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm
@@ -466,6 +504,7 @@ compare
 legacy membership revalidation with the proof route: 2.3/4.3 microseconds for
 empty
 (0.535x), 20.0/7.5 microseconds for one item (2.667x), 1.0356/0.1581 ms for
+
 64 items (6.550x), and 16.8647/2.5298 ms for 1,024 items (6.666x). The empty
 proof adds 144 retained and 64 peak bytes; from one item upward retained memory
 is
@@ -478,6 +517,7 @@ stays
 throughput
 regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU
 prepared
+
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The
 proof
@@ -485,6 +525,7 @@ is promoted for exact authority and multi-item scaling, not as an empty-subset
 optimization. `classic-crazy-target-search-v1` now supplies the first exact
 non-invertible multiposition strategy and is registered for both CPU and CUDA.
 Neutral digitwise preparation retains 59,049 full-membership entries while
+
 projecting exactly 1,024 preimages. Its proof-bound one-shot search ticket
 preserves
 the same selector identity and fallback behavior. Retained evidence under

@@ -129,6 +129,7 @@ while
 `algorithms/diff` now also protects exact-plan oracle literals behind
 source-bound
 authenticated payload recovery and emits the exact plan as standalone std-only
+
 Rust.
 `write_algorithm()` now exposes explicit exact and compatible modes. At this
 point in

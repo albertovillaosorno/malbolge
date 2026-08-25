@@ -140,6 +140,7 @@ example probe points, not supported-range endpoints.
   `profile_resident_snapshot_phase_profile.py` add a diagnostic-only
   decomposition
   of fresh host arrays, scalar-state/full-memory/output D-to-H, decode, and
+
   total.
   Retained evidence under
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
@@ -148,6 +149,7 @@ example probe points, not supported-range endpoints.
   memory transfer; batches 8/32 are 62.419%/63.872% allocation and
   37.248%/35.962% transfer. Decode is at most 0.105% and named coverage is at
   least 99.817%. Ordinary snapshot semantics remain unchanged. Independent
+
   mutable result ownership is now split explicitly. Ordinary
   snapshots allocate fresh arrays at every batch size; the active
   `caller-owned-independent-u32-arrays-v1` workspace allocates once and
@@ -189,6 +191,7 @@ example probe points, not supported-range endpoints.
   banks
   only when the total host budget and all registrations succeed; every other
   case
+
   follows exact synchronous fallback. Retained evidence under
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `benchmarks/accelerator/evidence/2026-07-29-current-profile-snapshot-double-buffer-overlap-rtx4060/`
@@ -238,6 +241,7 @@ example probe points, not supported-range endpoints.
   identity, fallback, five isolated rejection classes, eligible but unused
   routes,
   duplicate rejection, exact CUDA equivalence, and the existing planner/executor
+
   contracts. The schema-v4 product registry is reconstructed byte-for-byte from
   retained evidence, the tracked CUDA toolchain manifest, display-driver build,
   and host/Python context. Twelve manifest tests reject drift, duplicate/unknown
@@ -250,6 +254,7 @@ example probe points, not supported-range endpoints.
   display build, Windows host, architecture, and CPython with fake and live
   routes.
   Missing optional identity leaves ordinary CUDA available but the profile
+
   unmatched. Runtime and the report never read benchmark evidence, and the
   report
   performs no online learning. `bounded-ticket-admission-telemetry-v1` retains
@@ -258,6 +263,7 @@ example probe points, not supported-range endpoints.
   accelerator-failure categories without exception text. Both caller-owned
   positive-capacity FIFOs expose monotonic sequence/eviction state and
   measured-versus-estimated duration. Malformed reports, timings, or foreign
+
   failures fail before mutation. `TicketAdmissionAttemptTelemetry` pairs the
   FIFOs, and the separate CUDA attempt executor records exactly one outcome
   before returning or re-raising the same accelerator error. Existing ordinary
@@ -265,6 +271,7 @@ example probe points, not supported-range endpoints.
   `ticket-admission-telemetry-document-v1` captures both snapshots as compact,
   sorted-key schema-v1 JSON. Decoding defaults to 1 MiB and 4,096 observations
   per FIFO, rejects duplicate, unknown, oversized, and noncanonical input, and
+
   restores exact sequence/eviction state. Explicit writes use same-directory
   temporary files and atomic replacement.
   `caller-owned-ticket-admission-telemetry-store-v1` defines an explicit
@@ -273,6 +280,7 @@ example probe points, not supported-range endpoints.
   canonical bytes. Duplicate puts
   are idempotent, construction fixes immutable limits, snapshots sort
   fingerprints,
+
   and removal releases exact budgets. Invalid fingerprints/documents, overflow,
   collisions, and retained decode failures fail closed without partial mutation.
   It performs no filesystem I/O, automatic loading, summary, merge,
@@ -284,6 +292,7 @@ example probe points, not supported-range endpoints.
   canonical
   sorted JSON wrapping the exact canonical schema-v1 bytes as standard Base64
   plus
+
   the required schema-v1 identity and SHA-256 fingerprint. Versioned decoding
   defaults to 2 MiB outer bytes, 1 MiB embedded source bytes, and 4,096
   observations
@@ -292,6 +301,7 @@ example probe points, not supported-range endpoints.
   migration,
   file loading, snapshot reinterpretation, merge, recommendation, lineage
   inference,
+
   or policy change.
   `offline-ticket-admission-telemetry-summary-v1` validates one explicit
   document
@@ -303,6 +313,7 @@ example probe points, not supported-range endpoints.
   bytes as `ticket-admission-telemetry-document-v1:sha256:<hex>`, counts
   byte-identical occurrences once, publishes input/unique/duplicate byte counts,
   and orders unique entries by fingerprint. Distinct snapshots remain separate
+
   even when contexts or sequence ranges overlap; digest collisions fail closed.
   `offline-ticket-admission-telemetry-overlap-v1` compares two validated
   documents
@@ -312,6 +323,7 @@ example probe points, not supported-range endpoints.
   Exact
   document equality remains distinct from retained-data compatibility.
   `offline-ticket-admission-telemetry-overlap-index-v1` deduplicates the bounded
+
   collection before comparing every unique fingerprint-ordered pair. It defaults
   to a 65,536-pair budget, checks that budget before pairwise work, and
   publishes
@@ -324,6 +336,7 @@ example probe points, not supported-range endpoints.
   match in total and neither FIFO has conflicting sequence IDs. It retains
   singleton isolates, fingerprints sorted members and direct edges, and
   publishes
+
   direct/possible/missing edge counts plus a clique flag. A transitive bridge is
   not pairwise equivalence or recorder lineage.
   `authenticated-ticket-admission-telemetry-lineage-v1` separately binds the
@@ -332,6 +345,7 @@ example probe points, not supported-range endpoints.
   capture sequence, key, and optional immediate-predecessor identities.
   Canonical
   HMAC-SHA-256 uses at least 32 caller-owned secret bytes and stores no secret.
+
   Explicit verification requires the trusted key identity and secret. Forks,
   adjacent predecessor mismatch, nonadjacent direct links, MAC/document
   mismatch,
@@ -340,6 +354,7 @@ example probe points, not supported-range endpoints.
   separate lineages; ordered gaps are common lineage without a direct link. The
   caller owns key legitimacy.
   `caller-owned-ticket-admission-telemetry-lineage-trust-v1` builds an explicit
+
   in-memory set of at most 256 unique HMAC keys sorted by identity. Each key
   owns
   an inclusive first/optional-last capture sequence window; empty sets trust
@@ -347,6 +362,7 @@ example probe points, not supported-range endpoints.
   verified canonical materials preserve cross-key direct-successor, gap, fork,
   and collision checks. Duplicate identities, malformed windows, unknown keys,
   out-of-window captures, and incorrect secrets fail closed. Secret fields are
+
   hidden from representations.
   `ticket-admission-telemetry-lineage-trust-manifest-v1` persists key identity,
   opaque key-reference identity, and inclusive capture windows as canonical
@@ -359,6 +375,7 @@ example probe points, not supported-range endpoints.
   in-memory trust; the secret remains unverified until an attestation
   authenticates.
   Duplicate identities, malformed/noncanonical JSON, incomplete or excessive
+
   coverage, reference mismatch, and storage failures fail closed.
   `explicit-ticket-admission-telemetry-lineage-secret-provider-v1` accepts one
   caller-supplied synchronous port. It validates the manifest and request budget
@@ -366,6 +383,7 @@ example probe points, not supported-range endpoints.
   accepts only typed `resolved`, `unavailable`, or `failed` results. Non-success
   stops without retry; repeated explicit resolution performs a fresh provider
   walk.
+
   Secret bytes remain hidden and unverified until attestation authentication.
   `bounded-in-memory-ticket-admission-telemetry-lineage-secret-provider-v1`
   implements one reusable bounded caller-owned synchronous provider over
@@ -380,6 +398,7 @@ example probe points, not supported-range endpoints.
   identity, provider identity, configured limit, secret count, entry tuple,
   canonical
   ordering, shared 32-to-4096-byte key rules, request metadata, and each hidden
+
   key. A
   different provider identity returns typed `failed`; an unknown
   manifest/reference
@@ -395,6 +414,7 @@ example probe points, not supported-range endpoints.
   and performs no discovery, refresh, retry, persistence, logging, worker
   creation,
   certificate rule, PKI operation, algorithm choice, or admission-policy
+
   operation.
   `explicit-async-ticket-admission-telemetry-lineage-secret-provider-v1`
   defines one caller-driven sequential async port over the same manifest-bound
@@ -405,6 +425,7 @@ example probe points, not supported-range endpoints.
   trust materializer; both routes share those contracts. Manifest validation,
   provider identity, and the request budget complete before the first `await`.
   The
+
   provider is awaited once per entry in canonical order and never concurrently.
   Cancellation propagates directly; ordinary provider exceptions become stable
   errors
@@ -429,6 +450,7 @@ example probe points, not supported-range endpoints.
   validate it again. The adapter reads no environment, file, network, process
   credential state, external secret store, or hosted API and adds no retry,
   cache,
+
   refresh, persistence, logging, worker, certificate, PKI, algorithm, or policy.
   `explicit-file-ticket-admission-telemetry-lineage-secret-provider-v1`
   implements one bounded read-only provider over caller-supplied absolute
@@ -441,6 +463,7 @@ example probe points, not supported-range endpoints.
   returns
   `unavailable`; conflicting key/window metadata returns `failed`; all three
   outcomes
+
   occur before any open. An exact match opens the selected path once and reads
   at most
   `max_secret_bytes + 1` bytes. A missing file returns `unavailable`; other read
@@ -450,6 +473,7 @@ example probe points, not supported-range endpoints.
   trailing
   newlines, are preserved. Repeated calls reopen and reread the file, so
   rotation is
+
   caller-controlled and no secret cache exists. The provider does not discover
   paths,
   write files, scan directories, inspect ownership or permissions, validate
@@ -462,6 +486,7 @@ example probe points, not supported-range endpoints.
   Construction and every call revalidate the adapter identity, hidden wrapped
   provider, copied provider identity, secret count, entry and byte limits, and
   callable offloader. Each request is fully validated before the first await; a
+
   provider-identity mismatch returns typed `failed` without awaiting. An exact
   request awaits the offloader once with the same immutable provider and
   request.
@@ -472,6 +497,7 @@ example probe points, not supported-range endpoints.
   Returned results reuse the shared exact type and enum validation; nonresolved
   results cannot carry secret bytes, while resolved bytes must use the exact
   bytes
+
   type and remain within the wrapped provider's 32-to-4096-byte bound. Repeated
   calls offload and reread again. The adapter creates no event loop, task,
   thread,
@@ -484,6 +510,7 @@ example probe points, not supported-range endpoints.
   attestations bind the exact schema-v1 document fingerprint, algorithm,
   recorder,
   completed/failed streams, capture sequence, public-key ID, SHA-256 of exact
+
   caller-owned public-key bytes, and an optional HMAC or signature predecessor.
   Signers return typed `signed`, `unavailable`, or `failed`; verifiers return
   `verified`, `invalid`, `unavailable`, or `failed`. Each explicit operation
@@ -494,6 +521,7 @@ example probe points, not supported-range endpoints.
   plus
   an explicit HMAC-to-signature transition. This boundary supplies no concrete
   signature algorithm, key generation, private-key storage, certificate chain,
+
   PKI, trust discovery, provider lifecycle, or cryptographic security claim.
   `caller-owned-ticket-admission-telemetry-lineage-signature-trust-v1` builds
   an explicit in-memory set of at most 256 unique `(algorithm_id,
@@ -508,6 +536,7 @@ example probe points, not supported-range endpoints.
   independently
   verified items preserve same-key, public-key rotation, algorithm rotation,
   ordered
+
   gap, and fork checks. Duplicate identities, malformed windows, invalid key
   bytes,
   fingerprint mismatch, unknown identities, out-of-window captures, and tampered
@@ -519,6 +548,7 @@ example probe points, not supported-range endpoints.
   algorithm identity, public-key identity, one opaque public-key reference, the
   required exact public-key fingerprint, and inclusive capture windows as
   canonical
+
   key-free JSON. It defaults to 256 entries and 64 KiB, sorts by composite
   identity,
   requires globally unique references, publishes a stable SHA-256 fingerprint,
@@ -533,6 +563,7 @@ example probe points, not supported-range endpoints.
   or
   excessive coverage, reference or fingerprint mismatch, and storage failures
   fail
+
   closed. No public-key bytes, provider, certificate, PKI, trust discovery,
   algorithm selection, or policy authority are supplied.
   `explicit-ticket-admission-telemetry-lineage-public-key-provider-v1` accepts
@@ -545,6 +576,7 @@ example probe points, not supported-range endpoints.
   the
   manifest/provider identities, algorithm/key/reference identities, required
   exact
+
   public-key fingerprint, capture window, and request index. Providers return
   typed
   `resolved`, `unavailable`, or `failed` results. Each entry is called exactly
@@ -556,6 +588,7 @@ example probe points, not supported-range endpoints.
   provider discovery, built-in key service, retry, cache, persistence, hidden
   worker,
   certificate validation, PKI, algorithm selection, or policy authority is
+
   supplied.
   `explicit-async-ticket-admission-telemetry-lineage-public-key-provider-v1`
   accepts one caller-supplied async provider and reuses the synchronous request,
@@ -569,6 +602,7 @@ example probe points, not supported-range endpoints.
   hidden
   parallelism; each entry is awaited exactly once and repeated explicit
   resolution
+
   performs a fresh walk. Typed non-success stops without retry. Ordinary
   provider
   exceptions become stable boundary errors without vendor text, while
@@ -579,6 +613,7 @@ example probe points, not supported-range endpoints.
   session,
   concurrency policy, discovery, retry, cache, persistence, certificate
   validation,
+
   PKI, algorithm selection, or admission authority.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `explicit-async-batch-ticket-admission-telemetry-lineage-public-key-provider-v1`
@@ -596,6 +631,7 @@ example probe points, not supported-range endpoints.
   matching
   cardinality, validates every shared typed item result, propagates
   cancellation, and
+
   converts ordinary provider exceptions to stable errors without vendor text.
   Reversed,
   missing, excessive, foreign, nonresolved-with-bytes, or fingerprint-mismatched
@@ -619,6 +655,7 @@ example probe points, not supported-range endpoints.
   carry
   a hidden callable batch provider. The existing canonical batch boundary then
   runs
+
   once. Every opened session receives exactly one `close` request with a stable
   `completed`, `failed`, or `cancelled` reason; close outcomes are `closed` or
   `failed`. Opening exceptions become stable errors without vendor text and
@@ -626,6 +663,7 @@ example probe points, not supported-range endpoints.
   cancellation propagates without closing. After opening, failure or
   cancellation
   attempts one close. Cancellation propagates only after successful close; close
+
   failure replaces the preceding outcome and fails closed. No built-in service,
   event loop, task, discovery, retry, cache, persistence, certificate
   validation,
@@ -640,6 +678,7 @@ example probe points, not supported-range endpoints.
   exact public-key SHA-256 fingerprint, rejects duplicate composite identities
   and
   references, and sorts entries by reference identity. Key bytes are hidden from
+
   representations. Every explicit lookup revalidates service identity, count,
   tuple,
   ordering, metadata, and exact key bytes. An absent reference returns typed
@@ -648,6 +687,7 @@ example probe points, not supported-range endpoints.
   window returns typed `failed`; only an exact request returns `resolved`. Empty
   services are valid and resolve nothing. The object is reusable caller-owned
   memory,
+
   not an automatic or hidden cache. It performs no file, environment, network,
   discovery, mutation, retry, persistence, async adaptation, certificate
   validation,
@@ -670,6 +710,7 @@ example probe points, not supported-range endpoints.
   existing sequential async boundary still performs manifest preflight,
   canonical
   ordering, fingerprint checks, stable exception wrapping, and trust
+
   construction.
   Empty manifests perform no lookup, while explicit adapter construction already
   validates the service. The adapter creates no event loop, task, sleep,
@@ -695,6 +736,7 @@ example probe points, not supported-range endpoints.
   one
   hidden positional result tuple, preserving typed `resolved`, `unavailable`,
   and
+
   `failed` outcomes. Direct empty batches are valid. The existing batch trust
   boundary
   still performs manifest preflight, one nonempty provider await, exact
@@ -720,6 +762,7 @@ example probe points, not supported-range endpoints.
   `failed`
   without replacing active state. Close requests require the exact persisted
   manifest
+
   fingerprint, provider identity, and request count. A mismatch returns `failed`
   and
   retains active state; an exact close returns `closed`, clears the active
@@ -736,6 +779,7 @@ example probe points, not supported-range endpoints.
   PKI, algorithm selection, or policy operation.
   `ticket-admission-telemetry-lineage-public-key-bundle-v1` persists one
   explicit
+
   bounded public-key service as canonical compact UTF-8 JSON. Unlike the
   key-free
   trust manifest, this separate document intentionally contains public-key bytes
@@ -750,6 +794,7 @@ example probe points, not supported-range endpoints.
   and
   is bounded by 256 entries and 1 MiB by default. Explicit writes atomically
   replace
+
   one caller-selected path. Explicit reads consume at most the configured byte
   limit.
   Each explicit load rereads the path, fingerprints canonical bytes, and builds
@@ -762,6 +807,7 @@ example probe points, not supported-range endpoints.
   policy
   operation.
   `explicit-ticket-admission-telemetry-lineage-public-key-bundle-fetcher-v1`
+
   defines one synchronous transport-neutral fetch boundary. The caller
   constructs an
   exact immutable request binding source identity, resource identity, provider
@@ -773,6 +819,7 @@ example probe points, not supported-range endpoints.
   typed
   `fetched`, `unavailable`, or `failed` result enum. Nonfetched results cannot
   carry
+
   bytes. A fetched result requires exact nonempty bytes within the requested
   limit,
   canonical bundle decoding, a newly materialized caller-owned memory provider,
@@ -801,6 +848,7 @@ example probe points, not supported-range endpoints.
   become
   stable async-boundary errors without vendor text, while cancellation
   propagates
+
   directly. Repeated explicit invocations await the transport again and retain
   no
   cache. The boundary creates no event loop, task, worker, concurrency policy,
@@ -823,6 +871,7 @@ example probe points, not supported-range endpoints.
   and
   closes once. Status 200 may return `fetched`; 404 and 410 return
   `unavailable`; all
+
   other statuses, including redirects, return `failed`. Successful responses
   require
   JSON content type with optional UTF-8 charset, absent or identity content
@@ -841,6 +890,7 @@ example probe points, not supported-range endpoints.
   `offloaded-async-https-ticket-admission-lineage-public-key-bundle-fetcher-v1`
   adapts the exact synchronous HTTPS fetcher to the shared async port through
   one
+
   caller-supplied offloader. Construction and every call fully revalidate the
   wrapped
   HTTPS fetcher, stable adapter identity, copied fetcher/source/resource
@@ -851,6 +901,7 @@ example probe points, not supported-range endpoints.
   matched request awaits the offloader exactly once with the same exact fetcher
   and
   request. The caller alone decides whether that await runs inline, in a thread,
+
   through an executor, or through another scheduling mechanism. Cancellation
   propagates directly. Ordinary offloader exceptions become stable adapter
   errors
@@ -860,6 +911,7 @@ example probe points, not supported-range endpoints.
   they reach
   the outer async materialization boundary. Repeated calls revalidate and
   offload
+
   again. The adapter creates no event loop, task, thread, executor, worker,
   retry,
   redirect, cache, trust root, credential, hosted-service policy, algorithm
@@ -873,6 +925,7 @@ example probe points, not supported-range endpoints.
   authorization-provider
   identity, callable provider, and positive byte limit before the provider is
   called.
+
   The default limit is 4096 ASCII bytes and the supported maximum is 16384. One
   immutable request carries only the bundle fingerprint and nonsecret provider,
   resource, and source identities. Each successful preflight makes exactly one
@@ -881,6 +934,7 @@ example probe points, not supported-range endpoints.
   vendor text; nonresolved outcomes cannot carry credential text. A resolved
   value
   must be exact nonempty ASCII field text containing only spaces and visible
+
   characters, with no edge spaces and no normalization. The value is hidden from
   representations and returned only in caller-owned state with its exact byte
   count
@@ -896,6 +950,7 @@ example probe points, not supported-range endpoints.
   `explicit-async-ticket-admission-lineage-https-authorization-provider-v1`
   defines one caller-driven async port for resolving the same bounded opaque
   HTTPS
+
   `Authorization` value. The synchronous port now exposes one immutable
   nonsecret
   preflight plus one exact result materializer, and both sync and async
@@ -909,6 +964,7 @@ example probe points, not supported-range endpoints.
   One successful preflight awaits the caller-supplied provider exactly once with
   the
   same exact immutable request. The provider controls whether that await
+
   suspends.
   Cancellation propagates directly. Ordinary provider exceptions become stable
   async
@@ -920,6 +976,7 @@ example probe points, not supported-range endpoints.
   metadata as
   the synchronous path. Repeated explicit resolutions await again with no cache
   or
+
   refresh. The port creates no event loop, task, thread, executor, worker,
   retry,
   discovery, refresh, header injection, hosted-service policy, certificate rule,
@@ -937,6 +994,7 @@ example probe points, not supported-range endpoints.
   4096
   at the supported maximum, requires canonical deterministic ordering, and
   rejects
+
   duplicate request bindings. Construction and every call revalidate the exact
   service
   type and identity, provider identity, limits, entry tuple, shared request
@@ -955,6 +1013,7 @@ example probe points, not supported-range endpoints.
   performs no
   discovery, refresh, retry, persistence, logging, task creation, certificate
   rule,
+
   PKI operation, algorithm choice, or admission-policy operation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `offloaded-async-file-ticket-admission-lineage-https-authorization-provider-v1`
@@ -970,6 +1029,7 @@ example probe points, not supported-range endpoints.
   offloader exactly once with the same exact provider and immutable request. The
   caller alone chooses whether the file read completes inline, suspends, or runs
   in
+
   a caller-owned thread or executor. Cancellation propagates directly. Ordinary
   offloader exceptions become stable adapter errors without path or vendor text.
   Returned results are revalidated after the await, including exact result type
@@ -977,6 +1037,7 @@ example probe points, not supported-range endpoints.
   enum, nonresolved payload absence, canonical ASCII text, and the wrapped
   provider
   byte limit for resolved values. Repeated calls offload and reread the file so
+
   rotation and removal remain visible without a cache. The adapter creates no
   event
   loop, task, thread, executor, worker, discovery, retry, refresh, persistence,
@@ -990,6 +1051,7 @@ example probe points, not supported-range endpoints.
   perform no file I/O; every call revalidates the exact service, provider
   identity,
   copied authorization count, entry and byte limits, canonical ordering, request
+
   metadata, and absolute paths before lookup. A provider-identity mismatch
   returns
   typed `failed` without I/O, while an unmatched request returns `unavailable`.
@@ -1002,6 +1064,7 @@ example probe points, not supported-range endpoints.
   bytes, and NUL return `failed` without path or system text. Valid ASCII text
   is
   revalidated through the shared Authorization materializer without trimming or
+
   normalization. Repeated calls reread the file so rotation and removal remain
   visible without a cache. The provider performs no discovery, writes,
   permission
@@ -1025,6 +1088,7 @@ example probe points, not supported-range endpoints.
   provider-identity
   mismatch returns typed `failed`; a valid unmatched request returns
   `unavailable`;
+
   only an exact match performs one lookup of the caller-named variable. A
   missing
   variable returns `unavailable`; an operating-system or Unicode lookup failure,
@@ -1042,6 +1106,7 @@ example probe points, not supported-range endpoints.
   chooses an
   Authorization scheme, refreshes credentials, validates certificates,
   distributes
+
   PKI, selects algorithms, or changes admission policy.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `offloaded-async-environment-ticket-admission-lineage-https-authorization-provider-v1`
@@ -1057,6 +1122,7 @@ example probe points, not supported-range endpoints.
   the offloader exactly once with the same exact provider and immutable request.
   The caller alone chooses whether the environment read completes inline, runs
   in
+
   a thread or executor, or suspends by another mechanism. Cancellation
   propagates
   directly. Ordinary offloader exceptions become stable adapter errors without
@@ -1064,6 +1130,7 @@ example probe points, not supported-range endpoints.
   exact enum and type, nonresolved payload absence, and bounded canonical ASCII
   text for resolved values. Repeated calls offload and reread the environment,
   so
+
   rotation and removal remain visible without a cache. The adapter creates no
   event
   loop, task, thread, executor, worker, discovery, refresh, retry, persistence,
@@ -1079,6 +1146,7 @@ example probe points, not supported-range endpoints.
   entry limit, and authorization-provider identity. A direct await delegates
   once to
   the same synchronous memory lookup and returns the same typed `resolved`,
+
   `unavailable`, or `failed` result before any other caller task can run. The
   shared
   async Authorization boundary can therefore materialize the exact hidden value
@@ -1096,6 +1164,7 @@ example probe points, not supported-range endpoints.
   rule, PKI operation, algorithm choice, or admission-policy operation.
   `authorized-https-ticket-admission-lineage-public-key-bundle-fetcher-v1`
   binds one exact synchronous HTTPS fetcher to one exact caller-owned resolved
+
   Authorization value. Construction and every call revalidate the wrapped HTTPS
   fetcher, resolved Authorization value, stable adapter identity, copied byte
   count,
@@ -1116,6 +1185,7 @@ example probe points, not supported-range endpoints.
   hidden state, normalizes or selects a scheme, logs credential text, discovers
   an
   endpoint, creates workers, owns a hosted-service API, validates certificates,
+
   distributes PKI, selects a signature algorithm, or changes admission policy.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
   `offloaded-async-authorized-https-ticket-admission-lineage-key-bundle-fetcher-v1`
@@ -1136,6 +1206,7 @@ example probe points, not supported-range endpoints.
   typed
   result and request byte limit. The caller alone decides whether blocking work
   runs
+
   inline, in a thread, through an executor, or by another scheduling mechanism.
   Cancellation propagates directly. Ordinary offloader exceptions become stable
   adapter errors without vendor text. Repeated calls offload again but never
@@ -1145,6 +1216,7 @@ example probe points, not supported-range endpoints.
   worker, retry, redirect, cache, trust root, credential provider,
   hosted-service
   policy, certificate rule, PKI operation, algorithm choice, or admission-policy
+
   operation.
   The built-in HMAC-secret implementations are the bounded caller-owned memory
   service, its inline sequential async adapter, the explicit read-only file
@@ -1170,6 +1242,7 @@ example probe points, not supported-range endpoints.
   No bundle or session is loaded automatically; there is no
   discovery, retry, retained
   cache, persistence, automatic trust
+
   loading, snapshot merge, route recommendation, or policy authority. Other
   hosts,
   Python versions,

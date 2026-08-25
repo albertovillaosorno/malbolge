@@ -171,6 +171,7 @@ Struct fields appear in declaration order. Each field starts at
 field alignment, capped by the ABI maximum, and struct size is rounded up to
 that alignment. Arrays use element size rounded to the element alignment as
 their stride. A union places every member at offset zero; its size and alignment
+
 are the maximum required by its admitted members, rounded as above.
 
 Flexible array members are admitted where standard C permits them. Their

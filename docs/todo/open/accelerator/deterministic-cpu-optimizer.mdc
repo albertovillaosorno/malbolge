@@ -71,6 +71,7 @@ baseline for accelerator implementations.
   primitive evaluation with stable duplicate pruning, deterministic seed/budget
   ordering, and an independent CPU verifier; the identical strategy shape is
   also
+
   exercised by optional CUDA evaluation. `python -m optimizer.cli` can execute
   these registered CPU references from versioned configuration and canonical
   problem bytes while emitting reproducible untrusted-proposal evidence. These
@@ -79,6 +80,7 @@ baseline for accelerator implementations.
   median on the RTX 4060, preserving the 0.972x CUDA/CPU negative result instead
   of claiming acceleration. The companion phase profile attributes 97.5% of CPU
   median total time to named phases; batch construction, backend evaluation, and
+
   proposal selection dominate. Reusable prepared search state is now active for
   the CPU baseline: request/batch validation happens once, repeated execution
   preserves exact untrusted proposals, and matching CUDA capacity may consume
@@ -89,12 +91,14 @@ baseline for accelerator implementations.
   evaluation and 19.6% in proposal selection. Fixed-width packed primitive
   evidence
   now removes per-candidate evidence object/materialization from the CPU search
+
   path while preserving generic item compatibility and request-order identity.
   Retained CPU ordinary/prepared medians are now 211.693/77.309 ms,
   1.387x/1.922x faster than pre-packed. Backend evaluation falls 2.326x and
   selection 1.369x. Prepared rotate state now stores one validated decoded
   `PrimitiveBatch`, removing repeated candidate validation/decode from the CPU
   path. Retained CPU prepared median is 43.129 ms (1.792x better), and backend
+
   evaluation improves 2.801x. Ordinary CPU regresses 6.6%. Exact primitive
   preparation now seals validation once, and the CPU prepared port consumes that
   proof directly. The resident-session run records 46.232 ms CPU prepared, 7.2%
@@ -103,6 +107,7 @@ baseline for accelerator implementations.
   CPU state now reuses an immutable exact 59,049-member proposal index instead
   of
   rebuilding a dictionary; ordinary execution and fail-closed payload checks
+
   remain.
   Retained CPU prepared median is 26.797 ms (1.725x better), and selection
   improves
@@ -115,6 +120,7 @@ baseline for accelerator implementations.
   replaces the Python value loop while preserving domain failure. Retained CPU
   prepared median is 14.058 ms (1.086x better), and backend evaluation improves
   1.091x to 13.190 ms. Prepared rotate now reuses a scalar-derived 59,049-entry
+
   table while ordinary CPU stays scalar. Exhaustive equality and benchmark
   counters
   require 16 evaluations/full cardinality. Retained CPU prepared median is 3.313
@@ -124,6 +130,7 @@ baseline for accelerator implementations.
   is 1.440x faster than same-run CUDA. Result validation/packing is next.
   Translation-validation integration, real
   synthesis generators, AArch64 execution evidence, and broader performance
+
   measurements remain open.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `translation-validation`, `compiler-algorithm-experimentation-platform`.

@@ -60,6 +60,7 @@ annotated offset/line/column for every loaded position.
 `Machine`, `ExecutionMachine`, and `ProfileMachine` expose explicit annotated
 constructors; their existing raw `from_source` APIs remain unchanged. After
 canonicalization, the ordinary classic/profile loader remains final admission
+
 authority.
 
 The current formatter is structure-neutral. C/IR-aligned comments and breaks

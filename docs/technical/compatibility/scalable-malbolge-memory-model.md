@@ -142,6 +142,7 @@ than silently changing classic types or loader behavior. `ProfileMachine` is the
 explicit runtime surface for current scalable execution. Native tiers, CUDA
 resident execution, decompiler output, runtime capability checks, and benchmark
 workloads consume canonical profile geometry. Future compiler and integrated
+
 verifier implementations own their adoption before becoming executable.
 
 ## Invariants

@@ -9,4 +9,5 @@ same algorithm. `experiment.toml` fixes reproducible experiment identity and
 starts as `experimental`; promotion, rejection, and retirement must satisfy the
 methodology contract before changing that state. Put reproducible generated
 artifacts in `out/`, which is ignored by Git. Ordinary product transformations
+
 such as DOOM amalgamation and cleanup do not belong here.

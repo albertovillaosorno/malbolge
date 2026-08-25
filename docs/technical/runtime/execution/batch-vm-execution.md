@@ -65,6 +65,7 @@ One explicit worker measured 55,930,200 ns (0.99x), exposing thread overhead;
 8 measured 9,839,800 ns (5.65x). Every implementation produced the same
 checksum. These data demonstrate this classic workload on this host only and are
 not a
+
 portable speedup guarantee. A separate RTX 4060 current-profile CUDA baseline
 now measures complete-snapshot throughput, but it does not include a matched CPU
 baseline and therefore establishes no CPU-relative current-profile speedup.
@@ -99,6 +100,7 @@ provenance. Live classic and current-profile CUDA integration tests now require
 at least one completion to be accepted with `Backend` origin before their
 product
 route counts as exercised, then compare complete results with the sequential CPU
+
 baseline.
 The original retained current-profile CUDA matrix reached about 40.08 VMs/s at
 batch 32 for a 64-step complete-snapshot workload. Shared-memory device
@@ -108,6 +110,7 @@ keeps complete state on-device across repeated segments and reaches about
 2.00 million 64-step segments/s at batch 128, but its timed region excludes
 setup, observation, and snapshots. Reusable validated profile inputs now avoid
 rescanning the full 4,782,969-word image on each call; the retained validated
+
 input matrix reaches about 93.68 complete-snapshot VMs/s at batch 32. The
 direct-snapshot path now downloads device memory into final result arrays
 without

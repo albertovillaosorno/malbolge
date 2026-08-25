@@ -59,6 +59,7 @@ coalesces adjacent free blocks, and trims a free tail. Every public heap
 operation validates the complete canonical block chain before mutation, so even
 a corrupt later header prevents an earlier allocation/free/resize from changing
 state or publishing a result. Zero-size allocation has
+
 the implementation-defined C choice of deterministic null. Zeroed allocation
 checks multiplication overflow before publication. Resize preserves the old
 allocation on exhaustion and either changes the block in place or copies the
@@ -100,6 +101,7 @@ intrinsic, and returns the emitted unsigned byte. The selected profile output
 effect is infallible, so its `putchar` specialization always returns that
 emitted byte. Independent test intrinsics execute these wrappers without host
 streams. The production object depends only on the two intrinsic symbols plus
+
 the pure mapping helpers. The routines intentionally remain
 *unavailable* until `ternary-machine-lowering` proves the intrinsic identities
 realize the selected-profile `/` and `<` operations.
@@ -123,6 +125,7 @@ and precision, classic and `wN`/`wfN` length modifiers, and closed conversion
 tags are preserved without consuming arguments. Decimal overflow, incomplete
 directives, and unknown specifiers fail before token publication. A separate
 directive-admission step then enforces C23 conversion/length/precision/flag
+
 relationships and limits guest `wN`/`wfN` support to 8, 16, 32, and 64 bits.
 
 The canonical promoted-block vararg cursor and transactional argument resolver
@@ -133,6 +136,7 @@ explicit bits. C permits `%p` output to be implementation-defined, so the guest
 contract fixes null as `0` and non-null object pointers as lowercase `0x` plus
 the canonical 32-bit guest pointer encoding. No host address is exposed. `%lc`
 fails closed because version one defines `wchar_t` but has no `wint_t`
+
 authority. `%s` and `%n` remain separate because they require guest-memory
 dereference/write policy.
 
@@ -155,6 +159,7 @@ failure, promotion-aware scalar narrowing, and exact guest-pointer `%p` text.
 Windows i686/x64/ARM64 syntax
 checks, native execution, and wasm32 symbol inspection keep the formatting
 layers independent of host formatting. The typed vectors also pass pinned
+
 ASan/UBSan and path-sensitive Clang analysis.
 
 ### Exact binary64 math
@@ -238,6 +243,7 @@ lowered through host-dependent behavior.
   allocator stress sequence independently parses the raw heap chain after every
   operation. The same vectors pass pinned ASan/UBSan and Clang static analysis.
   Freestanding runtime objects are checked under all three reviewed Windows ABIs
+
   so compiler-injected library helpers cannot silently enter the runtime core.
 - Dependency boundary: executable ternary/Malbolge lowering is intentionally
   downstream under `ternary-machine-lowering`; this contract supplies its stable

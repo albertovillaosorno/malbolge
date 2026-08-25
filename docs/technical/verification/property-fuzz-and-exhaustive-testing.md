@@ -49,6 +49,7 @@ output, and termination state. The classic interpreter-mode
 `InvalidEncryptionTarget` are normalized only for this portable atomic-rejection
 comparison; their public diagnostics remain distinct. Final comparison checks
 all 59,049 memory words.
+
 The two runtime APIs do not share private transition helpers in this test.
 
 ### Exhaustive finite domains

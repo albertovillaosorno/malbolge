@@ -22,6 +22,7 @@ retaining the raw byte span that produced each token or directive-end marker.
 This is
 the domain hook used by generic semantic compatible placement to preserve
 candidate
+
 comments and formatting outside transformed semantic regions. A read-only source
 +
 oracle smoke mapped 273 C/header files with zero identity mismatches.
@@ -57,6 +58,7 @@ repository-owned freestanding harness, links a no-CRT PE, executes it, and
 records
 the exit code as behavior evidence. The harness and header shims contain no
 copied
+
 DOOM source. Additional compatibility/bug probes stay in the DOOM domain.
 Generic
 matching, probe execution, source binding, reconstruction, and Rust emission

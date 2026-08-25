@@ -32,6 +32,7 @@ Direct problem objects require immutable tuple/bytes storage, while classic
 rotate/crazy target parameters and candidates require exact integers. Mutable
 containers, boolean or floating-point words, and mutable encoded payloads fail
 before search. The encoded problem preserves the complete supplied corpus,
+
 including exact duplicates, for replay identity. Before assigning logical
 candidate IDs,
 `src/optimization/optimizer/application/optimizer/pruning.py` partitions
@@ -145,6 +146,7 @@ fails explicitly without changing correctness rules.
   admission. The prepared phase profile places 125.412 ms, or 79.9% of CPU
   median
   total time, in backend evaluation and 30.796 ms, or 19.6%, in proposal
+
   selection.
   The CPU primitive bridge now emits fixed-width packed evidence, so search
   reads
@@ -153,6 +155,7 @@ fails explicitly without changing correctness rules.
   packed
   evidence lowers CPU ordinary/prepared medians from 293.564/148.590 to
   211.693/77.309 ms (1.387x/1.922x). Backend evaluation falls from 125.412 to
+
   53.907 ms (2.326x) and selection from 30.796 to 22.502 ms (1.369x). Rotate
   preparation now validates/decodes the exact candidate batch once and stores a
   hardware-neutral `PrimitiveBatch` in the strategy proof. Repeated CPU
@@ -162,6 +165,7 @@ fails explicitly without changing correctness rules.
   median falls from 77.309 to 43.129 ms (1.792x), and backend evaluation from
   53.907 to 19.246 ms (2.801x). Ordinary CPU regresses 6.6% because it
   constructs
+
   the proof locally. `PreparedPrimitiveBatch` now seals validation once and the
   CPU
   prepared port consumes it without a second scan. In the resident-session run
@@ -174,6 +178,7 @@ fails explicitly without changing correctness rules.
   longer
   rebuilds the 59,049-entry dictionary. Ordinary execution is unchanged and
   forged
+
   payloads still fail closed. Retained CPU prepared median reaches 26.797 ms,
   1.725x faster than the resident baseline, while selection falls from 41.529 to
   11.801 ms (3.519x). Improved ordinary/backend controls bound total
@@ -182,12 +187,14 @@ fails explicitly without changing correctness rules.
   only positions that survive pruning/seed/budget. It reads/verifies evidence at
   those positions instead of scanning every packed word; ordinary CPU search
   keeps
+
   the scan. Missing/excluded candidates and nonmatching evidence produce no
   proposal. Retained CPU prepared median reaches 15.266 ms, 1.755x faster than
   indexed membership, while selection falls from 11.801 ms to 13.2 us
   (894.008x).
   Backend evaluation remains 14.387 ms and changes only 1.034x. Primitive result
   validation now uses exact tuple extrema instead of a Python per-value loop and
+
   still rejects negative or above-domain output. Retained CPU prepared median
   falls
   from 15.266 to 14.058 ms (1.086x), and backend evaluation from 14.387 to
@@ -199,6 +206,7 @@ fails explicitly without changing correctness rules.
   diagnostics require 16 prepared evaluations plus full table cardinality.
   Retained
   CPU prepared median falls from 14.058 to 3.313 ms (4.243x), while backend
+
   evaluation falls from 13.190 to 2.906 ms (4.540x). CPU ordinary is effectively
   unchanged and CPU prepared is 1.440x faster than same-run CUDA. Result
   validation/packing is the next CPU target.

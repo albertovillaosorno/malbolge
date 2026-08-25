@@ -10,6 +10,7 @@ The run used clean source commit
 has 15 retained samples; each traced-memory metric has five. No outliers were
 removed.
 Workload construction, CUDA/NVRTC adapter setup, and trusted result admission are
+
 outside timed intervals. Cold preparation runs in a fresh Python process per sample.
 
 ## Protocol

@@ -21,6 +21,7 @@ The host-specific timing result is negative. Full-domain median strategy time is
 projection median time is 2,931,140,300 ns with observed range
 2,234,618,200–3,064,837,900 ns, about 1.28 times the baseline median. The ranges
 overlap. On this Python implementation and host, exact projection/preparation
+
 overhead outweighs the eliminated independent candidate checks in elapsed time.
 No runtime-speedup claim is supported by this run.
 

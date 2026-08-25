@@ -71,4 +71,5 @@ ownership. Callers choosing the workspace accept overwrite/alias semantics and a
 upfront retained-memory commitment. The next measured boundary is page-locking or
 host registration of these stable caller-owned arrays, with a bounded memory budget,
 explicit fallback, exact result preservation, and no change to ordinary ownership.
+
 Batch-one benefit must be treated as marginal until broader hardware repeats it.

@@ -56,6 +56,7 @@ historical undefined behavior or the ten-trit resource ceiling. Validate profile
 edits with `python
 src/automation/repository/composition/scripts/validate/target_profile.py` and
 the Python compatibility tests.
+
 The safe Rust runtime has two explicit interpreters. `Machine` and
 `ExecutionMachine` remain classic-capability and preflight against
 `safe-rust-classic`; they must never silently execute `malbolge-2026` through
@@ -66,6 +67,7 @@ and preflights against `safe-rust-profiled`, currently up to 14 trits and
 `malbolge.json` and must remain byte-exact with the validator renderer.
 Profile fingerprints use `malbolge-profile-v1`; profile ID/version/geometry and
 semantics are hashed, while registry `kind` is intentionally excluded so a
+
 current-to-versioned transition cannot rewrite historical artifact identity.
 The historical Ben Olmstead C interpreter is immutable historical evidence and a
 differential oracle only on its documented agreement subset. Do not edit it to
@@ -73,6 +75,7 @@ make modern behavior easier to implement.
 Version-one extended `.malbolge` capsules use a fixed seven-byte historical
 fallback plus a space/tab-only `MALBCAP1` sideband. Modern code must parse and
 validate the sideband before payload loading; old tooling sees only the
+
 fallback.
 Do not treat the fallback or its isolated H-001 behavior as modern semantics.
 
@@ -89,6 +92,7 @@ or profile-driven VM requests own disjoint state, explicit `LogicalTaskId` order
 controls result/join order, and worker completion order is never semantic. Do
 not
 add a guest thread model or treat arbitrary shared-effect work as independent by
+
 assertion.
 
 Large or heuristic components are untrusted. CUDA, PyTorch, stochastic search,

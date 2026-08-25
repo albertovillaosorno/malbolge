@@ -37,6 +37,7 @@ and post-step encryption use the normative 94-entry translation constants in
 semantics. Runtime paths require no dynamic table initialization, and exhaustive
 independent tests cover every finite table and translation domain. A custom
 release benchmark emits raw scalar/table timing samples with matching
+
 deterministic checksums.
 
 Post-commit measurements on `888b492` retain 15 raw samples per

@@ -95,6 +95,7 @@ minimum-rolling
 fallback covers small/sparse inputs, and coverage is measured over unique
 SHA-256
 digests. These fingerprints are lineage evidence, not encryption keys or a
+
 completed source-binding construction.
 
 ## Implemented Tree Admission
@@ -117,6 +118,7 @@ reference file rather than over one global anchor pool, and policy additionally
 requires a minimum number of files with real matched anchors above the
 configured
 per-file threshold. A single strongly matching file cannot satisfy a distributed
+
 source-evidence requirement.
 
 Structural admission is independently necessary but not sufficient. `gate.py`
@@ -144,6 +146,7 @@ IDs or artifacts beneath authorized roots; path arguments are structured under
 `source`, `repository`, or per-program `scratch` roots. Timeouts and captured
 output
 are bounded. Programs run against an isolated source mirror, and modifying that
+
 mirror invalidates the probe while leaving user input untouched.
 
 `behavior_programs.py` authors identity baselines from the original source and
@@ -254,6 +257,7 @@ T-of-N layer. Source/target snapshots and all protected instruction metadata are
 AEAD associated data, so metadata tampering fails before any output is
 published.
 The recovered plaintext exists only in the temporary in-memory exact plan passed
+
 to the already-transactional materializer.
 
 The construction remains deliberately scoped. Polynomial coefficients and the
@@ -270,6 +274,7 @@ computational
 source binding and authenticated reconstruction, not information-theoretic
 secrecy or
 DRM; an actor who already possesses the admitted source is intentionally able to
+
 recover the key. The Python Poly1305 path is reference code only. The emitted
 exact
 runtime derives raw anchor evidence directly from the actual source tree rather
@@ -313,6 +318,7 @@ below 80 characters; generated consumers do not need a line-length exception.
 Exact emission deliberately uses raw source bytes because exact mode already
 requires a byte-identical source snapshot. A future compatible/fuzzy emitter
 must
+
 instead reproduce the consumer-selected canonical identity and behavior gates.
 
 Required negative tests include:
@@ -332,6 +338,7 @@ the candidate bytes between them, so insertions inside an unchanged range are
 preserved instead of shifting absolute offsets. Whole-file source copies
 likewise
 preserve candidate bytes. Missing, duplicate, reversed, or contracted boundaries
+
 fail before the staging tree is published.
 
 This layer is intentionally **not** the public compatible transform yet. Oracle
@@ -358,6 +365,7 @@ to candidate raw bytes, changes only that raw region, and then re-maps the
 result to
 prove the resulting canonical unit sequence is exactly the intended one.
 Ambiguous,
+
 missing, overlapping, reordered, or token-merging seams fail closed.
 
 The DOOM domain now supplies `mapped_c_identity()`. It preserves the established
@@ -396,6 +404,7 @@ before
 staging. Compatible instructions, plan envelopes, and request envelopes reject
 foreign or contradictory metadata before filesystem work. Consumer mappers must
 return exact mapped views or `None`; mapper and postcondition exceptions remain
+
 inside the compatible error boundary. Named corrections can bind to semantic
 edit indexes; behavior routes apply or skip those edits while unbound or missing
 routes reject before staging. Target-only path conflicts, opaque-file drift, and
@@ -424,6 +433,7 @@ compared with 2,116,232 target-only bytes in the exact baseline. These are
 authoring
 measurements, not yet a distributable compatible transform. Generic named-edit
 correction binding and apply/skip routing now exist, but consumer domains still
+
 need to author those bindings and DOOM has no validated bug probes yet.
 Compatible target material still needs source-bound serialization/runtime
 support.

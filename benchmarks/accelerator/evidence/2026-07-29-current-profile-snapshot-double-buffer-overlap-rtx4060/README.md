@@ -77,4 +77,5 @@ mechanism but its 1.003x median effect is very small. The existing synchronous
 workspace remains the minimum-memory choice. Registration failure or a one-bank
 budget continues through exact synchronous fallback. Broader devices, other
 callback workloads, adaptive bank/window selection, and any kernel/transfer overlap
+
 remain open.

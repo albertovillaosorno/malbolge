@@ -21,6 +21,7 @@ median time is 244,447,500 ns with observed range
 202,653,700–268,365,700 ns, about 2.54 times the raw median. On this Python
 implementation and host, the exact residue computation costs more wall time than
 it saves through fewer semantic-verifier calls. No runtime-speedup claim is
+
 supported by this run.
 
 This run is deliberately narrow. It uses one deterministic synthetic history

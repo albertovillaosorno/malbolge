@@ -151,6 +151,7 @@ stores one shared complete root plus immutable exact trace patches. Applying a
 patch validates every `before` word against the current persistent view; empty
 deltas reuse the current node. In the current-profile fixture, every traced step
 is applied to the persistent chain and `materialize()` is compared to the full
+
 runtime checkpoint after that same step. All complete memories match. A forged
 `before` value is rejected before insertion.
 
@@ -250,6 +251,7 @@ runtime checkpoint exactly. Bucket identity combines incremental component
 digests in constant-size work. Exact state equality remains the merge authority:
 a forced constant digest does not merge distinct states, while exact replay
 returns the same node ID. Performance remains unclaimed until this graph is
+
 benchmarked directly against `ProfileStateGraph` full-checkpoint insert/replay.
 
 Post-commit state-identity measurement at `f317f3e` removes complete checkpoint
@@ -321,6 +323,7 @@ a
 VM error before any verified region exists. This establishes a safe exact-state
 specialization/deoptimization baseline for future AOT/JIT code. It does **not**
 yet establish a reduced stable-region guard: that requires explicit future read
+
 and dependency evidence so irrelevant state can be omitted from the guard.
 
 Post-commit region timing at `f16785d` confirms the desired verifier/hot-guard
@@ -348,6 +351,7 @@ Every instruction family plus rejected jump encryption has an exact
 role/address/
 value fixture. Rejected transitions retain reads performed before the error
 while
+
 committing no memory delta.
 
 This enables a standard read-before-write live-in calculation for a verified
@@ -422,6 +426,7 @@ profile fingerprint, format version, dependency set, budget, and outcome and
 require verifier rejection. Field-level fixtures additionally mutate effect
 before/after observations, input, output, and memory delta independently; exact
 reprojection rejects each change. Admitted shortcut/deopt results equal the
+
 existing verified-region baselines. This is a portable effect-IR research
 precursor, not yet x86-64/AArch64 bytes or a stable serialized native cache
 format.

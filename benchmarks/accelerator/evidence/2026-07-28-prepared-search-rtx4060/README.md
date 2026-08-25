@@ -10,6 +10,7 @@ The run used a clean detached worktree at source commit
 measurement. The same strategy-bound proof was reused by both CPU and CUDA.
 Preparation, adapter construction, and NVRTC/module setup are outside timed
 intervals. One warmup preceded 15 fixed interleaved samples in this order: CPU
+
 ordinary, CPU prepared, CUDA ordinary, CUDA prepared. Every sample produced the
 same proposal and passed independent CPU admission.
 

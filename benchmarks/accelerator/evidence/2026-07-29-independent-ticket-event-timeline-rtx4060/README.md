@@ -60,4 +60,5 @@ allocation, H-to-D upload, D-to-H download, cleanup, and host orchestration stil
 dominate the complete ticket wall interval. This is not kernel-transfer overlap,
 not a pure kernel-duration profile, not a cross-device result, and not an adaptive
 stream-policy promotion. CUDA permits elapsed intervals in non-null streams to
+
 include interleaved work, and event instrumentation can perturb scheduling.

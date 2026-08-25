@@ -67,6 +67,7 @@ files against deterministic snapshot SHA-256
 external game-data/test input and is deliberately outside that source-code pin.
 `algorithms/doom/quality/in/doom/` is the manually modernized oracle used to
 author
+
 and test the generated transform. Neither tree is repository source.
 
 `out/doom_fixed/` is the reproducible materialization result. For the exact
@@ -145,6 +146,7 @@ span 11025, 16000, 17990, 22050, and 44100 Hz. Music is now guest-owned as well:
 deterministic integer-only procedural synthesizer into the same PCM stream. The
 Freedoom fixture currently contains 41 MIDI tracks; all 41 pass the guest parser
 and synthesis-start harness, including files with running status, tempo changes,
+
 SysEx, pitch bend, controller automation, and up to 19 tracks. The procedural
 synth is a portability baseline rather than an OPL/General-MIDI fidelity claim;
 a
@@ -207,6 +209,7 @@ library. Several `doom_host.h` services began as bootstrap conveniences, but the
 memory
 and diagnostic boundaries are now cleaner. The host no longer allocates guest
 objects: it exposes one stable writable guest-memory region, and `Z_Malloc` owns
+
 allocation policy inside that region. Fatal-message formatting also happens in
 the guest; the host receives already formatted text bytes. Music parsing,
 timing,
@@ -229,6 +232,7 @@ that syntax analysis alone could not, including non-NUL-terminated eight-byte
 WAD names escaping into C string lookup, a visplane sentinel whose signed
 widening reversed the ordering relied on by the historical span builder, and a
 plane-stepping formula that incorrectly used the physical screen center instead
+
 of the preserved focal length in widescreen views.
 
 The current source ABI has 24 external operations and carries a versioned set of
@@ -241,6 +245,7 @@ indexed-frame presentation does not imply that Malbolge contains a literal
 realize
 the same capability through different guarded call mechanisms while preserving
 the same guest-visible ABI. Argument marshalling and the VM call-frame format
+
 belong to the general runtime ABI, not to DOOM-specific source code.
 
 `doom_host.h` is a source-level capability ABI, not a commitment to a literal
@@ -261,6 +266,7 @@ makes
 native translation harder, not impossible: versioned code-state guards, cache
 invalidation, and deoptimization can accelerate stable or observed regions while
 the interpreter remains the semantic fallback. Interpreter-only execution must
+
 remain available.
 
 A single `.malbolge` file cannot literally execute itself on Windows, macOS, and
@@ -282,6 +288,7 @@ the same generic `DoomHost_File*` namespace: for example, the guest may open
 `data/wad/freedoom1.wad` without knowing whether the runner resolves that name
 to
 bytes carried inside the payload or to an external file. No Freedoom-specific
+
 syscall, native filesystem ABI, or guest-side libc is required.
 
 A freestanding Windows packaging harness validates this model by assembling the
@@ -323,6 +330,7 @@ are
 added after earlier files and therefore participate in DOOM's normal later-lump
 override semantics. The guest-side WAD list now grows dynamically rather than
 retaining the historical fixed `MAXWADFILES = 20` array. A stress run loaded 64
+
 valid PWADs successfully. The temporary JSON parser currently reserves space for
 512 PWAD paths, but that is a harness implementation bound, not a guest/runtime
 contract.
@@ -373,6 +381,7 @@ restarting the game. Quit text, pickup/status messages, map names, chat
 defaults,
 finale text, and cast names resolve through the active table at use time instead
 of being frozen in static initializers. `Esc` now returns from a submenu to its
+
 parent and closes the menu only at the main-menu root.
 
 The historical melt/wipe no longer owns a modal mini-event-loop: host events,
@@ -413,6 +422,7 @@ Render-only history on players and mobjs interpolates camera position, view
 height, actor position, and actor rotation between simulation ticks. Spawn and
 teleport discontinuities explicitly invalidate interpolation. These render-only
 fields do not participate in savegames, demos, network commands, RNG, collision,
+
 or thinker simulation.
 
 Classic WAD art and UI continue to use the original 320x200 coordinate system,
@@ -423,6 +433,7 @@ internal height (`200 * N`): scale 1 is 320x200, scale 2 is 640x400, scale 3 is
 960x600, and so on. `-render-height H` selects the height directly; `H` must be
 at least 200 and divisible by 5 so the corrected classic 4:3 raster width
 `8 * H / 5` remains integral. `-render-scale` and `-render-height` are mutually
+
 exclusive. Renderer-owned clip tables, view-angle tables, plane/sprite
 working buffers, visplane column storage, drawseg pools, visible-sprite pools,
 and solid-segment clip storage are runtime allocated rather than encoded as
@@ -488,6 +499,7 @@ content-driven: the engine centralizes `MAPnn` versus `ExMy` naming and starts a
 map only when that lump is actually present. Episode-menu entries are enabled
 from the loaded WAD rather than from shareware/registered/retail labels, so the
 fixture exposes all four of its populated episodes. Edition labels remain only
+
 where they select genuinely different game semantics or namespaces. User-owned
 commercial IWADs may be supplied locally but are not required or distributed by
 this fixture.

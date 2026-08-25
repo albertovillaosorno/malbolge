@@ -32,6 +32,7 @@ collapse into an STM-style ADR monolith. ADRs contain bounded decisions and
 tradeoffs; technical specifications, research findings, legal analysis, and
 bibliography records remain ordinary documentation under their owning family.
 `.jig/cspell/` remains the editorial support surface used by CSpell and
+
 is not a fifth authority family. Jig will eventually validate this topology;
 Malbolge must not grow a parallel documentation linter to enforce it.
 

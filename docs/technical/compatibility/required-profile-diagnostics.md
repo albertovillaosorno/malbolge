@@ -98,6 +98,7 @@ version, word width, memory capacity, and normative features must still match
 the declared profile identity exactly. Only the program-specific required-memory
 footprint may vary within that canonical profile capacity; zero is a valid
 footprint for an empty region/source preflight, while profile/runtime capacities
+
 remain strictly positive. Reserved Python
 runtime identities are revalidated too: `safe-rust-classic` and
 `safe-rust-profiled` cannot be reused with forged feature, word, or memory
@@ -107,6 +108,7 @@ preflight never leaks raw filesystem or target-profile parser exceptions.
 Canonical profile parsing admits the top-level mapping and public
 JSON/path input types before iteration, JSON decoding, or pathlib access. Named
 profile IDs are validated before dictionary lookup or hashing, and runtime
+
 feature members are type-checked before duplicate hashing. These direct input
 failures therefore remain typed profile validation errors rather than raw Python
 exceptions. The profiled runtime limit is implementation capacity, so it
@@ -203,6 +205,7 @@ program/target. The sibling `compile_preflighted_clang_c23()` process adapter is
 the product-owned external compiler boundary: it performs that same profile
 admission before spawning Clang, streams deterministic C23 over stdin, captures
 opaque object bytes from stdout, and never exposes a raw-unpreflighted compile
+
 entry point. Missing-compiler tests prove canonical `002` and `001` text wins
 before launch failure; admitted work reaches a typed launch error instead.
 
@@ -287,6 +290,7 @@ The preflighted tier planner then maps unsupported direct host format to the
 interpreter only after combined profile preflight; `002` and `001` are never
 converted to fallback. Its cache-aware form performs the same profile and
 explicit
+
 `DirectHost` checks before exact-key lookup. A populated verified-direct cache
 cannot bypass either diagnostic, and profile/interpreter outcomes do not mutate
 cache cardinality. Native-retry planning also keeps profile failure hard: it
@@ -295,6 +299,7 @@ profile text before taking ownership of the suspension. The owned planning
 failure therefore renders the same diagnostic as direct sequence preflight
 instead of degrading it to a generic `profile` label. Retry routing preserves
 the same owned snapshot, and retry-cycle hard routing failure retains that
+
 routing object without touching native mappings or runner state. The cache-aware
 routing-cycle owner delegates direct profile-diagnostic access and `Display` to
 that retained routing failure. A legitimate retry suffix cannot newly produce
@@ -303,6 +308,7 @@ already published `VerifiedDirectSequencePlan`, and sequence publication
 preflights every immutable step against its selected profile capacity. A focused
 regression rejects a capacity-overflow step as `002` before plan publication.
 Other artifact families do not yet universally expose an equivalent program
+
 requirement. Raw and capsule `.malbolge` product invocation use canonical source
 preflight, and bootstrap source generation plus external Clang compilation have
 explicit combined portable preflight. Profile batch/backend routing also builds
@@ -312,6 +318,7 @@ each safe-Rust machine before exposing any backend request; a historical
 and host-parallel profile batches return that exact same typed rejection. The
 logical-task layer preserves it through sorted parallel execution, keeps later
 independent tasks runnable, and joins fail with the same profile error plus the
+
 exact rejected task identity. Durable-cache, AOT/JIT execution, and the
 remaining
 product/artifact paths do not yet universally invoke that boundary.

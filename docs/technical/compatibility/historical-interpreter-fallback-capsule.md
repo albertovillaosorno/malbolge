@@ -139,6 +139,7 @@ payload under its immutable published ID and fingerprint. At loaded positions
 `/`, `<`, and `v`, matching the current profile's interpreter-compatible I/O
 assignment. Parsing succeeds. Passing that extracted payload/profile into the
 classic `ExecutionMachine::from_source_for_profile()` still fails
+
 `safe-rust-classic` capability preflight before the ten-trit loader. Passing the
 same explicit descriptor/payload to `ProfileMachine` succeeds under
 `safe-rust-profiled`, consumes one input byte, emits it, and halts normatively.

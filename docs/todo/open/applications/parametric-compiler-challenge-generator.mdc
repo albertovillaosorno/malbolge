@@ -54,6 +54,7 @@ exactly the same problem rather than on vaguely similar examples.
   chain while the DAG family retains additional source-order fan-in. The
   branch family adds one live `if`/`else` diamond per node. The memory family
   uses a fixed eight-cell local array with deterministic indexed read/write/read
+
   operations per node. The call family threads the live value through one pure
   three-argument helper call per node.
 - Each identity emits `program.c`, `oracle.bin`, and canonical `manifest.json`
@@ -80,6 +81,7 @@ exactly the same problem rather than on vaguely similar examples.
   cell and the independent oracle preserves the emitted sequential write order.
   `stream-state/v1` uses `nodes` as deterministic stream length under a
   seed-stable transition rule, retaining one live `for` loop, one indexed token
+
   read, and one state-dependent branch in normalized frontend evidence.
   `sort-reduce/v1` adds data-dependent compare/swap work over a node-scaled
   item vector followed by a live sorted fold. Its Python oracle uses independent
@@ -89,6 +91,7 @@ exactly the same problem rather than on vaguely similar examples.
   runtime reduction keeps parent-index and predecessor-state dependencies live,
   with normalized evidence retaining one loop and six graph/state subscripts.
   `binary-tree/v1` places every generated leaf in a fixed heap and reduces
+
   internal parents bottom-up, adding hierarchical fan-in without dead leaves.
   Normalized frontend evidence retains two loops and seven live subscripts;
   pinned Clang matches the independent oracle at 1, 64, and 257 nodes.
@@ -99,6 +102,7 @@ exactly the same problem rather than on vaguely similar examples.
   while pinned Clang agrees with the oracle at 257 nodes.
   `layout-chain/v1` emits one distinct live helper function and call target per
   node, so function/code-layout pressure grows without dead source blocks;
+
   normalized evidence retains `nodes + 2` functions and `nodes + 1` calls.
   `ternary-fold/v1` keeps state and tokens inside the classic ten-trit domain
   and performs explicit base-three quotient/remainder mixing before folding the
@@ -112,6 +116,7 @@ exactly the same problem rather than on vaguely similar examples.
   `grid-accumulate`, `ternary-fold`, and `nested-state` byte-identically at
   16,384 nodes, retaining
   exact manifest
+
   difficulty and the fixed four-byte oracle without a wall-clock claim.
 - The objective remains open: broader workload families plus
   the required end-to-end compiled/executed Malbolge fixture are not yet

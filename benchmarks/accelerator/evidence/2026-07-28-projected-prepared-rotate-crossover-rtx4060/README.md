@@ -91,4 +91,5 @@ independent trusted admission remain unchanged. Full-domain retained and peak me
 preparation latency, and prepared CPU/CUDA latency all improve while crossover stays
 1/1. The tiny-batch overhead remains explicit. Broader projected strategies require
 the same exact subset, identity, membership, evidence, and admission proofs and are
+
 the next architectural boundary rather than an implicit generalization.

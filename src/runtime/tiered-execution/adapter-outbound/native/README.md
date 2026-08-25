@@ -39,6 +39,7 @@ the generated freestanding C. `NativeRegionState` is `repr(C)` and its
 integers. `NativeRegionCallFrame` binds raw ABI pointers to borrowed memory,
 input, and output slices, rejects out-of-bounds cursors, and reconstructs an
 exact normative observation after a future call. It does not allocate
+
 executable memory, link objects, or invoke machine code.
 
 `invocation.rs` owns the safe contract around one future foreign entry call.
@@ -49,6 +50,7 @@ and output surfaces. Completion admits `Applied` only when the resulting state,
 memory, and output exactly equal the IR-derived transition. `GuardMiss` must
 preserve every snapshot byte-for-byte; unknown status, unexpected
 `InvalidArgument`, topology drift, and partial commits fail closed. Every
+
 rejected completion restores the complete entry snapshot.
 `PreparedVerifiedDirectInvocation` then binds that call contract to one
 semantically admitted direct artifact. It reconstructs the full key with the
@@ -65,12 +67,14 @@ policy permits RW staging followed by RX execution and requires instruction
 synchronization after the permission transition. The prepared verified call
 retains this image, so a future loader need not accept unrelated object bytes.
 `lifecycle.rs` admits the future platform operations in one ordered typestate
+
 protocol. `StagedNativeExecutable` requires exact code bytes in a sufficiently
 large, aligned RW mapping. `SealedNativeExecutable` requires the same mapping to
 be reported RX, and `ReadyNativeExecutable` requires synchronization of the
 complete code range before exposing the non-zero entry address. It retains an
 exact release request. `PreparedNativeExecutableInvocation` then compares the
 ready image with the call-bound image before exposing entry address and ABI
+
 state through one value. Platform reports are adapter evidence; no page
 allocation,
 permission syscall, instruction-cache operation, cleanup, or foreign call exists
@@ -86,6 +90,7 @@ separately
 inspectable. Explicit release consumes a ready executable only on success and
 retains it for exact retry on failure. The retained fake adapter covers all 24
 direct images, every operation failure, report drift, cleanup failure, and
+
 retry. There is still no concrete Windows/POSIX executable-memory
 implementation.
 
@@ -98,6 +103,7 @@ same exact rollback, and cleanup failure retains the ready executable for retry.
 If final release fails after admission, the committed outcome remains explicit.
 Fake-runner evidence covers `Applied`, `GuardMiss`, load short-circuit, mutation
 before runner failure, completion drift, cleanup retry, and committed release
+
 failure. No concrete FFI runner or machine-code call is implemented here.
 
 The generated function has a two-phase shape. It first validates its local ABI
@@ -137,12 +143,14 @@ non-relocated `.mbprof` section. Its `MBPF` v3 payload carries the exact profile
 ID/fingerprint plus published version, stable semantic features, word trits,
 profile capacity, and derived `u64` region memory requirement; the complete
 envelope must equal the native key. Missing, duplicated, executable, writable,
+
 relocated, malformed, or mismatched required metadata fails structurally.
 Bootstrap revision-2 source emits the payload as an external `const unsigned
 char`
 array allocated into a read-only custom section. Revision 1 remains structurally
 admissible without metadata as a historical identity. The pinned Clang test owns
 x86-64/AArch64 object confirmation. The resulting
+
 `StructurallyAdmittedNativeObjectArtifact` is still not semantic authority. An
 independent semantic validator must establish that boundary before executable
 promotion exists.
@@ -156,6 +164,7 @@ and read-only `.mbprof` v3 bound to the same native key. Semantic promotion
 requires
 structural COFF admission plus byte-for-byte equality with the canonical object;
 a one-byte opcode mutation remains structurally valid but fails semantic
+
 admission. This establishes an executable native tier that is correct by always
 falling back, before any direct region-effect instruction selection is trusted.
 The deopt and initial-halt backends remain revision 4. The wider
@@ -164,6 +173,7 @@ The deopt and initial-halt backends remain revision 4. The wider
 revision 2 after binding their runtime capacity guard to the exact IR footprint;
 `direct-jump-code`, `direct-jump-data`, `direct-rotate`, `direct-crazy`,
 `direct-input`, and `direct-output` start at revision 1. All twelve use `MBPF`
+
 metadata version 3.
 
 The second direct template is the first state-applying fast path. The
@@ -176,6 +186,7 @@ first write, sets only the termination byte to halt, and returns `applied=0`;
 any
 mismatch or null state returns `guard-miss=1` without mutation. Complete x86-64
 and AArch64 COFF bytes are independently frozen. A changed commit immediate may
+
 remain structurally valid but fails semantic admission. Development evidence
 links both ISA objects and executes x86-64 hit/miss/null cases, with miss state
 byte-identical before and after. General region-effect code generation remains
@@ -225,6 +236,7 @@ reads, and both x86-64 and AArch64 plans contain verified `direct-rotate` and
 transaction around the same admission. It prepares every exact target first,
 reuses full-key hits through their existing `Arc`, verifies all unique misses in
 local staging, and inserts those misses only after the complete sequence
+
 succeeds. A late failure therefore publishes no partial cache state. Retained
 tests cover two inserts followed by two pointer-identical hits, one hit plus one
 insert, preflight-before-lookup, and rollback that preserves an unrelated cached
@@ -236,6 +248,7 @@ order. Prior `Applied` steps remain committed; a `GuardMiss` leaves its current
 step untouched and returns the exact resume index plus observation. Indexed
 failures retain committed-step count, continuation state, nested one-step error,
 and release retry evidence. Cached and uncached rotate/output plans match VM
+
 snapshots after one and two steps.
 
 `sequence_continuation.rs` turns that indexed evidence into an immutable exact
@@ -244,6 +257,7 @@ failures. They validate completed count, failing step, resume index, and the
 next one-step entry observation before cloning remaining programs. The object
 retains complete and suffix `NativeExecutableSequenceKey` identities, expected
 exit/outcome, reason, and remaining one-step programs. Applied completion and
+
 terminal cleanup failures return no continuation. `advance()` rebases the
 same complete-plan authority after additional admitted tier progress, deriving
 an exact suffix or verified completion. Eleven tests cover valid paths, forged
@@ -259,6 +273,7 @@ retains
 aggregate cleanup failures for retry. Loaded sequence execution validates exact
 mapping count and complete image equality before borrowing caller buffers. The
 same chain can then execute repeatedly without new allocate/copy/protect/sync
+
 operations. Final release attempts every mapping and keeps only failed releases.
 The adapter must provide unique identities and non-overlapping ranges for all
 simultaneously live allocations. Tests cover uncached reuse, cached guard miss,
@@ -270,18 +285,21 @@ caller-owned FIFO over complete loaded sequences. Exact identity remains the
 ordered list of full artifact keys. `new()` bounds whole entries only;
 `with_limits()` can also bound live mappings and admitted mapped bytes. Weight
 comes from exact ready mapping reports after load. Oversized candidates are
+
 released without changing prior entries. Candidates that fit alone evict as many
 oldest entries as necessary for all projected limits, and inserted dispositions
 return every evicted key in FIFO order. Hits borrow the same mappings, preserve
 insertion age and usage, and perform no adapter work. Failed insertion eviction
 removes cache authority for that victim and earlier successful victims, cleans
 the candidate, and retains failed release ownership. Invalidation and full drain
+
 update accounting before cleanup, so errors cannot leave stale budgets.
 `reconfigure_limits()` publishes expansion or already-satisfied requests without
 adapter work. Shrink requests release oldest entries until current usage fits,
 then publish atomically. Until all required releases succeed, the prior limits
 remain active. Failure reports every key whose authority was removed and retains
 the exact failed executable for retry; repeating the request after cleanup does
+
 not release completed victims again. Seventeen tests cover original reuse,
 weighted admission and cleanup plus expansion, entry/mapping/byte shrink, and
 second-eviction failure. Transition result/diagnostic ownership and FIFO shrink
@@ -296,6 +314,7 @@ the entry to a retired FIFO where its exact weight remains charged. Explicit
 `return_lease()` and `reconcile_retired()` attempt only residents whose final
 external lease has gone, while aggregate keyed failures retain exact retry
 ownership. A candidate blocked by retired resident weight is cleaned and reports
+
 its limits, usage, active evictions, and retired blockers.
 `reconfigure_limits()`
 publishes expansion or already-fitting requests without adapter work; shrink
@@ -309,6 +328,7 @@ shrink, live entry/byte blockage, post-return publication, and cleanup retry.
 Retired reclamation and keyed cleanup retry are isolated in
 `executable_lease_cache/reconciliation.rs`; resident-limit transitions are in
 `executable_lease_cache/reconfiguration.rs`; lookup and lease publication remain
+
 in the parent. Objects remain separate mappings; there is no durable loaded
 state, cross-process leasing, direct inter-mapping jump, or concrete
 foreign-call
@@ -321,6 +341,7 @@ A supported Windows direct object returns `PreflightedExecutionTier::Direct`;
 Linux/macOS format absence returns `Interpreter` only after the same canonical
 profile/program/runtime preflight. Noncanonical profile envelopes, `002`, `001`,
 and all post-selection emission/admission errors remain errors. The planner does
+
 not perform cache lookup, executable-memory allocation, linking, or execution.
 
 `select_cached_preflighted_execution_tier()` composes the same boundary with a
@@ -332,12 +353,14 @@ before lookup. A private
 object emission before the admitted artifact key is inserted. Emission therefore
 does not canonicalize the IR a second time. State-applying semantic verifiers
 still reconstruct the expected key independently from IR, preserving their trust
+
 check. The result is either `DirectCacheDisposition::Hit` or a newly admitted
 `Inserted` artifact. Cache entries and returned plans share the same immutable
 `Arc<VerifiedDirectNativeArtifact>`, so a hit does not clone object bytes. Only
 verified direct artifacts can enter this wrapper; the generic cache remains
 non-authoritative. `VerifiedDirectNativeCache::invalidate()` removes future
 reuse
+
 for one exact verified key. `invalidate_program()` constructs exact region
 identity before mutation and removes every host/backend variant of that program;
 profile-capacity-invalid IR returns `NativeIdentityError::ProfileCapacity`
@@ -349,6 +372,7 @@ outstanding
 `Arc` plans valid; reinsertion produces the same keys/bytes under new
 allocations.
 Unrelated regions/targets, interpreter selection, and profile failures remain
+
 unchanged. There is no automatic eviction or revocation. Persistence,
 eviction policy, synchronization policy, linking,
 executable memory, and the unsafe foreign-call boundary remain outside; `Arc`
@@ -379,6 +403,7 @@ only
 the halt byte after all checks pass. Independent 495-byte x86-64 and 564-byte
 AArch64 fixtures bind counters above `u32::MAX` plus the nontrivial
 `0x12345678 / 0x00345678 / 0x0013579b` register case. Counter or opcode identity
+
 tampering fails semantic admission, and revision-4 target identity is rejected.
 Development execution now proves an x86-64 full-width counter hit plus atomic
 counter miss; ARM64 full-width immediates and the common miss target are decoded
@@ -395,6 +420,7 @@ guard sequence: full entry observation, non-null memory, exact IR footprint,
 Independent complete objects are 535 bytes on x86-64 and 628 bytes on AArch64.
 Development execution proves x86-64 hit plus atomic live-in, capacity, and null
 memory misses; independent AArch64 decoding confirms the full guards, halt tag,
+
 and common miss target.
 
 `direct-jump-data` revision 1 adds the first instruction-specific semantic data
@@ -409,6 +435,7 @@ data
 live-in 123 before atomically committing `memory[5]:35->93`, `C:5->6`, and
 `D:7->124`. Independent complete objects are 564 bytes on x86-64 and 699 bytes
 on
+
 AArch64. Development execution proves exact hit behavior plus atomic
 code-live-in,
 data-live-in, footprint, and null-memory misses; independent AArch64 decoding
@@ -422,6 +449,7 @@ verifier derives encryption of the loaded target plus successors for loaded `C`
 and entry `D`. Both ISAs guard the complete entry, exact 13-word footprint,
 `memory[5]=93`, `memory[7]=11`, and `memory[11]=68` before committing only
 `memory[11]:68->33`, `C:5->12`, and `D:7->8`. Independent complete objects are
+
 622 bytes on x86-64 and 731 bytes on AArch64. x86-64 uses twelve reviewed
 `rel32`
 guards sharing one miss; development execution proves exact hit and atomic
@@ -448,6 +476,7 @@ code-live-in, data-live-in, footprint, and null-memory misses; independent
 AArch64
 decoding confirms two ordered reads, both writes, the three register commits,
 and
+
 eleven branches to one miss target. Aliasing `C == D` remains rejected.
 
 `direct-crazy` revision 1 adds the second reviewed two-write arithmetic
@@ -458,6 +487,7 @@ and accumulator result. Both ISAs guard the complete entry, exact 9-word
 footprint, `memory[5]=57`, and `memory[7]=10` before committing
 `memory[7]:10->2391494`, `memory[5]:57->91`, `A:20->2391494`, `C:5->6`, and
 `D:7->8`. Independent complete objects are 577 bytes on x86-64 and 731 bytes on
+
 AArch64. Byte-exact fixtures and semantic tampering rejection bind the contract.
 Aliasing `C == D` remains rejected.
 
@@ -468,6 +498,7 @@ the appended byte. Both ISAs guard the complete entry, exact 9-word footprint,
 3 before committing `memory[5]:94->57`, `C:5->6`, `D:7->8`, byte `0xa8`, and
 `output_len:3->4`. Independent complete objects are 642 bytes on x86-64 and 724
 bytes on AArch64. x86-64 execution proves exact hit plus atomic code, capacity,
+
 output-pointer, footprint, and memory-pointer misses.
 
 `direct-input` revision 1 completes direct coverage of all eight instruction
@@ -477,6 +508,7 @@ committing `A=65`, `input_consumed:2->3`, encrypted code 68, and `C/D=6/8`.
 The EOF form guards `input_len == input_consumed`, never dereferences the input
 pointer, and uses VM-owned `profile_eof_word()` to commit `A=4782968` while
 leaving the cursor at 2. Independent complete objects are 659/744 bytes for the
+
 byte form and 634/715 bytes for EOF on x86-64/AArch64. Development x86-64
 execution proves exact hits and atomic pointer, length, byte, footprint, code,
 and null-memory misses.
@@ -492,6 +524,7 @@ IR memory delta and exit observation to match exactly. Both ISAs reuse the
 fetched
 cell guards and commit only the encrypted code word plus the two advanced
 pointers. Independent complete objects are 557 bytes on x86-64 and 658 bytes on
+
 AArch64. Development execution proves `memory[5]:77->65`, `C:5->6`, `D:7->8`,
 and atomic live-in/capacity/null-memory misses; independent AArch64 decoding
 confirms the same writes and one common miss target. Input effects, linking,
@@ -506,6 +539,7 @@ code does not redefine the graphical ASCII boundary. Both ISAs guard the
 complete
 entry observation, non-null memory pointer, exact IR footprint, exact
 `memory[C]`, and prior live termination before writing only termination tag `2`.
+
 Independent complete objects are 538 bytes on x86-64 and 631 bytes on AArch64.
 Development execution proves x86-64 hit plus atomic live-in, capacity, and null
 memory misses; independent AArch64 decoding confirms full observations,

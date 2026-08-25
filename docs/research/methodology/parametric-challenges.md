@@ -64,6 +64,7 @@ source/oracle
 SHA-256 digests. Every version-one family keeps each generated node on a live
 dependency path to the observable result, so increasing `nodes` cannot grow only
 through dead C statements. Native warning-clean compilation is regression
+
 evidence for that invariant. `linear-mix/v1` uses a family-domain-separated
 stream and a strict predecessor chain, contrasting dependency depth with the
 DAG family’s extra source-order fan-in. `branch-mix/v1` adds one live
@@ -73,6 +74,7 @@ retain the expected branch count. `memory-walk/v1` uses a fixed eight-cell
 local array with deterministic indexed read/write/read steps, and frontend
 evidence retains `1 + 3×nodes` array-subscript expressions. `call-chain/v1`
 threads the live value through a pure three-argument helper, with normalized
+
 evidence retaining one call per node plus the standalone driver call.
 `pointer-walk/v1` keeps one live runtime-selected pointer per node, while
 `alias-walk/v1` keeps two such pointers whose sequential writes may alias the
@@ -81,6 +83,7 @@ same cell. `stream-state/v1` fixes a seed-derived state transition rule and uses
 tokens under the same machine. Its normalized frontend preserves one loop, one
 indexed stream read, and one live state branch. `sort-reduce/v1` generates a
 node-scaled item vector, performs data-dependent compare/swap ordering in a
+
 nested loop, then folds every sorted item into the observable result. Its
 independent Python oracle uses `sorted(...)` rather than the emitted
 bubble-style
@@ -90,6 +93,7 @@ one parent link to an already-computed state plus one weight per vertex. Its
 runtime loop combines parent state, predecessor state, and weight into the next
 state; normalized evidence retains one loop and six graph/state subscripts.
 `binary-tree/v1` places `nodes` generated leaves in a fixed binary heap and
+
 reduces internal parents from the bottom up. Its two loops preserve hierarchical
 fan-in while every leaf remains on the observable root path; normalized frontend
 evidence retains two loops and seven live array subscripts.
@@ -98,6 +102,7 @@ node-scaled token vector feeds two loops each bounded by `nodes`, so the emitted
 program performs exactly `nodes^2` live `uint32_t` accumulation updates while
 source construction remains O(nodes). The independent Python oracle also stays
 O(nodes) by using the algebraically equivalent modulo-`2^32` sum. Normalized
+
 frontend evidence retains exactly two loops and one token subscript.
 `layout-chain/v1` emits one distinct helper body and call target per node; all
 calls are sequentially live, while normalized evidence retains `nodes + 2`
@@ -110,6 +115,7 @@ standalone `main` is only a low-31-bit driver and is not an oracle surface.
 `nested-state/v1` adds nested control-flow stress without making generation
 quadratic: a node-scaled token stream feeds a fixed four-lane inner loop, so
 runtime work performs four live state transitions per node while the Python
+
 oracle remains O(nodes). Normalized frontend evidence retains both loops and the
 three indexed inputs (`tokens`, `addends`, `masks`).
 

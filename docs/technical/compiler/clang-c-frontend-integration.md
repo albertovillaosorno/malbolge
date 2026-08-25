@@ -155,6 +155,7 @@ declaration is only a declaration, a tentative definition, or a full
 definition. Functions record storage class, formal linkage, declaration versus
 definition state, and whether `inline` was explicitly written. Parameters retain
 automatic duration and written `register` where present. Tags record declaration
+
 versus definition state.
 
 Enum representation is deliberately ABI-owned rather than copied from Clang's
@@ -164,6 +165,7 @@ chooses `i32` when every value fits signed 32-bit, otherwise `u32` when every
 value is nonnegative and fits 32-bit. A mixed or wider value domain fails with
 `MALBOLGE-FRONTEND-002`. The regression fixture is important because Clang's
 wasm projection reports the ordinary nonnegative sample as unsigned while
+
 `malbolge-c32-v1` requires signed `i32` for that representable value set.
 
 Thread storage is preserved as `thread` rather than silently collapsed to

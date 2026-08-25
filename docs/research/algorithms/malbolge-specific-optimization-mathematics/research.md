@@ -103,6 +103,7 @@ The encryption
 table is proved to partition the complete
 graphical domain into cycles of lengths 2, 4, 5, 6, 9, and 68, so repeated
 committed encryption of an otherwise unchanged code cell needs only the visit
+
 residue modulo its cycle length. Repeated rotate updates to one otherwise
 unchanged classic ten-trit data cell admit the exact word-specific period
 classes 1, 2, 5, and 10, containing 3, 6, 240, and 58,800 words respectively.
@@ -112,6 +113,7 @@ crazy accumulator/target words, the exact full-data-domain preimage count is the
 product of the ten per-trit multiplicities. For checked widths one through 14,
 the ordered local inverse sets also give a constructive mixed-radix rank/unrank
 bijection over exactly the complete-domain preimages, so a complete enumerator
+
 does not need to test unrelated data words. The doubleton positions are also
 exact binary coordinates: binary-reflected Gray order traverses all compatible
 words exactly once and changes one trit between consecutive candidates. This
@@ -121,6 +123,7 @@ bijective traversal of `2^k` distinct preimages has `2^k-1` transitions and
 therefore costs at least `2^k-1` trit edits; Gray order attains that bound
 exactly. The same coordinates identify the one-trit mutation graph with
 `Q_k`: every preimage has exactly `k` valid one-trit neighbors, and the graph
+
 has `k*2^(k-1)` edges when `k>0` (zero when `k=0`). These are exact
 complete-domain graph/edit identities, not wall-clock lower bounds. Moreover,
 from any compatible word the exact distance-`j` shell has `C(k,j)` words, a
@@ -129,6 +132,7 @@ For endpoints at trit distance `j`, every in-cube one-trit mutation path needs
 at least `j` steps, and exactly `j!` shortest paths attain that lower bound.
 For radius `r`, any complete cover by centered search balls needs at least
 `ceil(2^k / sum_{j=0}^r C(k,j))` centers by volume; overlap may force more, so
+
 this is not claimed as an exact covering number. The caveat is witnessed
 exactly by `Q5` at radius one: the volume bound is six while exhaustive
 all-906,192 six-center coverage testing plus a seven-center witness proves
@@ -139,6 +143,7 @@ The existing all-one target under
 accumulator zero therefore has exactly 1,024 data-word preimages, while a zero
 target under accumulator zero has none. Exhausting all 59,049 accumulator words
 through an independent trit relation proves no fixed classic accumulator/target
+
 pair can exceed 1,024 preimages, so that known case attains the global bound.
 The same exhaustive accumulator spectrum proves every nonzero full-domain count
 is one of `1,2,4,...,1024`, and every listed power plus zero is attainable. For
@@ -148,6 +153,7 @@ The same state admits exactly `2^(10-n2(a))*3^n2(a)` target words with at
 least one complete-domain preimage. Across checked widths `1<=N<=14`, a fixed
 accumulator with `m` trits equal to two has exactly `C(N-m,k)*3^m` reachable
 targets in preimage class `2^k`; summing recovers the reachable-target count and
+
 preimage-weighting recovers all `3^N` data words. The optimizer exposes both
 classic state-level quantities from the normative trit table and exhaustively
 checks them against an
@@ -158,6 +164,7 @@ weighting the same eleven classes both yield `7^10 = 282,475,249` reachable
 accumulator/target pairs, matching the independent per-trit product. The full
 pair distribution has exactly `C(10,k)*2^k*5^(10-k)` members with `2^k`
 preimages; its class sum is `7^10`, while weighting by preimage size gives
+
 `59,049^2`, accounting for every classic `(data, accumulator)` input pair. The
 same independent trit convolution now checks every width 1 through 14 against
 `C(N,k)*2^k*5^(N-k)`, with class sum `7^N` and weighted sum `9^N`.
@@ -167,6 +174,7 @@ complete reachable-pair enumeration can therefore use canonical codes
 `0..7^N-1` without visiting an impossible pair; distinct reachable pairs remain
 distinct.
 The complement `9^10-7^10 = 3,204,309,152` is therefore globally impossible
+
 before any data-word enumeration. Summing preimage classes above a supplied
 budget gives an exact planning lower bound for complete preimage enumeration:
 budget 0 exceeds all `7^10` reachable pairs, while budget 1,024 exceeds none.
@@ -176,6 +184,7 @@ budget for every requested reachable-pair coverage target at widths 1 through
 This lower bound does not apply to search procedures that do not promise
 complete preimage enumeration. Sharing these planning cardinalities does not
 imply
+
 general semantic equivalence between accumulator/target pairs.
 
 `src/specification/formal-model/math/specification/correspondence.toml` binds
@@ -213,6 +222,7 @@ budget bounds are correctness-proved search
 reductions, not
 measured performance results. None
 of these results establishes a universal speedup or proves broader synthesis
+
 lower bounds.
 
 ## Threats to Validity

@@ -37,6 +37,7 @@ validation, not guest-source porting. Runners must not require LLVM/Clang or an
 externally installed multimedia development stack merely to execute an already
 generated program. The quality and canonical `doom.c` source stages are
 complete; this TODO begins at lowering capability calls into the generated
+
 Malbolge artifact and resolving host modules without changing guest bytes.
 
 ## Acceptance

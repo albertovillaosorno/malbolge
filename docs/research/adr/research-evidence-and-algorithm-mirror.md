@@ -35,6 +35,7 @@ half requires `README.md` and `research.md`; the executable half requires
 `README.md`, `experiment.toml`, and `tests/`. The validator asks Git itself, via
 `check-ignore --no-index`, whether `algorithms/<id>/out/` is ignored. Optional
 `math/algorithms/<id>.tex` remains a research-specific addition rather than a
+
 universal mirror requirement.
 
 Research conclusions may recommend promotion, rejection, or retirement, but an

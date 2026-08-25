@@ -60,6 +60,7 @@ executable cells, and input-dependent cycles or hangs.
   input-dependent accumulator state, halt or rejection, pointer succession, and
   wrap. The bounded memory evidence reports the minimum word footprint and exact
   addresses actually touched by the prefix, excluding merely-held future C/D
+
   pointers. The preserved interpreter's non-graphical `continue` ordering also
   lets the verifier prove the `b"c'"` third-step fixed-fetch cycle
   (`C=2`, `D=40`, `M[2]=29503`) without executing a guest loop. The `b"('&"`
@@ -67,6 +68,7 @@ executable cells, and input-dependent cycles or hangs.
   fourth fixed-fetch cycle at `C=3`, `D=39`, `M[3]=29487`. The prefix transfer
   now exposes one generic next-step primitive over an explicit finite accepted
   prefix. Explicit replay first requires the historical two-word recurrence
+
   base. The entry opcode is independently decoded from source cell zero and the
   caller-supplied entry transition is recomputed from that derived opcode before
   replay. Every continuation record is then recomputed from the current bounded
@@ -75,6 +77,7 @@ executable cells, and input-dependent cycles or hangs.
   four-word `b"('&%"` fixture uses it after four continued `j`
   transitions to prove a recurrence-backed fifth fixed-fetch cycle at `C=4`,
   `D=29490`, `M[4]=29489`; schema v25 publishes that exact step and includes
+
   address 4 in its bounded memory evidence. Schema v25 adds exact bounded
   source-address context: fetches map loaded-source addresses to their original
   loaded position/raw byte offset/initial byte and record whether the fetched
@@ -84,6 +87,7 @@ executable cells, and input-dependent cycles or hangs.
   input lineage. These use the same loaded-source, recurrence, data-write, and
   self-encryption origins as fetch lineage. Data reads are sampled before
   current-transition writes; encryption input is sampled after any aliased data
+
   write and before encryption commits. The `b"(&&%M"` fixture proves transition
   4 reads evolved `M[41]=49218` from transition 2's data write, and the entry
   rotate-alias fixture proves a same-transition data write becomes encryption
@@ -93,6 +97,7 @@ executable cells, and input-dependent cycles or hangs.
   Recurrence-only addresses remain explicitly unmapped. Rejected, unresolved,
   fixed-fetch-cycle, or exact
   repeated-state
+
   report prefixes still emit JSON but return a nonzero CLI status. Default-16,
   explicit-32, and maximum-256
   sequential-output fixtures exercise the finite report bound; transition
@@ -101,6 +106,7 @@ executable cells, and input-dependent cycles or hangs.
   exact evolved-memory overrides and can certify a repeated concrete
   `(C,D,A,memory)` state when the accumulator is known. Schema v25 publishes
   the first such certificate with transition indices, period, registers, and
+
   sparse memory overrides. It also publishes one pre-transition state snapshot
   per analyzed step with C/D/A plus canonical sparse evolved-memory overrides.
   Input-dependent `A` remains explicitly null. Null cycle evidence means no
@@ -108,6 +114,7 @@ executable cells, and input-dependent cycles or hangs.
   input-dependent execution is
   acyclic. Public CLI acceptance rejects any published exact-cycle certificate;
   white-box exact-state tests cover canonical memory identity and certificate
+
   fields. Schema v25 also adds an opt-in exact worklist under a reviewed
   1-through-4,096 unique-state cap. The transfer module owns and enforces that
   ceiling, and the public analyzer reuses it so direct calls cannot bypass the
@@ -116,6 +123,7 @@ executable cells, and input-dependent cycles or hangs.
   `(C,D,A,memory,EOF-state)` nodes, and reports closed versus truncated graph
   evidence. The worklist expands immutable initial memory once per request and
   reuses it beneath sparse evolved-memory overrides, preventing recurrence reads
+
   from rebuilding the same initial prefix per exact state. `input_branch_points`
   counts only real byte-plus-EOF expansions; an
   EOF-sticky input transition has one successor and is not a branch point.
@@ -124,6 +132,7 @@ executable cells, and input-dependent cycles or hangs.
   exploration.
   Schema v25 detects directed cycles only from exact known-graph edges and
   publishes one deterministic `reachable_cycle_witness`. Each witness state
+
   carries C/D/A, canonical sparse memory overrides, and the sticky EOF flag.
   Schema v26 adds `reachable_cycle_entry_path`, a deterministic shortest path
   from the canonical entry state to the selected cycle witness using only
@@ -133,6 +142,7 @@ executable cells, and input-dependent cycles or hangs.
   observed terminal status. The witness records the exact terminal source state
   and shortest admitted known-edge path from canonical entry; witnesses already
   observed before truncation remain exact, while missing statuses say nothing
+
   about the frontier. Schema v29 adds nullable `closed_terminal_status_counts`:
   closed worklists publish the complete canonical terminal counts, including an
   empty tuple when no terminal is reachable, while truncated worklists publish
@@ -143,6 +153,7 @@ executable cells, and input-dependent cycles or hangs.
   `closed_all_paths_halt`: a closed acyclic graph reports true only when every
   complete terminal status is `halted`, false for rejection or cycle, and null
   under truncation. Termination therefore does not masquerade as successful
+
   halt. Requested worklist CLI success requires that closed all-path halt proof,
   so exact rejection-only closure cannot be masked by a shallower accepted
   prefix. Schema v32 adds nullable `frontier_state_witness` and
@@ -154,6 +165,7 @@ executable cells, and input-dependent cycles or hangs.
   The `b"u="` input-dependent crazy fixture
   now binds its
   257 rejection terminals to a concrete reachable rejection witness, and the
+
   closed input-halt CLI fixture publishes a reachable halt witness. An empty
   cycle witness under truncation does not prove the unexplored frontier acyclic.
   The five-word `b"u'&%$"` fixture closes in 1,286 states after one input and
@@ -162,6 +174,7 @@ executable cells, and input-dependent cycles or hangs.
   input-dependent cycle depth without changing the explicit worklist ceiling.
   The 15-word `b"u'&%$#\"!~}|{zyx"` input-plus-14-jump fixture closes in
   3,856 states and binds a deterministic 16-state cycle entry path, exercising
+
   about 94% of the reviewed 4,096-state budget without truncation. A separate
   67-word `/ j *` plus 64-`j` fixture merges the 257 input branches after
   rotate;
@@ -173,6 +186,7 @@ executable cells, and input-dependent cycles or hangs.
   1,665-word restoration fixture rotates M[123] ten times total before C reaches
   it, closes at exactly 4,096 unique/explored states with no frontier, and
   proves
+
   a 1,666-state C=0..1665 path. Its final recurrence fetch is non-graphical; the
   source-mapped witness keeps C=0..1664 loaded and only C=1665 source-null. The
   adjacent 1,666-word image hits 4,096 unique states after 4,095 explored
@@ -181,6 +195,7 @@ executable cells, and input-dependent cycles or hangs.
   loaded M[41]=57 to jump from C=3 to C=58 after the branch-collapsing rotate,
   bypassing mutated M[40]. It closes in 4,095 states and proves a 1,793-state
   path ending at recurrence C=1846 with non-graphical value 29,441; only that
+
   endpoint is source-null. The adjacent 1,847-word image hits 4,096 unique
   states after 4,095 explored states with a two-state C=1847 frontier and no
   cycle/closure promotion. A generated 3,582-word late-input fixture reaches
@@ -189,6 +204,7 @@ executable cells, and input-dependent cycles or hangs.
   C=3582 is source-null with non-graphical value 29,421. The adjacent
   3,583-word image reaches 4,096 unique states after 4,095 explored states and
   retains two exact C=3583 frontier states instead of promoting the unfinished
+
   graph to cycle or closure. The
   one-word-longer `b"u'&%$#\"!~}|{zyxw"` fixture
   reaches the maximum after
@@ -197,6 +213,7 @@ executable cells, and input-dependent cycles or hangs.
   frontier. This remains bounded evidence rather than automatic reachability.
   Repeat-heavy branch merges do not become cycle claims. Schema v25
   additionally publishes exact SCC summary counts over only the admitted known
+
   graph: all SCCs, cyclic SCCs, cyclic states, and the largest cyclic SCC size.
   Entry-reachable wraparound now has an exact EOF-branch witness: the admitted
   22-word `b"u'<%$#>=<;:987654321NN"` fixture writes 59,048 into M[40],
@@ -205,6 +222,7 @@ executable cells, and input-dependent cycles or hangs.
   257 frontier states. This supplements the older synthetic near-boundary
   snapshot without promoting unexplored input branches to closed reachability.
   Its cycle/non-cycle verdict is checked against the independent witness search
+
   before publication. Under truncation unexplored outgoing edges may later merge
   SCCs, so these counts are not promoted to whole-program graph evidence. Once
   the queue drains completely, schema v25 also publishes cyclic sink-SCC counts,
@@ -212,6 +230,7 @@ executable cells, and input-dependent cycles or hangs.
   recurrent cycle witness. Schema v28 binds that selected recurrent witness to
   `closed_recurrent_entry_path`, the shortest exact path from canonical entry.
   A synthetic A↔B cycle with an escape to C↺ proves the recurrent path targets C
+
   rather than the first general cycle. Truncated worklists publish all closed-
   recurrence fields, including the path, as null rather than implying closure.
   Schema v25 represents each proven non-graphical fixed fetch as an exact
@@ -219,6 +238,7 @@ executable cells, and input-dependent cycles or hangs.
   65,536 merge edges without a cycle, while `b"ut"` reaches a fixed-fetch
   self-loop beyond a two-transition prefix. Schema v25 also records exact
   explored-graph memory addresses/highest address/minimum words; truncated
+
   graphs do not promote that footprint to whole-program evidence. Schema v34
   adds explored code/data-alias transition count, committed write count and
   addresses, and self-encryption transition count and addresses. Only exact
@@ -228,6 +248,7 @@ executable cells, and input-dependent cycles or hangs.
   explored-only and the analysis-limit identities say so. Schema v35 adds the
   first FIFO-explored effective data-mutation witness with exact source state,
   shortest entry path, address, previous/planned/final values, and same-address
+
   self-encryption alias flag. The entry-wrap fixture proves the first event on
   its byte-1 branch changes M[40] from 29,524 to 29,523; a null witness remains
   explored-only under truncation. Schema v36 maps that first mutation witness
@@ -243,6 +264,7 @@ executable cells, and input-dependent cycles or hangs.
   transitions at address 40; byte input 0 is the committed no-op branch. Schema
   v38 maps every distinct effective mutation address back to loaded position,
   raw byte offset, and initial byte when applicable, retaining recurrence
+
   addresses with null source coordinates. A 41-word variant with a second `*`
   reaches mutation addresses 40 and 41; with two leading whitespace bytes, 40
   maps to raw offset 42 while 41 remains recurrence-derived. The source-map
@@ -250,12 +272,14 @@ executable cells, and input-dependent cycles or hangs.
   Schema v39 also maps every distinct committed write address, including
   self-encryption, back to loaded source coordinates when possible. With two
   leading whitespace bytes, entry-wrap committed addresses 0 through 6 map to
+
   raw offsets 2 through 8 while recurrence address 40 remains unmapped. The
   source-map limit now names the broader `worklist-mutation-evidence` footprint.
   Schema v40 separates committed data-write count/addresses from self-encryption
   and publishes role-specific source maps for both. Entry-wrap has 257
   committed data-write transitions at address 40 and self-encryption addresses
   0 through 6. This preserves role identity without unsafe set-subtraction
+
   inference when one address participates in both classes. Schema v41 records
   exact sorted observed pre-write/final value domains for each effective
   mutation address. Entry-wrap has pre-write 29,524 and 256 distinct finals at
@@ -265,6 +289,7 @@ executable cells, and input-dependent cycles or hangs.
   Schema v42 joins
   each exact mutation value domain to loaded source coordinates where possible
   and records whether the initial source byte appears in its observed pre-write
+
   domain. Loaded address 40 reports true; recurrence address 41 remains unmapped
   with a null match result. Schema v43 updates the `dataflow` analysis-limit
   identity to include worklist size, closed/truncated status, and explored-only
@@ -272,28 +297,33 @@ executable cells, and input-dependent cycles or hangs.
   publishes exact sorted per-address domains for explored instruction fetches,
   semantic data reads, and encryption inputs. Closed input-crazy retains 58
   encryption-input values at address 1; truncated entry-wrap observes 257 data
+
   values at address 40. Truncation keeps these domains explored-only. Schema v45
   maps those read domains back to loaded source coordinates when available and
   records whether the initial source byte is among the observed values.
   Recurrence addresses stay null-mapped. The source-map suffix is now the
+
   broader `worklist-value-evidence`. Schema v46 adds exact sorted domains for
   committed data-write values and self-encryption outputs. Rejected input-crazy
   plans remain absent from committed data-write domains, while entry-wrap has
   257 committed data-write values at address 40. Output domains remain
   explored-only when the worklist truncates. Schema v47 adds first
   entry-reachable evolved fetch/data-read witnesses with exact state and
+
   shortest entry path. The closed six-state `b"(&&$^"` graph fetches
   M[95]=9,810 from initial 29,430; the closed five-state `b"(&&%M"` graph reads
   M[41]=49,218 from initial 29,558. Schema v48 replays each witness's exact
   entry path to identify its last committed writer kind and one-based path
   transition. The evolved fetch points to data-write transition 4; the evolved
   data read points to data-write transition 2. Same-address self-encryption wins
+
   writer classification when it is the final committed value. Schema v49 maps
   committed data-write and self-encryption output domains to loaded source
   coordinates when available. Loaded position 40 maps to raw offset 42 and its
   write outputs exclude initial byte 122; loaded position 0 self-encrypts from
   initial 117 to output 111. Recurrence-targeted writes remain null-mapped.
   Schema v50 separately records planned data-write count, addresses, and exact
+
   value domains before commit validation. Closed input-crazy has 257 plans at
   address 1 spanning 58 values but no committed data writes; entry-wrap has 257
   planned writes at address 40 whose domain equals its committed domain. Schema
@@ -301,11 +331,13 @@ executable cells, and input-dependent cycles or hangs.
   Input-crazy's rejected plans map to loaded/raw position 1 and initial byte 61
   while its committed map stays empty; recurrence-targeted plans remain
   unmapped. Schema v52 counts committed final no-op data writes separately from
+
   effective mutations. Entry-wrap has one no-op plus 256 effective mutations at
   address 40, exactly partitioning all 257 committed data writes. Final values
   include same-address self-encryption before classification. Schema v53 adds a
   first FIFO entry-reachable final no-op witness. Entry-wrap byte 0 records
   address 40, previous/planned/final value 29,524, no encryption alias, and
+
   shortest pointer path `(0,0),(1,1),(2,40)`. A null witness stays explored-only
   under truncation. Schema v54 adds exact evolved fetch/data-read transition
   counts and address sets. Closed `b"(&&$^"` has one evolved fetch at 95; closed
@@ -314,17 +346,20 @@ executable cells, and input-dependent cycles or hangs.
   changed-value
   domains: 9,810 at address 95, 49,218 at address 41, and 256 entry-wrap values
   at address 40 matching its effective-mutation final domain while excluding
+
   initial/no-op 29,524. Schema v56 maps each evolved-read witness entry-path C
   pointer to loaded source coordinates where available. The evolved-fetch path
   maps C=0 through 4 to raw offsets 0 through 4 and keeps recurrence C=95
   unmapped; the evolved-data path maps C=0 through 3 entirely to loaded source.
   The source-map suffix becomes `worklist-value-and-control-path-evidence`.
   Schema v57 extends exact C/source entry-path mapping to effective-mutation,
+
   final-no-op, and wrap witnesses. With two leading whitespace bytes, mutation
   and no-op C=0..2 map to raw offsets 2..4; wrap C=0..5 maps to 2..7. Schema
   v58 source-maps reachable-cycle, closed-recurrent, truncated-frontier, and
   status-labeled terminal entry paths. Near-cap cycle/recurrent C=15 remains
   recurrence/null while the one-word-longer frontier C=0..15 is fully loaded.
+
   Schema v59 adds D-pointer source coordinates to each control-path state. Short
   entry-wrap D=40 remains recurrence/null; the 41-word fixture maps D=40 to
   loaded position 40/raw offset 42/initial byte 122. Schema v60 adds the exact
@@ -333,6 +368,7 @@ executable cells, and input-dependent cycles or hangs.
   source-maps each exact pre-transition writer state. With two leading
   whitespace
   bytes, M[95]'s writer C=3 maps to raw offset 5 while D=95 remains recurrence;
+
   M[41]'s writer C=1 maps to raw offset 3 while D=41 remains recurrence. Schema
   v62 adds exact historical initial-memory baselines to all worklist
   value/source contexts and source-links changed-only evolved domains.
@@ -341,6 +377,7 @@ executable cells, and input-dependent cycles or hangs.
   49,218. Schema v63 publishes exact C/D alias address sets and first shortest
   witnesses. Two-word input graphs have 258 alias transitions at addresses 0 and
   1; with two leading whitespace bytes those map to raw offsets 2 and 3 together
+
   with each witness path. Schema v64 splits observed wrap counts into C, D, and
   simultaneous categories. The synthetic boundary state wraps both; the
   entry-reachable fixture has one D-only wrap before its truncated frontier.
@@ -348,17 +385,20 @@ executable cells, and input-dependent cycles or hangs.
   repeats.
   The 41-state fixture has 257 repeated edges and 255 exact merges, with both
   shortest paths source-mapped for the first merge; the near-cap jump family has
+
   zero merges despite 257 repeated edges. Schema v66 publishes the complementary
   cycle-closing repeat count: merged is 255+2=257; near-cap is 0+257=257.
   Schema v67 adds the first cycle-closing repeated-edge witness and source map.
   The 41-state target is loaded C=40/source position 40; near-cap C=15 remains
   recurrence/source-null. Schema v68 source-maps reachable and closed-recurrent
+
   cycle bodies. In the 124-byte deep variant, body C=123 maps to loaded byte 39
   while D=243 remains recurrence/source-null. Schema v69 publishes exact
   distinct explored C/D pointer address sets and source maps. Near-cap C spans
   0..15 while
   D is `(0,1,40,121,29405)`; recurrence coordinates stay null and truncation
   keeps both domains explored-only. Schema v69 also publishes exact
+
   source-mapped cyclic SCC components. Known-graph components remain bounded
   under truncation;
   closed-recurrent component maps stay null until queue closure. Schema v70
@@ -367,6 +407,7 @@ executable cells, and input-dependent cycles or hangs.
   the initial-value-equal addresses. Equality is not promoted to unmodified
   provenance; recurrence source coordinates remain null. Schema v71 applies the
   same exact partition to self-encryption inputs using changed-from-initial
+
   terminology. Input-crazy has 258 such inputs: entry is initial-value-equal at
   address 0, while 257 post-input branches at address 1 span 58 changed values.
   All 257 changed branches reject, so zero planned data writes commit; source
@@ -375,10 +416,12 @@ executable cells, and input-dependent cycles or hangs.
   cyclic SCC without serializing duplicate full paths. The escaping synthetic
   graph reports `(1,3)` for known cycles and `(3)` for the recurrent sink;
   near-cap reports 16 for all 257 cyclic SCCs and the deep graph reports 124 for
+
   both. Closed-recurrent depth counts stay null under truncation. Schema v73
   adds first C-wrap, D-wrap, and simultaneous-wrap witnesses. The synthetic
   boundary event fills all three classes but remains pathless; the real EOF
   fixture fills only D-wrap and source-maps that reachable path. Missing class
+
   witnesses under truncation remain explored-only absence.
   Schema v74 publishes every distinct explored wrap-transition signature with
   exact source/result C/D and role flags, then source-maps source C/D
@@ -389,6 +432,7 @@ executable cells, and input-dependent cycles or hangs.
   addresses, exact value domains, and source-linked value contexts. Closed
   `b"ut"` has 257 such fetches at recurrence `M[2]=29412`; the loaded deep
   fixture has two at position 123 with evolved invalid value 13 versus initial
+
   source byte/value 39. Truncation keeps these observations explored-only.
   Schema v76 adds the first exact non-graphical fetch witness plus its shortest
   source-mapped entry path. Recurrence `b"ut"` reaches it in three states; the
@@ -396,6 +440,7 @@ executable cells, and input-dependent cycles or hangs.
   position 0..123 to source, linking invalid executable evidence directly to
   bounded control flow without claiming exhaustive unbounded linkage.
   Schema v77 retains every exact explored input-branch state and source-maps its
+
   C/D pointers. Each branch context records its exact index on the selected
   cycle, closed-recurrent, or frontier path when present. The branch-merged deep
   cycle links its initial branch to index 0 of both closed paths; the
@@ -408,12 +453,14 @@ executable cells, and input-dependent cycles or hangs.
   restoration case has exactly loaded C=1665 and recurrence C=1666. Frontier
   states remain unexplored boundary evidence, not inferred successor behavior.
   Schema v79 retains every exact explored terminal state grouped by status and
+
   source-maps each endpoint's C/D pointers. Closed `b"u="` publishes all 257
   invalid-self-encryption terminal endpoints at loaded C/D=1; closed `b"uP"`
   independently publishes all 257 halted endpoints there. Truncation retains
   only terminals actually explored before its frontier. One shortest path per
   status remains the representative terminal path witness.
   Schema v80 retains every exact explored C=D alias observation with its full
+
   state, address, and fetched value, and source-maps both pointer endpoints. A
   closed two-word input graph publishes 258 observations across addresses 0/1;
   first-witness paths remain one per address rather than per observation. At a
@@ -423,6 +470,7 @@ executable cells, and input-dependent cycles or hangs.
   and value, requires exact projection to its aggregate count/address/value
   evidence, and requires each state to keep the historical non-progress
   self-loop. Closed `b"ut"` publishes all 257 byte/EOF fixed-fetch states at
+
   recurrence C/D=2 while one shortest path remains representative. A loaded
   cycle separately source-maps each observation's loaded C and recurrence D;
   truncated frontiers are never promoted to explored invalid-fetch evidence.
@@ -430,6 +478,7 @@ executable cells, and input-dependent cycles or hangs.
   state with read address, immutable initial value, and observed value. The
   state observations must reproduce aggregate count/address/value evidence and
   remain different from initial memory. Source contexts map execution C/D and
+
   the read address independently. The entry-wrap graph publishes 256 evolved
   data reads at C=5/D=40/read=40, ending with the EOF value 59,048; one existing
   writer witness stays the compact provenance path for each role.
@@ -439,6 +488,7 @@ executable cells, and input-dependent cycles or hangs.
   publishes 257 observations at C=D=encryption-address 1, baseline 61, and 58
   changed values. Each value is sampled after a same-transition planned write
   but before invalid self-encryption rejects; zero data writes commit, so this
+
   remains transition-value evidence rather than committed-memory provenance.
   Schema v84 retains every exact explored planned data-write state/address/value
   and requires exact projection to aggregate planned-write evidence. Closed
@@ -448,6 +498,7 @@ executable cells, and input-dependent cycles or hangs.
   between same-transition planned-value flow and committed-memory provenance.
   Schema v85 retains every exact explored effective committed mutation state
   with
+
   previous/written/final values and alias identity. The entry-wrap graph
   publishes 256 C=2/D=40/address-40 observations from previous value 29,524,
   while its one committed final no-op remains separate. Exact state evidence
@@ -455,6 +506,7 @@ executable cells, and input-dependent cycles or hangs.
   Schema v86 retains every exact explored committed final-no-op data-write state
   with previous/written/final values and alias identity. Entry-wrap publishes
   one C=2/D=40/address-40 observation with previous=written=final=29,524, while
+
   its 256 changed writes remain exclusively in the effective-mutation set.
   Exact no-op states reproduce aggregate count/address evidence and source-map
   C/D/write roles; frontier states remain unexplored.
@@ -463,12 +515,14 @@ executable cells, and input-dependent cycles or hangs.
   states reproduce committed self-encryption count/address/output domains and
   recheck classic encryption. Closed `b"u="` publishes only its initial
   address-0 input-117/output-111 commit; 257 later invalid attempts remain
+
   rejected evidence. Public contexts source-map C/D/encryption roles.
   Schema v88 retains exact explored initial-value-equal fetch, semantic
   data-read,
   and encryption-input states. Closed `b"u="` publishes 258 fetch states, 257
   address-1 data-read states, and one address-0 encryption-input state; its 257
   changed encryption inputs remain separate. Exact state evidence reproduces
+
   initial-value count/address summaries and source-maps C/D/value roles.
   Equality
   remains value equality rather than provenance; frontier states remain
@@ -478,6 +532,7 @@ executable cells, and input-dependent cycles or hangs.
   v33 additionally publishes the first FIFO-explored wrap witness with its exact
   source state, shortest known entry path, result pointers, and separate C/D
   wrap booleans. A missing witness says only that no wrap was observed in the
+
   explored graph. A canonical C/D=59,048 snapshot proves one wrap to zero
   without
   claiming entry reachability. The two-word `b"u="` input-then-crazy fixture
@@ -485,6 +540,7 @@ executable cells, and input-dependent cycles or hangs.
   every byte/EOF branch concretely. A truncated requested worklist or a proven
   known-graph cycle returns nonzero from the CLI rather than implying safe graph
   closure. This does not
+
   close automatic or unbounded input-dependent cycle analysis.
 - Automatic unbounded/worklist control-flow reachability, broader unbounded
   dataflow/evolved-memory equivalence, control-flow/source-map linkage beyond
@@ -545,6 +601,7 @@ executable cells, and input-dependent cycles or hangs.
   invalid-encryption rejection. A separate 24-case graphical
   fourteenth-transition CLI differential across `/oo<jjjjjjj*`,
   `j*pj*ppppj/*`, and `o<o<<<<<</o<` carried opcode histories covers
+
   every fourteenth opcode through `bounded_continuations`. Its third
   carried history keeps C=D for all eight final opcodes; the
   fourteenth `*` plans `M[13]=40`, consumes that same-address write as
@@ -555,6 +612,7 @@ executable cells, and input-dependent cycles or hangs.
   Its third carried history keeps C=D for all eight final opcodes; final
   `*` and `p` plan `M[14]=39405` and `M[14]=29502`, respectively. Each
   same-address write becomes self-encryption input and deterministically
+
   rejects as non-graphical. A separate 24-case graphical
   sixteenth-transition CLI differential across `/oo<jjjjjjj*jj`,
   `j*pj*ppppj/*jj`, and `o<o<<<<<</o<*o` carried opcode histories
@@ -565,6 +623,7 @@ executable cells, and input-dependent cycles or hangs.
   rejects as non-graphical. A separate 24-case graphical
   seventeenth-transition CLI differential across `/oo<jjjjjjj*jjj`,
   `j*pj*ppppj/*jjj`, and `o<o<<<<<</o<*oo` carried opcode histories covers
+
   every seventeenth opcode through `bounded_continuations`. This is the first
   separately modeled differential beyond the default 16-transition depth. Its
   third carried history keeps C=D for all eight final opcodes; final `*` plans
@@ -574,6 +633,7 @@ executable cells, and input-dependent cycles or hangs.
   rejects as non-graphical. A separate 24-case graphical
   eighteenth-transition CLI differential across `/oo<jjjjjjj*jjjj`,
   `j*pj*ppppj/*jjjj`, and `o<o<<<<<</o<*ooo` carried opcode histories covers
+
   every eighteenth opcode through `bounded_continuations`. Its third carried
   history keeps C=D for all eight final opcodes; final `*` and `p` plan
   `M[17]=39404` and `M[17]=29502`, respectively. Each same-address write becomes
@@ -583,6 +643,7 @@ executable cells, and input-dependent cycles or hangs.
   opcode histories covers every nineteenth opcode through
   `bounded_continuations`. Its third carried history keeps C=D for all eight
   final opcodes; final `*` and `p` plan `M[18]=19721` and `M[18]=29492`,
+
   respectively. Each same-address write becomes self-encryption input and
   deterministically rejects as non-graphical. A separate 24-case graphical
   twentieth-transition CLI differential across `/oo<jjjjjjj*jjjjjj`,
@@ -592,22 +653,26 @@ executable cells, and input-dependent cycles or hangs.
   `M[19]=38`, consumes that same-address write as self-encryption input,
   encrypts it to 113, and continues. Final `p` plans `M[19]=29490`, consumes
   that same-address write as self-encryption input, and deterministically
+
   rejects as non-graphical. A separate 24-case graphical
   twenty-first-transition CLI differential spans `/oo<jjjjjjj*jjjjjjj`,
   `j*pj*ppppj/*jjjjjjj`, and `o<o<<<<<</o<*oooooo`. It covers every
   twenty-first opcode through `bounded_continuations`. Its third carried history
   keeps C=D for all eight final opcodes. Final `*` and `p` plan `M[20]=39403`
+
   and `M[20]=29490`, respectively. Each same-address write becomes
   self-encryption input and deterministically rejects as non-graphical. A
   separate 24-case graphical twenty-second-transition CLI differential spans
   `/oo<jjjjjjj*jjjjjjjj`, `j*pj*ppppj/*jjjjjjjj`, and
   `o<o<<<<<</o<*ooooooo`. It covers every twenty-second opcode through
   `bounded_continuations`. Its third carried history keeps C=D for all eight
+
   final opcodes. Final `*` and `p` plan `M[21]=19720` and `M[21]=29486`,
   respectively. Each same-address write becomes self-encryption input and
   deterministically rejects as non-graphical. A separate 24-case graphical
   twenty-third-transition CLI differential spans `/oo<jjjjjjj*jjjjjjjjj`,
   `j*pj*ppppj/*jjjjjjjjj`, and `o<o<<<<<</o<*oooooooo`. It covers every
+
   twenty-third opcode through `bounded_continuations`. Its third carried history
   keeps C=D for all eight final opcodes. Final `*` plans `M[22]=37`, consumes
   that same-address write as self-encryption input, encrypts it to 103, and
@@ -615,43 +680,51 @@ executable cells, and input-dependent cycles or hangs.
   self-encryption input, and deterministically rejects as non-graphical. A
   separate 24-case graphical twenty-fourth-transition CLI differential spans
   `/oo<jjjjjjj*jjjjjjjjjj`, `j*pj*ppppj/*jjjjjjjjjj`, and
+
   `o<o<<<<<</o<*ooooooooo`. It covers every twenty-fourth opcode through
   `bounded_continuations`. Its third carried history keeps C=D for all eight
   final opcodes. Final `*` and `p` plan `M[23]=39402` and `M[23]=29484`,
   respectively. Each same-address write becomes self-encryption input and
+
   deterministically rejects as non-graphical. A separate 24-case graphical
   twenty-fifth-transition CLI differential spans `/oo<jjjjjjj*jjjjjjjjjjj`,
   `j*pj*ppppj/*jjjjjjjjjjj`, and `o<o<<<<<</o<*oooooooooo`. It covers every
   twenty-fifth opcode through `bounded_continuations`. Its third carried history
   keeps C=D for all eight final opcodes. Final `*` and `p` plan `M[24]=19719`
+
   and `M[24]=29486`, respectively. Each same-address write becomes
   self-encryption input and deterministically rejects as non-graphical. A
   separate 24-case graphical twenty-sixth-transition CLI differential spans
   `/oo<jjjjjjj*jjjjjjjjjjjj`, `j*pj*ppppj/*jjjjjjjjjjjj`, and
   `o<o<<<<<</o<*ooooooooooo`. It covers every twenty-sixth opcode through
   `bounded_continuations`. Its third carried history keeps C=D for all eight
+
   final opcodes. Final `*` plans `M[25]=36`, consumes that same-address write as
   self-encryption input, encrypts it to 38, and continues. Final `p` plans
   `M[25]=29484`, consumes that same-address write as self-encryption input, and
   deterministically rejects as non-graphical. A separate 24-case graphical
   twenty-seventh-transition CLI differential spans `/oo<jjjjjjj*jjjjjjjjjjjjj`,
   `j*pj*ppppj/*jjjjjjjjjjjjj`, and `o<o<<<<<</o<*oooooooooooo`. It covers
+
   every twenty-seventh opcode through `bounded_continuations`. Its third carried
   history keeps C=D for all eight final opcodes. Final `*` and `p` plan
   `M[26]=39401` and `M[26]=29484`, respectively. Each same-address write becomes
   self-encryption input and deterministically rejects as non-graphical. A
   separate 24-case graphical twenty-eighth-transition CLI differential spans
   `/oo<jjjjjjj*jjjjjjjjjjjjjj`, `j*pj*ppppj/*jjjjjjjjjjjjjj`, and
+
   `o<o<<<<<</o<*ooooooooooooo`. It covers every twenty-eighth opcode through
   `bounded_continuations`. Its third carried history keeps C=D for all eight
   final opcodes. Final `*` and `p` plan `M[27]=19718` and `M[27]=29492`,
   respectively. Each same-address write becomes self-encryption input and
+
   deterministically rejects as non-graphical. A separate 24-case graphical
   twenty-ninth-transition CLI differential spans `/oo<jjjjjjj*jjjjjjjjjjjjjjj`,
   `j*pj*ppppj/*jjjjjjjjjjjjjjj`, and `o<o<<<<<</o<*oooooooooooooo`. It covers
   every twenty-ninth opcode through `bounded_continuations`. Its third carried
   history keeps C=D for all eight final opcodes. Final `*` plans `M[28]=35`,
   consumes that same-address write as self-encryption input, encrypts it to 93,
+
   and continues. Final `p` plans `M[28]=29490`, consumes that same-address write
   as self-encryption input, and deterministically rejects as non-graphical.
   Sixteen seeded invalid positional
@@ -697,6 +770,7 @@ executable cells, and input-dependent cycles or hangs.
   stopped because they instantiate the same closed transfer loop without adding
   a schema field, semantic branch, or analyzer capability. Future evidence may
   add regression cases only when it exercises a distinct semantic boundary or
+
   fixes a demonstrated defect; it must not imply unbounded reachability. The
   exhaustive `jig validate --root .` collection completed on the Linux host, but
   its policy result remains blocked by unrelated platform/toolchain skips (for

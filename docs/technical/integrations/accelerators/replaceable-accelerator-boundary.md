@@ -36,6 +36,7 @@ transition over an explicitly bounded memory snapshot.
 `src/optimization/accelerator/application/accelerator/classic_run.py`
 adds a complete-state bounded-run contract whose classic memory width is fixed
 at
+
 59,049 words without exposing CUDA handles or layout details.
 `src/optimization/accelerator/application/accelerator/profile_run.py` extends
 the same hardware-neutral boundary to
@@ -47,6 +48,7 @@ candidate-evaluation, search, and verification-assist request/result protocols.
 Search requests bind algorithm ID, seed, and evaluation budget independently
 from
 backend capability. Search proposals and verification hints carry no acceptance
+
 bit; `TrustedCandidateVerifier` is the only admission port.
 
 ### Implementation Status
@@ -65,6 +67,7 @@ CUDA compact-step implementation is checked directly against Rust
 `Machine::step_traced()` rather than promoted to semantic authority. Resident
 classic and current-profile bounded execution are likewise checked against
 complete normative Rust states. Rust product batch routing uses replaceable
+
 backend traits with safe-Rust fallback and live CUDA-worker integration.
 Reported
 routes expose per-item actual execution origin, distinguishing accepted backend
@@ -79,12 +82,14 @@ the device. Retained current-profile performance evidence additionally covers
 the
 original complete
 snapshot baseline, device-side shared initialization, and persistent resident
+
 sessions. Resident full-snapshot diagnostics separate host allocation,
 state/memory/output transfer, decode, and total. Ordinary snapshots now preserve
 fresh independent mutable-memory ownership uniformly; the optional caller-owned
 workspace is a distinct overwrite/alias contract bound to one live session.
 Neither
 surface changes semantic authority or establishes a CPU-relative speedup.
+
 Candidate evaluation/search/verification-assist ports are now active. The
 portable CPU callback adapters provide mandatory candidate/search execution
 capacity and best-effort routing falls back on typed optional-backend failures
@@ -98,6 +103,7 @@ rotate candidate payloads into the existing primitive contract; the identical
 bridge runs through mandatory CPU and optional CUDA adapters, and malformed
 backend capability/count/domain evidence falls back before admission.
 `EvidenceVerificationAssistAdapter` can expose that evidence as ordered optional
+
 hints while preserving verifier-only acceptance. A live CUDA 257-item rotate
 corpus matches CPU hints exactly; malformed optional evidence produces no hints.
 `EvaluatedSearchExecutionAdapter` composes the candidate-evaluation port into a
@@ -107,6 +113,7 @@ CPU
 or live CUDA evaluation; CUDA matches CPU proposals over 257 candidates and the
 independent CPU verifier remains the only admission authority. A retained
 full-domain performance comparison over 59,049 candidates keeps 15 samples per
+
 backend and exact proposal checks. CPU median is 401.185 ms and CUDA median is
 412.570 ms on the RTX 4060, yielding 0.972x CUDA/CPU and rejecting the speedup
 hypothesis for this route. The diagnostic phase profile explains 97.5% of CPU
@@ -118,6 +125,7 @@ exact
 algorithm, batch-builder, and selector identity. A CPU adapter may prepare it
 once
 and a matching CUDA adapter may consume it without semantic reinterpretation;
+
 forged or mismatched proof identity fails closed. Prepared execution preserves
 result/proposal validation and verifier-only acceptance. Retained evidence
 records
@@ -127,6 +135,7 @@ remains about 9.5% slower than prepared CPU. Preparation is outside timed
 intervals,
 so the result applies to repeated immutable search state. The prepared phase
 profile attributes 79.9% of CPU and 81.2% of CUDA median total time to backend
+
 evaluation, with proposal selection at 19.6% and 18.7%. Candidate-evaluation
 result
 representation/transport is now represented by `PackedCandidateEvidence`.
@@ -137,6 +146,7 @@ forms
 fail closed, and materialization is explicit for consumers that need objects.
 Retained packed evidence lowers every ordinary/prepared route median. The packed
 phase profile reduces backend evaluation 2.326x on CPU and 2.058x on CUDA while
+
 selection improves 1.369x/1.432x. Packed CUDA prepared remains about 18.0%
 slower
 than packed CPU. The neutral proof now optionally stores prepared candidate
@@ -147,6 +157,7 @@ capacity consumes it without repeated request-order validation or payload
 decode.
 Forged type/kind/evaluator state fails closed; strategies without a preparer
 retain
+
 the ordinary adapter path. Retained prepared medians improve 1.792x CPU and
 1.592x
 CUDA, while ordinary routes regress 6.6%/3.7%. Prepared CUDA remains 32.8%
@@ -154,6 +165,7 @@ slower
 than prepared CPU. `PreparedPrimitiveBatch` now seals validated immutable input
 at
 the exact primitive port. CPU consumes it directly; CUDA retains one proof-bound
+
 input/output session and rebuilds only for different proof identity. Ordinary
 execution remains one-shot. Explicit session statistics make residence
 observable.
@@ -164,6 +176,7 @@ while complete phase total does not improve because selection rises to 46.331
 ms.
 Prepared state now includes an immutable exact membership index constructed
 after
+
 candidate batch validation. Matching CPU/CUDA routes reuse 59,049
 identity/payload
 pairs; ordinary execution keeps the one-shot dictionary path and forged payloads
@@ -171,6 +184,7 @@ remain rejected. Benchmarks expose/require the indexed count. Retained prepared
 medians improve 1.725x CPU and 1.899x CUDA; selection improves 3.519x/3.939x to
 11.801/11.761 ms. CUDA is 1.491x faster than same-run CPU. Improved controls
 bound
+
 cross-run attribution. Prepared strategy state now optionally includes a
 proof-bound selector preparer, selector, and count function. Rotate target uses
 the
@@ -179,11 +193,13 @@ CPU/CUDA read and validate evidence there, while ordinary execution retains the
 full scan. Forged/mismatched selector state and nonmatching evidence fail
 closed. Retained
 prepared medians improve 1.755x CPU and 2.907x CUDA; selection improves
+
 894.008x/948.452x to 13.2/12.4 us. CUDA is 2.470x faster than same-run CPU.
 Ordinary
 controls and backend phases change far less, bounding attribution. Primitive
 execution selected the next boundary. The neutral bridge now validates primitive
 result tuples through exact minimum/maximum bounds, preserving negative and
+
 above-domain failure before packing. Retained prepared medians improve 1.086x
 CPU
 and 1.254x CUDA; backend phases improve 1.091x/1.330x and ordinary controls
@@ -196,6 +212,7 @@ prepared
 median improves 4.243x to 3.313 ms and CPU backend evaluation improves 4.540x to
 2.906 ms. CPU ordinary is effectively unchanged, and CPU prepared is 1.440x
 faster
+
 than same-run CUDA. The hardware-neutral result union now supports canonical
 packed u32le words in addition to tuples. Prepared CUDA returns the copied
 resident
@@ -203,6 +220,7 @@ host buffer directly, while the neutral bridge remains authoritative for
 capability,
 count, and complete domain validation. Ordinary CUDA, CPU, and test adapters
 retain
+
 tuple compatibility. Benchmarks require 16 packed evaluations. Retained CUDA
 prepared median improves 2.343x to 2.036 ms and CUDA backend evaluation improves
 2.147x to 1.802 ms. CPU prepared/backend and ordinary controls remain
@@ -211,6 +229,7 @@ flat, while CUDA prepared is 1.621x faster than same-run CPU. CPU result
 validation now uses stable `u32le-broadword-domain-v1` identity. Repeated masks
 reject high bits and detect values above 59,048 through lane-independent
 threshold
+
 addition; scalar fallback exists only to describe invalid output.
 First/last-lane
 threshold and high-bit corruption fail closed, and benchmark output requires the
@@ -229,6 +248,7 @@ prepared boundary now retains immutable CPU-reference bytes as strategy state
 and
 validates prepared output with `cpu-reference-packed-equality-v1`; ordinary
 output
+
 continues through `u32le-broadword-domain-v1`. The backend remains untrusted:
 capability, immutable representation, exact count, full byte equality, proposal
 membership, and independent verifier admission remain outside hardware
@@ -239,6 +259,7 @@ all
 proofs. Retained evidence records 0.488 ms CUDA prepared search (2.407x), 0.215
 ms
 backend evaluation (3.999x), 0.238 ms search total (3.729x), 0.0278 ms exact
+
 validation (23.590x), and 0.1935 ms primitive end-to-end (4.488x). Same-run CUDA
 is
 6.786x faster than CPU prepared. The reference image is 236,196 bytes and
@@ -247,12 +268,14 @@ is excluded. A four-scale benchmark now measures fresh-process and warm-process
 preparation, incremental Python memory, first resident execution, reuse, and
 strict
 crossover while retaining every identity/admission/session proof. Retained
+
 warm/cold crossover is 6/3/2/1 and 106/38/5/2. Full-domain warm one-shot saves
 10.703 ms; cold crosses on run two. Incremental Python state retains/peaks at
 16.063/19.040 MiB versus 0.901 MiB exact buffers. Component tracing selected the
 duplicate prepared membership frozenset for safe
 compaction. The replacement is a proof-bound identity-sorted tuple of references
 to
+
 the original immutable batch items. Binary search plus exact payload equality
 keeps
 anti-fabrication checks outside accelerator authority, while forged/cross-batch
@@ -283,6 +306,7 @@ version 2 and 11,180,412 bytes for the same-run copied set; its preparation is
 0.0177 ms versus 15.8507/155.4303 ms. Exact hit lookup is the retained cost:
 17.755 microseconds versus 2.625 microseconds in version 2 and 0.266
 microseconds
+
 copied (6.763x/66.844x slower). Exact miss lookup improves to 0.636 microseconds
 from 2.785 microseconds in version 2, but remains 3.094x slower than copied-set
 miss lookup. The promotion is not universal: one-candidate memory grows
@@ -303,6 +327,7 @@ transient peak. Full-domain cold/warm crossover remains 1/1. Against the
 immediate
 clean `81d82cf` baseline, CPU ordinary/prepared improve from 139.517/3.316 ms to
 132.848/3.261 ms (1.050x/1.017x), while CUDA ordinary/prepared improve from
+
 152.055/0.449 ms to 144.440/0.429 ms (1.053x/1.047x). Phase totals are 2.9664 ms
 CPU (1.006x) and 0.2654 ms CUDA (1.099x). CPU and CUDA both prove one session
 build, 16 evaluations, 15 reuses, rotate kind, and 59,049 resident words; CUDA
@@ -324,6 +349,7 @@ ordinary/prepared improve from 132.848/3.261 ms to 90.869/3.108 ms
 (1.395x). CUDA prepared throughput is the retained contextual negative at
 0.479 versus 0.429 ms (0.896x); the separate prepared CUDA phase total changes
 only from 0.2654 to 0.2676 ms (0.992x), so no prepared-execution effect is
+
 attributed to the builder. The fixed bitset raises one-candidate peak from 2,664
 to 8,391 bytes and 64-candidate warm crossover from 3 to 4 runs; promotion is
 for
@@ -346,6 +372,7 @@ is
 3.267 versus 3.108 ms (0.952x), CUDA throughput is 0.385 versus 0.479 ms
 (1.245x), and separate CPU/CUDA phase totals are 2.9659/0.2723 ms versus
 2.9535/0.2676 ms (0.996x/0.983x). No prepared-execution effect is attributed to
+
 the builder. One-candidate peak stays 8,391 bytes; at 64 candidates peak falls
 8,788 to 8,635 bytes while sub-millisecond ordinary timing varies upward; at
 1,024
@@ -354,6 +381,7 @@ builder, storage, validator, membership, proposal, admission, cardinality, and
 CPU/CUDA session proofs pass. Component attribution now places the builder phase
 near 710,190 bytes peak while retaining 473,546 bytes. The overall ~962 KiB peak
 occurs when that retained batch coexists with candidate-state creation (~237 KiB
+
 incremental) or selector creation (~253 KiB incremental). Reducing this
 post-builder
 coexistence without weakening exact reference, selection, membership, or
@@ -368,6 +396,7 @@ candidates, selector peak falls from 252,597 to 1,885 bytes (99.254%), while
 selector preparation changes from 3.7642 to 3.9644 ms, a retained 5.318%
 regression. Complete preparation peak falls from 962,052 to 946,675 bytes
 (1.598%); retained state remains 710,647 bytes. Cold/warm preparation changes
+
 from 64.606/65.101 to 64.465/64.780 ms and full-domain crossover remains 1/1.
 At one candidate, the native selector retains 56 bytes more and peaks 240 bytes
 higher; total one- and 64-candidate peaks are unchanged. CUDA ordinary, fresh
@@ -394,6 +423,7 @@ CPU/CUDA word while full membership remains 59,049. Empty projections skip
 backend
 execution; wrong evaluator, fabricated member, oversized projection, forged
 proof,
+
 wrong evidence, and fabricated proposal still fail closed. Against the immediate
 clean version-7 baseline, cold/warm preparation improves from 64.4648/64.7804 ms
 to
@@ -406,6 +436,7 @@ Prepared backend-phase speedups are 218.4x CPU and 2.366x CUDA; total
 prepared-phase
 speedups are 52.8x and 1.914x. Ordinary CPU/CUDA changes are contextual controls
 and
+
 are not attributed to projection. Projection is not universal tiny-batch policy:
 at
 one candidate retained state rises from 1,863 to 2,349 bytes and cold/warm
@@ -436,6 +467,7 @@ compare
 legacy membership revalidation with the proof route: 2.3/4.3 microseconds for
 empty
 (0.535x), 20.0/7.5 microseconds for one item (2.667x), 1.0356/0.1581 ms for
+
 64 items (6.550x), and 16.8647/2.5298 ms for 1,024 items (6.666x). The empty
 proof adds 144 retained and 64 peak bytes; from one item upward retained memory
 is
@@ -448,6 +480,7 @@ stays
 throughput
 regresses 2.8% (0.0787 to 0.0809 ms) and remains an explicit tradeoff; CPU
 prepared
+
 phase total is exactly unchanged at 56.4 microseconds. CUDA prepared throughput
 improves 0.5% and phase total improves from 141.4 to 141.1 microseconds. The
 proof
@@ -456,6 +489,7 @@ optimization. The first production non-invertible/multi-position strategy is now
 `classic-crazy-target-search-v1`. The normative ternary relation is owned by the
 hardware-neutral `CRAZY_TRIT_TABLE`; one fixed accumulator and target derive
 every
+
 exact request-order preimage position before backend execution. Full-batch
 membership, evidence validation, proposal membership, and independent admission
 remain unchanged. The complete 59,049-word corpus with accumulator zero and
@@ -467,6 +501,7 @@ strategy
 and three CLI tests cover the boundary.
 `classic-crazy-target-search-submission-v1` now retains the exact full-batch
 selector/projection proof across a nested candidate ticket and submits only the
+
 1,024-position subset. Seven tests cover identity, full-domain/empty CPU paths,
 malformed nested evidence/ticket behavior, exact live CUDA publication, and
 teardown-driven CPU fallback. Retained Benchmark Protocol v1 evidence under
@@ -480,6 +515,7 @@ than the ticket. Prepared setup is untimed; complete ticket preparation and
 cleanup
 are timed. This is one-device deterministic workload evidence, not compiler,
 synthesis, cross-device, kernel-overlap, or independent-stream evidence.
+
 Resident/fused search remains later work. CUDA now
 has the adapter-internal
 `cuda-ordered-registered-dtoh-stream-v1` lifetime foundation: ordered
@@ -497,6 +533,7 @@ one exact candidate batch to an optional backend ticket and deferred mandatory
 CPU
 reference, publishes only after result validation, records
 pending/completed/closed/
+
 failed state, and requires successful optional-ticket cleanup before fallback.
 Malformed tickets or cleanup failure fail closed. The neutral layer creates no
 threads and grants no acceptance authority. CUDA now implements candidate
@@ -506,6 +543,7 @@ for exact classic crazy/rotate work through
 stream,
 exact launch parameters, and private buffers until stream-specific wait, exact
 CPU
+
 reference validation, and destruction. Launch/synchronization failure cleanup
 and
 runtime draining are fail-closed. Five deterministic stream tests plus seven
@@ -537,6 +575,7 @@ input/output host buffers and enqueues H-to-D, kernel, and D-to-H work on the
 ticket's same nonblocking stream. Five deterministic runtime tests cover
 ordering, leases, and partial-failure cleanup; four live candidate routes cover
 no synchronous-copy use, crazy exactness, reverse waiting, and teardown
+
 fallback. Retained evidence under
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `benchmarks/accelerator/evidence/2026-07-29-independent-ticket-transfer-throughput-rtx4060/`
@@ -548,6 +587,7 @@ streaming remains an exact explicit experiment. Wall time alone does not
 attribute physical transfer/kernel overlap.
 Opt-in `cuda-independent-stream-ticket-transfer-timeline-v1` now records four
 contiguous CUDA events around upload, exact kernel, and download on each
+
 streamed ticket. Three deterministic tests cover phase order, active lifetime,
 and failed-kernel cleanup; one live RTX 4060 test preserves CPU-equal output and
 monotonic phases. Retained evidence under
@@ -562,6 +602,7 @@ This closes phase attribution for the retained workload, not a universal claim
 that CUDA hardware can never overlap transfers and kernels.
 The shared boundary now also exposes
 `validated-search-submission-v1` through
+
 `src/optimization/accelerator/application/accelerator/search_submission.py`. One
 exact algorithm/problem/seed/budget request binds an optional ticket plus
 deferred
@@ -573,6 +614,7 @@ deferred
 CPU, exact optional publication, submit/wait/result fallback, malformed ticket,
 idempotence, close, cached mandatory failure, and cleanup failure.
 `classic-rotate-target-search-submission-v1` is the first concrete search-ticket
+
 composition. It retains exact full-batch selector/projection proofs, submits
 only
 the zero-or-one selector-relevant sub-batch through the candidate ticket, and
@@ -581,6 +623,7 @@ three live CUDA routes for one-position exactness, empty projection, and
 teardown
 fallback. No ticket-specific speedup or independent-stream claim follows. The
 shared boundary now also exposes
+
 `validated-verification-assist-submission-v1`. Optional assistance publishes
 only
 after exact verifier/capability/order validation and successful ticket cleanup;
@@ -592,6 +635,7 @@ tickets
 into exact ordered hints while preserving evaluator/verifier identity. Seven
 tests
 include three live CUDA routes for CPU-equal hints and teardown-driven empty
+
 completion. Hints remain optional and untrusted; `TrustedCandidateVerifier`
 alone
 owns acceptance. Crazy-target search now also uses the neutral submission
@@ -612,6 +656,7 @@ paired-win majority; malformed or duplicate route records fail closed. Plans
 preserve input order, minimize chunk count, then measured median cost, and
 prefer synchronous ties. Opt-in
 `evidence-bound-ticket-route-admission-report-v1` publishes one immutable
+
 assessment per retained route in input order. It distinguishes context
 mismatch, inexact results, no median improvement, no paired majority, and a
 group larger than the pending queue. Eligible but unused routes remain visible
@@ -619,6 +664,7 @@ with zero selected counts; the report also records selected chunks/tickets,
 fallback tickets, synchronous/streamed totals, and the unchanged plan. It reads
 no additional evidence, performs no online learning, and changes no default.
 `bounded-ticket-admission-telemetry-v1` retains completed reports in a
+
 caller-owned positive-capacity FIFO.
 `bounded-ticket-admission-failure-telemetry-v1` independently retains failed
 accelerator attempts as unavailable, invalid-input, execution, or other stable
@@ -627,12 +673,14 @@ sequence IDs, eviction counts, measured/estimated duration delta, and exact
 selected-route usage. Malformed reports, timings, or foreign failures fail
 before mutation. `TicketAdmissionAttemptTelemetry` pairs the two FIFOs, and a
 separate retained CUDA attempt executor records exactly one outcome before
+
 returning or re-raising the same accelerator error. The ordinary and existing
 completion-only executors remain unchanged.
 `ticket-admission-telemetry-document-v1` captures both snapshots as compact,
 sorted-key schema-v1 JSON. Decoding defaults to a 1 MiB byte limit and 4,096
 observations per FIFO, rejects duplicate, unknown, oversized, and noncanonical
 input, and restores exact sequence and eviction state. File reads and writes are
+
 explicit; writes use a same-directory temporary file and atomic replacement.
 `caller-owned-ticket-admission-telemetry-store-v1` defines an explicit
 put/get/remove/snapshot port and a bounded caller-owned memory adapter.
@@ -644,6 +692,7 @@ by
 fingerprint, and removal releases exact document and byte budgets. Invalid
 fingerprints/documents, budget overflow, collisions, or retained decode failure
 fail
+
 closed without partial mutation. The memory adapter performs no filesystem I/O,
 automatic loading, summaries, merging, recommendations, or admission changes.
 `ticket-admission-telemetry-schema-migration-v1` publishes a fixed lossless
@@ -651,6 +700,7 @@ automatic loading, summaries, merging, recommendations, or admission changes.
 sorted JSON containing the exact canonical schema-v1 bytes as standard Base64,
 plus the required schema-v1 document identity and SHA-256 fingerprint. Versioned
 decoding defaults to 2 MiB outer bytes, 1 MiB embedded source bytes, and 4,096
+
 observations per FIFO. Upgrade and downgrade are explicit; schema-v1 bytes
 remain
 unchanged. There is no automatic migration, file loading, snapshot
@@ -659,6 +709,7 @@ reinterpretation, merge, recommendation, lineage inference, or policy change.
 and groups retained observations by exact backend, device, workload, and ticket
 count. It publishes completed/failed integer totals, estimate-comparison counts,
 retention ranges, stable failure categories, and sorted selected-evidence
+
 appearances.
 `offline-ticket-admission-telemetry-collection-v1` defaults to explicit
 4,096-document and 16 MiB canonical-input bounds. It fingerprints canonical
@@ -669,6 +720,7 @@ unique
 entries by fingerprint. Different snapshots remain separate even when their
 contexts or sequence ranges overlap; digest collisions fail closed.
 `offline-ticket-admission-telemetry-overlap-v1` compares two validated documents
+
 in fingerprint order. For completed and failed FIFOs it publishes capacities,
 retained half-open sequence ranges, exact overlap ranges, matching counts, and
 conflicting sequence IDs, with explicit empty and no-overlap classifications. An
@@ -677,6 +729,7 @@ exact document match is separate from matching retained observations.
 collection before comparing every unique pair. It defaults to a 65,536-pair
 budget, fails before pairwise work when that budget is exceeded, orders reports
 by
+
 fingerprint, and publishes completed/failed counts for all four overlap classes.
 Exact duplicates remain collection occurrences and never create pairs.
 `offline-ticket-admission-telemetry-overlap-components-v1` selects an undirected
@@ -687,6 +740,7 @@ direct, possible, and missing edge counts plus a clique flag. A bridged
 component
 may contain member pairs with no direct edge, so connectivity is neither
 pairwise
+
 equivalence nor recorder lineage. Component fingerprint collisions fail closed.
 `authenticated-ticket-admission-telemetry-lineage-v1` separately binds one exact
 document fingerprint to caller-supplied recorder, completed/failed stream,
@@ -694,6 +748,7 @@ capture
 sequence, key, and optional immediate-predecessor identities. Canonical
 HMAC-SHA-256 uses at least 32 caller-owned secret bytes; the secret is never
 stored.
+
 Verification requires an explicit trusted key identity and secret. Same-sequence
 forks, adjacent predecessor mismatch, nonadjacent direct links, MAC mismatch,
 and
@@ -702,6 +757,7 @@ remain
 separate lineages; ordered gaps are common lineage without a direct link. The
 caller owns key legitimacy.
 `caller-owned-ticket-admission-telemetry-lineage-trust-v1` builds an explicit
+
 in-memory set of at most 256 unique HMAC keys, sorted by `key_id`. Each key has
 an
 inclusive first/optional-last capture sequence window; empty sets trust nothing.
@@ -710,6 +766,7 @@ verified
 items may be compared across a rotation. Duplicate identities, malformed
 windows,
 unknown keys, out-of-window captures, and incorrect secrets fail closed. Secret
+
 fields are hidden from representations.
 `ticket-admission-telemetry-lineage-trust-manifest-v1` canonically persists only
 `key_id`, an opaque `key_reference_id`, and inclusive capture windows. It
@@ -721,6 +778,7 @@ Resolution
 requires exact caller-supplied key/reference coverage and produces
 manifest-bound
 in-memory trust. A resolved secret is not certified until an attestation
+
 verifies.
 Duplicate keys/references, malformed or noncanonical JSON, incomplete or
 excessive
@@ -730,6 +788,7 @@ manifest bytes.
 `explicit-ticket-admission-telemetry-lineage-secret-provider-v1` accepts one
 caller-supplied synchronous provider. Manifest validation and a default
 256-request
+
 budget complete before the first call. Immutable requests follow canonical key
 order and carry manifest/provider identity, key/reference identity, capture
 window,
@@ -737,6 +796,7 @@ and request index. Providers return only typed `resolved`, `unavailable`, or
 `failed` results; non-success stops without retry, and each entry is called
 exactly
 once. Repeated explicit resolutions call the provider again. Secret bytes remain
+
 hidden, and resolution still does not authenticate them before attestation use.
 `bounded-in-memory-ticket-admission-telemetry-lineage-secret-provider-v1`
 implements one reusable bounded caller-owned synchronous provider over explicit
@@ -750,6 +810,7 @@ bindings. Construction and every call revalidate the exact service type and
 identity, provider identity, configured limit, secret count, entry tuple,
 canonical
 ordering, shared 32-to-4096-byte key rules, request metadata, and each hidden
+
 key. A
 different provider identity returns typed `failed`; an unknown
 manifest/reference
@@ -765,6 +826,7 @@ API
 and performs no discovery, refresh, retry, persistence, logging, worker
 creation,
 certificate rule, PKI operation, algorithm choice, or admission-policy
+
 operation.
 `explicit-async-ticket-admission-telemetry-lineage-secret-provider-v1`
 defines one caller-driven sequential async port over the same manifest-bound
@@ -774,6 +836,7 @@ preflight, exact request/result validators, one result materializer, and one
 final
 trust materializer; both routes share those contracts. Manifest validation,
 provider identity, and the request budget complete before the first `await`. The
+
 provider is awaited once per entry in canonical order and never concurrently.
 Cancellation propagates directly; ordinary provider exceptions become stable
 errors
@@ -783,6 +846,7 @@ executor, worker, cache, lifecycle, discovery, refresh, persistence,
 secret-store
 access, certificate rule, PKI operation, algorithm choice, or policy operation.
 `bounded-in-memory-async-ticket-admission-telemetry-lineage-secret-provider-v1`
+
 adapts one exact bounded memory secret provider to that async port. Construction
 and
 every call revalidate the adapter identity, hidden wrapped service, provider
@@ -793,6 +857,7 @@ hidden task. Repeated calls reuse only explicit immutable caller-owned memory
 and
 validate it again. The adapter reads no environment, file, network, process
 credential state, external secret store, or hosted API and adds no retry, cache,
+
 refresh, persistence, logging, worker, certificate, PKI, algorithm, or policy.
 `explicit-file-ticket-admission-telemetry-lineage-secret-provider-v1`
 implements one bounded read-only provider over caller-supplied absolute
@@ -805,6 +870,7 @@ A provider mismatch returns typed `failed`; an unknown manifest/reference
 returns
 `unavailable`; conflicting key/window metadata returns `failed`; all three
 outcomes
+
 occur before any open. An exact match opens the selected path once and reads at
 most
 `max_secret_bytes + 1` bytes. A missing file returns `unavailable`; other read
@@ -814,6 +880,7 @@ return `failed` without operating-system text. Exact raw bytes, including
 trailing
 newlines, are preserved. Repeated calls reopen and reread the file, so rotation
 is
+
 caller-controlled and no secret cache exists. The provider does not discover
 paths,
 write files, scan directories, inspect ownership or permissions, validate
@@ -826,6 +893,7 @@ offloader.
 Construction and every call revalidate the adapter identity, hidden wrapped
 provider, copied provider identity, secret count, entry and byte limits, and
 callable offloader. Each request is fully validated before the first await; a
+
 provider-identity mismatch returns typed `failed` without awaiting. An exact
 request awaits the offloader once with the same immutable provider and request.
 The caller alone chooses whether that await completes inline, uses a thread or
@@ -833,6 +901,7 @@ executor, or suspends by another mechanism. Cancellation propagates directly;
 ordinary offloader exceptions become stable adapter errors without vendor text.
 Returned results reuse the shared exact type and enum validation; nonresolved
 results cannot carry secret bytes, while resolved bytes must use the exact bytes
+
 type and remain within the wrapped provider's 32-to-4096-byte bound. Repeated
 calls offload and reread again. The adapter creates no event loop, task, thread,
 executor, worker, path discovery, retry, cache, persistence, environment access,
@@ -841,6 +910,7 @@ external-store integration, secret logging, algorithm choice, or policy action.
 algorithm-neutral synchronous detached signer and verifier ports. Canonical
 attestations bind the exact schema-v1 document fingerprint, algorithm, recorder,
 completed/failed streams, capture sequence, public-key ID, SHA-256 of the exact
+
 caller-owned public-key bytes, and optional HMAC or signature predecessor.
 Signers
 return typed `signed`, `unavailable`, or `failed`; verifiers return `verified`,
@@ -851,6 +921,7 @@ before
 the port call, then reuses the common verified-lineage comparison for public-key
 rotation and an explicit HMAC-to-signature transition. No concrete signature
 algorithm, key generation, private-key storage, certificate chain, PKI, trust
+
 discovery, provider lifecycle, or security claim is supplied by this boundary.
 `caller-owned-ticket-admission-telemetry-lineage-signature-trust-v1` builds
 an explicit in-memory set of at most 256 unique `(algorithm_id, public_key_id)`
@@ -862,6 +933,7 @@ identity, fingerprint, and capture window before calling the verifier;
 independently
 verified items preserve same-key, public-key rotation, algorithm rotation,
 ordered
+
 gap, and fork checks. Duplicate identities, malformed windows, invalid key
 bytes,
 fingerprint mismatch, unknown identities, out-of-window captures, and tampered
@@ -872,6 +944,7 @@ policy authority is supplied.
 algorithm identity, public-key identity, one opaque public-key reference, the
 required exact public-key fingerprint, and inclusive capture windows as
 canonical
+
 key-free JSON. It defaults to 256 entries and 64 KiB, sorts by composite
 identity,
 requires globally unique references, publishes a stable SHA-256 fingerprint, and
@@ -883,6 +956,7 @@ signature trust. The same public-key ID may exist under distinct algorithms.
 Duplicate identities or references, malformed or noncanonical JSON, incomplete
 or
 excessive coverage, reference or fingerprint mismatch, and storage failures fail
+
 closed. No public-key bytes, provider, certificate, PKI, trust discovery,
 algorithm
 selection, or policy authority are supplied.
@@ -894,6 +968,7 @@ requests
 in canonical `(algorithm_id, public_key_id)` order. Each request carries only
 the
 manifest/provider identities, algorithm/key/reference identities, required exact
+
 public-key fingerprint, capture window, and request index. Providers return
 typed
 `resolved`, `unavailable`, or `failed` results. Each entry is called exactly
@@ -905,6 +980,7 @@ the manifest fingerprint before in-memory signature trust is constructed. No
 provider discovery, built-in key service, retry, cache, persistence, hidden
 worker,
 certificate validation, PKI, algorithm selection, or policy authority is
+
 supplied.
 `explicit-async-ticket-admission-telemetry-lineage-public-key-provider-v1`
 accepts one caller-supplied async provider and reuses the synchronous request,
@@ -914,6 +990,7 @@ event loop. Manifest, provider identity, and the default 256-request budget are
 validated before the first provider await. Requests are awaited sequentially in
 canonical `(algorithm_id, public_key_id)` order, with no task creation or hidden
 parallelism; each entry is awaited exactly once and repeated explicit resolution
+
 performs a fresh walk. Typed non-success stops without retry. Ordinary provider
 exceptions become stable boundary errors without vendor text, while cancellation
 propagates to the caller. Exact public-key fingerprints are checked before trust
@@ -921,6 +998,7 @@ construction. This sequential port creates no event loop, task, provider
 session,
 concurrency policy, discovery, retry, cache, persistence, certificate
 validation,
+
 PKI, algorithm selection, or admission authority.
 `explicit-async-batch-ticket-admission-telemetry-lineage-public-key-provider-v1`
 accepts one caller-supplied async batch provider. Manifest, provider identity,
@@ -933,6 +1011,7 @@ full canonical `(algorithm_id, public_key_id)` request tuple and exactly one
 provider
 await. The provider owns all scheduling and may resolve the batch sequentially
 or
+
 concurrently. The boundary requires one exact positional result tuple with
 matching
 cardinality, validates every shared typed item result, propagates cancellation,
@@ -959,12 +1038,14 @@ typed outcomes are `opened`, `unavailable`, or `failed`, and only `opened` may
 carry
 a hidden callable batch provider. The existing canonical batch boundary then
 runs
+
 once. Every opened session receives exactly one `close` request with a stable
 `completed`, `failed`, or `cancelled` reason; close outcomes are `closed` or
 `failed`. Opening exceptions become stable errors without vendor text and
 opening
 cancellation propagates without closing. After opening, failure or cancellation
 attempts one close. Cancellation propagates only after successful close; close
+
 failure replaces the preceding outcome and fails closed. No built-in service,
 event loop, task, discovery, retry, cache, persistence, certificate validation,
 PKI, algorithm selection, or admission authority is supplied.
@@ -977,6 +1058,7 @@ key, and reference identities, validates inclusive capture windows, recomputes
 every
 exact public-key SHA-256 fingerprint, rejects duplicate composite identities and
 references, and sorts entries by reference identity. Key bytes are hidden from
+
 representations. Every explicit lookup revalidates service identity, count,
 tuple,
 ordering, metadata, and exact key bytes. An absent reference returns typed
@@ -984,6 +1066,7 @@ ordering, metadata, and exact key bytes. An absent reference returns typed
 window returns typed `failed`; only an exact request returns `resolved`. Empty
 services are valid and resolve nothing. The object is reusable caller-owned
 memory,
+
 not an automatic or hidden cache. It performs no file, environment, network,
 discovery, mutation, retry, persistence, async adaptation, certificate
 validation,
@@ -1003,6 +1086,7 @@ or `failed` outcome and introduces no internal suspension point; the
 caller-owned
 event loop cannot run another task merely because this adapter was awaited. The
 existing sequential async boundary still performs manifest preflight, canonical
+
 ordering, fingerprint checks, stable exception wrapping, and trust construction.
 Empty manifests perform no lookup, while explicit adapter construction already
 validates the service. The adapter creates no event loop, task, sleep,
@@ -1026,6 +1110,7 @@ positional indices, and every item manifest/provider binding. Requests are
 resolved
 inline in tuple order through the synchronous memory service and returned as one
 hidden positional result tuple, preserving typed `resolved`, `unavailable`, and
+
 `failed` outcomes. Direct empty batches are valid. The existing batch trust
 boundary
 still performs manifest preflight, one nonempty provider await, exact
@@ -1037,6 +1122,7 @@ session lifecycle, file, environment, network, discovery, retry, persistence,
 certificate validation, PKI, algorithm selection, or policy operation.
 `memory-async-session-ticket-admission-telemetry-lineage-public-key-provider-v1`
 adapts one exact bounded memory service to the explicit async provider-session
+
 port.
 Construction validates the memory service, builds its bounded inline batch
 adapter,
@@ -1049,6 +1135,7 @@ with the hidden memory batch adapter; a second or mismatched open returns
 `failed`
 without replacing active state. Close requests require the exact persisted
 manifest
+
 fingerprint, provider identity, and request count. A mismatch returns `failed`
 and
 retains active state; an exact close returns `closed`, clears the active
@@ -1063,6 +1150,7 @@ file, environment, network, discovery, retry, persistence, certificate
 validation,
 PKI, algorithm selection, or policy operation.
 `ticket-admission-telemetry-lineage-public-key-bundle-v1` persists one explicit
+
 bounded public-key service as canonical compact UTF-8 JSON. Unlike the key-free
 trust manifest, this separate document intentionally contains public-key bytes
 as
@@ -1074,6 +1162,7 @@ identity with that canonical encoding, rejects duplicate or unknown JSON keys,
 and
 is bounded by 256 entries and 1 MiB by default. Explicit writes atomically
 replace
+
 one caller-selected path. Explicit reads consume at most the configured byte
 limit.
 Each explicit load rereads the path, fingerprints canonical bytes, and builds a
@@ -1086,6 +1175,7 @@ fetch, session creation, certificate validation, PKI, algorithm selection, or
 policy
 operation.
 `explicit-ticket-admission-telemetry-lineage-public-key-bundle-fetcher-v1`
+
 defines one synchronous transport-neutral fetch boundary. The caller constructs
 an
 exact immutable request binding source identity, resource identity, provider
@@ -1095,6 +1185,7 @@ invocation
 makes exactly one caller-supplied fetcher call and accepts only the exact typed
 `fetched`, `unavailable`, or `failed` result enum. Nonfetched results cannot
 carry
+
 bytes. A fetched result requires exact nonempty bytes within the requested
 limit,
 canonical bundle decoding, a newly materialized caller-owned memory provider,
@@ -1107,6 +1198,7 @@ retry,
 watch, persistence, certificate validation, PKI, algorithm selection, or policy
 operation.
 `explicit-async-ticket-admission-telemetry-lineage-public-key-bundle-fetcher-v1`
+
 defines the caller-driven async form of the same transport-neutral boundary. The
 caller owns the coroutine and event loop. The exact shared request is completely
 validated before the first await, and each invocation awaits the supplied
@@ -1116,6 +1208,7 @@ provider bindings, and caller-owned memory-provider materialization remain the
 single synchronous source of validation truth. Ordinary fetcher exceptions
 become
 stable async-boundary errors without vendor text, while cancellation propagates
+
 directly. Repeated explicit invocations await the transport again and retain no
 cache. The boundary creates no event loop, task, worker, concurrency policy,
 endpoint discovery, credential handling, redirect, retry, watch, persistence,
@@ -1126,6 +1219,7 @@ immutable
 config binds a canonical lowercase ASCII host, TCP port, origin-form target,
 source/resource identities, a positive finite timeout capped at 300 seconds, and
 a
+
 caller-owned `SSLContext`. Build and every use require hostname checking,
 `CERT_REQUIRED`, and TLS 1.2 or newer; the module never creates or loads trust
 roots.
@@ -1141,6 +1235,7 @@ JSON content type with optional UTF-8 charset, absent or identity content
 encoding,
 an optional canonical positive content length within the request limit, and an
 exact
+
 nonempty bytes body read with a `max_bytes + 1` bound. Connection, request,
 response,
 body-read, or close failures return typed `failed` without vendor text. There is
@@ -1156,12 +1251,14 @@ caller-supplied offloader. Construction and every call fully revalidate the
 wrapped
 HTTPS fetcher, stable adapter identity, copied fetcher/source/resource bindings,
 and
+
 callable offloader. The shared request is validated before the first await; a
 source/resource mismatch returns typed `failed` without calling the offloader. A
 matched request awaits the offloader exactly once with the same exact fetcher
 and
 request. The caller alone decides whether that await runs inline, in a thread,
 through an executor, or through another scheduling mechanism. Cancellation
+
 propagates directly. Ordinary offloader exceptions become stable adapter errors
 without vendor text. Returned results are revalidated for exact type, enum,
 payload
@@ -1171,6 +1268,7 @@ the outer async materialization boundary. Repeated calls revalidate and offload
 again. The adapter creates no event loop, task, thread, executor, worker, retry,
 redirect, cache, trust root, credential, hosted-service policy, algorithm
 choice, or
+
 admission-policy operation.
 `explicit-ticket-admission-lineage-https-authorization-provider-v1`
 defines one synchronous caller-owned port for resolving an opaque HTTPS
@@ -1181,6 +1279,7 @@ identity, callable provider, and positive byte limit before the provider is
 called.
 The default limit is 4096 ASCII bytes and the supported maximum is 16384. One
 immutable request carries only the bundle fingerprint and nonsecret provider,
+
 resource, and source identities. Each successful preflight makes exactly one
 provider call. Stable `resolved`, `unavailable`, and `failed` outcomes carry no
 vendor text; nonresolved outcomes cannot carry credential text. A resolved value
@@ -1188,6 +1287,7 @@ must be exact nonempty ASCII field text containing only spaces and visible
 characters, with no edge spaces and no normalization. The value is hidden from
 representations and returned only in caller-owned state with its exact byte
 count
+
 and the fixed `Authorization` header name. Repeated explicit resolutions call
 the
 provider again. The port does not choose an authorization scheme, inject a
@@ -1202,6 +1302,7 @@ defines one caller-driven async port for resolving the same bounded opaque HTTPS
 `Authorization` value. The synchronous port now exposes one immutable nonsecret
 preflight plus one exact result materializer, and both sync and async resolution
 use
+
 those same validators. Preflight validates the exact HTTPS fetcher, canonical
 bundle
 request, source/resource binding, authorization-provider identity, and positive
@@ -1211,6 +1312,7 @@ awaiting.
 One successful preflight awaits the caller-supplied provider exactly once with
 the
 same exact immutable request. The provider controls whether that await suspends.
+
 Cancellation propagates directly. Ordinary provider exceptions become stable
 async
 errors without vendor text. The shared materializer enforces exact result type
@@ -1222,6 +1324,7 @@ the synchronous path. Repeated explicit resolutions await again with no cache or
 refresh. The port creates no event loop, task, thread, executor, worker, retry,
 discovery, refresh, header injection, hosted-service policy, certificate rule,
 PKI
+
 operation, algorithm choice, or admission-policy operation.
 `memory-ticket-admission-lineage-https-authorization-provider-v1`
 implements one reusable bounded caller-owned synchronous Authorization provider
@@ -1237,6 +1340,7 @@ duplicate request bindings. Construction and every call revalidate the exact
 service
 type and identity, provider identity, limits, entry tuple, shared request
 metadata,
+
 shared Authorization text rules, byte counts, ordering, and uniqueness. A
 request
 with a different authorization-provider identity returns typed `failed`; a valid
@@ -1252,6 +1356,7 @@ rule,
 PKI operation, algorithm choice, or admission-policy operation.
 `offloaded-async-file-ticket-admission-lineage-https-authorization-provider-v1`
 adapts one exact explicit file Authorization provider to the shared async port
+
 through one caller-supplied offloader. Construction and every call revalidate
 the
 adapter identity, hidden wrapped provider, copied authorization count, entry and
@@ -1261,6 +1366,7 @@ validated before the first `await`; a provider-identity mismatch returns typed
 offloader exactly once with the same exact provider and immutable request. The
 caller alone chooses whether the file read completes inline, suspends, or runs
 in
+
 a caller-owned thread or executor. Cancellation propagates directly. Ordinary
 offloader exceptions become stable adapter errors without path or vendor text.
 Returned results are revalidated after the await, including exact result type
@@ -1268,6 +1374,7 @@ and
 enum, nonresolved payload absence, canonical ASCII text, and the wrapped
 provider
 byte limit for resolved values. Repeated calls offload and reread the file so
+
 rotation and removal remain visible without a cache. The adapter creates no
 event
 loop, task, thread, executor, worker, discovery, retry, refresh, persistence,
@@ -1279,6 +1386,7 @@ paths. Paths and entries stay hidden from representations. Build and validation
 perform no file I/O; every call revalidates the exact service, provider
 identity,
 copied authorization count, entry and byte limits, canonical ordering, request
+
 metadata, and absolute paths before lookup. A provider-identity mismatch returns
 typed `failed` without I/O, while an unmatched request returns `unavailable`.
 One exact match opens one path once in binary mode and reads at most the
@@ -1289,6 +1397,7 @@ oversized content, non-ASCII bytes, empty or noncanonical text, whitespace,
 control
 bytes, and NUL return `failed` without path or system text. Valid ASCII text is
 revalidated through the shared Authorization materializer without trimming or
+
 normalization. Repeated calls reread the file so rotation and removal remain
 visible without a cache. The provider performs no discovery, writes, permission
 inspection, retries, persistence, logging, worker creation, scheme selection,
@@ -1298,6 +1407,7 @@ implements one bounded synchronous Authorization provider over explicit
 immutable
 request-to-variable bindings. Each entry hides one canonical uppercase ASCII
 environment name and binds it to one exact bundle fingerprint, fetch-provider
+
 identity, resource identity, and source identity. One service binds all entries
 to
 one authorization-provider identity, permits at most 64 entries by default and
@@ -1314,6 +1424,7 @@ variable returns `unavailable`; an operating-system or Unicode lookup failure,
 an
 invalid nonempty-ASCII Authorization value, or an oversized value returns
 `failed`
+
 without variable names, values, or operating-system text. An exact valid value
 returns `resolved` unchanged. Repeated calls reread the environment, so
 caller-owned
@@ -1335,11 +1446,13 @@ request is validated before the first `await`; a provider-identity mismatch
 returns typed `failed` without invoking the offloader. A matched request awaits
 the offloader exactly once with the same exact provider and immutable request.
 The caller alone chooses whether the environment read completes inline, runs in
+
 a thread or executor, or suspends by another mechanism. Cancellation propagates
 directly. Ordinary offloader exceptions become stable adapter errors without
 vendor text. Returned typed results are revalidated after the await, including
 exact enum and type, nonresolved payload absence, and bounded canonical ASCII
 text for resolved values. Repeated calls offload and reread the environment, so
+
 rotation and removal remain visible without a cache. The adapter creates no
 event
 loop, task, thread, executor, worker, discovery, refresh, retry, persistence,
@@ -1354,6 +1467,7 @@ the exact adapter type and identity, wrapped memory service, copied entry count,
 entry limit, and authorization-provider identity. A direct await delegates once
 to
 the same synchronous memory lookup and returns the same typed `resolved`,
+
 `unavailable`, or `failed` result before any other caller task can run. The
 shared
 async Authorization boundary can therefore materialize the exact hidden value
@@ -1367,6 +1481,7 @@ retry, external cache, persistence, logging, hosted-service policy, certificate
 rule, PKI operation, algorithm choice, or admission-policy operation.
 `authorized-https-ticket-admission-lineage-public-key-bundle-fetcher-v1`
 binds one exact synchronous HTTPS fetcher to one exact caller-owned resolved
+
 Authorization value. Construction and every call revalidate the wrapped HTTPS
 fetcher, resolved Authorization value, stable adapter identity, copied byte
 count,
@@ -1386,6 +1501,7 @@ never
 calls a credential provider, refreshes credentials, retries, redirects, caches
 hidden state, normalizes or selects a scheme, logs credential text, discovers an
 endpoint, creates workers, owns a hosted-service API, validates certificates,
+
 distributes PKI, selects a signature algorithm, or changes admission policy.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `offloaded-async-authorized-https-ticket-admission-lineage-key-bundle-fetcher-v1`
@@ -1406,6 +1522,7 @@ with the same exact authorized fetcher and request, then revalidates the exact
 typed
 result and request byte limit. The caller alone decides whether blocking work
 runs
+
 inline, in a thread, through an executor, or by another scheduling mechanism.
 Cancellation propagates directly. Ordinary offloader exceptions become stable
 adapter errors without vendor text. Repeated calls offload again but never
@@ -1413,6 +1530,7 @@ resolve or
 refresh credentials. The adapter creates no event loop, task, thread, executor,
 worker, retry, redirect, cache, trust root, credential provider, hosted-service
 policy, certificate rule, PKI operation, algorithm choice, or admission-policy
+
 operation.
 The built-in HMAC-secret implementations are the bounded caller-owned memory
 service, its inline sequential async adapter, the explicit read-only file
@@ -1439,6 +1557,7 @@ credential refresh, or hosted key service.
 No bundle or session is loaded automatically;
 there is no discovery, retry,
 retained cache, persistence, automatic trust
+
 loading, snapshot merge, route recommendation, or policy authority. There is no
 hidden worker or
 automatic promotion. The retained
@@ -1448,6 +1567,7 @@ automatic promotion. The retained
 and rejects streamed routes 1/2/4/8; a ten-ticket queue therefore selects groups
 2+8 at a 7.3271 ms estimated median. The opt-in executor validates the packed
 workload SHA-256, reverse-waits each group, restores input order, and closes
+
 every ticket. One thousand seven hundred eighty-nine
 admission/telemetry/persistence/store/migration/summary/collection/overlap/
 index/components/lineage/trust/manifest/provider/memory-secret-provider/
@@ -1502,12 +1622,14 @@ newer,
 exact NVRTC 13.3, the tracked toolchain SHA-256, and NVML display build
 `610.88`;
 `cuda-host-runtime-identity-v1` measures Windows 11 Professional build
+
 `10.0.26200`, `x86_64`, and CPython `3.14.6`. Missing or failed optional NVML or
 host measurement leaves ordinary CUDA available but this evidence-bound profile
 unmatched. Fourteen runtime-identity tests cover required query/hash failures,
 NVML lifetimes, host validation, exact live host measurement, and one live CUDA
 route. Other hosts, Python versions, driver builds, devices, and workloads
 remain
+
 open. The global synchronous default does not change.
 Other CUDA/ROCm strategies, event-instrumentation controls, additional
 admission profiles, and other kernel/callback workloads remain open.

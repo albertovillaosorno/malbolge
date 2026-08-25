@@ -68,6 +68,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   `direct-halt-registers` revision 5 extends that halt-only surface across
   arbitrary 32-bit registers and full 64-bit counter observations. Independent
   495/564-byte fixtures bind counters above `u32::MAX` on both ISAs; historical
+
   revision, counter, and opcode mismatch fail closed. `direct-halt-fetch`
   revision 2 adds a VM-decoded graphical `v` live-in with independent
   535/628-byte
@@ -81,6 +82,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   adds
   two distinct code/data live-in guards, an exact 125-word footprint, and the
   first instruction-specific semantic data read with independent 564/699-byte
+
   objects. `direct-jump-code` revision 1 adds three distinct live-in guards,
   exact post-jump encryption, a 13-word footprint, and independent 622/731-byte
   objects. `direct-rotate` revision 1 adds two guarded live-ins, two exact
@@ -90,6 +92,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   two-read/two-write machine shape with independent VM-owned `p`/Crazy
   admission, a 9-word footprint, and independent 577/731-byte objects.
   `direct-output` revision 1 adds output-pointer and strict capacity guards, an
+
   exact byte append, and independent 642/724-byte objects. `direct-input`
   revision 1 adds exact byte and EOF forms with independent 659/744-byte and
   634/715-byte objects. All eight instruction families now have reviewed direct
@@ -98,6 +101,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Native ABI revision 1 now has one format-neutral Rust `repr(C)` call frame.
   Its tested 80-byte size and field offsets match both reviewed encoder
   families; typed status/termination values and borrowed-buffer construction
+
   fail closed. `PreparedNativeRegionInvocation` now validates one exact effect,
   snapshots complete state/memory/output, and admits only exact application or
   a mutation-free guard miss. Unknown status, unexpected invalid arguments,
@@ -105,6 +109,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   restores the complete entry snapshot.
   `PreparedVerifiedDirectInvocation` reconstructs complete native key identity,
   rejects canonical program drift, and denies the deoptimization stub
+
   state-applying authority. `NativeRegionBuffers` keeps caller loans bound to
   the same verified bytes, target assumptions, and ABI pointer.
   `VerifiedDirectLoadImage` reparses verified COFF, rejects relocations,
@@ -112,12 +117,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   exact immutable code and entry offset, retains full key/target identity, and
   validates ISA alignment. Its fixed policy requires RW-to-RX transition plus
   instruction synchronization. This does not link, allocate pages, change real
+
   permissions, flush instructions, clean up mappings, or invoke code.
   Staged, sealed, and ready typestates now admit platform reports only in exact
   RW-copy, same-mapping RX-seal, and full-code instruction-sync order. Byte,
   capacity, alignment, address, identity, permission, range, and sync drift fail
   closed. Ready mappings retain exact release requests, and only image-equal
   prepared calls expose entry address plus ABI state. All 24 direct images pass
+
   this protocol. Reports remain adapter evidence rather than performed OS work.
   A caller-owned platform port now orchestrates allocate, copy, RX protect,
   full-range sync, and release transactionally. It prevalidates allocation,
@@ -125,11 +132,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   failure alongside the primary cause, and retains ready state for release
   retry. Deterministic evidence covers all 24 images and adversarial
   operation/report
+
   paths. Concrete Windows/POSIX executable-memory adapters remain pending.
   `NativeExecutableRunner` now receives only the exact bound call. Safe
   orchestration composes load, bind, run, admission, and release; runner or
   completion failure restores entry state, cleanup failure retains retry state,
   and final-release failure preserves the committed outcome. Six deterministic
+
   runner cases pass. Concrete architecture call shims remain pending.
   Complete normative traces can now project to exact one-step IR and form one
   profile/observation-continuous `VerifiedDirectSequencePlan`; a retained
@@ -138,6 +147,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only
   after full success. Safe sequence execution now runs each exact artifact in
   order, preserves applied prefixes, and returns exact second-step guard resume
+
   evidence. Indexed failures retain continuation and release-retry state; VM
   snapshots cover completion, rollback, and applied/guard cleanup failure. An
   immutable semantic continuation now validates cached/uncached and
@@ -145,6 +155,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   one-step IR, exact observation, expected exit/outcome, and reason. Forged
   outcomes fail closed, while completed work yields no continuation. `advance()`
   rebases complete-plan authority after additional admitted tier work, deriving
+
   an exact suffix or verified completion and rejecting drift. Eleven cases cover
   constructors and rebase behavior. The application bridge now admits checkpoint
   or transferred native buffers, restores the normative profile machine, and
@@ -154,17 +165,20 @@ synchronization, and hardening remain adapters rather than VM semantics.
   exact key/program suffix, complete-plan resume index, and normative
   checkpoint;
   zero/partial/oversized cases remain deterministic and resumable without
+
   readmission. Ten cases cover both ISAs, state/live-in rejection, budget
   boundaries, and rollback after resume. An explicit application scheduler now
   consumes that affine owner with complete, positive-slice, caller-yield, or
   native-retry-yield decisions. Pauses retain exact checkpoint/suffix/progress
   and
   stable stop reason; `resume()` consumes the same owner. Native retry remains
+
   evidence only. Five cases cover both yields, completion paths, cumulative
   progress, and hard-failure propagation. Retry admission now binds one
   caller-replanned verified suffix to the exact `NativeRetry` owner before
   buffer movement. Reason, ordered programs, artifact key, and checkpoint entry
   must match; rejection restores both owners. Five cases include progressed and
+
   cross-ISA suffixes. Admitted retries now execute through the uncached native
   sequence path from checkpoint-derived owned buffers. Success/failure retain
   exact transfer state, reconstruct normative checkpoints, and preserve cleanup
@@ -172,11 +186,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   cleanup failure. Successful retry results now rebase through complete-plan
   continuation authority: applied suffixes yield the original outcome/final
   checkpoint, while guard miss advances absolute mixed-tier progress and returns
+
   a scheduler-ready normative handoff. Three cases cover pure/mixed completion
   and progressed guard fallback. Failed retry execution now splits semantic
   disposition from indexed native failure ownership. Runner failure yields exact
   fallback handoff; terminal cleanup failure may complete semantics while
   preserving release retry. Three cases cover zero/progressed fallback and
+
   cleanup completion. Exact retry host planning now selects the remaining
   verified sequence on supported Windows hosts and converts only missing target
   format into a normative handoff. Profile, IR, continuity, deoptimization,
@@ -186,12 +202,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   rejection, and invalid reason. An immutable attempt policy now preserves
   native retry while caller-supplied budget remains and routes exhaustion to
   complete or positive-slice normative fallback; zero limit falls back
+
   immediately. Four cases cover numbering, both fallback forms, and invalid
   reason. A bounded router now composes attempt policy with host planning:
   exhaustion bypasses planning, remaining budget produces a numbered native
   route, and missing format applies configured fallback without consuming an
   attempt. Five cases cover both routes and owned hard failures. One-turn
   execution now runs the selected route, rebases native success/failure, and
+
   separates semantic disposition from indexed runner/release ownership. Five
   cases cover both completions, guard fallback, runner failure, and cleanup
   completion. A bounded cycle now repeats only successfully rebased guard
@@ -201,6 +219,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   completion, runner/cleanup failure, and hard rejection before adapters. An
   admitted retry can now execute through an exact immutable lease without
   allocation/release, retaining hit/insertion evidence and the lease across
+
   semantic rebase. Five cases cover insertion, pointer-identical hit reuse,
   guard/failure fallback, and key rejection. Exact cache acquisition can now
   precede one loaded retry attempt: hits perform no adapter work, insertions
@@ -208,6 +227,7 @@ synchronization, and hardening remain adapters rather than VM semantics.
   retry or lease ownership. Five cases cover insertion, hit reuse, load failure,
   mixed retirement, and runner fallback. A bounded cached cycle now records
   per-attempt progress plus `Inserted`/`Hit`, drops successful external leases
+
   while retaining active cache authority, and reuses unchanged guard suffixes.
   Progressed suffixes stay distinct; acquisition, routing, and runner failure
   retain owners plus prior successful attempts. Seven cases cover fallback,
@@ -216,12 +236,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   completion, and fallback owners. Caller-bounded FIFO retention preserves
   monotonic sequences, exact totals, transactional capacity changes, validated
   snapshots, canonical revision-one little-endian bytes, and inclusive
+
   multi-signal assessment without selecting policy. Caller-supplied latency
   histograms preserve inclusive buckets, exact totals, and extrema without
   reading a clock. Validated snapshots transfer complete histogram state and
   reject impossible count, extrema, total-range, or overflow-bin evidence.
   Identical-schema histograms merge transactionally with exact rollback.
   Canonical revision-one latency bytes preserve extrema flags, `u128` totals,
+
   bound/count pairs, and repeat snapshot validation after decode. Rebinning,
   distributed/durable merge, automatic recommendation/publication, runtime clock
   acquisition, async queues, durable storage, and broader production
@@ -230,11 +252,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   across calls, rolls back partial loads, and releases every mapping with retry
   retention. Full chain identity is checked before buffer mutation; adapters own
   unique non-overlapping live allocations. A weighted exact-key FIFO reuses
+
   complete loaded chains without refreshing hits. Positive limits cover entries
   and can also cover live mappings plus admitted mapped bytes. Candidate weight
   comes from ready mapping reports; oversized candidates clean themselves, while
   fitting candidates evict repeatedly until every projected limit fits. Failed
   later insertion eviction returns failed victim/candidate cleanup ownership.
+
   Invalidation and full drain update usage before release. Weighted limits now
   reconfigure in place: expansion or already-fitting requests publish without
   adapter work, while shrink requests release oldest entries before publishing.
@@ -243,18 +267,21 @@ synchronization, and hardening remain adapters rather than VM semantics.
   completed victims again. Seventeen cases cover original reuse/admission plus
   expansion, entry/mapping/byte shrink, and second-eviction failure. A separate
   immutable `Arc` lease cache now lets exact ready chains remain usable across
+
   threads after active lookup retirement. Retired entries keep exact weighted
   usage charged until explicit return/reconciliation observes no external
   owner. Mixed eviction releases unleased entries, retires leased entries, and
   rejects candidates blocked by resident weight. Invalidation and full drain
   use the same ownership rule; keyed cleanup failures remain retryable.
   Resident limits now expand without adapter work and shrink through active FIFO
+
   release/retirement. Leased victims keep exact weight charged, prior retired
   entries are not reconciled implicitly, and old limits survive blockage or
   cleanup failure. Final lease return or keyed retry permits idempotent repeated
   publication. Fourteen cases cover the original lifecycle plus entry/mapping
   shrink, live entry/byte blockage, post-return publication, and release-failure
   retry. Durable or cross-process leasing, fused objects, direct branches, and a
+
   concrete foreign-call shim remain open.
   Remaining fused-region emission, concrete executable-memory integration, and
   instruction-cache implementation remain pending for this TODO.

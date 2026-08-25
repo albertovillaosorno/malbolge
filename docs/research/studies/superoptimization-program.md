@@ -104,6 +104,7 @@ before measurement as every two-graphical-byte classic source (8,836 members),
 with independent acceptance only for one- or two-transition halts that perform
 no
 prior input/output and quality equal to transitions-to-halt. Exhaustive verifier
+
 characterization finds ten accepted members. A preregistered five-repetition
 seed-zero pilot is now retained: seeded ordering reaches the first verified
 candidate in 250 evaluations versus 706 for enumeration, with best quality 1 on
@@ -111,11 +112,13 @@ both paths. First-hit median elapsed time also favors seeded order on the
 recorded host, while full-corpus medians overlap and are effectively tied. This
 supports only the frozen seed-zero pilot's first-hit objective. A separately
 preregistered work-count replication then fixed seeds 0 through 7 before
+
 observing new schedules. Seeded first-hit evaluations were 250, 1709, 642, 1142,
 189, 1861, 506, and 804 against enumeration's constant 706: four seeds improved
 and four worsened, with seeded median 723. The seed-zero advantage therefore did
 not persist across this declared seed set. Timing from the replication is
 retained only as provenance and is not interpreted. Exact history-residue
+
 canonicalization now has a separately preregistered and retained comparison. It
 binds the proved encryption-orbit and rotate-history reductions to raw
 visit-count state with equal bounds, fail-closed applicability, and exact
@@ -125,6 +128,7 @@ semantic digest while residue identity reduces unique states/verifier calls from
 its recorded Windows/Python host: median strategy time is 96,384,900 ns for raw
 state versus 244,447,500 ns for canonicalized state, about 2.54 times slower.
 The structural reduction is retained, but no runtime-speedup claim is
+
 supported. A third exact-pruning comparison is now preregistered and retained.
 The existing classic digitwise crazy preimage preparer is compared with full
 59,049-word data enumeration under the proved preimage-cardinality and
@@ -134,6 +138,7 @@ baseline candidate checks versus 2,047 projected checks (99.71% fewer). The
 source-pinned five-pair Windows/Python timing is negative: median time rises
 from
 2,298,684,800 ns to 2,931,140,300 ns, about 1.28 times slower, with overlapping
+
 ranges. This supports exact pruning but not a runtime-speedup claim. New
 synthesis, equality-saturation, learned, or accelerator-guided strategies must
 add their own equally identified comparisons rather than
@@ -155,6 +160,7 @@ inheriting a result from either pilot. Source claims resolve through
   generated run/benchmark identity and exact regression tests. The subsequent
   eight-seed work-count replication is also retained with a pre-run source pin,
   stochastic benchmark metadata, all raw rows, and exact regression tests. It is
+
   the first retained negative/null comparative result. The history-residue study
   now retains its preregistered five-pair run, shared benchmark/run manifests,
   exact semantic digest, structural state counts, and negative host timing.

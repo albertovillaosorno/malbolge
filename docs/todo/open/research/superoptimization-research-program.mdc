@@ -80,6 +80,7 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   elapsed
   nanoseconds and exact stop identity, and fails closed on invalid/backward
   clock
+
   evidence. It checks time between synchronous verifier calls rather than
   claiming hard callback preemption. A pure run-record renderer now binds a
   dual-bound result to the frozen plan plus caller-supplied commit/workload/
@@ -89,6 +90,7 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   frozen challenge. It does not write evidence or invent provenance. A pure
   pilot-orchestration layer revalidates challenge/verifier/workload identity
   before constructing the exact dual-bound request and wiring the concrete
+
   semantic verifier; synthetic wiring tests stop before candidate evaluation.
   The concrete
   `classic-verified-block-search-v1` semantics are now preregistered before
@@ -100,6 +102,7 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   hashes; this is challenge characterization, not comparative search evidence.
   The timing protocol was then preregistered before measurement as five retained
   cold repetitions with fixed enumeration-then-seeded order, no warmup,
+
   retain-all outliers, median center, and observed-range evidence. The first
   tracked run binds pre-run commit `23dd86d6`, retains all raw rows, and passes
   both experiment-manifest and benchmark-protocol validation. Every repetition
@@ -108,6 +111,7 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   and median first-hit time is 6,119,900 ns versus 18,506,300 ns. Full-corpus
   medians are nearly equal with overlapping ranges, so no throughput win is
   claimed. A separately preregistered work-count replication fixed seeds 0
+
   through 7 against the same frozen challenge and retained all eight trials.
   Seeded first-hit work is 250, 1709, 642, 1142, 189, 1861, 506, and 804
   evaluations versus enumeration's constant 706: four trials improve, four are
@@ -116,6 +120,7 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   not interpreted. Exact history-residue canonicalization now has a separately
   preregistered and retained five-pair comparison. Its frozen 10,000-observation
   challenge preserves one exact semantic digest while residue identity reduces
+
   unique states and independent verifier calls from 10,000 to 6,496 (35.04%).
   The source-pinned Windows/Python timing result is negative: raw-state median
   strategy time is 96,384,900 ns versus 244,447,500 ns for canonicalized state,
@@ -123,6 +128,7 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   not support a runtime-speedup claim. A third technique,
   `classic-crazy-exact-preimage-pruning-v1`, now has a preregistered retained
   five-pair comparison. Its 12-problem challenge spans exact cardinality classes
+
   0 through 1,024, and complete independent set equality holds. Candidate work
   falls from 708,588 checks to 2,047 (99.71%). The source-pinned Windows/Python
   timing is negative: median strategy time rises from 2,298,684,800 ns to
@@ -130,4 +136,5 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   This supports exact pruning but not a runtime-speedup claim. Larger
   challenges,
   independent hosts/implementations, additional technique plans, and a stronger
+
   comparative conclusion remain pending.
