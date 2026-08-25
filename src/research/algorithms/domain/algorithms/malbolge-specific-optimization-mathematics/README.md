@@ -1,50 +1,65 @@
 # Malbolge-specific optimization mathematics
 
 This directory is the executable mirror for research ID
-`malbolge-specific-optimization-mathematics`. It keeps experiment configuration
-and lifecycle metadata close to the executable research surface without
-repeating the mathematical results.
+`malbolge-specific-optimization-mathematics`. The human research record uses the
+same ID under `docs/research/algorithms/`, and its mathematical contract, when
+present, uses the same ID under `math/algorithms/`.
 
-## Where the research lives
+Implementations in Rust, C, CUDA, Python, or another justified language live
+together here because the algorithm, not the language, owns the research.
+Regenerable results belong in `out/` and remain Git ignored.
 
-The documentation mirror's `research.md` owns the human research narrative,
-results, limitations, and conclusions. The formal TeX contract owns detailed
-equations and derivations.
+The active first experiment studies exact CPU VM table/factorization reductions.
+Its versioned configuration is `experiment.toml`; raw performance evidence lives
+under `benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/`, while
+semantic acceptance is owned by
+`src/specification/formal-model/math/specification/correspondence.toml`.
 
-The repository `correspondence.toml` manifest binds equations to executable
-evidence. Mathematics tests under `tests/mathematics/` provide the independent
-finite or bounded checks named by that manifest.
+The current research surface also exposes an exact classic crazy-target
+full-domain preimage count. Its product-of-per-trit-multiplicities equation and
+the derived tight 1,024-preimage global ceiling, exact zero-or-power-of-two
+cardinality spectrum, accumulator-specific `2^(10-n2(a))` worst-target bound,
+exact `2^(10-n2(a))*3^n2(a)` reachable-target count, and
+`C(10,k)*2^(10-k)` accumulator-class cardinality, the exact `7^10`
+reachable accumulator/target-pair count, and the exact
+`C(10,k)*2^k*5^(10-k)` nonzero preimage-pair distribution and exact
+`9^10-7^10` unreachable-pair count are registered in the mathematical
+correspondence manifest; all are correctness/search-bound results,
+not benchmark-derived speedup claims. The optimizer exposes both state-level
+counts, the complete eleven-class accumulator partition, the global
+reachable-pair count, all eleven nonzero preimage-pair classes, and the exact
+unreachable complement directly from the normative trit table. The checked
+width family also admits an exact inverse planning bound: for any requested
+reachable-pair coverage target, the minimum complete-preimage enumeration budget
+is zero or the first power-of-two class whose cumulative count reaches it.
+Classic rotate history also has an exact per-word canonical refinement: minimal
+periods are 1, 2, 5, or 10 with exact class sizes 3, 6, 240, and 58,800.
+The reachable crazy pair domain also has a constructive base-seven canonical
+index: each reachable per-trit accumulator/target pair is one of seven symbols,
+so checked width `N` ranks bijectively into `0..7^N-1`.
 
-## Experiment files
+The classic decode reduction is exact at the opcode boundary: preserved `xlat1`
+is a 94-byte permutation, so all 8,836 graphical cell/phase pairs quotient into
+94 equal classes keyed by `(cell-33+phase) mod 94`. This does not canonicalize
+whole machine states whose later semantics still need cell or pointer identity.
 
-`experiment.toml` owns the versioned experiment plan, verification requirement,
-resource budget, and raw benchmark-evidence location. `lifecycle.toml` owns the
-research lifecycle state and links this executable mirror back to the human
-research record.
-
-Regenerable local outputs belong in the logical
-`algorithms/malbolge-specific-optimization-mathematics/out/` location and remain
-Git ignored. Durable benchmark samples are promoted only to their owning
-versioned evidence directory rather than copied into this README.
-
-## Correctness boundary
-
-Search, optimization, and experimental implementations are untrusted proposal
-mechanisms. Deterministic correspondence checks and the repository verification
-boundary decide which mathematical or performance claims are admissible.
-
-Exact cardinalities, canonical forms, covering results, and benchmark numbers
-are intentionally not cataloged here. Read `research.md` for the interpreted
-results, the TeX contract for the proofs, and `correspondence.toml` for the
-traceable executable evidence.
-
-## Validation
-
-Run the repository-owned validation from the repository root.
-
-```sh
-jig validate --root .
-```
-
-Focused mathematics checks may be useful while developing a theorem, but they
-do not replace the repository gate required by the owning typed TODO.
+Reachable fixed crazy pairs also admit a constructive full-domain inverse: each
+local inverse set has radix one or two, so mixed-radix rank/unrank enumerates
+exactly the `2^k` preimages for checked width `N<=14` without scanning the other
+`3^N-2^k` data words. The `k` doubleton positions form an exact binary
+hypercube, so binary-reflected Gray order visits every compatible word exactly
+once while changing one trit between consecutive candidates. Among bijective
+complete traversals, this also attains the exact minimum aggregate trit-edit
+cost `2^k-1`. The same cube coordinates give the exact one-trit mutation graph:
+every preimage has degree `k`, with `k*2^(k-1)` total edges for `k>0` and zero
+for `k=0`. Distance shells are also exact: every origin has `C(k,j)` compatible
+words at trit distance `j`, radius `r` contains `sum_{j=0}^r C(k,j)` words, and
+the diameter is `k`. Endpoints at distance `j` need exactly `j` one-trit
+mutation steps and have exactly `j!` shortest in-cube paths. A radius-`r`
+complete cover also needs at least `ceil(2^k / sum_{j=0}^r C(k,j))` centers by
+volume; overlap can make the true covering number larger. `Q5` at radius one
+is an exact checked strict case: volume gives six centers while the minimum is
+seven. For ambiguity dimensions `k=1,3,7`, binary Hamming syndromes attain the
+radius-one volume lower bound exactly with `1,2,16` centers and map every cube
+word canonically to its unique center within one bit/trit. These metric/graph
+results say nothing about incomplete corpus membership or wall-clock speed.
