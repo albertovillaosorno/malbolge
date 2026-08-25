@@ -23,11 +23,13 @@
 # - Summary:
 #   - Quotient permutation-invariant preimage-cube analyses by Hamming weight.
 # - Description:
-#   - Exhausts cube words and independently lifts canonical choices to preimages.
+#   - Exhausts cube words and independently lifts canonical choices to
+#     preimages.
 # - Usage:
 #   - Referenced by the mathematical correspondence manifest.
 # - Defaults:
-#   - Cube enumeration reaches dimension fourteen; pair lifting stops at width four.
+#   - Cube enumeration reaches dimension fourteen; pair lifting stops at
+#     width four.
 #
 
 """Independent evidence for the permutation quotient of crazy preimage cubes."""
@@ -104,9 +106,7 @@ def _choice_sets(
 ) -> tuple[tuple[int, ...], ...]:
     choices: list[tuple[int, ...]] = []
     for _ in range(trit_count):
-        choices.append(
-            _local_preimages(accumulator % _RADIX, target % _RADIX)
-        )
+        choices.append(_local_preimages(accumulator % _RADIX, target % _RADIX))
         target //= _RADIX
         accumulator //= _RADIX
     return tuple(choices)
@@ -136,8 +136,7 @@ def _crazy(data: int, accumulator: int, trit_count: int) -> int:
     place = 1
     for _ in range(trit_count):
         target += (
-            _INDEPENDENT_CRAZY_TRIT[data % _RADIX][accumulator % _RADIX]
-            * place
+            _INDEPENDENT_CRAZY_TRIT[data % _RADIX][accumulator % _RADIX] * place
         )
         data //= _RADIX
         accumulator //= _RADIX
@@ -145,28 +144,25 @@ def _crazy(data: int, accumulator: int, trit_count: int) -> int:
     return target
 
 
-def test_weight_classes_are_exact_permutation_orbits_through_dimension_fourteen(
-) -> None:
+def test_weight_classes_are_exact_orbits_through_dimension_fourteen() -> None:
     """Each checked cube has one symmetric-group orbit per Hamming weight."""
     for dimension in range(_MAXIMUM_TRITS + 1):
         size = _integer_power(_BINARY_RADIX, dimension)
         histogram = Counter(code.bit_count() for code in range(size))
-        expected = Counter(
-            {
-                weight: _integer_binomial(dimension, weight)
-                for weight in range(dimension + 1)
-            }
-        )
+        expected = Counter({
+            weight: _integer_binomial(dimension, weight)
+            for weight in range(dimension + 1)
+        })
         assert histogram == expected
-        assert {
-            _canonical_code(code) for code in range(size)
-        } == {
+        assert {_canonical_code(code) for code in range(size)} == {
             (1 << weight) - 1 for weight in range(dimension + 1)
         }
 
 
-def test_every_checked_cube_word_has_a_constructive_canonical_permutation() -> None:
-    """Sorting coordinates maps every word to its unique weight representative."""
+def test_every_checked_cube_word_has_a_constructive_canonical_permutation() -> (
+    None
+):
+    """Sort coordinates to each word's unique weight representative."""
     for dimension in range(_MAXIMUM_TRITS + 1):
         size = _integer_power(_BINARY_RADIX, dimension)
         for code in range(size):
@@ -177,26 +173,32 @@ def test_every_checked_cube_word_has_a_constructive_canonical_permutation() -> N
             assert canonical.bit_count() == code.bit_count()
 
 
-def test_permutation_canonicalization_lifts_to_every_small_reachable_pair() -> None:
+def _check_pair_canonicalization(
+    target: int,
+    accumulator: int,
+    trit_count: int,
+) -> None:
+    choices = _choice_sets(target, accumulator, trit_count)
+    if any(not local for local in choices):
+        return
+    dimension = sum(len(local) == _BINARY_RADIX for local in choices)
+    for code in range(1 << dimension):
+        data = _cube_data(choices, code)
+        canonical_data = _cube_data(choices, _canonical_code(code))
+        assert _crazy(data, accumulator, trit_count) == target
+        assert _crazy(canonical_data, accumulator, trit_count) == target
+
+
+def test_permutation_canonicalization_lifts_to_every_small_reachable_pair() -> (
+    None
+):
     """Canonical abstract cube choices remain valid fixed-pair preimages."""
     for trit_count in range(1, _EXHAUSTIVE_TRITS + 1):
         domain = _integer_power(_RADIX, trit_count)
         for accumulator in range(domain):
             for target in range(domain):
-                choices = _choice_sets(target, accumulator, trit_count)
-                if any(not local for local in choices):
-                    continue
-                dimension = sum(
-                    len(local) == _BINARY_RADIX for local in choices
+                _check_pair_canonicalization(
+                    target,
+                    accumulator,
+                    trit_count,
                 )
-                for code in range(1 << dimension):
-                    data = _cube_data(choices, code)
-                    canonical_data = _cube_data(
-                        choices,
-                        _canonical_code(code),
-                    )
-                    assert _crazy(data, accumulator, trit_count) == target
-                    assert (
-                        _crazy(canonical_data, accumulator, trit_count)
-                        == target
-                    )

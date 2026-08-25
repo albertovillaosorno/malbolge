@@ -78,8 +78,7 @@ def _decode_to_center(word: int, dimension: int) -> int:
 
 def _radius_one_ball(center: int, dimension: int) -> tuple[int, ...]:
     neighbors = tuple(
-        center ^ (1 << coordinate)
-        for coordinate in range(dimension)
+        center ^ (1 << coordinate) for coordinate in range(dimension)
     )
     return (center, *neighbors)
 
@@ -96,7 +95,8 @@ def test_only_hamming_dimensions_can_partition_radius_one_balls() -> None:
         if divides_cube:
             admissible.append(dimension)
     expected = tuple(
-        _cube_dimension(parity_bits) for parity_bits in _TESTED_HAMMING_DIMENSIONS
+        _cube_dimension(parity_bits)
+        for parity_bits in _TESTED_HAMMING_DIMENSIONS
     )
     assert tuple(admissible) == expected
 
@@ -110,8 +110,7 @@ def test_hamming_centers_match_volume_lower_bound() -> None:
         volume = dimension + 1
         lower_bound = (1 << dimension) // volume
         syndrome_counts = Counter(
-            _syndrome(word, dimension)
-            for word in range(1 << dimension)
+            _syndrome(word, dimension) for word in range(1 << dimension)
         )
         expected_class_size = 1 << (dimension - parity_bits)
         assert syndrome_counts == Counter(
@@ -154,11 +153,7 @@ def _embedded_preimage(cube_code: int, dimension: int, trit_count: int) -> int:
     word = 0
     place = 1
     for coordinate in range(trit_count):
-        data_trit = (
-            cube_code >> coordinate & 1
-            if coordinate < dimension
-            else 2
-        )
+        data_trit = cube_code >> coordinate & 1 if coordinate < dimension else 2
         word += data_trit * place
         place *= _RADIX
     return word
