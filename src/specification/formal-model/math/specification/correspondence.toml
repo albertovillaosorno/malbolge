@@ -269,6 +269,16 @@ mechanism = "independent-small-pair-path-enumeration-plus-cube-predecessor-dynam
 evidence = ["tests/mathematics/test_crazy_preimage_cube_geodesic.py::test_small_pairs_have_exact_shortest_mutation_paths", "tests/mathematics/test_crazy_preimage_cube_geodesic.py::test_checked_cube_distances_have_factorial_geodesic_counts"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-covering-lower-bound"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-preimage-cube-covering-lower-bound"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "fixed-radius complete coverage of reachable accumulator/target preimage cubes at widths 1 through 14 with exhaustive sub-bound noncoverage through dimension 4 and exact Q5 radius-one all-six-center strictness"
+mechanism = "exact-binomial-ball-volume-plus-union-cardinality-lower-bound"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_covering_lower_bound.py::test_volume_bound_is_exact_arithmetic_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_covering_lower_bound.py::test_small_cubes_cannot_cover_below_volume_lower_bound", "tests/mathematics/test_crazy_preimage_cube_covering_lower_bound.py::test_q5_radius_one_volume_bound_is_strict"]
+
+[[correspondence]]
 id = "optimization-crazy-preimage-bound"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-bound"

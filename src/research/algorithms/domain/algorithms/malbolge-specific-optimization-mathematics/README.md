@@ -55,5 +55,9 @@ every preimage has degree `k`, with `k*2^(k-1)` total edges for `k>0` and zero
 for `k=0`. Distance shells are also exact: every origin has `C(k,j)` compatible
 words at trit distance `j`, radius `r` contains `sum_{j=0}^r C(k,j)` words, and
 the diameter is `k`. Endpoints at distance `j` need exactly `j` one-trit
-mutation steps and have exactly `j!` shortest in-cube paths. These metric/graph
-results say nothing about incomplete corpus membership or wall-clock speed.
+mutation steps and have exactly `j!` shortest in-cube paths. A radius-`r`
+complete cover also needs at least `ceil(2^k / sum_{j=0}^r C(k,j))` centers by
+volume; overlap can make the true covering number larger. `Q5` at radius one
+is an exact checked strict case: volume gives six centers while the minimum is
+seven. These metric/graph results say nothing about incomplete corpus membership
+or wall-clock speed.

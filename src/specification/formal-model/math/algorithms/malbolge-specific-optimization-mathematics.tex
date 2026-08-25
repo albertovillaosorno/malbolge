@@ -235,6 +235,31 @@ on one-trit mutation steps inside a fixed complete-domain preimage cube and an
 exact count of minimizing paths; it is not a wall-clock or external-corpus
 claim.
 
+The exact ball volume also yields a necessary lower bound on fixed-radius search
+centers. Let
+\[
+  V_k(r)=\sum_{j=0}^{r}\binom{k}{j},
+  \qquad 0\leq r\leq k.
+\]
+Any one radius-$r$ center covers at most $V_k(r)$ compatible words. Therefore a
+family of $m$ radius-$r$ balls that covers the entire $2^k$-word preimage cube
+must satisfy $mV_k(r)\geq2^k$, so
+\begin{equation}
+  m\geq
+  \left\lceil\frac{2^k}{V_k(r)}\right\rceil,
+  \qquad 0\leq r\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-preimage-cube-covering-lower-bound}
+\end{equation}
+This is a necessary volume lower bound only. Overlapping balls can make the true
+minimum number of centers larger, so the expression is not claimed to be an
+exact covering number or generally attainable. The distinction is strict
+already for $Q_5$ at radius one: $V_5(1)=6$ gives lower bound six, exhaustive
+testing rejects every one of the 906,192 six-center sets, and a
+seven-center witness covers all 32 vertices. Thus the exact covering number in
+that checked case is seven. The general result applies only to complete
+fixed-radius coverage inside one fixed preimage cube and makes no wall-clock or
+external-corpus claim.
+
 The complete one-trit crazy table has no accumulator/target pair with more than
 two compatible data trits, so $\mu(\alpha,\tau)\leq2$. Combining that fact with
 the exact product formula yields the global classic fixed-target bound
