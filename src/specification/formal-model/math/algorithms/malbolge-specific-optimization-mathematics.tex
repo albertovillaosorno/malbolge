@@ -201,6 +201,26 @@ flipping one ambiguous cube coordinate rather than scanning unrelated data
 words. This is an exact complete-domain neighborhood identity; it does not
 assert external-corpus membership or a wall-clock speedup.
 
+The full permutation group on the $k$ ambiguous coordinates gives an exact
+canonical quotient for coordinate-symmetric analyses. Let $S_k$ act on
+$z\in\{0,1\}^k$ by permuting coordinates, let $|z|_1$ be Hamming weight, and
+let $c_k(j)$ be the word whose first $j$ coordinates are one and whose remaining
+coordinates are zero. Coordinate permutations preserve weight, while any two
+words of equal weight can be permuted to the same $c_k(j)$. Therefore
+\begin{equation}
+  \{0,1\}^k/S_k \overset{\sim}{\longrightarrow} \{0,\ldots,k\},
+  \qquad [z]\longmapsto |z|_1,
+  \qquad |[z]|=\binom{k}{|z|_1},
+  \qquad c_k(j)=1^j0^{k-j},
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-preimage-cube-permutation-quotient}
+\end{equation}
+Transporting this action through $U_{a,t}$ gives exactly $k+1$ abstract
+preimage-cube orbit representatives instead of $2^k$ cube words. This quotient
+is valid only for an analysis or objective invariant under arbitrary relabeling
+of the ambiguous coordinates; it is not semantic equivalence for
+position-sensitive Malbolge execution, numeric word value, layout, or code.
+
 The cube isomorphism also fixes every trit-distance shell. For any compatible
 word $d$, define
 $S_j(d)=\{x:\CrazyN{N}{x}{a}=t,\ H_3(d,x)=j\}$ and

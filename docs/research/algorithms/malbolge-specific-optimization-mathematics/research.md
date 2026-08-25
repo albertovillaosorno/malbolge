@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes thirty-five exact reductions: classic five-trit crazy factorization,
+formalizes thirty-six exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -70,8 +70,9 @@ partition, exact crazy-target preimage cardinality, constructive mixed-radix
 preimage rank/unrank through width 14, exact one-trit Gray traversal of
 preimage hypercubes, exact `2^k-1` minimum aggregate trit-edit cost for
 bijective complete traversal, exact binary-cube one-trit neighborhood
-structure plus exact binomial distance shells/balls, diameter, and shortest-
-path lower bounds/counts plus fixed-radius covering lower bounds and perfect
+structure, exact coordinate-permutation quotient into `k+1` Hamming-weight
+classes, plus exact binomial distance shells/balls, diameter, and shortest-path
+lower bounds/counts plus fixed-radius covering lower bounds and perfect
 radius-one Hamming covers, the tight
 classic 1,024-preimage global
 bound, the exact zero-or-power-of-two preimage spectrum,
@@ -125,8 +126,17 @@ exactly. The same coordinates identify the one-trit mutation graph with
 `Q_k`: every preimage has exactly `k` valid one-trit neighbors, and the graph
 
 has `k*2^(k-1)` edges when `k>0` (zero when `k=0`). These are exact
-complete-domain graph/edit identities, not wall-clock lower bounds. Moreover,
-from any compatible word the exact distance-`j` shell has `C(k,j)` words, a
+complete-domain graph/edit identities, not wall-clock lower bounds.
+
+The full coordinate-permutation action also has an exact quotient: two cube
+words share an orbit exactly when they have the same Hamming weight, giving
+`k+1` classes with sizes `C(k,j)` and canonical representatives `1^j0^(k-j)`.
+Transport through the fixed-pair cube isomorphism preserves those abstract
+choice orbits. This quotient applies only to analyses invariant under arbitrary
+ambiguity-coordinate relabeling, not to position-sensitive Malbolge semantics.
+
+Moreover, from any compatible word the exact distance-`j` shell has `C(k,j)`
+words, a
 radius-`r` ball has `sum_{j=0}^r C(k,j)`, and the cube diameter is exactly `k`.
 For endpoints at trit distance `j`, every in-cube one-trit mutation path needs
 at least `j` steps, and exactly `j!` shortest paths attain that lower bound.
@@ -206,8 +216,9 @@ host/workload, crazy improved from a 77,456,700 ns scalar median to 7,423,600 ns
 These timing results support H1 only for the admitted CPU table-factorization
 slice. The self-encryption/rotate-history and exact rotate-period reductions,
 crazy preimage count, constructive preimage ranking, exact Gray traversal,
-exact Gray edit optimality, exact preimage-cube neighborhood graph, and exact
-preimage-cube distance shells/balls, exact mutation geodesics, fixed-radius
+exact Gray edit optimality, exact preimage-cube neighborhood graph, exact
+coordinate-permutation cube quotient, and exact preimage-cube distance
+shells/balls, exact mutation geodesics, fixed-radius
 covering lower bounds, and perfect radius-one Hamming covers,
 global preimage bound,
 discrete preimage spectrum, accumulator-specific
@@ -237,8 +248,9 @@ Retain the four proved table/factorization reductions plus the exact
 self-encryption, classic rotate-history canonicalization, exact rotate minimal-
 period canonicalization, crazy-target preimage cardinality, constructive
 preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
-optimality, exact one-trit cube neighborhood graph, and exact binomial
-distance shells/balls, diameter, exact mutation geodesics, fixed-radius
+optimality, exact one-trit cube neighborhood graph, exact coordinate-
+permutation cube quotient, and exact binomial distance shells/balls, diameter,
+exact mutation geodesics, fixed-radius
 covering lower bounds, and perfect radius-one Hamming covers, tight 1,024-
 preimage bound, discrete
 cardinality spectrum,

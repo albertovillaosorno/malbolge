@@ -249,6 +249,16 @@ mechanism = "independent-small-pair-adjacency-plus-hypercube-degree-accounting"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_graph.py::test_small_pairs_match_cube_adjacency", "tests/mathematics/test_crazy_preimage_cube_graph.py::test_checked_cube_dimensions_have_exact_degree_and_edges"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-permutation-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-preimage-cube-permutation-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "reachable fixed accumulator/target preimage cubes at widths 1 through 14 for analyses invariant under arbitrary permutation of ambiguity coordinates, with pair lifting through width 4"
+mechanism = "exhaustive-hamming-weight-orbit-counting-plus-constructive-coordinate-permutation"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_weight_classes_are_exact_permutation_orbits_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_every_checked_cube_word_has_a_constructive_canonical_permutation", "tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_permutation_canonicalization_lifts_to_every_small_reachable_pair"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-distance"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-profile-preimage-cube-distance"
