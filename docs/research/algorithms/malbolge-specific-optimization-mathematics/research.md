@@ -142,8 +142,8 @@ four-count refinement. The joint coordinate counts `n00`, `n01`, `n10`, and
 `n11` classify each orbit completely, giving `C(k+3,3)` classes with exact
 factorial quotient orbit sizes. Grouping coordinates as `11,10,01,00`
 constructs a canonical representative that agrees with the existing
-single-word canonical form on fixed-zero and diagonal slices. Equivalently, left weight, right weight,
-and pair distance form a complete orbit key.
+single-word canonical form on fixed-zero and diagonal slices. Equivalently, left
+weight, right weight, and pair distance form a complete orbit key.
 
 This ordered-pair quotient applies only to analyses invariant under simultaneous
 ambiguity-coordinate relabeling.
