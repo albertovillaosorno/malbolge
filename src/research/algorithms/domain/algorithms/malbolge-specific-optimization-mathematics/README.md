@@ -53,8 +53,16 @@ once while changing one trit between consecutive candidates. Among bijective
 complete traversals, this also attains the exact minimum aggregate trit-edit
 cost `2^k-1`. The same cube coordinates give the exact one-trit mutation graph:
 every preimage has degree `k`, with `k*2^(k-1)` total edges for `k>0` and zero
-for `k=0`. Distance shells are also exact: every origin has `C(k,j)` compatible
-words at trit distance `j`, radius `r` contains `sum_{j=0}^r C(k,j)` words, and
+for `k=0`.
+
+Coordinate-symmetric single-word analyses quotient these cubes into `k+1`
+Hamming-weight classes. The same simultaneous coordinate action quotients
+ordered cube-word pairs into `C(k+3,3)` joint-count classes with exact orbit
+sizes while preserving endpoint direction. These quotients apply only to
+analyses invariant under ambiguity-coordinate relabeling.
+
+Distance shells are also exact: every origin has `C(k,j)` compatible words at
+trit distance `j`, radius `r` contains `sum_{j=0}^r C(k,j)` words, and
 
 the diameter is `k`. Endpoints at distance `j` need exactly `j` one-trit
 mutation steps and have exactly `j!` shortest in-cube paths. A radius-`r`
@@ -64,5 +72,7 @@ is an exact checked strict case: volume gives six centers while the minimum is
 seven. For ambiguity dimensions `k=1,3,7`, binary Hamming syndromes attain the
 radius-one volume lower bound exactly with `1,2,16` centers and map every cube
 
-word canonically to its unique center within one bit/trit. These metric/graph
-results say nothing about incomplete corpus membership or wall-clock speed.
+word canonically to its unique center within one bit/trit. Conversely, through
+dimension 14 no other positive ambiguity dimension admits a perfect radius-one
+partition. These metric/graph results say nothing about incomplete corpus
+membership or wall-clock speed.

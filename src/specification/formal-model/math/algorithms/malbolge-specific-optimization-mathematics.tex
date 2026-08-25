@@ -221,6 +221,44 @@ is valid only for an analysis or objective invariant under arbitrary relabeling
 of the ambiguous coordinates; it is not semantic equivalence for
 position-sensitive Malbolge execution, numeric word value, layout, or code.
 
+The same coordinate action also gives an exact canonical quotient for ordered
+cube-word pairs. For $x,y\in\{0,1\}^k$, define
+$n_{uv}(x,y)=|\{h:(x_h,y_h)=(u,v)\}|$ for $u,v\in\{0,1\}$. Let the same
+$\sigma\in S_k$ act simultaneously on both pair components, and let
+\[
+  \mathcal{J}_k=\left\{(n_{00},n_{01},n_{10},n_{11})\in
+    \{0,\ldots,k\}^4:\sum_{u,v}n_{uv}=k\right\}.
+\]
+Simultaneous coordinate permutations preserve these four counts. Conversely,
+grouping coordinates into the joint blocks $11,10,01,00$ maps every ordered
+pair with the same count vector to one canonical representative. There are
+$\binom{k+3}{3}$ nonnegative four-part count vectors summing to $k$. For fixed
+counts, choosing which coordinates occupy the four blocks gives exactly
+$k!/(n_{00}!n_{01}!n_{10}!n_{11}!)$ ordered pairs in that orbit. Therefore
+\begin{equation}
+  \left(\{0,1\}^k\times\{0,1\}^k\right)/S_k
+    \overset{\sim}{\longrightarrow}\mathcal{J}_k,
+  \qquad [(x,y)]\longmapsto(n_{00},n_{01},n_{10},n_{11}),
+  \qquad |\mathcal{J}_k|=\binom{k+3}{3},
+  \qquad |[(x,y)]|=\frac{k!}{n_{00}!n_{01}!n_{10}!n_{11}!},
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-preimage-cube-ordered-pair-quotient}
+\end{equation}
+Writing $w_x=|x|_1$, $w_y=|y|_1$, and
+$d=|\{h:x_h\neq y_h\}|$ gives
+$n_{00}=k-(w_x+w_y+d)/2$, $n_{01}=(-w_x+w_y+d)/2$,
+$n_{10}=(w_x-w_y+d)/2$, and $n_{11}=(w_x+w_y-d)/2$. Thus the familiar triple
+$(w_x,w_y,d)$ is an equivalent complete orbit key. The chosen block order gives
+$c_x=1^{n_{11}+n_{10}}0^{n_{01}+n_{00}}$ and
+$c_y=1^{n_{11}}0^{n_{10}}1^{n_{01}}0^{n_{00}}$, agreeing with $c_k$ on
+fixed-zero and diagonal pair slices. Transport through $U_{a,t}$ gives exactly
+$\binom{k+3}{3}$ canonical ordered cube-word pairs instead of $4^k$ abstract
+ordered pairs. Endpoint order remains visible because $n_{01}$ and $n_{10}$ are
+distinct, and $H_3(U_{a,t}(x),U_{a,t}(y))=n_{01}+n_{10}$. The quotient applies
+only when an ordered-pair analysis is invariant under simultaneous
+ambiguity-coordinate relabeling; it is not position-sensitive Malbolge semantic
+equivalence or a wall-clock speedup claim.
+
 The cube isomorphism also fixes every trit-distance shell. For any compatible
 word $d$, define
 $S_j(d)=\{x:\CrazyN{N}{x}{a}=t,\ H_3(d,x)=j\}$ and

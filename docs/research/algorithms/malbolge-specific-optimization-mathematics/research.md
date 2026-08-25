@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes thirty-seven exact reductions: classic five-trit crazy factorization,
+formalizes thirty-eight exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -71,6 +71,7 @@ preimage rank/unrank through width 14, exact one-trit Gray traversal of
 preimage hypercubes, exact `2^k-1` minimum aggregate trit-edit cost for
 bijective complete traversal, exact binary-cube one-trit neighborhood
 structure, exact coordinate-permutation quotient into `k+1` Hamming-weight
+classes, exact ordered cube-word pair quotient into `C(k+3,3)` joint-count
 classes, plus exact binomial distance shells/balls, diameter, and shortest-path
 lower bounds/counts plus fixed-radius covering lower bounds, perfect
 radius-one Hamming covers, and the exact checked perfect-partition dimensions,
@@ -135,6 +136,17 @@ words share an orbit exactly when they have the same Hamming weight, giving
 Transport through the fixed-pair cube isomorphism preserves those abstract
 choice orbits. This quotient applies only to analyses invariant under arbitrary
 ambiguity-coordinate relabeling, not to position-sensitive Malbolge semantics.
+
+For ordered cube-word pairs, simultaneous coordinate permutation has an exact
+four-count refinement. The joint coordinate counts `n00`, `n01`, `n10`, and
+`n11` classify each orbit completely, giving `C(k+3,3)` classes with exact
+factorial quotient orbit sizes. Grouping coordinates as `11,10,01,00`
+constructs a canonical representative that agrees with the existing
+single-word canonical form on fixed-zero and diagonal slices. Equivalently, left weight, right weight,
+and pair distance form a complete orbit key.
+
+This ordered-pair quotient applies only to analyses invariant under simultaneous
+ambiguity-coordinate relabeling.
 
 Moreover, from any compatible word the exact distance-`j` shell has `C(k,j)`
 words, a
@@ -224,7 +236,8 @@ These timing results support H1 only for the admitted CPU table-factorization
 slice. The self-encryption/rotate-history and exact rotate-period reductions,
 crazy preimage count, constructive preimage ranking, exact Gray traversal,
 exact Gray edit optimality, exact preimage-cube neighborhood graph, exact
-coordinate-permutation cube quotient, and exact preimage-cube distance
+coordinate-permutation cube quotient, exact ordered cube-word pair quotient,
+and exact preimage-cube distance
 shells/balls, exact mutation geodesics, fixed-radius
 covering lower bounds, perfect radius-one Hamming covers, and exact checked
 perfect-partition dimensions,
@@ -257,7 +270,8 @@ self-encryption, classic rotate-history canonicalization, exact rotate minimal-
 period canonicalization, crazy-target preimage cardinality, constructive
 preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, exact coordinate-
-permutation cube quotient, and exact binomial distance shells/balls, diameter,
+permutation cube quotient, exact ordered cube-word pair quotient, and exact
+binomial distance shells/balls, diameter,
 exact mutation geodesics, fixed-radius
 covering lower bounds, perfect radius-one Hamming covers, and exact checked
 perfect-partition dimensions, tight 1,024-
