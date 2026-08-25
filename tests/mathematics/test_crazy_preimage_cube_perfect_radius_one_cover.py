@@ -13,15 +13,15 @@
 # - Must-Not:
 #   - Import production crazy helpers or claim wall-clock performance.
 # - Allows:
-#   - Inputs: Hamming dimensions m=1,2,3, giving cube dimensions 1,3,7.
-#   - Outputs: exact code size, unique radius-one coverage, and minimum centers.
+#   - Inputs: cube dimensions 1 through 14 plus Hamming constructions 1,3,7.
+#   - Outputs: exact perfect-cover dimensions, unique coverage, and centers.
 #   - Side effects: none.
 # - Split-When:
 #   - A different covering radius needs separate coding-theoretic evidence.
 # - Merge-When:
 #   - General covering-code machinery owns the same finite construction.
 # - Summary:
-#   - Construct perfect radius-one search-center covers in Q1, Q3, and Q7.
+#   - Characterize and construct perfect radius-one covers through Q14.
 # - Description:
 #   - Uses nonzero binary syndrome columns and exhaustive cube verification.
 # - Usage:
@@ -82,6 +82,23 @@ def _radius_one_ball(center: int, dimension: int) -> tuple[int, ...]:
         for coordinate in range(dimension)
     )
     return (center, *neighbors)
+
+
+def test_only_hamming_dimensions_can_partition_radius_one_balls() -> None:
+    """Divisibility permits perfect radius-one partitions only in Q1, Q3, Q7."""
+    admissible: list[int] = []
+    for dimension in range(1, _MAXIMUM_TRITS + 1):
+        ball_size = dimension + 1
+        cube_size = 1 << dimension
+        divides_cube = cube_size % ball_size == 0
+        is_power_of_two = ball_size & (ball_size - 1) == 0
+        assert divides_cube == is_power_of_two
+        if divides_cube:
+            admissible.append(dimension)
+    expected = tuple(
+        _cube_dimension(parity_bits) for parity_bits in _TESTED_HAMMING_DIMENSIONS
+    )
+    assert tuple(admissible) == expected
 
 
 def test_hamming_centers_match_volume_lower_bound() -> None:

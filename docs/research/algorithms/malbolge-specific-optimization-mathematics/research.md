@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes thirty-six exact reductions: classic five-trit crazy factorization,
+formalizes thirty-seven exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -72,8 +72,9 @@ preimage hypercubes, exact `2^k-1` minimum aggregate trit-edit cost for
 bijective complete traversal, exact binary-cube one-trit neighborhood
 structure, exact coordinate-permutation quotient into `k+1` Hamming-weight
 classes, plus exact binomial distance shells/balls, diameter, and shortest-path
-lower bounds/counts plus fixed-radius covering lower bounds and perfect
-radius-one Hamming covers, the tight
+lower bounds/counts plus fixed-radius covering lower bounds, perfect
+radius-one Hamming covers, and the exact checked perfect-partition dimensions,
+the tight
 classic 1,024-preimage global
 bound, the exact zero-or-power-of-two preimage spectrum,
 the accumulator-specific `2^(10-n2(a))` worst-target bound, and the exact
@@ -149,6 +150,12 @@ all-906,192 six-center coverage testing plus a seven-center witness proves
 minimum seven. For ambiguity dimensions `k=1,3,7`, binary Hamming syndromes
 construct exact perfect radius-one covers with minimum center counts `1,2,16`;
 every compatible preimage maps canonically to its unique center within one trit.
+
+Conversely, a disjoint radius-one partition requires `k+1` to divide `2^k`, so
+through dimension 14 only those same three positive dimensions are possible.
+This converse classifies perfect partitions only, not overlapping covers that
+may attain a ceiling volume bound.
+
 The existing all-one target under
 accumulator zero therefore has exactly 1,024 data-word preimages, while a zero
 target under accumulator zero has none. Exhausting all 59,049 accumulator words
@@ -219,7 +226,8 @@ crazy preimage count, constructive preimage ranking, exact Gray traversal,
 exact Gray edit optimality, exact preimage-cube neighborhood graph, exact
 coordinate-permutation cube quotient, and exact preimage-cube distance
 shells/balls, exact mutation geodesics, fixed-radius
-covering lower bounds, and perfect radius-one Hamming covers,
+covering lower bounds, perfect radius-one Hamming covers, and exact checked
+perfect-partition dimensions,
 global preimage bound,
 discrete preimage spectrum, accumulator-specific
 worst-target bound, reachable-target count, fixed-accumulator target preimage
@@ -251,7 +259,8 @@ preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, exact coordinate-
 permutation cube quotient, and exact binomial distance shells/balls, diameter,
 exact mutation geodesics, fixed-radius
-covering lower bounds, and perfect radius-one Hamming covers, tight 1,024-
+covering lower bounds, perfect radius-one Hamming covers, and exact checked
+perfect-partition dimensions, tight 1,024-
 preimage bound, discrete
 cardinality spectrum,
 accumulator-specific worst-target bound, reachable-target count, exact

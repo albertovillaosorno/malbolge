@@ -309,6 +309,23 @@ center for every compatible preimage. This is an exact complete-domain
 radius-one covering/canonicalization result; it makes no wall-clock or
 external-corpus claim.
 
+The same checked range admits an exact converse for perfect radius-one covers.
+If $c$ radius-one balls partition $Q_k$, then every ball has exactly $k+1$
+vertices and disjointness gives $c(k+1)=2^k$. Hence $k+1$ divides a power of
+two, so $k+1$ is itself a power of two. For $1\leq k\leq14$, this leaves only
+$k\in\{1,3,7\}$; the Hamming construction above supplies a partition in each
+remaining dimension. Therefore
+\begin{equation}
+  Q_k\text{ admits a radius-one ball partition}
+    \quad\Longleftrightarrow\quad
+  k\in\{1,3,7\},
+  \qquad 1\leq k\leq N\leq14.
+  \label{eq:optimization-crazy-profile-preimage-cube-perfect-radius-one-dimensions}
+\end{equation}
+This characterizes disjoint perfect covers only. It does not claim that the
+ceiling volume lower bound is unattainable by overlapping covers in every other
+dimension.
+
 The complete one-trit crazy table has no accumulator/target pair with more than
 two compatible data trits, so $\mu(\alpha,\tau)\leq2$. Combining that fact with
 the exact product formula yields the global classic fixed-target bound
