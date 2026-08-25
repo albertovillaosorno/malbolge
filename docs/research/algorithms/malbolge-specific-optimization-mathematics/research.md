@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes thirty-four exact reductions: classic five-trit crazy factorization,
+formalizes thirty-five exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -71,7 +71,8 @@ preimage rank/unrank through width 14, exact one-trit Gray traversal of
 preimage hypercubes, exact `2^k-1` minimum aggregate trit-edit cost for
 bijective complete traversal, exact binary-cube one-trit neighborhood
 structure plus exact binomial distance shells/balls, diameter, and shortest-
-path lower bounds/counts plus fixed-radius covering lower bounds, the tight
+path lower bounds/counts plus fixed-radius covering lower bounds and perfect
+radius-one Hamming covers, the tight
 classic 1,024-preimage global
 bound, the exact zero-or-power-of-two preimage spectrum,
 the accumulator-specific `2^(10-n2(a))` worst-target bound, and the exact
@@ -131,7 +132,9 @@ For radius `r`, any complete cover by centered search balls needs at least
 this is not claimed as an exact covering number. The caveat is witnessed
 exactly by `Q5` at radius one: the volume bound is six while exhaustive
 all-906,192 six-center coverage testing plus a seven-center witness proves
-minimum seven.
+minimum seven. For ambiguity dimensions `k=1,3,7`, binary Hamming syndromes
+construct exact perfect radius-one covers with minimum center counts `1,2,16`;
+every compatible preimage maps canonically to its unique center within one trit.
 The existing all-one target under
 accumulator zero therefore has exactly 1,024 data-word preimages, while a zero
 target under accumulator zero has none. Exhausting all 59,049 accumulator words
@@ -195,8 +198,8 @@ These timing results support H1 only for the admitted CPU table-factorization
 slice. The self-encryption/rotate-history and exact rotate-period reductions,
 crazy preimage count, constructive preimage ranking, exact Gray traversal,
 exact Gray edit optimality, exact preimage-cube neighborhood graph, and exact
-preimage-cube distance shells/balls, exact mutation geodesics, and fixed-radius
-covering lower bounds,
+preimage-cube distance shells/balls, exact mutation geodesics, fixed-radius
+covering lower bounds, and perfect radius-one Hamming covers,
 global preimage bound,
 discrete preimage spectrum, accumulator-specific
 worst-target bound, reachable-target count, fixed-accumulator target preimage
@@ -225,8 +228,9 @@ self-encryption, classic rotate-history canonicalization, exact rotate minimal-
 period canonicalization, crazy-target preimage cardinality, constructive
 preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, and exact binomial
-distance shells/balls, diameter, exact mutation geodesics, and fixed-radius
-covering lower bounds, tight 1,024-preimage bound, discrete
+distance shells/balls, diameter, exact mutation geodesics, fixed-radius
+covering lower bounds, and perfect radius-one Hamming covers, tight 1,024-
+preimage bound, discrete
 cardinality spectrum,
 accumulator-specific worst-target bound, reachable-target count, exact
 fixed-accumulator target preimage distribution, fixed-accumulator budget

@@ -260,6 +260,35 @@ that checked case is seven. The general result applies only to complete
 fixed-radius coverage inside one fixed preimage cube and makes no wall-clock or
 external-corpus claim.
 
+For ambiguity dimensions of Hamming form, the radius-one lower bound is attained
+constructively. Let $m\in\{1,2,3\}$ and $k=2^m-1\leq N$. Label the $k$ binary
+cube coordinates by the nonzero $m$-bit vectors, represented by integers
+$1,\ldots,k$, and define the syndrome and zero-syndrome center set
+\[
+  \sigma(z)=\bigoplus_{i:z_i=1}(i+1),
+  \qquad
+  H_m=\{z\in\{0,1\}^k:\sigma(z)=0\}.
+\]
+Since the coordinate labels include every standard basis vector, $\sigma$ has
+rank $m$ and $|H_m|=2^{k-m}$. For every cube word
+$z$, if $\sigma(z)=s\neq0$, flipping coordinate $s-1$ changes the syndrome to
+zero; if $s=0$, no flip is needed. Hence every cube word lies within radius one
+of a center in $H_m$. The radius-one balls have size $k+1=2^m$, and
+$|H_m|(k+1)=2^k$, so these balls partition the cube and attain the volume lower
+bound. Writing $K_{Q_k}(1)$ for the minimum number of radius-one balls needed to
+cover $Q_k$, the preimage-cube isomorphism $U_{a,t}$ therefore gives
+\begin{equation}
+  K_{Q_k}(1)=|H_m|=2^{k-m}=\frac{2^k}{k+1},
+  \qquad
+  m\in\{1,2,3\},\ k=2^m-1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-preimage-cube-perfect-radius-one-cover}
+\end{equation}
+Thus the exact minimum center counts are $1$, $2$, and $16$ for
+$k=1,3,7$, respectively, and the syndrome decoder gives a canonical nearest
+center for every compatible preimage. This is an exact complete-domain
+radius-one covering/canonicalization result; it makes no wall-clock or
+external-corpus claim.
+
 The complete one-trit crazy table has no accumulator/target pair with more than
 two compatible data trits, so $\mu(\alpha,\tau)\leq2$. Combining that fact with
 the exact product formula yields the global classic fixed-target bound

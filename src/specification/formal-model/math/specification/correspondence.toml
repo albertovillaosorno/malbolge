@@ -279,6 +279,16 @@ mechanism = "exact-binomial-ball-volume-plus-union-cardinality-lower-bound"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_covering_lower_bound.py::test_volume_bound_is_exact_arithmetic_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_covering_lower_bound.py::test_small_cubes_cannot_cover_below_volume_lower_bound", "tests/mathematics/test_crazy_preimage_cube_covering_lower_bound.py::test_q5_radius_one_volume_bound_is_strict"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-perfect-radius-one-cover"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-preimage-cube-perfect-radius-one-cover"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "reachable fixed accumulator/target preimage cubes with ambiguity dimension k in {1,3,7} and k <= total width N <= 14"
+mechanism = "independent-binary-syndrome-decoder-plus-exhaustive-perfect-ball-partition"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_perfect_radius_one_cover.py::test_hamming_centers_match_volume_lower_bound", "tests/mathematics/test_crazy_preimage_cube_perfect_radius_one_cover.py::test_hamming_radius_one_balls_partition_each_checked_cube", "tests/mathematics/test_crazy_preimage_cube_perfect_radius_one_cover.py::test_hamming_decoder_lifts_to_checked_preimage_cubes"]
+
+[[correspondence]]
 id = "optimization-crazy-preimage-bound"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-bound"

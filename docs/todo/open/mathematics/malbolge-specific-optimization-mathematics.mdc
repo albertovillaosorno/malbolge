@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize thirty-four exact reductions: classic
+- The proved slices now formalize thirty-five exact reductions: classic
   five-trit
   crazy factorization, profile-width crazy chunking, exact decode sum-class
   canonicalization,
@@ -44,7 +44,9 @@ force or stochastic optimization begins.
   `k*2^(k-1)` edges for `k>0`, exact binomial distance shells/balls and
   diameter `k`, exact `j` one-trit mutation-step lower bounds with `j!`
   shortest paths, exact fixed-radius covering lower bound
-  `ceil(2^k / sum_{j=0}^r C(k,j))`, the tight global 1,024-preimage bound,
+  `ceil(2^k / sum_{j=0}^r C(k,j))`, exact perfect radius-one Hamming
+  covers with minimum center counts `1,2,16` for `k=1,3,7`, the tight global
+  1,024-preimage bound,
   the exact zero-or-power-of-two preimage spectrum, the accumulator-specific
   `2^(10-n2(a))` worst-target bound, and the exact
   `2^(10-n2(a))*3^n2(a)` reachable-target count, the exact checked-width
@@ -63,9 +65,9 @@ force or stochastic optimization begins.
   preimage-budget exceedance sum, its width-indexed generalization, and the
   exact minimum complete-preimage budget needed to cover any integer target
   from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. The first
-  four are consumed by runtime paths; the thirty search reductions carry
+  four are consumed by runtime paths; the thirty-one search reductions carry
   no inherited runtime speedup claim.
-- Thirty-four optimization research equations are registered in
+- Thirty-five optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -99,7 +101,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes thirty-four labelled optimization
+- Current mathematical evidence includes thirty-five labelled optimization
   equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, the exact 94-class decode quotient across all 8,836
@@ -114,7 +116,8 @@ force or stochastic optimization begins.
   degree, edge counts, binomial distance shells/balls, and diameter through
   dimension 14, exact mutation distance `j` and `j!` shortest-path counts
   through dimension 14, exact fixed-radius volume covering lower bounds through
-  dimension 14, the exhaustive tight global
+  dimension 14 plus perfect radius-one Hamming covers for `k=1,3,7`, the
+  exhaustive tight global
   1,024-preimage ceiling, the exact `{0,1,2,4,...,1024}` cardinality spectrum,
   the accumulator-specific `2^(10-n2(a))` maximum, the exact
   `2^(10-n2(a))*3^n2(a)` reachable-target count, the exact checked-width
