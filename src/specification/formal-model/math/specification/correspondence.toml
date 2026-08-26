@@ -435,6 +435,16 @@ mechanism = "width-indexed-trit-convolution-plus-binomial-closed-form"
 evidence = ["tests/optimizer/test_crazy_target_search.py::test_profile_width_preimage_pair_distribution_matches_closed_form"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-global-ordered-triple-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-global-ordered-preimage-triple-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all reachable accumulator/target pairs at widths 1 through 14, with each fixed-pair ordered preimage-triple domain quotiented independently by simultaneous ambiguity-coordinate permutation and independent all-pair enumeration through width 4"
+mechanism = "ambiguity-class-sum-plus-weighted-binomial-identity"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_global_triple_quotient.py::test_small_widths_match_independent_fixed_pair_enumeration", "tests/mathematics/test_crazy_preimage_cube_global_triple_quotient.py::test_global_ordered_triple_quotient_has_exact_closed_count"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-reachable-pair-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-profile-reachable-pair-ranking"

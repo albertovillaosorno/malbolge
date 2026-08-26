@@ -597,6 +597,26 @@ planning
 evidence only for this bounded width family; it does not assert candidate-corpus
 membership or runtime speedup.
 
+Composing the width-indexed preimage-class distribution with the ordered
+cube-triple quotient gives an exact global representative count. Let $T_N$ be
+the number of canonical ordered preimage triples obtained by quotienting each
+reachable fixed accumulator/target preimage cube independently. Then
+\begin{equation}
+  T_N
+    =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}\binom{k+7}{7}
+    =\sum_{j=0}^{\min(7,N)}
+      \binom{7}{j}\binom{N}{j}2^j7^{N-j},
+  \qquad 1\leq N\leq14.
+  \label{eq:optimization-crazy-global-ordered-preimage-triple-quotient}
+\end{equation}
+The second equality follows from
+$\binom{k+7}{7}=\sum_{j=0}^{7}\binom{7}{j}\binom{k}{j}$ and the weighted
+binomial moments. The unquotiented ordered-triple mass is
+$\sum_k\binom{N}{k}2^k5^{N-k}8^k=21^N$. At $N=14$, the quotient has
+547751638341145 representatives instead of 3243919932521508681 raw ordered
+triples. This is an exact complete-domain search-space count only; it inherits
+the simultaneous-coordinate symmetry requirement and makes no timing claim.
+
 The $7^N$ reachable-pair count also admits a constructive canonical index.
 Let
 \[
