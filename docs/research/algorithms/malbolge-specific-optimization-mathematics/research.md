@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes forty-three exact reductions: classic five-trit crazy factorization,
+formalizes forty-four exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -74,8 +74,8 @@ structure, exact coordinate-permutation quotient into `k+1` Hamming-weight
 classes, exact ordered cube-word pair quotient into `C(k+3,3)` joint-count
 classes, exact ordered cube-word triple quotient into `C(k+7,7)` joint-count
 classes, exact ordered cube-word quadruple quotient into `C(k+15,15)` joint-
-count classes, exact global ordered-triple quotient count across all reachable
-fixed pairs, exact endpoint-symmetric pair quotient with
+count classes, exact global ordered-triple and ordered-quadruple quotient counts
+across all reachable fixed pairs, exact endpoint-symmetric pair quotient with
 `(C(k+3,3)+floor((k+2)^2/4))/2` classes, plus exact binomial distance
 shells/balls, diameter, and shortest-path
 lower bounds/counts plus fixed-radius covering lower bounds, perfect
@@ -174,6 +174,13 @@ closed global representative count. Width `N` has
 `sum_{j=0}^{min(7,N)} C(7,j)C(N,j)2^j7^(N-j)`. At `N=14`, this is
 547,751,638,341,145 representatives instead of 3,243,919,932,521,508,681 raw
 ordered triples. This is an exact complete-domain cardinality result only.
+
+The analogous ordered-quadruple sum is
+`sum_k C(N,k)2^k5^(N-k)C(k+15,15)`, equal to
+`sum_{j=0}^{min(15,N)} C(15,j)C(N,j)2^j7^(N-j)`. At `N=14`, this is
+25,678,405,217,633,865 representatives instead of
+9,012,061,295,995,008,299,689 raw ordered quadruples. This is likewise an
+exact complete-domain cardinality result only.
 
 For pair analyses that are also invariant under endpoint swap, the ordered-pair
 quotient reduces further. Endpoint swap exchanges `n01` and `n10`; classes with
@@ -281,7 +288,8 @@ crazy preimage count, constructive preimage ranking, exact Gray traversal,
 exact Gray edit optimality, exact preimage-cube neighborhood graph, exact
 coordinate-permutation cube quotient, exact ordered cube-word pair quotient,
 exact ordered cube-word triple and quadruple quotients, exact global ordered-
-triple quotient count, exact endpoint-symmetric pair quotient,
+triple and ordered-quadruple quotient counts, exact endpoint-symmetric pair
+quotient,
 and exact preimage-cube distance
 shells/balls, exact mutation geodesics, fixed-radius
 covering lower bounds, perfect radius-one Hamming covers, exact checked
@@ -317,7 +325,8 @@ preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, exact coordinate-
 permutation cube quotient, exact ordered cube-word pair quotient, exact
 ordered cube-word triple and quadruple quotients, exact global ordered-triple
-quotient count, exact endpoint-symmetric pair quotient, and
+and ordered-quadruple quotient counts, exact endpoint-symmetric pair quotient,
+and
 exact binomial distance shells/balls,
 diameter,
 exact mutation geodesics, fixed-radius
