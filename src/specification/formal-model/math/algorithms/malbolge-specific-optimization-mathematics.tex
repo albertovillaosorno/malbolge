@@ -259,6 +259,42 @@ only when an ordered-pair analysis is invariant under simultaneous
 ambiguity-coordinate relabeling; it is not position-sensitive Malbolge semantic
 equivalence or a wall-clock speedup claim.
 
+For pairwise analyses that also ignore endpoint order, let
+$G_k=S_k\times C_2$, where $S_k$ permutes both endpoints simultaneously and
+$\tau\in C_2$ swaps them: $\tau(x,y)=(y,x)$. These actions commute. On joint
+counts, $\tau$ fixes $n_{00},n_{11}$ and swaps $n_{01},n_{10}$, so choose the
+canonical half with $n_{01}\leq n_{10}$. A coordinate-permutation orbit is
+fixed by $\tau$ exactly when $n_{01}=n_{10}=q$. For each
+$0\leq q\leq\lfloor k/2\rfloor$, the remaining counts satisfy
+$n_{00}+n_{11}=k-2q$ and therefore give $k-2q+1$ fixed classes. Thus
+\[
+  F_k=\sum_{q=0}^{\lfloor k/2\rfloor}(k-2q+1)
+    =\left\lfloor\frac{(k+2)^2}{4}\right\rfloor.
+\]
+Every nonfixed ordered-pair class pairs with its distinct endpoint-swapped
+class. Hence the further quotient has
+\begin{equation}
+  U_k=\frac{1}{2}\left(
+    \binom{k+3}{3}+\left\lfloor\frac{(k+2)^2}{4}\right\rfloor
+  \right),
+  \qquad M_k(x,y)=
+  \frac{k!}{n_{00}!n_{01}!n_{10}!n_{11}!}
+  \begin{cases}
+    1,&n_{01}=n_{10},\\
+    2,&n_{01}\neq n_{10},
+  \end{cases}
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-preimage-cube-endpoint-symmetric-pair-quotient}
+\end{equation}
+Here $M_k(x,y)$ is the enlarged orbit mass on the original ordered-pair domain.
+The canonical orientation puts the larger endpoint Hamming weight first, so
+$(\max(w_x,w_y),\min(w_x,w_y),d)$ is a complete key. At $k=14$ this gives
+372 classes instead of 680 ordered coordinate-permutation classes or $4^{14}$
+raw ordered pairs. Transport through $U_{a,t}$ preserves the fixed pair and
+trit distance. This quotient applies only to objectives invariant under both
+ambiguity-coordinate relabeling and endpoint swap; it is not direction-
+sensitive Malbolge semantic equivalence or a wall-clock speedup claim.
+
 The cube isomorphism also fixes every trit-distance shell. For any compatible
 word $d$, define
 $S_j(d)=\{x:\CrazyN{N}{x}{a}=t,\ H_3(d,x)=j\}$ and

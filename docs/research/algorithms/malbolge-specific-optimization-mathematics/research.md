@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes thirty-eight exact reductions: classic five-trit crazy factorization,
+formalizes thirty-nine exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -72,7 +72,9 @@ preimage hypercubes, exact `2^k-1` minimum aggregate trit-edit cost for
 bijective complete traversal, exact binary-cube one-trit neighborhood
 structure, exact coordinate-permutation quotient into `k+1` Hamming-weight
 classes, exact ordered cube-word pair quotient into `C(k+3,3)` joint-count
-classes, plus exact binomial distance shells/balls, diameter, and shortest-path
+classes, exact endpoint-symmetric pair quotient with
+`(C(k+3,3)+floor((k+2)^2/4))/2` classes, plus exact binomial distance
+shells/balls, diameter, and shortest-path
 lower bounds/counts plus fixed-radius covering lower bounds, perfect
 radius-one Hamming covers, and the exact checked perfect-partition dimensions,
 the tight
@@ -147,6 +149,16 @@ weight, right weight, and pair distance form a complete orbit key.
 
 This ordered-pair quotient applies only to analyses invariant under simultaneous
 ambiguity-coordinate relabeling.
+
+For pair analyses that are also invariant under endpoint swap, the ordered-pair
+quotient reduces further. Endpoint swap exchanges `n01` and `n10`; classes with
+`n01=n10` are fixed, while every other class pairs with a distinct swapped
+class. The exact class count is
+`(C(k+3,3)+floor((k+2)^2/4))/2`, giving 372 classes at `k=14`.
+
+Orienting the larger Hamming-weight endpoint first gives a canonical key
+`(max(wx,wy),min(wx,wy),d)`. This refinement applies only when endpoint order is
+irrelevant; direction-sensitive analyses retain the ordered-pair quotient.
 
 Moreover, from any compatible word the exact distance-`j` shell has `C(k,j)`
 words, a
@@ -237,7 +249,7 @@ slice. The self-encryption/rotate-history and exact rotate-period reductions,
 crazy preimage count, constructive preimage ranking, exact Gray traversal,
 exact Gray edit optimality, exact preimage-cube neighborhood graph, exact
 coordinate-permutation cube quotient, exact ordered cube-word pair quotient,
-and exact preimage-cube distance
+exact endpoint-symmetric pair quotient, and exact preimage-cube distance
 shells/balls, exact mutation geodesics, fixed-radius
 covering lower bounds, perfect radius-one Hamming covers, and exact checked
 perfect-partition dimensions,
@@ -270,8 +282,9 @@ self-encryption, classic rotate-history canonicalization, exact rotate minimal-
 period canonicalization, crazy-target preimage cardinality, constructive
 preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, exact coordinate-
-permutation cube quotient, exact ordered cube-word pair quotient, and exact
-binomial distance shells/balls, diameter,
+permutation cube quotient, exact ordered cube-word pair quotient, exact
+endpoint-symmetric pair quotient, and exact binomial distance shells/balls,
+diameter,
 exact mutation geodesics, fixed-radius
 covering lower bounds, perfect radius-one Hamming covers, and exact checked
 perfect-partition dimensions, tight 1,024-

@@ -269,6 +269,16 @@ mechanism = "joint-count-orbits-plus-constructive-coordinate-grouping"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_pair_orbits_are_joint_classes_through_dimension_eight", "tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_pair_class_sizes_cover_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_pair_quotient_lifts_to_small_reachable_pairs"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-endpoint-symmetric-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-endpoint-symmetric-pair-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "ordered cube-word pairs in reachable fixed accumulator/target preimage cubes at widths 1 through 14 for analyses invariant under simultaneous ambiguity-coordinate permutation and endpoint swap, with exhaustive abstract pair orbits through dimension 8 and fixed-pair lifting through width 4"
+mechanism = "endpoint-swap-fixed-classes-plus-canonical-orientation"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_endpoint_symmetric_quotient.py::test_endpoint_symmetric_pair_orbits_are_exact_through_dimension_eight", "tests/mathematics/test_crazy_preimage_cube_endpoint_symmetric_quotient.py::test_endpoint_symmetric_counts_cover_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_endpoint_symmetric_quotient.py::test_endpoint_symmetric_quotient_lifts_to_small_reachable_pairs"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-distance"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-profile-preimage-cube-distance"
