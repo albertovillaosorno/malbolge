@@ -10,39 +10,46 @@
 # Boundary-Contract:
 # - Owns:
 #   - Independent evidence for permutation orbits of crazy preimage cube
-#     words and ordered pairs.
+#     words, ordered pairs, and ordered triples.
 # - Must-Not:
 #   - Treat permutation orbits as position-sensitive semantic equivalence.
 # - Allows:
 #   - Inputs: reachable fixed accumulator/target pairs through width fourteen.
-#   - Outputs: exact word/pair orbit counts and canonical representatives.
+#   - Outputs: exact word/pair/triple orbit counts and canonical
+#     representatives.
 #   - Side effects: none.
 # - Split-When:
-#   - A weaker symmetry group needs a distinct orbit classification.
+#   - A different symmetry group needs a distinct orbit classification.
 # - Merge-When:
 #   - Another cube-canonicalization proof owns the same symmetric-group action.
 # - Summary:
-#   - Quotient coordinate-symmetric cube words and ordered pairs.
+#   - Quotient coordinate-symmetric cube words, ordered pairs, and triples.
 # - Description:
-#   - Exhausts bounded cube words/pairs and independently lifts canonical
-#     choices to preimages.
+#   - Exhausts bounded cube words/pairs/triples and independently lifts
+#     canonical choices to preimages.
 # - Usage:
 #   - Referenced by the mathematical correspondence manifest.
 # - Defaults:
 #   - Word enumeration reaches dimension fourteen; ordered pairs stop at
-#     dimension eight; fixed-pair lifting stops at width four.
+#     dimension eight, triples at four; fixed-pair lifting stops at width four.
 #
 
-"""Independent evidence for the permutation quotient of crazy preimage cubes."""
+"""Independent evidence for permutation quotients of crazy preimage cubes."""
 
 from __future__ import annotations
 
 from collections import Counter
+from itertools import combinations
+from itertools import product
 
 _BINARY_RADIX = 2
 _EXHAUSTIVE_PAIR_DIMENSION = 8
+_EXHAUSTIVE_TRIPLE_DIMENSION = 4
 _EXHAUSTIVE_TRITS = 4
 _MAXIMUM_TRITS = 14
+_TRIPLE_ARITY = 3
+_TRIPLE_SYMBOL_COUNT = 1 << _TRIPLE_ARITY
+_TRIPLE_SEPARATOR_COUNT = _TRIPLE_SYMBOL_COUNT - 1
 _RADIX = 3
 _INDEPENDENT_CRAZY_TRIT = (
     (1, 0, 0),
@@ -389,3 +396,164 @@ def test_ordered_pair_quotient_lifts_to_small_reachable_pairs() -> None:
         for accumulator in range(domain):
             for target in range(domain):
                 _check_ordered_pair_lifting(target, accumulator, trit_count)
+
+
+def _tuple_symbol(codes: tuple[int, ...], coordinate: int) -> int:
+    result = 0
+    for code in codes:
+        result = (result << 1) | ((code >> coordinate) & 1)
+    return result
+
+
+def _tuple_counts(codes: tuple[int, ...], dimension: int) -> tuple[int, ...]:
+    counts = [0] * (1 << len(codes))
+    for coordinate in range(dimension):
+        counts[_tuple_symbol(codes, coordinate)] += 1
+    return tuple(counts)
+
+
+def _tuple_order(codes: tuple[int, ...], dimension: int) -> tuple[int, ...]:
+    buckets: list[list[int]] = [[] for _ in range(1 << len(codes))]
+    for coordinate in range(dimension):
+        buckets[_tuple_symbol(codes, coordinate)].append(coordinate)
+    return tuple(
+        coordinate
+        for symbol in reversed(range(len(buckets)))
+        for coordinate in buckets[symbol]
+    )
+
+
+def _canonical_tuple(counts: tuple[int, ...], arity: int) -> tuple[int, ...]:
+    result = [0] * arity
+    destination = 0
+    for symbol in reversed(range(1 << arity)):
+        for _ in range(counts[symbol]):
+            for index in range(arity):
+                shift = arity - index - 1
+                result[index] |= ((symbol >> shift) & 1) << destination
+            destination += 1
+    return tuple(result)
+
+
+def _triple_count_vectors(dimension: int) -> tuple[tuple[int, ...], ...]:
+    vectors: list[tuple[int, ...]] = []
+    for bars in combinations(
+        range(dimension + _TRIPLE_SEPARATOR_COUNT),
+        _TRIPLE_SEPARATOR_COUNT,
+    ):
+        positions = (-1, *bars, dimension + _TRIPLE_SEPARATOR_COUNT)
+        vectors.append(
+            tuple(
+                positions[index + 1] - positions[index] - 1
+                for index in range(_TRIPLE_SYMBOL_COUNT)
+            )
+        )
+    return tuple(vectors)
+
+
+def _tuple_orbit_size(counts: tuple[int, ...]) -> int:
+    result = _integer_factorial(sum(counts))
+    for count in counts:
+        result //= _integer_factorial(count)
+    return result
+
+
+def _triple_counts_with_zero_third(
+    pair_counts: tuple[int, int, int, int],
+) -> tuple[int, ...]:
+    return tuple(
+        pair_counts[symbol >> 1] if symbol & 1 == 0 else 0
+        for symbol in range(_TRIPLE_SYMBOL_COUNT)
+    )
+
+
+def _canonicalize_tuple(
+    codes: tuple[int, ...],
+    dimension: int,
+) -> tuple[int, ...]:
+    order = _tuple_order(codes, dimension)
+    return tuple(_permute_code(code, order) for code in codes)
+
+
+def test_ordered_triple_orbits_are_joint_classes_through_dimension_four() -> (
+    None
+):
+    """Eight joint counts classify every small ordered triple orbit."""
+    for dimension in range(_EXHAUSTIVE_TRIPLE_DIMENSION + 1):
+        size = _integer_power(_BINARY_RADIX, dimension)
+        observed: Counter[tuple[int, ...]] = Counter()
+        representatives: set[tuple[int, ...]] = set()
+        for codes in product(range(size), repeat=_TRIPLE_ARITY):
+            counts = _tuple_counts(codes, dimension)
+            canonical = _canonicalize_tuple(codes, dimension)
+            assert canonical == _canonical_tuple(counts, _TRIPLE_ARITY)
+            observed[counts] += 1
+            representatives.add(canonical)
+            if codes[2] == 0:
+                pair = _canonical_ordered_pair(
+                    _joint_counts(codes[0], codes[1], dimension)
+                )
+                assert canonical[:2] == pair
+            if codes[1:] == (0, 0):
+                assert canonical == (_canonical_code(codes[0]), 0, 0)
+        assert len(observed) == _integer_binomial(dimension + 7, 7)
+        assert len(representatives) == len(observed)
+        assert observed == Counter({
+            counts: _tuple_orbit_size(counts) for counts in observed
+        })
+
+
+def test_ordered_triple_class_sizes_cover_through_dimension_fourteen() -> None:
+    """Exact triple-orbit sizes account for every checked ordered triple."""
+    for dimension in range(_MAXIMUM_TRITS + 1):
+        vectors = _triple_count_vectors(dimension)
+        assert len(vectors) == _integer_binomial(dimension + 7, 7)
+        assert sum(_tuple_orbit_size(counts) for counts in vectors) == (
+            _TRIPLE_SYMBOL_COUNT**dimension
+        )
+        for pair_counts in _joint_count_vectors(dimension):
+            triple_counts = _triple_counts_with_zero_third(pair_counts)
+            assert _canonical_tuple(triple_counts, _TRIPLE_ARITY) == (
+                *_canonical_ordered_pair(pair_counts),
+                0,
+            )
+        for weight in range(dimension + 1):
+            pair_counts = (dimension - weight, 0, weight, 0)
+            triple_counts = _triple_counts_with_zero_third(pair_counts)
+            assert _canonical_tuple(triple_counts, _TRIPLE_ARITY) == (
+                _bit_mask(weight),
+                0,
+                0,
+            )
+
+
+def _check_ordered_triple_lifting(
+    target: int,
+    accumulator: int,
+    trit_count: int,
+) -> None:
+    choices = _choice_sets(target, accumulator, trit_count)
+    if any(not local for local in choices):
+        return
+    dimension = sum(len(local) == _BINARY_RADIX for local in choices)
+    words = tuple(_cube_data(choices, code) for code in range(1 << dimension))
+    assert all(
+        _crazy(word, accumulator, trit_count) == target for word in words
+    )
+    for codes in product(range(1 << dimension), repeat=_TRIPLE_ARITY):
+        counts = _tuple_counts(codes, dimension)
+        canonical = _canonicalize_tuple(codes, dimension)
+        assert canonical == _canonical_tuple(counts, _TRIPLE_ARITY)
+        assert all(
+            _crazy(words[code], accumulator, trit_count) == target
+            for code in canonical
+        )
+
+
+def test_ordered_triple_quotient_lifts_to_small_reachable_pairs() -> None:
+    """Canonical ordered triples remain valid fixed-pair preimages."""
+    for trit_count in range(1, _EXHAUSTIVE_TRITS + 1):
+        domain = _integer_power(_RADIX, trit_count)
+        for accumulator in range(domain):
+            for target in range(domain):
+                _check_ordered_triple_lifting(target, accumulator, trit_count)

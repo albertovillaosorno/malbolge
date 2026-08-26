@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes thirty-nine exact reductions: classic five-trit crazy factorization,
+formalizes forty exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -72,6 +72,7 @@ preimage hypercubes, exact `2^k-1` minimum aggregate trit-edit cost for
 bijective complete traversal, exact binary-cube one-trit neighborhood
 structure, exact coordinate-permutation quotient into `k+1` Hamming-weight
 classes, exact ordered cube-word pair quotient into `C(k+3,3)` joint-count
+classes, exact ordered cube-word triple quotient into `C(k+7,7)` joint-count
 classes, exact endpoint-symmetric pair quotient with
 `(C(k+3,3)+floor((k+2)^2/4))/2` classes, plus exact binomial distance
 shells/balls, diameter, and shortest-path
@@ -149,6 +150,14 @@ weight, right weight, and pair distance form a complete orbit key.
 
 This ordered-pair quotient applies only to analyses invariant under simultaneous
 ambiguity-coordinate relabeling.
+
+The same simultaneous coordinate action classifies ordered triples by their
+eight joint bit pattern counts. There are exactly `C(k+7,7)` classes, with
+multinomial orbit sizes; sorting patterns in descending binary order preserves
+the existing pair and single-word canonical representatives on zero slices. At
+`k=14`, this is 116,280 classes instead of 4,398,046,511,104 raw triples.
+Exhaustive abstract evidence reaches dimension four, class arithmetic reaches
+dimension fourteen, and all reachable fixed-pair lifts through width four pass.
 
 For pair analyses that are also invariant under endpoint swap, the ordered-pair
 quotient reduces further. Endpoint swap exchanges `n01` and `n10`; classes with
@@ -249,7 +258,8 @@ slice. The self-encryption/rotate-history and exact rotate-period reductions,
 crazy preimage count, constructive preimage ranking, exact Gray traversal,
 exact Gray edit optimality, exact preimage-cube neighborhood graph, exact
 coordinate-permutation cube quotient, exact ordered cube-word pair quotient,
-exact endpoint-symmetric pair quotient, and exact preimage-cube distance
+exact ordered cube-word triple quotient, exact endpoint-symmetric pair quotient,
+and exact preimage-cube distance
 shells/balls, exact mutation geodesics, fixed-radius
 covering lower bounds, perfect radius-one Hamming covers, and exact checked
 perfect-partition dimensions,
@@ -283,7 +293,8 @@ period canonicalization, crazy-target preimage cardinality, constructive
 preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, exact coordinate-
 permutation cube quotient, exact ordered cube-word pair quotient, exact
-endpoint-symmetric pair quotient, and exact binomial distance shells/balls,
+ordered cube-word triple quotient, exact endpoint-symmetric pair quotient, and
+exact binomial distance shells/balls,
 diameter,
 exact mutation geodesics, fixed-radius
 covering lower bounds, perfect radius-one Hamming covers, and exact checked

@@ -58,7 +58,10 @@ for `k=0`.
 Coordinate-symmetric single-word analyses quotient these cubes into `k+1`
 Hamming-weight classes. The same simultaneous coordinate action quotients
 ordered cube-word pairs into `C(k+3,3)` joint-count classes with exact orbit
-sizes while preserving endpoint direction. If endpoint order is also
+sizes while preserving endpoint direction. Ordered triples under the same
+coordinate action have `C(k+7,7)` exact joint-count classes, or 116,280 at
+`k=14`. If endpoint order
+is also
 irrelevant, the exact class count reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`. These quotients apply only
 to analyses with the stated coordinate and endpoint symmetries.

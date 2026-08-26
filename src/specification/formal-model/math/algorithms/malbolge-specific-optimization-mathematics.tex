@@ -259,6 +259,36 @@ only when an ordered-pair analysis is invariant under simultaneous
 ambiguity-coordinate relabeling; it is not position-sensitive Malbolge semantic
 equivalence or a wall-clock speedup claim.
 
+The same coordinate action extends to ordered cube-word triples. For
+$x,y,z\in\{0,1\}^k$, let $n_{uvw}$ count coordinates with joint pattern
+$(x_h,y_h,z_h)=(u,v,w)$, and let $S_k$ act simultaneously on all three words.
+Define
+\[
+  \mathcal{J}^{(3)}_k=\left\{(n_s)_{s\in\{0,1\}^3}:
+    n_s\in\{0,\ldots,k\},\ \sum_s n_s=k\right\}.
+\]
+The eight counts are complete orbit invariants: grouping coordinates in
+descending binary block order $111,110,\ldots,000$ gives one canonical triple
+per count vector. Therefore
+\begin{equation}
+  \left(\{0,1\}^k\right)^3/S_k
+    \overset{\sim}{\longrightarrow}\mathcal{J}^{(3)}_k,
+  \qquad
+  |\mathcal{J}^{(3)}_k|=\binom{k+7}{7},
+  \qquad
+  |[(x,y,z)]|=\frac{k!}{\prod_s n_s!},
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-preimage-cube-ordered-triple-quotient}
+\end{equation}
+At $k=14$, this gives 116280 classes instead of $8^{14}=4398046511104$ raw
+ordered triples. The descending block convention reduces exactly to the
+existing ordered-pair
+representative when the third word is zero, and to the single-word Hamming-
+weight representative when the second and third words are zero. The quotient
+applies only to triple analyses invariant under simultaneous ambiguity-
+coordinate relabeling; it is not position-sensitive Malbolge semantic
+equivalence or a wall-clock speedup claim.
+
 For pairwise analyses that also ignore endpoint order, let
 $G_k=S_k\times C_2$, where $S_k$ permutes both endpoints simultaneously and
 $\tau\in C_2$ swaps them: $\tau(x,y)=(y,x)$. These actions commute. On joint
