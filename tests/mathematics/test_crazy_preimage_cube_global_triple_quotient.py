@@ -84,8 +84,8 @@ def _ambiguity_dimension(
 def _fixed_pair_class_count(trit_count: int, dimension: int) -> int:
     return (
         comb(trit_count, dimension)
-        * 2**dimension
-        * 5 ** (trit_count - dimension)
+        * _integer_power(2, dimension)
+        * _integer_power(5, trit_count - dimension)
     )
 
 
@@ -109,8 +109,8 @@ def _closed_canonical_count(trit_count: int) -> int:
     return sum(
         comb(separators, degree)
         * comb(trit_count, degree)
-        * 2**degree
-        * 7 ** (trit_count - degree)
+        * _integer_power(2, degree)
+        * _integer_power(7, trit_count - degree)
         for degree in range(min(separators, trit_count) + 1)
     )
 
@@ -128,7 +128,7 @@ def _independent_width_counts(trit_count: int) -> tuple[int, int]:
             )
             if dimension is None:
                 continue
-            raw += _TRIPLE_PATTERN_COUNT**dimension
+            raw += _integer_power(_TRIPLE_PATTERN_COUNT, dimension)
             canonical += _ordered_triple_classes(dimension)
     return raw, canonical
 
@@ -137,7 +137,7 @@ def test_small_widths_match_independent_fixed_pair_enumeration() -> None:
     """Small fixed pairs sum to exact raw and quotient triple counts."""
     for trit_count in range(1, _EXHAUSTIVE_TRITS + 1):
         raw, canonical = _independent_width_counts(trit_count)
-        assert raw == 21**trit_count
+        assert raw == _integer_power(21, trit_count)
         assert canonical == _closed_canonical_count(trit_count)
 
 
@@ -149,8 +149,8 @@ def test_global_ordered_triple_quotient_has_exact_closed_count() -> None:
         ) == _closed_canonical_count(trit_count)
         raw = sum(
             _fixed_pair_class_count(trit_count, dimension)
-            * _TRIPLE_PATTERN_COUNT**dimension
+            * _integer_power(_TRIPLE_PATTERN_COUNT, dimension)
             for dimension in range(trit_count + 1)
         )
-        assert raw == 21**trit_count
+        assert raw == _integer_power(21, trit_count)
         assert _closed_canonical_count(trit_count) <= raw
