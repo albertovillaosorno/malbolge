@@ -279,6 +279,16 @@ mechanism = "eight-joint-count-orbits-plus-canonical-coordinate-grouping"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_triple_orbits_are_joint_classes_through_dimension_four", "tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_triple_class_sizes_cover_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_triple_quotient_lifts_to_small_reachable_pairs"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-ordered-quadruple-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-ordered-quadruple-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "ordered cube-word quadruples in reachable fixed accumulator/target preimage cubes at widths 1 through 14 for analyses invariant under simultaneous ambiguity-coordinate permutation, with exhaustive abstract quadruple orbits through dimension 4, recurrence totals through dimension 14, and fixed-pair lifting through width 4"
+mechanism = "sixteen-joint-count-orbits-plus-canonical-coordinate-grouping"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_quadruple_orbits_are_joint_classes_through_dimension_four", "tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_quadruple_counts_cover_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_quadruple_quotient_lifts_to_small_reachable_pairs"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-endpoint-symmetric-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-endpoint-symmetric-pair-quotient"

@@ -10,12 +10,12 @@
 # Boundary-Contract:
 # - Owns:
 #   - Independent evidence for permutation orbits of crazy preimage cube
-#     words, ordered pairs, and ordered triples.
+#     words, ordered pairs, ordered triples, and ordered quadruples.
 # - Must-Not:
 #   - Treat permutation orbits as position-sensitive semantic equivalence.
 # - Allows:
 #   - Inputs: reachable fixed accumulator/target pairs through width fourteen.
-#   - Outputs: exact word/pair/triple orbit counts and canonical
+#   - Outputs: exact word/pair/triple/quadruple orbit counts and canonical
 #     representatives.
 #   - Side effects: none.
 # - Split-When:
@@ -23,15 +23,15 @@
 # - Merge-When:
 #   - Another cube-canonicalization proof owns the same symmetric-group action.
 # - Summary:
-#   - Quotient coordinate-symmetric cube words, ordered pairs, and triples.
+#   - Quotient coordinate-symmetric words, pairs, triples, and quadruples.
 # - Description:
-#   - Exhausts bounded cube words/pairs/triples and independently lifts
-#     canonical choices to preimages.
+#   - Exhausts bounded cube tuples and independently lifts canonical choices
+#     to preimages.
 # - Usage:
 #   - Referenced by the mathematical correspondence manifest.
 # - Defaults:
 #   - Word enumeration reaches dimension fourteen; ordered pairs stop at
-#     dimension eight, triples at four; fixed-pair lifting stops at width four.
+#     dimension eight, triples/quadruples at four; lifting stops at width four.
 #
 
 """Independent evidence for permutation quotients of crazy preimage cubes."""
@@ -45,9 +45,12 @@ from itertools import product
 _BINARY_RADIX = 2
 _EXHAUSTIVE_PAIR_DIMENSION = 8
 _EXHAUSTIVE_TRIPLE_DIMENSION = 4
+_EXHAUSTIVE_QUADRUPLE_DIMENSION = 4
 _EXHAUSTIVE_TRITS = 4
 _MAXIMUM_TRITS = 14
 _TRIPLE_ARITY = 3
+_QUADRUPLE_ARITY = 4
+_QUADRUPLE_SYMBOL_COUNT = 1 << _QUADRUPLE_ARITY
 _TRIPLE_SYMBOL_COUNT = 1 << _TRIPLE_ARITY
 _TRIPLE_SEPARATOR_COUNT = _TRIPLE_SYMBOL_COUNT - 1
 _RADIX = 3
@@ -557,3 +560,118 @@ def test_ordered_triple_quotient_lifts_to_small_reachable_pairs() -> None:
         for accumulator in range(domain):
             for target in range(domain):
                 _check_ordered_triple_lifting(target, accumulator, trit_count)
+
+
+def _composition_count(symbol_count: int, dimension: int) -> int:
+    counts = [1] + [0] * dimension
+    for _ in range(symbol_count):
+        next_counts = [0] * (dimension + 1)
+        for total in range(dimension + 1):
+            next_counts[total] = sum(counts[: total + 1])
+        counts = next_counts
+    return counts[dimension]
+
+
+def _multinomial_mass_sum(symbol_count: int, dimension: int) -> int:
+    masses = [1] + [0] * dimension
+    for _ in range(symbol_count):
+        next_masses = [0] * (dimension + 1)
+        for total in range(dimension + 1):
+            next_masses[total] = sum(
+                _integer_binomial(total, chosen) * masses[total - chosen]
+                for chosen in range(total + 1)
+            )
+        masses = next_masses
+    return masses[dimension]
+
+
+def _counts_with_zero_last(prior_counts: tuple[int, ...]) -> tuple[int, ...]:
+    return tuple(
+        prior_counts[symbol >> 1] if symbol & 1 == 0 else 0
+        for symbol in range(2 * len(prior_counts))
+    )
+
+
+def test_ordered_quadruple_orbits_are_joint_classes_through_dimension_four(
+) -> None:
+    """Sixteen joint counts classify every small ordered quadruple orbit."""
+    for dimension in range(_EXHAUSTIVE_QUADRUPLE_DIMENSION + 1):
+        size = _integer_power(_BINARY_RADIX, dimension)
+        observed: Counter[tuple[int, ...]] = Counter()
+        representatives: set[tuple[int, ...]] = set()
+        for codes in product(range(size), repeat=_QUADRUPLE_ARITY):
+            counts = _tuple_counts(codes, dimension)
+            canonical = _canonicalize_tuple(codes, dimension)
+            assert canonical == _canonical_tuple(counts, _QUADRUPLE_ARITY)
+            observed[counts] += 1
+            representatives.add(canonical)
+            if codes[3] == 0:
+                triple_counts = _tuple_counts(codes[:3], dimension)
+                assert canonical == (
+                    *_canonical_tuple(triple_counts, _TRIPLE_ARITY),
+                    0,
+                )
+        expected_classes = _integer_binomial(dimension + 15, 15)
+        assert len(observed) == expected_classes
+        assert len(representatives) == expected_classes
+        assert observed == Counter({
+            counts: _tuple_orbit_size(counts) for counts in observed
+        })
+
+
+def test_ordered_quadruple_counts_cover_through_dimension_fourteen() -> None:
+    """Recurrences verify exact quadruple class and orbit mass totals."""
+    for dimension in range(_MAXIMUM_TRITS + 1):
+        assert _composition_count(
+            _QUADRUPLE_SYMBOL_COUNT,
+            dimension,
+        ) == _integer_binomial(dimension + 15, 15)
+        assert _multinomial_mass_sum(
+            _QUADRUPLE_SYMBOL_COUNT,
+            dimension,
+        ) == _integer_power(_QUADRUPLE_SYMBOL_COUNT, dimension)
+        for triple_counts in _triple_count_vectors(dimension):
+            quadruple_counts = _counts_with_zero_last(triple_counts)
+            assert _canonical_tuple(
+                quadruple_counts,
+                _QUADRUPLE_ARITY,
+            ) == (
+                *_canonical_tuple(triple_counts, _TRIPLE_ARITY),
+                0,
+            )
+
+
+def _check_ordered_quadruple_lifting(
+    target: int,
+    accumulator: int,
+    trit_count: int,
+) -> None:
+    choices = _choice_sets(target, accumulator, trit_count)
+    if any(not local for local in choices):
+        return
+    dimension = sum(len(local) == _BINARY_RADIX for local in choices)
+    words = tuple(_cube_data(choices, code) for code in range(1 << dimension))
+    assert all(
+        _crazy(word, accumulator, trit_count) == target for word in words
+    )
+    for codes in product(range(1 << dimension), repeat=_QUADRUPLE_ARITY):
+        counts = _tuple_counts(codes, dimension)
+        canonical = _canonicalize_tuple(codes, dimension)
+        assert canonical == _canonical_tuple(counts, _QUADRUPLE_ARITY)
+        assert all(
+            _crazy(words[code], accumulator, trit_count) == target
+            for code in canonical
+        )
+
+
+def test_ordered_quadruple_quotient_lifts_to_small_reachable_pairs() -> None:
+    """Canonical ordered quadruples remain valid fixed-pair preimages."""
+    for trit_count in range(1, _EXHAUSTIVE_TRITS + 1):
+        domain = _integer_power(_RADIX, trit_count)
+        for accumulator in range(domain):
+            for target in range(domain):
+                _check_ordered_quadruple_lifting(
+                    target,
+                    accumulator,
+                    trit_count,
+                )

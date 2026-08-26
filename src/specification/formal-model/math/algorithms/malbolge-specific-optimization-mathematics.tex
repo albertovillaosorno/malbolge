@@ -289,6 +289,34 @@ applies only to triple analyses invariant under simultaneous ambiguity-
 coordinate relabeling; it is not position-sensitive Malbolge semantic
 equivalence or a wall-clock speedup claim.
 
+The same action extends once more to ordered cube-word quadruples. For
+$w,x,y,z\in\{0,1\}^k$, let $n_s$ count coordinates whose four-bit joint
+pattern is $s\in\{0,1\}^4$, and let $S_k$ act simultaneously on all four
+words. Define
+\[
+  \mathcal{J}^{(4)}_k=\left\{(n_s)_{s\in\{0,1\}^4}:
+    n_s\in\{0,\ldots,k\},\ \sum_s n_s=k\right\}.
+\]
+The sixteen counts are complete orbit invariants, with descending binary block
+order $1111,1110,\ldots,0000$ giving one canonical quadruple per count vector.
+Therefore
+\begin{equation}
+  \left(\{0,1\}^k\right)^4/S_k
+    \overset{\sim}{\longrightarrow}\mathcal{J}^{(4)}_k,
+  \qquad
+  |\mathcal{J}^{(4)}_k|=\binom{k+15}{15},
+  \qquad
+  |[(w,x,y,z)]|=\frac{k!}{\prod_s n_s!},
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-preimage-cube-ordered-quadruple-quotient}
+\end{equation}
+At $k=14$, this gives 77558760 classes instead of
+$16^{14}=72057594037927936$ raw ordered quadruples. The descending block
+convention reduces exactly to the ordered-triple representative when the fourth
+word is zero. The quotient applies only to quadruple analyses invariant under
+simultaneous ambiguity-coordinate relabeling; it is not position-sensitive
+Malbolge semantic equivalence or a wall-clock speedup claim.
+
 For pairwise analyses that also ignore endpoint order, let
 $G_k=S_k\times C_2$, where $S_k$ permutes both endpoints simultaneously and
 $\tau\in C_2$ swaps them: $\tau(x,y)=(y,x)$. These actions commute. On joint
