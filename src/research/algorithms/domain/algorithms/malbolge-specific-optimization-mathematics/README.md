@@ -56,7 +56,7 @@ every preimage has degree `k`, with `k*2^(k-1)` total edges for `k>0` and zero
 for `k=0`.
 
 Coordinate-symmetric single-word analyses quotient these cubes into `k+1`
-Hamming-weight classes. The same simultaneous coordinate action quotients
+Hamming-weight classes; the same simultaneous coordinate action quotients
 ordered cube-word pairs into `C(k+3,3)` joint-count classes with exact orbit
 sizes while preserving endpoint direction. Ordered triples under the same
 coordinate action have `C(k+7,7)` exact joint-count classes, or 116,280 at
