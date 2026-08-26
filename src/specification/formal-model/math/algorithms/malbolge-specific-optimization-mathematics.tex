@@ -430,6 +430,28 @@ This characterizes disjoint perfect covers only. It does not claim that the
 ceiling volume lower bound is unattainable by overlapping covers in every other
 dimension.
 
+The checked range also admits a complete classification of nontrivial perfect
+Hamming-ball partitions. If radius-$r$ balls partition $Q_k$, disjointness
+requires $V_k(r)$ to divide $2^k$. Exact integer screening for
+$1\leq r<k\leq14$ leaves only
+\[
+  \mathcal{P}_{14}=\{(3,1),(5,2),(7,1),(7,3),(9,4),(11,5),(13,6)\}.
+\]
+Every odd $k=2m+1$ in the checked range has a constructive perfect radius-$m$
+partition with centers $0^k$ and $1^k$: each word has either weight at most $m$
+or complementary weight at most $m$, but not both. The existing radius-one
+Hamming construction supplies the remaining survivor $(7,1)$. Therefore
+\begin{equation}
+  Q_k\text{ admits a nontrivial perfect radius-$r$ ball partition}
+    \quad\Longleftrightarrow\quad (k,r)\in\mathcal{P}_{14},
+  \qquad 1\leq r<k\leq14.
+  \label{eq:optimization-crazy-preimage-cube-perfect-radius-classification}
+\end{equation}
+The antipodal cases use exactly two centers and the $(7,1)$ case uses sixteen,
+so each attains the existing volume lower bound. Transport through $U_{a,t}$
+gives the same perfect partitions in every compatible fixed preimage cube. This
+is a bounded coding-theoretic classification only and makes no timing claim.
+
 The complete one-trit crazy table has no accumulator/target pair with more than
 two compatible data trits, so $\mu(\alpha,\tau)\leq2$. Combining that fact with
 the exact product formula yields the global classic fixed-target bound

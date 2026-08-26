@@ -339,6 +339,16 @@ mechanism = "exhaustive-divisibility-screen-plus-constructive-hamming-partitions
 evidence = ["tests/mathematics/test_crazy_preimage_cube_perfect_radius_one_cover.py::test_only_hamming_dimensions_can_partition_radius_one_balls", "tests/mathematics/test_crazy_preimage_cube_perfect_radius_one_cover.py::test_hamming_radius_one_balls_partition_each_checked_cube"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-perfect-radius-classification"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-perfect-radius-classification"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "nontrivial perfect Hamming-ball partitions of reachable fixed-pair preimage cubes with ambiguity dimension 1 through 14 and radius 1 through k-1"
+mechanism = "exact-divisibility-screen-plus-antipodal-and-hamming-constructions"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_perfect_radius_cover.py::test_divisibility_survivors_are_exactly_constructed", "tests/mathematics/test_crazy_preimage_cube_perfect_radius_cover.py::test_odd_antipodal_balls_partition_every_checked_cube", "tests/mathematics/test_crazy_preimage_cube_perfect_radius_cover.py::test_antipodal_partitions_lift_to_checked_preimage_cubes", "tests/mathematics/test_crazy_preimage_cube_perfect_radius_one_cover.py::test_hamming_radius_one_balls_partition_each_checked_cube"]
+
+[[correspondence]]
 id = "optimization-crazy-preimage-bound"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-bound"

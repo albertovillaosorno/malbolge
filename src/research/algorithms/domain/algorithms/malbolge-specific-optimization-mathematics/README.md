@@ -82,3 +82,9 @@ word canonically to its unique center within one bit/trit. Conversely, through
 dimension 14 no other positive ambiguity dimension admits a perfect radius-one
 partition. These metric/graph results say nothing about incomplete corpus
 membership or wall-clock speed.
+
+Across all nontrivial radii through dimension 14, exact divisibility leaves
+only seven perfect-partition parameter pairs. The Q7 radius-one Hamming case is
+one; the other six are odd-dimensional antipodal partitions at radius
+`(k-1)/2`, each with exactly two centers. This is a bounded coding-theoretic
+classification, not a timing result.

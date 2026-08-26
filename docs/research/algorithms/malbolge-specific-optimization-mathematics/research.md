@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes forty-one exact reductions: classic five-trit crazy factorization,
+formalizes forty-two exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -78,8 +78,8 @@ pairs, exact endpoint-symmetric pair quotient with
 `(C(k+3,3)+floor((k+2)^2/4))/2` classes, plus exact binomial distance
 shells/balls, diameter, and shortest-path
 lower bounds/counts plus fixed-radius covering lower bounds, perfect
-radius-one Hamming covers, and the exact checked perfect-partition dimensions,
-the tight
+radius-one Hamming covers, the exact checked perfect-partition dimensions, and
+the complete nontrivial perfect-radius partition classification, the tight
 classic 1,024-preimage global
 bound, the exact zero-or-power-of-two preimage spectrum,
 the accumulator-specific `2^(10-n2(a))` worst-target bound, and the exact
@@ -197,6 +197,12 @@ through dimension 14 only those same three positive dimensions are possible.
 This converse classifies perfect partitions only, not overlapping covers that
 may attain a ceiling volume bound.
 
+Across all nontrivial radii `1<=r<k<=14`, exact ball-volume divisibility leaves
+precisely `(3,1)`, `(5,2)`, `(7,1)`, `(7,3)`, `(9,4)`, `(11,5)`, and `(13,6)`.
+The radius-one Q7 Hamming partition supplies `(7,1)`; every other survivor is
+the odd-dimensional antipodal partition at radius `(k-1)/2`, with exactly two
+centers. Thus every divisibility survivor has an explicit perfect partition.
+
 The existing all-one target under
 accumulator zero therefore has exactly 1,024 data-word preimages, while a zero
 target under accumulator zero has none. Exhausting all 59,049 accumulator words
@@ -270,8 +276,8 @@ exact ordered cube-word triple quotient, exact global ordered-triple quotient
 count, exact endpoint-symmetric pair quotient,
 and exact preimage-cube distance
 shells/balls, exact mutation geodesics, fixed-radius
-covering lower bounds, perfect radius-one Hamming covers, and exact checked
-perfect-partition dimensions,
+covering lower bounds, perfect radius-one Hamming covers, exact checked
+perfect-partition dimensions, complete checked perfect-radius classification,
 global preimage bound,
 discrete preimage spectrum, accumulator-specific
 worst-target bound, reachable-target count, fixed-accumulator target preimage
@@ -307,8 +313,9 @@ exact endpoint-symmetric pair quotient, and
 exact binomial distance shells/balls,
 diameter,
 exact mutation geodesics, fixed-radius
-covering lower bounds, perfect radius-one Hamming covers, and exact checked
-perfect-partition dimensions, tight 1,024-
+covering lower bounds, perfect radius-one Hamming covers, exact checked
+perfect-partition dimensions, complete checked perfect-radius classification,
+tight 1,024-
 preimage bound, discrete
 cardinality spectrum,
 accumulator-specific worst-target bound, reachable-target count, exact

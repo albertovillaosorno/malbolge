@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize forty-one exact reductions: classic
+- The proved slices now formalize forty-two exact reductions: classic
   five-trit
   crazy factorization, profile-width crazy chunking, exact decode sum-class
   canonicalization,
@@ -52,7 +52,8 @@ force or stochastic optimization begins.
   shortest paths, exact fixed-radius covering lower bound
   `ceil(2^k / sum_{j=0}^r C(k,j))`, exact perfect radius-one Hamming
   covers with minimum center counts `1,2,16` for `k=1,3,7`, exact perfect-
-  partition dimensions `{1,3,7}` through `k=14`, the tight global
+  partition dimensions `{1,3,7}` through `k=14`, exact nontrivial perfect-
+  radius partition parameters through `k=14`, the tight global
   1,024-preimage bound,
   the exact zero-or-power-of-two preimage spectrum, the accumulator-specific
   `2^(10-n2(a))` worst-target bound, and the exact
@@ -72,9 +73,9 @@ force or stochastic optimization begins.
   preimage-budget exceedance sum, its width-indexed generalization, and the
   exact minimum complete-preimage budget needed to cover any integer target
   from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. The first
-  four are consumed by runtime paths; the thirty-seven search reductions carry
+  four are consumed by runtime paths; the thirty-eight search reductions carry
   no inherited runtime speedup claim.
-- Forty-one optimization research equations are registered in
+- Forty-two optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -108,7 +109,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes forty-one labelled optimization
+- Current mathematical evidence includes forty-two labelled optimization
   equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, the exact 94-class decode quotient across all 8,836
@@ -130,9 +131,9 @@ force or stochastic optimization begins.
   diameter through
   dimension 14, exact mutation distance `j` and `j!` shortest-path counts
   through dimension 14, exact fixed-radius volume covering lower bounds through
-  dimension 14 plus perfect radius-one Hamming covers for `k=1,3,7` and the
-  exact proof that no other positive `k<=14` admits a perfect partition, the
-  exhaustive tight global
+  dimension 14 plus perfect radius-one Hamming covers for `k=1,3,7`, the
+  exact radius-one dimension converse, and the complete nontrivial perfect-
+  radius partition classification through `k=14`, the exhaustive tight global
   1,024-preimage ceiling, the exact `{0,1,2,4,...,1024}` cardinality spectrum,
   the accumulator-specific `2^(10-n2(a))` maximum, the exact
   `2^(10-n2(a))*3^n2(a)` reachable-target count, the exact checked-width
