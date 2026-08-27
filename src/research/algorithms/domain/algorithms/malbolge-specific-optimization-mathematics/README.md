@@ -72,7 +72,9 @@ endpoint-unordered quotient has 1,409,733,897,288,413 canonical classes.
 
 Ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; if quintuple
 endpoint order is irrelevant, the additional `S_5` quotient has exactly
-1,426,354,541 classes. Summed over every reachable width-14 fixed pair, the
+1,426,354,541 classes. Ordered sextuples have `C(k+63,63)` classes, or
+839,983,521,106,400 at `k=14`; the additional `S_6` endpoint quotient has
+1,179,940,653,635 classes. Summed over every reachable width-14 fixed pair, the
 triple quotient gives
 547,751,638,341,145 canonical ordered triples, the quadruple quotient gives
 25,678,405,217,633,865 canonical ordered quadruples, and the quintuple quotient

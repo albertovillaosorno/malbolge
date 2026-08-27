@@ -438,6 +438,64 @@ ordered classes or $32^{14}=1180591620717411303424$ raw ordered quintuples.
 This refinement applies only to analyses invariant under endpoint permutation
 and simultaneous ambiguity-coordinate relabeling, and it makes no timing claim.
 
+The same coordinate action extends to ordered cube-word sextuples. For six
+words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
+is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,
+so
+\begin{equation}
+  \left(\{0,1\}^k\right)^6/S_k
+    \overset{\sim}{\longrightarrow}\mathcal{J}^{(6)}_k,
+  \qquad
+  |\mathcal{J}^{(6)}_k|=\binom{k+63}{63},
+  \qquad
+  |[(u,v,w,x,y,z)]|=\frac{k!}{\prod_s n_s!},
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-preimage-cube-ordered-sextuple-quotient}
+\end{equation}
+At $k=14$, this gives 839983521106400 coordinate classes instead of
+$64^{14}=19342813113834066795298816$ raw ordered sextuples. This quotient
+applies only to analyses invariant under simultaneous ambiguity-coordinate
+relabeling and makes no timing claim.
+
+If sextuple endpoint order is also irrelevant, $S_6$ acts on the sixty-four
+joint-pattern labels. Its eleven endpoint conjugacy classes induce the following
+label-cycle structures:
+\[
+\begin{array}{c|r|c}
+\lambda&w_\lambda&\text{induced label cycles}\\ \hline
+1^6&1&1^{64}\\
+1^4 2&15&1^{32}2^{16}\\
+1^3 3&40&1^{16}3^{16}\\
+1^2 2^2&45&1^{16}2^{24}\\
+1^2 4&90&1^8 2^4 4^{12}\\
+1\,2\,3&120&1^8 2^4 3^8 6^4\\
+1\,5&144&1^4 5^{12}\\
+2^3&15&1^8 2^{28}\\
+2\,4&90&1^4 2^6 4^{12}\\
+3^2&40&1^4 3^{20}\\
+6&120&1^2 2\,3^2 6^9
+\end{array}
+\]
+For one row $\lambda$, let $m_{\lambda,c}$ be the multiplicity of a label cycle
+of length $c$ and set
+\[
+  A_{\lambda,k}=[x^k]\prod_c(1-x^c)^{-m_{\lambda,c}}.
+\]
+Burnside's lemma gives
+\begin{equation}
+  \left|\mathcal{J}^{(6)}_k/S_6\right|
+    =\frac{1}{720}\sum_\lambda w_\lambda A_{\lambda,k},
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-preimage-cube-unordered-sextuple-quotient}
+\end{equation}
+At $k=14$, the eleven fixed counts are 839983521106400, 624814559200,
+281038424, 4150120800, 1846872, 2700856, 6050, 201249216, 171120, 217400,
+and 1020, yielding 1179940653635 endpoint-unordered classes. The evidence
+exhausts the coordinate quotient through dimension two and reconstructs the raw
+$64^k$ orbit mass there; Burnside arithmetic reaches dimension fourteen. This
+refinement applies only when endpoint order is irrelevant and makes no timing
+claim.
+
 For pairwise analyses that also ignore endpoint order, let
 $G_k=S_k\times C_2$, where $S_k$ permutes both endpoints simultaneously and
 $\tau\in C_2$ swaps them: $\tau(x,y)=(y,x)$. These actions commute. On joint
