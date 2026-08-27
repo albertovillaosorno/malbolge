@@ -97,6 +97,11 @@ by success of the padded representation.
 - Current mathematical base: correspondence
   `optimization-crazy-zero-padded-fifteen-trit-projection` proves that identity
   and exhausts every residual third-chunk operand pair for widths 10 through 14.
+- Current measurement harness: `interpreter_benchmark` emits paired native
+  `5+5+4` and zero-padded `5+5+5` samples for width 14, alternates execution
+  order by sample, and preserves a common checksum. This is a preliminary CPU
+  microbenchmark; the specialized path, full width matrix, and CUDA evidence
+  remain open.
 - Required implementation evidence: differential equality against the trusted
   profile semantics before any performance result is considered.
 - Required benchmark matrix: widths 10, 11, 12, 13, and 14; representative

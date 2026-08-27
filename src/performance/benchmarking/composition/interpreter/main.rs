@@ -9,11 +9,13 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Reproducible scalar-versus-table CPU microbenchmark samples for the VM.
+//   - Reproducible CPU microbenchmark samples for VM word operations and
+//     profile crazy chunk geometry.
 // - Must-Not:
 //   - Claim semantic authority or hide slower optimized implementations.
 // - Allows:
-//   - Inputs: public classic Word API and independent scalar word formulas.
+//   - Inputs: public classic Word/profile-crazy APIs and independent scalar
+//     word formulas.
 //   - Outputs: raw nanosecond samples and deterministic checksums on stdout.
 //   - Side effects: benchmark-process CPU time and stdout only.
 // - Split-When:
@@ -21,15 +23,15 @@
 // - Merge-When:
 //   - Merge when another interpreter benchmark owns the same word operations.
 // - Summary:
-//   - Measures rotate and crazy table paths against independent scalar
-//   - formulas.
+//   - Measures rotate/crazy table paths and the 14-trit native-versus-padded
+//   - crazy geometry.
 // - Description:
 //   - Emits raw samples so performance conclusions can retain dispersion data.
 // - Usage:
 //   - Run with `cargo run --release --bin interpreter_benchmark` on an
 //   - identified host/toolchain.
 // - Defaults:
-//   - Uses fixed sample and repetition counts with black-boxed checksums.
+//   - Uses fixed sample/repetition counts and alternates paired profile order.
 //
 
 //! Raw scalar-versus-table microbenchmarks for classic VM word operations.
@@ -40,7 +42,7 @@ use std::time::Instant;
 
 use malbolge::{
     BatchRequest, BatchResult, ExecutionMode, MAX_WORD_VALUE, RunOutcome, Word,
-    execute_batch, execute_batch_parallel,
+    execute_batch, execute_batch_parallel, profile_crazy,
 };
 
 const BATCH_JOBS: u8 = 96;
@@ -48,6 +50,12 @@ const BATCH_STEP_BUDGET: usize = 16;
 const CRAZY_REPETITIONS: u16 = 16;
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
 const FNV_PRIME: u64 = 1_099_511_628_211;
+const PROFILE_CORPUS_SIZE: u32 = 59_049;
+const PROFILE_PADDED_TRITS: u8 = 15;
+// Coprime to 3^14, so the retained corpus prefix contains no duplicate words.
+const PROFILE_STRIDE: u32 = 104_729;
+const PROFILE_TRITS: u8 = 14;
+const PROFILE_WORDS: u32 = 4_782_969;
 const IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/compatibility/specification/spec-io-roundtrip.malbolge",
@@ -138,6 +146,32 @@ fn benchmark_crazy_scalar(words: &[Word]) -> u64 {
     checksum
 }
 
+fn benchmark_profile_crazy_native(words: &[u32]) -> u64 {
+    benchmark_profile_crazy(words, PROFILE_TRITS)
+}
+
+fn benchmark_profile_crazy_padded(words: &[u32]) -> u64 {
+    benchmark_profile_crazy(words, PROFILE_PADDED_TRITS)
+}
+
+fn benchmark_profile_crazy(words: &[u32], physical_trits: u8) -> u64 {
+    let mut checksum = 0u64;
+    let mut repetition = 0u16;
+    while repetition < CRAZY_REPETITIONS {
+        for (&data, &accumulator) in words.iter().zip(words.iter().rev()) {
+            let value = profile_crazy(
+                black_box(data),
+                black_box(accumulator),
+                physical_trits,
+            )
+            .rem_euclid(PROFILE_WORDS);
+            checksum = checksum.saturating_add(u64::from(value));
+        }
+        repetition = repetition.saturating_add(1);
+    }
+    checksum
+}
+
 fn benchmark_rotate_optimized(words: &[Word]) -> u64 {
     let mut checksum = 0u64;
     let mut repetition = 0u16;
@@ -206,6 +240,7 @@ const fn crazy_trit_scalar(data: u16, accumulator: u16) -> u16 {
 /// Returns an I/O error if writing benchmark samples to stdout fails.
 pub fn run() -> IoResult<()> {
     let words = classic_words();
+    let profile_words = profile_words();
     let mut output = stdout().lock();
     writeln!(
         output,
@@ -232,6 +267,7 @@ pub fn run() -> IoResult<()> {
     emit_samples(&mut output, "crazy", "table", || {
         benchmark_crazy_optimized(&words)
     })?;
+    emit_profile_crazy_samples(&mut output, &profile_words)?;
     emit_samples(&mut output, "rotate", "scalar", || {
         benchmark_rotate_scalar(&words)
     })?;
@@ -257,6 +293,45 @@ fn classic_words() -> Vec<Word> {
     words
 }
 
+fn emit_profile_crazy_samples(
+    output: &mut impl Write,
+    words: &[u32],
+) -> IoResult<()> {
+    let native_warmup = black_box(benchmark_profile_crazy_native(words));
+    let padded_warmup = black_box(benchmark_profile_crazy_padded(words));
+    let _warmup_sink = black_box(native_warmup ^ padded_warmup);
+    let mut sample = 0u8;
+    while sample < SAMPLE_COUNT {
+        if sample.is_multiple_of(2) {
+            emit_sample(output, ("profile-crazy-14", "native-5+5+4", sample), || {
+                benchmark_profile_crazy_native(words)
+            })?;
+            emit_sample(output, ("profile-crazy-14", "padded-5+5+5", sample), || {
+                benchmark_profile_crazy_padded(words)
+            })?;
+        } else {
+            emit_sample(output, ("profile-crazy-14", "padded-5+5+5", sample), || {
+                benchmark_profile_crazy_padded(words)
+            })?;
+            emit_sample(output, ("profile-crazy-14", "native-5+5+4", sample), || {
+                benchmark_profile_crazy_native(words)
+            })?;
+        }
+        sample = sample.saturating_add(1);
+    }
+    Ok(())
+}
+
+fn profile_words() -> Vec<u32> {
+    (0..PROFILE_CORPUS_SIZE)
+        .map(|index| {
+            index
+                .wrapping_mul(PROFILE_STRIDE)
+                .rem_euclid(PROFILE_WORDS)
+        })
+        .collect()
+}
+
 fn emit_samples<Run>(
     output: &mut impl Write,
     benchmark: &str,
@@ -270,17 +345,29 @@ where
     let _warmup_sink = black_box(warmup_checksum);
     let mut sample = 0u8;
     while sample < SAMPLE_COUNT {
-        let start = Instant::now();
-        let checksum = black_box(run());
-        let elapsed = start.elapsed();
-        let nanoseconds = elapsed.as_nanos();
-        writeln!(
-            output,
-            "{benchmark},{implementation},{sample},{nanoseconds},{checksum}"
-        )?;
+        emit_sample(output, (benchmark, implementation, sample), &mut run)?;
         sample = sample.saturating_add(1);
     }
     Ok(())
+}
+
+fn emit_sample<Run>(
+    output: &mut impl Write,
+    identity: (&str, &str, u8),
+    mut run: Run,
+) -> IoResult<()>
+where
+    Run: FnMut() -> u64,
+{
+    let (benchmark, implementation, sample) = identity;
+    let start = Instant::now();
+    let checksum = black_box(run());
+    let elapsed = start.elapsed();
+    let nanoseconds = elapsed.as_nanos();
+    writeln!(
+        output,
+        "{benchmark},{implementation},{sample},{nanoseconds},{checksum}"
+    )
 }
 
 fn hash_byte(hash: u64, value: u8) -> u64 {
