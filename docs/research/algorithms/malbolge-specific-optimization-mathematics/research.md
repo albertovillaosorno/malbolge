@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes fifty exact reductions: classic five-trit crazy factorization,
+formalizes fifty-one exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -78,8 +78,9 @@ cube-word quadruple quotient into `C(k+15,15)` joint-count classes, exact
 endpoint-unordered quadruple quotient under `S_4`, exact ordered cube-word
 quintuple quotient into `C(k+31,31)`
 joint-count classes, exact global ordered-triple and endpoint-unordered triple
-quotient counts, exact global ordered-quadruple and ordered-quintuple quotient
-counts across all reachable fixed pairs, exact
+quotient counts, exact global ordered-quadruple and endpoint-unordered quadruple
+quotient counts, and ordered-quintuple quotient counts across all reachable
+fixed pairs, exact
 endpoint-symmetric pair quotient with
 `(C(k+3,3)+floor((k+2)^2/4))/2` classes, plus exact binomial distance
 shells/balls, diameter, and shortest-path
@@ -219,6 +220,15 @@ The analogous ordered-quadruple sum is
 25,678,405,217,633,865 representatives instead of
 9,012,061,295,995,008,299,689 raw ordered quadruples. This is likewise an
 exact complete-domain cardinality result only.
+
+Summing the endpoint-unordered quadruple quotient over the same fixed-pair
+distribution gives 1,409,733,897,288,413 canonical quadruples at `N=14`.
+Burnside's five global fixed counts are 25,678,405,217,633,865,
+1,182,834,266,824,809, 180,742,210,147,993, 57,110,313,884,289, and
+9,848,929,136,817. Independent width-1-through-3 pair enumeration and
+transformed generating functions verify the aggregate through width fourteen;
+this is a
+cardinality result only.
 
 The ordered-quintuple aggregate is
 `sum_k C(N,k)2^k5^(N-k)C(k+31,31)`, equal to
@@ -377,8 +387,9 @@ preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, exact coordinate-
 permutation cube quotient, exact ordered cube-word pair quotient, exact
 ordered cube-word triple, quadruple, and quintuple quotients, exact endpoint-
-unordered triple quotient and its global aggregate, exact global ordered-triple
-and ordered-quadruple quotient counts, exact endpoint-symmetric pair quotient,
+unordered triple and quadruple quotients plus their global aggregates, exact
+global ordered-triple and ordered-quadruple quotient counts, exact endpoint-
+symmetric pair quotient,
 and
 exact binomial distance shells/balls,
 diameter,

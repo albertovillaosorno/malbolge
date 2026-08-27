@@ -67,7 +67,8 @@ classes.
 
 Ordered quadruples have `C(k+15,15)` classes, or 77,558,760; if quadruple
 endpoint order is irrelevant, the additional `S_4` quotient has exactly
-3,419,552 classes.
+3,419,552 classes. Summed over every reachable width-14 fixed pair, that
+endpoint-unordered quotient has 1,409,733,897,288,413 canonical classes.
 
 Ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; summed over
 every reachable width-14 fixed pair, the triple quotient gives

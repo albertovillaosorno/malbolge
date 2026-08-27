@@ -807,6 +807,42 @@ ordered quadruples. This is an exact complete-domain search-space count only;
 it inherits the simultaneous-coordinate symmetry requirement and makes no
 timing claim.
 
+The endpoint-unordered quadruple quotient also composes over the same
+reachable fixed-pair distribution. Apply the binomial transform
+$z=2y/(1-5y)$ to the five fixed-class series from the local $S_4$ action and
+define
+\[
+  \begin{aligned}
+    \widehat A(y)&=\frac{(1-5y)^{15}}{(1-7y)^{16}},\\
+    \widehat B(y)&=
+      \frac{(1-5y)^{15}}{(1-7y)^{12}(1-3y)^4},\\
+    \widehat D(y)&=
+      \frac{(1-5y)^{15}}{(1-7y)^{10}(1-3y)^6},\\
+    \widehat C(y)&=
+      \frac{(1-5y)^{15}}{(1-7y)^8(1-8y+19y^2)^4},\\
+    \widehat Q(y)&=
+      \frac{(1-5y)^{15}}
+      {(1-7y)^6(1-3y)^4(1-10y+29y^2)^3}.
+  \end{aligned}
+\]
+Writing $\widehat A_N=[y^N]\widehat A(y)$ and analogously for the other
+four series gives
+\begin{equation}
+  U^{(4)}_N
+    =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}
+      \left|\mathcal{J}^{(4)}_k/S_4\right|
+    =\frac{\widehat A_N+6\widehat B_N+3\widehat D_N
+      +8\widehat C_N+6\widehat Q_N}{24},
+  \qquad 1\leq N\leq14.
+  \label{eq:optimization-crazy-global-unordered-preimage-quadruple-quotient}
+\end{equation}
+At $N=14$, the five global fixed counts are 25678405217633865,
+1182834266824809, 180742210147993, 57110313884289, and 9848929136817,
+yielding 1409733897288413 endpoint-unordered representatives instead of
+$37^{14}=9012061295995008299689$ raw ordered quadruples. This is an exact
+complete-domain state count for analyses invariant under both stated symmetry
+actions and makes no timing claim.
+
 Composing the same preimage-class distribution with the ordered cube-quintuple
 quotient gives another exact global representative count. Let $P_N$ be the
 number of canonical ordered preimage quintuples obtained by quotienting each

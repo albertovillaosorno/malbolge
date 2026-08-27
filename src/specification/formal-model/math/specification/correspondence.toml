@@ -515,6 +515,16 @@ mechanism = "ambiguity-class-sum-plus-weighted-binomial-identity"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_global_quadruple_quotient.py::test_small_widths_match_independent_fixed_pair_enumeration", "tests/mathematics/test_crazy_preimage_cube_global_quadruple_quotient.py::test_global_ordered_quadruple_quotient_has_exact_closed_count"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-global-unordered-quadruple-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-global-unordered-preimage-quadruple-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all reachable accumulator/target pairs at widths 1 through 14, with each fixed-pair preimage-quadruple domain quotiented independently by simultaneous ambiguity-coordinate permutation and all quadruple-endpoint permutations, plus independent enumeration of all accumulator/target pairs through width 3"
+mechanism = "S4-Burnside-sum-plus-binomial-transform-generating-functions"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_global_unordered_quadruple_quotient.py::test_small_widths_match_independent_fixed_pair_enumeration", "tests/mathematics/test_crazy_preimage_cube_global_unordered_quadruple_quotient.py::test_global_unordered_quadruple_quotient_has_exact_closed_count"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-global-ordered-quintuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-global-ordered-preimage-quintuple-quotient"
