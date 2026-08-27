@@ -736,6 +736,30 @@ raw ordered quintuples. This is an exact complete-domain search-space count
 only; it inherits the simultaneous-coordinate symmetry requirement and makes
 no timing claim.
 
+The endpoint-symmetric pair quotient also composes exactly over the reachable
+fixed-pair ambiguity distribution. Let $E_N$ count canonical ordered preimage
+pairs after simultaneous coordinate permutation and endpoint swap, and let
+$S_N$ count the coordinate-permutation classes fixed by endpoint swap after the
+same global sum. Then
+\begin{equation}
+  E_N=\frac{1}{2}\left[
+    \sum_{j=0}^{\min(3,N)}\binom{3}{j}\binom{N}{j}2^j7^{N-j}+S_N
+  \right],\qquad
+  S_N=\begin{cases}
+    9,&N=1,\\
+    \dfrac{7^{N+1}+3^N+20N7^{N-1}+8N(N-1)7^{N-2}}{8},&2\leq N\leq14.
+  \end{cases}
+  \label{eq:optimization-crazy-global-endpoint-symmetric-pair-quotient}
+\end{equation}
+Indeed,
+$\lfloor(k+2)^2/4\rfloor=((k+2)^2-\mathbf{1}_{k\text{ odd}})/4$,
+while the fixed-pair weights have generating polynomial $(5+2x)^N$ and parity
+sum $(5-2)^N=3^N$. The unquotiented ordered-pair mass is $13^N$. At $N=14$,
+the endpoint-symmetric quotient has 18096618233793 representatives instead of
+3937376385699289 raw ordered pairs. This is an exact complete-domain
+search-space count only and applies only when endpoint order is irrelevant; it
+makes no timing claim.
+
 The $7^N$ reachable-pair count also admits a constructive canonical index.
 Let
 \[

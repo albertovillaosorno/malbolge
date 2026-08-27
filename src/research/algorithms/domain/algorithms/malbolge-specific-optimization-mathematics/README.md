@@ -68,8 +68,10 @@ every reachable width-14 fixed pair, the triple quotient gives
 gives 3,571,359,808,057,227,945 canonical ordered quintuples. If endpoint order
 is also
 irrelevant, the exact class count reduces further to
-`(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`. These quotients apply only
-to analyses with the stated coordinate and endpoint symmetries.
+`(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`; summed over every reachable
+width-14 fixed pair, this endpoint-symmetric quotient has
+18,096,618,233,793 canonical pairs. These quotients apply only to analyses with
+the stated coordinate and endpoint symmetries.
 
 Distance shells are also exact: every origin has `C(k,j)` compatible words at
 trit distance `j`, radius `r` contains `sum_{j=0}^r C(k,j)` words, and

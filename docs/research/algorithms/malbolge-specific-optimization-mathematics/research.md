@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes forty-six exact reductions: classic five-trit crazy factorization,
+formalizes forty-seven exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -204,6 +204,12 @@ quotient reduces further. Endpoint swap exchanges `n01` and `n10`; classes with
 class. The exact class count is
 `(C(k+3,3)+floor((k+2)^2/4))/2`, giving 372 classes at `k=14`.
 
+Summed over all reachable width-14 fixed pairs, the endpoint-symmetric
+quotient has
+18,096,618,233,793 representatives instead of 3,937,376,385,699,289 raw
+ordered pairs. The parity correction follows from the swap-fixed count and
+`(5-2)^N=3^N`; this is an exact complete-domain cardinality result only.
+
 Orienting the larger Hamming-weight endpoint first gives a canonical key
 `(max(wx,wy),min(wx,wy),d)`. This refinement applies only when endpoint order is
 irrelevant; direction-sensitive analyses retain the ordered-pair quotient.
@@ -305,8 +311,8 @@ exact Gray edit optimality, exact preimage-cube neighborhood graph, exact
 coordinate-permutation cube quotient, exact ordered cube-word pair quotient,
 exact ordered cube-word triple, quadruple, and quintuple quotients, exact
 global ordered-triple, ordered-quadruple, and ordered-quintuple quotient
-counts, exact endpoint-symmetric pair quotient,
-and exact preimage-cube distance
+counts, exact endpoint-symmetric pair quotient and its global aggregate, and
+exact preimage-cube distance
 shells/balls, exact mutation geodesics, fixed-radius
 covering lower bounds, perfect radius-one Hamming covers, exact checked
 perfect-partition dimensions, complete checked perfect-radius classification,
