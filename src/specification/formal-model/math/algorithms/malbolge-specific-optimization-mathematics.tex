@@ -723,6 +723,36 @@ $\sum_k\binom{N}{k}2^k5^{N-k}8^k=21^N$. At $N=14$, the quotient has
 triples. This is an exact complete-domain search-space count only; it inherits
 the simultaneous-coordinate symmetry requirement and makes no timing claim.
 
+The endpoint-unordered triple quotient also composes over the same reachable
+fixed-pair distribution. Let $G_N$ count canonical triples after simultaneous
+coordinate permutation and the full endpoint action $S_3$. For the three
+endpoint cycle types, let $I_N$, $R_N$, and $C_N$ count globally fixed
+coordinate-quotient classes for the identity, one transposition, and one
+three-cycle respectively. Then
+\begin{equation}
+  \begin{aligned}
+    G_N&=\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}
+      \frac{\binom{k+7}{7}+3\tau_k+2\chi_k}{6}
+      =\frac{I_N+3R_N+2C_N}{6},\\
+    \sum_{N\geq0}I_Ny^N&=\frac{(1-5y)^7}{(1-7y)^8},\\
+    \sum_{N\geq0}R_Ny^N&=
+      \frac{(1-5y)^7}{(1-7y)^6(1-3y)^2},\\
+    \sum_{N\geq0}C_Ny^N&=
+      \frac{(1-5y)^7}{(1-7y)^4(1-8y+19y^2)^2},
+  \end{aligned}
+  \qquad 1\leq N\leq14.
+  \label{eq:optimization-crazy-global-unordered-preimage-triple-quotient}
+\end{equation}
+The generating functions follow from the binomial transform
+$z=2y/(1-5y)$ applied to the fixed-class series
+$(1-z)^{-8}$, $(1-z)^{-4}(1-z^2)^{-2}$, and
+$(1-z)^{-2}(1-z^3)^{-2}$. At $N=14$, the three global fixed counts are
+547751638341145, 61437730689609, and 6805238953045, giving
+124279218052677 endpoint-unordered representatives instead of
+$21^{14}=3243919932521508681$ raw ordered triples. This is an exact
+complete-domain state count for analyses invariant under both stated symmetry
+actions and makes no timing claim.
+
 Composing the same preimage-class distribution with the ordered cube-quadruple
 quotient gives another exact global representative count. Let $Q_N$ be the
 number of canonical ordered preimage quadruples obtained by quotienting each

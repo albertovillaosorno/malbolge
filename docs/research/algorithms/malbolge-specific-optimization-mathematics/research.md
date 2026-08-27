@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes forty-eight exact reductions: classic five-trit crazy factorization,
+formalizes forty-nine exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -76,8 +76,9 @@ classes, exact ordered cube-word triple quotient into `C(k+7,7)` joint-count
 classes, exact endpoint-unordered triple quotient under `S_3`, exact ordered
 cube-word quadruple quotient into `C(k+15,15)` joint-
 count classes, exact ordered cube-word quintuple quotient into `C(k+31,31)`
-joint-count classes, exact global ordered-triple, ordered-quadruple, and
-ordered-quintuple quotient counts across all reachable fixed pairs, exact
+joint-count classes, exact global ordered-triple and endpoint-unordered triple
+quotient counts, exact global ordered-quadruple and ordered-quintuple quotient
+counts across all reachable fixed pairs, exact
 endpoint-symmetric pair quotient with
 `(C(k+3,3)+floor((k+2)^2/4))/2` classes, plus exact binomial distance
 shells/balls, diameter, and shortest-path
@@ -193,6 +194,14 @@ closed global representative count. Width `N` has
 `sum_{j=0}^{min(7,N)} C(7,j)C(N,j)2^j7^(N-j)`. At `N=14`, this is
 547,751,638,341,145 representatives instead of 3,243,919,932,521,508,681 raw
 ordered triples. This is an exact complete-domain cardinality result only.
+
+Summing the endpoint-unordered triple quotient over the same fixed-pair
+distribution gives 124,279,218,052,677 canonical triples at `N=14`. Burnside's
+three global fixed counts are 547,751,638,341,145 for the identity,
+61,437,730,689,609 for a transposition, and 6,805,238,953,045 for a three-cycle.
+Independent width-1-through-4 pair enumeration and transformed generating
+functions verify the aggregate through width fourteen; this is a cardinality
+result only.
 
 The analogous ordered-quadruple sum is
 `sum_k C(N,k)2^k5^(N-k)C(k+15,15)`, equal to
@@ -358,7 +367,7 @@ preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, exact coordinate-
 permutation cube quotient, exact ordered cube-word pair quotient, exact
 ordered cube-word triple, quadruple, and quintuple quotients, exact endpoint-
-unordered triple quotient, exact global ordered-triple
+unordered triple quotient and its global aggregate, exact global ordered-triple
 and ordered-quadruple quotient counts, exact endpoint-symmetric pair quotient,
 and
 exact binomial distance shells/balls,
