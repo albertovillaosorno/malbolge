@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes forty-seven exact reductions: classic five-trit crazy factorization,
+formalizes forty-eight exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -73,7 +73,8 @@ bijective complete traversal, exact binary-cube one-trit neighborhood
 structure, exact coordinate-permutation quotient into `k+1` Hamming-weight
 classes, exact ordered cube-word pair quotient into `C(k+3,3)` joint-count
 classes, exact ordered cube-word triple quotient into `C(k+7,7)` joint-count
-classes, exact ordered cube-word quadruple quotient into `C(k+15,15)` joint-
+classes, exact endpoint-unordered triple quotient under `S_3`, exact ordered
+cube-word quadruple quotient into `C(k+15,15)` joint-
 count classes, exact ordered cube-word quintuple quotient into `C(k+31,31)`
 joint-count classes, exact global ordered-triple, ordered-quadruple, and
 ordered-quintuple quotient counts across all reachable fixed pairs, exact
@@ -162,6 +163,15 @@ the existing pair and single-word canonical representatives on zero slices. At
 `k=14`, this is 116,280 classes instead of 4,398,046,511,104 raw triples.
 Exhaustive abstract evidence reaches dimension four, class arithmetic reaches
 dimension fourteen, and all reachable fixed-pair lifts through width four pass.
+
+If triple endpoint order is also irrelevant, `S_3` acts on the eight joint-
+pattern labels. Burnside gives
+`(C(k+7,7)+3*tau_k+2*chi_k)/6`, where `tau_k` and `chi_k` count classes fixed
+by one endpoint transposition and one endpoint three-cycle. At `k=14`, this is
+21,323 classes instead of 116,280 coordinate-only ordered classes or
+4,398,046,511,104 raw triples. Exhaustive raw orbits and fixed-pair lifting
+reach dimension/width four, count-vector arithmetic reaches dimension fourteen,
+and no timing claim is made.
 
 Ordered quadruples under the same simultaneous coordinate action have sixteen
 joint bit-pattern counts and exactly `C(k+15,15)` classes. At `k=14`, that is
@@ -310,7 +320,8 @@ crazy preimage count, constructive preimage ranking, exact Gray traversal,
 exact Gray edit optimality, exact preimage-cube neighborhood graph, exact
 coordinate-permutation cube quotient, exact ordered cube-word pair quotient,
 exact ordered cube-word triple, quadruple, and quintuple quotients, exact
-global ordered-triple, ordered-quadruple, and ordered-quintuple quotient
+endpoint-unordered triple quotient, exact global ordered-triple, ordered-
+quadruple, and ordered-quintuple quotient
 counts, exact endpoint-symmetric pair quotient and its global aggregate, and
 exact preimage-cube distance
 shells/balls, exact mutation geodesics, fixed-radius
@@ -346,8 +357,8 @@ period canonicalization, crazy-target preimage cardinality, constructive
 preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, exact coordinate-
 permutation cube quotient, exact ordered cube-word pair quotient, exact
-ordered cube-word triple, quadruple, and quintuple quotients, exact global
-ordered-triple
+ordered cube-word triple, quadruple, and quintuple quotients, exact endpoint-
+unordered triple quotient, exact global ordered-triple
 and ordered-quadruple quotient counts, exact endpoint-symmetric pair quotient,
 and
 exact binomial distance shells/balls,

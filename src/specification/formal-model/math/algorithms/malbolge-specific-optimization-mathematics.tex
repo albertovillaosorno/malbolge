@@ -289,6 +289,35 @@ applies only to triple analyses invariant under simultaneous ambiguity-
 coordinate relabeling; it is not position-sensitive Malbolge semantic
 equivalence or a wall-clock speedup claim.
 
+If triple endpoint order is also irrelevant, let $S_3$ permute the three words
+and hence the eight labels of a joint-count vector. A transposition has four
+fixed labels and two two-cycles, while a three-cycle has two fixed labels and
+two three-cycles. Define
+\[
+  \tau_k=\sum_{b=0}^{\lfloor k/2\rfloor}
+    \binom{k-2b+3}{3}(b+1),
+  \qquad
+  \chi_k=\sum_{b=0}^{\lfloor k/3\rfloor}(k-3b+1)(b+1).
+\]
+These are respectively the numbers of coordinate-quotient classes fixed by one
+endpoint transposition and one endpoint three-cycle. Burnside's lemma gives
+\begin{equation}
+  \left|\mathcal{J}^{(3)}_k/S_3\right|
+    =\frac{1}{6}\left(\binom{k+7}{7}+3\tau_k+2\chi_k\right),
+  \qquad
+  \left|[(x,y,z)]_{S_k\times S_3}\right|
+    =\frac{k!}{\prod_s n_s!}\,\left|S_3\!\cdot(n_s)_s\right|,
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-preimage-cube-unordered-triple-quotient}
+\end{equation}
+Lexicographically minimizing the joint-count vector over its six endpoint
+permutations and then applying the existing descending-binary block convention
+gives one canonical unordered triple per orbit. At $k=14$, the quotient has
+21323 classes instead of 116280 coordinate-only ordered classes or
+$8^{14}=4398046511104$ raw ordered triples. This refinement applies only to
+triple analyses invariant under endpoint permutation as well as simultaneous
+ambiguity-coordinate relabeling, and it makes no timing claim.
+
 The same action extends once more to ordered cube-word quadruples. For
 $w,x,y,z\in\{0,1\}^k$, let $n_s$ count coordinates whose four-bit joint
 pattern is $s\in\{0,1\}^4$, and let $S_k$ act simultaneously on all four

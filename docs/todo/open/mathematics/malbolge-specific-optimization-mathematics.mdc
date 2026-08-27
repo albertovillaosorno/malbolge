@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize forty-seven exact reductions: classic
+- The proved slices now formalize forty-eight exact reductions: classic
   five-trit
   crazy factorization, profile-width crazy chunking, exact decode sum-class
   canonicalization,
@@ -44,7 +44,8 @@ force or stochastic optimization begins.
   `k*2^(k-1)` edges for `k>0`, exact coordinate-permutation quotient into
   `k+1` Hamming-weight classes, exact ordered cube-word pair quotient into
   `C(k+3,3)` joint-count classes, exact ordered cube-word triple quotient into
-  `C(k+7,7)` joint-count classes, exact ordered cube-word quadruple quotient
+  `C(k+7,7)` joint-count classes, exact endpoint-unordered triple quotient under
+  `S_3` endpoint permutation, exact ordered cube-word quadruple quotient
   into `C(k+15,15)` joint-count classes, exact ordered cube-word quintuple
   quotient into `C(k+31,31)` joint-count classes, exact global ordered-triple,
   ordered-quadruple, and ordered-quintuple quotient counts across all reachable
@@ -78,9 +79,9 @@ force or stochastic optimization begins.
   preimage-budget exceedance sum, its width-indexed generalization, and the
   exact minimum complete-preimage budget needed to cover any integer target
   from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. The first
-  four are consumed by runtime paths; the forty-three search reductions carry
+  four are consumed by runtime paths; the forty-four search reductions carry
   no inherited runtime speedup claim.
-- Forty-seven optimization research equations are registered in
+- Forty-eight optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -114,7 +115,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes forty-seven labelled optimization
+- Current mathematical evidence includes forty-eight labelled optimization
   equations,
   executable correspondence, raw CPU benchmark samples for the table paths,
   identical checksums, the exact 94-class decode quotient across all 8,836
@@ -130,6 +131,7 @@ force or stochastic optimization begins.
   weight classes through dimension 14, exact ordered cube-word pair joint-count
   orbits with `C(k+3,3)` classes through dimension 14, exact ordered triple
   joint-count classes with `C(k+7,7)` classes through dimension 14, exact
+  endpoint-unordered triple classes under `S_3` through dimension 14, exact
   ordered quadruple joint-count classes with `C(k+15,15)` classes through
   dimension 14, exact ordered quintuple joint-count classes with `C(k+31,31)`
   classes through dimension 14, exact global ordered-triple, ordered-quadruple,
