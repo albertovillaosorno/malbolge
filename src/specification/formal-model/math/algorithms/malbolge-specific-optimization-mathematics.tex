@@ -406,6 +406,38 @@ fifth word is zero. This quotient applies only to quintuple analyses invariant
 under simultaneous ambiguity-coordinate relabeling; it is not position-
 sensitive Malbolge semantic equivalence or a wall-clock speedup claim.
 
+If quintuple endpoint order is also irrelevant, let $S_5$ permute the five
+words and hence the thirty-two joint-pattern labels. For the endpoint cycle
+types $1^5$, $1^3 2$, $1^2 3$, $1\,2^2$, $1\,4$, $2\,3$, and $5$, define
+\[
+  \begin{aligned}
+    A_k&=[x^k](1-x)^{-32},\\
+    B_k&=[x^k](1-x)^{-16}(1-x^2)^{-8},\\
+    C_k&=[x^k](1-x)^{-8}(1-x^3)^{-8},\\
+    D_k&=[x^k](1-x)^{-8}(1-x^2)^{-12},\\
+    E_k&=[x^k](1-x)^{-4}(1-x^2)^{-2}(1-x^4)^{-6},\\
+    F_k&=[x^k](1-x)^{-4}(1-x^2)^{-2}(1-x^3)^{-4}(1-x^6)^{-2},\\
+    G_k&=[x^k](1-x)^{-2}(1-x^5)^{-6}.
+  \end{aligned}
+\]
+The induced label cycles are respectively $1^{32}$, $1^{16}2^8$, $1^8 3^8$,
+$1^8 2^{12}$, $1^4 2^2 4^6$, $1^4 2^2 3^4 6^2$, and $1^2 5^6$, while the
+seven endpoint conjugacy classes have sizes $1,10,20,15,30,20,24$.
+Burnside's lemma therefore gives
+\begin{equation}
+  \left|\mathcal{J}^{(5)}_k/S_5\right|
+    =\frac{A_k+10B_k+20C_k+15D_k+30E_k+20F_k+24G_k}{120},
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-preimage-cube-unordered-quintuple-quotient}
+\end{equation}
+Lexicographically minimizing the joint-count vector over all endpoint
+permutations gives one canonical unordered quintuple per orbit. At $k=14$, the
+seven fixed counts are 166871334960, 414356400, 709452, 8841360, 14820, 19380,
+and 180, yielding 1426354541 classes instead of 166871334960 coordinate-only
+ordered classes or $32^{14}=1180591620717411303424$ raw ordered quintuples.
+This refinement applies only to analyses invariant under endpoint permutation
+and simultaneous ambiguity-coordinate relabeling, and it makes no timing claim.
+
 For pairwise analyses that also ignore endpoint order, let
 $G_k=S_k\times C_2$, where $S_k$ permutes both endpoints simultaneously and
 $\tau\in C_2$ swaps them: $\tau(x,y)=(y,x)$. These actions commute. On joint

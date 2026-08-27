@@ -319,6 +319,16 @@ mechanism = "thirty-two-joint-count-orbits-plus-canonical-coordinate-grouping"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_quintuple_orbits_are_joint_classes_through_dimension_four", "tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_quintuple_counts_cover_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_quintuple_quotient_lifts_to_small_reachable_pairs"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-unordered-quintuple-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-unordered-quintuple-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "ordered cube-word quintuples in reachable fixed accumulator/target preimage cubes at widths 1 through 14 for analyses invariant under simultaneous ambiguity-coordinate permutation and all quintuple-endpoint permutations, with exhaustive abstract quintuple orbits through dimension 2, Burnside coefficient arithmetic through dimension 14, and fixed-pair lifting through width 2"
+mechanism = "S5-Burnside-label-cycle-index-plus-canonical-endpoint-ordering"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_quintuple_quotient.py::test_s5_endpoint_cycle_types_induce_exact_label_cycles", "tests/mathematics/test_crazy_preimage_cube_unordered_quintuple_quotient.py::test_unordered_quintuple_orbits_are_exact_through_dimension_two", "tests/mathematics/test_crazy_preimage_cube_unordered_quintuple_quotient.py::test_unordered_quintuple_burnside_counts_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_unordered_quintuple_quotient.py::test_unordered_quintuple_quotient_lifts_to_small_reachable_pairs"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-endpoint-symmetric-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-endpoint-symmetric-pair-quotient"

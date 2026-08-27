@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes fifty-one exact reductions: classic five-trit crazy factorization,
+formalizes fifty-two exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -76,8 +76,9 @@ classes, exact ordered cube-word triple quotient into `C(k+7,7)` joint-count
 classes, exact endpoint-unordered triple quotient under `S_3`, exact ordered
 cube-word quadruple quotient into `C(k+15,15)` joint-count classes, exact
 endpoint-unordered quadruple quotient under `S_4`, exact ordered cube-word
-quintuple quotient into `C(k+31,31)`
-joint-count classes, exact global ordered-triple and endpoint-unordered triple
+quintuple quotient into `C(k+31,31)` joint-count classes, exact endpoint-
+unordered quintuple quotient under `S_5`, exact global ordered-triple and
+endpoint-unordered triple
 quotient counts, exact global ordered-quadruple and endpoint-unordered quadruple
 quotient counts, and ordered-quintuple quotient counts across all reachable
 fixed pairs, exact
@@ -198,6 +199,13 @@ canonical classes instead of 1,180,591,620,717,411,303,424 raw quintuples; the
 zero-fifth-word slice reduces exactly to the ordered-quadruple convention.
 Exhaustive orbit evidence reaches dimension four, recurrence arithmetic reaches
 dimension fourteen, and fixed-pair lifting reaches width three.
+
+If quintuple endpoint order is irrelevant, `S_5` acts on the thirty-two joint-
+pattern labels. Its seven endpoint conjugacy classes have weights
+`1,10,20,15,30,20,24`; their induced label-cycle types give 1,426,354,541
+endpoint-unordered classes at `k=14`. Exhaustive raw orbits reach dimension two,
+fixed-pair lifting reaches width two, Burnside arithmetic reaches dimension
+fourteen, and no timing claim is made.
 
 Combining that quotient with the exact ambiguity-class distribution gives a
 closed global representative count. Width `N` has
@@ -387,7 +395,8 @@ preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, exact coordinate-
 permutation cube quotient, exact ordered cube-word pair quotient, exact
 ordered cube-word triple, quadruple, and quintuple quotients, exact endpoint-
-unordered triple and quadruple quotients plus their global aggregates, exact
+unordered triple, quadruple, and quintuple quotients, plus the established
+triple/quadruple global aggregates, exact
 global ordered-triple and ordered-quadruple quotient counts, exact endpoint-
 symmetric pair quotient,
 and

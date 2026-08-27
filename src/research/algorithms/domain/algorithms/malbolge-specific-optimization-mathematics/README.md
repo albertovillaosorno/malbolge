@@ -70,8 +70,10 @@ endpoint order is irrelevant, the additional `S_4` quotient has exactly
 3,419,552 classes. Summed over every reachable width-14 fixed pair, that
 endpoint-unordered quotient has 1,409,733,897,288,413 canonical classes.
 
-Ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; summed over
-every reachable width-14 fixed pair, the triple quotient gives
+Ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; if quintuple
+endpoint order is irrelevant, the additional `S_5` quotient has exactly
+1,426,354,541 classes. Summed over every reachable width-14 fixed pair, the
+triple quotient gives
 547,751,638,341,145 canonical ordered triples, the quadruple quotient gives
 25,678,405,217,633,865 canonical ordered quadruples, and the quintuple quotient
 gives 3,571,359,808,057,227,945 canonical ordered quintuples. If endpoint order
