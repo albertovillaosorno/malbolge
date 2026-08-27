@@ -94,6 +94,9 @@ by success of the padded representation.
 - Required mathematical evidence: the generalized zero-padding identity for
   every `10<=N<=14`, explicit domain assumptions, and a proof that discarded
   high output trits are data-independent constants.
+- Current mathematical base: correspondence
+  `optimization-crazy-zero-padded-fifteen-trit-projection` proves that identity
+  and exhausts every residual third-chunk operand pair for widths 10 through 14.
 - Required implementation evidence: differential equality against the trusted
   profile semantics before any performance result is considered.
 - Required benchmark matrix: widths 10, 11, 12, 13, and 14; representative

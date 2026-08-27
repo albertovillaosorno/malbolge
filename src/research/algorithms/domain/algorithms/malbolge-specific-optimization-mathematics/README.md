@@ -15,6 +15,11 @@ under `benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/`, while
 semantic acceptance is owned by
 `src/specification/formal-model/math/specification/correspondence.toml`.
 
+The profile-width crazy factorization also admits an exact zero-padded physical
+15-trit projection for semantic widths 10 through 14. Padding adds only the
+known constant `(3^15-3^N)/2`, so reducing modulo `3^N` recovers native crazy
+semantics without enlarging semantic memory; this is not a timing claim.
+
 The current research surface also exposes an exact classic crazy-target
 full-domain preimage count. Its product-of-per-trit-multiplicities equation and
 the derived tight 1,024-preimage global ceiling, exact zero-or-power-of-two

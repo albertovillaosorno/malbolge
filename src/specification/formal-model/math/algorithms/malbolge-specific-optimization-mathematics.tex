@@ -87,6 +87,26 @@ The current 14-trit runtime therefore uses chunks $5+5+4$ while reusing the same
 five-trit table. The final four-trit result is reduced modulo $3^4$; no phantom
 fifteenth trit is admitted.
 
+For an admitted semantic width $10\leq N\leq14$, zero-extend both operands to
+fifteen trits without changing the semantic word domain. Since the added input
+trits are all zero and $\CrazyN{1}{0}{0}=1$, define
+\[
+  C_N=\sum_{i=N}^{14}3^i=\frac{3^{15}-3^N}{2}.
+\]
+Digit independence then gives the exact padding identity
+\begin{equation}
+  \CrazyN{15}{d}{a}=\CrazyN{N}{d}{a}+C_N,
+  \qquad
+  \CrazyN{N}{d}{a}=\CrazyN{15}{d}{a}\bmod3^N,
+  \quad 0\leq d,a<3^N.
+  \label{eq:optimization-crazy-zero-padded-fifteen-trit-projection}
+\end{equation}
+Equivalently, the third physical five-trit lookup may receive the native
+$N-10$ tail trits with its unused high inputs set to zero; its extra output
+trits are the data-independent constant above and disappear under projection
+modulo $3^N$. This proves arithmetic equivalence only. It neither allocates a
+$3^{15}$-word semantic memory nor establishes a performance improvement.
+
 
 \section{Exact crazy-target preimage cardinality}
 

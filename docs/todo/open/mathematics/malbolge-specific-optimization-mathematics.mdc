@@ -30,9 +30,10 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize fifty-seven exact reductions: classic
+- The proved slices now formalize fifty-eight exact reductions: classic
   five-trit
-  crazy factorization, profile-width crazy chunking, exact decode sum-class
+  crazy factorization, profile-width crazy chunking, exact zero-padded 15-trit
+  crazy projection for semantic widths 10 through 14, exact decode sum-class
   canonicalization,
   exact classic rotate lookup, graphical self-encryption orbit
   canonicalization, classic rotate-history canonicalization,
@@ -86,9 +87,9 @@ force or stochastic optimization begins.
   preimage-budget exceedance sum, its width-indexed generalization, and the
   exact minimum complete-preimage budget needed to cover any integer target
   from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. The first
-  four are consumed by runtime paths; the fifty-three search reductions carry
-  no inherited runtime speedup claim.
-- Fifty-seven optimization research equations are registered in
+  four are consumed by runtime paths; the fifty-three search reductions and
+  the zero-padding equivalence carry no inherited runtime speedup claim.
+- Fifty-eight optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -122,9 +123,10 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes fifty-seven labelled optimization
+- Current mathematical evidence includes fifty-eight labelled optimization
   equations,
-  executable correspondence, raw CPU benchmark samples for the table paths,
+  executable correspondence, exact zero-padding projection evidence for
+  semantic widths 10 through 14, raw CPU benchmark samples for the table paths,
   identical checksums, the exact 94-class decode quotient across all 8,836
   graphical cell/phase pairs, an exhaustive six-orbit encryption partition,
   exhaustive two-cycle classic rotate-history reduction, the exact

@@ -61,8 +61,10 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes fifty-seven exact reductions: classic five-trit crazy factorization,
-general profile-width crazy chunking, exact decode sum-class canonicalization,
+formalizes fifty-eight exact reductions: classic five-trit crazy factorization,
+general profile-width crazy chunking, exact zero-padded 15-trit crazy
+projection for semantic widths 10 through 14, exact decode sum-class
+canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
 classic rotate-history canonicalization, exact classic rotate minimal-period
@@ -110,6 +112,13 @@ sum for reachable pairs whose full preimage set exceeds a nonnegative
 enumeration budget, its exact width-indexed generalization for `1<=N<=14`, and
 the exact minimum complete-preimage budget needed to cover any integer target
 from 0 through `7^N` reachable pairs across the same checked widths.
+For semantic widths `10<=N<=14`, zero-padding both `crazy` operands to fifteen
+physical trits adds exactly `C_N=(3^15-3^N)/2` to the output because every
+added zero/zero trit maps to one. Therefore `Crazy_15(d,a) mod 3^N` equals the
+native `Crazy_N(d,a)` exactly. Exhaustive residual-tail evidence covers every
+possible third-chunk operand pair at each admitted width; this is an arithmetic
+equivalence only and makes no performance claim.
+
 The preserved historical decode table is a permutation of all 94 graphical
 bytes. Exhausting all 8,836 graphical cell/code-phase pairs therefore proves
 that `(cell-33+phase) mod 94` is a complete decode key: the pairs partition into
@@ -420,7 +429,8 @@ preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, exact coordinate-
 permutation cube quotient, exact ordered cube-word pair quotient, exact
 ordered cube-word triple, quadruple, quintuple, and sextuple quotients, exact
-endpoint-unordered triple, quadruple, quintuple, and sextuple quotients, plus the
+endpoint-unordered triple, quadruple, quintuple, and sextuple quotients, plus
+the
 established
 triple/quadruple global aggregates, the quintuple global aggregate, and both
 sextuple global aggregates, exact global ordered-triple and ordered-quadruple
