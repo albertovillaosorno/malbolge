@@ -76,9 +76,10 @@ endpoint order is irrelevant, the additional `S_5` quotient has exactly
 triple quotient gives
 547,751,638,341,145 canonical ordered triples, the quadruple quotient gives
 25,678,405,217,633,865 canonical ordered quadruples, and the quintuple quotient
-gives 3,571,359,808,057,227,945 canonical ordered quintuples. If endpoint order
-is also
-irrelevant, the exact class count reduces further to
+gives 3,571,359,808,057,227,945 canonical ordered quintuples. The endpoint-
+unordered quintuple aggregate has 34,995,940,605,821,849 canonical classes at
+width 14. If endpoint order is also irrelevant, the exact pair class count
+reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`; summed over every reachable
 width-14 fixed pair, this endpoint-symmetric quotient has
 18,096,618,233,793 canonical pairs. These quotients apply only to analyses with

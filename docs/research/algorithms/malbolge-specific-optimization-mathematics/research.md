@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes fifty-two exact reductions: classic five-trit crazy factorization,
+formalizes fifty-three exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -80,8 +80,8 @@ quintuple quotient into `C(k+31,31)` joint-count classes, exact endpoint-
 unordered quintuple quotient under `S_5`, exact global ordered-triple and
 endpoint-unordered triple
 quotient counts, exact global ordered-quadruple and endpoint-unordered quadruple
-quotient counts, and ordered-quintuple quotient counts across all reachable
-fixed pairs, exact
+quotient counts, exact ordered-quintuple and endpoint-unordered quintuple
+quotient counts across all reachable fixed pairs, exact
 endpoint-symmetric pair quotient with
 `(C(k+3,3)+floor((k+2)^2/4))/2` classes, plus exact binomial distance
 shells/balls, diameter, and shortest-path
@@ -245,6 +245,14 @@ The ordered-quintuple aggregate is
 55,448,176,762,342,779,635,202,921 raw ordered quintuples. This is likewise an
 exact complete-domain cardinality result only.
 
+Summing the endpoint-unordered quintuple quotient over the same fixed-pair
+distribution gives 34,995,940,605,821,849 canonical quintuples at `N=14`.
+The seven global fixed counts are obtained independently by the generic
+binomial transform of each endpoint label-cycle generating function. Direct
+ambiguity summation, transformed coefficients through width fourteen, and
+independent all-pair enumeration through width two agree; this is a cardinality
+result only.
+
 For pair analyses that are also invariant under endpoint swap, the ordered-pair
 quotient reduces further. Endpoint swap exchanges `n01` and `n10`; classes with
 `n01=n10` are fixed, while every other class pairs with a distinct swapped
@@ -396,7 +404,7 @@ optimality, exact one-trit cube neighborhood graph, exact coordinate-
 permutation cube quotient, exact ordered cube-word pair quotient, exact
 ordered cube-word triple, quadruple, and quintuple quotients, exact endpoint-
 unordered triple, quadruple, and quintuple quotients, plus the established
-triple/quadruple global aggregates, exact
+triple/quadruple global aggregates and the quintuple global aggregate, exact
 global ordered-triple and ordered-quadruple quotient counts, exact endpoint-
 symmetric pair quotient,
 and

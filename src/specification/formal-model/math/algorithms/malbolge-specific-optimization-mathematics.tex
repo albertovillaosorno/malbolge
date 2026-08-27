@@ -896,6 +896,33 @@ raw ordered quintuples. This is an exact complete-domain search-space count
 only; it inherits the simultaneous-coordinate symmetry requirement and makes
 no timing claim.
 
+The endpoint-unordered quintuple quotient composes over the same reachable
+fixed-pair ambiguity distribution. For one $S_5$ endpoint conjugacy class
+$\lambda$, let $c_{\lambda,1},\ldots,c_{\lambda,m_\lambda}$ be its induced
+cycle lengths on the thirty-two joint-pattern labels and define
+\[
+  A_\lambda(z)=\prod_{i=1}^{m_\lambda}
+    (1-z^{c_{\lambda,i}})^{-1},\qquad
+  \widehat A_\lambda(y)=\frac{1}{1-5y}
+    A_\lambda\!\left(\frac{2y}{1-5y}\right).
+\]
+If $w_\lambda$ is the endpoint conjugacy-class size, then
+\begin{equation}
+  U^{(5)}_N
+    =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}
+      \left|\mathcal{J}^{(5)}_k/S_5\right|
+    =\frac{1}{120}\sum_\lambda w_\lambda
+      [y^N]\widehat A_\lambda(y),
+  \qquad 1\leq N\leq14.
+  \label{eq:optimization-crazy-global-unordered-preimage-quintuple-quotient}
+\end{equation}
+At $N=14$, the seven global fixed counts are 3571359808057227945,
+54779621914531305, 955501620651033, 3768908530569225, 84481568466345,
+101628460149705, and 6090369480725, yielding 34995940605821849 endpoint-
+unordered representatives instead of $69^{14}=55448176762342779635202921$ raw
+ordered quintuples. This is an exact complete-domain state count for analyses
+invariant under both symmetry actions and makes no timing claim.
+
 The endpoint-symmetric pair quotient also composes exactly over the reachable
 fixed-pair ambiguity distribution. Let $E_N$ count canonical ordered preimage
 pairs after simultaneous coordinate permutation and endpoint swap, and let
