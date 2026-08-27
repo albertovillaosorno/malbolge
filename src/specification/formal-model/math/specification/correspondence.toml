@@ -299,6 +299,16 @@ mechanism = "sixteen-joint-count-orbits-plus-canonical-coordinate-grouping"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_quadruple_orbits_are_joint_classes_through_dimension_four", "tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_quadruple_counts_cover_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_permutation_quotient.py::test_ordered_quadruple_quotient_lifts_to_small_reachable_pairs"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-unordered-quadruple-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-unordered-quadruple-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "ordered cube-word quadruples in reachable fixed accumulator/target preimage cubes at widths 1 through 14 for analyses invariant under simultaneous ambiguity-coordinate permutation and all quadruple-endpoint permutations, with exhaustive abstract quadruple orbits through dimension 3, Burnside coefficient arithmetic through dimension 14, and fixed-pair lifting through width 3"
+mechanism = "S4-Burnside-label-cycle-index-plus-canonical-endpoint-ordering"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_quadruple_quotient.py::test_s4_endpoint_cycle_types_induce_exact_label_cycles", "tests/mathematics/test_crazy_preimage_cube_unordered_quadruple_quotient.py::test_unordered_quadruple_orbits_are_exact_through_dimension_three", "tests/mathematics/test_crazy_preimage_cube_unordered_quadruple_quotient.py::test_unordered_quadruple_burnside_counts_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_unordered_quadruple_quotient.py::test_unordered_quadruple_quotient_lifts_to_small_reachable_pairs"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-ordered-quintuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-ordered-quintuple-quotient"

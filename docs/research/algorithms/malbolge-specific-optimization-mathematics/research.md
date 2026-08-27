@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes forty-nine exact reductions: classic five-trit crazy factorization,
+formalizes fifty exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -74,8 +74,9 @@ structure, exact coordinate-permutation quotient into `k+1` Hamming-weight
 classes, exact ordered cube-word pair quotient into `C(k+3,3)` joint-count
 classes, exact ordered cube-word triple quotient into `C(k+7,7)` joint-count
 classes, exact endpoint-unordered triple quotient under `S_3`, exact ordered
-cube-word quadruple quotient into `C(k+15,15)` joint-
-count classes, exact ordered cube-word quintuple quotient into `C(k+31,31)`
+cube-word quadruple quotient into `C(k+15,15)` joint-count classes, exact
+endpoint-unordered quadruple quotient under `S_4`, exact ordered cube-word
+quintuple quotient into `C(k+31,31)`
 joint-count classes, exact global ordered-triple and endpoint-unordered triple
 quotient counts, exact global ordered-quadruple and ordered-quintuple quotient
 counts across all reachable fixed pairs, exact
@@ -180,6 +181,15 @@ joint bit-pattern counts and exactly `C(k+15,15)` classes. At `k=14`, that is
 the descending binary convention reduces exactly to the triple representative
 when the fourth word is zero. Exhaustive orbit evidence reaches dimension four,
 while recurrence arithmetic and compatibility checks reach dimension fourteen.
+
+If quadruple endpoint order is also irrelevant, `S_4` acts on the sixteen
+joint-pattern labels. Its five endpoint conjugacy classes induce label-cycle
+types `1^16`, `1^8 2^4`, `1^4 2^6`, `1^4 3^4`, and `1^2 2 4^3`, so Burnside
+uses fixed-class weights `1,6,3,8,6`. At `k=14`, the five fixed counts are
+77,558,760, 722,696, 43,472, 5,256, and 308, giving 3,419,552 endpoint-
+unordered classes. Exhaustive raw orbits and fixed-pair lifting reach
+dimension/width three, Burnside arithmetic reaches dimension fourteen, and no
+timing claim is made.
 
 Ordered quintuples under the same action have thirty-two joint bit-pattern
 counts and exactly `C(k+31,31)` classes. At `k=14`, that is 166,871,334,960

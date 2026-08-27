@@ -65,9 +65,11 @@ has exactly 21,323 classes. Summed over every reachable width-14 fixed pair,
 that endpoint-unordered triple quotient has 124,279,218,052,677 canonical
 classes.
 
-Ordered quadruples have `C(k+15,15)` classes, or
-77,558,760, and
-ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; summed over
+Ordered quadruples have `C(k+15,15)` classes, or 77,558,760; if quadruple
+endpoint order is irrelevant, the additional `S_4` quotient has exactly
+3,419,552 classes.
+
+Ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; summed over
 every reachable width-14 fixed pair, the triple quotient gives
 547,751,638,341,145 canonical ordered triples, the quadruple quotient gives
 25,678,405,217,633,865 canonical ordered quadruples, and the quintuple quotient
