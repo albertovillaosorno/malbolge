@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes forty-four exact reductions: classic five-trit crazy factorization,
+formalizes forty-five exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -74,7 +74,9 @@ structure, exact coordinate-permutation quotient into `k+1` Hamming-weight
 classes, exact ordered cube-word pair quotient into `C(k+3,3)` joint-count
 classes, exact ordered cube-word triple quotient into `C(k+7,7)` joint-count
 classes, exact ordered cube-word quadruple quotient into `C(k+15,15)` joint-
-count classes, exact global ordered-triple and ordered-quadruple quotient counts
+count classes, exact ordered cube-word quintuple quotient into `C(k+31,31)`
+joint-count classes, exact global ordered-triple and ordered-quadruple quotient
+counts
 across all reachable fixed pairs, exact endpoint-symmetric pair quotient with
 `(C(k+3,3)+floor((k+2)^2/4))/2` classes, plus exact binomial distance
 shells/balls, diameter, and shortest-path
@@ -167,6 +169,13 @@ joint bit-pattern counts and exactly `C(k+15,15)` classes. At `k=14`, that is
 the descending binary convention reduces exactly to the triple representative
 when the fourth word is zero. Exhaustive orbit evidence reaches dimension four,
 while recurrence arithmetic and compatibility checks reach dimension fourteen.
+
+Ordered quintuples under the same action have thirty-two joint bit-pattern
+counts and exactly `C(k+31,31)` classes. At `k=14`, that is 166,871,334,960
+canonical classes instead of 1,180,591,620,717,411,303,424 raw quintuples; the
+zero-fifth-word slice reduces exactly to the ordered-quadruple convention.
+Exhaustive orbit evidence reaches dimension four, recurrence arithmetic reaches
+dimension fourteen, and fixed-pair lifting reaches width three.
 
 Combining that quotient with the exact ambiguity-class distribution gives a
 closed global representative count. Width `N` has
@@ -287,7 +296,8 @@ slice. The self-encryption/rotate-history and exact rotate-period reductions,
 crazy preimage count, constructive preimage ranking, exact Gray traversal,
 exact Gray edit optimality, exact preimage-cube neighborhood graph, exact
 coordinate-permutation cube quotient, exact ordered cube-word pair quotient,
-exact ordered cube-word triple and quadruple quotients, exact global ordered-
+exact ordered cube-word triple, quadruple, and quintuple quotients, exact
+global ordered-
 triple and ordered-quadruple quotient counts, exact endpoint-symmetric pair
 quotient,
 and exact preimage-cube distance
@@ -324,7 +334,8 @@ period canonicalization, crazy-target preimage cardinality, constructive
 preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, exact coordinate-
 permutation cube quotient, exact ordered cube-word pair quotient, exact
-ordered cube-word triple and quadruple quotients, exact global ordered-triple
+ordered cube-word triple, quadruple, and quintuple quotients, exact global
+ordered-triple
 and ordered-quadruple quotient counts, exact endpoint-symmetric pair quotient,
 and
 exact binomial distance shells/balls,

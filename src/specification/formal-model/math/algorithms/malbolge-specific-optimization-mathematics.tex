@@ -317,6 +317,33 @@ word is zero. The quotient applies only to quadruple analyses invariant under
 simultaneous ambiguity-coordinate relabeling; it is not position-sensitive
 Malbolge semantic equivalence or a wall-clock speedup claim.
 
+The same action extends to ordered cube-word quintuples. For
+$v,w,x,y,z\in\{0,1\}^k$, let $n_s$ count coordinates whose five-bit joint
+pattern is $s\in\{0,1\}^5$, with simultaneous $S_k$ action on all five words.
+Define
+\[
+  \mathcal{J}^{(5)}_k=\left\{(n_s)_{s\in\{0,1\}^5}:
+    n_s\in\{0,\ldots,k\},\ \sum_s n_s=k\right\}.
+\]
+The thirty-two counts are complete orbit invariants, and descending binary
+blocks give one canonical quintuple per count vector. Thus
+\begin{equation}
+  \left(\{0,1\}^k\right)^5/S_k
+    \overset{\sim}{\longrightarrow}\mathcal{J}^{(5)}_k,
+  \qquad
+  |\mathcal{J}^{(5)}_k|=\binom{k+31}{31},
+  \qquad
+  |[(v,w,x,y,z)]|=\frac{k!}{\prod_s n_s!},
+  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-preimage-cube-ordered-quintuple-quotient}
+\end{equation}
+At $k=14$, this gives 166871334960 classes instead of
+$32^{14}=1180591620717411303424$ raw ordered quintuples. The descending block
+convention reduces exactly to the ordered-quadruple representative when the
+fifth word is zero. This quotient applies only to quintuple analyses invariant
+under simultaneous ambiguity-coordinate relabeling; it is not position-
+sensitive Malbolge semantic equivalence or a wall-clock speedup claim.
+
 For pairwise analyses that also ignore endpoint order, let
 $G_k=S_k\times C_2$, where $S_k$ permutes both endpoints simultaneously and
 $\tau\in C_2$ swaps them: $\tau(x,y)=(y,x)$. These actions commute. On joint

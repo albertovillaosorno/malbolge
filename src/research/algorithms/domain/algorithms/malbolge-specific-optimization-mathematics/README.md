@@ -60,8 +60,9 @@ Hamming-weight classes; the same simultaneous coordinate action quotients
 ordered cube-word pairs into `C(k+3,3)` joint-count classes with exact orbit
 sizes while preserving endpoint direction. Ordered triples under the same
 coordinate action have `C(k+7,7)` exact joint-count classes, or 116,280 at
-`k=14`, while ordered quadruples have `C(k+15,15)` classes, or 77,558,760;
-summed over every reachable width-14 fixed pair, the triple quotient gives
+`k=14`, ordered quadruples have `C(k+15,15)` classes, or 77,558,760, and
+ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; summed over
+every reachable width-14 fixed pair, the triple quotient gives
 547,751,638,341,145 canonical ordered triples and the quadruple quotient gives
 25,678,405,217,633,865 canonical ordered quadruples. If endpoint order
 is also

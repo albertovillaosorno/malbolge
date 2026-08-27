@@ -10,20 +10,21 @@
 # Boundary-Contract:
 # - Owns:
 #   - Independent evidence for permutation orbits of crazy preimage cube
-#     words, ordered pairs, ordered triples, and ordered quadruples.
+#     words, ordered pairs, ordered triples, quadruples, and quintuples.
 # - Must-Not:
 #   - Treat permutation orbits as position-sensitive semantic equivalence.
 # - Allows:
 #   - Inputs: reachable fixed accumulator/target pairs through width fourteen.
-#   - Outputs: exact word/pair/triple/quadruple orbit counts and canonical
-#     representatives.
+#   - Outputs: exact word/pair/triple/quadruple/quintuple orbit counts and
+#     canonical representatives.
 #   - Side effects: none.
 # - Split-When:
 #   - A different symmetry group needs a distinct orbit classification.
 # - Merge-When:
 #   - Another cube-canonicalization proof owns the same symmetric-group action.
 # - Summary:
-#   - Quotient coordinate-symmetric words, pairs, triples, and quadruples.
+#   - Quotient coordinate-symmetric words, pairs, triples, quadruples, and
+#     quintuples.
 # - Description:
 #   - Exhausts bounded cube tuples and independently lifts canonical choices
 #     to preimages.
@@ -31,7 +32,8 @@
 #   - Referenced by the mathematical correspondence manifest.
 # - Defaults:
 #   - Word enumeration reaches dimension fourteen; ordered pairs stop at
-#     dimension eight, triples/quadruples at four; lifting stops at width four.
+#     dimension eight, triples/quadruples/quintuples at four; quintuple lifting
+#     stops at width three and other lifting at width four.
 #
 
 """Independent evidence for permutation quotients of crazy preimage cubes."""
@@ -46,11 +48,15 @@ _BINARY_RADIX = 2
 _EXHAUSTIVE_PAIR_DIMENSION = 8
 _EXHAUSTIVE_TRIPLE_DIMENSION = 4
 _EXHAUSTIVE_QUADRUPLE_DIMENSION = 4
+_EXHAUSTIVE_QUINTUPLE_DIMENSION = 4
+_EXHAUSTIVE_QUINTUPLE_TRITS = 3
 _EXHAUSTIVE_TRITS = 4
 _MAXIMUM_TRITS = 14
 _TRIPLE_ARITY = 3
 _QUADRUPLE_ARITY = 4
 _QUADRUPLE_SYMBOL_COUNT = 1 << _QUADRUPLE_ARITY
+_QUINTUPLE_ARITY = 5
+_QUINTUPLE_SYMBOL_COUNT = 1 << _QUINTUPLE_ARITY
 _TRIPLE_SYMBOL_COUNT = 1 << _TRIPLE_ARITY
 _TRIPLE_SEPARATOR_COUNT = _TRIPLE_SYMBOL_COUNT - 1
 _RADIX = 3
@@ -671,6 +677,82 @@ def test_ordered_quadruple_quotient_lifts_to_small_reachable_pairs() -> None:
         for accumulator in range(domain):
             for target in range(domain):
                 _check_ordered_quadruple_lifting(
+                    target,
+                    accumulator,
+                    trit_count,
+                )
+
+
+def test_ordered_quintuple_orbits_are_joint_classes_through_dimension_four(
+) -> None:
+    """Thirty-two joint counts classify every small ordered quintuple orbit."""
+    for dimension in range(_EXHAUSTIVE_QUINTUPLE_DIMENSION + 1):
+        size = _integer_power(_BINARY_RADIX, dimension)
+        observed: Counter[tuple[int, ...]] = Counter()
+        representatives: set[tuple[int, ...]] = set()
+        for codes in product(range(size), repeat=_QUINTUPLE_ARITY):
+            counts = _tuple_counts(codes, dimension)
+            canonical = _canonicalize_tuple(codes, dimension)
+            assert canonical == _canonical_tuple(counts, _QUINTUPLE_ARITY)
+            observed[counts] += 1
+            representatives.add(canonical)
+            if codes[4] == 0:
+                quadruple_counts = _tuple_counts(codes[:4], dimension)
+                assert canonical == (
+                    *_canonical_tuple(quadruple_counts, _QUADRUPLE_ARITY),
+                    0,
+                )
+        expected_classes = _integer_binomial(dimension + 31, 31)
+        assert len(observed) == expected_classes
+        assert len(representatives) == expected_classes
+        assert observed == Counter({
+            counts: _tuple_orbit_size(counts) for counts in observed
+        })
+
+
+def test_ordered_quintuple_counts_cover_through_dimension_fourteen() -> None:
+    """Recurrences verify exact quintuple class and orbit mass totals."""
+    for dimension in range(_MAXIMUM_TRITS + 1):
+        assert _composition_count(
+            _QUINTUPLE_SYMBOL_COUNT,
+            dimension,
+        ) == _integer_binomial(dimension + 31, 31)
+        assert _multinomial_mass_sum(
+            _QUINTUPLE_SYMBOL_COUNT,
+            dimension,
+        ) == _integer_power(_QUINTUPLE_SYMBOL_COUNT, dimension)
+
+
+def _check_ordered_quintuple_lifting(
+    target: int,
+    accumulator: int,
+    trit_count: int,
+) -> None:
+    choices = _choice_sets(target, accumulator, trit_count)
+    if any(not local for local in choices):
+        return
+    dimension = sum(len(local) == _BINARY_RADIX for local in choices)
+    words = tuple(_cube_data(choices, code) for code in range(1 << dimension))
+    assert all(
+        _crazy(word, accumulator, trit_count) == target for word in words
+    )
+    for codes in product(range(1 << dimension), repeat=_QUINTUPLE_ARITY):
+        counts = _tuple_counts(codes, dimension)
+        canonical = _canonicalize_tuple(codes, dimension)
+        assert canonical == _canonical_tuple(counts, _QUINTUPLE_ARITY)
+        assert all(
+            _crazy(words[code], accumulator, trit_count) == target
+            for code in canonical
+        )
+
+
+def test_ordered_quintuple_quotient_lifts_to_small_reachable_pairs() -> None:
+    """Canonical ordered quintuples remain valid small fixed-pair preimages."""
+    for trit_count in range(1, _EXHAUSTIVE_QUINTUPLE_TRITS + 1):
+        domain = _integer_power(_RADIX, trit_count)
+        for accumulator in range(domain):
+            for target in range(domain):
+                _check_ordered_quintuple_lifting(
                     target,
                     accumulator,
                     trit_count,
