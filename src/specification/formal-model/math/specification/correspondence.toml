@@ -575,6 +575,26 @@ mechanism = "S5-Burnside-sum-plus-generic-binomial-transform-generating-function
 evidence = ["tests/mathematics/test_crazy_preimage_cube_global_unordered_quintuple_quotient.py::test_small_widths_match_independent_fixed_pair_enumeration", "tests/mathematics/test_crazy_preimage_cube_global_unordered_quintuple_quotient.py::test_global_unordered_quintuple_quotient_has_exact_closed_count"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-global-ordered-sextuple-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-global-ordered-preimage-sextuple-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all reachable accumulator/target pairs at widths 1 through 14, with each fixed-pair ordered preimage-sextuple domain quotiented independently by simultaneous ambiguity-coordinate permutation, plus independent enumeration of all accumulator/target pairs through width 2"
+mechanism = "ambiguity-class-sum-plus-weighted-binomial-identity-at-arity-six"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_global_sextuple_quotient.py::test_small_widths_match_independent_fixed_pair_enumeration", "tests/mathematics/test_crazy_preimage_cube_global_sextuple_quotient.py::test_global_sextuple_quotients_have_exact_closed_counts"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-global-unordered-sextuple-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-global-unordered-preimage-sextuple-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all reachable accumulator/target pairs at widths 1 through 14, with each fixed-pair preimage-sextuple domain quotiented independently by simultaneous ambiguity-coordinate permutation and all sextuple-endpoint permutations, plus independent enumeration of all accumulator/target pairs through width 2"
+mechanism = "S6-Burnside-sum-plus-generic-binomial-transform-generating-function"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_global_sextuple_quotient.py::test_small_widths_match_independent_fixed_pair_enumeration", "tests/mathematics/test_crazy_preimage_cube_global_sextuple_quotient.py::test_global_sextuple_quotients_have_exact_closed_counts"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-global-endpoint-symmetric-pair-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-global-endpoint-symmetric-pair-quotient"

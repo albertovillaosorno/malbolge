@@ -981,6 +981,49 @@ unordered representatives instead of $69^{14}=55448176762342779635202921$ raw
 ordered quintuples. This is an exact complete-domain state count for analyses
 invariant under both symmetry actions and makes no timing claim.
 
+The ordered sextuple quotient composes with the reachable fixed-pair ambiguity
+distribution in the same way. Let $R_N$ count canonical ordered preimage
+sextuples. Then
+\begin{equation}
+  R_N
+    =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}\binom{k+63}{63}
+    =\sum_{j=0}^{\min(63,N)}
+      \binom{63}{j}\binom{N}{j}2^j7^{N-j},
+  \qquad 1\leq N\leq14.
+  \label{eq:optimization-crazy-global-ordered-preimage-sextuple-quotient}
+\end{equation}
+The unquotiented ordered-sextuple mass is $133^N$. At $N=14$, the coordinate
+quotient has 1584315319509725541225 representatives instead of
+$133^{14}=541904769658563069794308330729$ raw ordered sextuples. This is an
+exact complete-domain cardinality result only and makes no timing claim.
+
+The endpoint-unordered sextuple quotient also composes exactly. Reuse the local
+$S_6$ endpoint types $\lambda$, class sizes $w_\lambda$, and label-cycle
+multiplicities $m_{\lambda,c}$. Define
+\[
+  A_\lambda(z)=\prod_c(1-z^c)^{-m_{\lambda,c}},\qquad
+  \widehat A_\lambda(y)=\frac{1}{1-5y}
+    A_\lambda\!\left(\frac{2y}{1-5y}\right).
+\]
+Then
+\begin{equation}
+  U^{(6)}_N
+    =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}
+      \left|\mathcal{J}^{(6)}_k/S_6\right|
+    =\frac{1}{720}\sum_\lambda w_\lambda
+      [y^N]\widehat A_\lambda(y),
+  \qquad 1\leq N\leq14.
+  \label{eq:optimization-crazy-global-unordered-preimage-sextuple-quotient}
+\end{equation}
+At $N=14$, the eleven global fixed counts are 1584315319509725541225,
+7054158423775528425, 38878022703262281, 175942582684950825,
+1460917013254953, 1806087636205929, 43767572733825, 18851333161147209,
+256827625272665, 244844111940225, and 13080355599105. Burnside yields
+2361488883978006005 endpoint-unordered representatives instead of $133^{14}$
+raw ordered sextuples. Direct ambiguity sums, the generic transform, and all
+reachable fixed pairs through width two agree. This is an exact state-count
+result only and makes no timing claim.
+
 The endpoint-symmetric pair quotient also composes exactly over the reachable
 fixed-pair ambiguity distribution. Let $E_N$ count canonical ordered preimage
 pairs after simultaneous coordinate permutation and endpoint swap, and let

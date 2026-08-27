@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes fifty-five exact reductions: classic five-trit crazy factorization,
+formalizes fifty-seven exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact decode sum-class canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -82,7 +82,8 @@ unordered quintuple quotient under `S_5`, exact ordered sextuple quotient into
 exact global ordered-triple and endpoint-unordered triple
 quotient counts, exact global ordered-quadruple and endpoint-unordered quadruple
 quotient counts, exact ordered-quintuple and endpoint-unordered quintuple
-quotient counts across all reachable fixed pairs, exact
+quotient counts, exact ordered and endpoint-unordered sextuple quotient counts
+across all reachable fixed pairs, exact
 endpoint-symmetric pair quotient with
 `(C(k+3,3)+floor((k+2)^2/4))/2` classes, plus exact binomial distance
 shells/balls, diameter, and shortest-path
@@ -261,6 +262,14 @@ ambiguity summation, transformed coefficients through width fourteen, and
 independent all-pair enumeration through width two agree; this is a cardinality
 result only.
 
+The ordered-sextuple aggregate has 1,584,315,319,509,725,541,225 canonical
+representatives at `N=14`, while the endpoint-unordered S₆ aggregate has
+2,361,488,883,978,006,005. Both are compared against
+`133^14 = 541,904,769,658,563,069,794,308,330,729` raw ordered sextuple cases.
+Independent width-1-through-2 pair enumeration, weighted-binomial arithmetic,
+and the generic endpoint-cycle transform agree through width fourteen; these
+are cardinality results only.
+
 For pair analyses that are also invariant under endpoint swap, the ordered-pair
 quotient reduces further. Endpoint swap exchanges `n01` and `n10`; classes with
 `n01=n10` are fixed, while every other class pairs with a distinct swapped
@@ -413,8 +422,9 @@ permutation cube quotient, exact ordered cube-word pair quotient, exact
 ordered cube-word triple, quadruple, quintuple, and sextuple quotients, exact
 endpoint-unordered triple, quadruple, quintuple, and sextuple quotients, plus the
 established
-triple/quadruple global aggregates and the quintuple global aggregate, exact
-global ordered-triple and ordered-quadruple quotient counts, exact endpoint-
+triple/quadruple global aggregates, the quintuple global aggregate, and both
+sextuple global aggregates, exact global ordered-triple and ordered-quadruple
+quotient counts, exact endpoint-
 symmetric pair quotient,
 and
 exact binomial distance shells/balls,
