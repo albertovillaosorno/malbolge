@@ -17,6 +17,15 @@ labels belong here.
 
 ## P1 — Semantic and language foundations
 
+### TODO - Adaptive semantic profile width
+
+Determine the smallest semantic ternary width that is provably sufficient for
+one compiled program, initially within `10<=N<=14`, and execute only that
+`3^N`-word memory geometry when equivalence is established.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/mathematics/adaptive-semantic-profile-width.mdc](docs/todo/open/mathematics/adaptive-semantic-profile-width.mdc)
+
 ### TODO - Malbolge-specific optimization mathematics
 
 Derive algebraic decompositions, lookup-table factorizations, state reductions,
@@ -49,6 +58,15 @@ under fixed time and evaluation budgets.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/superoptimization-research-program.mdc](docs/todo/open/research/superoptimization-research-program.mdc)
+
+### TODO - Symmetric padded crazy chunk geometry
+
+Test whether zero-padding 10-through-14-trit profile words to an internal
+15-trit, three-by-five-trit representation can make `crazy` evaluation faster
+without changing profile semantics.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/mathematics/symmetric-padded-crazy-chunk-geometry.mdc](docs/todo/open/mathematics/symmetric-padded-crazy-chunk-geometry.mdc)
 
 ## P2 — Compiler, runtime, and accelerator core
 

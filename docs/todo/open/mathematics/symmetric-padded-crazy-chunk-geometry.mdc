@@ -1,0 +1,112 @@
+---
+id: "symmetric-padded-crazy-chunk-geometry"
+status: "active"
+lane: "6"
+priority: "p1"
+area: "mathematics"
+task: "TODO - Symmetric padded crazy chunk geometry"
+contract: "docs/research/algorithms/malbolge-specific-optimization-mathematics/README.md"
+depends_on:
+  - "malbolge-specific-optimization-mathematics"
+  - "cuda-exact-vm-adapter"
+  - "adaptive-accelerator-resource-budgeting"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+scope:
+  - "src/specification/formal-model/math/"
+  - "src/runtime/virtual-machine/"
+  - "src/optimization/accelerator/"
+  - "benchmarks/accelerator/"
+  - "tests/mathematics/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Symmetric padded crazy chunk geometry
+
+## Objective
+
+Test whether zero-padding 10-through-14-trit profile words to an internal
+15-trit, three-by-five-trit representation can make `crazy` evaluation faster
+without changing profile semantics. Separate physical arithmetic padding from
+semantic profile width: an `N`-trit program must still own exactly its `3^N`
+semantic memory words, while only the `crazy` operands may use a padded
+three-chunk representation internally. Compare that path against native
+`5+5+r` chunking, the current CUDA tritwise kernel, and an experimental true
+15-trit profile so any speedup is weighed against memory, occupancy, cache,
+transfer, and end-to-end search cost.
+
+## Hypothesis
+
+For every admitted width `10<=N<=14`, zero-extending both operands to fifteen
+trits makes every added `crazy` output trit constant because `crazy(0,0)=1`.
+Therefore the exact candidate identity is
+
+```text
+Crazy_15(d, a) = Crazy_N(d, a) + sum(i=N..14, 3^i)
+               = Crazy_N(d, a) + (3^15 - 3^N) / 2
+Crazy_N(d, a)  = Crazy_15(d, a) mod 3^N
+```
+
+for `0<=d,a<3^N`. If a three-identical-lookup `5+5+5` implementation improves
+measured work enough to offset its padding, lookup/cache, register, and launch
+costs, a runtime or compile-time selector may choose it for widths 10 through
+14. A true 15-trit semantic profile is a separate experiment and is not implied
+by success of the padded representation.
+
+## Acceptance
+
+- The one-trit `crazy` truth table and digit independence establish the padded
+  identity exactly, including the constant high-trit term for every width from
+  10 through 14; executable correspondence checks the admitted bounded domain.
+- The implementation distinguishes semantic width from physical arithmetic
+  width. Padding must never allocate `3^15` semantic memory for an `N<15`
+  program, expose a phantom trit, alter wraparound, or change verification.
+- At least three equivalent implementations are compared: current/reference
+  execution, native `5+5+r` chunking, and padded `5+5+5` chunking. A true
+  15-trit semantic profile may be benchmarked only as a separately labelled
+  trade-off experiment.
+- CUDA evidence reports kernel time and end-to-end throughput together with
+  occupancy, register pressure, lookup/cache behavior, transfer volume, VRAM
+  bytes per resident state, admitted batch size, and failure/fallback behavior.
+- CPU/SIMD evidence measures the same exact workloads and records whether fixed
+  three-chunk unrolling or vectorization is beneficial outside CUDA.
+- Physical padded-path selection across widths 10 through 14 is evidence-driven
+  and deterministic. It may select the padded path only where retained
+  measurements beat the exact baseline under the same workload and resource
+  budget.
+- A speedup percentage is not accepted from symmetry alone. The hypothesis is
+  rejected or narrowed wherever padding loses end-to-end throughput, reduces
+  useful occupancy, or shifts cost into memory/cache/transfer enough to erase
+  a microkernel improvement.
+- Any pruning or synthesis-scaling conclusion remains separate from this
+  arithmetic-layout experiment. No fixed state-elimination percentage is
+  promised without an admissible proof or retained scaling evidence.
+- The CPU/reference path remains semantic authority, and accelerator
+  unavailability changes performance rather than acceptance.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: formal `.tex` mathematics, exact
+  correspondence tests, CPU/reference and CUDA implementations, and retained
+  accelerator benchmark evidence.
+- Required mathematical evidence: the generalized zero-padding identity for
+  every `10<=N<=14`, explicit domain assumptions, and a proof that discarded
+  high output trits are data-independent constants.
+- Required implementation evidence: differential equality against the trusted
+  profile semantics before any performance result is considered.
+- Required benchmark matrix: widths 10, 11, 12, 13, and 14; representative
+  batch/search sizes; current tritwise CUDA, native `5+5+r`, padded `5+5+5`,
+  and any separately admitted true-15 profile comparison.
+- Required rejection evidence: retain null or negative results. A faster
+  `crazy` microkernel does not establish a faster compiler or search system if
+  memory traffic, occupancy, verification, or other phases dominate.
+- Semantic-width selection belongs to `adaptive-semantic-profile-width`.
+  Scaling work belongs to `search-pruning-and-state-canonicalization` and
+  `empirical-malbolge-synthesis-scaling-law`; this TODO may provide measured
+  cost inputs but inherits neither semantic-width nor pruning claims.

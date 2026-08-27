@@ -1,0 +1,98 @@
+---
+id: "adaptive-semantic-profile-width"
+status: "active"
+lane: "7"
+priority: "p1"
+area: "mathematics"
+task: "TODO - Adaptive semantic profile width"
+contract: "docs/research/algorithms/malbolge-specific-optimization-mathematics/README.md"
+depends_on:
+  - "malbolge-specific-optimization-mathematics"
+  - "required-profile-diagnostics"
+  - "adaptive-accelerator-resource-budgeting"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/technical/adr/replaceable-accelerator-and-algorithm-ports.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+scope:
+  - "src/specification/formal-model/math/"
+  - "src/runtime/virtual-machine/"
+  - "src/optimization/"
+  - "src/compiler/"
+  - "benchmarks/accelerator/"
+  - "tests/mathematics/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Adaptive semantic profile width
+
+## Objective
+
+Determine the smallest semantic ternary width that is provably sufficient for
+one compiled program, initially within `10<=N<=14`, and execute only that
+`3^N`-word memory geometry when equivalence is established. Treat width as a
+verified program property rather than always paying the canonical 14-trit
+resident-memory cost. Feed the proved width into resource planning so small
+programs can admit more simultaneous accelerator work while larger GPUs use
+all measured resources instead of stopping at a device-specific artificial
+ceiling.
+
+## Hypothesis
+
+If compiler and verifier evidence proves that a program's complete reachable
+behavior is invariant under replacing its declared profile by a smaller width
+`N`, then resident state falls by the exact factor `3^(14-N)` relative to a
+14-trit image. The theoretical memory ratios are therefore 81x, 27x, 9x, 3x,
+and 1x for widths 10 through 14. Increased resident capacity may improve
+throughput, but no proportional speedup is assumed because registers, compute,
+transfers, synchronization, verification, and search structure can dominate.
+
+## Acceptance
+
+- A width proof covers every semantics affected by `N`: address reachability,
+  pointer wraparound, memory initialization and recurrence, word modulus,
+  rotate/crazy behavior, self-modification, I/O-visible values, and termination.
+- Program size alone is never a proof of a smaller width. Adversarial fixtures
+  include small artifacts whose later recurrence, wrapping, or pointers require
+  a larger semantic geometry.
+- The trusted verifier independently checks the selected width; optimizer,
+  compiler heuristics, CUDA, and resource planners cannot declare equivalence.
+- Width selection is deterministic and fail-closed. If no smaller width is
+  proved, execution retains the canonical required profile unchanged.
+- Resident memory accounting uses the selected semantic `3^N` geometry rather
+  than a padded arithmetic width. The `5+5+5` arithmetic-padding experiment is
+  owned separately by `symmetric-padded-crazy-chunk-geometry`.
+- Accelerator planning discovers actual device memory and compute resources at
+  runtime. A smaller device may admit less work, while an RTX 5090-class or any
+  future larger device may consume additional measured capacity without a
+  hard-coded upper VRAM or batch ceiling.
+- Resource evidence reports exact bytes per resident VM, admitted concurrent
+  states or chunks, launch geometry, failure/fallback behavior, and end-to-end
+  throughput. Synthetic large-memory probes are labelled capacity evidence,
+  not hardware-speed measurements.
+- Benchmarks cover widths 10 through 14 under equivalent work and include both
+  memory-bound and compute/search-heavy cases. Retained null or negative
+  results constrain selection rather than being discarded.
+- No claim that compilation time stays bounded as program length grows follows
+  from narrower state alone. Search/pruning scaling requires separate admissible
+  mathematics and retained scaling evidence.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Required mathematical evidence: exact profile-width memory ratios and a
+  sufficient-condition theorem or certificate format for semantic narrowing.
+- Required correctness evidence: differential/reference execution plus
+  adversarial width-boundary tests and independent verification of certificates.
+- Required resource evidence: actual runtime capability discovery, exact
+  resident-byte accounting, and no-ceiling synthetic probes consistent with
+  `adaptive-accelerator-resource-budgeting`.
+- Required performance evidence: retained raw samples for each admitted width,
+  exact workload/profile/device identity, dispersion, and end-to-end throughput.
+- Related pruning work belongs to
+  `search-pruning-and-state-canonicalization` and scaling-law work belongs to
+  `empirical-malbolge-synthesis-scaling-law`; this TODO supplies geometry and
+  resource inputs but does not inherit a fixed pruning percentage.
