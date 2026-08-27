@@ -8,8 +8,6 @@ task: "TODO - Adaptive semantic profile width"
 contract: "docs/research/algorithms/malbolge-specific-optimization-mathematics/README.md"
 depends_on:
   - "malbolge-specific-optimization-mathematics"
-  - "required-profile-diagnostics"
-  - "adaptive-accelerator-resource-budgeting"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/verification-trust-boundary.md"
@@ -38,8 +36,6 @@ resident-memory cost. Feed the proved width into resource planning so small
 programs can admit more simultaneous accelerator work while larger GPUs use
 all measured resources instead of stopping at a device-specific artificial
 ceiling.
-
-## Hypothesis
 
 If compiler and verifier evidence proves that a program's complete reachable
 behavior is invariant under replacing its declared profile by a smaller width
@@ -90,6 +86,9 @@ transfers, synchronization, verification, and search structure can dominate.
 - Required resource evidence: actual runtime capability discovery, exact
   resident-byte accounting, and no-ceiling synthetic probes consistent with
   `adaptive-accelerator-resource-budgeting`.
+- Required-profile diagnostics and resource planning integrate through
+  `required-profile-diagnostics` and `adaptive-accelerator-resource-budgeting`;
+  those tasks consume a proved width but are not prerequisites for proving one.
 - Required performance evidence: retained raw samples for each admitted width,
   exact workload/profile/device identity, dispersion, and end-to-end throughput.
 - Related pruning work belongs to
