@@ -63,8 +63,9 @@ coordinate action have `C(k+7,7)` exact joint-count classes, or 116,280 at
 `k=14`, ordered quadruples have `C(k+15,15)` classes, or 77,558,760, and
 ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; summed over
 every reachable width-14 fixed pair, the triple quotient gives
-547,751,638,341,145 canonical ordered triples and the quadruple quotient gives
-25,678,405,217,633,865 canonical ordered quadruples. If endpoint order
+547,751,638,341,145 canonical ordered triples, the quadruple quotient gives
+25,678,405,217,633,865 canonical ordered quadruples, and the quintuple quotient
+gives 3,571,359,808,057,227,945 canonical ordered quintuples. If endpoint order
 is also
 irrelevant, the exact class count reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`. These quotients apply only

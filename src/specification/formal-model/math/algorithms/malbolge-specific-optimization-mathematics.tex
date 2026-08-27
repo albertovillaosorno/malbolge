@@ -715,6 +715,27 @@ ordered quadruples. This is an exact complete-domain search-space count only;
 it inherits the simultaneous-coordinate symmetry requirement and makes no
 timing claim.
 
+Composing the same preimage-class distribution with the ordered cube-quintuple
+quotient gives another exact global representative count. Let $P_N$ be the
+number of canonical ordered preimage quintuples obtained by quotienting each
+reachable fixed accumulator/target preimage cube independently. Then
+\begin{equation}
+  P_N
+    =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}\binom{k+31}{31}
+    =\sum_{j=0}^{\min(31,N)}
+      \binom{31}{j}\binom{N}{j}2^j7^{N-j},
+  \qquad 1\leq N\leq14.
+  \label{eq:optimization-crazy-global-ordered-preimage-quintuple-quotient}
+\end{equation}
+The second equality follows from
+$\binom{k+31}{31}=\sum_{j=0}^{31}\binom{31}{j}\binom{k}{j}$ and the weighted
+binomial moments. The unquotiented ordered-quintuple mass is
+$\sum_k\binom{N}{k}2^k5^{N-k}32^k=69^N$. At $N=14$, the quotient has
+3571359808057227945 representatives instead of 55448176762342779635202921
+raw ordered quintuples. This is an exact complete-domain search-space count
+only; it inherits the simultaneous-coordinate symmetry requirement and makes
+no timing claim.
+
 The $7^N$ reachable-pair count also admits a constructive canonical index.
 Let
 \[
