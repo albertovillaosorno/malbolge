@@ -39,6 +39,8 @@ from itertools import pairwise
 
 from accelerator.classic_run import MAX_U32
 from accelerator.classic_run import STATE_WORDS
+from accelerator.cuda.resident_kernel import ResidentGeometry
+from accelerator.cuda.resident_kernel import resident_kernel_source
 from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
@@ -112,6 +114,32 @@ def test_derived_widths_own_exact_resident_memory_images() -> None:
         assert len(image) == resident.memory_words
         assert image.words().readonly
         assert validate_profile_run_requests(resident, (request,)) == (request,)
+
+
+def test_derived_widths_render_exact_resident_kernel_geometry() -> None:
+    """CUDA source receives exact derived geometry without profile identity."""
+    for width in EXPECTED_128_MIB_CAPACITY:
+        resident = _resident_geometry(width)
+        kernel = resident_kernel_source(
+            ResidentGeometry(
+                interpreter_authority=True,
+                eof_word=resident.eof_word,
+                input_instruction=resident.input_instruction,
+                memory_words=resident.memory_words,
+                output_instruction=resident.output_instruction,
+                word_modulus=resident.word_modulus,
+                word_trits=resident.word_trits,
+            ),
+            "adaptive_width_probe",
+        )
+        assert f"#define MEMORY_WORDS {resident.memory_words}u" in kernel
+        assert f"#define WORD_TRITS {resident.word_trits}u" in kernel
+        assert f"#define MAX_WORD {resident.word_modulus - 1}u" in kernel
+        assert f"#define EOF_WORD {resident.eof_word}u" in kernel
+        assert (
+            f"#define ROTATE_HIGH_WEIGHT {resident.word_modulus // 3}u"
+            in kernel
+        )
 
 
 def test_narrower_certified_width_strictly_increases_128_mib_capacity() -> None:
