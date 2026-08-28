@@ -49,7 +49,7 @@ and exposes usable memory
   U(F,T)=\max(0,F-R(T)).
 \]
 For fixed per-chunk overhead $h\ge 0$, each emitted contiguous chunk
-$[s,e)$ must satisfy
+with index bounds $s\leq i<e$ must satisfy
 \[
   h+\sum_{i=s}^{e-1} b_i \le U(F,T).
 \]

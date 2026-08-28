@@ -37,7 +37,7 @@
 \input{../malbolge-notation.tex}
 \title{Malbolge-Specific Optimization Mathematics}
 \author{Malbolge Project}
-\date{2026-07-27}
+\date{2026{-}07{-}27}
 \begin{document}
 \maketitle
 
@@ -946,7 +946,7 @@ For a nonnegative complete-preimage enumeration budget $B$, the same fixed-
 accumulator classes give an exact target exceedance count:
 \begin{equation}
   T^{(N,m)}_{>B}
-    =3^m\!\sum_{\substack{0\leq k\leq N-m\2^k>B}}
+    =3^m\!\sum_{\substack{0\leq k\leq N-m\\ 2^k>B}}
       \binom{N-m}{k},
   \qquad 0\leq m\leq N,\ 1\leq N\leq14.
   \label{eq:optimization-crazy-profile-fixed-accumulator-budget-exceedance}
@@ -1060,10 +1060,10 @@ three-cycle respectively. Then
     G_N&=\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}
       \frac{\binom{k+7}{7}+3\tau_k+2\chi_k}{6}
       =\frac{I_N+3R_N+2C_N}{6},\\
-    \sum_{N\geq0}I_Ny^N&=\frac{(1-5y)^7}{(1-7y)^8},\\
-    \sum_{N\geq0}R_Ny^N&=
+    \sum_{N\geq0}I_N y^N&=\frac{(1-5y)^7}{(1-7y)^8},\\
+    \sum_{N\geq0}R_N y^N&=
       \frac{(1-5y)^7}{(1-7y)^6(1-3y)^2},\\
-    \sum_{N\geq0}C_Ny^N&=
+    \sum_{N\geq0}C_N y^N&=
       \frac{(1-5y)^7}{(1-7y)^4(1-8y+19y^2)^2},
   \end{aligned}
   \qquad 1\leq N\leq14.
@@ -1279,7 +1279,7 @@ A uniformly chosen reachable accumulator/target pair therefore has exact mean
 complete-domain preimage cardinality
 \begin{equation}
   \frac{1}{7^N}
-  \sum_{\substack{(a,t)\in\WordDomain{N}^{2}\
+  \sum_{\substack{(a,t)\in\WordDomain{N}^{2}\\
                    \exists d:\CrazyN{N}{d}{a}=t}}
     \left|\left\{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t\right\}\right|
     =\frac{9^N}{7^N}=\left(\frac{9}{7}\right)^N,
@@ -1295,7 +1295,7 @@ complete-domain preimage cardinality over uniformly chosen reachable pairs:
 \begin{equation}
   \begin{aligned}
     \mathbb{E}[M_N^2]
-      &= \frac{13^N}{7^N}=\left(\frac{13}{7}\right)^N,\
+      &= \frac{13^N}{7^N}=\left(\frac{13}{7}\right)^N,\\
     \operatorname{Var}(M_N)
       &= \left(\frac{13}{7}\right)^N
        - \left(\frac{9}{7}\right)^{2N},
@@ -1328,7 +1328,7 @@ preimage classes give the number of reachable accumulator/target pairs whose
 complete data-word preimage cannot fit within that budget:
 \begin{equation}
   N_{>B}
-    = \sum_{\substack{0\leq k\leq10\2^k>B}}
+    = \sum_{\substack{0\leq k\leq10\\ 2^k>B}}
       \binom{10}{k}2^k5^{10-k}.
   \label{eq:optimization-crazy-preimage-budget-exceedance}
 \end{equation}
@@ -1342,7 +1342,7 @@ The same threshold extends to the bounded width family above. For
 $N\in\{1,\ldots,14\}$ and nonnegative integer $B$, define
 \begin{equation}
   N^{(N)}_{>B}
-    = \sum_{\substack{0\leq k\leq N\2^k>B}}
+    = \sum_{\substack{0\leq k\leq N\\ 2^k>B}}
       \binom{N}{k}2^k5^{N-k}.
   \label{eq:optimization-crazy-profile-preimage-budget-exceedance}
 \end{equation}
@@ -1360,7 +1360,7 @@ For an integer target $Q\in\{0,\ldots,7^N\}$, the least nonnegative complete-
 preimage budget that covers at least $Q$ reachable accumulator/target pairs is
 \begin{equation}
   B_N(Q)=\begin{cases}
-    0, & Q=0,\
+    0, & Q=0,\\
     \min\{2^k:C_N(k)\geq Q,\ 0\leq k\leq N\}, & 1\leq Q\leq7^N,
   \end{cases}
   \qquad 1\leq N\leq14.
@@ -1501,8 +1501,8 @@ correspondence.
 \section{Measured implementation result}
 
 The versioned CPU VM benchmark evidence at
-\texttt{benchmarks/interpreter/evidence/2026-07-26-windows-x86\_64/} contains 15
-raw
+\texttt{benchmarks/interpreter/evidence/2026{-}07{-}26-windows-x86\_64/}
+contains 15 raw
 samples per scalar/table implementation and identical checksums. On that
 identified host, the classic crazy factorization reduced the median from
 77,456,700 ns to 7,423,600 ns (10.43x), while rotate lookup reduced the median

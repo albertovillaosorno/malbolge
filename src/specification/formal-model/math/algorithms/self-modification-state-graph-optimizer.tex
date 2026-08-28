@@ -37,7 +37,7 @@
 \input{../malbolge-notation.tex}
 \title{Self-Modifying Malbolge State-Graph Reduction Model}
 \author{Malbolge Project}
-\date{2026-07-27}
+\date{2026{-}07{-}27}
 \begin{document}
 \maketitle
 
@@ -93,7 +93,8 @@ For one requested normative step from memory $M$ to returned memory $M'$, define
   \Delta_M(M,M')=\{a\mid M[a]\neq M'[a]\}.
 \]
 Malbolge instruction-specific effects can write at most the current data cell
-(`crazy` or rotate), and every committed non-halting step can additionally write
+(\texttt{crazy} or rotate), and every committed non-halting step can
+additionally write
 at most one self-encryption target. Halt, non-graphical termination, and
 rejected
 self-encryption commit no memory change. Therefore, for both classic and
@@ -138,7 +139,8 @@ $P_0=M_0$ and
   \operatorname{materialize}(P_k)=M_k.
   \label{eq:state-graph-persistent-memory}
 \end{equation}
-A patch is admitted only when every record's `before` value equals the value
+A patch is admitted only when every record's \texttt{before} value equals the
+value
 read
 through $P_{k-1}$ at that address; otherwise construction rejects. Empty deltas
 reuse $P_{k-1}$ without increasing depth. By the two-cell bound, each admitted
@@ -146,10 +148,12 @@ step contributes at most two changed address/value records independent of the
 size of $M_0$.
 
 The current-profile executable correspondence starts from one complete
-4,782,969-word checkpoint, applies only `ProfileMemoryDelta` values emitted by
+4,782,969-word checkpoint, applies only \texttt{ProfileMemoryDelta} values
+emitted by
 real traced execution, and after every step materializes the persistent view and
 requires exact equality with the runtime's complete checkpoint memory. A
-separate fixture corrupts a `before` value and requires fail-closed rejection.
+separate fixture corrupts a \texttt{before} value and requires fail-closed
+rejection.
 Materialization remains an oracle operation; the proposed fast path is shared
 root plus bounded patches and exact indexed reads.
 
@@ -169,7 +173,8 @@ complete root memory. The indexed read is
   \qquad \operatorname{depth}(I_k,a)\leq4.
   \label{eq:state-graph-indexed-memory}
 \end{equation}
-Applying a trace delta validates every recorded `before` value through the same
+Applying a trace delta validates every recorded \texttt{before} value through
+the same
 indexed read before path-copying only the affected radix nodes. The bound is on
 lookup structure depth, not on total historical patch count. This candidate is
 intentionally limited to the 24-bit research domain; wider future profiles must
@@ -177,7 +182,7 @@ select a different geometry explicitly rather than silently truncate addresses.
 
 The executable correspondence reconstructs every checkpoint of current traced
 execution exactly, inserts 4096 distinct overrides while preserving both latest
-overrides and untouched-root reads, and rejects a forged `before` value.
+overrides and untouched-root reads, and rejects a forged \texttt{before} value.
 
 \section{Incremental exact state identity}
 
@@ -213,7 +218,8 @@ value deletes that override and prunes empty radix nodes, so equivalent memory
 histories converge to the same canonical overlay semantics.
 
 The executable correspondence evolves the incremental state exclusively from
-public `ProfileStepTrace` records, materializes every state back to a complete
+public \texttt{ProfileStepTrace} records, materializes every state back to a
+complete
 runtime checkpoint, and requires exact equality. It also forces every state into
 one digest bucket and proves distinct states remain distinct, while an
 independently reconstructed checkpoint root is rejected as foreign lineage.
@@ -240,7 +246,8 @@ The executable correspondence builds independent branches with equal and unequal
 suffixes, materializes exact bytes, and exercises a 65,536-byte appended
 history.
 Incremental state reconstruction continues to compare exactly with complete
-runtime checkpoints after replacing `Vec<u8>` copying with this persistent form.
+runtime checkpoints after replacing \texttt{Vec<u8>} copying with this
+persistent form.
 
 \section{Semantic memory-read surface}
 
@@ -262,7 +269,8 @@ though their memory delta is empty. Internal reads used only to build
 diagnostics
 or trace deltas are not members of $R_T$.
 
-`ProfileStepTrace::memory\_reads` is emitted from the same transition engine
+\texttt{ProfileStepTrace::memory\_reads} is emitted from the same transition
+engine
 that
 performs these reads. The executable correspondence constructs every instruction
 family under the current profile plus an invalid jump-encryption case and
@@ -415,7 +423,8 @@ projection
   \label{eq:state-graph-profile-checkpoint}
 \end{equation}
 where $f_p$ is the canonical profile fingerprint and $W_p$ is the exact memory
-size declared by that profile. The runtime's `ProfileMachineState` validation is
+size declared by that profile. The runtime's \texttt{ProfileMachineState}
+validation is
 the authority for whether the checkpoint belongs to this domain; graph research
 does not reconstruct or weaken those invariants.
 
