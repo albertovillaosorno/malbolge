@@ -222,8 +222,10 @@ pub use profile_width::{
     verify_minimum_input_then_halt_profile_width,
     verify_minimum_jump_data_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
+    verify_minimum_repeated_jump_data_profile_width,
     verify_minimum_straight_line_io_profile_width,
     verify_noop_prefix_halt_profile_width,
+    verify_repeated_jump_data_profile_width,
     verify_straight_line_io_profile_width,
 };
 pub use threading::ScopedThreadParallelism;

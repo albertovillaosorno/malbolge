@@ -46,8 +46,10 @@ use malbolge::{
     verify_minimum_input_then_halt_profile_width,
     verify_minimum_jump_data_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
+    verify_minimum_repeated_jump_data_profile_width,
     verify_minimum_straight_line_io_profile_width,
     verify_noop_prefix_halt_profile_width,
+    verify_repeated_jump_data_profile_width,
     verify_straight_line_io_profile_width,
 };
 
@@ -551,6 +553,63 @@ fn derived_trace_cannot_claim_canonical_portable_ir_geometry() -> TestResult {
         &RegionEffectProgram::from_profile_step_trace(&trace),
         &Err(StepProgramProjectionError::ExecutionGeometry),
         "derived portable IR rejection",
+    )
+}
+
+#[test]
+fn repeated_jump_verifier_recomputes_exact_recurrence_reads() -> TestResult {
+    let verified =
+        normalize_result(verify_minimum_repeated_jump_data_profile_width(
+            current_profile(),
+            b"('&N",
+        ))?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::RepeatedJumpDataProjection,
+        "repeated-jump proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "repeated-jump minimum width",
+    )?;
+    let mut machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    check_equal(
+        &normalize_result(machine.run(4))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 4,
+        },
+        "repeated-jump outcome",
+    )
+}
+
+#[test]
+fn repeated_jump_verifier_rejects_nonjump_prefix() -> TestResult {
+    let observed = verify_repeated_jump_data_profile_width(
+        current_profile(),
+        b"(P",
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &observed,
+        &Err(ProfileWidthVerificationError::RepeatedJumpMissingHalt),
+        "repeated-jump minimum prefix rejection",
+    )?;
+    let projected_only = verify_repeated_jump_data_profile_width(
+        current_profile(),
+        b"('O",
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &projected_only,
+        &Err(ProfileWidthVerificationError::RepeatedJumpMemoryMismatch {
+            address: 41,
+        }),
+        "repeated-jump projected-only rejection",
     )
 }
 

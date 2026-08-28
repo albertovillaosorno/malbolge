@@ -276,12 +276,16 @@ an output depends on that ordinal. `uCar_L` therefore selects N=10 with a
 two-byte minimum and emits both bytes in six steps, while a one-byte stream is
 rejected before load.
 
-A separate product theorem covers only one initial data jump followed by
-halt. In
-`(P`, D=0 reads raw source cell 40, and successor 41 is below every reviewed
+A separate product theorem covers only one initial data jump followed by halt.
+In `(P`, D=0 reads raw source cell 40, and successor 41 is below every reviewed
 modulus. The shared XLAT2 encryption is width-independent, C advances to 1, and
-the following `v` halts before using D again. This admits N=10 without claiming
-recurrence-address equality needed by repeated jumps.
+the following `v` halts before using D again.
+
+Repeated jumps now have a separate trusted recurrence checker. It reconstructs
+only each reached initial-memory word with the product crazy primitive at both N
+and canonical 14, preserves D only on numeric equality, and rejects reads of
+already encrypted source code. `('&N` selects N=10 through three exact jumps,
+while `('O` fails at D=41 because that second read is projection-only.
 
 Within that initial-halt family, product-side minimum selection tries N=10
 through the canonical width and advances only on exact derived-capacity failure.

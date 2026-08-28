@@ -299,6 +299,12 @@ separate costs; resource evidence must measure those costs directly.
   successor
   is 41 without wrap at every reviewed width. N=10 therefore halts in two steps
   with exact D=41; no recurrence-memory equality is assumed by this proof.
+- Repeated data-jump admission now recomputes initial-memory words independently
+  at candidate N and canonical 14 before preserving exact D. `('&N` selects N=10
+  and executes three jumps plus halt because every reached recurrence read is
+  numerically equal. By contrast, `('O` (`j j v`) fails closed at D=41 with
+  `RepeatedJumpMemoryMismatch`; projected equality alone cannot authorize the
+  second jump.
 - Indexed state-graph now preserves the opaque geometry token through lineage,
   digest, trace application, and checkpoint materialization. A QP/N=10 runtime
   trace roundtrips through `IndexedMachineState` to the exact derived checkpoint

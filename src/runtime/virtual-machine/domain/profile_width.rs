@@ -43,6 +43,7 @@ use crate::profile::ProfileDescriptor;
 use crate::profile_machine::{
     ProfileLoadError, admit_profile_source, decode_profile_instruction,
 };
+use crate::word::profile_crazy;
 
 const MINIMUM_ADAPTIVE_WORD_TRITS: u8 = 10;
 const TERNARY_RADIX: u32 = 3;
@@ -62,6 +63,14 @@ enum ProfileExecutionInputPolicy {
     MinimumLength(usize),
 }
 
+struct RepeatedJumpContext<'memory> {
+    canonical_word_trits: u8,
+    memory_words: u32,
+    narrow: &'memory [u32],
+    wide: &'memory [u32],
+    word_trits: u8,
+}
+
 /// Stable proof family that independently admitted one derived geometry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProfileWidthProofKind {
@@ -75,6 +84,8 @@ pub enum ProfileWidthProofKind {
     JumpDataHaltProjection,
     /// One or more decoded no-ops precede the first reached halt.
     NoopPrefixHalt,
+    /// Repeated exact-address data jumps reach halt safely.
+    RepeatedJumpDataProjection,
     /// Straight-line no-op/input/output composition reaches halt safely.
     StraightLineIoProjection,
 }
@@ -239,6 +250,21 @@ pub enum ProfileWidthVerificationError {
     },
     /// The admitted source ended before a no-op prefix reached halt.
     NoopPrefixMissingHalt,
+    /// A repeated-jump position decoded to another instruction.
+    RepeatedJumpInstruction {
+        /// Exact loaded source position of the rejected instruction.
+        position: u32,
+        /// Exact decoded instruction byte.
+        decoded: u8,
+    },
+    /// A repeated jump read does not name the same exact initial word.
+    RepeatedJumpMemoryMismatch {
+        /// Exact data address whose initial words differed or were already
+        /// code.
+        address: u32,
+    },
+    /// The source did not provide at least two jumps followed by halt.
+    RepeatedJumpMissingHalt,
     /// The exact source fails ordinary profile-loader admission.
     Source(ProfileLoadError),
     /// A reached straight-line position decoded to an unsupported instruction.
@@ -290,6 +316,16 @@ impl Display for ProfileWidthVerificationError {
             },
             Self::NoopPrefixMissingHalt => {
                 f.write_str("derived no-op prefix does not reach halt")
+            },
+            Self::RepeatedJumpInstruction { position, decoded } => {
+                write!(f, "derived repeated-jump instruction {decoded} at ")?;
+                write!(f, "{position} is invalid")
+            },
+            Self::RepeatedJumpMemoryMismatch { address } => {
+                write!(f, "derived repeated-jump memory differs at {address}")
+            },
+            Self::RepeatedJumpMissingHalt => {
+                f.write_str("derived repeated jumps do not reach halt")
             },
             Self::Source(error) => Display::fmt(error, f),
             Self::StraightLineInstruction { position, decoded } => {
@@ -377,6 +413,26 @@ pub fn verify_minimum_input_then_halt_profile_width(
     source: &[u8],
 ) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
     verify_minimum_width(profile, source, verify_input_then_halt_profile_width)
+}
+
+/// Selects the minimum independently verified repeated-jump width.
+///
+/// Each jump retains exact D only after candidate/canonical initial-memory
+/// equality is independently recomputed. Capacity is the only widening reason.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when no reviewed candidate admits
+/// the exact source under the repeated-jump theorem.
+pub fn verify_minimum_repeated_jump_data_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    verify_minimum_width(
+        profile,
+        source,
+        verify_repeated_jump_data_profile_width,
+    )
 }
 
 /// Selects the minimum independently verified straight-line I/O width.
@@ -544,6 +600,136 @@ pub fn verify_input_then_halt_profile_width(
         proof_kind: ProfileWidthProofKind::InputThenHaltProjection,
         source: Box::from(source),
     })
+}
+
+fn verified_initial_memory_word(
+    source_words: &[u32],
+    word_trits: u8,
+    address: u32,
+) -> Result<u32, ProfileWidthVerificationError> {
+    let index = usize::try_from(address)
+        .map_err(|_error| ProfileWidthVerificationError::GeometryInvariant)?;
+    if let Some(value) = source_words.get(index).copied() {
+        return Ok(value);
+    }
+    let mut previous = source_words
+        .last()
+        .copied()
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    let older_index = source_words.len().saturating_sub(2);
+    let mut older = source_words
+        .get(older_index)
+        .copied()
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    for _position in source_words.len()..=index {
+        let next = profile_crazy(older, previous, word_trits);
+        older = previous;
+        previous = next;
+    }
+    Ok(previous)
+}
+
+fn advance_verified_jump_address(
+    context: &RepeatedJumpContext<'_>,
+    data_address: u32,
+    code_pointer: u32,
+) -> Result<u32, ProfileWidthVerificationError> {
+    if data_address < code_pointer
+        && usize::try_from(data_address)
+            .is_ok_and(|address| address < context.narrow.len())
+    {
+        return Err(
+            ProfileWidthVerificationError::RepeatedJumpMemoryMismatch {
+                address: data_address,
+            },
+        );
+    }
+    let narrow_word = verified_initial_memory_word(
+        context.narrow,
+        context.word_trits,
+        data_address,
+    )?;
+    let wide_word = verified_initial_memory_word(
+        context.wide,
+        context.canonical_word_trits,
+        data_address,
+    )?;
+    if narrow_word != wide_word {
+        return Err(
+            ProfileWidthVerificationError::RepeatedJumpMemoryMismatch {
+                address: data_address,
+            },
+        );
+    }
+    narrow_word
+        .checked_add(1)
+        .filter(|next| *next < context.memory_words)
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)
+}
+
+/// Independently verifies repeated exact data jumps followed by halt.
+///
+/// Every jump must read an unmodified exact initial word whose candidate and
+/// canonical values are numerically identical. This preserves physical D rather
+/// than relying on ternary projection alone.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when source admission, jump shape,
+/// memory equality, successor domain, or the following halt does not hold.
+pub fn verify_repeated_jump_data_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    word_trits: u8,
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let memory_words = derived_memory_words(profile, word_trits)?;
+    let narrow = admit_profile_source(source, memory_words)?;
+    let wide = admit_profile_source(source, profile.memory_words())?;
+    let context = RepeatedJumpContext {
+        canonical_word_trits: profile.word_trits(),
+        memory_words,
+        narrow: &narrow,
+        wide: &wide,
+        word_trits,
+    };
+    let mut data_address = 0u32;
+    let mut jumps = 0usize;
+    for (position, cell) in narrow.iter().copied().enumerate() {
+        let pointer = u32::try_from(position).map_err(|_error| {
+            ProfileWidthVerificationError::GeometryInvariant
+        })?;
+        let decoded = decode_profile_instruction(cell, pointer)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        if decoded == b'v' {
+            if jumps < 2 {
+                return Err(
+                    ProfileWidthVerificationError::RepeatedJumpMissingHalt,
+                );
+            }
+            return Ok(VerifiedProfileExecutionGeometry {
+                geometry: ProfileExecutionGeometry {
+                    input_policy: ProfileExecutionInputPolicy::Any,
+                    memory_words,
+                    profile,
+                    word_trits,
+                },
+                proof_kind: ProfileWidthProofKind::RepeatedJumpDataProjection,
+                source: Box::from(source),
+            });
+        }
+        if decoded != b'j' {
+            return Err(
+                ProfileWidthVerificationError::RepeatedJumpInstruction {
+                    position: pointer,
+                    decoded,
+                },
+            );
+        }
+        data_address =
+            advance_verified_jump_address(&context, data_address, pointer)?;
+        jumps = jumps.saturating_add(1);
+    }
+    Err(ProfileWidthVerificationError::RepeatedJumpMissingHalt)
 }
 
 /// Independently verifies straight-line no-op/input/output execution to halt.
