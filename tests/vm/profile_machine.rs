@@ -46,6 +46,7 @@ use super::{TestResult, check_equal, normalize_result};
 const CRAZY_TRIT_TABLE: [[u32; 3]; 3] = [[1, 0, 0], [1, 0, 2], [2, 2, 1]];
 const CURRENT_INPUT: u8 = 0xa5;
 const CURRENT_SOURCE: &[u8] = b"(=%r_L";
+const NARROWING_HALT_SOURCE: &[u8] = b"QP";
 const CURRENT_TRITS: u8 = 14;
 const CURRENT_WORDS: u32 = 4_782_969;
 const HISTORICAL_WORDS: u16 = 59_049;
@@ -254,6 +255,38 @@ fn final_observable_match_does_not_imply_projected_lockstep() -> TestResult {
     let projected = current.registers().accumulator.rem_euclid(modulus);
     if projected == historical.registers().accumulator {
         return Err(String::from("rotate unexpectedly preserved projection"));
+    }
+    Ok(())
+}
+
+#[test]
+fn halt_source_preserves_complete_projection_for_checked_endpoint_widths()
+-> TestResult {
+    for input in [vec![CURRENT_INPUT], Vec::new()] {
+        let mut historical = normalize_result(ProfileMachine::from_source(
+            historical_profile(),
+            NARROWING_HALT_SOURCE,
+            input.clone(),
+        ))?;
+        let mut current = normalize_result(ProfileMachine::from_source(
+            current_profile(),
+            NARROWING_HALT_SOURCE,
+            input,
+        ))?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+        let historical_outcome = normalize_result(historical.step())?;
+        let current_outcome = normalize_result(current.step())?;
+        check_equal(
+            &current_outcome,
+            &historical_outcome,
+            "halt fixture outcome",
+        )?;
+        check_equal(
+            &current_outcome,
+            &malbolge::StepOutcome::Terminated(Termination::HaltInstruction),
+            "halt fixture termination",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
     }
     Ok(())
 }

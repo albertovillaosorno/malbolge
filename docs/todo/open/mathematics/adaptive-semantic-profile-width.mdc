@@ -98,6 +98,12 @@ separate costs; resource evidence must measure those costs directly.
   certified narrower.
 - Required correctness evidence: differential/reference execution plus
   adversarial width-boundary tests and independent verification of certificates.
+- First projection-preserving positive fixture: source `QP` decodes to halt at
+  position zero and preserves complete current-14 to historical-10 state
+  projection before and after termination for both available-byte and EOF input.
+  Because halt performs no I/O, encryption, or pointer advance, this fixture is
+  input-independent within the tested byte-stream interface. It remains
+  research evidence rather than a product-issued certificate.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final
