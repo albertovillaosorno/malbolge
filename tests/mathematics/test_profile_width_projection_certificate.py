@@ -34,14 +34,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from itertools import product
 
-_MINIMUM_WIDTH = 10
-_MAXIMUM_WIDTH = 14
+from algorithms.profile_width.certificate import CANONICAL_WIDTH
+from algorithms.profile_width.certificate import FiniteSystem
+from algorithms.profile_width.certificate import MINIMUM_WIDTH
+from algorithms.profile_width.certificate import certificate_valid
+from algorithms.profile_width.certificate import minimum_certified_width
+
 _RADIX = 3
 _BYTE_MODULUS = 256
-_CANONICAL_WIDTH = 14
 
 
 def _power(exponent: int) -> int:
@@ -75,8 +77,8 @@ def _representative_residues(modulus: int) -> tuple[int, ...]:
 def _width_pairs() -> list[tuple[int, int]]:
     return [
         (narrow, wide)
-        for narrow in range(_MINIMUM_WIDTH, _MAXIMUM_WIDTH)
-        for wide in range(narrow + 1, _MAXIMUM_WIDTH + 1)
+        for narrow in range(MINIMUM_WIDTH, CANONICAL_WIDTH)
+        for wide in range(narrow + 1, CANONICAL_WIDTH + 1)
     ]
 
 
@@ -125,144 +127,75 @@ def test_checked_width_projection_laws_and_counterexamples() -> None:
         _check_width_pair(widths)
 
 
-@dataclass(frozen=True)
-class _FiniteSystem:
-    initial: dict[str, str]
-    observation: dict[str, tuple[int, ...]]
-    successor: dict[str, str | None]
-
-
-type _Relation = set[tuple[str, str]]
-
-
-def _initial_coverage(
-    wide: _FiniteSystem,
-    narrow: _FiniteSystem,
-    relation: _Relation,
-) -> bool:
-    if set(wide.initial) != set(narrow.initial):
-        return False
-    return all(
-        (wide_state, narrow.initial[input_id]) in relation
-        for input_id, wide_state in wide.initial.items()
-    )
-
-
-def _state_present(system: _FiniteSystem, state: str) -> bool:
-    return state in system.observation and state in system.successor
-
-
-def _successors_match(
-    successors: tuple[str | None, str | None],
-    relation: _Relation,
-) -> bool:
-    wide_next, narrow_next = successors
-    if wide_next is None or narrow_next is None:
-        return wide_next is None and narrow_next is None
-    return (wide_next, narrow_next) in relation
-
-
-def _pair_obligation(
-    systems: tuple[_FiniteSystem, _FiniteSystem],
-    relation: _Relation,
-    pair: tuple[str, str],
-) -> bool:
-    wide, narrow = systems
-    wide_state, narrow_state = pair
-    if not (
-        _state_present(wide, wide_state)
-        and _state_present(narrow, narrow_state)
-    ):
-        return False
-    observations_equal = (
-        wide.observation[wide_state] == narrow.observation[narrow_state]
-    )
-    successors = (
-        wide.successor[wide_state],
-        narrow.successor[narrow_state],
-    )
-    return observations_equal and _successors_match(successors, relation)
-
-
-def _certificate_valid(
-    wide: _FiniteSystem,
-    narrow: _FiniteSystem,
-    relation: _Relation,
-) -> bool:
-    return _initial_coverage(wide, narrow, relation) and all(
-        _pair_obligation((wide, narrow), relation, pair) for pair in relation
-    )
-
-
-def _equivalent_fixture() -> tuple[_FiniteSystem, _FiniteSystem, _Relation]:
-    wide = _FiniteSystem(
+def _equivalent_fixture() -> tuple[
+    FiniteSystem,
+    FiniteSystem,
+    frozenset[tuple[str, str]],
+]:
+    wide = FiniteSystem(
         initial={"empty": "w0", "byte": "w1"},
         observation={"w0": (0,), "w1": (1,), "w2": (2,)},
         successor={"w0": "w1", "w1": "w2", "w2": None},
     )
-    narrow = _FiniteSystem(
+    narrow = FiniteSystem(
         initial={"empty": "n0", "byte": "n1"},
         observation={"n0": (0,), "n1": (1,), "n2": (2,)},
         successor={"n0": "n1", "n1": "n2", "n2": None},
     )
-    relation = {("w0", "n0"), ("w1", "n1"), ("w2", "n2")}
+    relation = frozenset({("w0", "n0"), ("w1", "n1"), ("w2", "n2")})
     return wide, narrow, relation
 
 
 def test_finite_bisimulation_certificate_accepts_closed_relation() -> None:
     """A complete observation-preserving transition relation is accepted."""
     wide, narrow, relation = _equivalent_fixture()
-    assert _certificate_valid(wide, narrow, relation)
+    assert certificate_valid(wide, narrow, relation)
 
 
 def test_finite_bisimulation_certificate_rejects_missing_obligation() -> None:
     """Missing initial, observation, transition, or termination data fails."""
     wide, narrow, relation = _equivalent_fixture()
-    assert not _certificate_valid(wide, narrow, relation - {("w1", "n1")})
+    assert not certificate_valid(wide, narrow, relation - {("w1", "n1")})
 
-    wrong_observation = _FiniteSystem(
+    wrong_observation = FiniteSystem(
         initial=narrow.initial,
         observation={**narrow.observation, "n1": (9,)},
         successor=narrow.successor,
     )
-    assert not _certificate_valid(wide, wrong_observation, relation)
+    assert not certificate_valid(wide, wrong_observation, relation)
 
-    wrong_transition = _FiniteSystem(
+    wrong_transition = FiniteSystem(
         initial=narrow.initial,
         observation=narrow.observation,
         successor={**narrow.successor, "n1": "n1"},
     )
-    assert not _certificate_valid(wide, wrong_transition, relation)
+    assert not certificate_valid(wide, wrong_transition, relation)
 
-    wrong_termination = _FiniteSystem(
+    wrong_termination = FiniteSystem(
         initial=narrow.initial,
         observation=narrow.observation,
         successor={**narrow.successor, "n2": "n2"},
     )
-    assert not _certificate_valid(wide, wrong_termination, relation)
-
-
-def _minimum_certified_width(results: dict[int, bool]) -> int:
-    candidates = set(range(_MINIMUM_WIDTH, _CANONICAL_WIDTH))
-    if set(results) != candidates:
-        return _CANONICAL_WIDTH
-    certified = {width for width, accepted in results.items() if accepted}
-    return min(certified, default=_CANONICAL_WIDTH)
+    assert not certificate_valid(wide, wrong_termination, relation)
 
 
 def test_minimum_certified_width_is_independent_and_fail_closed() -> None:
     """Select the minimum proved width without a monotonicity assumption."""
-    rejected = dict.fromkeys(range(_MINIMUM_WIDTH, _CANONICAL_WIDTH), False)
-    assert _minimum_certified_width(rejected) == _CANONICAL_WIDTH
+    rejected = dict.fromkeys(range(MINIMUM_WIDTH, CANONICAL_WIDTH), False)
+    assert minimum_certified_width(rejected) == CANONICAL_WIDTH
 
     nonmonotone = {10: False, 11: True, 12: False, 13: True}
-    assert _minimum_certified_width(nonmonotone) == _MINIMUM_WIDTH + 1
+    assert minimum_certified_width(nonmonotone) == MINIMUM_WIDTH + 1
 
     several = {10: True, 11: False, 12: True, 13: True}
-    assert _minimum_certified_width(several) == _MINIMUM_WIDTH
+    assert minimum_certified_width(several) == MINIMUM_WIDTH
 
     missing = {10: True, 11: True, 12: True}
-    assert _minimum_certified_width(missing) == _CANONICAL_WIDTH
+    assert minimum_certified_width(missing) == CANONICAL_WIDTH
 
     extra = {10: True, 11: True, 12: True, 13: True, 14: True}
-    assert _minimum_certified_width(extra) == _CANONICAL_WIDTH
+    assert minimum_certified_width(extra) == CANONICAL_WIDTH
+
+    invalid_type: dict[int, bool] = {10: True, 11: True, 12: True, 13: True}
+    invalid_type[13] = 1  # pyright: ignore[reportArgumentType] - invalid runtime fixture.
+    assert minimum_certified_width(invalid_type) == CANONICAL_WIDTH
