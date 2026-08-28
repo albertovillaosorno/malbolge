@@ -1,3 +1,22 @@
-CmdLine {
-  -q
+# Repository LaTeX parsing vocabulary. Jig owns the strict warning profile.
+CmdLine { -q }
+
+# Commands that intentionally consume following source whitespace.
+Silent { \maketitle \toprule \midrule \bottomrule }
+
+# English prose dash conventions; mathematical minus signs are parsed in math.
+HyphDash { 1 3 }
+NumDash { 2 }
+WordDash { 3 }
+
+# Standard mathematical environments used by repository-authored sources.
+MathEnvir {
+  displaymath math eqnarray array equation
+  align alignat gather flalign multline
 }
+
+# Arguments whose contents switch back to prose while nested in mathematics.
+TextCmd { \text \intertext \shortintertext \mbox }
+
+# Environments whose contents are not ordinary LaTeX prose.
+VerbEnvir { verbatim comment filecontents tikzpicture minted lstlisting }
