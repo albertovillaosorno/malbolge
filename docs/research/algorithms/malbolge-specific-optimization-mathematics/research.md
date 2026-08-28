@@ -181,18 +181,17 @@ equivalence for the finite certified relation. This theorem defines a
 fail-closed proof shape; no concrete program or product selector is certified
 by it yet.
 
-The experimental checker now has a strict JSON schema-v1 input surface. It
-accepts only declared wide/narrow widths, explicit input IDs, named observation
-coordinates, both finite systems, and the cross-width relation; malformed or
-ambiguous surfaces fail closed. A retained `QP` fixture exercises that parser,
+The experimental checker retains strict JSON schema v1 as structural relation
+evidence and adds schema v2 for exact subject binding. V2 carries a proof kind,
+source bytes, exact input streams, widths, named observations, finite systems,
+and their relation. The retained `QP` v2 fixture binds those bytes explicitly,
 while an independent Rust VM test proves complete 14-to-10 projection before
-and after the halt. The subject ID is descriptive provenance, not verifier
-authority.
+and after the halt.
 
-Positive research selection additionally requires the certificate
-itself: a bare boolean `true` has no acceptance authority. Explicit `false`
-records rejection, while missing decisions, candidate/certificate width drift,
-or malformed certificates return the canonical width 14.
+Positive research selection also receives the externally requested source and
+input domain. A v2 certificate can authorize only that byte-exact subject, and
+its proof kind must be recognized and checked; legacy v1, a bare boolean `true`,
+missing decisions, subject drift, or width drift all return canonical width 14.
 
 A theorem-specific checker independently certifies initial-halt sources from
 checked widths, source capacity/admission, position-dependent decode, and a

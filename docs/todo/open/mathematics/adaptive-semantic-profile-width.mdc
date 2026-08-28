@@ -104,20 +104,23 @@ separate costs; resource evidence must measure those costs directly.
   Because halt performs no I/O, encryption, or pointer advance, this fixture is
   input-independent within the tested byte-stream interface. It remains
   research evidence rather than a product-issued certificate.
-- Research certificate schema v1 is now executable through
-  `algorithms.profile_width.certificate`. It declares exact wide/narrow widths,
-  an explicit input-domain ID set, named observation fields, both finite state
-  systems, and the cross-width relation. Parsing rejects unknown fields,
-  duplicate inputs/relation pairs, ambiguous scalar types, malformed state
-  surfaces, observation-arity drift, and invalid width ordering. The versioned
-  `qp-width-certificate-v1.json` fixture is accepted by that checker and is tied
-  to the independent VM projection fixture above; neither the JSON subject ID
-  nor research acceptance grants trusted runtime-selection authority.
-- The research selector now consumes exact decisions for all candidate widths
-  10 through 13. `False` is an explicit rejection; positive selection requires
-  a structurally valid certificate whose declared narrow width matches that
-  candidate and whose wide width is canonical 14. Bare `True`, missing
-  decisions, width mismatches, or malformed certificates fail closed to 14.
+- Research certificate schema v1 remains parseable as structural relation
+  evidence. Schema v2 adds an explicit proof kind plus exact source bytes and
+  exact `input_id -> byte stream` bindings. Positive selection accepts only v2
+  certificates whose binding matches the externally requested source/input
+  subject byte-for-byte; v1 has no positive selection authority. The retained
+  `qp-width-certificate-v2.json` binds source `QP`, byte input `0xA5`, EOF, and
+  proof kind `initial-halt-projection-v1`.
+- Certificate parsing rejects unknown fields, ambiguous scalar types, malformed
+  state surfaces, binding drift, or unknown proof kinds. Neither schema grants
+  trusted runtime-selection authority.
+- The research selector consumes the externally requested source/input subject
+  plus exact decisions for all candidate widths 10 through 13. `False` is an
+  explicit rejection; positive selection requires a bound v2 certificate whose
+  source/input bytes match that subject, whose narrow width matches the
+  candidate, whose wide width is canonical 14, and whose recognized proof kind
+  validates. Bare `True`, legacy v1, missing decisions, subject drift, width
+  mismatches, or malformed certificates fail closed to 14.
 - A theorem-specific research checker certifies the initial-halt family without
   trusting final differential equality. It checks widths, source capacity and
   lexical admission, every position-dependent loader decode, and an initial `v`

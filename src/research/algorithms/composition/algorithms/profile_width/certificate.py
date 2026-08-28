@@ -44,8 +44,10 @@ if TYPE_CHECKING:
 
 MINIMUM_WIDTH: Final = 10
 CANONICAL_WIDTH: Final = 14
-CERTIFICATE_SCHEMA_VERSION: Final = 1
-_CERTIFICATE_KEYS: Final = frozenset(
+LEGACY_CERTIFICATE_SCHEMA_VERSION: Final = 1
+CERTIFICATE_SCHEMA_VERSION: Final = 2
+INITIAL_HALT_PROOF_KIND: Final = "initial-halt-projection-v1"
+_CERTIFICATE_KEYS_V1: Final = frozenset(
     {
         "schema_version",
         "subject_id",
@@ -58,6 +60,10 @@ _CERTIFICATE_KEYS: Final = frozenset(
         "relation",
     }
 )
+_CERTIFICATE_KEYS_V2: Final = _CERTIFICATE_KEYS_V1 | frozenset(
+    {"proof_kind", "source_bytes", "inputs"}
+)
+_BYTE_MAX: Final = 255
 _GRAPHICAL_MIN: Final = 33
 _GRAPHICAL_MAX: Final = 126
 _MINIMUM_SOURCE_WORDS: Final = 2
@@ -87,6 +93,14 @@ class FiniteSystem:
 
 
 @dataclass(frozen=True, slots=True)
+class WidthCertificateSubject:
+    """Exact source and input-domain identity requested by width selection."""
+
+    source: bytes
+    inputs: Mapping[str, bytes]
+
+
+@dataclass(frozen=True, slots=True)
 class FiniteWidthCertificate:
     """One parsed research-only finite profile-width certificate."""
 
@@ -99,6 +113,9 @@ class FiniteWidthCertificate:
     wide_width: int
     wide: FiniteSystem
     narrow: FiniteSystem
+    proof_kind: str | None = None
+    source_bytes: tuple[int, ...] | None = None
+    inputs: Mapping[str, tuple[int, ...]] | None = None
 
 
 def _exact_int(value: JsonValue) -> int | None:
@@ -137,6 +154,31 @@ def _integer_tuple(value: JsonValue) -> tuple[int, ...] | None:
     if any(item is None for item in parsed):
         return None
     return tuple(item for item in parsed if item is not None)
+
+
+def _parse_bytes(value: JsonValue) -> tuple[int, ...] | None:
+    if not isinstance(value, list):
+        return None
+    parsed = tuple(_exact_int(item) for item in value)
+    if any(item is None for item in parsed):
+        return None
+    integers = tuple(item for item in parsed if item is not None)
+    valid = all(0 <= item <= _BYTE_MAX for item in integers)
+    return integers if valid else None
+
+
+def _parse_input_streams(
+    value: JsonValue,
+) -> dict[str, tuple[int, ...]] | None:
+    if not isinstance(value, dict):
+        return None
+    parsed: dict[str, tuple[int, ...]] = {}
+    for key, item in value.items():
+        stream = _parse_bytes(item)
+        if stream is None:
+            return None
+        parsed[key] = stream
+    return parsed
 
 
 def _parse_observations(
@@ -220,45 +262,62 @@ def _certificate_parts_valid(
     return all(part is not None for part in parts)
 
 
-def parse_finite_width_certificate(
-    value: JsonValue,
+def _parse_common_certificate_fields(
+    raw: dict[str, JsonValue],
+) -> tuple[
+    str | None,
+    int | None,
+    int | None,
+    tuple[str, ...] | None,
+    tuple[str, ...] | None,
+    FiniteSystem | None,
+    FiniteSystem | None,
+    WidthRelation | None,
+]:
+    return (
+        _string(raw["subject_id"]),
+        _exact_int(raw["wide_width"]),
+        _exact_int(raw["narrow_width"]),
+        _parse_unique_strings(raw["input_ids"]),
+        _parse_unique_strings(raw["observation_fields"]),
+        _parse_system(raw["wide"]),
+        _parse_system(raw["narrow"]),
+        _parse_relation(raw["relation"]),
+    )
+
+
+def _build_certificate(
+    schema_version: int,
+    common: tuple[
+        str | None,
+        int | None,
+        int | None,
+        tuple[str, ...] | None,
+        tuple[str, ...] | None,
+        FiniteSystem | None,
+        FiniteSystem | None,
+        WidthRelation | None,
+    ],
+    binding: tuple[
+        str,
+        tuple[int, ...],
+        Mapping[str, tuple[int, ...]],
+    ] | None = None,
 ) -> FiniteWidthCertificate | None:
-    """Parse one strict schema-v1 research certificate or fail closed.
-
-    Returns:
-        The parsed certificate, or None when schema or values are invalid.
-
-    """
-    raw = _exact_object(value, _CERTIFICATE_KEYS)
-    if raw is None:
+    if not _certificate_parts_valid(common):
         return None
-    schema_version = _exact_int(raw["schema_version"])
-    subject_id = _string(raw["subject_id"])
-    wide_width = _exact_int(raw["wide_width"])
-    narrow_width = _exact_int(raw["narrow_width"])
-    input_ids = _parse_unique_strings(raw["input_ids"])
-    observation_fields = _parse_unique_strings(raw["observation_fields"])
-    wide = _parse_system(raw["wide"])
-    narrow = _parse_system(raw["narrow"])
-    relation = _parse_relation(raw["relation"])
-    if (
-        schema_version != CERTIFICATE_SCHEMA_VERSION
-        or not _certificate_parts_valid(
-            (
-                subject_id,
-                wide_width,
-                narrow_width,
-                input_ids,
-                observation_fields,
-                wide,
-                narrow,
-                relation,
-            )
-        )
-    ):
-        return None
+    (
+        subject_id,
+        wide_width,
+        narrow_width,
+        input_ids,
+        observation_fields,
+        wide,
+        narrow,
+        relation,
+    ) = common
     return FiniteWidthCertificate(
-        schema_version=cast("int", schema_version),
+        schema_version=schema_version,
         input_ids=cast("tuple[str, ...]", input_ids),
         observation_fields=cast("tuple[str, ...]", observation_fields),
         narrow_width=cast("int", narrow_width),
@@ -267,7 +326,98 @@ def parse_finite_width_certificate(
         wide_width=cast("int", wide_width),
         wide=cast("FiniteSystem", wide),
         narrow=cast("FiniteSystem", narrow),
+        proof_kind=binding[0] if binding is not None else None,
+        source_bytes=binding[1] if binding is not None else None,
+        inputs=binding[2] if binding is not None else None,
     )
+
+
+def _parse_v1_certificate(value: JsonValue) -> FiniteWidthCertificate | None:
+    raw = _exact_object(value, _CERTIFICATE_KEYS_V1)
+    if raw is None:
+        return None
+    return _build_certificate(
+        LEGACY_CERTIFICATE_SCHEMA_VERSION,
+        _parse_common_certificate_fields(raw),
+    )
+
+
+def _parse_v2_certificate(value: JsonValue) -> FiniteWidthCertificate | None:
+    raw = _exact_object(value, _CERTIFICATE_KEYS_V2)
+    if raw is None:
+        return None
+    proof_kind = _string(raw["proof_kind"])
+    source_bytes = _parse_bytes(raw["source_bytes"])
+    inputs = _parse_input_streams(raw["inputs"])
+    if proof_kind is None or source_bytes is None or inputs is None:
+        return None
+    return _build_certificate(
+        CERTIFICATE_SCHEMA_VERSION,
+        _parse_common_certificate_fields(raw),
+        (proof_kind, source_bytes, inputs),
+    )
+
+
+def parse_finite_width_certificate(
+    value: JsonValue,
+) -> FiniteWidthCertificate | None:
+    """Parse one versioned research certificate or fail closed.
+
+    Returns:
+        The parsed certificate, or None when schema or values are invalid.
+
+    """
+    parsed = None
+    if isinstance(value, dict):
+        schema_version = _exact_int(value.get("schema_version"))
+        if schema_version == LEGACY_CERTIFICATE_SCHEMA_VERSION:
+            parsed = _parse_v1_certificate(value)
+        elif schema_version == CERTIFICATE_SCHEMA_VERSION:
+            parsed = _parse_v2_certificate(value)
+    return parsed
+
+
+def _byte_tuple_valid(values: tuple[int, ...], *, allow_empty: bool) -> bool:
+    if not allow_empty and not values:
+        return False
+    return all(
+        type(value) is int and 0 <= value <= _BYTE_MAX
+        for value in values
+    )
+
+
+def _bound_fields_valid(
+    source: tuple[int, ...],
+    inputs: Mapping[str, tuple[int, ...]],
+    input_ids: tuple[str, ...],
+) -> bool:
+    inputs_match = set(inputs) == set(input_ids)
+    streams_valid = all(
+        _byte_tuple_valid(stream, allow_empty=True)
+        for stream in inputs.values()
+    )
+    return (
+        _byte_tuple_valid(source, allow_empty=False)
+        and inputs_match
+        and streams_valid
+    )
+
+
+def _binding_metadata_valid(certificate: FiniteWidthCertificate) -> bool:
+    valid = False
+    if certificate.schema_version == LEGACY_CERTIFICATE_SCHEMA_VERSION:
+        valid = (
+            certificate.proof_kind is None
+            and certificate.source_bytes is None
+            and certificate.inputs is None
+        )
+    elif certificate.schema_version == CERTIFICATE_SCHEMA_VERSION:
+        source = certificate.source_bytes
+        inputs = certificate.inputs
+        proof_kind = certificate.proof_kind
+        if proof_kind is not None and source is not None and inputs is not None:
+            valid = _bound_fields_valid(source, inputs, certificate.input_ids)
+    return valid
 
 
 def finite_width_certificate_valid(certificate: FiniteWidthCertificate) -> bool:
@@ -279,13 +429,13 @@ def finite_width_certificate_valid(certificate: FiniteWidthCertificate) -> bool:
 
     """
     metadata_valid = (
-        certificate.schema_version == CERTIFICATE_SCHEMA_VERSION
-        and bool(certificate.subject_id)
+        bool(certificate.subject_id)
         and bool(certificate.input_ids)
         and len(set(certificate.input_ids)) == len(certificate.input_ids)
         and bool(certificate.observation_fields)
         and len(set(certificate.observation_fields))
         == len(certificate.observation_fields)
+        and _binding_metadata_valid(certificate)
     )
     widths_valid = (
         MINIMUM_WIDTH <= certificate.narrow_width < certificate.wide_width
@@ -458,9 +608,53 @@ def minimum_certified_width(results: Mapping[int, bool]) -> int:
     return min(certified, default=CANONICAL_WIDTH)
 
 
+def bound_width_certificate_valid(
+    certificate: FiniteWidthCertificate,
+) -> bool:
+    """Check one source-bound certificate through a recognized proof kind.
+
+    Returns:
+        True only when structural evidence and theorem-specific premises pass.
+
+    """
+    recognized = (
+        certificate.schema_version == CERTIFICATE_SCHEMA_VERSION
+        and certificate.proof_kind == INITIAL_HALT_PROOF_KIND
+    )
+    if not finite_width_certificate_valid(certificate) or not recognized:
+        return False
+    source = certificate.source_bytes
+    if source is None:
+        return False
+    return initial_halt_projection_certifiable(
+        bytes(source),
+        certificate.narrow_width,
+        certificate.wide_width,
+    )
+
+
+def _certificate_matches_subject(
+    certificate: FiniteWidthCertificate,
+    subject: WidthCertificateSubject,
+) -> bool:
+    source = certificate.source_bytes
+    inputs = certificate.inputs
+    if source is None or inputs is None:
+        return False
+    if set(inputs) != set(subject.inputs):
+        return False
+    source_matches = source == tuple(subject.source)
+    inputs_match = all(
+        inputs[input_id] == tuple(stream)
+        for input_id, stream in subject.inputs.items()
+    )
+    return source_matches and inputs_match
+
+
 def _certificate_decision(
     width: int,
     decision: WidthCertificateDecision,
+    subject: WidthCertificateSubject,
 ) -> bool | None:
     if decision is False:
         return False
@@ -470,18 +664,23 @@ def _certificate_decision(
         decision.narrow_width == width
         and decision.wide_width == CANONICAL_WIDTH
     )
-    accepted = width_matches and finite_width_certificate_valid(decision)
+    accepted = (
+        width_matches
+        and bound_width_certificate_valid(decision)
+        and _certificate_matches_subject(decision, subject)
+    )
     return True if accepted else None
 
 
 def minimum_width_from_certificates(
+    subject: WidthCertificateSubject,
     decisions: Mapping[int, WidthCertificateDecision],
 ) -> int:
-    """Select the minimum width from certificates or explicit rejections.
+    """Select the minimum width for one exact source/input subject.
 
     Returns:
         The minimum independently proved width, or fourteen on incomplete,
-        mismatched, or authority-free acceptance data.
+        mismatched, authority-free, or wrong-subject acceptance data.
 
     """
     candidates = set(range(MINIMUM_WIDTH, CANONICAL_WIDTH))
@@ -489,7 +688,7 @@ def minimum_width_from_certificates(
         return CANONICAL_WIDTH
     results: dict[int, bool] = {}
     for width in candidates:
-        result = _certificate_decision(width, decisions[width])
+        result = _certificate_decision(width, decisions[width], subject)
         if result is None:
             return CANONICAL_WIDTH
         results[width] = result

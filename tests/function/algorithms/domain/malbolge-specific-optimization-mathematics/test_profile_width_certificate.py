@@ -42,8 +42,11 @@ from typing import TYPE_CHECKING
 from typing import cast
 
 from algorithms.profile_width.certificate import CANONICAL_WIDTH
+from algorithms.profile_width.certificate import CERTIFICATE_SCHEMA_VERSION
 from algorithms.profile_width.certificate import FiniteSystem
 from algorithms.profile_width.certificate import MINIMUM_WIDTH
+from algorithms.profile_width.certificate import WidthCertificateSubject
+from algorithms.profile_width.certificate import bound_width_certificate_valid
 from algorithms.profile_width.certificate import certificate_valid
 from algorithms.profile_width.certificate import finite_width_certificate_valid
 from algorithms.profile_width.certificate import (
@@ -56,7 +59,10 @@ from algorithms.profile_width.certificate import parse_finite_width_certificate
 from verifier.emitted_malbolge_classic import decode as verifier_decode
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from algorithms.profile_width.certificate import JsonValue
+    from algorithms.profile_width.certificate import WidthCertificateDecision
 
 
 def test_certificate_fails_closed_when_state_surface_is_missing() -> None:
@@ -85,24 +91,42 @@ def test_selector_fails_closed_on_missing_or_invalid_result() -> None:
     assert minimum_certified_width(invalid) == CANONICAL_WIDTH
 
 
-_FIXTURE = Path(__file__).with_name("fixtures") / "qp-width-certificate-v1.json"
+_FIXTURES = Path(__file__).with_name("fixtures")
+_FIXTURE_V1 = _FIXTURES / "qp-width-certificate-v1.json"
+_FIXTURE_V2 = _FIXTURES / "qp-width-certificate-v2.json"
 _QP_SUBJECT_ID = "qp-halt-current14-to-historical10"
 _GRAPHICAL = range(33, 127)
 _LOAD_OPCODES = frozenset(b"ji*p</vo")
 _DECODE_PHASES = 94
 
 
-def _fixture_value() -> dict[str, JsonValue]:
-    loaded = cast("JsonValue", json.loads(_FIXTURE.read_text(encoding="utf-8")))
+def _qp_subject() -> WidthCertificateSubject:
+    return WidthCertificateSubject(
+        source=b"QP",
+        inputs={"byte-a5": bytes((165,)), "eof": b""},
+    )
+
+
+def _selected_width(
+    decisions: Mapping[int, WidthCertificateDecision],
+) -> int:
+    return minimum_width_from_certificates(_qp_subject(), decisions)
+
+
+def _fixture_value(path: Path = _FIXTURE_V2) -> dict[str, JsonValue]:
+    loaded = cast("JsonValue", json.loads(path.read_text(encoding="utf-8")))
     assert isinstance(loaded, dict)
     return loaded
 
 
 def test_qp_fixture_is_accepted_by_research_certificate_checker() -> None:
-    """The projection-preserving QP fixture forms a closed finite relation."""
+    """The source-bound QP fixture forms a proved closed finite relation."""
     certificate = parse_finite_width_certificate(_fixture_value())
     assert certificate is not None
+    assert certificate.schema_version == CERTIFICATE_SCHEMA_VERSION
     assert certificate.subject_id == _QP_SUBJECT_ID
+    assert certificate.source_bytes == (81, 80)
+    assert certificate.inputs == {"byte-a5": (165,), "eof": ()}
     assert (
         certificate.wide.initial["byte-a5"]
         != certificate.wide.initial["eof"]
@@ -112,6 +136,17 @@ def test_qp_fixture_is_accepted_by_research_certificate_checker() -> None:
         != certificate.narrow.initial["eof"]
     )
     assert finite_width_certificate_valid(certificate)
+    assert bound_width_certificate_valid(certificate)
+
+
+def test_legacy_v1_is_structural_evidence_but_cannot_select_width() -> None:
+    """Legacy relation evidence cannot grant positive width authority."""
+    certificate = parse_finite_width_certificate(_fixture_value(_FIXTURE_V1))
+    assert certificate is not None
+    assert finite_width_certificate_valid(certificate)
+    assert not bound_width_certificate_valid(certificate)
+    decisions = {10: certificate, 11: False, 12: False, 13: False}
+    assert _selected_width(decisions) == CANONICAL_WIDTH
 
 
 def test_certificate_parser_rejects_schema_and_surface_drift() -> None:
@@ -161,18 +196,58 @@ def test_certificate_parser_rejects_ambiguous_scalar_types_and_widths() -> None:
     assert not finite_width_certificate_valid(certificate)
 
 
+def test_bound_certificate_rejects_source_subject_drift() -> None:
+    """A different source cannot authorize the requested QP subject."""
+    wrong_source = copy.deepcopy(_fixture_value())
+    wrong_source["source_bytes"] = [80, 80]
+    certificate = parse_finite_width_certificate(wrong_source)
+    assert certificate is not None
+    assert not bound_width_certificate_valid(certificate)
+    decisions = {10: certificate, 11: False, 12: False, 13: False}
+    assert _selected_width(decisions) == CANONICAL_WIDTH
+
+
+def test_selector_rejects_exact_input_subject_drift() -> None:
+    """A valid certificate for another input stream cannot select QP."""
+    wrong_inputs = copy.deepcopy(_fixture_value())
+    wrong_inputs["inputs"] = {"byte-a5": [164], "eof": []}
+    certificate = parse_finite_width_certificate(wrong_inputs)
+    assert certificate is not None
+    assert bound_width_certificate_valid(certificate)
+    assert certificate.inputs != {"byte-a5": (165,), "eof": ()}
+    decisions = {10: certificate, 11: False, 12: False, 13: False}
+    assert _selected_width(decisions) == CANONICAL_WIDTH
+
+
+def test_bound_certificate_rejects_unknown_proof_and_input_surface() -> None:
+    """Unknown proof kinds or incomplete input bindings fail closed."""
+    base = _fixture_value()
+    unknown_proof = copy.deepcopy(base)
+    unknown_proof["proof_kind"] = "unknown-proof-v1"
+    certificate = parse_finite_width_certificate(unknown_proof)
+    assert certificate is not None
+    assert finite_width_certificate_valid(certificate)
+    assert not bound_width_certificate_valid(certificate)
+
+    missing_input = copy.deepcopy(base)
+    missing_input["inputs"] = {"eof": []}
+    certificate = parse_finite_width_certificate(missing_input)
+    assert certificate is not None
+    assert not finite_width_certificate_valid(certificate)
+
+
 def test_selector_requires_certificates_for_positive_width_decisions() -> None:
     """A bare true result cannot replace a checked certificate."""
     certificate = parse_finite_width_certificate(_fixture_value())
     assert certificate is not None
     decisions = {10: certificate, 11: False, 12: False, 13: False}
-    assert minimum_width_from_certificates(decisions) == MINIMUM_WIDTH
+    assert _selected_width(decisions) == MINIMUM_WIDTH
 
     authority_free = {10: True, 11: False, 12: False, 13: False}
-    assert minimum_width_from_certificates(authority_free) == CANONICAL_WIDTH
+    assert _selected_width(authority_free) == CANONICAL_WIDTH
 
     missing = {10: certificate, 11: False, 12: False}
-    assert minimum_width_from_certificates(missing) == CANONICAL_WIDTH
+    assert _selected_width(missing) == CANONICAL_WIDTH
 
 
 def test_selector_rejects_certificate_width_mismatch() -> None:
@@ -180,7 +255,7 @@ def test_selector_rejects_certificate_width_mismatch() -> None:
     certificate = parse_finite_width_certificate(_fixture_value())
     assert certificate is not None
     decisions = {10: False, 11: certificate, 12: False, 13: False}
-    assert minimum_width_from_certificates(decisions) == CANONICAL_WIDTH
+    assert _selected_width(decisions) == CANONICAL_WIDTH
 
 
 def test_initial_halt_checker_certifies_qp_from_semantic_premises() -> None:

@@ -1,0 +1,112 @@
+{
+  "schema_version": 2,
+  "subject_id": "qp-halt-current14-to-historical10",
+  "wide_width": 14,
+  "narrow_width": 10,
+  "input_ids": [
+    "byte-a5",
+    "eof"
+  ],
+  "observation_fields": [
+    "input_consumed",
+    "output_len",
+    "termination"
+  ],
+  "wide": {
+    "initial": {
+      "byte-a5": "w-byte-0",
+      "eof": "w-eof-0"
+    },
+    "observation": {
+      "w-byte-0": [
+        0,
+        0,
+        0
+      ],
+      "w-byte-1": [
+        0,
+        0,
+        1
+      ],
+      "w-eof-0": [
+        0,
+        0,
+        0
+      ],
+      "w-eof-1": [
+        0,
+        0,
+        1
+      ]
+    },
+    "successor": {
+      "w-byte-0": "w-byte-1",
+      "w-byte-1": null,
+      "w-eof-0": "w-eof-1",
+      "w-eof-1": null
+    }
+  },
+  "narrow": {
+    "initial": {
+      "byte-a5": "n-byte-0",
+      "eof": "n-eof-0"
+    },
+    "observation": {
+      "n-byte-0": [
+        0,
+        0,
+        0
+      ],
+      "n-byte-1": [
+        0,
+        0,
+        1
+      ],
+      "n-eof-0": [
+        0,
+        0,
+        0
+      ],
+      "n-eof-1": [
+        0,
+        0,
+        1
+      ]
+    },
+    "successor": {
+      "n-byte-0": "n-byte-1",
+      "n-byte-1": null,
+      "n-eof-0": "n-eof-1",
+      "n-eof-1": null
+    }
+  },
+  "relation": [
+    [
+      "w-byte-0",
+      "n-byte-0"
+    ],
+    [
+      "w-byte-1",
+      "n-byte-1"
+    ],
+    [
+      "w-eof-0",
+      "n-eof-0"
+    ],
+    [
+      "w-eof-1",
+      "n-eof-1"
+    ]
+  ],
+  "proof_kind": "initial-halt-projection-v1",
+  "source_bytes": [
+    81,
+    80
+  ],
+  "inputs": {
+    "byte-a5": [
+      165
+    ],
+    "eof": []
+  }
+}
