@@ -56,6 +56,7 @@ const NARROWING_UNGUARDED_CRAZY_HALT_SOURCE: &[u8] = b">P";
 const NARROWING_JUMP_CRAZY_HALT_SOURCE: &[u8] = b"(=O";
 const NARROWING_JUMP_CRAZY_CRAZY_HALT_SOURCE: &[u8] = b"(=<N";
 const NARROWING_REPEATED_JUMP_DATA_SOURCE: &[u8] = b"('&N";
+const NARROWING_PROJECTED_D_CRAZY_SOURCE: &[u8] = b"('<AM";
 const NARROWING_NOOP_PREFIX_HALT_SOURCE: &[u8] = b"DCBA@?>=I";
 const NOOP_PREFIX_STEPS: u8 = 8;
 const CURRENT_TRITS: u8 = 14;
@@ -266,6 +267,53 @@ fn final_observable_match_does_not_imply_projected_lockstep() -> TestResult {
     let projected = current.registers().accumulator.rem_euclid(modulus);
     if projected == historical.registers().accumulator {
         return Err(String::from("rotate unexpectedly preserved projection"));
+    }
+    Ok(())
+}
+
+#[test]
+fn projected_data_pointer_breaks_crazy_physical_read_projection() -> TestResult
+{
+    let mut historical = normalize_result(ProfileMachine::from_source(
+        historical_profile(),
+        NARROWING_PROJECTED_D_CRAZY_SOURCE,
+        Vec::new(),
+    ))?;
+    let mut current = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        NARROWING_PROJECTED_D_CRAZY_SOURCE,
+        Vec::new(),
+    ))?;
+    check_current_projects_to_historical_state(&current, &historical)?;
+    for _ in 0u8..2 {
+        let historical_jump = normalize_result(historical.step())?;
+        let current_jump = normalize_result(current.step())?;
+        check_equal(&current_jump, &historical_jump, "projected-D jump")?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+    }
+    let historical_crazy = normalize_result(historical.step())?;
+    let current_crazy = normalize_result(current.step())?;
+    check_equal(
+        &current_crazy,
+        &historical_crazy,
+        "projected-D crazy outcome",
+    )?;
+    check_equal(
+        &current_crazy,
+        &malbolge::StepOutcome::Continued,
+        "projected-D crazy continued",
+    )?;
+    let modulus = u32::from(HISTORICAL_WORDS);
+    let projected_accumulator =
+        current.registers().accumulator.rem_euclid(modulus);
+    check_equal(
+        &projected_accumulator,
+        &historical.registers().accumulator,
+        "projected-D crazy accumulator",
+    )?;
+    if check_current_projects_to_historical_state(&current, &historical).is_ok()
+    {
+        return Err(String::from("projected-D memory unexpectedly projected"));
     }
     Ok(())
 }

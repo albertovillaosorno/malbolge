@@ -223,14 +223,21 @@ The compositional straight-line checker subsumes those small cases for programs
 whose decoded prefix uses `o`, `/`, `<`, one guarded `j`, and guarded `p` before
 `v`. It tracks input position and whether A is byte-exact; output is legal only
 in that exact state.
-All 340 prefixes of lengths one through four over `o`, `/`, `<`, and `j` are
-checked for stream lengths zero through two using source encodings reconstructed
-from the independent verifier decode model. One data jump is accepted while D
-is still the exact sequential address; later data reads are conservatively
-rejected.
+Independent bounded composition checks every length-one-through-four prefix over
+`o`, `/`, `<`, and at most one `j`, for stream lengths zero through two using
+source encodings reconstructed from verifier decode. Repeated data jumps use a
+separate exact-address relation instead of being inferred from that bounded
+oracle.
 
-`uCar_L` adds a six-transition bound certificate. A retained `jjjv` endpoint run
-demonstrates that the one-j rule is sufficient rather than necessary.
+D is tracked as either one exact physical address or projection-only. A jump from
+exact D preserves projection, while `initial_memory_word` compares concrete N/14
+cell values to decide whether successor D stays exact. This accepts `jjjv`
+because cells 41 and 43 are numerically equal at widths 10 and 14.
+
+`uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
+shows why projected D is insufficient for writes: both crazy transitions
+continue and A still projects, but D names different physical cells, so the
+memory relation breaks.
 Guarded crazy steps are accepted only after the exact-address jump has separated
 D from C, while the resulting D stays in-domain and avoids future source code.
 `j p v` and `j p p v` preserve complete endpoint projection; unguarded `p v`

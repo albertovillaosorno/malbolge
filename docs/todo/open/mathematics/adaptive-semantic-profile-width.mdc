@@ -149,17 +149,21 @@ separate costs; resource evidence must measure those costs directly.
   adversarial run shows projection surviving input and breaking exactly at
   output under EOF.
 - Proof kind `straight-line-safe-projection-v1` composes admitted straight-line
-  prefixes over `o`, `/`, `<`, `j`, and guarded `p`, followed by `v`. For each exact
-  input stream it tracks only input cursor and whether A is byte-exact or merely
-  projection-related; `<` is accepted only in the byte-exact state. Bounded
-  exhaustive evidence covers all 340 prefixes of lengths one through four over
-  `o`, `/`, `<`, and `j`, with streams of lengths zero through two, against
-  independently encoded verifier decode. A single `j` is admitted while D is
-  still the exact shared sequential address; further data jumps fail closed.
+  prefixes over `o`, `/`, `<`, `j`, and guarded `p`, followed by `v`. For each
+  exact input stream it tracks input cursor and whether A is byte-exact or merely
+  projection-related; `<` is accepted only in the byte-exact state. Independent
+  bounded enumeration covers every length-one-through-four prefix over `o`, `/`,
+  `<`, and at most one `j`, with streams of lengths zero through two.
+- D is tracked separately as an exact physical address or as projection-only.
+  A `j` at exact D preserves the step; `initial_memory_word` compares concrete
+  N/14 words to decide whether resulting D remains exact. Thus `jjv` may halt
+  with projected D, while `jjjv` remains exact through recurrence cells 41 and
+  43. Width-10 initialization is cross-checked against the independent verifier.
 - Fixture `uCar_L` (`/ o < / < v`) selects width 10 for two exact bytes, while a
-  one-byte subject diverges exactly at the second output. A retained `jjjv`
-  endpoint run still projects successfully, documenting that the one-`j` rule
-  is sufficient and intentionally incomplete rather than a necessity claim.
+  one-byte subject diverges exactly at the second output. In `j j p o v`, crazy
+  still produces projected accumulators, yet D names different physical cells,
+  so the memory-write relation breaks; memory operations therefore require exact
+  D rather than merely projected D.
 - Guarded `p` is admitted only after that exact-address `j`, with D distinct
   from C, in-domain, and not targeting an unexecuted source cell. `p` marks A as
   projection-only, so later output fails closed until byte input restores exact

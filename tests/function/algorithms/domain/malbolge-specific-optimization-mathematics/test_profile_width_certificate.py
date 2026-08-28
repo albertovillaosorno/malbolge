@@ -429,6 +429,8 @@ def test_straight_line_checker_matches_exhaustive_bounded_composition() -> None:
     prefix_opcodes = (ord("o"), ord("/"), ord("<"), ord("j"))
     for prefix_len in range(1, 5):
         for prefix in product(prefix_opcodes, repeat=prefix_len):
+            if prefix.count(ord("j")) > 1:
+                continue
             decoded = (*prefix, ord("v"))
             source = _encoded_source(decoded)
             for stream_len in range(3):
@@ -542,6 +544,32 @@ def test_straight_line_checker_rejects_crazy_rewriting_future_code() -> None:
     )
 
 
+def test_straight_line_checker_uses_exact_memory_for_repeated_jumps() -> None:
+    """Repeated jumps continue only while later data reads remain justified."""
+    inputs = {"eof": ()}
+    assert straight_line_projection_certifiable(
+        b"('O",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs=inputs,
+    )
+    assert straight_line_projection_certifiable(
+        b"('&N",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs=inputs,
+    )
+    losing_exact_d = _encoded_source(
+        (ord("j"), ord("j"), ord("p"), ord("o"), ord("v"))
+    )
+    assert not straight_line_projection_certifiable(
+        losing_exact_d,
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs=inputs,
+    )
+
+
 def test_straight_line_checker_rejects_unsafe_or_unsupported_paths() -> None:
     """EOF output, unsupported opcodes, and fall-through fail closed."""
     assert not straight_line_projection_certifiable(
@@ -552,12 +580,6 @@ def test_straight_line_checker_rejects_unsafe_or_unsupported_paths() -> None:
     )
     assert not straight_line_projection_certifiable(
         b"DC",
-        MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
-        inputs={"eof": ()},
-    )
-    assert not straight_line_projection_certifiable(
-        b"('O",
         MINIMUM_WIDTH,
         CANONICAL_WIDTH,
         inputs={"eof": ()},

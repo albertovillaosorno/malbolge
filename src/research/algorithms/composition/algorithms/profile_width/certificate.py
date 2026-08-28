@@ -659,30 +659,59 @@ def initial_halt_projection_certifiable(
 
 @dataclass(frozen=True, slots=True)
 class _StraightLineSourceState:
-    data_delta: int | None
+    data_address: int | None
     events: tuple[int, ...]
-    jump_count: int
+    projection_writes: frozenset[int]
 
 
 @dataclass(frozen=True, slots=True)
 class _StraightLineSourceContext:
     cells: tuple[int, ...]
-    modulus: int
+    narrow_width: int
+    wide_width: int
+
+    @property
+    def modulus(self) -> int:
+        return _ternary_modulus(self.narrow_width)
 
 
-def _crazy_data_address_safe(
+def _exact_pointer_successor(value: int, modulus: int) -> int | None:
+    return value + 1 if 0 <= value < modulus - 1 else None
+
+
+def _exact_initial_read(
+    state: _StraightLineSourceState,
     position: int,
-    *,
-    source_len: int,
-    modulus: int,
-    data_delta: int | None,
-) -> bool:
-    if data_delta is None or data_delta == 0:
-        return False
-    address = position + data_delta
-    in_domain = 0 <= address < modulus
-    rewrites_future_code = position < address < source_len
-    return in_domain and not rewrites_future_code
+    context: _StraightLineSourceContext,
+) -> int | None:
+    address = state.data_address
+    if address is None or address in state.projection_writes:
+        return None
+    if address < len(context.cells):
+        return context.cells[address] if address >= position else None
+    narrow = _initial_memory_word_from_cells(
+        context.cells,
+        context.narrow_width,
+        address,
+    )
+    wide = _initial_memory_word_from_cells(
+        context.cells,
+        context.wide_width,
+        address,
+    )
+    return narrow if narrow == wide else None
+
+
+def _advance_data_address(
+    state: _StraightLineSourceState,
+    context: _StraightLineSourceContext,
+) -> int | None:
+    address = state.data_address
+    return (
+        _exact_pointer_successor(address, context.modulus)
+        if address is not None
+        else None
+    )
 
 
 def _jump_source_state(
@@ -690,14 +719,18 @@ def _jump_source_state(
     position: int,
     context: _StraightLineSourceContext,
 ) -> _StraightLineSourceState | None:
-    return (
-        None
-        if state.jump_count
-        else _StraightLineSourceState(
-            data_delta=context.cells[position] - position,
-            events=state.events,
-            jump_count=1,
-        )
+    if state.data_address is None:
+        return None
+    exact_value = _exact_initial_read(state, position, context)
+    next_address = (
+        _exact_pointer_successor(exact_value, context.modulus)
+        if exact_value is not None
+        else None
+    )
+    return _StraightLineSourceState(
+        data_address=next_address,
+        events=state.events,
+        projection_writes=state.projection_writes,
     )
 
 
@@ -706,31 +739,33 @@ def _crazy_source_state(
     position: int,
     context: _StraightLineSourceContext,
 ) -> _StraightLineSourceState | None:
-    safe = _crazy_data_address_safe(
-        position,
-        source_len=len(context.cells),
-        modulus=context.modulus,
-        data_delta=state.data_delta,
-    )
-    return (
-        _StraightLineSourceState(
-            data_delta=state.data_delta,
-            events=(*state.events, ord("p")),
-            jump_count=state.jump_count,
-        )
-        if safe
-        else None
+    address = state.data_address
+    if address is None or address == position:
+        return None
+    rewrites_future_code = position < address < len(context.cells)
+    if rewrites_future_code:
+        return None
+    return _StraightLineSourceState(
+        data_address=_exact_pointer_successor(address, context.modulus),
+        events=(*state.events, ord("p")),
+        projection_writes=state.projection_writes | frozenset((address,)),
     )
 
 
-def _io_source_state(
+def _ordinary_source_state(
     state: _StraightLineSourceState,
     opcode: int,
+    context: _StraightLineSourceContext,
 ) -> _StraightLineSourceState:
+    events = (
+        (*state.events, opcode)
+        if opcode in {ord("/"), ord("<")}
+        else state.events
+    )
     return _StraightLineSourceState(
-        data_delta=state.data_delta,
-        events=(*state.events, opcode),
-        jump_count=state.jump_count,
+        data_address=_advance_data_address(state, context),
+        events=events,
+        projection_writes=state.projection_writes,
     )
 
 
@@ -745,20 +780,20 @@ def _advance_straight_line_source(
         advanced = _jump_source_state(state, position, context)
     elif opcode == ord("p"):
         advanced = _crazy_source_state(state, position, context)
-    elif opcode in {ord("/"), ord("<")}:
-        advanced = _io_source_state(state, opcode)
-    elif opcode == ord("o"):
-        advanced = state
+    elif opcode in {ord("o"), ord("/"), ord("<")}:
+        advanced = _ordinary_source_state(state, opcode, context)
     return advanced
 
 
 def _straight_line_events(
     decoded: tuple[int, ...],
     cells: tuple[int, ...],
-    modulus: int,
+    narrow_width: int,
+    *,
+    wide_width: int,
 ) -> tuple[int, ...] | None:
-    state = _StraightLineSourceState(None, (), 0)
-    context = _StraightLineSourceContext(cells, modulus)
+    state = _StraightLineSourceState(0, (), frozenset())
+    context = _StraightLineSourceContext(cells, narrow_width, wide_width)
     for step in enumerate(decoded):
         _, opcode = step
         if opcode == ord("v"):
@@ -816,7 +851,8 @@ def straight_line_projection_certifiable(
         _straight_line_events(
             decoded,
             cells,
-            _ternary_modulus(narrow_width),
+            narrow_width,
+            wide_width=wide_width,
         )
         if decoded is not None and cells is not None
         else None
