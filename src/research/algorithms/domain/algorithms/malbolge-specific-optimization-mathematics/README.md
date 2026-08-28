@@ -25,6 +25,13 @@ the same 243-by-243 five-trit table, weighted by `1`, `243`, and `243^2`, then
 projected modulo `3^N`. The third lookup is zero-padded physically; semantic
 memory and semantic word width remain unchanged.
 
+Checked width projection is not uniformly semantic. Successor and `crazy`
+commute with radix projection, while `rotate` and byte output have exact
+additional conditions; even projected EOF values can later emit different
+bytes. A finite lockstep relation with initial coverage, observation equality,
+and transition closure is therefore the admitted sufficient certificate shape.
+No program-width selector is promoted by this research result alone.
+
 The current research surface also exposes an exact classic crazy-target
 full-domain preimage count. Its product-of-per-trit-multiplicities equation and
 the derived tight 1,024-preimage global ceiling, exact zero-or-power-of-two

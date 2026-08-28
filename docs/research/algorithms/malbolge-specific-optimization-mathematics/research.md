@@ -61,10 +61,11 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes fifty-nine exact reductions: classic five-trit crazy factorization,
+formalizes sixty-one exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact zero-padded 15-trit crazy
 projection and uniform three-lookup factorization for semantic widths 10
-through 14, exact decode sum-class
+through 14, exact checked profile-width projection laws, a finite lockstep
+certificate theorem, exact decode sum-class
 canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -128,6 +129,21 @@ exhaustive table evidence owns the two complete chunks; the padded evidence
 exhausts every third-chunk pair and mixed assembly fixtures.
 
 This remains a state-equivalence result, not a timing claim.
+
+For checked width pairs `10<=N<M<=14`, radix projection preserves pointer
+successor and `crazy`, but `rotate` has an explicit quotient-dependent high
+trit. Byte output after projection is equal only when the discarded high
+quotient is zero in this range. Wide EOF projects to narrow EOF while their
+output bytes still differ, so source size or low addresses alone cannot prove
+semantic narrowing.
+
+A finite width certificate is sufficient when it covers every declared input
+initial state, preserves every verifier-required observation, and closes every
+related nonterminal state under one lockstep transition or matching terminal
+outcome. Induction over committed transitions then gives observational
+equivalence for the finite certified relation. This theorem defines a
+fail-closed proof shape; no concrete program or product selector is certified
+by it yet.
 
 The preserved historical decode table is a permutation of all 94 graphical
 bytes. Exhausting all 8,836 graphical cell/code-phase pairs therefore proves

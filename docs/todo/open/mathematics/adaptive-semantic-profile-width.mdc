@@ -39,11 +39,11 @@ ceiling.
 
 If compiler and verifier evidence proves that a program's complete reachable
 behavior is invariant under replacing its declared profile by a smaller width
-`N`, then resident state falls by the exact factor `3^(14-N)` relative to a
-14-trit image. The theoretical memory ratios are therefore 81x, 27x, 9x, 3x,
-and 1x for widths 10 through 14. Increased resident capacity may improve
-throughput, but no proportional speedup is assumed because registers, compute,
-transfers, synchronization, verification, and search structure can dominate.
+`N`, then its semantic memory image has exactly `3^N` words instead of `3^14`.
+The memory-word-count ratios are therefore 81x, 27x, 9x, 3x, and 1x for widths
+10 through 14. Total resident bytes need not fall by the same factor because
+registers, buffers, metadata, transfers, verification, and other resources add
+separate costs; resource evidence must measure those costs directly.
 
 ## Acceptance
 
@@ -81,6 +81,11 @@ transfers, synchronization, verification, and search structure can dominate.
 
 - Required mathematical evidence: exact profile-width memory ratios and a
   sufficient-condition theorem or certificate format for semantic narrowing.
+- Current mathematical base: correspondences
+  `optimization-profile-width-projection-audit` and
+  `optimization-profile-width-finite-bisimulation-certificate` establish the
+  checked 10-through-14 projection laws and a fail-closed finite certificate
+  shape. No compiled program has yet been certified at a narrower width.
 - Required correctness evidence: differential/reference execution plus
   adversarial width-boundary tests and independent verification of certificates.
 - Required resource evidence: actual runtime capability discovery, exact

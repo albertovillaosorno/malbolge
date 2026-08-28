@@ -219,6 +219,26 @@ mechanism = "five-trit-digit-factorization-plus-zero-padded-third-lookup-project
 evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_positions", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_padded_tail_lookup_matches_native_tail_for_every_residue", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_uniform_three_lookup_factorization_projects_every_tail_pair"]
 
 [[correspondence]]
+id = "optimization-profile-width-projection-audit"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-profile-width-projection-audit"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "every checked width pair 10 <= N < M <= 14; all width ratios and high quotients, representative low-residue classes including both boundaries, plus inherited digitwise crazy projection evidence"
+mechanism = "power-of-three-divisibility-plus-quotient-residue-projection-audit"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_checked_width_projection_laws_and_counterexamples", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_three_chunk_projection_has_exact_profile_constant"]
+
+[[correspondence]]
+id = "optimization-profile-width-finite-bisimulation-certificate"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-profile-width-finite-bisimulation-certificate"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "finite deterministic transition systems with explicitly enumerated input-to-initial-state mappings, observations, terminal states, transition edges, and a finite cross-width relation"
+mechanism = "initial-coverage-plus-observation-preservation-plus-lockstep-transition-induction"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_finite_bisimulation_certificate_accepts_closed_relation", "tests/mathematics/test_profile_width_projection_certificate.py::test_finite_bisimulation_certificate_rejects_missing_obligation"]
+
+[[correspondence]]
 id = "optimization-crazy-preimage-cardinality"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cardinality"

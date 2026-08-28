@@ -131,6 +131,48 @@ admitted semantic width. The third lookup receives zero high input trits; only
 its constant high output trits are discarded by the final semantic projection.
 This is an exact factorization, not a wall-clock speedup claim.
 
+\section{Checked profile-width projection and finite certificates}
+
+For checked widths $10\leq N<M\leq14$, write $W_N=3^N$, $W_M=3^M$,
+$\pi_N(x)=x\bmod W_N$, and decompose $x=qW_N+r$ with
+$0\leq r<W_N$. Since $0\leq q<3^{M-N}\leq3^4$, direct radix arithmetic gives
+\begin{equation}
+  \begin{aligned}
+    \frac{W_M}{W_N} &= 3^{M-N}, \\
+    \pi_N(\operatorname{succ}_M(x)) &= \operatorname{succ}_N(r), \\
+    \pi_N(\CrazyN{M}{d}{a})
+      &= \CrazyN{N}{\pi_N(d)}{\pi_N(a)}, \\
+    \pi_N(\RotateN{M}{x})
+      &= \left\lfloor\frac{r}{3}\right\rfloor
+         +(q\bmod3)3^{N-1}.
+  \end{aligned}
+  \label{eq:optimization-profile-width-projection-audit}
+\end{equation}
+The rotation therefore commutes with projection exactly when
+$q\bmod3=r\bmod3$. Also, because $W_N$ is coprime to $256$ and $q<256$,
+$x\bmod256=r\bmod256$ holds exactly when $q=0$. The wide EOF word projects to
+the narrow EOF word, but for $M>N$ their output bytes differ. Thus small
+addresses or low projected words alone are not a semantic narrowing proof.
+
+Let $D$ be a declared input domain and let $R$ be a finite relation between
+complete width-$M$ and width-$N$ guest states. Define
+$\mathsf{WidthCert}_{M\to N}(D,R)=1$ only when every input in $D$ maps to a
+related initial-state pair, every related pair has equal verifier-required
+observations, and every related nonterminal pair either terminates/rejects in
+the same observable way or commits one step to another pair in $R$. For
+finite deterministic state systems these obligations imply
+\begin{equation}
+  \mathsf{WidthCert}_{M\to N}(D,R)=1
+  \Longrightarrow
+  \operatorname{Exec}_M(P,i)\equiv_{\mathrm{obs}}
+  \operatorname{Exec}_N(P,i)
+  \quad\text{for every }i\in D.
+  \label{eq:optimization-profile-width-finite-bisimulation-certificate}
+\end{equation}
+The proof is induction on committed transition count, with termination handled
+by the matching terminal obligation. This theorem supplies a sufficient
+certificate shape only; it does not certify any program, infer $D$, or authorize
+a product width selector by itself.
 
 \section{Exact crazy-target preimage cardinality}
 
