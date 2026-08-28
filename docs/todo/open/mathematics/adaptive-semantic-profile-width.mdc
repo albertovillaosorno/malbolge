@@ -284,6 +284,13 @@ separate costs; resource evidence must measure those costs directly.
   an initial-halt continuation now fails closed with `CheckpointGeometry` before
   any interpreter transition. This prevents tiered fallback from silently
   reinterpreting a verified narrow checkpoint as canonical N=14.
+- Profile traces now carry their exact execution geometry. Portable IR v1
+  projection accepts only traces whose geometry equals the canonical profile and
+  rejects derived traces with `ExecutionGeometry`. QP/N=10 therefore remains
+  available to exact VM/state-graph evidence but cannot acquire direct-native
+  authority through a canonical `RegionEffectProgram` until that IR is
+  explicitly
+  versioned for derived geometry.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final

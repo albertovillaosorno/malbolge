@@ -120,6 +120,8 @@ pub enum IrEncodingError {
 pub enum StepProgramProjectionError {
     /// Two semantic reads claim different values for the same address.
     ConflictingMemoryRead,
+    /// The trace used execution geometry not represented by portable IR v1.
+    ExecutionGeometry,
     /// The semantic fetch did not read the entry code pointer.
     FetchAddress,
     /// The fetched-cell claim disagrees with the semantic fetch read.
@@ -188,6 +190,9 @@ impl RegionEffectProgram {
     pub fn from_profile_step_trace(
         trace: &ProfileStepTrace,
     ) -> Result<Self, StepProgramProjectionError> {
+        if !trace_uses_canonical_geometry(trace) {
+            return Err(StepProgramProjectionError::ExecutionGeometry);
+        }
         if trace.before.termination.is_some() {
             return Err(StepProgramProjectionError::TerminatedEntry);
         }
@@ -264,6 +269,13 @@ impl RegionEffectProgram {
                 required.max(effect_required_memory_words(effect))
             })
     }
+}
+
+const fn trace_uses_canonical_geometry(trace: &ProfileStepTrace) -> bool {
+    trace.geometry.word_trits() == trace.profile.word_trits()
+        && trace.geometry.word_modulus() == trace.profile.word_modulus()
+        && trace.geometry.memory_words() == trace.profile.memory_words()
+        && trace.geometry.eof_word() == trace.profile.eof_word()
 }
 
 fn insert_trace_read(

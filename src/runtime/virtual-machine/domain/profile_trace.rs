@@ -37,6 +37,7 @@
 use crate::machine::{StepOutcome, Termination};
 use crate::profile::ProfileDescriptor;
 use crate::profile_machine::{ProfileMachineError, ProfileRegisters};
+use crate::profile_width::ProfileExecutionGeometry;
 use crate::trace::TraceInput;
 
 /// Observable profile-driven machine state at one trace boundary.
@@ -141,6 +142,8 @@ pub struct ProfileStepTrace {
     pub decoded: Option<u8>,
     /// Current profile-width code cell fetched for this request.
     pub fetched_cell: Option<u32>,
+    /// Exact execution geometry used by the observed machine.
+    pub geometry: ProfileExecutionGeometry,
     /// Input effect selected by a successfully planned input instruction.
     pub input: Option<TraceInput>,
     /// Actual committed memory changes for this requested step.

@@ -33,10 +33,11 @@
 //! Trusted product-side initial-halt adaptive-width verification fixtures.
 
 use malbolge::{
-    ProfileLoadError, ProfileMachine, ProfileWidthProofKind,
-    ProfileWidthVerificationError, RunOutcome, TargetProfileRequirement,
-    Termination, current_profile, decode_profile_instruction,
-    historical_profile, verify_initial_halt_profile_width,
+    ProfileLoadError, ProfileMachine, ProfileStepTrace, ProfileWidthProofKind,
+    ProfileWidthVerificationError, RegionEffectProgram, RunOutcome,
+    StepProgramProjectionError, TargetProfileRequirement, Termination,
+    current_profile, decode_profile_instruction, historical_profile,
+    verify_initial_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
 };
 
@@ -203,6 +204,31 @@ fn verified_geometry_exposes_copyable_profile_bound_execution_token()
         "token memory words",
     )?;
     check_equal(&copied.eof_word(), &(MINIMUM_MEMORY_WORDS - 1), "token EOF")
+}
+
+#[test]
+fn derived_trace_cannot_claim_canonical_portable_ir_geometry() -> TestResult {
+    let verified = normalize_result(
+        verify_minimum_initial_halt_profile_width(current_profile(), QP),
+    )?;
+    let mut machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    let mut trace_record = None;
+    let _outcome = normalize_result(machine.step_traced(
+        &mut |trace: &ProfileStepTrace| {
+            trace_record = Some(*trace);
+        },
+    ))?;
+    let trace =
+        trace_record.ok_or_else(|| String::from("derived trace missing"))?;
+    check_equal(&trace.geometry, &verified.geometry(), "trace geometry")?;
+    check_equal(
+        &RegionEffectProgram::from_profile_step_trace(&trace),
+        &Err(StepProgramProjectionError::ExecutionGeometry),
+        "derived portable IR rejection",
+    )
 }
 
 #[test]

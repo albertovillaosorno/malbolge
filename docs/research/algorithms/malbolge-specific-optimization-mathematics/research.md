@@ -268,7 +268,10 @@ step, and retains N=10 through checkpoint restore while remaining
 Indexed state-graph now carries the same opaque geometry in
 lineage identity and digest material, and derived QP/N=10 trace replay
 materializes the exact runtime checkpoint without restoring N=14. Tiered/native
-execution handoff is still open.
+execution remains canonical-only. Handoff rejects a derived checkpoint before
+interpreter fallback. Portable IR v1 also rejects a derived trace before it can
+be
+promoted to direct-native authority.
 
 `uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
 shows why projected D is insufficient for writes: both crazy transitions

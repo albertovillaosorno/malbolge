@@ -867,6 +867,7 @@ const fn projection_error_id(
         StepProgramProjectionError::ConflictingMemoryRead => {
             "conflicting-memory-read"
         },
+        StepProgramProjectionError::ExecutionGeometry => "execution-geometry",
         StepProgramProjectionError::FetchAddress => "fetch-address",
         StepProgramProjectionError::FetchValue => "fetch-value",
         StepProgramProjectionError::MissingFetch => "missing-fetch",

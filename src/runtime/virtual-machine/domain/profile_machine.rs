@@ -1037,6 +1037,7 @@ impl ProfileMachine {
             before,
             decoded,
             fetched_cell,
+            geometry: self.geometry,
             input,
             memory_delta,
             memory_reads,
