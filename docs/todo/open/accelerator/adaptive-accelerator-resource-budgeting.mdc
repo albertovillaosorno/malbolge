@@ -78,6 +78,13 @@ example probe points, not supported-range endpoints.
   per zero-I/O VM, yielding first-chunk capacities 532, 177, 59, 19, and 6 under
   the same 128 MiB snapshot. These are example probes rather than
   minimum/maximum supported sizes.
+- The VM backend port now exposes resident geometry directly from an already
+  admitted `ProfileMachine`: EOF, canonical I/O opcodes, memory words/modulus,
+  and trit width. A verified QP request therefore reaches the backend as exact
+  N=10/59,049-word geometry without reconstructing N from research evidence. The
+  existing Python adaptive capacity sweep still builds `ProfileRunGeometry` from
+  research `execution_geometry`; a concrete adapter from the product backend
+  request to that planner remains open, so this is handoff evidence only.
 - A separate 100,000 GiB synthetic fixture proves that additional addressable
   memory is not clamped; classic CUDA splits only at its 32-bit memory-index
   boundary. None of these synthetic rows are hardware throughput measurements.

@@ -158,16 +158,52 @@ pub struct ProfileBatchBackendRequest<'machine> {
 }
 
 impl<'machine> ProfileBatchBackendRequest<'machine> {
+    /// Returns the exact EOF word admitted for resident execution.
+    #[must_use]
+    pub const fn eof_word(&self) -> u32 {
+        self.machine.geometry().eof_word()
+    }
+
+    /// Returns the canonical input opcode bound to the admitted machine.
+    #[must_use]
+    pub const fn input_instruction(&self) -> u8 {
+        self.machine.profile().input_instruction()
+    }
+
     /// Returns the complete immutable profile machine offered to the backend.
     #[must_use]
     pub const fn machine(&self) -> &'machine ProfileMachine {
         self.machine
     }
 
+    /// Returns the exact resident memory length admitted for this request.
+    #[must_use]
+    pub const fn memory_words(&self) -> u32 {
+        self.machine.geometry().memory_words()
+    }
+
+    /// Returns the canonical output opcode bound to the admitted machine.
+    #[must_use]
+    pub const fn output_instruction(&self) -> u8 {
+        self.machine.profile().output_instruction()
+    }
+
     /// Returns the exact semantic step budget for this request.
     #[must_use]
     pub const fn step_budget(&self) -> usize {
         self.step_budget
+    }
+
+    /// Returns the exact resident word modulus admitted for this request.
+    #[must_use]
+    pub const fn word_modulus(&self) -> u32 {
+        self.machine.geometry().word_modulus()
+    }
+
+    /// Returns the exact resident ternary width admitted for this request.
+    #[must_use]
+    pub const fn word_trits(&self) -> u8 {
+        self.machine.geometry().word_trits()
     }
 }
 

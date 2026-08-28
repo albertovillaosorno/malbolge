@@ -81,6 +81,40 @@ struct ProfileCompletionBackend {
     completion: Option<ProfileBatchBackendCompletion>,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+struct ProfileResidentGeometrySnapshot {
+    eof_word: u32,
+    input_instruction: u8,
+    memory_words: u32,
+    output_instruction: u8,
+    word_modulus: u32,
+    word_trits: u8,
+}
+
+struct ProfileResidentGeometryProbe {
+    observed: Option<ProfileResidentGeometrySnapshot>,
+}
+
+impl ProfileBatchExecutionBackend for ProfileResidentGeometryProbe {
+    fn execute(
+        &mut self,
+        requests: &[ProfileBatchBackendRequest<'_>],
+    ) -> Option<Vec<Option<ProfileBatchBackendCompletion>>> {
+        self.observed =
+            requests
+                .first()
+                .map(|request| ProfileResidentGeometrySnapshot {
+                    eof_word: request.eof_word(),
+                    input_instruction: request.input_instruction(),
+                    memory_words: request.memory_words(),
+                    output_instruction: request.output_instruction(),
+                    word_modulus: request.word_modulus(),
+                    word_trits: request.word_trits(),
+                });
+        None
+    }
+}
+
 impl ProfileBatchExecutionBackend for ProfileCompletionBackend {
     fn execute(
         &mut self,
@@ -461,6 +495,39 @@ fn profile_backend_route_and_unavailability_match_sequential_state()
         &fallback_report.origins(),
         &expected_profile_fallback,
         "profile fallback origins",
+    )
+}
+
+#[test]
+fn profile_backend_request_exposes_only_admitted_resident_geometry()
+-> TestResult {
+    let verified = normalize_result(
+        verify_minimum_initial_halt_profile_width(current_profile(), b"QP"),
+    )?;
+    let machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    let request = ProfileBatchRequest::from_machine(machine, 0);
+    let mut backend = ProfileResidentGeometryProbe { observed: None };
+    let (_results, report) =
+        execute_profile_batch_with_backend_report(vec![request], &mut backend);
+    check_equal(
+        &backend.observed,
+        &Some(ProfileResidentGeometrySnapshot {
+            eof_word: 59_048,
+            input_instruction: b'/',
+            memory_words: 59_049,
+            output_instruction: b'<',
+            word_modulus: 59_049,
+            word_trits: 10,
+        }),
+        "backend resident geometry",
+    )?;
+    check_equal(
+        &report.origins(),
+        &(&[BatchExecutionOrigin::SafeRustFallback][..]),
+        "geometry probe fallback origin",
     )
 }
 
