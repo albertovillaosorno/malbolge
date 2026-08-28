@@ -217,6 +217,13 @@ separate costs; resource evidence must measure those costs directly.
   subject selects N=10 and the 532-VM synthetic capacity row, while source drift
   fails closed to canonical N=14 and the 6-VM row. This demonstrates fail-closed
   composition without granting that composition product authority.
+- Existing Rust/Python target-profile requirement and geometry types are not
+  that
+  handoff: they are revalidated from canonical profile authority and carry the
+  profile's published word width and full memory capacity. Mutating those types
+  to carry N=10-through-13 would forge canonical identity. A future admitted
+  derived-geometry value therefore needs a separate verifier-owned lifecycle and
+  must remain bound to, rather than replace, the canonical profile requirement.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final
