@@ -229,6 +229,15 @@ mechanism = "power-of-three-divisibility-plus-quotient-residue-projection-audit"
 evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_checked_width_projection_laws_and_counterexamples", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_three_chunk_projection_has_exact_profile_constant"]
 
 [[correspondence]]
+id = "optimization-profile-width-rotate-compatible-count"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-profile-width-rotate-compatible-count"
+domain = "canonical width 14 with every subset of candidate narrowing widths 10, 11, 12, and 13; exact enumeration of the five relevant trits with nine free trits factored independently"
+mechanism = "independent-trit-equality-constraints-plus-free-trit-factor"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_rotate_compatible_word_count_for_checked_width_sets"]
+
+[[correspondence]]
 id = "optimization-profile-width-finite-bisimulation-certificate"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-profile-width-finite-bisimulation-certificate"

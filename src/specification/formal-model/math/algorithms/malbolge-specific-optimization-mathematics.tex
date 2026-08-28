@@ -151,7 +151,19 @@ $0\leq r<W_N$. Since $0\leq q<3^{M-N}\leq3^4$, direct radix arithmetic gives
 The rotation therefore commutes with projection exactly when
 $q\bmod3=r\bmod3$, equivalently when trit $N$ of $x$ equals trit zero.
 Different candidate widths inspect different high trits, so this condition is
-not monotone in $N$. Also, because $W_N$ is coprime to $256$ and $q<256$,
+not monotone in $N$. For any checked subset
+$S\subseteq\{10,11,12,13\}$, the conditions $x_N=x_0$ for $N\in S$ constrain
+$|S|$ otherwise independent trits, so
+\begin{equation}
+  \left|\left\{x\in\WordDomain{14}:
+      x_N=x_0\text{ for every }N\in S\right\}\right|
+    = 3^{14-|S|}.
+  \label{eq:optimization-profile-width-rotate-compatible-count}
+\end{equation}
+One candidate width therefore admits one third of the words, while simultaneous
+compatibility with widths 10 through 13 admits exactly $3^{10}=59049$ words.
+This is a primitive compatibility count only, not a program-width certificate.
+Also, because $W_N$ is coprime to $256$ and $q<256$,
 $x\bmod256=r\bmod256$ holds exactly when $q=0$. The wide EOF word projects to
 the narrow EOF word, but for $M>N$ their output bytes differ. Thus small
 addresses or low projected words alone are not a semantic narrowing proof.

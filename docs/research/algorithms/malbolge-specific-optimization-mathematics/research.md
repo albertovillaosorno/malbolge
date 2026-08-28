@@ -61,11 +61,12 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes sixty-two exact reductions: classic five-trit crazy factorization,
+formalizes sixty-three exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact zero-padded 15-trit crazy
 projection and uniform three-lookup factorization for semantic widths 10
-through 14, exact checked profile-width projection laws, a finite lockstep
-certificate theorem, a minimum-certified-width selector, exact decode sum-class
+through 14, exact checked profile-width projection laws and rotate-compatible
+word counts, a finite lockstep certificate theorem, a minimum-certified-width
+selector, exact decode sum-class
 canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -137,6 +138,12 @@ so different candidate widths can alternate between compatible and incompatible.
 Byte output is equal only when the discarded high quotient is zero; wide EOF
 projects to narrow EOF while their output bytes still differ. Thus source size
 or low addresses alone cannot prove semantic narrowing.
+
+At width 14, requiring rotate compatibility for any selected candidate-width
+set `S` leaves exactly `3^(14-|S|)` words. One candidate therefore admits one
+third of the word domain; requiring all widths 10 through 13 leaves exactly
+59,049 words, or one eighty-first of the domain. This is a primitive
+compatibility classification only, not a program-width certificate.
 
 A finite width certificate is sufficient when it covers every declared input
 initial state, preserves every verifier-required observation, and closes every

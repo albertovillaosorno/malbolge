@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from itertools import combinations
 from itertools import product
 
 from algorithms.profile_width.certificate import CANONICAL_WIDTH
@@ -138,6 +139,39 @@ def test_rotate_projection_compatibility_is_not_monotone_in_width() -> None:
             _project(_rotate(value, wide), narrow) == _rotate(residue, narrow)
         )
     assert observed == {10: True, 11: False, 12: True, 13: False}
+
+
+_CANDIDATE_WIDTHS = tuple(range(MINIMUM_WIDTH, CANONICAL_WIDTH))
+_RELEVANT_TRITS = (0, *_CANDIDATE_WIDTHS)
+_FREE_TRITS = CANONICAL_WIDTH - len(_RELEVANT_TRITS)
+
+
+def _candidate_subsets() -> list[tuple[int, ...]]:
+    return [
+        subset
+        for size in range(len(_CANDIDATE_WIDTHS) + 1)
+        for subset in combinations(_CANDIDATE_WIDTHS, size)
+    ]
+
+
+def _compatible_relevant_assignments(subset: tuple[int, ...]) -> int:
+    positions = {
+        position: index for index, position in enumerate(_RELEVANT_TRITS)
+    }
+    return sum(
+        all(digits[positions[width]] == digits[0] for width in subset)
+        for digits in product(range(_RADIX), repeat=len(_RELEVANT_TRITS))
+    )
+
+
+def test_rotate_compatible_word_count_for_checked_width_sets() -> None:
+    """Each required candidate width removes exactly two thirds of words."""
+    free_factor = _power(_FREE_TRITS)
+    for subset in _candidate_subsets():
+        compatible = _compatible_relevant_assignments(subset) * free_factor
+        assert compatible == _power(CANONICAL_WIDTH - len(subset))
+    all_widths = _compatible_relevant_assignments(_CANDIDATE_WIDTHS)
+    assert all_widths * free_factor == _power(10)
 
 
 def _equivalent_fixture() -> tuple[
