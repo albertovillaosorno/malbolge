@@ -210,5 +210,6 @@ def test_minimum_certified_width_is_independent_and_fail_closed() -> None:
     assert minimum_certified_width(extra) == CANONICAL_WIDTH
 
     invalid_type: dict[int, bool] = {10: True, 11: True, 12: True, 13: True}
-    invalid_type[13] = 1  # pyright: ignore[reportArgumentType] - invalid runtime fixture.
+    # Intentional invalid runtime fixture for fail-closed checking.
+    invalid_type[13] = 1  # pyright: ignore[reportArgumentType]
     assert minimum_certified_width(invalid_type) == CANONICAL_WIDTH

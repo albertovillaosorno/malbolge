@@ -29,10 +29,11 @@ Checked width projection is not uniformly semantic. Successor and `crazy`
 commute with radix projection, while `rotate` and byte output have exact
 additional conditions. Rotate compatibility checks trit `N` against trit zero
 and is not monotone across candidate widths; even projected EOF values can later
-emit different bytes. A finite lockstep relation with initial coverage,
-observation equality,
-and transition closure is therefore the admitted sufficient certificate shape.
-No program-width selector is promoted by this research result alone.
+emit different bytes.
+
+A finite lockstep relation with initial coverage, observation equality, and
+transition closure is therefore the admitted sufficient certificate shape. No
+program-width selector is promoted by this research result alone.
 
 The reusable research implementation is `algorithms.profile_width.certificate`.
 It remains experimental and has no runtime or trusted-verifier authority.
