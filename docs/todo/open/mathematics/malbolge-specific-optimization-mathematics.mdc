@@ -30,13 +30,14 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize sixty-six exact reductions: classic
+- The proved slices now formalize sixty-eight exact reductions: classic
   five-trit
   crazy factorization, profile-width crazy chunking, exact zero-padded 15-trit
   crazy projection and uniform three-lookup factorization for semantic widths
   10 through 14, exact checked profile-width projection laws and a finite
   output-compatible and rotate-compatible word classifications, monotone
-  checked-width source admission and exact initial-memory projection, finite
+  checked-width source admission and exact initial-memory projection, exact
+  checked-width decode compatibility and self-encryption invariance, finite
   bisimulation certificate
   theorem, and minimum-certified-width selector,
   exact decode sum-class
@@ -95,9 +96,9 @@ force or stochastic optimization begins.
   exact minimum complete-preimage budget needed to cover any integer target
   from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. Four
   reductions are consumed by runtime paths; the fifty-three search reductions,
-  two padded-geometry equivalences, and seven width-certification
+  two padded-geometry equivalences, and nine width-certification
   results carry no inherited runtime speedup claim.
-- Sixty-six optimization research equations are registered in
+- Sixty-eight optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -131,13 +132,14 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes sixty-six labelled optimization
+- Current mathematical evidence includes sixty-eight labelled optimization
   equations,
   executable correspondence, exact zero-padding projection and uniform
   three-lookup evidence for semantic widths 10 through 14, exact checked
   profile-width projection laws, output/rotate-compatible word counts,
-  source-admission monotonicity, exact initial-memory projection, finite
-  lockstep-certificate and minimum-width
+  source-admission monotonicity, exact initial-memory projection, exact
+  decode compatibility and self-encryption invariance, finite lockstep-
+  certificate and minimum-width
   selection evidence, raw CPU
   benchmark samples for the table paths,
   identical checksums, the exact 94-class decode quotient across all 8,836

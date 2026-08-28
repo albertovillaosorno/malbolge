@@ -61,13 +61,14 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes sixty-six exact reductions: classic five-trit crazy factorization,
+formalizes sixty-eight exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact zero-padded 15-trit crazy
 projection and uniform three-lookup factorization for semantic widths 10
 through 14, exact checked profile-width projection laws and output/rotate-
 compatible word counts, monotone source admission and exact initial-memory
-projection across checked widths, a finite lockstep certificate theorem, a
-minimum-certified-width selector, exact decode sum-class
+projection across checked widths, exact decode compatibility and self-
+encryption invariance, a finite lockstep certificate theorem, a minimum-
+certified-width selector, exact decode sum-class
 canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -150,6 +151,13 @@ are unchanged while memory capacity grows from `3^N` to `3^M`. After a source
 is admitted at both widths, every cell in the complete narrow initial memory is
 exactly the wide initial-memory cell projected modulo `3^N`; the recurrence
 proof is induction through the already proved `crazy` projection law.
+
+For graphical execution, decode compatibility is stricter than pointer
+projection: because `XLAT1` is injective and `3^N` is coprime to 94, the wide
+and narrow decodes agree exactly when the wide code pointer already lies below
+`3^N`. Self-encryption itself is width-invariant on the shared graphical byte
+domain, but the certificate must still prove that both states select the same
+graphical encryption target.
 
 At width 14, requiring rotate compatibility for any selected candidate-width
 set `S` leaves exactly `3^(14-|S|)` words. One candidate therefore admits one

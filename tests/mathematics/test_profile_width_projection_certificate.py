@@ -45,6 +45,7 @@ from algorithms.profile_width.certificate import minimum_certified_width
 
 _RADIX = 3
 _BYTE_MODULUS = 256
+_DECODE_PHASES = 94
 _CRAZY_TRIT = (
     (1, 0, 0),
     (1, 0, 2),
@@ -181,6 +182,26 @@ def test_output_compatible_word_count_for_checked_width_pairs() -> None:
         )
         assert compatible_quotients == 1
         assert compatible_quotients * narrow_modulus == _power(narrow)
+
+
+def test_decode_phase_projection_requires_low_code_pointer() -> None:
+    """Injective decode phases agree only with zero discarded pointer part."""
+    for narrow, wide in _width_pairs():
+        narrow_modulus = _modulus(narrow)
+        ratio = _modulus(wide) // narrow_modulus
+        compatible_quotients = 0
+        for quotient in range(ratio):
+            shift = (quotient * narrow_modulus) % _DECODE_PHASES
+            compatible = shift == 0
+            assert compatible == (quotient == 0)
+            compatible_quotients += int(compatible)
+        assert compatible_quotients * narrow_modulus == _power(narrow)
+
+
+def test_graphical_cells_are_projection_fixed_at_every_checked_width() -> None:
+    """Every possible self-encryption input/output byte projects identically."""
+    for width in range(MINIMUM_WIDTH, CANONICAL_WIDTH + 1):
+        assert all(_project(cell, width) == cell for cell in _GRAPHICAL)
 
 
 def test_rotate_projection_compatibility_is_not_monotone_in_width() -> None:

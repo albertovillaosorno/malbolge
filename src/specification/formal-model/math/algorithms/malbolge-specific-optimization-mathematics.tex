@@ -203,6 +203,34 @@ cell follows by applying the previously proved projection identity to the two
 preceding related cells. Thus loader recurrence introduces no additional
 width-specific obstruction once source capacity and source admission hold.
 
+For a graphical code cell $m$, write a wide code pointer as
+$c_M=qW_N+c_N$ with $0\leq c_N<W_N$. The decode table $X_1$ is injective, so
+its outputs agree exactly when the two phase indices agree. Since
+$\gcd(W_N,94)=1$ and $0\leq q<3^{M-N}\leq81<94$,
+\begin{equation}
+  \DecodeOp(m,c_M)=\DecodeOp(m,c_N)
+  \Longleftrightarrow q=0
+  \Longleftrightarrow c_M<W_N,
+  \qquad
+  \left|\{c_M<W_M:\text{decode-compatible}\}\right|=W_N.
+  \label{eq:optimization-profile-width-decode-compatible-count}
+\end{equation}
+Thus a continuing graphical lockstep transition cannot justify decode by
+pointer projection alone: the wide code pointer must already lie in the narrow
+address domain.
+
+Self-encryption has no corresponding width arithmetic. For every graphical cell
+$m\in G=\{33,\ldots,126\}$, $\EncryptOp(m)\in G$ and $G\subset\WordDomain{N}$
+for every checked width, hence
+\begin{equation}
+  \pi_N\!\left(\EncryptOp(m)\right)=\EncryptOp(m),
+  \qquad 10\leq N\leq14.
+  \label{eq:optimization-profile-width-encryption-invariance}
+\end{equation}
+This proves only transformation invariance. A certificate must still establish
+that both executions select the same graphical encryption target after the
+instruction-specific effect.
+
 Let $D$ be a declared input domain and let $R$ be a finite relation between
 complete width-$M$ and width-$N$ guest states. Define
 $\mathsf{WidthCert}_{M\to N}(D,R)=1$ only when every input in $D$ maps to a

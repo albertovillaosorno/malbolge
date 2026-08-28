@@ -35,6 +35,11 @@ and decode contract is unchanged. Once admitted, the complete width-N initial
 memory equals the projected prefix of width M because source cells agree and
 the fill recurrence preserves projection by induction.
 
+Graphical decode agrees across projected pointers only when the wide code
+pointer already lies inside the narrow address domain. Once both executions
+select the same graphical encryption target, the `XLAT2` transformation itself
+is width-invariant because its input and output remain graphical bytes.
+
 Rotate compatibility checks trit `N` against trit zero and is not monotone
 across candidate widths; even projected EOF values can later emit different
 bytes. For any subset of candidate widths 10 through 13, each additional

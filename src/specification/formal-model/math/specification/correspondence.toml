@@ -267,6 +267,25 @@ mechanism = "identical-source-prefix-plus-crazy-projection-induction"
 evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_loader_recurrence_projection_for_all_graphical_seed_pairs", "tests/vm/profile_machine.rs::current_loader_projects_to_complete_historical_memory_prefix"]
 
 [[correspondence]]
+id = "optimization-profile-width-decode-compatible-count"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-profile-width-decode-compatible-count"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "every checked width pair 10 <= N < M <= 14 for graphical code cells; every possible discarded code-pointer quotient with the existing exhaustive 94-phase injective decode-table evidence"
+mechanism = "injective-decode-phase-plus-coprime-power-of-three-pointer-quotient"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_decode_phase_projection_requires_low_code_pointer", "tests/mathematics/test_decode_sum_class.py::test_historical_xlat1_is_exact_graphical_permutation", "tests/mathematics/test_decode_sum_class.py::test_decode_equality_is_exactly_sum_class_equality"]
+
+[[correspondence]]
+id = "optimization-profile-width-encryption-invariance"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-profile-width-encryption-invariance"
+domain = "all 94 graphical self-encryption cells across checked widths 10 through 14"
+mechanism = "width-independent-xlat2-plus-graphical-domain-projection-identity"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_graphical_cells_are_projection_fixed_at_every_checked_width", "tests/vm/tables.rs::profile_encryption_matches_independent_table"]
+
+[[correspondence]]
 id = "optimization-profile-width-finite-bisimulation-certificate"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-profile-width-finite-bisimulation-certificate"
