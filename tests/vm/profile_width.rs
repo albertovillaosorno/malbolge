@@ -33,12 +33,16 @@
 //! Trusted product-side initial-halt adaptive-width verification fixtures.
 
 use malbolge::{
-    ProfileLoadError, ProfileMachine, ProfileStepTrace, ProfileWidthProofKind,
-    ProfileWidthVerificationError, RegionEffectProgram, RunOutcome,
-    StepProgramProjectionError, TargetProfileRequirement, Termination,
-    current_profile, decode_profile_instruction, historical_profile,
-    verify_initial_halt_profile_width, verify_input_then_halt_profile_width,
+    ProfileLoadError, ProfileMachine, ProfileMachineError,
+    ProfileMachineIoState, ProfileMachineState, ProfileStepTrace,
+    ProfileWidthProofKind, ProfileWidthVerificationError, RegionEffectProgram,
+    RunOutcome, StepProgramProjectionError, TargetProfileRequirement,
+    Termination, current_profile, decode_profile_instruction,
+    historical_profile, verify_initial_halt_profile_width,
+    verify_input_output_halt_profile_width,
+    verify_input_then_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
+    verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
     verify_noop_prefix_halt_profile_width,
@@ -207,6 +211,104 @@ fn verified_geometry_exposes_copyable_profile_bound_execution_token()
         "token memory words",
     )?;
     check_equal(&copied.eof_word(), &(MINIMUM_MEMORY_WORDS - 1), "token EOF")
+}
+
+#[test]
+fn input_output_halt_verifier_binds_nonempty_runtime_input() -> TestResult {
+    let verified =
+        normalize_result(verify_minimum_input_output_halt_profile_width(
+            current_profile(),
+            b"ubO",
+        ))?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::InputOutputHaltProjection,
+        "input-output proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "input-output minimum width",
+    )?;
+    for input in [vec![0xa5], vec![0x00, 0xff]] {
+        let expected = input.first().copied().ok_or_else(|| {
+            String::from("nonempty input fixture became empty")
+        })?;
+        let mut machine = normalize_result(
+            ProfileMachine::from_verified_source(&verified, input),
+        )?;
+        check_equal(
+            &normalize_result(machine.run(3))?,
+            &RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 3,
+            },
+            "input-output halt outcome",
+        )?;
+        check_equal(
+            &machine.output(),
+            &vec![expected].as_slice(),
+            "input-output emitted byte",
+        )?;
+        check_equal(
+            &machine.input_consumed(),
+            &1usize,
+            "input-output consumed input",
+        )?;
+    }
+    let empty = ProfileMachine::from_verified_source(&verified, Vec::new());
+    if !matches!(empty, Err(ProfileMachineError::VerifiedInputRejected)) {
+        return Err(String::from("input-output proof admitted EOF input"));
+    }
+    Ok(())
+}
+
+#[test]
+fn input_output_halt_policy_survives_geometry_checkpoint_api() -> TestResult {
+    let verified = normalize_result(verify_input_output_halt_profile_width(
+        current_profile(),
+        b"ubO",
+        MINIMUM_WORD_TRITS,
+    ))?;
+    let machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        vec![0xa5],
+    ))?;
+    let snapshot = machine.snapshot_state();
+    let empty_io = normalize_result(ProfileMachineIoState::new(
+        Vec::new(),
+        0,
+        Vec::new(),
+        None,
+    ))?;
+    let rebuilt = ProfileMachineState::new_with_geometry(
+        verified.geometry(),
+        snapshot.memory().to_vec(),
+        snapshot.registers(),
+        empty_io,
+    );
+    if matches!(rebuilt, Err(ProfileMachineError::VerifiedInputRejected)) {
+        Ok(())
+    } else {
+        Err(String::from("checkpoint stripped verified input policy"))
+    }
+}
+
+#[test]
+fn input_output_halt_verifier_rejects_wrong_reached_sequence() -> TestResult {
+    let observed = verify_input_output_halt_profile_width(
+        current_profile(),
+        b"uP",
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &observed,
+        &Err(ProfileWidthVerificationError::InputOutputHaltInstruction {
+            position: 1,
+            decoded: b'v',
+        }),
+        "input-output sequence rejection",
+    )
 }
 
 #[test]

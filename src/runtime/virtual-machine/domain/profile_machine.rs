@@ -177,8 +177,8 @@ impl ProfileMachineState {
 
     /// Constructs a checkpoint from one opaque admitted execution geometry.
     ///
-    /// The geometry token carries its canonical profile binding and cannot be
-    /// constructed by external callers without trusted verification.
+    /// The geometry token carries canonical profile binding plus any hidden
+    /// verified input-domain restriction and cannot be forged by callers.
     ///
     /// # Errors
     ///
@@ -190,6 +190,9 @@ impl ProfileMachineState {
         registers: ProfileRegisters,
         io: ProfileMachineIoState,
     ) -> Result<Self, ProfileMachineError> {
+        if !geometry.admits_input(io.input()) {
+            return Err(ProfileMachineError::VerifiedInputRejected);
+        }
         let profile = geometry.profile();
         preflight_profile(
             profile,
@@ -317,6 +320,8 @@ pub enum ProfileMachineError {
     },
     /// A translation-table lookup failed inside its admitted domain.
     TranslationTableInvariant,
+    /// The supplied input violates the trusted geometry's input-domain proof.
+    VerifiedInputRejected,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -449,6 +454,9 @@ impl Display for ProfileMachineError {
             ),
             Self::TranslationTableInvariant => {
                 f.write_str("profile translation-table invariant failed")
+            },
+            Self::VerifiedInputRejected => {
+                f.write_str("input violates verified profile-width domain")
             },
         }
     }
@@ -590,8 +598,9 @@ impl ProfileMachine {
     /// verification.
     ///
     /// The exact source comes from the verified envelope itself, so callers
-    /// cannot pair an admitted geometry with different source bytes. Canonical
-    /// profile identity and policy remain unchanged.
+    /// cannot pair an admitted geometry with different source bytes. Hidden
+    /// input-domain restrictions on the token are checked before loading.
+    /// Canonical profile identity and policy remain unchanged.
     ///
     /// # Errors
     ///
@@ -602,6 +611,9 @@ impl ProfileMachine {
         input: Vec<u8>,
     ) -> Result<Self, ProfileMachineError> {
         let geometry = verified.geometry();
+        if !geometry.admits_input(&input) {
+            return Err(ProfileMachineError::VerifiedInputRejected);
+        }
         let profile = geometry.profile();
         let source = verified.source();
         preflight_profile(

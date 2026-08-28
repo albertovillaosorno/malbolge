@@ -38,6 +38,7 @@
 use malbolge::{
     ProfileMachine, ProfileStepTrace, StepOutcome, current_profile,
     verify_minimum_initial_halt_profile_width,
+    verify_minimum_input_output_halt_profile_width,
 };
 
 use crate::indexed_state::{
@@ -81,6 +82,47 @@ fn derived_width_checkpoint_survives_indexed_state_roundtrip()
     }
     if materialized.geometry() != verified.geometry() {
         return Err(String::from("derived geometry was not preserved"));
+    }
+    Ok(())
+}
+
+#[test]
+fn input_bound_geometry_survives_indexed_state_roundtrip() -> Result<(), String>
+{
+    let verified = verify_minimum_input_output_halt_profile_width(
+        current_profile(),
+        b"ubO",
+    )
+    .map_err(|error| {
+        format!("input-bound width verification failed: {error}")
+    })?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, vec![0xa5]).map_err(
+            |error| format!("input-bound machine load failed: {error}"),
+        )?;
+    let root = machine.snapshot_state();
+    let mut indexed =
+        IndexedMachineState::from_checkpoint(&root).map_err(|error| {
+            format!("input-bound indexed root failed: {error:?}")
+        })?;
+    let mut trace_record = None;
+    let _outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| {
+            trace_record = Some(*trace);
+        })
+        .map_err(|error| format!("input-bound trace step failed: {error}"))?;
+    let trace = trace_record
+        .ok_or_else(|| String::from("input-bound trace missing"))?;
+    indexed = indexed.apply_trace(&trace).map_err(|error| {
+        format!("input-bound indexed apply failed: {error:?}")
+    })?;
+    let materialized = indexed.materialize_checkpoint().map_err(|error| {
+        format!("input-bound materialize failed: {error:?}")
+    })?;
+    if materialized != machine.snapshot_state()
+        || materialized.geometry() != verified.geometry()
+    {
+        return Err(String::from("input-bound indexed roundtrip drifted"));
     }
     Ok(())
 }

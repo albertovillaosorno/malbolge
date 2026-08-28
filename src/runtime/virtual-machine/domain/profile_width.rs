@@ -56,28 +56,48 @@ type ProfileWidthVerifier = fn(
     ProfileWidthVerificationError,
 >;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProfileExecutionInputPolicy {
+    Any,
+    NonEmpty,
+}
+
 /// Stable proof family that independently admitted one derived geometry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProfileWidthProofKind {
     /// Source loading succeeds and the first decoded instruction halts.
     InitialHalt,
+    /// Input, output, then halt is safe only for nonempty input.
+    InputOutputHaltProjection,
     /// One input transition is followed immediately by halt.
     InputThenHaltProjection,
     /// One or more decoded no-ops precede the first reached halt.
     NoopPrefixHalt,
 }
 
-/// Opaque execution geometry emitted only through trusted width verification.
+/// Opaque execution-geometry authority emitted only by trusted verification.
+///
+/// Public accessors expose geometry only. Hidden admission constraints remain
+/// inseparable from the copyable token and are rechecked by runtime state APIs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProfileExecutionGeometry {
+    input_policy: ProfileExecutionInputPolicy,
     memory_words: u32,
     profile: &'static ProfileDescriptor,
     word_trits: u8,
 }
 
 impl ProfileExecutionGeometry {
+    pub(crate) const fn admits_input(self, input: &[u8]) -> bool {
+        match self.input_policy {
+            ProfileExecutionInputPolicy::Any => true,
+            ProfileExecutionInputPolicy::NonEmpty => !input.is_empty(),
+        }
+    }
+
     pub(crate) const fn canonical(profile: &'static ProfileDescriptor) -> Self {
         Self {
+            input_policy: ProfileExecutionInputPolicy::Any,
             memory_words: profile.memory_words(),
             profile,
             word_trits: profile.word_trits(),
@@ -183,6 +203,13 @@ pub enum ProfileWidthVerificationError {
         /// Exact decoded first instruction.
         decoded: u8,
     },
+    /// A reached input-output-halt position decoded to another instruction.
+    InputOutputHaltInstruction {
+        /// Exact loaded source position of the rejected instruction.
+        position: u32,
+        /// Exact decoded instruction byte.
+        decoded: u8,
+    },
     /// A reached input-then-halt position decoded to another instruction.
     InputThenHaltInstruction {
         /// Exact loaded source position of the rejected instruction.
@@ -220,6 +247,13 @@ impl Display for ProfileWidthVerificationError {
                 f,
                 "derived profile initial instruction {decoded} is not halt"
             ),
+            Self::InputOutputHaltInstruction { position, decoded } => {
+                write!(
+                    f,
+                    "derived input-output-halt instruction {decoded} at "
+                )?;
+                write!(f, "{position} is invalid")
+            },
             Self::InputThenHaltInstruction { position, decoded } => {
                 write!(f, "derived input-halt instruction {decoded} at ")?;
                 write!(f, "{position} is invalid")
@@ -276,6 +310,26 @@ fn verify_minimum_width(
     }))
 }
 
+/// Selects the minimum independently verified input-output-halt width.
+///
+/// The returned proof token admits only nonempty runtime input. Capacity is the
+/// only reason a candidate may widen.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when no reviewed candidate admits
+/// the exact source under the input-output-halt theorem.
+pub fn verify_minimum_input_output_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    verify_minimum_width(
+        profile,
+        source,
+        verify_input_output_halt_profile_width,
+    )
+}
+
 /// Selects the minimum independently verified input-then-halt width.
 ///
 /// Only derived-capacity rejection advances to a wider candidate. Any theorem
@@ -325,6 +379,59 @@ pub fn verify_minimum_initial_halt_profile_width(
     verify_minimum_width(profile, source, verify_initial_halt_profile_width)
 }
 
+/// Independently verifies input, output, then halt for nonempty input.
+///
+/// The first input byte becomes an exact accumulator value at every reviewed
+/// width, so the following output is byte-identical. EOF is deliberately
+/// outside this proof token because its low byte depends on the selected width.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when geometry, source admission,
+/// or the required input/output/halt sequence does not hold.
+pub fn verify_input_output_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    word_trits: u8,
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let memory_words = derived_memory_words(profile, word_trits)?;
+    let admitted = admit_profile_source(source, memory_words)?;
+    let expected = [
+        profile.input_instruction(),
+        profile.output_instruction(),
+        b'v',
+    ];
+    for (position, expected_instruction) in expected.into_iter().enumerate() {
+        let pointer = u32::try_from(position).map_err(|_error| {
+            ProfileWidthVerificationError::GeometryInvariant
+        })?;
+        let cell = admitted
+            .get(position)
+            .copied()
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        let decoded = decode_profile_instruction(cell, pointer)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        if decoded != expected_instruction {
+            return Err(
+                ProfileWidthVerificationError::InputOutputHaltInstruction {
+                    position: pointer,
+                    decoded,
+                },
+            );
+        }
+    }
+    Ok(VerifiedProfileExecutionGeometry {
+        geometry: ProfileExecutionGeometry {
+            input_policy: ProfileExecutionInputPolicy::NonEmpty,
+            memory_words,
+            profile,
+            word_trits,
+        },
+        proof_kind: ProfileWidthProofKind::InputOutputHaltProjection,
+        source: Box::from(source),
+    })
+}
+
 /// Independently verifies one input transition followed directly by halt.
 ///
 /// The theorem is input-domain independent: a consumed byte is identical at all
@@ -364,6 +471,7 @@ pub fn verify_input_then_halt_profile_width(
     }
     Ok(VerifiedProfileExecutionGeometry {
         geometry: ProfileExecutionGeometry {
+            input_policy: ProfileExecutionInputPolicy::Any,
             memory_words,
             profile,
             word_trits,
@@ -403,6 +511,7 @@ pub fn verify_noop_prefix_halt_profile_width(
         if decoded == b'v' && noops > 0 {
             return Ok(VerifiedProfileExecutionGeometry {
                 geometry: ProfileExecutionGeometry {
+                    input_policy: ProfileExecutionInputPolicy::Any,
                     memory_words,
                     profile,
                     word_trits,
@@ -449,6 +558,7 @@ pub fn verify_initial_halt_profile_width(
     }
     Ok(VerifiedProfileExecutionGeometry {
         geometry: ProfileExecutionGeometry {
+            input_policy: ProfileExecutionInputPolicy::Any,
             memory_words,
             profile,
             word_trits,
