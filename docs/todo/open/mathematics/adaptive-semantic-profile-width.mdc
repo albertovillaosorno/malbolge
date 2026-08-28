@@ -213,6 +213,10 @@ separate costs; resource evidence must measure those costs directly.
   activation must preserve that canonical identity and introduce a trusted,
   source/input-bound admission of derived execution geometry rather than letting
   research choose runtime semantics directly.
+- Research-only downstream evidence now checks that the exact QP source/input
+  subject selects N=10 and the 532-VM synthetic capacity row, while source drift
+  fails closed to canonical N=14 and the 6-VM row. This demonstrates fail-closed
+  composition without granting that composition product authority.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final

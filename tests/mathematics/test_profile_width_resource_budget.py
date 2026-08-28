@@ -36,6 +36,10 @@ from __future__ import annotations
 
 from array import array
 from itertools import pairwise
+import json
+from pathlib import Path
+from typing import TYPE_CHECKING
+from typing import cast
 
 from accelerator.classic_run import MAX_U32
 from accelerator.classic_run import STATE_WORDS
@@ -46,9 +50,31 @@ from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
 from accelerator.profile_run import WORD_BYTES
 from accelerator.profile_run import validate_profile_run_requests
+from algorithms.profile_width.certificate import CANONICAL_WIDTH
+from algorithms.profile_width.certificate import MINIMUM_WIDTH
+from algorithms.profile_width.certificate import WidthCertificateSubject
 from algorithms.profile_width.certificate import execution_geometry
+from algorithms.profile_width.certificate import (
+    minimum_geometry_from_certificates,
+)
+from algorithms.profile_width.certificate import parse_finite_width_certificate
 
 from benchmarks.accelerator import resource_budget_measure as measure
+
+if TYPE_CHECKING:
+    from algorithms.profile_width.certificate import JsonValue
+    from algorithms.profile_width.certificate import WidthCertificateDecision
+
+TESTS_ROOT = Path(__file__).resolve().parents[1]
+QP_CERTIFICATE = (
+    TESTS_ROOT
+    / "function"
+    / "algorithms"
+    / "domain"
+    / "malbolge-specific-optimization-mathematics"
+    / "fixtures"
+    / "qp-width-certificate-v2.json"
+)
 
 EXPECTED_128_MIB_CAPACITY = {
     10: 532,
@@ -140,6 +166,45 @@ def test_derived_widths_render_exact_resident_kernel_geometry() -> None:
             f"#define ROTATE_HIGH_WEIGHT {resident.word_modulus // 3}u"
             in kernel
         )
+
+
+def test_subject_bound_selection_controls_research_capacity() -> None:
+    """Exact subject proof selects N=10; subject drift falls back to N=14."""
+    value = cast(
+        "JsonValue",
+        json.loads(QP_CERTIFICATE.read_text(encoding="utf-8")),
+    )
+    certificate = parse_finite_width_certificate(value)
+    assert certificate is not None
+    decisions: dict[int, WidthCertificateDecision] = {
+        10: certificate,
+        11: False,
+        12: False,
+        13: False,
+    }
+    subject = WidthCertificateSubject(
+        source=b"QP",
+        inputs={"byte-a5": bytes((165,)), "eof": b""},
+    )
+    selected = minimum_geometry_from_certificates(subject, decisions)
+    wrong_subject = WidthCertificateSubject(
+        source=b"PP",
+        inputs=subject.inputs,
+    )
+    fallback = minimum_geometry_from_certificates(wrong_subject, decisions)
+    capacities = {
+        result.word_trits: result.first_chunk_items
+        for result in measure.synthetic_results()
+        if result.word_trits is not None
+    }
+    assert selected.word_trits == MINIMUM_WIDTH
+    assert capacities[selected.word_trits] == (
+        EXPECTED_128_MIB_CAPACITY[MINIMUM_WIDTH]
+    )
+    assert fallback.word_trits == CANONICAL_WIDTH
+    assert capacities[fallback.word_trits] == (
+        EXPECTED_128_MIB_CAPACITY[CANONICAL_WIDTH]
+    )
 
 
 def test_narrower_certified_width_strictly_increases_128_mib_capacity() -> None:
