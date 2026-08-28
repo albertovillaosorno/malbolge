@@ -319,6 +319,15 @@ interpreter fallback. Portable IR v1 also rejects a derived trace before it can
 be
 promoted to direct-native authority.
 
+Optional batch completion validation compares the complete opaque geometry
+token.
+This includes hidden input-domain authority: `uP` and `ubO` have identical
+visible
+N=10 geometry/profile values, but a checkpoint from the former cannot satisfy a
+request admitted by the latter. The mismatch falls back to the original
+safe-Rust
+machine rather than treating numeric geometry as sufficient authorization.
+
 `uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
 shows why projected D is insufficient for writes: both crazy transitions
 continue and A still projects, but D names different physical cells, so the

@@ -321,6 +321,11 @@ separate costs; resource evidence must measure those costs directly.
   N=14 completion for a derived N=10 `malbolge-2026` request is rejected and
   falls back to the exact N=10 safe-Rust machine even when outcome and profile
   identity otherwise match.
+- Backend completion equality also retains hidden verifier authority, not only
+  visible N/profile numbers. `uP` and `ubO` both expose N=10, 59,049 words, and
+  the same canonical profile, but their opaque geometry differs because only
+  `ubO` requires nonempty input. Returning a `uP` checkpoint for a `ubO` request
+  is therefore rejected and falls back to the original safe-Rust machine.
 - Tiered interpreter handoff remains canonical-only until its continuation
   schema carries verified execution geometry explicitly. A derived N=10
   checkpoint with the same canonical profile, observation, and live-in surface

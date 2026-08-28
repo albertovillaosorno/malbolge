@@ -45,6 +45,8 @@ use malbolge::{
     execute_profile_batch, execute_profile_batch_with_backend,
     execute_profile_batch_with_backend_report, historical_profile,
     verify_minimum_initial_halt_profile_width,
+    verify_minimum_input_output_halt_profile_width,
+    verify_minimum_input_then_halt_profile_width,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -507,6 +509,69 @@ fn profile_backend_rejects_same_profile_with_different_geometry() -> TestResult
         &result.memory().len(),
         &59_049usize,
         "derived fallback memory length",
+    )
+}
+
+#[test]
+fn profile_backend_rejects_same_numeric_geometry_with_different_authority()
+-> TestResult {
+    let any_input = normalize_result(
+        verify_minimum_input_then_halt_profile_width(current_profile(), b"uP"),
+    )?;
+    let nonempty_input =
+        normalize_result(verify_minimum_input_output_halt_profile_width(
+            current_profile(),
+            b"ubO",
+        ))?;
+    check_equal(
+        &any_input.word_trits(),
+        &nonempty_input.word_trits(),
+        "authority fixture word width",
+    )?;
+    check_equal(
+        &any_input.memory_words(),
+        &nonempty_input.memory_words(),
+        "authority fixture memory words",
+    )?;
+    check_equal(
+        &any_input.profile(),
+        &nonempty_input.profile(),
+        "authority fixture canonical profile",
+    )?;
+    if any_input.geometry() == nonempty_input.geometry() {
+        return Err(String::from("hidden input authority was erased"));
+    }
+    let requested = normalize_result(ProfileMachine::from_verified_source(
+        &nonempty_input,
+        vec![0xa5],
+    ))?;
+    let weaker = normalize_result(ProfileMachine::from_verified_source(
+        &any_input,
+        vec![0xa5],
+    ))?;
+    let completion = ProfileBatchBackendCompletion::new(
+        weaker.snapshot_state(),
+        RunOutcome::BudgetExhausted { steps: 0 },
+    );
+    let mut backend = ProfileCompletionBackend {
+        completion: Some(completion),
+    };
+    let request = ProfileBatchRequest::from_machine(requested, 0);
+    let (results, report) =
+        execute_profile_batch_with_backend_report(vec![request], &mut backend);
+    let result = results
+        .first()
+        .and_then(ProfileBatchResult::machine)
+        .ok_or_else(|| String::from("authority fallback machine missing"))?;
+    check_equal(
+        &report.origins(),
+        &(&[BatchExecutionOrigin::SafeRustFallback][..]),
+        "authority mismatch fallback origin",
+    )?;
+    check_equal(
+        &result.geometry(),
+        &nonempty_input.geometry(),
+        "authority-preserving fallback geometry",
     )
 }
 
