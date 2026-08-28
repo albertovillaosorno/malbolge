@@ -80,6 +80,8 @@ mod profile;
 mod profile_machine;
 #[path = "../domain/profile_trace.rs"]
 mod profile_trace;
+#[path = "../domain/profile_width.rs"]
+mod profile_width;
 #[path = "../adapter-outbound/threading.rs"]
 mod threading;
 #[path = "../domain/trace.rs"]
@@ -209,6 +211,10 @@ pub use profile_machine::{
 pub use profile_trace::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
     ProfileMemoryReads, ProfileMemoryWrite, ProfileStepTrace,
+};
+pub use profile_width::{
+    ProfileWidthProofKind, ProfileWidthVerificationError,
+    VerifiedProfileExecutionGeometry, verify_initial_halt_profile_width,
 };
 pub use threading::ScopedThreadParallelism;
 pub use trace::{

@@ -243,6 +243,13 @@ derived width may parameterize execution geometry only after that admission; it
 must not replace the canonical profile ID, version, fingerprint, or semantic
 requirement.
 
+The product VM now independently admits the first narrow proof family rather
+than importing that selector. Its initial-halt verifier reuses the canonical
+profile loader/decode boundary and can issue an opaque source/profile-bound N=10
+geometry for QP. DP and malformed, oversized, or out-of-range subjects fail
+closed; the verified geometry currently has no execution consumer, so this is an
+admission-boundary result rather than adaptive-runtime evidence.
+
 `uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
 shows why projected D is insufficient for writes: both crazy transitions
 continue and A still projects, but D names different physical cells, so the

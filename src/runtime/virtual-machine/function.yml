@@ -252,6 +252,11 @@ parts:
     kind: adapter-outbound
     language: c
     responsibility: Declare typed built-in capability registry assembly for C.
+  - id: part-0044
+    path: domain/profile_width.rs
+    kind: domain
+    language: rust
+    responsibility: Independently admit source-bound derived profile geometry.
 projects: []
 tests: []
 graph:

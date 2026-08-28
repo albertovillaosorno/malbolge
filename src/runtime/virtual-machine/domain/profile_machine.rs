@@ -1106,6 +1106,37 @@ fn load_profile(
     let memory_words = usize::try_from(profile.memory_words())
         .ok()
         .ok_or(ProfileLoadError::MemoryAllocation)?;
+    let mut words = admit_profile_source(source, profile.memory_words())?;
+    let additional = memory_words.saturating_sub(words.len());
+    words
+        .try_reserve_exact(additional)
+        .map_err(|_error| ProfileLoadError::MemoryAllocation)?;
+    while words.len() < memory_words {
+        let previous = words
+            .last()
+            .copied()
+            .ok_or(ProfileLoadError::InsufficientRecurrenceBase)?;
+        let older_index = words.len().saturating_sub(2);
+        let older = words
+            .get(older_index)
+            .copied()
+            .ok_or(ProfileLoadError::InsufficientRecurrenceBase)?;
+        words.push(profile_crazy(older, previous, profile.word_trits()));
+    }
+    Ok(words)
+}
+
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "shared with sibling trusted profile-width verification"
+)]
+pub(crate) fn admit_profile_source(
+    source: &[u8],
+    memory_words: u32,
+) -> Result<Vec<u32>, ProfileLoadError> {
+    let capacity = usize::try_from(memory_words)
+        .ok()
+        .ok_or(ProfileLoadError::MemoryAllocation)?;
     let mut words = Vec::new();
     for (offset, byte) in source.iter().copied().enumerate() {
         if is_source_whitespace(byte) {
@@ -1114,7 +1145,7 @@ fn load_profile(
         if !(33..=126).contains(&byte) {
             return Err(ProfileLoadError::InvalidSourceByte { offset, byte });
         }
-        if words.len() >= memory_words {
+        if words.len() >= capacity {
             return Err(ProfileLoadError::SourceTooLong);
         }
         words.push(u32::from(byte));
@@ -1140,22 +1171,6 @@ fn load_profile(
     }
     if words.len() < 2 {
         return Err(ProfileLoadError::InsufficientRecurrenceBase);
-    }
-    let additional = memory_words.saturating_sub(words.len());
-    words
-        .try_reserve_exact(additional)
-        .map_err(|_error| ProfileLoadError::MemoryAllocation)?;
-    while words.len() < memory_words {
-        let previous = words
-            .last()
-            .copied()
-            .ok_or(ProfileLoadError::InsufficientRecurrenceBase)?;
-        let older_index = words.len().saturating_sub(2);
-        let older = words
-            .get(older_index)
-            .copied()
-            .ok_or(ProfileLoadError::InsufficientRecurrenceBase)?;
-        words.push(profile_crazy(older, previous, profile.word_trits()));
     }
     Ok(words)
 }
