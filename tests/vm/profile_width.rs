@@ -45,7 +45,9 @@ use malbolge::{
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
+    verify_minimum_straight_line_io_profile_width,
     verify_noop_prefix_halt_profile_width,
+    verify_straight_line_io_profile_width,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -478,6 +480,81 @@ fn derived_trace_cannot_claim_canonical_portable_ir_geometry() -> TestResult {
         &RegionEffectProgram::from_profile_step_trace(&trace),
         &Err(StepProgramProjectionError::ExecutionGeometry),
         "derived portable IR rejection",
+    )
+}
+
+#[test]
+fn straight_line_io_verifier_binds_exact_required_input_prefix() -> TestResult {
+    let verified =
+        normalize_result(verify_minimum_straight_line_io_profile_width(
+            current_profile(),
+            b"uCar_L",
+        ))?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::StraightLineIoProjection,
+        "straight-line proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "straight-line minimum width",
+    )?;
+    let mut machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        vec![0xa5, 0x3c],
+    ))?;
+    check_equal(
+        &normalize_result(machine.run(6))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 6,
+        },
+        "straight-line outcome",
+    )?;
+    check_equal(
+        &machine.output(),
+        &vec![0xa5, 0x3c].as_slice(),
+        "straight-line output",
+    )?;
+    check_equal(
+        &machine.input_consumed(),
+        &2usize,
+        "straight-line consumed input",
+    )?;
+    let short = ProfileMachine::from_verified_source(&verified, vec![0xa5]);
+    if matches!(short, Err(ProfileMachineError::VerifiedInputRejected)) {
+        Ok(())
+    } else {
+        Err(String::from("straight-line proof admitted short input"))
+    }
+}
+
+#[test]
+fn straight_line_io_verifier_rejects_unsupported_or_unterminated_prefix()
+-> TestResult {
+    let unsupported = verify_straight_line_io_profile_width(
+        current_profile(),
+        b"(P",
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &unsupported,
+        &Err(ProfileWidthVerificationError::StraightLineInstruction {
+            position: 0,
+            decoded: b'j',
+        }),
+        "straight-line unsupported opcode",
+    )?;
+    let unterminated = verify_straight_line_io_profile_width(
+        current_profile(),
+        b"uC",
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &unterminated,
+        &Err(ProfileWidthVerificationError::StraightLineMissingHalt),
+        "straight-line missing halt",
     )
 }
 

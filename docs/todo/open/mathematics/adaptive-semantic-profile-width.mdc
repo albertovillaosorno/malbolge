@@ -280,12 +280,20 @@ separate costs; resource evidence must measure those costs directly.
 - All product proof-family minimum selectors share one widening policy. Only
   `SourceTooLong` advances to a wider candidate; theorem or loader rejection
   still fails closed immediately.
-- Input/output/halt is now admitted only with a nonempty-input authority carried
-  inside the opaque execution token. `ubO` selects N=10 and emits the exact
-  first
+- Input/output/halt is now admitted only with a minimum-input authority carried
+  inside the opaque execution token. `ubO` selects N=10 and requires at least
+  one
   input byte before halting in three steps. EOF is rejected before machine load
   with `VerifiedInputRejected`, and `ProfileMachineState::new_with_geometry`
   enforces the same policy so checkpoint construction cannot strip it.
+- Product straight-line I/O verification now composes only decoded `o`, `/`, and
+  `<` transitions before `v`. It tracks the input ordinal feeding each output
+  and
+  stores the maximum required ordinal as the token's minimum input length.
+  `uCar_L` therefore selects N=10 with a two-byte minimum, executes
+  `/ o < / < v`
+  in six steps, and emits both bytes; a one-byte stream is rejected before load.
+  Exact-address `j` and guarded `p` remain research-only proof obligations.
 - Indexed state-graph now preserves the opaque geometry token through lineage,
   digest, trace application, and checkpoint materialization. A QP/N=10 runtime
   trace roundtrips through `IndexedMachineState` to the exact derived checkpoint

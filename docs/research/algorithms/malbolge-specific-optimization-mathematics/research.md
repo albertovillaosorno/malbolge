@@ -262,13 +262,19 @@ All product proof-family minimum selectors share one policy that advances only
 after exact derived `SourceTooLong` rejection.
 
 Input/output/halt requires a stronger authority because EOF is not byte-stable
-across widths. The product verifier proves `/ < v` for the universal nonempty
-input domain and stores that restriction inside the otherwise opaque execution
-token. `ubO` selects N=10 for nonempty streams and emits their first byte
-exactly;
-EOF machine construction fails before execution. The same hidden token policy is
-checked by checkpoint construction, so callers cannot detach numeric N=10
-geometry from the nonempty-input premise.
+across widths. The product verifier proves `/ < v` for the universal minimum
+input length one and stores that restriction inside the otherwise opaque
+execution token. `ubO` selects N=10 for eligible streams and emits their first
+byte exactly; EOF machine construction fails before execution. Checkpoint
+construction enforces the same hidden token policy.
+
+The product straight-line I/O verifier extends only over `o`, `/`, and `<`
+before
+`v`; it does not import the research checker's exact-address `j` or guarded `p`
+authority. It counts encountered inputs and raises the token's minimum input
+length whenever an output depends on that ordinal. `uCar_L` therefore selects
+N=10 with a two-byte minimum and emits both bytes in six steps, while a one-byte
+stream is rejected before load.
 
 Within that initial-halt family, product-side minimum selection tries N=10
 through the canonical width and advances only on exact derived-capacity failure.

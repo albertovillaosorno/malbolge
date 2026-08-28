@@ -59,7 +59,7 @@ type ProfileWidthVerifier = fn(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProfileExecutionInputPolicy {
     Any,
-    NonEmpty,
+    MinimumLength(usize),
 }
 
 /// Stable proof family that independently admitted one derived geometry.
@@ -73,6 +73,8 @@ pub enum ProfileWidthProofKind {
     InputThenHaltProjection,
     /// One or more decoded no-ops precede the first reached halt.
     NoopPrefixHalt,
+    /// Straight-line no-op/input/output composition reaches halt safely.
+    StraightLineIoProjection,
 }
 
 /// Opaque execution-geometry authority emitted only by trusted verification.
@@ -91,7 +93,9 @@ impl ProfileExecutionGeometry {
     pub(crate) const fn admits_input(self, input: &[u8]) -> bool {
         match self.input_policy {
             ProfileExecutionInputPolicy::Any => true,
-            ProfileExecutionInputPolicy::NonEmpty => !input.is_empty(),
+            ProfileExecutionInputPolicy::MinimumLength(required) => {
+                input.len() >= required
+            },
         }
     }
 
@@ -228,6 +232,15 @@ pub enum ProfileWidthVerificationError {
     NoopPrefixMissingHalt,
     /// The exact source fails ordinary profile-loader admission.
     Source(ProfileLoadError),
+    /// A reached straight-line position decoded to an unsupported instruction.
+    StraightLineInstruction {
+        /// Exact loaded source position of the rejected instruction.
+        position: u32,
+        /// Exact decoded instruction byte.
+        decoded: u8,
+    },
+    /// The admitted straight-line prefix ended before reaching halt.
+    StraightLineMissingHalt,
     /// Candidate width is outside the reviewed adaptive interval.
     WidthOutOfRange {
         /// Maximum width owned by the canonical profile.
@@ -266,6 +279,13 @@ impl Display for ProfileWidthVerificationError {
                 f.write_str("derived no-op prefix does not reach halt")
             },
             Self::Source(error) => Display::fmt(error, f),
+            Self::StraightLineInstruction { position, decoded } => {
+                write!(f, "derived straight-line instruction {decoded} at ")?;
+                write!(f, "{position} is unsupported")
+            },
+            Self::StraightLineMissingHalt => {
+                f.write_str("derived straight-line prefix does not reach halt")
+            },
             Self::WidthOutOfRange {
                 profile_word_trits,
                 requested,
@@ -346,6 +366,22 @@ pub fn verify_minimum_input_then_halt_profile_width(
     verify_minimum_width(profile, source, verify_input_then_halt_profile_width)
 }
 
+/// Selects the minimum independently verified straight-line I/O width.
+///
+/// The returned token carries the minimum input length proved sufficient by the
+/// reached no-op/input/output prefix. Capacity is the only widening reason.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when no reviewed candidate admits
+/// the source under the straight-line I/O theorem.
+pub fn verify_minimum_straight_line_io_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    verify_minimum_width(profile, source, verify_straight_line_io_profile_width)
+}
+
 /// Selects the minimum independently verified no-op-prefix-halt width.
 ///
 /// Only derived-capacity rejection advances to a wider candidate. Any theorem
@@ -422,7 +458,7 @@ pub fn verify_input_output_halt_profile_width(
     }
     Ok(VerifiedProfileExecutionGeometry {
         geometry: ProfileExecutionGeometry {
-            input_policy: ProfileExecutionInputPolicy::NonEmpty,
+            input_policy: ProfileExecutionInputPolicy::MinimumLength(1),
             memory_words,
             profile,
             word_trits,
@@ -479,6 +515,66 @@ pub fn verify_input_then_halt_profile_width(
         proof_kind: ProfileWidthProofKind::InputThenHaltProjection,
         source: Box::from(source),
     })
+}
+
+/// Independently verifies straight-line no-op/input/output execution to halt.
+///
+/// The abstract accumulator starts byte-exact. Input increments the encountered
+/// input ordinal, and each later output raises the required immutable input
+/// length to that ordinal. No-op preserves exactness. Other opcodes fail
+/// closed.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when geometry, source admission, a
+/// reached opcode, or the required following halt violates this theorem.
+pub fn verify_straight_line_io_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    word_trits: u8,
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let memory_words = derived_memory_words(profile, word_trits)?;
+    let admitted = admit_profile_source(source, memory_words)?;
+    let mut input_ordinal = 0usize;
+    let mut required_input_len = 0usize;
+    for (position, cell) in admitted.iter().copied().enumerate() {
+        let pointer = u32::try_from(position).map_err(|_error| {
+            ProfileWidthVerificationError::GeometryInvariant
+        })?;
+        let decoded = decode_profile_instruction(cell, pointer)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        if decoded == b'v' {
+            return Ok(VerifiedProfileExecutionGeometry {
+                geometry: ProfileExecutionGeometry {
+                    input_policy: ProfileExecutionInputPolicy::MinimumLength(
+                        required_input_len,
+                    ),
+                    memory_words,
+                    profile,
+                    word_trits,
+                },
+                proof_kind: ProfileWidthProofKind::StraightLineIoProjection,
+                source: Box::from(source),
+            });
+        }
+        if decoded == profile.input_instruction() {
+            input_ordinal = input_ordinal.saturating_add(1);
+            continue;
+        }
+        if decoded == profile.output_instruction() {
+            required_input_len = required_input_len.max(input_ordinal);
+            continue;
+        }
+        if decoded != b'o' {
+            return Err(
+                ProfileWidthVerificationError::StraightLineInstruction {
+                    position: pointer,
+                    decoded,
+                },
+            );
+        }
+    }
+    Err(ProfileWidthVerificationError::StraightLineMissingHalt)
 }
 
 /// Independently verifies a nonempty no-op prefix followed by halt.
