@@ -80,11 +80,12 @@ example probe points, not supported-range endpoints.
   minimum/maximum supported sizes.
 - The VM backend port now exposes resident geometry directly from an already
   admitted `ProfileMachine`: EOF, canonical I/O opcodes, memory words/modulus,
-  and trit width. A verified QP request therefore reaches the backend as exact
-  N=10/59,049-word geometry without reconstructing N from research evidence. The
-  existing Python adaptive capacity sweep still builds `ProfileRunGeometry` from
-  research `execution_geometry`; a concrete adapter from the product backend
-  request to that planner remains open, so this is handoff evidence only.
+  and trit width. Verified QP artifacts for every reviewed N=10 through 14 reach
+  the backend with exact `3^N` geometry, without reconstructing N from research
+  evidence. The existing Python adaptive capacity sweep still builds
+  `ProfileRunGeometry` from research `execution_geometry`; a concrete adapter
+  from the product backend request to that planner remains open, so this is
+  handoff evidence only.
 - A separate 100,000 GiB synthetic fixture proves that additional addressable
   memory is not clamped; classic CUDA splits only at its 32-bit memory-index
   boundary. None of these synthetic rows are hardware throughput measurements.

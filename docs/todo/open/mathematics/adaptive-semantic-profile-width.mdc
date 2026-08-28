@@ -329,9 +329,11 @@ separate costs; resource evidence must measure those costs directly.
 - Prepared profile backend requests now expose a resident-shape view only from
   their admitted machine: EOF, canonical input/output opcodes, memory words,
   word
-  modulus, and word trits. QP/N=10 yields 59,048, `/`, `<`, 59,049, 59,049, and
-  10 respectively. This is the product-side handoff an accelerator adapter may
-  consume; no Rust-to-Python/CUDA adapter for derived widths is claimed yet.
+  modulus, and word trits. Direct QP artifacts at N=10 through 14 produce
+  exactly
+  the five reviewed `3^N` geometries at that port. This is the product-side
+  handoff an accelerator adapter may consume; no Rust-to-Python/CUDA adapter for
+  derived widths is claimed yet.
 - Tiered interpreter handoff remains canonical-only until its continuation
   schema carries verified execution geometry explicitly. A derived N=10
   checkpoint with the same canonical profile, observation, and live-in surface
