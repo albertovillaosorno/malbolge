@@ -1,0 +1,62 @@
+{
+  "schema_version": 2,
+  "subject_id": "ucar-safe-current14-to-historical10",
+  "wide_width": 14,
+  "narrow_width": 10,
+  "input_ids": ["two-bytes"],
+  "observation_fields": ["input_consumed", "output_len", "termination"],
+  "proof_kind": "straight-line-safe-projection-v1",
+  "source_bytes": [117, 67, 97, 114, 95, 76],
+  "inputs": {"two-bytes": [165, 66]},
+  "wide": {
+    "initial": {"two-bytes": "w0"},
+    "observation": {
+      "w0": [0, 0, 0],
+      "w1": [1, 0, 0],
+      "w2": [1, 0, 0],
+      "w3": [1, 1, 0],
+      "w4": [2, 1, 0],
+      "w5": [2, 2, 0],
+      "w6": [2, 2, 1]
+    },
+    "successor": {
+      "w0": "w1",
+      "w1": "w2",
+      "w2": "w3",
+      "w3": "w4",
+      "w4": "w5",
+      "w5": "w6",
+      "w6": null
+    }
+  },
+  "narrow": {
+    "initial": {"two-bytes": "n0"},
+    "observation": {
+      "n0": [0, 0, 0],
+      "n1": [1, 0, 0],
+      "n2": [1, 0, 0],
+      "n3": [1, 1, 0],
+      "n4": [2, 1, 0],
+      "n5": [2, 2, 0],
+      "n6": [2, 2, 1]
+    },
+    "successor": {
+      "n0": "n1",
+      "n1": "n2",
+      "n2": "n3",
+      "n3": "n4",
+      "n4": "n5",
+      "n5": "n6",
+      "n6": null
+    }
+  },
+  "relation": [
+    ["w0", "n0"],
+    ["w1", "n1"],
+    ["w2", "n2"],
+    ["w3", "n3"],
+    ["w4", "n4"],
+    ["w5", "n5"],
+    ["w6", "n6"]
+  ]
+}

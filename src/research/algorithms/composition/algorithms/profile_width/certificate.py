@@ -49,6 +49,7 @@ CERTIFICATE_SCHEMA_VERSION: Final = 2
 INITIAL_HALT_PROOF_KIND: Final = "initial-halt-projection-v1"
 INPUT_THEN_HALT_PROOF_KIND: Final = "input-then-halt-projection-v1"
 INPUT_OUTPUT_HALT_PROOF_KIND: Final = "input-output-halt-projection-v1"
+STRAIGHT_LINE_SAFE_PROOF_KIND: Final = "straight-line-safe-projection-v1"
 NOOP_PREFIX_HALT_PROOF_KIND: Final = "noop-prefix-halt-projection-v1"
 _CERTIFICATE_KEYS_V1: Final = frozenset(
     {
@@ -595,6 +596,71 @@ def initial_halt_projection_certifiable(
     return decoded is not None and decoded[0] == ord("v")
 
 
+def _straight_line_events(
+    decoded: tuple[int, ...],
+) -> tuple[int, ...] | None:
+    allowed = frozenset((ord("o"), ord("/"), ord("<")))
+    events: list[int] = []
+    for opcode in decoded:
+        if opcode == ord("v"):
+            return tuple(events)
+        if opcode not in allowed:
+            return None
+        if opcode != ord("o"):
+            events.append(opcode)
+    return None
+
+
+def _stream_events_safe(
+    events: tuple[int, ...],
+    stream: tuple[int, ...],
+) -> bool:
+    input_cursor = 0
+    accumulator_exact = True
+    safe = True
+    for opcode in events:
+        if opcode == ord("/"):
+            accumulator_exact = input_cursor < len(stream)
+            input_cursor += int(accumulator_exact)
+        elif not accumulator_exact:
+            safe = False
+            break
+    return safe
+
+
+def straight_line_projection_certifiable(
+    source: bytes,
+    narrow_width: int,
+    wide_width: int,
+    *,
+    inputs: Mapping[str, tuple[int, ...]],
+) -> bool:
+    """Check straight-line projection through no-op and byte-I/O effects.
+
+    Returns:
+        True only when every bound stream reaches halt through `o`, `/`, and
+        byte-safe `<` transitions while preserving the width projection.
+
+    """
+    widths_valid = (
+        MINIMUM_WIDTH <= narrow_width < wide_width <= CANONICAL_WIDTH
+    )
+    decoded = (
+        _admitted_source_decodes(source, narrow_width)
+        if widths_valid
+        else None
+    )
+    events = _straight_line_events(decoded) if decoded is not None else None
+    return (
+        events is not None
+        and bool(inputs)
+        and all(
+            _stream_events_safe(events, stream)
+            for stream in inputs.values()
+        )
+    )
+
+
 def input_output_halt_projection_certifiable(
     source: bytes,
     narrow_width: int,
@@ -692,6 +758,28 @@ def minimum_certified_width(results: Mapping[int, bool]) -> int:
     return min(certified, default=CANONICAL_WIDTH)
 
 
+def _input_bound_proof_valid(
+    certificate: FiniteWidthCertificate,
+    source: bytes,
+    inputs: Mapping[str, tuple[int, ...]],
+) -> bool | None:
+    if certificate.proof_kind == INPUT_OUTPUT_HALT_PROOF_KIND:
+        return input_output_halt_projection_certifiable(
+            source,
+            certificate.narrow_width,
+            certificate.wide_width,
+            inputs=inputs,
+        )
+    if certificate.proof_kind == STRAIGHT_LINE_SAFE_PROOF_KIND:
+        return straight_line_projection_certifiable(
+            source,
+            certificate.narrow_width,
+            certificate.wide_width,
+            inputs=inputs,
+        )
+    return None
+
+
 def _recognized_proof_valid(
     certificate: FiniteWidthCertificate,
     source: bytes,
@@ -705,22 +793,20 @@ def _recognized_proof_valid(
     checker = (
         simple_checkers.get(proof_kind) if proof_kind is not None else None
     )
+    accepted: bool | None = None
     if checker is not None:
-        return checker(
+        accepted = checker(
             source,
             certificate.narrow_width,
             certificate.wide_width,
         )
-    if certificate.proof_kind == INPUT_OUTPUT_HALT_PROOF_KIND:
-        inputs = certificate.inputs
-        if inputs is not None:
-            return input_output_halt_projection_certifiable(
-                source,
-                certificate.narrow_width,
-                certificate.wide_width,
-                inputs=inputs,
-            )
-    return False
+    elif certificate.inputs is not None:
+        accepted = _input_bound_proof_valid(
+            certificate,
+            source,
+            certificate.inputs,
+        )
+    return accepted is True
 
 
 def bound_width_certificate_valid(

@@ -219,6 +219,14 @@ across widths and therefore produces the same output; EOF remains projected in
 A but has width-dependent byte residue. The `ubO` fixture retains the positive
 byte domain and a VM counterexample where EOF diverges exactly at output.
 
+The compositional straight-line checker subsumes those small cases for programs
+whose decoded prefix uses only `o`, `/`, and `<` before `v`. It tracks input
+position and whether A is byte-exact; output is legal only in that exact state.
+All 120 prefixes of lengths one through four are checked for stream lengths zero
+through two using source encodings reconstructed from the independent verifier
+decode model. `uCar_L` adds a six-transition bound certificate and endpoint-VM
+positive/negative evidence depending only on whether the second input exists.
+
 Given independent certificate results for widths 10 through 13, the exact
 selector is the minimum certified width with 14 inserted as a canonical
 fallback. Missing results fail closed to 14. The selector deliberately assumes

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import replace
+from itertools import product
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -48,6 +49,7 @@ from algorithms.profile_width.certificate import INPUT_OUTPUT_HALT_PROOF_KIND
 from algorithms.profile_width.certificate import INPUT_THEN_HALT_PROOF_KIND
 from algorithms.profile_width.certificate import MINIMUM_WIDTH
 from algorithms.profile_width.certificate import NOOP_PREFIX_HALT_PROOF_KIND
+from algorithms.profile_width.certificate import STRAIGHT_LINE_SAFE_PROOF_KIND
 from algorithms.profile_width.certificate import WidthCertificateSubject
 from algorithms.profile_width.certificate import bound_width_certificate_valid
 from algorithms.profile_width.certificate import certificate_valid
@@ -67,6 +69,9 @@ from algorithms.profile_width.certificate import (
     noop_prefix_halt_projection_certifiable,
 )
 from algorithms.profile_width.certificate import parse_finite_width_certificate
+from algorithms.profile_width.certificate import (
+    straight_line_projection_certifiable,
+)
 
 from verifier.emitted_malbolge_classic import decode as verifier_decode
 
@@ -106,6 +111,7 @@ def test_selector_fails_closed_on_missing_or_invalid_result() -> None:
 _FIXTURES = Path(__file__).with_name("fixtures")
 _FIXTURE_V1 = _FIXTURES / "qp-width-certificate-v1.json"
 _FIXTURE_V2 = _FIXTURES / "qp-width-certificate-v2.json"
+_COMPOSED_FIXTURE = _FIXTURES / "ucar-safe-width-certificate-v2.json"
 _DP_FIXTURE_V2 = _FIXTURES / "dp-noop-halt-width-certificate-v2.json"
 _UP_FIXTURE_V2 = _FIXTURES / "up-input-halt-width-certificate-v2.json"
 _UBO_FIXTURE_V2 = _FIXTURES / "ubo-input-output-halt-width-certificate-v2.json"
@@ -384,6 +390,133 @@ def test_noop_prefix_halt_checker_matches_verifier_decode_pairs() -> None:
                 CANONICAL_WIDTH,
             )
             assert observed == expected
+
+
+def _encoded_source(decoded: tuple[int, ...]) -> bytes:
+    cells: list[int] = []
+    for position, opcode in enumerate(decoded):
+        matches = tuple(
+            cell
+            for cell in _GRAPHICAL
+            if verifier_decode(cell, position) == opcode
+        )
+        assert len(matches) == 1
+        cells.append(matches[0])
+    return bytes(cells)
+
+
+def _straight_line_oracle(decoded: tuple[int, ...], stream_len: int) -> bool:
+    input_attempts = 0
+    for opcode in decoded:
+        if opcode == ord("/"):
+            input_attempts += 1
+        elif opcode == ord("<") and input_attempts > stream_len:
+            return False
+        elif opcode == ord("v"):
+            return True
+    return False
+
+
+def test_straight_line_checker_matches_exhaustive_bounded_composition() -> None:
+    """Bounded safe-op programs match an independent decode/input oracle."""
+    prefix_opcodes = (ord("o"), ord("/"), ord("<"))
+    for prefix_len in range(1, 5):
+        for prefix in product(prefix_opcodes, repeat=prefix_len):
+            decoded = (*prefix, ord("v"))
+            source = _encoded_source(decoded)
+            for stream_len in range(3):
+                stream = tuple(range(stream_len))
+                expected = _straight_line_oracle(decoded, stream_len)
+                observed = straight_line_projection_certifiable(
+                    source,
+                    MINIMUM_WIDTH,
+                    CANONICAL_WIDTH,
+                    inputs={"bounded": stream},
+                )
+                assert observed == expected
+
+
+def test_straight_line_checker_composes_safe_noop_and_io_steps() -> None:
+    """One checker composes no-op, input, output, and halt obligations."""
+    two_bytes = {"two-bytes": (165, 66)}
+    assert straight_line_projection_certifiable(
+        b"uCar_L",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs=two_bytes,
+    )
+    assert straight_line_projection_certifiable(
+        b"cP",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs={"eof": ()},
+    )
+
+
+def test_straight_line_checker_rejects_unsafe_or_unsupported_paths() -> None:
+    """EOF output, unsupported opcodes, and fall-through fail closed."""
+    assert not straight_line_projection_certifiable(
+        b"uCar_L",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs={"one-byte": (165,)},
+    )
+    assert not straight_line_projection_certifiable(
+        b"DC",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs={"eof": ()},
+    )
+    assert not straight_line_projection_certifiable(
+        b"(=%r_L",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs={"byte-a5": (165,)},
+    )
+
+
+def test_bound_certificate_accepts_compositional_proof_kind() -> None:
+    """Schema-v2 binding can delegate safety to the compositional checker."""
+    certificate = parse_finite_width_certificate(_fixture_value())
+    assert certificate is not None
+    compositional = replace(
+        certificate,
+        proof_kind=STRAIGHT_LINE_SAFE_PROOF_KIND,
+    )
+    assert bound_width_certificate_valid(compositional)
+    decisions = {10: compositional, 11: False, 12: False, 13: False}
+    assert _selected_width(decisions) == MINIMUM_WIDTH
+
+
+def test_composed_fixture_selects_width_for_exact_two_byte_subject() -> None:
+    """A six-transition bound certificate can authorize the narrow width."""
+    certificate = parse_finite_width_certificate(
+        _fixture_value(_COMPOSED_FIXTURE)
+    )
+    assert certificate is not None
+    assert finite_width_certificate_valid(certificate)
+    assert bound_width_certificate_valid(certificate)
+    subject = WidthCertificateSubject(
+        source=b"uCar_L",
+        inputs={"two-bytes": bytes((165, 66))},
+    )
+    decisions = {10: certificate, 11: False, 12: False, 13: False}
+    assert minimum_width_from_certificates(subject, decisions) == MINIMUM_WIDTH
+
+
+def test_composed_fixture_cannot_authorize_shorter_input_subject() -> None:
+    """Changing only the bound input stream fails closed to canonical width."""
+    certificate = parse_finite_width_certificate(
+        _fixture_value(_COMPOSED_FIXTURE)
+    )
+    assert certificate is not None
+    subject = WidthCertificateSubject(
+        source=b"uCar_L",
+        inputs={"two-bytes": bytes((165,))},
+    )
+    decisions = {10: certificate, 11: False, 12: False, 13: False}
+    selected = minimum_width_from_certificates(subject, decisions)
+    assert selected == CANONICAL_WIDTH
 
 
 def test_initial_halt_checker_certifies_qp_from_semantic_premises() -> None:

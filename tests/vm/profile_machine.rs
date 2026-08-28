@@ -50,6 +50,7 @@ const NARROWING_HALT_SOURCE: &[u8] = b"QP";
 const NARROWING_NOOP_HALT_SOURCE: &[u8] = b"DP";
 const NARROWING_INPUT_HALT_SOURCE: &[u8] = b"uP";
 const NARROWING_INPUT_OUTPUT_HALT_SOURCE: &[u8] = b"ubO";
+const NARROWING_COMPOSED_SAFE_SOURCE: &[u8] = b"uCar_L";
 const NARROWING_NOOP_PREFIX_HALT_SOURCE: &[u8] = b"DCBA@?>=I";
 const NOOP_PREFIX_STEPS: u8 = 8;
 const CURRENT_TRITS: u8 = 14;
@@ -260,6 +261,97 @@ fn final_observable_match_does_not_imply_projected_lockstep() -> TestResult {
     let projected = current.registers().accumulator.rem_euclid(modulus);
     if projected == historical.registers().accumulator {
         return Err(String::from("rotate unexpectedly preserved projection"));
+    }
+    Ok(())
+}
+
+#[test]
+fn composed_safe_program_preserves_projection_with_two_bytes() -> TestResult {
+    let input = vec![CURRENT_INPUT, 0x42];
+    let mut historical = normalize_result(ProfileMachine::from_source(
+        historical_profile(),
+        NARROWING_COMPOSED_SAFE_SOURCE,
+        input.clone(),
+    ))?;
+    let mut current = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        NARROWING_COMPOSED_SAFE_SOURCE,
+        input,
+    ))?;
+    check_current_projects_to_historical_state(&current, &historical)?;
+    for step in 0u8..5 {
+        let historical_outcome = normalize_result(historical.step())?;
+        let current_outcome = normalize_result(current.step())?;
+        check_equal(
+            &current_outcome,
+            &historical_outcome,
+            "composed-safe continued step",
+        )?;
+        check_equal(
+            &current_outcome,
+            &malbolge::StepOutcome::Continued,
+            "composed-safe continued outcome",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+        let expected_output_len =
+            usize::from(step >= 2) + usize::from(step >= 4);
+        check_equal(
+            &current.output().len(),
+            &expected_output_len,
+            "composed-safe output length",
+        )?;
+    }
+    check_equal(
+        current.output(),
+        &[CURRENT_INPUT, 0x42],
+        "composed-safe bytes",
+    )?;
+    let historical_halt = normalize_result(historical.step())?;
+    let current_halt = normalize_result(current.step())?;
+    check_equal(&current_halt, &historical_halt, "composed-safe halt")?;
+    check_equal(
+        &current_halt,
+        &malbolge::StepOutcome::Terminated(Termination::HaltInstruction),
+        "composed-safe termination",
+    )?;
+    check_current_projects_to_historical_state(&current, &historical)
+}
+
+#[test]
+fn composed_safe_program_rejects_short_input_at_second_output() -> TestResult {
+    let input = vec![CURRENT_INPUT];
+    let mut historical = normalize_result(ProfileMachine::from_source(
+        historical_profile(),
+        NARROWING_COMPOSED_SAFE_SOURCE,
+        input.clone(),
+    ))?;
+    let mut current = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        NARROWING_COMPOSED_SAFE_SOURCE,
+        input,
+    ))?;
+    check_current_projects_to_historical_state(&current, &historical)?;
+    for _ in 0u8..4 {
+        let historical_outcome = normalize_result(historical.step())?;
+        let current_outcome = normalize_result(current.step())?;
+        check_equal(
+            &current_outcome,
+            &historical_outcome,
+            "short-input pre-output step",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+    }
+    let historical_output = normalize_result(historical.step())?;
+    let current_output = normalize_result(current.step())?;
+    check_equal(
+        &current_output,
+        &historical_output,
+        "short-input second output step",
+    )?;
+    if current.output() == historical.output() {
+        return Err(String::from(
+            "short-input second output unexpectedly matched",
+        ));
     }
     Ok(())
 }

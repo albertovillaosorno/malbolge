@@ -144,10 +144,19 @@ separate costs; resource evidence must measure those costs directly.
 - Proof kind `input-output-halt-projection-v1` covers decoded `/`, `<`, `v`
   only when every exact declared input stream is nonempty. Then input stores the
   same byte at both widths and output emits that same byte; an EOF-capable
-  domain
-  is rejected because the projected EOF words have different residues modulo
-  256. Fixture `ubO` certifies the bound `0xA5` domain, while a Rust adversarial
-  run shows projection surviving input and breaking exactly at output under EOF.
+  domain is rejected because the projected EOF words have different residues
+  modulo 256. Fixture `ubO` certifies the bound `0xA5` domain, while a Rust
+  adversarial run shows projection surviving input and breaking exactly at
+  output under EOF.
+- Proof kind `straight-line-safe-projection-v1` composes arbitrary admitted
+  straight-line prefixes over `o`, `/`, and `<` followed by `v`. For each exact
+  input stream it tracks only input cursor and whether A is byte-exact or merely
+  projection-related; `<` is accepted only in the byte-exact state. Bounded
+  exhaustive evidence covers all 120 prefixes of lengths one through four and
+  streams of lengths zero through two against independently encoded verifier
+  decode. Fixture `uCar_L` (`/ o < / < v`) selects width 10 for two exact bytes,
+  while a one-byte subject stays projected through the second input and diverges
+  exactly at the second output in both endpoint-width VMs.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final
