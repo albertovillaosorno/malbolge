@@ -94,9 +94,10 @@ by success of the padded representation.
 - Required mathematical evidence: the generalized zero-padding identity for
   every `10<=N<=14`, explicit domain assumptions, and a proof that discarded
   high output trits are data-independent constants.
-- Current mathematical base: correspondence
-  `optimization-crazy-zero-padded-fifteen-trit-projection` proves that identity
-  and exhausts every residual third-chunk operand pair for widths 10 through 14.
+- Current mathematical base: correspondences
+  `optimization-crazy-zero-padded-fifteen-trit-projection` and
+  `optimization-crazy-uniform-three-lookup-factorization` prove the projection
+  and exact fixed three-lookup decomposition for widths 10 through 14.
 - Current measurement harness: `interpreter_benchmark` emits paired native
   `5+5+4` and zero-padded `5+5+5` samples for width 14, alternates execution
   order by sample, and preserves a common checksum. This is a preliminary CPU

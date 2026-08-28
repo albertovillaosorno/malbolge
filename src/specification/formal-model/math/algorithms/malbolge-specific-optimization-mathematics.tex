@@ -107,6 +107,30 @@ trits are the data-independent constant above and disappear under projection
 modulo $3^N$. This proves arithmetic equivalence only. It neither allocates a
 $3^{15}$-word semantic memory nor establishes a performance improvement.
 
+Writing $B=3^5=243$, decompose the same operands as
+\[
+  d=d_0+B d_1+B^2 d_2,
+  \qquad
+  a=a_0+B a_1+B^2 a_2,
+\]
+where $0\leq d_0,d_1,a_0,a_1<B$ and
+$0\leq d_2,a_2<3^{N-10}\leq3^4<B$. Combining the five-trit table
+factorization with the padding projection gives
+\begin{equation}
+  \CrazyN{N}{d}{a}
+    = \left(
+        \CrazyN{5}{d_0}{a_0}
+        + B\CrazyN{5}{d_1}{a_1}
+        + B^2\CrazyN{5}{d_2}{a_2}
+      \right)\bmod3^N,
+  \quad 10\leq N\leq14.
+  \label{eq:optimization-crazy-uniform-three-lookup-factorization}
+\end{equation}
+Thus one exact $243\times243$ table may be invoked exactly three times for every
+admitted semantic width. The third lookup receives zero high input trits; only
+its constant high output trits are discarded by the final semantic projection.
+This is an exact factorization, not a wall-clock speedup claim.
+
 
 \section{Exact crazy-target preimage cardinality}
 

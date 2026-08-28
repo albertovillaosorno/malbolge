@@ -20,6 +20,11 @@ The profile-width crazy factorization also admits an exact zero-padded physical
 known constant `(3^15-3^N)/2`, so reducing modulo `3^N` recovers native crazy
 semantics without enlarging semantic memory; this is not a timing claim.
 
+Equivalently, every width from 10 through 14 admits exactly three invocations of
+the same 243-by-243 five-trit table, weighted by `1`, `243`, and `243^2`, then
+projected modulo `3^N`. The third lookup is zero-padded physically; semantic
+memory and semantic word width remain unchanged.
+
 The current research surface also exposes an exact classic crazy-target
 full-domain preimage count. Its product-of-per-trit-multiplicities equation and
 the derived tight 1,024-preimage global ceiling, exact zero-or-power-of-two

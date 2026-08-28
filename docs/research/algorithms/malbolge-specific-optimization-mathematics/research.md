@@ -61,9 +61,10 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes fifty-eight exact reductions: classic five-trit crazy factorization,
+formalizes fifty-nine exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact zero-padded 15-trit crazy
-projection for semantic widths 10 through 14, exact decode sum-class
+projection and uniform three-lookup factorization for semantic widths 10
+through 14, exact decode sum-class
 canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -118,6 +119,14 @@ added zero/zero trit maps to one. Therefore `Crazy_15(d,a) mod 3^N` equals the
 native `Crazy_N(d,a)` exactly. Exhaustive residual-tail evidence covers every
 possible third-chunk operand pair at each admitted width; this is an arithmetic
 equivalence only and makes no performance claim.
+
+The same projection yields a fixed physical factorization at those widths. With
+`B=243`, split each operand into two complete five-trit chunks plus one residual
+tail. Three invocations of the same five-trit table, weighted by `1`, `B`, and
+`B^2` and reduced modulo `3^N`, reproduce native `Crazy_N` exactly. Existing
+exhaustive table evidence owns the two complete chunks; the padded evidence
+exhausts every third-chunk pair and mixed assembly fixtures. This remains a
+state-equivalence result, not a timing claim.
 
 The preserved historical decode table is a permutation of all 94 graphical
 bytes. Exhausting all 8,836 graphical cell/code-phase pairs therefore proves

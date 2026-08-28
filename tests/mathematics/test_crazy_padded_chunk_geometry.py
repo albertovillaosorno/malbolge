@@ -65,6 +65,35 @@ def _crazy(data: int, accumulator: int, trits: int) -> int:
     return result
 
 
+def _uniform_three_lookup(data: int, accumulator: int, width: int) -> int:
+    chunk_modulus = _integer_power(_RADIX, _CHUNK_TRITS)
+    semantic_modulus = _integer_power(_RADIX, width)
+    low_data = data % chunk_modulus
+    low_accumulator = accumulator % chunk_modulus
+    middle_data = (data // chunk_modulus) % chunk_modulus
+    middle_accumulator = (accumulator // chunk_modulus) % chunk_modulus
+    high_place = chunk_modulus * chunk_modulus
+    high_data = data // high_place
+    high_accumulator = accumulator // high_place
+    padded = (
+        _crazy(low_data, low_accumulator, _CHUNK_TRITS)
+        + chunk_modulus
+        * _crazy(middle_data, middle_accumulator, _CHUNK_TRITS)
+        + high_place
+        * _crazy(high_data, high_accumulator, _CHUNK_TRITS)
+    )
+    return padded % semantic_modulus
+
+
+def _tail_pairs(width: int) -> list[tuple[int, int]]:
+    tail_modulus = _integer_power(_RADIX, width - _LOW_CHUNK_TRITS)
+    return [
+        (data_tail, accumulator_tail)
+        for data_tail in range(tail_modulus)
+        for accumulator_tail in range(tail_modulus)
+    ]
+
+
 def _padding_constant(width: int) -> int:
     return (
         _integer_power(_RADIX, _PADDED_WIDTH)
@@ -116,3 +145,34 @@ def test_three_chunk_projection_has_exact_profile_constant() -> None:
                 delta = third_place * (padded_tail - native_tail)
                 assert delta == _padding_constant(width)
                 assert delta % (_integer_power(_RADIX, width)) == 0
+
+
+def test_uniform_three_lookup_factorization_projects_every_tail_pair() -> None:
+    """Three five-trit lookups reproduce every admitted residual tail pair."""
+    chunk_modulus = _integer_power(_RADIX, _CHUNK_TRITS)
+    high_place = chunk_modulus * chunk_modulus
+    low_fixtures = (
+        (0, 0, 0, 0),
+        (chunk_modulus - 1,) * 4,
+        (17, 93, 201, 7),
+    )
+    for width in range(_MINIMUM_WIDTH, _MAXIMUM_WIDTH + 1):
+        for data_tail, accumulator_tail in _tail_pairs(width):
+            for low_data, low_accumulator, mid_data, mid_accumulator in (
+                low_fixtures
+            ):
+                data = (
+                    low_data
+                    + chunk_modulus * mid_data
+                    + high_place * data_tail
+                )
+                accumulator = (
+                    low_accumulator
+                    + chunk_modulus * mid_accumulator
+                    + high_place * accumulator_tail
+                )
+                assert _uniform_three_lookup(
+                    data,
+                    accumulator,
+                    width,
+                ) == _crazy(data, accumulator, width)

@@ -209,6 +209,16 @@ mechanism = "digitwise-zero-padding-plus-constant-high-trit-projection"
 evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_positions", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_zero_padding_adds_exact_constant_high_trits", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_padded_tail_lookup_matches_native_tail_for_every_residue", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_three_chunk_projection_has_exact_profile_constant"]
 
 [[correspondence]]
+id = "optimization-crazy-uniform-three-lookup-factorization"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-uniform-three-lookup-factorization"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "semantic widths 10 through 14: both complete lower five-trit lookup domains plus every residual third-chunk operand pair, with mixed three-block assembly fixtures at every width"
+mechanism = "five-trit-digit-factorization-plus-zero-padded-third-lookup-projection"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_positions", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_padded_tail_lookup_matches_native_tail_for_every_residue", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_uniform_three_lookup_factorization_projects_every_tail_pair"]
+
+[[correspondence]]
 id = "optimization-crazy-preimage-cardinality"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cardinality"
