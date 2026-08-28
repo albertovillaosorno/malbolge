@@ -34,7 +34,9 @@
 
 use malbolge::{
     ProfileLoadError, ProfileWidthProofKind, ProfileWidthVerificationError,
-    current_profile, verify_initial_halt_profile_width,
+    TargetProfileRequirement, current_profile, decode_profile_instruction,
+    historical_profile, verify_initial_halt_profile_width,
+    verify_minimum_initial_halt_profile_width,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -80,6 +82,44 @@ fn initial_halt_verifier_binds_profile_source_and_geometry() -> TestResult {
         &(MINIMUM_MEMORY_WORDS - 1),
         "derived EOF",
     )
+}
+
+#[test]
+fn derived_width_never_reclassifies_canonical_profile_identity() -> TestResult {
+    let current = current_profile();
+    let verified = normalize_result(verify_initial_halt_profile_width(
+        current,
+        QP,
+        MINIMUM_WORD_TRITS,
+    ))?;
+    let requirement =
+        TargetProfileRequirement::from_descriptor(verified.profile());
+    check_equal(&verified.profile(), &current, "canonical descriptor")?;
+    if verified.profile() == historical_profile() {
+        return Err(String::from("derived width became historical profile"));
+    }
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "derived execution width",
+    )?;
+    check_equal(
+        &requirement.word_trits,
+        &CANONICAL_WORD_TRITS,
+        "canonical requirement width",
+    )
+}
+
+#[test]
+fn minimum_initial_halt_selector_chooses_narrowest_source_capacity()
+-> TestResult {
+    let source =
+        source_with_initial_halt(MINIMUM_MEMORY_WORDS_USIZE.saturating_add(1))?;
+    let verified = normalize_result(
+        verify_minimum_initial_halt_profile_width(current_profile(), &source),
+    )?;
+    check_equal(&verified.word_trits(), &11u8, "minimum admitted width")?;
+    check_equal(&verified.memory_words(), &177_147u32, "minimum memory")
 }
 
 #[test]
@@ -165,4 +205,28 @@ fn derived_capacity_precedes_later_source_validation() -> TestResult {
         &ProfileWidthVerificationError::Source(ProfileLoadError::SourceTooLong),
         "derived capacity rejection",
     )
+}
+
+fn source_with_initial_halt(word_count: usize) -> TestResult<Vec<u8>> {
+    let mut source = Vec::with_capacity(word_count);
+    for position in 0..word_count {
+        let code_pointer = u32::try_from(position).map_err(|error| {
+            format!("test code pointer conversion: {error}")
+        })?;
+        let decoded = if position == 0 {
+            b'v'
+        } else {
+            b'o'
+        };
+        let byte = (33u8..=126u8)
+            .find(|cell| {
+                decode_profile_instruction(u32::from(*cell), code_pointer)
+                    == Some(decoded)
+            })
+            .ok_or_else(|| {
+                format!("missing encoded opcode at position {position}")
+            })?;
+        source.push(byte);
+    }
+    Ok(source)
 }

@@ -157,6 +157,42 @@ impl From<ProfileLoadError> for ProfileWidthVerificationError {
     }
 }
 
+/// Selects the minimum independently verified initial-halt width.
+///
+/// Only a derived-capacity rejection advances to the next width. Any lexical,
+/// decode, theorem, or geometry failure rejects immediately rather than being
+/// reinterpreted as evidence for a wider candidate.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when no reviewed candidate admits
+/// the exact source under the initial-halt theorem.
+pub fn verify_minimum_initial_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let mut capacity_error = None;
+    for word_trits in MINIMUM_ADAPTIVE_WORD_TRITS..=profile.word_trits() {
+        match verify_initial_halt_profile_width(profile, source, word_trits) {
+            Ok(verified) => return Ok(verified),
+            Err(
+                error @ ProfileWidthVerificationError::Source(
+                    ProfileLoadError::SourceTooLong,
+                ),
+            ) => {
+                capacity_error = Some(error);
+            },
+            Err(error) => return Err(error),
+        }
+    }
+    Err(capacity_error.unwrap_or_else(|| {
+        ProfileWidthVerificationError::WidthOutOfRange {
+            profile_word_trits: profile.word_trits(),
+            requested: MINIMUM_ADAPTIVE_WORD_TRITS,
+        }
+    }))
+}
+
 /// Independently verifies the initial-halt proof family for one derived width.
 ///
 /// This verifier consumes canonical VM source-admission and decode rules. It

@@ -215,6 +215,7 @@ pub use profile_trace::{
 pub use profile_width::{
     ProfileWidthProofKind, ProfileWidthVerificationError,
     VerifiedProfileExecutionGeometry, verify_initial_halt_profile_width,
+    verify_minimum_initial_halt_profile_width,
 };
 pub use threading::ScopedThreadParallelism;
 pub use trace::{

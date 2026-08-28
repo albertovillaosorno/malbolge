@@ -250,6 +250,12 @@ geometry for QP. DP and malformed, oversized, or out-of-range subjects fail
 closed; the verified geometry currently has no execution consumer, so this is an
 admission-boundary result rather than adaptive-runtime evidence.
 
+Within that initial-halt family, product-side minimum selection tries N=10
+through the canonical width and advances only on exact derived-capacity failure.
+QP selects N=10, while a valid 59,050-word initial-halt source selects N=11. A
+verified N=10 artifact still retains the canonical 14-trit `malbolge-2026`
+requirement and is explicitly unequal to the historical profile identity.
+
 `uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
 shows why projected D is insufficient for writes: both crazy transitions
 continue and A still projects, but D names different physical cells, so the

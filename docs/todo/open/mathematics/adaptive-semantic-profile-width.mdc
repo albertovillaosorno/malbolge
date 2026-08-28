@@ -234,6 +234,14 @@ separate costs; resource evidence must measure those costs directly.
   bytes, widths outside 10 through the canonical width, and source size beyond
   the derived memory all reject without producing the verified type. No runtime,
   accelerator, or compiler consumer executes this geometry yet.
+- `verify_minimum_initial_halt_profile_width` now performs trusted deterministic
+  minimum selection for this one proof family. It advances to the next N only
+  after an exact derived-capacity `SourceTooLong`; lexical, decode, theorem, and
+  geometry failures reject immediately. A 59,050-word valid initial-halt source
+  selects N=11 rather than N=10, while QP selects N=10. The resulting N=10 QP
+  artifact still exposes canonical `malbolge-2026` and its 14-trit
+  `TargetProfileRequirement`, never `malbolge-1998`; derived width and canonical
+  identity therefore remain distinct by product test.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final
