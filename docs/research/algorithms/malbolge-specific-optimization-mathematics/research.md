@@ -236,6 +236,13 @@ N/14 cell values to decide whether successor D stays exact.
 This accepts `jjjv` because cells 41 and 43 are numerically equal at widths 10
 and 14.
 
+The derived-width selector remains research-only: no compiler, runtime, or
+optimizer module imports it. Product integration must follow the existing trust
+boundary in which untrusted optimization evidence is independently admitted. A
+derived width may parameterize execution geometry only after that admission; it
+must not replace the canonical profile ID, version, fingerprint, or semantic
+requirement.
+
 `uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
 shows why projected D is insufficient for writes: both crazy transitions
 continue and A still projects, but D names different physical cells, so the
