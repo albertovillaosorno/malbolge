@@ -47,6 +47,9 @@ const CRAZY_TRIT_TABLE: [[u32; 3]; 3] = [[1, 0, 0], [1, 0, 2], [2, 2, 1]];
 const CURRENT_INPUT: u8 = 0xa5;
 const CURRENT_SOURCE: &[u8] = b"(=%r_L";
 const NARROWING_HALT_SOURCE: &[u8] = b"QP";
+const NARROWING_NOOP_HALT_SOURCE: &[u8] = b"DP";
+const NARROWING_NOOP_PREFIX_HALT_SOURCE: &[u8] = b"DCBA@?>=I";
+const NOOP_PREFIX_STEPS: u8 = 8;
 const CURRENT_TRITS: u8 = 14;
 const CURRENT_WORDS: u32 = 4_782_969;
 const HISTORICAL_WORDS: u16 = 59_049;
@@ -255,6 +258,90 @@ fn final_observable_match_does_not_imply_projected_lockstep() -> TestResult {
     let projected = current.registers().accumulator.rem_euclid(modulus);
     if projected == historical.registers().accumulator {
         return Err(String::from("rotate unexpectedly preserved projection"));
+    }
+    Ok(())
+}
+
+#[test]
+fn noop_prefix_halt_preserves_complete_projection_for_endpoint_widths()
+-> TestResult {
+    for input in [vec![CURRENT_INPUT], Vec::new()] {
+        let mut historical = normalize_result(ProfileMachine::from_source(
+            historical_profile(),
+            NARROWING_NOOP_PREFIX_HALT_SOURCE,
+            input.clone(),
+        ))?;
+        let mut current = normalize_result(ProfileMachine::from_source(
+            current_profile(),
+            NARROWING_NOOP_PREFIX_HALT_SOURCE,
+            input,
+        ))?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+        for _ in 0u8..NOOP_PREFIX_STEPS {
+            let historical_noop = normalize_result(historical.step())?;
+            let current_noop = normalize_result(current.step())?;
+            check_equal(
+                &current_noop,
+                &historical_noop,
+                "noop-prefix continued step",
+            )?;
+            check_equal(
+                &current_noop,
+                &malbolge::StepOutcome::Continued,
+                "noop-prefix outcome",
+            )?;
+            check_current_projects_to_historical_state(&current, &historical)?;
+        }
+        let historical_halt = normalize_result(historical.step())?;
+        let current_halt = normalize_result(current.step())?;
+        check_equal(&current_halt, &historical_halt, "noop-prefix halt step")?;
+        check_equal(
+            &current_halt,
+            &malbolge::StepOutcome::Terminated(Termination::HaltInstruction),
+            "noop-prefix termination",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn noop_then_halt_preserves_complete_projection_for_endpoint_widths()
+-> TestResult {
+    for input in [vec![CURRENT_INPUT], Vec::new()] {
+        let mut historical = normalize_result(ProfileMachine::from_source(
+            historical_profile(),
+            NARROWING_NOOP_HALT_SOURCE,
+            input.clone(),
+        ))?;
+        let mut current = normalize_result(ProfileMachine::from_source(
+            current_profile(),
+            NARROWING_NOOP_HALT_SOURCE,
+            input,
+        ))?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+        let historical_noop = normalize_result(historical.step())?;
+        let current_noop = normalize_result(current.step())?;
+        check_equal(
+            &current_noop,
+            &historical_noop,
+            "noop fixture first step",
+        )?;
+        check_equal(
+            &current_noop,
+            &malbolge::StepOutcome::Continued,
+            "noop outcome",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+        let historical_halt = normalize_result(historical.step())?;
+        let current_halt = normalize_result(current.step())?;
+        check_equal(&current_halt, &historical_halt, "noop fixture halt step")?;
+        check_equal(
+            &current_halt,
+            &malbolge::StepOutcome::Terminated(Termination::HaltInstruction),
+            "noop fixture termination",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
     }
     Ok(())
 }

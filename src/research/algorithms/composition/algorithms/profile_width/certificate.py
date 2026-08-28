@@ -47,6 +47,7 @@ CANONICAL_WIDTH: Final = 14
 LEGACY_CERTIFICATE_SCHEMA_VERSION: Final = 1
 CERTIFICATE_SCHEMA_VERSION: Final = 2
 INITIAL_HALT_PROOF_KIND: Final = "initial-halt-projection-v1"
+NOOP_PREFIX_HALT_PROOF_KIND: Final = "noop-prefix-halt-projection-v1"
 _CERTIFICATE_KEYS_V1: Final = frozenset(
     {
         "schema_version",
@@ -592,6 +593,36 @@ def initial_halt_projection_certifiable(
     return decoded is not None and decoded[0] == ord("v")
 
 
+def noop_prefix_halt_projection_certifiable(
+    source: bytes,
+    narrow_width: int,
+    wide_width: int,
+) -> bool:
+    """Check the sufficient no-op-prefix-then-halt projection premises.
+
+    Returns:
+        True only for one or more initial `o` instructions followed by `v`.
+
+    """
+    widths_valid = (
+        MINIMUM_WIDTH <= narrow_width < wide_width <= CANONICAL_WIDTH
+    )
+    if not widths_valid:
+        return False
+    decoded = _admitted_source_decodes(source, narrow_width)
+    if decoded is None:
+        return False
+    prefix_length = 0
+    for opcode in decoded:
+        if opcode != ord("o"):
+            break
+        prefix_length += 1
+    following = (
+        decoded[prefix_length] if prefix_length < len(decoded) else None
+    )
+    return bool(prefix_length) and following == ord("v")
+
+
 def minimum_certified_width(results: Mapping[int, bool]) -> int:
     """Return the minimum independently certified profile width.
 
@@ -608,6 +639,26 @@ def minimum_certified_width(results: Mapping[int, bool]) -> int:
     return min(certified, default=CANONICAL_WIDTH)
 
 
+def _recognized_proof_valid(
+    certificate: FiniteWidthCertificate,
+    source: bytes,
+) -> bool:
+    accepted = False
+    if certificate.proof_kind == INITIAL_HALT_PROOF_KIND:
+        accepted = initial_halt_projection_certifiable(
+            source,
+            certificate.narrow_width,
+            certificate.wide_width,
+        )
+    elif certificate.proof_kind == NOOP_PREFIX_HALT_PROOF_KIND:
+        accepted = noop_prefix_halt_projection_certifiable(
+            source,
+            certificate.narrow_width,
+            certificate.wide_width,
+        )
+    return accepted
+
+
 def bound_width_certificate_valid(
     certificate: FiniteWidthCertificate,
 ) -> bool:
@@ -617,20 +668,15 @@ def bound_width_certificate_valid(
         True only when structural evidence and theorem-specific premises pass.
 
     """
-    recognized = (
-        certificate.schema_version == CERTIFICATE_SCHEMA_VERSION
-        and certificate.proof_kind == INITIAL_HALT_PROOF_KIND
-    )
-    if not finite_width_certificate_valid(certificate) or not recognized:
+    if (
+        not finite_width_certificate_valid(certificate)
+        or certificate.schema_version != CERTIFICATE_SCHEMA_VERSION
+    ):
         return False
     source = certificate.source_bytes
     if source is None:
         return False
-    return initial_halt_projection_certifiable(
-        bytes(source),
-        certificate.narrow_width,
-        certificate.wide_width,
-    )
+    return _recognized_proof_valid(certificate, bytes(source))
 
 
 def _certificate_matches_subject(

@@ -45,6 +45,7 @@ from algorithms.profile_width.certificate import CANONICAL_WIDTH
 from algorithms.profile_width.certificate import CERTIFICATE_SCHEMA_VERSION
 from algorithms.profile_width.certificate import FiniteSystem
 from algorithms.profile_width.certificate import MINIMUM_WIDTH
+from algorithms.profile_width.certificate import NOOP_PREFIX_HALT_PROOF_KIND
 from algorithms.profile_width.certificate import WidthCertificateSubject
 from algorithms.profile_width.certificate import bound_width_certificate_valid
 from algorithms.profile_width.certificate import certificate_valid
@@ -54,6 +55,9 @@ from algorithms.profile_width.certificate import (
 )
 from algorithms.profile_width.certificate import minimum_certified_width
 from algorithms.profile_width.certificate import minimum_width_from_certificates
+from algorithms.profile_width.certificate import (
+    noop_prefix_halt_projection_certifiable,
+)
 from algorithms.profile_width.certificate import parse_finite_width_certificate
 
 from verifier.emitted_malbolge_classic import decode as verifier_decode
@@ -94,6 +98,7 @@ def test_selector_fails_closed_on_missing_or_invalid_result() -> None:
 _FIXTURES = Path(__file__).with_name("fixtures")
 _FIXTURE_V1 = _FIXTURES / "qp-width-certificate-v1.json"
 _FIXTURE_V2 = _FIXTURES / "qp-width-certificate-v2.json"
+_DP_FIXTURE_V2 = _FIXTURES / "dp-noop-halt-width-certificate-v2.json"
 _QP_SUBJECT_ID = "qp-halt-current14-to-historical10"
 _GRAPHICAL = range(33, 127)
 _LOAD_OPCODES = frozenset(b"ji*p</vo")
@@ -256,6 +261,44 @@ def test_selector_rejects_certificate_width_mismatch() -> None:
     assert certificate is not None
     decisions = {10: False, 11: certificate, 12: False, 13: False}
     assert _selected_width(decisions) == CANONICAL_WIDTH
+
+
+def test_dp_fixture_certifies_two_step_noop_then_halt_projection() -> None:
+    """DP carries a bound two-step proof through no-op, encryption, and halt."""
+    certificate = parse_finite_width_certificate(
+        _fixture_value(_DP_FIXTURE_V2)
+    )
+    assert certificate is not None
+    assert certificate.proof_kind == NOOP_PREFIX_HALT_PROOF_KIND
+    assert certificate.source_bytes == (68, 80)
+    assert finite_width_certificate_valid(certificate)
+    assert bound_width_certificate_valid(certificate)
+    subject = WidthCertificateSubject(
+        source=b"DP",
+        inputs={"byte-a5": bytes((165,)), "eof": b""},
+    )
+    decisions = {10: certificate, 11: False, 12: False, 13: False}
+    assert minimum_width_from_certificates(subject, decisions) == MINIMUM_WIDTH
+    assert noop_prefix_halt_projection_certifiable(
+        b"DCBA@?>=I",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+    )
+
+
+def test_noop_prefix_halt_checker_matches_verifier_decode_pairs() -> None:
+    """Minimum no-op-prefix proof matches independent decode for cell pairs."""
+    for first in _GRAPHICAL:
+        first_opcode = verifier_decode(first, 0)
+        for second in _GRAPHICAL:
+            second_opcode = verifier_decode(second, 1)
+            expected = first_opcode == ord("o") and second_opcode == ord("v")
+            observed = noop_prefix_halt_projection_certifiable(
+                bytes((first, second)),
+                MINIMUM_WIDTH,
+                CANONICAL_WIDTH,
+            )
+            assert observed == expected
 
 
 def test_initial_halt_checker_certifies_qp_from_semantic_premises() -> None:

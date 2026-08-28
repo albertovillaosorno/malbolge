@@ -200,6 +200,13 @@ transition effects. Its decisions are exhaustively cross-checked against the
 independent verifier decode model over all graphical cells and all 94 phases.
 `QP` remains the retained positive fixture.
 
+A second recognized proof kind certifies a nonempty prefix of decoded `o`
+instructions followed by `v`. No-op preserves A and I/O, performs the same
+width-independent graphical encryption at the same low address, and advances
+C/D equally, so the complete projected state is preserved inductively until
+halt. `DP` is the minimum retained certificate; an eight-no-op fixture checks
+that induction step-by-step in both endpoint-width VMs.
+
 Given independent certificate results for widths 10 through 13, the exact
 selector is the minimum certified width with 14 inserted as a canonical
 fallback. Missing results fail closed to 14. The selector deliberately assumes

@@ -128,6 +128,13 @@ separate costs; resource evidence must measure those costs directly.
   decisions are cross-checked against the independent verifier decode model over
   all 94 phases and all 94 graphical cells. The `QP` certificate keeps byte and
   EOF state lineages distinct because remaining input is part of complete state.
+- Proof kind `noop-prefix-halt-projection-v1` extends that base to any nonempty
+  prefix of decoded `o` instructions followed by `v`. Each no-op leaves A and
+  I/O unchanged, applies the same graphical self-encryption at the same low
+  code address, and advances C/D together; the next source cell therefore stays
+  in the proved projection relation. `DP` is the retained two-step certificate,
+  while `DCBA@?>=I` checks complete 14-to-10 projection after eight consecutive
+  no-ops and the following halt for byte and EOF inputs.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final
