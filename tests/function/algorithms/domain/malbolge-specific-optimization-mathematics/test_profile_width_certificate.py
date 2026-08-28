@@ -53,6 +53,7 @@ from algorithms.profile_width.certificate import STRAIGHT_LINE_SAFE_PROOF_KIND
 from algorithms.profile_width.certificate import WidthCertificateSubject
 from algorithms.profile_width.certificate import bound_width_certificate_valid
 from algorithms.profile_width.certificate import certificate_valid
+from algorithms.profile_width.certificate import execution_geometry
 from algorithms.profile_width.certificate import finite_width_certificate_valid
 from algorithms.profile_width.certificate import (
     initial_halt_projection_certifiable,
@@ -64,6 +65,9 @@ from algorithms.profile_width.certificate import (
     input_then_halt_projection_certifiable,
 )
 from algorithms.profile_width.certificate import minimum_certified_width
+from algorithms.profile_width.certificate import (
+    minimum_geometry_from_certificates,
+)
 from algorithms.profile_width.certificate import minimum_width_from_certificates
 from algorithms.profile_width.certificate import (
     noop_prefix_halt_projection_certifiable,
@@ -515,6 +519,24 @@ def test_composed_fixture_selects_width_for_exact_two_byte_subject() -> None:
     assert minimum_width_from_certificates(subject, decisions) == MINIMUM_WIDTH
 
 
+def test_execution_geometry_has_exact_ternary_word_counts() -> None:
+    """Derived widths map to exact 3^N memory without creating profiles."""
+    expected = {
+        10: 59_049,
+        11: 177_147,
+        12: 531_441,
+        13: 1_594_323,
+        14: 4_782_969,
+    }
+    for width, memory_words in expected.items():
+        geometry = execution_geometry(width)
+        assert geometry is not None
+        assert geometry.word_trits == width
+        assert geometry.memory_words == memory_words
+    assert execution_geometry(9) is None
+    assert execution_geometry(15) is None
+
+
 def test_composed_certificate_supports_each_candidate_width() -> None:
     """Widths ten through thirteen remain independent positive decisions."""
     certificate = parse_finite_width_certificate(
@@ -542,6 +564,8 @@ def test_composed_certificate_supports_each_candidate_width() -> None:
         }
         selected = minimum_width_from_certificates(subject, decisions)
         assert selected == selected_width
+        geometry = minimum_geometry_from_certificates(subject, decisions)
+        assert geometry.word_trits == selected_width
     assert minimum_width_from_certificates(
         subject,
         dict.fromkeys(candidates, False),

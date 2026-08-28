@@ -234,6 +234,11 @@ The same certificate is rechecked independently for candidate widths 10 through
 13. Each candidate can be the sole accepted width and is selected exactly;
 explicit rejection of all four returns canonical width 14 without monotonic
 inference.
+Widths 11 through 13 are represented only as derived execution geometry, never
+as invented canonical profile identities. The research selector projects each
+accepted N to exactly `3^N` memory words and retains canonical width 14 on any
+invalid decision; later runtime integration must keep profile identity separate
+from this certified storage/word geometry.
 
 Given independent certificate results for widths 10 through 13, the exact
 selector is the minimum certified width with 14 inserted as a canonical

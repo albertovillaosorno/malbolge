@@ -165,6 +165,12 @@ separate costs; resource evidence must measure those costs directly.
   sole positive certificate, chooses that exact width, and returns canonical 14
   when all four candidates are explicit rejections; no monotonic inference is
   used between widths.
+- Widths 11 through 13 are derived execution geometries, not new canonical
+  `ProfileDescriptor` identities. Research geometry output carries only
+  `word_trits=N` and exactly `3^N` memory words: 59,049; 177,147; 531,441;
+  1,594,323; and 4,782,969 for N=10 through 14. Invalid selection evidence maps
+  to the canonical 14-trit geometry. Runtime integration must preserve the
+  canonical language/profile identity while consuming this derived geometry.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final

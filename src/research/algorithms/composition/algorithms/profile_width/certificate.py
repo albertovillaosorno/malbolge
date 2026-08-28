@@ -105,6 +105,14 @@ class WidthCertificateSubject:
 
 
 @dataclass(frozen=True, slots=True)
+class WidthExecutionGeometry:
+    """Derived execution geometry; never a canonical profile identity."""
+
+    memory_words: int
+    word_trits: int
+
+
+@dataclass(frozen=True, slots=True)
 class FiniteWidthCertificate:
     """One parsed research-only finite profile-width certificate."""
 
@@ -744,6 +752,21 @@ def noop_prefix_halt_projection_certifiable(
     return bool(prefix_length) and following == ord("v")
 
 
+def execution_geometry(width: int) -> WidthExecutionGeometry | None:
+    """Return exact ternary memory geometry for one supported derived width.
+
+    Returns:
+        Width and `3^N` words for N from ten through fourteen, otherwise None.
+
+    """
+    if not MINIMUM_WIDTH <= width <= CANONICAL_WIDTH:
+        return None
+    return WidthExecutionGeometry(
+        memory_words=_ternary_modulus(width),
+        word_trits=width,
+    )
+
+
 def minimum_certified_width(results: Mapping[int, bool]) -> int:
     """Return the minimum independently certified profile width.
 
@@ -891,3 +914,23 @@ def minimum_width_from_certificates(
             return CANONICAL_WIDTH
         results[width] = result
     return minimum_certified_width(results)
+
+
+def minimum_geometry_from_certificates(
+    subject: WidthCertificateSubject,
+    decisions: Mapping[int, WidthCertificateDecision],
+) -> WidthExecutionGeometry:
+    """Return exact derived geometry for one fail-closed width decision.
+
+    Returns:
+        The selected geometry; invalid evidence maps to canonical fourteen.
+
+    """
+    selected = minimum_width_from_certificates(subject, decisions)
+    geometry = execution_geometry(selected)
+    if geometry is not None:
+        return geometry
+    return WidthExecutionGeometry(
+        memory_words=_ternary_modulus(CANONICAL_WIDTH),
+        word_trits=CANONICAL_WIDTH,
+    )
