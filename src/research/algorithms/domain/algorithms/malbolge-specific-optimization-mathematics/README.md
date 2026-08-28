@@ -33,8 +33,9 @@ and transition closure is therefore the admitted sufficient certificate shape.
 No program-width selector is promoted by this research result alone.
 
 For independently verified candidate widths 10 through 13, the mathematical
-selection rule takes the minimum accepted width and inserts 14 as the fail-closed
-fallback. Missing certificate results therefore cannot narrow execution, and no
+selection rule takes the minimum accepted width and inserts 14 as the
+fail-closed fallback. Missing certificate results therefore cannot narrow
+execution, and no
 monotonicity assumption is made between candidate widths.
 
 The current research surface also exposes an exact classic crazy-target
