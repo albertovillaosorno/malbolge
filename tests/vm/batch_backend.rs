@@ -40,10 +40,11 @@ use malbolge::{
     ExecutionMode, MachineIoState, MachineState, MachineStateError,
     ProfileBatchBackendCompletion, ProfileBatchBackendRequest,
     ProfileBatchExecutionBackend, ProfileBatchRequest, ProfileBatchResult,
-    ProfileMachineError, ProfileMachineState, RunOutcome, current_profile,
-    execute_batch, execute_batch_with_backend_report, execute_profile_batch,
-    execute_profile_batch_with_backend,
+    ProfileMachine, ProfileMachineError, ProfileMachineState, RunOutcome,
+    current_profile, execute_batch, execute_batch_with_backend_report,
+    execute_profile_batch, execute_profile_batch_with_backend,
     execute_profile_batch_with_backend_report, historical_profile,
+    verify_minimum_initial_halt_profile_width,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -73,6 +74,24 @@ struct ProfileSnapshot {
 }
 
 struct CpuCloneBackend;
+
+struct ProfileCompletionBackend {
+    completion: Option<ProfileBatchBackendCompletion>,
+}
+
+impl ProfileBatchExecutionBackend for ProfileCompletionBackend {
+    fn execute(
+        &mut self,
+        requests: &[ProfileBatchBackendRequest<'_>],
+    ) -> Option<Vec<Option<ProfileBatchBackendCompletion>>> {
+        Some(
+            requests
+                .iter()
+                .map(|_request| self.completion.clone())
+                .collect(),
+        )
+    }
+}
 
 impl BatchExecutionBackend for CpuCloneBackend {
     fn execute(
@@ -230,9 +249,7 @@ fn profile_snapshots(results: &[ProfileBatchResult]) -> Vec<ProfileSnapshot> {
         .iter()
         .map(|result| ProfileSnapshot {
             error: result.error(),
-            machine: result
-                .machine()
-                .map(malbolge::ProfileMachine::snapshot_state),
+            machine: result.machine().map(ProfileMachine::snapshot_state),
             outcome: result.outcome(),
         })
         .collect()
@@ -446,6 +463,54 @@ fn profile_backend_route_and_unavailability_match_sequential_state()
 }
 
 #[test]
+fn profile_backend_rejects_same_profile_with_different_geometry() -> TestResult
+{
+    let verified = normalize_result(
+        verify_minimum_initial_halt_profile_width(current_profile(), b"QP"),
+    )?;
+    let derived = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    let canonical = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        b"QP",
+        Vec::new(),
+    ))?;
+    let completion = ProfileBatchBackendCompletion::new(
+        canonical.snapshot_state(),
+        RunOutcome::BudgetExhausted { steps: 0 },
+    );
+    let mut backend = ProfileCompletionBackend {
+        completion: Some(completion),
+    };
+    let request = ProfileBatchRequest::from_machine(derived, 0);
+    let (results, report) =
+        execute_profile_batch_with_backend_report(vec![request], &mut backend);
+    let result = results
+        .first()
+        .and_then(ProfileBatchResult::machine)
+        .ok_or_else(|| String::from("derived fallback machine missing"))?;
+    let expected_origins: &[BatchExecutionOrigin] =
+        &[BatchExecutionOrigin::SafeRustFallback];
+    check_equal(
+        &report.origins(),
+        &expected_origins,
+        "geometry mismatch fallback origin",
+    )?;
+    check_equal(
+        &result.geometry(),
+        &verified.geometry(),
+        "derived fallback geometry",
+    )?;
+    check_equal(
+        &result.memory().len(),
+        &59_049usize,
+        "derived fallback memory length",
+    )
+}
+
+#[test]
 fn profile_backend_views_retain_canonical_profile_identity() -> TestResult {
     let request = ProfileBatchRequest::from_source(
         current_profile(),
@@ -459,7 +524,7 @@ fn profile_backend_views_retain_canonical_profile_identity() -> TestResult {
     let profile = results
         .first()
         .and_then(ProfileBatchResult::machine)
-        .map(malbolge::ProfileMachine::profile);
+        .map(ProfileMachine::profile);
     check_equal(
         &profile,
         &Some(current_profile()),

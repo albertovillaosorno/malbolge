@@ -272,6 +272,11 @@ separate costs; resource evidence must measure those costs directly.
   trace roundtrips through `IndexedMachineState` to the exact derived checkpoint
   instead of reconstructing canonical N=14. Tiered/native execution handoff is
   still open.
+- Optional profile batch routing now compares execution geometry as well as
+  canonical profile identity before accepting a backend completion. A canonical
+  N=14 completion for a derived N=10 `malbolge-2026` request is rejected and
+  falls back to the exact N=10 safe-Rust machine even when outcome and profile
+  identity otherwise match.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final

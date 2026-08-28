@@ -440,6 +440,7 @@ fn accept_profile(
         );
     };
     if completion.state.profile() != request.machine.profile()
+        || completion.state.geometry() != request.machine.geometry()
         || !outcome_matches_state(
             completion.outcome,
             completion.state.io().termination(),
