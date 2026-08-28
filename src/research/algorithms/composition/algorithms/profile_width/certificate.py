@@ -834,8 +834,9 @@ def straight_line_projection_certifiable(
     """Check straight-line projection through no-op and byte-I/O effects.
 
     Returns:
-        True only when every bound stream reaches halt through `o`, `/`, and
-        byte-safe `<` transitions while preserving the width projection.
+        True only when every bound stream reaches halt through admitted no-op,
+        byte-I/O, exact-address jump, and guarded crazy transitions while
+        preserving the width projection.
 
     """
     widths_valid = (
