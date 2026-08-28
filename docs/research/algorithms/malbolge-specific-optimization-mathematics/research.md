@@ -287,13 +287,13 @@ and canonical 14, preserves D only on numeric equality, and rejects reads of
 already encrypted source code. `('&N` selects N=10 through three exact jumps,
 while `('O` fails at D=41 because that second read is projection-only.
 
-Guarded crazy has a narrower product theorem for `j p v`. `(=O` first
-establishes
-exact D=41. The crazy write is outside the source code interval, so its address
-is width-independent; the initial word at D may differ numerically, but the wide
-word must reduce to the N-word and the canonical crazy result must reduce to the
-N result. This admits N=10 without strengthening projection into false equality,
-while unguarded `>P` is rejected by shape.
+Guarded crazy now covers `j p+ v`. `(=O` and `(=<N` first establish exact D=41,
+then retain separate candidate/canonical accumulators across each crazy step.
+Every D is advanced without wrap, every write is outside current/future source
+code, the canonical initial word must reduce to the N-word, and each canonical
+crazy result must reduce to the candidate result. This admits both fixtures at
+N=10 without strengthening projection into false equality; unguarded `>P` is
+rejected by shape.
 
 Within that initial-halt family, product-side minimum selection tries N=10
 through the canonical width and advances only on exact derived-capacity failure.

@@ -48,6 +48,8 @@ use crate::word::profile_crazy;
 const MINIMUM_ADAPTIVE_WORD_TRITS: u8 = 10;
 const TERNARY_RADIX: u32 = 3;
 
+type GuardedCrazyProjectionState = (u32, u32, u32);
+
 type ProfileWidthVerifier = fn(
     &'static ProfileDescriptor,
     &[u8],
@@ -832,34 +834,109 @@ pub fn verify_straight_line_io_profile_width(
     Err(ProfileWidthVerificationError::StraightLineMissingHalt)
 }
 
-/// Independently verifies exact jump, guarded crazy, then halt.
+fn advance_guarded_crazy_projection(
+    source_words: &[u32],
+    geometry: ProfileExecutionGeometry,
+    state: GuardedCrazyProjectionState,
+    code_pointer: u32,
+) -> Result<GuardedCrazyProjectionState, ProfileWidthVerificationError> {
+    let (data_address, narrow_accumulator, wide_accumulator) = state;
+    if data_address == code_pointer
+        || usize::try_from(data_address).is_ok_and(|address| {
+            address > usize::try_from(code_pointer).unwrap_or(usize::MAX)
+                && address < source_words.len()
+        })
+    {
+        return Err(ProfileWidthVerificationError::JumpCrazyProjection);
+    }
+    let narrow_data = verified_initial_memory_word(
+        source_words,
+        geometry.word_trits(),
+        data_address,
+    )?;
+    let wide_data = verified_initial_memory_word(
+        source_words,
+        geometry.profile().word_trits(),
+        data_address,
+    )?;
+    if wide_data.rem_euclid(geometry.memory_words()) != narrow_data {
+        return Err(ProfileWidthVerificationError::JumpCrazyProjection);
+    }
+    let narrow_crazy =
+        profile_crazy(narrow_data, narrow_accumulator, geometry.word_trits());
+    let wide_crazy = profile_crazy(
+        wide_data,
+        wide_accumulator,
+        geometry.profile().word_trits(),
+    );
+    if wide_crazy.rem_euclid(geometry.memory_words()) != narrow_crazy {
+        return Err(ProfileWidthVerificationError::JumpCrazyProjection);
+    }
+    let next_address = data_address
+        .checked_add(1)
+        .filter(|address| *address < geometry.memory_words())
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    Ok((next_address, narrow_crazy, wide_crazy))
+}
+
+/// Independently verifies exact jump, guarded crazy prefix, then halt.
 ///
-/// The jump establishes exact D. Crazy must target data outside current/future
-/// source code, and candidate/canonical crazy results are checked by
-/// projection.
+/// The jump establishes exact D. Every reached crazy must target a distinct
+/// exact data address outside current/future source code; candidate/canonical
+/// data and accumulator values are checked by projection at each transition.
 ///
 /// # Errors
 ///
-/// Returns [`ProfileWidthVerificationError`] when shape, exact memory, guarded
-/// write placement, or crazy projection does not hold.
+/// Returns [`ProfileWidthVerificationError`] when shape, exact address, guarded
+/// write placement, or any crazy projection does not hold.
 pub fn verify_jump_crazy_halt_profile_width(
     profile: &'static ProfileDescriptor,
     source: &[u8],
     word_trits: u8,
 ) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
     let memory_words = derived_memory_words(profile, word_trits)?;
-    let narrow = admit_profile_source(source, memory_words)?;
-    for (position, expected) in b"jpv".iter().copied().enumerate() {
+    let geometry = ProfileExecutionGeometry {
+        input_policy: ProfileExecutionInputPolicy::Any,
+        memory_words,
+        profile,
+        word_trits,
+    };
+    let admitted = admit_profile_source(source, memory_words)?;
+    let first = admitted
+        .first()
+        .copied()
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    let first_decoded = decode_profile_instruction(first, 0)
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    if first_decoded != b'j' {
+        return Err(ProfileWidthVerificationError::JumpCrazyHaltInstruction {
+            position: 0,
+            decoded: first_decoded,
+        });
+    }
+    let first_data_address = first
+        .checked_add(1)
+        .filter(|address| *address < memory_words)
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    let mut state = (first_data_address, 0u32, 0u32);
+    let mut crazies = 0usize;
+    for (position, cell) in admitted.iter().copied().enumerate().skip(1) {
         let pointer = u32::try_from(position).map_err(|_error| {
             ProfileWidthVerificationError::GeometryInvariant
         })?;
-        let cell = narrow
-            .get(position)
-            .copied()
-            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
         let decoded = decode_profile_instruction(cell, pointer)
             .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
-        if decoded != expected {
+        if decoded == b'v' {
+            if crazies == 0 {
+                return Err(ProfileWidthVerificationError::JumpCrazyProjection);
+            }
+            return Ok(VerifiedProfileExecutionGeometry {
+                geometry,
+                proof_kind: ProfileWidthProofKind::JumpCrazyHaltProjection,
+                source: Box::from(source),
+            });
+        }
+        if decoded != b'p' {
             return Err(
                 ProfileWidthVerificationError::JumpCrazyHaltInstruction {
                     position: pointer,
@@ -867,46 +944,12 @@ pub fn verify_jump_crazy_halt_profile_width(
                 },
             );
         }
+        state = advance_guarded_crazy_projection(
+            &admitted, geometry, state, pointer,
+        )?;
+        crazies = crazies.saturating_add(1);
     }
-    let first = narrow
-        .first()
-        .copied()
-        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
-    let data_address = first
-        .checked_add(1)
-        .filter(|address| *address < memory_words)
-        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
-    if data_address == 1
-        || usize::try_from(data_address)
-            .is_ok_and(|address| address > 1 && address < narrow.len())
-    {
-        return Err(ProfileWidthVerificationError::JumpCrazyProjection);
-    }
-    let narrow_data =
-        verified_initial_memory_word(&narrow, word_trits, data_address)?;
-    let wide_data = verified_initial_memory_word(
-        &narrow,
-        profile.word_trits(),
-        data_address,
-    )?;
-    if wide_data.rem_euclid(memory_words) != narrow_data {
-        return Err(ProfileWidthVerificationError::JumpCrazyProjection);
-    }
-    let narrow_crazy = profile_crazy(narrow_data, 0, word_trits);
-    let wide_crazy = profile_crazy(wide_data, 0, profile.word_trits());
-    if wide_crazy.rem_euclid(memory_words) != narrow_crazy {
-        return Err(ProfileWidthVerificationError::JumpCrazyProjection);
-    }
-    Ok(VerifiedProfileExecutionGeometry {
-        geometry: ProfileExecutionGeometry {
-            input_policy: ProfileExecutionInputPolicy::Any,
-            memory_words,
-            profile,
-            word_trits,
-        },
-        proof_kind: ProfileWidthProofKind::JumpCrazyHaltProjection,
-        source: Box::from(source),
-    })
+    Err(ProfileWidthVerificationError::JumpCrazyProjection)
 }
 
 /// Independently verifies one exact initial data jump followed by halt.

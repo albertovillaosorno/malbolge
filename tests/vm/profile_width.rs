@@ -432,6 +432,33 @@ fn jump_crazy_halt_verifier_executes_guarded_projection_at_minimum_width()
 }
 
 #[test]
+fn jump_crazy_halt_verifier_tracks_multiple_projected_accumulators()
+-> TestResult {
+    let verified =
+        normalize_result(verify_minimum_jump_crazy_halt_profile_width(
+            current_profile(),
+            b"(=<N",
+        ))?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "multi-crazy minimum width",
+    )?;
+    let mut machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    check_equal(
+        &normalize_result(machine.run(4))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 4,
+        },
+        "multi-crazy halt outcome",
+    )
+}
+
+#[test]
 fn jump_crazy_halt_verifier_rejects_unguarded_crazy() -> TestResult {
     let observed = verify_jump_crazy_halt_profile_width(
         current_profile(),
