@@ -125,8 +125,9 @@ The same projection yields a fixed physical factorization at those widths. With
 tail. Three invocations of the same five-trit table, weighted by `1`, `B`, and
 `B^2` and reduced modulo `3^N`, reproduce native `Crazy_N` exactly. Existing
 exhaustive table evidence owns the two complete chunks; the padded evidence
-exhausts every third-chunk pair and mixed assembly fixtures. This remains a
-state-equivalence result, not a timing claim.
+exhausts every third-chunk pair and mixed assembly fixtures.
+
+This remains a state-equivalence result, not a timing claim.
 
 The preserved historical decode table is a permutation of all 94 graphical
 bytes. Exhausting all 8,836 graphical cell/code-phase pairs therefore proves

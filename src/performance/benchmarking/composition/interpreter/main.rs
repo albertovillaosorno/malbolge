@@ -303,19 +303,27 @@ fn emit_profile_crazy_samples(
     let mut sample = 0u8;
     while sample < SAMPLE_COUNT {
         if sample.is_multiple_of(2) {
-            emit_sample(output, ("profile-crazy-14", "native-5+5+4", sample), || {
-                benchmark_profile_crazy_native(words)
-            })?;
-            emit_sample(output, ("profile-crazy-14", "padded-5+5+5", sample), || {
-                benchmark_profile_crazy_padded(words)
-            })?;
+            emit_sample(
+                output,
+                ("profile-crazy-14", "native-5+5+4", sample),
+                || benchmark_profile_crazy_native(words),
+            )?;
+            emit_sample(
+                output,
+                ("profile-crazy-14", "padded-5+5+5", sample),
+                || benchmark_profile_crazy_padded(words),
+            )?;
         } else {
-            emit_sample(output, ("profile-crazy-14", "padded-5+5+5", sample), || {
-                benchmark_profile_crazy_padded(words)
-            })?;
-            emit_sample(output, ("profile-crazy-14", "native-5+5+4", sample), || {
-                benchmark_profile_crazy_native(words)
-            })?;
+            emit_sample(
+                output,
+                ("profile-crazy-14", "padded-5+5+5", sample),
+                || benchmark_profile_crazy_padded(words),
+            )?;
+            emit_sample(
+                output,
+                ("profile-crazy-14", "native-5+5+4", sample),
+                || benchmark_profile_crazy_native(words),
+            )?;
         }
         sample = sample.saturating_add(1);
     }
@@ -325,9 +333,7 @@ fn emit_profile_crazy_samples(
 fn profile_words() -> Vec<u32> {
     (0..PROFILE_CORPUS_SIZE)
         .map(|index| {
-            index
-                .wrapping_mul(PROFILE_STRIDE)
-                .rem_euclid(PROFILE_WORDS)
+            index.wrapping_mul(PROFILE_STRIDE).rem_euclid(PROFILE_WORDS)
         })
         .collect()
 }

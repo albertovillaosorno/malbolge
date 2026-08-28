@@ -84,7 +84,9 @@ Ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; if quintuple
 endpoint order is irrelevant, the additional `S_5` quotient has exactly
 1,426,354,541 classes. Ordered sextuples have `C(k+63,63)` classes, or
 839,983,521,106,400 at `k=14`; the additional `S_6` endpoint quotient has
-1,179,940,653,635 classes. Summed over every reachable width-14 fixed pair, the
+1,179,940,653,635 classes.
+
+Summed over every reachable width-14 fixed pair, the
 triple quotient gives
 547,751,638,341,145 canonical ordered triples, the quadruple quotient gives
 25,678,405,217,633,865 canonical ordered quadruples, and the quintuple quotient
@@ -92,8 +94,9 @@ gives 3,571,359,808,057,227,945 canonical ordered quintuples. The endpoint-
 unordered quintuple aggregate has 34,995,940,605,821,849 canonical classes at
 width 14. At the same width, the ordered sextuple aggregate has
 1,584,315,319,509,725,541,225 classes and its endpoint-unordered `S_6` quotient
-has 2,361,488,883,978,006,005 classes. If endpoint order is also irrelevant,
-the exact pair class count
+has 2,361,488,883,978,006,005 classes.
+
+If endpoint order is also irrelevant, the exact pair class count
 reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`; summed over every reachable
 width-14 fixed pair, this endpoint-symmetric quotient has

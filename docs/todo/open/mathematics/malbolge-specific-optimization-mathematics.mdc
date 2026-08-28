@@ -53,7 +53,8 @@ force or stochastic optimization begins.
   quotient into `C(k+31,31)` joint-count classes, exact endpoint-unordered
   quintuple quotient under `S_5` endpoint permutation, exact ordered sextuple
   quotient into `C(k+63,63)` joint-count classes, exact endpoint-unordered
-  sextuple quotient under `S_6` endpoint permutation, exact global ordered-triple
+  sextuple quotient under `S_6` endpoint permutation, exact global
+  ordered-triple
   and endpoint-unordered triple quotient counts, exact global ordered-quadruple
   and endpoint-unordered quadruple quotient counts, exact ordered-quintuple and
   endpoint-unordered quintuple quotient counts, exact ordered and endpoint-
@@ -87,8 +88,9 @@ force or stochastic optimization begins.
   unreachable-pair count and `9^N-7^N` generalization, the exact classic
   preimage-budget exceedance sum, its width-indexed generalization, and the
   exact minimum complete-preimage budget needed to cover any integer target
-  from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. Four reductions are consumed by runtime paths; the fifty-three search
-  reductions and the two padded-geometry equivalences carry no inherited
+  from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. Four
+  reductions are consumed by runtime paths; the fifty-three search reductions
+  and the two padded-geometry equivalences carry no inherited
   runtime speedup claim.
 - Fifty-nine optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
@@ -151,7 +153,8 @@ force or stochastic optimization begins.
   classes through dimension 14, exact global ordered-triple and endpoint-
   unordered triple quotient counts through width 14, exact global ordered-
   quadruple and endpoint-unordered quadruple quotient counts through width 14,
-  exact global ordered-quintuple and endpoint-unordered quintuple quotient counts,
+  exact global ordered-quintuple and endpoint-unordered quintuple quotient
+  counts,
   exact global ordered and endpoint-unordered sextuple quotient counts through
   width 14, exact endpoint-
   symmetric pair classes through dimension 14 and their exact global counts
