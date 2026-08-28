@@ -267,6 +267,11 @@ separate costs; resource evidence must measure those costs directly.
   words, terminates through the canonical `v` transition in one step, and
   preserves N=10 across `snapshot_state`/`from_snapshot` while retaining
   canonical `malbolge-2026` identity.
+- The product verifier now independently admits the nonempty decoded no-op
+  prefix followed by halt family. DP selects N=10, allocates exactly 59,049
+  words, and executes one no-op plus halt in two normative steps. QP is rejected
+  by this proof kind because its no-op prefix is empty, while `DC` is rejected
+  because its admitted no-op prefix never reaches halt.
 - Indexed state-graph now preserves the opaque geometry token through lineage,
   digest, trace application, and checkpoint materialization. A QP/N=10 runtime
   trace roundtrips through `IndexedMachineState` to the exact derived checkpoint

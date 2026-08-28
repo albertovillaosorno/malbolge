@@ -52,6 +52,8 @@ const TERNARY_RADIX: u32 = 3;
 pub enum ProfileWidthProofKind {
     /// Source loading succeeds and the first decoded instruction halts.
     InitialHalt,
+    /// One or more decoded no-ops precede the first reached halt.
+    NoopPrefixHalt,
 }
 
 /// Opaque execution geometry emitted only through trusted width verification.
@@ -170,6 +172,15 @@ pub enum ProfileWidthVerificationError {
         /// Exact decoded first instruction.
         decoded: u8,
     },
+    /// A reached prefix instruction is neither an admitted no-op nor halt.
+    NoopPrefixInstruction {
+        /// Exact loaded source position of the rejected instruction.
+        position: u32,
+        /// Exact decoded instruction byte.
+        decoded: u8,
+    },
+    /// The admitted source ended before a no-op prefix reached halt.
+    NoopPrefixMissingHalt,
     /// The exact source fails ordinary profile-loader admission.
     Source(ProfileLoadError),
     /// Candidate width is outside the reviewed adaptive interval.
@@ -191,6 +202,13 @@ impl Display for ProfileWidthVerificationError {
                 f,
                 "derived profile initial instruction {decoded} is not halt"
             ),
+            Self::NoopPrefixInstruction { position, decoded } => {
+                write!(f, "derived no-op prefix instruction {decoded} at ")?;
+                write!(f, "{position} is invalid")
+            },
+            Self::NoopPrefixMissingHalt => {
+                f.write_str("derived no-op prefix does not reach halt")
+            },
             Self::Source(error) => Display::fmt(error, f),
             Self::WidthOutOfRange {
                 profile_word_trits,
@@ -207,6 +225,42 @@ impl From<ProfileLoadError> for ProfileWidthVerificationError {
     fn from(error: ProfileLoadError) -> Self {
         Self::Source(error)
     }
+}
+
+/// Selects the minimum independently verified no-op-prefix-halt width.
+///
+/// Only derived-capacity rejection advances to a wider candidate. Any theorem
+/// or source-admission failure rejects without widening around the evidence.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when no reviewed candidate admits
+/// the exact source under the no-op-prefix-halt theorem.
+pub fn verify_minimum_noop_prefix_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let mut capacity_error = None;
+    for word_trits in MINIMUM_ADAPTIVE_WORD_TRITS..=profile.word_trits() {
+        match verify_noop_prefix_halt_profile_width(profile, source, word_trits)
+        {
+            Ok(verified) => return Ok(verified),
+            Err(
+                error @ ProfileWidthVerificationError::Source(
+                    ProfileLoadError::SourceTooLong,
+                ),
+            ) => {
+                capacity_error = Some(error);
+            },
+            Err(error) => return Err(error),
+        }
+    }
+    Err(capacity_error.unwrap_or_else(|| {
+        ProfileWidthVerificationError::WidthOutOfRange {
+            profile_word_trits: profile.word_trits(),
+            requested: MINIMUM_ADAPTIVE_WORD_TRITS,
+        }
+    }))
 }
 
 /// Selects the minimum independently verified initial-halt width.
@@ -243,6 +297,52 @@ pub fn verify_minimum_initial_halt_profile_width(
             requested: MINIMUM_ADAPTIVE_WORD_TRITS,
         }
     }))
+}
+
+/// Independently verifies a nonempty no-op prefix followed by halt.
+///
+/// Ordinary profile source admission validates the complete raw source. This
+/// theorem then follows only the reached decoded prefix until its first halt.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when geometry, source admission,
+/// the required nonempty no-op prefix, or its reached halt does not hold.
+pub fn verify_noop_prefix_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    word_trits: u8,
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let memory_words = derived_memory_words(profile, word_trits)?;
+    let admitted = admit_profile_source(source, memory_words)?;
+    let mut noops = 0usize;
+    for (position, cell) in admitted.iter().copied().enumerate() {
+        let pointer = u32::try_from(position).map_err(|_error| {
+            ProfileWidthVerificationError::GeometryInvariant
+        })?;
+        let decoded = decode_profile_instruction(cell, pointer)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        if decoded == b'o' {
+            noops = noops.saturating_add(1);
+            continue;
+        }
+        if decoded == b'v' && noops > 0 {
+            return Ok(VerifiedProfileExecutionGeometry {
+                geometry: ProfileExecutionGeometry {
+                    memory_words,
+                    profile,
+                    word_trits,
+                },
+                proof_kind: ProfileWidthProofKind::NoopPrefixHalt,
+                source: Box::from(source),
+            });
+        }
+        return Err(ProfileWidthVerificationError::NoopPrefixInstruction {
+            position: pointer,
+            decoded,
+        });
+    }
+    Err(ProfileWidthVerificationError::NoopPrefixMissingHalt)
 }
 
 /// Independently verifies the initial-halt proof family for one derived width.

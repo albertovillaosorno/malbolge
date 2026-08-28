@@ -243,11 +243,16 @@ derived width may parameterize execution geometry only after that admission; it
 must not replace the canonical profile ID, version, fingerprint, or semantic
 requirement.
 
-The product VM independently admits the first narrow proof family rather than
-importing that selector. Its initial-halt verifier reuses the canonical profile
+The product VM independently admits narrow proof families rather than importing
+that selector. Its initial-halt verifier reuses the canonical profile
 loader/decode boundary and issues an opaque source/profile-bound geometry.
-DP and
-malformed, oversized, or out-of-range subjects fail closed.
+Malformed, oversized, or out-of-range subjects fail closed.
+
+The second product verifier accepts a nonempty decoded no-op prefix followed by
+halt. DP selects N=10 and executes with 59,049 words through one no-op and halt;
+QP is rejected by this family because its prefix is empty, while `DC` is
+rejected
+because no reached halt follows its admitted no-op prefix.
 
 Within that initial-halt family, product-side minimum selection tries N=10
 through the canonical width and advances only on exact derived-capacity failure.

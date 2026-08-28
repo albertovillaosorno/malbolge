@@ -39,6 +39,8 @@ use malbolge::{
     current_profile, decode_profile_instruction, historical_profile,
     verify_initial_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
+    verify_minimum_noop_prefix_halt_profile_width,
+    verify_noop_prefix_halt_profile_width,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -204,6 +206,68 @@ fn verified_geometry_exposes_copyable_profile_bound_execution_token()
         "token memory words",
     )?;
     check_equal(&copied.eof_word(), &(MINIMUM_MEMORY_WORDS - 1), "token EOF")
+}
+
+#[test]
+fn noop_prefix_halt_verifier_executes_dp_at_minimum_width() -> TestResult {
+    let verified = normalize_result(
+        verify_minimum_noop_prefix_halt_profile_width(current_profile(), b"DP"),
+    )?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::NoopPrefixHalt,
+        "no-op proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "no-op minimum width",
+    )?;
+    let mut machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    check_equal(
+        &machine.memory().len(),
+        &MINIMUM_MEMORY_WORDS_USIZE,
+        "no-op derived memory length",
+    )?;
+    check_equal(
+        &normalize_result(machine.run(2))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 2,
+        },
+        "no-op derived halt outcome",
+    )
+}
+
+#[test]
+fn noop_prefix_halt_verifier_rejects_empty_prefix_and_missing_halt()
+-> TestResult {
+    let empty_prefix = verify_noop_prefix_halt_profile_width(
+        current_profile(),
+        QP,
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &empty_prefix,
+        &Err(ProfileWidthVerificationError::NoopPrefixInstruction {
+            position: 0,
+            decoded: b'v',
+        }),
+        "empty no-op prefix rejection",
+    )?;
+    let missing_halt = verify_noop_prefix_halt_profile_width(
+        current_profile(),
+        b"DC",
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &missing_halt,
+        &Err(ProfileWidthVerificationError::NoopPrefixMissingHalt),
+        "missing no-op prefix halt rejection",
+    )
 }
 
 #[test]
