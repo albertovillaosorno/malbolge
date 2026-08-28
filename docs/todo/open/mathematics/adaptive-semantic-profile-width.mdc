@@ -302,9 +302,10 @@ separate costs; resource evidence must measure those costs directly.
 - Repeated data-jump admission now recomputes initial-memory words independently
   at candidate N and canonical 14 before preserving exact D. `('&N` selects N=10
   and executes three jumps plus halt because every reached recurrence read is
-  numerically equal. By contrast, `('O` (`j j v`) fails closed at D=41 with
-  `RepeatedJumpMemoryMismatch`; projected equality alone cannot authorize the
-  second jump.
+  numerically equal. By contrast, `('O` (`j j v`) and `('<AM` (`j j p o v`) both
+  fail closed at the second jump with `RepeatedJumpMemoryMismatch` at D=41. The
+  projected-D crazy counterexample therefore loses authority before its `p` can
+  issue a width-sensitive write.
 - Guarded crazy now has a dedicated product proof for exact jump, one or more
   `p` transitions, then halt. `(=O` and `(=<N` both select N=10. The verifier
   keeps exact D plus separate N/14 accumulators, proves each write stays outside

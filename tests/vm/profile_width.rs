@@ -686,6 +686,18 @@ fn repeated_jump_verifier_rejects_nonjump_prefix() -> TestResult {
             address: 41,
         }),
         "repeated-jump projected-only rejection",
+    )?;
+    let projected_d_crazy = verify_repeated_jump_data_profile_width(
+        current_profile(),
+        b"('<AM",
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &projected_d_crazy,
+        &Err(ProfileWidthVerificationError::RepeatedJumpMemoryMismatch {
+            address: 41,
+        }),
+        "projected-D crazy authority rejection",
     )
 }
 

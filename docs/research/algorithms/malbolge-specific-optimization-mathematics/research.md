@@ -284,8 +284,10 @@ the following `v` halts before using D again.
 Repeated jumps now have a separate trusted recurrence checker. It reconstructs
 only each reached initial-memory word with the product crazy primitive at both N
 and canonical 14, preserves D only on numeric equality, and rejects reads of
-already encrypted source code. `('&N` selects N=10 through three exact jumps,
-while `('O` fails at D=41 because that second read is projection-only.
+already encrypted source code. `('&N` selects N=10 through three exact jumps.
+Both `('O` and the projected-D crazy fixture `('<AM` fail at D=41 because their
+second jump is projection-only, so the latter never gains trusted crazy-write
+authority.
 
 Guarded crazy now covers `j p+ v`. `(=O` and `(=<N` first establish exact D=41,
 then retain separate candidate/canonical accumulators across each crazy step.
