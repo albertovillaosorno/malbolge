@@ -143,7 +143,8 @@ separate costs; resource evidence must measure those costs directly.
   `input_consumed` observations.
 - Proof kind `input-output-halt-projection-v1` covers decoded `/`, `<`, `v`
   only when every exact declared input stream is nonempty. Then input stores the
-  same byte at both widths and output emits that same byte; an EOF-capable domain
+  same byte at both widths and output emits that same byte; an EOF-capable
+  domain
   is rejected because the projected EOF words have different residues modulo
   256. Fixture `ubO` certifies the bound `0xA5` domain, while a Rust adversarial
   run shows projection surviving input and breaking exactly at output under EOF.
