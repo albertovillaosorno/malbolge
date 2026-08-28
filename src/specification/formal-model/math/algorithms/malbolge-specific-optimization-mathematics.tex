@@ -174,6 +174,20 @@ by the matching terminal obligation. This theorem supplies a sufficient
 certificate shape only; it does not certify any program, infer $D$, or authorize
 a product width selector by itself.
 
+For the initial width family, let $c_N(P,D)\in\{0,1\}$ be the independently
+verified certificate result for each $N\in\{10,11,12,13\}$. Treat a missing or
+invalid result as zero and define
+\begin{equation}
+  N_*(P,D)
+    = \min\left(
+        \{N\in\{10,11,12,13\}:c_N(P,D)=1\}\cup\{14\}
+      \right).
+  \label{eq:optimization-profile-width-minimum-certified-selector}
+\end{equation}
+This chooses the smallest independently certified width and otherwise returns
+the canonical width 14. It assumes no monotonicity of certificate validity
+across widths; each narrower candidate remains a separate proof obligation.
+
 \section{Exact crazy-target preimage cardinality}
 
 For one ternary accumulator digit $\alpha\in\{0,1,2\}$ and target digit

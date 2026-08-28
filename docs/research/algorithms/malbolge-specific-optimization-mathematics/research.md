@@ -61,11 +61,11 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes sixty-one exact reductions: classic five-trit crazy factorization,
+formalizes sixty-two exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact zero-padded 15-trit crazy
 projection and uniform three-lookup factorization for semantic widths 10
 through 14, exact checked profile-width projection laws, a finite lockstep
-certificate theorem, exact decode sum-class
+certificate theorem, a minimum-certified-width selector, exact decode sum-class
 canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -144,6 +144,12 @@ outcome. Induction over committed transitions then gives observational
 equivalence for the finite certified relation. This theorem defines a
 fail-closed proof shape; no concrete program or product selector is certified
 by it yet.
+
+Given independent certificate results for widths 10 through 13, the exact
+selector is the minimum certified width with 14 inserted as a canonical
+fallback. Missing results fail closed to 14. The selector deliberately assumes
+no monotonicity between candidate widths, so every narrower geometry remains an
+independent proof obligation.
 
 The preserved historical decode table is a permutation of all 94 graphical
 bytes. Exhausting all 8,836 graphical cell/code-phase pairs therefore proves

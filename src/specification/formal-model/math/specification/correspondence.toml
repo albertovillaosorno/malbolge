@@ -239,6 +239,15 @@ mechanism = "initial-coverage-plus-observation-preservation-plus-lockstep-transi
 evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_finite_bisimulation_certificate_accepts_closed_relation", "tests/mathematics/test_profile_width_projection_certificate.py::test_finite_bisimulation_certificate_rejects_missing_obligation"]
 
 [[correspondence]]
+id = "optimization-profile-width-minimum-certified-selector"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-profile-width-minimum-certified-selector"
+domain = "independent certificate results for candidate widths 10, 11, 12, and 13 with canonical width 14 as the fail-closed fallback"
+mechanism = "finite-minimum-over-independently-certified-widths-with-canonical-fallback"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_minimum_certified_width_is_independent_and_fail_closed"]
+
+[[correspondence]]
 id = "optimization-crazy-preimage-cardinality"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cardinality"

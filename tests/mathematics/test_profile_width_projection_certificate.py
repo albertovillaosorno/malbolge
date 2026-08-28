@@ -41,6 +41,7 @@ _MINIMUM_WIDTH = 10
 _MAXIMUM_WIDTH = 14
 _RADIX = 3
 _BYTE_MODULUS = 256
+_CANONICAL_WIDTH = 14
 
 
 def _power(exponent: int) -> int:
@@ -239,3 +240,29 @@ def test_finite_bisimulation_certificate_rejects_missing_obligation() -> None:
         successor={**narrow.successor, "n2": "n2"},
     )
     assert not _certificate_valid(wide, wrong_termination, relation)
+
+
+def _minimum_certified_width(results: dict[int, bool]) -> int:
+    candidates = set(range(_MINIMUM_WIDTH, _CANONICAL_WIDTH))
+    if set(results) != candidates:
+        return _CANONICAL_WIDTH
+    certified = {width for width, accepted in results.items() if accepted}
+    return min(certified, default=_CANONICAL_WIDTH)
+
+
+def test_minimum_certified_width_is_independent_and_fail_closed() -> None:
+    """Select the minimum proved width without a monotonicity assumption."""
+    rejected = dict.fromkeys(range(_MINIMUM_WIDTH, _CANONICAL_WIDTH), False)
+    assert _minimum_certified_width(rejected) == _CANONICAL_WIDTH
+
+    nonmonotone = {10: False, 11: True, 12: False, 13: True}
+    assert _minimum_certified_width(nonmonotone) == _MINIMUM_WIDTH + 1
+
+    several = {10: True, 11: False, 12: True, 13: True}
+    assert _minimum_certified_width(several) == _MINIMUM_WIDTH
+
+    missing = {10: True, 11: True, 12: True}
+    assert _minimum_certified_width(missing) == _CANONICAL_WIDTH
+
+    extra = {10: True, 11: True, 12: True, 13: True, 14: True}
+    assert _minimum_certified_width(extra) == _CANONICAL_WIDTH

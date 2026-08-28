@@ -83,9 +83,10 @@ separate costs; resource evidence must measure those costs directly.
   sufficient-condition theorem or certificate format for semantic narrowing.
 - Current mathematical base: correspondences
   `optimization-profile-width-projection-audit` and
-  `optimization-profile-width-finite-bisimulation-certificate` establish the
-  checked 10-through-14 projection laws and a fail-closed finite certificate
-  shape. No compiled program has yet been certified at a narrower width.
+  `optimization-profile-width-finite-bisimulation-certificate`, and
+  `optimization-profile-width-minimum-certified-selector` establish the checked
+  projection laws, fail-closed finite certificate shape, and deterministic
+  minimum-width choice. No compiled program has yet been certified narrower.
 - Required correctness evidence: differential/reference execution plus
   adversarial width-boundary tests and independent verification of certificates.
 - Required resource evidence: actual runtime capability discovery, exact
