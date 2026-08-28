@@ -300,9 +300,11 @@ rejected by shape.
 A separate product composition proves that byte input can restore exact A after
 guarded crazy. The admitted form is `j p+ / < v`: all `p` transitions first
 preserve projection at exact D, then non-EOF `/` overwrites both accumulators
-with the same byte before `<`. `(=s`M` is the concrete `j p / < v` fixture and
-selects N=10; its proof token requires at least one input byte, so EOF fails
-before machine construction.
+with the same byte before `<`. `(=s`M` (`j p / < v`) and `(=<r_L`
+(`j p p / < v`) both select N=10 and emit the recovered byte. Their proof tokens
+require at least one input byte, so EOF fails before machine construction. The
+product verifier independently admits this recovery shape at each reviewed
+geometry N=10 through 14.
 
 Within that initial-halt family, product-side minimum selection tries N=10
 through the canonical width and advances only on exact derived-capacity failure.

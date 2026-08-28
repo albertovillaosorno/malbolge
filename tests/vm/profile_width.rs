@@ -461,38 +461,67 @@ fn jump_crazy_halt_verifier_tracks_multiple_projected_accumulators()
 }
 
 #[test]
-fn jump_crazy_io_verifier_recovers_exact_byte_before_output() -> TestResult {
-    let verified =
-        normalize_result(verify_minimum_jump_crazy_io_halt_profile_width(
-            current_profile(),
-            b"(=s`M",
-        ))?;
-    check_equal(
-        &verified.proof_kind(),
-        &ProfileWidthProofKind::JumpCrazyIoHaltProjection,
-        "jump-crazy I/O proof family",
-    )?;
-    let mut machine = normalize_result(ProfileMachine::from_verified_source(
-        &verified,
-        vec![0xa5],
-    ))?;
-    check_equal(
-        &normalize_result(machine.run(5))?,
-        &RunOutcome::Terminated {
-            reason: Termination::HaltInstruction,
-            steps: 5,
-        },
-        "jump-crazy I/O outcome",
-    )?;
-    check_equal(&machine.output(), &(&[0xa5][..]), "recovered output")?;
-    if matches!(
-        ProfileMachine::from_verified_source(&verified, Vec::new()),
-        Err(ProfileMachineError::VerifiedInputRejected)
-    ) {
-        Ok(())
-    } else {
-        Err(String::from("jump-crazy I/O proof admitted EOF"))
+fn jump_crazy_io_verifier_recovers_exact_byte_after_crazy_prefix() -> TestResult
+{
+    let cases = [
+        (b"(=s`M".as_slice(), 5usize),
+        (b"(=<r_L".as_slice(), 6usize),
+    ];
+    for (source, steps) in cases {
+        let verified =
+            normalize_result(verify_minimum_jump_crazy_io_halt_profile_width(
+                current_profile(),
+                source,
+            ))?;
+        check_equal(
+            &verified.proof_kind(),
+            &ProfileWidthProofKind::JumpCrazyIoHaltProjection,
+            "jump-crazy I/O proof family",
+        )?;
+        let mut machine = normalize_result(
+            ProfileMachine::from_verified_source(&verified, vec![0xa5]),
+        )?;
+        check_equal(
+            &normalize_result(machine.run(steps))?,
+            &RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps,
+            },
+            "jump-crazy I/O outcome",
+        )?;
+        check_equal(&machine.output(), &(&[0xa5][..]), "recovered output")?;
+        if !matches!(
+            ProfileMachine::from_verified_source(&verified, Vec::new()),
+            Err(ProfileMachineError::VerifiedInputRejected)
+        ) {
+            return Err(String::from("jump-crazy I/O proof admitted EOF"));
+        }
     }
+    Ok(())
+}
+
+#[test]
+fn jump_crazy_io_verifier_covers_every_reviewed_geometry() -> TestResult {
+    for (word_trits, memory_words) in CHECKED_GEOMETRIES {
+        let verified =
+            normalize_result(verify_jump_crazy_io_halt_profile_width(
+                current_profile(),
+                b"(=s`M",
+                word_trits,
+            ))?;
+        check_equal(&verified.word_trits(), &word_trits, "recovery width")?;
+        check_equal(
+            &verified.memory_words(),
+            &memory_words,
+            "recovery memory words",
+        )?;
+        check_equal(
+            &verified.proof_kind(),
+            &ProfileWidthProofKind::JumpCrazyIoHaltProjection,
+            "recovery proof family",
+        )?;
+    }
+    Ok(())
 }
 
 #[test]

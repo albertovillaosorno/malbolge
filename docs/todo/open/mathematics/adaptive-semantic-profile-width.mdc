@@ -313,10 +313,13 @@ separate costs; resource evidence must measure those costs directly.
   N-modulus projection. The unguarded `>P` shape fails before derived execution
   authority is issued.
 - Product composition now also admits recovery from projected A: an exact jump,
-  one or more guarded `p` transitions, then `/ < v`. `(=s`M` decodes to
-  `j p / < v`, selects N=10, consumes one required byte, emits that exact byte,
-  and halts in five steps. The proof token carries `MinimumLength(1)` so EOF is
-  rejected before execution; `j p v` cannot satisfy this recovery family.
+  one or more guarded `p` transitions, then `/ < v`. `(=s`M` (`j p / < v`) and
+  `(=<r_L` (`j p p / < v`) both select N=10, consume one required byte, emit
+  that exact byte, and halt after their complete prefixes. The proof token
+  carries
+  `MinimumLength(1)` so EOF is rejected; `j p v` cannot satisfy this recovery
+  family. Direct verification admits the same recovery theorem independently at
+  every reviewed N=10 through 14.
 - Indexed state-graph now preserves the opaque geometry token through lineage,
   digest, trace application, and checkpoint materialization. A QP/N=10 runtime
   trace roundtrips through `IndexedMachineState` to the exact derived checkpoint
