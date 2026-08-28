@@ -213,6 +213,12 @@ related by exact projection; the following encryption and pointer advance are
 shared. The `uP` fixture checks both lineages and preserves their distinct input
 consumption observations.
 
+Input followed by output and halt is certifiable only for exact input domains
+whose declared streams are all nonempty. The consumed byte is then identical
+across widths and therefore produces the same output; EOF remains projected in
+A but has width-dependent byte residue. The `ubO` fixture retains the positive
+byte domain and a VM counterexample where EOF diverges exactly at output.
+
 Given independent certificate results for widths 10 through 13, the exact
 selector is the minimum certified width with 14 inserted as a canonical
 fallback. Missing results fail closed to 14. The selector deliberately assumes

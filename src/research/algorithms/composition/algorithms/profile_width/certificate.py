@@ -48,6 +48,7 @@ LEGACY_CERTIFICATE_SCHEMA_VERSION: Final = 1
 CERTIFICATE_SCHEMA_VERSION: Final = 2
 INITIAL_HALT_PROOF_KIND: Final = "initial-halt-projection-v1"
 INPUT_THEN_HALT_PROOF_KIND: Final = "input-then-halt-projection-v1"
+INPUT_OUTPUT_HALT_PROOF_KIND: Final = "input-output-halt-projection-v1"
 NOOP_PREFIX_HALT_PROOF_KIND: Final = "noop-prefix-halt-projection-v1"
 _CERTIFICATE_KEYS_V1: Final = frozenset(
     {
@@ -594,6 +595,37 @@ def initial_halt_projection_certifiable(
     return decoded is not None and decoded[0] == ord("v")
 
 
+def input_output_halt_projection_certifiable(
+    source: bytes,
+    narrow_width: int,
+    wide_width: int,
+    *,
+    inputs: Mapping[str, tuple[int, ...]],
+) -> bool:
+    """Check the sufficient input-output-halt projection premises.
+
+    Returns:
+        True only for `/`, `<`, `v` with no EOF-capable declared input stream.
+
+    """
+    widths_valid = (
+        MINIMUM_WIDTH <= narrow_width < wide_width <= CANONICAL_WIDTH
+    )
+    decoded = (
+        _admitted_source_decodes(source, narrow_width)
+        if widths_valid
+        else None
+    )
+    streams_safe = bool(inputs) and all(
+        bool(stream) for stream in inputs.values()
+    )
+    sequence_safe = (
+        decoded is not None
+        and decoded[:3] == (ord("/"), ord("<"), ord("v"))
+    )
+    return sequence_safe and streams_safe
+
+
 def input_then_halt_projection_certifiable(
     source: bytes,
     narrow_width: int,
@@ -664,26 +696,31 @@ def _recognized_proof_valid(
     certificate: FiniteWidthCertificate,
     source: bytes,
 ) -> bool:
-    accepted = False
-    if certificate.proof_kind == INITIAL_HALT_PROOF_KIND:
-        accepted = initial_halt_projection_certifiable(
+    simple_checkers = {
+        INITIAL_HALT_PROOF_KIND: initial_halt_projection_certifiable,
+        INPUT_THEN_HALT_PROOF_KIND: input_then_halt_projection_certifiable,
+        NOOP_PREFIX_HALT_PROOF_KIND: noop_prefix_halt_projection_certifiable,
+    }
+    proof_kind = certificate.proof_kind
+    checker = (
+        simple_checkers.get(proof_kind) if proof_kind is not None else None
+    )
+    if checker is not None:
+        return checker(
             source,
             certificate.narrow_width,
             certificate.wide_width,
         )
-    elif certificate.proof_kind == INPUT_THEN_HALT_PROOF_KIND:
-        accepted = input_then_halt_projection_certifiable(
-            source,
-            certificate.narrow_width,
-            certificate.wide_width,
-        )
-    elif certificate.proof_kind == NOOP_PREFIX_HALT_PROOF_KIND:
-        accepted = noop_prefix_halt_projection_certifiable(
-            source,
-            certificate.narrow_width,
-            certificate.wide_width,
-        )
-    return accepted
+    if certificate.proof_kind == INPUT_OUTPUT_HALT_PROOF_KIND:
+        inputs = certificate.inputs
+        if inputs is not None:
+            return input_output_halt_projection_certifiable(
+                source,
+                certificate.narrow_width,
+                certificate.wide_width,
+                inputs=inputs,
+            )
+    return False
 
 
 def bound_width_certificate_valid(

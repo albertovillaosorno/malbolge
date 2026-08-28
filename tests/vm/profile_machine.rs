@@ -49,6 +49,7 @@ const CURRENT_SOURCE: &[u8] = b"(=%r_L";
 const NARROWING_HALT_SOURCE: &[u8] = b"QP";
 const NARROWING_NOOP_HALT_SOURCE: &[u8] = b"DP";
 const NARROWING_INPUT_HALT_SOURCE: &[u8] = b"uP";
+const NARROWING_INPUT_OUTPUT_HALT_SOURCE: &[u8] = b"ubO";
 const NARROWING_NOOP_PREFIX_HALT_SOURCE: &[u8] = b"DCBA@?>=I";
 const NOOP_PREFIX_STEPS: u8 = 8;
 const CURRENT_TRITS: u8 = 14;
@@ -259,6 +260,71 @@ fn final_observable_match_does_not_imply_projected_lockstep() -> TestResult {
     let projected = current.registers().accumulator.rem_euclid(modulus);
     if projected == historical.registers().accumulator {
         return Err(String::from("rotate unexpectedly preserved projection"));
+    }
+    Ok(())
+}
+
+#[test]
+fn input_output_halt_preserves_projection_for_available_byte() -> TestResult {
+    let input = vec![CURRENT_INPUT];
+    let mut historical = normalize_result(ProfileMachine::from_source(
+        historical_profile(),
+        NARROWING_INPUT_OUTPUT_HALT_SOURCE,
+        input.clone(),
+    ))?;
+    let mut current = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        NARROWING_INPUT_OUTPUT_HALT_SOURCE,
+        input,
+    ))?;
+    check_current_projects_to_historical_state(&current, &historical)?;
+    for context in ["input-output input", "input-output output"] {
+        let historical_outcome = normalize_result(historical.step())?;
+        let current_outcome = normalize_result(current.step())?;
+        check_equal(&current_outcome, &historical_outcome, context)?;
+        check_equal(
+            &current_outcome,
+            &malbolge::StepOutcome::Continued,
+            "input-output continued outcome",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+    }
+    check_equal(current.output(), &[CURRENT_INPUT], "input-output byte")?;
+    let historical_halt = normalize_result(historical.step())?;
+    let current_halt = normalize_result(current.step())?;
+    check_equal(&current_halt, &historical_halt, "input-output halt")?;
+    check_equal(
+        &current_halt,
+        &malbolge::StepOutcome::Terminated(Termination::HaltInstruction),
+        "input-output termination",
+    )?;
+    check_current_projects_to_historical_state(&current, &historical)
+}
+
+#[test]
+fn input_output_halt_rejects_eof_projection_after_output() -> TestResult {
+    let mut historical = normalize_result(ProfileMachine::from_source(
+        historical_profile(),
+        NARROWING_INPUT_OUTPUT_HALT_SOURCE,
+        Vec::new(),
+    ))?;
+    let mut current = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        NARROWING_INPUT_OUTPUT_HALT_SOURCE,
+        Vec::new(),
+    ))?;
+    check_current_projects_to_historical_state(&current, &historical)?;
+    let historical_input = normalize_result(historical.step())?;
+    let current_input = normalize_result(current.step())?;
+    check_equal(&current_input, &historical_input, "EOF input-output input")?;
+    check_current_projects_to_historical_state(&current, &historical)?;
+    let historical_output = normalize_result(historical.step())?;
+    let current_output = normalize_result(current.step())?;
+    check_equal(&current_output, &historical_output, "EOF input-output step")?;
+    if current.output() == historical.output() {
+        return Err(String::from(
+            "EOF input-output bytes unexpectedly matched",
+        ));
     }
     Ok(())
 }

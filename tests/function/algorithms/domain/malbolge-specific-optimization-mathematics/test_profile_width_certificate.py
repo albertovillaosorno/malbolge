@@ -44,6 +44,7 @@ from typing import cast
 from algorithms.profile_width.certificate import CANONICAL_WIDTH
 from algorithms.profile_width.certificate import CERTIFICATE_SCHEMA_VERSION
 from algorithms.profile_width.certificate import FiniteSystem
+from algorithms.profile_width.certificate import INPUT_OUTPUT_HALT_PROOF_KIND
 from algorithms.profile_width.certificate import INPUT_THEN_HALT_PROOF_KIND
 from algorithms.profile_width.certificate import MINIMUM_WIDTH
 from algorithms.profile_width.certificate import NOOP_PREFIX_HALT_PROOF_KIND
@@ -53,6 +54,9 @@ from algorithms.profile_width.certificate import certificate_valid
 from algorithms.profile_width.certificate import finite_width_certificate_valid
 from algorithms.profile_width.certificate import (
     initial_halt_projection_certifiable,
+)
+from algorithms.profile_width.certificate import (
+    input_output_halt_projection_certifiable,
 )
 from algorithms.profile_width.certificate import (
     input_then_halt_projection_certifiable,
@@ -104,6 +108,7 @@ _FIXTURE_V1 = _FIXTURES / "qp-width-certificate-v1.json"
 _FIXTURE_V2 = _FIXTURES / "qp-width-certificate-v2.json"
 _DP_FIXTURE_V2 = _FIXTURES / "dp-noop-halt-width-certificate-v2.json"
 _UP_FIXTURE_V2 = _FIXTURES / "up-input-halt-width-certificate-v2.json"
+_UBO_FIXTURE_V2 = _FIXTURES / "ubo-input-output-halt-width-certificate-v2.json"
 _QP_SUBJECT_ID = "qp-halt-current14-to-historical10"
 _GRAPHICAL = range(33, 127)
 _LOAD_OPCODES = frozenset(b"ji*p</vo")
@@ -266,6 +271,49 @@ def test_selector_rejects_certificate_width_mismatch() -> None:
     assert certificate is not None
     decisions = {10: False, 11: certificate, 12: False, 13: False}
     assert _selected_width(decisions) == CANONICAL_WIDTH
+
+
+def test_ubo_fixture_certifies_only_nonempty_input_domain() -> None:
+    """UbO certifies byte input but refuses a subject that also includes EOF."""
+    certificate = parse_finite_width_certificate(
+        _fixture_value(_UBO_FIXTURE_V2)
+    )
+    assert certificate is not None
+    assert certificate.proof_kind == INPUT_OUTPUT_HALT_PROOF_KIND
+    assert bound_width_certificate_valid(certificate)
+    byte_subject = WidthCertificateSubject(
+        source=b"ubO",
+        inputs={"byte-a5": bytes((165,))},
+    )
+    decisions = {10: certificate, 11: False, 12: False, 13: False}
+    assert (
+        minimum_width_from_certificates(byte_subject, decisions)
+        == MINIMUM_WIDTH
+    )
+    eof_subject = WidthCertificateSubject(
+        source=b"ubO",
+        inputs={"byte-a5": bytes((165,)), "eof": b""},
+    )
+    assert (
+        minimum_width_from_certificates(eof_subject, decisions)
+        == CANONICAL_WIDTH
+    )
+
+
+def test_input_output_halt_checker_rejects_eof_capable_domain() -> None:
+    """The proof checker accepts bytes and rejects any empty declared stream."""
+    assert input_output_halt_projection_certifiable(
+        b"ubO",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs={"a": (0,), "b": (255, 1)},
+    )
+    assert not input_output_halt_projection_certifiable(
+        b"ubO",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs={"byte": (165,), "eof": ()},
+    )
 
 
 def test_up_fixture_certifies_input_then_halt_projection() -> None:

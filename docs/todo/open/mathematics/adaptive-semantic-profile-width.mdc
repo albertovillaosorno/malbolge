@@ -141,6 +141,12 @@ separate costs; resource evidence must measure those costs directly.
   advance then preserve the relation until halt. Fixture `uP` retains both a
   consumed-byte lineage and an EOF lineage with their different
   `input_consumed` observations.
+- Proof kind `input-output-halt-projection-v1` covers decoded `/`, `<`, `v`
+  only when every exact declared input stream is nonempty. Then input stores the
+  same byte at both widths and output emits that same byte; an EOF-capable domain
+  is rejected because the projected EOF words have different residues modulo
+  256. Fixture `ubO` certifies the bound `0xA5` domain, while a Rust adversarial
+  run shows projection surviving input and breaking exactly at output under EOF.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final
