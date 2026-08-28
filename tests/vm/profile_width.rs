@@ -37,8 +37,9 @@ use malbolge::{
     ProfileWidthVerificationError, RegionEffectProgram, RunOutcome,
     StepProgramProjectionError, TargetProfileRequirement, Termination,
     current_profile, decode_profile_instruction, historical_profile,
-    verify_initial_halt_profile_width,
+    verify_initial_halt_profile_width, verify_input_then_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
+    verify_minimum_input_then_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
     verify_noop_prefix_halt_profile_width,
 };
@@ -206,6 +207,89 @@ fn verified_geometry_exposes_copyable_profile_bound_execution_token()
         "token memory words",
     )?;
     check_equal(&copied.eof_word(), &(MINIMUM_MEMORY_WORDS - 1), "token EOF")
+}
+
+#[test]
+fn input_then_halt_verifier_executes_byte_and_eof_at_minimum_width()
+-> TestResult {
+    let verified = normalize_result(
+        verify_minimum_input_then_halt_profile_width(current_profile(), b"uP"),
+    )?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::InputThenHaltProjection,
+        "input-halt proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "input-halt minimum width",
+    )?;
+    let cases = [
+        (vec![0xa5], 0xa5u32, 1usize),
+        (Vec::new(), verified.eof_word(), 0usize),
+    ];
+    for (input, accumulator, consumed) in cases {
+        let mut machine = normalize_result(
+            ProfileMachine::from_verified_source(&verified, input),
+        )?;
+        check_equal(
+            &normalize_result(machine.run(2))?,
+            &RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 2,
+            },
+            "input-halt outcome",
+        )?;
+        check_equal(
+            &machine.registers().accumulator,
+            &accumulator,
+            "input-halt accumulator",
+        )?;
+        check_equal(
+            &machine.input_consumed(),
+            &consumed,
+            "input-halt consumed input",
+        )?;
+        let expected_output: &[u8] = &[];
+        check_equal(&machine.output(), &expected_output, "input-halt output")?;
+        check_equal(
+            &machine.geometry(),
+            &verified.geometry(),
+            "input-halt geometry",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn input_then_halt_verifier_rejects_wrong_reached_sequence() -> TestResult {
+    let wrong_first = verify_input_then_halt_profile_width(
+        current_profile(),
+        b"DP",
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &wrong_first,
+        &Err(ProfileWidthVerificationError::InputThenHaltInstruction {
+            position: 0,
+            decoded: b'o',
+        }),
+        "input-halt first instruction rejection",
+    )?;
+    let wrong_second = verify_input_then_halt_profile_width(
+        current_profile(),
+        b"ub",
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &wrong_second,
+        &Err(ProfileWidthVerificationError::InputThenHaltInstruction {
+            position: 1,
+            decoded: b'<',
+        }),
+        "input-halt second instruction rejection",
+    )
 }
 
 #[test]

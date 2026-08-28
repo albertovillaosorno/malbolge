@@ -272,6 +272,15 @@ separate costs; resource evidence must measure those costs directly.
   words, and executes one no-op plus halt in two normative steps. QP is rejected
   by this proof kind because its no-op prefix is empty, while `DC` is rejected
   because its admitted no-op prefix never reaches halt.
+- A third trusted verifier independently admits input followed directly by halt.
+  `uP` selects N=10 for both byte and EOF lineages. Byte `0xA5` leaves A at
+  `0xA5` with one consumed byte; EOF leaves A at the derived all-two-trit word
+  59,048 with zero bytes consumed. Both halt in two normative steps with no
+  output.
+- All three product proof-family minimum selectors share one widening policy.
+  Only `SourceTooLong` advances to a wider candidate; theorem or loader
+  rejection
+  still fails closed immediately.
 - Indexed state-graph now preserves the opaque geometry token through lineage,
   digest, trace application, and checkpoint materialization. A QP/N=10 runtime
   trace roundtrips through `IndexedMachineState` to the exact derived checkpoint

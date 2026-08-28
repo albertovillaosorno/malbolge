@@ -254,6 +254,13 @@ QP is rejected by this family because its prefix is empty, while `DC` is
 rejected
 because no reached halt follows its admitted no-op prefix.
 
+A third product verifier accepts input followed directly by halt without binding
+a particular input stream. `uP` selects N=10 for both byte and EOF execution:
+byte `0xA5` leaves A exact and consumes one byte, while EOF leaves A at 59,048
+and consumes none. Both lineages halt after two normative steps with no output.
+All product proof-family minimum selectors share one policy that advances only
+after exact derived `SourceTooLong` rejection.
+
 Within that initial-halt family, product-side minimum selection tries N=10
 through the canonical width and advances only on exact derived-capacity failure.
 QP selects N=10, while a valid 59,050-word initial-halt source selects N=11. A

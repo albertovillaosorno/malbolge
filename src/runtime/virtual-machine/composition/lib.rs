@@ -215,8 +215,9 @@ pub use profile_trace::{
 pub use profile_width::{
     ProfileExecutionGeometry, ProfileWidthProofKind,
     ProfileWidthVerificationError, VerifiedProfileExecutionGeometry,
-    verify_initial_halt_profile_width,
+    verify_initial_halt_profile_width, verify_input_then_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
+    verify_minimum_input_then_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
     verify_noop_prefix_halt_profile_width,
 };
