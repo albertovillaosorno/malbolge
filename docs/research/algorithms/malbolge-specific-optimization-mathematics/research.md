@@ -240,6 +240,7 @@ and 14.
 shows why projected D is insufficient for writes: both crazy transitions
 continue and A still projects, but D names different physical cells, so the
 memory relation breaks.
+
 Guarded crazy steps are accepted only after the exact-address jump has separated
 D from C, while the resulting D stays in-domain and avoids future source code.
 `j p v` and `j p p v` preserve complete endpoint projection; unguarded `p v`
