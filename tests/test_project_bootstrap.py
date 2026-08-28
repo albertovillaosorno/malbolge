@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -52,6 +53,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+BASEDPYRIGHT_TOOL = "basedpyright"
 CUDA_VERSION_ROOT = ".dependencies/cuda/13.3.1/toolkit"
 CUDA_WINDOWS_MANIFEST_SHA256 = (
     "b8249cc1accf4b0532779c7c42e6505c9840d7208b4ab945e54daa456206b95e"
@@ -464,6 +466,36 @@ def test_posix_jig_tool_aliases_bind_fast_exact_versions(
         assert completed.returncode == os.EX_OK
         assert completed.stdout == f"{expected}\n"
         assert not completed.stderr
+
+
+def test_posix_jig_tool_aliases_require_unique_version_authority(
+    tmp_path: Path,
+) -> None:
+    """Fast aliases reject missing or duplicate expected-tool authority."""
+    layout = python_validation.validation_layout(tmp_path, windows=False)
+    layout.scripts.mkdir(parents=True)
+    for name in ("basedpyright", "pytest", "ruff"):
+        path = layout.scripts / name
+        _ = path.write_text(name, encoding="ascii")
+        _ = path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    without_basedpyright = tuple(
+        item for item in layout.expected_tools if item[0] != BASEDPYRIGHT_TOOL
+    )
+    duplicate_basedpyright = (
+        *layout.expected_tools,
+        (BASEDPYRIGHT_TOOL, "basedpyright 9.9.9"),
+    )
+
+    for expected_tools in (without_basedpyright, duplicate_basedpyright):
+        candidate = replace(layout, expected_tools=expected_tools)
+        with pytest.raises(
+            python_validation.ProvisionError,
+            match="requires one version authority: basedpyright",
+        ):
+            _ = python_validation.write_jig_tool_aliases(
+                candidate,
+                windows=False,
+            )
 
 
 def test_posix_jig_tool_aliases_delegate_nonexact_version_argv(

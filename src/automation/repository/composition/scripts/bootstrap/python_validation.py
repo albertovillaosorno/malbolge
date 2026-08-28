@@ -566,6 +566,22 @@ def write_launchers(
     _make_executable(layout.pytest_launcher)
 
 
+def _expected_jig_tool_version_line(
+    layout: ValidationEnvironmentLayout,
+    executable: str,
+) -> str:
+    matches = [
+        version_line
+        for candidate, version_line in layout.expected_tools
+        if candidate == executable
+    ]
+    if len(matches) != 1:
+        _fail(
+            f"Jig tool alias requires one version authority: {executable}"
+        )
+    return matches[0]
+
+
 def _write_jig_tool_alias(
     layout: ValidationEnvironmentLayout,
     tool_id: str,
@@ -583,9 +599,7 @@ def _write_jig_tool_alias(
     if windows or tool_id not in JIG_FAST_VERSION_TOOL_IDS:
         _ = target.write_bytes(source.read_bytes())
     else:
-        version_line = dict(layout.expected_tools).get(executable)
-        if version_line is None:
-            _fail(f"missing Jig tool version authority: {executable}")
+        version_line = _expected_jig_tool_version_line(layout, executable)
         _ = target.write_text(
             _posix_jig_tool_alias_text(tool_id, version_line),
             encoding="ascii",
