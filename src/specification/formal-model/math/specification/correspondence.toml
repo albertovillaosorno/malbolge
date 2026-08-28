@@ -229,6 +229,15 @@ mechanism = "power-of-three-divisibility-plus-quotient-residue-projection-audit"
 evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_checked_width_projection_laws_and_counterexamples", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_three_chunk_projection_has_exact_profile_constant"]
 
 [[correspondence]]
+id = "optimization-profile-width-output-compatible-count"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-profile-width-output-compatible-count"
+domain = "every checked width pair 10 <= N < M <= 14 with every possible discarded high quotient; low residues factor independently because output equality depends only on the high multiple of 3^N"
+mechanism = "coprime-power-of-three-byte-modulus-plus-high-quotient-classification"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_output_compatible_word_count_for_checked_width_pairs"]
+
+[[correspondence]]
 id = "optimization-profile-width-rotate-compatible-count"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-profile-width-rotate-compatible-count"

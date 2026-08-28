@@ -128,6 +128,19 @@ def test_checked_width_projection_laws_and_counterexamples() -> None:
         _check_width_pair(widths)
 
 
+def test_output_compatible_word_count_for_checked_width_pairs() -> None:
+    """Only words with zero discarded quotient preserve byte output."""
+    for narrow, wide in _width_pairs():
+        narrow_modulus = _modulus(narrow)
+        ratio = _modulus(wide) // narrow_modulus
+        compatible_quotients = sum(
+            quotient * narrow_modulus % _BYTE_MODULUS == 0
+            for quotient in range(ratio)
+        )
+        assert compatible_quotients == 1
+        assert compatible_quotients * narrow_modulus == _power(narrow)
+
+
 def test_rotate_projection_compatibility_is_not_monotone_in_width() -> None:
     """Each candidate width compares a distinct high trit with trit zero."""
     wide = CANONICAL_WIDTH

@@ -27,11 +27,14 @@ memory and semantic word width remain unchanged.
 
 Checked width projection is not uniformly semantic. Successor and `crazy`
 commute with radix projection, while `rotate` and byte output have exact
-additional conditions. Rotate compatibility checks trit `N` against trit zero
-and is not monotone across candidate widths; even projected EOF values can later
-emit different bytes. For any subset of candidate widths 10 through 13, each
-additional rotate-compatibility constraint removes exactly two thirds of the
-14-trit word domain; all four together leave 59,049 compatible words.
+additional conditions. Output compatibility from width `M` to `N` holds for
+exactly the embedded `3^N` low words and is nested across narrower widths.
+
+Rotate compatibility checks trit `N` against trit zero and is not monotone
+across candidate widths; even projected EOF values can later emit different
+bytes. For any subset of candidate widths 10 through 13, each additional
+rotate-compatibility constraint removes exactly two thirds of the 14-trit word
+domain; all four together leave 59,049 compatible words.
 
 A finite lockstep relation with initial coverage, observation equality, and
 transition closure is therefore the admitted sufficient certificate shape. No

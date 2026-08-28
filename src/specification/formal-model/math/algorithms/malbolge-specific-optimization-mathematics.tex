@@ -164,9 +164,18 @@ One candidate width therefore admits one third of the words, while simultaneous
 compatibility with widths 10 through 13 admits exactly $3^{10}=59049$ words.
 This is a primitive compatibility count only, not a program-width certificate.
 Also, because $W_N$ is coprime to $256$ and $q<256$,
-$x\bmod256=r\bmod256$ holds exactly when $q=0$. The wide EOF word projects to
-the narrow EOF word, but for $M>N$ their output bytes differ. Thus small
-addresses or low projected words alone are not a semantic narrowing proof.
+$x\bmod256=r\bmod256$ holds exactly when $q=0$. Therefore
+\begin{equation}
+  \left|\left\{x\in\WordDomain{M}:
+    x\bmod256=\pi_N(x)\bmod256\right\}\right|=3^N,
+  \quad 10\leq N<M\leq14.
+  \label{eq:optimization-profile-width-output-compatible-count}
+\end{equation}
+The compatible words are exactly $\WordDomain{N}$ embedded in
+$\WordDomain{M}$, so output compatibility is nested monotonically as $N$
+decreases. The wide EOF word projects to the narrow EOF word, but for $M>N$
+their output bytes differ. Thus small addresses or low projected words alone
+are not a semantic narrowing proof.
 
 Let $D$ be a declared input domain and let $R$ be a finite relation between
 complete width-$M$ and width-$N$ guest states. Define
