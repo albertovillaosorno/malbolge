@@ -433,8 +433,7 @@ template = "{version}"
 [validation.latex_compile]
 capability = "latex-compile"
 tool = "latexmk"
-# jig-ignore-next-line: indivisible reviewed identifier
-config_files = ["src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"]
+config_files = [".jig/lang/latex/latexmkrc"]
 # jig-ignore-next-line: indivisible reviewed identifier
 args = ["src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"]
 scope_applicability = "global"
@@ -443,10 +442,8 @@ timeout_seconds = 120
 [validation.latex_style]
 capability = "latex-style"
 tool = "chktex"
-# jig-ignore-next-line: indivisible reviewed identifier
-config_files = ["src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"]
-# jig-ignore-next-line: indivisible reviewed identifier
-args = ["src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"]
+config_files = [".jig/lang/latex/chktexrc"]
+args = []
 scope_applicability = "global"
 timeout_seconds = 120
 
