@@ -37,15 +37,33 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 from typing import TYPE_CHECKING
+from typing import cast
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
 MINIMUM_WIDTH: Final = 10
 CANONICAL_WIDTH: Final = 14
+CERTIFICATE_SCHEMA_VERSION: Final = 1
+_CERTIFICATE_KEYS: Final = frozenset(
+    {
+        "schema_version",
+        "subject_id",
+        "wide_width",
+        "narrow_width",
+        "input_ids",
+        "observation_fields",
+        "wide",
+        "narrow",
+        "relation",
+    }
+)
 
 
 type WidthRelation = frozenset[tuple[str, str]]
+type JsonValue = (
+    bool | int | str | list[JsonValue] | dict[str, JsonValue] | None
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +73,224 @@ class FiniteSystem:
     initial: Mapping[str, str]
     observation: Mapping[str, tuple[int, ...]]
     successor: Mapping[str, str | None]
+
+
+@dataclass(frozen=True, slots=True)
+class FiniteWidthCertificate:
+    """One parsed research-only finite profile-width certificate."""
+
+    input_ids: tuple[str, ...]
+    observation_fields: tuple[str, ...]
+    narrow_width: int
+    relation: WidthRelation
+    subject_id: str
+    wide_width: int
+    wide: FiniteSystem
+    narrow: FiniteSystem
+
+
+def _exact_int(value: JsonValue) -> int | None:
+    return value if type(value) is int else None
+
+
+def _string(value: JsonValue) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _exact_object(
+    value: JsonValue,
+    expected: frozenset[str],
+) -> dict[str, JsonValue] | None:
+    if not isinstance(value, dict) or frozenset(value) != expected:
+        return None
+    return value
+
+
+def _parse_string_map(value: JsonValue) -> dict[str, str] | None:
+    if not isinstance(value, dict):
+        return None
+    parsed: dict[str, str] = {}
+    for key, item in value.items():
+        parsed_item = _string(item)
+        if parsed_item is None:
+            return None
+        parsed[key] = parsed_item
+    return parsed
+
+
+def _integer_tuple(value: JsonValue) -> tuple[int, ...] | None:
+    if not isinstance(value, list):
+        return None
+    parsed = tuple(_exact_int(item) for item in value)
+    if any(item is None for item in parsed):
+        return None
+    return tuple(item for item in parsed if item is not None)
+
+
+def _parse_observations(
+    value: JsonValue,
+) -> dict[str, tuple[int, ...]] | None:
+    if not isinstance(value, dict):
+        return None
+    parsed: dict[str, tuple[int, ...]] = {}
+    for key, items in value.items():
+        observation = _integer_tuple(items)
+        if observation is None:
+            return None
+        parsed[key] = observation
+    return parsed
+
+
+def _parse_successors(value: JsonValue) -> dict[str, str | None] | None:
+    if not isinstance(value, dict):
+        return None
+    parsed: dict[str, str | None] = {}
+    for key, item in value.items():
+        if item is None:
+            parsed[key] = None
+            continue
+        parsed_item = _string(item)
+        if parsed_item is None:
+            return None
+        parsed[key] = parsed_item
+    return parsed
+
+
+def _parse_system(value: JsonValue) -> FiniteSystem | None:
+    expected = frozenset({"initial", "observation", "successor"})
+    raw = _exact_object(value, expected)
+    if raw is None:
+        return None
+    initial = _parse_string_map(raw["initial"])
+    observation = _parse_observations(raw["observation"])
+    successor = _parse_successors(raw["successor"])
+    if initial is None or observation is None or successor is None:
+        return None
+    return FiniteSystem(
+        initial=initial,
+        observation=observation,
+        successor=successor,
+    )
+
+
+def _parse_unique_strings(value: JsonValue) -> tuple[str, ...] | None:
+    if not isinstance(value, list) or not value:
+        return None
+    parsed = tuple(_string(item) for item in value)
+    strings = tuple(item for item in parsed if item is not None)
+    valid = len(strings) == len(parsed) and len(set(strings)) == len(strings)
+    return strings if valid else None
+
+
+def _parse_relation_pair(value: JsonValue) -> tuple[str, str] | None:
+    relation_pair_size = 2
+    if not isinstance(value, list) or len(value) != relation_pair_size:
+        return None
+    wide_state = _string(value[0])
+    narrow_state = _string(value[1])
+    if wide_state is None or narrow_state is None:
+        return None
+    return wide_state, narrow_state
+
+
+def _parse_relation(value: JsonValue) -> WidthRelation | None:
+    if not isinstance(value, list) or not value:
+        return None
+    parsed = tuple(_parse_relation_pair(item) for item in value)
+    pairs = tuple(pair for pair in parsed if pair is not None)
+    valid = len(pairs) == len(parsed) and len(set(pairs)) == len(pairs)
+    return frozenset(pairs) if valid else None
+
+
+def _certificate_parts_valid(
+    parts: tuple[object | None, ...],
+) -> bool:
+    return all(part is not None for part in parts)
+
+
+def parse_finite_width_certificate(
+    value: JsonValue,
+) -> FiniteWidthCertificate | None:
+    """Parse one strict schema-v1 research certificate or fail closed.
+
+    Returns:
+        The parsed certificate, or None when schema or values are invalid.
+
+    """
+    raw = _exact_object(value, _CERTIFICATE_KEYS)
+    if raw is None:
+        return None
+    schema_version = _exact_int(raw["schema_version"])
+    subject_id = _string(raw["subject_id"])
+    wide_width = _exact_int(raw["wide_width"])
+    narrow_width = _exact_int(raw["narrow_width"])
+    input_ids = _parse_unique_strings(raw["input_ids"])
+    observation_fields = _parse_unique_strings(raw["observation_fields"])
+    wide = _parse_system(raw["wide"])
+    narrow = _parse_system(raw["narrow"])
+    relation = _parse_relation(raw["relation"])
+    if (
+        schema_version != CERTIFICATE_SCHEMA_VERSION
+        or not _certificate_parts_valid(
+            (
+                subject_id,
+                wide_width,
+                narrow_width,
+                input_ids,
+                observation_fields,
+                wide,
+                narrow,
+                relation,
+            )
+        )
+    ):
+        return None
+    return FiniteWidthCertificate(
+        input_ids=cast("tuple[str, ...]", input_ids),
+        observation_fields=cast("tuple[str, ...]", observation_fields),
+        narrow_width=cast("int", narrow_width),
+        relation=cast("WidthRelation", relation),
+        subject_id=cast("str", subject_id),
+        wide_width=cast("int", wide_width),
+        wide=cast("FiniteSystem", wide),
+        narrow=cast("FiniteSystem", narrow),
+    )
+
+
+def finite_width_certificate_valid(certificate: FiniteWidthCertificate) -> bool:
+    """Check one parsed certificate without granting product authority.
+
+    Returns:
+        True only for checked widths, exact input coverage, and a closed
+        relation.
+
+    """
+    widths_valid = (
+        MINIMUM_WIDTH <= certificate.narrow_width < certificate.wide_width
+        <= CANONICAL_WIDTH
+    )
+    expected_inputs = set(certificate.input_ids)
+    inputs_valid = (
+        set(certificate.wide.initial) == expected_inputs
+        and set(certificate.narrow.initial) == expected_inputs
+    )
+    observation_arity = len(certificate.observation_fields)
+    observations_valid = all(
+        len(observation) == observation_arity
+        for system in (certificate.wide, certificate.narrow)
+        for observation in system.observation.values()
+    )
+    relation_valid = certificate_valid(
+        certificate.wide,
+        certificate.narrow,
+        certificate.relation,
+    )
+    return (
+        widths_valid
+        and inputs_valid
+        and observations_valid
+        and relation_valid
+    )
 
 
 def _initial_coverage(

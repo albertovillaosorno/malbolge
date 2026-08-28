@@ -181,6 +181,14 @@ equivalence for the finite certified relation. This theorem defines a
 fail-closed proof shape; no concrete program or product selector is certified
 by it yet.
 
+The experimental checker now has a strict JSON schema-v1 input surface. It
+accepts only declared wide/narrow widths, explicit input IDs, named observation
+coordinates, both finite systems, and the cross-width relation; malformed or
+ambiguous surfaces fail closed. A retained `QP` fixture exercises that parser,
+while an independent Rust VM test proves complete 14-to-10 projection before
+and after the halt. The subject ID is descriptive provenance, not verifier
+authority.
+
 Given independent certificate results for widths 10 through 13, the exact
 selector is the minimum certified width with 14 inserted as a canonical
 fallback. Missing results fail closed to 14. The selector deliberately assumes

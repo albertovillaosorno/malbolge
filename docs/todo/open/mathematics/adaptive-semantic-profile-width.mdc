@@ -104,6 +104,15 @@ separate costs; resource evidence must measure those costs directly.
   Because halt performs no I/O, encryption, or pointer advance, this fixture is
   input-independent within the tested byte-stream interface. It remains
   research evidence rather than a product-issued certificate.
+- Research certificate schema v1 is now executable through
+  `algorithms.profile_width.certificate`. It declares exact wide/narrow widths,
+  an explicit input-domain ID set, named observation fields, both finite state
+  systems, and the cross-width relation. Parsing rejects unknown fields,
+  duplicate inputs/relation pairs, ambiguous scalar types, malformed state
+  surfaces, observation-arity drift, and invalid width ordering. The versioned
+  `qp-width-certificate-v1.json` fixture is accepted by that checker and is tied
+  to the independent VM projection fixture above; neither the JSON subject ID
+  nor research acceptance grants trusted runtime-selection authority.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final

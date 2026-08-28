@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "subject_id": "qp-halt-current14-to-historical10",
+  "wide_width": 14,
+  "narrow_width": 10,
+  "input_ids": ["byte-a5", "eof"],
+  "observation_fields": ["input_consumed", "output_len", "termination"],
+  "wide": {
+    "initial": {"byte-a5": "w0", "eof": "w0"},
+    "observation": {"w0": [0, 0, 0], "w1": [0, 0, 1]},
+    "successor": {"w0": "w1", "w1": null}
+  },
+  "narrow": {
+    "initial": {"byte-a5": "n0", "eof": "n0"},
+    "observation": {"n0": [0, 0, 0], "n1": [0, 0, 1]},
+    "successor": {"n0": "n1", "n1": null}
+  },
+  "relation": [["w0", "n0"], ["w1", "n1"]]
+}
