@@ -180,6 +180,31 @@ fn initial_halt_verifier_covers_every_reviewed_geometry() -> TestResult {
 }
 
 #[test]
+fn verified_geometry_exposes_copyable_profile_bound_execution_token()
+-> TestResult {
+    let current = current_profile();
+    let verified = normalize_result(verify_initial_halt_profile_width(
+        current,
+        QP,
+        MINIMUM_WORD_TRITS,
+    ))?;
+    let geometry = verified.geometry();
+    let copied = geometry;
+    check_equal(&copied.profile(), &current, "token profile binding")?;
+    check_equal(
+        &copied.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "token word width",
+    )?;
+    check_equal(
+        &copied.memory_words(),
+        &MINIMUM_MEMORY_WORDS,
+        "token memory words",
+    )?;
+    check_equal(&copied.eof_word(), &(MINIMUM_MEMORY_WORDS - 1), "token EOF")
+}
+
+#[test]
 fn initial_halt_verifier_preserves_raw_source_identity() -> TestResult {
     let source = b" \tQP\n";
     let verified = normalize_result(verify_initial_halt_profile_width(

@@ -213,8 +213,9 @@ pub use profile_trace::{
     ProfileMemoryReads, ProfileMemoryWrite, ProfileStepTrace,
 };
 pub use profile_width::{
-    ProfileWidthProofKind, ProfileWidthVerificationError,
-    VerifiedProfileExecutionGeometry, verify_initial_halt_profile_width,
+    ProfileExecutionGeometry, ProfileWidthProofKind,
+    ProfileWidthVerificationError, VerifiedProfileExecutionGeometry,
+    verify_initial_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
 };
 pub use threading::ScopedThreadParallelism;

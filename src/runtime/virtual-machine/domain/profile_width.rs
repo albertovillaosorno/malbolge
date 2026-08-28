@@ -54,33 +54,77 @@ pub enum ProfileWidthProofKind {
     InitialHalt,
 }
 
-/// Source/profile-bound geometry emitted only by trusted verification.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct VerifiedProfileExecutionGeometry {
+/// Opaque execution geometry emitted only through trusted width verification.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProfileExecutionGeometry {
     memory_words: u32,
     profile: &'static ProfileDescriptor,
+    word_trits: u8,
+}
+
+impl ProfileExecutionGeometry {
+    /// Returns the derived all-two-trit EOF value.
+    #[must_use]
+    pub const fn eof_word(self) -> u32 {
+        self.memory_words.saturating_sub(1)
+    }
+
+    /// Returns the exact derived resident memory length.
+    #[must_use]
+    pub const fn memory_words(self) -> u32 {
+        self.memory_words
+    }
+
+    /// Returns the unchanged canonical profile bound to this geometry.
+    #[must_use]
+    pub const fn profile(self) -> &'static ProfileDescriptor {
+        self.profile
+    }
+
+    /// Returns the exact derived ternary word modulus.
+    #[must_use]
+    pub const fn word_modulus(self) -> u32 {
+        self.memory_words
+    }
+
+    /// Returns the independently admitted ternary word width.
+    #[must_use]
+    pub const fn word_trits(self) -> u8 {
+        self.word_trits
+    }
+}
+
+/// Source/profile-bound proof envelope emitted only by trusted verification.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedProfileExecutionGeometry {
+    geometry: ProfileExecutionGeometry,
     proof_kind: ProfileWidthProofKind,
     source: Box<[u8]>,
-    word_trits: u8,
 }
 
 impl VerifiedProfileExecutionGeometry {
     /// Returns the derived all-two-trit EOF value.
     #[must_use]
     pub const fn eof_word(&self) -> u32 {
-        self.memory_words.saturating_sub(1)
+        self.geometry.eof_word()
+    }
+
+    /// Returns the copyable opaque execution token admitted by this proof.
+    #[must_use]
+    pub const fn geometry(&self) -> ProfileExecutionGeometry {
+        self.geometry
     }
 
     /// Returns the exact derived resident memory length.
     #[must_use]
     pub const fn memory_words(&self) -> u32 {
-        self.memory_words
+        self.geometry.memory_words()
     }
 
     /// Returns the unchanged canonical profile identity and semantics.
     #[must_use]
     pub const fn profile(&self) -> &'static ProfileDescriptor {
-        self.profile
+        self.geometry.profile()
     }
 
     /// Returns the trusted proof family that admitted this geometry.
@@ -98,13 +142,13 @@ impl VerifiedProfileExecutionGeometry {
     /// Returns the exact derived ternary word modulus.
     #[must_use]
     pub const fn word_modulus(&self) -> u32 {
-        self.memory_words
+        self.geometry.word_modulus()
     }
 
     /// Returns the independently admitted ternary word width.
     #[must_use]
     pub const fn word_trits(&self) -> u8 {
-        self.word_trits
+        self.geometry.word_trits()
     }
 }
 
@@ -222,11 +266,13 @@ pub fn verify_initial_halt_profile_width(
         });
     }
     Ok(VerifiedProfileExecutionGeometry {
-        memory_words,
-        profile,
+        geometry: ProfileExecutionGeometry {
+            memory_words,
+            profile,
+            word_trits,
+        },
         proof_kind: ProfileWidthProofKind::InitialHalt,
         source: Box::from(source),
-        word_trits,
     })
 }
 
