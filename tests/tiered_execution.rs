@@ -217,7 +217,7 @@ use malbolge::{
     TraceInput, current_profile, decode_profile_instruction,
     historical_profile, preflight_profile, preflight_runtime_requirement,
     safe_rust_classic_capability, safe_rust_profiled_capability,
-    target_profile,
+    target_profile, verify_minimum_initial_halt_profile_width,
 };
 use native_retry::{
     NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,
@@ -11708,6 +11708,54 @@ fn native_interpreter_handoff_completes_from_checkpoint() -> Result<(), String>
         Ok(())
     } else {
         Err(String::from("checkpoint interpreter handoff drifted"))
+    }
+}
+
+#[test]
+fn native_interpreter_handoff_rejects_derived_checkpoint_geometry()
+-> Result<(), String> {
+    let profile = target_profile(FIXTURE_PROFILE_ID)
+        .ok_or_else(|| String::from("initial-halt profile missing"))?;
+    let mut program = direct_initial_halt_program();
+    program.profile_fingerprint = String::from(profile.fingerprint());
+    program.profile_requirement =
+        TargetProfileRequirement::from_descriptor(profile);
+    let programs = [program];
+    let plan = select_verified_direct_sequence(
+        &programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| error.to_string())?;
+    let continuation = NativeInterpreterContinuation::from_outcome(
+        &plan,
+        NativeSequenceExecutionOutcome::GuardMiss {
+            index: 0,
+            observation: plan.entry(),
+        },
+    )
+    .map_err(|error| error.to_string())?
+    .ok_or_else(|| String::from("initial-halt guard miss lost continuation"))?;
+    let verified = verify_minimum_initial_halt_profile_width(profile, b"QP")
+        .map_err(|error| format!("derived handoff geometry: {error}"))?;
+    let geometry = verified.geometry();
+    let memory_len = usize::try_from(geometry.memory_words())
+        .map_err(|error| format!("derived handoff memory length: {error}"))?;
+    let checkpoint = ProfileMachineState::new_with_geometry(
+        geometry,
+        vec![0u32; memory_len],
+        plan.entry().registers,
+        ProfileMachineIoState::new(Vec::new(), 0, Vec::new(), None)
+            .map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| format!("derived handoff state: {error}"))?;
+    if NativeInterpreterHandoff::from_checkpoint(continuation, checkpoint)
+        == Err(NativeInterpreterHandoffAdmissionError::CheckpointGeometry)
+    {
+        Ok(())
+    } else {
+        Err(String::from("derived checkpoint geometry was admitted"))
     }
 }
 
