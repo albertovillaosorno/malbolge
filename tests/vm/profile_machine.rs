@@ -165,6 +165,99 @@ fn current_profile_executes_scalable_state_and_io() -> TestResult {
     )
 }
 
+fn check_current_projects_to_historical_state(
+    current: &ProfileMachine,
+    historical: &ProfileMachine,
+) -> TestResult {
+    let modulus = u32::from(HISTORICAL_WORDS);
+    let current_registers = current.registers();
+    let historical_registers = historical.registers();
+    check_equal(
+        &current_registers.accumulator.rem_euclid(modulus),
+        &historical_registers.accumulator,
+        "lockstep accumulator projection",
+    )?;
+    check_equal(
+        &current_registers.code_pointer.rem_euclid(modulus),
+        &historical_registers.code_pointer,
+        "lockstep code-pointer projection",
+    )?;
+    check_equal(
+        &current_registers.data_pointer.rem_euclid(modulus),
+        &historical_registers.data_pointer,
+        "lockstep data-pointer projection",
+    )?;
+    check_equal(current.output(), historical.output(), "lockstep output")?;
+    check_equal(
+        &current.input_consumed(),
+        &historical.input_consumed(),
+        "lockstep input consumption",
+    )?;
+    for address in 0..modulus {
+        let current_word = normalize_result(current.memory_word(address))?;
+        let historical_word =
+            normalize_result(historical.memory_word(address))?;
+        check_equal(
+            &current_word.rem_euclid(modulus),
+            &historical_word,
+            "lockstep memory projection",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn final_observable_match_does_not_imply_projected_lockstep() -> TestResult {
+    let input = vec![CURRENT_INPUT];
+    let mut historical = normalize_result(ProfileMachine::from_source(
+        historical_profile(),
+        CURRENT_SOURCE,
+        input.clone(),
+    ))?;
+    let mut current = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        CURRENT_SOURCE,
+        input,
+    ))?;
+    check_current_projects_to_historical_state(&current, &historical)?;
+    for _ in 0u8..2 {
+        let historical_outcome = normalize_result(historical.step())?;
+        let current_outcome = normalize_result(current.step())?;
+        check_equal(
+            &current_outcome,
+            &historical_outcome,
+            "pre-rotate step outcome",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+    }
+
+    let mut historical_trace = None;
+    let historical_outcome = normalize_result(
+        historical.step_traced(&mut |trace| historical_trace = Some(*trace)),
+    )?;
+    let mut current_trace = None;
+    let current_outcome = normalize_result(
+        current.step_traced(&mut |trace| current_trace = Some(*trace)),
+    )?;
+    check_equal(&current_outcome, &historical_outcome, "rotate step outcome")?;
+    check_equal(
+        &current_trace.and_then(|trace| trace.decoded),
+        &Some(b'*'),
+        "current divergent instruction",
+    )?;
+    check_equal(
+        &historical_trace.and_then(|trace| trace.decoded),
+        &Some(b'*'),
+        "historical divergent instruction",
+    )?;
+    let modulus = u32::from(HISTORICAL_WORDS);
+    let projected = current.registers().accumulator.rem_euclid(modulus);
+    if projected == historical.registers().accumulator {
+        return Err(String::from("rotate unexpectedly preserved projection"));
+    }
+    Ok(())
+}
+
 #[test]
 fn current_source_observables_match_historical_with_available_input()
 -> TestResult {

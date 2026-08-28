@@ -99,11 +99,14 @@ separate costs; resource evidence must measure those costs directly.
 - Required correctness evidence: differential/reference execution plus
   adversarial width-boundary tests and independent verification of certificates.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
-  output, input consumption, and registers under canonical 14-trit and
-  historical 10-trit profile execution when input byte `0xA5` is available.
+  output, input consumption, and final registers under canonical 14-trit and
+  historical 10-trit execution when input byte `0xA5` is available. That final
+  match is deliberately not treated as a certificate: complete projected state
+  agrees initially and after two steps, then the third `*` instruction breaks
+  accumulator/memory projection exactly through the proved rotate condition.
   The same source with EOF is an adversarial negative fixture: both executions
-  halt the same way but emit different bytes. These fixtures establish
-  input-domain sensitivity and do not yet constitute trusted certification.
+  halt the same way but emit different bytes. These fixtures establish both
+  input-domain sensitivity and the insufficiency of final-output comparison.
 - Required resource evidence: actual runtime capability discovery, exact
   resident-byte accounting, and no-ceiling synthetic probes consistent with
   `adaptive-accelerator-resource-budgeting`.
