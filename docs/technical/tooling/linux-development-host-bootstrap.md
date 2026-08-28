@@ -23,14 +23,18 @@ fully hermetic Linux linker/sysroot packaging remain outside this P0 slice.
 Bootstrap consumes the repository's pinned Python, Rust, Git, and Jig version
 authorities plus already-installed host Rustup, Git, and linker observations.
 Python keeps native platform launchers and publishes neutral Jig aliases below
-`.dependencies`. On POSIX, basedpyright and Ruff retain byte-identical aliases,
-while the pytest alias is a repository-local shell wrapper that binds
-`PYTHONPYCACHEPREFIX` below `.cache` before invoking the same pinned local
-Python/pytest environment. Windows retains native binary aliases. Matching Git
-and already-installed Rustup channels are imported below repository-local
+`.dependencies`. On POSIX, BasedPyright and pytest aliases answer only the exact
+singleton `--version` probe from the same pinned `expected_tools` authority that
+bootstrap verifies, then delegate every other argument vector to the provisioned
+native launcher.
 
-versioned roots. Missing Rustup channels are observations only; bootstrap does
-not download them.
+The pytest delegation also binds `PYTHONPYCACHEPREFIX` below `.cache`. Ruff
+remains a byte-identical alias, and Windows retains native binary aliases for
+all three tools.
+
+Matching Git and already-installed Rustup channels are imported below
+repository-local versioned roots. Missing Rustup channels are observations only;
+bootstrap does not download them.
 
 Jig consumes only repository-local validation aliases. Linux Rust linking
 receives a generated `cc` adapter that names the observed host linker explicitly
@@ -43,6 +47,10 @@ executable layout behind the same neutral Jig-facing paths where applicable.
 
 - Jig-facing Python, Git, and Rust executable authority resolves below
   `.dependencies`; POSIX Jig-driven pytest bytecode resolves below `.cache`.
+- POSIX fast version output is admitted only for the exact singleton
+  `--version` argument vector and comes from bootstrap's pinned expected-tool
+  identity; all other BasedPyright and pytest arguments execute the provisioned
+  native tool.
 - Bootstrap never downloads a missing Rustup channel as a side effect of
   inspection.
 - Linux host-linker observation is explicit and is not described as a hermetic
@@ -62,11 +70,11 @@ Linux host linker to hermetic package authority.
 ## Verification
 
 Focused bootstrap tests cover platform IDs, Windows/POSIX Python launchers,
-neutral validation aliases, Git distribution-version suffixes, Rustup
-no-download admission, stable/nightly imports, explicit Linux linker adapters,
-and idempotent local-state creation. Repository closure remains
-`jig validate --root .`; Linux-only skips remain explicit rather than becoming
-acceptance evidence.
+neutral validation aliases, exact fast-version output, non-version delegation,
+Git distribution-version suffixes, Rustup no-download admission, stable/nightly
+imports, explicit Linux linker adapters, and idempotent local-state creation.
+Repository closure remains `jig validate --root .`; Linux-only skips remain
+explicit rather than becoming acceptance evidence.
 
 ## References
 

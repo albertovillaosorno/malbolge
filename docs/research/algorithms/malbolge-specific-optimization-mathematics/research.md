@@ -207,6 +207,12 @@ C/D equally, so the complete projected state is preserved inductively until
 halt. `DP` is the minimum retained certificate; an eight-no-op fixture checks
 that induction step-by-step in both endpoint-width VMs.
 
+Input followed directly by halt is also certifiable for both byte and EOF input.
+Byte assignment is identical at both widths, and the all-two-trit EOF words are
+related by exact projection; the following encryption and pointer advance are
+shared. The `uP` fixture checks both lineages and preserves their distinct input
+consumption observations.
+
 Given independent certificate results for widths 10 through 13, the exact
 selector is the minimum certified width with 14 inserted as a canonical
 fallback. Missing results fail closed to 14. The selector deliberately assumes

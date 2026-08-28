@@ -68,6 +68,7 @@ RUST_NIGHTLY_CHANNEL = "nightly-2026-07-14"
 RUST_CARGO_BYTES = b"cargo-1.97.1"
 RUST_RUSTC_BYTES = b"rustc-1.97.1"
 RUST_STD_BYTES = b"rust-std"
+RUFF_BYTES = b"ruff"
 GIT_VERSION = "2.55.0"
 GIT_BYTES = b"git-2.55.0"
 GIT_HELPER_BYTES = b"git-helper"
@@ -83,6 +84,7 @@ POSIX_HEADER = "#!/bin/sh\nset -eu\n"
 CACHE_VARIABLE = "PYTHONPYCACHEPREFIX"
 POSIX_PYTHON_EXEC = 'exec "$SCRIPT_DIR/python" "$@"'
 POSIX_PYTEST_EXEC = 'exec "$SCRIPT_DIR/python" -m pytest "$@"'
+POSIX_JIG_BASEDPYRIGHT_EXEC = '../bin/basedpyright" "$@"'
 POSIX_JIG_PYTEST_EXEC = '../bin/python" -m pytest "$@"'
 POSIX_JIG_PYTEST_PROBE_ARGV = "-m pytest --probe"
 LINUX_AARCH64 = "linux-aarch64"
@@ -404,39 +406,100 @@ def test_validation_layout_uses_posix_native_names(tmp_path: Path) -> None:
     )
 
 
-def test_jig_tool_aliases_copy_native_validation_tools(tmp_path: Path) -> None:
-    """Jig receives platform-neutral executable aliases with identical bytes."""
-    layout = python_validation.validation_layout(tmp_path, windows=False)
+def test_windows_jig_tool_aliases_copy_native_validation_tools(
+    tmp_path: Path,
+) -> None:
+    """Windows Jig aliases retain the provisioned executable bytes."""
+    layout = python_validation.validation_layout(tmp_path, windows=True)
     layout.scripts.mkdir(parents=True)
     native = {
-        "basedpyright": b"basedpyright-linux",
-        "pytest": b"pytest-linux",
-        "ruff": b"ruff-linux",
+        "basedpyright": b"basedpyright-windows",
+        "pytest": b"pytest-windows",
+        "ruff": b"ruff-windows",
     }
     for name, payload in native.items():
-        path = layout.scripts / name
-        _ = path.write_bytes(payload)
-        _ = path.chmod(path.stat().st_mode | stat.S_IXUSR)
+        _ = (layout.scripts / f"{name}.exe").write_bytes(payload)
 
-    aliases = python_validation.write_jig_tool_aliases(
-        layout,
-        windows=False,
-    )
+    aliases = python_validation.write_jig_tool_aliases(layout, windows=True)
 
     assert tuple(path.name for _, path in aliases) == (
         "basedpyright.bin",
         "pytest.bin",
         "ruff.bin",
     )
-    alias_root = layout.environment / "jig-bin"
-    assert all(path.parent == alias_root for _, path in aliases)
-    copied = {
-        name: path.read_bytes()
-        for name, path in aliases
-        if name != POSIX_PYTEST
-    }
-    assert copied == {name: native[name] for name in ("basedpyright", "ruff")}
-    assert all(path.stat().st_mode & stat.S_IXUSR for _, path in aliases)
+    copied = {name: path.read_bytes() for name, path in aliases}
+    assert copied == native
+
+
+def test_posix_jig_tool_aliases_bind_fast_exact_versions(
+    tmp_path: Path,
+) -> None:
+    """POSIX Jig aliases expose exact versions without starting Python tools."""
+    layout = python_validation.validation_layout(tmp_path, windows=False)
+    layout.scripts.mkdir(parents=True)
+    for name in ("basedpyright", "pytest", "ruff"):
+        path = layout.scripts / name
+        _ = path.write_text(name, encoding="ascii")
+        _ = path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+    aliases = dict(
+        python_validation.write_jig_tool_aliases(layout, windows=False)
+    )
+
+    assert aliases["ruff"].read_bytes() == RUFF_BYTES
+    cases = (
+        ("basedpyright", "basedpyright 1.39.9"),
+        ("pytest", "pytest 9.1.1"),
+    )
+    for tool_id, expected in cases:
+        # jig-ignore-next-line: reviewed subprocess call needs Ruff policy ID
+        completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            [str(aliases[tool_id]), "--version"],
+            check=False,
+            capture_output=True,
+            env={"PATH": ""},
+            shell=False,
+            text=True,
+        )
+        assert completed.returncode == os.EX_OK
+        assert completed.stdout == f"{expected}\n"
+        assert not completed.stderr
+
+
+def test_posix_jig_tool_aliases_delegate_nonexact_version_argv(
+    tmp_path: Path,
+) -> None:
+    """Only the singleton version probe bypasses native Python launchers."""
+    layout = python_validation.validation_layout(tmp_path, windows=False)
+    layout.scripts.mkdir(parents=True)
+    probe = tmp_path / "tool-probe.txt"
+    native_probe = """#!/bin/sh
+printf "%s\n" "$*" > "$PROBE_OUTPUT"
+"""
+    _ = layout.python.write_text(native_probe, encoding="ascii")
+    _ = layout.python.chmod(layout.python.stat().st_mode | stat.S_IXUSR)
+    for name in ("basedpyright", "pytest", "ruff"):
+        path = layout.scripts / name
+        _ = path.write_text(native_probe, encoding="ascii")
+        _ = path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    aliases = dict(
+        python_validation.write_jig_tool_aliases(layout, windows=False)
+    )
+
+    cases = (
+        ("basedpyright", "--version --probe"),
+        ("pytest", "-m pytest --version --probe"),
+    )
+    for tool_id, expected_argv in cases:
+        # jig-ignore-next-line: reviewed subprocess call needs Ruff policy ID
+        completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            [str(aliases[tool_id]), "--version", "--probe"],
+            check=False,
+            env={"PATH": "", "PROBE_OUTPUT": str(probe)},
+            shell=False,
+        )
+        assert completed.returncode == os.EX_OK
+        assert probe.read_text(encoding="utf-8").strip() == expected_argv
 
 
 def test_posix_jig_pytest_alias_is_cache_bound(tmp_path: Path) -> None:
@@ -452,11 +515,18 @@ def test_posix_jig_pytest_alias_is_cache_bound(tmp_path: Path) -> None:
         python_validation.write_jig_tool_aliases(layout, windows=False)
     )
 
+    basedpyright_alias = aliases["basedpyright"]
+    basedpyright_text = basedpyright_alias.read_text(encoding="ascii")
+    assert basedpyright_text.startswith(POSIX_HEADER)
+    assert CACHE_VARIABLE not in basedpyright_text
+    assert POSIX_JIG_BASEDPYRIGHT_EXEC in basedpyright_text
+    assert basedpyright_alias.stat().st_mode & stat.S_IXUSR
+
     pytest_alias = aliases["pytest"]
-    text = pytest_alias.read_text(encoding="ascii")
-    assert text.startswith(POSIX_HEADER)
-    assert CACHE_VARIABLE in text
-    assert POSIX_JIG_PYTEST_EXEC in text
+    pytest_text = pytest_alias.read_text(encoding="ascii")
+    assert pytest_text.startswith(POSIX_HEADER)
+    assert CACHE_VARIABLE in pytest_text
+    assert POSIX_JIG_PYTEST_EXEC in pytest_text
     assert pytest_alias.stat().st_mode & stat.S_IXUSR
 
 

@@ -47,6 +47,7 @@ CANONICAL_WIDTH: Final = 14
 LEGACY_CERTIFICATE_SCHEMA_VERSION: Final = 1
 CERTIFICATE_SCHEMA_VERSION: Final = 2
 INITIAL_HALT_PROOF_KIND: Final = "initial-halt-projection-v1"
+INPUT_THEN_HALT_PROOF_KIND: Final = "input-then-halt-projection-v1"
 NOOP_PREFIX_HALT_PROOF_KIND: Final = "noop-prefix-halt-projection-v1"
 _CERTIFICATE_KEYS_V1: Final = frozenset(
     {
@@ -593,6 +594,26 @@ def initial_halt_projection_certifiable(
     return decoded is not None and decoded[0] == ord("v")
 
 
+def input_then_halt_projection_certifiable(
+    source: bytes,
+    narrow_width: int,
+    wide_width: int,
+) -> bool:
+    """Check the sufficient input-then-halt projection theorem premises.
+
+    Returns:
+        True only when one admitted source executes `/` then `v` initially.
+
+    """
+    widths_valid = (
+        MINIMUM_WIDTH <= narrow_width < wide_width <= CANONICAL_WIDTH
+    )
+    if not widths_valid:
+        return False
+    decoded = _admitted_source_decodes(source, narrow_width)
+    return decoded is not None and decoded[:2] == (ord("/"), ord("v"))
+
+
 def noop_prefix_halt_projection_certifiable(
     source: bytes,
     narrow_width: int,
@@ -646,6 +667,12 @@ def _recognized_proof_valid(
     accepted = False
     if certificate.proof_kind == INITIAL_HALT_PROOF_KIND:
         accepted = initial_halt_projection_certifiable(
+            source,
+            certificate.narrow_width,
+            certificate.wide_width,
+        )
+    elif certificate.proof_kind == INPUT_THEN_HALT_PROOF_KIND:
+        accepted = input_then_halt_projection_certifiable(
             source,
             certificate.narrow_width,
             certificate.wide_width,

@@ -88,7 +88,13 @@ UV_RELEASE_BASE: Final = (
 )
 UV_SCHEMA_VERSION: Final = 1
 URL_SUFFIX_MARKERS: Final = frozenset(("?", "#"))
+BASEDPYRIGHT_TOOL_ID: Final = "basedpyright"
 PYTEST_TOOL_ID: Final = "pytest"
+JIG_FAST_VERSION_TOOL_IDS: Final = frozenset((
+    BASEDPYRIGHT_TOOL_ID,
+    PYTEST_TOOL_ID,
+))
+SHELL_UNSAFE_VERSION_CHARACTERS: Final = frozenset(("'", "\n", "\r"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -490,17 +496,36 @@ def _posix_launcher_text(*, pytest: bool) -> str:
     )
 
 
-def _posix_jig_pytest_alias_text() -> str:
-    cache = (
-        'export PYTHONPYCACHEPREFIX="'
-        '$SCRIPT_DIR/../../../../.cache/python/pycache"'
-    )
+def _posix_jig_tool_alias_text(
+    tool_id: str,
+    version_line: str,
+) -> str:
+    if any(
+        character in version_line
+        for character in SHELL_UNSAFE_VERSION_CHARACTERS
+    ):
+        _fail("Jig tool version line is not shell-literal safe")
+    if tool_id == PYTEST_TOOL_ID:
+        cache = (
+            'export PYTHONPYCACHEPREFIX="'
+            '$SCRIPT_DIR/../../../../.cache/python/pycache"\n'
+        )
+        invocation = 'exec "$SCRIPT_DIR/../bin/python" -m pytest "$@"'
+    elif tool_id == BASEDPYRIGHT_TOOL_ID:
+        cache = ""
+        invocation = 'exec "$SCRIPT_DIR/../bin/basedpyright" "$@"'
+    else:
+        _fail(f"unsupported POSIX Jig tool alias: {tool_id}")
     return (
         "#!/bin/sh\n"
         "set -eu\n"
+        'if [ "$#" -eq 1 ] && [ "$1" = "--version" ]; then\n'
+        f"    printf '%s\\n' '{version_line}'\n"
+        "    exit 0\n"
+        "fi\n"
         f"{_posix_script_directory_text()}"
-        f"{cache}\n"
-        'exec "$SCRIPT_DIR/../bin/python" -m pytest "$@"\n'
+        f"{cache}"
+        f"{invocation}\n"
     )
 
 
@@ -541,6 +566,36 @@ def write_launchers(
     _make_executable(layout.pytest_launcher)
 
 
+def _write_jig_tool_alias(
+    layout: ValidationEnvironmentLayout,
+    tool_id: str,
+    *,
+    windows: bool,
+) -> Path:
+    alias_root = layout.environment / "jig-bin"
+    alias_root.mkdir(parents=True, exist_ok=True)
+    executable_suffix = ".exe" if windows else ""
+    executable = f"{tool_id}{executable_suffix}"
+    source = layout.scripts / executable
+    if not source.is_file():
+        _fail(f"missing provisioned tool for Jig alias: {source}")
+    target = alias_root / f"{tool_id}.bin"
+    if windows or tool_id not in JIG_FAST_VERSION_TOOL_IDS:
+        _ = target.write_bytes(source.read_bytes())
+    else:
+        version_line = dict(layout.expected_tools).get(executable)
+        if version_line is None:
+            _fail(f"missing Jig tool version authority: {executable}")
+        _ = target.write_text(
+            _posix_jig_tool_alias_text(tool_id, version_line),
+            encoding="ascii",
+            newline="\n",
+        )
+    if not windows:
+        _make_executable(target)
+    return target
+
+
 def write_jig_tool_aliases(
     layout: ValidationEnvironmentLayout = LAYOUT,
     *,
@@ -552,25 +607,9 @@ def write_jig_tool_aliases(
         Stable tool-ID and repository-local alias pairs.
 
     """
-    alias_root = layout.environment / "jig-bin"
-    alias_root.mkdir(parents=True, exist_ok=True)
-    executable_suffix = ".exe" if windows else ""
     aliases: list[tuple[str, Path]] = []
     for tool_id in ("basedpyright", "pytest", "ruff"):
-        source = layout.scripts / f"{tool_id}{executable_suffix}"
-        if not source.is_file():
-            _fail(f"missing provisioned tool for Jig alias: {source}")
-        target = alias_root / f"{tool_id}.bin"
-        if tool_id == PYTEST_TOOL_ID and not windows:
-            _ = target.write_text(
-                _posix_jig_pytest_alias_text(),
-                encoding="ascii",
-                newline="\n",
-            )
-        else:
-            _ = target.write_bytes(source.read_bytes())
-        if not windows:
-            _make_executable(target)
+        target = _write_jig_tool_alias(layout, tool_id, windows=windows)
         aliases.append((tool_id, target))
     return tuple(aliases)
 

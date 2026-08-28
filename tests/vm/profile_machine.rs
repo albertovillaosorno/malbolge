@@ -48,6 +48,7 @@ const CURRENT_INPUT: u8 = 0xa5;
 const CURRENT_SOURCE: &[u8] = b"(=%r_L";
 const NARROWING_HALT_SOURCE: &[u8] = b"QP";
 const NARROWING_NOOP_HALT_SOURCE: &[u8] = b"DP";
+const NARROWING_INPUT_HALT_SOURCE: &[u8] = b"uP";
 const NARROWING_NOOP_PREFIX_HALT_SOURCE: &[u8] = b"DCBA@?>=I";
 const NOOP_PREFIX_STEPS: u8 = 8;
 const CURRENT_TRITS: u8 = 14;
@@ -258,6 +259,47 @@ fn final_observable_match_does_not_imply_projected_lockstep() -> TestResult {
     let projected = current.registers().accumulator.rem_euclid(modulus);
     if projected == historical.registers().accumulator {
         return Err(String::from("rotate unexpectedly preserved projection"));
+    }
+    Ok(())
+}
+
+#[test]
+fn input_then_halt_preserves_complete_projection_for_endpoint_widths()
+-> TestResult {
+    for input in [vec![CURRENT_INPUT], Vec::new()] {
+        let mut historical = normalize_result(ProfileMachine::from_source(
+            historical_profile(),
+            NARROWING_INPUT_HALT_SOURCE,
+            input.clone(),
+        ))?;
+        let mut current = normalize_result(ProfileMachine::from_source(
+            current_profile(),
+            NARROWING_INPUT_HALT_SOURCE,
+            input,
+        ))?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+        let historical_input = normalize_result(historical.step())?;
+        let current_input = normalize_result(current.step())?;
+        check_equal(
+            &current_input,
+            &historical_input,
+            "input-halt input step",
+        )?;
+        check_equal(
+            &current_input,
+            &malbolge::StepOutcome::Continued,
+            "input-halt continued outcome",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+        let historical_halt = normalize_result(historical.step())?;
+        let current_halt = normalize_result(current.step())?;
+        check_equal(&current_halt, &historical_halt, "input-halt halt step")?;
+        check_equal(
+            &current_halt,
+            &malbolge::StepOutcome::Terminated(Termination::HaltInstruction),
+            "input-halt termination",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
     }
     Ok(())
 }

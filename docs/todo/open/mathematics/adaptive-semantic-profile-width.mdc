@@ -135,6 +135,12 @@ separate costs; resource evidence must measure those costs directly.
   in the proved projection relation. `DP` is the retained two-step certificate,
   while `DCBA@?>=I` checks complete 14-to-10 projection after eight consecutive
   no-ops and the following halt for byte and EOF inputs.
+- Proof kind `input-then-halt-projection-v1` covers decoded `/` followed by `v`.
+  Available bytes are identical across widths, while each wide EOF word projects
+  exactly to the corresponding narrow EOF word; self-encryption and pointer
+  advance then preserve the relation until halt. Fixture `uP` retains both a
+  consumed-byte lineage and an EOF lineage with their different
+  `input_consumed` observations.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final
