@@ -406,20 +406,19 @@ def _encoded_source(decoded: tuple[int, ...]) -> bytes:
 
 
 def _straight_line_oracle(decoded: tuple[int, ...], stream_len: int) -> bool:
-    input_attempts = 0
-    for opcode in decoded:
-        if opcode == ord("/"):
-            input_attempts += 1
-        elif opcode == ord("<") and input_attempts > stream_len:
-            return False
-        elif opcode == ord("v"):
-            return True
-    return False
+    prefix = decoded[:-1]
+    jump_data_safe = prefix.count(ord("j")) <= 1
+    outputs_safe = all(
+        prefix[:position].count(ord("/")) <= stream_len
+        for position, opcode in enumerate(prefix)
+        if opcode == ord("<")
+    )
+    return decoded[-1] == ord("v") and jump_data_safe and outputs_safe
 
 
 def test_straight_line_checker_matches_exhaustive_bounded_composition() -> None:
-    """Bounded safe-op programs match an independent decode/input oracle."""
-    prefix_opcodes = (ord("o"), ord("/"), ord("<"))
+    """Bounded safe-op programs match a decode/input/data-read oracle."""
+    prefix_opcodes = (ord("o"), ord("/"), ord("<"), ord("j"))
     for prefix_len in range(1, 5):
         for prefix in product(prefix_opcodes, repeat=prefix_len):
             decoded = (*prefix, ord("v"))
@@ -451,6 +450,12 @@ def test_straight_line_checker_composes_safe_noop_and_io_steps() -> None:
         CANONICAL_WIDTH,
         inputs={"eof": ()},
     )
+    assert straight_line_projection_certifiable(
+        b"(P",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs={"eof": ()},
+    )
 
 
 def test_straight_line_checker_rejects_unsafe_or_unsupported_paths() -> None:
@@ -463,6 +468,12 @@ def test_straight_line_checker_rejects_unsafe_or_unsupported_paths() -> None:
     )
     assert not straight_line_projection_certifiable(
         b"DC",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs={"eof": ()},
+    )
+    assert not straight_line_projection_certifiable(
+        b"('O",
         MINIMUM_WIDTH,
         CANONICAL_WIDTH,
         inputs={"eof": ()},

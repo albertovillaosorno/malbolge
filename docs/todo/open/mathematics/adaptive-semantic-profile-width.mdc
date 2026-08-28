@@ -152,11 +152,14 @@ separate costs; resource evidence must measure those costs directly.
   straight-line prefixes over `o`, `/`, and `<` followed by `v`. For each exact
   input stream it tracks only input cursor and whether A is byte-exact or merely
   projection-related; `<` is accepted only in the byte-exact state. Bounded
-  exhaustive evidence covers all 120 prefixes of lengths one through four and
-  streams of lengths zero through two against independently encoded verifier
-  decode. Fixture `uCar_L` (`/ o < / < v`) selects width 10 for two exact bytes,
-  while a one-byte subject stays projected through the second input and diverges
-  exactly at the second output in both endpoint-width VMs.
+  exhaustive evidence covers all 340 prefixes of lengths one through four over
+  `o`, `/`, `<`, and `j`, with streams of lengths zero through two, against
+  independently encoded verifier decode. A single `j` is admitted while D is
+  still the exact shared sequential address; further data jumps fail closed.
+- Fixture `uCar_L` (`/ o < / < v`) selects width 10 for two exact bytes, while a
+  one-byte subject diverges exactly at the second output. A retained `jjjv`
+  endpoint run still projects successfully, documenting that the one-`j` rule
+  is sufficient and intentionally incomplete rather than a necessity claim.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final

@@ -51,6 +51,8 @@ const NARROWING_NOOP_HALT_SOURCE: &[u8] = b"DP";
 const NARROWING_INPUT_HALT_SOURCE: &[u8] = b"uP";
 const NARROWING_INPUT_OUTPUT_HALT_SOURCE: &[u8] = b"ubO";
 const NARROWING_COMPOSED_SAFE_SOURCE: &[u8] = b"uCar_L";
+const NARROWING_JUMP_DATA_HALT_SOURCE: &[u8] = b"(P";
+const NARROWING_REPEATED_JUMP_DATA_SOURCE: &[u8] = b"('&N";
 const NARROWING_NOOP_PREFIX_HALT_SOURCE: &[u8] = b"DCBA@?>=I";
 const NOOP_PREFIX_STEPS: u8 = 8;
 const CURRENT_TRITS: u8 = 14;
@@ -261,6 +263,68 @@ fn final_observable_match_does_not_imply_projected_lockstep() -> TestResult {
     let projected = current.registers().accumulator.rem_euclid(modulus);
     if projected == historical.registers().accumulator {
         return Err(String::from("rotate unexpectedly preserved projection"));
+    }
+    Ok(())
+}
+
+#[test]
+fn repeated_jump_data_fixture_shows_conservative_under_approximation()
+-> TestResult {
+    let mut historical = normalize_result(ProfileMachine::from_source(
+        historical_profile(),
+        NARROWING_REPEATED_JUMP_DATA_SOURCE,
+        Vec::new(),
+    ))?;
+    let mut current = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        NARROWING_REPEATED_JUMP_DATA_SOURCE,
+        Vec::new(),
+    ))?;
+    check_current_projects_to_historical_state(&current, &historical)?;
+    for _ in 0u8..2 {
+        let historical_jump = normalize_result(historical.step())?;
+        let current_jump = normalize_result(current.step())?;
+        check_equal(&current_jump, &historical_jump, "repeated jump step")?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+    }
+    let historical_jump = normalize_result(historical.step())?;
+    let current_jump = normalize_result(current.step())?;
+    check_equal(&current_jump, &historical_jump, "third jump outcome")?;
+    check_current_projects_to_historical_state(&current, &historical)
+}
+
+#[test]
+fn single_jump_data_then_halt_preserves_complete_projection() -> TestResult {
+    for input in [vec![CURRENT_INPUT], Vec::new()] {
+        let mut historical = normalize_result(ProfileMachine::from_source(
+            historical_profile(),
+            NARROWING_JUMP_DATA_HALT_SOURCE,
+            input.clone(),
+        ))?;
+        let mut current = normalize_result(ProfileMachine::from_source(
+            current_profile(),
+            NARROWING_JUMP_DATA_HALT_SOURCE,
+            input,
+        ))?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+        let historical_jump = normalize_result(historical.step())?;
+        let current_jump = normalize_result(current.step())?;
+        check_equal(&current_jump, &historical_jump, "jump-data step")?;
+        check_equal(
+            &current_jump,
+            &malbolge::StepOutcome::Continued,
+            "jump-data outcome",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+        let historical_halt = normalize_result(historical.step())?;
+        let current_halt = normalize_result(current.step())?;
+        check_equal(&current_halt, &historical_halt, "jump-data halt")?;
+        check_equal(
+            &current_halt,
+            &malbolge::StepOutcome::Terminated(Termination::HaltInstruction),
+            "jump-data termination",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
     }
     Ok(())
 }

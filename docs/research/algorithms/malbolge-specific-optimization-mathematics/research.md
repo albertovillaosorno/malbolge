@@ -222,10 +222,14 @@ byte domain and a VM counterexample where EOF diverges exactly at output.
 The compositional straight-line checker subsumes those small cases for programs
 whose decoded prefix uses only `o`, `/`, and `<` before `v`. It tracks input
 position and whether A is byte-exact; output is legal only in that exact state.
-All 120 prefixes of lengths one through four are checked for stream lengths zero
-through two using source encodings reconstructed from the independent verifier
-decode model. `uCar_L` adds a six-transition bound certificate and endpoint-VM
-positive/negative evidence depending only on whether the second input exists.
+All 340 prefixes of lengths one through four over `o`, `/`, `<`, and `j` are
+checked for stream lengths zero through two using source encodings reconstructed
+from the independent verifier decode model. One data jump is accepted while D
+is still the exact sequential address; later data reads are conservatively
+rejected.
+
+`uCar_L` adds a six-transition bound certificate. A retained `jjjv` endpoint run
+demonstrates that the one-j rule is sufficient rather than necessary.
 
 Given independent certificate results for widths 10 through 13, the exact
 selector is the minimum certified width with 14 inserted as a canonical

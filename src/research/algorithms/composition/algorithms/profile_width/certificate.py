@@ -599,16 +599,18 @@ def initial_halt_projection_certifiable(
 def _straight_line_events(
     decoded: tuple[int, ...],
 ) -> tuple[int, ...] | None:
-    allowed = frozenset((ord("o"), ord("/"), ord("<")))
-    events: list[int] = []
-    for opcode in decoded:
-        if opcode == ord("v"):
-            return tuple(events)
-        if opcode not in allowed:
-            return None
-        if opcode != ord("o"):
-            events.append(opcode)
-    return None
+    allowed = frozenset((ord("o"), ord("/"), ord("<"), ord("j")))
+    halt_position = (
+        decoded.index(ord("v")) if ord("v") in decoded else None
+    )
+    if halt_position is None:
+        return None
+    prefix = decoded[:halt_position]
+    prefix_valid = all(opcode in allowed for opcode in prefix)
+    data_reads_valid = prefix.count(ord("j")) <= 1
+    if not prefix_valid or not data_reads_valid:
+        return None
+    return tuple(opcode for opcode in prefix if opcode in {ord("/"), ord("<")})
 
 
 def _stream_events_safe(
