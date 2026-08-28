@@ -166,6 +166,64 @@ fn current_profile_executes_scalable_state_and_io() -> TestResult {
 }
 
 #[test]
+fn current_source_observables_match_historical_with_available_input()
+-> TestResult {
+    let input = vec![CURRENT_INPUT];
+    let mut historical = normalize_result(ProfileMachine::from_source(
+        historical_profile(),
+        CURRENT_SOURCE,
+        input.clone(),
+    ))?;
+    let mut current = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        CURRENT_SOURCE,
+        input,
+    ))?;
+    let historical_outcome = normalize_result(historical.run(8))?;
+    let current_outcome = normalize_result(current.run(8))?;
+    check_equal(&current_outcome, &historical_outcome, "cross-width outcome")?;
+    check_equal(current.output(), historical.output(), "cross-width output")?;
+    check_equal(
+        &current.input_consumed(),
+        &historical.input_consumed(),
+        "cross-width input consumption",
+    )?;
+    check_equal(
+        &current.registers(),
+        &historical.registers(),
+        "cross-width registers",
+    )
+}
+
+#[test]
+fn current_source_rejects_ten_trit_narrowing_when_eof_is_observable()
+-> TestResult {
+    let mut historical = normalize_result(ProfileMachine::from_source(
+        historical_profile(),
+        CURRENT_SOURCE,
+        Vec::new(),
+    ))?;
+    let mut current = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        CURRENT_SOURCE,
+        Vec::new(),
+    ))?;
+    let historical_outcome = normalize_result(historical.run(8))?;
+    let current_outcome = normalize_result(current.run(8))?;
+    check_equal(
+        &current_outcome,
+        &historical_outcome,
+        "cross-width EOF outcome",
+    )?;
+    if current.output() == historical.output() {
+        return Err(String::from(
+            "cross-width EOF output unexpectedly matched",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn current_loader_projects_to_complete_historical_memory_prefix() -> TestResult
 {
     let historical = normalize_result(ProfileMachine::from_source(
