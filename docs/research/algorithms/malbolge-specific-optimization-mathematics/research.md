@@ -297,6 +297,13 @@ crazy result must reduce to the candidate result. This admits both fixtures at
 N=10 without strengthening projection into false equality; unguarded `>P` is
 rejected by shape.
 
+A separate product composition proves that byte input can restore exact A after
+guarded crazy. The admitted form is `j p+ / < v`: all `p` transitions first
+preserve projection at exact D, then non-EOF `/` overwrites both accumulators
+with the same byte before `<`. `(=s`M` is the concrete `j p / < v` fixture and
+selects N=10; its proof token requires at least one input byte, so EOF fails
+before machine construction.
+
 Within that initial-halt family, product-side minimum selection tries N=10
 through the canonical width and advances only on exact derived-capacity failure.
 QP selects N=10, while a valid 59,050-word initial-halt source selects N=11. A

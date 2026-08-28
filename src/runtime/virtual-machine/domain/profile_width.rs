@@ -84,6 +84,8 @@ pub enum ProfileWidthProofKind {
     InputThenHaltProjection,
     /// One exact jump enables one guarded crazy transition before halt.
     JumpCrazyHaltProjection,
+    /// Guarded crazy projection is reset by exact byte input before output.
+    JumpCrazyIoHaltProjection,
     /// One exact-address data jump is followed immediately by halt.
     JumpDataHaltProjection,
     /// One or more decoded no-ops precede the first reached halt.
@@ -491,6 +493,23 @@ pub fn verify_minimum_jump_crazy_halt_profile_width(
     source: &[u8],
 ) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
     verify_minimum_width(profile, source, verify_jump_crazy_halt_profile_width)
+}
+
+/// Selects the minimum guarded-crazy/input/output/halt width.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when no reviewed candidate proves
+/// the exact-address crazy prefix and byte-exact input recovery before output.
+pub fn verify_minimum_jump_crazy_io_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    verify_minimum_width(
+        profile,
+        source,
+        verify_jump_crazy_io_halt_profile_width,
+    )
 }
 
 /// Selects the minimum independently verified jump-data-halt width.
@@ -950,6 +969,116 @@ pub fn verify_jump_crazy_halt_profile_width(
         crazies = crazies.saturating_add(1);
     }
     Err(ProfileWidthVerificationError::JumpCrazyProjection)
+}
+
+fn verify_jump_crazy_io_suffix(
+    admitted: &[u32],
+    geometry: ProfileExecutionGeometry,
+    mut data_address: u32,
+    mut position: usize,
+) -> Result<(), ProfileWidthVerificationError> {
+    let profile = geometry.profile();
+    let expected = [
+        profile.input_instruction(),
+        profile.output_instruction(),
+        b'v',
+    ];
+    for expected_instruction in expected {
+        let pointer = u32::try_from(position).map_err(|_error| {
+            ProfileWidthVerificationError::GeometryInvariant
+        })?;
+        let cell = admitted
+            .get(position)
+            .copied()
+            .ok_or(ProfileWidthVerificationError::JumpCrazyProjection)?;
+        let suffix_decoded = decode_profile_instruction(cell, pointer)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        if suffix_decoded != expected_instruction {
+            return Err(
+                ProfileWidthVerificationError::JumpCrazyHaltInstruction {
+                    position: pointer,
+                    decoded: suffix_decoded,
+                },
+            );
+        }
+        if expected_instruction != b'v' {
+            data_address = data_address
+                .checked_add(1)
+                .filter(|address| *address < geometry.memory_words())
+                .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        }
+        position = position.saturating_add(1);
+    }
+    Ok(())
+}
+
+/// Verifies guarded crazy projection recovered by byte input before output.
+///
+/// The prefix is exactly `j p+ / < v`. Guarded crazy transitions preserve the
+/// width projection at exact D; one non-EOF input then restores an identical
+/// byte accumulator before output, so no projected crazy value is observed.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when shape, guarded crazy
+/// projection, nonwrapping ordinary D advancement, or the recovery suffix
+/// fails.
+pub fn verify_jump_crazy_io_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    word_trits: u8,
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let memory_words = derived_memory_words(profile, word_trits)?;
+    let geometry = ProfileExecutionGeometry {
+        input_policy: ProfileExecutionInputPolicy::MinimumLength(1),
+        memory_words,
+        profile,
+        word_trits,
+    };
+    let admitted = admit_profile_source(source, memory_words)?;
+    let first = admitted
+        .first()
+        .copied()
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    let first_decoded = decode_profile_instruction(first, 0)
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    if first_decoded != b'j' {
+        return Err(ProfileWidthVerificationError::JumpCrazyHaltInstruction {
+            position: 0,
+            decoded: first_decoded,
+        });
+    }
+    let data_address = first
+        .checked_add(1)
+        .filter(|address| *address < memory_words)
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    let mut state = (data_address, 0u32, 0u32);
+    let mut position = 1usize;
+    let mut crazies = 0usize;
+    while let Some(cell) = admitted.get(position).copied() {
+        let pointer = u32::try_from(position).map_err(|_error| {
+            ProfileWidthVerificationError::GeometryInvariant
+        })?;
+        let prefix_decoded = decode_profile_instruction(cell, pointer)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        if prefix_decoded != b'p' {
+            break;
+        }
+        state = advance_guarded_crazy_projection(
+            &admitted, geometry, state, pointer,
+        )?;
+        crazies = crazies.saturating_add(1);
+        position = position.saturating_add(1);
+    }
+    if crazies == 0 {
+        return Err(ProfileWidthVerificationError::JumpCrazyProjection);
+    }
+    verify_jump_crazy_io_suffix(&admitted, geometry, state.0, position)?;
+    Ok(VerifiedProfileExecutionGeometry {
+        geometry,
+        proof_kind: ProfileWidthProofKind::JumpCrazyIoHaltProjection,
+        source: Box::from(source),
+    })
 }
 
 /// Independently verifies one exact initial data jump followed by halt.

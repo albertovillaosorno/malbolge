@@ -41,11 +41,13 @@ use malbolge::{
     historical_profile, verify_initial_halt_profile_width,
     verify_input_output_halt_profile_width,
     verify_input_then_halt_profile_width, verify_jump_crazy_halt_profile_width,
+    verify_jump_crazy_io_halt_profile_width,
     verify_jump_data_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
     verify_minimum_jump_crazy_halt_profile_width,
+    verify_minimum_jump_crazy_io_halt_profile_width,
     verify_minimum_jump_data_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
     verify_minimum_repeated_jump_data_profile_width,
@@ -455,6 +457,58 @@ fn jump_crazy_halt_verifier_tracks_multiple_projected_accumulators()
             steps: 4,
         },
         "multi-crazy halt outcome",
+    )
+}
+
+#[test]
+fn jump_crazy_io_verifier_recovers_exact_byte_before_output() -> TestResult {
+    let verified =
+        normalize_result(verify_minimum_jump_crazy_io_halt_profile_width(
+            current_profile(),
+            b"(=s`M",
+        ))?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::JumpCrazyIoHaltProjection,
+        "jump-crazy I/O proof family",
+    )?;
+    let mut machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        vec![0xa5],
+    ))?;
+    check_equal(
+        &normalize_result(machine.run(5))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 5,
+        },
+        "jump-crazy I/O outcome",
+    )?;
+    check_equal(&machine.output(), &(&[0xa5][..]), "recovered output")?;
+    if matches!(
+        ProfileMachine::from_verified_source(&verified, Vec::new()),
+        Err(ProfileMachineError::VerifiedInputRejected)
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("jump-crazy I/O proof admitted EOF"))
+    }
+}
+
+#[test]
+fn jump_crazy_io_verifier_rejects_output_before_input_recovery() -> TestResult {
+    let observed = verify_jump_crazy_io_halt_profile_width(
+        current_profile(),
+        b"(=O",
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &observed,
+        &Err(ProfileWidthVerificationError::JumpCrazyHaltInstruction {
+            position: 2,
+            decoded: b'v',
+        }),
+        "missing input recovery rejection",
     )
 }
 
