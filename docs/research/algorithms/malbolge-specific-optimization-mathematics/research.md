@@ -229,7 +229,8 @@ source encodings reconstructed from verifier decode. Repeated data jumps use a
 separate exact-address relation instead of being inferred from that bounded
 oracle.
 
-D is tracked as either one exact physical address or projection-only. A jump from
+D is tracked as either one exact physical address or projection-only. A jump
+from
 exact D preserves projection, while `initial_memory_word` compares concrete N/14
 cell values to decide whether successor D stays exact. This accepts `jjjv`
 because cells 41 and 43 are numerically equal at widths 10 and 14.

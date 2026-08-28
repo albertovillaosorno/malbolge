@@ -150,7 +150,8 @@ separate costs; resource evidence must measure those costs directly.
   output under EOF.
 - Proof kind `straight-line-safe-projection-v1` composes admitted straight-line
   prefixes over `o`, `/`, `<`, `j`, and guarded `p`, followed by `v`. For each
-  exact input stream it tracks input cursor and whether A is byte-exact or merely
+  exact input stream it tracks input cursor and whether A is byte-exact or
+  merely
   projection-related; `<` is accepted only in the byte-exact state. Independent
   bounded enumeration covers every length-one-through-four prefix over `o`, `/`,
   `<`, and at most one `j`, with streams of lengths zero through two.
