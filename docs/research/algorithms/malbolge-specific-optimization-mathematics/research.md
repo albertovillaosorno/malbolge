@@ -230,6 +230,10 @@ rejected.
 
 `uCar_L` adds a six-transition bound certificate. A retained `jjjv` endpoint run
 demonstrates that the one-j rule is sufficient rather than necessary.
+The same certificate is rechecked independently for candidate widths 10 through
+13. Each candidate can be the sole accepted width and is selected exactly;
+explicit rejection of all four returns canonical width 14 without monotonic
+inference.
 
 Given independent certificate results for widths 10 through 13, the exact
 selector is the minimum certified width with 14 inserted as a canonical

@@ -160,6 +160,11 @@ separate costs; resource evidence must measure those costs directly.
   one-byte subject diverges exactly at the second output. A retained `jjjv`
   endpoint run still projects successfully, documenting that the one-`j` rule
   is sufficient and intentionally incomplete rather than a necessity claim.
+- The same bound `uCar_L` certificate is checked independently at narrow widths
+  10, 11, 12, and 13. Selector evidence accepts each candidate when it is the
+  sole positive certificate, chooses that exact width, and returns canonical 14
+  when all four candidates are explicit rejections; no monotonic inference is
+  used between widths.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final

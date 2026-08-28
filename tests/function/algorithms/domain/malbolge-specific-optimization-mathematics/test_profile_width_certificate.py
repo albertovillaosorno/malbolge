@@ -515,6 +515,39 @@ def test_composed_fixture_selects_width_for_exact_two_byte_subject() -> None:
     assert minimum_width_from_certificates(subject, decisions) == MINIMUM_WIDTH
 
 
+def test_composed_certificate_supports_each_candidate_width() -> None:
+    """Widths ten through thirteen remain independent positive decisions."""
+    certificate = parse_finite_width_certificate(
+        _fixture_value(_COMPOSED_FIXTURE)
+    )
+    assert certificate is not None
+    subject = WidthCertificateSubject(
+        source=b"uCar_L",
+        inputs={"two-bytes": bytes((165, 66))},
+    )
+    candidates = range(MINIMUM_WIDTH, CANONICAL_WIDTH)
+    certificates = {
+        width: replace(certificate, narrow_width=width)
+        for width in candidates
+    }
+    all_valid = all(
+        bound_width_certificate_valid(item)
+        for item in certificates.values()
+    )
+    assert all_valid
+    for selected_width in candidates:
+        decisions = {
+            width: certificates[width] if width == selected_width else False
+            for width in candidates
+        }
+        selected = minimum_width_from_certificates(subject, decisions)
+        assert selected == selected_width
+    assert minimum_width_from_certificates(
+        subject,
+        dict.fromkeys(candidates, False),
+    ) == CANONICAL_WIDTH
+
+
 def test_composed_fixture_cannot_authorize_shorter_input_subject() -> None:
     """Changing only the bound input stream fails closed to canonical width."""
     certificate = parse_finite_width_certificate(
