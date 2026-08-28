@@ -286,6 +286,25 @@ mechanism = "width-independent-xlat2-plus-graphical-domain-projection-identity"
 evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_graphical_cells_are_projection_fixed_at_every_checked_width", "tests/vm/tables.rs::profile_encryption_matches_independent_table"]
 
 [[correspondence]]
+id = "optimization-profile-width-input-projection"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-profile-width-input-projection"
+domain = "every checked width pair 10 <= N < M <= 14, all 256 available input bytes, and the all-two-trit EOF sentinel"
+mechanism = "low-byte-identity-plus-all-two-trit-eof-projection"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_input_assignment_projects_for_every_byte_and_eof"]
+
+[[correspondence]]
+id = "optimization-profile-width-graphical-fetch-mismatch-count"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-profile-width-graphical-fetch-mismatch-count"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "every checked width pair 10 <= N < M <= 14 with all 94 graphical narrow residues factored across every nonzero discarded high quotient"
+mechanism = "graphical-low-residue-class-times-nonzero-high-quotient-count"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_graphical_fetch_mismatch_count_for_checked_width_pairs"]
+
+[[correspondence]]
 id = "optimization-profile-width-finite-bisimulation-certificate"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-profile-width-finite-bisimulation-certificate"

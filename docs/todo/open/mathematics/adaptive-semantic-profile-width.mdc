@@ -87,6 +87,8 @@ separate costs; resource evidence must measure those costs directly.
   `optimization-profile-width-initial-memory-projection`,
   `optimization-profile-width-decode-compatible-count`,
   `optimization-profile-width-encryption-invariance`,
+  `optimization-profile-width-input-projection`,
+  `optimization-profile-width-graphical-fetch-mismatch-count`,
   `optimization-profile-width-finite-bisimulation-certificate`, and
   `optimization-profile-width-minimum-certified-selector` establish checked
   projection/loader laws, a fail-closed finite certificate shape, and the

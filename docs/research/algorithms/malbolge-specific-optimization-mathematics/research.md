@@ -61,14 +61,15 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes sixty-eight exact reductions: classic five-trit crazy factorization,
+formalizes seventy exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact zero-padded 15-trit crazy
 projection and uniform three-lookup factorization for semantic widths 10
 through 14, exact checked profile-width projection laws and output/rotate-
 compatible word counts, monotone source admission and exact initial-memory
 projection across checked widths, exact decode compatibility and self-
-encryption invariance, a finite lockstep certificate theorem, a minimum-
-certified-width selector, exact decode sum-class
+encryption invariance, exact input projection and graphical-fetch mismatch
+counts, a finite lockstep certificate theorem, a minimum-certified-width
+selector, exact decode sum-class
 canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -158,6 +159,13 @@ and narrow decodes agree exactly when the wide code pointer already lies below
 `3^N`. Self-encryption itself is width-invariant on the shared graphical byte
 domain, but the certificate must still prove that both states select the same
 graphical encryption target.
+
+Input assignment projects exactly for every byte and for EOF, although a later
+output of the projected EOF remains width-sensitive. Fetch classification has a
+precise asymmetric failure set: for width pair `N<M`, exactly
+`94*(3^(M-N)-1)` wide words are non-graphical while projecting to a graphical
+narrow word. Reachable instances of that set must be excluded by a narrowing
+certificate because they change immediate termination behavior.
 
 At width 14, requiring rotate compatibility for any selected candidate-width
 set `S` leaves exactly `3^(14-|S|)` words. One candidate therefore admits one

@@ -40,6 +40,11 @@ pointer already lies inside the narrow address domain. Once both executions
 select the same graphical encryption target, the `XLAT2` transformation itself
 is width-invariant because its input and output remain graphical bytes.
 
+Input assignment also projects exactly, including EOF. Graphical fetch
+classification does not: high-quotient wide words whose narrow residue is one
+of the 94 graphical bytes terminate only in the wide execution, so a certificate
+must rule those states out.
+
 Rotate compatibility checks trit `N` against trit zero and is not monotone
 across candidate widths; even projected EOF values can later emit different
 bytes. For any subset of candidate widths 10 through 13, each additional

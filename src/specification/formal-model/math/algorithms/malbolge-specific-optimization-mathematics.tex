@@ -231,6 +231,32 @@ This proves only transformation invariance. A certificate must still establish
 that both executions select the same graphical encryption target after the
 instruction-specific effect.
 
+Input assignment itself commutes with checked-width projection. For an available
+byte $b\in\{0,\ldots,255\}$ both widths store the same value, while EOF stores
+the corresponding all-two-trit word, so
+\begin{equation}
+  \pi_N\!\left(\operatorname{Input}_M(z)\right)
+    = \operatorname{Input}_N(z),
+  \qquad
+  z\in\{0,\ldots,255,\mathrm{EOF}\}.
+  \label{eq:optimization-profile-width-input-projection}
+\end{equation}
+This does not imply later output compatibility: the wide and narrow EOF words
+project to one another but have different byte residues modulo 256.
+
+Finally, let $G=\{33,\ldots,126\}$ and decompose one wide fetched word as
+$x=qW_N+r$. Because $W_N>126$, the graphical classifications disagree exactly
+when $q>0$ and $r\in G$. Therefore
+\begin{equation}
+  \left|\left\{x\in\WordDomain{M}:
+    \mathbf{1}_G(x)\neq\mathbf{1}_G(\pi_N(x))\right\}\right|
+    =94\left(3^{M-N}-1\right).
+  \label{eq:optimization-profile-width-graphical-fetch-mismatch-count}
+\end{equation}
+Every such mismatch is a potential termination divergence: the wide machine
+sees a non-graphical cell while the projected narrow machine sees a graphical
+cell. A whole-program certificate must exclude these reachable fetches.
+
 Let $D$ be a declared input domain and let $R$ be a finite relation between
 complete width-$M$ and width-$N$ guest states. Define
 $\mathsf{WidthCert}_{M\to N}(D,R)=1$ only when every input in $D$ maps to a

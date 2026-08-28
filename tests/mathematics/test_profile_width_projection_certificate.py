@@ -184,6 +184,31 @@ def test_output_compatible_word_count_for_checked_width_pairs() -> None:
         assert compatible_quotients * narrow_modulus == _power(narrow)
 
 
+def test_input_assignment_projects_for_every_byte_and_eof() -> None:
+    """Available bytes are fixed and wide EOF projects to narrow EOF."""
+    for narrow, wide in _width_pairs():
+        assert all(_project(byte, narrow) == byte for byte in range(256))
+        wide_eof = _modulus(wide) - 1
+        narrow_eof = _modulus(narrow) - 1
+        assert _project(wide_eof, narrow) == narrow_eof
+
+
+def test_graphical_fetch_mismatch_count_for_checked_width_pairs() -> None:
+    """Only high-quotient words projecting to graphical bytes mismatch."""
+    graphical_count = len(_GRAPHICAL)
+    for narrow, wide in _width_pairs():
+        narrow_modulus = _modulus(narrow)
+        ratio = _modulus(wide) // narrow_modulus
+        mismatches = graphical_count * (ratio - 1)
+        compatible = _modulus(wide) - mismatches
+        assert mismatches == sum(
+            graphical_count for _ in range(1, ratio)
+        )
+        assert compatible == (
+            narrow_modulus + (ratio - 1) * (narrow_modulus - graphical_count)
+        )
+
+
 def test_decode_phase_projection_requires_low_code_pointer() -> None:
     """Injective decode phases agree only with zero discarded pointer part."""
     for narrow, wide in _width_pairs():
