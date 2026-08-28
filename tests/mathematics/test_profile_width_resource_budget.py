@@ -41,7 +41,9 @@ from accelerator.classic_run import MAX_U32
 from accelerator.classic_run import STATE_WORDS
 from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunGeometry
+from accelerator.profile_run import ProfileRunRequest
 from accelerator.profile_run import WORD_BYTES
+from accelerator.profile_run import validate_profile_run_requests
 from algorithms.profile_width.certificate import execution_geometry
 
 from benchmarks.accelerator import resource_budget_measure as measure
@@ -91,14 +93,25 @@ def test_derived_widths_fit_resident_geometry() -> None:
 
 
 def test_derived_widths_own_exact_resident_memory_images() -> None:
-    """Host resident memory ownership accepts every exact derived geometry."""
+    """Host resident memory and requests accept every derived geometry."""
     for width in EXPECTED_128_MIB_CAPACITY:
         resident = _resident_geometry(width)
         source = array("I", [0]) * resident.memory_words
         image = ProfileMemoryImage(resident, source)
+        request = ProfileRunRequest(
+            accumulator=0,
+            code_pointer=0,
+            data_pointer=0,
+            input_bytes=(),
+            input_consumed=0,
+            memory=image,
+            output_bytes=(),
+            step_budget=0,
+        )
         assert image.geometry == resident
         assert len(image) == resident.memory_words
         assert image.words().readonly
+        assert validate_profile_run_requests(resident, (request,)) == (request,)
 
 
 def test_narrower_certified_width_strictly_increases_128_mib_capacity() -> None:
