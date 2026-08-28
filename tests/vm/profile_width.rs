@@ -123,6 +123,33 @@ fn minimum_initial_halt_selector_chooses_narrowest_source_capacity()
 }
 
 #[test]
+fn minimum_selector_does_not_hide_wider_source_rejection() -> TestResult {
+    let invalid_position = MINIMUM_MEMORY_WORDS_USIZE;
+    let mut source =
+        source_with_initial_halt(invalid_position.saturating_add(1))?;
+    let invalid_byte = invalid_instruction_byte(invalid_position)?;
+    let slot = source
+        .get_mut(invalid_position)
+        .ok_or_else(|| String::from("missing adversarial source slot"))?;
+    *slot = invalid_byte;
+    let Err(error) =
+        verify_minimum_initial_halt_profile_width(current_profile(), &source)
+    else {
+        return Err(String::from("wider invalid source was accepted"));
+    };
+    check_equal(
+        &error,
+        &ProfileWidthVerificationError::Source(
+            ProfileLoadError::InvalidInstruction {
+                position: MINIMUM_MEMORY_WORDS,
+                byte: invalid_byte,
+            },
+        ),
+        "wider source validation rejection",
+    )
+}
+
+#[test]
 fn initial_halt_verifier_preserves_raw_source_identity() -> TestResult {
     let source = b" \tQP\n";
     let verified = normalize_result(verify_initial_halt_profile_width(
@@ -229,4 +256,19 @@ fn source_with_initial_halt(word_count: usize) -> TestResult<Vec<u8>> {
         source.push(byte);
     }
     Ok(source)
+}
+
+fn invalid_instruction_byte(position: usize) -> TestResult<u8> {
+    let code_pointer = u32::try_from(position)
+        .map_err(|error| format!("invalid-byte pointer conversion: {error}"))?;
+    (33u8..=126u8)
+        .find(|cell| {
+            let decoded =
+                decode_profile_instruction(u32::from(*cell), code_pointer);
+            !matches!(
+                decoded,
+                Some(b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v' | b'o')
+            )
+        })
+        .ok_or_else(|| format!("missing invalid instruction at {position}"))
 }

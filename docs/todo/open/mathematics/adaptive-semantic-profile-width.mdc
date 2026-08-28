@@ -242,6 +242,11 @@ separate costs; resource evidence must measure those costs directly.
   artifact still exposes canonical `malbolge-2026` and its 14-trit
   `TargetProfileRequirement`, never `malbolge-1998`; derived width and canonical
   identity therefore remain distinct by product test.
+- An adversarial 59,050-word source with a loader-invalid final instruction
+  first
+  exceeds N=10 capacity, then is rejected when N=11 exposes full source
+  validation. Capacity retry therefore cannot mask a wider semantic/source
+  failure.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final
