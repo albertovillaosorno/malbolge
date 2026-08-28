@@ -256,6 +256,15 @@ QP selects N=10, while a valid 59,050-word initial-halt source selects N=11. A
 verified N=10 artifact still retains the canonical 14-trit `malbolge-2026`
 requirement and is explicitly unequal to the historical profile identity.
 
+The next runtime step cannot be a constructor-only shortcut. The live machine
+and its checkpoint type currently derive memory length/domain, modulus/trits,
+EOF, pointer wrap, and crazy/rotate arithmetic directly from the canonical
+profile. Tiered retry, interpreter handoff, and state-graph materialization then
+reconstruct those checkpoints. Adaptive execution therefore needs one explicit
+verified-geometry field shared by live state and checkpoints while canonical
+profile identity, opcode assignment, policy, trace identity, and preflight stay
+unchanged.
+
 `uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
 shows why projected D is insufficient for writes: both crazy transitions
 continue and A still projects, but D names different physical cells, so the

@@ -249,6 +249,18 @@ separate costs; resource evidence must measure those costs directly.
   failure. Product verifier coverage also checks QP independently at every
   reviewed N=10-through-14 geometry with exact `3^N` words while retaining the
   same canonical profile identity.
+- Execution-consumer review shows that adaptive execution must split canonical
+  profile semantics from verified geometry throughout both `ProfileMachine` and
+  `ProfileMachineState`. Canonical identity, input/output opcode assignment,
+  historical non-graphical policy, trace identity, and profile preflight remain
+  `ProfileDescriptor`-owned. Memory length/domain, word modulus/trits, EOF,
+  pointer wrap, crazy/rotate arithmetic, state/register validation, and loader
+  recurrence must instead consume the verified execution geometry.
+- Checkpoints must retain that geometry because tiered handoff/retry and
+  state-graph code reconstruct machines from `ProfileMachineState`; changing
+  only the live machine would silently restore canonical 14-trit geometry after
+  a snapshot. This boundary is documented before adding any execution
+  constructor.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final
