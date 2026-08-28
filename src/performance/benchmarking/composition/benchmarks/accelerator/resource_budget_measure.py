@@ -40,8 +40,11 @@ import json
 import sys
 from typing import Final
 
+from accelerator.classic_run import MAX_U32
 from accelerator.classic_run import MEMORY_WORDS
+from accelerator.classic_run import STATE_WORDS
 from accelerator.cuda.runtime import CudaRuntime
+from accelerator.profile_run import WORD_BYTES
 from accelerator.resource_budget import AcceleratorResources
 from accelerator.resource_budget import plan_resident_batches
 
@@ -49,8 +52,11 @@ from benchmarks.accelerator.profile_workload import PROFILE_WORDS
 
 MIB: Final = 1024 * 1024
 GIB: Final = 1024 * MIB
-CURRENT_STATE_BYTES: Final = (PROFILE_WORDS * 4) + 64
-CLASSIC_STATE_BYTES: Final = (MEMORY_WORDS * 4) + 64
+CURRENT_STATE_BYTES: Final = (PROFILE_WORDS + STATE_WORDS) * WORD_BYTES
+CLASSIC_STATE_BYTES: Final = (MEMORY_WORDS + STATE_WORDS) * WORD_BYTES
+FIXED_CHUNK_BYTES: Final = 2 * WORD_BYTES
+MINIMUM_ADAPTIVE_WIDTH: Final = 10
+MAXIMUM_ADAPTIVE_WIDTH: Final = 14
 SCENARIO_ITEMS: Final = 10_000
 HUGE_GIB: Final = 100_000
 HUGE_ITEMS: Final = 100_000
@@ -64,9 +70,12 @@ class ScenarioSpec:
 
     item_bytes: int
     label: str
+    fixed_chunk_bytes: int = 0
     max_items_per_chunk: int | None = None
+    memory_words: int | None = None
     requested_items: int = SCENARIO_ITEMS
     synthetic: bool = True
+    word_trits: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,13 +83,17 @@ class ScenarioResult:
     """Serializable summary of one resource-plan scenario."""
 
     first_chunk_items: int
+    fixed_chunk_bytes: int
     item_bytes: int
     label: str
+    max_items_per_chunk: int | None
+    memory_words: int | None
     requested_items: int
     reserve_bytes: int
     synthetic: bool
     total_chunks: int
     usable_memory_bytes: int
+    word_trits: int | None
 
 
 def main() -> int:
@@ -99,7 +112,7 @@ def main() -> int:
         message = f"unknown arguments: {unknown!r}"
         raise SystemExit(message)
     include_cuda = CUDA_FLAG in arguments
-    results = list(_synthetic_results())
+    results = list(synthetic_results())
     device: dict[str, str | int] | None = None
     if include_cuda:
         device, live_results = _cuda_results()
@@ -149,7 +162,13 @@ def _cuda_results() -> tuple[dict[str, str | int], tuple[ScenarioResult, ...]]:
         runtime.close()
 
 
-def _synthetic_results() -> tuple[ScenarioResult, ...]:
+def synthetic_results() -> tuple[ScenarioResult, ...]:
+    """Return deterministic capacity-only resource planning evidence.
+
+    Returns:
+        Synthetic planner results, including the adaptive width sweep.
+
+    """
     tiny = AcceleratorResources(
         free_memory_bytes=128 * MIB,
         max_threads_per_block=1,
@@ -168,7 +187,10 @@ def _synthetic_results() -> tuple[ScenarioResult, ...]:
         multiprocessor_count=1000,
         total_memory_bytes=HUGE_GIB * GIB,
     )
-    return (
+    adaptive = tuple(
+        _scenario(spec, tiny) for spec in _adaptive_width_specs()
+    )
+    baseline = (
         _scenario(
             ScenarioSpec(
                 item_bytes=CURRENT_STATE_BYTES,
@@ -193,6 +215,28 @@ def _synthetic_results() -> tuple[ScenarioResult, ...]:
             huge,
         ),
     )
+    return (*adaptive, *baseline)
+
+
+def _adaptive_width_specs() -> tuple[ScenarioSpec, ...]:
+    return tuple(
+        _adaptive_width_spec(width)
+        for width in range(MINIMUM_ADAPTIVE_WIDTH, MAXIMUM_ADAPTIVE_WIDTH + 1)
+    )
+
+
+def _adaptive_width_spec(word_trits: int) -> ScenarioSpec:
+    memory_words = 1
+    for _ in range(word_trits):
+        memory_words *= 3
+    return ScenarioSpec(
+        fixed_chunk_bytes=FIXED_CHUNK_BYTES,
+        item_bytes=(memory_words + STATE_WORDS) * WORD_BYTES,
+        label=f"synthetic-128m-width-{word_trits}",
+        max_items_per_chunk=(MAX_U32 // memory_words) + 1,
+        memory_words=memory_words,
+        word_trits=word_trits,
+    )
 
 
 def _scenario(
@@ -202,18 +246,23 @@ def _scenario(
     plan = plan_resident_batches(
         (spec.item_bytes,) * spec.requested_items,
         resources,
+        fixed_chunk_bytes=spec.fixed_chunk_bytes,
         max_items_per_chunk=spec.max_items_per_chunk,
     )
     first = plan.chunks[0]
     return ScenarioResult(
         first_chunk_items=first.item_count,
+        fixed_chunk_bytes=spec.fixed_chunk_bytes,
         item_bytes=spec.item_bytes,
         label=spec.label,
+        max_items_per_chunk=spec.max_items_per_chunk,
+        memory_words=spec.memory_words,
         requested_items=spec.requested_items,
         reserve_bytes=plan.reserve_bytes,
         synthetic=spec.synthetic,
         total_chunks=len(plan.chunks),
         usable_memory_bytes=plan.usable_memory_bytes,
+        word_trits=spec.word_trits,
     )
 
 

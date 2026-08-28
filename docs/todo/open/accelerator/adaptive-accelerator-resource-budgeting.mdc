@@ -72,11 +72,15 @@ example probe points, not supported-range endpoints.
   capacity through `cuDeviceGetAttribute`, and uses the resulting plan before
   allocation. Oversized single items fail before `cuMemAlloc`.
 - Synthetic boundary evidence is explicitly labeled: the declared current-state
-  byte model admits 6 first-chunk states at 128 MiB and 4,209 at 80 GiB. These
-  are example probes rather than minimum/maximum supported sizes. A separate
-  100,000 GiB synthetic fixture proves that additional addressable memory is not
-  clamped; classic CUDA splits only at its 32-bit memory-index boundary. None of
-  these synthetic rows are hardware throughput measurements.
+  byte model admits 6 first-chunk states at 128 MiB and 4,209 at 80 GiB. A new
+  adaptive-width sweep uses exact resident backend layout for derived widths
+  10 through 14: 236,260; 708,652; 2,125,828; 6,377,356; and 19,131,940 bytes
+  per zero-I/O VM, yielding first-chunk capacities 532, 177, 59, 19, and 6 under
+  the same 128 MiB snapshot. These are example probes rather than
+  minimum/maximum supported sizes.
+- A separate 100,000 GiB synthetic fixture proves that additional addressable
+  memory is not clamped; classic CUDA splits only at its 32-bit memory-index
+  boundary. None of these synthetic rows are hardware throughput measurements.
 - Retained post-commit resource evidence under
   `benchmarks/accelerator/evidence/2026-07-27-resource-budget-windows-x86_64/`
   records the RTX 4060 Driver API snapshot and synthetic boundary rows with

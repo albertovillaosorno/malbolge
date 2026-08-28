@@ -99,6 +99,17 @@ states in the first chunk of a 128 MiB device model versus 4,209 in an 80 GiB
 model under the same reserve rule. These are capacity-model results, **not**
 claims that either hardware class was physically benchmarked.
 
+The synthetic capacity entry point now also consumes the adaptive semantic-width
+geometry for N=10 through 14 without constructing new profile identities. It
+uses the resident backend's exact zero-I/O layout: 16 fixed state words plus
+`3^N` memory words at four bytes each, eight fixed bytes per chunk, and the
+backend's 32-bit memory-index item bound. The resulting item sizes are 236,260;
+708,652; 2,125,828; 6,377,356; and 19,131,940 bytes.
+
+On the same 128 MiB synthetic snapshot, the first chunk admits 532, 177, 59, 19,
+and 6 complete VMs. This isolates capacity scaling only; no throughput or
+runtime width-selection claim follows from the synthetic sweep.
+
 Existing RTX 4060 classic resident differential tests continue to pass after the
 planner is inserted into the real allocation path. Post-commit resource evidence
 at `benchmarks/accelerator/evidence/2026-07-27-resource-budget-windows-x86_64/`

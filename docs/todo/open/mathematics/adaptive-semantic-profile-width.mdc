@@ -181,6 +181,16 @@ separate costs; resource evidence must measure those costs directly.
   1,594,323; and 4,782,969 for N=10 through 14. Invalid selection evidence maps
   to the canonical 14-trit geometry. Runtime integration must preserve the
   canonical language/profile identity while consuming this derived geometry.
+- Synthetic resource-budget evidence now feeds those five derived geometries
+  into the product resident planner without changing profile identity. For a
+  zero-I/O resident item, exact backend layout is 16 state words plus `3^N`
+  memory words at four bytes each, with eight fixed bytes per chunk. Item sizes
+  are 236,260; 708,652; 2,125,828; 6,377,356; and 19,131,940 bytes for N=10
+  through 14. Under the same synthetic 128 MiB resource snapshot, first-chunk
+  capacities are 532, 177, 59, 19, and 6 complete VMs respectively.
+- This remains capacity evidence only; it does not grant runtime width-selection
+  authority or satisfy the still-required equivalent-work throughput
+  measurements.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final

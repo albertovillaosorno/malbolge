@@ -19,6 +19,8 @@ experiment identity and configuration rather than duplicate schedulers.
 Reproducible capacity/live resource output is emitted by
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/performance/benchmarking/composition/benchmarks/accelerator/resource_budget_measure.py`.
+Its synthetic rows include an exact N=10-through-14 derived-geometry sweep;
+those rows are capacity evidence and never runtime profile-selection authority.
 The ticket profile generator at
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/performance/benchmarking/composition/benchmarks/accelerator/ticket_admission_profile_manifest.py`
