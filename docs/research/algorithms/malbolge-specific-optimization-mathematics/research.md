@@ -263,7 +263,12 @@ assignment, non-graphical policy, trace identity, and preflight stay unchanged.
 envelope;
 QP therefore executes with exactly 59,049 N=10 words, halts in one normative
 step, and retains N=10 through checkpoint restore while remaining
-`malbolge-2026`. Tiered/native/state-graph execution handoff is still open.
+`malbolge-2026`.
+
+Indexed state-graph now carries the same opaque geometry in
+lineage identity and digest material, and derived QP/N=10 trace replay
+materializes the exact runtime checkpoint without restoring N=14. Tiered/native
+execution handoff is still open.
 
 `uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
 shows why projected D is insufficient for writes: both crazy transitions

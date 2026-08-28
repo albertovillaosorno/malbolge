@@ -167,7 +167,30 @@ impl ProfileMachineState {
         registers: ProfileRegisters,
         io: ProfileMachineIoState,
     ) -> Result<Self, ProfileMachineError> {
-        let geometry = ProfileExecutionGeometry::canonical(profile);
+        Self::new_with_geometry(
+            ProfileExecutionGeometry::canonical(profile),
+            memory,
+            registers,
+            io,
+        )
+    }
+
+    /// Constructs a checkpoint from one opaque admitted execution geometry.
+    ///
+    /// The geometry token carries its canonical profile binding and cannot be
+    /// constructed by external callers without trusted verification.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileMachineError`] when runtime capability, memory shape,
+    /// words, or registers disagree with the admitted geometry.
+    pub fn new_with_geometry(
+        geometry: ProfileExecutionGeometry,
+        memory: Vec<u32>,
+        registers: ProfileRegisters,
+        io: ProfileMachineIoState,
+    ) -> Result<Self, ProfileMachineError> {
+        let profile = geometry.profile();
         preflight_profile(
             profile,
             u64::from(geometry.memory_words()),

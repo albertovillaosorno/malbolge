@@ -42,9 +42,10 @@ use std::ptr;
 use std::sync::Arc;
 
 use malbolge::{
-    EffectOp, ProfileDescriptor, ProfileMachineError, ProfileMachineIoState,
-    ProfileMachineObservation, ProfileMachineState, ProfileMemoryDelta,
-    ProfileRegisters, ProfileStepTrace, Termination, TraceInput,
+    EffectOp, ProfileDescriptor, ProfileExecutionGeometry, ProfileMachineError,
+    ProfileMachineIoState, ProfileMachineObservation, ProfileMachineState,
+    ProfileMemoryDelta, ProfileRegisters, ProfileStepTrace, Termination,
+    TraceInput,
 };
 
 use crate::indexed::{IndexedMemoryError, IndexedProfileMemory};
@@ -59,6 +60,7 @@ type OutputTransition = Result<PersistentOutput, IndexedStateError>;
 /// Exact incremental profile-machine state inside one execution lineage.
 #[derive(Clone, Debug)]
 pub struct IndexedMachineState {
+    geometry: ProfileExecutionGeometry,
     input: Arc<[u8]>,
     input_cursor: usize,
     input_digest: u64,
@@ -134,6 +136,7 @@ impl IndexedMachineState {
         delta: ProfileMemoryDelta,
     ) -> Result<Self, IndexedStateError> {
         Ok(Self {
+            geometry: self.geometry,
             input: Arc::clone(&self.input),
             input_cursor: self.input_cursor,
             input_digest: self.input_digest,
@@ -161,6 +164,7 @@ impl IndexedMachineState {
         let output = self.next_output(trace)?;
         let memory = self.memory.apply(trace.memory_delta)?;
         Ok(Self {
+            geometry: self.geometry,
             input: Arc::clone(&self.input),
             input_cursor,
             input_digest: self.input_digest,
@@ -192,6 +196,7 @@ impl IndexedMachineState {
             self.next_output_effect(effect.output, effect.after.output_len)?;
         let memory = self.memory.apply_verified(effect.memory_delta)?;
         Ok(Self {
+            geometry: self.geometry,
             input: Arc::clone(&self.input),
             input_cursor,
             input_digest: self.input_digest,
@@ -227,7 +232,8 @@ impl IndexedMachineState {
     /// Returns exact equality inside the same immutable execution lineage.
     #[must_use]
     pub fn exact_state_eq(&self, other: &Self) -> bool {
-        ptr::eq(self.profile, other.profile)
+        self.geometry == other.geometry
+            && ptr::eq(self.profile, other.profile)
             && Arc::ptr_eq(&self.input, &other.input)
             && self.input_cursor == other.input_cursor
             && self.output.exact_output_eq(&other.output)
@@ -248,10 +254,14 @@ impl IndexedMachineState {
         let io = state.io();
         let input = Arc::<[u8]>::from(io.input());
         let input_digest = hash_bytes(FNV_OFFSET, &input);
+        let geometry = state.geometry();
         let output = PersistentOutput::from_bytes(io.output());
-        let profile_digest =
+        let mut profile_digest =
             hash_bytes(FNV_OFFSET, state.profile().fingerprint().as_bytes());
+        profile_digest = hash_byte(profile_digest, geometry.word_trits());
+        profile_digest = hash_u32(profile_digest, geometry.memory_words());
         Ok(Self {
+            geometry,
             input,
             input_cursor: io.input_consumed(),
             input_digest,
@@ -279,8 +289,8 @@ impl IndexedMachineState {
             self.output.materialize(),
             self.termination,
         )?;
-        Ok(ProfileMachineState::new(
-            self.profile,
+        Ok(ProfileMachineState::new_with_geometry(
+            self.geometry,
             self.memory.materialize()?,
             self.registers,
             io,
@@ -385,7 +395,8 @@ impl IndexedMachineState {
     }
 
     fn shares_lineage(&self, other: &Self) -> bool {
-        ptr::eq(self.profile, other.profile)
+        self.geometry == other.geometry
+            && ptr::eq(self.profile, other.profile)
             && Arc::ptr_eq(&self.input, &other.input)
             && self.memory.shares_root(&other.memory)
     }

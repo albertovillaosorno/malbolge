@@ -191,6 +191,9 @@ fn hash_termination(hash: u64, termination: Option<Termination>) -> u64 {
 fn profile_state_digest(state: &ProfileMachineState) -> u64 {
     let mut hash = FNV_OFFSET;
     hash = hash_bytes(hash, state.profile().fingerprint().as_bytes());
+    let geometry = state.geometry();
+    hash = hash_bytes(hash, &[geometry.word_trits()]);
+    hash = hash_bytes(hash, &geometry.memory_words().to_le_bytes());
     let io = state.io();
     hash = hash_bytes(hash, io.input());
     hash = hash_bytes(hash, &io.input_consumed().to_le_bytes());

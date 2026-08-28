@@ -37,6 +37,7 @@
 
 use malbolge::{
     ProfileMachine, ProfileStepTrace, StepOutcome, current_profile,
+    verify_minimum_initial_halt_profile_width,
 };
 
 use crate::indexed_state::{
@@ -46,6 +47,43 @@ use crate::indexed_state::{
 
 const CURRENT_SOURCE: &[u8] = b"(=%`qL";
 const STEP_BUDGET: usize = 8;
+
+#[test]
+fn derived_width_checkpoint_survives_indexed_state_roundtrip()
+-> Result<(), String> {
+    let verified =
+        verify_minimum_initial_halt_profile_width(current_profile(), b"QP")
+            .map_err(|error| {
+                format!("derived width verification failed: {error}")
+            })?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new())
+            .map_err(|error| format!("derived machine load failed: {error}"))?;
+    let root = machine.snapshot_state();
+    let mut indexed = IndexedMachineState::from_checkpoint(&root)
+        .map_err(|error| format!("derived indexed root failed: {error:?}"))?;
+    let mut trace_record = None;
+    let _outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| {
+            trace_record = Some(*trace);
+        })
+        .map_err(|error| format!("derived trace step failed: {error}"))?;
+    let trace =
+        trace_record.ok_or_else(|| String::from("derived trace missing"))?;
+    indexed = indexed
+        .apply_trace(&trace)
+        .map_err(|error| format!("derived indexed apply failed: {error:?}"))?;
+    let materialized = indexed
+        .materialize_checkpoint()
+        .map_err(|error| format!("derived materialize failed: {error:?}"))?;
+    if materialized != machine.snapshot_state() {
+        return Err(String::from("derived indexed roundtrip drifted"));
+    }
+    if materialized.geometry() != verified.geometry() {
+        return Err(String::from("derived geometry was not preserved"));
+    }
+    Ok(())
+}
 
 #[test]
 fn current_trace_reconstructs_and_replay_deduplicates() -> Result<(), String> {
