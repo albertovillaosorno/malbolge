@@ -220,8 +220,9 @@ A but has width-dependent byte residue. The `ubO` fixture retains the positive
 byte domain and a VM counterexample where EOF diverges exactly at output.
 
 The compositional straight-line checker subsumes those small cases for programs
-whose decoded prefix uses only `o`, `/`, and `<` before `v`. It tracks input
-position and whether A is byte-exact; output is legal only in that exact state.
+whose decoded prefix uses `o`, `/`, `<`, one guarded `j`, and guarded `p` before
+`v`. It tracks input position and whether A is byte-exact; output is legal only
+in that exact state.
 All 340 prefixes of lengths one through four over `o`, `/`, `<`, and `j` are
 checked for stream lengths zero through two using source encodings reconstructed
 from the independent verifier decode model. One data jump is accepted while D
@@ -230,6 +231,13 @@ rejected.
 
 `uCar_L` adds a six-transition bound certificate. A retained `jjjv` endpoint run
 demonstrates that the one-j rule is sufficient rather than necessary.
+Guarded crazy steps are accepted only after the exact-address jump has separated
+D from C, while the resulting D stays in-domain and avoids future source code.
+`j p v` and `j p p v` preserve complete endpoint projection; unguarded `p v`
+rejects before commit because the crazy result becomes a non-graphical
+self-encryption target. Crazy also marks A projection-only, so output requires a
+later exact byte input before it can be certified again.
+
 The same certificate is rechecked independently for candidate widths 10 through
 13. Each candidate can be the sole accepted width and is selected exactly;
 explicit rejection of all four returns canonical width 14 without monotonic

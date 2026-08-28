@@ -462,6 +462,49 @@ def test_straight_line_checker_composes_safe_noop_and_io_steps() -> None:
     )
 
 
+def test_straight_line_checker_admits_guarded_crazy_after_jump() -> None:
+    """Crazy composes after one exact jump when data stays off future code."""
+    inputs = {"eof": ()}
+    assert straight_line_projection_certifiable(
+        b"(=O",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs=inputs,
+    )
+    assert straight_line_projection_certifiable(
+        b"(=<N",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs=inputs,
+    )
+    assert not straight_line_projection_certifiable(
+        b">P",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs=inputs,
+    )
+    assert not straight_line_projection_certifiable(
+        b"(=aN",
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs=inputs,
+    )
+
+
+def test_straight_line_checker_rejects_crazy_rewriting_future_code() -> None:
+    """A crazy write into future code invalidates static decode."""
+    decoded = (ord("j"), ord("p"), *(ord("o") for _ in range(47)), ord("v"))
+    source = _encoded_source(decoded)
+    expected_source_len = 50
+    assert len(source) == expected_source_len
+    assert not straight_line_projection_certifiable(
+        source,
+        MINIMUM_WIDTH,
+        CANONICAL_WIDTH,
+        inputs={"eof": ()},
+    )
+
+
 def test_straight_line_checker_rejects_unsafe_or_unsupported_paths() -> None:
     """EOF output, unsupported opcodes, and fall-through fail closed."""
     assert not straight_line_projection_certifiable(

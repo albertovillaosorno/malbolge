@@ -604,21 +604,117 @@ def initial_halt_projection_certifiable(
     return decoded is not None and decoded[0] == ord("v")
 
 
+@dataclass(frozen=True, slots=True)
+class _StraightLineSourceState:
+    data_delta: int | None
+    events: tuple[int, ...]
+    jump_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class _StraightLineSourceContext:
+    cells: tuple[int, ...]
+    modulus: int
+
+
+def _crazy_data_address_safe(
+    position: int,
+    *,
+    source_len: int,
+    modulus: int,
+    data_delta: int | None,
+) -> bool:
+    if data_delta is None or data_delta == 0:
+        return False
+    address = position + data_delta
+    in_domain = 0 <= address < modulus
+    rewrites_future_code = position < address < source_len
+    return in_domain and not rewrites_future_code
+
+
+def _jump_source_state(
+    state: _StraightLineSourceState,
+    position: int,
+    context: _StraightLineSourceContext,
+) -> _StraightLineSourceState | None:
+    return (
+        None
+        if state.jump_count
+        else _StraightLineSourceState(
+            data_delta=context.cells[position] - position,
+            events=state.events,
+            jump_count=1,
+        )
+    )
+
+
+def _crazy_source_state(
+    state: _StraightLineSourceState,
+    position: int,
+    context: _StraightLineSourceContext,
+) -> _StraightLineSourceState | None:
+    safe = _crazy_data_address_safe(
+        position,
+        source_len=len(context.cells),
+        modulus=context.modulus,
+        data_delta=state.data_delta,
+    )
+    return (
+        _StraightLineSourceState(
+            data_delta=state.data_delta,
+            events=(*state.events, ord("p")),
+            jump_count=state.jump_count,
+        )
+        if safe
+        else None
+    )
+
+
+def _io_source_state(
+    state: _StraightLineSourceState,
+    opcode: int,
+) -> _StraightLineSourceState:
+    return _StraightLineSourceState(
+        data_delta=state.data_delta,
+        events=(*state.events, opcode),
+        jump_count=state.jump_count,
+    )
+
+
+def _advance_straight_line_source(
+    state: _StraightLineSourceState,
+    step: tuple[int, int],
+    context: _StraightLineSourceContext,
+) -> _StraightLineSourceState | None:
+    position, opcode = step
+    advanced: _StraightLineSourceState | None = None
+    if opcode == ord("j"):
+        advanced = _jump_source_state(state, position, context)
+    elif opcode == ord("p"):
+        advanced = _crazy_source_state(state, position, context)
+    elif opcode in {ord("/"), ord("<")}:
+        advanced = _io_source_state(state, opcode)
+    elif opcode == ord("o"):
+        advanced = state
+    return advanced
+
+
 def _straight_line_events(
     decoded: tuple[int, ...],
+    cells: tuple[int, ...],
+    modulus: int,
 ) -> tuple[int, ...] | None:
-    allowed = frozenset((ord("o"), ord("/"), ord("<"), ord("j")))
-    halt_position = (
-        decoded.index(ord("v")) if ord("v") in decoded else None
-    )
-    if halt_position is None:
-        return None
-    prefix = decoded[:halt_position]
-    prefix_valid = all(opcode in allowed for opcode in prefix)
-    data_reads_valid = prefix.count(ord("j")) <= 1
-    if not prefix_valid or not data_reads_valid:
-        return None
-    return tuple(opcode for opcode in prefix if opcode in {ord("/"), ord("<")})
+    state = _StraightLineSourceState(None, (), 0)
+    context = _StraightLineSourceContext(cells, modulus)
+    for step in enumerate(decoded):
+        _, opcode = step
+        if opcode == ord("v"):
+            return state.events
+        advanced = _advance_straight_line_source(state, step, context)
+        if advanced is None:
+            return None
+        state = advanced
+    return None
 
 
 def _stream_events_safe(
@@ -632,6 +728,8 @@ def _stream_events_safe(
         if opcode == ord("/"):
             accumulator_exact = input_cursor < len(stream)
             input_cursor += int(accumulator_exact)
+        elif opcode == ord("p"):
+            accumulator_exact = False
         elif not accumulator_exact:
             safe = False
             break
@@ -660,7 +758,16 @@ def straight_line_projection_certifiable(
         if widths_valid
         else None
     )
-    events = _straight_line_events(decoded) if decoded is not None else None
+    cells = _source_cells(source)
+    events = (
+        _straight_line_events(
+            decoded,
+            cells,
+            _ternary_modulus(narrow_width),
+        )
+        if decoded is not None and cells is not None
+        else None
+    )
     return (
         events is not None
         and bool(inputs)

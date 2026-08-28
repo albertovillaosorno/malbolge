@@ -52,6 +52,9 @@ const NARROWING_INPUT_HALT_SOURCE: &[u8] = b"uP";
 const NARROWING_INPUT_OUTPUT_HALT_SOURCE: &[u8] = b"ubO";
 const NARROWING_COMPOSED_SAFE_SOURCE: &[u8] = b"uCar_L";
 const NARROWING_JUMP_DATA_HALT_SOURCE: &[u8] = b"(P";
+const NARROWING_UNGUARDED_CRAZY_HALT_SOURCE: &[u8] = b">P";
+const NARROWING_JUMP_CRAZY_HALT_SOURCE: &[u8] = b"(=O";
+const NARROWING_JUMP_CRAZY_CRAZY_HALT_SOURCE: &[u8] = b"(=<N";
 const NARROWING_REPEATED_JUMP_DATA_SOURCE: &[u8] = b"('&N";
 const NARROWING_NOOP_PREFIX_HALT_SOURCE: &[u8] = b"DCBA@?>=I";
 const NOOP_PREFIX_STEPS: u8 = 8;
@@ -291,6 +294,75 @@ fn repeated_jump_data_fixture_shows_conservative_under_approximation()
     let current_jump = normalize_result(current.step())?;
     check_equal(&current_jump, &historical_jump, "third jump outcome")?;
     check_current_projects_to_historical_state(&current, &historical)
+}
+
+#[test]
+fn unguarded_crazy_rejects_non_graphical_encryption_target() -> TestResult {
+    for profile in [historical_profile(), current_profile()] {
+        let mut machine = normalize_result(ProfileMachine::from_source(
+            profile,
+            NARROWING_UNGUARDED_CRAZY_HALT_SOURCE,
+            Vec::new(),
+        ))?;
+        match machine.step() {
+            Err(ProfileMachineError::InvalidEncryptionTarget {
+                pointer: 0,
+                ..
+            }) => {},
+            observed => {
+                return Err(format!(
+                    "unguarded crazy target result: {observed:?}",
+                ));
+            },
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn guarded_crazy_after_jump_preserves_complete_projection() -> TestResult {
+    let cases = [
+        (NARROWING_JUMP_CRAZY_HALT_SOURCE, 2u8),
+        (NARROWING_JUMP_CRAZY_CRAZY_HALT_SOURCE, 3u8),
+    ];
+    for (source, continued_steps) in cases {
+        let mut historical = normalize_result(ProfileMachine::from_source(
+            historical_profile(),
+            source,
+            Vec::new(),
+        ))?;
+        let mut current = normalize_result(ProfileMachine::from_source(
+            current_profile(),
+            source,
+            Vec::new(),
+        ))?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+        for _ in 0..continued_steps {
+            let historical_outcome = normalize_result(historical.step())?;
+            let current_outcome = normalize_result(current.step())?;
+            check_equal(
+                &current_outcome,
+                &historical_outcome,
+                "guarded crazy step",
+            )?;
+            check_equal(
+                &current_outcome,
+                &malbolge::StepOutcome::Continued,
+                "guarded crazy continued",
+            )?;
+            check_current_projects_to_historical_state(&current, &historical)?;
+        }
+        let historical_halt = normalize_result(historical.step())?;
+        let current_halt = normalize_result(current.step())?;
+        check_equal(&current_halt, &historical_halt, "guarded crazy halt")?;
+        check_equal(
+            &current_halt,
+            &malbolge::StepOutcome::Terminated(Termination::HaltInstruction),
+            "guarded crazy termination",
+        )?;
+        check_current_projects_to_historical_state(&current, &historical)?;
+    }
+    Ok(())
 }
 
 #[test]

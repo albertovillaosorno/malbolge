@@ -148,8 +148,8 @@ separate costs; resource evidence must measure those costs directly.
   modulo 256. Fixture `ubO` certifies the bound `0xA5` domain, while a Rust
   adversarial run shows projection surviving input and breaking exactly at
   output under EOF.
-- Proof kind `straight-line-safe-projection-v1` composes arbitrary admitted
-  straight-line prefixes over `o`, `/`, and `<` followed by `v`. For each exact
+- Proof kind `straight-line-safe-projection-v1` composes admitted straight-line
+  prefixes over `o`, `/`, `<`, `j`, and guarded `p`, followed by `v`. For each exact
   input stream it tracks only input cursor and whether A is byte-exact or merely
   projection-related; `<` is accepted only in the byte-exact state. Bounded
   exhaustive evidence covers all 340 prefixes of lengths one through four over
@@ -160,6 +160,11 @@ separate costs; resource evidence must measure those costs directly.
   one-byte subject diverges exactly at the second output. A retained `jjjv`
   endpoint run still projects successfully, documenting that the one-`j` rule
   is sufficient and intentionally incomplete rather than a necessity claim.
+- Guarded `p` is admitted only after that exact-address `j`, with D distinct
+  from C, in-domain, and not targeting an unexecuted source cell. `p` marks A as
+  projection-only, so later output fails closed until byte input restores exact
+  A. Endpoint runs preserve complete projection for `j p v` and `j p p v`;
+  unguarded `p v` rejects its non-graphical encryption target in both VMs.
 - The same bound `uCar_L` certificate is checked independently at narrow widths
   10, 11, 12, and 13. Selector evidence accepts each candidate when it is the
   sole positive certificate, chooses that exact width, and returns canonical 14
