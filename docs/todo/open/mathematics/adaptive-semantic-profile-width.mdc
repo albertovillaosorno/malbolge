@@ -246,7 +246,9 @@ separate costs; resource evidence must measure those costs directly.
   first
   exceeds N=10 capacity, then is rejected when N=11 exposes full source
   validation. Capacity retry therefore cannot mask a wider semantic/source
-  failure.
+  failure. Product verifier coverage also checks QP independently at every
+  reviewed N=10-through-14 geometry with exact `3^N` words while retaining the
+  same canonical profile identity.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final

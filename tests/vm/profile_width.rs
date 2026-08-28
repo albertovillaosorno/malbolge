@@ -46,6 +46,13 @@ const MINIMUM_WORD_TRITS: u8 = 10;
 const MINIMUM_MEMORY_WORDS: u32 = 59_049;
 const MINIMUM_MEMORY_WORDS_USIZE: usize = 59_049;
 const QP: &[u8] = b"QP";
+const CHECKED_GEOMETRIES: [(u8, u32); 5] = [
+    (10, 59_049),
+    (11, 177_147),
+    (12, 531_441),
+    (13, 1_594_323),
+    (14, 4_782_969),
+];
 
 #[test]
 fn initial_halt_verifier_binds_profile_source_and_geometry() -> TestResult {
@@ -147,6 +154,29 @@ fn minimum_selector_does_not_hide_wider_source_rejection() -> TestResult {
         ),
         "wider source validation rejection",
     )
+}
+
+#[test]
+fn initial_halt_verifier_covers_every_reviewed_geometry() -> TestResult {
+    for (word_trits, memory_words) in CHECKED_GEOMETRIES {
+        let verified = normalize_result(verify_initial_halt_profile_width(
+            current_profile(),
+            QP,
+            word_trits,
+        ))?;
+        check_equal(&verified.word_trits(), &word_trits, "checked width")?;
+        check_equal(
+            &verified.memory_words(),
+            &memory_words,
+            "checked memory words",
+        )?;
+        check_equal(
+            &verified.profile(),
+            &current_profile(),
+            "canonical profile identity",
+        )?;
+    }
+    Ok(())
 }
 
 #[test]
