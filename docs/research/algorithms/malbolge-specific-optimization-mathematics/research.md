@@ -132,10 +132,11 @@ This remains a state-equivalence result, not a timing claim.
 
 For checked width pairs `10<=N<M<=14`, radix projection preserves pointer
 successor and `crazy`, but `rotate` has an explicit quotient-dependent high
-trit. Byte output after projection is equal only when the discarded high
-quotient is zero in this range. Wide EOF projects to narrow EOF while their
-output bytes still differ, so source size or low addresses alone cannot prove
-semantic narrowing.
+trit. The rotate condition is exactly equality between trit `N` and trit zero,
+so different candidate widths can alternate between compatible and incompatible.
+Byte output is equal only when the discarded high quotient is zero; wide EOF
+projects to narrow EOF while their output bytes still differ. Thus source size
+or low addresses alone cannot prove semantic narrowing.
 
 A finite width certificate is sufficient when it covers every declared input
 initial state, preserves every verifier-required observation, and closes every

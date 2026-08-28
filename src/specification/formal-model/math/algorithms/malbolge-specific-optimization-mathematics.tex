@@ -149,7 +149,9 @@ $0\leq r<W_N$. Since $0\leq q<3^{M-N}\leq3^4$, direct radix arithmetic gives
   \label{eq:optimization-profile-width-projection-audit}
 \end{equation}
 The rotation therefore commutes with projection exactly when
-$q\bmod3=r\bmod3$. Also, because $W_N$ is coprime to $256$ and $q<256$,
+$q\bmod3=r\bmod3$, equivalently when trit $N$ of $x$ equals trit zero.
+Different candidate widths inspect different high trits, so this condition is
+not monotone in $N$. Also, because $W_N$ is coprime to $256$ and $q<256$,
 $x\bmod256=r\bmod256$ holds exactly when $q=0$. The wide EOF word projects to
 the narrow EOF word, but for $M>N$ their output bytes differ. Thus small
 addresses or low projected words alone are not a semantic narrowing proof.

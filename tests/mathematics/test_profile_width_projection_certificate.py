@@ -127,6 +127,19 @@ def test_checked_width_projection_laws_and_counterexamples() -> None:
         _check_width_pair(widths)
 
 
+def test_rotate_projection_compatibility_is_not_monotone_in_width() -> None:
+    """Each candidate width compares a distinct high trit with trit zero."""
+    wide = CANONICAL_WIDTH
+    value = 1 + _power(10) + _power(12)
+    observed: dict[int, bool] = {}
+    for narrow in range(MINIMUM_WIDTH, CANONICAL_WIDTH):
+        residue = _project(value, narrow)
+        observed[narrow] = (
+            _project(_rotate(value, wide), narrow) == _rotate(residue, narrow)
+        )
+    assert observed == {10: True, 11: False, 12: True, 13: False}
+
+
 def _equivalent_fixture() -> tuple[
     FiniteSystem,
     FiniteSystem,
