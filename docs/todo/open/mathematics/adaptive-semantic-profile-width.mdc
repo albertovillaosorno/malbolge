@@ -113,6 +113,11 @@ separate costs; resource evidence must measure those costs directly.
   `qp-width-certificate-v1.json` fixture is accepted by that checker and is tied
   to the independent VM projection fixture above; neither the JSON subject ID
   nor research acceptance grants trusted runtime-selection authority.
+- The research selector now consumes exact decisions for all candidate widths
+  10 through 13. `False` is an explicit rejection; positive selection requires
+  a structurally valid certificate whose declared narrow width matches that
+  candidate and whose wide width is canonical 14. Bare `True`, missing
+  decisions, width mismatches, or malformed certificates fail closed to 14.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final

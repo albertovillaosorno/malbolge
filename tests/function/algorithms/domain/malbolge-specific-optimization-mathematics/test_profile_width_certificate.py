@@ -42,9 +42,11 @@ from typing import cast
 
 from algorithms.profile_width.certificate import CANONICAL_WIDTH
 from algorithms.profile_width.certificate import FiniteSystem
+from algorithms.profile_width.certificate import MINIMUM_WIDTH
 from algorithms.profile_width.certificate import certificate_valid
 from algorithms.profile_width.certificate import finite_width_certificate_valid
 from algorithms.profile_width.certificate import minimum_certified_width
+from algorithms.profile_width.certificate import minimum_width_from_certificates
 from algorithms.profile_width.certificate import parse_finite_width_certificate
 
 if TYPE_CHECKING:
@@ -140,3 +142,25 @@ def test_certificate_parser_rejects_ambiguous_scalar_types_and_widths() -> None:
     certificate = parse_finite_width_certificate(reversed_width)
     assert certificate is not None
     assert not finite_width_certificate_valid(certificate)
+
+
+def test_selector_requires_certificates_for_positive_width_decisions() -> None:
+    """A bare true result cannot replace a checked certificate."""
+    certificate = parse_finite_width_certificate(_fixture_value())
+    assert certificate is not None
+    decisions = {10: certificate, 11: False, 12: False, 13: False}
+    assert minimum_width_from_certificates(decisions) == MINIMUM_WIDTH
+
+    authority_free = {10: True, 11: False, 12: False, 13: False}
+    assert minimum_width_from_certificates(authority_free) == CANONICAL_WIDTH
+
+    missing = {10: certificate, 11: False, 12: False}
+    assert minimum_width_from_certificates(missing) == CANONICAL_WIDTH
+
+
+def test_selector_rejects_certificate_width_mismatch() -> None:
+    """A valid relation cannot authorize a different candidate-width key."""
+    certificate = parse_finite_width_certificate(_fixture_value())
+    assert certificate is not None
+    decisions = {10: False, 11: certificate, 12: False, 13: False}
+    assert minimum_width_from_certificates(decisions) == CANONICAL_WIDTH

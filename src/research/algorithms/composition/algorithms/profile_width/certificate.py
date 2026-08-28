@@ -61,6 +61,7 @@ _CERTIFICATE_KEYS: Final = frozenset(
 
 
 type WidthRelation = frozenset[tuple[str, str]]
+type WidthCertificateDecision = FiniteWidthCertificate | bool
 type JsonValue = (
     bool | int | str | list[JsonValue] | dict[str, JsonValue] | None
 )
@@ -372,3 +373,41 @@ def minimum_certified_width(results: Mapping[int, bool]) -> int:
         return CANONICAL_WIDTH
     certified = {width for width in candidates if results[width]}
     return min(certified, default=CANONICAL_WIDTH)
+
+
+def _certificate_decision(
+    width: int,
+    decision: WidthCertificateDecision,
+) -> bool | None:
+    if decision is False:
+        return False
+    if not isinstance(decision, FiniteWidthCertificate):
+        return None
+    width_matches = (
+        decision.narrow_width == width
+        and decision.wide_width == CANONICAL_WIDTH
+    )
+    accepted = width_matches and finite_width_certificate_valid(decision)
+    return True if accepted else None
+
+
+def minimum_width_from_certificates(
+    decisions: Mapping[int, WidthCertificateDecision],
+) -> int:
+    """Select the minimum width from certificates or explicit rejections.
+
+    Returns:
+        The minimum independently proved width, or fourteen on incomplete,
+        mismatched, or authority-free acceptance data.
+
+    """
+    candidates = set(range(MINIMUM_WIDTH, CANONICAL_WIDTH))
+    if set(decisions) != candidates:
+        return CANONICAL_WIDTH
+    results: dict[int, bool] = {}
+    for width in candidates:
+        result = _certificate_decision(width, decisions[width])
+        if result is None:
+            return CANONICAL_WIDTH
+        results[width] = result
+    return minimum_certified_width(results)

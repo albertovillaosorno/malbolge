@@ -189,6 +189,11 @@ while an independent Rust VM test proves complete 14-to-10 projection before
 and after the halt. The subject ID is descriptive provenance, not verifier
 authority.
 
+Positive research selection additionally requires the certificate
+itself: a bare boolean `true` has no acceptance authority. Explicit `false`
+records rejection, while missing decisions, candidate/certificate width drift,
+or malformed certificates return the canonical width 14.
+
 Given independent certificate results for widths 10 through 13, the exact
 selector is the minimum certified width with 14 inserted as a canonical
 fallback. Missing results fail closed to 14. The selector deliberately assumes
