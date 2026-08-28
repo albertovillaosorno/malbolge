@@ -74,6 +74,11 @@ _MINIMUM_SOURCE_WORDS: Final = 2
 _DECODE_PHASES: Final = 94
 _SOURCE_WHITESPACE: Final = frozenset({9, 10, 11, 12, 13, 32})
 _LOAD_OPCODES: Final = frozenset(b"ji*p</vo")
+_CRAZY_TRIT: Final = (
+    (1, 0, 0),
+    (1, 0, 2),
+    (2, 2, 1),
+)
 _XLAT1: Final = (
     b'+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA"lI'
     b".v%{gJh4G\\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha"
@@ -548,6 +553,54 @@ def _ternary_modulus(width: int) -> int:
     for _ in range(width):
         modulus *= 3
     return modulus
+
+
+def _crazy_word(data: int, accumulator: int, width: int) -> int:
+    result = 0
+    place = 1
+    for _ in range(width):
+        result += _CRAZY_TRIT[data % 3][accumulator % 3] * place
+        data //= 3
+        accumulator //= 3
+        place *= 3
+    return result
+
+
+def _initial_memory_word_from_cells(
+    cells: tuple[int, ...],
+    width: int,
+    address: int,
+) -> int:
+    if address < len(cells):
+        return cells[address]
+    memory = list(cells)
+    while len(memory) <= address:
+        memory.append(_crazy_word(memory[-2], memory[-1], width))
+    return memory[address]
+
+
+def initial_memory_word(
+    source: bytes,
+    width: int,
+    address: int,
+) -> int | None:
+    """Return one research initial-memory word at a checked derived width.
+
+    Returns:
+        The exact initialized word, or None for invalid source/width/address.
+
+    """
+    width_valid = MINIMUM_WIDTH <= width <= CANONICAL_WIDTH
+    address_valid = (
+        0 <= address < _ternary_modulus(width) if width_valid else False
+    )
+    cells = _source_cells(source)
+    source_valid = cells is not None and len(cells) >= _MINIMUM_SOURCE_WORDS
+    if not address_valid or not source_valid or cells is None:
+        return None
+    if _admitted_source_decodes(source, width) is None:
+        return None
+    return _initial_memory_word_from_cells(cells, width, address)
 
 
 def _source_cells(source: bytes) -> tuple[int, ...] | None:

@@ -58,6 +58,7 @@ from algorithms.profile_width.certificate import finite_width_certificate_valid
 from algorithms.profile_width.certificate import (
     initial_halt_projection_certifiable,
 )
+from algorithms.profile_width.certificate import initial_memory_word
 from algorithms.profile_width.certificate import (
     input_output_halt_projection_certifiable,
 )
@@ -78,6 +79,9 @@ from algorithms.profile_width.certificate import (
 )
 
 from verifier.emitted_malbolge_classic import decode as verifier_decode
+from verifier.emitted_malbolge_classic import (
+    initial_memory_value as verifier_initial_memory_value,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -460,6 +464,39 @@ def test_straight_line_checker_composes_safe_noop_and_io_steps() -> None:
         CANONICAL_WIDTH,
         inputs={"eof": ()},
     )
+
+
+def test_initial_memory_word_matches_independent_classic_verifier() -> None:
+    """Research initialization matches classic and width-fourteen projection."""
+    source = b"('&N"
+    words = tuple(source)
+    classic_modulus = 59_049
+    for address in range(100):
+        expected = verifier_initial_memory_value(words, address)
+        observed_10 = initial_memory_word(source, MINIMUM_WIDTH, address)
+        observed_14 = initial_memory_word(source, CANONICAL_WIDTH, address)
+        assert observed_10 == expected
+        assert observed_14 is not None
+        assert observed_14 % classic_modulus == expected
+
+
+def test_initial_memory_exactness_explains_repeated_jump_fixture() -> None:
+    """Exact recurrence cells explain the retained jjjv data-pointer path."""
+    source = b"('&N"
+    for address, expected in ((41, 42), (43, 78)):
+        observed_10 = initial_memory_word(source, MINIMUM_WIDTH, address)
+        observed_14 = initial_memory_word(source, CANONICAL_WIDTH, address)
+        assert observed_10 == expected
+        assert observed_14 == expected
+    narrow_40 = initial_memory_word(source, MINIMUM_WIDTH, 40)
+    wide_40 = initial_memory_word(source, CANONICAL_WIDTH, 40)
+    assert narrow_40 is not None
+    assert wide_40 is not None
+    assert narrow_40 != wide_40
+    assert wide_40 % 59_049 == narrow_40
+    assert initial_memory_word(source, 9, 41) is None
+    assert initial_memory_word(source, 15, 41) is None
+    assert initial_memory_word(source, MINIMUM_WIDTH, -1) is None
 
 
 def test_straight_line_checker_admits_guarded_crazy_after_jump() -> None:
