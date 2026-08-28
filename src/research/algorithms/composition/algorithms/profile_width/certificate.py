@@ -58,6 +58,16 @@ _CERTIFICATE_KEYS: Final = frozenset(
         "relation",
     }
 )
+_GRAPHICAL_MIN: Final = 33
+_GRAPHICAL_MAX: Final = 126
+_MINIMUM_SOURCE_WORDS: Final = 2
+_DECODE_PHASES: Final = 94
+_SOURCE_WHITESPACE: Final = frozenset({9, 10, 11, 12, 13, 32})
+_LOAD_OPCODES: Final = frozenset(b"ji*p</vo")
+_XLAT1: Final = (
+    b'+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA"lI'
+    b".v%{gJh4G\\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha"
+)
 
 
 type WidthRelation = frozenset[tuple[str, str]]
@@ -80,6 +90,7 @@ class FiniteSystem:
 class FiniteWidthCertificate:
     """One parsed research-only finite profile-width certificate."""
 
+    schema_version: int
     input_ids: tuple[str, ...]
     observation_fields: tuple[str, ...]
     narrow_width: int
@@ -247,6 +258,7 @@ def parse_finite_width_certificate(
     ):
         return None
     return FiniteWidthCertificate(
+        schema_version=cast("int", schema_version),
         input_ids=cast("tuple[str, ...]", input_ids),
         observation_fields=cast("tuple[str, ...]", observation_fields),
         narrow_width=cast("int", narrow_width),
@@ -266,6 +278,15 @@ def finite_width_certificate_valid(certificate: FiniteWidthCertificate) -> bool:
         relation.
 
     """
+    metadata_valid = (
+        certificate.schema_version == CERTIFICATE_SCHEMA_VERSION
+        and bool(certificate.subject_id)
+        and bool(certificate.input_ids)
+        and len(set(certificate.input_ids)) == len(certificate.input_ids)
+        and bool(certificate.observation_fields)
+        and len(set(certificate.observation_fields))
+        == len(certificate.observation_fields)
+    )
     widths_valid = (
         MINIMUM_WIDTH <= certificate.narrow_width < certificate.wide_width
         <= CANONICAL_WIDTH
@@ -287,7 +308,8 @@ def finite_width_certificate_valid(certificate: FiniteWidthCertificate) -> bool:
         certificate.relation,
     )
     return (
-        widths_valid
+        metadata_valid
+        and widths_valid
         and inputs_valid
         and observations_valid
         and relation_valid
@@ -357,6 +379,67 @@ def certificate_valid(
     return _initial_coverage(wide, narrow, relation) and all(
         _pair_obligation((wide, narrow), relation, pair) for pair in relation
     )
+
+
+def _ternary_modulus(width: int) -> int:
+    modulus = 1
+    for _ in range(width):
+        modulus *= 3
+    return modulus
+
+
+def _source_cells(source: bytes) -> tuple[int, ...] | None:
+    cells: list[int] = []
+    for byte in source:
+        if byte in _SOURCE_WHITESPACE:
+            continue
+        if not _GRAPHICAL_MIN <= byte <= _GRAPHICAL_MAX:
+            return None
+        cells.append(byte)
+    return tuple(cells)
+
+
+def _decode_source_cell(cell: int, position: int) -> int:
+    phase = (cell - _GRAPHICAL_MIN + position) % _DECODE_PHASES
+    return _XLAT1[phase]
+
+
+def _admitted_source_decodes(
+    source: bytes,
+    width: int,
+) -> tuple[int, ...] | None:
+    cells = _source_cells(source)
+    if cells is None:
+        return None
+    capacity = _ternary_modulus(width)
+    size_valid = _MINIMUM_SOURCE_WORDS <= len(cells) <= capacity
+    decoded = tuple(
+        _decode_source_cell(cell, position)
+        for position, cell in enumerate(cells)
+    ) if size_valid else ()
+    admitted = size_valid and all(opcode in _LOAD_OPCODES for opcode in decoded)
+    return decoded if admitted else None
+
+
+def initial_halt_projection_certifiable(
+    source: bytes,
+    narrow_width: int,
+    wide_width: int,
+) -> bool:
+    """Check the sufficient initial-halt projection theorem premises.
+
+    Returns:
+        True only when the source is admitted at the narrow width and its first
+        instruction halts before any width-sensitive transition effect.
+
+    """
+    widths_valid = (
+        MINIMUM_WIDTH <= narrow_width < wide_width <= CANONICAL_WIDTH
+    )
+    if not widths_valid:
+        return False
+    decoded = _admitted_source_decodes(source, narrow_width)
+    return decoded is not None and decoded[0] == ord("v")
 
 
 def minimum_certified_width(results: Mapping[int, bool]) -> int:

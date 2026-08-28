@@ -194,6 +194,13 @@ itself: a bare boolean `true` has no acceptance authority. Explicit `false`
 records rejection, while missing decisions, candidate/certificate width drift,
 or malformed certificates return the canonical width 14.
 
+A theorem-specific checker independently certifies initial-halt sources from
+checked widths, source capacity/admission, position-dependent decode, and a
+first `v`; halt then precedes I/O, encryption, pointer advancement, or other
+transition effects. Its decisions are exhaustively cross-checked against the
+independent verifier decode model over all graphical cells and all 94 phases.
+`QP` remains the retained positive fixture.
+
 Given independent certificate results for widths 10 through 13, the exact
 selector is the minimum certified width with 14 inserted as a canonical
 fallback. Missing results fail closed to 14. The selector deliberately assumes

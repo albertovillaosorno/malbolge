@@ -6,14 +6,39 @@
   "input_ids": ["byte-a5", "eof"],
   "observation_fields": ["input_consumed", "output_len", "termination"],
   "wide": {
-    "initial": {"byte-a5": "w0", "eof": "w0"},
-    "observation": {"w0": [0, 0, 0], "w1": [0, 0, 1]},
-    "successor": {"w0": "w1", "w1": null}
+    "initial": {"byte-a5": "w-byte-0", "eof": "w-eof-0"},
+    "observation": {
+      "w-byte-0": [0, 0, 0],
+      "w-byte-1": [0, 0, 1],
+      "w-eof-0": [0, 0, 0],
+      "w-eof-1": [0, 0, 1]
+    },
+    "successor": {
+      "w-byte-0": "w-byte-1",
+      "w-byte-1": null,
+      "w-eof-0": "w-eof-1",
+      "w-eof-1": null
+    }
   },
   "narrow": {
-    "initial": {"byte-a5": "n0", "eof": "n0"},
-    "observation": {"n0": [0, 0, 0], "n1": [0, 0, 1]},
-    "successor": {"n0": "n1", "n1": null}
+    "initial": {"byte-a5": "n-byte-0", "eof": "n-eof-0"},
+    "observation": {
+      "n-byte-0": [0, 0, 0],
+      "n-byte-1": [0, 0, 1],
+      "n-eof-0": [0, 0, 0],
+      "n-eof-1": [0, 0, 1]
+    },
+    "successor": {
+      "n-byte-0": "n-byte-1",
+      "n-byte-1": null,
+      "n-eof-0": "n-eof-1",
+      "n-eof-1": null
+    }
   },
-  "relation": [["w0", "n0"], ["w1", "n1"]]
+  "relation": [
+    ["w-byte-0", "n-byte-0"],
+    ["w-byte-1", "n-byte-1"],
+    ["w-eof-0", "n-eof-0"],
+    ["w-eof-1", "n-eof-1"]
+  ]
 }
