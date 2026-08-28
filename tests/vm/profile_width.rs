@@ -40,10 +40,12 @@ use malbolge::{
     Termination, current_profile, decode_profile_instruction,
     historical_profile, verify_initial_halt_profile_width,
     verify_input_output_halt_profile_width,
-    verify_input_then_halt_profile_width, verify_jump_data_halt_profile_width,
+    verify_input_then_halt_profile_width, verify_jump_crazy_halt_profile_width,
+    verify_jump_data_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
+    verify_minimum_jump_crazy_halt_profile_width,
     verify_minimum_jump_data_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
     verify_minimum_repeated_jump_data_profile_width,
@@ -396,6 +398,53 @@ fn input_then_halt_verifier_rejects_wrong_reached_sequence() -> TestResult {
             decoded: b'<',
         }),
         "input-halt second instruction rejection",
+    )
+}
+
+#[test]
+fn jump_crazy_halt_verifier_executes_guarded_projection_at_minimum_width()
+-> TestResult {
+    let verified = normalize_result(
+        verify_minimum_jump_crazy_halt_profile_width(current_profile(), b"(=O"),
+    )?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::JumpCrazyHaltProjection,
+        "jump-crazy proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "jump-crazy minimum width",
+    )?;
+    let mut machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    check_equal(
+        &normalize_result(machine.run(3))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 3,
+        },
+        "jump-crazy halt outcome",
+    )
+}
+
+#[test]
+fn jump_crazy_halt_verifier_rejects_unguarded_crazy() -> TestResult {
+    let observed = verify_jump_crazy_halt_profile_width(
+        current_profile(),
+        b">P",
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &observed,
+        &Err(ProfileWidthVerificationError::JumpCrazyHaltInstruction {
+            position: 0,
+            decoded: b'p',
+        }),
+        "unguarded crazy rejection",
     )
 }
 

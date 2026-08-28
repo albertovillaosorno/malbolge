@@ -305,6 +305,12 @@ separate costs; resource evidence must measure those costs directly.
   numerically equal. By contrast, `('O` (`j j v`) fails closed at D=41 with
   `RepeatedJumpMemoryMismatch`; projected equality alone cannot authorize the
   second jump.
+- Guarded crazy now has a dedicated product proof for exact jump, `p`, then
+  halt. `(=O` selects N=10 after the initial jump establishes exact D=41, the
+  write is proved outside current/future source code, and both the initial data
+  word and `crazy(data, 0)` are checked by N-modulus projection against
+  canonical
+  14. The unguarded `>P` shape fails before any derived execution is authorized.
 - Indexed state-graph now preserves the opaque geometry token through lineage,
   digest, trace application, and checkpoint materialization. A QP/N=10 runtime
   trace roundtrips through `IndexedMachineState` to the exact derived checkpoint

@@ -80,6 +80,8 @@ pub enum ProfileWidthProofKind {
     InputOutputHaltProjection,
     /// One input transition is followed immediately by halt.
     InputThenHaltProjection,
+    /// One exact jump enables one guarded crazy transition before halt.
+    JumpCrazyHaltProjection,
     /// One exact-address data jump is followed immediately by halt.
     JumpDataHaltProjection,
     /// One or more decoded no-ops precede the first reached halt.
@@ -234,6 +236,15 @@ pub enum ProfileWidthVerificationError {
         /// Exact decoded instruction byte.
         decoded: u8,
     },
+    /// A reached jump-crazy-halt position decoded to another instruction.
+    JumpCrazyHaltInstruction {
+        /// Exact loaded source position of the rejected instruction.
+        position: u32,
+        /// Exact decoded instruction byte.
+        decoded: u8,
+    },
+    /// Guarded crazy projection or exact-address premises did not hold.
+    JumpCrazyProjection,
     /// A reached jump-data-halt position decoded to another instruction.
     JumpDataHaltInstruction {
         /// Exact loaded source position of the rejected instruction.
@@ -285,6 +296,20 @@ pub enum ProfileWidthVerificationError {
     },
 }
 
+impl ProfileWidthVerificationError {
+    fn fmt_instruction(
+        formatter: &mut Formatter<'_>,
+        family: &str,
+        decoded: u8,
+        position: u32,
+    ) -> FormatResult {
+        write!(
+            formatter,
+            "derived {family} instruction {decoded} at {position} is invalid"
+        )
+    }
+}
+
 impl Display for ProfileWidthVerificationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
@@ -296,30 +321,33 @@ impl Display for ProfileWidthVerificationError {
                 "derived profile initial instruction {decoded} is not halt"
             ),
             Self::InputOutputHaltInstruction { position, decoded } => {
-                write!(
+                Self::fmt_instruction(
                     f,
-                    "derived input-output-halt instruction {decoded} at "
-                )?;
-                write!(f, "{position} is invalid")
+                    "input-output-halt",
+                    *decoded,
+                    *position,
+                )
             },
             Self::InputThenHaltInstruction { position, decoded } => {
-                write!(f, "derived input-halt instruction {decoded} at ")?;
-                write!(f, "{position} is invalid")
+                Self::fmt_instruction(f, "input-halt", *decoded, *position)
+            },
+            Self::JumpCrazyHaltInstruction { position, decoded } => {
+                Self::fmt_instruction(f, "jump-crazy", *decoded, *position)
+            },
+            Self::JumpCrazyProjection => {
+                f.write_str("derived jump-crazy projection premise failed")
             },
             Self::JumpDataHaltInstruction { position, decoded } => {
-                write!(f, "derived jump-data-halt instruction {decoded} at ")?;
-                write!(f, "{position} is invalid")
+                Self::fmt_instruction(f, "jump-data-halt", *decoded, *position)
             },
             Self::NoopPrefixInstruction { position, decoded } => {
-                write!(f, "derived no-op prefix instruction {decoded} at ")?;
-                write!(f, "{position} is invalid")
+                Self::fmt_instruction(f, "no-op prefix", *decoded, *position)
             },
             Self::NoopPrefixMissingHalt => {
                 f.write_str("derived no-op prefix does not reach halt")
             },
             Self::RepeatedJumpInstruction { position, decoded } => {
-                write!(f, "derived repeated-jump instruction {decoded} at ")?;
-                write!(f, "{position} is invalid")
+                Self::fmt_instruction(f, "repeated-jump", *decoded, *position)
             },
             Self::RepeatedJumpMemoryMismatch { address } => {
                 write!(f, "derived repeated-jump memory differs at {address}")
@@ -329,8 +357,7 @@ impl Display for ProfileWidthVerificationError {
             },
             Self::Source(error) => Display::fmt(error, f),
             Self::StraightLineInstruction { position, decoded } => {
-                write!(f, "derived straight-line instruction {decoded} at ")?;
-                write!(f, "{position} is unsupported")
+                Self::fmt_instruction(f, "straight-line", *decoded, *position)
             },
             Self::StraightLineMissingHalt => {
                 f.write_str("derived straight-line prefix does not reach halt")
@@ -449,6 +476,19 @@ pub fn verify_minimum_straight_line_io_profile_width(
     source: &[u8],
 ) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
     verify_minimum_width(profile, source, verify_straight_line_io_profile_width)
+}
+
+/// Selects the minimum independently verified jump-crazy-halt width.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when no reviewed candidate proves
+/// the exact-address crazy projection before halt.
+pub fn verify_minimum_jump_crazy_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    verify_minimum_width(profile, source, verify_jump_crazy_halt_profile_width)
 }
 
 /// Selects the minimum independently verified jump-data-halt width.
@@ -790,6 +830,83 @@ pub fn verify_straight_line_io_profile_width(
         }
     }
     Err(ProfileWidthVerificationError::StraightLineMissingHalt)
+}
+
+/// Independently verifies exact jump, guarded crazy, then halt.
+///
+/// The jump establishes exact D. Crazy must target data outside current/future
+/// source code, and candidate/canonical crazy results are checked by
+/// projection.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when shape, exact memory, guarded
+/// write placement, or crazy projection does not hold.
+pub fn verify_jump_crazy_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    word_trits: u8,
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let memory_words = derived_memory_words(profile, word_trits)?;
+    let narrow = admit_profile_source(source, memory_words)?;
+    for (position, expected) in b"jpv".iter().copied().enumerate() {
+        let pointer = u32::try_from(position).map_err(|_error| {
+            ProfileWidthVerificationError::GeometryInvariant
+        })?;
+        let cell = narrow
+            .get(position)
+            .copied()
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        let decoded = decode_profile_instruction(cell, pointer)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        if decoded != expected {
+            return Err(
+                ProfileWidthVerificationError::JumpCrazyHaltInstruction {
+                    position: pointer,
+                    decoded,
+                },
+            );
+        }
+    }
+    let first = narrow
+        .first()
+        .copied()
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    let data_address = first
+        .checked_add(1)
+        .filter(|address| *address < memory_words)
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    if data_address == 1
+        || usize::try_from(data_address)
+            .is_ok_and(|address| address > 1 && address < narrow.len())
+    {
+        return Err(ProfileWidthVerificationError::JumpCrazyProjection);
+    }
+    let narrow_data =
+        verified_initial_memory_word(&narrow, word_trits, data_address)?;
+    let wide_data = verified_initial_memory_word(
+        &narrow,
+        profile.word_trits(),
+        data_address,
+    )?;
+    if wide_data.rem_euclid(memory_words) != narrow_data {
+        return Err(ProfileWidthVerificationError::JumpCrazyProjection);
+    }
+    let narrow_crazy = profile_crazy(narrow_data, 0, word_trits);
+    let wide_crazy = profile_crazy(wide_data, 0, profile.word_trits());
+    if wide_crazy.rem_euclid(memory_words) != narrow_crazy {
+        return Err(ProfileWidthVerificationError::JumpCrazyProjection);
+    }
+    Ok(VerifiedProfileExecutionGeometry {
+        geometry: ProfileExecutionGeometry {
+            input_policy: ProfileExecutionInputPolicy::Any,
+            memory_words,
+            profile,
+            word_trits,
+        },
+        proof_kind: ProfileWidthProofKind::JumpCrazyHaltProjection,
+        source: Box::from(source),
+    })
 }
 
 /// Independently verifies one exact initial data jump followed by halt.
