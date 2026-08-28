@@ -34,6 +34,9 @@
 
 \documentclass{article}
 \usepackage{amsmath,amssymb}
+\usepackage{graphicx,microtype,xurl}
+\newcommand{\fitmath}[1]{\resizebox{\linewidth}{!}{$\displaystyle #1$}}
+\setlength{\emergencystretch}{6em}
 \input{../malbolge-notation.tex}
 \title{Malbolge-Specific Optimization Mathematics}
 \author{Malbolge Project}
@@ -131,7 +134,7 @@ admitted semantic width. The third lookup receives zero high input trits; only
 its constant high output trits are discarded by the final semantic projection.
 This is an exact factorization, not a wall-clock speedup claim.
 
-\section{Checked profile-width projection and finite certificates}
+\section{Profile-width projection and finite certificates}
 
 For checked widths $10\leq N<M\leq14$, write $W_N=3^N$, $W_M=3^M$,
 $\pi_N(x)=x\bmod W_N$, and decompose $x=qW_N+r$ with
@@ -208,11 +211,13 @@ $c_M=qW_N+c_N$ with $0\leq c_N<W_N$. The decode table $X_1$ is injective, so
 its outputs agree exactly when the two phase indices agree. Since
 $\gcd(W_N,94)=1$ and $0\leq q<3^{M-N}\leq81<94$,
 \begin{equation}
-  \DecodeOp(m,c_M)=\DecodeOp(m,c_N)
-  \Longleftrightarrow q=0
-  \Longleftrightarrow c_M<W_N,
-  \qquad
-  \left|\{c_M<W_M:\text{decode-compatible}\}\right|=W_N.
+  \fitmath{%
+    \DecodeOp(m,c_M)=\DecodeOp(m,c_N)
+    \Longleftrightarrow q=0
+    \Longleftrightarrow c_M<W_N,
+    \qquad
+    \left|\{c_M<W_M:\text{decode-compatible}\}\right|=W_N.
+  }
   \label{eq:optimization-profile-width-decode-compatible-count}
 \end{equation}
 Thus a continuing graphical lockstep transition cannot justify decode by
@@ -324,12 +329,14 @@ ordered local inverse set
 Let $q_i(\delta)$ be the zero-based index of $\delta$ in the increasing order
 of $D_i$, and let $R_i=\prod_{h=0}^{i-1}r_h$ with $R_0=1$. Then
 \begin{equation}
-  \operatorname{rank}_{a,t}(d)
-    =\sum_{i=0}^{N-1}q_i(d_i)R_i,
-  \qquad
-  \{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t\}
-    \overset{\sim}{\longrightarrow}
-  \left\{0,\ldots,\prod_{i=0}^{N-1}r_i-1\right\}.
+  \fitmath{%
+    \operatorname{rank}_{a,t}(d)
+      =\sum_{i=0}^{N-1}q_i(d_i)R_i,
+    \qquad
+    \{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t\}
+      \overset{\sim}{\longrightarrow}
+    \left\{0,\ldots,\prod_{i=0}^{N-1}r_i-1\right\}.
+  }
   \label{eq:optimization-crazy-profile-preimage-ranking}
 \end{equation}
 The inverse decodes the rank in the mixed radices $r_0,\ldots,r_{N-1}$ and
@@ -347,12 +354,14 @@ $U_{a,t}(b)$ by selecting bit $b_h$ from the ordered doubleton $D_{j_h}$ while
 holding every singleton position fixed. For the binary-reflected Gray code
 $G_k(r)=\operatorname{bits}_k(r\mathbin{\oplus}\lfloor r/2\rfloor)$,
 \begin{equation}
-  U_{a,t}:\{0,1\}^k
-    \overset{\sim}{\longrightarrow}
-    \{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t\},
-  \qquad
-  H_3\!\left(U_{a,t}(G_k(r)),U_{a,t}(G_k(r+1))\right)=1,
-  \quad 0\leq r<2^k-1.
+  \fitmath{%
+    U_{a,t}:\{0,1\}^k
+      \overset{\sim}{\longrightarrow}
+      \{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t\},
+    \qquad
+    H_3\!\left(U_{a,t}(G_k(r)),U_{a,t}(G_k(r+1))\right)=1,
+    \quad 0\leq r<2^k-1.
+  }
   \label{eq:optimization-crazy-profile-preimage-gray-enumeration}
 \end{equation}
 Thus a complete-domain preimage traversal can visit all $2^k$ compatible data
@@ -390,13 +399,15 @@ and an edge $\{x,y\}$ exactly when $H_3(x,y)=1$. Under $U_{a,t}$, two vertices
 are adjacent exactly when their binary coordinates differ in one bit, so
 $G_{a,t}\cong Q_k$. Consequently every compatible word has degree $k$ and
 \begin{equation}
-  \deg_{G_{a,t}}(d)=k,\qquad
-  |E(G_{a,t})|=
-  \begin{cases}
-    0, & k=0,\\
-    k2^{k-1}, & 1\leq k\leq N,
-  \end{cases}
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \deg_{G_{a,t}}(d)=k,\qquad
+    |E(G_{a,t})|=
+    \begin{cases}
+      0, & k=0,\\
+      k2^{k-1}, & 1\leq k\leq N,
+    \end{cases}
+    \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-profile-preimage-cube-graph}
 \end{equation}
 Thus a fixed-pair local search can generate every valid one-trit neighbor by
@@ -411,11 +422,13 @@ let $c_k(j)$ be the word whose first $j$ coordinates are one and whose remaining
 coordinates are zero. Coordinate permutations preserve weight, while any two
 words of equal weight can be permuted to the same $c_k(j)$. Therefore
 \begin{equation}
-  \{0,1\}^k/S_k \overset{\sim}{\longrightarrow} \{0,\ldots,k\},
-  \qquad [z]\longmapsto |z|_1,
-  \qquad |[z]|=\binom{k}{|z|_1},
-  \qquad c_k(j)=1^j0^{k-j},
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \{0,1\}^k/S_k \overset{\sim}{\longrightarrow} \{0,\ldots,k\},
+    \qquad [z]\longmapsto |z|_1,
+    \qquad |[z]|=\binom{k}{|z|_1},
+    \qquad c_k(j)=1^j0^{k-j},
+    \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-profile-preimage-cube-permutation-quotient}
 \end{equation}
 Transporting this action through $U_{a,t}$ gives exactly $k+1$ abstract
@@ -439,12 +452,14 @@ $\binom{k+3}{3}$ nonnegative four-part count vectors summing to $k$. For fixed
 counts, choosing which coordinates occupy the four blocks gives exactly
 $k!/(n_{00}!n_{01}!n_{10}!n_{11}!)$ ordered pairs in that orbit. Therefore
 \begin{equation}
-  \left(\{0,1\}^k\times\{0,1\}^k\right)/S_k
-    \overset{\sim}{\longrightarrow}\mathcal{J}_k,
-  \qquad [(x,y)]\longmapsto(n_{00},n_{01},n_{10},n_{11}),
-  \qquad |\mathcal{J}_k|=\binom{k+3}{3},
-  \qquad |[(x,y)]|=\frac{k!}{n_{00}!n_{01}!n_{10}!n_{11}!},
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \left(\{0,1\}^k\times\{0,1\}^k\right)/S_k
+      \overset{\sim}{\longrightarrow}\mathcal{J}_k,
+    \qquad [(x,y)]\longmapsto(n_{00},n_{01},n_{10},n_{11}),
+    \qquad |\mathcal{J}_k|=\binom{k+3}{3},
+    \qquad |[(x,y)]|=\frac{k!}{n_{00}!n_{01}!n_{10}!n_{11}!},
+    \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-preimage-cube-ordered-pair-quotient}
 \end{equation}
 Writing $w_x=|x|_1$, $w_y=|y|_1$, and
@@ -474,13 +489,15 @@ The eight counts are complete orbit invariants: grouping coordinates in
 descending binary block order $111,110,\ldots,000$ gives one canonical triple
 per count vector. Therefore
 \begin{equation}
-  \left(\{0,1\}^k\right)^3/S_k
-    \overset{\sim}{\longrightarrow}\mathcal{J}^{(3)}_k,
-  \qquad
-  |\mathcal{J}^{(3)}_k|=\binom{k+7}{7},
-  \qquad
-  |[(x,y,z)]|=\frac{k!}{\prod_s n_s!},
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \left(\{0,1\}^k\right)^3/S_k
+      \overset{\sim}{\longrightarrow}\mathcal{J}^{(3)}_k,
+    \qquad
+    |\mathcal{J}^{(3)}_k|=\binom{k+7}{7},
+    \qquad
+    |[(x,y,z)]|=\frac{k!}{\prod_s n_s!},
+    \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-preimage-cube-ordered-triple-quotient}
 \end{equation}
 At $k=14$, this gives 116280 classes instead of $8^{14}=4398046511104$ raw
@@ -505,12 +522,14 @@ two three-cycles. Define
 These are respectively the numbers of coordinate-quotient classes fixed by one
 endpoint transposition and one endpoint three-cycle. Burnside's lemma gives
 \begin{equation}
-  \left|\mathcal{J}^{(3)}_k/S_3\right|
-    =\frac{1}{6}\left(\binom{k+7}{7}+3\tau_k+2\chi_k\right),
-  \qquad
-  \left|[(x,y,z)]_{S_k\times S_3}\right|
-    =\frac{k!}{\prod_s n_s!}\,\left|S_3\!\cdot(n_s)_s\right|,
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \left|\mathcal{J}^{(3)}_k/S_3\right|
+      =\frac{1}{6}\left(\binom{k+7}{7}+3\tau_k+2\chi_k\right),
+    \qquad
+    \left|[(x,y,z)]_{S_k\times S_3}\right|
+      =\frac{k!}{\prod_s n_s!}\,\left|S_3\!\cdot(n_s)_s\right|,
+    \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-preimage-cube-unordered-triple-quotient}
 \end{equation}
 Lexicographically minimizing the joint-count vector over its six endpoint
@@ -533,13 +552,15 @@ The sixteen counts are complete orbit invariants, with descending binary block
 order $1111,1110,\ldots,0000$ giving one canonical quadruple per count vector.
 Therefore
 \begin{equation}
-  \left(\{0,1\}^k\right)^4/S_k
-    \overset{\sim}{\longrightarrow}\mathcal{J}^{(4)}_k,
-  \qquad
-  |\mathcal{J}^{(4)}_k|=\binom{k+15}{15},
-  \qquad
-  |[(w,x,y,z)]|=\frac{k!}{\prod_s n_s!},
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \left(\{0,1\}^k\right)^4/S_k
+      \overset{\sim}{\longrightarrow}\mathcal{J}^{(4)}_k,
+    \qquad
+    |\mathcal{J}^{(4)}_k|=\binom{k+15}{15},
+    \qquad
+    |[(w,x,y,z)]|=\frac{k!}{\prod_s n_s!},
+    \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-preimage-cube-ordered-quadruple-quotient}
 \end{equation}
 At $k=14$, this gives 77558760 classes instead of
@@ -565,12 +586,14 @@ The induced label cycles are respectively $1^{16}$, $1^8 2^4$, $1^4 2^6$,
 $1^4 3^4$, and $1^2 2 4^3$, while the five endpoint conjugacy classes have
 sizes $1,6,3,8,6$. Burnside's lemma therefore gives
 \begin{equation}
-  \left|\mathcal{J}^{(4)}_k/S_4\right|
-    =\frac{A_k+6B_k+3D_k+8C_k+6Q_k}{24},
-  \qquad
-  \left|[(w,x,y,z)]_{S_k\times S_4}\right|
-    =\frac{k!}{\prod_s n_s!}\,\left|S_4\!\cdot(n_s)_s\right|,
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \left|\mathcal{J}^{(4)}_k/S_4\right|
+      =\frac{A_k+6B_k+3D_k+8C_k+6Q_k}{24},
+    \qquad
+    \left|[(w,x,y,z)]_{S_k\times S_4}\right|
+      =\frac{k!}{\prod_s n_s!}\,\left|S_4\!\cdot(n_s)_s\right|,
+    \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-preimage-cube-unordered-quadruple-quotient}
 \end{equation}
 Lexicographically minimizing the joint-count vector over its twenty-four
@@ -593,13 +616,15 @@ Define
 The thirty-two counts are complete orbit invariants, and descending binary
 blocks give one canonical quintuple per count vector. Thus
 \begin{equation}
-  \left(\{0,1\}^k\right)^5/S_k
-    \overset{\sim}{\longrightarrow}\mathcal{J}^{(5)}_k,
-  \qquad
-  |\mathcal{J}^{(5)}_k|=\binom{k+31}{31},
-  \qquad
-  |[(v,w,x,y,z)]|=\frac{k!}{\prod_s n_s!},
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \left(\{0,1\}^k\right)^5/S_k
+      \overset{\sim}{\longrightarrow}\mathcal{J}^{(5)}_k,
+    \qquad
+    |\mathcal{J}^{(5)}_k|=\binom{k+31}{31},
+    \qquad
+    |[(v,w,x,y,z)]|=\frac{k!}{\prod_s n_s!},
+    \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-preimage-cube-ordered-quintuple-quotient}
 \end{equation}
 At $k=14$, this gives 166871334960 classes instead of
@@ -628,9 +653,11 @@ $1^8 2^{12}$, $1^4 2^2 4^6$, $1^4 2^2 3^4 6^2$, and $1^2 5^6$, while the
 seven endpoint conjugacy classes have sizes $1,10,20,15,30,20,24$.
 Burnside's lemma therefore gives
 \begin{equation}
-  \left|\mathcal{J}^{(5)}_k/S_5\right|
-    =\frac{A_k+10B_k+20C_k+15D_k+30E_k+20F_k+24G_k}{120},
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \left|\mathcal{J}^{(5)}_k/S_5\right|
+      =\frac{A_k+10B_k+20C_k+15D_k+30E_k+20F_k+24G_k}{120},
+    \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-preimage-cube-unordered-quintuple-quotient}
 \end{equation}
 Lexicographically minimizing the joint-count vector over all endpoint
@@ -646,13 +673,15 @@ words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,
 so
 \begin{equation}
-  \left(\{0,1\}^k\right)^6/S_k
-    \overset{\sim}{\longrightarrow}\mathcal{J}^{(6)}_k,
-  \qquad
-  |\mathcal{J}^{(6)}_k|=\binom{k+63}{63},
-  \qquad
-  |[(u,v,w,x,y,z)]|=\frac{k!}{\prod_s n_s!},
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \left(\{0,1\}^k\right)^6/S_k
+      \overset{\sim}{\longrightarrow}\mathcal{J}^{(6)}_k,
+    \qquad
+    |\mathcal{J}^{(6)}_k|=\binom{k+63}{63},
+    \qquad
+    |[(u,v,w,x,y,z)]|=\frac{k!}{\prod_s n_s!},
+    \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-preimage-cube-ordered-sextuple-quotient}
 \end{equation}
 At $k=14$, this gives 839983521106400 coordinate classes instead of
@@ -714,16 +743,18 @@ $n_{00}+n_{11}=k-2q$ and therefore give $k-2q+1$ fixed classes. Thus
 Every nonfixed ordered-pair class pairs with its distinct endpoint-swapped
 class. Hence the further quotient has
 \begin{equation}
-  U_k=\frac{1}{2}\left(
-    \binom{k+3}{3}+\left\lfloor\frac{(k+2)^2}{4}\right\rfloor
-  \right),
-  \qquad M_k(x,y)=
-  \frac{k!}{n_{00}!n_{01}!n_{10}!n_{11}!}
-  \begin{cases}
-    1,&n_{01}=n_{10},\\
-    2,&n_{01}\neq n_{10},
-  \end{cases}
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    U_k=\frac{1}{2}\left(
+      \binom{k+3}{3}+\left\lfloor\frac{(k+2)^2}{4}\right\rfloor
+    \right),
+    \qquad M_k(x,y)=
+    \frac{k!}{n_{00}!n_{01}!n_{10}!n_{11}!}
+    \begin{cases}
+      1,&n_{01}=n_{10},\\
+      2,&n_{01}\neq n_{10},
+    \end{cases}
+    \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-preimage-cube-endpoint-symmetric-pair-quotient}
 \end{equation}
 Here $M_k(x,y)$ is the enlarged orbit mass on the original ordered-pair domain.
@@ -741,10 +772,12 @@ $S_j(d)=\{x:\CrazyN{N}{x}{a}=t,\ H_3(d,x)=j\}$ and
 $B_r(d)=\bigcup_{j=0}^{r}S_j(d)$. Choosing the $j$ differing binary coordinates
 gives
 \begin{equation}
-  |S_j(d)|=\binom{k}{j},\qquad
-  |B_r(d)|=\sum_{j=0}^{r}\binom{k}{j},\qquad
-  \operatorname{diam}(G_{a,t})=k,
-  \quad 0\leq j,r\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    |S_j(d)|=\binom{k}{j},\qquad
+    |B_r(d)|=\sum_{j=0}^{r}\binom{k}{j},\qquad
+    \operatorname{diam}(G_{a,t})=k,
+    \quad 0\leq j,r\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-profile-preimage-cube-distance}
 \end{equation}
 Thus a fixed-radius complete-domain neighborhood contains exactly the stated
@@ -758,10 +791,12 @@ $G_{a,t}$ from $x$ to $y$ changes at most one differing coordinate per edge, so
 it has at least $j$ edges. Flipping those $j$ coordinates once each attains the
 bound, and every ordering of the $j$ flips is distinct. Therefore
 \begin{equation}
-  \operatorname{dist}_{G_{a,t}}(x,y)=H_3(x,y)=j,
-  \qquad
-  \#\operatorname{Geo}_{G_{a,t}}(x,y)=j!,
-  \quad 0\leq j\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \operatorname{dist}_{G_{a,t}}(x,y)=H_3(x,y)=j,
+    \qquad
+    \#\operatorname{Geo}_{G_{a,t}}(x,y)=j!,
+    \quad 0\leq j\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-profile-preimage-cube-geodesic}
 \end{equation}
 For $j=0$, the unique zero-edge path gives $0!=1$. This is an exact lower bound
@@ -830,10 +865,12 @@ two, so $k+1$ is itself a power of two. For $1\leq k\leq14$, this leaves only
 $k\in\{1,3,7\}$; the Hamming construction above supplies a partition in each
 remaining dimension. Therefore
 \begin{equation}
-  Q_k\text{ admits a radius-one ball partition}
-    \quad\Longleftrightarrow\quad
-  k\in\{1,3,7\},
-  \qquad 1\leq k\leq N\leq14.
+  \fitmath{%
+    Q_k\text{ admits a radius-one ball partition}
+      \quad\Longleftrightarrow\quad
+    k\in\{1,3,7\},
+    \qquad 1\leq k\leq N\leq14.
+  }
   \label{eq:optimization-crazy-preimage-cube-perfect-radius-one-dimensions}
 \end{equation}
 This characterizes disjoint perfect covers only. It does not claim that the
@@ -852,9 +889,11 @@ partition with centers $0^k$ and $1^k$: each word has either weight at most $m$
 or complementary weight at most $m$, but not both. The existing radius-one
 Hamming construction supplies the remaining survivor $(7,1)$. Therefore
 \begin{equation}
-  Q_k\text{ admits a nontrivial perfect radius-$r$ ball partition}
-    \quad\Longleftrightarrow\quad (k,r)\in\mathcal{P}_{14},
-  \qquad 1\leq r<k\leq14.
+  \fitmath{%
+    Q_k\text{ admits a nontrivial perfect radius-$r$ ball partition}
+      \quad\Longleftrightarrow\quad (k,r)\in\mathcal{P}_{14},
+    \qquad 1\leq r<k\leq14.
+  }
   \label{eq:optimization-crazy-preimage-cube-perfect-radius-classification}
 \end{equation}
 The antipodal cases use exactly two centers and the $(7,1)$ case uses sixteen,
@@ -928,11 +967,13 @@ size. Let $m=n_2(a)$ be the number of accumulator trits equal to $2$. For every
 $k\in\{0,\ldots,N-m\}$, the number of reachable targets with complete
 $N$-trit data preimage cardinality exactly $2^k$ is
 \begin{equation}
-  \left|\left\{t\in\WordDomain{N}:
-    \left|\left\{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t\right\}\right|=2^k
-  \right\}\right|
-    =\binom{N-m}{k}3^m,
-  \qquad 0\leq m\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \left|\left\{t\in\WordDomain{N}:
+      \left|\left\{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t\right\}\right|=2^k
+    \right\}\right|
+      =\binom{N-m}{k}3^m,
+    \qquad 0\leq m\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-profile-fixed-accumulator-preimage-distribution}
 \end{equation}
 Each accumulator trit unequal to $2$ contributes one singleton-target choice
@@ -1014,12 +1055,14 @@ profile widths 10 and 14. For $k\in\{0,\ldots,N\}$, the number of
 accumulator/target pairs whose complete
 $N$-trit data-word preimage has cardinality $2^k$ is
 \begin{equation}
-  \left|\left\{(a,t)\in\WordDomain{N}^{2}:
-    \left|\left\{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t
-    \right\}\right|=2^k
-  \right\}\right|
-    =\binom{N}{k}2^k5^{N-k},
-  \qquad 1\leq N\leq14.
+  \fitmath{%
+    \left|\left\{(a,t)\in\WordDomain{N}^{2}:
+      \left|\left\{d\in\WordDomain{N}:\CrazyN{N}{d}{a}=t
+      \right\}\right|=2^k
+    \right\}\right|
+      =\binom{N}{k}2^k5^{N-k},
+    \qquad 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-profile-preimage-pair-distribution}
 \end{equation}
 Consequently the reachable pair count is $7^N$, weighting each class by its
@@ -1056,17 +1099,19 @@ endpoint cycle types, let $I_N$, $R_N$, and $C_N$ count globally fixed
 coordinate-quotient classes for the identity, one transposition, and one
 three-cycle respectively. Then
 \begin{equation}
-  \begin{aligned}
-    G_N&=\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}
-      \frac{\binom{k+7}{7}+3\tau_k+2\chi_k}{6}
-      =\frac{I_N+3R_N+2C_N}{6},\\
-    \sum_{N\geq0}I_N y^N&=\frac{(1-5y)^7}{(1-7y)^8},\\
-    \sum_{N\geq0}R_N y^N&=
-      \frac{(1-5y)^7}{(1-7y)^6(1-3y)^2},\\
-    \sum_{N\geq0}C_N y^N&=
-      \frac{(1-5y)^7}{(1-7y)^4(1-8y+19y^2)^2},
-  \end{aligned}
-  \qquad 1\leq N\leq14.
+  \fitmath{%
+    \begin{aligned}
+      G_N&=\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}
+        \frac{\binom{k+7}{7}+3\tau_k+2\chi_k}{6}
+        =\frac{I_N+3R_N+2C_N}{6},\\
+      \sum_{N\geq0}I_N y^N&=\frac{(1-5y)^7}{(1-7y)^8},\\
+      \sum_{N\geq0}R_N y^N&=
+        \frac{(1-5y)^7}{(1-7y)^6(1-3y)^2},\\
+      \sum_{N\geq0}C_N y^N&=
+        \frac{(1-5y)^7}{(1-7y)^4(1-8y+19y^2)^2},
+    \end{aligned}
+    \qquad 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-global-unordered-preimage-triple-quotient}
 \end{equation}
 The generating functions follow from the binomial transform
@@ -1084,11 +1129,13 @@ quotient gives another exact global representative count. Let $Q_N$ be the
 number of canonical ordered preimage quadruples obtained by quotienting each
 reachable fixed accumulator/target preimage cube independently. Then
 \begin{equation}
-  Q_N
-    =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}\binom{k+15}{15}
-    =\sum_{j=0}^{\min(15,N)}
-      \binom{15}{j}\binom{N}{j}2^j7^{N-j},
-  \qquad 1\leq N\leq14.
+  \fitmath{%
+    Q_N
+      =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}\binom{k+15}{15}
+      =\sum_{j=0}^{\min(15,N)}
+        \binom{15}{j}\binom{N}{j}2^j7^{N-j},
+    \qquad 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-global-ordered-preimage-quadruple-quotient}
 \end{equation}
 The second equality follows from
@@ -1121,12 +1168,14 @@ define
 Writing $\widehat A_N=[y^N]\widehat A(y)$ and analogously for the other
 four series gives
 \begin{equation}
-  U^{(4)}_N
-    =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}
-      \left|\mathcal{J}^{(4)}_k/S_4\right|
-    =\frac{\widehat A_N+6\widehat B_N+3\widehat D_N
-      +8\widehat C_N+6\widehat Q_N}{24},
-  \qquad 1\leq N\leq14.
+  \fitmath{%
+    U^{(4)}_N
+      =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}
+        \left|\mathcal{J}^{(4)}_k/S_4\right|
+      =\frac{\widehat A_N+6\widehat B_N+3\widehat D_N
+        +8\widehat C_N+6\widehat Q_N}{24},
+    \qquad 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-global-unordered-preimage-quadruple-quotient}
 \end{equation}
 At $N=14$, the five global fixed counts are 25678405217633865,
@@ -1141,11 +1190,13 @@ quotient gives another exact global representative count. Let $P_N$ be the
 number of canonical ordered preimage quintuples obtained by quotienting each
 reachable fixed accumulator/target preimage cube independently. Then
 \begin{equation}
-  P_N
-    =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}\binom{k+31}{31}
-    =\sum_{j=0}^{\min(31,N)}
-      \binom{31}{j}\binom{N}{j}2^j7^{N-j},
-  \qquad 1\leq N\leq14.
+  \fitmath{%
+    P_N
+      =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}\binom{k+31}{31}
+      =\sum_{j=0}^{\min(31,N)}
+        \binom{31}{j}\binom{N}{j}2^j7^{N-j},
+    \qquad 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-global-ordered-preimage-quintuple-quotient}
 \end{equation}
 The second equality follows from
@@ -1188,11 +1239,13 @@ The ordered sextuple quotient composes with the reachable fixed-pair ambiguity
 distribution in the same way. Let $R_N$ count canonical ordered preimage
 sextuples. Then
 \begin{equation}
-  R_N
-    =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}\binom{k+63}{63}
-    =\sum_{j=0}^{\min(63,N)}
-      \binom{63}{j}\binom{N}{j}2^j7^{N-j},
-  \qquad 1\leq N\leq14.
+  \fitmath{%
+    R_N
+      =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}\binom{k+63}{63}
+      =\sum_{j=0}^{\min(63,N)}
+        \binom{63}{j}\binom{N}{j}2^j7^{N-j},
+    \qquad 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-global-ordered-preimage-sextuple-quotient}
 \end{equation}
 The unquotiented ordered-sextuple mass is $133^N$. At $N=14$, the coordinate
@@ -1233,13 +1286,15 @@ pairs after simultaneous coordinate permutation and endpoint swap, and let
 $S_N$ count the coordinate-permutation classes fixed by endpoint swap after the
 same global sum. Then
 \begin{equation}
-  E_N=\frac{1}{2}\left[
-    \sum_{j=0}^{\min(3,N)}\binom{3}{j}\binom{N}{j}2^j7^{N-j}+S_N
-  \right],\qquad
-  S_N=\begin{cases}
-    9,&N=1,\\
-    \dfrac{7^{N+1}+3^N+20N7^{N-1}+8N(N-1)7^{N-2}}{8},&2\leq N\leq14.
-  \end{cases}
+  \fitmath{%
+    E_N=\frac{1}{2}\left[
+      \sum_{j=0}^{\min(3,N)}\binom{3}{j}\binom{N}{j}2^j7^{N-j}+S_N
+    \right],\qquad
+    S_N=\begin{cases}
+      9,&N=1,\\
+      \dfrac{7^{N+1}+3^N+20N7^{N-1}+8N(N-1)7^{N-2}}{8},&2\leq N\leq14.
+    \end{cases}
+  }
   \label{eq:optimization-crazy-global-endpoint-symmetric-pair-quotient}
 \end{equation}
 Indeed,
@@ -1260,12 +1315,14 @@ The independent trit relation gives $|L|=7$. Let
 $q:L\to\{0,\ldots,6\}$ be the lexicographic bijection. For a width-$N$
 reachable accumulator/target pair with trit pairs $(a_i,t_i)$, define
 \begin{equation}
-  \operatorname{rank}_N(a,t)
-    =\sum_{i=0}^{N-1}q(a_i,t_i)7^i,
-  \qquad
-  \operatorname{rank}_N:
-    L^N\overset{\sim}{\longrightarrow}\{0,\ldots,7^N-1\},
-  \quad 1\leq N\leq14.
+  \fitmath{%
+    \operatorname{rank}_N(a,t)
+      =\sum_{i=0}^{N-1}q(a_i,t_i)7^i,
+    \qquad
+    \operatorname{rank}_N:
+      L^N\overset{\sim}{\longrightarrow}\{0,\ldots,7^N-1\},
+    \quad 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-profile-reachable-pair-ranking}
 \end{equation}
 The inverse decodes the rank in base seven and applies $q^{-1}$ digitwise.
@@ -1311,12 +1368,14 @@ imply a runtime-speedup distribution.
 Equivalently, for $K_N=\log_2 M_N$ over reachable pairs, the preimage exponent
 is exactly binomial:
 \begin{equation}
-  \Pr[K_N=k]
-    = \binom{N}{k}\left(\frac{2}{7}\right)^k
-      \left(\frac{5}{7}\right)^{N-k},\qquad
-  \mathbb{E}[K_N]=\frac{2N}{7},\qquad
-  \operatorname{Var}(K_N)=\frac{10N}{49},
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \fitmath{%
+    \Pr[K_N=k]
+      = \binom{N}{k}\left(\frac{2}{7}\right)^k
+        \left(\frac{5}{7}\right)^{N-k},\qquad
+    \mathbb{E}[K_N]=\frac{2N}{7},\qquad
+    \operatorname{Var}(K_N)=\frac{10N}{49},
+    \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  }
   \label{eq:optimization-crazy-profile-log-preimage-binomial}
 \end{equation}
 This describes exact multiplicity classes under uniform selection from the
@@ -1501,7 +1560,11 @@ correspondence.
 \section{Measured implementation result}
 
 The versioned CPU VM benchmark evidence at
-\texttt{benchmarks/interpreter/evidence/2026{-}07{-}26-windows-x86\_64/}
+\texttt{benchmarks/}\allowbreak{}%
+\texttt{interpreter/}\allowbreak{}%
+\texttt{evidence/}\allowbreak{}%
+\texttt{2026{-}07{-}26-windows-}\allowbreak{}%
+\texttt{x86\_64/}
 contains 15 raw
 samples per scalar/table implementation and identical checksums. On that
 identified host, the classic crazy factorization reduced the median from

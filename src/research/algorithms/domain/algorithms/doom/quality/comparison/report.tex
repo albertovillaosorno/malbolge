@@ -35,6 +35,8 @@
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
 \usepackage{booktabs}
+\usepackage{microtype,xurl}
+\setlength{\emergencystretch}{6em}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 \begin{document}
@@ -180,16 +182,16 @@ ymin=0,
 
 \subsection*{Reproducibility}
 Before source SHA-256:
-\texttt{a7c20cd5bcdad32c87a85d855b2a77c63be5591ebf8186550436e75587d72ec7}.\\
+\path{a7c20cd5bcdad32c87a85d855b2a77c63be5591ebf8186550436e75587d72ec7}.\\
 After source SHA-256:
-\texttt{d0ec5aa5d38ba1c60b534f9586e41af5f7a25551dfd46c31ae41ceda7d1d2f40}.\\
+\path{d0ec5aa5d38ba1c60b534f9586e41af5f7a25551dfd46c31ae41ceda7d1d2f40}.\\
 Before asset SHA-256:
-\texttt{23dbc435d8be77ce4db134954581a293309c275c39f95f38cc8cf0df084044fa}.\\
+\path{23dbc435d8be77ce4db134954581a293309c275c39f95f38cc8cf0df084044fa}.\\
 After asset SHA-256:
-\texttt{23dbc435d8be77ce4db134954581a293309c275c39f95f38cc8cf0df084044fa}.\\
+\path{23dbc435d8be77ce4db134954581a293309c275c39f95f38cc8cf0df084044fa}.\\
 Machine-readable metrics:
-\texttt{src/research/algorithms/domain/algorithms/doom/quality/comparison/%
-metrics.json}.
+\path{src/research/algorithms/domain/algorithms/doom/quality/}\allowbreak{}%
+\path{comparison/metrics.json}.
 
 The report stores aggregate evidence only and intentionally omits a
 per-finding ledger.
