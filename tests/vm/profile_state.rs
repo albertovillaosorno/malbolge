@@ -244,6 +244,35 @@ fn current_state_wraps_max_pointers_after_committed_encryption() -> TestResult {
 }
 
 #[test]
+fn canonical_checkpoint_geometry_matches_profile_descriptor() -> TestResult {
+    let profile = historical_profile();
+    let machine = normalize_result(ProfileMachine::from_source(
+        profile,
+        b"QP",
+        Vec::new(),
+    ))?;
+    let state = machine.snapshot_state();
+    let geometry = state.geometry();
+    check_equal(&geometry.profile(), &profile, "geometry profile")?;
+    check_equal(
+        &geometry.word_trits(),
+        &profile.word_trits(),
+        "geometry word trits",
+    )?;
+    check_equal(
+        &geometry.memory_words(),
+        &profile.memory_words(),
+        "geometry memory words",
+    )?;
+    check_equal(
+        &geometry.word_modulus(),
+        &profile.word_modulus(),
+        "geometry modulus",
+    )?;
+    check_equal(&geometry.eof_word(), &profile.eof_word(), "geometry EOF")
+}
+
+#[test]
 fn state_constructor_accepts_exact_historical_image() -> TestResult {
     let memory = vec![0u32; exact_memory_words()?];
     let registers = ProfileRegisters {

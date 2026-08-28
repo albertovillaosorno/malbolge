@@ -49,6 +49,7 @@ use crate::profile_trace::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
     ProfileMemoryReads, ProfileMemoryWrite, ProfileStepTrace,
 };
+use crate::profile_width::ProfileExecutionGeometry;
 use crate::trace::TraceInput;
 use crate::word::{profile_crazy, profile_low_byte};
 
@@ -126,6 +127,7 @@ impl ProfileMachineIoState {
 /// Complete validated checkpoint of one profile-driven machine.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProfileMachineState {
+    geometry: ProfileExecutionGeometry,
     io: ProfileMachineIoState,
     memory: Vec<u32>,
     profile: &'static ProfileDescriptor,
@@ -133,6 +135,12 @@ pub struct ProfileMachineState {
 }
 
 impl ProfileMachineState {
+    /// Returns the exact execution geometry carried by this checkpoint.
+    #[must_use]
+    pub const fn geometry(&self) -> ProfileExecutionGeometry {
+        self.geometry
+    }
+
     /// Returns the validated I/O checkpoint carried by this complete state.
     #[must_use]
     pub const fn io(&self) -> &ProfileMachineIoState {
@@ -157,14 +165,16 @@ impl ProfileMachineState {
         registers: ProfileRegisters,
         io: ProfileMachineIoState,
     ) -> Result<Self, ProfileMachineError> {
+        let geometry = ProfileExecutionGeometry::canonical(profile);
         preflight_profile(
             profile,
-            u64::from(profile.memory_words()),
+            u64::from(geometry.memory_words()),
             safe_rust_profiled_capability(),
         )?;
-        validate_state_memory(profile, &memory)?;
-        validate_state_registers(profile, registers)?;
+        validate_state_memory(geometry, &memory)?;
+        validate_state_registers(geometry, registers)?;
         Ok(Self {
+            geometry,
             io,
             memory,
             profile,
@@ -346,6 +356,7 @@ impl ProfileStepExecution {
 /// Owned safe Rust machine for one explicitly selected canonical profile.
 #[derive(Clone, Debug)]
 pub struct ProfileMachine {
+    geometry: ProfileExecutionGeometry,
     input: Vec<u8>,
     input_cursor: usize,
     memory: Vec<u32>,
@@ -447,11 +458,11 @@ impl ProfileMachine {
             accumulator: plan.registers.accumulator,
             code_pointer: successor(
                 plan.registers.code_pointer,
-                self.profile.word_modulus(),
+                self.geometry.word_modulus(),
             ),
             data_pointer: successor(
                 plan.registers.data_pointer,
-                self.profile.word_modulus(),
+                self.geometry.word_modulus(),
             ),
         };
         if plan.input_advance {
@@ -487,6 +498,7 @@ impl ProfileMachine {
     #[must_use]
     pub fn from_snapshot(state: ProfileMachineState) -> Self {
         Self {
+            geometry: state.geometry,
             input: state.io.input,
             input_cursor: state.io.input_cursor,
             memory: state.memory,
@@ -513,8 +525,10 @@ impl ProfileMachine {
             source_word_requirement(source),
             safe_rust_profiled_capability(),
         )?;
-        let memory = load_profile(profile, source)?;
+        let geometry = ProfileExecutionGeometry::canonical(profile);
+        let memory = load_profile(geometry, source)?;
         Ok(Self {
+            geometry,
             input,
             input_cursor: 0,
             memory,
@@ -603,7 +617,7 @@ impl ProfileMachine {
         &self,
         address: u32,
     ) -> Result<u32, ProfileMachineError> {
-        if address >= self.profile.memory_words() {
+        if address >= self.geometry.memory_words() {
             return Err(ProfileMachineError::AddressOutOfRange { address });
         }
         self.read(address)
@@ -669,7 +683,7 @@ impl ProfileMachine {
         let value = profile_crazy(
             data,
             self.registers.accumulator,
-            self.profile.word_trits(),
+            self.geometry.word_trits(),
         );
         plan.registers.accumulator = value;
         plan.memory_write = Some((self.registers.data_pointer, value));
@@ -681,7 +695,7 @@ impl ProfileMachine {
             plan.registers.accumulator = u32::from(byte);
             plan.input_advance = true;
         } else {
-            plan.registers.accumulator = self.profile.eof_word();
+            plan.registers.accumulator = self.geometry.eof_word();
         }
     }
 
@@ -691,7 +705,7 @@ impl ProfileMachine {
         memory_reads: &mut ProfileMemoryReads,
     ) -> Result<(), ProfileMachineError> {
         let data = self.semantic_data_read(memory_reads)?;
-        let value = profile_rotate(data, self.profile.word_modulus());
+        let value = profile_rotate(data, self.geometry.word_modulus());
         plan.registers.accumulator = value;
         plan.memory_write = Some((self.registers.data_pointer, value));
         Ok(())
@@ -792,6 +806,7 @@ impl ProfileMachine {
     #[must_use]
     pub fn snapshot_state(&self) -> ProfileMachineState {
         ProfileMachineState {
+            geometry: self.geometry,
             io: ProfileMachineIoState {
                 input: self.input.clone(),
                 input_cursor: self.input_cursor,
@@ -1002,7 +1017,7 @@ impl ProfileMachine {
         address: u32,
         value: u32,
     ) -> Result<(), ProfileMachineError> {
-        if value >= self.profile.word_modulus() {
+        if value >= self.geometry.word_modulus() {
             return Err(ProfileMachineError::MemoryInvariant);
         }
         let index = usize::try_from(address)
@@ -1031,10 +1046,10 @@ const fn validate_input_cursor(
 }
 
 fn validate_state_memory(
-    profile: &ProfileDescriptor,
+    geometry: ProfileExecutionGeometry,
     memory: &[u32],
 ) -> Result<(), ProfileMachineError> {
-    let expected = profile.memory_words();
+    let expected = geometry.memory_words();
     let expected_len = usize::try_from(expected)
         .ok()
         .ok_or(ProfileMachineError::MemoryInvariant)?;
@@ -1045,7 +1060,7 @@ fn validate_state_memory(
         });
     }
     for (index, value) in memory.iter().copied().enumerate() {
-        if value >= profile.word_modulus() {
+        if value >= geometry.word_modulus() {
             let address = u32::try_from(index)
                 .ok()
                 .ok_or(ProfileMachineError::MemoryInvariant)?;
@@ -1059,11 +1074,11 @@ fn validate_state_memory(
 }
 
 const fn validate_state_register(
-    profile: &ProfileDescriptor,
+    geometry: ProfileExecutionGeometry,
     register: ProfileRegisterName,
     value: u32,
 ) -> Result<(), ProfileMachineError> {
-    if value >= profile.word_modulus() {
+    if value >= geometry.word_modulus() {
         return Err(ProfileMachineError::RegisterOutOfRange {
             register,
             value,
@@ -1073,21 +1088,21 @@ const fn validate_state_register(
 }
 
 fn validate_state_registers(
-    profile: &ProfileDescriptor,
+    geometry: ProfileExecutionGeometry,
     registers: ProfileRegisters,
 ) -> Result<(), ProfileMachineError> {
     validate_state_register(
-        profile,
+        geometry,
         ProfileRegisterName::Accumulator,
         registers.accumulator,
     )?;
     validate_state_register(
-        profile,
+        geometry,
         ProfileRegisterName::CodePointer,
         registers.code_pointer,
     )?;
     validate_state_register(
-        profile,
+        geometry,
         ProfileRegisterName::DataPointer,
         registers.data_pointer,
     )
@@ -1100,13 +1115,13 @@ pub const fn profile_cell_is_graphical(value: u32) -> bool {
 }
 
 fn load_profile(
-    profile: &'static ProfileDescriptor,
+    geometry: ProfileExecutionGeometry,
     source: &[u8],
 ) -> Result<Vec<u32>, ProfileLoadError> {
-    let memory_words = usize::try_from(profile.memory_words())
+    let memory_words = usize::try_from(geometry.memory_words())
         .ok()
         .ok_or(ProfileLoadError::MemoryAllocation)?;
-    let mut words = admit_profile_source(source, profile.memory_words())?;
+    let mut words = admit_profile_source(source, geometry.memory_words())?;
     let additional = memory_words.saturating_sub(words.len());
     words
         .try_reserve_exact(additional)
@@ -1121,7 +1136,7 @@ fn load_profile(
             .get(older_index)
             .copied()
             .ok_or(ProfileLoadError::InsufficientRecurrenceBase)?;
-        words.push(profile_crazy(older, previous, profile.word_trits()));
+        words.push(profile_crazy(older, previous, geometry.word_trits()));
     }
     Ok(words)
 }

@@ -63,6 +63,14 @@ pub struct ProfileExecutionGeometry {
 }
 
 impl ProfileExecutionGeometry {
+    pub(crate) const fn canonical(profile: &'static ProfileDescriptor) -> Self {
+        Self {
+            memory_words: profile.memory_words(),
+            profile,
+            word_trits: profile.word_trits(),
+        }
+    }
+
     /// Returns the derived all-two-trit EOF value.
     #[must_use]
     pub const fn eof_word(self) -> u32 {
