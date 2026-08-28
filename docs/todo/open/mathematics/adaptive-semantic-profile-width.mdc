@@ -261,6 +261,14 @@ separate costs; resource evidence must measure those costs directly.
   only the live machine would silently restore canonical 14-trit geometry after
   a snapshot. This boundary is documented before adding any execution
   constructor.
+- `ProfileMachine::from_verified_source` is now the first product execution
+  consumer of the trusted width envelope. It takes source only from that
+  envelope, executes QP at selected N=10 with exactly 59,049 resident memory
+  words, terminates through the canonical `v` transition in one step, and
+  preserves N=10 across `snapshot_state`/`from_snapshot` while retaining
+  canonical `malbolge-2026` identity. This is local safe-Rust VM execution only;
+  tiered/native/state-graph paths do not yet accept derived geometry as an
+  execution handoff.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final

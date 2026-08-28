@@ -243,12 +243,11 @@ derived width may parameterize execution geometry only after that admission; it
 must not replace the canonical profile ID, version, fingerprint, or semantic
 requirement.
 
-The product VM now independently admits the first narrow proof family rather
-than importing that selector. Its initial-halt verifier reuses the canonical
-profile loader/decode boundary and can issue an opaque source/profile-bound N=10
-geometry for QP. DP and malformed, oversized, or out-of-range subjects fail
-closed; the verified geometry currently has no execution consumer, so this is an
-admission-boundary result rather than adaptive-runtime evidence.
+The product VM independently admits the first narrow proof family rather than
+importing that selector. Its initial-halt verifier reuses the canonical profile
+loader/decode boundary and issues an opaque source/profile-bound geometry.
+DP and
+malformed, oversized, or out-of-range subjects fail closed.
 
 Within that initial-halt family, product-side minimum selection tries N=10
 through the canonical width and advances only on exact derived-capacity failure.
@@ -256,14 +255,15 @@ QP selects N=10, while a valid 59,050-word initial-halt source selects N=11. A
 verified N=10 artifact still retains the canonical 14-trit `malbolge-2026`
 requirement and is explicitly unequal to the historical profile identity.
 
-The next runtime step cannot be a constructor-only shortcut. The live machine
-and its checkpoint type currently derive memory length/domain, modulus/trits,
-EOF, pointer wrap, and crazy/rotate arithmetic directly from the canonical
-profile. Tiered retry, interpreter handoff, and state-graph materialization then
-reconstruct those checkpoints. Adaptive execution therefore needs one explicit
-verified-geometry field shared by live state and checkpoints while canonical
-profile identity, opcode assignment, policy, trace identity, and preflight stay
-unchanged.
+The live machine and checkpoint now carry a separate opaque execution geometry.
+Memory length/domain, modulus/trits, EOF, pointer wrap, and crazy/rotate
+arithmetic consume that geometry, while canonical profile identity, opcode
+assignment, non-graphical policy, trace identity, and preflight stay unchanged.
+`ProfileMachine::from_verified_source` takes source only from the proof
+envelope;
+QP therefore executes with exactly 59,049 N=10 words, halts in one normative
+step, and retains N=10 through checkpoint restore while remaining
+`malbolge-2026`. Tiered/native/state-graph execution handoff is still open.
 
 `uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
 shows why projected D is insufficient for writes: both crazy transitions

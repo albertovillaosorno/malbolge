@@ -33,8 +33,9 @@
 //! Trusted product-side initial-halt adaptive-width verification fixtures.
 
 use malbolge::{
-    ProfileLoadError, ProfileWidthProofKind, ProfileWidthVerificationError,
-    TargetProfileRequirement, current_profile, decode_profile_instruction,
+    ProfileLoadError, ProfileMachine, ProfileWidthProofKind,
+    ProfileWidthVerificationError, RunOutcome, TargetProfileRequirement,
+    Termination, current_profile, decode_profile_instruction,
     historical_profile, verify_initial_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
 };
@@ -202,6 +203,55 @@ fn verified_geometry_exposes_copyable_profile_bound_execution_token()
         "token memory words",
     )?;
     check_equal(&copied.eof_word(), &(MINIMUM_MEMORY_WORDS - 1), "token EOF")
+}
+
+#[test]
+fn verified_initial_halt_executes_only_derived_memory_geometry() -> TestResult {
+    let current = current_profile();
+    let verified = normalize_result(
+        verify_minimum_initial_halt_profile_width(current, QP),
+    )?;
+    let mut machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    check_equal(&machine.profile(), &current, "machine canonical profile")?;
+    check_equal(
+        &machine.geometry(),
+        &verified.geometry(),
+        "machine verified geometry",
+    )?;
+    check_equal(
+        &machine.memory().len(),
+        &MINIMUM_MEMORY_WORDS_USIZE,
+        "derived resident memory length",
+    )?;
+    let outcome = normalize_result(machine.run(1))?;
+    check_equal(
+        &outcome,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 1,
+        },
+        "derived initial halt outcome",
+    )?;
+    let checkpoint = machine.snapshot_state();
+    check_equal(
+        &checkpoint.geometry(),
+        &verified.geometry(),
+        "checkpoint verified geometry",
+    )?;
+    let restored = ProfileMachine::from_snapshot(checkpoint);
+    check_equal(
+        &restored.geometry(),
+        &verified.geometry(),
+        "restored verified geometry",
+    )?;
+    check_equal(
+        &restored.memory().len(),
+        &MINIMUM_MEMORY_WORDS_USIZE,
+        "restored derived memory length",
+    )
 }
 
 #[test]

@@ -49,7 +49,9 @@ use crate::profile_trace::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
     ProfileMemoryReads, ProfileMemoryWrite, ProfileStepTrace,
 };
-use crate::profile_width::ProfileExecutionGeometry;
+use crate::profile_width::{
+    ProfileExecutionGeometry, VerifiedProfileExecutionGeometry,
+};
 use crate::trace::TraceInput;
 use crate::word::{profile_crazy, profile_low_byte};
 
@@ -559,6 +561,48 @@ impl ProfileMachine {
         let io = ProfileMachineIoState::new(input, 0, Vec::new(), None)?;
         let state = ProfileMachineState::new(profile, memory, registers, io)?;
         Ok(Self::from_snapshot(state))
+    }
+
+    /// Loads and executes only geometry already admitted by trusted
+    /// verification.
+    ///
+    /// The exact source comes from the verified envelope itself, so callers
+    /// cannot pair an admitted geometry with different source bytes. Canonical
+    /// profile identity and policy remain unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileMachineError`] when canonical profile capability or the
+    /// already-admitted source cannot initialize the verified memory geometry.
+    pub fn from_verified_source(
+        verified: &VerifiedProfileExecutionGeometry,
+        input: Vec<u8>,
+    ) -> Result<Self, ProfileMachineError> {
+        let geometry = verified.geometry();
+        let profile = geometry.profile();
+        let source = verified.source();
+        preflight_profile(
+            profile,
+            source_word_requirement(source),
+            safe_rust_profiled_capability(),
+        )?;
+        let memory = load_profile(geometry, source)?;
+        Ok(Self {
+            geometry,
+            input,
+            input_cursor: 0,
+            memory,
+            output: Vec::new(),
+            profile,
+            registers: ProfileRegisters::default(),
+            termination: None,
+        })
+    }
+
+    /// Returns the exact execution geometry carried by this machine.
+    #[must_use]
+    pub const fn geometry(&self) -> ProfileExecutionGeometry {
+        self.geometry
     }
 
     /// Returns the immutable full input stream carried by this machine.
