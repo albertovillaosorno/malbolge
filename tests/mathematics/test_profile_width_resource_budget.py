@@ -34,10 +34,12 @@
 
 from __future__ import annotations
 
+from array import array
 from itertools import pairwise
 
 from accelerator.classic_run import MAX_U32
 from accelerator.classic_run import STATE_WORDS
+from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import WORD_BYTES
 from algorithms.profile_width.certificate import execution_geometry
@@ -80,19 +82,23 @@ def test_adaptive_width_sweep_uses_exact_execution_geometry() -> None:
 def test_derived_widths_fit_resident_geometry() -> None:
     """Derived N fits the resident contract without new profile identity."""
     for width in EXPECTED_128_MIB_CAPACITY:
+        resident = _resident_geometry(width)
         derived = execution_geometry(width)
         assert derived is not None
-        resident = ProfileRunGeometry(
-            eof_word=derived.memory_words - 1,
-            input_instruction=ord("/"),
-            memory_words=derived.memory_words,
-            output_instruction=ord("<"),
-            word_modulus=derived.memory_words,
-            word_trits=derived.word_trits,
-        )
         assert resident.validated() is resident
         assert resident.memory_words == derived.memory_words
         assert resident.word_trits == derived.word_trits
+
+
+def test_derived_widths_own_exact_resident_memory_images() -> None:
+    """Host resident memory ownership accepts every exact derived geometry."""
+    for width in EXPECTED_128_MIB_CAPACITY:
+        resident = _resident_geometry(width)
+        source = array("I", [0]) * resident.memory_words
+        image = ProfileMemoryImage(resident, source)
+        assert image.geometry == resident
+        assert len(image) == resident.memory_words
+        assert image.words().readonly
 
 
 def test_narrower_certified_width_strictly_increases_128_mib_capacity() -> None:
@@ -107,4 +113,19 @@ def test_narrower_certified_width_strictly_increases_128_mib_capacity() -> None:
     assert all(
         left > right
         for left, right in pairwise(capacities)
+    )
+
+
+def _resident_geometry(width: int) -> ProfileRunGeometry:
+    derived = execution_geometry(width)
+    if derived is None:
+        message = f"expected checked adaptive width: {width}"
+        raise AssertionError(message)
+    return ProfileRunGeometry(
+        eof_word=derived.memory_words - 1,
+        input_instruction=ord("/"),
+        memory_words=derived.memory_words,
+        output_instruction=ord("<"),
+        word_modulus=derived.memory_words,
+        word_trits=derived.word_trits,
     )

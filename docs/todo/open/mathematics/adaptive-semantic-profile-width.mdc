@@ -195,8 +195,10 @@ separate costs; resource evidence must measure those costs directly.
   `ProfileRunGeometry` contract with `word_modulus=memory_words=3^N`,
   `EOF=3^N-1`, and the existing `/` input plus `<` output assignments. That
   contract carries no profile ID, version, or fingerprint, so the compatibility
-  check does not fabricate canonical profile identities. It still does not wire
-  certificate decisions into runtime execution.
+  check does not fabricate canonical profile identities. Exact host
+  `ProfileMemoryImage` ownership is also exercised at all five `3^N` lengths,
+  proving that the resident host contract accepts the derived storage sizes. It
+  still does not wire certificate decisions into runtime execution.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final
