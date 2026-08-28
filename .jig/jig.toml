@@ -305,9 +305,17 @@ path = ".jig/cspell/technical.txt"
 path = ".dependencies/python/3.14.6/jig-bin/basedpyright.bin"
 version = "1.39.9"
 
+[tool.chktex.linux]
+path = ".dependencies/bin/chktex"
+version = "1.7.9"
+
 [tool.git]
 path = ".dependencies/git/2.55.0/bin/git.bin"
 version = "2.55.0"
+
+[tool.latexmk.linux]
+path = ".dependencies/bin/latexmk"
+version = "4.88"
 
 [tool.pytest]
 path = ".dependencies/python/3.14.6/jig-bin/pytest.bin"
@@ -336,6 +344,24 @@ stable = "1.39.9"
 [version.basedpyright.projection.tool]
 kind = "tool"
 target = "basedpyright"
+template = "{version}"
+
+[version.chktex]
+current = "1.7.9"
+stable = "1.7.9"
+
+[version.chktex.projection.tool]
+kind = "tool"
+target = "chktex"
+template = "{version}"
+
+[version.latexmk]
+current = "4.88"
+stable = "4.88"
+
+[version.latexmk.projection.tool]
+kind = "tool"
+target = "latexmk"
 template = "{version}"
 
 [version.pytest]
@@ -403,6 +429,26 @@ stable = "1.9.0-nightly"
 kind = "tool"
 target = "rust_nightly_cargo_fmt"
 template = "{version}"
+
+[validation.latex_compile]
+capability = "latex-compile"
+tool = "latexmk"
+# jig-ignore-next-line: indivisible reviewed identifier
+config_files = ["src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"]
+# jig-ignore-next-line: indivisible reviewed identifier
+args = ["src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"]
+scope_applicability = "global"
+timeout_seconds = 120
+
+[validation.latex_style]
+capability = "latex-style"
+tool = "chktex"
+# jig-ignore-next-line: indivisible reviewed identifier
+config_files = ["src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"]
+# jig-ignore-next-line: indivisible reviewed identifier
+args = ["src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"]
+scope_applicability = "global"
+timeout_seconds = 120
 
 [validation.pyright]
 capability = "pyright"

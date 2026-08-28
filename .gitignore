@@ -41,3 +41,14 @@ src/research/algorithms/domain/algorithms/doom/quality/in/doom
 doom.c
 doom.malbolge
 examples/self_host/**/*.malbolge
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.synctex.gz
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+# LaTeX generated output
+*.pdf

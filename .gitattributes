@@ -39,3 +39,4 @@
 *.dylib binary
 *.a binary
 *.lib binary
+*.pdf binary
