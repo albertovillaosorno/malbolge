@@ -71,6 +71,8 @@ pub enum ProfileWidthProofKind {
     InputOutputHaltProjection,
     /// One input transition is followed immediately by halt.
     InputThenHaltProjection,
+    /// One exact-address data jump is followed immediately by halt.
+    JumpDataHaltProjection,
     /// One or more decoded no-ops precede the first reached halt.
     NoopPrefixHalt,
     /// Straight-line no-op/input/output composition reaches halt safely.
@@ -221,6 +223,13 @@ pub enum ProfileWidthVerificationError {
         /// Exact decoded instruction byte.
         decoded: u8,
     },
+    /// A reached jump-data-halt position decoded to another instruction.
+    JumpDataHaltInstruction {
+        /// Exact loaded source position of the rejected instruction.
+        position: u32,
+        /// Exact decoded instruction byte.
+        decoded: u8,
+    },
     /// A reached prefix instruction is neither an admitted no-op nor halt.
     NoopPrefixInstruction {
         /// Exact loaded source position of the rejected instruction.
@@ -269,6 +278,10 @@ impl Display for ProfileWidthVerificationError {
             },
             Self::InputThenHaltInstruction { position, decoded } => {
                 write!(f, "derived input-halt instruction {decoded} at ")?;
+                write!(f, "{position} is invalid")
+            },
+            Self::JumpDataHaltInstruction { position, decoded } => {
+                write!(f, "derived jump-data-halt instruction {decoded} at ")?;
                 write!(f, "{position} is invalid")
             },
             Self::NoopPrefixInstruction { position, decoded } => {
@@ -380,6 +393,22 @@ pub fn verify_minimum_straight_line_io_profile_width(
     source: &[u8],
 ) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
     verify_minimum_width(profile, source, verify_straight_line_io_profile_width)
+}
+
+/// Selects the minimum independently verified jump-data-halt width.
+///
+/// The first data read remains an exact low source address/value at every
+/// reviewed width. Capacity remains the only widening reason.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when no reviewed candidate admits
+/// the exact source under the jump-data-halt theorem.
+pub fn verify_minimum_jump_data_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    verify_minimum_width(profile, source, verify_jump_data_halt_profile_width)
 }
 
 /// Selects the minimum independently verified no-op-prefix-halt width.
@@ -575,6 +604,65 @@ pub fn verify_straight_line_io_profile_width(
         }
     }
     Err(ProfileWidthVerificationError::StraightLineMissingHalt)
+}
+
+/// Independently verifies one exact initial data jump followed by halt.
+///
+/// D starts at zero, so the jump reads the first admitted source cell itself.
+/// That graphical byte and its nonwrapping successor are identical at every
+/// reviewed geometry; the following halt occurs before D is used again.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when geometry, source admission,
+/// exact jump premises, or the immediately following halt does not hold.
+pub fn verify_jump_data_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    word_trits: u8,
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let memory_words = derived_memory_words(profile, word_trits)?;
+    let admitted = admit_profile_source(source, memory_words)?;
+    let expected = *b"jv";
+    for (position, expected_instruction) in expected.into_iter().enumerate() {
+        let pointer = u32::try_from(position).map_err(|_error| {
+            ProfileWidthVerificationError::GeometryInvariant
+        })?;
+        let cell = admitted
+            .get(position)
+            .copied()
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        let decoded = decode_profile_instruction(cell, pointer)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        if decoded != expected_instruction {
+            return Err(
+                ProfileWidthVerificationError::JumpDataHaltInstruction {
+                    position: pointer,
+                    decoded,
+                },
+            );
+        }
+    }
+    let first = admitted
+        .first()
+        .copied()
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    let successor = first
+        .checked_add(1)
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    if successor >= memory_words {
+        return Err(ProfileWidthVerificationError::GeometryInvariant);
+    }
+    Ok(VerifiedProfileExecutionGeometry {
+        geometry: ProfileExecutionGeometry {
+            input_policy: ProfileExecutionInputPolicy::Any,
+            memory_words,
+            profile,
+            word_trits,
+        },
+        proof_kind: ProfileWidthProofKind::JumpDataHaltProjection,
+        source: Box::from(source),
+    })
 }
 
 /// Independently verifies a nonempty no-op prefix followed by halt.

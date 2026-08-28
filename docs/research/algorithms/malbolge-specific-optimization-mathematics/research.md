@@ -269,12 +269,19 @@ byte exactly; EOF machine construction fails before execution. Checkpoint
 construction enforces the same hidden token policy.
 
 The product straight-line I/O verifier extends only over `o`, `/`, and `<`
-before
-`v`; it does not import the research checker's exact-address `j` or guarded `p`
-authority. It counts encountered inputs and raises the token's minimum input
-length whenever an output depends on that ordinal. `uCar_L` therefore selects
-N=10 with a two-byte minimum and emits both bytes in six steps, while a one-byte
-stream is rejected before load.
+before `v`; it does not import the research checker's jump/crazy state machine.
+It counts encountered inputs and raises the token's minimum input length
+whenever
+an output depends on that ordinal. `uCar_L` therefore selects N=10 with a
+two-byte minimum and emits both bytes in six steps, while a one-byte stream is
+rejected before load.
+
+A separate product theorem covers only one initial data jump followed by
+halt. In
+`(P`, D=0 reads raw source cell 40, and successor 41 is below every reviewed
+modulus. The shared XLAT2 encryption is width-independent, C advances to 1, and
+the following `v` halts before using D again. This admits N=10 without claiming
+recurrence-address equality needed by repeated jumps.
 
 Within that initial-halt family, product-side minimum selection tries N=10
 through the canonical width and advances only on exact derived-capacity failure.

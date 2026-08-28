@@ -40,10 +40,11 @@ use malbolge::{
     Termination, current_profile, decode_profile_instruction,
     historical_profile, verify_initial_halt_profile_width,
     verify_input_output_halt_profile_width,
-    verify_input_then_halt_profile_width,
+    verify_input_then_halt_profile_width, verify_jump_data_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
+    verify_minimum_jump_data_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
     verify_minimum_straight_line_io_profile_width,
     verify_noop_prefix_halt_profile_width,
@@ -393,6 +394,76 @@ fn input_then_halt_verifier_rejects_wrong_reached_sequence() -> TestResult {
             decoded: b'<',
         }),
         "input-halt second instruction rejection",
+    )
+}
+
+#[test]
+fn jump_data_halt_verifier_executes_exact_low_address_at_minimum_width()
+-> TestResult {
+    let verified = normalize_result(
+        verify_minimum_jump_data_halt_profile_width(current_profile(), b"(P"),
+    )?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::JumpDataHaltProjection,
+        "jump-data proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "jump-data minimum width",
+    )?;
+    let mut machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    check_equal(
+        &normalize_result(machine.run(2))?,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 2,
+        },
+        "jump-data halt outcome",
+    )?;
+    check_equal(
+        &machine.registers().data_pointer,
+        &41u32,
+        "jump-data exact successor",
+    )?;
+    check_equal(
+        &machine.registers().code_pointer,
+        &1u32,
+        "jump-data halt pointer",
+    )
+}
+
+#[test]
+fn jump_data_halt_verifier_rejects_wrong_reached_sequence() -> TestResult {
+    let wrong_first = verify_jump_data_halt_profile_width(
+        current_profile(),
+        QP,
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &wrong_first,
+        &Err(ProfileWidthVerificationError::JumpDataHaltInstruction {
+            position: 0,
+            decoded: b'v',
+        }),
+        "jump-data first instruction rejection",
+    )?;
+    let wrong_second = verify_jump_data_halt_profile_width(
+        current_profile(),
+        b"(=",
+        MINIMUM_WORD_TRITS,
+    );
+    check_equal(
+        &wrong_second,
+        &Err(ProfileWidthVerificationError::JumpDataHaltInstruction {
+            position: 1,
+            decoded: b'p',
+        }),
+        "jump-data second instruction rejection",
     )
 }
 

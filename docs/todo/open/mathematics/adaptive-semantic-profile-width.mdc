@@ -293,7 +293,12 @@ separate costs; resource evidence must measure those costs directly.
   `uCar_L` therefore selects N=10 with a two-byte minimum, executes
   `/ o < / < v`
   in six steps, and emits both bytes; a one-byte stream is rejected before load.
-  Exact-address `j` and guarded `p` remain research-only proof obligations.
+  Repeated exact-address `j` and guarded `p` remain separate proof obligations.
+- A dedicated single data-jump verifier now admits only decoded `j` followed by
+  `v`. For `(P`, initial D=0 reads the exact source cell value 40, whose
+  successor
+  is 41 without wrap at every reviewed width. N=10 therefore halts in two steps
+  with exact D=41; no recurrence-memory equality is assumed by this proof.
 - Indexed state-graph now preserves the opaque geometry token through lineage,
   digest, trace application, and checkpoint materialization. A QP/N=10 runtime
   trace roundtrips through `IndexedMachineState` to the exact derived checkpoint
