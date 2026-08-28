@@ -39,6 +39,7 @@ use malbolge::{
     ProfileMachine, ProfileStepTrace, StepOutcome, current_profile,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
+    verify_minimum_straight_line_io_profile_width,
 };
 
 use crate::indexed_state::{
@@ -123,6 +124,54 @@ fn input_bound_geometry_survives_indexed_state_roundtrip() -> Result<(), String>
         || materialized.geometry() != verified.geometry()
     {
         return Err(String::from("input-bound indexed roundtrip drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn minimum_length_two_geometry_survives_multiple_indexed_effects()
+-> Result<(), String> {
+    let verified = verify_minimum_straight_line_io_profile_width(
+        current_profile(),
+        b"uCar_L",
+    )
+    .map_err(|error| format!("min-two width verification failed: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, vec![0xa5, 0x3c])
+            .map_err(|error| format!("min-two machine load failed: {error}"))?;
+    let root = machine.snapshot_state();
+    let mut indexed = IndexedMachineState::from_checkpoint(&root)
+        .map_err(|error| format!("min-two indexed root failed: {error:?}"))?;
+    for _step in 0u8..5 {
+        let mut trace_record = None;
+        let outcome = machine
+            .step_traced(&mut |trace: &ProfileStepTrace| {
+                trace_record = Some(*trace);
+            })
+            .map_err(|error| format!("min-two trace step failed: {error}"))?;
+        if outcome != StepOutcome::Continued {
+            return Err(String::from(
+                "min-two fixture halted before five effects",
+            ));
+        }
+        let trace = trace_record
+            .ok_or_else(|| String::from("min-two trace missing"))?;
+        indexed = indexed.apply_trace(&trace).map_err(|error| {
+            format!("min-two indexed apply failed: {error:?}")
+        })?;
+    }
+    let materialized = indexed
+        .materialize_checkpoint()
+        .map_err(|error| format!("min-two materialize failed: {error:?}"))?;
+    if materialized != machine.snapshot_state()
+        || materialized.geometry() != verified.geometry()
+    {
+        return Err(String::from("min-two indexed authority drifted"));
+    }
+    if materialized.io().input_consumed() != 2
+        || materialized.io().output() != [0xa5, 0x3c]
+    {
+        return Err(String::from("min-two indexed I/O drifted"));
     }
     Ok(())
 }

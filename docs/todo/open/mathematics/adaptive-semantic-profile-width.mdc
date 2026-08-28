@@ -317,6 +317,12 @@ separate costs; resource evidence must measure those costs directly.
   trace roundtrips through `IndexedMachineState` to the exact derived checkpoint
   instead of reconstructing canonical N=14. Tiered/native execution handoff is
   still open.
+- The same indexed-state lifecycle now covers an input policy stricter than
+  nonempty. `uCar_L` carries `MinimumLength(2)` through five continued effects,
+  including both input and output transitions; materialization preserves the
+  exact
+  geometry token, two consumed bytes, and output `0xA5 0x3C`. The lineage cannot
+  silently weaken the verifier premise to a one-byte policy.
 - Optional profile batch routing now compares execution geometry as well as
   canonical profile identity before accepting a backend completion. A canonical
   N=14 completion for a derived N=10 `malbolge-2026` request is rejected and

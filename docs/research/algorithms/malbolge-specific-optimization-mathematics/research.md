@@ -321,6 +321,14 @@ interpreter fallback. Portable IR v1 also rejects a derived trace before it can
 be
 promoted to direct-native authority.
 
+The indexed-state path also preserves nontrivial hidden input authority. A
+`uCar_L` N=10 machine admitted with minimum input length two is advanced through
+five traced effects, including both inputs and outputs, then materialized back
+to
+the exact runtime checkpoint and geometry token. This proves that indexed
+lineage
+state preserves the minimum-two premise rather than collapsing it to nonempty.
+
 Optional batch completion validation compares the complete opaque geometry
 token.
 This includes hidden input-domain authority: `uP` and `ubO` have identical
