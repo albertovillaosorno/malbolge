@@ -7,7 +7,6 @@ area: "mathematics"
 task: "TODO - Adaptive semantic profile width"
 contract: "docs/research/algorithms/malbolge-specific-optimization-mathematics/README.md"
 depends_on:
-  - "malbolge-specific-optimization-mathematics"
   - "documentation-readiness-and-implementation-gate"
 adr_paths:
   - "docs/technical/adr/verification-trust-boundary.md"
@@ -81,6 +80,9 @@ separate costs; resource evidence must measure those costs directly.
 
 - Required mathematical evidence: exact profile-width memory ratios and a
   sufficient-condition theorem or certificate format for semantic narrowing.
+- The mathematical prerequisite is now satisfied by durable correspondences;
+  the broader `malbolge-specific-optimization-mathematics` TODO remains active
+  independently and no longer blocks this task.
 - Current mathematical base: correspondences
   `optimization-profile-width-projection-audit`,
   `optimization-profile-width-source-admission-monotonicity`,
