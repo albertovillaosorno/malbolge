@@ -191,6 +191,12 @@ separate costs; resource evidence must measure those costs directly.
 - This remains capacity evidence only; it does not grant runtime width-selection
   authority or satisfy the still-required equivalent-work throughput
   measurements.
+- The same derived N=10-through-14 geometries validate against the product
+  `ProfileRunGeometry` contract with `word_modulus=memory_words=3^N`,
+  `EOF=3^N-1`, and the existing `/` input plus `<` output assignments. That
+  contract carries no profile ID, version, or fingerprint, so the compatibility
+  check does not fabricate canonical profile identities. It still does not wire
+  certificate decisions into runtime execution.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical 14-trit and
   historical 10-trit execution when input byte `0xA5` is available. That final

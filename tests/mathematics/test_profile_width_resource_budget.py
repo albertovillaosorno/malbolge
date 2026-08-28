@@ -38,6 +38,7 @@ from itertools import pairwise
 
 from accelerator.classic_run import MAX_U32
 from accelerator.classic_run import STATE_WORDS
+from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import WORD_BYTES
 from algorithms.profile_width.certificate import execution_geometry
 
@@ -74,6 +75,24 @@ def test_adaptive_width_sweep_uses_exact_execution_geometry() -> None:
         ) + 1
         assert result.first_chunk_items == expected_capacity
         assert result.synthetic
+
+
+def test_derived_widths_fit_resident_geometry() -> None:
+    """Derived N fits the resident contract without new profile identity."""
+    for width in EXPECTED_128_MIB_CAPACITY:
+        derived = execution_geometry(width)
+        assert derived is not None
+        resident = ProfileRunGeometry(
+            eof_word=derived.memory_words - 1,
+            input_instruction=ord("/"),
+            memory_words=derived.memory_words,
+            output_instruction=ord("<"),
+            word_modulus=derived.memory_words,
+            word_trits=derived.word_trits,
+        )
+        assert resident.validated() is resident
+        assert resident.memory_words == derived.memory_words
+        assert resident.word_trits == derived.word_trits
 
 
 def test_narrower_certified_width_strictly_increases_128_mib_capacity() -> None:
