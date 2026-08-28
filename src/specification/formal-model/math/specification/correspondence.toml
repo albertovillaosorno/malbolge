@@ -247,6 +247,26 @@ mechanism = "independent-trit-equality-constraints-plus-free-trit-factor"
 evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_rotate_compatible_word_count_for_checked_width_sets"]
 
 [[correspondence]]
+id = "optimization-profile-width-source-admission-monotonicity"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-profile-width-source-admission-monotonicity"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "checked width variants 10 <= N < M <= 14 that retain the canonical lexical and position-dependent decode admission rules; exact source capacity is 3^N words"
+mechanism = "width-independent-source-admission-plus-monotone-power-of-three-capacity"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_source_capacity_is_monotone_across_checked_widths", "tests/vm/profile_machine.rs::current_loader_projects_to_complete_historical_memory_prefix"]
+
+[[correspondence]]
+id = "optimization-profile-width-initial-memory-projection"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-profile-width-initial-memory-projection"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "checked width variants 10 <= N < M <= 14 after common source admission; exhaustive 94x94 graphical recurrence seeds for four generated cells at every width pair plus complete 59049-cell runtime prefix comparison for canonical 10-versus-14 profiles"
+mechanism = "identical-source-prefix-plus-crazy-projection-induction"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_loader_recurrence_projection_for_all_graphical_seed_pairs", "tests/vm/profile_machine.rs::current_loader_projects_to_complete_historical_memory_prefix"]
+
+[[correspondence]]
 id = "optimization-profile-width-finite-bisimulation-certificate"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-profile-width-finite-bisimulation-certificate"

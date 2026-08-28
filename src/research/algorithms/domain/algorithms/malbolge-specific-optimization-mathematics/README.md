@@ -30,6 +30,11 @@ commute with radix projection, while `rotate` and byte output have exact
 additional conditions. Output compatibility from width `M` to `N` holds for
 exactly the embedded `3^N` low words and is nested across narrower widths.
 
+Source admission is likewise monotone across checked widths when the lexical
+and decode contract is unchanged. Once admitted, the complete width-N initial
+memory equals the projected prefix of width M because source cells agree and
+the fill recurrence preserves projection by induction.
+
 Rotate compatibility checks trit `N` against trit zero and is not monotone
 across candidate widths; even projected EOF values can later emit different
 bytes. For any subset of candidate widths 10 through 13, each additional

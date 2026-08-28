@@ -45,6 +45,13 @@ from algorithms.profile_width.certificate import minimum_certified_width
 
 _RADIX = 3
 _BYTE_MODULUS = 256
+_CRAZY_TRIT = (
+    (1, 0, 0),
+    (1, 0, 2),
+    (2, 2, 1),
+)
+_RECURRENCE_STEPS = 4
+_GRAPHICAL = range(33, 127)
 
 
 def _power(exponent: int) -> int:
@@ -69,6 +76,17 @@ def _rotate(value: int, width: int) -> int:
 
 def _successor(value: int, width: int) -> int:
     return (value + 1) % _modulus(width)
+
+
+def _crazy(data: int, accumulator: int, width: int) -> int:
+    result = 0
+    place = 1
+    for _ in range(width):
+        result += _CRAZY_TRIT[data % _RADIX][accumulator % _RADIX] * place
+        data //= _RADIX
+        accumulator //= _RADIX
+        place *= _RADIX
+    return result
 
 
 def _representative_residues(modulus: int) -> tuple[int, ...]:
@@ -126,6 +144,30 @@ def test_checked_width_projection_laws_and_counterexamples() -> None:
     """Audit exact radix projection laws for every checked narrowing pair."""
     for widths in _width_pairs():
         _check_width_pair(widths)
+
+
+def test_loader_recurrence_projection_for_all_graphical_seed_pairs() -> None:
+    """Crazy-filled initial memory preserves projection under induction."""
+    for older, previous in product(_GRAPHICAL, repeat=2):
+        for narrow, wide in _width_pairs():
+            narrow_pair = (older, previous)
+            wide_pair = (older, previous)
+            for _ in range(_RECURRENCE_STEPS):
+                narrow_next = _crazy(*narrow_pair, narrow)
+                wide_next = _crazy(*wide_pair, wide)
+                assert narrow_next == _project(wide_next, narrow)
+                narrow_pair = (narrow_pair[1], narrow_next)
+                wide_pair = (wide_pair[1], wide_next)
+
+
+def test_source_capacity_is_monotone_across_checked_widths() -> None:
+    """A source fitting a narrow checked memory also fits every wider one."""
+    for narrow, wide in _width_pairs():
+        narrow_words = _modulus(narrow)
+        wide_words = _modulus(wide)
+        assert narrow_words < wide_words
+        assert all(length <= wide_words for length in (2, narrow_words))
+        assert narrow_words + 1 <= wide_words
 
 
 def test_output_compatible_word_count_for_checked_width_pairs() -> None:

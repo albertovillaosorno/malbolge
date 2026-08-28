@@ -82,11 +82,14 @@ separate costs; resource evidence must measure those costs directly.
 - Required mathematical evidence: exact profile-width memory ratios and a
   sufficient-condition theorem or certificate format for semantic narrowing.
 - Current mathematical base: correspondences
-  `optimization-profile-width-projection-audit` and
+  `optimization-profile-width-projection-audit`,
+  `optimization-profile-width-source-admission-monotonicity`,
+  `optimization-profile-width-initial-memory-projection`,
   `optimization-profile-width-finite-bisimulation-certificate`, and
-  `optimization-profile-width-minimum-certified-selector` establish the checked
-  projection laws, fail-closed finite certificate shape, and deterministic
-  minimum-width choice. No compiled program has yet been certified narrower.
+  `optimization-profile-width-minimum-certified-selector` establish checked
+  projection/loader laws, a fail-closed finite certificate shape, and the
+  deterministic minimum-width choice. No compiled program has yet been
+  certified narrower.
 - Required correctness evidence: differential/reference execution plus
   adversarial width-boundary tests and independent verification of certificates.
 - Required resource evidence: actual runtime capability discovery, exact

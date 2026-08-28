@@ -61,12 +61,13 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes sixty-four exact reductions: classic five-trit crazy factorization,
+formalizes sixty-six exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact zero-padded 15-trit crazy
 projection and uniform three-lookup factorization for semantic widths 10
 through 14, exact checked profile-width projection laws and output/rotate-
-compatible word counts, a finite lockstep certificate theorem, a minimum-
-certified-width selector, exact decode sum-class
+compatible word counts, monotone source admission and exact initial-memory
+projection across checked widths, a finite lockstep certificate theorem, a
+minimum-certified-width selector, exact decode sum-class
 canonicalization,
 classic rotate
 lookup, graphical self-encryption orbit canonicalization,
@@ -143,6 +144,12 @@ For each checked `N<M`, byte output agrees with width-N projection for exactly
 `3^N` of the `3^M` wide words: precisely those with zero discarded quotient.
 These sets are nested as N decreases, unlike rotate compatibility. This is an
 output-primitive classification only, not a whole-program narrowing proof.
+
+Checked source admission is monotone in width because lexical and decode rules
+are unchanged while memory capacity grows from `3^N` to `3^M`. After a source
+is admitted at both widths, every cell in the complete narrow initial memory is
+exactly the wide initial-memory cell projected modulo `3^N`; the recurrence
+proof is induction through the already proved `crazy` projection law.
 
 At width 14, requiring rotate compatibility for any selected candidate-width
 set `S` leaves exactly `3^(14-|S|)` words. One candidate therefore admits one

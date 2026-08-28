@@ -177,6 +177,32 @@ decreases. The wide EOF word projects to the narrow EOF word, but for $M>N$
 their output bytes differ. Thus small addresses or low projected words alone
 are not a semantic narrowing proof.
 
+Let $L(s)$ be the non-whitespace source-word count and let
+$\mathsf{LoadOK}_N(s)$ mean that the common lexical/decode admission rules
+accept $s$ at checked width $N$. Those rules are width-independent except for
+the memory-capacity bound, hence
+\begin{equation}
+  10\leq N<M\leq14
+  \quad\Longrightarrow\quad
+  \mathsf{LoadOK}_N(s)\Longrightarrow\mathsf{LoadOK}_M(s).
+  \label{eq:optimization-profile-width-source-admission-monotonicity}
+\end{equation}
+Indeed, admission at $N$ gives $2\leq L(s)\leq W_N<W_M$, while every source
+byte and loaded position is unchanged.
+
+When both loads succeed, write $M_0^{(N)}$ and $M_0^{(M)}$ for their complete
+initial memories. The loaded source prefix is identical, and for every
+remaining narrow address the recurrence plus crazy projection gives
+\begin{equation}
+  M_0^{(N)}[k]=\pi_N\!\left(M_0^{(M)}[k]\right),
+  \qquad 0\leq k<W_N.
+  \label{eq:optimization-profile-width-initial-memory-projection}
+\end{equation}
+The proof is induction on $k$. Source cells are the base case; every recurrence
+cell follows by applying the previously proved projection identity to the two
+preceding related cells. Thus loader recurrence introduces no additional
+width-specific obstruction once source capacity and source admission hold.
+
 Let $D$ be a declared input domain and let $R$ be a finite relation between
 complete width-$M$ and width-$N$ guest states. Define
 $\mathsf{WidthCert}_{M\to N}(D,R)=1$ only when every input in $D$ maps to a

@@ -166,6 +166,32 @@ fn current_profile_executes_scalable_state_and_io() -> TestResult {
 }
 
 #[test]
+fn current_loader_projects_to_complete_historical_memory_prefix() -> TestResult
+{
+    let historical = normalize_result(ProfileMachine::from_source(
+        historical_profile(),
+        CURRENT_SOURCE,
+        Vec::new(),
+    ))?;
+    let current = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        CURRENT_SOURCE,
+        Vec::new(),
+    ))?;
+    let historical_modulus = u32::from(HISTORICAL_WORDS);
+    for address in 0..historical_modulus {
+        let narrow = normalize_result(historical.memory_word(address))?;
+        let wide = normalize_result(current.memory_word(address))?;
+        check_equal(
+            &wide.rem_euclid(historical_modulus),
+            &narrow,
+            "current loader projection",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
 fn profiled_historical_matches_classic_roundtrip_and_eof() -> TestResult {
     for input in [vec![0x41], Vec::new()] {
         let mut classic = normalize_result(Machine::from_source(
