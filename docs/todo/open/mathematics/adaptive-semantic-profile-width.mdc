@@ -341,6 +341,11 @@ separate costs; resource evidence must measure those costs directly.
   the same canonical profile, but their opaque geometry differs because only
   `ubO` requires nonempty input. Returning a `uP` checkpoint for a `ubO` request
   is therefore rejected and falls back to the original safe-Rust machine.
+- The CUDA integration path may batch those same two machines because their
+  resident wire shape is identical, but completion reconstruction uses each
+  request's opaque geometry token rather than the shared wire shape. Optional
+  full-state CUDA differential evidence therefore accepts both `uP` and `ubO`
+  completions without collapsing `Any` and `MinimumLength(1)` authority.
 - Prepared profile backend requests expose resident shape only from their
   admitted machine: EOF, canonical input/output opcodes, memory words/modulus,
   and word trits. Direct QP artifacts at N=10 through 14 produce exactly the

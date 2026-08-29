@@ -49,6 +49,8 @@ use malbolge::{
     execute_profile_batch, execute_profile_batch_with_backend_report,
     verify_differential_candidates, verify_initial_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
+    verify_minimum_input_output_halt_profile_width,
+    verify_minimum_input_then_halt_profile_width,
 };
 
 use crate::{
@@ -398,6 +400,59 @@ fn cuda_reviewed_profile_widths_route_through_product_batch_port() -> TestResult
         compare_profile_product_batch(&observed, &expected)?;
     }
     Ok(())
+}
+
+#[test]
+fn cuda_same_resident_shape_retains_distinct_width_authority() -> TestResult {
+    let any_input = normalize_result(
+        verify_minimum_input_then_halt_profile_width(current_profile(), b"uP"),
+    )?;
+    let nonempty_input =
+        normalize_result(verify_minimum_input_output_halt_profile_width(
+            current_profile(),
+            b"ubO",
+        ))?;
+    check_equal(
+        &any_input.word_trits(),
+        &nonempty_input.word_trits(),
+        "CUDA authority shared word width",
+    )?;
+    check_equal(
+        &any_input.memory_words(),
+        &nonempty_input.memory_words(),
+        "CUDA authority shared memory words",
+    )?;
+    if any_input.geometry() == nonempty_input.geometry() {
+        return Err(String::from("CUDA authority fixtures lost hidden policy"));
+    }
+    let any_machine = normalize_result(ProfileMachine::from_verified_source(
+        &any_input,
+        vec![0xa5],
+    ))?;
+    let nonempty_machine = normalize_result(
+        ProfileMachine::from_verified_source(&nonempty_input, vec![0xa5]),
+    )?;
+    let requests = vec![
+        ProfileBatchRequest::from_machine(any_machine, 2),
+        ProfileBatchRequest::from_machine(nonempty_machine, 3),
+    ];
+    let expected = execute_profile_batch(requests.clone());
+    let _cuda_guard = cuda_test_guard()?;
+    let mut backend = CudaProfileProductBackend::new();
+    let (observed, report) =
+        execute_profile_batch_with_backend_report(requests, &mut backend);
+    if let Some(error) = backend.error {
+        return Err(format!("same-shape CUDA backend: {error}"));
+    }
+    if !backend.used_cuda {
+        return Ok(());
+    }
+    check_equal(
+        &report.backend_count(),
+        &2usize,
+        "same-shape CUDA completions",
+    )?;
+    compare_profile_product_batch(&observed, &expected)
 }
 
 #[test]

@@ -91,6 +91,11 @@ example probe points, not supported-range endpoints.
   worker encoding and fall back to safe Rust. The Python synthetic capacity
   sweep still uses research `execution_geometry`, and a production runtime
   adapter remains open.
+- Resident batching groups by wire geometry rather than hidden verifier policy.
+  `uP` (`Any`) and `ubO` (`MinimumLength(1)`) therefore share one N=10 CUDA
+  batch when available, while response reconstruction reapplies the distinct
+  opaque token from each prepared request. Full-state comparison includes that
+  token, so equal resident shape does not erase input-domain authority.
 - A separate 100,000 GiB synthetic fixture proves that additional addressable
   memory is not clamped; classic CUDA splits only at its 32-bit memory-index
   boundary. None of these synthetic rows are hardware throughput measurements.

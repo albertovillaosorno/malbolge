@@ -355,6 +355,12 @@ full-state differential path. Mixed resident widths are rejected before
 homogeneous worker encoding. This does not make the test adapter a production
 runtime backend or establish throughput.
 
+Wire homogeneity is intentionally weaker than verifier authority equality. `uP`
+and `ubO` share the same N=10 resident shape and can execute in one CUDA worker
+batch, while each returned checkpoint is reconstructed with its original opaque
+geometry token. Exact differential comparison includes that token, so the shared
+kernel shape cannot collapse `Any` into `MinimumLength(1)` or vice versa.
+
 `uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
 shows why projected D is insufficient for writes: both crazy transitions
 continue and A still projects, but D names different physical cells, so the
