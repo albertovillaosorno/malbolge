@@ -139,9 +139,13 @@ this construction. Its radix, minimum width, chunk width, chunk cardinality, and
 unbounded maximum marker are generated from `malbolge.json`; no second `5` or
 `243` authority is maintained in the word contract. N10--N20 compatibility is
 checked against the existing `u32` primitives, and independent trit-vector
-oracles cover crazy/rotate through N100.
+oracles cover crazy/rotate through N100. Chunked successor performs exact
+`3^N` wraparound without materializing that modulus, while small-modulus residue
+supports decode modulo 94 and byte output modulo 256 directly from the chunks.
 
-The representation does not prove scalable memory addressing. Registers,
+The optional `u32` bridge is value-exact rather than width-based: N21 zero can
+narrow to `u32`, while N21 EOF cannot. The representation does not prove
+scalable memory addressing. Registers,
 pointers, resident wire, and state-applying backends remain `u32`-bounded while
 the chunked word is introduced independently as the required value primitive.
 

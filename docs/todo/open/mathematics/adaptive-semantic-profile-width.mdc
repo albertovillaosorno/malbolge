@@ -145,16 +145,18 @@ transfers, verification, and other separately measured costs.
   modulus 3^20; and `profile_eof_word(20)` is exactly 3^20-1 while N21 overflows
   the `u32` helper contract.
 - A product `ChunkedProfileWord` value contract now removes that primitive-
-  integer ceiling without replacing it with `u64`. Its radix/minimum/chunk
-  constants are generated from `malbolge.json`; current chunk geometry is
-  base-243 with `ceil(N/5)` chunks and `maximum_trits=None`. N10--N20 crazy and
-  rotate match existing product primitives, while independent trit-vector
-  oracles cover N21, N31, N41, and N100. EOF N100 occupies 20 chunks and cannot
-  convert to `u64`, proving the representation itself does not depend on a
-  single host integer; this remains value-only, so VM registers, memory
-  addresses,
-  resident wire, CUDA, and state-applying native ABI are still `u32` migration
-  gaps.
+  integer ceiling without replacing it with `u64`; its radix/minimum/chunk
+  constants are generated from `malbolge.json`, with base-243 `ceil(N/5)` chunks
+  and `maximum_trits=None`. N10--N20 crazy and rotate match existing product
+  primitives, while independent trit-vector oracles cover N21, N31, N41, and
+  N100. Wide successor wraps exactly at `3^N`, residue supports decode/output
+  moduli without narrowing the full word, and `to_u32` narrows only concrete
+  values that fit (`N21` zero succeeds while `N21` EOF does not). EOF N100
+  occupies 20 chunks and cannot convert to `u64`, proving the representation
+  itself does not depend on a single host integer; this remains value-only, so
+  VM registers, memory addresses, resident wire, CUDA, and state-applying native
+  ABI are still `u32` migration gaps.
+
 - The portable Rust `TargetProfileRequirement` carries profile capacity as
   `u64`, so an exact N21/10,460,353,203-word envelope reaches runtime preflight
   and is rejected against `safe-rust-profiled` as both `word-trits` and
@@ -575,13 +577,15 @@ transfers, verification, and other separately measured costs.
   an initial-halt continuation now fails closed with `CheckpointGeometry` before
   any interpreter transition. This prevents tiered fallback from silently
   reinterpreting a verified narrow checkpoint as canonical N=15.
-- Profile traces now carry their exact execution geometry. Portable IR v1
+- Profile traces now carry their exact execution geometry. Portable IR v3/v4
   projection accepts only traces whose geometry equals the canonical profile and
-  rejects derived traces with `ExecutionGeometry`. QP/N=10 therefore remains
-  available to exact VM/state-graph evidence but cannot acquire direct-native
-  authority through a canonical `RegionEffectProgram` until that IR is
-  explicitly
-  versioned for derived geometry.
+  rejects derived traces with `ExecutionGeometry`. A new
+  `ProfileExecutionGeometryRequirement` projects the visible N/capacity pair
+  from an opaque verified token and validates exact `3^N` capacity without
+  carrying hidden input-policy authority. QP/N=10 therefore has a safe portable
+  geometry declaration but still cannot acquire direct-native authority through
+  `RegionEffectProgram` until a new IR schema binds that declaration explicitly.
+
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and
   historical 10-trit execution when input byte `0xA5` is available. That final

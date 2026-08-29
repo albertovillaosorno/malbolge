@@ -145,7 +145,9 @@ Its chunk width/cardinality come from the generated Rust projection of the
 canonical semantic-width model, whose maximum remains `None`. Crazy and rotate
 operate across any allocated number of chunks; the final incomplete chunk keeps
 only its semantic trits exactly as the canonical padding/projection rule
-requires.
+requires. The same value contract now provides modular successor and small
+residue without constructing `3^N`, which are the value operations needed by
+wide C/D pointer movement and instruction/output projection.
 
 This is value-level scalability, not yet a scalable memory image.
 `ProfileMachine`

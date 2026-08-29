@@ -97,8 +97,10 @@ words, independently of current-profile selection.
 A separate public `ChunkedProfileWord` value contract now consumes the generated
 semantic-width constants projected from `malbolge.json`. It stores exactly
 `ceil(N/5)` little-endian base-243 chunks, constrains the final partial chunk to
-its native trits, and implements crazy, rotate, low-byte projection, EOF, and
-narrower-width projection without computing `3^N` in a host integer.
+its native trits, and implements crazy, rotate, modular successor, small-modulus
+residue, low-byte projection, EOF, and narrower-width projection without
+computing `3^N` in a host integer. An optional `u32` conversion succeeds only
+when the concrete value fits; it is not a width admission rule.
 
 This does not yet widen `ProfileMachine` memory or registers. Product tests show
 N10 through N20 equal the existing `u32` primitives, while independent

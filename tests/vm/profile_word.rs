@@ -14,7 +14,8 @@
 //   - Reuse production rotate/crazy formulas as the wide-width oracle.
 // - Allows:
 //   - Inputs: public chunked words plus independent ternary digit formulas.
-//   - Outputs: round-trip, projection, crazy, rotate, and compatibility proofs.
+//   - Outputs: projection, crazy, rotate, residue, successor, and bridge
+//     proofs.
 //   - Side effects: test-process allocation only.
 // - Split-When:
 //   - Split when chunked memory addressing gains a separate public contract.
@@ -146,6 +147,44 @@ fn wide_low_byte_oracle(word: &ChunkedProfileWord) -> TestResult<u8> {
     u8::try_from(result).map_err(|error| format!("low-byte oracle: {error}"))
 }
 
+fn wide_residue_oracle(word: &ChunkedProfileWord, modulus: u16) -> Option<u16> {
+    if modulus == 0 {
+        return None;
+    }
+    let modulus_u32 = u32::from(modulus);
+    let mut result = 0u32;
+    let mut place = 1u32;
+    for digit in trits_of(word) {
+        result = result
+            .saturating_add(u32::from(digit).saturating_mul(place))
+            .rem_euclid(modulus_u32);
+        place = place
+            .saturating_mul(u32::from(TERNARY_RADIX))
+            .rem_euclid(modulus_u32);
+    }
+    u16::try_from(result).ok()
+}
+
+fn wide_successor_oracle(
+    word: &ChunkedProfileWord,
+) -> TestResult<ChunkedProfileWord> {
+    let mut digits = trits_of(word);
+    let mut carry = true;
+    for digit in &mut digits {
+        if !carry {
+            break;
+        }
+        let next = digit.saturating_add(1);
+        carry = next >= TERNARY_RADIX;
+        *digit = if carry {
+            0
+        } else {
+            next
+        };
+    }
+    from_trits(&digits)
+}
+
 fn wide_rotate_oracle(
     word: &ChunkedProfileWord,
 ) -> TestResult<ChunkedProfileWord> {
@@ -225,6 +264,11 @@ fn chunked_profile_word_matches_u32_primitives_through_n20() -> TestResult {
                 .map_err(|error| error.to_string())?;
             let data_u32 = u32::try_from(data_value)
                 .map_err(|error| format!("u32 bridge data: {error}"))?;
+            check_equal(
+                &data.to_u32(),
+                &Some(data_u32),
+                "chunked word narrows exactly through N20",
+            )?;
             check_equal(
                 &data.rotate().to_u64(),
                 &Some(u64::from(profile_rotate(data_u32, modulus_u32))),
@@ -337,6 +381,77 @@ fn chunked_profile_word_wide_rotate_matches_trit_oracle() -> TestResult {
         }
     }
     Ok(())
+}
+
+#[test]
+fn chunked_profile_word_residue_matches_wide_trit_oracle() -> TestResult {
+    for trits in [10usize, 15, 20, 21, 31, 41, 100] {
+        for seed in 0..3usize {
+            let word = patterned_word(trits, seed)?;
+            for modulus in [3u16, 94, 243, 256, 65_535] {
+                check_equal(
+                    &word.residue(modulus),
+                    &wide_residue_oracle(&word, modulus),
+                    "chunked residue equals trit oracle",
+                )?;
+            }
+            check_equal(
+                &word.residue(0),
+                &None,
+                "zero residue modulus is rejected",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn chunked_profile_word_successor_matches_wide_trit_oracle() -> TestResult {
+    for trits in [10usize, 15, 20, 21, 31, 41, 100] {
+        for seed in 0..3usize {
+            let word = patterned_word(trits, seed)?;
+            check_equal(
+                &word.successor(),
+                &wide_successor_oracle(&word)?,
+                "chunked successor equals trit oracle",
+            )?;
+        }
+        let eof = ChunkedProfileWord::eof(trits)
+            .map_err(|error| error.to_string())?;
+        let zero = ChunkedProfileWord::zero(trits)
+            .map_err(|error| error.to_string())?;
+        check_equal(
+            &eof.successor(),
+            &zero,
+            "chunked successor wraps EOF to zero",
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn chunked_profile_word_u32_bridge_is_value_exact() -> TestResult {
+    let n20_eof =
+        ChunkedProfileWord::eof(20).map_err(|error| error.to_string())?;
+    let n21_zero =
+        ChunkedProfileWord::zero(21).map_err(|error| error.to_string())?;
+    let n21_eof =
+        ChunkedProfileWord::eof(21).map_err(|error| error.to_string())?;
+    check_equal(
+        &n20_eof.to_u32(),
+        &Some(3_486_784_400),
+        "N20 EOF fits exact u32 bridge",
+    )?;
+    check_equal(
+        &n21_zero.to_u32(),
+        &Some(0),
+        "N21 zero narrows because its value fits u32",
+    )?;
+    check_equal(
+        &n21_eof.to_u32(),
+        &None,
+        "N21 EOF exceeds the u32 value bridge",
+    )
 }
 
 #[test]

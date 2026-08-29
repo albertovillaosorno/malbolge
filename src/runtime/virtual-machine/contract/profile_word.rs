@@ -262,17 +262,9 @@ impl ChunkedProfileWord {
     /// 256.
     #[must_use]
     pub fn low_byte(&self) -> u8 {
-        let mut result = 0u16;
-        let mut weight = 1u16;
-        for chunk in &self.chunks {
-            result = result
-                .saturating_add(u16::from(*chunk).saturating_mul(weight))
-                .rem_euclid(OUTPUT_MODULUS);
-            weight = weight
-                .saturating_mul(PROFILE_WORD_CHUNK_CARDINALITY)
-                .rem_euclid(OUTPUT_MODULUS);
-        }
-        u8::try_from(result).ok().unwrap_or(0)
+        self.residue(OUTPUT_MODULUS)
+            .and_then(|value| u8::try_from(value).ok())
+            .unwrap_or(0)
     }
 
     /// Projects this word onto its least-significant `target_trits` trits.
@@ -311,6 +303,26 @@ impl ChunkedProfileWord {
         })
     }
 
+    /// Returns the complete word modulo one nonzero small integer.
+    ///
+    /// This is sufficient for instruction decode modulo 94 and output modulo
+    /// 256 without converting the full word into a primitive integer.
+    #[must_use]
+    pub fn residue(&self, modulus: u16) -> Option<u16> {
+        if modulus == 0 {
+            return None;
+        }
+        let modulus_u32 = u32::from(modulus);
+        let mut result = 0u32;
+        for chunk in self.chunks.iter().rev() {
+            result = result
+                .saturating_mul(u32::from(PROFILE_WORD_CHUNK_CARDINALITY))
+                .saturating_add(u32::from(*chunk))
+                .rem_euclid(modulus_u32);
+        }
+        u16::try_from(result).ok()
+    }
+
     /// Rotates the least-significant trit into the exact highest semantic trit.
     #[must_use]
     pub fn rotate(&self) -> Self {
@@ -346,6 +358,39 @@ impl ChunkedProfileWord {
             chunks: chunks.into_boxed_slice(),
             trits: self.trits,
         }
+    }
+
+    /// Advances this word by one with exact wraparound at `3^N`.
+    #[must_use]
+    pub fn successor(&self) -> Self {
+        let mut chunks = self.chunks.to_vec();
+        let mut carry = true;
+        for index in 0..chunks.len() {
+            if !carry {
+                break;
+            }
+            let modulus = chunk_modulus(chunk_trits(self.trits, index));
+            let Some(chunk) = chunks.get_mut(index) else {
+                break;
+            };
+            let current = u16::from(*chunk).saturating_add(1);
+            carry = current >= modulus;
+            *chunk = if carry {
+                0
+            } else {
+                u8::try_from(current).ok().unwrap_or(0)
+            };
+        }
+        Self {
+            chunks: chunks.into_boxed_slice(),
+            trits: self.trits,
+        }
+    }
+
+    /// Returns the exact integer when it fits in `u32`.
+    #[must_use]
+    pub fn to_u32(&self) -> Option<u32> {
+        self.to_u64().and_then(|value| u32::try_from(value).ok())
     }
 
     /// Returns the exact integer when it fits in `u64`.
