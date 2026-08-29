@@ -298,9 +298,12 @@ field. A wider requirement fails IR v3 canonicalization with
 Portable effect IR v4 adds a `u64` capacity field,
 and native/cache identity preserves those v4 bytes. MBPF v4 mirrors that `u64`
 capacity exactly. The deopt-only direct backend emits, structurally admits, and
-semantically verifies v4 because it never reads or writes guest state. Bootstrap
-and all state-applying direct templates still reject v4, so a wider execution
-backend remains required before N21 can execute.
+semantically verifies even N21 v4 because it never reads or writes guest state.
+
+Bootstrap and state-applying native paths accept v3 or v4 while declared profile
+capacity fits their `u32` word/address representation; N21 fails those paths on
+geometry rather than schema version. A wider execution backend remains required
+before N21 can execute effects.
 
 Effect IR now derives the exact region-specific memory requirement needed to
 distinguish `MALBOLGE-PROFILE-002`, including the full `u32` address domain.

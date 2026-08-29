@@ -34,15 +34,22 @@
 
 use super::*;
 
+fn direct_program_header_supported(program: &RegionEffectProgram) -> bool {
+    is_canonical_effect_ir_version(program.format_version)
+        && u32::try_from(program.profile_requirement.memory_words).is_ok()
+}
+
 fn direct_memory_words(program: &RegionEffectProgram) -> Option<u32> {
-    u32::try_from(program.profile_requirement.memory_words).ok()
+    direct_program_header_supported(program)
+        .then(|| u32::try_from(program.profile_requirement.memory_words).ok())
+        .flatten()
 }
 
 pub(super) fn fetched_terminal_program(
     program: &RegionEffectProgram,
     reason: Termination,
 ) -> Option<DirectFetchedTerminalProgram> {
-    if program.format_version != EFFECT_IR_VERSION
+    if !direct_program_header_supported(program)
         || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || program.memory_live_ins.len() != 1
@@ -141,7 +148,7 @@ pub(super) fn validate_non_graphical_target(
 pub(super) fn validate_jump_code_program(
     program: &RegionEffectProgram,
 ) -> Result<DirectJumpCodeProgram, DirectJumpCodeError> {
-    if program.format_version != EFFECT_IR_VERSION
+    if !direct_program_header_supported(program)
         || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || program.memory_live_ins.len() != 3
@@ -278,7 +285,7 @@ pub(super) fn validate_jump_code_target(
 pub(super) fn validate_jump_data_program(
     program: &RegionEffectProgram,
 ) -> Result<DirectJumpDataProgram, DirectJumpDataError> {
-    if program.format_version != EFFECT_IR_VERSION
+    if !direct_program_header_supported(program)
         || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || program.memory_live_ins.len() != 2
@@ -395,7 +402,7 @@ pub(super) fn validate_jump_data_target(
 pub(super) fn validate_crazy_program(
     program: &RegionEffectProgram,
 ) -> Result<DirectCrazyProgram, DirectCrazyError> {
-    if program.format_version != EFFECT_IR_VERSION
+    if !direct_program_header_supported(program)
         || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || program.memory_live_ins.len() != 2
@@ -505,7 +512,7 @@ pub(super) fn validate_crazy_target(
 pub(super) fn validate_input_program(
     program: &RegionEffectProgram,
 ) -> Result<DirectInputProgram, DirectInputError> {
-    if program.format_version != EFFECT_IR_VERSION
+    if !direct_program_header_supported(program)
         || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || program.memory_live_ins.len() != 1
@@ -631,7 +638,7 @@ pub(super) fn validate_input_target(
 pub(super) fn validate_output_program(
     program: &RegionEffectProgram,
 ) -> Result<DirectOutputProgram, DirectOutputError> {
-    if program.format_version != EFFECT_IR_VERSION
+    if !direct_program_header_supported(program)
         || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || program.memory_live_ins.len() != 1
@@ -739,7 +746,7 @@ pub(super) fn validate_output_target(
 pub(super) fn validate_rotate_program(
     program: &RegionEffectProgram,
 ) -> Result<DirectRotateProgram, DirectRotateError> {
-    if program.format_version != EFFECT_IR_VERSION
+    if !direct_program_header_supported(program)
         || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || program.memory_live_ins.len() != 2
@@ -888,7 +895,7 @@ pub(super) fn validate_rotate_target(
 pub(super) fn validate_no_operation_program(
     program: &RegionEffectProgram,
 ) -> Result<DirectNoOperationProgram, DirectNoOperationError> {
-    if program.format_version != EFFECT_IR_VERSION
+    if !direct_program_header_supported(program)
         || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || program.memory_live_ins.len() != 1
@@ -983,7 +990,7 @@ pub(super) fn validate_no_operation_target(
 pub(super) fn validate_halt_registers_program(
     program: &RegionEffectProgram,
 ) -> Result<ProfileMachineObservation, DirectHaltRegistersError> {
-    if program.format_version != EFFECT_IR_VERSION
+    if !direct_program_header_supported(program)
         || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || !program.memory_live_ins.is_empty()
@@ -1036,7 +1043,7 @@ pub(super) fn validate_halt_registers_target(
 pub(super) fn validate_initial_halt_program(
     program: &RegionEffectProgram,
 ) -> Result<(), DirectInitialHaltError> {
-    if program.format_version != EFFECT_IR_VERSION
+    if !direct_program_header_supported(program)
         || !program.fits_declared_profile_capacity()
         || program.step_budget != 1
         || !program.memory_live_ins.is_empty()

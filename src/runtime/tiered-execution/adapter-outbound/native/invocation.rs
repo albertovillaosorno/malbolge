@@ -38,8 +38,9 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::NonZeroUsize;
 
 use malbolge::{
-    EFFECT_IR_VERSION, EffectOp, ProfileMachineObservation, ProfileMemoryWrite,
+    EffectOp, ProfileMachineObservation, ProfileMemoryWrite,
     RegionEffectProgram, RunOutcome, TraceInput,
+    is_canonical_effect_ir_version,
 };
 
 use super::abi::{
@@ -733,7 +734,8 @@ fn exact_effect(
         .map_or(RunOutcome::BudgetExhausted { steps: 1 }, |reason| {
             RunOutcome::Terminated { reason, steps: 1 }
         });
-    if program.format_version != EFFECT_IR_VERSION
+    if !is_canonical_effect_ir_version(program.format_version)
+        || u32::try_from(program.profile_requirement.memory_words).is_err()
         || program.step_budget != 1
         || program.outcome != expected_outcome
         || effect.before.termination.is_some()

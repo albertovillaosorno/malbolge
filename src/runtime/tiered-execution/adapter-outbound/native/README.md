@@ -179,9 +179,10 @@ revision 2 after binding their runtime capacity guard to the exact IR footprint;
 `direct-jump-code`, `direct-jump-data`, `direct-rotate`, `direct-crazy`,
 `direct-input`, and `direct-output` start at revision 1.
 
-The eleven state-applying direct templates remain IR/MBPF v3-only. Direct-deopt
-accepts IR/MBPF v3 or v4 because its code only returns guard-miss and never
-touches guest state.
+State-applying direct templates accept canonical IR/MBPF v3 or v4 when declared
+profile capacity fits their `u32` word/address representation. The same geometry
+gate protects native invocation. Direct-deopt can additionally carry N21 v4
+because its code only returns guard-miss and never touches guest state.
 
 The second direct template is the first state-applying fast path. The
 `direct-initial-halt` backend accepts exactly one portable-IR shape: one effect

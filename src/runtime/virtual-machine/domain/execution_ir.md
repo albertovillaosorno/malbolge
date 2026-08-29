@@ -95,9 +95,14 @@ Native cache/artifact identity accepts canonical v3 and v4 bytes, preserving the
 IR version as part of exact identity. Native profile metadata follows that
 version: MBPF v3 keeps the frozen `u32` capacity field and MBPF v4 carries the
 v4 `u64` capacity. The deoptimization-only direct backend can emit and verify
-both versions because its machine code never reads or writes guest state.
-State-applying direct templates and the bootstrap backend still require IR v3;
-portable/native v4 transport is not authority for N21 execution.
+both versions even when v4 declares N21 because its machine code never reads or
+writes guest state.
+
+Bootstrap, state-applying direct templates, and native invocation accept either
+canonical version when the declared profile capacity fits their `u32`
+word/address representation. N21 v4 fails those execution boundaries on
+geometry,
+not schema version.
 
 Profile capacity is the complete runtime capability required to implement the
 selected profile. `RegionEffectProgram::required_memory_words()` separately

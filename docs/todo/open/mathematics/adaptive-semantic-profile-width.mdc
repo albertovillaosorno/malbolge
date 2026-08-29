@@ -150,10 +150,12 @@ transfers, verification, and other separately measured costs.
   `memory-words`. Frozen effect IR v3 still encodes capacity as `u32` and
   rejects
   N21 with `ProfileMemoryWordsOverflow`. Portable effect IR v4 and MBPF v4
-  encode the same envelope exactly with a `u64` capacity field. Native/cache
-  identity preserves v4, while direct-deopt can carry it safely because it only
-  returns guard-miss; bootstrap and every state-applying native template remain
-  v3-only, so a wider execution backend is still a separate requirement.
+  encode the same envelope exactly with a `u64` capacity field; native/cache
+  identity preserves v4, while direct-deopt can carry N21 safely because it only
+  returns guard-miss. Bootstrap, state-applying direct templates, and native
+  invocation accept v3/v4 when profile capacity fits `u32`; N21 fails on that
+  geometry boundary, so a wider execution backend remains a separate
+  requirement.
 - A theorem-specific research checker certifies the initial-halt family without
   trusting final differential equality. It checks widths, source capacity and
   lexical admission, every position-dependent loader decode, and an initial `v`

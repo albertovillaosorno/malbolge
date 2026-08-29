@@ -110,9 +110,12 @@ baseline; native tiers are accelerators of identical observable behavior.
   identity, and relocation/symbol closure without trusting LLVM inspection.
   `src/runtime/tiered-execution/adapter-outbound/native/profile_metadata.rs` now
   solely owns versioned MBPF encoding consumed by bootstrap/direct emitters and
-  COFF admission. State-applying direct objects and bootstrap remain IR/MBPF v3;
-  direct-deopt may use v3 or v4 because its reviewed machine code only returns
-  guard-miss.
+  COFF admission. Bootstrap, state-applying direct objects, and native
+  invocation
+  accept canonical v3/v4 while profile capacity fits their `u32` representation;
+  N21 fails on geometry. Direct-deopt may still carry N21 v4 because its
+  reviewed
+  machine code only returns guard-miss.
 
   MBPF v4 widens profile capacity to `u64`, while both versions bind
   profile ID/fingerprint, published version, semantic features, word trits, and

@@ -127,7 +127,7 @@ pub use execution::{ExecutionError, ExecutionErrorKind, ExecutionMachine};
 pub use execution_ir::{
     EFFECT_IR_VERSION, EFFECT_IR_WIDE_PROFILE_VERSION, EffectOp,
     IrEncodingError, MemoryLiveIn, RegionEffectProgram,
-    StepProgramProjectionError,
+    StepProgramProjectionError, is_canonical_effect_ir_version,
 };
 pub use host_capability::{
     HOST_CALL_FLAG_NONBLOCKING, HOST_CAPABILITY_ABI_VERSION,

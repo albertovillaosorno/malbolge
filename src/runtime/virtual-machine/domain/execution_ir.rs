@@ -45,7 +45,7 @@ use crate::profile_trace::{
 };
 use crate::trace::TraceInput;
 
-/// Current native-supported portable bounded-region effect-IR schema version.
+/// Frozen narrow-profile portable effect-IR schema version.
 pub const EFFECT_IR_VERSION: u16 = 3;
 /// Portable effect-IR schema with a 64-bit profile-capacity field.
 pub const EFFECT_IR_WIDE_PROFILE_VERSION: u16 = 4;
@@ -159,10 +159,7 @@ impl RegionEffectProgram {
     /// the frozen IR-v3 unsigned 32-bit profile-capacity field, or
     /// [`IrEncodingError::UnsupportedFormatVersion`] for an unknown schema.
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, IrEncodingError> {
-        if !matches!(
-            self.format_version,
-            EFFECT_IR_VERSION | EFFECT_IR_WIDE_PROFILE_VERSION
-        ) {
+        if !is_canonical_effect_ir_version(self.format_version) {
             return Err(IrEncodingError::UnsupportedFormatVersion);
         }
         let mut bytes = Vec::new();
@@ -295,6 +292,15 @@ const fn trace_uses_canonical_geometry(trace: &ProfileStepTrace) -> bool {
         && trace.geometry.word_modulus() == trace.profile.word_modulus()
         && trace.geometry.memory_words() == trace.profile.memory_words()
         && trace.geometry.eof_word() == trace.profile.eof_word()
+}
+
+/// Reports whether the portable effect-IR schema has a canonical encoder.
+#[must_use]
+pub const fn is_canonical_effect_ir_version(format_version: u16) -> bool {
+    matches!(
+        format_version,
+        EFFECT_IR_VERSION | EFFECT_IR_WIDE_PROFILE_VERSION
+    )
 }
 
 fn insert_trace_read(

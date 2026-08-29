@@ -67,11 +67,11 @@ use emit::{
 };
 pub use error::*;
 use malbolge::{
-    EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, PortableProfileRequirementError,
+    EffectOp, MemoryLiveIn, PortableProfileRequirementError,
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
     ProfileRegisters, RegionEffectProgram, RunOutcome, RuntimeCapability,
     Termination, TraceInput, decode_profile_instruction, encrypt_profile_cell,
-    preflight_portable_profile_requirement,
+    is_canonical_effect_ir_version, preflight_portable_profile_requirement,
     profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
     profile_crazy, profile_eof_word, profile_low_byte,
     profile_pointer_successor, profile_rotate, target_profile,

@@ -91,9 +91,10 @@ historical-profile constraint.
   profile-capacity field. V3 rejects a wider envelope with
   `ProfileMemoryWordsOverflow`; portable effect IR v4 and MBPF v4 encode that
   capacity as `u64`. Native/cache identity preserves v4, and direct-deopt emits,
-  structurally admits, and verifies MBPF v4 because its code only returns
-  guard-miss. Bootstrap and state-applying direct templates still reject v4, so
-  wider transport is not yet wider execution authority.
+  structurally admits, and verifies even N21 MBPF v4 because its code only
+  returns guard-miss. Bootstrap, state-applying direct templates, and native
+  invocation accept v3/v4 while profile capacity fits `u32`; N21 is rejected by
+  their geometry boundary rather than the schema version.
 - VM-owned `preflight_runtime_requirement()` consumes an independently admitted
   envelope against explicit classic/profiled runtime capability. Current IR
   produces byte-identical `MALBOLGE-PROFILE-001` text to canonical preflight,

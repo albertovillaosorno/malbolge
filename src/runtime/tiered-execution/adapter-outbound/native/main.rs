@@ -184,9 +184,9 @@ pub use loader::{
     VerifiedDirectLoadError, VerifiedDirectLoadImage,
 };
 use malbolge::{
-    EFFECT_IR_VERSION, PortableProfileRequirementError,
-    ProfileMachineObservation, ProfileMemoryWrite, RegionEffectProgram,
-    RunOutcome, RuntimeCapability, TraceInput,
+    PortableProfileRequirementError, ProfileMachineObservation,
+    ProfileMemoryWrite, RegionEffectProgram, RunOutcome, RuntimeCapability,
+    TraceInput, is_canonical_effect_ir_version,
     preflight_portable_profile_requirement,
 };
 pub use platform::{
@@ -239,7 +239,7 @@ pub enum NativeArtifactError {
     Identity(NativeIdentityError),
     /// Input metadata disagrees with before/after observation counters.
     InputTransition,
-    /// Portable IR schema is not the implemented version.
+    /// Portable IR schema has no canonical encoding implemented here.
     IrVersion,
     /// A verifier live-in disagrees with the first written value at its
     /// address.
@@ -252,6 +252,9 @@ pub enum NativeArtifactError {
     Outcome,
     /// Output metadata disagrees with before/after observation counters.
     OutputTransition,
+    /// Profile geometry exceeds the bootstrap's u32 word/address
+    /// representation.
+    ProfileGeometry,
     /// Rendering into owned source text unexpectedly failed.
     Rendering,
     /// Requested target does not name the bootstrap backend/revision/ABI.
@@ -278,6 +281,9 @@ impl Display for NativeArtifactError {
             Self::Outcome => "region outcome is inconsistent with effects",
             Self::OutputTransition => {
                 "region output transition is inconsistent"
+            },
+            Self::ProfileGeometry => {
+                "profile geometry exceeds bootstrap representation"
             },
             Self::Rendering => "native bootstrap C rendering failed",
             Self::TargetBackend => {
@@ -439,8 +445,11 @@ impl<'program> LoweringPlan<'program> {
     fn new(
         program: &'program RegionEffectProgram,
     ) -> Result<Self, NativeArtifactError> {
-        if program.format_version != EFFECT_IR_VERSION {
+        if !is_canonical_effect_ir_version(program.format_version) {
             return Err(NativeArtifactError::IrVersion);
+        }
+        if u32::try_from(program.profile_requirement.memory_words).is_err() {
+            return Err(NativeArtifactError::ProfileGeometry);
         }
         let first = program
             .effects

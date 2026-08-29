@@ -1155,31 +1155,76 @@ fn native_identity_and_deopt_bind_portable_ir_v4() -> Result<(), String> {
 }
 
 #[test]
-fn bootstrap_backend_rejects_portable_ir_v4() -> Result<(), String> {
+fn bootstrap_backend_accepts_v4_with_u32_geometry() -> Result<(), String> {
+    let mut v4 = native_program();
+    v4.format_version = EFFECT_IR_WIDE_PROFILE_VERSION;
+    let artifact = lower_clang_c23(&v4, native_target(HostIsa::X86_64))
+        .map_err(|error| {
+            format!("v4 bootstrap rejected u32 geometry: {error}")
+        })?;
+    if artifact.key().ir().format_version() != EFFECT_IR_WIDE_PROFILE_VERSION {
+        return Err(String::from("v4 bootstrap key lost IR version"));
+    }
+    assert_bootstrap_source_profile_metadata(&v4, artifact.source())
+}
+
+#[test]
+fn bootstrap_backend_rejects_v4_beyond_u32_geometry() -> Result<(), String> {
     let mut wide = native_program();
     wide.format_version = EFFECT_IR_WIDE_PROFILE_VERSION;
+    wide.profile_requirement.word_trits = 21;
+    wide.profile_requirement.memory_words = 10_460_353_203;
     if lower_clang_c23(&wide, native_target(HostIsa::X86_64))
-        == Err(NativeArtifactError::IrVersion)
+        == Err(NativeArtifactError::ProfileGeometry)
     {
         Ok(())
     } else {
-        Err(String::from(
-            "IR v4 reached the state-applying bootstrap backend",
-        ))
+        Err(String::from("N21 v4 reached the u32 bootstrap backend"))
     }
 }
 
 #[test]
-fn state_applying_native_backend_rejects_portable_ir_v4() -> Result<(), String>
-{
+fn state_applying_native_backend_accepts_v4_with_u32_geometry()
+-> Result<(), String> {
+    let mut v4 = direct_rotate_program();
+    v4.format_version = EFFECT_IR_WIDE_PROFILE_VERSION;
+    let expected_metadata = expected_profile_metadata(&v4)?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = emit_direct_rotate_coff(&v4, direct_rotate_target(isa))
+            .map_err(|error| {
+                format!("v4 {isa:?} direct rotate emission failed: {error}")
+            })?;
+        if !artifact
+            .object()
+            .windows(expected_metadata.len())
+            .any(|window| window == expected_metadata)
+        {
+            return Err(format!("v4 {isa:?} direct rotate lost MBPF v4"));
+        }
+        let verified =
+            verify_direct_rotate(&artifact, &v4).map_err(|error| {
+                format!("v4 {isa:?} direct rotate verification failed: {error}")
+            })?;
+        if verified.object() != artifact.object() {
+            return Err(format!("v4 {isa:?} direct rotate changed bytes"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn state_applying_native_backend_rejects_v4_beyond_u32_geometry()
+-> Result<(), String> {
     let mut wide = direct_rotate_program();
     wide.format_version = EFFECT_IR_WIDE_PROFILE_VERSION;
+    wide.profile_requirement.word_trits = 21;
+    wide.profile_requirement.memory_words = 10_460_353_203;
     if emit_direct_rotate_coff(&wide, direct_rotate_target(HostIsa::X86_64))
         == Err(DirectRotateError::ProgramShape)
     {
         Ok(())
     } else {
-        Err(String::from("IR v4 reached state-applying direct rotate"))
+        Err(String::from("N21 v4 reached state-applying direct rotate"))
     }
 }
 
@@ -6780,6 +6825,65 @@ fn native_region_invocation_admits_atomic_guard_miss() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("atomic native guard miss changed state"))
+    }
+}
+
+#[test]
+fn native_region_invocation_accepts_v4_with_u32_geometry() -> Result<(), String>
+{
+    let mut program = native_invocation_output_program();
+    program.format_version = EFFECT_IR_WIDE_PROFILE_VERSION;
+    let expected = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v4 invocation fixture has no effect"))?
+        .after;
+    let mut memory = [65u32, 10, 20];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    let mut invocation = PreparedNativeRegionInvocation::new(
+        &program,
+        &mut memory,
+        &input,
+        &mut output,
+    )
+    .map_err(|error| format!("v4 invocation rejected u32 geometry: {error}"))?;
+    invocation.apply_expected_for_test();
+    let outcome = invocation
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| format!("v4 invocation completion failed: {error}"))?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == [66, 10, 20]
+        && output == [0x10, 0xa8, 0]
+    {
+        Ok(())
+    } else {
+        Err(String::from("v4 invocation did not apply exact effect"))
+    }
+}
+
+#[test]
+fn native_region_invocation_rejects_v4_beyond_u32_geometry()
+-> Result<(), String> {
+    let mut program = native_invocation_output_program();
+    program.format_version = EFFECT_IR_WIDE_PROFILE_VERSION;
+    program.profile_requirement.word_trits = 21;
+    program.profile_requirement.memory_words = 10_460_353_203;
+    let mut memory = [65u32, 10, 20];
+    let input = [];
+    let mut output = [0x10u8, 0, 0];
+    if matches!(
+        PreparedNativeRegionInvocation::new(
+            &program,
+            &mut memory,
+            &input,
+            &mut output,
+        ),
+        Err(NativeRegionInvocationError::ProgramShape)
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("N21 v4 reached the u32 invocation ABI"))
     }
 }
 

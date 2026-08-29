@@ -136,6 +136,12 @@ word trits, and exact derived `u64` region memory retained by the native key.
 Missing or mismatched required metadata, including a
 same-profile footprint mismatch, fails before semantic admission.
 
+Schema version is not the state-applying execution ceiling. Bootstrap, direct
+shape admission, and native invocation accept canonical IR/MBPF v3 or v4 when
+the declared profile capacity converts exactly to their `u32` word/address
+representation. V4 N21 fails that geometry gate; direct-deopt alone may carry
+N21 v4 because the reviewed stub never touches guest state.
+
 Bootstrap revision-2 C23 source renders the canonical bytes through a read-only
 custom-section
 declaration; historical revision 1 remains legal without the section. The pinned
