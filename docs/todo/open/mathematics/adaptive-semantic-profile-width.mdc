@@ -394,8 +394,13 @@ separate costs; resource evidence must measure those costs directly.
 - `ProfileMachine::from_adaptive_source` consumes that selector and fails closed
   to canonical `from_source` if no narrower artifact applies or derived loading
   fails. QP with empty input selects N=10; `ubO` with byte input selects N=10;
-  `ubO` with empty input remains canonical N=14 and emits `0x78`. The CLI does
-  not call this adaptive constructor yet.
+  `ubO` with empty input remains canonical N=14 and emits `0x78`.
+- The CLI now exposes that constructor only under explicit
+  `MALBOLGE_PROFILE_ADAPTIVE_WIDTH=1` for current-profile capsules. `0` keeps
+  canonical N14 and invalid values fail closed. A synthetic MBPRN2 worker sees
+  QP as N10 when enabled and N14 when disabled; the published `ubO`/EOF capsule
+  remains N14 even when enabled. A temporary live RTX 4060 check also executed
+  the QP/N10 CLI path through `CudaProfileRunAdapter.evaluate`.
 - Tiered interpreter handoff remains canonical-only until its continuation
   schema carries verified execution geometry explicitly. A derived N=10
   checkpoint with the same canonical profile, observation, and live-in surface

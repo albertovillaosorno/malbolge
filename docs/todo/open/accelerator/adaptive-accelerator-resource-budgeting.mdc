@@ -107,10 +107,13 @@ example probe points, not supported-range endpoints.
   throughput evidence.
 - Product runtime now has an input-aware composite proof selector plus
   `ProfileMachine::from_adaptive_source`, so verified N=10..13 execution no
-  longer requires callers to name one theorem family manually. No composition
-  root invokes that adaptive constructor yet, and the Python synthetic capacity
-  sweep still uses research `execution_geometry`. Persistent sessions and
-  equivalent-work retained performance evidence remain separate acceptance gaps.
+  longer requires callers to name one theorem family manually. The CLI can
+  invoke
+  it explicitly for current-profile capsules and pass the resulting derived
+  geometry to the configured MBPRN2 worker. A live RTX 4060 QP check exercised
+  N10 through that full composition path. The Python synthetic capacity sweep
+  still uses research `execution_geometry`; persistent sessions and equivalent-
+  work retained performance evidence remain separate acceptance gaps.
 - Resident batching groups by wire geometry rather than hidden verifier policy.
   `uP` (`Any`) and `ubO` (`MinimumLength(1)`) therefore share one N=10 CUDA
   batch when available, while response reconstruction reapplies the distinct

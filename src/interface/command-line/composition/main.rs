@@ -69,6 +69,7 @@ const DOOM_IWAD_NAMES: [&str; 8] = [
 const C_RUN_PREFIX: &str = "malbolge-c-run";
 const LLVM_VERSION: &str = "22.1.8";
 const MALBOLGE_EXTENSION: &str = "malbolge";
+const PROFILE_ADAPTIVE_WIDTH_ENV: &str = "MALBOLGE_PROFILE_ADAPTIVE_WIDTH";
 const PROFILE_WORKER_ARG_COUNT_ENV: &str =
     "MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_COUNT";
 const PROFILE_WORKER_CWD_ENV: &str = "MALBOLGE_PROFILE_RESIDENT_WORKER_CWD";
@@ -554,6 +555,24 @@ fn run_malbolge(source_path: &Path) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
+fn configured_adaptive_profile_width(
+    profile: &'static malbolge::ProfileDescriptor,
+) -> Result<bool, String> {
+    if profile != current_profile() {
+        return Ok(false);
+    }
+    let Some(value) = env::var_os(PROFILE_ADAPTIVE_WIDTH_ENV) else {
+        return Ok(false);
+    };
+    if value == OsStr::new("0") {
+        Ok(false)
+    } else if value == OsStr::new("1") {
+        Ok(true)
+    } else {
+        Err(format!("{PROFILE_ADAPTIVE_WIDTH_ENV} must be 0 or 1"))
+    }
+}
+
 fn configured_profile_backend(
     profile: &'static malbolge::ProfileDescriptor,
 ) -> Result<Option<ConfiguredProfileBackend>, String> {
@@ -611,8 +630,13 @@ fn run_profile(
     profile: &'static malbolge::ProfileDescriptor,
     source: &[u8],
 ) -> Result<(), String> {
-    let machine = ProfileMachine::from_source(profile, source, Vec::new())
-        .map_err(|error| format!("profile Malbolge load failed: {error}"))?;
+    let adaptive_width = configured_adaptive_profile_width(profile)?;
+    let machine = if adaptive_width {
+        ProfileMachine::from_adaptive_source(profile, source, Vec::new())
+    } else {
+        ProfileMachine::from_source(profile, source, Vec::new())
+    }
+    .map_err(|error| format!("profile Malbolge load failed: {error}"))?;
     let mut backend = configured_profile_backend(profile)?;
     match backend.as_mut() {
         Some(selected) => run_profile_with_backend(machine, selected),

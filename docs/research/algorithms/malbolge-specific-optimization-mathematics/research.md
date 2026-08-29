@@ -384,6 +384,13 @@ profile and whose hidden input policy admits the exact input.
 succeeds and otherwise returns to canonical `from_source`. QP/empty and
 `ubO`/byte input select N=10, while `ubO`/empty remains N=14.
 
+The CLI now exposes this selection as an explicit current-profile policy rather
+than changing the default. With `MALBOLGE_PROFILE_ADAPTIVE_WIDTH=1`, QP/empty
+reaches the resident wire as N10; with `0`, the same capsule reaches it as N14.
+The checked-in `ubO`/EOF capsule remains N14 even when adaptive selection is
+enabled. A temporary RTX 4060 check completed QP/N10 through the same CLI,
+process transport, MBPRN2, and CUDA adapter path.
+
 Wire homogeneity is intentionally weaker than verifier authority equality. `uP`
 and `ubO` share the same N=10 resident shape and can execute in one CUDA worker
 batch, while each returned checkpoint is reconstructed with its original opaque

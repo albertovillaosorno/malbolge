@@ -29,15 +29,26 @@ The current VM input model is pre-buffered rather than interactive. The CLI does
 not fake real-time input by reading the terminal to EOF before startup.
 Interactive DOOM input belongs to the versioned host-capability runner work.
 
-### Optional current-profile resident worker
+### Optional current-profile adaptive width and resident worker
 
-Profile acceleration is disabled by default. For a capsule whose declared
-profile is exactly the current canonical profile, the composition root can bind
-a trusted MBPRN2 resident worker by setting `MALBOLGE_PROFILE_RESIDENT_WORKER`
-to its executable. Raw classic source and historical-profile capsules never use
-this setting because the resident wire format does not carry canonical profile
-identity. This binding preserves the capsule's admitted canonical geometry; it
-does not run adaptive-width proof selection.
+Adaptive width is disabled by default. For a capsule whose declared profile is
+exactly the current canonical profile, `MALBOLGE_PROFILE_ADAPTIVE_WIDTH=1` asks
+the trusted product verifier selector for the narrowest supported proof whose
+hidden input policy admits the exact pre-buffered input. `0` explicitly keeps
+canonical construction; any other value fails closed. Raw classic source and
+historical-profile capsules ignore this setting.
+
+When adaptive selection finds no strictly narrower proof, construction remains
+canonical. For example, a current-profile QP capsule with empty input selects
+N=10, while the checked-in `ubO` capsules have empty input and stay at N=14
+because their narrow input/output/halt proof requires `MinimumLength(1)`.
+
+Resident-worker execution is independently opt-in. The composition root can bind
+a trusted MBPRN2 worker by setting `MALBOLGE_PROFILE_RESIDENT_WORKER` to its
+executable. With adaptive width enabled, that worker receives the already
+verified derived numeric geometry; otherwise it receives canonical geometry.
+Raw classic source and historical-profile capsules never use this worker binding
+because the resident wire format does not carry canonical profile identity.
 
 Arguments are passed without shell parsing.
 `MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_COUNT` declares an integer from 0 through

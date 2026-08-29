@@ -97,12 +97,12 @@ Explicit `UNAVAILABLE`, launch/I/O failure, oversized output, malformed framing,
 or invalid completions remain performance-only fallback conditions. The
 transport names no accelerator vendor or Python module.
 
-The top-level CLI now provides one concrete composition binding for current
-canonical-profile capsules. It is opt-in through an explicit resident-worker
-executable plus bounded indexed argument environment variables; raw classic and
-historical-profile execution ignore that binding. This closes process selection
-for canonical profile execution without pretending that capsules carry adaptive
-N=10..13 proof authority.
+The top-level CLI now provides explicit current-profile composition policy for
+both width selection and resident transport. `MALBOLGE_PROFILE_ADAPTIVE_WIDTH=1`
+constructs the machine through the trusted input-aware adaptive selector, while
+`0` or absence preserves canonical construction. A separately configured
+resident worker then receives whichever geometry the admitted machine carries.
+Raw classic and historical-profile execution ignore both current-profile knobs.
 
 The report variants `execute_batch_with_backend_report` and
 `execute_profile_batch_with_backend_report` preserve those result semantics

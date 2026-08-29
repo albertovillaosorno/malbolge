@@ -39,13 +39,14 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, id};
 use std::str::from_utf8;
 
-use malbolge::{build_capsule, historical_profile};
+use malbolge::{build_capsule, current_profile, historical_profile};
 
 const ANNUAL_CAPSULE_HEX: &str = include_str!(concat!(
     "compatibility/capsule/",
     "current-profile-capsule.hex",
 ));
 const EXPECTED_EOF_OUTPUT: &[u8] = &[0x78];
+const PROFILE_ADAPTIVE_WIDTH_ENV: &str = "MALBOLGE_PROFILE_ADAPTIVE_WIDTH";
 const PROFILE_WORKER_ARG_COUNT_ENV: &str =
     "MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_COUNT";
 const PROFILE_WORKER_CWD_ENV: &str = "MALBOLGE_PROFILE_RESIDENT_WORKER_CWD";
@@ -58,6 +59,20 @@ import sys
 sys.stdin.buffer.read()
 with open(os.environ["MALBOLGE_PROFILE_WORKER_MARKER"], "wb") as marker:
     marker.write(b"called")
+sys.stdout.buffer.write(
+    b"MBPRN2\x00\x00"
+    + (1).to_bytes(4, "little")
+    + (0).to_bytes(4, "little")
+)
+"#;
+const GEOMETRY_UNAVAILABLE_WORKER: &str = r#"
+import os
+import sys
+
+data = sys.stdin.buffer.read()
+word_trits = int.from_bytes(data[28:32], "little")
+with open(os.environ["MALBOLGE_PROFILE_WORKER_MARKER"], "wb") as marker:
+    marker.write(str(word_trits).encode("ascii"))
 sys.stdout.buffer.write(
     b"MBPRN2\x00\x00"
     + (1).to_bytes(4, "little")
@@ -140,6 +155,7 @@ fn decode_hex(source: &str) -> Result<Vec<u8>, String> {
 fn clean_cli_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge"));
     let _clean = command
+        .env_remove(PROFILE_ADAPTIVE_WIDTH_ENV)
         .env_remove(PROFILE_WORKER_ENV)
         .env_remove(PROFILE_WORKER_ARG_COUNT_ENV)
         .env_remove(PROFILE_WORKER_CWD_ENV);
@@ -152,13 +168,20 @@ fn clean_cli_command() -> Command {
 }
 
 fn configured_worker_command(marker: &Path) -> Command {
+    configured_worker_command_with_script(marker, UNAVAILABLE_WORKER)
+}
+
+fn configured_worker_command_with_script(
+    marker: &Path,
+    script: &str,
+) -> Command {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut command = clean_cli_command();
     let _configured = command
         .env(PROFILE_WORKER_ENV, validation_python(root))
         .env(PROFILE_WORKER_ARG_COUNT_ENV, "2")
         .env("MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_0", "-c")
-        .env("MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_1", UNAVAILABLE_WORKER)
+        .env("MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_1", script)
         .env(PROFILE_WORKER_MARKER_ENV, marker);
     command
 }
@@ -236,6 +259,142 @@ fn configured_worker_is_not_used_for_historical_profile() -> Result<(), String>
         ));
     }
     Ok(())
+}
+
+#[test]
+fn disabled_adaptive_width_preserves_canonical_n14() -> Result<(), String> {
+    let bytes = build_capsule(current_profile(), b"QP")
+        .map_err(|error| format!("build canonical current capsule: {error}"))?;
+    let capsule = TemporaryCapsule::from_bytes("adaptive-disabled", &bytes)?;
+    let marker = TemporaryMarker::new("adaptive-disabled");
+    let output = configured_worker_command_with_script(
+        &marker.path,
+        GEOMETRY_UNAVAILABLE_WORKER,
+    )
+    .env(PROFILE_ADAPTIVE_WIDTH_ENV, "0")
+    .arg(&capsule.path)
+    .output()
+    .map_err(|error| format!("run canonical current CLI: {error}"))?;
+    let geometry = read(&marker.path)
+        .map_err(|error| format!("read canonical geometry marker: {error}"))?;
+    if output.status.success()
+        && output.stdout.is_empty()
+        && output.stderr.is_empty()
+        && geometry == b"14"
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "disabled adaptive CLI mismatch: status={} stdout={:?} ",
+                "stderr={} geometry={:?}",
+            ),
+            output.status,
+            output.stdout,
+            String::from_utf8_lossy(&output.stderr),
+            geometry,
+        ))
+    }
+}
+
+#[test]
+fn adaptive_current_capsule_sends_verified_n10_geometry() -> Result<(), String>
+{
+    let bytes = build_capsule(current_profile(), b"QP")
+        .map_err(|error| format!("build adaptive current capsule: {error}"))?;
+    let capsule = TemporaryCapsule::from_bytes("adaptive-n10", &bytes)?;
+    let marker = TemporaryMarker::new("adaptive-n10");
+    let output = configured_worker_command_with_script(
+        &marker.path,
+        GEOMETRY_UNAVAILABLE_WORKER,
+    )
+    .env(PROFILE_ADAPTIVE_WIDTH_ENV, "1")
+    .arg(&capsule.path)
+    .output()
+    .map_err(|error| format!("run adaptive current CLI: {error}"))?;
+    let geometry = read(&marker.path)
+        .map_err(|error| format!("read adaptive geometry marker: {error}"))?;
+    if output.status.success()
+        && output.stdout.is_empty()
+        && output.stderr.is_empty()
+        && geometry == b"10"
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "adaptive N10 CLI mismatch: status={} stdout={:?} ",
+                "stderr={} geometry={:?}",
+            ),
+            output.status,
+            output.stdout,
+            String::from_utf8_lossy(&output.stderr),
+            geometry,
+        ))
+    }
+}
+
+#[test]
+fn adaptive_eof_visible_capsule_stays_canonical_n14() -> Result<(), String> {
+    let capsule = TemporaryCapsule::new("adaptive-eof", ANNUAL_CAPSULE_HEX)?;
+    let marker = TemporaryMarker::new("adaptive-eof");
+    let output = configured_worker_command_with_script(
+        &marker.path,
+        GEOMETRY_UNAVAILABLE_WORKER,
+    )
+    .env(PROFILE_ADAPTIVE_WIDTH_ENV, "1")
+    .arg(&capsule.path)
+    .output()
+    .map_err(|error| format!("run adaptive EOF CLI: {error}"))?;
+    let geometry = read(&marker.path)
+        .map_err(|error| format!("read EOF geometry marker: {error}"))?;
+    if output.status.success()
+        && output.stdout == EXPECTED_EOF_OUTPUT
+        && output.stderr.is_empty()
+        && geometry == b"14"
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "adaptive EOF CLI mismatch: status={} stdout={:?} ",
+                "stderr={} geometry={:?}",
+            ),
+            output.status,
+            output.stdout,
+            String::from_utf8_lossy(&output.stderr),
+            geometry,
+        ))
+    }
+}
+
+#[test]
+fn current_capsule_rejects_invalid_adaptive_setting() -> Result<(), String> {
+    let capsule =
+        TemporaryCapsule::new("invalid-adaptive", ANNUAL_CAPSULE_HEX)?;
+    let output = clean_cli_command()
+        .env(PROFILE_ADAPTIVE_WIDTH_ENV, "yes")
+        .arg(&capsule.path)
+        .output()
+        .map_err(|error| {
+            format!("run invalid adaptive current CLI: {error}")
+        })?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success()
+        && output.stdout.is_empty()
+        && stderr.contains(PROFILE_ADAPTIVE_WIDTH_ENV)
+        && stderr.contains("must be 0 or 1")
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "invalid adaptive setting did not fail closed: status={} ",
+                "stdout={:?} stderr={}",
+            ),
+            output.status, output.stdout, stderr,
+        ))
+    }
 }
 
 #[test]
