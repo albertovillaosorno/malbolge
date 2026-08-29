@@ -58,6 +58,8 @@ HISTORICAL_ID = "malbolge-1998"
 CURRENT_WORDS = 14_348_907
 CURRENT_TRITS = 15
 HISTORICAL_WORDS = 59_049
+PROFILED_BACKEND_WORDS = 3_486_784_401
+PROFILED_BACKEND_TRITS = 20
 CURRENT_RUNTIME_DIAGNOSTIC = (
     "MALBOLGE-PROFILE-001 profile=malbolge-2026 version=2026 "
     "required_features=byte-input,byte-output,crazy-operation,deterministic,"
@@ -154,8 +156,8 @@ def test_safe_rust_capabilities_are_explicit() -> None:
     assert classic.max_word_trits == 10
     assert classic.max_memory_words == HISTORICAL_WORDS
     assert profiled.capability_id == "safe-rust-profiled"
-    assert profiled.max_word_trits == CURRENT_TRITS
-    assert profiled.max_memory_words == CURRENT_WORDS
+    assert profiled.max_word_trits == PROFILED_BACKEND_TRITS
+    assert profiled.max_memory_words == PROFILED_BACKEND_WORDS
     assert classic.features == requirements.NORMATIVE_PROFILE_FEATURES
     assert profiled.features == requirements.NORMATIVE_PROFILE_FEATURES
 
@@ -181,8 +183,17 @@ def test_profiled_runtime_capacity_does_not_follow_current_profile(
 
     capability = requirements.safe_rust_profiled_capability()
 
-    assert capability.max_word_trits == CURRENT_TRITS
-    assert capability.max_memory_words == CURRENT_WORDS
+    assert capability.max_word_trits == PROFILED_BACKEND_TRITS
+    assert capability.max_memory_words == PROFILED_BACKEND_WORDS
+
+
+def test_profiled_runtime_boundary_is_largest_u32_ternary_geometry() -> None:
+    """The profiled backend limit is representation capacity, not current N."""
+    capability = requirements.safe_rust_profiled_capability()
+
+    assert capability.max_memory_words == 3**capability.max_word_trits
+    assert capability.max_memory_words <= (1 << 32) - 1
+    assert 3 ** (capability.max_word_trits + 1) > (1 << 32) - 1
 
 
 def test_current_classic_diagnostic_matches_rust_byte_for_byte() -> None:

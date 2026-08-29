@@ -50,11 +50,22 @@ if TYPE_CHECKING:
 
 MAX_BYTE: Final = 0xFF
 MAX_GRAPHICAL_WORD: Final = 126
-MAX_PROFILE_TRITS: Final = 20
 PROFILE_IO_INSTRUCTIONS: Final = frozenset((ord("<"), ord("/")))
 TERNARY_RADIX: Final = 3
 WORD_BYTES: Final = 4
 WORD_TYPECODE: Final = "I"
+
+
+def _maximum_ternary_trits(limit: int) -> int:
+    word_trits = 0
+    modulus = 1
+    while modulus <= limit // TERNARY_RADIX:
+        modulus *= TERNARY_RADIX
+        word_trits += 1
+    return word_trits
+
+
+MAX_PROFILE_TRITS: Final = _maximum_ternary_trits(MAX_U32)
 
 
 @dataclass(frozen=True, slots=True)

@@ -79,6 +79,11 @@ example probe points, not supported-range endpoints.
   capacities 532, 177, 59, 19, 6, and 2 under the same 128 MiB snapshot. These
   are example probes rather than
   minimum/maximum supported sizes.
+- Resident geometry no longer hardcodes a 20-trit maximum. It derives the
+  largest exact power-of-three modulus fitting the MBPRN2/CUDA `u32` word
+  representation: N20/3,486,784,401 words. Geometry validation admits that
+  boundary without allocating its memory image and rejects N21 before wire or
+  kernel construction. Physical VRAM admission remains a separate planner gate.
 - The VM backend port exposes resident geometry directly from an already
   admitted `ProfileMachine`: EOF, canonical I/O opcodes, memory words/modulus,
   and trit width. Verified QP artifacts for every reviewed N=10 through 15 reach

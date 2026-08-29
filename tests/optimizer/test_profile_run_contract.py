@@ -42,6 +42,7 @@ from typing import cast
 
 from accelerator.classic_step import StepTermination
 from accelerator.exact_primitives import InvalidPrimitiveBatchError
+from accelerator.profile_run import MAX_PROFILE_TRITS
 from accelerator.profile_run import ProfileMemoryImage
 from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
@@ -55,6 +56,11 @@ if TYPE_CHECKING:
 
 SMALL_TRITS: Final = 5
 SMALL_WORDS: Final = 243
+BACKEND_TRITS: Final = 20
+BACKEND_WORDS: Final = 3_486_784_401
+UNSUPPORTED_BACKEND_TRITS: Final = 21
+UNSUPPORTED_BACKEND_WORDS: Final = 10_460_353_203
+PROFILE_TRITS_ERROR: Final = "outside supported domain"
 WORD_BYTES: Final = 4
 MODULUS_ERROR: Final = "modulus 244"
 TOO_SMALL_ERROR: Final = "cannot represent graphical encryption values"
@@ -121,6 +127,39 @@ def test_profile_geometry_rejects_aliased_io_instructions() -> None:
     """A profile must assign the two I/O opcodes exactly once."""
     invalid = replace(GEOMETRY, output_instruction=ord("/"))
     assert IO_ASSIGNMENT_ERROR in _invalid(invalid.validated)
+
+
+def test_profile_geometry_uses_derived_u32_ternary_boundary() -> None:
+    """Resident geometry admits the largest exact ternary modulus in u32."""
+    boundary = ProfileRunGeometry(
+        eof_word=BACKEND_WORDS - 1,
+        input_instruction=ord("/"),
+        memory_words=BACKEND_WORDS,
+        output_instruction=ord("<"),
+        word_modulus=BACKEND_WORDS,
+        word_trits=BACKEND_TRITS,
+    )
+
+    assert MAX_PROFILE_TRITS == BACKEND_TRITS
+    assert boundary.validated() is boundary
+    assert BACKEND_WORDS == 3**MAX_PROFILE_TRITS
+    assert 3 ** (MAX_PROFILE_TRITS + 1) > (1 << 32) - 1
+
+
+def test_profile_geometry_rejects_first_width_beyond_u32_capacity() -> None:
+    """N21 fails before a non-u32 resident modulus can enter the wire."""
+    invalid = ProfileRunGeometry(
+        eof_word=UNSUPPORTED_BACKEND_WORDS - 1,
+        input_instruction=ord("/"),
+        memory_words=UNSUPPORTED_BACKEND_WORDS,
+        output_instruction=ord("<"),
+        word_modulus=UNSUPPORTED_BACKEND_WORDS,
+        word_trits=UNSUPPORTED_BACKEND_TRITS,
+    )
+
+    assert UNSUPPORTED_BACKEND_TRITS == MAX_PROFILE_TRITS + 1
+    assert UNSUPPORTED_BACKEND_WORDS == 3**UNSUPPORTED_BACKEND_TRITS
+    assert PROFILE_TRITS_ERROR in _invalid(invalid.validated)
 
 
 def test_profile_geometry_rejects_too_small_encryption_domain() -> None:

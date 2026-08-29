@@ -132,6 +132,17 @@ transfers, verification, and other separately measured costs.
   while theorem helpers and initial-memory reconstruction accept any semantic
   width at or above N10. Direct tests exercise N15, N20, and N31, and the
   independent-result selector receives its finite `reference_width` explicitly.
+- Runtime capacity is now separate from current-profile identity. The
+  `safe-rust-profiled` envelope and resident accelerator derive the largest
+  exact
+  ternary geometry representable by their declared `u32` word/address contract:
+  N20 with 3,486,784,401 words. N21 requires 10,460,353,203 words and fails the
+  backend width boundary; this is an implementation limit, not a semantic one.
+- The portable Rust `TargetProfileRequirement` and IR v3 metadata still encode
+  profile memory words as `u32`. They therefore cannot yet transport an exact
+  N21+ profile requirement even though the mathematical/chunk model can describe
+  it. Widening/versioning that portable boundary remains required before such a
+  profile can become executable.
 - A theorem-specific research checker certifies the initial-halt family without
   trusting final differential equality. It checks widths, source capacity and
   lexical admission, every position-dependent loader decode, and an initial `v`

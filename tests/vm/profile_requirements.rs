@@ -54,6 +54,8 @@ const CURRENT_FINGERPRINT: &str = concat!(
 const CURRENT_ID: &str = "malbolge-2026";
 const HISTORICAL_ID: &str = "malbolge-1998";
 const HISTORICAL_WORDS: u32 = 59_049;
+const PROFILED_BACKEND_TRITS: u8 = 20;
+const PROFILED_BACKEND_WORDS: u32 = 3_486_784_401;
 const IO_ROUNDTRIP: &[u8] =
     include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
 const TRANSITION_ID: &str = "malbolge-2026.1";
@@ -87,6 +89,59 @@ fn canonical_projection_exposes_current_geometry() -> TestResult {
         &b'<',
         "current output opcode",
     )
+}
+
+#[test]
+fn safe_rust_profiled_capacity_is_independent_of_current_profile() -> TestResult
+{
+    let capability = safe_rust_profiled_capability();
+    check_equal(
+        &capability.max_word_trits(),
+        &PROFILED_BACKEND_TRITS,
+        "profiled backend trit capacity",
+    )?;
+    check_equal(
+        &capability.max_memory_words(),
+        &PROFILED_BACKEND_WORDS,
+        "profiled backend memory capacity",
+    )?;
+    if capability.max_word_trits() <= current_profile().word_trits() {
+        return Err(String::from(
+            "profiled backend capacity still follows current profile width",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn portable_runtime_preflight_exposes_u32_ternary_boundary() -> TestResult {
+    let mut requirement =
+        TargetProfileRequirement::from_descriptor(current_profile());
+    requirement.memory_words = PROFILED_BACKEND_WORDS;
+    requirement.word_trits = PROFILED_BACKEND_TRITS;
+    preflight_runtime_requirement(
+        "research-n20",
+        &requirement,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("N20 backend boundary rejected: {error}"))?;
+
+    requirement.word_trits = PROFILED_BACKEND_TRITS.saturating_add(1);
+    let Err(error) = preflight_runtime_requirement(
+        "research-n21",
+        &requirement,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from("N21 exceeded the u32 backend boundary"));
+    };
+    let diagnostic = format!("{error}");
+    if diagnostic.ends_with("missing=word-trits") {
+        Ok(())
+    } else {
+        Err(format!(
+            "N21 backend boundary diagnostic mismatch: {diagnostic}"
+        ))
+    }
 }
 
 #[test]

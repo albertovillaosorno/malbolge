@@ -71,19 +71,19 @@ historical-profile constraint.
   re-resolves public requirement objects against canonical `malbolge.json`, so
   callers cannot inflate a known profile's kind, version, word width, or
   capacity. Reserved Python runtime IDs likewise cannot be reused with forged
-  feature, word, or memory capabilities, and `safe-rust-profiled` remains bound
-  to its implemented 14-trit capacity rather than following a future current
-  profile automatically.
-  Direct public error construction admits only the exact enum, canonical
+  feature, word, or memory capabilities.
+- `safe-rust-profiled` derives its N20/3,486,784,401-word representation
+  envelope from the declared `u32` word/address contract rather than following
+  the current profile. N21 is rejected by runtime word-width capacity before
+  execution.
+- Direct public error construction admits only the exact enum, canonical
   immutable dimensions, and a real rejected preflight pair with the same
-
-  precedence. Canonical revalidation now contains unavailable/invalid authority
+  precedence. Canonical revalidation contains unavailable/invalid authority
   failures inside `ProfileRequirementValidationError` rather than leaking raw
   filesystem/parser exceptions. Canonical profile parsing also validates
   top-level mappings, exact JSON-text inputs, real `pathlib.Path` loader
-  arguments, named profile
-  identities, and feature member types before operations that could leak Python
-  implementation errors.
+  arguments, named profile identities, and feature member types before
+  operations that could leak Python implementation errors.
 - Portable effect IR v3, native keys, and direct COFF `MBPF` v3 metadata now
   carry exact profile ID/fingerprint plus published version, ordered semantic
   features, word trits, profile capacity, and derived `u64` region memory.

@@ -65,9 +65,9 @@ maximum of three semantic reads per request. Rejected transitions retain reads
 completed before the error; diagnostic/delta bookkeeping reads are excluded.
 
 `step()` discards this evidence and `step_traced()` publishes it.
-`TraceInput::EndOfInput` remains
-profile-neutral: current traces record EOF accumulator 4,782,968 rather than
-inheriting the classic 59,048 value. Independent research fixtures reconstruct
+`TraceInput::EndOfInput` remains profile-neutral: current N15 traces record EOF
+accumulator 14,348,906 rather than inheriting the classic 59,048 value.
+Independent research fixtures reconstruct
 complete before/after memory differences for every classic/current instruction
 family and require exact equality with the trace delta.
 
@@ -84,14 +84,19 @@ through the ordinary selected-profile loader before execution.
 The classic execution facade carries an explicit canonical target-profile
 identity. `ExecutionMachine::from_source()` remains bound to `malbolge-1998` for
 classic compatibility, while `from_source_for_profile()` performs a typed
-`safe-rust-classic` capability preflight before source loading. The current
-14-trit `malbolge-2026` profile therefore still fails before reaching this
-classic loader rather than being truncated or silently reinterpreted.
+`safe-rust-classic` capability preflight before source loading. The current N15
+`malbolge-2026` profile therefore still fails before reaching this classic
+loader rather than being truncated or silently reinterpreted.
 
-A separate safe-Rust `ProfileMachine` now implements the canonical schema-v2
-single-word-modular profile model through 14 trits/4,782,969 words under runtime
-identity `safe-rust-profiled`. It deliberately does not replace classic `Word`,
-`Memory`, tracing, or legacy-mode APIs. `ProfileMachine::from_state()` is a
+A separate safe-Rust `ProfileMachine` implements the canonical schema-v2
+single-word-modular profile model under runtime identity `safe-rust-profiled`.
+The current reference is N15/14,348,907 words; the backend's declared `u32`
+representation can encode exact ternary geometry through N20/3,486,784,401
+words, independently of current-profile selection.
+
+`ProfileMachine` deliberately does not replace classic `Word`, `Memory`,
+tracing,
+or legacy-mode APIs. `ProfileMachine::from_state()` is a
 validated initial-state constructor: the supplied memory image must have exact
 profile length, every cell must be inside the profile word domain, and all three
 registers must be in-domain. Complete checkpoint/deoptimization state uses
@@ -108,7 +113,7 @@ construction. Historical differential fixtures
 run the same 1998 program through both engines and compare all 59,049 final
 memory words,
 registers, byte I/O/EOF, and termination. Current-profile fixtures additionally
-exercise addresses above 59,048 and independent scalar expectations for 14-trit
+exercise addresses above 59,048 and independent scalar expectations for N15
 crazy and rotate.
 
 Independent differential evidence now exists against the separately implemented
@@ -172,12 +177,12 @@ memory, input consumption, or output.
   traced and plain current execution agree on outcome, I/O, registers and
   sampled
   memory, verifies halt/rejection expose an empty memory delta, and exercises a
-  real 14-trit recurrence jump whose rejected encryption target remains
+  real N15 recurrence jump whose rejected encryption target remains
   observationally atomic.
 - `tests/vm/profile_state.rs` validates exact initial-state/checkpoint errors,
   round-trips consumed input, committed output, registers and termination
   through
-  snapshot restoration, and places both current pointers at 4,782,968 to prove
+  snapshot restoration, and places both current pointers at 14,348,906 to prove
   the last cell is encrypted before `C` and `D` wrap to zero.
 - `tests/compatibility/specification/` contains versioned specification fixtures
   for historical disagreement edges and byte-I/O semantics.

@@ -59,6 +59,19 @@ const REQUIRED_FEATURES: [ProfileFeature; 8] = [
     SEQUENTIAL_GUEST,
 ];
 
+const PROFILE_TERNARY_RADIX: u32 = 3;
+const SAFE_RUST_PROFILED_GEOMETRY: (u8, u32) = {
+    let mut word_trits = 0u8;
+    let mut memory_words = 1u32;
+    while let Some(next_memory_words) =
+        memory_words.checked_mul(PROFILE_TERNARY_RADIX)
+    {
+        memory_words = next_memory_words;
+        word_trits = word_trits.saturating_add(1);
+    }
+    (word_trits, memory_words)
+};
+
 const SAFE_RUST_CLASSIC: RuntimeCapability = RuntimeCapability {
     features: ProfileFeatureSet::NORMATIVE,
     id: "safe-rust-classic",
@@ -68,8 +81,8 @@ const SAFE_RUST_CLASSIC: RuntimeCapability = RuntimeCapability {
 const SAFE_RUST_PROFILED: RuntimeCapability = RuntimeCapability {
     features: ProfileFeatureSet::NORMATIVE,
     id: "safe-rust-profiled",
-    max_memory_words: generated::CURRENT_PROFILE.memory_words,
-    max_word_trits: generated::CURRENT_PROFILE.word_trits,
+    max_memory_words: SAFE_RUST_PROFILED_GEOMETRY.1,
+    max_word_trits: SAFE_RUST_PROFILED_GEOMETRY.0,
 };
 
 /// One immutable target-profile classification from `malbolge.json`.

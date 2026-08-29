@@ -52,11 +52,23 @@ SAFE_RUST_CLASSIC_CAPABILITY_ID: Final = "safe-rust-classic"
 SAFE_RUST_PROFILED_CAPABILITY_ID: Final = "safe-rust-profiled"
 SAFE_RUST_CLASSIC_MAX_WORD_TRITS: Final = 10
 SAFE_RUST_CLASSIC_MAX_MEMORY_WORDS: Final = 59_049
-_CURRENT_PROFILE_GEOMETRY: Final = target_profile.current_profile_geometry()
-SAFE_RUST_PROFILED_MAX_WORD_TRITS: Final = _CURRENT_PROFILE_GEOMETRY.word_trits
-SAFE_RUST_PROFILED_MAX_MEMORY_WORDS: Final = (
-    _CURRENT_PROFILE_GEOMETRY.memory_words
-)
+_MAX_U32: Final = (1 << 32) - 1
+_TERNARY_RADIX: Final = 3
+
+
+def _maximum_ternary_geometry(limit: int) -> tuple[int, int]:
+    word_trits = 0
+    memory_words = 1
+    while memory_words <= limit // _TERNARY_RADIX:
+        memory_words *= _TERNARY_RADIX
+        word_trits += 1
+    return word_trits, memory_words
+
+
+(
+    SAFE_RUST_PROFILED_MAX_WORD_TRITS,
+    SAFE_RUST_PROFILED_MAX_MEMORY_WORDS,
+) = _maximum_ternary_geometry(_MAX_U32)
 HISTORICAL_PROFILE_CEILING: Final = "historical-profile-ceiling"
 PROFILE_CAPACITY_CEILING: Final = "profile-capacity-ceiling"
 WORD_TRITS_DIMENSION: Final = "word-trits"
@@ -235,7 +247,8 @@ def safe_rust_profiled_capability() -> RuntimeCapability:
     """Return the explicit profile-driven safe-Rust runtime envelope.
 
     Returns:
-        Fourteen-trit, 4,782,969-word normative runtime capability.
+        Largest exact ternary geometry representable by the u32 VM word and
+        address contract.
 
     """
     return build_runtime_capability(

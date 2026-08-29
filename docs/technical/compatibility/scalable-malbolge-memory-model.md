@@ -130,12 +130,14 @@ Safe Rust now has an explicit profile-driven interpreter in
 and an exact `profile.memory_words()` image, preflights against runtime identity
 `safe-rust-profiled`, and executes the same normative sequential decode, crazy,
 rotate, byte I/O, self-modification, post-instruction encryption, and pointer
-wrap rules for canonical schema-v2 profiles up to 14 trits/4,782,969 words.
+wrap rules. The current canonical reference is N15/14,348,907 words. The
+profiled `u32` representation envelope is independently N20/3,486,784,401 words;
+physical allocation remains a separate resource-planning concern.
 
 The five-trit crazy lookup table is generated once as profile-neutral ternary
-math and shared by both classic and profile-driven engines. A 14-trit crazy
-operation composes 5+5+4 trit chunks; the final chunk is reduced to `3^4`, so no
-implicit fifteenth trit can enter the result.
+math and shared by both classic and profile-driven engines. Current N15 is three
+complete chunks. Immutable N14 profiles use 5+5+4, with only the final partial
+chunk zero-padded before projection.
 
 `Machine` and `ExecutionMachine` intentionally remain the frozen/classic
 surface.
@@ -157,7 +159,9 @@ verifier implementations own their adoption before becoming executable.
   rotate, self-modification, post-encryption, or byte-I/O meanings.
 - Exactly one profile has `kind = "current"`, and it is named by
   `current_profile`.
-- Larger capacity always receives a new immutable profile identity.
+- Published versioned profile identities remain immutable. Advancing the annual
+  current reference changes its fingerprint and never mutates versioned `.2/.3`
+  geometry or previously fingerprint-bound artifacts.
 - `Machine` remains exact classic conformance; scalable execution is selected
   explicitly through `ProfileMachine` rather than changing classic word types.
 

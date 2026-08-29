@@ -67,9 +67,9 @@ as independent semantic authority.
 Safe Rust advertises two explicit interpreter capabilities:
 
 - `safe-rust-classic`: maximum 10 trits and 59,049 directly addressed words;
-- `safe-rust-profiled`: current backend envelope of 15 trits and 14,348,907
-  directly addressed words, derived from the generated current reference
-  geometry.
+- `safe-rust-profiled`: representation envelope of 20 trits and 3,486,784,401
+  directly addressed words, derived as the largest exact power of three that
+  fits the VM's declared `u32` word/address contract.
 
 Both advertise the same defining semantic features: byte input/output, crazy,
 deterministic sequential execution, post-instruction encryption, rotate, and
@@ -113,11 +113,14 @@ profile IDs are validated before dictionary lookup or hashing, and runtime
 
 feature members are type-checked before duplicate hashing. These direct input
 failures therefore remain typed profile validation errors rather than raw Python
-exceptions. The profiled runtime limit is implementation capacity, so it
-stays
-at 14 trits and 4,782,969 words even if a future canonical current profile
-selects a larger valid geometry. Explicitly named external runtime identities
-may still carry their own validated envelopes.
+exceptions.
+
+The profiled runtime limit is implementation capacity, independent of the
+current profile. Its N20/3,486,784,401-word envelope is derived from the
+backend's
+`u32` word/address representation. N21 requires 10,460,353,203 words and
+therefore cannot enter that runtime representation. Explicitly named external
+runtime identities may still carry their own validated envelopes.
 
 The current `malbolge-2026` profile therefore fails preflight when explicitly
 sent to `ExecutionMachine`/`safe-rust-classic`, but is admitted by
@@ -241,8 +244,10 @@ a valid profile may still be unsupported by a particular runtime.
 
 - `malbolge.json` is the semantic authority; generated Rust profile data must be
   a byte-exact deterministic projection.
-- Runtime capability is explicit data, never inferred from host pointer width,
-  allocator behavior, or accidental integer size.
+- Runtime capability is explicit backend-owned data. The profiled
+  representation limit is derived from its declared `u32` word/address contract,
+  never from host pointer width, allocator behavior, or current profile
+  identity.
 - Profile-capacity validation happens before runtime-capability validation.
 - Source program-capacity validation happens before runtime-capability
   validation, lexical admission, or execution.
