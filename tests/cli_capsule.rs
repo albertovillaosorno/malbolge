@@ -39,7 +39,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, id};
 use std::str::from_utf8;
 
-use malbolge::{build_capsule, current_profile, historical_profile};
+use malbolge::{
+    build_capsule, current_profile, decode_profile_instruction,
+    historical_profile,
+};
 
 const ANNUAL_CAPSULE_HEX: &str = include_str!(concat!(
     "compatibility/capsule/",
@@ -150,6 +153,37 @@ fn decode_hex(source: &str) -> Result<Vec<u8>, String> {
             })
         })
         .collect()
+}
+
+fn encoded_profile_instruction(
+    decoded: u8,
+    position: usize,
+) -> Result<u8, String> {
+    let pointer = u32::try_from(position)
+        .map_err(|error| format!("profile instruction position: {error}"))?;
+    (33u8..=126u8)
+        .find(|cell| {
+            decode_profile_instruction(u32::from(*cell), pointer)
+                == Some(decoded)
+        })
+        .ok_or_else(|| format!("missing encoded {decoded} at {position}"))
+}
+
+fn source_backed_jump_code_halt() -> Result<Vec<u8>, String> {
+    let first = encoded_profile_instruction(b'i', 0)?;
+    let halt_position = usize::from(first).saturating_add(1);
+    let mut source = Vec::with_capacity(halt_position.saturating_add(1));
+    for position in 0..=halt_position {
+        let decoded = if position == 0 {
+            b'i'
+        } else if position == halt_position {
+            b'v'
+        } else {
+            b'o'
+        };
+        source.push(encoded_profile_instruction(decoded, position)?);
+    }
+    Ok(source)
 }
 
 fn clean_cli_command() -> Command {
@@ -324,6 +358,44 @@ fn adaptive_current_capsule_sends_verified_n10_geometry() -> Result<(), String>
         Err(format!(
             concat!(
                 "adaptive N10 CLI mismatch: status={} stdout={:?} ",
+                "stderr={} geometry={:?}",
+            ),
+            output.status,
+            output.stdout,
+            String::from_utf8_lossy(&output.stderr),
+            geometry,
+        ))
+    }
+}
+
+#[test]
+fn adaptive_jump_code_capsule_uses_verified_n10() -> Result<(), String> {
+    let source = source_backed_jump_code_halt()?;
+    let bytes = build_capsule(current_profile(), &source).map_err(|error| {
+        format!("build adaptive jump-code capsule: {error}")
+    })?;
+    let capsule = TemporaryCapsule::from_bytes("adaptive-jump-code", &bytes)?;
+    let marker = TemporaryMarker::new("adaptive-jump-code");
+    let output = configured_worker_command_with_script(
+        &marker.path,
+        GEOMETRY_UNAVAILABLE_WORKER,
+    )
+    .env(PROFILE_ADAPTIVE_WIDTH_ENV, "1")
+    .arg(&capsule.path)
+    .output()
+    .map_err(|error| format!("run adaptive jump-code CLI: {error}"))?;
+    let geometry = read(&marker.path)
+        .map_err(|error| format!("read jump-code geometry marker: {error}"))?;
+    if output.status.success()
+        && output.stdout.is_empty()
+        && output.stderr.is_empty()
+        && geometry == b"10"
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "adaptive jump-code CLI mismatch: status={} stdout={:?} ",
                 "stderr={} geometry={:?}",
             ),
             output.status,

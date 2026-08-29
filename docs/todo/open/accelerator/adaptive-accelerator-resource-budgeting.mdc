@@ -95,8 +95,8 @@ example probe points, not supported-range endpoints.
   invokes the measured resource planner before allocation. Every reviewed N=10
   through 14 has a full-state differential batch covering initial halt, derived
   EOF input, two-byte straight-line I/O, guarded `p p`, byte-input recovery
-  after
-  crazy, and the projection-verified `(&O` rotate family.
+  after crazy, the projection-verified `(&O` rotate family, and source-backed
+  jump-code. A strict live check observed CUDA execution for N=10 through 14.
 - The top-level CLI now selects a trusted resident worker for current canonical
   capsules only when explicitly configured by executable plus bounded indexed
   arguments. A live RTX 4060 composition check invoked `CudaProfileRunAdapter`
@@ -109,8 +109,8 @@ example probe points, not supported-range endpoints.
   longer requires callers to name one theorem family manually. The CLI can
   invoke
   it explicitly for current-profile capsules and pass the resulting derived
-  geometry to the configured MBPRN2 worker. Live RTX 4060 checks exercised QP
-  and the new `(&O` rotate family at N10 through that composition path. The
+  geometry to the configured MBPRN2 worker. Live RTX 4060 checks exercised QP,
+  `(&O` rotate, and source-backed jump-code at N10 through product routes. The
   Python synthetic capacity sweep still uses research `execution_geometry`;
   persistent sessions and equivalent-work retained performance evidence remain
   separate acceptance gaps.
@@ -119,11 +119,12 @@ example probe points, not supported-range endpoints.
   batch when available, while response reconstruction reapplies the distinct
   opaque token from each prepared request. Full-state comparison includes that
   token, so equal resident shape does not erase input-domain authority.
-- The same N=10 worker path now carries nine product-verified semantic families
+- The same N=10 worker path now carries ten product-verified semantic families
   in one resident batch, including derived EOF, input/output, repeated jump,
-  guarded crazy, `MinimumLength(2)` execution, and exact-address rotate. Every
-  completion is checked against complete safe-Rust state. This extends live
-  correctness coverage without making a throughput claim.
+  guarded crazy, `MinimumLength(2)` execution, exact-address rotate, and
+  source-backed jump-code. Every completion is checked against complete
+  safe-Rust state. This extends live correctness coverage without making a
+  throughput claim.
 - A separate 100,000 GiB synthetic fixture proves that additional addressable
   memory is not clamped; classic CUDA splits only at its 32-bit memory-index
   boundary. None of these synthetic rows are hardware throughput measurements.

@@ -365,11 +365,11 @@ admitted token and returns no completion for malformed metadata or invalid
 reconstructed state.
 
 Mixed resident widths fail before process launch. The top-level CLI now supplies
-an opt-in composition binding for trusted current-profile workers. A live RTX
-4060 check reached `CudaProfileRunAdapter.evaluate` through that binding and
-preserved the published current-capsule output. The binding is intentionally
-canonical-profile-only; it does not create a derived-width certificate or
-establish throughput.
+separate opt-in controls for trusted adaptive construction and current-profile
+resident workers. The worker receives the geometry already admitted by the
+selected machine, including derived N10 when adaptive proof succeeds. Live RTX
+4060 checks exercise this composition boundary; they establish correctness, not
+throughput.
 
 Both checked-in current capsules carry `ubO` with empty input, so the existing
 `MinimumLength(1)` proof correctly cannot replace their canonical EOF-visible
@@ -405,6 +405,20 @@ retained
 negative: N10 through N13 fail rotate projection and only N14 admits, so the
 composite adaptive selector returns no narrower token.
 
+Jump-code now has a source-backed exact-address theorem. Initial `i` reads D=0,
+so the resulting code pointer is the raw first source byte `b` (98). The proof
+requires source positions 98 and 99 to exist; the former is therefore an exact
+graphical self-encryption target and the latter an exact reached halt.
+
+Because XLAT2 is width-independent, N10 and N14 encrypt the same physical target
+with the same byte and then halt at C=99. Complete post-run memory and registers
+project.
+
+The proof does not infer exactness from recurrence projection. If the target or
+following halt is outside loaded source, it rejects with `JumpCodeProjection`; a
+short code-jump source therefore remains canonical under the composite selector.
+Chained code jumps remain outside this theorem.
+
 Wire homogeneity is intentionally weaker than verifier authority equality. `uP`
 and `ubO` share the same N=10 resident shape and can execute in one CUDA worker
 batch, while each returned checkpoint is reconstructed with its original opaque
@@ -414,7 +428,9 @@ kernel shape cannot collapse `Any` into `MinimumLength(1)` or vice versa.
 The derived CUDA differential is no longer limited to immediate halt. One N=10
 worker batch now covers initial halt, no-op, EOF input, byte I/O, two-byte
 straight-line I/O, repeated jump, guarded crazy, crazy followed by byte-input
-recovery, and rotate. Complete memory and state equality against safe Rust
+recovery, rotate, and source-backed code jump. Complete memory and state
+equality
+against safe Rust
 remains the oracle; this is semantic correctness evidence rather than
 performance
 evidence.

@@ -49,15 +49,17 @@ use malbolge::{
     ProfileResidentWireGeometry, ProfileResidentWireResponse,
     ProfileResidentWireResult, StepOutcome, Termination,
     VerifiedProfileExecutionGeometry, current_profile,
-    decode_profile_resident_response, encode_profile_resident_batch,
-    execute_profile_batch, execute_profile_batch_with_backend_report,
-    verify_differential_candidates, verify_initial_halt_profile_width,
-    verify_input_then_halt_profile_width, verify_jump_crazy_halt_profile_width,
+    decode_profile_instruction, decode_profile_resident_response,
+    encode_profile_resident_batch, execute_profile_batch,
+    execute_profile_batch_with_backend_report, verify_differential_candidates,
+    verify_initial_halt_profile_width, verify_input_then_halt_profile_width,
+    verify_jump_code_halt_profile_width, verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
     verify_jump_rotate_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
+    verify_minimum_jump_code_halt_profile_width,
     verify_minimum_jump_crazy_halt_profile_width,
     verify_minimum_jump_crazy_io_halt_profile_width,
     verify_minimum_jump_rotate_halt_profile_width,
@@ -266,6 +268,12 @@ fn reviewed_width_cuda_requests(
     let input = normalize_result(verify_input_then_halt_profile_width(
         profile, b"uP", word_trits,
     ))?;
+    let jump_code_source = source_backed_jump_code_halt()?;
+    let jump_code = normalize_result(verify_jump_code_halt_profile_width(
+        profile,
+        &jump_code_source,
+        word_trits,
+    ))?;
     let straight = normalize_result(verify_straight_line_io_profile_width(
         profile, b"uCar_L", word_trits,
     ))?;
@@ -281,6 +289,7 @@ fn reviewed_width_cuda_requests(
     Ok(vec![
         verified_profile_request(&initial, Vec::new(), 1)?,
         verified_profile_request(&input, Vec::new(), 2)?,
+        verified_profile_request(&jump_code, Vec::new(), 2)?,
         verified_profile_request(&straight, vec![0xa5, 0x3c], 6)?,
         verified_profile_request(&crazy, Vec::new(), 4)?,
         verified_profile_request(&recovered, vec![0xa5], 6)?,
@@ -362,6 +371,34 @@ fn cuda_same_resident_shape_retains_distinct_width_authority() -> TestResult {
     compare_profile_product_batch(&observed, &expected)
 }
 
+fn encoded_profile_instruction(decoded: u8, position: usize) -> TestResult<u8> {
+    let pointer = u32::try_from(position)
+        .map_err(|error| format!("profile instruction position: {error}"))?;
+    (33u8..=126u8)
+        .find(|cell| {
+            decode_profile_instruction(u32::from(*cell), pointer)
+                == Some(decoded)
+        })
+        .ok_or_else(|| format!("missing encoded {decoded} at {position}"))
+}
+
+fn source_backed_jump_code_halt() -> TestResult<Vec<u8>> {
+    let first = encoded_profile_instruction(b'i', 0)?;
+    let halt_position = usize::from(first).saturating_add(1);
+    let mut source = Vec::with_capacity(halt_position.saturating_add(1));
+    for position in 0..=halt_position {
+        let decoded = if position == 0 {
+            b'i'
+        } else if position == halt_position {
+            b'v'
+        } else {
+            b'o'
+        };
+        source.push(encoded_profile_instruction(decoded, position)?);
+    }
+    Ok(source)
+}
+
 fn verified_profile_request(
     verified: &VerifiedProfileExecutionGeometry,
     input: Vec<u8>,
@@ -383,6 +420,10 @@ fn verified_n10_cuda_requests() -> TestResult<Vec<ProfileBatchRequest>> {
     )?;
     let input = normalize_result(
         verify_minimum_input_then_halt_profile_width(profile, b"uP"),
+    )?;
+    let jump_code_source = source_backed_jump_code_halt()?;
+    let jump_code = normalize_result(
+        verify_minimum_jump_code_halt_profile_width(profile, &jump_code_source),
     )?;
     let io = normalize_result(verify_minimum_input_output_halt_profile_width(
         profile, b"ubO",
@@ -406,6 +447,7 @@ fn verified_n10_cuda_requests() -> TestResult<Vec<ProfileBatchRequest>> {
         verified_profile_request(&initial, Vec::new(), 1)?,
         verified_profile_request(&noop, Vec::new(), 2)?,
         verified_profile_request(&input, Vec::new(), 2)?,
+        verified_profile_request(&jump_code, Vec::new(), 2)?,
         verified_profile_request(&io, vec![0xa5], 3)?,
         verified_profile_request(&straight, vec![0xa5, 0x3c], 6)?,
         verified_profile_request(&jumps, Vec::new(), 4)?,

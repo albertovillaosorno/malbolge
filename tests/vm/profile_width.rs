@@ -40,12 +40,14 @@ use malbolge::{
     Termination, current_profile, decode_profile_instruction,
     historical_profile, select_minimum_verified_profile_width,
     verify_initial_halt_profile_width, verify_input_output_halt_profile_width,
-    verify_input_then_halt_profile_width, verify_jump_crazy_halt_profile_width,
+    verify_input_then_halt_profile_width, verify_jump_code_halt_profile_width,
+    verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
     verify_jump_data_halt_profile_width, verify_jump_rotate_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
+    verify_minimum_jump_code_halt_profile_width,
     verify_minimum_jump_crazy_halt_profile_width,
     verify_minimum_jump_crazy_io_halt_profile_width,
     verify_minimum_jump_data_halt_profile_width,
@@ -628,6 +630,129 @@ fn jump_data_halt_verifier_rejects_wrong_reached_sequence() -> TestResult {
             decoded: b'p',
         }),
         "jump-data second instruction rejection",
+    )
+}
+
+fn encoded_profile_instruction(decoded: u8, position: usize) -> TestResult<u8> {
+    let pointer = u32::try_from(position)
+        .map_err(|error| format!("profile instruction position: {error}"))?;
+    (33u8..=126u8)
+        .find(|cell| {
+            decode_profile_instruction(u32::from(*cell), pointer)
+                == Some(decoded)
+        })
+        .ok_or_else(|| format!("missing encoded {decoded} at {position}"))
+}
+
+fn source_with_source_backed_jump_code_halt() -> TestResult<Vec<u8>> {
+    let first = encoded_profile_instruction(b'i', 0)?;
+    let encryption_target = usize::from(first);
+    let halt_position = encryption_target.saturating_add(1);
+    let mut source = Vec::with_capacity(halt_position.saturating_add(1));
+    for position in 0..=halt_position {
+        let decoded = if position == 0 {
+            b'i'
+        } else if position == halt_position {
+            b'v'
+        } else {
+            b'o'
+        };
+        source.push(encoded_profile_instruction(decoded, position)?);
+    }
+    Ok(source)
+}
+
+#[test]
+fn jump_code_halt_verifier_executes_exact_source_target_at_minimum_width()
+-> TestResult {
+    let source = source_with_source_backed_jump_code_halt()?;
+    for (word_trits, _memory_words) in CHECKED_GEOMETRIES {
+        let _admitted = normalize_result(verify_jump_code_halt_profile_width(
+            current_profile(),
+            &source,
+            word_trits,
+        ))?;
+    }
+    let verified = normalize_result(
+        verify_minimum_jump_code_halt_profile_width(current_profile(), &source),
+    )?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::JumpCodeHaltProjection,
+        "jump-code proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "jump-code minimum width",
+    )?;
+    let mut narrow = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    let mut canonical = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        &source,
+        Vec::new(),
+    ))?;
+    let narrow_outcome = normalize_result(narrow.run(2))?;
+    let canonical_outcome = normalize_result(canonical.run(2))?;
+    check_equal(
+        &narrow_outcome,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 2,
+        },
+        "jump-code narrow outcome",
+    )?;
+    check_equal(
+        &canonical_outcome,
+        &narrow_outcome,
+        "jump-code canonical outcome",
+    )?;
+    check_equal(
+        &narrow.registers().code_pointer,
+        &99u32,
+        "jump-code exact halt pointer",
+    )?;
+    check_complete_profile_projection(
+        &narrow,
+        &canonical,
+        verified.memory_words(),
+        "jump-code",
+    )
+}
+
+#[test]
+fn jump_code_halt_verifier_rejects_recurrence_encryption_target() -> TestResult
+{
+    let source = [
+        encoded_profile_instruction(b'i', 0)?,
+        encoded_profile_instruction(b'v', 1)?,
+    ];
+    check_equal(
+        &verify_jump_code_halt_profile_width(
+            current_profile(),
+            &source,
+            MINIMUM_WORD_TRITS,
+        ),
+        &Err(ProfileWidthVerificationError::JumpCodeProjection),
+        "jump-code recurrence target rejection",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(current_profile(), &source, &[]),
+        &None,
+        "jump-code composite fallback",
+    )?;
+    let machine = normalize_result(ProfileMachine::from_adaptive_source(
+        current_profile(),
+        &source,
+        Vec::new(),
+    ))?;
+    check_equal(
+        &machine.geometry().word_trits(),
+        &CANONICAL_WORD_TRITS,
+        "jump-code adaptive canonical geometry",
     )
 }
 
