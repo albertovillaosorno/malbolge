@@ -191,7 +191,7 @@ fn wide_recurrence_oracle(
     transitions: usize,
 ) -> TestResult<ChunkedProfileWord> {
     wide_recurrence_state_oracle(older, previous, transitions)
-        .map(|(_older, previous)| previous)
+        .map(|(_older, previous_state)| previous_state)
 }
 
 fn wide_recurrence_state_oracle(
