@@ -199,24 +199,24 @@ mechanism = "composite"
 evidence = ["tests/compatibility/test_scalable_memory.py::test_crazy_generalizes_digitwise_without_new_truth_table", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
 
 [[correspondence]]
-id = "optimization-crazy-zero-padded-fifteen-trit-projection"
+id = "optimization-crazy-zero-padded-chunk-projection"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
-label = "eq:optimization-crazy-zero-padded-fifteen-trit-projection"
+label = "eq:optimization-crazy-zero-padded-chunk-projection"
 # jig-ignore-next-line: canonical correspondence value is indivisible
-domain = "all semantic widths 10 through 14, with the first two five-trit chunks covered by the existing exhaustive chunk table and every possible residual third-chunk operand pair exhausted under zero-padding to five physical trits"
+domain = "parametric semantic widths N>=10 under P_N=5*ceil(N/5), with every possible final five-trit residue pair exhausted across all five residual classes and representative multi-chunk widths including 15, 16, 20, 31, and 37"
 mechanism = "digitwise-zero-padding-plus-constant-high-trit-projection"
 # jig-ignore-next-line: indivisible reviewed identifiers
-evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_positions", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_zero_padding_adds_exact_constant_high_trits", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_padded_tail_lookup_matches_native_tail_for_every_residue", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_three_chunk_projection_has_exact_profile_constant"]
+evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_positions", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_zero_padding_adds_exact_constant_high_trits", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_padded_tail_lookup_matches_native_tail_for_every_residue", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_chunk_padding_has_exact_semantic_projection_constant"]
 
 [[correspondence]]
-id = "optimization-crazy-uniform-three-lookup-factorization"
+id = "optimization-crazy-uniform-chunk-factorization"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
-label = "eq:optimization-crazy-uniform-three-lookup-factorization"
+label = "eq:optimization-crazy-uniform-chunk-factorization"
 # jig-ignore-next-line: canonical correspondence value is indivisible
-domain = "semantic widths 10 through 14: both complete lower five-trit lookup domains plus every residual third-chunk operand pair, with mixed three-block assembly fixtures at every width"
-mechanism = "five-trit-digit-factorization-plus-zero-padded-third-lookup-projection"
+domain = "parametric semantic widths N>=10 using ceil(N/5) identical five-trit lookups, with exhaustive final-chunk residues and representative arbitrary-width full-word fixtures including widths beyond u32"
+mechanism = "five-trit-digit-factorization-plus-zero-padded-final-lookup-projection"
 # jig-ignore-next-line: indivisible reviewed identifiers
-evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_positions", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_padded_tail_lookup_matches_native_tail_for_every_residue", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_uniform_three_lookup_factorization_projects_every_tail_pair"]
+evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_positions", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_padded_tail_lookup_matches_native_tail_for_every_residue", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_uniform_chunk_factorization_matches_arbitrary_width_semantics", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_n15_is_three_full_chunks_without_padding", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_width_beyond_u32_remains_mathematically_defined"]
 
 [[correspondence]]
 id = "optimization-profile-width-projection-audit"
@@ -226,7 +226,7 @@ label = "eq:optimization-profile-width-projection-audit"
 domain = "every checked width pair 10 <= N < M <= 14; all width ratios and high quotients, representative low-residue classes including both boundaries, plus inherited digitwise crazy projection evidence"
 mechanism = "power-of-three-divisibility-plus-quotient-residue-projection-audit"
 # jig-ignore-next-line: indivisible reviewed identifiers
-evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_checked_width_projection_laws_and_counterexamples", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_three_chunk_projection_has_exact_profile_constant"]
+evidence = ["tests/mathematics/test_profile_width_projection_certificate.py::test_checked_width_projection_laws_and_counterexamples", "tests/mathematics/test_crazy_padded_chunk_geometry.py::test_chunk_padding_has_exact_semantic_projection_constant"]
 
 [[correspondence]]
 id = "optimization-profile-width-output-compatible-count"

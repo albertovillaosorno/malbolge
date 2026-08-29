@@ -49,6 +49,11 @@ TRANSITION_VERSION = "2026.3"
 CURRENT_TRITS = 14
 CURRENT_WORDS = 4_782_969
 CURRENT_EOF = CURRENT_WORDS - 1
+WIDTH_MODEL_RADIX = 3
+WIDTH_MODEL_MINIMUM = 10
+WIDTH_MODEL_CHUNK_TRITS = 5
+WIDTH_MODEL_ZERO_PADDING = "zero-high-trits"
+WIDTH_MODEL_PROJECTION = "mod-semantic-width"
 INTERPRETER_INPUT = "/"
 INTERPRETER_OUTPUT = "<"
 SPECIFICATION_INPUT = "<"
@@ -111,6 +116,35 @@ def test_custom_profile_apis_reject_foreign_top_level_type() -> None:
 def test_canonical_profile_is_valid() -> None:
     """The committed canonical profile satisfies schema v2."""
     validator.validate_text(_canonical_text())
+
+
+def test_semantic_width_model_is_unbounded_five_trit_chunking() -> None:
+    """Canonical arithmetic chunks do not impose a semantic maximum width."""
+    model = validator.semantic_width_model()
+    assert model.radix == WIDTH_MODEL_RADIX
+    assert model.minimum_trits == WIDTH_MODEL_MINIMUM
+    assert model.chunk_trits == WIDTH_MODEL_CHUNK_TRITS
+    assert model.maximum_trits is None
+    assert model.partial_chunk_padding == WIDTH_MODEL_ZERO_PADDING
+    assert model.result_projection == WIDTH_MODEL_PROJECTION
+
+
+def test_semantic_width_model_handles_full_and_partial_chunks() -> None:
+    """Any admitted width maps to ceil(N/5) chunks without a hard-coded cap."""
+    model = validator.semantic_width_model()
+    expected = {
+        10: ((5, 5), 10),
+        14: ((5, 5, 4), 15),
+        15: ((5, 5, 5), 15),
+        16: ((5, 5, 5, 1), 20),
+        31: ((5, 5, 5, 5, 5, 5, 1), 35),
+    }
+    for word_trits, (chunks, padded) in expected.items():
+        assert model.admits(word_trits)
+        assert model.chunk_widths(word_trits) == chunks
+        assert model.chunk_count(word_trits) == len(chunks)
+        assert model.padded_trits(word_trits) == padded
+    assert not model.admits(9)
 
 
 def test_current_profile_identity_is_distinct() -> None:

@@ -27,51 +27,48 @@ validation:
 
 ## Objective
 
-Test whether zero-padding 10-through-14-trit profile words to an internal
-15-trit, three-by-five-trit representation can make `crazy` evaluation faster
-without changing profile semantics. Separate physical arithmetic padding from
-semantic profile width: an `N`-trit program must still own exactly its `3^N`
-semantic memory words, while only the `crazy` operands may use a padded
-three-chunk representation internally. Compare that path against native
-`5+5+r` chunking, the current CUDA tritwise kernel, and an experimental true
-15-trit profile so any speedup is weighed against memory, occupancy, cache,
-transfer, and end-to-end search cost.
+Test whether the canonical five-trit chunk model can make `crazy` evaluation
+faster without changing profile semantics at any semantic width `N>=10`.
+Separate physical arithmetic padding from semantic profile width: an `N`-trit
+program still owns exactly `3^N` semantic memory words, while only the final
+partial `crazy` chunk is zero-padded to five trits. Compare the uniform
+`ceil(N/5)` lookup path against native residual-width arithmetic and the current
+CUDA tritwise kernel so any speedup is weighed against memory, occupancy,
+cache, transfer, and end-to-end search cost.
 
-For every admitted width `10<=N<=14`, zero-extending both operands to fifteen
-trits makes every added `crazy` output trit constant because `crazy(0,0)=1`.
-Therefore the exact candidate identity is
+For every admitted width `N>=10`, define `P_N=5*ceil(N/5)`. Zero-extending
+only the final partial chunk makes every added `crazy` output trit constant
+because `crazy(0,0)=1`. Therefore the exact identity is
 
 ```text
-Crazy_15(d, a) = Crazy_N(d, a) + sum(i=N..14, 3^i)
-               = Crazy_N(d, a) + (3^15 - 3^N) / 2
-Crazy_N(d, a)  = Crazy_15(d, a) mod 3^N
+Crazy_P_N(d, a) = Crazy_N(d, a) + (3^P_N - 3^N) / 2
+Crazy_N(d, a)   = Crazy_P_N(d, a) mod 3^N
 ```
 
-for `0<=d,a<3^N`. If a three-identical-lookup `5+5+5` implementation improves
-measured work enough to offset its padding, lookup/cache, register, and launch
-costs, a runtime or compile-time selector may choose it for widths 10 through
-14. A true 15-trit semantic profile is a separate experiment and is not implied
-by success of the padded representation.
+for `0<=d,a<3^N`. If N is divisible by five then `P_N=N` and the padding
+constant is zero. Otherwise the final lookup receives zero high input trits and
+its nonsemantic high output trits are discarded. N15 is therefore an ordinary
+three-full-chunk instance of the same model, not a separate mathematical case.
 
 ## Acceptance
 
 - The one-trit `crazy` truth table and digit independence establish the padded
-  identity exactly, including the constant high-trit term for every width from
-  10 through 14; executable correspondence checks the admitted bounded domain.
+  identity exactly for every `N>=10`; executable correspondence exhausts every
+  possible final-chunk residue class and checks representative wider widths.
 - The implementation distinguishes semantic width from physical arithmetic
-  width. Padding must never allocate `3^15` semantic memory for an `N<15`
-  program, expose a phantom trit, alter wraparound, or change verification.
+  width. Padding must never allocate `3^P_N` semantic memory, expose phantom
+  trits, alter wraparound, or change verification.
 - At least three equivalent implementations are compared: current/reference
-  execution, native `5+5+r` chunking, and padded `5+5+5` chunking. A true
-  15-trit semantic profile may be benchmarked only as a separately labelled
-  trade-off experiment.
+  execution, native residual-width chunking, and uniform five-trit lookup
+  chunking. N15 is included as the zero-padding-free three-chunk boundary case.
 - CUDA evidence reports kernel time and end-to-end throughput together with
   occupancy, register pressure, lookup/cache behavior, transfer volume, VRAM
   bytes per resident state, admitted batch size, and failure/fallback behavior.
 - CPU/SIMD evidence measures the same exact workloads and records whether fixed
-  three-chunk unrolling or vectorization is beneficial outside CUDA.
-- Physical padded-path selection across widths 10 through 14 is evidence-driven
-  and deterministic. It may select the padded path only where retained
+  five-trit chunk unrolling or vectorization is beneficial outside CUDA.
+- Physical padded-path selection across supported runtime widths is
+  evidence-driven and deterministic. It may select the padded path only where
+  retained
   measurements beat the exact baseline under the same workload and resource
   budget.
 - A speedup percentage is not accepted from symmetry alone. The hypothesis is
@@ -95,8 +92,8 @@ by success of the padded representation.
   every `10<=N<=14`, explicit domain assumptions, and a proof that discarded
   high output trits are data-independent constants.
 - Current mathematical base: correspondences
-  `optimization-crazy-zero-padded-fifteen-trit-projection` and
-  `optimization-crazy-uniform-three-lookup-factorization` prove the projection
+  `optimization-crazy-zero-padded-chunk-projection` and
+  `optimization-crazy-uniform-chunk-factorization` prove the projection
   and exact fixed three-lookup decomposition for widths 10 through 14.
 - Current measurement harness: `interpreter_benchmark` emits paired native
   `5+5+4` and zero-padded `5+5+5` samples for width 14, alternates execution

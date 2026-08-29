@@ -62,9 +62,9 @@ implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
 formalizes seventy exact reductions: classic five-trit crazy factorization,
-general profile-width crazy chunking, exact zero-padded 15-trit crazy
-projection and uniform three-lookup factorization for semantic widths 10
-through 14, exact checked profile-width projection laws and output/rotate-
+general profile-width crazy chunking, exact parametric five-trit padding and
+uniform chunk factorization, exact checked profile-width projection laws and
+output/rotate-
 compatible word counts, monotone source admission and exact initial-memory
 projection across checked widths, exact decode compatibility and self-
 encryption invariance, exact input projection and graphical-fetch mismatch
@@ -118,19 +118,20 @@ sum for reachable pairs whose full preimage set exceeds a nonnegative
 enumeration budget, its exact width-indexed generalization for `1<=N<=14`, and
 the exact minimum complete-preimage budget needed to cover any integer target
 from 0 through `7^N` reachable pairs across the same checked widths.
-For semantic widths `10<=N<=14`, zero-padding both `crazy` operands to fifteen
-physical trits adds exactly `C_N=(3^15-3^N)/2` to the output because every
-added zero/zero trit maps to one. Therefore `Crazy_15(d,a) mod 3^N` equals the
-native `Crazy_N(d,a)` exactly. Exhaustive residual-tail evidence covers every
-possible third-chunk operand pair at each admitted width; this is an arithmetic
-equivalence only and makes no performance claim.
+The canonical semantic-width model is now parametric. For every `N>=10`, set
+`P_N=5*ceil(N/5)`. Zero-padding only the final partial `crazy` chunk adds
+exactly `C_N=(3^P_N-3^N)/2` because every added zero/zero trit maps to one.
 
-The same projection yields a fixed physical factorization at those widths. With
-`B=243`, split each operand into two complete five-trit chunks plus one residual
-tail. Three invocations of the same five-trit table, weighted by `1`, `B`, and
-`B^2` and reduced modulo `3^N`, reproduce native `Crazy_N` exactly. Existing
-exhaustive table evidence owns the two complete chunks; the padded evidence
-exhausts every third-chunk pair and mixed assembly fixtures.
+Therefore `Crazy_P_N(d,a) mod 3^N` equals native `Crazy_N(d,a)` exactly. N15
+has `P_N=N` and no padding; N16 starts a fourth five-trit chunk.
+
+With `B=243`, the same result is `ceil(N/5)` invocations of one five-trit table,
+weighted by successive powers of B and reduced modulo `3^N`. Exhaustive
+final-chunk evidence covers all five residual classes; representative whole-word
+fixtures include N15, N16, N20, N31, and N37. The N31 check already exceeds
+u32 geometry, demonstrating that backend integer limits are not mathematical
+semantic-width limits. This is arithmetic equivalence only and makes no
+performance claim.
 
 This remains a state-equivalence result, not a timing claim.
 

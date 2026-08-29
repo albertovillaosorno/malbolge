@@ -1,5 +1,13 @@
 {
   "schema_version": 2,
+  "semantic_width_model": {
+    "radix": 3,
+    "minimum_trits": 10,
+    "chunk_trits": 5,
+    "maximum_trits": null,
+    "partial_chunk_padding": "zero-high-trits",
+    "result_projection": "mod-semantic-width"
+  },
   "current_profile": "malbolge-2026",
   "profiles": {
     "malbolge-1998": {

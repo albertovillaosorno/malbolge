@@ -629,6 +629,10 @@ def test_execution_geometry_has_exact_ternary_word_counts() -> None:
         12: 531_441,
         13: 1_594_323,
         14: 4_782_969,
+        15: 14_348_907,
+        20: 3_486_784_401,
+        21: 10_460_353_203,
+        31: 617_673_396_283_947,
     }
     for width, memory_words in expected.items():
         geometry = execution_geometry(width)
@@ -636,7 +640,6 @@ def test_execution_geometry_has_exact_ternary_word_counts() -> None:
         assert geometry.word_trits == width
         assert geometry.memory_words == memory_words
     assert execution_geometry(9) is None
-    assert execution_geometry(15) is None
 
 
 def test_composed_certificate_supports_each_candidate_width() -> None:

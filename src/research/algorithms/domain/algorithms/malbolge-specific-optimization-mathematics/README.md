@@ -15,15 +15,18 @@ under `benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/`, while
 semantic acceptance is owned by
 `src/specification/formal-model/math/specification/correspondence.toml`.
 
-The profile-width crazy factorization also admits an exact zero-padded physical
-15-trit projection for semantic widths 10 through 14. Padding adds only the
-known constant `(3^15-3^N)/2`, so reducing modulo `3^N` recovers native crazy
-semantics without enlarging semantic memory; this is not a timing claim.
+The profile-width crazy factorization is parametric for every semantic width
+`N>=10`. Let `P_N=5*ceil(N/5)`. Only the final partial five-trit chunk is
+zero-padded to `P_N`; padding adds the exact constant
+`(3^P_N-3^N)/2`, so reducing modulo `3^N` recovers native crazy semantics
+without enlarging semantic memory. This is an arithmetic identity, not a timing
+claim.
 
-Equivalently, every width from 10 through 14 admits exactly three invocations of
-the same 243-by-243 five-trit table, weighted by `1`, `243`, and `243^2`, then
-projected modulo `3^N`. The third lookup is zero-padded physically; semantic
-memory and semantic word width remain unchanged.
+Equivalently, every admitted width uses `ceil(N/5)` invocations of the same
+243-by-243 five-trit table. N14 is `5+5+4`, N15 is `5+5+5`, N16 is
+`5+5+5+1`, and the rule continues without a mathematical maximum. The final
+lookup alone is zero-padded when N is not divisible by five; semantic memory
+remains exactly `3^N`.
 
 Checked width projection is not uniformly semantic. Successor and `crazy`
 commute with radix projection, while `rotate` and byte output have exact

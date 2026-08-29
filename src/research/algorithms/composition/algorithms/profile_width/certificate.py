@@ -950,13 +950,15 @@ def noop_prefix_halt_projection_certifiable(
 
 
 def execution_geometry(width: int) -> WidthExecutionGeometry | None:
-    """Return exact ternary memory geometry for one supported derived width.
+    """Return exact mathematical ternary geometry for one semantic width.
 
     Returns:
-        Width and `3^N` words for N from ten through fourteen, otherwise None.
+        Width and `3^N` words for every integer N at or above the repository
+        minimum. Backend integer/address limits are deliberately not language
+        limits and must be checked by the consuming runtime or accelerator.
 
     """
-    if not MINIMUM_WIDTH <= width <= CANONICAL_WIDTH:
+    if type(width) is not int or width < MINIMUM_WIDTH:
         return None
     return WidthExecutionGeometry(
         memory_words=_ternary_modulus(width),

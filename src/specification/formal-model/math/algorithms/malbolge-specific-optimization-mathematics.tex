@@ -86,53 +86,55 @@ Digit independence gives
       3^{jk}\left(\CrazyN{5}{d_j}{a_j}\bmod3^{r_j}\right).
   \label{eq:optimization-crazy-profile-chunks}
 \end{equation}
-The current 14-trit runtime therefore uses chunks $5+5+4$ while reusing the same
-five-trit table. The final four-trit result is reduced modulo $3^4$; no phantom
-fifteenth trit is admitted.
+The concrete 14-trit profile instance uses chunks $5+5+4$; 15 trits use
+$5+5+5$, and 16 trits use $5+5+5+1$. These are instances of the same rule, not
+separate arithmetic definitions.
 
-For an admitted semantic width $10\leq N\leq14$, zero-extend both operands to
-fifteen trits without changing the semantic word domain. Since the added input
-trits are all zero and $\CrazyN{1}{0}{0}=1$, define
+For any semantic width $N\geq10$, define its physical arithmetic padding width
 \[
-  C_N=\sum_{i=N}^{14}3^i=\frac{3^{15}-3^N}{2}.
+  P_N=5\left\lceil\frac{N}{5}\right\rceil.
 \]
-Digit independence then gives the exact padding identity
+Zero-extend only the final partial chunk to $P_N$ trits. Since every added input
+trit is zero and $\CrazyN{1}{0}{0}=1$, define
+\[
+  C_N=\sum_{i=N}^{P_N-1}3^i=\frac{3^{P_N}-3^N}{2}.
+\]
+Digit independence gives the exact parametric padding identity
 \begin{equation}
-  \CrazyN{15}{d}{a}=\CrazyN{N}{d}{a}+C_N,
+  \CrazyN{P_N}{d}{a}=\CrazyN{N}{d}{a}+C_N,
   \qquad
-  \CrazyN{N}{d}{a}=\CrazyN{15}{d}{a}\bmod3^N,
+  \CrazyN{N}{d}{a}=\CrazyN{P_N}{d}{a}\bmod3^N,
   \quad 0\leq d,a<3^N.
-  \label{eq:optimization-crazy-zero-padded-fifteen-trit-projection}
+  \label{eq:optimization-crazy-zero-padded-chunk-projection}
 \end{equation}
-Equivalently, the third physical five-trit lookup may receive the native
-$N-10$ tail trits with its unused high inputs set to zero; its extra output
-trits are the data-independent constant above and disappear under projection
-modulo $3^N$. This proves arithmetic equivalence only. It neither allocates a
-$3^{15}$-word semantic memory nor establishes a performance improvement.
+When $5\mid N$, $P_N=N$ and $C_N=0$, so no padding exists. Otherwise only the
+unused high inputs of the final five-trit lookup are zero; its extra high output
+trits are data-independent and disappear under projection modulo $3^N$. This
+proves arithmetic equivalence only. It does not allocate $3^{P_N}$ semantic
+memory and does not establish a performance improvement.
 
-Writing $B=3^5=243$, decompose the same operands as
+Writing $B=3^5=243$ and $q=\lceil N/5\rceil$, decompose
 \[
-  d=d_0+B d_1+B^2 d_2,
+  d=\sum_{j=0}^{q-1} B^j d_j,
   \qquad
-  a=a_0+B a_1+B^2 a_2,
+  a=\sum_{j=0}^{q-1} B^j a_j,
 \]
-where $0\leq d_0,d_1,a_0,a_1<B$ and
-$0\leq d_2,a_2<3^{N-10}\leq3^4<B$. Combining the five-trit table
-factorization with the padding projection gives
+where every complete chunk satisfies $0\leq d_j,a_j<B$ and the final partial
+chunk carries
+only its native semantic trits. The same table then gives
 \begin{equation}
   \CrazyN{N}{d}{a}
     = \left(
-        \CrazyN{5}{d_0}{a_0}
-        + B\CrazyN{5}{d_1}{a_1}
-        + B^2\CrazyN{5}{d_2}{a_2}
+        \sum_{j=0}^{q-1} B^j\CrazyN{5}{d_j}{a_j}
       \right)\bmod3^N,
-  \quad 10\leq N\leq14.
-  \label{eq:optimization-crazy-uniform-three-lookup-factorization}
+  \qquad q=\left\lceil\frac{N}{5}\right\rceil,
+  \quad N\geq10.
+  \label{eq:optimization-crazy-uniform-chunk-factorization}
 \end{equation}
-Thus one exact $243\times243$ table may be invoked exactly three times for every
-admitted semantic width. The third lookup receives zero high input trits; only
-its constant high output trits are discarded by the final semantic projection.
-This is an exact factorization, not a wall-clock speedup claim.
+Thus one exact $243\times243$ table is reusable for any semantic width. The
+number of invocations is $\lceil N/5\rceil$; only the final partial lookup is
+zero-padded, and only its nonsemantic high result trits are discarded. This is
+an exact factorization, not a wall-clock speedup claim.
 
 \section{Profile-width projection and finite certificates}
 

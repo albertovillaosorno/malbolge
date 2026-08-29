@@ -83,7 +83,12 @@ ASCII_TILDE = 0x7E
 BACKSLASH = "\\"
 DOUBLE_QUOTE = '"'
 
-TOP_LEVEL_KEYS = frozenset({"current_profile", "profiles", "schema_version"})
+TOP_LEVEL_KEYS = frozenset({
+    "current_profile",
+    "profiles",
+    "schema_version",
+    "semantic_width_model",
+})
 PROFILE_KEYS = frozenset({"kind", "memory", "semantics", "version", "word"})
 PROFILE_DEFINITION_KEYS = frozenset({"memory", "semantics", "version", "word"})
 CUSTOM_PROFILE_KEYS = frozenset({
@@ -111,10 +116,74 @@ SEMANTIC_CORE_KEYS = SEMANTIC_KEYS - {
     "input_instruction",
     "output_instruction",
 }
+SEMANTIC_WIDTH_MODEL_KEYS = frozenset({
+    "chunk_trits",
+    "maximum_trits",
+    "minimum_trits",
+    "partial_chunk_padding",
+    "radix",
+    "result_projection",
+})
+ZERO_HIGH_TRITS = "zero-high-trits"
+MOD_SEMANTIC_WIDTH = "mod-semantic-width"
 
 type JsonScalar = bool | int | float | str | None
 type JsonValue = JsonScalar | list[JsonValue] | dict[str, JsonValue]
 type JsonObject = dict[str, JsonValue]
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticWidthModel:
+    """Repository-wide parametric semantic-width arithmetic contract."""
+
+    chunk_trits: int
+    maximum_trits: int | None
+    minimum_trits: int
+    partial_chunk_padding: str
+    radix: int
+    result_projection: str
+
+    def admits(self, word_trits: int) -> bool:
+        """Return whether one semantic width belongs to the model.
+
+        Returns:
+            True exactly for widths inside the repository semantic domain.
+
+        """
+        if type(word_trits) is not int or word_trits < self.minimum_trits:
+            return False
+        return self.maximum_trits is None or word_trits <= self.maximum_trits
+
+    def chunk_count(self, word_trits: int) -> int:
+        """Return the number of fixed-width arithmetic chunks.
+
+        Returns:
+            `ceil(word_trits / chunk_trits)` for an admitted semantic width.
+
+        """
+        if not self.admits(word_trits):
+            _fail(f"semantic width {word_trits} is outside the width model")
+        return (word_trits + self.chunk_trits - 1) // self.chunk_trits
+
+    def padded_trits(self, word_trits: int) -> int:
+        """Return the physical width after final-chunk zero-padding.
+
+        Returns:
+            Smallest chunk-width multiple not below the semantic width.
+
+        """
+        return self.chunk_count(word_trits) * self.chunk_trits
+
+    def chunk_widths(self, word_trits: int) -> tuple[int, ...]:
+        """Return native semantic trits carried by each physical chunk.
+
+        Returns:
+            Complete chunk widths plus the final native residual width.
+
+        """
+        count = self.chunk_count(word_trits)
+        residual = word_trits - ((count - 1) * self.chunk_trits)
+        return ((self.chunk_trits,) * (count - 1)) + (residual,)
 
 
 @dataclass(frozen=True, slots=True)
@@ -296,6 +365,88 @@ def _validate_semantics(value: JsonValue, context: str) -> JsonObject:
     return semantics
 
 
+def _optional_maximum_trits(
+    model: JsonObject,
+    context: str,
+) -> int | None:
+    value = model["maximum_trits"]
+    if value is None:
+        return None
+    return _expect_int(value, f"{context}.maximum_trits")
+
+
+def _validate_width_model_bounds(
+    model: SemanticWidthModel,
+    context: str,
+) -> None:
+    if model.radix != TERNARY_RADIX:
+        _fail(f"{context}.radix must be ternary")
+    if model.minimum_trits <= 0:
+        _fail(f"{context}.minimum_trits must be positive")
+    if model.chunk_trits <= 0:
+        _fail(f"{context}.chunk_trits must be positive")
+    if (
+        model.maximum_trits is not None
+        and model.maximum_trits < model.minimum_trits
+    ):
+        _fail(f"{context}.maximum_trits must be null or >= minimum_trits")
+
+
+def _validate_width_model_modes(
+    model: SemanticWidthModel,
+    context: str,
+) -> None:
+    if model.partial_chunk_padding != ZERO_HIGH_TRITS:
+        _fail(f"{context}.partial_chunk_padding must be {ZERO_HIGH_TRITS}")
+    if model.result_projection != MOD_SEMANTIC_WIDTH:
+        _fail(f"{context}.result_projection must be {MOD_SEMANTIC_WIDTH}")
+
+
+def _validate_semantic_width_model(value: JsonValue) -> SemanticWidthModel:
+    context = "semantic_width_model"
+    model = _expect_mapping(value, context)
+    _expect_exact_keys(model, SEMANTIC_WIDTH_MODEL_KEYS, context)
+    radix = _expect_int(model["radix"], f"{context}.radix")
+    minimum_trits = _expect_int(
+        model["minimum_trits"], f"{context}.minimum_trits"
+    )
+    chunk_trits = _expect_int(model["chunk_trits"], f"{context}.chunk_trits")
+    maximum_trits = _optional_maximum_trits(model, context)
+    padding = _expect_string(
+        model["partial_chunk_padding"],
+        f"{context}.partial_chunk_padding",
+    )
+    projection = _expect_string(
+        model["result_projection"],
+        f"{context}.result_projection",
+    )
+    admitted = SemanticWidthModel(
+        chunk_trits=chunk_trits,
+        maximum_trits=maximum_trits,
+        minimum_trits=minimum_trits,
+        partial_chunk_padding=padding,
+        radix=radix,
+        result_projection=projection,
+    )
+    _validate_width_model_bounds(admitted, context)
+    _validate_width_model_modes(admitted, context)
+    return admitted
+
+
+def semantic_width_model(
+    document: JsonObject | None = None,
+) -> SemanticWidthModel:
+    """Return the validated repository semantic-width arithmetic model.
+
+    Returns:
+        Closed, validated chunking and semantic-width policy.
+
+    """
+    canonical = load_document(DEFAULT_PROFILE) if document is None else document
+    admitted = _expect_mapping(canonical, "target profile document")
+    return _validate_semantic_width_model(admitted["semantic_width_model"])
+
+
 def _validate_word(value: JsonValue, context: str) -> int:
     word = _expect_mapping(value, context)
     _expect_exact_keys(word, WORD_KEYS, context)
@@ -433,6 +584,7 @@ def validate_document(document: JsonObject) -> None:
     schema_version = _expect_int(admitted["schema_version"], "schema_version")
     if schema_version != SCHEMA_VERSION:
         _fail(f"unsupported schema_version: {schema_version}")
+    _ = _validate_semantic_width_model(admitted["semantic_width_model"])
     current_profile = _expect_string(
         admitted["current_profile"],
         "current_profile",

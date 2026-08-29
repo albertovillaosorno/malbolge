@@ -28,21 +28,21 @@ validation:
 ## Objective
 
 Determine the smallest semantic ternary width that is provably sufficient for
-one compiled program, initially within `10<=N<=14`, and execute only that
-`3^N`-word memory geometry when equivalence is established. Treat width as a
-verified program property rather than always paying the canonical 14-trit
-resident-memory cost. Feed the proved width into resource planning so small
-programs can admit more simultaneous accelerator work while larger GPUs use
-all measured resources instead of stopping at a device-specific artificial
-ceiling.
+one compiled program and execute only that `3^N`-word memory geometry when
+equivalence is established. The canonical semantic-width model now has minimum
+N=10, five-trit arithmetic chunks, and no mathematical maximum; concrete
+runtimes expose separate finite capability envelopes. Treat width as a verified
+program property rather than a repository-wide hard-coded maximum. Feed the
+proved width into resource planning so hardware uses measured resources rather
+than a device-specific artificial ceiling.
 
 If compiler and verifier evidence proves that a program's complete reachable
-behavior is invariant under replacing its declared profile by a smaller width
-`N`, then its semantic memory image has exactly `3^N` words instead of `3^14`.
-The memory-word-count ratios are therefore 81x, 27x, 9x, 3x, and 1x for widths
-10 through 14. Total resident bytes need not fall by the same factor because
-registers, buffers, metadata, transfers, verification, and other resources add
-separate costs; resource evidence must measure those costs directly.
+behavior is invariant under replacing one concrete reference geometry by width
+`N`, then its semantic memory image has exactly `3^N` words. Against the current
+published N14 reference, the retained N10-through-N14 ratios remain 81x, 27x,
+9x, 3x, and 1x; those are evidence for that reference profile, not a language
+maximum. Total resident bytes also include registers, buffers, metadata,
+transfers, verification, and other separately measured costs.
 
 ## Acceptance
 
@@ -57,8 +57,10 @@ separate costs; resource evidence must measure those costs directly.
 - Width selection is deterministic and fail-closed. If no smaller width is
   proved, execution retains the canonical required profile unchanged.
 - Resident memory accounting uses the selected semantic `3^N` geometry rather
-  than a padded arithmetic width. The `5+5+5` arithmetic-padding experiment is
-  owned separately by `symmetric-padded-crazy-chunk-geometry`.
+  than the physical padded arithmetic width `P_N=5*ceil(N/5)`. Only the final
+  partial chunk is zero-padded; N15 is three complete chunks with no padding.
+  Backend integer/address limits remain capabilities rather than language
+  limits.
 - Accelerator planning discovers actual device memory and compute resources at
   runtime. A smaller device may admit less work, while an RTX 5090-class or any
   future larger device may consume additional measured capacity without a
