@@ -61,10 +61,10 @@ program-width selector is promoted by this research result alone.
 The reusable research implementation is `algorithms.profile_width.certificate`.
 It remains experimental and has no runtime or trusted-verifier authority.
 
-For independently verified candidate widths 10 through 13, the mathematical
-selection rule takes the minimum accepted width and inserts 14 as the
-fail-closed fallback. Missing certificate results therefore cannot narrow
-execution, and no
+For the published N14 certificate set, independently verified candidate widths
+10 through 13 use 14 as that evidence set's fail-closed reference. The selector
+now accepts an explicit reference width instead of treating N14 as a semantic
+maximum. Missing certificate results therefore cannot narrow execution, and no
 monotonicity assumption is made between candidate widths.
 
 The current research surface also exposes an exact classic crazy-target

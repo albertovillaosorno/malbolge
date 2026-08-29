@@ -192,7 +192,9 @@ and after the halt.
 Positive research selection also receives the externally requested source and
 input domain. A v2 certificate can authorize only that byte-exact subject, and
 its proof kind must be recognized and checked; legacy v1, a bare boolean `true`,
-missing decisions, subject drift, or width drift all return canonical width 14.
+missing decisions, subject drift, or width drift all retain that certificate
+reference width. The published fixtures use N14; the selector no longer treats
+that value as a language maximum.
 
 A theorem-specific checker independently certifies initial-halt sources from
 checked widths, source capacity/admission, position-dependent decode, and a
@@ -284,7 +286,8 @@ the following `v` halts before using D again.
 
 Repeated jumps now have a separate trusted recurrence checker. It reconstructs
 only each reached initial-memory word with the product crazy primitive at both N
-and canonical 14, preserves D only on numeric equality, and rejects reads of
+and the current N15 reference, preserves D only on numeric equality, and
+rejects reads of
 already encrypted source code. `('&N` selects N=10 through three exact jumps.
 Both `('O` and the projected-D crazy fixture `('<AM` fail at D=41 because their
 second jump is projection-only, so the latter never gains trusted crazy-write
@@ -305,13 +308,14 @@ with the same byte before `<`. `(=s`M` (`j p / < v`) and `(=<r_L`
 (`j p p / < v`) both select N=10 and emit the recovered byte. Their proof tokens
 require at least one input byte, so EOF fails before machine construction. The
 product verifier independently admits this recovery shape at each reviewed
-geometry N=10 through 14.
+geometry N=10 through 15.
 
 Within that initial-halt family, product-side minimum selection tries N=10
-through the canonical width and advances only on exact derived-capacity failure.
-QP selects N=10, while a valid 59,050-word initial-halt source selects N=11. A
-verified N=10 artifact still retains the canonical 14-trit `malbolge-2026`
-requirement and is explicitly unequal to the historical profile identity.
+through the current N15 reference and advances only on exact derived-capacity
+failure. QP selects N=10, while a valid 59,050-word initial-halt source selects
+N=11. A verified N=10 artifact still retains the canonical N15
+`malbolge-2026` requirement and is explicitly unequal to the historical profile
+identity.
 
 The live machine and checkpoint now carry a separate opaque execution geometry.
 Memory length/domain, modulus/trits, EOF, pointer wrap, and crazy/rotate
@@ -349,8 +353,9 @@ safe-Rust
 machine rather than treating numeric geometry as sufficient authorization.
 
 The CUDA integration now consumes resident geometry from prepared backend
-requests instead of `current_profile()` constants. For every N=10 through 14,
-one homogeneous batch covers QP, EOF input-halt, `uCar_L`, guarded `p p`, crazy
+requests instead of `current_profile()` constants. For every reviewed N=10
+through 15, one homogeneous batch covers QP, EOF
+input-halt, `uCar_L`, guarded `p p`, crazy
 followed by byte-input recovery, and projection-verified rotate, with complete
 state compared against safe Rust.
 
@@ -386,8 +391,8 @@ succeeds and otherwise returns to canonical `from_source`. QP/empty and
 
 The CLI now exposes this selection as an explicit current-profile policy rather
 than changing the default. With `MALBOLGE_PROFILE_ADAPTIVE_WIDTH=1`, QP/empty
-reaches the resident wire as N10; with `0`, the same capsule reaches it as N14.
-The checked-in `ubO`/EOF capsule remains N14 even when adaptive selection is
+reaches the resident wire as N10; with `0`, the same capsule reaches it as N15.
+The checked-in `ubO`/EOF capsule remains N15 even when adaptive selection is
 enabled. A temporary RTX 4060 check completed QP/N10 through the same CLI,
 process transport, MBPRN2, and CUDA adapter path.
 
@@ -396,15 +401,15 @@ initial jump fixes D=41 exactly, and the rotate target lies outside the loaded
 source. The verifier independently reconstructs the candidate and canonical
 initial words at D, checks ordinary memory projection, computes both width-
 specific rotates, and requires the canonical rotate to project before permitting
-the physical write. This succeeds for every reviewed N=10 through 14 and the
+the physical write. This succeeds for every reviewed N=10 through 15 and the
 minimum selector chooses N10.
 
 Rotate is not treated as monotone. The dedicated minimum selector may continue
 after `JumpRotateProjection` (or capacity) but still fails immediately on
 lexical, decode, or geometry errors. `(CB$M` decodes `j o o * v` and is a
 retained
-negative: N10 through N13 fail rotate projection and only N14 admits, so the
-composite adaptive selector returns no narrower token.
+negative: every narrower reviewed width fails rotate projection and only N15
+admits, so the composite adaptive selector returns no narrower token.
 
 Jump-code now has a repeated source-backed exact-address theorem. Initial `i`
 reads D=0, and every committed code jump advances D exactly without candidate
@@ -418,7 +423,7 @@ runtime will encrypt. This is required for later jumps that observe earlier
 self-modification. The retained strong fixture reaches `i@0`, `i@99`, `i@39`,
 and then `i@38` before `v@79`; cell 38 originally decodes `j`, but the second
 jump encrypts it from 96 to 60, which then decodes `i` at C=38. Complete N10
-memory and registers project to N14 after the five-step execution.
+memory and registers project to N15 after the five-step execution.
 
 The proof does not infer exactness from recurrence projection. A data read,
 encryption target, or successor outside loaded source returns
@@ -428,12 +433,12 @@ composite selector.
 
 There is also a structural barrier for the initial recurrence-backed code
 target.
-For every N=10 through 13, assume one N14 recurrence word is numerically equal
+For every N=10 through 14, assume one N15 recurrence word is numerically equal
 to its N-width projection; all discarded high trits are then zero. In the next
 recurrence step those zero trits occupy the accumulator side of `crazy`.
 
 The normative crazy table has no zero result when the accumulator trit is zero.
-Enumerating all `3^(14-N)` possible high parts of the previous data word
+Enumerating all `3^(15-N)` possible high parts of the previous data word
 confirms
 that the successor always regains a nonzero discarded trit. Thus a recurrence-
 backed initial `i` cannot have both its encryption target and following C exact,
@@ -450,18 +455,19 @@ A separate jump-code/rotate theorem continues from that exact C=79/D=4 prefix.
 Unlike the earlier `j o* * v` theorem, its rotate target is deliberately inside
 loaded source. The verifier therefore reads D from the exact mutated source
 shadow, rejects D=C or D=C+1, checks both D and C successors without wrap, and
-requires the N14 rotate result to project to the candidate result before the
+requires the N15 rotate result to project to the candidate result before the
 physical write.
 
 The retained positive sets source[4] to `$` (36), for which rotate is exactly 12
-at every N=10 through 14. N10 writes 12 to source[4], self-encrypts the reached
+at every N=10 through 15. N10 writes 12 to source[4], self-encrypts the reached
 rotate cell at C=79, and halts at C=80 with D=5/A=12; complete memory and
-registers project to N14. The negative uses `^` (94): derived widths fail rotate
-projection, the specialized minimum verifier reaches only N14, and the composite
+registers project to N15. The negative uses `^` (94): derived widths fail rotate
+projection, the specialized minimum verifier reaches only N15, and the composite
 selector preserves canonical execution.
 
-Post-push live execution required CUDA use for every reviewed N=10 through 14
-with this source-write family included. The adaptive CLI N10 fixture also
+Retained post-push evidence required CUDA use for N10 through N14 with this
+source-write family included. The current N15 product route independently
+requires `used_cuda=true`. The adaptive CLI N10 fixture also
 reached `CudaProfileRunAdapter.evaluate` before its marker was written. These
 are
 full-state/deployment correctness observations, not retained performance
@@ -469,8 +475,8 @@ samples.
 
 Rotate projection now also composes with byte recovery. `(CB$q^K` decodes
 `j o o * / < v`; the exact jump/no-op prefix reaches D=43 outside the source.
-At N10 the rotate writes and loads A=29,517, while canonical N14 reaches
-2,391,477. Those values are not numerically equal, but the canonical value
+At N10 the rotate writes and loads A=29,517, while canonical N15 reaches
+7,174,446. Those values are not numerically equal, but the canonical value
 projects exactly to N10.
 
 `JumpRotateIoHaltProjection` now accepts one or more reached `/ <` pairs and
@@ -481,25 +487,27 @@ rejected, while `[0xA5,0x3C,0x7F,0x00]` is consumed and emitted exactly.
 
 The longer source changes the recurrence feeding D=43, so its projected rotate
 is rechecked rather than inherited from the one-pair case. For the four-pair
-fixture N10 writes 29,512 at address 43 and N14 writes 2,391,472. Indexed-state
+fixture N10 writes 29,512 at address 43 and N15 writes 7,174,441. Indexed-state
 evidence retains that projected write, cursor 4, all four output bytes, A=0, and
 C=12/D=52 across twelve committed effects.
 
 Length compatibility is deliberately non-monotone: the otherwise-valid two-pair
-source fails N10 rotate projection and reaches only N14, while the four-pair
-source succeeds again. `JUMP_ROTATE_IO_UNSAFE` (`j * / < v`) remains a distinct
+source fails narrower rotate projection and reaches only N15, while the
+four-pair source succeeds again. `JUMP_ROTATE_IO_UNSAFE` (`j * / < v`) remains
+a distinct
 projection negative. The CLI supplies no profile input, so the four-pair source
-stays canonical N14 and emits four canonical EOF bytes `0x78`.
+stays canonical N15 and emits four canonical EOF bytes `0x6A`.
 
 Rotate projection also composes directly with guarded crazy writes, without an
 input reset. `(&<;:9K` decodes `j * p p p p v`. The rotate uses exact D=41 but
-produces A=29,529 at N10 and A=2,391,489 at N14; those values are numerically
+produces A=29,529 at N10 and A=7,174,458 at N15; those values are numerically
 different and project exactly.
 
 The four following `p` transitions keep exact physical D=42..45 and
 independently
 check each recurrence data word plus crazy result. Their N10 writes are 67,
-29,538, 49, and 29,538; canonical N14 writes 67, 2,391,498, 49, and 2,391,498.
+29,538, 49, and 29,538; canonical N15 writes 67, 7,174,467, 49, and
+7,174,467.
 Thus the chain alternates exact and merely projected accumulators while complete
 memory/register projection remains intact. Indexed-state materialization after
 six effects matches the runtime checkpoint at exact C=6/D=46.
@@ -509,15 +517,16 @@ explicit rotate-projection miss. A guarded-crazy failure after a successful
 rotate is fail-closed, matching the existing conservative crazy policy rather
 than searching wider widths around missing semantic evidence.
 
-Post-push live execution required CUDA use at every reviewed N=10 through 14
-with this multi-write family included. A separate adaptive CLI run reached
+Retained post-push evidence required CUDA use at N10 through N14 with this
+multi-write family included. The current N15 product route independently
+requires `used_cuda=true`. A separate adaptive CLI run reached
 `CudaProfileRunAdapter.evaluate` as N10; its marker was written only after the
 CUDA evaluation returned. These are deployment/full-state correctness checks,
 not retained throughput measurements.
 
 The same exact prefix now composes with byte-visible I/O in a separate theorem.
 `JumpCodeIoHaltProjection` accepts one or more reached `/ <` pairs before halt.
-Each non-EOF input overwrites A with the same exact value at N10 and N14, the
+Each non-EOF input overwrites A with the same exact value at N10 and N15, the
 following `<` emits that byte, and both ordinary instructions self-encrypt the
 same source cells. The token records `MinimumLength(k)` for the exact number of
 reached inputs.
@@ -560,21 +569,17 @@ rejects before commit because the crazy result becomes a non-graphical
 self-encryption target. Crazy also marks A projection-only, so output requires a
 later exact byte input before it can be certified again.
 
-The same certificate is rechecked independently for candidate widths 10 through
-13. Each candidate can be the sole accepted width and is selected exactly;
-explicit rejection of all four returns canonical width 14 without monotonic
-inference.
-Widths 11 through 13 are represented only as derived execution geometry, never
-as invented canonical profile identities. The research selector projects each
-accepted N to exactly `3^N` memory words and retains canonical width 14 on any
-invalid decision; later runtime integration must keep profile identity separate
-from this certified storage/word geometry.
+The published N14 certificate is rechecked independently for candidate widths
+10 through 13. Each candidate can be the sole accepted width and is selected
+exactly; explicit rejection of all four retains that N14 evidence reference
+without monotonic inference. Widths 11 through 13 are represented only as
+derived execution geometry, never as invented canonical profile identities.
 
-Given independent certificate results for widths 10 through 13, the exact
-selector is the minimum certified width with 14 inserted as a canonical
-fallback. Missing results fail closed to 14. The selector deliberately assumes
-no monotonicity between candidate widths, so every narrower geometry remains an
-independent proof obligation.
+The selector now takes its finite reference width explicitly. Its theorem
+helpers and initial-memory reconstruction have no N14 ceiling: direct evidence
+checks N15, N20, and N31. Missing or malformed decisions retain the supplied
+reference, so each narrower geometry remains an independent proof obligation
+without turning any finite certificate width into a language maximum.
 
 The preserved historical decode table is a permutation of all 94 graphical
 bytes. Exhausting all 8,836 graphical cell/code-phase pairs therefore proves

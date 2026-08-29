@@ -42,13 +42,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
 
-from algorithms.profile_width.certificate import CANONICAL_WIDTH
 from algorithms.profile_width.certificate import CERTIFICATE_SCHEMA_VERSION
 from algorithms.profile_width.certificate import FiniteSystem
 from algorithms.profile_width.certificate import INPUT_OUTPUT_HALT_PROOF_KIND
 from algorithms.profile_width.certificate import INPUT_THEN_HALT_PROOF_KIND
 from algorithms.profile_width.certificate import MINIMUM_WIDTH
 from algorithms.profile_width.certificate import NOOP_PREFIX_HALT_PROOF_KIND
+from algorithms.profile_width.certificate import (
+    PUBLISHED_CERTIFICATE_REFERENCE_WIDTH,
+)
 from algorithms.profile_width.certificate import STRAIGHT_LINE_SAFE_PROOF_KIND
 from algorithms.profile_width.certificate import WidthCertificateSubject
 from algorithms.profile_width.certificate import bound_width_certificate_valid
@@ -83,6 +85,8 @@ from verifier.emitted_malbolge_classic import (
     initial_memory_value as verifier_initial_memory_value,
 )
 
+REFERENCE_WIDTH = PUBLISHED_CERTIFICATE_REFERENCE_WIDTH
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -107,13 +111,23 @@ def test_certificate_fails_closed_when_state_surface_is_missing() -> None:
 
 
 def test_selector_fails_closed_on_missing_or_invalid_result() -> None:
-    """Incomplete or non-boolean certificate results retain width fourteen."""
+    """Incomplete decisions retain the published evidence reference."""
     missing = {10: True, 11: True, 12: True}
-    assert minimum_certified_width(missing) == CANONICAL_WIDTH
+    assert minimum_certified_width(missing) == REFERENCE_WIDTH
 
     invalid: dict[int, bool] = {10: True, 11: True, 12: True, 13: True}
     invalid[12] = 1  # pyright: ignore[reportArgumentType] - invalid fixture.
-    assert minimum_certified_width(invalid) == CANONICAL_WIDTH
+    assert minimum_certified_width(invalid) == REFERENCE_WIDTH
+
+
+def test_selector_accepts_explicit_n15_reference() -> None:
+    """Reference width is evidence metadata rather than a module cap."""
+    n15_reference = 15
+    selected_width = MINIMUM_WIDTH + 1
+    decisions = {10: False, 11: True, 12: False, 13: True, 14: False}
+    assert minimum_certified_width(decisions, n15_reference) == selected_width
+    rejected = dict.fromkeys(range(MINIMUM_WIDTH, n15_reference), False)
+    assert minimum_certified_width(rejected, n15_reference) == n15_reference
 
 
 _FIXTURES = Path(__file__).with_name("fixtures")
@@ -127,6 +141,7 @@ _QP_SUBJECT_ID = "qp-halt-current14-to-historical10"
 _GRAPHICAL = range(33, 127)
 _LOAD_OPCODES = frozenset(b"ji*p</vo")
 _DECODE_PHASES = 94
+RECURRENCE_EXACT_WORD = 42
 
 
 def _qp_subject() -> WidthCertificateSubject:
@@ -175,7 +190,7 @@ def test_legacy_v1_is_structural_evidence_but_cannot_select_width() -> None:
     assert finite_width_certificate_valid(certificate)
     assert not bound_width_certificate_valid(certificate)
     decisions = {10: certificate, 11: False, 12: False, 13: False}
-    assert _selected_width(decisions) == CANONICAL_WIDTH
+    assert _selected_width(decisions) == REFERENCE_WIDTH
 
 
 def test_certificate_parser_rejects_schema_and_surface_drift() -> None:
@@ -233,7 +248,7 @@ def test_bound_certificate_rejects_source_subject_drift() -> None:
     assert certificate is not None
     assert not bound_width_certificate_valid(certificate)
     decisions = {10: certificate, 11: False, 12: False, 13: False}
-    assert _selected_width(decisions) == CANONICAL_WIDTH
+    assert _selected_width(decisions) == REFERENCE_WIDTH
 
 
 def test_selector_rejects_exact_input_subject_drift() -> None:
@@ -245,7 +260,7 @@ def test_selector_rejects_exact_input_subject_drift() -> None:
     assert bound_width_certificate_valid(certificate)
     assert certificate.inputs != {"byte-a5": (165,), "eof": ()}
     decisions = {10: certificate, 11: False, 12: False, 13: False}
-    assert _selected_width(decisions) == CANONICAL_WIDTH
+    assert _selected_width(decisions) == REFERENCE_WIDTH
 
 
 def test_bound_certificate_rejects_unknown_proof_and_input_surface() -> None:
@@ -273,10 +288,10 @@ def test_selector_requires_certificates_for_positive_width_decisions() -> None:
     assert _selected_width(decisions) == MINIMUM_WIDTH
 
     authority_free = {10: True, 11: False, 12: False, 13: False}
-    assert _selected_width(authority_free) == CANONICAL_WIDTH
+    assert _selected_width(authority_free) == REFERENCE_WIDTH
 
     missing = {10: certificate, 11: False, 12: False}
-    assert _selected_width(missing) == CANONICAL_WIDTH
+    assert _selected_width(missing) == REFERENCE_WIDTH
 
 
 def test_selector_rejects_certificate_width_mismatch() -> None:
@@ -284,7 +299,7 @@ def test_selector_rejects_certificate_width_mismatch() -> None:
     certificate = parse_finite_width_certificate(_fixture_value())
     assert certificate is not None
     decisions = {10: False, 11: certificate, 12: False, 13: False}
-    assert _selected_width(decisions) == CANONICAL_WIDTH
+    assert _selected_width(decisions) == REFERENCE_WIDTH
 
 
 def test_ubo_fixture_certifies_only_nonempty_input_domain() -> None:
@@ -310,7 +325,7 @@ def test_ubo_fixture_certifies_only_nonempty_input_domain() -> None:
     )
     assert (
         minimum_width_from_certificates(eof_subject, decisions)
-        == CANONICAL_WIDTH
+        == REFERENCE_WIDTH
     )
 
 
@@ -319,15 +334,35 @@ def test_input_output_halt_checker_rejects_eof_capable_domain() -> None:
     assert input_output_halt_projection_certifiable(
         b"ubO",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs={"a": (0,), "b": (255, 1)},
     )
     assert not input_output_halt_projection_certifiable(
         b"ubO",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs={"byte": (165,), "eof": ()},
     )
+
+
+def test_projection_theorems_accept_wider_references() -> None:
+    """Theorem premises remain meaningful for wider semantic geometries."""
+    for wide_width in (15, 20, 31):
+        assert initial_halt_projection_certifiable(
+            b"QP", MINIMUM_WIDTH, wide_width
+        )
+        assert input_then_halt_projection_certifiable(
+            b"uP", MINIMUM_WIDTH, wide_width
+        )
+        assert input_output_halt_projection_certifiable(
+            b"ubO",
+            MINIMUM_WIDTH,
+            wide_width,
+            inputs={"byte": (165,)},
+        )
+        assert noop_prefix_halt_projection_certifiable(
+            b"DP", MINIMUM_WIDTH, wide_width
+        )
 
 
 def test_up_fixture_certifies_input_then_halt_projection() -> None:
@@ -357,7 +392,7 @@ def test_input_then_halt_checker_matches_verifier_decode_pairs() -> None:
             observed = input_then_halt_projection_certifiable(
                 bytes((first, second)),
                 MINIMUM_WIDTH,
-                CANONICAL_WIDTH,
+                REFERENCE_WIDTH,
             )
             assert observed == expected
 
@@ -381,7 +416,7 @@ def test_dp_fixture_certifies_two_step_noop_then_halt_projection() -> None:
     assert noop_prefix_halt_projection_certifiable(
         b"DCBA@?>=I",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
     )
 
 
@@ -395,7 +430,7 @@ def test_noop_prefix_halt_checker_matches_verifier_decode_pairs() -> None:
             observed = noop_prefix_halt_projection_certifiable(
                 bytes((first, second)),
                 MINIMUM_WIDTH,
-                CANONICAL_WIDTH,
+                REFERENCE_WIDTH,
             )
             assert observed == expected
 
@@ -439,7 +474,7 @@ def test_straight_line_checker_matches_exhaustive_bounded_composition() -> None:
                 observed = straight_line_projection_certifiable(
                     source,
                     MINIMUM_WIDTH,
-                    CANONICAL_WIDTH,
+                    REFERENCE_WIDTH,
                     inputs={"bounded": stream},
                 )
                 assert observed == expected
@@ -451,19 +486,19 @@ def test_straight_line_checker_composes_safe_noop_and_io_steps() -> None:
     assert straight_line_projection_certifiable(
         b"uCar_L",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs=two_bytes,
     )
     assert straight_line_projection_certifiable(
         b"cP",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs={"eof": ()},
     )
     assert straight_line_projection_certifiable(
         b"(P",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs={"eof": ()},
     )
 
@@ -476,7 +511,7 @@ def test_initial_memory_word_matches_independent_classic_verifier() -> None:
     for address in range(100):
         expected = verifier_initial_memory_value(words, address)
         observed_10 = initial_memory_word(source, MINIMUM_WIDTH, address)
-        observed_14 = initial_memory_word(source, CANONICAL_WIDTH, address)
+        observed_14 = initial_memory_word(source, REFERENCE_WIDTH, address)
         assert observed_10 == expected
         assert observed_14 is not None
         assert observed_14 % classic_modulus == expected
@@ -487,17 +522,18 @@ def test_initial_memory_exactness_explains_repeated_jump_fixture() -> None:
     source = b"('&N"
     for address, expected in ((41, 42), (43, 78)):
         observed_10 = initial_memory_word(source, MINIMUM_WIDTH, address)
-        observed_14 = initial_memory_word(source, CANONICAL_WIDTH, address)
+        observed_14 = initial_memory_word(source, REFERENCE_WIDTH, address)
         assert observed_10 == expected
         assert observed_14 == expected
     narrow_40 = initial_memory_word(source, MINIMUM_WIDTH, 40)
-    wide_40 = initial_memory_word(source, CANONICAL_WIDTH, 40)
+    wide_40 = initial_memory_word(source, REFERENCE_WIDTH, 40)
     assert narrow_40 is not None
     assert wide_40 is not None
     assert narrow_40 != wide_40
     assert wide_40 % 59_049 == narrow_40
     assert initial_memory_word(source, 9, 41) is None
-    assert initial_memory_word(source, 15, 41) is None
+    assert initial_memory_word(source, 15, 41) == RECURRENCE_EXACT_WORD
+    assert initial_memory_word(source, 20, 41) == RECURRENCE_EXACT_WORD
     assert initial_memory_word(source, MINIMUM_WIDTH, -1) is None
 
 
@@ -507,25 +543,25 @@ def test_straight_line_checker_admits_guarded_crazy_after_jump() -> None:
     assert straight_line_projection_certifiable(
         b"(=O",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs=inputs,
     )
     assert straight_line_projection_certifiable(
         b"(=<N",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs=inputs,
     )
     assert not straight_line_projection_certifiable(
         b">P",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs=inputs,
     )
     assert not straight_line_projection_certifiable(
         b"(=aN",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs=inputs,
     )
 
@@ -539,7 +575,7 @@ def test_straight_line_checker_rejects_crazy_rewriting_future_code() -> None:
     assert not straight_line_projection_certifiable(
         source,
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs={"eof": ()},
     )
 
@@ -550,13 +586,13 @@ def test_straight_line_checker_uses_exact_memory_for_repeated_jumps() -> None:
     assert straight_line_projection_certifiable(
         b"('O",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs=inputs,
     )
     assert straight_line_projection_certifiable(
         b"('&N",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs=inputs,
     )
     losing_exact_d = _encoded_source(
@@ -565,7 +601,7 @@ def test_straight_line_checker_uses_exact_memory_for_repeated_jumps() -> None:
     assert not straight_line_projection_certifiable(
         losing_exact_d,
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs=inputs,
     )
 
@@ -575,19 +611,19 @@ def test_straight_line_checker_rejects_unsafe_or_unsupported_paths() -> None:
     assert not straight_line_projection_certifiable(
         b"uCar_L",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs={"one-byte": (165,)},
     )
     assert not straight_line_projection_certifiable(
         b"DC",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs={"eof": ()},
     )
     assert not straight_line_projection_certifiable(
         b"(=%r_L",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         inputs={"byte-a5": (165,)},
     )
 
@@ -652,7 +688,7 @@ def test_composed_certificate_supports_each_candidate_width() -> None:
         source=b"uCar_L",
         inputs={"two-bytes": bytes((165, 66))},
     )
-    candidates = range(MINIMUM_WIDTH, CANONICAL_WIDTH)
+    candidates = range(MINIMUM_WIDTH, REFERENCE_WIDTH)
     certificates = {
         width: replace(certificate, narrow_width=width)
         for width in candidates
@@ -670,15 +706,16 @@ def test_composed_certificate_supports_each_candidate_width() -> None:
         selected = minimum_width_from_certificates(subject, decisions)
         assert selected == selected_width
         geometry = minimum_geometry_from_certificates(subject, decisions)
+        assert geometry is not None
         assert geometry.word_trits == selected_width
     assert minimum_width_from_certificates(
         subject,
         dict.fromkeys(candidates, False),
-    ) == CANONICAL_WIDTH
+    ) == REFERENCE_WIDTH
 
 
 def test_composed_fixture_cannot_authorize_shorter_input_subject() -> None:
-    """Changing only the bound input stream fails closed to canonical width."""
+    """Changing only bound input retains the evidence reference width."""
     certificate = parse_finite_width_certificate(
         _fixture_value(_COMPOSED_FIXTURE)
     )
@@ -689,7 +726,7 @@ def test_composed_fixture_cannot_authorize_shorter_input_subject() -> None:
     )
     decisions = {10: certificate, 11: False, 12: False, 13: False}
     selected = minimum_width_from_certificates(subject, decisions)
-    assert selected == CANONICAL_WIDTH
+    assert selected == REFERENCE_WIDTH
 
 
 def test_initial_halt_checker_certifies_qp_from_semantic_premises() -> None:
@@ -697,12 +734,12 @@ def test_initial_halt_checker_certifies_qp_from_semantic_premises() -> None:
     assert initial_halt_projection_certifiable(
         b"QP",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
     )
     assert initial_halt_projection_certifiable(
         b"Q P\n",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
     )
 
 
@@ -710,23 +747,23 @@ def test_initial_halt_checker_rejects_invalid_or_nonhalting_sources() -> None:
     """Invalid widths, source, or first opcode fail closed."""
     assert not initial_halt_projection_certifiable(
         b"QP",
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
         MINIMUM_WIDTH,
     )
     assert not initial_halt_projection_certifiable(
         b"Q",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
     )
     assert not initial_halt_projection_certifiable(
         b"Q\x80",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
     )
     assert not initial_halt_projection_certifiable(
         b"PP",
         MINIMUM_WIDTH,
-        CANONICAL_WIDTH,
+        REFERENCE_WIDTH,
     )
 
 
@@ -746,7 +783,7 @@ def test_initial_halt_checker_matches_verifier_admission_surface() -> None:
         observed = initial_halt_projection_certifiable(
             bytes((first, second)),
             MINIMUM_WIDTH,
-            CANONICAL_WIDTH,
+            REFERENCE_WIDTH,
         )
         assert observed == expected
 
@@ -758,7 +795,7 @@ def test_initial_halt_checker_matches_verifier_admission_surface() -> None:
             observed = initial_halt_projection_certifiable(
                 bytes((*prefix, cell)),
                 MINIMUM_WIDTH,
-                CANONICAL_WIDTH,
+                REFERENCE_WIDTH,
             )
             assert observed == expected
         prefix.append(_verifier_admitted_cell(position))

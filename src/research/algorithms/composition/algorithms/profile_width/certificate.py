@@ -27,7 +27,7 @@
 # - Usage:
 #   - Mathematical evidence exercises this module before any product promotion.
 # - Defaults:
-#   - Missing surfaces or width results fail closed to the canonical width.
+#   - Missing surfaces or width results retain the supplied evidence reference.
 #
 
 """Research-only finite profile-width certificate checking."""
@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 MINIMUM_WIDTH: Final = 10
-CANONICAL_WIDTH: Final = 14
+PUBLISHED_CERTIFICATE_REFERENCE_WIDTH: Final = 14
 LEGACY_CERTIFICATE_SCHEMA_VERSION: Final = 1
 CERTIFICATE_SCHEMA_VERSION: Final = 2
 INITIAL_HALT_PROOF_KIND: Final = "initial-halt-projection-v1"
@@ -456,7 +456,6 @@ def finite_width_certificate_valid(certificate: FiniteWidthCertificate) -> bool:
     )
     widths_valid = (
         MINIMUM_WIDTH <= certificate.narrow_width < certificate.wide_width
-        <= CANONICAL_WIDTH
     )
     expected_inputs = set(certificate.input_ids)
     inputs_valid = (
@@ -590,7 +589,7 @@ def initial_memory_word(
         The exact initialized word, or None for invalid source/width/address.
 
     """
-    width_valid = MINIMUM_WIDTH <= width <= CANONICAL_WIDTH
+    width_valid = width >= MINIMUM_WIDTH
     address_valid = (
         0 <= address < _ternary_modulus(width) if width_valid else False
     )
@@ -648,9 +647,7 @@ def initial_halt_projection_certifiable(
         instruction halts before any width-sensitive transition effect.
 
     """
-    widths_valid = (
-        MINIMUM_WIDTH <= narrow_width < wide_width <= CANONICAL_WIDTH
-    )
+    widths_valid = MINIMUM_WIDTH <= narrow_width < wide_width
     if not widths_valid:
         return False
     decoded = _admitted_source_decodes(source, narrow_width)
@@ -839,9 +836,7 @@ def straight_line_projection_certifiable(
         preserving the width projection.
 
     """
-    widths_valid = (
-        MINIMUM_WIDTH <= narrow_width < wide_width <= CANONICAL_WIDTH
-    )
+    widths_valid = MINIMUM_WIDTH <= narrow_width < wide_width
     decoded = (
         _admitted_source_decodes(source, narrow_width)
         if widths_valid
@@ -881,9 +876,7 @@ def input_output_halt_projection_certifiable(
         True only for `/`, `<`, `v` with no EOF-capable declared input stream.
 
     """
-    widths_valid = (
-        MINIMUM_WIDTH <= narrow_width < wide_width <= CANONICAL_WIDTH
-    )
+    widths_valid = MINIMUM_WIDTH <= narrow_width < wide_width
     decoded = (
         _admitted_source_decodes(source, narrow_width)
         if widths_valid
@@ -910,9 +903,7 @@ def input_then_halt_projection_certifiable(
         True only when one admitted source executes `/` then `v` initially.
 
     """
-    widths_valid = (
-        MINIMUM_WIDTH <= narrow_width < wide_width <= CANONICAL_WIDTH
-    )
+    widths_valid = MINIMUM_WIDTH <= narrow_width < wide_width
     if not widths_valid:
         return False
     decoded = _admitted_source_decodes(source, narrow_width)
@@ -930,9 +921,7 @@ def noop_prefix_halt_projection_certifiable(
         True only for one or more initial `o` instructions followed by `v`.
 
     """
-    widths_valid = (
-        MINIMUM_WIDTH <= narrow_width < wide_width <= CANONICAL_WIDTH
-    )
+    widths_valid = MINIMUM_WIDTH <= narrow_width < wide_width
     if not widths_valid:
         return False
     decoded = _admitted_source_decodes(source, narrow_width)
@@ -966,20 +955,34 @@ def execution_geometry(width: int) -> WidthExecutionGeometry | None:
     )
 
 
-def minimum_certified_width(results: Mapping[int, bool]) -> int:
+def minimum_certified_width(
+    results: Mapping[int, bool],
+    reference_width: int = PUBLISHED_CERTIFICATE_REFERENCE_WIDTH,
+) -> int:
     """Return the minimum independently certified profile width.
 
+    Args:
+        results: One independent Boolean decision for every width below the
+            chosen reference.
+        reference_width: Concrete finite reference used by this evidence set.
+
     Returns:
-        The smallest accepted width, or canonical width on missing/invalid data.
+        The smallest accepted width, or the reference width on missing/invalid
+        evidence. The reference is evidence metadata, not a language maximum.
 
     """
-    candidates = set(range(MINIMUM_WIDTH, CANONICAL_WIDTH))
-    if set(results) != candidates:
-        return CANONICAL_WIDTH
+    reference_valid = (
+        type(reference_width) is int and reference_width > MINIMUM_WIDTH
+    )
+    candidates: set[int] = (
+        set(range(MINIMUM_WIDTH, reference_width)) if reference_valid else set()
+    )
+    if not reference_valid or set(results) != candidates:
+        return reference_width
     if not all(type(results[width]) is bool for width in candidates):
-        return CANONICAL_WIDTH
+        return reference_width
     certified = {width for width in candidates if results[width]}
-    return min(certified, default=CANONICAL_WIDTH)
+    return min(certified, default=reference_width)
 
 
 def _input_bound_proof_valid(
@@ -1075,6 +1078,8 @@ def _certificate_decision(
     width: int,
     decision: WidthCertificateDecision,
     subject: WidthCertificateSubject,
+    *,
+    reference_width: int,
 ) -> bool | None:
     if decision is False:
         return False
@@ -1082,7 +1087,7 @@ def _certificate_decision(
         return None
     width_matches = (
         decision.narrow_width == width
-        and decision.wide_width == CANONICAL_WIDTH
+        and decision.wide_width == reference_width
     )
     accepted = (
         width_matches
@@ -1095,41 +1100,65 @@ def _certificate_decision(
 def minimum_width_from_certificates(
     subject: WidthCertificateSubject,
     decisions: Mapping[int, WidthCertificateDecision],
+    reference_width: int = PUBLISHED_CERTIFICATE_REFERENCE_WIDTH,
 ) -> int:
     """Select the minimum width for one exact source/input subject.
 
+    Args:
+        subject: Exact source and input-domain identity being selected.
+        decisions: One independent decision for every width below the reference.
+        reference_width: Concrete wide system used by all certificates.
+
     Returns:
-        The minimum independently proved width, or fourteen on incomplete,
-        mismatched, authority-free, or wrong-subject acceptance data.
+        The minimum independently proved width, or the supplied reference on
+        incomplete, mismatched, authority-free, or wrong-subject evidence.
 
     """
-    candidates = set(range(MINIMUM_WIDTH, CANONICAL_WIDTH))
-    if set(decisions) != candidates:
-        return CANONICAL_WIDTH
+    reference_valid = (
+        type(reference_width) is int and reference_width > MINIMUM_WIDTH
+    )
+    candidates: set[int] = (
+        set(range(MINIMUM_WIDTH, reference_width)) if reference_valid else set()
+    )
+    if not reference_valid or set(decisions) != candidates:
+        return reference_width
     results: dict[int, bool] = {}
     for width in candidates:
-        result = _certificate_decision(width, decisions[width], subject)
+        result = _certificate_decision(
+            width,
+            decisions[width],
+            subject,
+            reference_width=reference_width,
+        )
         if result is None:
-            return CANONICAL_WIDTH
+            return reference_width
         results[width] = result
-    return minimum_certified_width(results)
+    return minimum_certified_width(results, reference_width)
 
 
 def minimum_geometry_from_certificates(
     subject: WidthCertificateSubject,
     decisions: Mapping[int, WidthCertificateDecision],
-) -> WidthExecutionGeometry:
+    reference_width: int = PUBLISHED_CERTIFICATE_REFERENCE_WIDTH,
+) -> WidthExecutionGeometry | None:
     """Return exact derived geometry for one fail-closed width decision.
 
+    Args:
+        subject: Exact source and input-domain identity being selected.
+        decisions: One independent decision for every width below the reference.
+        reference_width: Concrete wide system used by all certificates.
+
     Returns:
-        The selected geometry; invalid evidence maps to canonical fourteen.
+        Selected geometry or the supplied reference geometry on invalid
+        evidence. Returns None when the reference is outside the semantic
+        domain.
 
     """
-    selected = minimum_width_from_certificates(subject, decisions)
-    geometry = execution_geometry(selected)
-    if geometry is not None:
-        return geometry
-    return WidthExecutionGeometry(
-        memory_words=_ternary_modulus(CANONICAL_WIDTH),
-        word_trits=CANONICAL_WIDTH,
+    if execution_geometry(reference_width) is None:
+        return None
+    selected = minimum_width_from_certificates(
+        subject,
+        decisions,
+        reference_width,
     )
+    return execution_geometry(selected)

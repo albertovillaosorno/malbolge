@@ -126,6 +126,12 @@ transfers, verification, and other separately measured costs.
   recognized proof kind validates. Bare `True`, legacy v1, missing decisions,
   subject drift, width mismatches, or malformed certificates fail closed to that
   N14 research baseline; this selector is not product current-profile authority.
+- The research certificate module no longer exposes `CANONICAL_WIDTH=14` as a
+  semantic bound. Published JSON evidence retains explicit N14 reference
+  metadata,
+  while theorem helpers and initial-memory reconstruction accept any semantic
+  width at or above N10. Direct tests exercise N15, N20, and N31, and the
+  independent-result selector receives its finite `reference_width` explicitly.
 - A theorem-specific research checker certifies the initial-halt family without
   trusting final differential equality. It checks widths, source capacity and
   lexical admission, every position-dependent loader decode, and an initial `v`

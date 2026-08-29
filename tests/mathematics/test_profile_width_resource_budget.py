@@ -50,8 +50,10 @@ from accelerator.profile_run import ProfileRunGeometry
 from accelerator.profile_run import ProfileRunRequest
 from accelerator.profile_run import WORD_BYTES
 from accelerator.profile_run import validate_profile_run_requests
-from algorithms.profile_width.certificate import CANONICAL_WIDTH
 from algorithms.profile_width.certificate import MINIMUM_WIDTH
+from algorithms.profile_width.certificate import (
+    PUBLISHED_CERTIFICATE_REFERENCE_WIDTH,
+)
 from algorithms.profile_width.certificate import WidthCertificateSubject
 from algorithms.profile_width.certificate import execution_geometry
 from algorithms.profile_width.certificate import (
@@ -64,6 +66,8 @@ from benchmarks.accelerator import resource_budget_measure as measure
 if TYPE_CHECKING:
     from algorithms.profile_width.certificate import JsonValue
     from algorithms.profile_width.certificate import WidthCertificateDecision
+
+REFERENCE_WIDTH = PUBLISHED_CERTIFICATE_REFERENCE_WIDTH
 
 TESTS_ROOT = Path(__file__).resolve().parents[1]
 QP_CERTIFICATE = (
@@ -188,11 +192,13 @@ def test_subject_bound_selection_controls_research_capacity() -> None:
         inputs={"byte-a5": bytes((165,)), "eof": b""},
     )
     selected = minimum_geometry_from_certificates(subject, decisions)
+    assert selected is not None
     wrong_subject = WidthCertificateSubject(
         source=b"PP",
         inputs=subject.inputs,
     )
     fallback = minimum_geometry_from_certificates(wrong_subject, decisions)
+    assert fallback is not None
     capacities = {
         result.word_trits: result.first_chunk_items
         for result in measure.synthetic_results()
@@ -202,9 +208,9 @@ def test_subject_bound_selection_controls_research_capacity() -> None:
     assert capacities[selected.word_trits] == (
         EXPECTED_128_MIB_CAPACITY[MINIMUM_WIDTH]
     )
-    assert fallback.word_trits == CANONICAL_WIDTH
+    assert fallback.word_trits == REFERENCE_WIDTH
     assert capacities[fallback.word_trits] == (
-        EXPECTED_128_MIB_CAPACITY[CANONICAL_WIDTH]
+        EXPECTED_128_MIB_CAPACITY[REFERENCE_WIDTH]
     )
 
 

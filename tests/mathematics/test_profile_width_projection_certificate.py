@@ -37,11 +37,15 @@ from __future__ import annotations
 from itertools import combinations
 from itertools import product
 
-from algorithms.profile_width.certificate import CANONICAL_WIDTH
 from algorithms.profile_width.certificate import FiniteSystem
 from algorithms.profile_width.certificate import MINIMUM_WIDTH
+from algorithms.profile_width.certificate import (
+    PUBLISHED_CERTIFICATE_REFERENCE_WIDTH,
+)
 from algorithms.profile_width.certificate import certificate_valid
 from algorithms.profile_width.certificate import minimum_certified_width
+
+REFERENCE_WIDTH = PUBLISHED_CERTIFICATE_REFERENCE_WIDTH
 
 _RADIX = 3
 _BYTE_MODULUS = 256
@@ -97,8 +101,8 @@ def _representative_residues(modulus: int) -> tuple[int, ...]:
 def _width_pairs() -> list[tuple[int, int]]:
     return [
         (narrow, wide)
-        for narrow in range(MINIMUM_WIDTH, CANONICAL_WIDTH)
-        for wide in range(narrow + 1, CANONICAL_WIDTH + 1)
+        for narrow in range(MINIMUM_WIDTH, REFERENCE_WIDTH)
+        for wide in range(narrow + 1, REFERENCE_WIDTH + 1)
     ]
 
 
@@ -225,16 +229,16 @@ def test_decode_phase_projection_requires_low_code_pointer() -> None:
 
 def test_graphical_cells_are_projection_fixed_at_every_checked_width() -> None:
     """Every possible self-encryption input/output byte projects identically."""
-    for width in range(MINIMUM_WIDTH, CANONICAL_WIDTH + 1):
+    for width in range(MINIMUM_WIDTH, REFERENCE_WIDTH + 1):
         assert all(_project(cell, width) == cell for cell in _GRAPHICAL)
 
 
 def test_rotate_projection_compatibility_is_not_monotone_in_width() -> None:
     """Each candidate width compares a distinct high trit with trit zero."""
-    wide = CANONICAL_WIDTH
+    wide = REFERENCE_WIDTH
     value = 1 + _power(10) + _power(12)
     observed: dict[int, bool] = {}
-    for narrow in range(MINIMUM_WIDTH, CANONICAL_WIDTH):
+    for narrow in range(MINIMUM_WIDTH, REFERENCE_WIDTH):
         residue = _project(value, narrow)
         observed[narrow] = (
             _project(_rotate(value, wide), narrow) == _rotate(residue, narrow)
@@ -242,9 +246,9 @@ def test_rotate_projection_compatibility_is_not_monotone_in_width() -> None:
     assert observed == {10: True, 11: False, 12: True, 13: False}
 
 
-_CANDIDATE_WIDTHS = tuple(range(MINIMUM_WIDTH, CANONICAL_WIDTH))
+_CANDIDATE_WIDTHS = tuple(range(MINIMUM_WIDTH, REFERENCE_WIDTH))
 _RELEVANT_TRITS = (0, *_CANDIDATE_WIDTHS)
-_FREE_TRITS = CANONICAL_WIDTH - len(_RELEVANT_TRITS)
+_FREE_TRITS = REFERENCE_WIDTH - len(_RELEVANT_TRITS)
 
 
 def _candidate_subsets() -> list[tuple[int, ...]]:
@@ -270,7 +274,7 @@ def test_rotate_compatible_word_count_for_checked_width_sets() -> None:
     free_factor = _power(_FREE_TRITS)
     for subset in _candidate_subsets():
         compatible = _compatible_relevant_assignments(subset) * free_factor
-        assert compatible == _power(CANONICAL_WIDTH - len(subset))
+        assert compatible == _power(REFERENCE_WIDTH - len(subset))
     all_widths = _compatible_relevant_assignments(_CANDIDATE_WIDTHS)
     assert all_widths * free_factor == _power(10)
 
@@ -329,8 +333,8 @@ def test_finite_bisimulation_certificate_rejects_missing_obligation() -> None:
 
 def test_minimum_certified_width_is_independent_and_fail_closed() -> None:
     """Select the minimum proved width without a monotonicity assumption."""
-    rejected = dict.fromkeys(range(MINIMUM_WIDTH, CANONICAL_WIDTH), False)
-    assert minimum_certified_width(rejected) == CANONICAL_WIDTH
+    rejected = dict.fromkeys(range(MINIMUM_WIDTH, REFERENCE_WIDTH), False)
+    assert minimum_certified_width(rejected) == REFERENCE_WIDTH
 
     nonmonotone = {10: False, 11: True, 12: False, 13: True}
     assert minimum_certified_width(nonmonotone) == MINIMUM_WIDTH + 1
@@ -339,12 +343,12 @@ def test_minimum_certified_width_is_independent_and_fail_closed() -> None:
     assert minimum_certified_width(several) == MINIMUM_WIDTH
 
     missing = {10: True, 11: True, 12: True}
-    assert minimum_certified_width(missing) == CANONICAL_WIDTH
+    assert minimum_certified_width(missing) == REFERENCE_WIDTH
 
     extra = {10: True, 11: True, 12: True, 13: True, 14: True}
-    assert minimum_certified_width(extra) == CANONICAL_WIDTH
+    assert minimum_certified_width(extra) == REFERENCE_WIDTH
 
     invalid_type: dict[int, bool] = {10: True, 11: True, 12: True, 13: True}
     # Intentional invalid runtime fixture for fail-closed checking.
     invalid_type[13] = 1  # pyright: ignore[reportArgumentType]
-    assert minimum_certified_width(invalid_type) == CANONICAL_WIDTH
+    assert minimum_certified_width(invalid_type) == REFERENCE_WIDTH
