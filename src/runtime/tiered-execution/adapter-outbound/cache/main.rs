@@ -40,8 +40,7 @@ use std::mem::replace;
 use std::sync::Arc;
 
 use malbolge::{
-    EFFECT_IR_VERSION, IrEncodingError, RegionEffectProgram,
-    TargetProfileRequirement,
+    IrEncodingError, RegionEffectProgram, TargetProfileRequirement,
 };
 
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
@@ -101,8 +100,6 @@ pub struct NativeTargetIdentity {
 pub enum NativeIdentityError {
     /// Portable IR or target identity bytes cannot be represented canonically.
     Encoding(IrEncodingError),
-    /// Native cache/artifact identity does not yet admit this IR version.
-    IrVersion,
     /// Region addressing exceeds the capacity declared by its profile envelope.
     ProfileCapacity,
 }
@@ -118,6 +115,7 @@ impl From<IrEncodingError> for NativeIdentityError {
 pub struct RegionEffectIdentity {
     bucket_digest: u64,
     canonical_bytes: Arc<[u8]>,
+    format_version: u16,
     profile_fingerprint: Arc<str>,
     profile_id: Arc<str>,
     profile_requirement: TargetProfileRequirement,
@@ -162,6 +160,7 @@ type BucketDigestFunction = fn(&[u8]) -> u64;
 impl PartialEq for RegionEffectIdentity {
     fn eq(&self, other: &Self) -> bool {
         self.canonical_bytes == other.canonical_bytes
+            && self.format_version == other.format_version
             && self.profile_fingerprint == other.profile_fingerprint
             && self.profile_id == other.profile_id
             && self.profile_requirement == other.profile_requirement
@@ -469,6 +468,12 @@ impl RegionEffectIdentity {
         &self.canonical_bytes
     }
 
+    /// Returns the exact portable effect-IR schema version bound into this key.
+    #[must_use]
+    pub const fn format_version(&self) -> u16 {
+        self.format_version
+    }
+
     /// Constructs canonical IR identity and its non-authoritative lookup
     /// digest.
     ///
@@ -510,9 +515,6 @@ impl RegionEffectIdentity {
         program: &RegionEffectProgram,
         digest: BucketDigestFunction,
     ) -> Result<Self, NativeIdentityError> {
-        if program.format_version != EFFECT_IR_VERSION {
-            return Err(NativeIdentityError::IrVersion);
-        }
         let required_memory_words = program.required_memory_words();
         if required_memory_words > program.profile_requirement.memory_words {
             return Err(NativeIdentityError::ProfileCapacity);
@@ -521,6 +523,7 @@ impl RegionEffectIdentity {
         Ok(Self {
             bucket_digest: digest(&canonical),
             canonical_bytes: Arc::from(canonical),
+            format_version: program.format_version,
             profile_fingerprint: Arc::from(
                 program.profile_fingerprint.as_str(),
             ),

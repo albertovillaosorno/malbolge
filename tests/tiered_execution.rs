@@ -822,9 +822,18 @@ fn expected_profile_metadata(
     let feature_count =
         u32::try_from(program.profile_requirement.features.len())
             .map_err(|_error| String::from("profile feature count overflow"))?;
+    let metadata_version = match program.format_version {
+        EFFECT_IR_VERSION => 3u16,
+        EFFECT_IR_WIDE_PROFILE_VERSION => 4u16,
+        _ => {
+            return Err(String::from(
+                "unsupported profile metadata IR version",
+            ));
+        },
+    };
     let mut bytes = Vec::new();
     bytes.extend_from_slice(b"MBPF");
-    bytes.extend_from_slice(&3u16.to_le_bytes());
+    bytes.extend_from_slice(&metadata_version.to_le_bytes());
     bytes.extend_from_slice(&0u16.to_le_bytes());
     push_bytes(&mut bytes, program.profile_id.as_bytes())?;
     push_bytes(&mut bytes, program.profile_fingerprint.as_bytes())?;
@@ -834,9 +843,26 @@ fn expected_profile_metadata(
         push_bytes(&mut bytes, feature.as_bytes())?;
     }
     bytes.push(program.profile_requirement.word_trits);
-    bytes.extend_from_slice(
-        &program.profile_requirement.memory_words.to_le_bytes(),
-    );
+    match program.format_version {
+        EFFECT_IR_VERSION => {
+            let memory_words =
+                u32::try_from(program.profile_requirement.memory_words)
+                    .map_err(|_error| {
+                        String::from("MBPF v3 capacity overflow")
+                    })?;
+            bytes.extend_from_slice(&memory_words.to_le_bytes());
+        },
+        EFFECT_IR_WIDE_PROFILE_VERSION => {
+            bytes.extend_from_slice(
+                &program.profile_requirement.memory_words.to_le_bytes(),
+            );
+        },
+        _ => {
+            return Err(String::from(
+                "unsupported profile metadata IR version",
+            ));
+        },
+    }
     bytes.extend_from_slice(&program.required_memory_words().to_le_bytes());
     Ok(bytes)
 }
@@ -1080,26 +1106,80 @@ fn native_identity_rejects_profile_capacity_wider_than_ir_v3()
 }
 
 #[test]
-fn native_identity_rejects_portable_ir_v4() -> Result<(), String> {
+fn native_identity_and_deopt_bind_portable_ir_v4() -> Result<(), String> {
     let mut wide = program();
     wide.format_version = EFFECT_IR_WIDE_PROFILE_VERSION;
     wide.profile_requirement.word_trits = 21;
     wide.profile_requirement.memory_words = 10_460_353_203;
-    if RegionEffectIdentity::new(&wide) != Err(NativeIdentityError::IrVersion) {
-        return Err(String::from("IR v4 acquired native region identity"));
+    let identity = RegionEffectIdentity::new(&wide)
+        .map_err(|error| format!("IR v4 region identity failed: {error:?}"))?;
+    if identity.format_version() != EFFECT_IR_WIDE_PROFILE_VERSION {
+        return Err(String::from("IR v4 identity lost its schema version"));
     }
-    let target = NativeTargetIdentity::new(base_target_config());
-    if NativeArtifactKey::new(&wide, target)
-        != Err(NativeIdentityError::IrVersion)
-    {
-        return Err(String::from("IR v4 acquired native artifact key"));
+    let key = NativeArtifactKey::new(
+        &wide,
+        NativeTargetIdentity::new(base_target_config()),
+    )
+    .map_err(|error| format!("IR v4 native key failed: {error:?}"))?;
+    if key.ir() != &identity {
+        return Err(String::from("IR v4 native key changed region identity"));
     }
-    if emit_direct_deopt_coff(&wide, direct_deopt_target(HostIsa::X86_64))
-        == Err(DirectDeoptError::Identity(NativeIdentityError::IrVersion))
+    let expected_metadata = expected_profile_metadata(&wide)?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = emit_direct_deopt_coff(&wide, direct_deopt_target(isa))
+            .map_err(|error| {
+                format!("IR v4 {isa:?} deopt emission failed: {error}")
+            })?;
+        if !artifact
+            .object()
+            .windows(expected_metadata.len())
+            .any(|window| window == expected_metadata)
+        {
+            return Err(format!("IR v4 {isa:?} deopt lost MBPF v4 metadata"));
+        }
+        let admitted = structurally_admit_coff(&artifact).map_err(|error| {
+            format!("IR v4 {isa:?} deopt structure failed: {error}")
+        })?;
+        assert_tampered_direct_profile_metadata(&artifact)?;
+        let verified =
+            verify_direct_deopt_stub(&artifact).map_err(|error| {
+                format!("IR v4 {isa:?} deopt verification failed: {error}")
+            })?;
+        if admitted.object() != artifact.object()
+            || verified.object() != artifact.object()
+        {
+            return Err(format!("IR v4 {isa:?} deopt authority changed bytes"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn bootstrap_backend_rejects_portable_ir_v4() -> Result<(), String> {
+    let mut wide = native_program();
+    wide.format_version = EFFECT_IR_WIDE_PROFILE_VERSION;
+    if lower_clang_c23(&wide, native_target(HostIsa::X86_64))
+        == Err(NativeArtifactError::IrVersion)
     {
         Ok(())
     } else {
-        Err(String::from("IR v4 reached raw direct-deopt emission"))
+        Err(String::from(
+            "IR v4 reached the state-applying bootstrap backend",
+        ))
+    }
+}
+
+#[test]
+fn state_applying_native_backend_rejects_portable_ir_v4() -> Result<(), String>
+{
+    let mut wide = direct_rotate_program();
+    wide.format_version = EFFECT_IR_WIDE_PROFILE_VERSION;
+    if emit_direct_rotate_coff(&wide, direct_rotate_target(HostIsa::X86_64))
+        == Err(DirectRotateError::ProgramShape)
+    {
+        Ok(())
+    } else {
+        Err(String::from("IR v4 reached state-applying direct rotate"))
     }
 }
 

@@ -126,25 +126,28 @@ IR before bootstrap source, direct deopt, or any state-applying object can be
 created. This closes an impossible artifact identity without granting semantic
 trust to otherwise unverified effects.
 
-`profile_metadata.rs` owns the target-neutral `MBPF` v3 payload encoding shared
-by bootstrap source, direct object construction, and structural validation. This
-keeps object parsing in `coff.rs` and code generation in their emitters; neither
-owns the schema it independently consumes.
+`profile_metadata.rs` owns the target-neutral MBPF payload encoding shared by
+bootstrap source, direct object construction, and structural validation. MBPF v3
+matches effect IR v3 and keeps the frozen `u32` profile-capacity field; MBPF v4
+matches effect IR v4 and carries that capacity as `u64`. Object parsing and code
+generation consume this schema without becoming authoritative over it.
 
 `coff.rs` adds a narrower structural gate for Windows bootstrap objects. It
 parses the object bytes directly in safe Rust, checks x86-64/AArch64 machine
 identity against the native target key, requires one executable/non-writable
 `.text`, requires the exact `malbolge_native_region_apply` entry, rejects other
 external functions and undefined external dependencies, and permits relocations
-only when they resolve to symbols defined inside the same object. Direct
-backends
-and `clang-c23-bootstrap` revision 2 must contain one initialized, read-only,
-non-relocated `.mbprof` section. Its `MBPF` v3 payload carries the exact profile
-ID/fingerprint plus published version, stable semantic features, word trits,
-profile capacity, and derived `u64` region memory requirement; the complete
-envelope must equal the native key. Missing, duplicated, executable, writable,
+only when they resolve to symbols defined inside the same object.
 
-relocated, malformed, or mismatched required metadata fails structurally.
+Direct backends
+and `clang-c23-bootstrap` revision 2 must contain one initialized, read-only,
+non-relocated `.mbprof` section. The MBPF version follows the IR identity: v3
+uses `u32` profile capacity and v4 uses `u64`; both carry exact ID/fingerprint,
+published version, semantic features, word trits, and derived `u64` region
+memory. The complete envelope must equal the native key. Missing, duplicated,
+executable, writable, relocated, malformed, or mismatched required metadata
+fails structurally.
+
 Bootstrap revision-2 source emits the payload as an external `const unsigned
 char`
 array allocated into a read-only custom section. Revision 1 remains structurally
@@ -158,23 +161,27 @@ promotion exists.
 The first direct backend is intentionally a deoptimization floor rather than a
 fast path. `direct.rs` emits one deterministic Windows COFF object per ISA whose
 only callable function returns native status `1` (`guard miss`) without reading
-or writing the supplied state pointer. The exact x86-64 and AArch64 objects are
-frozen by independently rendered hex fixtures. Each includes executable `.text`
-and read-only `.mbprof` v3 bound to the same native key. Semantic promotion
-requires
-structural COFF admission plus byte-for-byte equality with the canonical object;
-a one-byte opcode mutation remains structurally valid but fails semantic
+or writing the supplied state pointer. The exact x86-64 and AArch64 v3
+objects are frozen by independently rendered
+hex fixtures. V4 deopt objects use the same reviewed guard-miss machine code but
+carry MBPF v4 bound to the v4 IR/key; tests require structural admission,
+metadata tamper rejection, and byte-for-byte canonical semantic verification.
 
-admission. This establishes an executable native tier that is correct by always
-falling back, before any direct region-effect instruction selection is trusted.
+Semantic promotion requires structural COFF admission plus equality with the
+canonical object; a one-byte opcode mutation remains structurally valid but
+fails semantic admission. This establishes an executable native tier that is
+correct by always falling back before direct region-effect selection is trusted.
+
 The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while
 `direct-halt-fetch`, `direct-non-graphical`, and `direct-no-operation` use
 revision 2 after binding their runtime capacity guard to the exact IR footprint;
 `direct-jump-code`, `direct-jump-data`, `direct-rotate`, `direct-crazy`,
-`direct-input`, and `direct-output` start at revision 1. All twelve use `MBPF`
+`direct-input`, and `direct-output` start at revision 1.
 
-metadata version 3.
+The eleven state-applying direct templates remain IR/MBPF v3-only. Direct-deopt
+accepts IR/MBPF v3 or v4 because its code only returns guard-miss and never
+touches guest state.
 
 The second direct template is the first state-applying fast path. The
 `direct-initial-halt` backend accepts exactly one portable-IR shape: one effect

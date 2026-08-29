@@ -91,12 +91,13 @@ the version-2 rule that profile aliases do not share compiler or cache identity
 silently. V4 adds four bytes only to widen profile capacity from `u32` to `u64`;
 N21 tests check the exact v4 header, length delta, and wide capacity.
 
-Native cache/artifact identity intentionally remains v3-only.
-`RegionEffectIdentity`, `NativeArtifactKey`, and raw direct-deopt emission
-reject
-portable v4 with `NativeIdentityError::IrVersion`. Direct `MBPF` metadata also
-remains v3. A future native v4 must version that metadata and backend contract
-explicitly rather than treating portable v4 as executable authority.
+Native cache/artifact identity accepts canonical v3 and v4 bytes, preserving the
+IR version as part of exact identity. Native profile metadata follows that
+version: MBPF v3 keeps the frozen `u32` capacity field and MBPF v4 carries the
+v4 `u64` capacity. The deoptimization-only direct backend can emit and verify
+both versions because its machine code never reads or writes guest state.
+State-applying direct templates and the bootstrap backend still require IR v3;
+portable/native v4 transport is not authority for N21 execution.
 
 Profile capacity is the complete runtime capability required to implement the
 selected profile. `RegionEffectProgram::required_memory_words()` separately

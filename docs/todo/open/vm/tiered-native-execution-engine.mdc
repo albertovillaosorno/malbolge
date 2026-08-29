@@ -109,17 +109,17 @@ baseline; native tiers are accelerators of identical observable behavior.
 
   identity, and relocation/symbol closure without trusting LLVM inspection.
   `src/runtime/tiered-execution/adapter-outbound/native/profile_metadata.rs` now
-  solely owns the format-neutral MBPF
-  encoding consumed by bootstrap/direct emitters and COFF admission. Direct
-  deopt/initial-halt revision-4, halt-observation revision-5,
-  halt-fetch/non-graphical/no-operation revision-2, and jump-data revision-1
-  objects must carry exact read-only
-  `MBPF` v3
-  `.mbprof`
-  metadata matching the profile ID/fingerprint, published version, semantic
-  features, word trits, profile capacity, and derived `u64` region memory
-  retained
-  by their native key; absence or mismatch fails structurally. Bootstrap
+  solely owns versioned MBPF encoding consumed by bootstrap/direct emitters and
+  COFF admission. State-applying direct objects and bootstrap remain IR/MBPF v3;
+  direct-deopt may use v3 or v4 because its reviewed machine code only returns
+  guard-miss.
+
+  MBPF v4 widens profile capacity to `u64`, while both versions bind
+  profile ID/fingerprint, published version, semantic features, word trits, and
+  derived `u64` region memory retained by the native key. Absence or mismatch
+  fails structurally.
+
+  Bootstrap
   revision
   2 renders the same canonical payload into its C23 source and structural
   admission requires the section for that revision. Historical revision 1

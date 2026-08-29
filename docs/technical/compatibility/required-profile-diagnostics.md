@@ -291,22 +291,26 @@ This lets portable runtime preflight represent an N21/10,460,353,203-word
 requirement and report both missing backend dimensions instead of failing to
 construct the envelope. This does not widen executable VM addresses.
 
-Effect IR v3 and direct `MBPF` v3 remain byte-frozen with a `u32`
-profile-capacity field. A wider requirement fails IR v3 canonicalization with
-`ProfileMemoryWordsOverflow`. Portable effect IR v4 adds a `u64` capacity field
-and can encode N21 exactly, but native/cache identity and raw direct-deopt
-remain
-v3-only and reject v4 with `NativeIdentityError::IrVersion`. `MBPF` v4 and an
-explicitly wider backend contract are still required before v4 can become
-executable authority.
+Effect IR v3 and `MBPF` v3 remain byte-frozen with a `u32` profile-capacity
+field. A wider requirement fails IR v3 canonicalization with
+`ProfileMemoryWordsOverflow`.
+
+Portable effect IR v4 adds a `u64` capacity field,
+and native/cache identity preserves those v4 bytes. MBPF v4 mirrors that `u64`
+capacity exactly. The deopt-only direct backend emits, structurally admits, and
+semantically verifies v4 because it never reads or writes guest state. Bootstrap
+and all state-applying direct templates still reject v4, so a wider execution
+backend remains required before N21 can execute.
 
 Effect IR now derives the exact region-specific memory requirement needed to
 distinguish `MALBOLGE-PROFILE-002`, including the full `u32` address domain.
 Although raw IR remains serializable for deterministic rejection,
 `RegionEffectIdentity` and `NativeArtifactKey` reject a footprint beyond the
 embedded profile capacity before bootstrap or direct artifact construction.
-Direct `MBPF` v3 objects additionally retain that exact footprint, so structural
-admission detects same-profile object/key disagreement before runtime preflight.
+Direct `MBPF` objects retain that exact footprint in the version selected by
+portable IR, so structural admission detects same-profile object/key
+disagreement
+before runtime preflight.
 The preflighted tier planner then maps unsupported direct host format to the
 interpreter only after combined profile preflight; `002` and `001` are never
 converted to fallback. Its cache-aware form performs the same profile and

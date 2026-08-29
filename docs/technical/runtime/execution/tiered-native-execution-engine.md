@@ -111,10 +111,10 @@ identity proves provenance of the claim, not semantic correctness of
 compiler-produced machine code.
 
 `src/runtime/tiered-execution/adapter-outbound/native/profile_metadata.rs` is
-the single private owner of the
-format-neutral `MBPF` v3 payload. Bootstrap source rendering, direct object
-construction, and COFF admission consume that encoding without making the parser
-or either emitter authoritative over the schema.
+the single private owner of the versioned MBPF payload. MBPF v3 mirrors effect
+IR v3 with a `u32` profile-capacity field; MBPF v4 mirrors effect IR v4 with a
+`u64` capacity field. Bootstrap/direct emitters and COFF admission consume the
+encoding without becoming authoritative over the schema.
 
 `src/runtime/tiered-execution/adapter-outbound/native/coff.rs` now provides a
 second, independent structural gate for
@@ -125,16 +125,18 @@ key, requires exactly one executable/non-writable `.text` section and the exact
 functions or undefined external symbols, and admits relocations only when their
 targets are defined inside the same object. ARM64's compiler-generated `.rdata`
 constant relocations therefore remain valid while host-library dependencies fail
-closed. Direct backends and `clang-c23-bootstrap` revision 2 additionally
-require one initialized, read-only, non-relocated `.mbprof` section. Its `MBPF`
-v3
-payload must match the profile ID, fingerprint, published version, stable
-features,
-word trits, profile capacity, and exact derived `u64` region memory requirement
+closed.
 
-retained by the native key. Missing or mismatched required metadata, including a
-same-profile footprint mismatch, fails before semantic admission. Bootstrap
-revision-2 C23 source renders the canonical bytes through a read-only
+Direct backends and `clang-c23-bootstrap` revision 2 additionally
+require one initialized, read-only, non-relocated `.mbprof` section. Its MBPF
+version follows the IR identity: v3 stores profile capacity as `u32`, v4 as
+`u64`, and both bind profile ID, fingerprint, published version, stable
+features,
+word trits, and exact derived `u64` region memory retained by the native key.
+Missing or mismatched required metadata, including a
+same-profile footprint mismatch, fails before semantic admission.
+
+Bootstrap revision-2 C23 source renders the canonical bytes through a read-only
 custom-section
 declaration; historical revision 1 remains legal without the section. The pinned
 Clang test remains responsible for cross-ISA compiled-object confirmation. The
@@ -834,8 +836,8 @@ backend errors.
   with pointer-identical immutable artifacts, transactional sequence planning
   stages misses and rolls back late rejection, profile/host preflight remains
   authoritative, and profile-invalid IR cannot gain
-  cache/bootstrap/direct identity, direct `MBPF` v3 binds exact region memory,
-  bootstrap source is
+  cache/bootstrap/direct identity, version-matched direct MBPF binds exact
+  region memory, bootstrap source is
   deterministic/atomic/key-bound, direct selection
   preflights profile capability before host/backend selection, and
   pinned Clang emits real x86-64 and AArch64 COFF object candidates.
