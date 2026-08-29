@@ -207,6 +207,22 @@ fn source_backed_jump_code_chain() -> Result<Vec<u8>, String> {
     Ok(source)
 }
 
+fn source_backed_jump_code_io_chain() -> Result<Vec<u8>, String> {
+    let mut source = source_backed_jump_code_chain()?;
+    let profile = current_profile();
+    for (position, decoded) in [
+        (79usize, profile.input_instruction()),
+        (80usize, profile.output_instruction()),
+        (81usize, b'v'),
+    ] {
+        let cell = source.get_mut(position).ok_or_else(|| {
+            format!("missing CLI jump-code I/O cell {position}")
+        })?;
+        *cell = encoded_profile_instruction(decoded, position)?;
+    }
+    Ok(source)
+}
+
 fn clean_cli_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge"));
     let _clean = command
@@ -417,6 +433,46 @@ fn adaptive_jump_code_capsule_uses_verified_n10() -> Result<(), String> {
         Err(format!(
             concat!(
                 "adaptive jump-code CLI mismatch: status={} stdout={:?} ",
+                "stderr={} geometry={:?}",
+            ),
+            output.status,
+            output.stdout,
+            String::from_utf8_lossy(&output.stderr),
+            geometry,
+        ))
+    }
+}
+
+#[test]
+fn adaptive_jump_code_io_capsule_preserves_canonical_eof() -> Result<(), String>
+{
+    let source = source_backed_jump_code_io_chain()?;
+    let bytes = build_capsule(current_profile(), &source).map_err(|error| {
+        format!("build adaptive jump-code I/O capsule: {error}")
+    })?;
+    let capsule =
+        TemporaryCapsule::from_bytes("adaptive-jump-code-io", &bytes)?;
+    let marker = TemporaryMarker::new("adaptive-jump-code-io");
+    let output = configured_worker_command_with_script(
+        &marker.path,
+        GEOMETRY_UNAVAILABLE_WORKER,
+    )
+    .env(PROFILE_ADAPTIVE_WIDTH_ENV, "1")
+    .arg(&capsule.path)
+    .output()
+    .map_err(|error| format!("run adaptive jump-code I/O CLI: {error}"))?;
+    let geometry = read(&marker.path)
+        .map_err(|error| format!("read jump-code I/O geometry: {error}"))?;
+    if output.status.success()
+        && output.stdout == EXPECTED_EOF_OUTPUT
+        && output.stderr.is_empty()
+        && geometry == b"14"
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "adaptive jump-code I/O mismatch: status={} stdout={:?} ",
                 "stderr={} geometry={:?}",
             ),
             output.status,

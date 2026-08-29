@@ -41,6 +41,7 @@ use malbolge::{
     historical_profile, profile_crazy, select_minimum_verified_profile_width,
     verify_initial_halt_profile_width, verify_input_output_halt_profile_width,
     verify_input_then_halt_profile_width, verify_jump_code_halt_profile_width,
+    verify_jump_code_io_halt_profile_width,
     verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
     verify_jump_data_halt_profile_width, verify_jump_rotate_halt_profile_width,
@@ -48,6 +49,7 @@ use malbolge::{
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
     verify_minimum_jump_code_halt_profile_width,
+    verify_minimum_jump_code_io_halt_profile_width,
     verify_minimum_jump_crazy_halt_profile_width,
     verify_minimum_jump_crazy_io_halt_profile_width,
     verify_minimum_jump_data_halt_profile_width,
@@ -740,6 +742,22 @@ fn source_with_shadow_dependent_jump_codes() -> TestResult<Vec<u8>> {
     Ok(source)
 }
 
+fn source_with_shadow_jump_code_io() -> TestResult<Vec<u8>> {
+    let mut source = source_with_shadow_dependent_jump_codes()?;
+    let profile = current_profile();
+    for (position, decoded) in [
+        (79usize, profile.input_instruction()),
+        (80usize, profile.output_instruction()),
+        (81usize, b'v'),
+    ] {
+        let cell = source
+            .get_mut(position)
+            .ok_or_else(|| format!("missing jump-code I/O cell {position}"))?;
+        *cell = encoded_profile_instruction(decoded, position)?;
+    }
+    Ok(source)
+}
+
 #[test]
 fn jump_code_halt_verifier_executes_exact_source_target_at_minimum_width()
 -> TestResult {
@@ -906,6 +924,131 @@ fn jump_code_verifier_follows_exact_self_encryption_shadow() -> TestResult {
         &canonical,
         verified.memory_words(),
         "shadow jump-code",
+    )
+}
+
+#[test]
+fn jump_code_io_verifier_recovers_exact_byte_after_shadow_chain() -> TestResult
+{
+    let source = source_with_shadow_jump_code_io()?;
+    for (word_trits, _memory_words) in CHECKED_GEOMETRIES {
+        let _admitted =
+            normalize_result(verify_jump_code_io_halt_profile_width(
+                current_profile(),
+                &source,
+                word_trits,
+            ))?;
+    }
+    let verified =
+        normalize_result(verify_minimum_jump_code_io_halt_profile_width(
+            current_profile(),
+            &source,
+        ))?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::JumpCodeIoHaltProjection,
+        "jump-code I/O proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "jump-code I/O minimum width",
+    )?;
+    check_jump_code_io_execution(&source, &verified)
+}
+
+fn check_jump_code_io_execution(
+    source: &[u8],
+    verified: &malbolge::VerifiedProfileExecutionGeometry,
+) -> TestResult {
+    let input = vec![0xa5];
+    let mut narrow = normalize_result(ProfileMachine::from_verified_source(
+        verified,
+        input.clone(),
+    ))?;
+    let mut canonical = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        source,
+        input,
+    ))?;
+    let narrow_outcome = normalize_result(narrow.run(7))?;
+    let canonical_outcome = normalize_result(canonical.run(7))?;
+    check_equal(
+        &narrow_outcome,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 7,
+        },
+        "jump-code I/O narrow outcome",
+    )?;
+    check_equal(
+        &canonical_outcome,
+        &narrow_outcome,
+        "jump-code I/O canonical outcome",
+    )?;
+    check_equal(&narrow.output(), &&[0xa5][..], "jump-code I/O output")?;
+    check_equal(
+        &narrow.input_consumed(),
+        &1usize,
+        "jump-code I/O input cursor",
+    )?;
+    check_complete_profile_projection(
+        &narrow,
+        &canonical,
+        verified.memory_words(),
+        "jump-code I/O",
+    )
+}
+
+#[test]
+fn jump_code_io_policy_rejects_eof_and_preserves_canonical_fallback()
+-> TestResult {
+    let source = source_with_shadow_jump_code_io()?;
+    let verified =
+        normalize_result(verify_minimum_jump_code_io_halt_profile_width(
+            current_profile(),
+            &source,
+        ))?;
+    check_equal(
+        &ProfileMachine::from_verified_source(&verified, Vec::new()).err(),
+        &Some(ProfileMachineError::VerifiedInputRejected),
+        "jump-code I/O empty-input rejection",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(current_profile(), &source, &[]),
+        &None,
+        "jump-code I/O empty-input selector fallback",
+    )?;
+    let machine = normalize_result(ProfileMachine::from_adaptive_source(
+        current_profile(),
+        &source,
+        Vec::new(),
+    ))?;
+    check_equal(
+        &machine.geometry().word_trits(),
+        &CANONICAL_WORD_TRITS,
+        "jump-code I/O EOF canonical width",
+    )
+}
+
+#[test]
+fn jump_code_io_verifier_rejects_wrong_output_suffix() -> TestResult {
+    let mut source = source_with_shadow_jump_code_io()?;
+    let output = source
+        .get_mut(80)
+        .ok_or_else(|| String::from("missing jump-code output suffix"))?;
+    *output = encoded_profile_instruction(b'v', 80)?;
+    check_equal(
+        &verify_jump_code_io_halt_profile_width(
+            current_profile(),
+            &source,
+            MINIMUM_WORD_TRITS,
+        ),
+        &Err(ProfileWidthVerificationError::JumpCodeIoHaltInstruction {
+            position: 80,
+            decoded: b'v',
+        }),
+        "jump-code I/O suffix rejection",
     )
 }
 

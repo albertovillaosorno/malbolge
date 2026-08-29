@@ -97,7 +97,8 @@ example probe points, not supported-range endpoints.
   EOF input, two-byte straight-line I/O, guarded `p p`, byte-input recovery
   after crazy, the projection-verified `(&O` rotate family, and the repeated
   source-backed jump-code chain whose later decode depends on earlier XLAT2
-  self-encryption. A strict live check covers N=10 through 14.
+  self-encryption, plus the same chain followed by byte input/output. A strict
+  live check covers N=10 through 14.
 - The top-level CLI now selects a trusted resident worker for current canonical
   capsules only when explicitly configured by executable plus bounded indexed
   arguments. A live RTX 4060 composition check invoked `CudaProfileRunAdapter`
@@ -116,17 +117,23 @@ example probe points, not supported-range endpoints.
   Python synthetic capacity sweep still uses research `execution_geometry`;
   persistent sessions and equivalent-work retained performance evidence remain
   separate acceptance gaps.
+- The mixed jump-code/I/O proof demonstrates hidden input policy after four
+  source self-modifications. Its N10 resident request uses input `0xA5`,
+  consumes one byte, emits `0xA5`, and completes identically to safe Rust. The
+  same source
+  with no input is not narrowed because EOF output is width-sensitive.
 - Resident batching groups by wire geometry rather than hidden verifier policy.
   `uP` (`Any`) and `ubO` (`MinimumLength(1)`) therefore share one N=10 CUDA
   batch when available, while response reconstruction reapplies the distinct
   opaque token from each prepared request. Full-state comparison includes that
   token, so equal resident shape does not erase input-domain authority.
-- The same N=10 worker path now carries ten product-verified semantic families
+- The same N=10 worker path now carries eleven product-verified semantic
+  families
   in one resident batch, including derived EOF, input/output, repeated jump,
   guarded crazy, `MinimumLength(2)` execution, exact-address rotate, and the
-  shadow-dependent source-backed jump-code chain. Every completion is checked
-  against complete
-  safe-Rust state. This extends live correctness coverage without making a
+  shadow-dependent source-backed jump-code chain, and its `MinimumLength(1)`
+  byte-I/O composition. Every completion is checked against complete safe-Rust
+  state. This extends live correctness coverage without making a
   throughput claim.
 - A separate 100,000 GiB synthetic fixture proves that additional addressable
   memory is not clamped; classic CUDA splits only at its 32-bit memory-index

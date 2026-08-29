@@ -347,10 +347,11 @@ separate costs; resource evidence must measure those costs directly.
   request's opaque geometry token rather than the shared wire shape. Optional
   full-state CUDA differential evidence therefore accepts both `uP` and `ubO`
   completions without collapsing `Any` and `MinimumLength(1)` authority.
-- A broader N=10 CUDA differential batch now exercises ten verified subjects:
-  initial halt, no-op prefix, EOF input-halt, byte input-output, two-byte
-  straight-line I/O, repeated jumps, guarded `p p`, guarded `p p` followed by
-  byte-exact I/O recovery, exact-address rotate, and source-backed code jump.
+- A broader N=10 CUDA differential batch now exercises eleven verified
+  subjects: initial halt, no-op prefix, EOF input-halt, byte input-output,
+  two-byte straight-line I/O, repeated jumps, guarded `p p`, guarded `p p`
+  followed by byte-exact I/O recovery, exact-address rotate, source-backed code
+  jump, and source-backed code jump followed by byte-exact I/O.
   All complete checkpoints are compared to safe Rust, including memory, I/O,
   termination, registers, and verifier geometry tokens.
 - Prepared profile backend requests expose resident shape only from their
@@ -374,7 +375,8 @@ separate costs; resource evidence must measure those costs directly.
 - The CUDA integration configures that adapter for `profile_run_worker`. Each
   reviewed N=10 through 14 has an optional full-state batch containing QP, EOF
   input-halt, `uCar_L`, guarded `p p`, guarded `p p` plus byte-I/O recovery,
-  `(&O` (`j * v`) rotate, and source-backed jump-code. A strict live RTX 4060
+  `(&O` (`j * v`) rotate, source-backed jump-code, and source-backed jump-code
+  plus byte-I/O. A strict live RTX 4060
   check observed CUDA execution for every reviewed N=10 through 14. This remains
   correctness, not performance, evidence.
 - The command-line composition root can now bind a trusted MBPRN2 worker for
@@ -387,7 +389,7 @@ separate costs; resource evidence must measure those costs directly.
   `MinimumLength(1)`, while canonical EOF output is width-sensitive. Adaptive
   CLI
   policy therefore leaves those capsules at N=14 even when explicitly enabled.
-- Product `select_minimum_verified_profile_width` now probes eleven trusted
+- Product `select_minimum_verified_profile_width` now probes twelve trusted
   theorem-family minimum verifiers and returns the narrowest successful artifact
   whose hidden input policy admits the exact input. Equal-width N=14 artifacts
   are ignored so no-proof preserves canonical execution.
@@ -439,6 +441,16 @@ separate costs; resource evidence must measure those costs directly.
   jumps. Materialization exactly matches the runtime checkpoint, preserves the
   opaque geometry token, retains all four self-encryption deltas at targets 98,
   38, 37, and 78, and leaves exact C=79/D=4 before the reached halt.
+- A separate `JumpCodeIoHaltProjection` composes that same exact jump prefix
+  with `/ < v`. The token carries `MinimumLength(1)`: byte `0xA5` restores exact
+  A, emits exactly `0xA5`, and halts after seven steps at N10 while complete
+  memory/register state projects to N14. Empty input is rejected before derived
+  construction because EOF output remains width-sensitive.
+- Indexed state advances the mixed chain through four jumps, input, and output.
+  Materialization retains the opaque `MinimumLength(1)` token, input cursor 1,
+  and output `[0xA5]`. The CLI supplies no profile input, so an adaptive capsule
+  containing this mixed program correctly stays canonical N14 and emits the
+  canonical EOF byte `0x78`.
 - Tiered interpreter handoff remains canonical-only until its continuation
   schema carries verified execution geometry explicitly. A derived N=10
   checkpoint with the same canonical profile, observation, and live-in surface

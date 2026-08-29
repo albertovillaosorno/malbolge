@@ -445,6 +445,19 @@ preserves the opaque geometry token, records all four physical self-encryption
 deltas at targets 98, 38, 37, and 78, retains the encrypted `i` decode at cell
 38, and finishes the prefix at exact C=79/D=4.
 
+The same exact prefix now composes with byte-visible I/O in a separate theorem.
+`JumpCodeIoHaltProjection` requires the reached suffix `/ < v` to remain in the
+loaded source and carries `MinimumLength(1)`. A non-EOF byte overwrites A with
+the same exact value at N10 and N14, the following `<` emits that byte, and both
+ordinary instructions self-encrypt the same source cells before halt.
+
+For input `0xA5`, the seven-step N10 execution consumes one byte, emits `0xA5`,
+and preserves complete memory/register projection. Empty input cannot use this
+authority: the token rejects it before load and composite adaptive selection
+returns to canonical N14 because the resulting EOF output is width-sensitive.
+Indexed-state evidence preserves the token, cursor, and output across the first
+six committed effects.
+
 Wire homogeneity is intentionally weaker than verifier authority equality. `uP`
 and `ubO` share the same N=10 resident shape and can execute in one CUDA worker
 batch, while each returned checkpoint is reconstructed with its original opaque
@@ -454,9 +467,8 @@ kernel shape cannot collapse `Any` into `MinimumLength(1)` or vice versa.
 The derived CUDA differential is no longer limited to immediate halt. One N=10
 worker batch now covers initial halt, no-op, EOF input, byte I/O, two-byte
 straight-line I/O, repeated jump, guarded crazy, crazy followed by byte-input
-recovery, rotate, and source-backed code jump. Complete memory and state
-equality
-against safe Rust
+recovery, rotate, source-backed code jump, and source-backed code jump followed
+by byte input/output. Complete memory and state equality against safe Rust
 remains the oracle; this is semantic correctness evidence rather than
 performance
 evidence.
