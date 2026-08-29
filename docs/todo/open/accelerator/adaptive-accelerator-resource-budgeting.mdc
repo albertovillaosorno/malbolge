@@ -129,6 +129,11 @@ example probe points, not supported-range endpoints.
   resident coverage. N10 executes `j * p p p p v`, preserves exact D for all
   five writes, and carries projected A/memory values through four crazy steps;
   the complete checkpoint is compared to safe Rust rather than observables only.
+- A post-push strict run required `used_cuda=true` for N=10 through 14 with that
+  multi-write request in every reviewed batch. A temporary CLI worker also
+  reached `CudaProfileRunAdapter.evaluate` for the adaptive N10 capsule and
+  emitted its marker only after CUDA returned. This remains correctness
+  evidence.
 - The projected-rotate/I/O request adds an observable recovery boundary to
   resident coverage and now exercises `MinimumLength(4)`. The retained N10
   request uses `[0xA5,0x3C,0x7F,0x00]`, consumes and emits all four bytes after

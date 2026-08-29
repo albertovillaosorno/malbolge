@@ -508,6 +508,12 @@ explicit rotate-projection miss. A guarded-crazy failure after a successful
 rotate is fail-closed, matching the existing conservative crazy policy rather
 than searching wider widths around missing semantic evidence.
 
+Post-push live execution required CUDA use at every reviewed N=10 through 14
+with this multi-write family included. A separate adaptive CLI run reached
+`CudaProfileRunAdapter.evaluate` as N10; its marker was written only after the
+CUDA evaluation returned. These are deployment/full-state correctness checks,
+not retained throughput measurements.
+
 The same exact prefix now composes with byte-visible I/O in a separate theorem.
 `JumpCodeIoHaltProjection` accepts one or more reached `/ <` pairs before halt.
 Each non-EOF input overwrites A with the same exact value at N10 and N14, the

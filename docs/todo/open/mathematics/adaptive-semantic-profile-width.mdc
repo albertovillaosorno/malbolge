@@ -448,6 +448,12 @@ separate costs; resource evidence must measure those costs directly.
   succeeds, any guarded-crazy premise fails closed; it is not treated as a
   reason to search wider widths. `JUMP_ROTATE_CRAZY_UNSAFE` (`j o * p v`)
   reaches only N14 and composite adaptive selection stays canonical.
+- Post-push RTX 4060 evidence required real CUDA execution at every reviewed
+  N=10 through 14 with the rotate/crazy request present. A separate temporary
+  CLI worker wrote its geometry marker only after
+  `CudaProfileRunAdapter.evaluate`;
+  the adaptive `j * p p p p v` capsule reached that path as N10 with no output.
+  Both temporary instrumentations were restored after the checks.
 - `JumpCodeRotateHaltProjection` covers a distinct source-backed write case
   after
   the four-`i` shadow prefix. Exact D=4 reads source[4], C=79 reaches `*`, and
