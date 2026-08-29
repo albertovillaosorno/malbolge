@@ -47,7 +47,8 @@ use malbolge::{
     ProfileMachineError, ProfileMachineIoState, ProfileMachineState,
     ProfileRegisters, RunOutcome, StepOutcome, Termination, current_profile,
     execute_profile_batch, execute_profile_batch_with_backend_report,
-    verify_differential_candidates, verify_minimum_initial_halt_profile_width,
+    verify_differential_candidates, verify_initial_halt_profile_width,
+    verify_minimum_initial_halt_profile_width,
 };
 
 use crate::{
@@ -288,11 +289,15 @@ fn cuda_current_profile_routes_through_product_batch_port() -> TestResult {
     compare_profile_product_batch(&observed, &expected)
 }
 
-#[test]
-fn derived_profile_product_encoding_uses_admitted_geometry() -> TestResult {
-    let verified = normalize_result(
-        verify_minimum_initial_halt_profile_width(current_profile(), b"QP"),
-    )?;
+fn check_derived_profile_product_encoding(
+    word_trits: u8,
+    memory_words: u32,
+) -> TestResult {
+    let verified = normalize_result(verify_initial_halt_profile_width(
+        current_profile(),
+        b"QP",
+        word_trits,
+    ))?;
     let machine = normalize_result(ProfileMachine::from_verified_source(
         &verified,
         Vec::new(),
@@ -313,12 +318,12 @@ fn derived_profile_product_encoding_uses_admitted_geometry() -> TestResult {
     check_equal(
         &geometry,
         &ResidentWireGeometry {
-            eof_word: 59_048,
+            eof_word: memory_words.saturating_sub(1),
             input_instruction: u32::from(b'/'),
-            memory_words: 59_049,
+            memory_words,
             output_instruction: u32::from(b'<'),
-            word_modulus: 59_049,
-            word_trits: 10,
+            word_modulus: memory_words,
+            word_trits: u32::from(word_trits),
         },
         "derived profile wire geometry",
     )?;
@@ -344,28 +349,55 @@ fn derived_profile_product_encoding_uses_admitted_geometry() -> TestResult {
 }
 
 #[test]
-fn cuda_derived_profile_routes_through_product_batch_port() -> TestResult {
-    let verified = normalize_result(
-        verify_minimum_initial_halt_profile_width(current_profile(), b"QP"),
-    )?;
-    let machine = normalize_result(ProfileMachine::from_verified_source(
-        &verified,
-        Vec::new(),
-    ))?;
-    let requests = vec![ProfileBatchRequest::from_machine(machine, 1)];
-    let expected = execute_profile_batch(requests.clone());
+fn derived_profile_product_encoding_uses_every_admitted_geometry() -> TestResult
+{
+    for (word_trits, memory_words) in [
+        (10u8, 59_049u32),
+        (11, 177_147),
+        (12, 531_441),
+        (13, 1_594_323),
+        (14, 4_782_969),
+    ] {
+        check_derived_profile_product_encoding(word_trits, memory_words)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn cuda_reviewed_profile_widths_route_through_product_batch_port() -> TestResult
+{
     let _cuda_guard = cuda_test_guard()?;
-    let mut backend = CudaProfileProductBackend::new();
-    let (observed, report) =
-        execute_profile_batch_with_backend_report(requests, &mut backend);
-    if let Some(error) = backend.error {
-        return Err(format!("derived profile CUDA product backend: {error}"));
+    for word_trits in 10u8..=14 {
+        let verified = normalize_result(verify_initial_halt_profile_width(
+            current_profile(),
+            b"QP",
+            word_trits,
+        ))?;
+        let machine = normalize_result(ProfileMachine::from_verified_source(
+            &verified,
+            Vec::new(),
+        ))?;
+        let requests = vec![ProfileBatchRequest::from_machine(machine, 1)];
+        let expected = execute_profile_batch(requests.clone());
+        let mut backend = CudaProfileProductBackend::new();
+        let (observed, report) =
+            execute_profile_batch_with_backend_report(requests, &mut backend);
+        if let Some(error) = backend.error {
+            return Err(format!(
+                "profile width {word_trits} CUDA product backend: {error}"
+            ));
+        }
+        if !backend.used_cuda {
+            continue;
+        }
+        check_equal(
+            &report.backend_count(),
+            &1usize,
+            "reviewed-width CUDA completion",
+        )?;
+        compare_profile_product_batch(&observed, &expected)?;
     }
-    if !backend.used_cuda {
-        return Ok(());
-    }
-    check_equal(&report.backend_count(), &1usize, "derived CUDA completion")?;
-    compare_profile_product_batch(&observed, &expected)
+    Ok(())
 }
 
 #[test]

@@ -347,9 +347,9 @@ separate costs; resource evidence must measure those costs directly.
   five reviewed `3^N` geometries.
 - The existing Rust integration backend serializes that admitted shape into the
   Python resident-worker protocol, parses results at the same memory length, and
-  reconstructs completions with the same opaque geometry token. QP/N=10
-  therefore has an optional full-state CUDA differential path; mixed N=10/N=14
-  batches fail closed to safe Rust before worker encoding. This is
+  reconstructs completions with the same opaque geometry token. QP has optional
+  independent full-state CUDA differential paths at N=10 through 14; mixed
+  N=10/N=14 batches fail closed to safe Rust before worker encoding. This is
   integration-test evidence, not yet a production runtime adapter or a
   performance claim.
 - Tiered interpreter handoff remains canonical-only until its continuation
