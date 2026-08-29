@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Treat CUDA or Python as profile identity or semantic authority.
 // - Allows:
-//   - Inputs: canonical Rust profile geometry and complete current VM states.
+//   - Inputs: admitted Rust profile geometry and complete profiled VM states.
 //   - Outputs: exact registers, memory, I/O, termination, and error assertions.
 //   - Side effects: one optional repository-local Python CUDA worker process.
 // - Split-When:
@@ -21,21 +21,21 @@
 // - Merge-When:
 //   - Merge when classic and scalable resident protocols share one Rust client.
 // - Summary:
-//   - Checks current-profile resident CUDA runs against normative Rust states.
+//   - Checks admitted profile resident CUDA runs against normative Rust states.
 // - Description:
-//   - Compares all 4,782,969 current memory words plus complete observable
-//   - state.
+//   - Compares complete observable state and full memory at canonical or
+//   - independently verified derived execution geometry.
 // - Usage:
 //   - Composed by `tests/vm.rs`; unavailable CUDA remains an optional-path
 //   - pass.
 // - Defaults:
-//   - `current_profile()` supplies geometry and safe Rust supplies every
-//   - oracle.
+//   - Safe Rust supplies every oracle; unavailable CUDA remains
+//     performance-only.
 //
 
-//! Full-state current-profile differential checks for resident CUDA execution.
+//! Full-state admitted-profile differential checks for resident CUDA execution.
 
-use std::io::{BufReader, Read, Write as _};
+use std::io::{BufReader, Cursor, Read, Write as _};
 use std::iter::repeat_n;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -47,7 +47,7 @@ use malbolge::{
     ProfileMachineError, ProfileMachineIoState, ProfileMachineState,
     ProfileRegisters, RunOutcome, StepOutcome, Termination, current_profile,
     execute_profile_batch, execute_profile_batch_with_backend_report,
-    verify_differential_candidates,
+    verify_differential_candidates, verify_minimum_initial_halt_profile_width,
 };
 
 use crate::{
@@ -71,6 +71,7 @@ const TEST_XLAT1: &[u8; TABLE_LEN] =
     b"+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA\"lI\
 .v%{gJh4G\\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha";
 
+type EncodedProfileProductBatch = (ResidentWireGeometry, Vec<u8>);
 type ProductBackendBatch = Option<Vec<Option<ProfileBatchBackendCompletion>>>;
 type WorkerBatch = Option<Vec<RunSnapshot>>;
 
@@ -150,6 +151,45 @@ struct RunSnapshot {
     termination: u32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ResidentWireGeometry {
+    eof_word: u32,
+    input_instruction: u32,
+    memory_words: u32,
+    output_instruction: u32,
+    word_modulus: u32,
+    word_trits: u32,
+}
+
+impl ResidentWireGeometry {
+    fn from_request(request: &ProfileBatchBackendRequest<'_>) -> Self {
+        Self {
+            eof_word: request.eof_word(),
+            input_instruction: u32::from(request.input_instruction()),
+            memory_words: request.memory_words(),
+            output_instruction: u32::from(request.output_instruction()),
+            word_modulus: request.word_modulus(),
+            word_trits: u32::from(request.word_trits()),
+        }
+    }
+
+    fn memory_len(self) -> TestResult<usize> {
+        usize::try_from(self.memory_words)
+            .map_err(|error| format!("profile resident memory words: {error}"))
+    }
+
+    const fn wire_values(self) -> [u32; 6] {
+        [
+            self.eof_word,
+            self.input_instruction,
+            self.memory_words,
+            self.output_instruction,
+            self.word_modulus,
+            self.word_trits,
+        ]
+    }
+}
+
 struct CudaProfileProductBackend {
     error: Option<String>,
     used_cuda: bool,
@@ -161,6 +201,31 @@ impl CudaProfileProductBackend {
             error: None,
             used_cuda: false,
         }
+    }
+}
+
+struct ProfileProductEncodingProbe {
+    encoded: Option<EncodedProfileProductBatch>,
+    error: Option<String>,
+}
+
+impl ProfileBatchExecutionBackend for ProfileProductEncodingProbe {
+    fn execute(
+        &mut self,
+        requests: &[ProfileBatchBackendRequest<'_>],
+    ) -> Option<Vec<Option<ProfileBatchBackendCompletion>>> {
+        match homogeneous_product_geometry(requests).and_then(|geometry| {
+            geometry
+                .map(|value| {
+                    encode_profile_product_batch(requests, value)
+                        .map(|bytes| (value, bytes))
+                })
+                .transpose()
+        }) {
+            Ok(encoded) => self.encoded = encoded,
+            Err(error) => self.error = Some(error),
+        }
+        None
     }
 }
 
@@ -193,7 +258,9 @@ fn cuda_resident_current_profile_matches_complete_normative_states()
         .map(oracle_run)
         .collect::<TestResult<Vec<_>>>()?;
     let _cuda_guard = cuda_test_guard()?;
-    let Some(observed) = run_cuda_worker(request)? else {
+    let Some(observed) =
+        run_cuda_worker(request, current_profile().memory_words())?
+    else {
         return Ok(());
     };
     compare_batches(&observed, &expected)
@@ -218,6 +285,127 @@ fn cuda_current_profile_routes_through_product_batch_port() -> TestResult {
             "profile CUDA worker ran but no completion was accepted",
         ));
     }
+    compare_profile_product_batch(&observed, &expected)
+}
+
+#[test]
+fn derived_profile_product_encoding_uses_admitted_geometry() -> TestResult {
+    let verified = normalize_result(
+        verify_minimum_initial_halt_profile_width(current_profile(), b"QP"),
+    )?;
+    let machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    let request = ProfileBatchRequest::from_machine(machine, 1);
+    let mut backend = ProfileProductEncodingProbe {
+        encoded: None,
+        error: None,
+    };
+    let (_results, report) =
+        execute_profile_batch_with_backend_report(vec![request], &mut backend);
+    if let Some(error) = backend.error {
+        return Err(format!("derived profile encoding probe: {error}"));
+    }
+    let (geometry, encoded) = backend
+        .encoded
+        .ok_or_else(|| String::from("derived profile encoding missing"))?;
+    check_equal(
+        &geometry,
+        &ResidentWireGeometry {
+            eof_word: 59_048,
+            input_instruction: u32::from(b'/'),
+            memory_words: 59_049,
+            output_instruction: u32::from(b'<'),
+            word_modulus: 59_049,
+            word_trits: 10,
+        },
+        "derived profile wire geometry",
+    )?;
+    let mut reader = BinaryReader::new(Cursor::new(encoded));
+    check_equal(
+        &reader.take(MAGIC.len())?.as_slice(),
+        &MAGIC.as_slice(),
+        "derived profile wire magic",
+    )?;
+    for expected in geometry.wire_values() {
+        check_equal(
+            &reader.u32()?,
+            &expected,
+            "derived profile wire geometry field",
+        )?;
+    }
+    check_equal(&reader.u32()?, &1u32, "derived profile wire count")?;
+    check_equal(
+        &report.fallback_count(),
+        &1usize,
+        "derived encoding probe fallback",
+    )
+}
+
+#[test]
+fn cuda_derived_profile_routes_through_product_batch_port() -> TestResult {
+    let verified = normalize_result(
+        verify_minimum_initial_halt_profile_width(current_profile(), b"QP"),
+    )?;
+    let machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    let requests = vec![ProfileBatchRequest::from_machine(machine, 1)];
+    let expected = execute_profile_batch(requests.clone());
+    let _cuda_guard = cuda_test_guard()?;
+    let mut backend = CudaProfileProductBackend::new();
+    let (observed, report) =
+        execute_profile_batch_with_backend_report(requests, &mut backend);
+    if let Some(error) = backend.error {
+        return Err(format!("derived profile CUDA product backend: {error}"));
+    }
+    if !backend.used_cuda {
+        return Ok(());
+    }
+    check_equal(&report.backend_count(), &1usize, "derived CUDA completion")?;
+    compare_profile_product_batch(&observed, &expected)
+}
+
+#[test]
+fn mixed_resident_geometries_fail_closed_before_worker_encoding() -> TestResult
+{
+    let verified = normalize_result(
+        verify_minimum_initial_halt_profile_width(current_profile(), b"QP"),
+    )?;
+    let derived = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    let canonical = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        b"QP",
+        Vec::new(),
+    ))?;
+    let requests = vec![
+        ProfileBatchRequest::from_machine(derived, 0),
+        ProfileBatchRequest::from_machine(canonical, 0),
+    ];
+    let expected = execute_profile_batch(requests.clone());
+    let mut backend = ProfileProductEncodingProbe {
+        encoded: None,
+        error: None,
+    };
+    let (observed, report) =
+        execute_profile_batch_with_backend_report(requests, &mut backend);
+    check_equal(&backend.error, &None, "mixed geometry encoding error")?;
+    check_equal(&backend.encoded, &None, "mixed geometry encoded payload")?;
+    check_equal(
+        &report.backend_count(),
+        &0usize,
+        "mixed geometry backend count",
+    )?;
+    check_equal(
+        &report.fallback_count(),
+        &2usize,
+        "mixed geometry fallback count",
+    )?;
     compare_profile_product_batch(&observed, &expected)
 }
 
@@ -247,8 +435,12 @@ fn try_cuda_profile_product_batch(
     {
         return Ok(Some(repeat_n(None, requests.len()).collect()));
     }
-    let encoded = encode_profile_product_batch(requests)?;
-    let Some(snapshots) = run_cuda_worker(encoded)? else {
+    let Some(geometry) = homogeneous_product_geometry(requests)? else {
+        return Ok(Some(repeat_n(None, requests.len()).collect()));
+    };
+    let encoded = encode_profile_product_batch(requests, geometry)?;
+    let Some(snapshots) = run_cuda_worker(encoded, geometry.memory_words)?
+    else {
         return Ok(None);
     };
     check_equal(
@@ -266,27 +458,39 @@ fn try_cuda_profile_product_batch(
         .map(Some)
 }
 
+fn homogeneous_product_geometry(
+    requests: &[ProfileBatchBackendRequest<'_>],
+) -> TestResult<Option<ResidentWireGeometry>> {
+    let Some(first) = requests.first() else {
+        return Ok(None);
+    };
+    let geometry = ResidentWireGeometry::from_request(first);
+    if requests
+        .iter()
+        .any(|request| ResidentWireGeometry::from_request(request) != geometry)
+    {
+        return Ok(None);
+    }
+    let _memory_len = geometry.memory_len()?;
+    Ok(Some(geometry))
+}
+
 fn encode_profile_product_batch(
     requests: &[ProfileBatchBackendRequest<'_>],
+    geometry: ResidentWireGeometry,
 ) -> TestResult<Vec<u8>> {
-    let profile = current_profile();
-    let memory_words = usize::try_from(profile.memory_words())
-        .map_err(|error| format!("profile product memory words: {error}"))?;
+    let memory_words = geometry.memory_len()?;
     let capacity = requests
         .len()
         .saturating_mul(memory_words.saturating_mul(size_of::<u32>()))
         .saturating_add(1024);
     let mut bytes = Vec::with_capacity(capacity);
     bytes.extend_from_slice(MAGIC);
-    for value in [
-        profile.eof_word(),
-        u32::from(profile.input_instruction()),
-        profile.memory_words(),
-        u32::from(profile.output_instruction()),
-        profile.word_modulus(),
-        u32::from(profile.word_trits()),
-        usize_u32(requests.len())?,
-    ] {
+    for value in geometry
+        .wire_values()
+        .into_iter()
+        .chain([usize_u32(requests.len())?])
+    {
         push_u32(&mut bytes, value);
     }
     for request in requests {
@@ -344,8 +548,8 @@ fn profile_product_completion(
         snapshot.output,
         termination,
     ))?;
-    let state = normalize_result(ProfileMachineState::new(
-        request.machine().profile(),
+    let state = normalize_result(ProfileMachineState::new_with_geometry(
+        request.machine().geometry(),
         snapshot.memory,
         ProfileRegisters {
             accumulator: snapshot.accumulator,
@@ -657,7 +861,10 @@ fn encode_request(bytes: &mut Vec<u8>, fixture: &RunFixture) -> TestResult {
     Ok(())
 }
 
-fn run_cuda_worker(request: Vec<u8>) -> TestResult<WorkerBatch> {
+fn run_cuda_worker(
+    request: Vec<u8>,
+    memory_words: u32,
+) -> TestResult<WorkerBatch> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let python = validation_python(root);
     let mut child = Command::new(&python)
@@ -684,7 +891,7 @@ fn run_cuda_worker(request: Vec<u8>) -> TestResult<WorkerBatch> {
     let mut stderr = child.stderr.take().ok_or_else(|| {
         String::from("profile CUDA worker stderr unavailable")
     })?;
-    let parsed = parse_worker_output(BufReader::new(stdout));
+    let parsed = parse_worker_output(BufReader::new(stdout), memory_words);
     let status = child
         .wait()
         .map_err(|error| format!("profile CUDA worker wait: {error}"))?;
@@ -701,7 +908,10 @@ fn run_cuda_worker(request: Vec<u8>) -> TestResult<WorkerBatch> {
     parsed
 }
 
-fn parse_worker_output<Reader>(stream: Reader) -> TestResult<WorkerBatch>
+fn parse_worker_output<Reader>(
+    stream: Reader,
+    memory_words: u32,
+) -> TestResult<WorkerBatch>
 where
     Reader: Read,
 {
@@ -725,11 +935,11 @@ where
         return Ok(None);
     }
     check_equal(&kind, &RESPONSE_RESULTS, "profile CUDA response kind")?;
-    let memory_words = usize::try_from(current_profile().memory_words())
+    let memory_len = usize::try_from(memory_words)
         .map_err(|error| format!("profile response memory words: {error}"))?;
     let mut results = Vec::with_capacity(count);
     for _item in 0..count {
-        results.push(parse_result(&mut reader, memory_words)?);
+        results.push(parse_result(&mut reader, memory_len)?);
     }
     reader.finish()?;
     Ok(Some(results))

@@ -347,6 +347,14 @@ request admitted by the latter. The mismatch falls back to the original
 safe-Rust
 machine rather than treating numeric geometry as sufficient authorization.
 
+The existing CUDA integration test now consumes resident geometry from that
+prepared backend request instead of `current_profile()` constants. Its worker
+header, response parser, and reconstructed checkpoint all use the admitted
+geometry; a verified QP/N=10 request can therefore run the same full-state
+differential path as canonical execution. Mixed resident widths are rejected
+before homogeneous worker encoding. This does not make the test adapter a
+production runtime backend or establish throughput.
+
 `uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
 shows why projected D is insufficient for writes: both crazy transitions
 continue and A still projects, but D names different physical cells, so the
