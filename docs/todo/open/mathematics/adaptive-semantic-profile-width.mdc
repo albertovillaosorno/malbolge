@@ -377,6 +377,16 @@ separate costs; resource evidence must measure those costs directly.
   A live RTX 4060 check in this block required and observed product-path CUDA
   execution for all five widths. This remains correctness, not performance,
   evidence.
+- The command-line composition root can now bind a trusted MBPRN2 worker for
+  current canonical-profile capsules through explicit environment configuration.
+  A live RTX 4060 check reached `CudaProfileRunAdapter.evaluate` through that
+  route and preserved the expected capsule output. Historical profiles are
+  excluded because the wire omits canonical profile identity.
+- This CLI binding does not yet select or construct verifier-owned derived
+  N=10..13 geometry from a capsule. The checked-in current capsules contain
+  `ubO` with empty input, which is a concrete non-narrowing case: its derived
+  input/output/halt token requires `MinimumLength(1)`, while canonical EOF
+  output is width-sensitive.
 - Tiered interpreter handoff remains canonical-only until its continuation
   schema carries verified execution geometry explicitly. A derived N=10
   checkpoint with the same canonical profile, observation, and live-in surface

@@ -97,6 +97,13 @@ Explicit `UNAVAILABLE`, launch/I/O failure, oversized output, malformed framing,
 or invalid completions remain performance-only fallback conditions. The
 transport names no accelerator vendor or Python module.
 
+The top-level CLI now provides one concrete composition binding for current
+canonical-profile capsules. It is opt-in through an explicit resident-worker
+executable plus bounded indexed argument environment variables; raw classic and
+historical-profile execution ignore that binding. This closes process selection
+for canonical profile execution without pretending that capsules carry adaptive
+N=10..13 proof authority.
+
 The report variants `execute_batch_with_backend_report` and
 `execute_profile_batch_with_backend_report` preserve those result semantics
 while

@@ -211,6 +211,54 @@ fn historical_capacity_rejection_matches_parallel_batch() -> TestResult {
 }
 
 #[test]
+fn profile_batch_result_can_resume_owned_machine() -> TestResult {
+    let request = ProfileBatchRequest::from_source(
+        current_profile(),
+        IO_ROUNDTRIP.to_vec(),
+        vec![b'Q'],
+        1,
+    );
+    let mut results = execute_profile_batch(vec![request]);
+    let result = results
+        .pop()
+        .ok_or_else(|| String::from("profile owned result missing"))?;
+    let expected_outcome = result
+        .outcome()
+        .ok_or_else(|| String::from("profile owned result outcome missing"))?;
+    let machine = normalize_result(result.into_machine())?;
+    check_equal(
+        &machine.profile().fingerprint(),
+        &current_profile().fingerprint(),
+        "profile owned result identity",
+    )?;
+    check_equal(
+        &expected_outcome,
+        &RunOutcome::BudgetExhausted { steps: 1 },
+        "profile owned result outcome",
+    )?;
+
+    let rejected =
+        execute_profile_batch(vec![ProfileBatchRequest::from_source(
+            current_profile(),
+            b"D".to_vec(),
+            Vec::new(),
+            1,
+        )])
+        .pop()
+        .ok_or_else(|| String::from("profile rejected owned result missing"))?;
+    let Err(error) = rejected.into_machine() else {
+        return Err(String::from("profile rejected owned result resumed"));
+    };
+    check_equal(
+        &error,
+        &ProfileMachineError::Load(
+            ProfileLoadError::InsufficientRecurrenceBase,
+        ),
+        "profile rejected owned result",
+    )
+}
+
+#[test]
 fn profile_batch_request_identity_is_explicit() -> TestResult {
     let request = ProfileBatchRequest::from_source(
         current_profile(),

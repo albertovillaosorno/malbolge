@@ -327,6 +327,18 @@ impl ProfileBatchResult {
         }
     }
 
+    /// Consumes one successful result into its resumable profile machine.
+    ///
+    /// # Errors
+    ///
+    /// Returns the deterministic profile-machine error for rejected execution.
+    pub fn into_machine(self) -> Result<ProfileMachine, ProfileMachineError> {
+        match self {
+            Self::Completed { machine, .. } => Ok(machine),
+            Self::Rejected { error, .. } => Err(error),
+        }
+    }
+
     /// Returns the owned profile machine state when construction succeeded.
     #[must_use]
     pub const fn machine(&self) -> Option<&ProfileMachine> {

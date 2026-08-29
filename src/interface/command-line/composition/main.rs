@@ -49,7 +49,10 @@ use std::process::{Command, ExitCode, ExitStatus, Stdio, id};
 
 use c_source::inspect_c_source;
 use malbolge::{
-    ExecutionMachine, ExecutionMode, ProfileMachine, RunOutcome, parse_capsule,
+    ExecutionMachine, ExecutionMode, ProfileBatchRequest, ProfileMachine,
+    ProfileResidentProcessTransport, ProfileResidentTransportBackend,
+    RunOutcome, current_profile, execute_profile_batch_with_backend,
+    parse_capsule,
 };
 
 const C_EXTENSION: &str = "c";
@@ -66,6 +69,11 @@ const DOOM_IWAD_NAMES: [&str; 8] = [
 const C_RUN_PREFIX: &str = "malbolge-c-run";
 const LLVM_VERSION: &str = "22.1.8";
 const MALBOLGE_EXTENSION: &str = "malbolge";
+const PROFILE_WORKER_ARG_COUNT_ENV: &str =
+    "MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_COUNT";
+const PROFILE_WORKER_CWD_ENV: &str = "MALBOLGE_PROFILE_RESIDENT_WORKER_CWD";
+const PROFILE_WORKER_ENV: &str = "MALBOLGE_PROFILE_RESIDENT_WORKER";
+const PROFILE_WORKER_MAX_ARGS: usize = 32;
 const RUN_CHUNK_STEPS: usize = 1_000_000;
 const ZIG_VERSION: &str = "0.16.0";
 
@@ -74,6 +82,9 @@ enum CDriver {
     Cc(OsString),
     Zig(OsString),
 }
+
+type ConfiguredProfileBackend =
+    ProfileResidentTransportBackend<ProfileResidentProcessTransport>;
 
 #[derive(Debug)]
 struct CRunPlan {
@@ -543,12 +554,73 @@ fn run_malbolge(source_path: &Path) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
+fn configured_profile_backend(
+    profile: &'static malbolge::ProfileDescriptor,
+) -> Result<Option<ConfiguredProfileBackend>, String> {
+    if profile != current_profile() {
+        return Ok(None);
+    }
+    let Some(program) = env::var_os(PROFILE_WORKER_ENV) else {
+        return Ok(None);
+    };
+    if program.is_empty() {
+        return Err(format!("{PROFILE_WORKER_ENV} cannot be empty"));
+    }
+    let argument_count = configured_profile_worker_argument_count()?;
+    let mut transport =
+        ProfileResidentProcessTransport::new(PathBuf::from(program));
+    for index in 0..argument_count {
+        let name = profile_worker_argument_name(index);
+        let argument = env::var_os(&name).ok_or_else(|| {
+            format!("{name} is required by {PROFILE_WORKER_ARG_COUNT_ENV}")
+        })?;
+        transport = transport.argument(argument);
+    }
+    if let Some(directory) = env::var_os(PROFILE_WORKER_CWD_ENV) {
+        if directory.is_empty() {
+            return Err(format!("{PROFILE_WORKER_CWD_ENV} cannot be empty"));
+        }
+        transport = transport.working_directory(PathBuf::from(directory));
+    }
+    Ok(Some(ProfileResidentTransportBackend::new(transport)))
+}
+
+fn configured_profile_worker_argument_count() -> Result<usize, String> {
+    let Some(value) = env::var_os(PROFILE_WORKER_ARG_COUNT_ENV) else {
+        return Ok(0);
+    };
+    let text = value.to_str().ok_or_else(|| {
+        format!("{PROFILE_WORKER_ARG_COUNT_ENV} must be ASCII decimal")
+    })?;
+    let count = text.parse::<usize>().map_err(|error| {
+        format!("invalid {PROFILE_WORKER_ARG_COUNT_ENV}: {error}")
+    })?;
+    if count > PROFILE_WORKER_MAX_ARGS {
+        return Err(format!(
+            "{PROFILE_WORKER_ARG_COUNT_ENV} exceeds {PROFILE_WORKER_MAX_ARGS}"
+        ));
+    }
+    Ok(count)
+}
+
+fn profile_worker_argument_name(index: usize) -> String {
+    format!("MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_{index}")
+}
+
 fn run_profile(
     profile: &'static malbolge::ProfileDescriptor,
     source: &[u8],
 ) -> Result<(), String> {
-    let mut machine = ProfileMachine::from_source(profile, source, Vec::new())
+    let machine = ProfileMachine::from_source(profile, source, Vec::new())
         .map_err(|error| format!("profile Malbolge load failed: {error}"))?;
+    let mut backend = configured_profile_backend(profile)?;
+    match backend.as_mut() {
+        Some(selected) => run_profile_with_backend(machine, selected),
+        None => run_profile_direct(machine),
+    }
+}
+
+fn run_profile_direct(mut machine: ProfileMachine) -> Result<(), String> {
     let mut emitted = 0usize;
     let mut outcome = machine.run(RUN_CHUNK_STEPS).map_err(|error| {
         format!("profile Malbolge execution failed: {error}")
@@ -561,6 +633,35 @@ fn run_profile(
         flush_new_output(machine.output(), &mut emitted)?;
     }
     Ok(())
+}
+
+fn run_profile_with_backend(
+    mut machine: ProfileMachine,
+    backend: &mut dyn malbolge::ProfileBatchExecutionBackend,
+) -> Result<(), String> {
+    let mut emitted = 0usize;
+    loop {
+        let request =
+            ProfileBatchRequest::from_machine(machine, RUN_CHUNK_STEPS);
+        let mut results =
+            execute_profile_batch_with_backend(vec![request], backend);
+        let result = results.pop().ok_or_else(|| {
+            String::from("profile backend returned no batch result")
+        })?;
+        let outcome = result.outcome().ok_or_else(|| {
+            result.error().map_or_else(
+                || String::from("profile backend result has no outcome"),
+                |error| format!("profile Malbolge execution failed: {error}"),
+            )
+        })?;
+        machine = result.into_machine().map_err(|error| {
+            format!("profile Malbolge execution failed: {error}")
+        })?;
+        flush_new_output(machine.output(), &mut emitted)?;
+        if !matches!(outcome, RunOutcome::BudgetExhausted { .. }) {
+            return Ok(());
+        }
+    }
 }
 
 fn write_diagnostic(message: &str) {

@@ -29,6 +29,37 @@ The current VM input model is pre-buffered rather than interactive. The CLI does
 not fake real-time input by reading the terminal to EOF before startup.
 Interactive DOOM input belongs to the versioned host-capability runner work.
 
+### Optional current-profile resident worker
+
+Profile acceleration is disabled by default. For a capsule whose declared
+profile is exactly the current canonical profile, the composition root can bind
+a trusted MBPRN2 resident worker by setting `MALBOLGE_PROFILE_RESIDENT_WORKER`
+to its executable. Raw classic source and historical-profile capsules never use
+this setting because the resident wire format does not carry canonical profile
+identity. This binding preserves the capsule's admitted canonical geometry; it
+does not run adaptive-width proof selection.
+
+Arguments are passed without shell parsing.
+`MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_COUNT` declares an integer from 0 through
+32, and each index below that count must have a corresponding
+`MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_<N>` value. Optional
+`MALBOLGE_PROFILE_RESIDENT_WORKER_CWD` sets the child working directory.
+
+The child otherwise inherits the CLI environment, which is how a configured
+worker may receive its own runtime/library search paths. Empty executable/CWD
+values, invalid counts, excessive counts, or missing declared arguments fail
+closed.
+
+The process transport treats launch/I/O failure, explicit protocol
+`UNAVAILABLE`, oversized responses, malformed framing, and invalid reconstructed
+state as performance fallback; the untouched safe-Rust machine executes that
+chunk instead.
+
+The configured executable is nevertheless a trusted execution backend: returned
+checkpoints are structurally and authority-checked, but the CLI does not
+independently reexecute every successful backend completion. Use a worker built
+and reviewed for the matching repository/runtime version.
+
 ## `.c`: fast native debugging only
 
 `malbolge program.c` compiles the C file directly for the current host, runs the

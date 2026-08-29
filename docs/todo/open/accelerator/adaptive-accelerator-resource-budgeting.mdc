@@ -98,11 +98,17 @@ example probe points, not supported-range endpoints.
   after crazy. A live RTX 4060 check in this development block confirmed all
   five
   widths actually returned through the product transport path rather than skip.
-- No repository composition root currently selects an optional profile backend,
-  so concrete worker discovery/configuration remains open. The Python synthetic
-  capacity sweep also still uses research `execution_geometry`. Persistent
-  sessions and equivalent-work retained performance evidence remain separate
-  acceptance gaps.
+- The top-level CLI now selects a trusted resident worker for current canonical
+  capsules only when explicitly configured by executable plus bounded indexed
+  arguments. A live RTX 4060 composition check invoked `CudaProfileRunAdapter`
+  through that binding and returned the expected `0x78` capsule output. Raw and
+  historical execution ignore the binding because MBPRN2 carries no canonical
+  profile identity. This is deployment correctness, not adaptive-width or
+  throughput evidence.
+- The Python synthetic capacity sweep still uses research `execution_geometry`.
+  No composition root yet turns a verified derived-width proof into N=10..13
+  execution automatically. Persistent sessions and equivalent-work retained
+  performance evidence also remain separate acceptance gaps.
 - Resident batching groups by wire geometry rather than hidden verifier policy.
   `uP` (`Any`) and `ubO` (`MinimumLength(1)`) therefore share one N=10 CUDA
   batch when available, while response reconstruction reapplies the distinct

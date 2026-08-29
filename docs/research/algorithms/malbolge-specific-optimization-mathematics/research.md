@@ -365,9 +365,16 @@ verifier authority. Product completion conversion reattaches the original
 admitted token and returns no completion for malformed metadata or invalid
 reconstructed state.
 
-Mixed resident widths fail before process launch. There is still no composition
-root that selects a concrete optional profile worker, and this correctness path
-does not establish throughput.
+Mixed resident widths fail before process launch. The top-level CLI now supplies
+an opt-in composition binding for trusted current-profile workers. A live RTX
+4060 check reached `CudaProfileRunAdapter.evaluate` through that binding and
+preserved the published current-capsule output. The binding is intentionally
+canonical-profile-only; it does not create a derived-width certificate or
+establish throughput.
+
+Both checked-in current capsules carry `ubO` with empty input, so the existing
+`MinimumLength(1)` proof correctly cannot replace their canonical EOF-visible
+execution with N=10.
 
 Wire homogeneity is intentionally weaker than verifier authority equality. `uP`
 and `ubO` share the same N=10 resident shape and can execute in one CUDA worker
