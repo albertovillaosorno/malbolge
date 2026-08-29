@@ -42,13 +42,14 @@ use malbolge::{
     verify_initial_halt_profile_width, verify_input_output_halt_profile_width,
     verify_input_then_halt_profile_width, verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
-    verify_jump_data_halt_profile_width,
+    verify_jump_data_halt_profile_width, verify_jump_rotate_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
     verify_minimum_jump_crazy_halt_profile_width,
     verify_minimum_jump_crazy_io_halt_profile_width,
     verify_minimum_jump_data_halt_profile_width,
+    verify_minimum_jump_rotate_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
     verify_minimum_repeated_jump_data_profile_width,
     verify_minimum_straight_line_io_profile_width,
@@ -64,6 +65,8 @@ const MINIMUM_WORD_TRITS: u8 = 10;
 const MINIMUM_MEMORY_WORDS: u32 = 59_049;
 const MINIMUM_MEMORY_WORDS_USIZE: usize = 59_049;
 const QP: &[u8] = b"QP";
+const JUMP_ROTATE_SAFE: &[u8] = b"(&O";
+const JUMP_ROTATE_UNSAFE: &[u8] = b"(CB$M";
 const CHECKED_GEOMETRIES: [(u8, u32); 5] = [
     (10, 59_049),
     (11, 177_147),
@@ -625,6 +628,148 @@ fn jump_data_halt_verifier_rejects_wrong_reached_sequence() -> TestResult {
             decoded: b'p',
         }),
         "jump-data second instruction rejection",
+    )
+}
+
+fn check_complete_profile_projection(
+    narrow: &ProfileMachine,
+    canonical: &ProfileMachine,
+    modulus: u32,
+    label: &str,
+) -> TestResult {
+    let narrow_registers = narrow.registers();
+    let canonical_registers = canonical.registers();
+    for (name, narrow_value, canonical_value) in [
+        (
+            "accumulator",
+            narrow_registers.accumulator,
+            canonical_registers.accumulator,
+        ),
+        (
+            "code",
+            narrow_registers.code_pointer,
+            canonical_registers.code_pointer,
+        ),
+        (
+            "data",
+            narrow_registers.data_pointer,
+            canonical_registers.data_pointer,
+        ),
+    ] {
+        if narrow_value != canonical_value.rem_euclid(modulus) {
+            return Err(format!("{label} {name} projection differs"));
+        }
+    }
+    for (address, (narrow_word, wide_word)) in
+        narrow.memory().iter().zip(canonical.memory()).enumerate()
+    {
+        if *narrow_word != wide_word.rem_euclid(modulus) {
+            return Err(format!(
+                "{label} memory projection differs at {address}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn jump_rotate_halt_verifier_executes_projected_write_at_minimum_width()
+-> TestResult {
+    for (word_trits, _memory_words) in CHECKED_GEOMETRIES {
+        let _admitted =
+            normalize_result(verify_jump_rotate_halt_profile_width(
+                current_profile(),
+                JUMP_ROTATE_SAFE,
+                word_trits,
+            ))?;
+    }
+    let verified =
+        normalize_result(verify_minimum_jump_rotate_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_SAFE,
+        ))?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::JumpRotateHaltProjection,
+        "jump-rotate proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "jump-rotate minimum width",
+    )?;
+    let mut narrow = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    let mut canonical = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        JUMP_ROTATE_SAFE,
+        Vec::new(),
+    ))?;
+    let narrow_outcome = normalize_result(narrow.run(3))?;
+    let canonical_outcome = normalize_result(canonical.run(3))?;
+    check_equal(
+        &narrow_outcome,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 3,
+        },
+        "jump-rotate narrow outcome",
+    )?;
+    check_equal(
+        &canonical_outcome,
+        &narrow_outcome,
+        "jump-rotate canonical outcome",
+    )?;
+    check_complete_profile_projection(
+        &narrow,
+        &canonical,
+        verified.memory_words(),
+        "jump-rotate",
+    )
+}
+
+#[test]
+fn jump_rotate_halt_verifier_rejects_incompatible_rotate_projection()
+-> TestResult {
+    check_equal(
+        &verify_jump_rotate_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_UNSAFE,
+            MINIMUM_WORD_TRITS,
+        ),
+        &Err(ProfileWidthVerificationError::JumpRotateProjection),
+        "jump-rotate incompatible N10 rejection",
+    )?;
+    let canonical =
+        normalize_result(verify_minimum_jump_rotate_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_UNSAFE,
+        ))?;
+    check_equal(
+        &canonical.word_trits(),
+        &CANONICAL_WORD_TRITS,
+        "jump-rotate incompatible minimum fallback",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(
+            current_profile(),
+            JUMP_ROTATE_UNSAFE,
+            &[],
+        ),
+        &None,
+        "jump-rotate composite canonical fallback",
+    )?;
+    let machine = normalize_result(ProfileMachine::from_adaptive_source(
+        current_profile(),
+        JUMP_ROTATE_UNSAFE,
+        Vec::new(),
+    ))?;
+    check_equal(
+        &machine.geometry().word_trits(),
+        &CANONICAL_WORD_TRITS,
+        "jump-rotate adaptive canonical geometry",
     )
 }
 

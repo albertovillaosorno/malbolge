@@ -347,12 +347,13 @@ separate costs; resource evidence must measure those costs directly.
   request's opaque geometry token rather than the shared wire shape. Optional
   full-state CUDA differential evidence therefore accepts both `uP` and `ubO`
   completions without collapsing `Any` and `MinimumLength(1)` authority.
-- A broader N=10 CUDA differential batch now exercises eight verified subjects:
+- A broader N=10 CUDA differential batch now exercises nine verified subjects:
   initial halt, no-op prefix, EOF input-halt, byte input-output, two-byte
-  straight-line I/O, repeated jumps, guarded `p p`, and guarded `p p` followed
-  by byte-exact I/O recovery. All complete checkpoints are compared to safe
-  Rust,
-  including memory, I/O, termination, registers, and verifier geometry tokens.
+  straight-line I/O, repeated jumps, guarded `p p`, guarded `p p` followed by
+  byte-exact I/O recovery, and one exact-address rotate. All complete
+  checkpoints
+  are compared to safe Rust, including memory, I/O, termination, registers, and
+  verifier geometry tokens.
 - Prepared profile backend requests expose resident shape only from their
   admitted machine: EOF, canonical input/output opcodes, memory words/modulus,
   and word trits. Direct QP artifacts at N=10 through 14 produce exactly the
@@ -373,24 +374,23 @@ separate costs; resource evidence must measure those costs directly.
   failed/oversized children, and names neither Python nor CUDA.
 - The CUDA integration configures that adapter for `profile_run_worker`. Each
   reviewed N=10 through 14 has an optional full-state batch containing QP, EOF
-  input-halt, `uCar_L`, guarded `p p`, and guarded `p p` plus byte-I/O recovery.
-  A live RTX 4060 check in this block required and observed product-path CUDA
-  execution for all five widths. This remains correctness, not performance,
-  evidence.
+  input-halt, `uCar_L`, guarded `p p`, guarded `p p` plus byte-I/O recovery, and
+  `(&O` (`j * v`) rotate. A live RTX 4060 check exercises this reviewed-width
+  matrix. This remains correctness, not performance, evidence.
 - The command-line composition root can now bind a trusted MBPRN2 worker for
   current canonical-profile capsules through explicit environment configuration.
   A live RTX 4060 check reached `CudaProfileRunAdapter.evaluate` through that
   route and preserved the expected capsule output. Historical profiles are
   excluded because the wire omits canonical profile identity.
-- This CLI binding does not yet select or construct verifier-owned derived
-  N=10..13 geometry from a capsule. The checked-in current capsules contain
-  `ubO` with empty input, which is a concrete non-narrowing case: its derived
-  input/output/halt token requires `MinimumLength(1)`, while canonical EOF
-  output is width-sensitive.
-- Product `select_minimum_verified_profile_width` now probes only the nine
-  trusted theorem-family minimum verifiers and returns the narrowest successful
-  artifact whose hidden input policy admits the exact input. Equal-width N=14
-  artifacts are ignored so no-proof preserves canonical execution.
+- The checked-in current capsules contain `ubO` with empty input, which is a
+  concrete non-narrowing case: its derived input/output/halt token requires
+  `MinimumLength(1)`, while canonical EOF output is width-sensitive. Adaptive
+  CLI
+  policy therefore leaves those capsules at N=14 even when explicitly enabled.
+- Product `select_minimum_verified_profile_width` now probes ten trusted
+  theorem-family minimum verifiers and returns the narrowest successful artifact
+  whose hidden input policy admits the exact input. Equal-width N=14 artifacts
+  are ignored so no-proof preserves canonical execution.
 - `ProfileMachine::from_adaptive_source` consumes that selector and fails closed
   to canonical `from_source` if no narrower artifact applies or derived loading
   fails. QP with empty input selects N=10; `ubO` with byte input selects N=10;
@@ -401,6 +401,19 @@ separate costs; resource evidence must measure those costs directly.
   QP as N10 when enabled and N14 when disabled; the published `ubO`/EOF capsule
   remains N14 even when enabled. A temporary live RTX 4060 check also executed
   the QP/N10 CLI path through `CudaProfileRunAdapter.evaluate`.
+- Rotate now has one deliberately narrow product theorem. `(&O` decodes `j * v`:
+  the jump establishes exact D=41, the verifier reconstructs candidate and
+  canonical initial memory at that physical address, requires ordinary memory
+  projection, and independently requires the width-specific rotate result to
+  project before authorizing the write. The proof succeeds at N=10 through 14,
+  selects N=10, and complete post-run memory/register state projects to
+  canonical
+  N=14.
+- Rotate widening is specialized because compatibility is non-monotone in N.
+  `(CB$M` (`j o o * v`) rejects N=10 through 13 with
+  `JumpRotateProjection` and admits only N=14; the composite selector therefore
+  returns no derived authority and adaptive construction stays canonical. Other
+  rotate shapes remain unsupported rather than generalized from this theorem.
 - Tiered interpreter handoff remains canonical-only until its continuation
   schema carries verified execution geometry explicitly. A derived N=10
   checkpoint with the same canonical profile, observation, and live-in surface

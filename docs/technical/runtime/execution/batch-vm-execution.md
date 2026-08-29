@@ -104,6 +104,10 @@ constructs the machine through the trusted input-aware adaptive selector, while
 resident worker then receives whichever geometry the admitted machine carries.
 Raw classic and historical-profile execution ignore both current-profile knobs.
 
+The adaptive selector now includes a conservative exact-address rotate family;
+only projection-verified rotate writes acquire derived authority, while
+incompatible rotate programs remain canonical.
+
 The report variants `execute_batch_with_backend_report` and
 `execute_profile_batch_with_backend_report` preserve those result semantics
 while

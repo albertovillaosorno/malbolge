@@ -349,10 +349,9 @@ machine rather than treating numeric geometry as sufficient authorization.
 
 The CUDA integration now consumes resident geometry from prepared backend
 requests instead of `current_profile()` constants. For every N=10 through 14,
-one homogeneous batch covers QP, EOF input-halt, `uCar_L`, guarded `p p`, and
-crazy followed by byte-input recovery, with complete state compared against safe
-Rust. A live RTX 4060 check required all five widths to return through the
-product process transport path and passed.
+one homogeneous batch covers QP, EOF input-halt, `uCar_L`, guarded `p p`, crazy
+followed by byte-input recovery, and projection-verified rotate, with complete
+state compared against safe Rust.
 
 The MBPRN2 byte schema and synchronous process transport are now product Rust
 boundaries. An application bridge projects prepared requests to the pure
@@ -391,6 +390,21 @@ The checked-in `ubO`/EOF capsule remains N14 even when adaptive selection is
 enabled. A temporary RTX 4060 check completed QP/N10 through the same CLI,
 process transport, MBPRN2, and CUDA adapter path.
 
+A conservative rotate theorem is now product-owned. `(&O` decodes `j * v`; the
+initial jump fixes D=41 exactly, and the rotate target lies outside the loaded
+source. The verifier independently reconstructs the candidate and canonical
+initial words at D, checks ordinary memory projection, computes both width-
+specific rotates, and requires the canonical rotate to project before permitting
+the physical write. This succeeds for every reviewed N=10 through 14 and the
+minimum selector chooses N10.
+
+Rotate is not treated as monotone. The dedicated minimum selector may continue
+after `JumpRotateProjection` (or capacity) but still fails immediately on
+lexical, decode, or geometry errors. `(CB$M` decodes `j o o * v` and is a
+retained
+negative: N10 through N13 fail rotate projection and only N14 admits, so the
+composite adaptive selector returns no narrower token.
+
 Wire homogeneity is intentionally weaker than verifier authority equality. `uP`
 and `ubO` share the same N=10 resident shape and can execute in one CUDA worker
 batch, while each returned checkpoint is reconstructed with its original opaque
@@ -399,11 +413,11 @@ kernel shape cannot collapse `Any` into `MinimumLength(1)` or vice versa.
 
 The derived CUDA differential is no longer limited to immediate halt. One N=10
 worker batch now covers initial halt, no-op, EOF input, byte I/O, two-byte
-straight-line I/O, repeated jump, guarded crazy, and crazy followed by
-byte-input
-recovery. Complete memory and state equality against safe Rust remains the
-oracle;
-this is semantic correctness evidence rather than performance evidence.
+straight-line I/O, repeated jump, guarded crazy, crazy followed by byte-input
+recovery, and rotate. Complete memory and state equality against safe Rust
+remains the oracle; this is semantic correctness evidence rather than
+performance
+evidence.
 
 `uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
 shows why projected D is insufficient for writes: both crazy transitions

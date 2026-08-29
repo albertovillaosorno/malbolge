@@ -54,11 +54,13 @@ use malbolge::{
     verify_differential_candidates, verify_initial_halt_profile_width,
     verify_input_then_halt_profile_width, verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
+    verify_jump_rotate_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
     verify_minimum_jump_crazy_halt_profile_width,
     verify_minimum_jump_crazy_io_halt_profile_width,
+    verify_minimum_jump_rotate_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
     verify_minimum_repeated_jump_data_profile_width,
     verify_minimum_straight_line_io_profile_width,
@@ -273,12 +275,16 @@ fn reviewed_width_cuda_requests(
     let recovered = normalize_result(verify_jump_crazy_io_halt_profile_width(
         profile, b"(=<r_L", word_trits,
     ))?;
+    let rotate = normalize_result(verify_jump_rotate_halt_profile_width(
+        profile, b"(&O", word_trits,
+    ))?;
     Ok(vec![
         verified_profile_request(&initial, Vec::new(), 1)?,
         verified_profile_request(&input, Vec::new(), 2)?,
         verified_profile_request(&straight, vec![0xa5, 0x3c], 6)?,
         verified_profile_request(&crazy, Vec::new(), 4)?,
         verified_profile_request(&recovered, vec![0xa5], 6)?,
+        verified_profile_request(&rotate, Vec::new(), 3)?,
     ])
 }
 
@@ -393,6 +399,9 @@ fn verified_n10_cuda_requests() -> TestResult<Vec<ProfileBatchRequest>> {
     let recovered = normalize_result(
         verify_minimum_jump_crazy_io_halt_profile_width(profile, b"(=<r_L"),
     )?;
+    let rotate = normalize_result(
+        verify_minimum_jump_rotate_halt_profile_width(profile, b"(&O"),
+    )?;
     Ok(vec![
         verified_profile_request(&initial, Vec::new(), 1)?,
         verified_profile_request(&noop, Vec::new(), 2)?,
@@ -402,6 +411,7 @@ fn verified_n10_cuda_requests() -> TestResult<Vec<ProfileBatchRequest>> {
         verified_profile_request(&jumps, Vec::new(), 4)?,
         verified_profile_request(&crazy, Vec::new(), 4)?,
         verified_profile_request(&recovered, vec![0xa5], 6)?,
+        verified_profile_request(&rotate, Vec::new(), 3)?,
     ])
 }
 
