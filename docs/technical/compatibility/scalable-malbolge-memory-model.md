@@ -149,6 +149,12 @@ requires. The same value contract now provides modular successor and small
 residue without constructing `3^N`, which are the value operations needed by
 wide C/D pointer movement and instruction/output projection.
 
+The per-trit memory extension recurrence has only nine pair states; exhaustive
+product evidence
+shows the pair state after transition 1 equals transition 7 for every pair.
+Thus generated suffix cells can be selected by positive distance modulo 6 rather
+than walking from the source to a huge address.
+
 This is value-level scalability, not yet a scalable memory image.
 `ProfileMachine`
 and resident/native execution still use `u32` words and addresses through N20;

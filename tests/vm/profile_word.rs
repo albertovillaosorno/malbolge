@@ -185,6 +185,30 @@ fn wide_successor_oracle(
     from_trits(&digits)
 }
 
+fn wide_recurrence_oracle(
+    older: &ChunkedProfileWord,
+    previous: &ChunkedProfileWord,
+    transitions: usize,
+) -> TestResult<ChunkedProfileWord> {
+    wide_recurrence_state_oracle(older, previous, transitions)
+        .map(|(_older, previous)| previous)
+}
+
+fn wide_recurrence_state_oracle(
+    older: &ChunkedProfileWord,
+    previous: &ChunkedProfileWord,
+    transitions: usize,
+) -> TestResult<(ChunkedProfileWord, ChunkedProfileWord)> {
+    let mut older_state = older.clone();
+    let mut previous_state = previous.clone();
+    for _transition in 0..transitions {
+        let next = wide_crazy_oracle(&older_state, &previous_state)?;
+        older_state = previous_state;
+        previous_state = next;
+    }
+    Ok((older_state, previous_state))
+}
+
 fn wide_rotate_oracle(
     word: &ChunkedProfileWord,
 ) -> TestResult<ChunkedProfileWord> {
@@ -384,6 +408,69 @@ fn chunked_profile_word_wide_rotate_matches_trit_oracle() -> TestResult {
 }
 
 #[test]
+fn chunked_profile_word_recurrence_phase_matches_all_trit_states() -> TestResult
+{
+    for older_trit in 0..3u64 {
+        for previous_trit in 0..3u64 {
+            let older = ChunkedProfileWord::from_u64(1, older_trit)
+                .map_err(|error| error.to_string())?;
+            let previous = ChunkedProfileWord::from_u64(1, previous_trit)
+                .map_err(|error| error.to_string())?;
+            for transitions in 1..=24usize {
+                let phase = u8::try_from(transitions.rem_euclid(6))
+                    .map_err(|error| format!("recurrence phase: {error}"))?;
+                check_equal(
+                    &ChunkedProfileWord::recurrence_cell(
+                        &older, &previous, phase,
+                    )
+                    .map_err(|error| error.to_string())?,
+                    &wide_recurrence_oracle(&older, &previous, transitions)?,
+                    "mod-six recurrence equals trit oracle",
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn chunked_profile_word_recurrence_phase_matches_wide_words() -> TestResult {
+    for trits in [10usize, 15, 21, 31, 41, 100] {
+        let older = patterned_word(trits, 0)?;
+        let previous = patterned_word(trits, 2)?;
+        for transitions in [1usize, 2, 3, 5, 6, 7, 12, 19, 61] {
+            let phase = u8::try_from(transitions.rem_euclid(6))
+                .map_err(|error| format!("wide recurrence phase: {error}"))?;
+            check_equal(
+                &ChunkedProfileWord::recurrence_cell(&older, &previous, phase)
+                    .map_err(|error| error.to_string())?,
+                &wide_recurrence_oracle(&older, &previous, transitions)?,
+                "wide mod-six recurrence equals trit oracle",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn chunked_profile_word_recurrence_state_is_six_periodic() -> TestResult {
+    for older_trit in 0..3u64 {
+        for previous_trit in 0..3u64 {
+            let older = ChunkedProfileWord::from_u64(1, older_trit)
+                .map_err(|error| error.to_string())?;
+            let previous = ChunkedProfileWord::from_u64(1, previous_trit)
+                .map_err(|error| error.to_string())?;
+            check_equal(
+                &wide_recurrence_state_oracle(&older, &previous, 1)?,
+                &wide_recurrence_state_oracle(&older, &previous, 7)?,
+                "trit-pair state repeats after six steps",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn chunked_profile_word_residue_matches_wide_trit_oracle() -> TestResult {
     for trits in [10usize, 15, 20, 21, 31, 41, 100] {
         for seed in 0..3usize {
@@ -456,6 +543,13 @@ fn chunked_profile_word_u32_bridge_is_value_exact() -> TestResult {
 
 #[test]
 fn chunked_profile_word_rejects_invalid_shapes() -> TestResult {
+    let n10_zero =
+        ChunkedProfileWord::zero(10).map_err(|error| error.to_string())?;
+    check_equal(
+        &ChunkedProfileWord::recurrence_cell(&n10_zero, &n10_zero, 6),
+        &Err(ChunkedProfileWordError::RecurrencePhase { phase: 6 }),
+        "recurrence phase is reduced modulo six by the caller",
+    )?;
     check_equal(
         &ChunkedProfileWord::eof(0),
         &Err(ChunkedProfileWordError::ZeroWidth),

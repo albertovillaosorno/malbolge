@@ -14,7 +14,8 @@
 //   - Define memory addressing, profile admission, or a fixed maximum width.
 // - Allows:
 //   - Inputs: nonzero ternary widths, base-243 chunks, and bounded integers.
-//   - Outputs: validated words, crazy, rotate, projection, and byte projection.
+//   - Outputs: validated words, crazy, recurrence, rotate, residue, and
+//     successor.
 //   - Side effects: process-local allocation only.
 // - Split-When:
 //   - Split when another chunk encoding requires independent arithmetic rules.
@@ -76,6 +77,11 @@ pub enum ChunkedProfileWordError {
         /// Requested projected width in trits.
         target_trits: usize,
     },
+    /// Positive recurrence-step residue is outside modulo-six form.
+    RecurrencePhase {
+        /// Observed positive-step residue; valid values are zero through five.
+        phase: u8,
+    },
     /// A bounded integer is outside the requested ternary width.
     ValueOutsideWidth {
         /// Requested width in trits.
@@ -114,6 +120,9 @@ impl Display for ChunkedProfileWordError {
                 f,
                 "projection source={source_trits} target={target_trits}"
             ),
+            Self::RecurrencePhase { phase } => {
+                write!(f, "recurrence phase {phase} is outside modulo six")
+            },
             Self::ValueOutsideWidth { trits, value } => {
                 write!(f, "value {value} exceeds {trits}-trit word domain")
             },
@@ -301,6 +310,50 @@ impl ChunkedProfileWord {
             chunks: chunks.into_boxed_slice(),
             trits: target_trits,
         })
+    }
+
+    /// Returns a positive-step crazy-recurrence cell from two seed words.
+    ///
+    /// `positive_steps_mod_six` is the positive transition count modulo six;
+    /// zero represents any positive multiple of six. Every ternary seed-pair
+    /// state is periodic with period dividing six after the first transition,
+    /// so the residue is sufficient for every generated cell after the seeds.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ChunkedProfileWordError::RecurrencePhase`] above phase five,
+    /// or [`ChunkedProfileWordError::WidthMismatch`] for different seed widths.
+    pub fn recurrence_cell(
+        older: &Self,
+        previous: &Self,
+        positive_steps_mod_six: u8,
+    ) -> Result<Self, ChunkedProfileWordError> {
+        if positive_steps_mod_six > 5 {
+            return Err(ChunkedProfileWordError::RecurrencePhase {
+                phase: positive_steps_mod_six,
+            });
+        }
+        if older.trits != previous.trits {
+            return Err(ChunkedProfileWordError::WidthMismatch {
+                accumulator_trits: previous.trits,
+                data_trits: older.trits,
+            });
+        }
+        let transitions = if positive_steps_mod_six == 0 {
+            6
+        } else {
+            positive_steps_mod_six
+        };
+        let mut older_state = older.clone();
+        let mut previous_state = previous.clone();
+        let mut transition = 0u8;
+        while transition < transitions {
+            let next = older_state.crazy(&previous_state)?;
+            older_state = previous_state;
+            previous_state = next;
+            transition = transition.saturating_add(1);
+        }
+        Ok(previous_state)
     }
 
     /// Returns the complete word modulo one nonzero small integer.

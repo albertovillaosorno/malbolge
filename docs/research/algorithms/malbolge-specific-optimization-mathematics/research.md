@@ -143,6 +143,11 @@ oracles cover crazy/rotate through N100. Chunked successor performs exact
 `3^N` wraparound without materializing that modulus, while small-modulus residue
 supports decode modulo 94 and byte output modulo 256 directly from the chunks.
 
+The nine possible ternary recurrence states `(older, previous)` are exhaustively
+checked: after the first transition each lies on a cycle of length 2 or 3, so
+the complete state repeats after six transitions. `recurrence_cell` therefore
+needs only a positive transition count modulo 6, even for an N100 word.
+
 The optional `u32` bridge is value-exact rather than width-based: N21 zero can
 narrow to `u32`, while N21 EOF cannot. The representation does not prove
 scalable memory addressing. Registers,
