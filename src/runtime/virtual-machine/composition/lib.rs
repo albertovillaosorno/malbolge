@@ -78,6 +78,8 @@ mod parallel_port;
 mod profile;
 #[path = "../domain/profile_machine.rs"]
 mod profile_machine;
+#[path = "../contract/profile_resident_wire.rs"]
+mod profile_resident_wire;
 #[path = "../domain/profile_trace.rs"]
 mod profile_trace;
 #[path = "../domain/profile_width.rs"]
@@ -104,6 +106,7 @@ pub use batch::{
     execute_batch_with_backend_report, execute_profile_batch,
     execute_profile_batch_parallel_with, execute_profile_batch_with_backend,
     execute_profile_batch_with_backend_report,
+    profile_backend_completion_from_resident_wire,
 };
 pub use capsule::{
     Capsule, CapsuleBuildError, CapsuleError, build_capsule, parse_capsule,
@@ -207,6 +210,13 @@ pub use profile_machine::{
     ProfileRegisters, decode_profile_instruction, encrypt_profile_cell,
     profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
     profile_pointer_successor, profile_rotate,
+};
+pub use profile_resident_wire::{
+    PROFILE_RESIDENT_WIRE_MAGIC, ProfileResidentWireError,
+    ProfileResidentWireGeometry, ProfileResidentWireRequest,
+    ProfileResidentWireResponse, ProfileResidentWireResult,
+    ProfileResidentWireTermination, decode_profile_resident_response,
+    encode_profile_resident_batch,
 };
 pub use profile_trace::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,

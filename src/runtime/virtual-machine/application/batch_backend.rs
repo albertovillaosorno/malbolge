@@ -40,7 +40,19 @@ use super::{
 };
 use crate::execution::ExecutionMachine;
 use crate::machine::{MachineState, RunOutcome, Termination};
-use crate::profile_machine::{ProfileMachine, ProfileMachineState};
+use crate::profile_machine::{
+    ProfileMachine, ProfileMachineIoState, ProfileMachineState,
+    ProfileRegisters,
+};
+use crate::profile_resident_wire::{
+    ProfileResidentWireGeometry, ProfileResidentWireRequest,
+    ProfileResidentWireResult, ProfileResidentWireTermination,
+};
+
+const RESIDENT_ERROR_NONE: u32 = 0;
+const RESIDENT_RUN_BUDGET_EXHAUSTED: u32 = 0;
+const RESIDENT_RUN_ERROR: u32 = 2;
+const RESIDENT_RUN_TERMINATED: u32 = 1;
 
 /// Actual execution origin recorded for one product-routed batch item.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -188,6 +200,41 @@ impl<'machine> ProfileBatchBackendRequest<'machine> {
         self.machine.profile().output_instruction()
     }
 
+    /// Projects the admitted machine to transport-neutral resident wire fields.
+    #[must_use]
+    pub fn resident_wire_request(
+        &self,
+    ) -> ProfileResidentWireRequest<'machine> {
+        let registers = self.machine.registers();
+        ProfileResidentWireRequest {
+            accumulator: registers.accumulator,
+            code_pointer: registers.code_pointer,
+            data_pointer: registers.data_pointer,
+            geometry: ProfileResidentWireGeometry {
+                eof_word: self.eof_word(),
+                input_instruction: self.input_instruction(),
+                memory_words: self.memory_words(),
+                output_instruction: self.output_instruction(),
+                word_modulus: self.word_modulus(),
+                word_trits: self.word_trits(),
+            },
+            input: self.machine.input(),
+            input_consumed: self.machine.input_consumed(),
+            memory: self.machine.memory(),
+            output: self.machine.output(),
+            step_budget: self.step_budget,
+            termination: match self.machine.termination() {
+                None => ProfileResidentWireTermination::None,
+                Some(Termination::HaltInstruction) => {
+                    ProfileResidentWireTermination::HaltInstruction
+                },
+                Some(Termination::NonGraphicalCell) => {
+                    ProfileResidentWireTermination::NonGraphicalCell
+                },
+            },
+        }
+    }
+
     /// Returns the exact semantic step budget for this request.
     #[must_use]
     pub const fn step_budget(&self) -> usize {
@@ -308,6 +355,59 @@ pub fn execute_profile_batch_with_backend_report(
         valid_profile_attempts(backend.execute(&views), views.len())
     };
     collect_profile(slots, attempts)
+}
+
+/// Converts one decoded resident wire snapshot into a validated completion.
+///
+/// The wire carries numeric resident state only. Hidden verifier authority is
+/// restored exclusively from `request`, and malformed/error snapshots defer to
+/// the caller's safe-Rust fallback by returning `None`.
+#[must_use]
+pub fn profile_backend_completion_from_resident_wire(
+    request: &ProfileBatchBackendRequest<'_>,
+    result: ProfileResidentWireResult,
+) -> Option<ProfileBatchBackendCompletion> {
+    if result.status == RESIDENT_RUN_ERROR
+        || result.error != RESIDENT_ERROR_NONE
+    {
+        return None;
+    }
+    let termination = match result.termination {
+        0 => None,
+        1 => Some(Termination::HaltInstruction),
+        2 => Some(Termination::NonGraphicalCell),
+        _other => return None,
+    };
+    let steps = usize::try_from(result.steps).ok()?;
+    let outcome = match result.status {
+        RESIDENT_RUN_BUDGET_EXHAUSTED if termination.is_none() => {
+            RunOutcome::BudgetExhausted { steps }
+        },
+        RESIDENT_RUN_TERMINATED => RunOutcome::Terminated {
+            reason: termination?,
+            steps,
+        },
+        _other => return None,
+    };
+    let io = ProfileMachineIoState::new(
+        request.machine().input().to_vec(),
+        usize::try_from(result.input_consumed).ok()?,
+        result.output,
+        termination,
+    )
+    .ok()?;
+    let state = ProfileMachineState::new_with_geometry(
+        request.machine().geometry(),
+        result.memory,
+        ProfileRegisters {
+            accumulator: result.accumulator,
+            code_pointer: result.code_pointer,
+            data_pointer: result.data_pointer,
+        },
+        io,
+    )
+    .ok()?;
+    Some(ProfileBatchBackendCompletion::new(state, outcome))
 }
 
 fn prepare_classic(requests: Vec<BatchRequest>) -> Vec<ClassicSlot> {

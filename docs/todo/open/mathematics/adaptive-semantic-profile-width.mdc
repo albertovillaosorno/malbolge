@@ -365,6 +365,16 @@ separate costs; resource evidence must measure those costs directly.
   Mixed N=10/N=14 batches fail closed before worker encoding. This remains
   integration-test correctness evidence, not a production adapter or performance
   claim.
+- MBPRN2 framing is no longer test-owned. The VM contract now exposes a pure
+  resident wire geometry/request representation plus strict batch encoder and
+  response decoder. `ProfileBatchBackendRequest::resident_wire_request` projects
+  only numeric resident shape/state from the already admitted machine. Hidden
+  verifier authority is never serialized.
+- Product `profile_backend_completion_from_resident_wire` reconstructs returned
+  state with the original opaque geometry token and rejects malformed status,
+  error, termination, I/O, memory, or register data to safe-Rust fallback.
+  CUDA/Python process spawn remains adapter-owned rather than entering the VM
+  contract.
 - Tiered interpreter handoff remains canonical-only until its continuation
   schema carries verified execution geometry explicitly. A derived N=10
   checkpoint with the same canonical profile, observation, and live-in surface

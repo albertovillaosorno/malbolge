@@ -354,6 +354,14 @@ For every N=10 through 14, one homogeneous batch now covers QP, EOF input-halt,
 `uCar_L`, guarded `p p`, and crazy followed by byte-input recovery, with
 complete state compared against safe Rust.
 
+The MBPRN2 byte schema is now represented by a product Rust contract. Prepared
+profile requests project to a transport-neutral numeric wire view, homogeneous
+batches are encoded centrally, and response framing is decoded fail-closed. The
+contract intentionally omits hidden verifier authority. Product completion
+conversion reattaches the original admitted request token and returns no
+completion for malformed status/error/termination or invalid reconstructed
+state, leaving safe Rust as the semantic fallback.
+
 Mixed resident widths are rejected before worker encoding. This does not make
 the test adapter a production runtime backend or establish throughput.
 

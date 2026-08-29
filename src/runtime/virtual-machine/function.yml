@@ -257,6 +257,11 @@ parts:
     kind: domain
     language: rust
     responsibility: Independently admit source-bound derived profile geometry.
+  - id: part-0045
+    path: contract/profile_resident_wire.rs
+    kind: contract
+    language: rust
+    responsibility: Define transport-neutral resident profile batch framing.
 projects: []
 tests: []
 graph:

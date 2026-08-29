@@ -35,21 +35,24 @@
 
 //! Full-state admitted-profile differential checks for resident CUDA execution.
 
-use std::io::{BufReader, Cursor, Read, Write as _};
+use std::io::{Read as _, Write as _};
 use std::iter::repeat_n;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
 use malbolge::{
-    DifferentialCandidate, ProfileBatchBackendCompletion,
-    ProfileBatchBackendRequest, ProfileBatchExecutionBackend,
-    ProfileBatchRequest, ProfileBatchResult, ProfileMachine,
-    ProfileMachineError, ProfileMachineIoState, ProfileMachineState,
-    ProfileRegisters, RunOutcome, StepOutcome, Termination,
-    VerifiedProfileExecutionGeometry, current_profile, execute_profile_batch,
-    execute_profile_batch_with_backend_report, verify_differential_candidates,
-    verify_initial_halt_profile_width, verify_input_then_halt_profile_width,
-    verify_jump_crazy_halt_profile_width,
+    DifferentialCandidate, PROFILE_RESIDENT_WIRE_MAGIC,
+    ProfileBatchBackendCompletion, ProfileBatchBackendRequest,
+    ProfileBatchExecutionBackend, ProfileBatchRequest, ProfileBatchResult,
+    ProfileMachine, ProfileMachineError, ProfileRegisters,
+    ProfileResidentWireGeometry, ProfileResidentWireResponse,
+    ProfileResidentWireResult, StepOutcome, Termination,
+    VerifiedProfileExecutionGeometry, current_profile,
+    decode_profile_resident_response, encode_profile_resident_batch,
+    execute_profile_batch, execute_profile_batch_with_backend_report,
+    profile_backend_completion_from_resident_wire,
+    verify_differential_candidates, verify_initial_halt_profile_width,
+    verify_input_then_halt_profile_width, verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
@@ -67,9 +70,6 @@ use crate::{
     normalize_result, validation_python,
 };
 
-const MAGIC: &[u8; 8] = b"MBPRN2\0\0";
-const RESPONSE_RESULTS: u32 = 0;
-const RESPONSE_UNAVAILABLE: u32 = 1;
 const RUN_BUDGET_EXHAUSTED: u32 = 0;
 const RUN_TERMINATED: u32 = 1;
 const RUN_ERROR: u32 = 2;
@@ -83,54 +83,9 @@ const TEST_XLAT1: &[u8; TABLE_LEN] =
     b"+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA\"lI\
 .v%{gJh4G\\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha";
 
-type EncodedProfileProductBatch = (ResidentWireGeometry, Vec<u8>);
+type EncodedProfileProductBatch = (ProfileResidentWireGeometry, Vec<u8>);
 type ProductBackendBatch = Option<Vec<Option<ProfileBatchBackendCompletion>>>;
 type WorkerBatch = Option<Vec<RunSnapshot>>;
-
-struct BinaryReader<Reader> {
-    reader: Reader,
-}
-
-impl<Reader: Read> BinaryReader<Reader> {
-    fn finish(&mut self) -> TestResult {
-        let mut trailing = [0u8; 1];
-        match self.reader.read(&mut trailing) {
-            Ok(0) => Ok(()),
-            Ok(_count) => {
-                Err(String::from("profile CUDA trailing response bytes"))
-            },
-            Err(error) => Err(format!("profile CUDA response finish: {error}")),
-        }
-    }
-
-    const fn new(reader: Reader) -> Self {
-        Self { reader }
-    }
-
-    fn take(&mut self, count: usize) -> TestResult<Vec<u8>> {
-        let mut value = vec![0u8; count];
-        self.reader.read_exact(&mut value).map_err(|error| {
-            format!("truncated profile CUDA response: {error}")
-        })?;
-        Ok(value)
-    }
-
-    fn u32(&mut self) -> TestResult<u32> {
-        let mut bytes = [0u8; size_of::<u32>()];
-        self.reader
-            .read_exact(&mut bytes)
-            .map_err(|error| format!("truncated profile CUDA u32: {error}"))?;
-        Ok(u32::from_le_bytes(bytes))
-    }
-
-    fn words(&mut self, count: usize) -> TestResult<Vec<u32>> {
-        let mut words = Vec::with_capacity(count);
-        for _word in 0..count {
-            words.push(self.u32()?);
-        }
-        Ok(words)
-    }
-}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct OracleExecution {
@@ -147,60 +102,7 @@ struct RunFixture {
     step_budget: u32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct RunSnapshot {
-    accumulator: u32,
-    code_pointer: u32,
-    data_pointer: u32,
-    error: u32,
-    error_pointer: u32,
-    error_value: u32,
-    input_consumed: u32,
-    memory: Vec<u32>,
-    output: Vec<u8>,
-    status: u32,
-    steps: u32,
-    termination: u32,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct ResidentWireGeometry {
-    eof_word: u32,
-    input_instruction: u32,
-    memory_words: u32,
-    output_instruction: u32,
-    word_modulus: u32,
-    word_trits: u32,
-}
-
-impl ResidentWireGeometry {
-    fn from_request(request: &ProfileBatchBackendRequest<'_>) -> Self {
-        Self {
-            eof_word: request.eof_word(),
-            input_instruction: u32::from(request.input_instruction()),
-            memory_words: request.memory_words(),
-            output_instruction: u32::from(request.output_instruction()),
-            word_modulus: request.word_modulus(),
-            word_trits: u32::from(request.word_trits()),
-        }
-    }
-
-    fn memory_len(self) -> TestResult<usize> {
-        usize::try_from(self.memory_words)
-            .map_err(|error| format!("profile resident memory words: {error}"))
-    }
-
-    const fn wire_values(self) -> [u32; 6] {
-        [
-            self.eof_word,
-            self.input_instruction,
-            self.memory_words,
-            self.output_instruction,
-            self.word_modulus,
-            self.word_trits,
-        ]
-    }
-}
+type RunSnapshot = ProfileResidentWireResult;
 
 struct CudaProfileProductBackend {
     error: Option<String>,
@@ -226,14 +128,13 @@ impl ProfileBatchExecutionBackend for ProfileProductEncodingProbe {
         &mut self,
         requests: &[ProfileBatchBackendRequest<'_>],
     ) -> Option<Vec<Option<ProfileBatchBackendCompletion>>> {
-        match homogeneous_product_geometry(requests).and_then(|geometry| {
-            geometry
-                .map(|value| {
-                    encode_profile_product_batch(requests, value)
-                        .map(|bytes| (value, bytes))
-                })
-                .transpose()
-        }) {
+        match homogeneous_product_geometry(requests)
+            .map(|value| {
+                encode_profile_product_batch(requests, value)
+                    .map(|bytes| (value, bytes))
+            })
+            .transpose()
+        {
             Ok(encoded) => self.encoded = encoded,
             Err(error) => self.error = Some(error),
         }
@@ -328,30 +229,19 @@ fn check_derived_profile_product_encoding(
         .ok_or_else(|| String::from("derived profile encoding missing"))?;
     check_equal(
         &geometry,
-        &ResidentWireGeometry {
+        &ProfileResidentWireGeometry {
             eof_word: memory_words.saturating_sub(1),
-            input_instruction: u32::from(b'/'),
+            input_instruction: b'/',
             memory_words,
-            output_instruction: u32::from(b'<'),
+            output_instruction: b'<',
             word_modulus: memory_words,
-            word_trits: u32::from(word_trits),
+            word_trits,
         },
         "derived profile wire geometry",
     )?;
-    let mut reader = BinaryReader::new(Cursor::new(encoded));
-    check_equal(
-        &reader.take(MAGIC.len())?.as_slice(),
-        &MAGIC.as_slice(),
-        "derived profile wire magic",
-    )?;
-    for expected in geometry.wire_values() {
-        check_equal(
-            &reader.u32()?,
-            &expected,
-            "derived profile wire geometry field",
-        )?;
+    if !encoded.starts_with(&PROFILE_RESIDENT_WIRE_MAGIC) {
+        return Err(String::from("derived profile wire magic mismatch"));
     }
-    check_equal(&reader.u32()?, &1u32, "derived profile wire count")?;
     check_equal(
         &report.fallback_count(),
         &1usize,
@@ -623,7 +513,7 @@ fn try_cuda_profile_product_batch(
     {
         return Ok(Some(repeat_n(None, requests.len()).collect()));
     }
-    let Some(geometry) = homogeneous_product_geometry(requests)? else {
+    let Some(geometry) = homogeneous_product_geometry(requests) else {
         return Ok(Some(repeat_n(None, requests.len()).collect()));
     };
     let encoded = encode_profile_product_batch(requests, geometry)?;
@@ -640,7 +530,9 @@ fn try_cuda_profile_product_batch(
         .iter()
         .zip(snapshots)
         .map(|(request, snapshot)| {
-            profile_product_completion(request, snapshot)
+            Ok(profile_backend_completion_from_resident_wire(
+                request, snapshot,
+            ))
         })
         .collect::<TestResult<Vec<_>>>()
         .map(Some)
@@ -648,137 +540,28 @@ fn try_cuda_profile_product_batch(
 
 fn homogeneous_product_geometry(
     requests: &[ProfileBatchBackendRequest<'_>],
-) -> TestResult<Option<ResidentWireGeometry>> {
-    let Some(first) = requests.first() else {
-        return Ok(None);
-    };
-    let geometry = ResidentWireGeometry::from_request(first);
+) -> Option<ProfileResidentWireGeometry> {
+    let first = requests.first()?;
+    let geometry = first.resident_wire_request().geometry;
     if requests
         .iter()
-        .any(|request| ResidentWireGeometry::from_request(request) != geometry)
+        .any(|request| request.resident_wire_request().geometry != geometry)
     {
-        return Ok(None);
+        return None;
     }
-    let _memory_len = geometry.memory_len()?;
-    Ok(Some(geometry))
+    Some(geometry)
 }
 
 fn encode_profile_product_batch(
     requests: &[ProfileBatchBackendRequest<'_>],
-    geometry: ResidentWireGeometry,
+    _geometry: ProfileResidentWireGeometry,
 ) -> TestResult<Vec<u8>> {
-    let memory_words = geometry.memory_len()?;
-    let capacity = requests
-        .len()
-        .saturating_mul(memory_words.saturating_mul(size_of::<u32>()))
-        .saturating_add(1024);
-    let mut bytes = Vec::with_capacity(capacity);
-    bytes.extend_from_slice(MAGIC);
-    for value in geometry
-        .wire_values()
-        .into_iter()
-        .chain([usize_u32(requests.len())?])
-    {
-        push_u32(&mut bytes, value);
-    }
-    for request in requests {
-        encode_profile_product_request(&mut bytes, request)?;
-    }
-    Ok(bytes)
-}
-
-fn encode_profile_product_request(
-    bytes: &mut Vec<u8>,
-    request: &ProfileBatchBackendRequest<'_>,
-) -> TestResult {
-    let machine = request.machine();
-    let registers = machine.registers();
-    for value in [
-        registers.accumulator,
-        registers.code_pointer,
-        registers.data_pointer,
-        usize_u32(machine.input().len())?,
-        usize_u32(machine.input_consumed())?,
-        usize_u32(machine.output().len())?,
-        usize_u32(request.step_budget())?,
-        termination_code(machine.termination()),
-    ] {
-        push_u32(bytes, value);
-    }
-    for value in machine.memory() {
-        push_u32(bytes, *value);
-    }
-    bytes.extend_from_slice(machine.input());
-    bytes.extend_from_slice(machine.output());
-    Ok(())
-}
-
-fn profile_product_completion(
-    request: &ProfileBatchBackendRequest<'_>,
-    snapshot: RunSnapshot,
-) -> TestResult<Option<ProfileBatchBackendCompletion>> {
-    if snapshot.status == RUN_ERROR {
-        return Ok(None);
-    }
-    check_equal(
-        &snapshot.error,
-        &ERROR_NONE,
-        "profile product completion error code",
-    )?;
-    let termination = decode_product_termination(snapshot.termination)?;
-    let outcome =
-        decode_product_outcome(snapshot.status, snapshot.steps, termination)?;
-    let io = normalize_result(ProfileMachineIoState::new(
-        request.machine().input().to_vec(),
-        usize::try_from(snapshot.input_consumed).map_err(|error| {
-            format!("profile product input cursor: {error}")
-        })?,
-        snapshot.output,
-        termination,
-    ))?;
-    let state = normalize_result(ProfileMachineState::new_with_geometry(
-        request.machine().geometry(),
-        snapshot.memory,
-        ProfileRegisters {
-            accumulator: snapshot.accumulator,
-            code_pointer: snapshot.code_pointer,
-            data_pointer: snapshot.data_pointer,
-        },
-        io,
-    ))?;
-    Ok(Some(ProfileBatchBackendCompletion::new(state, outcome)))
-}
-
-fn decode_product_outcome(
-    status: u32,
-    steps: u32,
-    termination: Option<Termination>,
-) -> TestResult<RunOutcome> {
-    let step_count = usize::try_from(steps)
-        .map_err(|error| format!("profile product step count: {error}"))?;
-    match status {
-        RUN_BUDGET_EXHAUSTED => {
-            Ok(RunOutcome::BudgetExhausted { steps: step_count })
-        },
-        RUN_TERMINATED => termination
-            .map(|reason| RunOutcome::Terminated {
-                reason,
-                steps: step_count,
-            })
-            .ok_or_else(|| {
-                String::from("profile product terminated without reason")
-            }),
-        other => Err(format!("profile product unsupported status {other}")),
-    }
-}
-
-fn decode_product_termination(code: u32) -> TestResult<Option<Termination>> {
-    match code {
-        0 => Ok(None),
-        1 => Ok(Some(Termination::HaltInstruction)),
-        2 => Ok(Some(Termination::NonGraphicalCell)),
-        other => Err(format!("profile product termination code {other}")),
-    }
+    let wire_requests = requests
+        .iter()
+        .map(ProfileBatchBackendRequest::resident_wire_request)
+        .collect::<Vec<_>>();
+    encode_profile_resident_batch(&wire_requests)
+        .map_err(|error| format!("profile product wire encoding: {error}"))
 }
 
 fn compare_profile_product_batch(
@@ -1008,7 +791,7 @@ fn encode_batch(fixtures: &[RunFixture]) -> TestResult<Vec<u8>> {
         )
         .saturating_add(1024);
     let mut bytes = Vec::with_capacity(capacity);
-    bytes.extend_from_slice(MAGIC);
+    bytes.extend_from_slice(&PROFILE_RESIDENT_WIRE_MAGIC);
     for value in [
         profile.eof_word(),
         u32::from(profile.input_instruction()),
@@ -1073,13 +856,17 @@ fn run_cuda_worker(
         .map_err(|error| format!("profile CUDA worker stdin: {error}"))?;
     drop(request);
     drop(stdin);
-    let stdout = child.stdout.take().ok_or_else(|| {
+    let mut stdout = child.stdout.take().ok_or_else(|| {
         String::from("profile CUDA worker stdout unavailable")
     })?;
     let mut stderr = child.stderr.take().ok_or_else(|| {
         String::from("profile CUDA worker stderr unavailable")
     })?;
-    let parsed = parse_worker_output(BufReader::new(stdout), memory_words);
+    let mut response = Vec::new();
+    let _: usize = stdout
+        .read_to_end(&mut response)
+        .map_err(|error| format!("profile CUDA worker stdout: {error}"))?;
+    let parsed = parse_worker_output(&response, memory_words);
     let status = child
         .wait()
         .map_err(|error| format!("profile CUDA worker wait: {error}"))?;
@@ -1096,78 +883,16 @@ fn run_cuda_worker(
     parsed
 }
 
-fn parse_worker_output<Reader>(
-    stream: Reader,
+fn parse_worker_output(
+    bytes: &[u8],
     memory_words: u32,
-) -> TestResult<WorkerBatch>
-where
-    Reader: Read,
-{
-    let mut reader = BinaryReader::new(stream);
-    let magic = reader.take(MAGIC.len())?;
-    check_equal(
-        &magic.as_slice(),
-        &MAGIC.as_slice(),
-        "profile CUDA response magic",
-    )?;
-    let kind = reader.u32()?;
-    let count = usize::try_from(reader.u32()?)
-        .map_err(|_error| String::from("profile CUDA response count"))?;
-    if kind == RESPONSE_UNAVAILABLE {
-        check_equal(
-            &count,
-            &0usize,
-            "profile CUDA unavailable response count",
-        )?;
-        reader.finish()?;
-        return Ok(None);
+) -> TestResult<WorkerBatch> {
+    match decode_profile_resident_response(bytes, memory_words)
+        .map_err(|error| format!("profile CUDA response: {error}"))?
+    {
+        ProfileResidentWireResponse::Results(results) => Ok(Some(results)),
+        ProfileResidentWireResponse::Unavailable => Ok(None),
     }
-    check_equal(&kind, &RESPONSE_RESULTS, "profile CUDA response kind")?;
-    let memory_len = usize::try_from(memory_words)
-        .map_err(|error| format!("profile response memory words: {error}"))?;
-    let mut results = Vec::with_capacity(count);
-    for _item in 0..count {
-        results.push(parse_result(&mut reader, memory_len)?);
-    }
-    reader.finish()?;
-    Ok(Some(results))
-}
-
-fn parse_result<Reader>(
-    reader: &mut BinaryReader<Reader>,
-    memory_words: usize,
-) -> TestResult<RunSnapshot>
-where
-    Reader: Read,
-{
-    let status = reader.u32()?;
-    let error = reader.u32()?;
-    let accumulator = reader.u32()?;
-    let code_pointer = reader.u32()?;
-    let data_pointer = reader.u32()?;
-    let input_consumed = reader.u32()?;
-    let output_len = usize::try_from(reader.u32()?)
-        .map_err(|_error| String::from("profile output length"))?;
-    let termination = reader.u32()?;
-    let error_pointer = reader.u32()?;
-    let error_value = reader.u32()?;
-    let steps = reader.u32()?;
-    let memory = reader.words(memory_words)?;
-    let output = reader.take(output_len)?;
-    Ok(RunSnapshot {
-        accumulator,
-        code_pointer,
-        data_pointer,
-        error,
-        error_pointer,
-        error_value,
-        input_consumed,
-        memory,
-        output,
-        status,
-        steps,
-        termination,
-    })
 }
 
 fn compare_batches(

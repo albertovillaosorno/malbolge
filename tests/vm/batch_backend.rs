@@ -40,10 +40,12 @@ use malbolge::{
     ExecutionMode, MachineIoState, MachineState, MachineStateError,
     ProfileBatchBackendCompletion, ProfileBatchBackendRequest,
     ProfileBatchExecutionBackend, ProfileBatchRequest, ProfileBatchResult,
-    ProfileMachine, ProfileMachineError, ProfileMachineState, RunOutcome,
-    current_profile, execute_batch, execute_batch_with_backend_report,
-    execute_profile_batch, execute_profile_batch_with_backend,
+    ProfileMachine, ProfileMachineError, ProfileMachineState,
+    ProfileResidentWireResult, RunOutcome, current_profile, execute_batch,
+    execute_batch_with_backend_report, execute_profile_batch,
+    execute_profile_batch_with_backend,
     execute_profile_batch_with_backend_report, historical_profile,
+    profile_backend_completion_from_resident_wire,
     verify_initial_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
@@ -96,6 +98,12 @@ struct ProfileResidentGeometryProbe {
     observed: Vec<ProfileResidentGeometrySnapshot>,
 }
 
+struct ProfileResidentWireCompletionBackend {
+    error: u32,
+    status: u32,
+    termination: u32,
+}
+
 impl ProfileBatchExecutionBackend for ProfileResidentGeometryProbe {
     fn execute(
         &mut self,
@@ -125,6 +133,44 @@ impl ProfileBatchExecutionBackend for ProfileCompletionBackend {
             requests
                 .iter()
                 .map(|_request| self.completion.clone())
+                .collect(),
+        )
+    }
+}
+
+impl ProfileBatchExecutionBackend for ProfileResidentWireCompletionBackend {
+    fn execute(
+        &mut self,
+        requests: &[ProfileBatchBackendRequest<'_>],
+    ) -> Option<Vec<Option<ProfileBatchBackendCompletion>>> {
+        Some(
+            requests
+                .iter()
+                .map(|request| {
+                    let machine = request.machine();
+                    let registers = machine.registers();
+                    profile_backend_completion_from_resident_wire(
+                        request,
+                        ProfileResidentWireResult {
+                            accumulator: registers.accumulator,
+                            code_pointer: registers.code_pointer,
+                            data_pointer: registers.data_pointer,
+                            error: self.error,
+                            error_pointer: 0,
+                            error_value: 0,
+                            input_consumed: u32::try_from(
+                                machine.input_consumed(),
+                            )
+                            .ok()
+                            .unwrap_or(u32::MAX),
+                            memory: machine.memory().to_vec(),
+                            output: machine.output().to_vec(),
+                            status: self.status,
+                            steps: 0,
+                            termination: self.termination,
+                        },
+                    )
+                })
                 .collect(),
         )
     }
@@ -651,6 +697,89 @@ fn profile_backend_rejects_same_numeric_geometry_with_different_authority()
         &nonempty_input.geometry(),
         "authority-preserving fallback geometry",
     )
+}
+
+#[test]
+fn profile_resident_wire_completion_preserves_derived_authority() -> TestResult
+{
+    let verified = normalize_result(
+        verify_minimum_initial_halt_profile_width(current_profile(), b"QP"),
+    )?;
+    let machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    let expected_geometry = machine.geometry();
+    let mut backend = ProfileResidentWireCompletionBackend {
+        error: 0,
+        status: 0,
+        termination: 0,
+    };
+    let request = ProfileBatchRequest::from_machine(machine, 0);
+    let (results, report) =
+        execute_profile_batch_with_backend_report(vec![request], &mut backend);
+    check_equal(
+        &report.backend_count(),
+        &1usize,
+        "resident completion backend count",
+    )?;
+    check_equal(
+        &report.fallback_count(),
+        &0usize,
+        "resident completion fallback count",
+    )?;
+    let result = results
+        .first()
+        .and_then(ProfileBatchResult::machine)
+        .ok_or_else(|| String::from("resident completion machine missing"))?;
+    check_equal(
+        &result.geometry(),
+        &expected_geometry,
+        "resident completion derived authority",
+    )
+}
+
+#[test]
+fn profile_resident_wire_completion_rejects_malformed_metadata() -> TestResult {
+    let profile = current_profile();
+    let verified = normalize_result(
+        verify_minimum_initial_halt_profile_width(profile, b"QP"),
+    )?;
+    let machine = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    let request = ProfileBatchRequest::from_machine(machine, 0);
+    let expected = execute_profile_batch(vec![request.clone()]);
+    for (status, error, termination) in
+        [(99u32, 0u32, 0u32), (0, 1, 0), (0, 0, 99), (2, 1, 0)]
+    {
+        let mut backend = ProfileResidentWireCompletionBackend {
+            error,
+            status,
+            termination,
+        };
+        let (observed, report) = execute_profile_batch_with_backend_report(
+            vec![request.clone()],
+            &mut backend,
+        );
+        check_equal(
+            &report.backend_count(),
+            &0usize,
+            "malformed resident completion backend count",
+        )?;
+        check_equal(
+            &report.fallback_count(),
+            &1usize,
+            "malformed resident completion fallback count",
+        )?;
+        check_equal(
+            &profile_snapshots(&observed),
+            &profile_snapshots(&expected),
+            "malformed resident completion fallback state",
+        )?;
+    }
+    Ok(())
 }
 
 #[test]

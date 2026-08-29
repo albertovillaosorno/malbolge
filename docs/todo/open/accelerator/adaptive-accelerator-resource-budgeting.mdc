@@ -93,6 +93,14 @@ example probe points, not supported-range endpoints.
   homogeneous worker encoding and fall back to safe Rust. The Python synthetic
   capacity sweep still uses research `execution_geometry`, and a production
   runtime adapter remains open.
+- The MBPRN2 Rust framing itself is now a product VM contract rather than test
+  helper code. It encodes homogeneous prepared resident requests, rejects mixed
+  geometry before transport, and strictly decodes result/unavailable framing. A
+  product completion converter then rebinds each result to the request's opaque
+  geometry token and rejects malformed metadata/state to safe Rust. The CUDA
+  integration test consumes both product boundaries; only concrete process
+  transport remains test-owned, so the open production-adapter gap is now the
+  transport/lifecycle binding rather than geometry/framing/completion handling.
 - Resident batching groups by wire geometry rather than hidden verifier policy.
   `uP` (`Any`) and `ubO` (`MinimumLength(1)`) therefore share one N=10 CUDA
   batch when available, while response reconstruction reapplies the distinct
