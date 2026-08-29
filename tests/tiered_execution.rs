@@ -208,11 +208,12 @@ use leased_retry::{
     NativeContinuationLeasedRetryExecutionFailure,
 };
 use malbolge::{
-    EFFECT_IR_VERSION, EffectOp, IrEncodingError, MemoryLiveIn, ProfileMachine,
-    ProfileMachineError, ProfileMachineIoState, ProfileMachineObservation,
-    ProfileMachineState, ProfileMemoryDelta, ProfileMemoryRead,
-    ProfileMemoryWrite, ProfileRegisters, ProfileRequirementErrorKind,
-    ProfileStepTrace, RegionEffectProgram, RunOutcome, RuntimeCapability,
+    EFFECT_IR_VERSION, EFFECT_IR_WIDE_PROFILE_VERSION, EffectOp,
+    IrEncodingError, MemoryLiveIn, ProfileMachine, ProfileMachineError,
+    ProfileMachineIoState, ProfileMachineObservation, ProfileMachineState,
+    ProfileMemoryDelta, ProfileMemoryRead, ProfileMemoryWrite,
+    ProfileRegisters, ProfileRequirementErrorKind, ProfileStepTrace,
+    RegionEffectProgram, RunOutcome, RuntimeCapability,
     StepProgramProjectionError, TargetProfileRequirement, Termination,
     TraceInput, current_profile, decode_profile_instruction,
     historical_profile, preflight_profile, preflight_runtime_requirement,
@@ -1020,6 +1021,43 @@ fn ir_v3_rejects_profile_capacity_wider_than_u32() -> Result<(), String> {
 }
 
 #[test]
+fn canonical_ir_v4_encodes_wide_profile_capacity() -> Result<(), String> {
+    let v3 = program()
+        .canonical_bytes()
+        .map_err(|error| format!("canonical v3 baseline failed: {error:?}"))?;
+    let mut wide = program();
+    wide.format_version = EFFECT_IR_WIDE_PROFILE_VERSION;
+    wide.profile_requirement.word_trits = 21;
+    wide.profile_requirement.memory_words = 10_460_353_203;
+    let observed = wide.canonical_bytes().map_err(|error| {
+        format!("canonical v4 wide encoding failed: {error:?}")
+    })?;
+    let encoded_capacity = wide.profile_requirement.memory_words.to_le_bytes();
+    if observed.get(..6) != Some(b"MBIR\x04\x00")
+        || observed.len() != v3.len().saturating_add(4)
+        || !observed
+            .windows(encoded_capacity.len())
+            .any(|window| window == encoded_capacity)
+    {
+        return Err(String::from("IR v4 wide profile encoding drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn canonical_ir_rejects_unknown_format_version() -> Result<(), String> {
+    let mut unknown = program();
+    unknown.format_version = EFFECT_IR_WIDE_PROFILE_VERSION.saturating_add(1);
+    if unknown.canonical_bytes()
+        == Err(IrEncodingError::UnsupportedFormatVersion)
+    {
+        Ok(())
+    } else {
+        Err(String::from("unknown IR version acquired canonical bytes"))
+    }
+}
+
+#[test]
 fn native_identity_rejects_profile_capacity_wider_than_ir_v3()
 -> Result<(), String> {
     let mut wide = program();
@@ -1038,6 +1076,30 @@ fn native_identity_rejects_profile_capacity_wider_than_ir_v3()
         Ok(())
     } else {
         Err(String::from("N21 envelope acquired an IR-v3 native key"))
+    }
+}
+
+#[test]
+fn native_identity_rejects_portable_ir_v4() -> Result<(), String> {
+    let mut wide = program();
+    wide.format_version = EFFECT_IR_WIDE_PROFILE_VERSION;
+    wide.profile_requirement.word_trits = 21;
+    wide.profile_requirement.memory_words = 10_460_353_203;
+    if RegionEffectIdentity::new(&wide) != Err(NativeIdentityError::IrVersion) {
+        return Err(String::from("IR v4 acquired native region identity"));
+    }
+    let target = NativeTargetIdentity::new(base_target_config());
+    if NativeArtifactKey::new(&wide, target)
+        != Err(NativeIdentityError::IrVersion)
+    {
+        return Err(String::from("IR v4 acquired native artifact key"));
+    }
+    if emit_direct_deopt_coff(&wide, direct_deopt_target(HostIsa::X86_64))
+        == Err(DirectDeoptError::Identity(NativeIdentityError::IrVersion))
+    {
+        Ok(())
+    } else {
+        Err(String::from("IR v4 reached raw direct-deopt emission"))
     }
 }
 

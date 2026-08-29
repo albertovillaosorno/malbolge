@@ -18,7 +18,9 @@ future AOT and JIT backends after deterministic verifier admission.
   required
   by the artifact. `execution_ir.rs` reuses the semantic type rather than
   duplicating it.
-- `EFFECT_IR_VERSION`: the portable schema identity.
+- `EFFECT_IR_VERSION`: the native-supported v3 schema identity.
+- `EFFECT_IR_WIDE_PROFILE_VERSION`: portable v4 identity with a `u64` profile
+  capacity field.
 
 ## Does Not Own
 
@@ -50,7 +52,7 @@ not make an arbitrary trace trusted, and it does not reconstruct intermediate
 reads from compact regional IR. Callers must obtain complete traces from a
 normative or independently admitted VM boundary.
 
-### Canonical identity encoding v3
+### Canonical identity encoding v3 and v4
 
 `RegionEffectProgram::canonical_bytes()` is the byte authority for cache/native
 identity. It starts with ASCII `MBIR`, then the `u16` IR version. All integers
@@ -67,10 +69,10 @@ use fixed-width little-endian encoding; host-sized counts are first converted to
 
 `TargetProfileRequirement` carries profile capacity as `u64` in memory so the
 semantic/preflight envelope can represent widths beyond the current `u32`
-execution backend. The frozen v3 byte format still stores that one field as
-`u32`. `canonical_bytes()` therefore rejects a wider envelope with
-`ProfileMemoryWordsOverflow`; it never truncates or reinterprets v3 bytes. A
-future wider transport requires a new IR format version.
+execution backend. Frozen v3 stores that field as `u32` and rejects a wider
+envelope with `ProfileMemoryWordsOverflow`. Portable v4 keeps the same field
+order but stores profile capacity as little-endian `u64`; unknown versions fail
+with `UnsupportedFormatVersion`. Neither path truncates or reinterprets v3.
 
 The encoding never depends on Rust struct layout, enum discriminants, pointer
 width, or host endianness. Canonical transport intentionally remains available
@@ -81,11 +83,20 @@ mismatch,
 and native identity construction must reject it before cache or artifact
 creation.
 
-`tests/execution/fixtures/region-effect-v3.hex` is an
-independently rendered 415-byte v3 vector and is compared byte-for-byte in
-`tests/tiered_execution.rs`. Version 3 adds the immutable target-profile
-requirement envelope while preserving the version-2 rule that profile aliases do
-not share compiler or cache identity silently.
+`tests/execution/fixtures/region-effect-v3.hex` is an independently rendered
+415-byte v3 vector and is compared byte-for-byte in `tests/tiered_execution.rs`.
+Version 3 adds the immutable target-profile requirement envelope while
+preserving
+the version-2 rule that profile aliases do not share compiler or cache identity
+silently. V4 adds four bytes only to widen profile capacity from `u32` to `u64`;
+N21 tests check the exact v4 header, length delta, and wide capacity.
+
+Native cache/artifact identity intentionally remains v3-only.
+`RegionEffectIdentity`, `NativeArtifactKey`, and raw direct-deopt emission
+reject
+portable v4 with `NativeIdentityError::IrVersion`. Direct `MBPF` metadata also
+remains v3. A future native v4 must version that metadata and backend contract
+explicitly rather than treating portable v4 as executable authority.
 
 Profile capacity is the complete runtime capability required to implement the
 selected profile. `RegionEffectProgram::required_memory_words()` separately

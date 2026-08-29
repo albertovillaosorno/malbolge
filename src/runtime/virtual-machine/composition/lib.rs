@@ -125,8 +125,9 @@ pub use differential::{
 };
 pub use execution::{ExecutionError, ExecutionErrorKind, ExecutionMachine};
 pub use execution_ir::{
-    EFFECT_IR_VERSION, EffectOp, IrEncodingError, MemoryLiveIn,
-    RegionEffectProgram, StepProgramProjectionError,
+    EFFECT_IR_VERSION, EFFECT_IR_WIDE_PROFILE_VERSION, EffectOp,
+    IrEncodingError, MemoryLiveIn, RegionEffectProgram,
+    StepProgramProjectionError,
 };
 pub use host_capability::{
     HOST_CALL_FLAG_NONBLOCKING, HOST_CAPABILITY_ABI_VERSION,

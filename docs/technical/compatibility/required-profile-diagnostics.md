@@ -292,11 +292,13 @@ requirement and report both missing backend dimensions instead of failing to
 construct the envelope. This does not widen executable VM addresses.
 
 Effect IR v3 and direct `MBPF` v3 remain byte-frozen with a `u32`
-profile-capacity
-field. A wider requirement fails IR v3 canonicalization with
-`ProfileMemoryWordsOverflow`, so it cannot acquire region/cache/native identity
-or reach direct metadata emission. Supporting such artifacts requires a new
-versioned transport rather than reinterpretation of v3.
+profile-capacity field. A wider requirement fails IR v3 canonicalization with
+`ProfileMemoryWordsOverflow`. Portable effect IR v4 adds a `u64` capacity field
+and can encode N21 exactly, but native/cache identity and raw direct-deopt
+remain
+v3-only and reject v4 with `NativeIdentityError::IrVersion`. `MBPF` v4 and an
+explicitly wider backend contract are still required before v4 can become
+executable authority.
 
 Effect IR now derives the exact region-specific memory requirement needed to
 distinguish `MALBOLGE-PROFILE-002`, including the full `u32` address domain.

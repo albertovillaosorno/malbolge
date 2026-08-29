@@ -40,7 +40,8 @@ use std::mem::replace;
 use std::sync::Arc;
 
 use malbolge::{
-    IrEncodingError, RegionEffectProgram, TargetProfileRequirement,
+    EFFECT_IR_VERSION, IrEncodingError, RegionEffectProgram,
+    TargetProfileRequirement,
 };
 
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
@@ -100,6 +101,8 @@ pub struct NativeTargetIdentity {
 pub enum NativeIdentityError {
     /// Portable IR or target identity bytes cannot be represented canonically.
     Encoding(IrEncodingError),
+    /// Native cache/artifact identity does not yet admit this IR version.
+    IrVersion,
     /// Region addressing exceeds the capacity declared by its profile envelope.
     ProfileCapacity,
 }
@@ -507,6 +510,9 @@ impl RegionEffectIdentity {
         program: &RegionEffectProgram,
         digest: BucketDigestFunction,
     ) -> Result<Self, NativeIdentityError> {
+        if program.format_version != EFFECT_IR_VERSION {
+            return Err(NativeIdentityError::IrVersion);
+        }
         let required_memory_words = program.required_memory_words();
         if required_memory_words > program.profile_requirement.memory_words {
             return Err(NativeIdentityError::ProfileCapacity);

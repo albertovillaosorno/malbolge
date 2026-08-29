@@ -45,8 +45,10 @@ use crate::profile_trace::{
 };
 use crate::trace::TraceInput;
 
-/// Current portable bounded-region effect-IR schema version.
+/// Current native-supported portable bounded-region effect-IR schema version.
 pub const EFFECT_IR_VERSION: u16 = 3;
+/// Portable effect-IR schema with a 64-bit profile-capacity field.
+pub const EFFECT_IR_WIDE_PROFILE_VERSION: u16 = 4;
 const IR_MAGIC: &[u8; 4] = b"MBIR";
 
 /// One architecture-neutral state-changing operation from a verified VM step.
@@ -116,6 +118,8 @@ pub enum IrEncodingError {
     /// IR v3 cannot encode a profile capacity wider than its unsigned 32-bit
     /// field.
     ProfileMemoryWordsOverflow,
+    /// The declared effect-IR format version has no canonical encoder.
+    UnsupportedFormatVersion,
 }
 
 /// Failure while projecting one complete normative step trace to portable IR.
@@ -152,14 +156,25 @@ impl RegionEffectProgram {
     /// Returns [`IrEncodingError::LengthOverflow`] when a host-sized length
     /// cannot fit the canonical unsigned 64-bit representation, or
     /// [`IrEncodingError::ProfileMemoryWordsOverflow`] when an envelope exceeds
-    /// the frozen IR-v3 unsigned 32-bit profile-capacity field.
+    /// the frozen IR-v3 unsigned 32-bit profile-capacity field, or
+    /// [`IrEncodingError::UnsupportedFormatVersion`] for an unknown schema.
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, IrEncodingError> {
+        if !matches!(
+            self.format_version,
+            EFFECT_IR_VERSION | EFFECT_IR_WIDE_PROFILE_VERSION
+        ) {
+            return Err(IrEncodingError::UnsupportedFormatVersion);
+        }
         let mut bytes = Vec::new();
         bytes.extend_from_slice(IR_MAGIC);
         push_u16(&mut bytes, self.format_version);
         push_bytes(&mut bytes, self.profile_id.as_bytes())?;
         push_bytes(&mut bytes, self.profile_fingerprint.as_bytes())?;
-        push_profile_requirement(&mut bytes, &self.profile_requirement)?;
+        push_profile_requirement(
+            &mut bytes,
+            &self.profile_requirement,
+            self.format_version,
+        )?;
         push_usize(&mut bytes, self.step_budget)?;
         push_run_outcome(&mut bytes, self.outcome)?;
         push_usize(&mut bytes, self.memory_live_ins.len())?;
@@ -393,6 +408,7 @@ fn push_observation(
 fn push_profile_requirement(
     output: &mut Vec<u8>,
     requirement: &TargetProfileRequirement,
+    format_version: u16,
 ) -> Result<(), IrEncodingError> {
     push_bytes(output, requirement.version.as_bytes())?;
     push_usize(output, requirement.features.len())?;
@@ -400,9 +416,19 @@ fn push_profile_requirement(
         push_bytes(output, feature.as_bytes())?;
     }
     output.push(requirement.word_trits);
-    let memory_words = u32::try_from(requirement.memory_words)
-        .map_err(|_error| IrEncodingError::ProfileMemoryWordsOverflow)?;
-    push_u32(output, memory_words);
+    match format_version {
+        EFFECT_IR_VERSION => {
+            let memory_words = u32::try_from(requirement.memory_words)
+                .map_err(|_error| {
+                    IrEncodingError::ProfileMemoryWordsOverflow
+                })?;
+            push_u32(output, memory_words);
+        },
+        EFFECT_IR_WIDE_PROFILE_VERSION => {
+            push_u64(output, requirement.memory_words);
+        },
+        _ => return Err(IrEncodingError::UnsupportedFormatVersion),
+    }
     Ok(())
 }
 
