@@ -124,10 +124,12 @@ code cells. This is separate from the earlier rotate theorem, whose D target is
 required to stay outside loaded source.
 
 `JumpRotateIoHaltProjection` extends the outside-source rotate theorem in a
-different direction: after a projection-compatible `j o* *` prefix, it requires
-`/ < v` and binds `MinimumLength(1)`. The rotate accumulator may differ
-numerically across widths; the required byte input restores exact A before any
-output observes it. EOF therefore remains canonical-only for this family.
+different direction: after a projection-compatible `j o* *` prefix, it accepts
+one or more `/ <` pairs before halt and binds `MinimumLength(k)` to the reached
+input count. Each required byte restores exact A before its output observes it.
+Because source length changes recurrence memory, rotate projection is rechecked
+for the exact source; one and four pairs may admit N10 while two pairs do not.
+EOF therefore remains canonical-only for this family.
 
 The report variants `execute_batch_with_backend_report` and
 `execute_profile_batch_with_backend_report` preserve those result semantics

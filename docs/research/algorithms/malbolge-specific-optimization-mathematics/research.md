@@ -472,18 +472,23 @@ At N10 the rotate writes and loads A=29,517, while canonical N14 reaches
 2,391,477. Those values are not numerically equal, but the canonical value
 projects exactly to N10.
 
-`JumpRotateIoHaltProjection` therefore carries `MinimumLength(1)`. Input
-`0xA5` overwrites both projected accumulators with exact 165 before `<`, so the
-output is byte-identical and complete final state still projects. Indexed-state
-evidence retains the rotated N10 word at address 43, cursor 1, output `0xA5`,
-and the original opaque authority across six committed effects.
+`JumpRotateIoHaltProjection` now accepts one or more reached `/ <` pairs and
+records `MinimumLength(k)` from their exact count. The one-pair fixture remains
+the projection witness above. A separate four-pair source verifies at every
+reviewed width and selects N10 with `MinimumLength(4)`; three-byte input is
+rejected, while `[0xA5,0x3C,0x7F,0x00]` is consumed and emitted exactly.
 
-The shape is not inferred from input recovery alone:
-`JUMP_ROTATE_IO_UNSAFE` (`j * / < v`)
-fails N10 rotate projection and reaches only N14 under the specialized minimum
-selector. Empty input for the positive source is also rejected by the token;
-the CLI has no profile input and therefore remains canonical N14, emitting
-canonical EOF byte `0x78`.
+The longer source changes the recurrence feeding D=43, so its projected rotate
+is rechecked rather than inherited from the one-pair case. For the four-pair
+fixture N10 writes 29,512 at address 43 and N14 writes 2,391,472. Indexed-state
+evidence retains that projected write, cursor 4, all four output bytes, A=0, and
+C=12/D=52 across twelve committed effects.
+
+Length compatibility is deliberately non-monotone: the otherwise-valid two-pair
+source fails N10 rotate projection and reaches only N14, while the four-pair
+source succeeds again. `JUMP_ROTATE_IO_UNSAFE` (`j * / < v`) remains a distinct
+projection negative. The CLI supplies no profile input, so the four-pair source
+stays canonical N14 and emits four canonical EOF bytes `0x78`.
 
 The same exact prefix now composes with byte-visible I/O in a separate theorem.
 `JumpCodeIoHaltProjection` accepts one or more reached `/ <` pairs before halt.

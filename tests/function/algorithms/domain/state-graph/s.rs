@@ -282,16 +282,17 @@ fn jump_code_rotate_write_survives_indexed_effects() -> Result<(), String> {
 fn jump_rotate_io_recovery_survives_indexed_effects() -> Result<(), String> {
     let verified = verify_minimum_jump_rotate_io_halt_profile_width(
         current_profile(),
-        b"(CB$q^K",
+        b"(CB$q^o\\mZkXE",
     )
     .map_err(|error| format!("jump-rotate I/O verification failed: {error}"))?;
-    let mut machine =
-        ProfileMachine::from_verified_source(&verified, vec![0xa5])
-            .map_err(|error| format!("jump-rotate I/O load failed: {error}"))?;
+    let mut machine = ProfileMachine::from_verified_source(&verified, vec![
+        0xa5, 0x3c, 0x7f, 0x00,
+    ])
+    .map_err(|error| format!("jump-rotate I/O load failed: {error}"))?;
     let root = machine.snapshot_state();
     let mut indexed = IndexedMachineState::from_checkpoint(&root)
         .map_err(|error| format!("jump-rotate I/O root failed: {error:?}"))?;
-    for _step in 0u8..6 {
+    for _step in 0u8..12 {
         let mut trace_record = None;
         let outcome = machine
             .step_traced(&mut |trace: &ProfileStepTrace| {
@@ -314,11 +315,11 @@ fn jump_rotate_io_recovery_survives_indexed_effects() -> Result<(), String> {
     })?;
     if materialized != machine.snapshot_state()
         || materialized.geometry() != verified.geometry()
-        || materialized.io().input_consumed() != 1
-        || materialized.io().output() != [0xa5]
-        || materialized.registers().accumulator != 0xa5
-        || materialized.registers().code_pointer != 6
-        || materialized.registers().data_pointer != 46
+        || materialized.io().input_consumed() != 4
+        || materialized.io().output() != [0xa5, 0x3c, 0x7f, 0x00]
+        || materialized.registers().accumulator != 0
+        || materialized.registers().code_pointer != 12
+        || materialized.registers().data_pointer != 52
     {
         return Err(String::from("jump-rotate I/O indexed authority drifted"));
     }
@@ -327,7 +328,7 @@ fn jump_rotate_io_recovery_survives_indexed_effects() -> Result<(), String> {
         .get(43)
         .copied()
         .ok_or_else(|| String::from("jump-rotate I/O data word missing"))?;
-    if rotated != 29_517 {
+    if rotated != 29_512 {
         return Err(format!("jump-rotate I/O data write drifted: {rotated}"));
     }
     Ok(())

@@ -72,6 +72,11 @@ struct SourceBackedCodeJumpPrefix {
     shadow: Vec<u32>,
 }
 
+struct DecodedSourceInstruction {
+    decoded: u8,
+    pointer: u32,
+}
+
 type MinimumProfileWidthVerifier = fn(
     &'static ProfileDescriptor,
     &[u8],
@@ -810,7 +815,7 @@ pub fn verify_minimum_jump_rotate_halt_profile_width(
 ///
 /// Rotate compatibility is non-monotone, so an explicit projection miss may
 /// continue to a wider reviewed candidate. All other theorem failures remain
-/// fail-closed. The returned token requires one non-EOF runtime input byte.
+/// fail-closed. The returned token requires the exact reached input count.
 ///
 /// # Errors
 ///
@@ -1682,7 +1687,7 @@ pub fn verify_jump_crazy_io_halt_profile_width(
 ) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
     let memory_words = derived_memory_words(profile, word_trits)?;
     let geometry = ProfileExecutionGeometry {
-        input_policy: ProfileExecutionInputPolicy::MinimumLength(1),
+        input_policy: ProfileExecutionInputPolicy::Any,
         memory_words,
         profile,
         word_trits,
@@ -1918,57 +1923,83 @@ pub fn verify_jump_rotate_halt_profile_width(
     Err(ProfileWidthVerificationError::JumpRotateProjection)
 }
 
+fn jump_rotate_io_decoded_at(
+    admitted: &[u32],
+    position: usize,
+) -> Result<DecodedSourceInstruction, ProfileWidthVerificationError> {
+    let pointer = u32::try_from(position)
+        .map_err(|_error| ProfileWidthVerificationError::GeometryInvariant)?;
+    let cell = admitted
+        .get(position)
+        .copied()
+        .ok_or(ProfileWidthVerificationError::JumpRotateProjection)?;
+    let decoded = decode_profile_instruction(cell, pointer)
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    Ok(DecodedSourceInstruction { decoded, pointer })
+}
+
 fn verify_jump_rotate_io_suffix(
     admitted: &[u32],
     geometry: ProfileExecutionGeometry,
     mut data_address: u32,
-    position: usize,
-) -> Result<(), ProfileWidthVerificationError> {
+    mut position: usize,
+) -> Result<usize, ProfileWidthVerificationError> {
     let profile = geometry.profile();
-    let expected = [
-        profile.input_instruction(),
-        profile.output_instruction(),
-        b'v',
-    ];
-    for (offset, expected_instruction) in expected.into_iter().enumerate() {
-        let source_position = position
-            .checked_add(offset)
-            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
-        let pointer = u32::try_from(source_position).map_err(|_error| {
-            ProfileWidthVerificationError::GeometryInvariant
-        })?;
-        let cell = admitted
-            .get(source_position)
-            .copied()
-            .ok_or(ProfileWidthVerificationError::JumpRotateProjection)?;
-        let decoded = decode_profile_instruction(cell, pointer)
-            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
-        if decoded != expected_instruction {
+    let mut required_input = 0usize;
+    loop {
+        let input_instruction = jump_rotate_io_decoded_at(admitted, position)?;
+        if input_instruction.decoded == b'v' {
+            if required_input == 0 {
+                return Err(
+                    ProfileWidthVerificationError::JumpRotateHaltInstruction {
+                        position: input_instruction.pointer,
+                        decoded: input_instruction.decoded,
+                    },
+                );
+            }
+            return Ok(required_input);
+        }
+        if input_instruction.decoded != profile.input_instruction() {
             return Err(
                 ProfileWidthVerificationError::JumpRotateHaltInstruction {
-                    position: pointer,
-                    decoded,
+                    position: input_instruction.pointer,
+                    decoded: input_instruction.decoded,
                 },
             );
         }
-        if expected_instruction != b'v' {
-            data_address = advance_jump_rotate_address(
-                data_address,
-                geometry.memory_words(),
-            )?;
+        required_input = required_input
+            .checked_add(1)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        data_address =
+            advance_jump_rotate_address(data_address, geometry.memory_words())?;
+        position = position
+            .checked_add(1)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        let output_instruction = jump_rotate_io_decoded_at(admitted, position)?;
+        if output_instruction.decoded != profile.output_instruction() {
+            return Err(
+                ProfileWidthVerificationError::JumpRotateHaltInstruction {
+                    position: output_instruction.pointer,
+                    decoded: output_instruction.decoded,
+                },
+            );
         }
+        data_address =
+            advance_jump_rotate_address(data_address, geometry.memory_words())?;
+        position = position
+            .checked_add(1)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
     }
-    Ok(())
 }
 
-/// Verifies exact jump/no-ops, projected rotate, byte recovery/output, and
-/// halt.
+/// Verifies exact jump/no-ops, projected rotate, byte I/O pairs, and halt.
 ///
 /// The prefix uses the same exact-D and independent candidate/canonical rotate
 /// projection proof as [`verify_jump_rotate_halt_profile_width`]. The rotated
-/// accumulator may differ numerically across widths. One required non-EOF input
-/// then overwrites A with the same byte before output, while sequential source
-/// encryption and nonwrapping D advancement remain width-independent.
+/// accumulator may differ numerically across widths. Each required non-EOF
+/// input overwrites A with the same byte before its output, while sequential
+/// source encryption and nonwrapping D advancement remain width-independent.
+/// The hidden policy records the exact number of reached input instructions.
 ///
 /// # Errors
 ///
@@ -2013,14 +2044,19 @@ pub fn verify_jump_rotate_io_halt_profile_width(
         verify_jump_rotate_projection(&admitted, geometry, data_address)?;
         data_address = advance_jump_rotate_address(data_address, memory_words)?;
         position = position.saturating_add(1);
-        verify_jump_rotate_io_suffix(
+        let required_input = verify_jump_rotate_io_suffix(
             &admitted,
             geometry,
             data_address,
             position,
         )?;
         return Ok(VerifiedProfileExecutionGeometry {
-            geometry,
+            geometry: ProfileExecutionGeometry {
+                input_policy: ProfileExecutionInputPolicy::MinimumLength(
+                    required_input,
+                ),
+                ..geometry
+            },
             proof_kind: ProfileWidthProofKind::JumpRotateIoHaltProjection,
             source: Box::from(source),
         });

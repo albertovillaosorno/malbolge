@@ -125,11 +125,10 @@ example probe points, not supported-range endpoints.
   not acquire that derived authority because a later EOF output is width-
   sensitive.
 - The projected-rotate/I/O request adds an observable recovery boundary to
-  resident coverage. `(CB$q^K` reaches different projected accumulator values
-  after rotate, then input `0xA5` restores exact A before output. Its N10
-  request
-  consumes one byte, emits `0xA5`, and completes with full-state equality to
-  safe Rust; empty-input CLI policy remains canonical N14.
+  resident coverage and now exercises `MinimumLength(4)`. The retained N10
+  request uses `[0xA5,0x3C,0x7F,0x00]`, consumes and emits all four bytes after
+  the projected rotate, and completes with full-state equality to safe Rust.
+  Empty-input CLI policy remains canonical N14 and emits four EOF bytes.
 - The jump-code/rotate request adds a physical source write to resident
   coverage.
   After four exact code jumps, D=4 rotates source byte 36 to exact value 12 at

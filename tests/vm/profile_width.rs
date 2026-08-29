@@ -76,6 +76,8 @@ const QP: &[u8] = b"QP";
 const JUMP_ROTATE_SAFE: &[u8] = b"(&O";
 const JUMP_ROTATE_UNSAFE: &[u8] = b"(CB$M";
 const JUMP_ROTATE_IO_SAFE: &[u8] = b"(CB$q^K";
+const JUMP_ROTATE_IO_TWO_PAIRS: &[u8] = b"(CB$q^o\\I";
+const JUMP_ROTATE_IO_FOUR_PAIRS: &[u8] = b"(CB$q^o\\mZkXE";
 const JUMP_ROTATE_IO_UNSAFE: &[u8] = b"(&s`M";
 const CHECKED_GEOMETRIES: [(u8, u32); 5] = [
     (10, 59_049),
@@ -1478,6 +1480,132 @@ fn check_jump_rotate_io_recovery(
         &canonical,
         verified.memory_words(),
         "jump-rotate I/O final",
+    )
+}
+
+#[test]
+fn jump_rotate_io_policy_tracks_four_required_bytes() -> TestResult {
+    for (word_trits, _memory_words) in CHECKED_GEOMETRIES {
+        let _verified =
+            normalize_result(verify_jump_rotate_io_halt_profile_width(
+                current_profile(),
+                JUMP_ROTATE_IO_FOUR_PAIRS,
+                word_trits,
+            ))?;
+    }
+    let verified =
+        normalize_result(verify_minimum_jump_rotate_io_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_IO_FOUR_PAIRS,
+        ))?;
+    let one_pair =
+        normalize_result(verify_minimum_jump_rotate_io_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_IO_SAFE,
+        ))?;
+    if verified.geometry() == one_pair.geometry() {
+        return Err(String::from("rotate I/O input policies collapsed"));
+    }
+    check_equal(
+        &ProfileMachine::from_verified_source(&verified, vec![
+            0xa5, 0x3c, 0x7f,
+        ])
+        .err(),
+        &Some(ProfileMachineError::VerifiedInputRejected),
+        "four-pair rotate I/O short-input rejection",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(
+            current_profile(),
+            JUMP_ROTATE_IO_FOUR_PAIRS,
+            &[0xa5, 0x3c, 0x7f],
+        ),
+        &None,
+        "four-pair rotate I/O short-input selector",
+    )?;
+    let input = vec![0xa5, 0x3c, 0x7f, 0x00];
+    let selected = select_minimum_verified_profile_width(
+        current_profile(),
+        JUMP_ROTATE_IO_FOUR_PAIRS,
+        &input,
+    )
+    .ok_or_else(|| String::from("four-pair rotate I/O was not selected"))?;
+    check_equal(
+        &selected.geometry(),
+        &verified.geometry(),
+        "four-pair rotate I/O authority",
+    )?;
+    check_four_pair_jump_rotate_io_execution(&verified, &input)
+}
+
+fn check_four_pair_jump_rotate_io_execution(
+    verified: &malbolge::VerifiedProfileExecutionGeometry,
+    input: &[u8],
+) -> TestResult {
+    let mut narrow = normalize_result(ProfileMachine::from_verified_source(
+        verified,
+        input.to_owned(),
+    ))?;
+    let mut canonical = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        JUMP_ROTATE_IO_FOUR_PAIRS,
+        input.to_owned(),
+    ))?;
+    let narrow_outcome = normalize_result(narrow.run(13))?;
+    let canonical_outcome = normalize_result(canonical.run(13))?;
+    check_equal(
+        &narrow_outcome,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 13,
+        },
+        "four-pair rotate I/O narrow outcome",
+    )?;
+    check_equal(
+        &canonical_outcome,
+        &narrow_outcome,
+        "four-pair rotate I/O canonical outcome",
+    )?;
+    if narrow.output() != input || narrow.input_consumed() != 4 {
+        return Err(String::from("four-pair rotate I/O exact I/O drifted"));
+    }
+    check_complete_profile_projection(
+        &narrow,
+        &canonical,
+        verified.memory_words(),
+        "four-pair rotate I/O final",
+    )
+}
+
+#[test]
+fn jump_rotate_io_source_length_rechecks_rotate_projection() -> TestResult {
+    check_equal(
+        &verify_jump_rotate_io_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_IO_TWO_PAIRS,
+            MINIMUM_WORD_TRITS,
+        ),
+        &Err(ProfileWidthVerificationError::JumpRotateProjection),
+        "two-pair rotate I/O N10 projection rejection",
+    )?;
+    let minimum =
+        normalize_result(verify_minimum_jump_rotate_io_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_IO_TWO_PAIRS,
+        ))?;
+    check_equal(
+        &minimum.word_trits(),
+        &CANONICAL_WORD_TRITS,
+        "two-pair rotate I/O canonical minimum",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(
+            current_profile(),
+            JUMP_ROTATE_IO_TWO_PAIRS,
+            &[0xa5, 0x3c],
+        ),
+        &None,
+        "two-pair rotate I/O composite fallback",
     )
 }
 

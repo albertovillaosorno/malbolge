@@ -540,10 +540,9 @@ fn adaptive_jump_code_io_capsule_preserves_canonical_eof() -> Result<(), String>
 #[test]
 fn adaptive_jump_rotate_io_capsule_preserves_canonical_eof()
 -> Result<(), String> {
-    let bytes =
-        build_capsule(current_profile(), b"(CB$q^K").map_err(|error| {
-            format!("build adaptive jump-rotate I/O capsule: {error}")
-        })?;
+    let bytes = build_capsule(current_profile(), b"(CB$q^o\\mZkXE").map_err(
+        |error| format!("build adaptive jump-rotate I/O capsule: {error}"),
+    )?;
     let capsule =
         TemporaryCapsule::from_bytes("adaptive-jump-rotate-io", &bytes)?;
     let marker = TemporaryMarker::new("adaptive-jump-rotate-io");
@@ -558,7 +557,14 @@ fn adaptive_jump_rotate_io_capsule_preserves_canonical_eof()
     let geometry = read(&marker.path)
         .map_err(|error| format!("read jump-rotate I/O geometry: {error}"))?;
     if output.status.success()
-        && output.stdout == EXPECTED_EOF_OUTPUT
+        && output.stdout
+            == [
+                EXPECTED_EOF_OUTPUT,
+                EXPECTED_EOF_OUTPUT,
+                EXPECTED_EOF_OUTPUT,
+                EXPECTED_EOF_OUTPUT,
+            ]
+            .concat()
         && output.stderr.is_empty()
         && geometry == b"14"
     {

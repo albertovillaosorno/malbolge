@@ -88,6 +88,7 @@ const ERROR_NONE: u32 = 0;
 const ERROR_INVALID_ENCRYPTION: u32 = 1;
 const CURRENT_INPUT: u8 = 0xa5;
 const CURRENT_SOURCE: &[u8] = b"(=%r_L";
+const JUMP_ROTATE_IO_FOUR_PAIRS: &[u8] = b"(CB$q^o\\mZkXE";
 const REJECTING_JUMP_SOURCE: &[u8] = b"b'";
 const TABLE_LEN: usize = 94;
 const TEST_XLAT1: &[u8; TABLE_LEN] =
@@ -309,7 +310,9 @@ fn reviewed_width_cuda_requests(
     ))?;
     let rotate_io =
         normalize_result(verify_jump_rotate_io_halt_profile_width(
-            profile, b"(CB$q^K", word_trits,
+            profile,
+            JUMP_ROTATE_IO_FOUR_PAIRS,
+            word_trits,
         ))?;
     Ok(vec![
         verified_profile_request(&initial, Vec::new(), 1)?,
@@ -321,7 +324,7 @@ fn reviewed_width_cuda_requests(
         verified_profile_request(&crazy, Vec::new(), 4)?,
         verified_profile_request(&recovered, vec![0xa5], 6)?,
         verified_profile_request(&rotate, Vec::new(), 3)?,
-        verified_profile_request(&rotate_io, vec![0xa5], 7)?,
+        verified_profile_request(&rotate_io, vec![0xa5, 0x3c, 0x7f, 0x00], 13)?,
     ])
 }
 
@@ -494,9 +497,9 @@ fn verified_n10_rotate_io_request() -> TestResult<ProfileBatchRequest> {
     let verified =
         normalize_result(verify_minimum_jump_rotate_io_halt_profile_width(
             current_profile(),
-            b"(CB$q^K",
+            JUMP_ROTATE_IO_FOUR_PAIRS,
         ))?;
-    verified_profile_request(&verified, vec![0xa5], 7)
+    verified_profile_request(&verified, vec![0xa5, 0x3c, 0x7f, 0x00], 13)
 }
 
 fn verified_n10_cuda_requests() -> TestResult<Vec<ProfileBatchRequest>> {
