@@ -419,6 +419,12 @@ following halt is outside loaded source, it rejects with `JumpCodeProjection`; a
 short code-jump source therefore remains canonical under the composite selector.
 Chained code jumps remain outside this theorem.
 
+Indexed-state evidence now advances the N10 source-backed fixture through its
+code-jump transition and materializes the checkpoint. The materialized state
+exactly equals the runtime snapshot, preserves the opaque geometry token,
+records
+the physical self-encryption change at source cell 98, and retains C=99/D=1.
+
 Wire homogeneity is intentionally weaker than verifier authority equality. `uP`
 and `ubO` share the same N=10 resident shape and can execute in one CUDA worker
 batch, while each returned checkpoint is reconstructed with its original opaque

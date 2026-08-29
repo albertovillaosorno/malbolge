@@ -37,8 +37,9 @@
 
 use malbolge::{
     ProfileMachine, ProfileStepTrace, StepOutcome, current_profile,
-    verify_minimum_initial_halt_profile_width,
+    decode_profile_instruction, verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
+    verify_minimum_jump_code_halt_profile_width,
     verify_minimum_straight_line_io_profile_width,
 };
 
@@ -49,6 +50,100 @@ use crate::indexed_state::{
 
 const CURRENT_SOURCE: &[u8] = b"(=%`qL";
 const STEP_BUDGET: usize = 8;
+
+fn encoded_profile_instruction(
+    decoded: u8,
+    position: usize,
+) -> Result<u8, String> {
+    let pointer = u32::try_from(position)
+        .map_err(|error| format!("profile instruction position: {error}"))?;
+    (33u8..=126u8)
+        .find(|cell| {
+            decode_profile_instruction(u32::from(*cell), pointer)
+                == Some(decoded)
+        })
+        .ok_or_else(|| format!("missing encoded {decoded} at {position}"))
+}
+
+fn source_backed_jump_code_halt() -> Result<Vec<u8>, String> {
+    let first = encoded_profile_instruction(b'i', 0)?;
+    let halt_position = usize::from(first).saturating_add(1);
+    let mut source = Vec::with_capacity(halt_position.saturating_add(1));
+    for position in 0..=halt_position {
+        let decoded = if position == 0 {
+            b'i'
+        } else if position == halt_position {
+            b'v'
+        } else {
+            b'o'
+        };
+        source.push(encoded_profile_instruction(decoded, position)?);
+    }
+    Ok(source)
+}
+
+#[test]
+fn jump_code_geometry_survives_indexed_self_encryption() -> Result<(), String> {
+    let source = source_backed_jump_code_halt()?;
+    let verified =
+        verify_minimum_jump_code_halt_profile_width(current_profile(), &source)
+            .map_err(|error| {
+                format!("jump-code width verification failed: {error}")
+            })?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new()).map_err(
+            |error| format!("jump-code machine load failed: {error}"),
+        )?;
+    let root = machine.snapshot_state();
+    let mut indexed = IndexedMachineState::from_checkpoint(&root)
+        .map_err(|error| format!("jump-code indexed root failed: {error:?}"))?;
+    let mut trace_record = None;
+    let outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| {
+            trace_record = Some(*trace);
+        })
+        .map_err(|error| format!("jump-code trace step failed: {error}"))?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from("jump-code did not continue before halt"));
+    }
+    let trace =
+        trace_record.ok_or_else(|| String::from("jump-code trace missing"))?;
+    indexed = indexed.apply_trace(&trace).map_err(|error| {
+        format!("jump-code indexed apply failed: {error:?}")
+    })?;
+    let materialized = indexed
+        .materialize_checkpoint()
+        .map_err(|error| format!("jump-code materialize failed: {error:?}"))?;
+    if materialized != machine.snapshot_state()
+        || materialized.geometry() != verified.geometry()
+    {
+        return Err(String::from("jump-code indexed authority drifted"));
+    }
+    let target = usize::from(
+        source
+            .first()
+            .copied()
+            .ok_or_else(|| String::from("jump-code source is empty"))?,
+    );
+    let before = root
+        .memory()
+        .get(target)
+        .copied()
+        .ok_or_else(|| String::from("jump-code root target is missing"))?;
+    let after =
+        materialized.memory().get(target).copied().ok_or_else(|| {
+            String::from("jump-code materialized target is missing")
+        })?;
+    if before == after {
+        return Err(String::from("jump-code encryption target did not change"));
+    }
+    if materialized.registers().code_pointer != 99
+        || materialized.registers().data_pointer != 1
+    {
+        return Err(String::from("jump-code indexed registers drifted"));
+    }
+    Ok(())
+}
 
 #[test]
 fn derived_width_checkpoint_survives_indexed_state_roundtrip()
