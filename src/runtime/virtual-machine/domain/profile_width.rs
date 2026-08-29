@@ -117,6 +117,8 @@ pub enum ProfileWidthProofKind {
     JumpDataHaltProjection,
     /// Exact jump/no-ops reach one projection-compatible rotate before halt.
     JumpRotateHaltProjection,
+    /// Projected rotate is recovered by exact byte input before output.
+    JumpRotateIoHaltProjection,
     /// One or more decoded no-ops precede the first reached halt.
     NoopPrefixHalt,
     /// Repeated exact-address data jumps reach halt safely.
@@ -535,7 +537,7 @@ pub fn select_minimum_verified_profile_width(
     source: &[u8],
     input: &[u8],
 ) -> Option<VerifiedProfileExecutionGeometry> {
-    let verifiers: [MinimumProfileWidthVerifier; 13] = [
+    let verifiers: [MinimumProfileWidthVerifier; 14] = [
         verify_minimum_initial_halt_profile_width,
         verify_minimum_input_output_halt_profile_width,
         verify_minimum_input_then_halt_profile_width,
@@ -546,6 +548,7 @@ pub fn select_minimum_verified_profile_width(
         verify_minimum_jump_crazy_io_halt_profile_width,
         verify_minimum_jump_data_halt_profile_width,
         verify_minimum_jump_rotate_halt_profile_width,
+        verify_minimum_jump_rotate_io_halt_profile_width,
         verify_minimum_noop_prefix_halt_profile_width,
         verify_minimum_repeated_jump_data_profile_width,
         verify_minimum_straight_line_io_profile_width,
@@ -783,6 +786,45 @@ pub fn verify_minimum_jump_rotate_halt_profile_width(
     for word_trits in MINIMUM_ADAPTIVE_WORD_TRITS..=profile.word_trits() {
         match verify_jump_rotate_halt_profile_width(profile, source, word_trits)
         {
+            Ok(admission) => return Ok(admission),
+            Err(
+                error @ (ProfileWidthVerificationError::Source(
+                    ProfileLoadError::SourceTooLong,
+                )
+                | ProfileWidthVerificationError::JumpRotateProjection),
+            ) => {
+                last_width_miss = Some(error);
+            },
+            Err(error) => return Err(error),
+        }
+    }
+    Err(last_width_miss.unwrap_or_else(|| {
+        ProfileWidthVerificationError::WidthOutOfRange {
+            profile_word_trits: profile.word_trits(),
+            requested: MINIMUM_ADAPTIVE_WORD_TRITS,
+        }
+    }))
+}
+
+/// Selects the narrowest jump/rotate/input/output/halt width.
+///
+/// Rotate compatibility is non-monotone, so an explicit projection miss may
+/// continue to a wider reviewed candidate. All other theorem failures remain
+/// fail-closed. The returned token requires one non-EOF runtime input byte.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when no reviewed width proves the
+/// projected rotate followed by exact byte recovery and output.
+pub fn verify_minimum_jump_rotate_io_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let mut last_width_miss = None;
+    for word_trits in MINIMUM_ADAPTIVE_WORD_TRITS..=profile.word_trits() {
+        match verify_jump_rotate_io_halt_profile_width(
+            profile, source, word_trits,
+        ) {
             Ok(admission) => return Ok(admission),
             Err(
                 error @ (ProfileWidthVerificationError::Source(
@@ -1871,6 +1913,116 @@ pub fn verify_jump_rotate_halt_profile_width(
         return Err(ProfileWidthVerificationError::JumpRotateHaltInstruction {
             position: pointer,
             decoded,
+        });
+    }
+    Err(ProfileWidthVerificationError::JumpRotateProjection)
+}
+
+fn verify_jump_rotate_io_suffix(
+    admitted: &[u32],
+    geometry: ProfileExecutionGeometry,
+    mut data_address: u32,
+    position: usize,
+) -> Result<(), ProfileWidthVerificationError> {
+    let profile = geometry.profile();
+    let expected = [
+        profile.input_instruction(),
+        profile.output_instruction(),
+        b'v',
+    ];
+    for (offset, expected_instruction) in expected.into_iter().enumerate() {
+        let source_position = position
+            .checked_add(offset)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        let pointer = u32::try_from(source_position).map_err(|_error| {
+            ProfileWidthVerificationError::GeometryInvariant
+        })?;
+        let cell = admitted
+            .get(source_position)
+            .copied()
+            .ok_or(ProfileWidthVerificationError::JumpRotateProjection)?;
+        let decoded = decode_profile_instruction(cell, pointer)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        if decoded != expected_instruction {
+            return Err(
+                ProfileWidthVerificationError::JumpRotateHaltInstruction {
+                    position: pointer,
+                    decoded,
+                },
+            );
+        }
+        if expected_instruction != b'v' {
+            data_address = advance_jump_rotate_address(
+                data_address,
+                geometry.memory_words(),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// Verifies exact jump/no-ops, projected rotate, byte recovery/output, and
+/// halt.
+///
+/// The prefix uses the same exact-D and independent candidate/canonical rotate
+/// projection proof as [`verify_jump_rotate_halt_profile_width`]. The rotated
+/// accumulator may differ numerically across widths. One required non-EOF input
+/// then overwrites A with the same byte before output, while sequential source
+/// encryption and nonwrapping D advancement remain width-independent.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when source shape, rotate
+/// projection, recovery suffix, or nonwrapping D advancement does not hold.
+pub fn verify_jump_rotate_io_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    word_trits: u8,
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let memory_words = derived_memory_words(profile, word_trits)?;
+    let geometry = ProfileExecutionGeometry {
+        input_policy: ProfileExecutionInputPolicy::MinimumLength(1),
+        memory_words,
+        profile,
+        word_trits,
+    };
+    let admitted = admit_profile_source(source, memory_words)?;
+    let mut data_address =
+        jump_rotate_initial_address(&admitted, memory_words)?;
+    let mut position = 1usize;
+    while let Some(cell) = admitted.get(position).copied() {
+        let pointer = u32::try_from(position).map_err(|_error| {
+            ProfileWidthVerificationError::GeometryInvariant
+        })?;
+        let decoded = decode_profile_instruction(cell, pointer)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        if decoded == b'o' {
+            data_address =
+                advance_jump_rotate_address(data_address, memory_words)?;
+            position = position.saturating_add(1);
+            continue;
+        }
+        if decoded != b'*' {
+            return Err(
+                ProfileWidthVerificationError::JumpRotateHaltInstruction {
+                    position: pointer,
+                    decoded,
+                },
+            );
+        }
+        verify_jump_rotate_projection(&admitted, geometry, data_address)?;
+        data_address = advance_jump_rotate_address(data_address, memory_words)?;
+        position = position.saturating_add(1);
+        verify_jump_rotate_io_suffix(
+            &admitted,
+            geometry,
+            data_address,
+            position,
+        )?;
+        return Ok(VerifiedProfileExecutionGeometry {
+            geometry,
+            proof_kind: ProfileWidthProofKind::JumpRotateIoHaltProjection,
+            source: Box::from(source),
         });
     }
     Err(ProfileWidthVerificationError::JumpRotateProjection)

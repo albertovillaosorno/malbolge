@@ -347,11 +347,12 @@ separate costs; resource evidence must measure those costs directly.
   request's opaque geometry token rather than the shared wire shape. Optional
   full-state CUDA differential evidence therefore accepts both `uP` and `ubO`
   completions without collapsing `Any` and `MinimumLength(1)` authority.
-- A broader N=10 CUDA differential batch now exercises twelve verified
+- A broader N=10 CUDA differential batch now exercises thirteen verified
   subjects: initial halt, no-op prefix, EOF input-halt, byte input-output,
   two-byte straight-line I/O, repeated jumps, guarded `p p`, guarded `p p`
-  followed by byte-exact I/O recovery, exact-address rotate, source-backed code
-  jump, code-jump byte I/O, and code-jump followed by a source-backed rotate.
+  followed by byte-exact I/O recovery, exact-address rotate, rotate followed by
+  byte recovery/output, source-backed code jump, code-jump byte I/O, and
+  code-jump followed by a source-backed rotate.
   All complete checkpoints are compared to safe Rust, including memory, I/O,
   termination, registers, and verifier geometry tokens.
 - Prepared profile backend requests expose resident shape only from their
@@ -375,8 +376,9 @@ separate costs; resource evidence must measure those costs directly.
 - The CUDA integration configures that adapter for `profile_run_worker`. Each
   reviewed N=10 through 14 has an optional full-state batch containing QP, EOF
   input-halt, `uCar_L`, guarded `p p`, guarded `p p` plus byte-I/O recovery,
-  `(&O` (`j * v`) rotate, source-backed jump-code, source-backed jump-code plus
-  byte-I/O, and source-backed jump-code plus rotate. A strict live RTX 4060
+  `(&O` (`j * v`) rotate, projected rotate plus byte-I/O recovery, source-backed
+  jump-code, source-backed jump-code plus byte-I/O, and source-backed jump-code
+  plus rotate. A strict live RTX 4060
   check observed CUDA execution for every reviewed N=10 through 14. This remains
   correctness, not performance, evidence.
 - The command-line composition root can now bind a trusted MBPRN2 worker for
@@ -389,7 +391,7 @@ separate costs; resource evidence must measure those costs directly.
   `MinimumLength(1)`, while canonical EOF output is width-sensitive. Adaptive
   CLI
   policy therefore leaves those capsules at N=14 even when explicitly enabled.
-- Product `select_minimum_verified_profile_width` now probes thirteen trusted
+- Product `select_minimum_verified_profile_width` now probes fourteen trusted
   theorem-family minimum verifiers and returns the narrowest successful artifact
   whose hidden input policy admits the exact input. Equal-width N=14 artifacts
   are ignored so no-proof preserves canonical execution.
@@ -417,6 +419,21 @@ separate costs; resource evidence must measure those costs directly.
   returns no derived authority and adaptive construction stays canonical. Other
   `j o* * v` variants remain unsupported rather than generalized from this
   theorem.
+- `JumpRotateIoHaltProjection` composes a projection-only rotate with exact byte
+  recovery. `(CB$q^K` decodes `j o o * / < v`: D=43 remains outside its
+  seven-cell source, and direct verification succeeds at every N=10 through 14.
+  Immediately after rotate, N10 has A=29,517 while N14 has A=2,391,477; the
+  values differ numerically but preserve the N10 projection.
+- The token therefore requires `MinimumLength(1)`. Input byte `0xA5` replaces
+  both accumulators with exact 165 before `<`, which emits `0xA5`; complete N10
+  state still projects to N14 at halt. Indexed-state materialization after the
+  six committed effects retains memory[43]=29,517, A=165, C=6/D=46, cursor 1,
+  output `[0xA5]`, and the same opaque geometry authority.
+- Empty input cannot use that authority because EOF would be observed by `<`.
+  Adaptive CLI execution therefore keeps this capsule at N14 and emits canonical
+  EOF byte `0x78`. `JUMP_ROTATE_IO_UNSAFE` (`j * / < v`) is a retained
+  rotate-projection
+  negative: N10 rejects and its specialized minimum verifier reaches only N14.
 - `JumpCodeRotateHaltProjection` covers a distinct source-backed write case
   after
   the four-`i` shadow prefix. Exact D=4 reads source[4], C=79 reaches `*`, and

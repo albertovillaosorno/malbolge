@@ -59,6 +59,7 @@ use malbolge::{
     verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
     verify_jump_rotate_halt_profile_width,
+    verify_jump_rotate_io_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
@@ -68,6 +69,7 @@ use malbolge::{
     verify_minimum_jump_crazy_halt_profile_width,
     verify_minimum_jump_crazy_io_halt_profile_width,
     verify_minimum_jump_rotate_halt_profile_width,
+    verify_minimum_jump_rotate_io_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
     verify_minimum_repeated_jump_data_profile_width,
     verify_minimum_straight_line_io_profile_width,
@@ -305,6 +307,10 @@ fn reviewed_width_cuda_requests(
     let rotate = normalize_result(verify_jump_rotate_halt_profile_width(
         profile, b"(&O", word_trits,
     ))?;
+    let rotate_io =
+        normalize_result(verify_jump_rotate_io_halt_profile_width(
+            profile, b"(CB$q^K", word_trits,
+        ))?;
     Ok(vec![
         verified_profile_request(&initial, Vec::new(), 1)?,
         verified_profile_request(&input, Vec::new(), 2)?,
@@ -315,6 +321,7 @@ fn reviewed_width_cuda_requests(
         verified_profile_request(&crazy, Vec::new(), 4)?,
         verified_profile_request(&recovered, vec![0xa5], 6)?,
         verified_profile_request(&rotate, Vec::new(), 3)?,
+        verified_profile_request(&rotate_io, vec![0xa5], 7)?,
     ])
 }
 
@@ -483,6 +490,15 @@ fn verified_profile_request(
     Ok(ProfileBatchRequest::from_machine(machine, step_budget))
 }
 
+fn verified_n10_rotate_io_request() -> TestResult<ProfileBatchRequest> {
+    let verified =
+        normalize_result(verify_minimum_jump_rotate_io_halt_profile_width(
+            current_profile(),
+            b"(CB$q^K",
+        ))?;
+    verified_profile_request(&verified, vec![0xa5], 7)
+}
+
 fn verified_n10_cuda_requests() -> TestResult<Vec<ProfileBatchRequest>> {
     let profile = current_profile();
     let initial = normalize_result(verify_minimum_initial_halt_profile_width(
@@ -541,6 +557,7 @@ fn verified_n10_cuda_requests() -> TestResult<Vec<ProfileBatchRequest>> {
         verified_profile_request(&crazy, Vec::new(), 4)?,
         verified_profile_request(&recovered, vec![0xa5], 6)?,
         verified_profile_request(&rotate, Vec::new(), 3)?,
+        verified_n10_rotate_io_request()?,
     ])
 }
 

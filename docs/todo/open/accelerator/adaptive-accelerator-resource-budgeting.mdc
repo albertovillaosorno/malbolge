@@ -97,9 +97,9 @@ example probe points, not supported-range endpoints.
   EOF input, two-byte straight-line I/O, guarded `p p`, byte-input recovery
   after crazy, the projection-verified `(&O` rotate family, and the repeated
   source-backed jump-code chain whose later decode depends on earlier XLAT2
-  self-encryption, the same chain followed by byte input/output, and the chain
-  followed by a source-backed rotate write. A strict live check covers N=10
-  through 14.
+  self-encryption, the same chain followed by byte input/output, the chain
+  followed by a source-backed rotate write, and projected rotate followed by
+  byte-I/O recovery. A strict live check covers N=10 through 14.
 - The top-level CLI now selects a trusted resident worker for current canonical
   capsules only when explicitly configured by executable plus bounded indexed
   arguments. A live RTX 4060 composition check invoked `CudaProfileRunAdapter`
@@ -124,6 +124,12 @@ example probe points, not supported-range endpoints.
   bytes, and completes identically to safe Rust. One-byte or empty input does
   not acquire that derived authority because a later EOF output is width-
   sensitive.
+- The projected-rotate/I/O request adds an observable recovery boundary to
+  resident coverage. `(CB$q^K` reaches different projected accumulator values
+  after rotate, then input `0xA5` restores exact A before output. Its N10
+  request
+  consumes one byte, emits `0xA5`, and completes with full-state equality to
+  safe Rust; empty-input CLI policy remains canonical N14.
 - The jump-code/rotate request adds a physical source write to resident
   coverage.
   After four exact code jumps, D=4 rotates source byte 36 to exact value 12 at
@@ -140,14 +146,15 @@ example probe points, not supported-range endpoints.
   batch when available, while response reconstruction reapplies the distinct
   opaque token from each prepared request. Full-state comparison includes that
   token, so equal resident shape does not erase input-domain authority.
-- The same N=10 worker path now carries twelve product-verified semantic
+- The same N=10 worker path now carries thirteen product-verified semantic
   families
   in one resident batch, including derived EOF, input/output, repeated jump,
   guarded crazy, `MinimumLength(2)` execution, exact-address rotate, the
   shadow-dependent source-backed jump-code chain, its `MinimumLength(2)`
   byte-I/O
-  composition, and its source-backed rotate composition. Every completion is
-  checked against complete safe-Rust
+  composition, its source-backed rotate composition, and a projection-only
+  recurrence rotate recovered by exact byte input before output. Every
+  completion is checked against complete safe-Rust
   state. This extends live correctness coverage without making a
   throughput claim.
 - A separate 100,000 GiB synthetic fixture proves that additional addressable

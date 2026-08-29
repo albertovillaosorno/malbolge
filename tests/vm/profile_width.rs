@@ -46,6 +46,7 @@ use malbolge::{
     verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
     verify_jump_data_halt_profile_width, verify_jump_rotate_halt_profile_width,
+    verify_jump_rotate_io_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
@@ -56,6 +57,7 @@ use malbolge::{
     verify_minimum_jump_crazy_io_halt_profile_width,
     verify_minimum_jump_data_halt_profile_width,
     verify_minimum_jump_rotate_halt_profile_width,
+    verify_minimum_jump_rotate_io_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
     verify_minimum_repeated_jump_data_profile_width,
     verify_minimum_straight_line_io_profile_width,
@@ -73,6 +75,8 @@ const MINIMUM_MEMORY_WORDS_USIZE: usize = 59_049;
 const QP: &[u8] = b"QP";
 const JUMP_ROTATE_SAFE: &[u8] = b"(&O";
 const JUMP_ROTATE_UNSAFE: &[u8] = b"(CB$M";
+const JUMP_ROTATE_IO_SAFE: &[u8] = b"(CB$q^K";
+const JUMP_ROTATE_IO_UNSAFE: &[u8] = b"(&s`M";
 const CHECKED_GEOMETRIES: [(u8, u32); 5] = [
     (10, 59_049),
     (11, 177_147),
@@ -1357,6 +1361,175 @@ fn check_complete_profile_projection(
         }
     }
     Ok(())
+}
+
+#[test]
+fn jump_rotate_io_recovers_exact_byte_after_projected_rotate() -> TestResult {
+    for (word_trits, _memory_words) in CHECKED_GEOMETRIES {
+        let _verified =
+            normalize_result(verify_jump_rotate_io_halt_profile_width(
+                current_profile(),
+                JUMP_ROTATE_IO_SAFE,
+                word_trits,
+            ))?;
+    }
+    let verified =
+        normalize_result(verify_minimum_jump_rotate_io_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_IO_SAFE,
+        ))?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::JumpRotateIoHaltProjection,
+        "jump-rotate I/O proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "jump-rotate I/O minimum width",
+    )?;
+    check_jump_rotate_io_recovery(&verified)
+}
+
+fn projected_jump_rotate_io_machines(
+    verified: &malbolge::VerifiedProfileExecutionGeometry,
+) -> TestResult<(ProfileMachine, ProfileMachine)> {
+    let input = vec![0xa5];
+    let mut narrow = normalize_result(ProfileMachine::from_verified_source(
+        verified,
+        input.clone(),
+    ))?;
+    let mut canonical = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        JUMP_ROTATE_IO_SAFE,
+        input,
+    ))?;
+    check_equal(
+        &normalize_result(narrow.run(4))?,
+        &RunOutcome::BudgetExhausted { steps: 4 },
+        "jump-rotate I/O narrow projected prefix",
+    )?;
+    check_equal(
+        &normalize_result(canonical.run(4))?,
+        &RunOutcome::BudgetExhausted { steps: 4 },
+        "jump-rotate I/O canonical projected prefix",
+    )?;
+    check_equal(
+        &narrow.registers().accumulator,
+        &29_517u32,
+        "jump-rotate I/O narrow projected accumulator",
+    )?;
+    check_equal(
+        &canonical.registers().accumulator,
+        &2_391_477u32,
+        "jump-rotate I/O canonical projected accumulator",
+    )?;
+    if narrow.registers().accumulator == canonical.registers().accumulator {
+        return Err(String::from(
+            "jump-rotate I/O prefix became numerically exact",
+        ));
+    }
+    check_complete_profile_projection(
+        &narrow,
+        &canonical,
+        verified.memory_words(),
+        "jump-rotate I/O projected prefix",
+    )?;
+    Ok((narrow, canonical))
+}
+
+fn check_jump_rotate_io_recovery(
+    verified: &malbolge::VerifiedProfileExecutionGeometry,
+) -> TestResult {
+    let (mut narrow, mut canonical) =
+        projected_jump_rotate_io_machines(verified)?;
+    let _narrow_input = normalize_result(narrow.run(1))?;
+    let _canonical_input = normalize_result(canonical.run(1))?;
+    check_equal(
+        &narrow.registers().accumulator,
+        &0xa5u32,
+        "jump-rotate I/O recovered narrow accumulator",
+    )?;
+    check_equal(
+        &canonical.registers().accumulator,
+        &0xa5u32,
+        "jump-rotate I/O recovered canonical accumulator",
+    )?;
+    let narrow_outcome = normalize_result(narrow.run(2))?;
+    let canonical_outcome = normalize_result(canonical.run(2))?;
+    check_equal(
+        &narrow_outcome,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 2,
+        },
+        "jump-rotate I/O narrow completion",
+    )?;
+    check_equal(
+        &canonical_outcome,
+        &narrow_outcome,
+        "jump-rotate I/O canonical completion",
+    )?;
+    if narrow.output() != [0xa5] {
+        return Err(String::from("jump-rotate I/O exact output drifted"));
+    }
+    check_complete_profile_projection(
+        &narrow,
+        &canonical,
+        verified.memory_words(),
+        "jump-rotate I/O final",
+    )
+}
+
+#[test]
+fn jump_rotate_io_rejects_eof_and_incompatible_projection() -> TestResult {
+    let verified =
+        normalize_result(verify_minimum_jump_rotate_io_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_IO_SAFE,
+        ))?;
+    check_equal(
+        &ProfileMachine::from_verified_source(&verified, Vec::new()).err(),
+        &Some(ProfileMachineError::VerifiedInputRejected),
+        "jump-rotate I/O EOF token rejection",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(
+            current_profile(),
+            JUMP_ROTATE_IO_SAFE,
+            &[],
+        ),
+        &None,
+        "jump-rotate I/O EOF selector fallback",
+    )?;
+    check_equal(
+        &verify_jump_rotate_io_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_IO_UNSAFE,
+            MINIMUM_WORD_TRITS,
+        ),
+        &Err(ProfileWidthVerificationError::JumpRotateProjection),
+        "jump-rotate I/O incompatible N10 projection",
+    )?;
+    let minimum =
+        normalize_result(verify_minimum_jump_rotate_io_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_IO_UNSAFE,
+        ))?;
+    check_equal(
+        &minimum.word_trits(),
+        &CANONICAL_WORD_TRITS,
+        "jump-rotate I/O incompatible canonical width",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(
+            current_profile(),
+            JUMP_ROTATE_IO_UNSAFE,
+            &[0xa5],
+        ),
+        &None,
+        "jump-rotate I/O incompatible composite fallback",
+    )
 }
 
 #[test]

@@ -42,6 +42,7 @@ use malbolge::{
     verify_minimum_jump_code_halt_profile_width,
     verify_minimum_jump_code_io_halt_profile_width,
     verify_minimum_jump_code_rotate_halt_profile_width,
+    verify_minimum_jump_rotate_io_halt_profile_width,
     verify_minimum_straight_line_io_profile_width,
 };
 
@@ -273,6 +274,61 @@ fn jump_code_rotate_write_survives_indexed_effects() -> Result<(), String> {
         || materialized.registers().data_pointer != 5
     {
         return Err(String::from("jump-code rotate indexed authority drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn jump_rotate_io_recovery_survives_indexed_effects() -> Result<(), String> {
+    let verified = verify_minimum_jump_rotate_io_halt_profile_width(
+        current_profile(),
+        b"(CB$q^K",
+    )
+    .map_err(|error| format!("jump-rotate I/O verification failed: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, vec![0xa5])
+            .map_err(|error| format!("jump-rotate I/O load failed: {error}"))?;
+    let root = machine.snapshot_state();
+    let mut indexed = IndexedMachineState::from_checkpoint(&root)
+        .map_err(|error| format!("jump-rotate I/O root failed: {error:?}"))?;
+    for _step in 0u8..6 {
+        let mut trace_record = None;
+        let outcome = machine
+            .step_traced(&mut |trace: &ProfileStepTrace| {
+                trace_record = Some(*trace);
+            })
+            .map_err(|error| {
+                format!("jump-rotate I/O trace failed: {error}")
+            })?;
+        if outcome != StepOutcome::Continued {
+            return Err(String::from("jump-rotate I/O halted before output"));
+        }
+        let trace = trace_record
+            .ok_or_else(|| String::from("jump-rotate I/O trace missing"))?;
+        indexed = indexed.apply_trace(&trace).map_err(|error| {
+            format!("jump-rotate I/O indexed apply failed: {error:?}")
+        })?;
+    }
+    let materialized = indexed.materialize_checkpoint().map_err(|error| {
+        format!("jump-rotate I/O materialize failed: {error:?}")
+    })?;
+    if materialized != machine.snapshot_state()
+        || materialized.geometry() != verified.geometry()
+        || materialized.io().input_consumed() != 1
+        || materialized.io().output() != [0xa5]
+        || materialized.registers().accumulator != 0xa5
+        || materialized.registers().code_pointer != 6
+        || materialized.registers().data_pointer != 46
+    {
+        return Err(String::from("jump-rotate I/O indexed authority drifted"));
+    }
+    let rotated = materialized
+        .memory()
+        .get(43)
+        .copied()
+        .ok_or_else(|| String::from("jump-rotate I/O data word missing"))?;
+    if rotated != 29_517 {
+        return Err(format!("jump-rotate I/O data write drifted: {rotated}"));
     }
     Ok(())
 }
