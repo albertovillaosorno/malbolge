@@ -208,7 +208,7 @@ use leased_retry::{
     NativeContinuationLeasedRetryExecutionFailure,
 };
 use malbolge::{
-    EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, ProfileMachine,
+    EFFECT_IR_VERSION, EffectOp, IrEncodingError, MemoryLiveIn, ProfileMachine,
     ProfileMachineError, ProfileMachineIoState, ProfileMachineObservation,
     ProfileMachineState, ProfileMemoryDelta, ProfileMemoryRead,
     ProfileMemoryWrite, ProfileRegisters, ProfileRequirementErrorKind,
@@ -871,8 +871,9 @@ fn rendered_profile_metadata(source: &str) -> Result<Vec<u8>, String> {
 }
 
 fn fixture_profile_requirement() -> TargetProfileRequirement {
-    let mut requirement =
-        TargetProfileRequirement::from_descriptor(current_profile());
+    let profile =
+        target_profile(FIXTURE_PROFILE_ID).unwrap_or_else(|| current_profile());
+    let mut requirement = TargetProfileRequirement::from_descriptor(profile);
     requirement.version = String::from(FIXTURE_PROFILE_VERSION);
     requirement
 }
@@ -999,6 +1000,44 @@ fn canonical_ir_matches_versioned_byte_fixture() -> Result<(), String> {
             observed.len(),
             expected.len()
         ))
+    }
+}
+
+#[test]
+fn ir_v3_rejects_profile_capacity_wider_than_u32() -> Result<(), String> {
+    let mut wide = program();
+    wide.profile_requirement.word_trits = 21;
+    wide.profile_requirement.memory_words = 10_460_353_203;
+    if wide.canonical_bytes()
+        == Err(IrEncodingError::ProfileMemoryWordsOverflow)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "IR v3 admitted an N21 profile-capacity envelope",
+        ))
+    }
+}
+
+#[test]
+fn native_identity_rejects_profile_capacity_wider_than_ir_v3()
+-> Result<(), String> {
+    let mut wide = program();
+    wide.profile_requirement.word_trits = 21;
+    wide.profile_requirement.memory_words = 10_460_353_203;
+    let encoding_error = NativeIdentityError::Encoding(
+        IrEncodingError::ProfileMemoryWordsOverflow,
+    );
+    if RegionEffectIdentity::new(&wide) != Err(encoding_error) {
+        return Err(String::from(
+            "N21 envelope acquired an IR-v3 region identity",
+        ));
+    }
+    let target = NativeTargetIdentity::new(base_target_config());
+    if NativeArtifactKey::new(&wide, target) == Err(encoding_error) {
+        Ok(())
+    } else {
+        Err(String::from("N21 envelope acquired an IR-v3 native key"))
     }
 }
 

@@ -294,7 +294,7 @@ pub struct TargetProfileRequirement {
     /// Defining semantic capabilities in stable diagnostic order.
     pub features: Vec<String>,
     /// Exact directly addressed profile capacity.
-    pub memory_words: u32,
+    pub memory_words: u64,
     /// Published immutable language version.
     pub version: String,
     /// Number of ternary digits in one profile word.
@@ -310,7 +310,7 @@ impl TargetProfileRequirement {
                 .iter()
                 .map(|feature| String::from(feature.stable_id()))
                 .collect(),
-            memory_words: profile.memory_words(),
+            memory_words: u64::from(profile.memory_words()),
             version: String::from(profile.version()),
             word_trits: profile.word_trits(),
         }
@@ -322,7 +322,7 @@ impl TargetProfileRequirement {
         let Some(profile) = target_profile(profile_id) else {
             return false;
         };
-        self.memory_words == profile.memory_words()
+        self.memory_words == u64::from(profile.memory_words())
             && self.version == profile.version()
             && self.word_trits == profile.word_trits()
             && self.features.len() == REQUIRED_FEATURES.len()
@@ -558,7 +558,7 @@ impl Display for ProfileRequirementError {
 struct CapacityRequirementView<'requirement> {
     constraint: &'static str,
     profile_id: &'requirement str,
-    profile_memory_words: u32,
+    profile_memory_words: u64,
     required_memory_words: u64,
     version: &'requirement str,
 }
@@ -572,7 +572,7 @@ enum RequirementFeatures<'requirement> {
 #[derive(Clone, Copy)]
 struct RuntimeRequirementView<'requirement> {
     features: RequirementFeatures<'requirement>,
-    memory_words: u32,
+    memory_words: u64,
     profile_id: &'requirement str,
     runtime: RuntimeCapability,
     version: &'requirement str,
@@ -607,7 +607,7 @@ pub fn preflight_portable_profile_requirement<'requirement>(
     required_memory_words: u64,
     runtime: &'static RuntimeCapability,
 ) -> Result<(), PortableProfileRequirementError<'requirement>> {
-    if required_memory_words > u64::from(requirement.memory_words) {
+    if required_memory_words > requirement.memory_words {
         return Err(PortableProfileRequirementError {
             kind: ProfileRequirementErrorKind::ProfileCapacityExceeded,
             profile_id,
@@ -689,7 +689,7 @@ pub fn preflight_profile(
         ProfileFeatureSet::NORMATIVE.missing_from(runtime.features);
     if runtime_geometry_missing(
         profile.word_trits,
-        profile.memory_words,
+        u64::from(profile.memory_words),
         *runtime,
     ) || !missing_features.is_empty()
     {
@@ -724,13 +724,13 @@ pub fn target_profile(id: &str) -> Option<&'static ProfileDescriptor> {
         .find(|profile| profile.id == id)
 }
 
-const fn runtime_geometry_missing(
+fn runtime_geometry_missing(
     word_trits: u8,
-    memory_words: u32,
+    memory_words: u64,
     runtime: RuntimeCapability,
 ) -> bool {
     word_trits > runtime.max_word_trits
-        || memory_words > runtime.max_memory_words
+        || memory_words > u64::from(runtime.max_memory_words)
 }
 
 fn runtime_requirement_missing(view: RuntimeRequirementView<'_>) -> bool {
@@ -767,7 +767,7 @@ fn write_capacity_error(
     write_capacity_requirement(formatter, CapacityRequirementView {
         constraint,
         profile_id: profile.id,
-        profile_memory_words: profile.memory_words,
+        profile_memory_words: u64::from(profile.memory_words),
         required_memory_words: error.required_memory_words,
         version: profile.version,
     })
@@ -883,7 +883,8 @@ fn write_missing_runtime_dimensions(
     view: RuntimeRequirementView<'_>,
 ) -> FormatResult {
     let word_missing = view.word_trits > view.runtime.max_word_trits;
-    let memory_missing = view.memory_words > view.runtime.max_memory_words;
+    let memory_missing =
+        view.memory_words > u64::from(view.runtime.max_memory_words);
     let prefix_present = match (word_missing, memory_missing) {
         (false, false) => false,
         (false, true) => {
@@ -934,7 +935,7 @@ fn write_runtime_error(
     let profile = error.profile;
     write_runtime_requirement(formatter, RuntimeRequirementView {
         features: RequirementFeatures::Canonical,
-        memory_words: profile.memory_words,
+        memory_words: u64::from(profile.memory_words),
         profile_id: profile.id,
         runtime: *error.runtime,
         version: profile.version,

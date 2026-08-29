@@ -56,7 +56,8 @@ pub(super) fn canonical_profile_metadata(
         push_metadata_bytes(&mut bytes, feature.as_bytes())?;
     }
     bytes.push(requirement.word_trits);
-    bytes.extend_from_slice(&requirement.memory_words.to_le_bytes());
+    let memory_words = u32::try_from(requirement.memory_words).ok()?;
+    bytes.extend_from_slice(&memory_words.to_le_bytes());
     bytes.extend_from_slice(&ir.required_memory_words().to_le_bytes());
     Some(bytes)
 }

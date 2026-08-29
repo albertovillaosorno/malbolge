@@ -144,11 +144,16 @@ transfers, verification, and other separately measured costs.
   through
   modulus 3^20; and `profile_eof_word(20)` is exactly 3^20-1 while N21 overflows
   the `u32` helper contract.
-- The portable Rust `TargetProfileRequirement` and IR v3 metadata still encode
-  profile memory words as `u32`. They therefore cannot yet transport an exact
-  N21+ profile requirement even though the mathematical/chunk model can describe
-  it. Widening/versioning that portable boundary remains required before such a
-  profile can become executable.
+- The portable Rust `TargetProfileRequirement` now carries profile capacity as
+  `u64`, so an exact N21/10,460,353,203-word envelope can reach runtime
+  preflight
+  and is rejected against `safe-rust-profiled` as both `word-trits` and
+  `memory-words`. Frozen effect IR v3 and `MBPF` v3 still encode profile
+  capacity
+  as `u32`; N21 fails v3 canonicalization with
+  `ProfileMemoryWordsOverflow` and cannot acquire cache/native identity. A new
+  IR/metadata version remains required before N21+ transport can become
+  executable.
 - A theorem-specific research checker certifies the initial-halt family without
   trusting final differential equality. It checks widths, source capacity and
   lexical admission, every position-dependent loader decode, and an initial `v`

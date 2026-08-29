@@ -65,6 +65,13 @@ use fixed-width little-endian encoding; host-sized counts are first converted to
 5. ordered effects, each containing before/after observations, input/output
    tags, and data/encryption memory-write options.
 
+`TargetProfileRequirement` carries profile capacity as `u64` in memory so the
+semantic/preflight envelope can represent widths beyond the current `u32`
+execution backend. The frozen v3 byte format still stores that one field as
+`u32`. `canonical_bytes()` therefore rejects a wider envelope with
+`ProfileMemoryWordsOverflow`; it never truncates or reinterprets v3 bytes. A
+future wider transport requires a new IR format version.
+
 The encoding never depends on Rust struct layout, enum discriminants, pointer
 width, or host endianness. Canonical transport intentionally remains available
 for an untrusted envelope whose addresses exceed its declared profile capacity;

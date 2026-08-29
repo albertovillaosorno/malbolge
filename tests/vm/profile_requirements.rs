@@ -56,6 +56,8 @@ const HISTORICAL_ID: &str = "malbolge-1998";
 const HISTORICAL_WORDS: u32 = 59_049;
 const PROFILED_BACKEND_TRITS: u8 = 20;
 const PROFILED_BACKEND_WORDS: u32 = 3_486_784_401;
+const FIRST_WIDE_PROFILE_TRITS: u8 = 21;
+const FIRST_WIDE_PROFILE_WORDS: u64 = 10_460_353_203;
 const IO_ROUNDTRIP: &[u8] =
     include_bytes!("../compatibility/specification/spec-io-roundtrip.malbolge");
 const TRANSITION_ID: &str = "malbolge-2026.1";
@@ -117,7 +119,7 @@ fn safe_rust_profiled_capacity_is_independent_of_current_profile() -> TestResult
 fn portable_runtime_preflight_exposes_u32_ternary_boundary() -> TestResult {
     let mut requirement =
         TargetProfileRequirement::from_descriptor(current_profile());
-    requirement.memory_words = PROFILED_BACKEND_WORDS;
+    requirement.memory_words = u64::from(PROFILED_BACKEND_WORDS);
     requirement.word_trits = PROFILED_BACKEND_TRITS;
     preflight_runtime_requirement(
         "research-n20",
@@ -126,7 +128,8 @@ fn portable_runtime_preflight_exposes_u32_ternary_boundary() -> TestResult {
     )
     .map_err(|error| format!("N20 backend boundary rejected: {error}"))?;
 
-    requirement.word_trits = PROFILED_BACKEND_TRITS.saturating_add(1);
+    requirement.word_trits = FIRST_WIDE_PROFILE_TRITS;
+    requirement.memory_words = FIRST_WIDE_PROFILE_WORDS;
     let Err(error) = preflight_runtime_requirement(
         "research-n21",
         &requirement,
@@ -135,7 +138,7 @@ fn portable_runtime_preflight_exposes_u32_ternary_boundary() -> TestResult {
         return Err(String::from("N21 exceeded the u32 backend boundary"));
     };
     let diagnostic = format!("{error}");
-    if diagnostic.ends_with("missing=word-trits") {
+    if diagnostic.ends_with("missing=word-trits,memory-words") {
         Ok(())
     } else {
         Err(format!(

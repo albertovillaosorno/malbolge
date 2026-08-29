@@ -113,6 +113,9 @@ impl EffectOp {
 pub enum IrEncodingError {
     /// A host-sized length cannot fit the canonical unsigned 64-bit field.
     LengthOverflow,
+    /// IR v3 cannot encode a profile capacity wider than its unsigned 32-bit
+    /// field.
+    ProfileMemoryWordsOverflow,
 }
 
 /// Failure while projecting one complete normative step trace to portable IR.
@@ -147,7 +150,9 @@ impl RegionEffectProgram {
     /// # Errors
     ///
     /// Returns [`IrEncodingError::LengthOverflow`] when a host-sized length
-    /// cannot fit the canonical unsigned 64-bit representation.
+    /// cannot fit the canonical unsigned 64-bit representation, or
+    /// [`IrEncodingError::ProfileMemoryWordsOverflow`] when an envelope exceeds
+    /// the frozen IR-v3 unsigned 32-bit profile-capacity field.
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, IrEncodingError> {
         let mut bytes = Vec::new();
         bytes.extend_from_slice(IR_MAGIC);
@@ -172,8 +177,7 @@ impl RegionEffectProgram {
     /// Reports whether every addressed word fits the declared profile capacity.
     #[must_use]
     pub fn fits_declared_profile_capacity(&self) -> bool {
-        self.required_memory_words()
-            <= u64::from(self.profile_requirement.memory_words)
+        self.required_memory_words() <= self.profile_requirement.memory_words
     }
 
     /// Projects one successful normative step trace to exact one-step IR.
@@ -396,7 +400,9 @@ fn push_profile_requirement(
         push_bytes(output, feature.as_bytes())?;
     }
     output.push(requirement.word_trits);
-    push_u32(output, requirement.memory_words);
+    let memory_words = u32::try_from(requirement.memory_words)
+        .map_err(|_error| IrEncodingError::ProfileMemoryWordsOverflow)?;
+    push_u32(output, memory_words);
     Ok(())
 }
 

@@ -34,6 +34,10 @@
 
 use super::*;
 
+fn direct_memory_words(program: &RegionEffectProgram) -> Option<u32> {
+    u32::try_from(program.profile_requirement.memory_words).ok()
+}
+
 pub(super) fn fetched_terminal_program(
     program: &RegionEffectProgram,
     reason: Termination,
@@ -207,7 +211,7 @@ pub(super) fn derive_jump_code_program(
     {
         return None;
     }
-    let memory_words = program.profile_requirement.memory_words;
+    let memory_words = direct_memory_words(program)?;
     let encryption_pointer = data_live_in.value;
     let encrypted_value = encrypt_profile_cell(encryption_live_in.value)?;
     let next_code_pointer =
@@ -326,7 +330,7 @@ pub(super) fn derive_jump_data_program(
     {
         return None;
     }
-    let memory_words = program.profile_requirement.memory_words;
+    let memory_words = direct_memory_words(program)?;
     let encrypted_value = encrypt_profile_cell(code_live_in.value)?;
     let next_code_pointer =
         profile_pointer_successor(code_pointer, memory_words)?;
@@ -452,7 +456,7 @@ pub(super) fn crazy_commit(
     {
         return None;
     }
-    let memory_words = program.profile_requirement.memory_words;
+    let memory_words = direct_memory_words(program)?;
     if data_live_in.value >= memory_words
         || before.registers.accumulator >= memory_words
     {
@@ -545,7 +549,7 @@ pub(super) fn derive_input_program(
         before.input_consumed,
         program.profile_requirement.word_trits,
     )?;
-    let memory_words = program.profile_requirement.memory_words;
+    let memory_words = direct_memory_words(program)?;
     let encrypted_value = encrypt_profile_cell(live_in.value)?;
     let next_code_pointer =
         profile_pointer_successor(code_pointer, memory_words)?;
@@ -657,7 +661,7 @@ pub(super) fn derive_output_program(
 ) -> Option<DirectOutputProgram> {
     let before = effect.before;
     let code_pointer = before.registers.code_pointer;
-    let memory_words = program.profile_requirement.memory_words;
+    let memory_words = direct_memory_words(program)?;
     if before.termination.is_some()
         || live_in.address != code_pointer
         || decode_profile_instruction(live_in.value, code_pointer)
@@ -819,7 +823,7 @@ pub(super) fn rotate_commit(
     {
         return None;
     }
-    let memory_words = program.profile_requirement.memory_words;
+    let memory_words = direct_memory_words(program)?;
     if data_live_in.value >= memory_words {
         return None;
     }
@@ -912,7 +916,7 @@ pub(super) fn derive_no_operation_program(
     live_in: MemoryLiveIn,
 ) -> Option<DirectNoOperationProgram> {
     let before = effect.before;
-    let memory_words = program.profile_requirement.memory_words;
+    let memory_words = direct_memory_words(program)?;
     let next_code_pointer =
         profile_pointer_successor(before.registers.code_pointer, memory_words)?;
     let next_data_pointer =

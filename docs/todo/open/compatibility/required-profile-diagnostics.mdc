@@ -84,9 +84,13 @@ historical-profile constraint.
   top-level mappings, exact JSON-text inputs, real `pathlib.Path` loader
   arguments, named profile identities, and feature member types before
   operations that could leak Python implementation errors.
-- Portable effect IR v3, native keys, and direct COFF `MBPF` v3 metadata now
-  carry exact profile ID/fingerprint plus published version, ordered semantic
-  features, word trits, profile capacity, and derived `u64` region memory.
+- `TargetProfileRequirement` now carries profile capacity as `u64`, allowing an
+  exact N21/10,460,353,203-word envelope to reach portable runtime preflight.
+  `safe-rust-profiled` rejects it with both `word-trits` and `memory-words`.
+- Portable effect IR v3, native keys, and direct COFF `MBPF` v3 metadata remain
+  byte-frozen with a `u32` profile-capacity field. A wider envelope fails v3
+  canonicalization with `ProfileMemoryWordsOverflow` and cannot acquire
+  cache/native identity. A new version is required for wider transport.
 - VM-owned `preflight_runtime_requirement()` consumes an independently admitted
   envelope against explicit classic/profiled runtime capability. Current IR
   produces byte-identical `MALBOLGE-PROFILE-001` text to canonical preflight,

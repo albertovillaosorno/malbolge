@@ -508,9 +508,7 @@ impl RegionEffectIdentity {
         digest: BucketDigestFunction,
     ) -> Result<Self, NativeIdentityError> {
         let required_memory_words = program.required_memory_words();
-        if required_memory_words
-            > u64::from(program.profile_requirement.memory_words)
-        {
+        if required_memory_words > program.profile_requirement.memory_words {
             return Err(NativeIdentityError::ProfileCapacity);
         }
         let canonical = program.canonical_bytes()?;

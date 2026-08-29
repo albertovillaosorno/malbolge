@@ -286,6 +286,18 @@ ID/fingerprint. Safe Rust
 can now consume an independently admitted envelope against either explicit
 runtime capability without reloading the profile document.
 
+The Rust `TargetProfileRequirement` stores declared profile capacity as `u64`.
+This lets portable runtime preflight represent an N21/10,460,353,203-word
+requirement and report both missing backend dimensions instead of failing to
+construct the envelope. This does not widen executable VM addresses.
+
+Effect IR v3 and direct `MBPF` v3 remain byte-frozen with a `u32`
+profile-capacity
+field. A wider requirement fails IR v3 canonicalization with
+`ProfileMemoryWordsOverflow`, so it cannot acquire region/cache/native identity
+or reach direct metadata emission. Supporting such artifacts requires a new
+versioned transport rather than reinterpretation of v3.
+
 Effect IR now derives the exact region-specific memory requirement needed to
 distinguish `MALBOLGE-PROFILE-002`, including the full `u32` address domain.
 Although raw IR remains serializable for deterministic rejection,
