@@ -38,7 +38,7 @@ use malbolge::{
     ProfileWidthProofKind, ProfileWidthVerificationError, RegionEffectProgram,
     RunOutcome, StepProgramProjectionError, TargetProfileRequirement,
     Termination, current_profile, decode_profile_instruction,
-    historical_profile, select_minimum_verified_profile_width,
+    historical_profile, profile_crazy, select_minimum_verified_profile_width,
     verify_initial_halt_profile_width, verify_input_output_halt_profile_width,
     verify_input_then_halt_profile_width, verify_jump_code_halt_profile_width,
     verify_jump_crazy_halt_profile_width,
@@ -932,6 +932,27 @@ fn jump_code_halt_verifier_rejects_second_target_outside_source() -> TestResult
         &None,
         "repeated jump-code composite fallback",
     )
+}
+
+#[test]
+fn exact_recurrence_code_target_forces_next_width_divergence() -> TestResult {
+    for (word_trits, modulus) in CHECKED_GEOMETRIES
+        .into_iter()
+        .filter(|(word_trits, _words)| *word_trits < CANONICAL_WORD_TRITS)
+    {
+        let high_trits = CANONICAL_WORD_TRITS.saturating_sub(word_trits);
+        let high_domain = 3u32.pow(u32::from(high_trits));
+        for high_data in 0u32..high_domain {
+            let wide_data = high_data.saturating_mul(modulus);
+            let wide_next = profile_crazy(wide_data, 0, CANONICAL_WORD_TRITS);
+            if wide_next < modulus {
+                return Err(format!(
+                    "N{word_trits} recurrence successor stayed narrow"
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[test]

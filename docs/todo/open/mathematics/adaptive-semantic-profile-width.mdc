@@ -429,6 +429,12 @@ separate costs; resource evidence must measure those costs directly.
   second
   target leaves source both preserve canonical execution instead of widening
   around missing evidence.
+- Recurrence-backed initial code targets also have a structural exactness
+  barrier.
+  For each N=10 through 13, if one N14 recurrence word is numerically equal to
+  the N-word, its high trits are zero. The next `crazy(previous, exact_word)`
+  necessarily restores a nonzero high trit for every possible high part of the
+  previous word, so target and successor cannot both remain numerically exact.
 - Indexed state advances the same N10 shadow-dependent chain through four code
   jumps. Materialization exactly matches the runtime checkpoint, preserves the
   opaque geometry token, retains all four self-encryption deltas at targets 98,

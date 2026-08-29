@@ -425,6 +425,20 @@ encryption target, or successor outside loaded source returns
 sources and chains that leave the source therefore stay canonical under the
 composite selector.
 
+There is also a structural barrier for the initial recurrence-backed code
+target.
+For every N=10 through 13, assume one N14 recurrence word is numerically equal
+to its N-width projection; all discarded high trits are then zero. In the next
+recurrence step those zero trits occupy the accumulator side of `crazy`.
+
+The normative crazy table has no zero result when the accumulator trit is zero.
+Enumerating all `3^(14-N)` possible high parts of the previous data word
+confirms
+that the successor always regains a nonzero discarded trit. Thus a recurrence-
+backed initial `i` cannot have both its encryption target and following C exact,
+which justifies the product theorem remaining source-backed rather than merely
+being a conservative implementation omission.
+
 Indexed-state evidence now advances all four N10 code jumps and materializes the
 checkpoint. The materialized state exactly equals the runtime snapshot,
 preserves the opaque geometry token, records all four physical self-encryption
