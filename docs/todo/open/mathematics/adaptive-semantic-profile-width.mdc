@@ -138,6 +138,12 @@ transfers, verification, and other separately measured costs.
   ternary geometry representable by their declared `u32` word/address contract:
   N20 with 3,486,784,401 words. N21 requires 10,460,353,203 words and fails the
   backend width boundary; this is an implementation limit, not a semantic one.
+- The N20 representation boundary is now arithmetic evidence, not only field
+  capacity. Product `profile_crazy` matches an independent trit-by-trit `u64`
+  oracle across structured N20 edge words; rotate matches a `u64` formula
+  through
+  modulus 3^20; and `profile_eof_word(20)` is exactly 3^20-1 while N21 overflows
+  the `u32` helper contract.
 - The portable Rust `TargetProfileRequirement` and IR v3 metadata still encode
   profile memory words as `u32`. They therefore cannot yet transport an exact
   N21+ profile requirement even though the mathematical/chunk model can describe

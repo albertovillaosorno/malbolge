@@ -51,6 +51,8 @@ B6v^=I_0/8|jsb9m<.TVac`uY*MK'X~xDl}REokN:#?G\"i@";
 const TEST_XLAT1: &[u8; DECODE_TABLE_LEN] =
     b"+b(29e*j1VMEKLyC})8&m#~W>qxdRp0wkrUo[D7,XTcA\"lI\
 .v%{gJh4G\\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha";
+const PROFILED_BOUNDARY_TRITS: u8 = 20;
+const PROFILED_BOUNDARY_WORDS: u32 = 3_486_784_401;
 const ROTATE_HIGH_TRIT_WEIGHT: u16 = 19_683;
 const TRIT_COUNT: u8 = 10;
 
@@ -105,6 +107,39 @@ fn profile_crazy_scalar(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {
         trit = trit.saturating_add(1);
     }
     result
+}
+
+fn profile_crazy_wide_oracle(
+    data: u32,
+    accumulator: u32,
+    trits: u8,
+) -> TestResult<u32> {
+    let mut remaining_data = u64::from(data);
+    let mut remaining_accumulator = u64::from(accumulator);
+    let mut place = 1u64;
+    let mut result = 0u64;
+    let mut trit = 0u8;
+    while trit < trits {
+        let data_digit =
+            u16::try_from(remaining_data.rem_euclid(3)).map_err(|error| {
+                format!("wide data trit conversion failed: {error}")
+            })?;
+        let accumulator_digit = u16::try_from(
+            remaining_accumulator.rem_euclid(3),
+        )
+        .map_err(|error| {
+            format!("wide accumulator trit conversion failed: {error}")
+        })?;
+        let output =
+            u64::from(crazy_trit_scalar(data_digit, accumulator_digit));
+        result = result.saturating_add(output.saturating_mul(place));
+        place = place.saturating_mul(3);
+        remaining_data = remaining_data.div_euclid(3);
+        remaining_accumulator = remaining_accumulator.div_euclid(3);
+        trit = trit.saturating_add(1);
+    }
+    u32::try_from(result)
+        .map_err(|error| format!("wide crazy result escaped u32: {error}"))
 }
 
 const fn structured_profile_words(modulus: u32) -> [u32; 12] {
@@ -251,7 +286,12 @@ fn public_profile_eof_word_matches_canonical_profiles() -> TestResult {
     }
     check_equal(&profile_eof_word(0), &None, "zero-width EOF is rejected")?;
     check_equal(
-        &profile_eof_word(21),
+        &profile_eof_word(PROFILED_BOUNDARY_TRITS),
+        &Some(PROFILED_BOUNDARY_WORDS.saturating_sub(1)),
+        "u32 profile EOF boundary is exact",
+    )?;
+    check_equal(
+        &profile_eof_word(PROFILED_BOUNDARY_TRITS.saturating_add(1)),
         &None,
         "overflowing profile EOF is rejected",
     )
@@ -302,6 +342,25 @@ fn public_profile_crazy_matches_independent_formula() -> TestResult {
 }
 
 #[test]
+fn profile_crazy_is_exact_at_u32_ternary_boundary() -> TestResult {
+    let words = structured_profile_words(PROFILED_BOUNDARY_WORDS);
+    for data in words {
+        for accumulator in words {
+            check_equal(
+                &profile_crazy(data, accumulator, PROFILED_BOUNDARY_TRITS),
+                &profile_crazy_wide_oracle(
+                    data,
+                    accumulator,
+                    PROFILED_BOUNDARY_TRITS,
+                )?,
+                "N20 profile crazy equals u64 trit oracle",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn profile_pointer_successor_wraps_exact_domains() -> TestResult {
     for profile in [historical_profile(), current_profile()] {
         let modulus = profile.memory_words();
@@ -330,11 +389,20 @@ fn profile_pointer_successor_wraps_exact_domains() -> TestResult {
 
 #[test]
 fn profile_rotate_matches_independent_formula() -> TestResult {
-    for modulus in [59_049u32, 4_782_969u32] {
-        let high_weight = modulus.div_euclid(3);
+    for modulus in [
+        59_049u32,
+        4_782_969u32,
+        14_348_907u32,
+        PROFILED_BOUNDARY_WORDS,
+    ] {
+        let high_weight = u64::from(modulus.div_euclid(3));
         for value in [0, 1, 2, 10, 123, modulus.saturating_sub(1)] {
-            let expected =
-                value.div_euclid(3) + value.rem_euclid(3) * high_weight;
+            let expected_wide = u64::from(value.div_euclid(3)).saturating_add(
+                u64::from(value.rem_euclid(3)).saturating_mul(high_weight),
+            );
+            let expected = u32::try_from(expected_wide).map_err(|error| {
+                format!("rotate oracle escaped u32: {error}")
+            })?;
             check_equal(
                 &profile_rotate(value, modulus),
                 &expected,

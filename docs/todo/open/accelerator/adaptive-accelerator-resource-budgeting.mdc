@@ -84,6 +84,11 @@ example probe points, not supported-range endpoints.
   representation: N20/3,486,784,401 words. Geometry validation admits that
   boundary without allocating its memory image and rejects N21 before wire or
   kernel construction. Physical VRAM admission remains a separate planner gate.
+- Static CUDA boundary evidence renders N20 kernel constants without allocating
+  its 3,486,784,401-word memory image. The generated source binds exact N20
+  `MEMORY_WORDS`, `WORD_TRITS`, `MAX_WORD`, `EOF_WORD`, and 3^19 rotate weight.
+  This is representation/correctness evidence only; it does not claim N20 live
+  execution or throughput on the current RTX 4060.
 - The VM backend port exposes resident geometry directly from an already
   admitted `ProfileMachine`: EOF, canonical I/O opcodes, memory words/modulus,
   and trit width. Verified QP artifacts for every reviewed N=10 through 15 reach

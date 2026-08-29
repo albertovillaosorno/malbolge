@@ -68,6 +68,8 @@ if TYPE_CHECKING:
     from algorithms.profile_width.certificate import WidthCertificateDecision
 
 REFERENCE_WIDTH = PUBLISHED_CERTIFICATE_REFERENCE_WIDTH
+BACKEND_BOUNDARY_WIDTH = 20
+BACKEND_BOUNDARY_WORDS = 3_486_784_401
 
 TESTS_ROOT = Path(__file__).resolve().parents[1]
 QP_CERTIFICATE = (
@@ -171,6 +173,32 @@ def test_derived_widths_render_exact_resident_kernel_geometry() -> None:
             f"#define ROTATE_HIGH_WEIGHT {resident.word_modulus // 3}u"
             in kernel
         )
+
+
+def test_u32_backend_boundary_renders_exact_cuda_geometry() -> None:
+    """N20 kernel constants remain exact without allocating a resident image."""
+    resident = _resident_geometry(BACKEND_BOUNDARY_WIDTH)
+    assert resident.memory_words == BACKEND_BOUNDARY_WORDS
+    kernel = resident_kernel_source(
+        ResidentGeometry(
+            interpreter_authority=True,
+            eof_word=resident.eof_word,
+            input_instruction=resident.input_instruction,
+            memory_words=resident.memory_words,
+            output_instruction=resident.output_instruction,
+            word_modulus=resident.word_modulus,
+            word_trits=resident.word_trits,
+        ),
+        "u32_boundary_probe",
+    )
+    assert f"#define MEMORY_WORDS {BACKEND_BOUNDARY_WORDS}u" in kernel
+    assert f"#define WORD_TRITS {BACKEND_BOUNDARY_WIDTH}u" in kernel
+    assert f"#define MAX_WORD {BACKEND_BOUNDARY_WORDS - 1}u" in kernel
+    assert f"#define EOF_WORD {BACKEND_BOUNDARY_WORDS - 1}u" in kernel
+    assert (
+        f"#define ROTATE_HIGH_WEIGHT {BACKEND_BOUNDARY_WORDS // 3}u"
+        in kernel
+    )
 
 
 def test_subject_bound_selection_controls_research_capacity() -> None:
