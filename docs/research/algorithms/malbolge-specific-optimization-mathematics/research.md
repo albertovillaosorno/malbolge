@@ -376,6 +376,14 @@ Both checked-in current capsules carry `ubO` with empty input, so the existing
 `MinimumLength(1)` proof correctly cannot replace their canonical EOF-visible
 execution with N=10.
 
+Product selection now composes the supported theorem families without importing
+research evidence. `select_minimum_verified_profile_width` retains only
+successful trusted artifacts that are strictly narrower than the canonical
+profile and whose hidden input policy admits the exact input.
+`ProfileMachine::from_adaptive_source` uses that artifact when construction
+succeeds and otherwise returns to canonical `from_source`. QP/empty and
+`ubO`/byte input select N=10, while `ubO`/empty remains N=14.
+
 Wire homogeneity is intentionally weaker than verifier authority equality. `uP`
 and `ubO` share the same N=10 resident shape and can execute in one CUDA worker
 batch, while each returned checkpoint is reconstructed with its original opaque

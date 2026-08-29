@@ -387,6 +387,15 @@ separate costs; resource evidence must measure those costs directly.
   `ubO` with empty input, which is a concrete non-narrowing case: its derived
   input/output/halt token requires `MinimumLength(1)`, while canonical EOF
   output is width-sensitive.
+- Product `select_minimum_verified_profile_width` now probes only the nine
+  trusted theorem-family minimum verifiers and returns the narrowest successful
+  artifact whose hidden input policy admits the exact input. Equal-width N=14
+  artifacts are ignored so no-proof preserves canonical execution.
+- `ProfileMachine::from_adaptive_source` consumes that selector and fails closed
+  to canonical `from_source` if no narrower artifact applies or derived loading
+  fails. QP with empty input selects N=10; `ubO` with byte input selects N=10;
+  `ubO` with empty input remains canonical N=14 and emits `0x78`. The CLI does
+  not call this adaptive constructor yet.
 - Tiered interpreter handoff remains canonical-only until its continuation
   schema carries verified execution geometry explicitly. A derived N=10
   checkpoint with the same canonical profile, observation, and live-in surface

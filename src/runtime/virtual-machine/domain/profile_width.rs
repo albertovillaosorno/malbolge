@@ -59,6 +59,14 @@ type ProfileWidthVerifier = fn(
     ProfileWidthVerificationError,
 >;
 
+type MinimumProfileWidthVerifier = fn(
+    &'static ProfileDescriptor,
+    &[u8],
+) -> Result<
+    VerifiedProfileExecutionGeometry,
+    ProfileWidthVerificationError,
+>;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ProfileExecutionInputPolicy {
     Any,
@@ -408,6 +416,50 @@ fn verify_minimum_width(
             requested: MINIMUM_ADAPTIVE_WORD_TRITS,
         }
     }))
+}
+
+/// Selects the narrowest supported proof that admits this exact input domain.
+///
+/// Every candidate is produced by an independent trusted theorem verifier.
+/// Failed theorem families are ignored as non-evidence; a successful candidate
+/// is returned only when it is strictly narrower than the canonical profile and
+/// its hidden input policy admits `input`. Equal-width proof tokens therefore
+/// do not replace canonical execution.
+#[must_use]
+pub fn select_minimum_verified_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    input: &[u8],
+) -> Option<VerifiedProfileExecutionGeometry> {
+    let verifiers: [MinimumProfileWidthVerifier; 9] = [
+        verify_minimum_initial_halt_profile_width,
+        verify_minimum_input_output_halt_profile_width,
+        verify_minimum_input_then_halt_profile_width,
+        verify_minimum_jump_crazy_halt_profile_width,
+        verify_minimum_jump_crazy_io_halt_profile_width,
+        verify_minimum_jump_data_halt_profile_width,
+        verify_minimum_noop_prefix_halt_profile_width,
+        verify_minimum_repeated_jump_data_profile_width,
+        verify_minimum_straight_line_io_profile_width,
+    ];
+    let mut selected: Option<VerifiedProfileExecutionGeometry> = None;
+    for verifier in verifiers {
+        let Ok(candidate) = verifier(profile, source) else {
+            continue;
+        };
+        if candidate.word_trits() >= profile.word_trits()
+            || !candidate.geometry().admits_input(input)
+        {
+            continue;
+        }
+        if selected
+            .as_ref()
+            .is_none_or(|current| candidate.word_trits() < current.word_trits())
+        {
+            selected = Some(candidate);
+        }
+    }
+    selected
 }
 
 /// Selects the minimum independently verified input-output-halt width.

@@ -51,6 +51,7 @@ use crate::profile_trace::{
 };
 use crate::profile_width::{
     ProfileExecutionGeometry, VerifiedProfileExecutionGeometry,
+    select_minimum_verified_profile_width,
 };
 use crate::trace::TraceInput;
 use crate::word::{profile_crazy, profile_low_byte};
@@ -505,6 +506,31 @@ impl ProfileMachine {
             self.output.push(byte);
         }
         Ok(())
+    }
+
+    /// Loads the narrowest independently verified supported geometry.
+    ///
+    /// If no strictly narrower proof admits the exact source and input, or if
+    /// derived construction unexpectedly fails, this fails closed to ordinary
+    /// canonical [`Self::from_source`] execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns canonical [`ProfileMachineError`] when fallback source admission
+    /// or loading fails.
+    pub fn from_adaptive_source(
+        profile: &'static ProfileDescriptor,
+        source: &[u8],
+        input: Vec<u8>,
+    ) -> Result<Self, ProfileMachineError> {
+        if let Some(verified) =
+            select_minimum_verified_profile_width(profile, source, &input)
+            && let Ok(machine) =
+                Self::from_verified_source(&verified, input.clone())
+        {
+            return Ok(machine);
+        }
+        Self::from_source(profile, source, input)
     }
 
     /// Canonicalizes annotated source for one explicit target profile.

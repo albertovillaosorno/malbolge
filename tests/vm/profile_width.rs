@@ -38,8 +38,8 @@ use malbolge::{
     ProfileWidthProofKind, ProfileWidthVerificationError, RegionEffectProgram,
     RunOutcome, StepProgramProjectionError, TargetProfileRequirement,
     Termination, current_profile, decode_profile_instruction,
-    historical_profile, verify_initial_halt_profile_width,
-    verify_input_output_halt_profile_width,
+    historical_profile, select_minimum_verified_profile_width,
+    verify_initial_halt_profile_width, verify_input_output_halt_profile_width,
     verify_input_then_halt_profile_width, verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
     verify_jump_data_halt_profile_width,
@@ -974,6 +974,82 @@ fn initial_halt_verifier_rejects_other_valid_source_families() -> TestResult {
         },
         "proof-family rejection",
     )
+}
+
+#[test]
+fn adaptive_selector_respects_input_policy_and_canonical_width() -> TestResult {
+    let initial =
+        select_minimum_verified_profile_width(current_profile(), QP, &[])
+            .ok_or_else(|| {
+                String::from("initial-halt adaptive proof missing")
+            })?;
+    check_equal(
+        &initial.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "initial-halt adaptive width",
+    )?;
+
+    let available =
+        select_minimum_verified_profile_width(current_profile(), b"ubO\n", &[
+            0xa5,
+        ])
+        .ok_or_else(|| String::from("byte-I/O adaptive proof missing"))?;
+    check_equal(
+        &available.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "byte-I/O adaptive width",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(current_profile(), b"ubO\n", &[
+        ]),
+        &None,
+        "EOF-visible adaptive rejection",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(historical_profile(), QP, &[]),
+        &None,
+        "canonical-width adaptive rejection",
+    )
+}
+
+#[test]
+fn adaptive_source_constructor_falls_back_for_eof_visible_io() -> TestResult {
+    let initial = normalize_result(ProfileMachine::from_adaptive_source(
+        current_profile(),
+        QP,
+        Vec::new(),
+    ))?;
+    check_equal(
+        &initial.geometry().word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "adaptive initial-halt machine width",
+    )?;
+
+    let mut eof = normalize_result(ProfileMachine::from_adaptive_source(
+        current_profile(),
+        b"ubO\n",
+        Vec::new(),
+    ))?;
+    check_equal(
+        &eof.geometry().word_trits(),
+        &CANONICAL_WORD_TRITS,
+        "adaptive EOF canonical fallback width",
+    )?;
+    let _eof_outcome = normalize_result(eof.run(3))?;
+    check_equal(eof.output(), &[0x78], "adaptive EOF canonical output")?;
+
+    let mut byte = normalize_result(ProfileMachine::from_adaptive_source(
+        current_profile(),
+        b"ubO\n",
+        vec![0xa5],
+    ))?;
+    check_equal(
+        &byte.geometry().word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "adaptive byte-I/O machine width",
+    )?;
+    let _byte_outcome = normalize_result(byte.run(3))?;
+    check_equal(byte.output(), &[0xa5], "adaptive byte-I/O output")
 }
 
 #[test]

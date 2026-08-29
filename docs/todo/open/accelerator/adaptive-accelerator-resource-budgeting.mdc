@@ -105,10 +105,12 @@ example probe points, not supported-range endpoints.
   historical execution ignore the binding because MBPRN2 carries no canonical
   profile identity. This is deployment correctness, not adaptive-width or
   throughput evidence.
-- The Python synthetic capacity sweep still uses research `execution_geometry`.
-  No composition root yet turns a verified derived-width proof into N=10..13
-  execution automatically. Persistent sessions and equivalent-work retained
-  performance evidence also remain separate acceptance gaps.
+- Product runtime now has an input-aware composite proof selector plus
+  `ProfileMachine::from_adaptive_source`, so verified N=10..13 execution no
+  longer requires callers to name one theorem family manually. No composition
+  root invokes that adaptive constructor yet, and the Python synthetic capacity
+  sweep still uses research `execution_geometry`. Persistent sessions and
+  equivalent-work retained performance evidence remain separate acceptance gaps.
 - Resident batching groups by wire geometry rather than hidden verifier policy.
   `uP` (`Any`) and `ubO` (`MinimumLength(1)`) therefore share one N=10 CUDA
   batch when available, while response reconstruction reapplies the distinct
