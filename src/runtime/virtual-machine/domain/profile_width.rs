@@ -107,6 +107,8 @@ pub enum ProfileWidthProofKind {
     JumpCodeHaltProjection,
     /// Source-backed code jumps reach byte input/output before halt.
     JumpCodeIoHaltProjection,
+    /// Source-backed code jumps reach one projection-compatible rotate.
+    JumpCodeRotateHaltProjection,
     /// One exact jump enables one guarded crazy transition before halt.
     JumpCrazyHaltProjection,
     /// Guarded crazy projection is reset by exact byte input before output.
@@ -283,6 +285,15 @@ pub enum ProfileWidthVerificationError {
     },
     /// Exact source-backed code-jump premises did not hold.
     JumpCodeProjection,
+    /// A reached jump-code/rotate/halt position decoded differently.
+    JumpCodeRotateHaltInstruction {
+        /// Exact loaded source position of the rejected instruction.
+        position: u32,
+        /// Exact decoded instruction byte.
+        decoded: u8,
+    },
+    /// Source-backed rotate projection or write placement did not hold.
+    JumpCodeRotateProjection,
     /// A reached jump-crazy-halt position decoded to another instruction.
     JumpCrazyHaltInstruction {
         /// Exact loaded source position of the rejected instruction.
@@ -379,6 +390,9 @@ impl ProfileWidthVerificationError {
             Self::JumpCodeIoHaltInstruction { position, decoded } => {
                 Some(("jump-code-I/O-halt", decoded, position))
             },
+            Self::JumpCodeRotateHaltInstruction { position, decoded } => {
+                Some(("jump-code-rotate-halt", decoded, position))
+            },
             Self::JumpCrazyHaltInstruction { position, decoded } => {
                 Some(("jump-crazy", decoded, position))
             },
@@ -400,6 +414,7 @@ impl ProfileWidthVerificationError {
             Self::GeometryInvariant
             | Self::InitialInstructionNotHalt { .. }
             | Self::JumpCodeProjection
+            | Self::JumpCodeRotateProjection
             | Self::JumpCrazyProjection
             | Self::JumpRotateProjection
             | Self::NoopPrefixMissingHalt
@@ -428,6 +443,9 @@ impl Display for ProfileWidthVerificationError {
             Self::JumpCodeProjection => {
                 f.write_str("derived jump-code projection premise failed")
             },
+            Self::JumpCodeRotateProjection => f.write_str(
+                "derived jump-code rotate projection premise failed",
+            ),
             Self::JumpCrazyProjection => {
                 f.write_str("derived jump-crazy projection premise failed")
             },
@@ -458,6 +476,7 @@ impl Display for ProfileWidthVerificationError {
             | Self::InputThenHaltInstruction { .. }
             | Self::JumpCodeHaltInstruction { .. }
             | Self::JumpCodeIoHaltInstruction { .. }
+            | Self::JumpCodeRotateHaltInstruction { .. }
             | Self::JumpCrazyHaltInstruction { .. }
             | Self::JumpDataHaltInstruction { .. }
             | Self::JumpRotateHaltInstruction { .. }
@@ -516,12 +535,13 @@ pub fn select_minimum_verified_profile_width(
     source: &[u8],
     input: &[u8],
 ) -> Option<VerifiedProfileExecutionGeometry> {
-    let verifiers: [MinimumProfileWidthVerifier; 12] = [
+    let verifiers: [MinimumProfileWidthVerifier; 13] = [
         verify_minimum_initial_halt_profile_width,
         verify_minimum_input_output_halt_profile_width,
         verify_minimum_input_then_halt_profile_width,
         verify_minimum_jump_code_halt_profile_width,
         verify_minimum_jump_code_io_halt_profile_width,
+        verify_minimum_jump_code_rotate_halt_profile_width,
         verify_minimum_jump_crazy_halt_profile_width,
         verify_minimum_jump_crazy_io_halt_profile_width,
         verify_minimum_jump_data_halt_profile_width,
@@ -656,6 +676,47 @@ pub fn verify_minimum_jump_code_io_halt_profile_width(
         source,
         verify_jump_code_io_halt_profile_width,
     )
+}
+
+/// Selects the narrowest source-backed jump-code/rotate/halt width.
+///
+/// Rotate projection is non-monotone across ternary widths. Explicit projection
+/// misses and source capacity may continue to a wider reviewed candidate; all
+/// other theorem failures remain fail-closed.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when no reviewed width proves the
+/// exact source-backed jump prefix and rotate projection before halt.
+pub fn verify_minimum_jump_code_rotate_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let mut last_width_miss = None;
+    for word_trits in MINIMUM_ADAPTIVE_WORD_TRITS..=profile.word_trits() {
+        match verify_jump_code_rotate_halt_profile_width(
+            profile,
+            source,
+            word_trits,
+        ) {
+            Ok(admission) => return Ok(admission),
+            Err(
+                error @ (ProfileWidthVerificationError::Source(
+                    ProfileLoadError::SourceTooLong,
+                )
+                | ProfileWidthVerificationError::JumpCodeRotateProjection),
+            ) => {
+                last_width_miss = Some(error);
+            },
+            Err(error) => return Err(error),
+        }
+    }
+    Err(last_width_miss.unwrap_or_else(|| {
+        ProfileWidthVerificationError::WidthOutOfRange {
+            profile_word_trits: profile.word_trits(),
+            requested: MINIMUM_ADAPTIVE_WORD_TRITS,
+        }
+    }))
 }
 
 /// Selects the minimum independently verified jump-crazy-halt width.
@@ -1348,6 +1409,101 @@ pub fn verify_jump_code_io_halt_profile_width(
             word_trits,
         },
         proof_kind: ProfileWidthProofKind::JumpCodeIoHaltProjection,
+        source: Box::from(source),
+    })
+}
+
+fn verify_source_backed_jump_rotate_projection(
+    prefix: &SourceBackedCodeJumpPrefix,
+    geometry: ProfileExecutionGeometry,
+) -> Result<(), ProfileWidthVerificationError> {
+    let data_index = usize::try_from(prefix.data_pointer)
+        .map_err(|_error| ProfileWidthVerificationError::GeometryInvariant)?;
+    let data = prefix
+        .shadow
+        .get(data_index)
+        .copied()
+        .ok_or(ProfileWidthVerificationError::JumpCodeRotateProjection)?;
+    let next_code = prefix
+        .code_pointer
+        .checked_add(1)
+        .filter(|address| *address < geometry.memory_words())
+        .ok_or(ProfileWidthVerificationError::JumpCodeRotateProjection)?;
+    let next_code_index = usize::try_from(next_code)
+        .map_err(|_error| ProfileWidthVerificationError::GeometryInvariant)?;
+    if prefix.data_pointer == prefix.code_pointer
+        || prefix.data_pointer == next_code
+        || prefix.shadow.get(next_code_index).is_none()
+    {
+        return Err(ProfileWidthVerificationError::JumpCodeRotateProjection);
+    }
+    let narrow_rotate = profile_rotate(data, geometry.word_modulus());
+    let wide_rotate = profile_rotate(data, geometry.profile().memory_words());
+    if wide_rotate.rem_euclid(geometry.memory_words()) != narrow_rotate {
+        return Err(ProfileWidthVerificationError::JumpCodeRotateProjection);
+    }
+    let _next_data = prefix
+        .data_pointer
+        .checked_add(1)
+        .filter(|address| *address < geometry.memory_words())
+        .ok_or(ProfileWidthVerificationError::JumpCodeRotateProjection)?;
+    let halt_cell = prefix
+        .shadow
+        .get(next_code_index)
+        .copied()
+        .ok_or(ProfileWidthVerificationError::JumpCodeRotateProjection)?;
+    let halt_decoded = decode_profile_instruction(halt_cell, next_code)
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    if halt_decoded != b'v' {
+        return Err(
+            ProfileWidthVerificationError::JumpCodeRotateHaltInstruction {
+                position: next_code,
+                decoded: halt_decoded,
+            },
+        );
+    }
+    Ok(())
+}
+
+/// Verifies source-backed code jumps followed by one rotate and halt.
+///
+/// The jump prefix preserves exact physical C/D and a mutable source shadow.
+/// The reached rotate must read the same source-backed D word at candidate and
+/// canonical widths, write neither the current code cell nor the following
+/// halt, and produce a candidate value equal to canonical rotation modulo the
+/// derived word domain. The following halt remains an exact untouched source
+/// cell.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when the source-backed jump
+/// prefix, reached rotate/halt shape, physical write placement, or rotate
+/// projection does not hold.
+pub fn verify_jump_code_rotate_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    word_trits: u8,
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let memory_words = derived_memory_words(profile, word_trits)?;
+    let geometry = ProfileExecutionGeometry {
+        input_policy: ProfileExecutionInputPolicy::Any,
+        memory_words,
+        profile,
+        word_trits,
+    };
+    let prefix = verify_source_backed_code_jump_prefix(source, memory_words)?;
+    if prefix.jumps == 0 || prefix.decoded != b'*' {
+        return Err(
+            ProfileWidthVerificationError::JumpCodeRotateHaltInstruction {
+                position: prefix.code_pointer,
+                decoded: prefix.decoded,
+            },
+        );
+    }
+    verify_source_backed_jump_rotate_projection(&prefix, geometry)?;
+    Ok(VerifiedProfileExecutionGeometry {
+        geometry,
+        proof_kind: ProfileWidthProofKind::JumpCodeRotateHaltProjection,
         source: Box::from(source),
     })
 }

@@ -41,6 +41,7 @@ use malbolge::{
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_jump_code_halt_profile_width,
     verify_minimum_jump_code_io_halt_profile_width,
+    verify_minimum_jump_code_rotate_halt_profile_width,
     verify_minimum_straight_line_io_profile_width,
 };
 
@@ -116,6 +117,19 @@ fn source_backed_jump_code_io_chain() -> Result<Vec<u8>, String> {
     ] {
         let cell = source.get_mut(position).ok_or_else(|| {
             format!("missing indexed jump-code I/O cell {position}")
+        })?;
+        *cell = encoded_profile_instruction(decoded, position)?;
+    }
+    Ok(source)
+}
+
+fn source_backed_jump_code_rotate_chain() -> Result<Vec<u8>, String> {
+    let mut source = source_backed_jump_code_chain()?;
+    for (position, decoded) in
+        [(4usize, b'j'), (79usize, b'*'), (80usize, b'v')]
+    {
+        let cell = source.get_mut(position).ok_or_else(|| {
+            format!("missing indexed jump-code rotate cell {position}")
         })?;
         *cell = encoded_profile_instruction(decoded, position)?;
     }
@@ -205,6 +219,60 @@ fn jump_code_geometry_survives_indexed_self_encryption() -> Result<(), String> {
         || materialized.registers().data_pointer != 4
     {
         return Err(String::from("jump-code indexed registers drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn jump_code_rotate_write_survives_indexed_effects() -> Result<(), String> {
+    let source = source_backed_jump_code_rotate_chain()?;
+    let verified = verify_minimum_jump_code_rotate_halt_profile_width(
+        current_profile(),
+        &source,
+    )
+    .map_err(|error| {
+        format!("jump-code rotate verification failed: {error}")
+    })?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new()).map_err(
+            |error| format!("jump-code rotate load failed: {error}"),
+        )?;
+    let root = machine.snapshot_state();
+    let mut indexed = IndexedMachineState::from_checkpoint(&root)
+        .map_err(|error| format!("jump-code rotate root failed: {error:?}"))?;
+    for _step in 0u8..5 {
+        let mut trace_record = None;
+        let outcome = machine
+            .step_traced(&mut |trace: &ProfileStepTrace| {
+                trace_record = Some(*trace);
+            })
+            .map_err(|error| {
+                format!("jump-code rotate trace failed: {error}")
+            })?;
+        if outcome != StepOutcome::Continued {
+            return Err(String::from("jump-code rotate halted before write"));
+        }
+        let trace = trace_record
+            .ok_or_else(|| String::from("jump-code rotate trace missing"))?;
+        indexed = indexed.apply_trace(&trace).map_err(|error| {
+            format!("jump-code rotate indexed apply failed: {error:?}")
+        })?;
+    }
+    let materialized = indexed.materialize_checkpoint().map_err(|error| {
+        format!("jump-code rotate materialize failed: {error:?}")
+    })?;
+    let source_word =
+        materialized.memory().get(4).copied().ok_or_else(|| {
+            String::from("jump-code rotate source word missing")
+        })?;
+    if materialized != machine.snapshot_state()
+        || materialized.geometry() != verified.geometry()
+        || source_word != 12
+        || materialized.registers().accumulator != 12
+        || materialized.registers().code_pointer != 80
+        || materialized.registers().data_pointer != 5
+    {
+        return Err(String::from("jump-code rotate indexed authority drifted"));
     }
     Ok(())
 }

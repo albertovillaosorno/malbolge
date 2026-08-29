@@ -97,8 +97,9 @@ example probe points, not supported-range endpoints.
   EOF input, two-byte straight-line I/O, guarded `p p`, byte-input recovery
   after crazy, the projection-verified `(&O` rotate family, and the repeated
   source-backed jump-code chain whose later decode depends on earlier XLAT2
-  self-encryption, plus the same chain followed by byte input/output. A strict
-  live check covers N=10 through 14.
+  self-encryption, the same chain followed by byte input/output, and the chain
+  followed by a source-backed rotate write. A strict live check covers N=10
+  through 14.
 - The top-level CLI now selects a trusted resident worker for current canonical
   capsules only when explicitly configured by executable plus bounded indexed
   arguments. A live RTX 4060 composition check invoked `CudaProfileRunAdapter`
@@ -123,17 +124,24 @@ example probe points, not supported-range endpoints.
   bytes, and completes identically to safe Rust. One-byte or empty input does
   not acquire that derived authority because a later EOF output is width-
   sensitive.
+- The jump-code/rotate request adds a physical source write to resident
+  coverage.
+  After four exact code jumps, D=4 rotates source byte 36 to exact value 12 at
+  every reviewed width; the N10 checkpoint retains source[4]=12 and C=80/D=5.
+  The backend comparison covers the entire memory image, not only observables.
 - Resident batching groups by wire geometry rather than hidden verifier policy.
   `uP` (`Any`) and `ubO` (`MinimumLength(1)`) therefore share one N=10 CUDA
   batch when available, while response reconstruction reapplies the distinct
   opaque token from each prepared request. Full-state comparison includes that
   token, so equal resident shape does not erase input-domain authority.
-- The same N=10 worker path now carries eleven product-verified semantic
+- The same N=10 worker path now carries twelve product-verified semantic
   families
   in one resident batch, including derived EOF, input/output, repeated jump,
-  guarded crazy, `MinimumLength(2)` execution, exact-address rotate, and the
-  shadow-dependent source-backed jump-code chain, and its `MinimumLength(1)`
-  byte-I/O composition. Every completion is checked against complete safe-Rust
+  guarded crazy, `MinimumLength(2)` execution, exact-address rotate, the
+  shadow-dependent source-backed jump-code chain, its `MinimumLength(2)`
+  byte-I/O
+  composition, and its source-backed rotate composition. Every completion is
+  checked against complete safe-Rust
   state. This extends live correctness coverage without making a
   throughput claim.
 - A separate 100,000 GiB synthetic fixture proves that additional addressable

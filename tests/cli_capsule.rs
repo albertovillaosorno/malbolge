@@ -225,6 +225,19 @@ fn source_backed_jump_code_io_chain() -> Result<Vec<u8>, String> {
     Ok(source)
 }
 
+fn source_backed_jump_code_rotate_chain() -> Result<Vec<u8>, String> {
+    let mut source = source_backed_jump_code_chain()?;
+    for (position, decoded) in
+        [(4usize, b'j'), (79usize, b'*'), (80usize, b'v')]
+    {
+        let cell = source.get_mut(position).ok_or_else(|| {
+            format!("missing CLI jump-code rotate cell {position}")
+        })?;
+        *cell = encoded_profile_instruction(decoded, position)?;
+    }
+    Ok(source)
+}
+
 fn clean_cli_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge"));
     let _clean = command
@@ -435,6 +448,45 @@ fn adaptive_jump_code_capsule_uses_verified_n10() -> Result<(), String> {
         Err(format!(
             concat!(
                 "adaptive jump-code CLI mismatch: status={} stdout={:?} ",
+                "stderr={} geometry={:?}",
+            ),
+            output.status,
+            output.stdout,
+            String::from_utf8_lossy(&output.stderr),
+            geometry,
+        ))
+    }
+}
+
+#[test]
+fn adaptive_jump_code_rotate_capsule_uses_verified_n10() -> Result<(), String> {
+    let source = source_backed_jump_code_rotate_chain()?;
+    let bytes = build_capsule(current_profile(), &source).map_err(|error| {
+        format!("build adaptive jump-code rotate capsule: {error}")
+    })?;
+    let capsule =
+        TemporaryCapsule::from_bytes("adaptive-jump-code-rotate", &bytes)?;
+    let marker = TemporaryMarker::new("adaptive-jump-code-rotate");
+    let output = configured_worker_command_with_script(
+        &marker.path,
+        GEOMETRY_UNAVAILABLE_WORKER,
+    )
+    .env(PROFILE_ADAPTIVE_WIDTH_ENV, "1")
+    .arg(&capsule.path)
+    .output()
+    .map_err(|error| format!("run adaptive jump-code rotate CLI: {error}"))?;
+    let geometry = read(&marker.path)
+        .map_err(|error| format!("read jump-code rotate geometry: {error}"))?;
+    if output.status.success()
+        && output.stdout.is_empty()
+        && output.stderr.is_empty()
+        && geometry == b"10"
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "adaptive jump-code rotate mismatch: status={} stdout={:?} ",
                 "stderr={} geometry={:?}",
             ),
             output.status,

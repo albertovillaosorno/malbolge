@@ -445,6 +445,20 @@ preserves the opaque geometry token, records all four physical self-encryption
 deltas at targets 98, 38, 37, and 78, retains the encrypted `i` decode at cell
 38, and finishes the prefix at exact C=79/D=4.
 
+A separate jump-code/rotate theorem continues from that exact C=79/D=4 prefix.
+Unlike the earlier `j o* * v` theorem, its rotate target is deliberately inside
+loaded source. The verifier therefore reads D from the exact mutated source
+shadow, rejects D=C or D=C+1, checks both D and C successors without wrap, and
+requires the N14 rotate result to project to the candidate result before the
+physical write.
+
+The retained positive sets source[4] to `$` (36), for which rotate is exactly 12
+at every N=10 through 14. N10 writes 12 to source[4], self-encrypts the reached
+rotate cell at C=79, and halts at C=80 with D=5/A=12; complete memory and
+registers project to N14. The negative uses `^` (94): derived widths fail rotate
+projection, the specialized minimum verifier reaches only N14, and the composite
+selector preserves canonical execution.
+
 The same exact prefix now composes with byte-visible I/O in a separate theorem.
 `JumpCodeIoHaltProjection` accepts one or more reached `/ <` pairs before halt.
 Each non-EOF input overwrites A with the same exact value at N10 and N14, the
@@ -470,8 +484,9 @@ kernel shape cannot collapse `Any` into `MinimumLength(1)` or vice versa.
 The derived CUDA differential is no longer limited to immediate halt. One N=10
 worker batch now covers initial halt, no-op, EOF input, byte I/O, two-byte
 straight-line I/O, repeated jump, guarded crazy, crazy followed by byte-input
-recovery, rotate, source-backed code jump, and source-backed code jump followed
-by byte input/output. Complete memory and state equality against safe Rust
+recovery, rotate, source-backed code jump, source-backed code jump followed by
+byte input/output, and source-backed code jump followed by rotate. Complete
+memory and state equality against safe Rust
 remains the oracle; this is semantic correctness evidence rather than
 performance
 evidence.

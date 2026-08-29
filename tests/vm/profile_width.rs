@@ -42,6 +42,7 @@ use malbolge::{
     verify_initial_halt_profile_width, verify_input_output_halt_profile_width,
     verify_input_then_halt_profile_width, verify_jump_code_halt_profile_width,
     verify_jump_code_io_halt_profile_width,
+    verify_jump_code_rotate_halt_profile_width,
     verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
     verify_jump_data_halt_profile_width, verify_jump_rotate_halt_profile_width,
@@ -50,6 +51,7 @@ use malbolge::{
     verify_minimum_input_then_halt_profile_width,
     verify_minimum_jump_code_halt_profile_width,
     verify_minimum_jump_code_io_halt_profile_width,
+    verify_minimum_jump_code_rotate_halt_profile_width,
     verify_minimum_jump_crazy_halt_profile_width,
     verify_minimum_jump_crazy_io_halt_profile_width,
     verify_minimum_jump_data_halt_profile_width,
@@ -758,6 +760,21 @@ fn source_with_shadow_jump_code_io() -> TestResult<Vec<u8>> {
     Ok(source)
 }
 
+fn source_with_shadow_jump_code_rotate(
+    data_instruction: u8,
+) -> TestResult<Vec<u8>> {
+    let mut source = source_with_shadow_dependent_jump_codes()?;
+    for (position, decoded) in
+        [(4usize, data_instruction), (79usize, b'*'), (80usize, b'v')]
+    {
+        let cell = source.get_mut(position).ok_or_else(|| {
+            format!("missing jump-code rotate cell {position}")
+        })?;
+        *cell = encoded_profile_instruction(decoded, position)?;
+    }
+    Ok(source)
+}
+
 fn source_with_two_shadow_jump_code_io_pairs() -> TestResult<Vec<u8>> {
     let mut source = source_with_shadow_jump_code_io()?;
     let profile = current_profile();
@@ -940,6 +957,120 @@ fn jump_code_verifier_follows_exact_self_encryption_shadow() -> TestResult {
         &canonical,
         verified.memory_words(),
         "shadow jump-code",
+    )
+}
+
+#[test]
+fn jump_code_rotate_verifier_executes_exact_source_write() -> TestResult {
+    let source = source_with_shadow_jump_code_rotate(b'j')?;
+    for (word_trits, _memory_words) in CHECKED_GEOMETRIES {
+        let _admitted =
+            normalize_result(verify_jump_code_rotate_halt_profile_width(
+                current_profile(),
+                &source,
+                word_trits,
+            ))?;
+    }
+    let verified =
+        normalize_result(verify_minimum_jump_code_rotate_halt_profile_width(
+            current_profile(),
+            &source,
+        ))?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::JumpCodeRotateHaltProjection,
+        "jump-code rotate proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "jump-code rotate minimum width",
+    )?;
+    check_jump_code_rotate_execution(&source, &verified)
+}
+
+fn check_jump_code_rotate_execution(
+    source: &[u8],
+    verified: &malbolge::VerifiedProfileExecutionGeometry,
+) -> TestResult {
+    let mut narrow = normalize_result(ProfileMachine::from_verified_source(
+        verified,
+        Vec::new(),
+    ))?;
+    let mut canonical = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        source,
+        Vec::new(),
+    ))?;
+    let narrow_outcome = normalize_result(narrow.run(6))?;
+    let canonical_outcome = normalize_result(canonical.run(6))?;
+    check_equal(
+        &narrow_outcome,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 6,
+        },
+        "jump-code rotate narrow outcome",
+    )?;
+    check_equal(
+        &canonical_outcome,
+        &narrow_outcome,
+        "jump-code rotate canonical outcome",
+    )?;
+    check_equal(
+        &narrow.registers().accumulator,
+        &12u32,
+        "jump-code rotate accumulator",
+    )?;
+    check_equal(
+        &normalize_result(narrow.memory_word(4))?,
+        &12u32,
+        "jump-code rotate source write",
+    )?;
+    check_complete_profile_projection(
+        &narrow,
+        &canonical,
+        verified.memory_words(),
+        "jump-code rotate",
+    )
+}
+
+#[test]
+fn jump_code_rotate_projection_miss_preserves_canonical_width() -> TestResult {
+    let source = source_with_shadow_jump_code_rotate(b'i')?;
+    check_equal(
+        &verify_jump_code_rotate_halt_profile_width(
+            current_profile(),
+            &source,
+            MINIMUM_WORD_TRITS,
+        ),
+        &Err(ProfileWidthVerificationError::JumpCodeRotateProjection),
+        "jump-code rotate N10 projection rejection",
+    )?;
+    let minimum =
+        normalize_result(verify_minimum_jump_code_rotate_halt_profile_width(
+            current_profile(),
+            &source,
+        ))?;
+    check_equal(
+        &minimum.word_trits(),
+        &CANONICAL_WORD_TRITS,
+        "jump-code rotate only canonical width",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(current_profile(), &source, &[]),
+        &None,
+        "jump-code rotate composite fallback",
+    )?;
+    let machine = normalize_result(ProfileMachine::from_adaptive_source(
+        current_profile(),
+        &source,
+        Vec::new(),
+    ))?;
+    check_equal(
+        &machine.geometry().word_trits(),
+        &CANONICAL_WORD_TRITS,
+        "jump-code rotate adaptive canonical width",
     )
 }
 

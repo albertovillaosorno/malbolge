@@ -347,11 +347,11 @@ separate costs; resource evidence must measure those costs directly.
   request's opaque geometry token rather than the shared wire shape. Optional
   full-state CUDA differential evidence therefore accepts both `uP` and `ubO`
   completions without collapsing `Any` and `MinimumLength(1)` authority.
-- A broader N=10 CUDA differential batch now exercises eleven verified
+- A broader N=10 CUDA differential batch now exercises twelve verified
   subjects: initial halt, no-op prefix, EOF input-halt, byte input-output,
   two-byte straight-line I/O, repeated jumps, guarded `p p`, guarded `p p`
   followed by byte-exact I/O recovery, exact-address rotate, source-backed code
-  jump, and source-backed code jump followed by byte-exact I/O.
+  jump, code-jump byte I/O, and code-jump followed by a source-backed rotate.
   All complete checkpoints are compared to safe Rust, including memory, I/O,
   termination, registers, and verifier geometry tokens.
 - Prepared profile backend requests expose resident shape only from their
@@ -375,8 +375,8 @@ separate costs; resource evidence must measure those costs directly.
 - The CUDA integration configures that adapter for `profile_run_worker`. Each
   reviewed N=10 through 14 has an optional full-state batch containing QP, EOF
   input-halt, `uCar_L`, guarded `p p`, guarded `p p` plus byte-I/O recovery,
-  `(&O` (`j * v`) rotate, source-backed jump-code, and source-backed jump-code
-  plus byte-I/O. A strict live RTX 4060
+  `(&O` (`j * v`) rotate, source-backed jump-code, source-backed jump-code plus
+  byte-I/O, and source-backed jump-code plus rotate. A strict live RTX 4060
   check observed CUDA execution for every reviewed N=10 through 14. This remains
   correctness, not performance, evidence.
 - The command-line composition root can now bind a trusted MBPRN2 worker for
@@ -389,7 +389,7 @@ separate costs; resource evidence must measure those costs directly.
   `MinimumLength(1)`, while canonical EOF output is width-sensitive. Adaptive
   CLI
   policy therefore leaves those capsules at N=14 even when explicitly enabled.
-- Product `select_minimum_verified_profile_width` now probes twelve trusted
+- Product `select_minimum_verified_profile_width` now probes thirteen trusted
   theorem-family minimum verifiers and returns the narrowest successful artifact
   whose hidden input policy admits the exact input. Equal-width N=14 artifacts
   are ignored so no-proof preserves canonical execution.
@@ -415,7 +415,22 @@ separate costs; resource evidence must measure those costs directly.
   `(CB$M` (`j o o * v`) rejects N=10 through 13 with
   `JumpRotateProjection` and admits only N=14; the composite selector therefore
   returns no derived authority and adaptive construction stays canonical. Other
-  rotate shapes remain unsupported rather than generalized from this theorem.
+  `j o* * v` variants remain unsupported rather than generalized from this
+  theorem.
+- `JumpCodeRotateHaltProjection` covers a distinct source-backed write case
+  after
+  the four-`i` shadow prefix. Exact D=4 reads source[4], C=79 reaches `*`, and
+  C=80 reaches `v`; the verifier requires D to differ from both code cells and
+  independently checks candidate/canonical rotate projection before the write.
+- With source[4]=`$` (numeric 36), rotate produces exact value 12 at N=10
+  through
+  14. N10 therefore writes 12 back into source[4], reaches halt with A=12,
+  C=80/D=5, and complete memory/register state projects to N14. Indexed-state
+  materialization retains that source write and the same opaque geometry token.
+- With source[4]=`^` (numeric 94), N10 rejects `JumpCodeRotateProjection`; the
+  specialized minimum selector reaches only N14 and composite adaptive selection
+  returns no narrower authority. This preserves the non-monotone rotate boundary
+  rather than treating exact source addressing as sufficient by itself.
 - Jump-code now admits one or more exact source-backed `i` transitions before
   halt. Initial D=0 is exact; each subsequent D advances without wrap and reads
   from a mutable source shadow. The resulting C, self-encryption target, and C+1

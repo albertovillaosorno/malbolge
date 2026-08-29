@@ -55,6 +55,7 @@ use malbolge::{
     verify_initial_halt_profile_width, verify_input_then_halt_profile_width,
     verify_jump_code_halt_profile_width,
     verify_jump_code_io_halt_profile_width,
+    verify_jump_code_rotate_halt_profile_width,
     verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
     verify_jump_rotate_halt_profile_width,
@@ -63,6 +64,7 @@ use malbolge::{
     verify_minimum_input_then_halt_profile_width,
     verify_minimum_jump_code_halt_profile_width,
     verify_minimum_jump_code_io_halt_profile_width,
+    verify_minimum_jump_code_rotate_halt_profile_width,
     verify_minimum_jump_crazy_halt_profile_width,
     verify_minimum_jump_crazy_io_halt_profile_width,
     verify_minimum_jump_rotate_halt_profile_width,
@@ -284,6 +286,13 @@ fn reviewed_width_cuda_requests(
             &jump_code_io_source,
             word_trits,
         ))?;
+    let jump_code_rotate_source = source_backed_jump_code_rotate_chain()?;
+    let jump_code_rotate =
+        normalize_result(verify_jump_code_rotate_halt_profile_width(
+            profile,
+            &jump_code_rotate_source,
+            word_trits,
+        ))?;
     let straight = normalize_result(verify_straight_line_io_profile_width(
         profile, b"uCar_L", word_trits,
     ))?;
@@ -301,6 +310,7 @@ fn reviewed_width_cuda_requests(
         verified_profile_request(&input, Vec::new(), 2)?,
         verified_profile_request(&jump_code, Vec::new(), 5)?,
         verified_profile_request(&jump_code_io, vec![0xa5, 0x3c], 9)?,
+        verified_profile_request(&jump_code_rotate, Vec::new(), 6)?,
         verified_profile_request(&straight, vec![0xa5, 0x3c], 6)?,
         verified_profile_request(&crazy, Vec::new(), 4)?,
         verified_profile_request(&recovered, vec![0xa5], 6)?,
@@ -449,6 +459,19 @@ fn source_backed_jump_code_io_chain() -> TestResult<Vec<u8>> {
     Ok(source)
 }
 
+fn source_backed_jump_code_rotate_chain() -> TestResult<Vec<u8>> {
+    let mut source = source_backed_jump_code_chain()?;
+    for (position, decoded) in
+        [(4usize, b'j'), (79usize, b'*'), (80usize, b'v')]
+    {
+        let cell = source.get_mut(position).ok_or_else(|| {
+            format!("missing CUDA jump-code rotate cell {position}")
+        })?;
+        *cell = encoded_profile_instruction(decoded, position)?;
+    }
+    Ok(source)
+}
+
 fn verified_profile_request(
     verified: &VerifiedProfileExecutionGeometry,
     input: Vec<u8>,
@@ -481,6 +504,12 @@ fn verified_n10_cuda_requests() -> TestResult<Vec<ProfileBatchRequest>> {
             profile,
             &jump_code_io_source,
         ))?;
+    let jump_code_rotate_source = source_backed_jump_code_rotate_chain()?;
+    let jump_code_rotate =
+        normalize_result(verify_minimum_jump_code_rotate_halt_profile_width(
+            profile,
+            &jump_code_rotate_source,
+        ))?;
     let io = normalize_result(verify_minimum_input_output_halt_profile_width(
         profile, b"ubO",
     ))?;
@@ -505,6 +534,7 @@ fn verified_n10_cuda_requests() -> TestResult<Vec<ProfileBatchRequest>> {
         verified_profile_request(&input, Vec::new(), 2)?,
         verified_profile_request(&jump_code, Vec::new(), 5)?,
         verified_profile_request(&jump_code_io, vec![0xa5, 0x3c], 9)?,
+        verified_profile_request(&jump_code_rotate, Vec::new(), 6)?,
         verified_profile_request(&io, vec![0xa5], 3)?,
         verified_profile_request(&straight, vec![0xa5, 0x3c], 6)?,
         verified_profile_request(&jumps, Vec::new(), 4)?,

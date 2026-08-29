@@ -116,6 +116,13 @@ same source stays canonical when CLI/EOF input would make a later output width-
 sensitive. Recurrence-backed reads/targets and incompatible rotate programs
 remain canonical.
 
+`JumpCodeRotateHaltProjection` composes the same exact prefix with a rotate
+whose
+D target remains source-backed. It independently checks width-specific rotate
+projection and forbids the data write from aliasing the reached rotate or halt
+code cells. This is separate from the earlier rotate theorem, whose D target is
+required to stay outside loaded source.
+
 The report variants `execute_batch_with_backend_report` and
 `execute_profile_batch_with_backend_report` preserve those result semantics
 while
