@@ -45,12 +45,18 @@ use malbolge::{
     ProfileBatchBackendRequest, ProfileBatchExecutionBackend,
     ProfileBatchRequest, ProfileBatchResult, ProfileMachine,
     ProfileMachineError, ProfileMachineIoState, ProfileMachineState,
-    ProfileRegisters, RunOutcome, StepOutcome, Termination, current_profile,
-    execute_profile_batch, execute_profile_batch_with_backend_report,
-    verify_differential_candidates, verify_initial_halt_profile_width,
+    ProfileRegisters, RunOutcome, StepOutcome, Termination,
+    VerifiedProfileExecutionGeometry, current_profile, execute_profile_batch,
+    execute_profile_batch_with_backend_report, verify_differential_candidates,
+    verify_initial_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
+    verify_minimum_jump_crazy_halt_profile_width,
+    verify_minimum_jump_crazy_io_halt_profile_width,
+    verify_minimum_noop_prefix_halt_profile_width,
+    verify_minimum_repeated_jump_data_profile_width,
+    verify_minimum_straight_line_io_profile_width,
 };
 
 use crate::{
@@ -451,6 +457,78 @@ fn cuda_same_resident_shape_retains_distinct_width_authority() -> TestResult {
         &report.backend_count(),
         &2usize,
         "same-shape CUDA completions",
+    )?;
+    compare_profile_product_batch(&observed, &expected)
+}
+
+fn verified_profile_request(
+    verified: &VerifiedProfileExecutionGeometry,
+    input: Vec<u8>,
+    step_budget: usize,
+) -> TestResult<ProfileBatchRequest> {
+    let machine = normalize_result(ProfileMachine::from_verified_source(
+        verified, input,
+    ))?;
+    Ok(ProfileBatchRequest::from_machine(machine, step_budget))
+}
+
+fn verified_n10_cuda_requests() -> TestResult<Vec<ProfileBatchRequest>> {
+    let profile = current_profile();
+    let initial = normalize_result(verify_minimum_initial_halt_profile_width(
+        profile, b"QP",
+    ))?;
+    let noop = normalize_result(
+        verify_minimum_noop_prefix_halt_profile_width(profile, b"DP"),
+    )?;
+    let input = normalize_result(
+        verify_minimum_input_then_halt_profile_width(profile, b"uP"),
+    )?;
+    let io = normalize_result(verify_minimum_input_output_halt_profile_width(
+        profile, b"ubO",
+    ))?;
+    let straight = normalize_result(
+        verify_minimum_straight_line_io_profile_width(profile, b"uCar_L"),
+    )?;
+    let jumps = normalize_result(
+        verify_minimum_repeated_jump_data_profile_width(profile, b"('&N"),
+    )?;
+    let crazy = normalize_result(
+        verify_minimum_jump_crazy_halt_profile_width(profile, b"(=<N"),
+    )?;
+    let recovered = normalize_result(
+        verify_minimum_jump_crazy_io_halt_profile_width(profile, b"(=<r_L"),
+    )?;
+    Ok(vec![
+        verified_profile_request(&initial, Vec::new(), 1)?,
+        verified_profile_request(&noop, Vec::new(), 2)?,
+        verified_profile_request(&input, Vec::new(), 2)?,
+        verified_profile_request(&io, vec![0xa5], 3)?,
+        verified_profile_request(&straight, vec![0xa5, 0x3c], 6)?,
+        verified_profile_request(&jumps, Vec::new(), 4)?,
+        verified_profile_request(&crazy, Vec::new(), 4)?,
+        verified_profile_request(&recovered, vec![0xa5], 6)?,
+    ])
+}
+
+#[test]
+fn cuda_verified_n10_families_match_safe_rust() -> TestResult {
+    let requests = verified_n10_cuda_requests()?;
+    let expected_count = requests.len();
+    let expected = execute_profile_batch(requests.clone());
+    let _cuda_guard = cuda_test_guard()?;
+    let mut backend = CudaProfileProductBackend::new();
+    let (observed, report) =
+        execute_profile_batch_with_backend_report(requests, &mut backend);
+    if let Some(error) = backend.error {
+        return Err(format!("verified N10 CUDA backend: {error}"));
+    }
+    if !backend.used_cuda {
+        return Ok(());
+    }
+    check_equal(
+        &report.backend_count(),
+        &expected_count,
+        "verified N10 CUDA completion count",
     )?;
     compare_profile_product_batch(&observed, &expected)
 }

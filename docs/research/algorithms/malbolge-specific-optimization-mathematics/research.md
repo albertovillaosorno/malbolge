@@ -361,6 +361,14 @@ batch, while each returned checkpoint is reconstructed with its original opaque
 geometry token. Exact differential comparison includes that token, so the shared
 kernel shape cannot collapse `Any` into `MinimumLength(1)` or vice versa.
 
+The derived CUDA differential is no longer limited to immediate halt. One N=10
+worker batch now covers initial halt, no-op, EOF input, byte I/O, two-byte
+straight-line I/O, repeated jump, guarded crazy, and crazy followed by
+byte-input
+recovery. Complete memory and state equality against safe Rust remains the
+oracle;
+this is semantic correctness evidence rather than performance evidence.
+
 `uCar_L` adds a six-transition bound certificate. A `j j p o v` counterexample
 shows why projected D is insufficient for writes: both crazy transitions
 continue and A still projects, but D names different physical cells, so the

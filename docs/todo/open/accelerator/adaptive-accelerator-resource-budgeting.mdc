@@ -96,6 +96,11 @@ example probe points, not supported-range endpoints.
   batch when available, while response reconstruction reapplies the distinct
   opaque token from each prepared request. Full-state comparison includes that
   token, so equal resident shape does not erase input-domain authority.
+- The same N=10 worker path now carries eight product-verified semantic
+  families in one resident batch, including derived EOF, input/output, repeated
+  jump, guarded crazy, and `MinimumLength(2)` execution. Every completion is
+  checked against complete safe-Rust state. This extends live correctness
+  coverage beyond immediate halt without making a throughput claim.
 - A separate 100,000 GiB synthetic fixture proves that additional addressable
   memory is not clamped; classic CUDA splits only at its 32-bit memory-index
   boundary. None of these synthetic rows are hardware throughput measurements.

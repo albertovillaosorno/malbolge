@@ -346,6 +346,12 @@ separate costs; resource evidence must measure those costs directly.
   request's opaque geometry token rather than the shared wire shape. Optional
   full-state CUDA differential evidence therefore accepts both `uP` and `ubO`
   completions without collapsing `Any` and `MinimumLength(1)` authority.
+- A broader N=10 CUDA differential batch now exercises eight verified subjects:
+  initial halt, no-op prefix, EOF input-halt, byte input-output, two-byte
+  straight-line I/O, repeated jumps, guarded `p p`, and guarded `p p` followed
+  by byte-exact I/O recovery. All complete checkpoints are compared to safe
+  Rust,
+  including memory, I/O, termination, registers, and verifier geometry tokens.
 - Prepared profile backend requests expose resident shape only from their
   admitted machine: EOF, canonical input/output opcodes, memory words/modulus,
   and word trits. Direct QP artifacts at N=10 through 14 produce exactly the
