@@ -50,6 +50,7 @@ const MINIMUM_ADAPTIVE_WORD_TRITS: u8 = 10;
 const TERNARY_RADIX: u32 = 3;
 
 type GuardedCrazyProjectionState = (u32, u32, u32);
+type JumpRotateProjectionValues = (u32, u32);
 
 type InstructionDiagnostic = (&'static str, u8, u32);
 
@@ -120,6 +121,8 @@ pub enum ProfileWidthProofKind {
     JumpCrazyIoHaltProjection,
     /// One exact-address data jump is followed immediately by halt.
     JumpDataHaltProjection,
+    /// Projected rotate feeds one or more exact-address crazy transitions.
+    JumpRotateCrazyHaltProjection,
     /// Exact jump/no-ops reach one projection-compatible rotate before halt.
     JumpRotateHaltProjection,
     /// Projected rotate is recovered by exact byte input before output.
@@ -542,7 +545,7 @@ pub fn select_minimum_verified_profile_width(
     source: &[u8],
     input: &[u8],
 ) -> Option<VerifiedProfileExecutionGeometry> {
-    let verifiers: [MinimumProfileWidthVerifier; 14] = [
+    let verifiers: [MinimumProfileWidthVerifier; 15] = [
         verify_minimum_initial_halt_profile_width,
         verify_minimum_input_output_halt_profile_width,
         verify_minimum_input_then_halt_profile_width,
@@ -553,6 +556,7 @@ pub fn select_minimum_verified_profile_width(
         verify_minimum_jump_crazy_io_halt_profile_width,
         verify_minimum_jump_data_halt_profile_width,
         verify_minimum_jump_rotate_halt_profile_width,
+        verify_minimum_jump_rotate_crazy_halt_profile_width,
         verify_minimum_jump_rotate_io_halt_profile_width,
         verify_minimum_noop_prefix_halt_profile_width,
         verify_minimum_repeated_jump_data_profile_width,
@@ -791,6 +795,46 @@ pub fn verify_minimum_jump_rotate_halt_profile_width(
     for word_trits in MINIMUM_ADAPTIVE_WORD_TRITS..=profile.word_trits() {
         match verify_jump_rotate_halt_profile_width(profile, source, word_trits)
         {
+            Ok(admission) => return Ok(admission),
+            Err(
+                error @ (ProfileWidthVerificationError::Source(
+                    ProfileLoadError::SourceTooLong,
+                )
+                | ProfileWidthVerificationError::JumpRotateProjection),
+            ) => {
+                last_width_miss = Some(error);
+            },
+            Err(error) => return Err(error),
+        }
+    }
+    Err(last_width_miss.unwrap_or_else(|| {
+        ProfileWidthVerificationError::WidthOutOfRange {
+            profile_word_trits: profile.word_trits(),
+            requested: MINIMUM_ADAPTIVE_WORD_TRITS,
+        }
+    }))
+}
+
+/// Selects the narrowest jump/rotate/crazy/halt width.
+///
+/// Rotate projection remains non-monotone, so an explicit rotate miss may
+/// continue to a wider reviewed candidate. Once rotate projection succeeds,
+/// any guarded-crazy projection failure is fail-closed rather than widened
+/// around.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when no reviewed width proves the
+/// projected rotate followed by one or more guarded crazy transitions.
+pub fn verify_minimum_jump_rotate_crazy_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let mut last_width_miss = None;
+    for word_trits in MINIMUM_ADAPTIVE_WORD_TRITS..=profile.word_trits() {
+        match verify_jump_rotate_crazy_halt_profile_width(
+            profile, source, word_trits,
+        ) {
             Ok(admission) => return Ok(admission),
             Err(
                 error @ (ProfileWidthVerificationError::Source(
@@ -1829,11 +1873,11 @@ fn advance_jump_rotate_address(
         .ok_or(ProfileWidthVerificationError::GeometryInvariant)
 }
 
-fn verify_jump_rotate_projection(
+fn jump_rotate_projection_values(
     admitted: &[u32],
     geometry: ProfileExecutionGeometry,
     data_address: u32,
-) -> Result<(), ProfileWidthVerificationError> {
+) -> Result<JumpRotateProjectionValues, ProfileWidthVerificationError> {
     if usize::try_from(data_address)
         .is_ok_and(|address| address < admitted.len())
     {
@@ -1858,7 +1902,15 @@ fn verify_jump_rotate_projection(
     if wide_rotate.rem_euclid(geometry.memory_words()) != narrow_rotate {
         return Err(ProfileWidthVerificationError::JumpRotateProjection);
     }
-    Ok(())
+    Ok((narrow_rotate, wide_rotate))
+}
+
+fn verify_jump_rotate_projection(
+    admitted: &[u32],
+    geometry: ProfileExecutionGeometry,
+    data_address: u32,
+) -> Result<(), ProfileWidthVerificationError> {
+    jump_rotate_projection_values(admitted, geometry, data_address).map(|_| ())
 }
 
 /// Verifies exact jump, zero or more no-ops, one rotate, then halt.
@@ -1918,6 +1970,112 @@ pub fn verify_jump_rotate_halt_profile_width(
         return Err(ProfileWidthVerificationError::JumpRotateHaltInstruction {
             position: pointer,
             decoded,
+        });
+    }
+    Err(ProfileWidthVerificationError::JumpRotateProjection)
+}
+
+fn verify_jump_rotate_crazy_suffix(
+    admitted: &[u32],
+    geometry: ProfileExecutionGeometry,
+    mut state: GuardedCrazyProjectionState,
+    start_position: usize,
+) -> Result<(), ProfileWidthVerificationError> {
+    let mut crazies = 0usize;
+    let mut suffix_noop = false;
+    for (position, cell) in
+        admitted.iter().copied().enumerate().skip(start_position)
+    {
+        let pointer = u32::try_from(position).map_err(|_error| {
+            ProfileWidthVerificationError::GeometryInvariant
+        })?;
+        let decoded = decode_profile_instruction(cell, pointer)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        if decoded == b'p' && !suffix_noop {
+            state = advance_guarded_crazy_projection(
+                admitted, geometry, state, pointer,
+            )?;
+            crazies = crazies.saturating_add(1);
+            continue;
+        }
+        if decoded == b'o' && crazies > 0 {
+            state.0 =
+                advance_jump_rotate_address(state.0, geometry.memory_words())?;
+            suffix_noop = true;
+            continue;
+        }
+        if decoded == b'v' && crazies > 0 {
+            return Ok(());
+        }
+        return Err(ProfileWidthVerificationError::JumpCrazyHaltInstruction {
+            position: pointer,
+            decoded,
+        });
+    }
+    Err(ProfileWidthVerificationError::JumpCrazyProjection)
+}
+
+/// Verifies exact jump/no-ops, projected rotate, guarded crazy, then halt.
+///
+/// The exact jump/no-op prefix reaches one projection-compatible rotate at a
+/// physical D outside loaded source. The resulting candidate/canonical A values
+/// may differ numerically. One or more immediately reached `p` instructions
+/// then reuse exact physical D and independently verify data/result projection.
+/// After the crazy block, zero or more no-ops may advance D before halt.
+///
+/// # Errors
+///
+/// Returns [`ProfileWidthVerificationError`] when prefix shape, rotate
+/// projection, guarded crazy projection, physical write placement, or halt
+/// shape does not hold.
+pub fn verify_jump_rotate_crazy_halt_profile_width(
+    profile: &'static ProfileDescriptor,
+    source: &[u8],
+    word_trits: u8,
+) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
+    let memory_words = derived_memory_words(profile, word_trits)?;
+    let geometry = ProfileExecutionGeometry {
+        input_policy: ProfileExecutionInputPolicy::Any,
+        memory_words,
+        profile,
+        word_trits,
+    };
+    let admitted = admit_profile_source(source, memory_words)?;
+    let mut data_address =
+        jump_rotate_initial_address(&admitted, memory_words)?;
+    for (position, cell) in admitted.iter().copied().enumerate().skip(1) {
+        let pointer = u32::try_from(position).map_err(|_error| {
+            ProfileWidthVerificationError::GeometryInvariant
+        })?;
+        let decoded = decode_profile_instruction(cell, pointer)
+            .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        if decoded == b'o' {
+            data_address =
+                advance_jump_rotate_address(data_address, memory_words)?;
+            continue;
+        }
+        if decoded != b'*' {
+            return Err(
+                ProfileWidthVerificationError::JumpRotateHaltInstruction {
+                    position: pointer,
+                    decoded,
+                },
+            );
+        }
+        let (narrow_accumulator, wide_accumulator) =
+            jump_rotate_projection_values(&admitted, geometry, data_address)?;
+        let next_data =
+            advance_jump_rotate_address(data_address, memory_words)?;
+        verify_jump_rotate_crazy_suffix(
+            &admitted,
+            geometry,
+            (next_data, narrow_accumulator, wide_accumulator),
+            position.saturating_add(1),
+        )?;
+        return Ok(VerifiedProfileExecutionGeometry {
+            geometry,
+            proof_kind: ProfileWidthProofKind::JumpRotateCrazyHaltProjection,
+            source: Box::from(source),
         });
     }
     Err(ProfileWidthVerificationError::JumpRotateProjection)

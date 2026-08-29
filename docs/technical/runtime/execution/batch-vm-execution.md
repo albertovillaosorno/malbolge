@@ -123,6 +123,12 @@ projection and forbids the data write from aliasing the reached rotate or halt
 code cells. This is separate from the earlier rotate theorem, whose D target is
 required to stay outside loaded source.
 
+`JumpRotateCrazyHaltProjection` composes the outside-source rotate theorem with
+one or more immediately reached guarded crazy writes. D stays an exact physical
+address while A/data may only project; each crazy step independently checks its
+recurrence data and result. Optional no-ops may follow the crazy block before
+halt, but a crazy-projection failure is fail-closed rather than widened around.
+
 `JumpRotateIoHaltProjection` extends the outside-source rotate theorem in a
 different direction: after a projection-compatible `j o* *` prefix, it accepts
 one or more `/ <` pairs before halt and binds `MinimumLength(k)` to the reached

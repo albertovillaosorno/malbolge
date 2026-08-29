@@ -584,6 +584,46 @@ fn adaptive_jump_rotate_io_capsule_preserves_canonical_eof()
 }
 
 #[test]
+fn adaptive_jump_rotate_crazy_capsule_uses_verified_n10() -> Result<(), String>
+{
+    let bytes =
+        build_capsule(current_profile(), b"(&<;:9K").map_err(|error| {
+            format!("build adaptive jump-rotate-crazy capsule: {error}")
+        })?;
+    let capsule =
+        TemporaryCapsule::from_bytes("adaptive-jump-rotate-crazy", &bytes)?;
+    let marker = TemporaryMarker::new("adaptive-jump-rotate-crazy");
+    let output = configured_worker_command_with_script(
+        &marker.path,
+        GEOMETRY_UNAVAILABLE_WORKER,
+    )
+    .env(PROFILE_ADAPTIVE_WIDTH_ENV, "1")
+    .arg(&capsule.path)
+    .output()
+    .map_err(|error| format!("run adaptive jump-rotate-crazy CLI: {error}"))?;
+    let geometry = read(&marker.path)
+        .map_err(|error| format!("read jump-rotate-crazy geometry: {error}"))?;
+    if output.status.success()
+        && output.stdout.is_empty()
+        && output.stderr.is_empty()
+        && geometry == b"10"
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            concat!(
+                "adaptive jump-rotate-crazy mismatch: status={} stdout={:?} ",
+                "stderr={} geometry={:?}",
+            ),
+            output.status,
+            output.stdout,
+            String::from_utf8_lossy(&output.stderr),
+            geometry,
+        ))
+    }
+}
+
+#[test]
 fn adaptive_rotate_capsule_sends_verified_n10_geometry() -> Result<(), String> {
     let bytes = build_capsule(current_profile(), b"(&O")
         .map_err(|error| format!("build adaptive rotate capsule: {error}"))?;

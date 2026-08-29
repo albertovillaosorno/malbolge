@@ -42,6 +42,7 @@ use malbolge::{
     verify_minimum_jump_code_halt_profile_width,
     verify_minimum_jump_code_io_halt_profile_width,
     verify_minimum_jump_code_rotate_halt_profile_width,
+    verify_minimum_jump_rotate_crazy_halt_profile_width,
     verify_minimum_jump_rotate_io_halt_profile_width,
     verify_minimum_straight_line_io_profile_width,
 };
@@ -274,6 +275,58 @@ fn jump_code_rotate_write_survives_indexed_effects() -> Result<(), String> {
         || materialized.registers().data_pointer != 5
     {
         return Err(String::from("jump-code rotate indexed authority drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn jump_rotate_crazy_projection_survives_indexed_effects() -> Result<(), String>
+{
+    let verified = verify_minimum_jump_rotate_crazy_halt_profile_width(
+        current_profile(),
+        b"(&<;:9K",
+    )
+    .map_err(|error| {
+        format!("jump-rotate-crazy verification failed: {error}")
+    })?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new()).map_err(
+            |error| format!("jump-rotate-crazy load failed: {error}"),
+        )?;
+    let root = machine.snapshot_state();
+    let mut indexed = IndexedMachineState::from_checkpoint(&root)
+        .map_err(|error| format!("jump-rotate-crazy root failed: {error:?}"))?;
+    for _step in 0u8..6 {
+        let mut trace_record = None;
+        let outcome = machine
+            .step_traced(&mut |trace: &ProfileStepTrace| {
+                trace_record = Some(*trace);
+            })
+            .map_err(|error| {
+                format!("jump-rotate-crazy trace failed: {error}")
+            })?;
+        if outcome != StepOutcome::Continued {
+            return Err(String::from("jump-rotate-crazy halted before prefix"));
+        }
+        let trace = trace_record
+            .ok_or_else(|| String::from("jump-rotate-crazy trace missing"))?;
+        indexed = indexed.apply_trace(&trace).map_err(|error| {
+            format!("jump-rotate-crazy indexed apply failed: {error:?}")
+        })?;
+    }
+    let materialized = indexed.materialize_checkpoint().map_err(|error| {
+        format!("jump-rotate-crazy materialize failed: {error:?}")
+    })?;
+    if materialized != machine.snapshot_state()
+        || materialized.geometry() != verified.geometry()
+        || materialized.memory().get(43).copied() != Some(29_538)
+        || materialized.registers().accumulator != 29_538
+        || materialized.registers().code_pointer != 6
+        || materialized.registers().data_pointer != 46
+    {
+        return Err(String::from(
+            "jump-rotate-crazy indexed authority drifted",
+        ));
     }
     Ok(())
 }

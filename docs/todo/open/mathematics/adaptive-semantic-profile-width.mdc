@@ -347,12 +347,12 @@ separate costs; resource evidence must measure those costs directly.
   request's opaque geometry token rather than the shared wire shape. Optional
   full-state CUDA differential evidence therefore accepts both `uP` and `ubO`
   completions without collapsing `Any` and `MinimumLength(1)` authority.
-- A broader N=10 CUDA differential batch now exercises thirteen verified
+- A broader N=10 CUDA differential batch now exercises fourteen verified
   subjects: initial halt, no-op prefix, EOF input-halt, byte input-output,
   two-byte straight-line I/O, repeated jumps, guarded `p p`, guarded `p p`
   followed by byte-exact I/O recovery, exact-address rotate, rotate followed by
-  byte recovery/output, source-backed code jump, code-jump byte I/O, and
-  code-jump followed by a source-backed rotate.
+  guarded crazy, rotate followed by byte recovery/output, source-backed code
+  jump, code-jump byte I/O, and code-jump followed by a source-backed rotate.
   All complete checkpoints are compared to safe Rust, including memory, I/O,
   termination, registers, and verifier geometry tokens.
 - Prepared profile backend requests expose resident shape only from their
@@ -376,9 +376,9 @@ separate costs; resource evidence must measure those costs directly.
 - The CUDA integration configures that adapter for `profile_run_worker`. Each
   reviewed N=10 through 14 has an optional full-state batch containing QP, EOF
   input-halt, `uCar_L`, guarded `p p`, guarded `p p` plus byte-I/O recovery,
-  `(&O` (`j * v`) rotate, projected rotate plus byte-I/O recovery, source-backed
-  jump-code, source-backed jump-code plus byte-I/O, and source-backed jump-code
-  plus rotate. A strict live RTX 4060
+  `(&O` (`j * v`) rotate, projected rotate plus guarded crazy, projected rotate
+  plus byte-I/O recovery, source-backed jump-code, source-backed jump-code plus
+  byte-I/O, and source-backed jump-code plus rotate. A strict live RTX 4060
   check observed CUDA execution for every reviewed N=10 through 14. This remains
   correctness, not performance, evidence.
 - The command-line composition root can now bind a trusted MBPRN2 worker for
@@ -391,7 +391,7 @@ separate costs; resource evidence must measure those costs directly.
   `MinimumLength(1)`, while canonical EOF output is width-sensitive. Adaptive
   CLI
   policy therefore leaves those capsules at N=14 even when explicitly enabled.
-- Product `select_minimum_verified_profile_width` now probes fourteen trusted
+- Product `select_minimum_verified_profile_width` now probes fifteen trusted
   theorem-family minimum verifiers and returns the narrowest successful artifact
   whose hidden input policy admits the exact input. Equal-width N=14 artifacts
   are ignored so no-proof preserves canonical execution.
@@ -435,6 +435,19 @@ separate costs; resource evidence must measure those costs directly.
   otherwise-valid two-pair source fails N10 rotate projection and reaches only
   N14, while the four-pair source succeeds again. `JUMP_ROTATE_IO_UNSAFE`
   (`j * / < v`) remains a separate projection-negative fixture.
+- `JumpRotateCrazyHaltProjection` composes the same exact-address rotate with
+  one or more immediately reached `p` writes before optional no-ops and halt.
+  `(&<;:9K` decodes `j * p p p p v`: after rotate N10 has A=29,529 while
+  N14 has A=2,391,489, so the accumulator is projected rather than exact.
+- The four crazy writes keep D physically exact at 42 through 45 and alternate
+  exact/projected results: N10 writes 67, 29,538, 49, and 29,538 while N14
+  writes 67, 2,391,498, 49, and 2,391,498. Complete N10 memory/register state
+  still projects after the prefix, leaving C=6/D=46 before halt.
+- The minimum selector may widen after `SourceTooLong` or explicit rotate
+  projection failure because rotate compatibility is non-monotone. Once rotate
+  succeeds, any guarded-crazy premise fails closed; it is not treated as a
+  reason to search wider widths. `JUMP_ROTATE_CRAZY_UNSAFE` (`j o * p v`)
+  reaches only N14 and composite adaptive selection stays canonical.
 - `JumpCodeRotateHaltProjection` covers a distinct source-backed write case
   after
   the four-`i` shadow prefix. Exact D=4 reads source[4], C=79 reaches `*`, and

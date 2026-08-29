@@ -45,7 +45,9 @@ use malbolge::{
     verify_jump_code_rotate_halt_profile_width,
     verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
-    verify_jump_data_halt_profile_width, verify_jump_rotate_halt_profile_width,
+    verify_jump_data_halt_profile_width,
+    verify_jump_rotate_crazy_halt_profile_width,
+    verify_jump_rotate_halt_profile_width,
     verify_jump_rotate_io_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
@@ -56,6 +58,7 @@ use malbolge::{
     verify_minimum_jump_crazy_halt_profile_width,
     verify_minimum_jump_crazy_io_halt_profile_width,
     verify_minimum_jump_data_halt_profile_width,
+    verify_minimum_jump_rotate_crazy_halt_profile_width,
     verify_minimum_jump_rotate_halt_profile_width,
     verify_minimum_jump_rotate_io_halt_profile_width,
     verify_minimum_noop_prefix_halt_profile_width,
@@ -75,6 +78,8 @@ const MINIMUM_MEMORY_WORDS_USIZE: usize = 59_049;
 const QP: &[u8] = b"QP";
 const JUMP_ROTATE_SAFE: &[u8] = b"(&O";
 const JUMP_ROTATE_UNSAFE: &[u8] = b"(CB$M";
+const JUMP_ROTATE_CRAZY_SAFE: &[u8] = b"(&<;:9K";
+const JUMP_ROTATE_CRAZY_UNSAFE: &[u8] = b"(C%;M";
 const JUMP_ROTATE_IO_SAFE: &[u8] = b"(CB$q^K";
 const JUMP_ROTATE_IO_TWO_PAIRS: &[u8] = b"(CB$q^o\\I";
 const JUMP_ROTATE_IO_FOUR_PAIRS: &[u8] = b"(CB$q^o\\mZkXE";
@@ -1363,6 +1368,186 @@ fn check_complete_profile_projection(
         }
     }
     Ok(())
+}
+
+#[test]
+fn jump_rotate_crazy_tracks_projected_accumulator_chain() -> TestResult {
+    for (word_trits, _memory_words) in CHECKED_GEOMETRIES {
+        let _verified =
+            normalize_result(verify_jump_rotate_crazy_halt_profile_width(
+                current_profile(),
+                JUMP_ROTATE_CRAZY_SAFE,
+                word_trits,
+            ))?;
+    }
+    let verified =
+        normalize_result(verify_minimum_jump_rotate_crazy_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_CRAZY_SAFE,
+        ))?;
+    check_equal(
+        &verified.proof_kind(),
+        &ProfileWidthProofKind::JumpRotateCrazyHaltProjection,
+        "jump-rotate-crazy proof family",
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "jump-rotate-crazy minimum width",
+    )?;
+    check_jump_rotate_crazy_execution(&verified)
+}
+
+fn check_jump_rotate_crazy_execution(
+    verified: &malbolge::VerifiedProfileExecutionGeometry,
+) -> TestResult {
+    let mut narrow = normalize_result(ProfileMachine::from_verified_source(
+        verified,
+        Vec::new(),
+    ))?;
+    let mut canonical = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        JUMP_ROTATE_CRAZY_SAFE,
+        Vec::new(),
+    ))?;
+    check_equal(
+        &normalize_result(narrow.run(2))?,
+        &RunOutcome::BudgetExhausted { steps: 2 },
+        "jump-rotate-crazy narrow rotate prefix",
+    )?;
+    check_equal(
+        &normalize_result(canonical.run(2))?,
+        &RunOutcome::BudgetExhausted { steps: 2 },
+        "jump-rotate-crazy canonical rotate prefix",
+    )?;
+    check_equal(
+        &narrow.registers().accumulator,
+        &29_529u32,
+        "jump-rotate-crazy narrow rotated A",
+    )?;
+    check_equal(
+        &canonical.registers().accumulator,
+        &2_391_489u32,
+        "jump-rotate-crazy canonical rotated A",
+    )?;
+    check_complete_profile_projection(
+        &narrow,
+        &canonical,
+        verified.memory_words(),
+        "jump-rotate-crazy rotate prefix",
+    )?;
+    check_jump_rotate_crazy_suffix(&mut narrow, &mut canonical, verified)
+}
+
+fn check_jump_rotate_crazy_writes(
+    narrow: &ProfileMachine,
+    canonical: &ProfileMachine,
+) -> TestResult {
+    for (address, narrow_word, wide_word) in [
+        (42usize, 67u32, 67u32),
+        (43, 29_538, 2_391_498),
+        (44, 49, 49),
+        (45, 29_538, 2_391_498),
+    ] {
+        check_equal(
+            &narrow.memory().get(address).copied(),
+            &Some(narrow_word),
+            "jump-rotate-crazy narrow write",
+        )?;
+        check_equal(
+            &canonical.memory().get(address).copied(),
+            &Some(wide_word),
+            "jump-rotate-crazy canonical write",
+        )?;
+    }
+    Ok(())
+}
+
+fn check_jump_rotate_crazy_suffix(
+    narrow: &mut ProfileMachine,
+    canonical: &mut ProfileMachine,
+    verified: &malbolge::VerifiedProfileExecutionGeometry,
+) -> TestResult {
+    check_equal(
+        &normalize_result(narrow.run(4))?,
+        &RunOutcome::BudgetExhausted { steps: 4 },
+        "jump-rotate-crazy narrow crazy prefix",
+    )?;
+    check_equal(
+        &normalize_result(canonical.run(4))?,
+        &RunOutcome::BudgetExhausted { steps: 4 },
+        "jump-rotate-crazy canonical crazy prefix",
+    )?;
+    check_equal(
+        &narrow.registers().accumulator,
+        &29_538u32,
+        "jump-rotate-crazy narrow projected A",
+    )?;
+    check_equal(
+        &canonical.registers().accumulator,
+        &2_391_498u32,
+        "jump-rotate-crazy canonical projected A",
+    )?;
+    check_jump_rotate_crazy_writes(narrow, canonical)?;
+    check_complete_profile_projection(
+        narrow,
+        canonical,
+        verified.memory_words(),
+        "jump-rotate-crazy crazy prefix",
+    )?;
+    let narrow_outcome = normalize_result(narrow.run(1))?;
+    let canonical_outcome = normalize_result(canonical.run(1))?;
+    check_equal(
+        &narrow_outcome,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 1,
+        },
+        "jump-rotate-crazy narrow halt",
+    )?;
+    check_equal(
+        &canonical_outcome,
+        &narrow_outcome,
+        "jump-rotate-crazy canonical halt",
+    )?;
+    check_complete_profile_projection(
+        narrow,
+        canonical,
+        verified.memory_words(),
+        "jump-rotate-crazy final",
+    )
+}
+
+#[test]
+fn jump_rotate_crazy_projection_miss_preserves_canonical_width() -> TestResult {
+    check_equal(
+        &verify_jump_rotate_crazy_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_CRAZY_UNSAFE,
+            MINIMUM_WORD_TRITS,
+        ),
+        &Err(ProfileWidthVerificationError::JumpRotateProjection),
+        "jump-rotate-crazy incompatible N10 projection",
+    )?;
+    let canonical =
+        normalize_result(verify_minimum_jump_rotate_crazy_halt_profile_width(
+            current_profile(),
+            JUMP_ROTATE_CRAZY_UNSAFE,
+        ))?;
+    check_equal(
+        &canonical.word_trits(),
+        &CANONICAL_WORD_TRITS,
+        "jump-rotate-crazy canonical fallback",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(
+            current_profile(),
+            JUMP_ROTATE_CRAZY_UNSAFE,
+            &[],
+        ),
+        &None,
+        "jump-rotate-crazy composite fallback",
+    )
 }
 
 #[test]

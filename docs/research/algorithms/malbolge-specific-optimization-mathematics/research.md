@@ -490,6 +490,24 @@ source succeeds again. `JUMP_ROTATE_IO_UNSAFE` (`j * / < v`) remains a distinct
 projection negative. The CLI supplies no profile input, so the four-pair source
 stays canonical N14 and emits four canonical EOF bytes `0x78`.
 
+Rotate projection also composes directly with guarded crazy writes, without an
+input reset. `(&<;:9K` decodes `j * p p p p v`. The rotate uses exact D=41 but
+produces A=29,529 at N10 and A=2,391,489 at N14; those values are numerically
+different and project exactly.
+
+The four following `p` transitions keep exact physical D=42..45 and
+independently
+check each recurrence data word plus crazy result. Their N10 writes are 67,
+29,538, 49, and 29,538; canonical N14 writes 67, 2,391,498, 49, and 2,391,498.
+Thus the chain alternates exact and merely projected accumulators while complete
+memory/register projection remains intact. Indexed-state materialization after
+six effects matches the runtime checkpoint at exact C=6/D=46.
+
+The specialized minimum selector only widens around source capacity or an
+explicit rotate-projection miss. A guarded-crazy failure after a successful
+rotate is fail-closed, matching the existing conservative crazy policy rather
+than searching wider widths around missing semantic evidence.
+
 The same exact prefix now composes with byte-visible I/O in a separate theorem.
 `JumpCodeIoHaltProjection` accepts one or more reached `/ <` pairs before halt.
 Each non-EOF input overwrites A with the same exact value at N10 and N14, the
@@ -515,10 +533,10 @@ kernel shape cannot collapse `Any` into `MinimumLength(1)` or vice versa.
 The derived CUDA differential is no longer limited to immediate halt. One N=10
 worker batch now covers initial halt, no-op, EOF input, byte I/O, two-byte
 straight-line I/O, repeated jump, guarded crazy, crazy followed by byte-input
-recovery, rotate, rotate followed by byte recovery/output, source-backed code
-jump, source-backed code jump followed by byte input/output, and source-backed
-code jump followed by rotate. Complete memory and state equality against safe
-Rust
+recovery, rotate, rotate followed by guarded crazy, rotate followed by byte
+recovery/output, source-backed code jump, source-backed code jump followed by
+byte input/output, and source-backed code jump followed by rotate. Complete
+memory and state equality against safe Rust
 remains the oracle; this is semantic correctness evidence rather than
 performance
 evidence.
