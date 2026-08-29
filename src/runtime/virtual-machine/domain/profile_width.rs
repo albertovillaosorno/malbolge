@@ -1687,7 +1687,7 @@ pub fn verify_jump_crazy_io_halt_profile_width(
 ) -> Result<VerifiedProfileExecutionGeometry, ProfileWidthVerificationError> {
     let memory_words = derived_memory_words(profile, word_trits)?;
     let geometry = ProfileExecutionGeometry {
-        input_policy: ProfileExecutionInputPolicy::Any,
+        input_policy: ProfileExecutionInputPolicy::MinimumLength(1),
         memory_words,
         profile,
         word_trits,
