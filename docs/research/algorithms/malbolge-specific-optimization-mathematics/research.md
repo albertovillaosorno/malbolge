@@ -133,6 +133,18 @@ u32 geometry, demonstrating that backend integer limits are not mathematical
 semantic-width limits. This is arithmetic equivalence only and makes no
 performance claim.
 
+
+The product runtime now has a value-level `ChunkedProfileWord` realization of
+this construction. Its radix, minimum width, chunk width, chunk cardinality, and
+unbounded maximum marker are generated from `malbolge.json`; no second `5` or
+`243` authority is maintained in the word contract. N10--N20 compatibility is
+checked against the existing `u32` primitives, and independent trit-vector
+oracles cover crazy/rotate through N100.
+
+The representation does not prove scalable memory addressing. Registers,
+pointers, resident wire, and state-applying backends remain `u32`-bounded while
+the chunked word is introduced independently as the required value primitive.
+
 This remains a state-equivalence result, not a timing claim.
 
 For checked width pairs `10<=N<M<=14`, radix projection preserves pointer

@@ -93,6 +93,8 @@ mod profile_state;
 mod profile_tracing;
 #[path = "vm/profile_width.rs"]
 mod profile_width;
+#[path = "vm/profile_word.rs"]
+mod profile_word;
 #[path = "vm/tables.rs"]
 mod tables;
 #[path = "vm/tracing.rs"]

@@ -131,6 +131,12 @@ example probe points, not supported-range endpoints.
   Python synthetic capacity sweep still uses research `execution_geometry`;
   persistent sessions and equivalent-work retained performance evidence remain
   separate acceptance gaps.
+- The product runtime now exposes `ChunkedProfileWord` as an unbounded
+  value-level base-243 representation generated from the canonical five-trit
+  model. This does not widen the accelerator resident contract: CUDA requests,
+  state buffers, and device words remain `u32`/N20-bounded. Future accelerator
+  work must choose an explicit chunked resident layout and resource model rather
+  than treating the new value type as implicit device authority.
 - The mixed jump-code/I/O proof demonstrates hidden input policy after four
   source self-modifications. Its retained N10 resident request now carries
   `[0xA5,0x3C]`, requires `MinimumLength(2)`, consumes both bytes, emits both

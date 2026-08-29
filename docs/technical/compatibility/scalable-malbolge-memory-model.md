@@ -139,6 +139,20 @@ math and shared by both classic and profile-driven engines. Current N15 is three
 complete chunks. Immutable N14 profiles use 5+5+4, with only the final partial
 chunk zero-padded before projection.
 
+
+The public `ChunkedProfileWord` contract now represents those chunks directly.
+Its chunk width/cardinality come from the generated Rust projection of the
+canonical semantic-width model, whose maximum remains `None`. Crazy and rotate
+operate across any allocated number of chunks; the final incomplete chunk keeps
+only its semantic trits exactly as the canonical padding/projection rule
+requires.
+
+This is value-level scalability, not yet a scalable memory image.
+`ProfileMachine`
+and resident/native execution still use `u32` words and addresses through N20;
+the chunked contract provides the non-fixed-width value primitive needed for a
+later memory/pointer migration without moving the semantic ceiling to `u64`.
+
 `Machine` and `ExecutionMachine` intentionally remain the frozen/classic
 surface.
 They still reject `malbolge-2026` through `safe-rust-classic` preflight rather

@@ -94,6 +94,18 @@ The current reference is N15/14,348,907 words; the backend's declared `u32`
 representation can encode exact ternary geometry through N20/3,486,784,401
 words, independently of current-profile selection.
 
+A separate public `ChunkedProfileWord` value contract now consumes the generated
+semantic-width constants projected from `malbolge.json`. It stores exactly
+`ceil(N/5)` little-endian base-243 chunks, constrains the final partial chunk to
+its native trits, and implements crazy, rotate, low-byte projection, EOF, and
+narrower-width projection without computing `3^N` in a host integer.
+
+This does not yet widen `ProfileMachine` memory or registers. Product tests show
+N10 through N20 equal the existing `u32` primitives, while independent
+trit-vector oracles cover N21, N31, N41, and N100; N100 is represented directly
+although it cannot convert to `u64`. Memory addressing, resident transport, and
+accelerator execution remain separate migration boundaries.
+
 `ProfileMachine` deliberately does not replace classic `Word`, `Memory`,
 tracing,
 or legacy-mode APIs. `ProfileMachine::from_state()` is a

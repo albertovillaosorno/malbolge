@@ -88,6 +88,10 @@ mod profile_resident_wire;
 mod profile_trace;
 #[path = "../domain/profile_width.rs"]
 mod profile_width;
+#[path = "../contract/profile_word.rs"]
+mod profile_word;
+#[path = "../contract/semantic_width.rs"]
+mod semantic_width;
 #[path = "../adapter-outbound/threading.rs"]
 mod threading;
 #[path = "../domain/trace.rs"]
@@ -261,6 +265,15 @@ pub use profile_width::{
     verify_noop_prefix_halt_profile_width,
     verify_repeated_jump_data_profile_width,
     verify_straight_line_io_profile_width,
+};
+pub use profile_word::{
+    ChunkedProfileWord, ChunkedProfileWordError,
+    PROFILE_WORD_CHUNK_CARDINALITY, PROFILE_WORD_CHUNK_TRITS,
+};
+pub use semantic_width::{
+    SEMANTIC_WIDTH_CHUNK_CARDINALITY, SEMANTIC_WIDTH_CHUNK_TRITS,
+    SEMANTIC_WIDTH_MAXIMUM_TRITS, SEMANTIC_WIDTH_MINIMUM_TRITS,
+    SEMANTIC_WIDTH_RADIX,
 };
 pub use threading::ScopedThreadParallelism;
 pub use trace::{

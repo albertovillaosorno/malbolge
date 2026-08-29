@@ -31,8 +31,12 @@ trust boundary, or ownership rules stated by its governing decisions.
 ### Implementation Status
 
 The scalar-table optimization is executable. Build-time generation produces
-exact classic rotate and five-trit crazy-chunk tables. Position-dependent decode
-and post-step encryption use the normative 94-entry translation constants in
+exact classic rotate and five-trit crazy-chunk tables. The width-generic
+`ChunkedProfileWord` reuses the same crazy table chunk by chunk rather than
+creating a second wide table.
+
+Position-dependent decode and post-step encryption
+use the normative 94-entry translation constants in
 `domain/instruction.rs`, avoiding generated composition-owned instruction
 semantics. Runtime paths require no dynamic table initialization, and exhaustive
 independent tests cover every finite table and translation domain. A custom

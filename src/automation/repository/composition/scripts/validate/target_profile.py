@@ -53,6 +53,11 @@ DEFAULT_PROFILE = ROOT / "malbolge.json"
 RUST_PROJECTION = (
     ROOT / "src/runtime/virtual-machine/domain" / "profile_generated.rs"
 )
+RUST_SEMANTIC_WIDTH_PROJECTION = (
+    ROOT
+    / "src/runtime/virtual-machine/contract"
+    / "semantic_width_generated.rs"
+)
 FINGERPRINT_MANIFEST = (
     ROOT
     / "src/interoperability/profile-compatibility/contract"
@@ -1047,6 +1052,78 @@ def _profile_projection_lines(
         f"    word_trits: {_rust_integer(word["trits"], "word.trits")},",
         "};",
     ]
+
+
+def _semantic_width_cardinality(model: SemanticWidthModel) -> int:
+    value = 1
+    for _ in range(model.chunk_trits):
+        value *= model.radix
+    return value
+
+
+def _rust_optional_usize(value: int | None) -> str:
+    if value is None:
+        return "None"
+    return f"Some({value:_})"
+
+
+def render_rust_semantic_width_projection(document: JsonObject) -> str:
+    """Render checked-in Rust constants for the semantic-width model.
+
+    Returns:
+        Deterministic Rust source derived only from validated `malbolge.json`.
+
+    """
+    validate_document(document)
+    model = _validate_semantic_width_model(document["semantic_width_model"])
+    cardinality = _semantic_width_cardinality(model)
+    maximum = _rust_optional_usize(model.maximum_trits)
+    lines = [
+        "// Copyright:",
+        "//   - Copyright © 2026 Alberto Villa Osorno.",
+        "// SPDX-License-Identifier:",
+        "//   - MIT",
+        "// Confidential:",
+        "//   - false",
+        "// License-File:",
+        "//   - LICENSE-MIT",
+        "//",
+        "// Boundary-Contract:",
+        "// - Owns:",
+        "//   - Generated Rust projection of semantic-width arithmetic.",
+        "// - Must-Not:",
+        "//   - Become independent authority or contain hand edits.",
+        "// - Allows:",
+        "//   - Inputs: validated repository-root `malbolge.json` only.",
+        "//   - Outputs: immutable semantic-width constants for Rust.",
+        "//   - Side effects: none after deterministic generation.",
+        "// - Split-When:",
+        "//   - Split when another encoding needs independent constants.",
+        "// - Merge-When:",
+        "//   - Merge when runtime consumes canonical JSON directly.",
+        "// - Summary:",
+        "//   - Generated canonical semantic-width constants for Rust.",
+        "// - Description:",
+        "//   - Keeps chunk arithmetic synchronized with `malbolge.json`.",
+        "// - Usage:",
+        "//   - Regenerate through the target-profile validator helpers.",
+        "// - Defaults:",
+        "//   - Any renderer drift fails the test suite.",
+        "//",
+        "",
+        "//! Generated canonical semantic-width constants for Rust.",
+        "",
+        (
+            "pub(super) const CHUNK_CARDINALITY: u16 = "
+            f"{cardinality:_};"
+        ),
+        f"pub(super) const CHUNK_TRITS: usize = {model.chunk_trits:_};",
+        f"pub(super) const MAXIMUM_TRITS: Option<usize> = {maximum};",
+        f"pub(super) const MINIMUM_TRITS: usize = {model.minimum_trits:_};",
+        f"pub(super) const RADIX: u8 = {model.radix:_};",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def render_rust_projection(document: JsonObject) -> str:

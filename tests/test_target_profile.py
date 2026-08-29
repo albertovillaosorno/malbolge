@@ -366,6 +366,16 @@ def test_only_selected_profile_has_current_kind() -> None:
     _expect_invalid(changed)
 
 
+def test_rust_semantic_width_projection_matches_canonical_model() -> None:
+    """Checked-in Rust width constants are a byte-exact JSON projection."""
+    document = validator.load_document(PROFILE_PATH)
+    expected = validator.render_rust_semantic_width_projection(document)
+    observed = validator.RUST_SEMANTIC_WIDTH_PROJECTION.read_text(
+        encoding="utf-8"
+    )
+    assert observed == expected
+
+
 def test_rust_projection_matches_canonical_profile() -> None:
     """Checked-in Rust profile data is a byte-exact JSON projection."""
     document = validator.load_document(PROFILE_PATH)

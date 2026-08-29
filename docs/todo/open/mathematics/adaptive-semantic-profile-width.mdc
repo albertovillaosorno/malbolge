@@ -144,6 +144,17 @@ transfers, verification, and other separately measured costs.
   through
   modulus 3^20; and `profile_eof_word(20)` is exactly 3^20-1 while N21 overflows
   the `u32` helper contract.
+- A product `ChunkedProfileWord` value contract now removes that primitive-
+  integer ceiling without replacing it with `u64`. Its radix/minimum/chunk
+  constants are generated from `malbolge.json`; current chunk geometry is
+  base-243 with `ceil(N/5)` chunks and `maximum_trits=None`. N10--N20 crazy and
+  rotate match existing product primitives, while independent trit-vector
+  oracles cover N21, N31, N41, and N100. EOF N100 occupies 20 chunks and cannot
+  convert to `u64`, proving the representation itself does not depend on a
+  single host integer; this remains value-only, so VM registers, memory
+  addresses,
+  resident wire, CUDA, and state-applying native ABI are still `u32` migration
+  gaps.
 - The portable Rust `TargetProfileRequirement` carries profile capacity as
   `u64`, so an exact N21/10,460,353,203-word envelope reaches runtime preflight
   and is rejected against `safe-rust-profiled` as both `word-trits` and
