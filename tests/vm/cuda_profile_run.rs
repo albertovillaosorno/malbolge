@@ -48,7 +48,9 @@ use malbolge::{
     ProfileRegisters, RunOutcome, StepOutcome, Termination,
     VerifiedProfileExecutionGeometry, current_profile, execute_profile_batch,
     execute_profile_batch_with_backend_report, verify_differential_candidates,
-    verify_initial_halt_profile_width,
+    verify_initial_halt_profile_width, verify_input_then_halt_profile_width,
+    verify_jump_crazy_halt_profile_width,
+    verify_jump_crazy_io_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_input_then_halt_profile_width,
@@ -57,6 +59,7 @@ use malbolge::{
     verify_minimum_noop_prefix_halt_profile_width,
     verify_minimum_repeated_jump_data_profile_width,
     verify_minimum_straight_line_io_profile_width,
+    verify_straight_line_io_profile_width,
 };
 
 use crate::{
@@ -371,21 +374,41 @@ fn derived_profile_product_encoding_uses_every_admitted_geometry() -> TestResult
     Ok(())
 }
 
+fn reviewed_width_cuda_requests(
+    word_trits: u8,
+) -> TestResult<Vec<ProfileBatchRequest>> {
+    let profile = current_profile();
+    let initial = normalize_result(verify_initial_halt_profile_width(
+        profile, b"QP", word_trits,
+    ))?;
+    let input = normalize_result(verify_input_then_halt_profile_width(
+        profile, b"uP", word_trits,
+    ))?;
+    let straight = normalize_result(verify_straight_line_io_profile_width(
+        profile, b"uCar_L", word_trits,
+    ))?;
+    let crazy = normalize_result(verify_jump_crazy_halt_profile_width(
+        profile, b"(=<N", word_trits,
+    ))?;
+    let recovered = normalize_result(verify_jump_crazy_io_halt_profile_width(
+        profile, b"(=<r_L", word_trits,
+    ))?;
+    Ok(vec![
+        verified_profile_request(&initial, Vec::new(), 1)?,
+        verified_profile_request(&input, Vec::new(), 2)?,
+        verified_profile_request(&straight, vec![0xa5, 0x3c], 6)?,
+        verified_profile_request(&crazy, Vec::new(), 4)?,
+        verified_profile_request(&recovered, vec![0xa5], 6)?,
+    ])
+}
+
 #[test]
 fn cuda_reviewed_profile_widths_route_through_product_batch_port() -> TestResult
 {
     let _cuda_guard = cuda_test_guard()?;
     for word_trits in 10u8..=14 {
-        let verified = normalize_result(verify_initial_halt_profile_width(
-            current_profile(),
-            b"QP",
-            word_trits,
-        ))?;
-        let machine = normalize_result(ProfileMachine::from_verified_source(
-            &verified,
-            Vec::new(),
-        ))?;
-        let requests = vec![ProfileBatchRequest::from_machine(machine, 1)];
+        let requests = reviewed_width_cuda_requests(word_trits)?;
+        let expected_count = requests.len();
         let expected = execute_profile_batch(requests.clone());
         let mut backend = CudaProfileProductBackend::new();
         let (observed, report) =
@@ -400,7 +423,7 @@ fn cuda_reviewed_profile_widths_route_through_product_batch_port() -> TestResult
         }
         check_equal(
             &report.backend_count(),
-            &1usize,
+            &expected_count,
             "reviewed-width CUDA completion",
         )?;
         compare_profile_product_batch(&observed, &expected)?;

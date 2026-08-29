@@ -349,11 +349,13 @@ machine rather than treating numeric geometry as sufficient authorization.
 
 The existing CUDA integration test now consumes resident geometry from that
 prepared backend request instead of `current_profile()` constants. Its worker
-header, response parser, and reconstructed checkpoint all use the admitted
-geometry; direct QP proofs at N=10 through 14 each exercise the same optional
-full-state differential path. Mixed resident widths are rejected before
-homogeneous worker encoding. This does not make the test adapter a production
-runtime backend or establish throughput.
+header, response parser, and reconstructed checkpoint all use admitted geometry.
+For every N=10 through 14, one homogeneous batch now covers QP, EOF input-halt,
+`uCar_L`, guarded `p p`, and crazy followed by byte-input recovery, with
+complete state compared against safe Rust.
+
+Mixed resident widths are rejected before worker encoding. This does not make
+the test adapter a production runtime backend or establish throughput.
 
 Wire homogeneity is intentionally weaker than verifier authority equality. `uP`
 and `ubO` share the same N=10 resident shape and can execute in one CUDA worker

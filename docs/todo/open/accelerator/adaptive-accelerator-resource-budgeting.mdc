@@ -85,12 +85,14 @@ example probe points, not supported-range endpoints.
   evidence.
 - The Rust/Python integration-test backend serializes this shape into the
   existing resident worker, whose `CudaProfileRunAdapter` validates geometry and
-  invokes the measured resource planner before allocation. QP now exercises
-  independent full-state CUDA differential paths at every reviewed N=10 through
-  14 when CUDA is available; heterogeneous N=10/N=14 batches refuse homogeneous
-  worker encoding and fall back to safe Rust. The Python synthetic capacity
-  sweep still uses research `execution_geometry`, and a production runtime
-  adapter remains open.
+  invokes the measured resource planner before allocation. Every reviewed N=10
+  through 14 now has an independent full-state CUDA differential batch covering
+  initial halt, derived EOF input, two-byte straight-line I/O, guarded `p p`,
+  and
+  byte-input recovery after crazy. Heterogeneous N=10/N=14 batches refuse
+  homogeneous worker encoding and fall back to safe Rust. The Python synthetic
+  capacity sweep still uses research `execution_geometry`, and a production
+  runtime adapter remains open.
 - Resident batching groups by wire geometry rather than hidden verifier policy.
   `uP` (`Any`) and `ubO` (`MinimumLength(1)`) therefore share one N=10 CUDA
   batch when available, while response reconstruction reapplies the distinct
