@@ -228,7 +228,7 @@ Benchmark claims require:
 - no best-of-N claim unless best-of-N is itself the declared decision problem.
 
 Existing classic batch measurements, for example, cannot be reused as evidence
-for current 14-trit profile batching without measuring that distinct workload.
+for current-profile batching without measuring that distinct workload.
 
 ### Optimization/Search Overlay
 

@@ -42,7 +42,7 @@ use malbolge::{
 
 use super::{TestResult, check_equal, normalize_result};
 
-const CURRENT_EOF_LOW_BYTE: u8 = 0x78;
+const CURRENT_EOF_LOW_BYTE: u8 = 0x6a;
 const CURRENT_IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
     "../compatibility/specification/",
     "interpreter-io-roundtrip.malbolge",
@@ -137,7 +137,7 @@ fn check_current_trace_inertness(
         &plain.input_consumed(),
         "profile tracing preserves input position",
     )?;
-    for address in [0u32, 1, 2, 59_049, 4_782_968] {
+    for address in [0u32, 1, 2, 59_049, 14_348_906] {
         check_equal(
             &normalize_result(traced.memory_word(address))?,
             &normalize_result(plain.memory_word(address))?,

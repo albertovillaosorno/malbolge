@@ -32,7 +32,8 @@ positive trit count `N`: word modulus `3^N`, modular memory/register domains,
 profile-width rotate/crazy operations, decode/self-encryption order, byte I/O,
 EOF as the all-two-trit word, loading notation, execution transitions, and
 observable equivalence. It explicitly specializes the model to historical
-10-trit and current 14-trit profiles without mutating the written 1998 contract.
+10-trit and current N15 reference profiles without mutating the written 1998
+contract.
 
 `src/specification/formal-model/math/specification/malbolge-1998.tex` remains
 the normative classic arithmetic

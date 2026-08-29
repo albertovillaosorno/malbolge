@@ -49,7 +49,7 @@ use super::{TestResult, check_equal, normalize_result};
 
 const CURRENT_FINGERPRINT: &str = concat!(
     "malbolge-profile-v1:sha256:",
-    "1006b5fc06808f54aa5089cef0237539770c1d79a73c822e6e26e0e0ebfb0c76",
+    "8a93ad8fee1d3be48c432c23a74cff5ed50d85e07444dcecece103e4fe22c16e",
 );
 const CURRENT_ID: &str = "malbolge-2026";
 const HISTORICAL_ID: &str = "malbolge-1998";
@@ -69,18 +69,18 @@ fn canonical_projection_exposes_current_geometry() -> TestResult {
     check_equal(&current.id(), &CURRENT_ID, "current profile id")?;
     check_equal(&current.version(), &"2026", "current version")?;
     check_equal(&current.kind(), &ProfileKind::Current, "current kind")?;
-    check_equal(&current.word_trits(), &14u8, "current trit width")?;
+    check_equal(&current.word_trits(), &15u8, "current trit width")?;
     check_equal(
         &current.word_modulus(),
-        &4_782_969u32,
+        &14_348_907u32,
         "current word modulus",
     )?;
     check_equal(
         &current.memory_words(),
-        &4_782_969u32,
+        &14_348_907u32,
         "current memory capacity",
     )?;
-    check_equal(&current.eof_word(), &4_782_968u32, "current EOF")?;
+    check_equal(&current.eof_word(), &14_348_906u32, "current EOF")?;
     check_equal(&current.input_instruction(), &b'/', "current input opcode")?;
     check_equal(
         &current.output_instruction(),
@@ -119,8 +119,8 @@ fn current_profile_is_rejected_before_loader() -> TestResult {
             "MALBOLGE-PROFILE-001 profile=malbolge-2026 version=2026 ",
             "required_features=byte-input,byte-output,crazy-operation,",
             "deterministic,post-instruction-encryption,rotate,",
-            "self-modification,sequential-guest required_word_trits=14 ",
-            "required_memory_words=4782969 runtime=safe-rust-classic ",
+            "self-modification,sequential-guest required_word_trits=15 ",
+            "required_memory_words=14348907 runtime=safe-rust-classic ",
             "max_word_trits=10 max_memory_words=59049 ",
             "missing=word-trits,memory-words"
         )),

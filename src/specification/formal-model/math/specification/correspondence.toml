@@ -50,7 +50,7 @@ id = "profile-crazy"
 tex = "src/specification/formal-model/math/specification/profile-model.tex"
 label = "eq:profile-crazy"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "classic chunk domain exhaustively plus one current 14-trit execution fixture"
+domain = "classic chunk domain exhaustively plus one current 15-trit execution fixture"
 mechanism = "composite"
 # jig-ignore-next-line: indivisible reviewed identifier
 evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_positions", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
@@ -137,7 +137,7 @@ id = "profile-rotate"
 tex = "src/specification/formal-model/math/specification/profile-model.tex"
 label = "eq:profile-rotate"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "all classic words exhaustively plus one current 14-trit execution fixture"
+domain = "all classic words exhaustively plus one current 15-trit execution fixture"
 mechanism = "composite"
 # jig-ignore-next-line: indivisible reviewed identifier
 evidence = ["tests/vm/tables.rs::rotate_table_matches_scalar_definition_for_every_word", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
@@ -193,7 +193,7 @@ evidence = ["tests/vm/tables.rs::crazy_chunks_match_scalar_definition_in_both_po
 id = "optimization-crazy-profile-chunks"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-profile-chunks"
-domain = "current 14-trit 5+5+4 decomposition plus scalar profile fixtures"
+domain = "current 15-trit 5+5+5 decomposition plus scalar profile fixtures"
 mechanism = "composite"
 # jig-ignore-next-line: indivisible reviewed identifier
 evidence = ["tests/compatibility/test_scalable_memory.py::test_crazy_generalizes_digitwise_without_new_truth_table", "tests/vm/profile_machine.rs::current_profile_executes_scalable_state_and_io"]
@@ -892,7 +892,7 @@ id = "state-graph-profile-checkpoint"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-profile-checkpoint"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "validated canonical current checkpoints including all 4782969 memory words"
+domain = "validated canonical current checkpoints including all 14348907 memory words"
 mechanism = "exact-current-checkpoint-replay"
 # jig-ignore-next-line: indivisible reviewed identifier
 evidence = ["tests/function/algorithms/domain/state-graph/c.rs::current_checkpoint_replay_deduplicates_exactly"]
@@ -941,7 +941,7 @@ id = "state-graph-indexed-memory"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-indexed-memory"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "current 14-trit profile within the explicit 24-bit radix research capacity"
+domain = "current 15-trit profile within the explicit 24-bit radix research capacity"
 mechanism = "stepwise-materialization-distinct-overrides-and-before-validation"
 # jig-ignore-next-line: indivisible reviewed identifier
 evidence = ["tests/function/algorithms/domain/state-graph/i.rs::current_trace_deltas_reconstruct_every_indexed_checkpoint", "tests/function/algorithms/domain/state-graph/i.rs::distinct_overrides_preserve_root_and_latest_reads", "tests/function/algorithms/domain/state-graph/i.rs::forged_before_value_is_rejected_by_index"]

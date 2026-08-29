@@ -71,16 +71,17 @@ example probe points, not supported-range endpoints.
   `cuMemGetInfo_v2`, reads compute
   capacity through `cuDeviceGetAttribute`, and uses the resulting plan before
   allocation. Oversized single items fail before `cuMemAlloc`.
-- Synthetic boundary evidence is explicitly labeled: the declared current-state
-  byte model admits 6 first-chunk states at 128 MiB and 4,209 at 80 GiB. A new
-  adaptive-width sweep uses exact resident backend layout for derived widths
-  10 through 14: 236,260; 708,652; 2,125,828; 6,377,356; and 19,131,940 bytes
-  per zero-I/O VM, yielding first-chunk capacities 532, 177, 59, 19, and 6 under
-  the same 128 MiB snapshot. These are example probes rather than
+- Synthetic boundary evidence is explicitly labeled: the declared current N15
+  state byte model admits 2 first-chunk states at 128 MiB
+  and 1,403 at 80 GiB. The adaptive-width sweep uses exact resident backend
+  layout for N10 through N15: 236,260; 708,652; 2,125,828; 6,377,356;
+  19,131,940; and 57,395,692 bytes per zero-I/O VM, yielding first-chunk
+  capacities 532, 177, 59, 19, 6, and 2 under the same 128 MiB snapshot. These
+  are example probes rather than
   minimum/maximum supported sizes.
 - The VM backend port exposes resident geometry directly from an already
   admitted `ProfileMachine`: EOF, canonical I/O opcodes, memory words/modulus,
-  and trit width. Verified QP artifacts for every reviewed N=10 through 14 reach
+  and trit width. Verified QP artifacts for every reviewed N=10 through 15 reach
   the backend with exact `3^N` geometry, without reconstructing N from research
   evidence.
 - Product `ProfileResidentProcessTransport` carries homogeneous MBPRN2 wire
@@ -99,8 +100,9 @@ example probe points, not supported-range endpoints.
   source-backed jump-code chain whose later decode depends on earlier XLAT2
   self-encryption, the same chain followed by byte input/output, the chain
   followed by a source-backed rotate write, projected rotate followed by
-  guarded crazy, and projected rotate followed by byte-I/O recovery. A strict
-  live check covers N=10 through 14.
+  guarded crazy, and projected rotate followed by byte-I/O recovery. Retained
+  strict live evidence covers N10 through N14; the current N15 product
+  route independently requires and observes `used_cuda=true`.
 - The top-level CLI now selects a trusted resident worker for current canonical
   capsules only when explicitly configured by executable plus bounded indexed
   arguments. A live RTX 4060 composition check invoked `CudaProfileRunAdapter`
@@ -129,7 +131,7 @@ example probe points, not supported-range endpoints.
   resident coverage. N10 executes `j * p p p p v`, preserves exact D for all
   five writes, and carries projected A/memory values through four crazy steps;
   the complete checkpoint is compared to safe Rust rather than observables only.
-- A post-push strict run required `used_cuda=true` for N=10 through 14 with that
+- A retained strict run required `used_cuda=true` for N=10 through 14 with that
   multi-write request in every reviewed batch. A temporary CLI worker also
   reached `CudaProfileRunAdapter.evaluate` for the adaptive N10 capsule and
   emitted its marker only after CUDA returned. This remains correctness
@@ -138,7 +140,7 @@ example probe points, not supported-range endpoints.
   resident coverage and now exercises `MinimumLength(4)`. The retained N10
   request uses `[0xA5,0x3C,0x7F,0x00]`, consumes and emits all four bytes after
   the projected rotate, and completes with full-state equality to safe Rust.
-  Empty-input CLI policy remains canonical N14 and emits four EOF bytes.
+  Empty-input CLI policy remains canonical N15 and emits four `0x6A` EOF bytes.
 - The jump-code/rotate request adds a physical source write to resident
   coverage.
   After four exact code jumps, D=4 rotates source byte 36 to exact value 12 at
@@ -180,10 +182,11 @@ example probe points, not supported-range endpoints.
   retains the 100,000 GiB / 100,000-item synthetic case. All requested work is
   admitted and split only at the classic backend's 32-bit launch-index boundary.
 - Current-profile resident execution now consumes the same measured resource
-  planner with exact 4,782,969-word item sizing; full-state RTX 4060
-  differential
-  evidence passes. Retained RTX 4060 throughput/phase samples now cover the
-  current profile; broader live-hardware evidence remains open.
+  planner with exact 14,348,907-word N15 item sizing; full-state RTX 4060
+  differential evidence and an explicit `used_cuda=true` product-route check
+  pass. Retained throughput/phase samples were collected against the earlier N14
+  reference and are not relabeled as N15 performance; new equivalent-work N15
+  throughput evidence remains open.
 - Retained end-to-end throughput evidence under
   `benchmarks/accelerator/evidence/2026-07-27-classic-throughput-rtx4060/`
   contains 15 raw samples for batches 1/8/32/128 on an exact 64-step workload.

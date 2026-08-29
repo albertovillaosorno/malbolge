@@ -554,6 +554,7 @@ fn profile_backend_request_exposes_every_admitted_resident_geometry()
         (12, 531_441),
         (13, 1_594_323),
         (14, 4_782_969),
+        (15, 14_348_907),
     ];
     let mut requests = Vec::with_capacity(checked.len());
     let mut expected = Vec::with_capacity(checked.len());

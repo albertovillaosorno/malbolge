@@ -206,7 +206,7 @@ independently of patch-history depth.
 
 The next correctness candidate is now implemented in `index.rs`: a persistent
 64-way radix overlay with four six-bit address chunks above the same shared full
-root. The 24-bit capacity contains the current 14-trit address domain and is
+root. The 24-bit capacity contains the current 15-trit address domain and is
 explicitly rejected rather than widened implicitly. Reads are structurally
 bounded to at most four radix levels independent of patch-history length.
 

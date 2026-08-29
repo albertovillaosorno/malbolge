@@ -28,7 +28,7 @@
 // - Usage:
 //   - Run with `cargo run --release --bin state_graph_benchmark`.
 // - Defaults:
-//   - Uses 15 samples and the canonical current 14-trit profile.
+//   - Uses 15 samples and the canonical current profile at invocation time.
 //
 
 //! Raw cost samples for exact current-profile checkpoint graph identity.

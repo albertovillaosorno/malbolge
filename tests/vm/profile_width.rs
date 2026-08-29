@@ -71,7 +71,7 @@ use malbolge::{
 
 use super::{TestResult, check_equal, normalize_result};
 
-const CANONICAL_WORD_TRITS: u8 = 14;
+const CANONICAL_WORD_TRITS: u8 = 15;
 const MINIMUM_WORD_TRITS: u8 = 10;
 const MINIMUM_MEMORY_WORDS: u32 = 59_049;
 const MINIMUM_MEMORY_WORDS_USIZE: usize = 59_049;
@@ -1427,7 +1427,7 @@ fn check_jump_rotate_crazy_execution(
     )?;
     check_equal(
         &canonical.registers().accumulator,
-        &2_391_489u32,
+        &7_174_458u32,
         "jump-rotate-crazy canonical rotated A",
     )?;
     check_complete_profile_projection(
@@ -1445,9 +1445,9 @@ fn check_jump_rotate_crazy_writes(
 ) -> TestResult {
     for (address, narrow_word, wide_word) in [
         (42usize, 67u32, 67u32),
-        (43, 29_538, 2_391_498),
+        (43, 29_538, 7_174_467),
         (44, 49, 49),
-        (45, 29_538, 2_391_498),
+        (45, 29_538, 7_174_467),
     ] {
         check_equal(
             &narrow.memory().get(address).copied(),
@@ -1485,7 +1485,7 @@ fn check_jump_rotate_crazy_suffix(
     )?;
     check_equal(
         &canonical.registers().accumulator,
-        &2_391_498u32,
+        &7_174_467u32,
         "jump-rotate-crazy canonical projected A",
     )?;
     check_jump_rotate_crazy_writes(narrow, canonical)?;
@@ -1608,7 +1608,7 @@ fn projected_jump_rotate_io_machines(
     )?;
     check_equal(
         &canonical.registers().accumulator,
-        &2_391_477u32,
+        &7_174_446u32,
         "jump-rotate I/O canonical projected accumulator",
     )?;
     if narrow.registers().accumulator == canonical.registers().accumulator {
@@ -2354,7 +2354,7 @@ fn adaptive_source_constructor_falls_back_for_eof_visible_io() -> TestResult {
         "adaptive EOF canonical fallback width",
     )?;
     let _eof_outcome = normalize_result(eof.run(3))?;
-    check_equal(eof.output(), &[0x78], "adaptive EOF canonical output")?;
+    check_equal(eof.output(), &[0x6a], "adaptive EOF canonical output")?;
 
     let mut byte = normalize_result(ProfileMachine::from_adaptive_source(
         current_profile(),

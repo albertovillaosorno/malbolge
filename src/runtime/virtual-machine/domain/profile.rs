@@ -68,8 +68,8 @@ const SAFE_RUST_CLASSIC: RuntimeCapability = RuntimeCapability {
 const SAFE_RUST_PROFILED: RuntimeCapability = RuntimeCapability {
     features: ProfileFeatureSet::NORMATIVE,
     id: "safe-rust-profiled",
-    max_memory_words: 4_782_969,
-    max_word_trits: 14,
+    max_memory_words: generated::CURRENT_PROFILE.memory_words,
+    max_word_trits: generated::CURRENT_PROFILE.word_trits,
 };
 
 /// One immutable target-profile classification from `malbolge.json`.

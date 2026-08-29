@@ -48,6 +48,7 @@ from accelerator.profile_run import WORD_BYTES
 from accelerator.resource_budget import AcceleratorResources
 from accelerator.resource_budget import plan_resident_batches
 
+from benchmarks.accelerator.profile_workload import PROFILE_TRITS
 from benchmarks.accelerator.profile_workload import PROFILE_WORDS
 
 MIB: Final = 1024 * 1024
@@ -56,7 +57,7 @@ CURRENT_STATE_BYTES: Final = (PROFILE_WORDS + STATE_WORDS) * WORD_BYTES
 CLASSIC_STATE_BYTES: Final = (MEMORY_WORDS + STATE_WORDS) * WORD_BYTES
 FIXED_CHUNK_BYTES: Final = 2 * WORD_BYTES
 MINIMUM_ADAPTIVE_WIDTH: Final = 10
-MAXIMUM_ADAPTIVE_WIDTH: Final = 14
+MAXIMUM_ADAPTIVE_WIDTH: Final = PROFILE_TRITS
 SCENARIO_ITEMS: Final = 10_000
 HUGE_GIB: Final = 100_000
 HUGE_ITEMS: Final = 100_000

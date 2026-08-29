@@ -53,12 +53,14 @@ METRICS_PATH = (
 CURRENT_PROFILE = "malbolge-2026"
 EVIDENCE_SELECTED_PROFILE = "malbolge-2026.2"
 CLASSIC_TRITS = 10
-SCALED_TRITS = 14
+CURRENT_TRITS = 15
+EVIDENCE_TRITS = 14
 THIRTEEN_TRITS = 13
 TERNARY_RADIX = 3
-SCALED_WORDS = TERNARY_RADIX**SCALED_TRITS
-SCALED_MAX = SCALED_WORDS - 1
-SCALED_ROTATE_ONE = TERNARY_RADIX ** (SCALED_TRITS - 1)
+CURRENT_WORDS = TERNARY_RADIX**CURRENT_TRITS
+CURRENT_MAX = CURRENT_WORDS - 1
+CURRENT_ROTATE_ONE = TERNARY_RADIX ** (CURRENT_TRITS - 1)
+EVIDENCE_WORDS = TERNARY_RADIX**EVIDENCE_TRITS
 CLASSIC_ZERO_CRAZY_ZERO = 29_524
 CLASSIC_MAX = TERNARY_RADIX**CLASSIC_TRITS - 1
 CRAZY_TRIT_TABLE = (
@@ -115,7 +117,7 @@ def _rotate(value: int, trits: int) -> int:
 
 
 def test_scaled_profile_matches_tracked_capacity_evidence() -> None:
-    """The selected 14-trit profile is tied to the tracked DOOM snapshot."""
+    """The retained N14 selection remains tied to its tracked DOOM snapshot."""
     evidence = validator.load_document(EVIDENCE_PATH)
     metrics = validator.load_document(METRICS_PATH)
     workload = _object(evidence["workload_proxy"])
@@ -132,14 +134,14 @@ def test_scaled_profile_matches_tracked_capacity_evidence() -> None:
     assert workload["source_bytes"] == corpus["source_bytes"]
     source_bytes = _integer(workload["source_bytes"])
     thirteen = by_trits[THIRTEEN_TRITS]
-    fourteen = by_trits[SCALED_TRITS]
+    fourteen = by_trits[EVIDENCE_TRITS]
     assert _integer(thirteen["words"]) == TERNARY_RADIX**THIRTEEN_TRITS
-    assert _integer(fourteen["words"]) == SCALED_WORDS
+    assert _integer(fourteen["words"]) == EVIDENCE_WORDS
     assert _integer(thirteen["headroom_over_proxy_words"]) == (
         TERNARY_RADIX**THIRTEEN_TRITS - source_bytes
     )
     assert _integer(fourteen["headroom_over_proxy_words"]) == (
-        SCALED_WORDS - source_bytes
+        EVIDENCE_WORDS - source_bytes
     )
 
 
@@ -149,18 +151,18 @@ def test_scaled_profile_uses_one_word_for_every_address() -> None:
     word = _object(profile["word"])
     memory = _object(profile["memory"])
     semantics = _object(profile["semantics"])
-    assert _integer(word["trits"]) == SCALED_TRITS
-    assert _integer(word["modulus"]) == SCALED_WORDS
-    assert _integer(memory["words"]) == SCALED_WORDS
-    assert _integer(semantics["eof_word"]) == SCALED_MAX
-    assert SCALED_MAX > CLASSIC_MAX
+    assert _integer(word["trits"]) == CURRENT_TRITS
+    assert _integer(word["modulus"]) == CURRENT_WORDS
+    assert _integer(memory["words"]) == CURRENT_WORDS
+    assert _integer(semantics["eof_word"]) == CURRENT_MAX
+    assert CURRENT_MAX > CLASSIC_MAX
 
 
 def test_rotate_generalizes_by_one_ternary_digit() -> None:
     """Rotation stays circular over exactly the profile's N trits."""
-    assert _rotate(1, SCALED_TRITS) == SCALED_ROTATE_ONE
-    assert _rotate(TERNARY_RADIX, SCALED_TRITS) == 1
-    assert _rotate(SCALED_MAX, SCALED_TRITS) == SCALED_MAX
+    assert _rotate(1, CURRENT_TRITS) == CURRENT_ROTATE_ONE
+    assert _rotate(TERNARY_RADIX, CURRENT_TRITS) == 1
+    assert _rotate(CURRENT_MAX, CURRENT_TRITS) == CURRENT_MAX
 
 
 def test_crazy_generalizes_digitwise_without_new_truth_table() -> None:
@@ -168,12 +170,12 @@ def test_crazy_generalizes_digitwise_without_new_truth_table() -> None:
     assert _crazy(0, 0, CLASSIC_TRITS) == CLASSIC_ZERO_CRAZY_ZERO
     assert _crazy(CLASSIC_MAX, 0, CLASSIC_TRITS) == CLASSIC_MAX
     assert _crazy(0, CLASSIC_MAX, CLASSIC_TRITS) == 0
-    assert _crazy(0, 0, SCALED_TRITS) == SCALED_MAX // 2
-    assert _crazy(SCALED_MAX, 0, SCALED_TRITS) == SCALED_MAX
-    assert _crazy(0, SCALED_MAX, SCALED_TRITS) == 0
+    assert _crazy(0, 0, CURRENT_TRITS) == CURRENT_MAX // 2
+    assert _crazy(CURRENT_MAX, 0, CURRENT_TRITS) == CURRENT_MAX
+    assert _crazy(0, CURRENT_MAX, CURRENT_TRITS) == 0
 
 
 def test_address_successor_wraps_at_scaled_word_modulus() -> None:
     """C and D wrap at 3^N rather than a host pointer width."""
-    successor = (SCALED_MAX + 1) % SCALED_WORDS
+    successor = (CURRENT_MAX + 1) % CURRENT_WORDS
     assert successor == 0

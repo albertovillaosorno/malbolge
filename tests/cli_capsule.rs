@@ -48,7 +48,8 @@ const ANNUAL_CAPSULE_HEX: &str = include_str!(concat!(
     "compatibility/capsule/",
     "current-profile-capsule.hex",
 ));
-const EXPECTED_EOF_OUTPUT: &[u8] = &[0x78];
+const EXPECTED_EOF_OUTPUT: &[u8] = &[0x6a];
+const VERSIONED_EOF_OUTPUT: &[u8] = &[0x78];
 const PROFILE_ADAPTIVE_WIDTH_ENV: &str = "MALBOLGE_PROFILE_ADAPTIVE_WIDTH";
 const PROFILE_WORKER_ARG_COUNT_ENV: &str =
     "MALBOLGE_PROFILE_RESIDENT_WORKER_ARG_COUNT";
@@ -280,14 +281,18 @@ fn validation_python(root: &Path) -> PathBuf {
     }
 }
 
-fn assert_capsule_dispatch(label: &str, source: &str) -> Result<(), String> {
+fn assert_capsule_dispatch(
+    label: &str,
+    source: &str,
+    expected_output: &[u8],
+) -> Result<(), String> {
     let capsule = TemporaryCapsule::new(label, source)?;
     let output = clean_cli_command()
         .arg(&capsule.path)
         .output()
         .map_err(|error| format!("run capsule CLI: {error}"))?;
     if output.status.success()
-        && output.stdout == EXPECTED_EOF_OUTPUT
+        && output.stdout == expected_output
         && output.stderr.is_empty()
     {
         Ok(())
@@ -348,7 +353,7 @@ fn configured_worker_is_not_used_for_historical_profile() -> Result<(), String>
 }
 
 #[test]
-fn disabled_adaptive_width_preserves_canonical_n14() -> Result<(), String> {
+fn disabled_adaptive_width_preserves_canonical_n15() -> Result<(), String> {
     let bytes = build_capsule(current_profile(), b"QP")
         .map_err(|error| format!("build canonical current capsule: {error}"))?;
     let capsule = TemporaryCapsule::from_bytes("adaptive-disabled", &bytes)?;
@@ -366,7 +371,7 @@ fn disabled_adaptive_width_preserves_canonical_n14() -> Result<(), String> {
     if output.status.success()
         && output.stdout.is_empty()
         && output.stderr.is_empty()
-        && geometry == b"14"
+        && geometry == b"15"
     {
         Ok(())
     } else {
@@ -520,7 +525,7 @@ fn adaptive_jump_code_io_capsule_preserves_canonical_eof() -> Result<(), String>
     if output.status.success()
         && output.stdout == [EXPECTED_EOF_OUTPUT, EXPECTED_EOF_OUTPUT].concat()
         && output.stderr.is_empty()
-        && geometry == b"14"
+        && geometry == b"15"
     {
         Ok(())
     } else {
@@ -566,7 +571,7 @@ fn adaptive_jump_rotate_io_capsule_preserves_canonical_eof()
             ]
             .concat()
         && output.stderr.is_empty()
-        && geometry == b"14"
+        && geometry == b"15"
     {
         Ok(())
     } else {
@@ -660,7 +665,7 @@ fn adaptive_rotate_capsule_sends_verified_n10_geometry() -> Result<(), String> {
 }
 
 #[test]
-fn adaptive_eof_visible_capsule_stays_canonical_n14() -> Result<(), String> {
+fn adaptive_eof_visible_capsule_stays_canonical_n15() -> Result<(), String> {
     let capsule = TemporaryCapsule::new("adaptive-eof", ANNUAL_CAPSULE_HEX)?;
     let marker = TemporaryMarker::new("adaptive-eof");
     let output = configured_worker_command_with_script(
@@ -676,7 +681,7 @@ fn adaptive_eof_visible_capsule_stays_canonical_n14() -> Result<(), String> {
     if output.status.success()
         && output.stdout == EXPECTED_EOF_OUTPUT
         && output.stderr.is_empty()
-        && geometry == b"14"
+        && geometry == b"15"
     {
         Ok(())
     } else {
@@ -847,8 +852,12 @@ fn malformed_capsule_fails_before_classic_fallback() -> Result<(), String> {
 
 #[test]
 fn published_capsules_dispatch_before_classic_fallback() -> Result<(), String> {
-    assert_capsule_dispatch("annual", ANNUAL_CAPSULE_HEX)?;
-    assert_capsule_dispatch("2026-3", VERSIONED_CAPSULE_HEX)
+    assert_capsule_dispatch("annual", ANNUAL_CAPSULE_HEX, EXPECTED_EOF_OUTPUT)?;
+    assert_capsule_dispatch(
+        "2026-3",
+        VERSIONED_CAPSULE_HEX,
+        VERSIONED_EOF_OUTPUT,
+    )
 }
 
 #[test]

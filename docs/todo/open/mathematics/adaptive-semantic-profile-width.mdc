@@ -38,10 +38,11 @@ than a device-specific artificial ceiling.
 
 If compiler and verifier evidence proves that a program's complete reachable
 behavior is invariant under replacing one concrete reference geometry by width
-`N`, then its semantic memory image has exactly `3^N` words. Against the current
-published N14 reference, the retained N10-through-N14 ratios remain 81x, 27x,
-9x, 3x, and 1x; those are evidence for that reference profile, not a language
-maximum. Total resident bytes also include registers, buffers, metadata,
+`N`, then its semantic memory image has exactly `3^N` words. Against the
+retained published N14 certificate reference, the N10-through-N14
+ratios remain 81x, 27x, 9x, 3x, and 1x. The current fallback reference is N15;
+neither finite reference is a language maximum. Total resident bytes also
+include registers, buffers, metadata,
 transfers, verification, and other separately measured costs.
 
 ## Acceptance
@@ -120,9 +121,11 @@ transfers, verification, and other separately measured costs.
   plus exact decisions for all candidate widths 10 through 13. `False` is an
   explicit rejection; positive selection requires a bound v2 certificate whose
   source/input bytes match that subject, whose narrow width matches the
-  candidate, whose wide width is canonical 14, and whose recognized proof kind
-  validates. Bare `True`, legacy v1, missing decisions, subject drift, width
-  mismatches, or malformed certificates fail closed to 14.
+  candidate, whose wide width is the retained N14 finite-certificate reference,
+  and whose
+  recognized proof kind validates. Bare `True`, legacy v1, missing decisions,
+  subject drift, width mismatches, or malformed certificates fail closed to that
+  N14 research baseline; this selector is not product current-profile authority.
 - A theorem-specific research checker certifies the initial-halt family without
   trusting final differential equality. It checks widths, source capacity and
   lexical admission, every position-dependent loader decode, and an initial `v`
@@ -174,34 +177,36 @@ transfers, verification, and other separately measured costs.
   unguarded `p v` rejects its non-graphical encryption target in both VMs.
 - The same bound `uCar_L` certificate is checked independently at narrow widths
   10, 11, 12, and 13. Selector evidence accepts each candidate when it is the
-  sole positive certificate, chooses that exact width, and returns canonical 14
-  when all four candidates are explicit rejections; no monotonic inference is
-  used between widths.
+  sole positive certificate, chooses that exact width, and returns the retained
+  N14 certificate reference when all four candidates are explicit rejections; no
+  monotonic inference is used between widths.
 - Widths 11 through 13 are derived execution geometries, not new canonical
   `ProfileDescriptor` identities. Research geometry output carries only
-  `word_trits=N` and exactly `3^N` memory words: 59,049; 177,147; 531,441;
-  1,594,323; and 4,782,969 for N=10 through 14. Invalid selection evidence maps
-  to the canonical 14-trit geometry. Runtime integration must preserve the
-  canonical language/profile identity while consuming this derived geometry.
-- Synthetic resource-budget evidence now feeds those five derived geometries
+  `word_trits=N` and exactly `3^N` memory words. Product-reviewed current widths
+  N=10 through 15 are 59,049; 177,147; 531,441; 1,594,323; 4,782,969; and
+  14,348,907 words. The historical finite-certificate selector remains
+  explicitly
+  N14-bound; product runtime fallback is the current N15 profile.
+- Synthetic resource-budget evidence now feeds those six reviewed geometries
   into the product resident planner without changing profile identity. For a
   zero-I/O resident item, exact backend layout is 16 state words plus `3^N`
   memory words at four bytes each, with eight fixed bytes per chunk. Item sizes
-  are 236,260; 708,652; 2,125,828; 6,377,356; and 19,131,940 bytes for N=10
-  through 14. Under the same synthetic 128 MiB resource snapshot, first-chunk
-  capacities are 532, 177, 59, 19, and 6 complete VMs respectively.
+  are 236,260; 708,652; 2,125,828; 6,377,356; 19,131,940; and 57,395,692 bytes
+  for N=10 through 15. Under the same synthetic 128 MiB resource snapshot,
+  first-chunk capacities are 532, 177, 59, 19, 6, and 2 complete VMs
+  respectively.
 - This remains capacity evidence only; it does not grant runtime width-selection
   authority or satisfy the still-required equivalent-work throughput
   measurements.
-- The same derived N=10-through-14 geometries validate against the product
+- The same reviewed N=10-through-15 geometries validate against the product
   `ProfileRunGeometry` contract with `word_modulus=memory_words=3^N`,
   `EOF=3^N-1`, and the existing `/` input plus `<` output assignments. That
   contract carries no profile ID, version, or fingerprint, so the compatibility
   check does not fabricate canonical profile identities. Exact host
   `ProfileMemoryImage` ownership and complete zero-step `ProfileRunRequest`
-  validation are exercised at all five `3^N` lengths, proving that the resident
+  validation are exercised at all six `3^N` lengths, proving that the resident
   host contract accepts the derived storage and state shapes.
-- The pure resident CUDA source generator also receives all five derived
+- The pure resident CUDA source generator also receives all six reviewed
   geometries and renders their exact memory, trit, EOF, maximum-word, and
   rotate-weight constants. That source-generation check alone makes no NVRTC or
   device-launch claim; later integration evidence below separately exercises
@@ -242,7 +247,7 @@ transfers, verification, and other separately measured costs.
   after an exact derived-capacity `SourceTooLong`; lexical, decode, theorem, and
   geometry failures reject immediately. A 59,050-word valid initial-halt source
   selects N=11 rather than N=10, while QP selects N=10. The resulting N=10 QP
-  artifact still exposes canonical `malbolge-2026` and its 14-trit
+  artifact still exposes canonical `malbolge-2026` and its N15
   `TargetProfileRequirement`, never `malbolge-1998`; derived width and canonical
   identity therefore remain distinct by product test.
 - An adversarial 59,050-word source with a loader-invalid final instruction
@@ -250,7 +255,7 @@ transfers, verification, and other separately measured costs.
   exceeds N=10 capacity, then is rejected when N=11 exposes full source
   validation. Capacity retry therefore cannot mask a wider semantic/source
   failure. Product verifier coverage also checks QP independently at every
-  reviewed N=10-through-14 geometry with exact `3^N` words while retaining the
+  reviewed N=10-through-15 geometry with exact `3^N` words while retaining the
   same canonical profile identity.
 - Execution-consumer review shows that adaptive execution must split canonical
   profile semantics from verified geometry throughout both `ProfileMachine` and
@@ -261,7 +266,7 @@ transfers, verification, and other separately measured costs.
   recurrence must instead consume the verified execution geometry.
 - Checkpoints must retain that geometry because tiered handoff/retry and
   state-graph code reconstruct machines from `ProfileMachineState`; changing
-  only the live machine would silently restore canonical 14-trit geometry after
+  only the live machine would silently restore canonical N15 geometry after
   a snapshot. This boundary is documented before adding any execution
   constructor.
 - `ProfileMachine::from_verified_source` is now the first product execution
@@ -303,7 +308,8 @@ transfers, verification, and other separately measured costs.
   is 41 without wrap at every reviewed width. N=10 therefore halts in two steps
   with exact D=41; no recurrence-memory equality is assumed by this proof.
 - Repeated data-jump admission now recomputes initial-memory words independently
-  at candidate N and canonical 14 before preserving exact D. `('&N` selects N=10
+  at candidate N and canonical N15 before preserving exact D. `('&N` selects
+  N=10
   and executes three jumps plus halt because every reached recurrence read is
   numerically equal. By contrast, `('O` (`j j v`) and `('<AM` (`j j p o v`) both
   fail closed at the second jump with `RepeatedJumpMemoryMismatch` at D=41. The
@@ -322,7 +328,7 @@ transfers, verification, and other separately measured costs.
   carries
   `MinimumLength(1)` so EOF is rejected; `j p v` cannot satisfy this recovery
   family. Direct verification admits the same recovery theorem independently at
-  every reviewed N=10 through 14.
+  every reviewed N=10 through 15.
 - Indexed state-graph now preserves the opaque geometry token through lineage,
   digest, trace application, and checkpoint materialization. A QP/N=10 runtime
   trace roundtrips through `IndexedMachineState` to the exact derived checkpoint
@@ -359,8 +365,8 @@ transfers, verification, and other separately measured costs.
   termination, registers, and verifier geometry tokens.
 - Prepared profile backend requests expose resident shape only from their
   admitted machine: EOF, canonical input/output opcodes, memory words/modulus,
-  and word trits. Direct QP artifacts at N=10 through 14 produce exactly the
-  five reviewed `3^N` geometries.
+  and word trits. Direct QP artifacts at N=10 through 15 produce exactly the
+  six reviewed `3^N` geometries.
 - MBPRN2 framing is product-owned. The VM contract exposes a pure resident wire
   geometry/request representation, exact response-size bound, strict batch
   encoder, and response decoder. `resident_wire_request` projects only numeric
@@ -376,12 +382,13 @@ transfers, verification, and other separately measured costs.
   caps stdout at the largest semantically possible MBPRN2 response, reaps
   failed/oversized children, and names neither Python nor CUDA.
 - The CUDA integration configures that adapter for `profile_run_worker`. Each
-  reviewed N=10 through 14 has an optional full-state batch containing QP, EOF
+  reviewed N=10 through 15 has an optional full-state batch containing QP, EOF
   input-halt, `uCar_L`, guarded `p p`, guarded `p p` plus byte-I/O recovery,
   `(&O` (`j * v`) rotate, projected rotate plus guarded crazy, projected rotate
   plus byte-I/O recovery, source-backed jump-code, source-backed jump-code plus
   byte-I/O, and source-backed jump-code plus rotate. A strict live RTX 4060
-  check observed CUDA execution for every reviewed N=10 through 14. This remains
+  current N15 path additionally required `used_cuda=true`; retained strict N10
+  through N14 evidence remains valid. This remains
   correctness, not performance, evidence.
 - The command-line composition root can now bind a trusted MBPRN2 worker for
   current canonical-profile capsules through explicit environment configuration.
@@ -403,55 +410,59 @@ transfers, verification, and other separately measured costs.
   `ubO` with empty input remains canonical N=14 and emits `0x78`.
 - The CLI now exposes that constructor only under explicit
   `MALBOLGE_PROFILE_ADAPTIVE_WIDTH=1` for current-profile capsules. `0` keeps
-  canonical N14 and invalid values fail closed. A synthetic MBPRN2 worker sees
-  QP as N10 when enabled and N14 when disabled; the published `ubO`/EOF capsule
-  remains N14 even when enabled. A temporary live RTX 4060 check also executed
+  canonical N15 and invalid values fail closed. A synthetic MBPRN2 worker sees
+  QP as N10 when enabled and N15 when disabled; the current `ubO`/EOF capsule
+  remains N15 even when enabled. A temporary live RTX 4060 check also executed
   the QP/N10 CLI path through `CudaProfileRunAdapter.evaluate`.
 - Rotate now has one deliberately narrow product theorem. `(&O` decodes `j * v`:
   the jump establishes exact D=41, the verifier reconstructs candidate and
   canonical initial memory at that physical address, requires ordinary memory
   projection, and independently requires the width-specific rotate result to
-  project before authorizing the write. The proof succeeds at N=10 through 14,
-  selects N=10, and complete post-run memory/register state projects to
-  canonical
-  N=14.
+  project before authorizing the write. The proof succeeds at N=10 through 15,
+  selects N=10, and complete post-run
+  memory/register state projects to canonical N15.
 - Rotate widening is specialized because compatibility is non-monotone in N.
-  `(CB$M` (`j o o * v`) rejects N=10 through 13 with
-  `JumpRotateProjection` and admits only N=14; the composite selector therefore
+  `(CB$M` (`j o o * v`) rejects every narrower reviewed width with
+  `JumpRotateProjection` and admits
+  only N15; the composite selector therefore
   returns no derived authority and adaptive construction stays canonical. Other
   `j o* * v` variants remain unsupported rather than generalized from this
   theorem.
 - `JumpRotateIoHaltProjection` composes a projection-only rotate with one or
   more exact `/ <` pairs. The original seven-cell fixture `j o o * / < v`
-  remains a direct projection witness: after rotate N10 has A=29,517 while N14
-  has A=2,391,477, so the values differ numerically but preserve projection.
+  remains a direct projection witness: after rotate N10 has A=29,517 while
+  canonical N15 has A=7,174,446, so the
+  values differ numerically but preserve projection.
 - The hidden policy is now `MinimumLength(k)` for the exact reached input count.
-  A retained four-pair source verifies at every N=10 through 14 and selects N10
+  A retained four-pair source verifies at every N=10 through 15 and selects N10
   with `MinimumLength(4)`. Input `[0xA5,0x3C,0x7F,0x00]` is emitted exactly;
   three bytes are rejected before derived construction and composite selection.
 - Indexed-state evidence advances the four-pair N10 execution through twelve
   committed effects. Materialization retains memory[43]=29,512, A=0, C=12/D=52,
   cursor 4, output `[0xA5,0x3C,0x7F,0x00]`, and the same opaque authority. The
-  empty-input CLI path stays N14 and emits four canonical EOF bytes `0x78`.
+  empty-input CLI path stays N15 and emits four canonical EOF bytes `0x6A`.
 - Source length is part of the rotate proof, not a suffix-only property. The
-  otherwise-valid two-pair source fails N10 rotate projection and reaches only
-  N14, while the four-pair source succeeds again. `JUMP_ROTATE_IO_UNSAFE`
+  otherwise-valid two-pair source fails narrower rotate projection and reaches
+  only N15, while the four-pair source succeeds again. `JUMP_ROTATE_IO_UNSAFE`
   (`j * / < v`) remains a separate projection-negative fixture.
 - `JumpRotateCrazyHaltProjection` composes the same exact-address rotate with
   one or more immediately reached `p` writes before optional no-ops and halt.
   `(&<;:9K` decodes `j * p p p p v`: after rotate N10 has A=29,529 while
-  N14 has A=2,391,489, so the accumulator is projected rather than exact.
+  canonical N15 has A=7,174,458, so the accumulator is projected rather than
+  exact.
 - The four crazy writes keep D physically exact at 42 through 45 and alternate
-  exact/projected results: N10 writes 67, 29,538, 49, and 29,538 while N14
-  writes 67, 2,391,498, 49, and 2,391,498. Complete N10 memory/register state
+  exact/projected results: N10 writes 67, 29,538, 49, and 29,538 while
+  canonical N15 writes 67, 7,174,467, 49, and 7,174,467. Complete N10
+  memory/register state
   still projects after the prefix, leaving C=6/D=46 before halt.
 - The minimum selector may widen after `SourceTooLong` or explicit rotate
   projection failure because rotate compatibility is non-monotone. Once rotate
   succeeds, any guarded-crazy premise fails closed; it is not treated as a
   reason to search wider widths. `JUMP_ROTATE_CRAZY_UNSAFE` (`j o * p v`)
-  reaches only N14 and composite adaptive selection stays canonical.
-- Post-push RTX 4060 evidence required real CUDA execution at every reviewed
-  N=10 through 14 with the rotate/crazy request present. A separate temporary
+  reaches only N15 and composite adaptive selection stays canonical.
+- Retained RTX 4060 evidence required real CUDA execution at N=10 through N14
+  with the rotate/crazy request present; the current N15 product path is also
+  required to report `used_cuda=true`. A separate temporary
   CLI worker wrote its geometry marker only after
   `CudaProfileRunAdapter.evaluate`;
   the adaptive `j * p p p p v` capsule reached that path as N10 with no output.
@@ -464,14 +475,15 @@ transfers, verification, and other separately measured costs.
 - With source[4]=`$` (numeric 36), rotate produces exact value 12 at N=10
   through
   14. N10 therefore writes 12 back into source[4], reaches halt with A=12,
-  C=80/D=5, and complete memory/register state projects to N14. Indexed-state
+  C=80/D=5, and complete memory/register state projects to N15. Indexed-state
   materialization retains that source write and the same opaque geometry token.
 - With source[4]=`^` (numeric 94), N10 rejects `JumpCodeRotateProjection`; the
-  specialized minimum selector reaches only N14 and composite adaptive selection
+  specialized minimum selector reaches only N15 and composite adaptive selection
   returns no narrower authority. This preserves the non-monotone rotate boundary
   rather than treating exact source addressing as sufficient by itself.
-- Post-push live evidence on the RTX 4060 required real CUDA execution at every
-  reviewed N=10 through 14 with the jump-code/rotate request present. A separate
+- Retained live evidence on the RTX 4060 required real CUDA execution at N=10
+  through N14 with the jump-code/rotate request present; N15 is covered by the
+  current strict CUDA path. A separate
   temporary CLI worker wrote its geometry marker only after
   `CudaProfileRunAdapter.evaluate`; the adaptive jump-code/rotate capsule
   reached that path as N10 and completed with no output. The instrumentation was
@@ -485,7 +497,7 @@ transfers, verification, and other separately measured costs.
   A retained four-jump fixture reaches `i@0`, `i@99`, `i@39`, then `i@38` before
   `v@79`. Cell 38 originally decodes `j`; an earlier self-encryption changes it
   from 96 to 60, after which it decodes `i`. Complete N10 memory and registers
-  still project to N14 after all five steps.
+  still project to N15 after all five steps.
 - Recurrence-backed targets, successors outside loaded source, or D wrap reject
   with `JumpCodeProjection`. A short `i` source and a repeated chain whose
   second
@@ -493,7 +505,7 @@ transfers, verification, and other separately measured costs.
   around missing evidence.
 - Recurrence-backed initial code targets also have a structural exactness
   barrier.
-  For each N=10 through 13, if one N14 recurrence word is numerically equal to
+  For each N=10 through 14, if one N15 recurrence word is numerically equal to
   the N-word, its high trits are zero. The next `crazy(previous, exact_word)`
   necessarily restores a nonzero high trit for every possible high part of the
   previous word, so target and successor cannot both remain numerically exact.
@@ -505,7 +517,7 @@ transfers, verification, and other separately measured costs.
   with one or more `/ <` pairs before halt. Its hidden policy is
   `MinimumLength(k)` for exactly the number of reached inputs. A retained two-
   pair fixture requires two bytes; `[0xA5,0x3C]` emits those exact bytes and
-  halts after nine N10 steps while complete state projects to N14.
+  halts after nine N10 steps while complete state projects to N15.
 - One byte is rejected before constructing that two-pair derived machine, and
   composite selection returns no narrow token. Indexed state advances the mixed
   chain through four jumps plus two input/output pairs while retaining the
@@ -513,15 +525,15 @@ transfers, verification, and other separately measured costs.
   `MinimumLength(2)` authority, input cursor 2, and output `[0xA5,0x3C]`.
 - The CLI supplies no profile input, so the same adaptive capsule correctly
   stays
-  canonical N14. Both reached input instructions observe canonical EOF and the
-  two outputs are `[0x78,0x78]`; no EOF-visible narrowing is inferred.
+  canonical N15. Both reached input instructions observe canonical EOF and the
+  two outputs are `[0x6A,0x6A]`; no EOF-visible narrowing is inferred.
 - Tiered interpreter handoff remains canonical-only until its continuation
   schema carries verified execution geometry explicitly. A derived N=10
   checkpoint with the same canonical profile, observation, and live-in surface
   as
   an initial-halt continuation now fails closed with `CheckpointGeometry` before
   any interpreter transition. This prevents tiered fallback from silently
-  reinterpreting a verified narrow checkpoint as canonical N=14.
+  reinterpreting a verified narrow checkpoint as canonical N=15.
 - Profile traces now carry their exact execution geometry. Portable IR v1
   projection accepts only traces whose geometry equals the canonical profile and
   rejects derived traces with `ExecutionGeometry`. QP/N=10 therefore remains
@@ -530,7 +542,7 @@ transfers, verification, and other separately measured costs.
   explicitly
   versioned for derived geometry.
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
-  output, input consumption, and final registers under canonical 14-trit and
+  output, input consumption, and final registers under canonical N15 and
   historical 10-trit execution when input byte `0xA5` is available. That final
   match is deliberately not treated as a certificate: complete projected state
   agrees initially and after two steps, then the third `*` instruction breaks

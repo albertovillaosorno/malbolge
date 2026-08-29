@@ -71,8 +71,8 @@ sentinel:
 
 `EOF_N = 3^N - 1`.
 
-For `malbolge-1998`, this is 59,048. For the current 14-trit profile it is
-4,782,968.
+For `malbolge-1998`, this is 59,048. For the current N15 reference geometry it
+is 14,348,906.
 
 ### Versioned Profiles
 
@@ -84,14 +84,17 @@ The canonical identities are currently:
   words.
 - `malbolge-2026.3`: immutable interpreter-compatible transition profile,
   `N = 14`, 4,782,969 words.
-- `malbolge-2026`: official current profile, `N = 14`, 4,782,969 words with
+- `malbolge-2026`: official current reference, `N = 15`, 14,348,907 words with
   interpreter-compatible I/O assignment.
 
-A profile is immutable once published. If measurements show that 14 trits are
-insufficient, the project publishes another profile with a larger `N`; it never
-silently enlarges `malbolge-2026`.
+Published versioned profiles are immutable. The annual `malbolge-2026` current
+reference may advance repository fallback geometry, but its fingerprint changes
+with that geometry, so an artifact bound to an older fingerprint never silently
+acquires new semantics. The semantic-width model itself has no mathematical
+maximum; N15 is a concrete current reference and backend envelope, not a
+language ceiling.
 
-### Why Fourteen Trits
+### Why Versioned Profiles Retain Fourteen Trits
 
 The tracked normalized DOOM development oracle currently contains 2,479,932
 source bytes. This is only a lower-bound workload proxy: source bytes are not a
@@ -99,16 +102,15 @@ prediction of compiled Malbolge words. The evidence artifact also retains the
 1,497,009-byte snapshot used when `malbolge-2026.2` was originally selected.
 
 Thirteen trits provide 1,594,323 words and are now 885,609 words below the
-current source proxy. Fourteen trits provide 4,782,969 words and remain the
-first
-native ternary width above that proxy, with 2,303,037 words of current headroom.
-The original profile choice is therefore still sufficient under the larger
-tracked snapshot, without changing the immutable `malbolge-2026.2` geometry.
+tracked source proxy. Fourteen trits provide 4,782,969 words and remain the
+first native ternary width above that proxy, with 2,303,037 words of headroom.
+That evidence still justifies the immutable `malbolge-2026.2` and
+`malbolge-2026.3` geometries; it is not a maximum-width argument.
 
-This is not a claim that DOOM now fits after compilation. It is the first
-versioned scalable geometry with defensible workload evidence. Future compiler
-and runtime measurements remain authoritative for deciding whether another
-trit is required.
+The current reference is N15 so the fallback exercises three complete five-trit
+chunks. This is not a claim that DOOM now fits after compilation, nor evidence
+that N15 is universally optimal. Future compiler/runtime measurements and
+verified per-program width evidence remain authoritative.
 
 The exact source snapshot and candidate arithmetic are retained in
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->

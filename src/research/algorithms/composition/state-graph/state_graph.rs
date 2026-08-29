@@ -27,7 +27,7 @@
 // - Usage:
 //   - Research baseline consumed by `tests/state_graph_research.rs`.
 // - Defaults:
-//   - Classic 1998 only; current 14-trit graph reduction is not claimed yet.
+//   - Classic 1998 only; current-profile graph reduction is not claimed here.
 //
 
 //! Collision-safe exact-state graph baseline for self-modifying Malbolge.

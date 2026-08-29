@@ -75,7 +75,7 @@ def profile_noop_request(
     step_budget: int = STEP_BUDGET,
     prepared_steps: int = STEP_BUDGET,
 ) -> ProfileRunRequest:
-    """Build one exact 14-trit no-op benchmark request.
+    """Build one exact current-profile no-op benchmark request.
 
     Returns:
         Validated request with the requested prepared no-op code span.

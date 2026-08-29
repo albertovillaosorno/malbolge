@@ -40,12 +40,12 @@
       "version": "2026",
       "word": {
         "radix": 3,
-        "trits": 14,
-        "modulus": 4782969
+        "trits": 15,
+        "modulus": 14348907
       },
       "memory": {
         "model": "single-word-modular",
-        "words": 4782969
+        "words": 14348907
       },
       "semantics": {
         "guest_order": "sequential",
@@ -56,7 +56,7 @@
         "post_instruction_encryption": true,
         "input_instruction": "/",
         "output_instruction": "<",
-        "eof_word": 4782968,
+        "eof_word": 14348906,
         "output_modulus": 256
       }
     },

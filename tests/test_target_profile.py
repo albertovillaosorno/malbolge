@@ -46,8 +46,11 @@ CURRENT_PROFILE = "malbolge-2026"
 CURRENT_VERSION = "2026"
 TRANSITION_PROFILE = "malbolge-2026.3"
 TRANSITION_VERSION = "2026.3"
-CURRENT_TRITS = 14
-CURRENT_WORDS = 4_782_969
+TRANSITION_WORDS = 4_782_969
+TRANSITION_EOF = TRANSITION_WORDS - 1
+EOF_WORD_KEY = "eof_word"
+CURRENT_TRITS = 15
+CURRENT_WORDS = 14_348_907
 CURRENT_EOF = CURRENT_WORDS - 1
 WIDTH_MODEL_RADIX = 3
 WIDTH_MODEL_MINIMUM = 10
@@ -286,9 +289,28 @@ def test_interpreter_compatible_transition_remains_versioned() -> None:
     assert isinstance(transition, dict)
     assert transition["kind"] == validator.VERSIONED_KIND
     assert transition["version"] == TRANSITION_VERSION
-    assert transition["word"] == current["word"]
-    assert transition["memory"] == current["memory"]
-    assert transition["semantics"] == current["semantics"]
+    assert transition["word"] == {
+        "radix": WIDTH_MODEL_RADIX,
+        "trits": 14,
+        "modulus": TRANSITION_WORDS,
+    }
+    assert transition["memory"] == {
+        "model": validator.MEMORY_MODEL,
+        "words": TRANSITION_WORDS,
+    }
+    transition_semantics = cast("dict[str, object]", transition["semantics"])
+    current_semantics = cast("dict[str, object]", current["semantics"])
+    assert {
+        key: value
+        for key, value in transition_semantics.items()
+        if key != EOF_WORD_KEY
+    } == {
+        key: value
+        for key, value in current_semantics.items()
+        if key != EOF_WORD_KEY
+    }
+    assert transition_semantics[EOF_WORD_KEY] == TRANSITION_EOF
+    assert current_semantics[EOF_WORD_KEY] == CURRENT_EOF
     assert validator.profile_fingerprint(
         document, TRANSITION_PROFILE
     ) != validator.profile_fingerprint(document, CURRENT_PROFILE)

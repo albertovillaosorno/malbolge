@@ -263,6 +263,7 @@ fn derived_profile_product_encoding_uses_every_admitted_geometry() -> TestResult
         (12, 531_441),
         (13, 1_594_323),
         (14, 4_782_969),
+        (15, 14_348_907),
     ] {
         check_derived_profile_product_encoding(word_trits, memory_words)?;
     }
@@ -348,7 +349,7 @@ fn reviewed_width_cuda_requests(
 fn cuda_reviewed_profile_widths_route_through_product_batch_port() -> TestResult
 {
     let _cuda_guard = cuda_test_guard()?;
-    for word_trits in 10u8..=14 {
+    for word_trits in 10u8..=15 {
         let requests = reviewed_width_cuda_requests(word_trits)?;
         let expected_count = requests.len();
         let expected = execute_profile_batch(requests.clone());

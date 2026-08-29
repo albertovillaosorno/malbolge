@@ -110,7 +110,7 @@ independent of total profile memory size and is therefore the semantic basis for
 researching persistent/delta memory nodes instead of full per-step snapshots.
 
 The executable correspondence compares complete before/after memories for all
-eight instruction families in both classic and current 14-trit states. It
+eight instruction families in both classic and current 15-trit states. It
 includes real two-cell crazy/rotate witnesses and zero-cell
 halt/atomic-rejection
 witnesses; no private transition-plan metadata is used.
@@ -161,7 +161,7 @@ root plus bounded patches and exact indexed reads.
 
 \section{Bounded persistent radix overlay}
 
-For the current 14-trit profile, every admitted address is below $2^{24}$.
+For the current 15-trit reference, every admitted address is below $2^{24}$.
 Partition a 24-bit address into four six-bit chunks and let $O_k$ be a
 persistent
 64-way radix overlay after semantic delta $k$, while $M_0$ remains the shared
@@ -358,7 +358,7 @@ A normative transition error during certificate recording prevents promotion to
 a
 verified region entirely.
 
-The executable correspondence records and re-verifies a current 14-trit region,
+The executable correspondence records and re-verifies a current 15-trit region,
 compares its exit with direct VM execution, mutates the entry by one real trace
 and requires guard failure, tampers with an otherwise valid certificate and
 requires verifier rejection, and confirms a rejected encryption transition never

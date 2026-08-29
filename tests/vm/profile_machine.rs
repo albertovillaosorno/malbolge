@@ -59,8 +59,8 @@ const NARROWING_REPEATED_JUMP_DATA_SOURCE: &[u8] = b"('&N";
 const NARROWING_PROJECTED_D_CRAZY_SOURCE: &[u8] = b"('<AM";
 const NARROWING_NOOP_PREFIX_HALT_SOURCE: &[u8] = b"DCBA@?>=I";
 const NOOP_PREFIX_STEPS: u8 = 8;
-const CURRENT_TRITS: u8 = 14;
-const CURRENT_WORDS: u32 = 4_782_969;
+const CURRENT_TRITS: u8 = 15;
+const CURRENT_WORDS: u32 = 14_348_907;
 const HISTORICAL_WORDS: u16 = 59_049;
 const IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
     "../compatibility/specification/",

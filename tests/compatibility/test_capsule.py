@@ -70,7 +70,7 @@ CURRENT_PROFILE = b"malbolge-2026"
 VERSIONED_PROFILE = b"malbolge-2026.3"
 CURRENT_FINGERPRINT = (
     b"malbolge-profile-v1:sha256:"
-    b"1006b5fc06808f54aa5089cef0237539770c1d79a73c822e6e26e0e0ebfb0c76"
+    b"8a93ad8fee1d3be48c432c23a74cff5ed50d85e07444dcecece103e4fe22c16e"
 )
 VERSIONED_FINGERPRINT = (
     b"malbolge-profile-v1:sha256:"

@@ -40,7 +40,7 @@
 #define MALBOLGE_GUEST_FRAME_HEADER_SIZE UINT32_C(32)
 #define MALBOLGE_GUEST_HEAP_ALIGNMENT UINT32_C(16)
 #define MALBOLGE_GUEST_HEAP_HEADER_SIZE UINT32_C(16)
-#define MALBOLGE_GUEST_PROFILE_EOF_WORD UINT32_C(4782968)
+#define MALBOLGE_GUEST_PROFILE_EOF_WORD UINT32_C(14348906)
 
 /** Stable status values for guest runtime core operations. */
 typedef enum MalbolgeGuestRuntimeStatus {

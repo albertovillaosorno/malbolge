@@ -49,8 +49,8 @@ VM evidence.
   nodes/edges, and specification-comparison mode is outside the admitted
   baseline.
 - `profile.rs` consumes validated `ProfileMachineState` values directly and
-  extends exact collision-safe identity to current 14-trit checkpoints. Full
-  4,782,969-word replay deduplicates, and forced digest collision keeps unequal
+  extends exact collision-safe identity to current N15 checkpoints. Full
+  14,348,907-word replay deduplicates, and forced digest collision keeps unequal
   current checkpoints separate. This is correctness evidence, not a storage or
   throughput claim.
 - A 15-sample post-commit benchmark measures the full current baseline at
@@ -78,7 +78,7 @@ VM evidence.
 - `index.rs` implements that next candidate as a four-level 64-way persistent
   radix over one shared root. Current traced checkpoints reconstruct exactly,
   4096 distinct overrides preserve both indexed and root reads, forged `before`
-  values fail closed, and the explicit 24-bit capacity contains current 14-trit
+  values fail closed, and the explicit 24-bit capacity contains current N15
   addresses. Performance remains unclaimed until post-commit measurement.
 - Two labelled equations define the exact projection and collision-safe merge
   criterion and are registered in the machine-checked correspondence manifest.

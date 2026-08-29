@@ -54,19 +54,19 @@ pub(super) const PROFILE_0: ProfileDescriptor = ProfileDescriptor {
 };
 
 pub(super) const PROFILE_1: ProfileDescriptor = ProfileDescriptor {
-    eof_word: 4_782_968,
+    eof_word: 14_348_906,
     fingerprint: concat!(
         "malbolge-profile-v1:sha256:",
-        "1006b5fc06808f54aa5089cef0237539770c1d79a73c822e6e26e0e0ebfb0c76",
+        "8a93ad8fee1d3be48c432c23a74cff5ed50d85e07444dcecece103e4fe22c16e",
     ),
     id: "malbolge-2026",
     input_instruction: b'/',
     kind: ProfileKind::Current,
-    memory_words: 4_782_969,
+    memory_words: 14_348_907,
     output_instruction: b'<',
     version: "2026",
-    word_modulus: 4_782_969,
-    word_trits: 14,
+    word_modulus: 14_348_907,
+    word_trits: 15,
 };
 
 pub(super) const PROFILE_2: ProfileDescriptor = ProfileDescriptor {

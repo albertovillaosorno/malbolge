@@ -27,7 +27,7 @@ and termination reason; memory/register/input state is dead for future requests.
 The projection rejects live machines fail-closed.
 
 `profile.rs` extends the exact baseline to validated `ProfileMachineState`
-checkpoints, including the current 14-trit/4,782,969-word profile. It consumes
+checkpoints, including the current N15/14,348,907-word reference. It consumes
 the
 runtime checkpoint directly, hashes only for bucket selection, and confirms
 every
@@ -35,12 +35,16 @@ merge with full checkpoint equality. This is a correctness/deoptimization
 oracle,
 not a claim that full-checkpoint graph storage is economical.
 
-The exact current-checkpoint cost is measured by `bench.rs`. Versioned evidence
-under `benchmarks/research/state-graph/evidence/2026-07-27-windows-x86_64/`
-records 15 samples per operation. The current host median is 7.19 ms to clone a
+The exact current-checkpoint cost is measured by `bench.rs`. Retained N14
+evidence under
+`benchmarks/research/state-graph/evidence/2026-07-27-windows-x86_64/` records 15
+samples per operation. That historical host median is 7.19 ms to clone a
 checkpoint, 26.24 ms to digest/insert a prepared checkpoint, and 30.76 ms to
-digest/confirm an exact replay. These values reject full-checkpoint copying and
-hashing as the default per-step production graph representation on this host.
+digest/confirm an exact replay.
+
+It must not be relabeled as N15 performance. These values reject full-checkpoint
+copying and hashing as the default per-step production graph representation on
+this host.
 
 `tests/d.rs` establishes the profile-size-independent memory mutation bound:
 every requested normative step changes at most two memory cells. It compares

@@ -189,7 +189,7 @@ deterministically without changing guest-visible state silently.
   differential results against independent interpreter-compatible
   implementations; the original C source is compared only where its behavior is
   defined and reproducible.
-- `tests/vm/profile_batch.rs` verifies current 14-trit sequential/parallel batch
+- `tests/vm/profile_batch.rs` verifies current N15 sequential/parallel batch
   equality, per-item profile identity, errors, I/O, registers, and sampled
   memory.
 - `tests/vm/cuda_step.rs` verifies optional CUDA compact-step equality against

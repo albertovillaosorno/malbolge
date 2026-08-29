@@ -830,8 +830,8 @@ general semantic equivalence between accumulator/target pairs.
 those equations to exhaustive or composite executable evidence. The classic
 crazy/rotate finite domains are checked exhaustively; decode is checked across
 all 8,836 graphical cell/phase pairs and its historical table is independently
-proved injective; current 14-trit crazy
-chunking is checked against scalar fixtures and real profile execution; and the
+proved injective; current N15 crazy chunking is checked against scalar
+fixtures and real profile execution; and the
 self-encryption result independently partitions all 94 graphical cells, checks
 every table transition against the VM-owned encryption helper, and then checks
 two full independent visits of every orbit for the modular reduction.

@@ -25,6 +25,6 @@ fixture binds to canonical profile `malbolge-2026`, carries its exact
 profile.
 
 The decoded annual-current frame checksum is FNV-1a-64
-`aa0e195952c9af9d`. The preserved `malbolge-2026.3` frame retains checksum
+`767629e51e93a4b0`. The preserved `malbolge-2026.3` frame retains checksum
 `844425f59cae4308`. These checksums are transport-corruption detectors only;
 profile identity is bound separately by each SHA-256 profile fingerprint.

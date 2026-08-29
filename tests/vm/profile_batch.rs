@@ -23,7 +23,7 @@
 //   - Merge when classic/profile batch result types become width-safe unified
 //   - API.
 // - Summary:
-//   - Proves current 14-trit batch execution preserves deterministic input
+//   - Proves current-profile batch execution preserves deterministic input
 //   - order.
 // - Description:
 //   - Compares sampled full-profile state while sharing the classic host

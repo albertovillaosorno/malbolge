@@ -67,7 +67,9 @@ as independent semantic authority.
 Safe Rust advertises two explicit interpreter capabilities:
 
 - `safe-rust-classic`: maximum 10 trits and 59,049 directly addressed words;
-- `safe-rust-profiled`: maximum 14 trits and 4,782,969 directly addressed words.
+- `safe-rust-profiled`: current backend envelope of 15 trits and 14,348,907
+  directly addressed words, derived from the generated current reference
+  geometry.
 
 Both advertise the same defining semantic features: byte input/output, crazy,
 deterministic sequential execution, post-instruction encryption, rotate, and

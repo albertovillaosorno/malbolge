@@ -55,7 +55,7 @@ semantics in a new proof harness. Coverage currently includes:
   capacity edges;
 - 24 seed/ordinal-replayable classic-versus-profiled programs with step-by-step
   comparison and all 59,049 final memory cells;
-- current 14-trit scalar rotate/crazy/loading fixtures, current EOF tracing, and
+- current N15 scalar rotate/crazy/loading fixtures, current EOF tracing, and
   atomic post-jump encryption rejection.
 
 A manifest link does not upgrade fixture coverage into a proof outside its

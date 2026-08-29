@@ -55,14 +55,14 @@ PROFILE_PATH = ROOT / "malbolge.json"
 CURRENT_ID = "malbolge-2026"
 TRANSITION_ID = "malbolge-2026.1"
 HISTORICAL_ID = "malbolge-1998"
-CURRENT_WORDS = 4_782_969
-CURRENT_TRITS = 14
+CURRENT_WORDS = 14_348_907
+CURRENT_TRITS = 15
 HISTORICAL_WORDS = 59_049
 CURRENT_RUNTIME_DIAGNOSTIC = (
     "MALBOLGE-PROFILE-001 profile=malbolge-2026 version=2026 "
     "required_features=byte-input,byte-output,crazy-operation,deterministic,"
     "post-instruction-encryption,rotate,self-modification,sequential-guest "
-    "required_word_trits=14 required_memory_words=4782969 "
+    "required_word_trits=15 required_memory_words=14348907 "
     "runtime=safe-rust-classic max_word_trits=10 max_memory_words=59049 "
     "missing=word-trits,memory-words"
 )
@@ -99,7 +99,7 @@ def _runtime(
     capability_id: str = "runtime.test",
     features: tuple[str, ...] = requirements.NORMATIVE_PROFILE_FEATURES,
     max_memory_words: int = CURRENT_WORDS,
-    max_word_trits: int = 14,
+    max_word_trits: int = CURRENT_TRITS,
 ) -> requirements.RuntimeCapability:
     return requirements.build_runtime_capability(
         capability_id=capability_id,
@@ -115,7 +115,7 @@ def test_current_requirement_is_derived_from_canonical_document() -> None:
     assert value.profile_id == CURRENT_ID
     assert value.version == "2026"
     assert value.kind == target_profile.CURRENT_KIND
-    assert value.word_trits == 14
+    assert value.word_trits == CURRENT_TRITS
     assert value.memory_words == CURRENT_WORDS
     assert value.required_memory_words == CURRENT_WORDS
     assert value.required_features == requirements.NORMATIVE_PROFILE_FEATURES
@@ -154,7 +154,7 @@ def test_safe_rust_capabilities_are_explicit() -> None:
     assert classic.max_word_trits == 10
     assert classic.max_memory_words == HISTORICAL_WORDS
     assert profiled.capability_id == "safe-rust-profiled"
-    assert profiled.max_word_trits == 14
+    assert profiled.max_word_trits == CURRENT_TRITS
     assert profiled.max_memory_words == CURRENT_WORDS
     assert classic.features == requirements.NORMATIVE_PROFILE_FEATURES
     assert profiled.features == requirements.NORMATIVE_PROFILE_FEATURES
@@ -261,7 +261,7 @@ def test_current_capacity_diagnostic_names_profile_ceiling() -> None:
         )
 
     assert "constraint=profile-capacity-ceiling" in str(caught.value)
-    assert "profile_memory_words=4782969" in str(caught.value)
+    assert "profile_memory_words=14348907" in str(caught.value)
 
 
 def test_profile_capacity_failure_precedes_runtime_failure() -> None:

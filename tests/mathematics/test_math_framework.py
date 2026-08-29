@@ -39,8 +39,8 @@ from scripts.validate import math_specifications as validator
 
 HISTORICAL_TRITS = "N=10"
 HISTORICAL_WORDS = "W_{10}=59049"
-CURRENT_TRITS = "N=14"
-CURRENT_WORDS = "W_{14}=4782969"
+CURRENT_TRITS = "N=15"
+CURRENT_WORDS = "W_{15}=14348907"
 
 EXPECTED_DOCUMENTS = (
     # jig-ignore-next-line: indivisible reviewed identifier
