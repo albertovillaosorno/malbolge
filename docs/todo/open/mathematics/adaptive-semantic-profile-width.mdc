@@ -431,6 +431,12 @@ separate costs; resource evidence must measure those costs directly.
   specialized minimum selector reaches only N14 and composite adaptive selection
   returns no narrower authority. This preserves the non-monotone rotate boundary
   rather than treating exact source addressing as sufficient by itself.
+- Post-push live evidence on the RTX 4060 required real CUDA execution at every
+  reviewed N=10 through 14 with the jump-code/rotate request present. A separate
+  temporary CLI worker wrote its geometry marker only after
+  `CudaProfileRunAdapter.evaluate`; the adaptive jump-code/rotate capsule
+  reached that path as N10 and completed with no output. The instrumentation was
+  restored.
 - Jump-code now admits one or more exact source-backed `i` transitions before
   halt. Initial D=0 is exact; each subsequent D advances without wrap and reads
   from a mutable source shadow. The resulting C, self-encryption target, and C+1

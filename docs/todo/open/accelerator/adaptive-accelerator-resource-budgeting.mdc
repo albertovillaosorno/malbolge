@@ -129,6 +129,12 @@ example probe points, not supported-range endpoints.
   After four exact code jumps, D=4 rotates source byte 36 to exact value 12 at
   every reviewed width; the N10 checkpoint retains source[4]=12 and C=80/D=5.
   The backend comparison covers the entire memory image, not only observables.
+- A post-push strict run required `used_cuda=true` for N=10 through 14 with that
+  source-write request in each reviewed batch. A separate CLI composition test
+  reached `CudaProfileRunAdapter.evaluate` for the adaptive N10 jump-code/rotate
+  capsule and wrote its marker only after CUDA returned. This remains
+  correctness
+  evidence rather than a throughput measurement.
 - Resident batching groups by wire geometry rather than hidden verifier policy.
   `uP` (`Any`) and `ubO` (`MinimumLength(1)`) therefore share one N=10 CUDA
   batch when available, while response reconstruction reapplies the distinct

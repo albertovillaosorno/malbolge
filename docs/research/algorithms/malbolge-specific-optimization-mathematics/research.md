@@ -459,6 +459,13 @@ registers project to N14. The negative uses `^` (94): derived widths fail rotate
 projection, the specialized minimum verifier reaches only N14, and the composite
 selector preserves canonical execution.
 
+Post-push live execution required CUDA use for every reviewed N=10 through 14
+with this source-write family included. The adaptive CLI N10 fixture also
+reached `CudaProfileRunAdapter.evaluate` before its marker was written. These
+are
+full-state/deployment correctness observations, not retained performance
+samples.
+
 The same exact prefix now composes with byte-visible I/O in a separate theorem.
 `JumpCodeIoHaltProjection` accepts one or more reached `/ <` pairs before halt.
 Each non-EOF input overwrites A with the same exact value at N10 and N14, the
