@@ -262,6 +262,16 @@ parts:
     kind: contract
     language: rust
     responsibility: Define transport-neutral resident profile batch framing.
+  - id: part-0046
+    path: adapter-outbound/profile_resident_process.rs
+    kind: adapter-outbound
+    language: rust
+    responsibility: Bind resident profile wire framing to child processes.
+  - id: part-0047
+    path: port-outbound/profile_resident.rs
+    kind: port-outbound
+    language: rust
+    responsibility: Define outbound resident profile wire transport contracts.
 projects: []
 tests: []
 graph:

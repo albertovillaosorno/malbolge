@@ -35,8 +35,8 @@
 
 //! Full-state admitted-profile differential checks for resident CUDA execution.
 
+use std::ffi::OsString;
 use std::io::{Read as _, Write as _};
-use std::iter::repeat_n;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -45,12 +45,12 @@ use malbolge::{
     ProfileBatchBackendCompletion, ProfileBatchBackendRequest,
     ProfileBatchExecutionBackend, ProfileBatchRequest, ProfileBatchResult,
     ProfileMachine, ProfileMachineError, ProfileRegisters,
+    ProfileResidentProcessTransport, ProfileResidentTransportBackend,
     ProfileResidentWireGeometry, ProfileResidentWireResponse,
     ProfileResidentWireResult, StepOutcome, Termination,
     VerifiedProfileExecutionGeometry, current_profile,
     decode_profile_resident_response, encode_profile_resident_batch,
     execute_profile_batch, execute_profile_batch_with_backend_report,
-    profile_backend_completion_from_resident_wire,
     verify_differential_candidates, verify_initial_halt_profile_width,
     verify_input_then_halt_profile_width, verify_jump_crazy_halt_profile_width,
     verify_jump_crazy_io_halt_profile_width,
@@ -84,7 +84,6 @@ const TEST_XLAT1: &[u8; TABLE_LEN] =
 .v%{gJh4G\\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha";
 
 type EncodedProfileProductBatch = (ProfileResidentWireGeometry, Vec<u8>);
-type ProductBackendBatch = Option<Vec<Option<ProfileBatchBackendCompletion>>>;
 type WorkerBatch = Option<Vec<RunSnapshot>>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -105,16 +104,16 @@ struct RunFixture {
 type RunSnapshot = ProfileResidentWireResult;
 
 struct CudaProfileProductBackend {
-    error: Option<String>,
+    backend: ProfileResidentTransportBackend<ProfileResidentProcessTransport>,
     used_cuda: bool,
 }
 
 impl CudaProfileProductBackend {
-    const fn new() -> Self {
-        Self {
-            error: None,
+    fn new() -> TestResult<Self> {
+        Ok(Self {
+            backend: cuda_profile_process_backend()?,
             used_cuda: false,
-        }
+        })
     }
 }
 
@@ -147,17 +146,11 @@ impl ProfileBatchExecutionBackend for CudaProfileProductBackend {
         &mut self,
         requests: &[ProfileBatchBackendRequest<'_>],
     ) -> Option<Vec<Option<ProfileBatchBackendCompletion>>> {
-        match try_cuda_profile_product_batch(requests) {
-            Ok(Some(results)) => {
-                self.used_cuda = true;
-                Some(results)
-            },
-            Ok(None) => None,
-            Err(error) => {
-                self.error = Some(error);
-                None
-            },
+        let results = self.backend.execute(requests);
+        if results.is_some() {
+            self.used_cuda = true;
         }
+        results
     }
 }
 
@@ -184,12 +177,9 @@ fn cuda_current_profile_routes_through_product_batch_port() -> TestResult {
     let requests = product_profile_requests()?;
     let expected = execute_profile_batch(requests.clone());
     let _cuda_guard = cuda_test_guard()?;
-    let mut backend = CudaProfileProductBackend::new();
+    let mut backend = CudaProfileProductBackend::new()?;
     let (observed, report) =
         execute_profile_batch_with_backend_report(requests, &mut backend);
-    if let Some(error) = backend.error {
-        return Err(format!("profile CUDA product backend: {error}"));
-    }
     if !backend.used_cuda {
         return Ok(());
     }
@@ -300,14 +290,9 @@ fn cuda_reviewed_profile_widths_route_through_product_batch_port() -> TestResult
         let requests = reviewed_width_cuda_requests(word_trits)?;
         let expected_count = requests.len();
         let expected = execute_profile_batch(requests.clone());
-        let mut backend = CudaProfileProductBackend::new();
+        let mut backend = CudaProfileProductBackend::new()?;
         let (observed, report) =
             execute_profile_batch_with_backend_report(requests, &mut backend);
-        if let Some(error) = backend.error {
-            return Err(format!(
-                "profile width {word_trits} CUDA product backend: {error}"
-            ));
-        }
         if !backend.used_cuda {
             continue;
         }
@@ -357,12 +342,9 @@ fn cuda_same_resident_shape_retains_distinct_width_authority() -> TestResult {
     ];
     let expected = execute_profile_batch(requests.clone());
     let _cuda_guard = cuda_test_guard()?;
-    let mut backend = CudaProfileProductBackend::new();
+    let mut backend = CudaProfileProductBackend::new()?;
     let (observed, report) =
         execute_profile_batch_with_backend_report(requests, &mut backend);
-    if let Some(error) = backend.error {
-        return Err(format!("same-shape CUDA backend: {error}"));
-    }
     if !backend.used_cuda {
         return Ok(());
     }
@@ -429,12 +411,9 @@ fn cuda_verified_n10_families_match_safe_rust() -> TestResult {
     let expected_count = requests.len();
     let expected = execute_profile_batch(requests.clone());
     let _cuda_guard = cuda_test_guard()?;
-    let mut backend = CudaProfileProductBackend::new();
+    let mut backend = CudaProfileProductBackend::new()?;
     let (observed, report) =
         execute_profile_batch_with_backend_report(requests, &mut backend);
-    if let Some(error) = backend.error {
-        return Err(format!("verified N10 CUDA backend: {error}"));
-    }
     if !backend.used_cuda {
         return Ok(());
     }
@@ -487,6 +466,22 @@ fn mixed_resident_geometries_fail_closed_before_worker_encoding() -> TestResult
     compare_profile_product_batch(&observed, &expected)
 }
 
+fn cuda_profile_process_backend()
+-> TestResult<ProfileResidentTransportBackend<ProfileResidentProcessTransport>>
+{
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let transport =
+        ProfileResidentProcessTransport::new(validation_python(root))
+            .argument(OsString::from("-m"))
+            .argument(OsString::from("accelerator.cuda.profile_run_worker"))
+            .environment(
+                OsString::from("PYTHONPATH"),
+                accelerator_python_path(root)?,
+            )
+            .working_directory(root.to_path_buf());
+    Ok(ProfileResidentTransportBackend::new(transport))
+}
+
 fn product_profile_requests() -> TestResult<Vec<ProfileBatchRequest>> {
     let profile = current_profile();
     let machine = normalize_result(ProfileMachine::from_source(
@@ -498,44 +493,6 @@ fn product_profile_requests() -> TestResult<Vec<ProfileBatchRequest>> {
         ProfileBatchRequest::from_machine(machine, 2),
         ProfileBatchRequest::from_source(profile, b"D".to_vec(), Vec::new(), 4),
     ])
-}
-
-fn try_cuda_profile_product_batch(
-    requests: &[ProfileBatchBackendRequest<'_>],
-) -> TestResult<ProductBackendBatch> {
-    if requests.is_empty() {
-        return Ok(Some(Vec::new()));
-    }
-    let profile = current_profile();
-    if requests
-        .iter()
-        .any(|request| request.machine().profile() != profile)
-    {
-        return Ok(Some(repeat_n(None, requests.len()).collect()));
-    }
-    let Some(geometry) = homogeneous_product_geometry(requests) else {
-        return Ok(Some(repeat_n(None, requests.len()).collect()));
-    };
-    let encoded = encode_profile_product_batch(requests, geometry)?;
-    let Some(snapshots) = run_cuda_worker(encoded, geometry.memory_words)?
-    else {
-        return Ok(None);
-    };
-    check_equal(
-        &snapshots.len(),
-        &requests.len(),
-        "profile product CUDA result count",
-    )?;
-    requests
-        .iter()
-        .zip(snapshots)
-        .map(|(request, snapshot)| {
-            Ok(profile_backend_completion_from_resident_wire(
-                request, snapshot,
-            ))
-        })
-        .collect::<TestResult<Vec<_>>>()
-        .map(Some)
 }
 
 fn homogeneous_product_geometry(

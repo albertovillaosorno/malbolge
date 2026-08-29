@@ -347,23 +347,27 @@ request admitted by the latter. The mismatch falls back to the original
 safe-Rust
 machine rather than treating numeric geometry as sufficient authorization.
 
-The existing CUDA integration test now consumes resident geometry from that
-prepared backend request instead of `current_profile()` constants. Its worker
-header, response parser, and reconstructed checkpoint all use admitted geometry.
-For every N=10 through 14, one homogeneous batch now covers QP, EOF input-halt,
-`uCar_L`, guarded `p p`, and crazy followed by byte-input recovery, with
-complete state compared against safe Rust.
+The CUDA integration now consumes resident geometry from prepared backend
+requests instead of `current_profile()` constants. For every N=10 through 14,
+one homogeneous batch covers QP, EOF input-halt, `uCar_L`, guarded `p p`, and
+crazy followed by byte-input recovery, with complete state compared against safe
+Rust. A live RTX 4060 check required all five widths to return through the
+product process transport path and passed.
 
-The MBPRN2 byte schema is now represented by a product Rust contract. Prepared
-profile requests project to a transport-neutral numeric wire view, homogeneous
-batches are encoded centrally, and response framing is decoded fail-closed. The
-contract intentionally omits hidden verifier authority. Product completion
-conversion reattaches the original admitted request token and returns no
-completion for malformed status/error/termination or invalid reconstructed
-state, leaving safe Rust as the semantic fallback.
+The MBPRN2 byte schema and synchronous process transport are now product Rust
+boundaries. An application bridge projects prepared requests to the pure
+resident wire transport and reattaches VM authority after transport. Homogeneous
+batches are encoded centrally; the process adapter bounds stdout by complete
+resident memory plus the maximum step-derived output.
 
-Mixed resident widths are rejected before worker encoding. This does not make
-the test adapter a production runtime backend or establish throughput.
+Response framing is decoded fail-closed. The contract intentionally omits hidden
+verifier authority. Product completion conversion reattaches the original
+admitted token and returns no completion for malformed metadata or invalid
+reconstructed state.
+
+Mixed resident widths fail before process launch. There is still no composition
+root that selects a concrete optional profile worker, and this correctness path
+does not establish throughput.
 
 Wire homogeneity is intentionally weaker than verifier authority equality. `uP`
 and `ubO` share the same N=10 resident shape and can execute in one CUDA worker

@@ -86,6 +86,17 @@ checkpoints only for successful items, and may defer individual items or the
 whole batch. Unavailability, malformed result counts, deferred items, or
 inconsistent completion metadata execute from the untouched CPU state instead.
 
+`ProfileResidentProcessTransport` is the production process adapter for the
+resident wire port. `ProfileResidentTransportBackend` bridges that transport to
+`ProfileBatchExecutionBackend`, keeping VM authority reconstruction in the
+application layer. The process transport launches one explicitly configured
+child per homogeneous attempt, bounds stdout by the maximum valid response, and
+decodes MBPRN2 framing.
+
+Explicit `UNAVAILABLE`, launch/I/O failure, oversized output, malformed framing,
+or invalid completions remain performance-only fallback conditions. The
+transport names no accelerator vendor or Python module.
+
 The report variants `execute_batch_with_backend_report` and
 `execute_profile_batch_with_backend_report` preserve those result semantics
 while

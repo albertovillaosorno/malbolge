@@ -83,6 +83,8 @@ mod profile_machine;
 mod profile_reads;
 #[path = "vm/profile_requirements.rs"]
 mod profile_requirements;
+#[path = "vm/profile_resident_process.rs"]
+mod profile_resident_process;
 #[path = "vm/profile_resident_wire.rs"]
 mod profile_resident_wire;
 #[path = "vm/profile_state.rs"]

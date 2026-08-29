@@ -357,24 +357,26 @@ separate costs; resource evidence must measure those costs directly.
   admitted machine: EOF, canonical input/output opcodes, memory words/modulus,
   and word trits. Direct QP artifacts at N=10 through 14 produce exactly the
   five reviewed `3^N` geometries.
-- The existing Rust integration backend serializes that admitted shape into the
-  Python resident-worker protocol, parses results at the same memory length, and
-  reconstructs completions with the same opaque geometry token. Each reviewed
-  N=10 through 14 now has an optional full-state CUDA batch containing QP, EOF
-  input-halt, `uCar_L`, guarded `p p`, and guarded `p p` plus byte-I/O recovery.
-  Mixed N=10/N=14 batches fail closed before worker encoding. This remains
-  integration-test correctness evidence, not a production adapter or performance
-  claim.
-- MBPRN2 framing is no longer test-owned. The VM contract now exposes a pure
-  resident wire geometry/request representation plus strict batch encoder and
-  response decoder. `ProfileBatchBackendRequest::resident_wire_request` projects
-  only numeric resident shape/state from the already admitted machine. Hidden
-  verifier authority is never serialized.
+- MBPRN2 framing is product-owned. The VM contract exposes a pure resident wire
+  geometry/request representation, exact response-size bound, strict batch
+  encoder, and response decoder. `resident_wire_request` projects only numeric
+  resident state from the already admitted machine; hidden verifier authority is
+  never serialized.
 - Product `profile_backend_completion_from_resident_wire` reconstructs returned
   state with the original opaque geometry token and rejects malformed status,
   error, termination, I/O, memory, or register data to safe-Rust fallback.
-  CUDA/Python process spawn remains adapter-owned rather than entering the VM
-  contract.
+- Product `ProfileResidentProcessTransport` owns the synchronous process
+  effect behind a pure resident wire port. Application
+  `ProfileResidentTransportBackend` projects prepared VM requests and delegates
+  returned state to the existing completion converter. The process transport
+  caps stdout at the largest semantically possible MBPRN2 response, reaps
+  failed/oversized children, and names neither Python nor CUDA.
+- The CUDA integration configures that adapter for `profile_run_worker`. Each
+  reviewed N=10 through 14 has an optional full-state batch containing QP, EOF
+  input-halt, `uCar_L`, guarded `p p`, and guarded `p p` plus byte-I/O recovery.
+  A live RTX 4060 check in this block required and observed product-path CUDA
+  execution for all five widths. This remains correctness, not performance,
+  evidence.
 - Tiered interpreter handoff remains canonical-only until its continuation
   schema carries verified execution geometry explicitly. A derived N=10
   checkpoint with the same canonical profile, observation, and live-in surface

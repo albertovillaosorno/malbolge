@@ -83,24 +83,26 @@ example probe points, not supported-range endpoints.
   and trit width. Verified QP artifacts for every reviewed N=10 through 14 reach
   the backend with exact `3^N` geometry, without reconstructing N from research
   evidence.
-- The Rust/Python integration-test backend serializes this shape into the
-  existing resident worker, whose `CudaProfileRunAdapter` validates geometry and
+- Product `ProfileResidentProcessTransport` carries homogeneous MBPRN2 wire
+  batches to one explicitly configured child process per attempt and bounds
+  stdout by the exact largest valid memory-plus-output response. Application
+  `ProfileResidentTransportBackend` projects admitted machines to that wire port
+  and rebinds returned state to each request's opaque geometry token. Launch/I/O
+  failure, explicit unavailable, oversized output, malformed framing, or invalid
+  state all fall back to safe Rust.
+- The CUDA integration configures that product transport/bridge for the existing
+  `profile_run_worker`, whose `CudaProfileRunAdapter` validates geometry and
   invokes the measured resource planner before allocation. Every reviewed N=10
-  through 14 now has an independent full-state CUDA differential batch covering
-  initial halt, derived EOF input, two-byte straight-line I/O, guarded `p p`,
-  and
-  byte-input recovery after crazy. Heterogeneous N=10/N=14 batches refuse
-  homogeneous worker encoding and fall back to safe Rust. The Python synthetic
-  capacity sweep still uses research `execution_geometry`, and a production
-  runtime adapter remains open.
-- The MBPRN2 Rust framing itself is now a product VM contract rather than test
-  helper code. It encodes homogeneous prepared resident requests, rejects mixed
-  geometry before transport, and strictly decodes result/unavailable framing. A
-  product completion converter then rebinds each result to the request's opaque
-  geometry token and rejects malformed metadata/state to safe Rust. The CUDA
-  integration test consumes both product boundaries; only concrete process
-  transport remains test-owned, so the open production-adapter gap is now the
-  transport/lifecycle binding rather than geometry/framing/completion handling.
+  through 14 has a full-state differential batch covering initial halt, derived
+  EOF input, two-byte straight-line I/O, guarded `p p`, and byte-input recovery
+  after crazy. A live RTX 4060 check in this development block confirmed all
+  five
+  widths actually returned through the product transport path rather than skip.
+- No repository composition root currently selects an optional profile backend,
+  so concrete worker discovery/configuration remains open. The Python synthetic
+  capacity sweep also still uses research `execution_geometry`. Persistent
+  sessions and equivalent-work retained performance evidence remain separate
+  acceptance gaps.
 - Resident batching groups by wire geometry rather than hidden verifier policy.
   `uP` (`Any`) and `ubO` (`MinimumLength(1)`) therefore share one N=10 CUDA
   batch when available, while response reconstruction reapplies the distinct

@@ -324,6 +324,57 @@ pub fn decode_profile_resident_response(
     Ok(ProfileResidentWireResponse::Results(results))
 }
 
+/// Returns the largest valid MBPRN2 response for one admitted request batch.
+///
+/// The bound includes fixed response framing, complete resident memories, and
+/// at most one newly emitted byte per semantic step.
+///
+/// # Errors
+///
+/// Returns [`ProfileResidentWireError`] for mixed geometry or counters whose
+/// encoded/host representation would overflow.
+pub fn profile_resident_response_byte_limit(
+    requests: &[ProfileResidentWireRequest<'_>],
+) -> Result<usize, ProfileResidentWireError> {
+    let _count = usize_u32(requests.len())?;
+    let prefix_scalars = 2usize
+        .checked_mul(size_of::<u32>())
+        .ok_or(ProfileResidentWireError::CounterOverflow)?;
+    let prefix_bytes = PROFILE_RESIDENT_WIRE_MAGIC
+        .len()
+        .checked_add(prefix_scalars)
+        .ok_or(ProfileResidentWireError::CounterOverflow)?;
+    let geometry_option = homogeneous_geometry(requests)?;
+    let Some(geometry) = geometry_option else {
+        return Ok(prefix_bytes);
+    };
+    let memory_words = usize::try_from(geometry.memory_words())
+        .map_err(|_error| ProfileResidentWireError::CounterOverflow)?;
+    let memory_bytes = memory_words
+        .checked_mul(size_of::<u32>())
+        .ok_or(ProfileResidentWireError::CounterOverflow)?;
+    let mut total = prefix_bytes;
+    for request in requests {
+        let output_capacity = request
+            .output
+            .len()
+            .checked_add(request.step_budget)
+            .ok_or(ProfileResidentWireError::CounterOverflow)?;
+        let _output_capacity = usize_u32(output_capacity)?;
+        let fixed = 11usize
+            .checked_mul(size_of::<u32>())
+            .ok_or(ProfileResidentWireError::CounterOverflow)?;
+        let item = fixed
+            .checked_add(memory_bytes)
+            .and_then(|value| value.checked_add(output_capacity))
+            .ok_or(ProfileResidentWireError::CounterOverflow)?;
+        total = total
+            .checked_add(item)
+            .ok_or(ProfileResidentWireError::CounterOverflow)?;
+    }
+    Ok(total)
+}
+
 /// Encodes one homogeneous MBPRN2 request batch.
 ///
 /// # Errors

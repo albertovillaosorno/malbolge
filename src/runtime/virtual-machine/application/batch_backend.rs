@@ -44,6 +44,7 @@ use crate::profile_machine::{
     ProfileMachine, ProfileMachineIoState, ProfileMachineState,
     ProfileRegisters,
 };
+use crate::profile_resident_port::ProfileResidentTransport;
 use crate::profile_resident_wire::{
     ProfileResidentWireGeometry, ProfileResidentWireRequest,
     ProfileResidentWireResult, ProfileResidentWireTermination,
@@ -269,6 +270,20 @@ impl ProfileBatchBackendCompletion {
     }
 }
 
+/// Adapts a resident wire transport to the profile batch execution backend.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileResidentTransportBackend<Transport> {
+    transport: Transport,
+}
+
+impl<Transport> ProfileResidentTransportBackend<Transport> {
+    /// Creates one backend around an explicitly selected resident transport.
+    #[must_use]
+    pub const fn new(transport: Transport) -> Self {
+        Self { transport }
+    }
+}
+
 /// Replaceable best-effort backend for already validated profile requests.
 pub trait ProfileBatchExecutionBackend {
     /// Attempts an input-ordered batch without mutating the offered CPU states.
@@ -280,6 +295,39 @@ pub trait ProfileBatchExecutionBackend {
         &mut self,
         requests: &[ProfileBatchBackendRequest<'_>],
     ) -> Option<Vec<Option<ProfileBatchBackendCompletion>>>;
+}
+
+impl<Transport> ProfileBatchExecutionBackend
+    for ProfileResidentTransportBackend<Transport>
+where
+    Transport: ProfileResidentTransport,
+{
+    fn execute(
+        &mut self,
+        requests: &[ProfileBatchBackendRequest<'_>],
+    ) -> Option<Vec<Option<ProfileBatchBackendCompletion>>> {
+        let wire_requests = requests
+            .iter()
+            .map(ProfileBatchBackendRequest::resident_wire_request)
+            .collect::<Vec<_>>();
+        let results = self.transport.exchange(&wire_requests)?;
+        if results.len() != requests.len() {
+            return None;
+        }
+        Some(
+            requests
+                .iter()
+                .zip(results)
+                .map(|(request, result)| {
+                    result.and_then(|value| {
+                        profile_backend_completion_from_resident_wire(
+                            request, value,
+                        )
+                    })
+                })
+                .collect(),
+        )
+    }
 }
 
 #[derive(Debug)]

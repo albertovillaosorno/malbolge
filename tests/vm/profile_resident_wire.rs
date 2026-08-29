@@ -38,6 +38,7 @@ use malbolge::{
     ProfileResidentWireGeometry, ProfileResidentWireRequest,
     ProfileResidentWireResponse, ProfileResidentWireTermination,
     decode_profile_resident_response, encode_profile_resident_batch,
+    profile_resident_response_byte_limit,
 };
 
 use crate::{TestResult, check_equal, normalize_result};
@@ -102,6 +103,26 @@ fn resident_wire_decodes_complete_result_and_rejects_framing_drift()
         &decode_profile_resident_response(&response, GEOMETRY.memory_words),
         &Err(ProfileResidentWireError::TrailingResponse),
         "resident wire trailing byte",
+    )
+}
+
+#[test]
+fn resident_wire_response_limit_tracks_possible_output() -> TestResult {
+    let memory = vec![0u32; 243];
+    let admitted = request(&memory, GEOMETRY);
+    check_equal(
+        &normalize_result(profile_resident_response_byte_limit(&[admitted]))?,
+        &1_042usize,
+        "resident wire response byte limit",
+    )?;
+    let overflowing = ProfileResidentWireRequest {
+        step_budget: usize::MAX,
+        ..admitted
+    };
+    check_equal(
+        &profile_resident_response_byte_limit(&[overflowing]),
+        &Err(ProfileResidentWireError::CounterOverflow),
+        "resident wire response capacity overflow",
     )
 }
 

@@ -78,6 +78,10 @@ mod parallel_port;
 mod profile;
 #[path = "../domain/profile_machine.rs"]
 mod profile_machine;
+#[path = "../port-outbound/profile_resident.rs"]
+mod profile_resident_port;
+#[path = "../adapter-outbound/profile_resident_process.rs"]
+mod profile_resident_process;
 #[path = "../contract/profile_resident_wire.rs"]
 mod profile_resident_wire;
 #[path = "../domain/profile_trace.rs"]
@@ -101,8 +105,8 @@ pub use batch::{
     BatchExecutionBackend, BatchExecutionOrigin, BatchExecutionReport,
     BatchRequest, BatchResult, ProfileBatchBackendCompletion,
     ProfileBatchBackendRequest, ProfileBatchExecutionBackend,
-    ProfileBatchRequest, ProfileBatchResult, execute_batch,
-    execute_batch_parallel_with, execute_batch_with_backend,
+    ProfileBatchRequest, ProfileBatchResult, ProfileResidentTransportBackend,
+    execute_batch, execute_batch_parallel_with, execute_batch_with_backend,
     execute_batch_with_backend_report, execute_profile_batch,
     execute_profile_batch_parallel_with, execute_profile_batch_with_backend,
     execute_profile_batch_with_backend_report,
@@ -211,12 +215,14 @@ pub use profile_machine::{
     profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
     profile_pointer_successor, profile_rotate,
 };
+pub use profile_resident_port::ProfileResidentTransport;
+pub use profile_resident_process::ProfileResidentProcessTransport;
 pub use profile_resident_wire::{
     PROFILE_RESIDENT_WIRE_MAGIC, ProfileResidentWireError,
     ProfileResidentWireGeometry, ProfileResidentWireRequest,
     ProfileResidentWireResponse, ProfileResidentWireResult,
     ProfileResidentWireTermination, decode_profile_resident_response,
-    encode_profile_resident_batch,
+    encode_profile_resident_batch, profile_resident_response_byte_limit,
 };
 pub use profile_trace::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,

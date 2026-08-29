@@ -42,8 +42,8 @@ pub use backend::{
     BatchBackendCompletion, BatchBackendRequest, BatchExecutionBackend,
     BatchExecutionOrigin, BatchExecutionReport, ProfileBatchBackendCompletion,
     ProfileBatchBackendRequest, ProfileBatchExecutionBackend,
-    execute_batch_with_backend, execute_batch_with_backend_report,
-    execute_profile_batch_with_backend,
+    ProfileResidentTransportBackend, execute_batch_with_backend,
+    execute_batch_with_backend_report, execute_profile_batch_with_backend,
     execute_profile_batch_with_backend_report,
     profile_backend_completion_from_resident_wire,
 };
