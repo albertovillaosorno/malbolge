@@ -644,6 +644,17 @@ fn encoded_profile_instruction(decoded: u8, position: usize) -> TestResult<u8> {
         .ok_or_else(|| format!("missing encoded {decoded} at {position}"))
 }
 
+fn admit_jump_code_every_reviewed_width(source: &[u8]) -> TestResult {
+    for (word_trits, _memory_words) in CHECKED_GEOMETRIES {
+        let _admitted = normalize_result(verify_jump_code_halt_profile_width(
+            current_profile(),
+            source,
+            word_trits,
+        ))?;
+    }
+    Ok(())
+}
+
 fn source_with_source_backed_jump_code_halt() -> TestResult<Vec<u8>> {
     let first = encoded_profile_instruction(b'i', 0)?;
     let encryption_target = usize::from(first);
@@ -662,17 +673,78 @@ fn source_with_source_backed_jump_code_halt() -> TestResult<Vec<u8>> {
     Ok(source)
 }
 
+fn source_with_two_source_backed_jump_codes() -> TestResult<Vec<u8>> {
+    let first_target = encoded_profile_instruction(b'i', 0)?;
+    let second_target = encoded_profile_instruction(b'j', 1)?;
+    let second_jump = usize::from(first_target).saturating_add(1);
+    let halt_position = usize::from(second_target).saturating_add(1);
+    let source_len = second_jump.saturating_add(1);
+    let mut source = Vec::with_capacity(source_len);
+    for position in 0..source_len {
+        source.push(encoded_profile_instruction(b'o', position)?);
+    }
+    let first = source
+        .get_mut(0)
+        .ok_or_else(|| String::from("missing first jump-code source cell"))?;
+    *first = first_target;
+    let second_data = source
+        .get_mut(1)
+        .ok_or_else(|| String::from("missing second jump-code data cell"))?;
+    *second_data = second_target;
+    let second_code = source
+        .get_mut(second_jump)
+        .ok_or_else(|| String::from("missing second jump-code instruction"))?;
+    *second_code = encoded_profile_instruction(b'i', second_jump)?;
+    let halt = source
+        .get_mut(halt_position)
+        .ok_or_else(|| String::from("missing repeated jump-code halt"))?;
+    *halt = encoded_profile_instruction(b'v', halt_position)?;
+    Ok(source)
+}
+
+fn source_with_shadow_dependent_jump_codes() -> TestResult<Vec<u8>> {
+    let first_target = encoded_profile_instruction(b'i', 0)?;
+    let mutated_target = encoded_profile_instruction(b'*', 1)?;
+    let return_target = encoded_profile_instruction(b'*', 2)?;
+    let halt_target = encoded_profile_instruction(b'v', 3)?;
+    let second_jump = usize::from(first_target).saturating_add(1);
+    let third_jump = usize::from(mutated_target).saturating_add(1);
+    let mutated_jump = usize::from(return_target).saturating_add(1);
+    let halt_position = usize::from(halt_target).saturating_add(1);
+    let source_len = second_jump.saturating_add(1);
+    let mut source = Vec::with_capacity(source_len);
+    for position in 0..source_len {
+        source.push(encoded_profile_instruction(b'o', position)?);
+    }
+    for (position, value) in [
+        (0usize, first_target),
+        (1usize, mutated_target),
+        (2usize, return_target),
+        (3usize, halt_target),
+        (
+            mutated_jump,
+            encoded_profile_instruction(b'j', mutated_jump)?,
+        ),
+        (third_jump, encoded_profile_instruction(b'i', third_jump)?),
+        (
+            halt_position,
+            encoded_profile_instruction(b'v', halt_position)?,
+        ),
+        (second_jump, encoded_profile_instruction(b'i', second_jump)?),
+    ] {
+        let cell = source.get_mut(position).ok_or_else(|| {
+            format!("missing shadow jump-code cell {position}")
+        })?;
+        *cell = value;
+    }
+    Ok(source)
+}
+
 #[test]
 fn jump_code_halt_verifier_executes_exact_source_target_at_minimum_width()
 -> TestResult {
     let source = source_with_source_backed_jump_code_halt()?;
-    for (word_trits, _memory_words) in CHECKED_GEOMETRIES {
-        let _admitted = normalize_result(verify_jump_code_halt_profile_width(
-            current_profile(),
-            &source,
-            word_trits,
-        ))?;
-    }
+    admit_jump_code_every_reviewed_width(&source)?;
     let verified = normalize_result(
         verify_minimum_jump_code_halt_profile_width(current_profile(), &source),
     )?;
@@ -720,6 +792,145 @@ fn jump_code_halt_verifier_executes_exact_source_target_at_minimum_width()
         &canonical,
         verified.memory_words(),
         "jump-code",
+    )
+}
+
+#[test]
+fn jump_code_verifier_executes_two_source_backed_jumps() -> TestResult {
+    let source = source_with_two_source_backed_jump_codes()?;
+    admit_jump_code_every_reviewed_width(&source)?;
+    let verified = normalize_result(
+        verify_minimum_jump_code_halt_profile_width(current_profile(), &source),
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "repeated jump-code minimum width",
+    )?;
+    let mut narrow = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    let mut canonical = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        &source,
+        Vec::new(),
+    ))?;
+    let narrow_outcome = normalize_result(narrow.run(3))?;
+    let canonical_outcome = normalize_result(canonical.run(3))?;
+    check_equal(
+        &narrow_outcome,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 3,
+        },
+        "repeated jump-code narrow outcome",
+    )?;
+    check_equal(
+        &canonical_outcome,
+        &narrow_outcome,
+        "repeated jump-code canonical outcome",
+    )?;
+    check_equal(
+        &narrow.registers().code_pointer,
+        &40u32,
+        "repeated jump-code exact halt pointer",
+    )?;
+    check_equal(
+        &narrow.registers().data_pointer,
+        &2u32,
+        "repeated jump-code exact data pointer",
+    )?;
+    check_complete_profile_projection(
+        &narrow,
+        &canonical,
+        verified.memory_words(),
+        "repeated jump-code",
+    )
+}
+
+#[test]
+fn jump_code_verifier_follows_exact_self_encryption_shadow() -> TestResult {
+    let source = source_with_shadow_dependent_jump_codes()?;
+    admit_jump_code_every_reviewed_width(&source)?;
+    let verified = normalize_result(
+        verify_minimum_jump_code_halt_profile_width(current_profile(), &source),
+    )?;
+    check_equal(
+        &verified.word_trits(),
+        &MINIMUM_WORD_TRITS,
+        "shadow jump-code minimum width",
+    )?;
+    let mut narrow = normalize_result(ProfileMachine::from_verified_source(
+        &verified,
+        Vec::new(),
+    ))?;
+    let mut canonical = normalize_result(ProfileMachine::from_source(
+        current_profile(),
+        &source,
+        Vec::new(),
+    ))?;
+    let narrow_outcome = normalize_result(narrow.run(5))?;
+    let canonical_outcome = normalize_result(canonical.run(5))?;
+    check_equal(
+        &narrow_outcome,
+        &RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 5,
+        },
+        "shadow jump-code narrow outcome",
+    )?;
+    check_equal(
+        &canonical_outcome,
+        &narrow_outcome,
+        "shadow jump-code canonical outcome",
+    )?;
+    let mutated = normalize_result(narrow.memory_word(38))?;
+    check_equal(
+        &decode_profile_instruction(mutated, 38),
+        &Some(b'i'),
+        "shadow jump-code encrypted decode",
+    )?;
+    check_equal(
+        &narrow.registers().code_pointer,
+        &79u32,
+        "shadow jump-code exact halt pointer",
+    )?;
+    check_equal(
+        &narrow.registers().data_pointer,
+        &4u32,
+        "shadow jump-code exact data pointer",
+    )?;
+    check_complete_profile_projection(
+        &narrow,
+        &canonical,
+        verified.memory_words(),
+        "shadow jump-code",
+    )
+}
+
+#[test]
+fn jump_code_halt_verifier_rejects_second_target_outside_source() -> TestResult
+{
+    let mut source = source_with_two_source_backed_jump_codes()?;
+    let outside_target = encoded_profile_instruction(b'/', 1)?;
+    let second_data = source
+        .get_mut(1)
+        .ok_or_else(|| String::from("missing repeated jump-code data cell"))?;
+    *second_data = outside_target;
+    check_equal(
+        &verify_jump_code_halt_profile_width(
+            current_profile(),
+            &source,
+            MINIMUM_WORD_TRITS,
+        ),
+        &Err(ProfileWidthVerificationError::JumpCodeProjection),
+        "repeated jump-code source-bound rejection",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(current_profile(), &source, &[]),
+        &None,
+        "repeated jump-code composite fallback",
     )
 }
 

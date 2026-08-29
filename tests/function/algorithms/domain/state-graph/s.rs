@@ -65,26 +65,80 @@ fn encoded_profile_instruction(
         .ok_or_else(|| format!("missing encoded {decoded} at {position}"))
 }
 
-fn source_backed_jump_code_halt() -> Result<Vec<u8>, String> {
-    let first = encoded_profile_instruction(b'i', 0)?;
-    let halt_position = usize::from(first).saturating_add(1);
-    let mut source = Vec::with_capacity(halt_position.saturating_add(1));
-    for position in 0..=halt_position {
-        let decoded = if position == 0 {
-            b'i'
-        } else if position == halt_position {
-            b'v'
-        } else {
-            b'o'
-        };
-        source.push(encoded_profile_instruction(decoded, position)?);
+fn source_backed_jump_code_chain() -> Result<Vec<u8>, String> {
+    let first_target = encoded_profile_instruction(b'i', 0)?;
+    let mutated_target = encoded_profile_instruction(b'*', 1)?;
+    let return_target = encoded_profile_instruction(b'*', 2)?;
+    let halt_target = encoded_profile_instruction(b'v', 3)?;
+    let second_jump = usize::from(first_target).saturating_add(1);
+    let third_jump = usize::from(mutated_target).saturating_add(1);
+    let mutated_jump = usize::from(return_target).saturating_add(1);
+    let halt_position = usize::from(halt_target).saturating_add(1);
+    let source_len = second_jump.saturating_add(1);
+    let mut source = Vec::with_capacity(source_len);
+    for position in 0..source_len {
+        source.push(encoded_profile_instruction(b'o', position)?);
+    }
+    for (position, value) in [
+        (0usize, first_target),
+        (1usize, mutated_target),
+        (2usize, return_target),
+        (3usize, halt_target),
+        (
+            mutated_jump,
+            encoded_profile_instruction(b'j', mutated_jump)?,
+        ),
+        (third_jump, encoded_profile_instruction(b'i', third_jump)?),
+        (
+            halt_position,
+            encoded_profile_instruction(b'v', halt_position)?,
+        ),
+        (second_jump, encoded_profile_instruction(b'i', second_jump)?),
+    ] {
+        let cell = source.get_mut(position).ok_or_else(|| {
+            format!("missing shadow jump-code cell {position}")
+        })?;
+        *cell = value;
     }
     Ok(source)
 }
 
+fn check_jump_code_encryption_targets(
+    source: &[u8],
+    before: &[u32],
+    after: &[u32],
+) -> Result<(), String> {
+    for data_index in 0usize..4 {
+        let target =
+            usize::from(source.get(data_index).copied().ok_or_else(|| {
+                String::from("jump-code data cell is missing")
+            })?);
+        let before_word = before
+            .get(target)
+            .copied()
+            .ok_or_else(|| String::from("jump-code root target is missing"))?;
+        let after_word = after.get(target).copied().ok_or_else(|| {
+            String::from("jump-code materialized target missing")
+        })?;
+        if before_word == after_word {
+            return Err(format!(
+                "jump-code encryption target {target} did not change"
+            ));
+        }
+    }
+    let mutated = after
+        .get(38)
+        .copied()
+        .ok_or_else(|| String::from("jump-code shadow target is missing"))?;
+    if decode_profile_instruction(mutated, 38) != Some(b'i') {
+        return Err(String::from("jump-code shadow decode was not retained"));
+    }
+    Ok(())
+}
+
 #[test]
 fn jump_code_geometry_survives_indexed_self_encryption() -> Result<(), String> {
-    let source = source_backed_jump_code_halt()?;
+    let source = source_backed_jump_code_chain()?;
     let verified =
         verify_minimum_jump_code_halt_profile_width(current_profile(), &source)
             .map_err(|error| {
@@ -97,20 +151,24 @@ fn jump_code_geometry_survives_indexed_self_encryption() -> Result<(), String> {
     let root = machine.snapshot_state();
     let mut indexed = IndexedMachineState::from_checkpoint(&root)
         .map_err(|error| format!("jump-code indexed root failed: {error:?}"))?;
-    let mut trace_record = None;
-    let outcome = machine
-        .step_traced(&mut |trace: &ProfileStepTrace| {
-            trace_record = Some(*trace);
-        })
-        .map_err(|error| format!("jump-code trace step failed: {error}"))?;
-    if outcome != StepOutcome::Continued {
-        return Err(String::from("jump-code did not continue before halt"));
+    for _step in 0u8..4 {
+        let mut trace_record = None;
+        let outcome = machine
+            .step_traced(&mut |trace: &ProfileStepTrace| {
+                trace_record = Some(*trace);
+            })
+            .map_err(|error| format!("jump-code trace step failed: {error}"))?;
+        if outcome != StepOutcome::Continued {
+            return Err(String::from(
+                "jump-code chain halted before four jumps",
+            ));
+        }
+        let trace = trace_record
+            .ok_or_else(|| String::from("jump-code trace missing"))?;
+        indexed = indexed.apply_trace(&trace).map_err(|error| {
+            format!("jump-code indexed apply failed: {error:?}")
+        })?;
     }
-    let trace =
-        trace_record.ok_or_else(|| String::from("jump-code trace missing"))?;
-    indexed = indexed.apply_trace(&trace).map_err(|error| {
-        format!("jump-code indexed apply failed: {error:?}")
-    })?;
     let materialized = indexed
         .materialize_checkpoint()
         .map_err(|error| format!("jump-code materialize failed: {error:?}"))?;
@@ -119,26 +177,13 @@ fn jump_code_geometry_survives_indexed_self_encryption() -> Result<(), String> {
     {
         return Err(String::from("jump-code indexed authority drifted"));
     }
-    let target = usize::from(
-        source
-            .first()
-            .copied()
-            .ok_or_else(|| String::from("jump-code source is empty"))?,
-    );
-    let before = root
-        .memory()
-        .get(target)
-        .copied()
-        .ok_or_else(|| String::from("jump-code root target is missing"))?;
-    let after =
-        materialized.memory().get(target).copied().ok_or_else(|| {
-            String::from("jump-code materialized target is missing")
-        })?;
-    if before == after {
-        return Err(String::from("jump-code encryption target did not change"));
-    }
-    if materialized.registers().code_pointer != 99
-        || materialized.registers().data_pointer != 1
+    check_jump_code_encryption_targets(
+        &source,
+        root.memory(),
+        materialized.memory(),
+    )?;
+    if materialized.registers().code_pointer != 79
+        || materialized.registers().data_pointer != 4
     {
         return Err(String::from("jump-code indexed registers drifted"));
     }

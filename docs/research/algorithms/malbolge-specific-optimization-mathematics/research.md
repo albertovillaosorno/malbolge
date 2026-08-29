@@ -405,25 +405,31 @@ retained
 negative: N10 through N13 fail rotate projection and only N14 admits, so the
 composite adaptive selector returns no narrower token.
 
-Jump-code now has a source-backed exact-address theorem. Initial `i` reads D=0,
-so the resulting code pointer is the raw first source byte `b` (98). The proof
-requires source positions 98 and 99 to exist; the former is therefore an exact
-graphical self-encryption target and the latter an exact reached halt.
+Jump-code now has a repeated source-backed exact-address theorem. Initial `i`
+reads D=0, and every committed code jump advances D exactly without candidate
+wrap. Each data read is taken from a mutable shadow of loaded source. The
+resulting C, its self-encryption target, and the successor reached after commit
+must all remain inside that shadow.
 
-Because XLAT2 is width-independent, N10 and N14 encrypt the same physical target
-with the same byte and then halt at C=99. Complete post-run memory and registers
-project.
+XLAT2 is width-independent, so the verifier mutates the same shadow cell that
+the
+runtime will encrypt. This is required for later jumps that observe earlier
+self-modification. The retained strong fixture reaches `i@0`, `i@99`, `i@39`,
+and then `i@38` before `v@79`; cell 38 originally decodes `j`, but the second
+jump encrypts it from 96 to 60, which then decodes `i` at C=38. Complete N10
+memory and registers project to N14 after the five-step execution.
 
-The proof does not infer exactness from recurrence projection. If the target or
-following halt is outside loaded source, it rejects with `JumpCodeProjection`; a
-short code-jump source therefore remains canonical under the composite selector.
-Chained code jumps remain outside this theorem.
+The proof does not infer exactness from recurrence projection. A data read,
+encryption target, or successor outside loaded source returns
+`JumpCodeProjection`; D wrap is rejected for the same reason. Short code-jump
+sources and chains that leave the source therefore stay canonical under the
+composite selector.
 
-Indexed-state evidence now advances the N10 source-backed fixture through its
-code-jump transition and materializes the checkpoint. The materialized state
-exactly equals the runtime snapshot, preserves the opaque geometry token,
-records
-the physical self-encryption change at source cell 98, and retains C=99/D=1.
+Indexed-state evidence now advances all four N10 code jumps and materializes the
+checkpoint. The materialized state exactly equals the runtime snapshot,
+preserves the opaque geometry token, records all four physical self-encryption
+deltas at targets 98, 38, 37, and 78, retains the encrypted `i` decode at cell
+38, and finishes the prefix at exact C=79/D=4.
 
 Wire homogeneity is intentionally weaker than verifier authority equality. `uP`
 and `ubO` share the same N=10 resident shape and can execute in one CUDA worker

@@ -169,19 +169,40 @@ fn encoded_profile_instruction(
         .ok_or_else(|| format!("missing encoded {decoded} at {position}"))
 }
 
-fn source_backed_jump_code_halt() -> Result<Vec<u8>, String> {
-    let first = encoded_profile_instruction(b'i', 0)?;
-    let halt_position = usize::from(first).saturating_add(1);
-    let mut source = Vec::with_capacity(halt_position.saturating_add(1));
-    for position in 0..=halt_position {
-        let decoded = if position == 0 {
-            b'i'
-        } else if position == halt_position {
-            b'v'
-        } else {
-            b'o'
-        };
-        source.push(encoded_profile_instruction(decoded, position)?);
+fn source_backed_jump_code_chain() -> Result<Vec<u8>, String> {
+    let first_target = encoded_profile_instruction(b'i', 0)?;
+    let mutated_target = encoded_profile_instruction(b'*', 1)?;
+    let return_target = encoded_profile_instruction(b'*', 2)?;
+    let halt_target = encoded_profile_instruction(b'v', 3)?;
+    let second_jump = usize::from(first_target).saturating_add(1);
+    let third_jump = usize::from(mutated_target).saturating_add(1);
+    let mutated_jump = usize::from(return_target).saturating_add(1);
+    let halt_position = usize::from(halt_target).saturating_add(1);
+    let source_len = second_jump.saturating_add(1);
+    let mut source = Vec::with_capacity(source_len);
+    for position in 0..source_len {
+        source.push(encoded_profile_instruction(b'o', position)?);
+    }
+    for (position, value) in [
+        (0usize, first_target),
+        (1usize, mutated_target),
+        (2usize, return_target),
+        (3usize, halt_target),
+        (
+            mutated_jump,
+            encoded_profile_instruction(b'j', mutated_jump)?,
+        ),
+        (third_jump, encoded_profile_instruction(b'i', third_jump)?),
+        (
+            halt_position,
+            encoded_profile_instruction(b'v', halt_position)?,
+        ),
+        (second_jump, encoded_profile_instruction(b'i', second_jump)?),
+    ] {
+        let cell = source.get_mut(position).ok_or_else(|| {
+            format!("missing shadow jump-code cell {position}")
+        })?;
+        *cell = value;
     }
     Ok(source)
 }
@@ -370,7 +391,7 @@ fn adaptive_current_capsule_sends_verified_n10_geometry() -> Result<(), String>
 
 #[test]
 fn adaptive_jump_code_capsule_uses_verified_n10() -> Result<(), String> {
-    let source = source_backed_jump_code_halt()?;
+    let source = source_backed_jump_code_chain()?;
     let bytes = build_capsule(current_profile(), &source).map_err(|error| {
         format!("build adaptive jump-code capsule: {error}")
     })?;

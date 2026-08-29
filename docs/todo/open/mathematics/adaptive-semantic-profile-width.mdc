@@ -414,22 +414,25 @@ separate costs; resource evidence must measure those costs directly.
   `JumpRotateProjection` and admits only N=14; the composite selector therefore
   returns no derived authority and adaptive construction stays canonical. Other
   rotate shapes remain unsupported rather than generalized from this theorem.
-- Jump-code now has one exact source-backed theorem. Initial `i` reads D=0, so
-  its resulting C is the exact first source byte (`b`, numeric 98). The verifier
-  requires source cells 98 and 99 to exist, making the self-encryption target
-  and following halt numerically identical at every reviewed width.
-- XLAT2 is width-independent, so the same physical cell is encrypted before
-  exact C=99 halts. Complete N10 memory/register state projects to N14 after the
-  two-step run.
-- That theorem deliberately rejects a code-jump target that falls into
-  recurrence memory. A short `i` source therefore returns `JumpCodeProjection`,
-  the composite selector returns no derived token, and adaptive construction
-  remains canonical.
-  Chained or recurrence-backed code jumps remain unsupported.
-- Indexed state now covers the source-backed jump-code transition itself. After
-  the N10 `i` step, materialization exactly matches the runtime checkpoint, the
-  opaque geometry token survives, source cell 98 records the self-encryption
-  delta, and exact registers remain C=99/D=1 before the reached halt.
+- Jump-code now admits one or more exact source-backed `i` transitions before
+  halt. Initial D=0 is exact; each subsequent D advances without wrap and reads
+  from a mutable source shadow. The resulting C, self-encryption target, and C+1
+  successor must all remain source-backed, so candidate and canonical execution
+  name the same physical cells.
+- The verifier applies width-independent XLAT2 to that shadow after every jump.
+  A retained four-jump fixture reaches `i@0`, `i@99`, `i@39`, then `i@38` before
+  `v@79`. Cell 38 originally decodes `j`; an earlier self-encryption changes it
+  from 96 to 60, after which it decodes `i`. Complete N10 memory and registers
+  still project to N14 after all five steps.
+- Recurrence-backed targets, successors outside loaded source, or D wrap reject
+  with `JumpCodeProjection`. A short `i` source and a repeated chain whose
+  second
+  target leaves source both preserve canonical execution instead of widening
+  around missing evidence.
+- Indexed state advances the same N10 shadow-dependent chain through four code
+  jumps. Materialization exactly matches the runtime checkpoint, preserves the
+  opaque geometry token, retains all four self-encryption deltas at targets 98,
+  38, 37, and 78, and leaves exact C=79/D=4 before the reached halt.
 - Tiered interpreter handoff remains canonical-only until its continuation
   schema carries verified execution geometry explicitly. A derived N=10
   checkpoint with the same canonical profile, observation, and live-in surface

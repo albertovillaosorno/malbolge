@@ -95,8 +95,9 @@ example probe points, not supported-range endpoints.
   invokes the measured resource planner before allocation. Every reviewed N=10
   through 14 has a full-state differential batch covering initial halt, derived
   EOF input, two-byte straight-line I/O, guarded `p p`, byte-input recovery
-  after crazy, the projection-verified `(&O` rotate family, and source-backed
-  jump-code. A strict live check observed CUDA execution for N=10 through 14.
+  after crazy, the projection-verified `(&O` rotate family, and the repeated
+  source-backed jump-code chain whose later decode depends on earlier XLAT2
+  self-encryption. A strict live check covers N=10 through 14.
 - The top-level CLI now selects a trusted resident worker for current canonical
   capsules only when explicitly configured by executable plus bounded indexed
   arguments. A live RTX 4060 composition check invoked `CudaProfileRunAdapter`
@@ -110,7 +111,8 @@ example probe points, not supported-range endpoints.
   invoke
   it explicitly for current-profile capsules and pass the resulting derived
   geometry to the configured MBPRN2 worker. Live RTX 4060 checks exercised QP,
-  `(&O` rotate, and source-backed jump-code at N10 through product routes. The
+  `(&O` rotate, and repeated source-backed jump-code at N10 through product
+  routes. The
   Python synthetic capacity sweep still uses research `execution_geometry`;
   persistent sessions and equivalent-work retained performance evidence remain
   separate acceptance gaps.
@@ -121,8 +123,9 @@ example probe points, not supported-range endpoints.
   token, so equal resident shape does not erase input-domain authority.
 - The same N=10 worker path now carries ten product-verified semantic families
   in one resident batch, including derived EOF, input/output, repeated jump,
-  guarded crazy, `MinimumLength(2)` execution, exact-address rotate, and
-  source-backed jump-code. Every completion is checked against complete
+  guarded crazy, `MinimumLength(2)` execution, exact-address rotate, and the
+  shadow-dependent source-backed jump-code chain. Every completion is checked
+  against complete
   safe-Rust state. This extends live correctness coverage without making a
   throughput claim.
 - A separate 100,000 GiB synthetic fixture proves that additional addressable
