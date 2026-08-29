@@ -201,9 +201,9 @@ separate costs; resource evidence must measure those costs directly.
   host contract accepts the derived storage and state shapes.
 - The pure resident CUDA source generator also receives all five derived
   geometries and renders their exact memory, trit, EOF, maximum-word, and
-  rotate-weight constants. No NVRTC compilation or device launch is claimed by
-  this compatibility evidence, and it still does not wire certificate decisions
-  into runtime execution.
+  rotate-weight constants. That source-generation check alone makes no NVRTC or
+  device-launch claim; later integration evidence below separately exercises
+  verifier-admitted geometry through the live resident worker.
 - Product trust-boundary review finds no runtime/compiler/optimizer consumer of
   `minimum_geometry_from_certificates`; the selector remains research-only. A
   direct product import is therefore not an admissible integration shortcut. The
@@ -221,9 +221,10 @@ separate costs; resource evidence must measure those costs directly.
   that
   handoff: they are revalidated from canonical profile authority and carry the
   profile's published word width and full memory capacity. Mutating those types
-  to carry N=10-through-13 would forge canonical identity. A future admitted
-  derived-geometry value therefore needs a separate verifier-owned lifecycle and
-  must remain bound to, rather than replace, the canonical profile requirement.
+  to carry N=10-through-13 would forge canonical identity. The separate admitted
+  derived-geometry value introduced below therefore has a verifier-owned
+  lifecycle and remains bound to, rather than replacing, the canonical profile
+  requirement.
 - The VM domain now owns the first such verifier lifecycle for the narrow
   `initial-halt` proof family. `verify_initial_halt_profile_width` reuses
   ordinary
