@@ -442,15 +442,19 @@ separate costs; resource evidence must measure those costs directly.
   opaque geometry token, retains all four self-encryption deltas at targets 98,
   38, 37, and 78, and leaves exact C=79/D=4 before the reached halt.
 - A separate `JumpCodeIoHaltProjection` composes that same exact jump prefix
-  with `/ < v`. The token carries `MinimumLength(1)`: byte `0xA5` restores exact
-  A, emits exactly `0xA5`, and halts after seven steps at N10 while complete
-  memory/register state projects to N14. Empty input is rejected before derived
-  construction because EOF output remains width-sensitive.
-- Indexed state advances the mixed chain through four jumps, input, and output.
-  Materialization retains the opaque `MinimumLength(1)` token, input cursor 1,
-  and output `[0xA5]`. The CLI supplies no profile input, so an adaptive capsule
-  containing this mixed program correctly stays canonical N14 and emits the
-  canonical EOF byte `0x78`.
+  with one or more `/ <` pairs before halt. Its hidden policy is
+  `MinimumLength(k)` for exactly the number of reached inputs. A retained two-
+  pair fixture requires two bytes; `[0xA5,0x3C]` emits those exact bytes and
+  halts after nine N10 steps while complete state projects to N14.
+- One byte is rejected before constructing that two-pair derived machine, and
+  composite selection returns no narrow token. Indexed state advances the mixed
+  chain through four jumps plus two input/output pairs while retaining the
+  opaque
+  `MinimumLength(2)` authority, input cursor 2, and output `[0xA5,0x3C]`.
+- The CLI supplies no profile input, so the same adaptive capsule correctly
+  stays
+  canonical N14. Both reached input instructions observe canonical EOF and the
+  two outputs are `[0x78,0x78]`; no EOF-visible narrowing is inferred.
 - Tiered interpreter handoff remains canonical-only until its continuation
   schema carries verified execution geometry explicitly. A derived N=10
   checkpoint with the same canonical profile, observation, and live-in surface

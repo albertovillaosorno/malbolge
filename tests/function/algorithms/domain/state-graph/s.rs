@@ -110,7 +110,9 @@ fn source_backed_jump_code_io_chain() -> Result<Vec<u8>, String> {
     for (position, decoded) in [
         (79usize, profile.input_instruction()),
         (80usize, profile.output_instruction()),
-        (81usize, b'v'),
+        (81usize, profile.input_instruction()),
+        (82usize, profile.output_instruction()),
+        (83usize, b'v'),
     ] {
         let cell = source.get_mut(position).ok_or_else(|| {
             format!("missing indexed jump-code I/O cell {position}")
@@ -216,15 +218,16 @@ fn jump_code_io_policy_survives_indexed_effects() -> Result<(), String> {
     )
     .map_err(|error| format!("jump-code I/O verification failed: {error}"))?;
     let mut machine =
-        ProfileMachine::from_verified_source(&verified, vec![0xa5]).map_err(
-            |error| format!("jump-code I/O machine load failed: {error}"),
-        )?;
+        ProfileMachine::from_verified_source(&verified, vec![0xa5, 0x3c])
+            .map_err(|error| {
+                format!("jump-code I/O machine load failed: {error}")
+            })?;
     let root = machine.snapshot_state();
     let mut indexed =
         IndexedMachineState::from_checkpoint(&root).map_err(|error| {
             format!("jump-code I/O indexed root failed: {error:?}")
         })?;
-    for _step in 0u8..6 {
+    for _step in 0u8..8 {
         let mut trace_record = None;
         let outcome = machine
             .step_traced(&mut |trace: &ProfileStepTrace| {
@@ -233,7 +236,7 @@ fn jump_code_io_policy_survives_indexed_effects() -> Result<(), String> {
             .map_err(|error| format!("jump-code I/O trace failed: {error}"))?;
         if outcome != StepOutcome::Continued {
             return Err(String::from(
-                "jump-code I/O halted before six effects",
+                "jump-code I/O halted before eight effects",
             ));
         }
         let trace = trace_record
@@ -247,8 +250,8 @@ fn jump_code_io_policy_survives_indexed_effects() -> Result<(), String> {
     })?;
     if materialized != machine.snapshot_state()
         || materialized.geometry() != verified.geometry()
-        || materialized.io().input_consumed() != 1
-        || materialized.io().output() != [0xa5]
+        || materialized.io().input_consumed() != 2
+        || materialized.io().output() != [0xa5, 0x3c]
     {
         return Err(String::from("jump-code I/O indexed authority drifted"));
     }

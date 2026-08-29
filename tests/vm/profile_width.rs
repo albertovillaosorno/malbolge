@@ -758,6 +758,22 @@ fn source_with_shadow_jump_code_io() -> TestResult<Vec<u8>> {
     Ok(source)
 }
 
+fn source_with_two_shadow_jump_code_io_pairs() -> TestResult<Vec<u8>> {
+    let mut source = source_with_shadow_jump_code_io()?;
+    let profile = current_profile();
+    for (position, decoded) in [
+        (81usize, profile.input_instruction()),
+        (82usize, profile.output_instruction()),
+        (83usize, b'v'),
+    ] {
+        let cell = source
+            .get_mut(position)
+            .ok_or_else(|| format!("missing two-pair I/O cell {position}"))?;
+        *cell = encoded_profile_instruction(decoded, position)?;
+    }
+    Ok(source)
+}
+
 #[test]
 fn jump_code_halt_verifier_executes_exact_source_target_at_minimum_width()
 -> TestResult {
@@ -954,14 +970,16 @@ fn jump_code_io_verifier_recovers_exact_byte_after_shadow_chain() -> TestResult
         &MINIMUM_WORD_TRITS,
         "jump-code I/O minimum width",
     )?;
-    check_jump_code_io_execution(&source, &verified)
+    check_jump_code_io_execution(&source, &verified, vec![0xa5], 7)
 }
 
 fn check_jump_code_io_execution(
     source: &[u8],
     verified: &malbolge::VerifiedProfileExecutionGeometry,
+    input: Vec<u8>,
+    step_count: usize,
 ) -> TestResult {
-    let input = vec![0xa5];
+    let expected_output = input.clone();
     let mut narrow = normalize_result(ProfileMachine::from_verified_source(
         verified,
         input.clone(),
@@ -971,13 +989,13 @@ fn check_jump_code_io_execution(
         source,
         input,
     ))?;
-    let narrow_outcome = normalize_result(narrow.run(7))?;
-    let canonical_outcome = normalize_result(canonical.run(7))?;
+    let narrow_outcome = normalize_result(narrow.run(step_count))?;
+    let canonical_outcome = normalize_result(canonical.run(step_count))?;
     check_equal(
         &narrow_outcome,
         &RunOutcome::Terminated {
             reason: Termination::HaltInstruction,
-            steps: 7,
+            steps: step_count,
         },
         "jump-code I/O narrow outcome",
     )?;
@@ -986,10 +1004,12 @@ fn check_jump_code_io_execution(
         &narrow_outcome,
         "jump-code I/O canonical outcome",
     )?;
-    check_equal(&narrow.output(), &&[0xa5][..], "jump-code I/O output")?;
+    if narrow.output() != expected_output.as_slice() {
+        return Err(String::from("jump-code I/O output drifted"));
+    }
     check_equal(
         &narrow.input_consumed(),
-        &1usize,
+        &expected_output.len(),
         "jump-code I/O input cursor",
     )?;
     check_complete_profile_projection(
@@ -998,6 +1018,42 @@ fn check_jump_code_io_execution(
         verified.memory_words(),
         "jump-code I/O",
     )
+}
+
+#[test]
+fn jump_code_io_policy_tracks_two_required_bytes_after_shadow_chain()
+-> TestResult {
+    let source = source_with_two_shadow_jump_code_io_pairs()?;
+    let verified =
+        normalize_result(verify_minimum_jump_code_io_halt_profile_width(
+            current_profile(),
+            &source,
+        ))?;
+    check_equal(
+        &ProfileMachine::from_verified_source(&verified, vec![0xa5]).err(),
+        &Some(ProfileMachineError::VerifiedInputRejected),
+        "jump-code I/O one-byte rejection",
+    )?;
+    check_equal(
+        &select_minimum_verified_profile_width(current_profile(), &source, &[
+            0xa5,
+        ]),
+        &None,
+        "jump-code I/O one-byte selector fallback",
+    )?;
+    let selected =
+        select_minimum_verified_profile_width(current_profile(), &source, &[
+            0xa5, 0x3c,
+        ])
+        .ok_or_else(|| {
+            String::from("two-byte jump-code I/O was not selected")
+        })?;
+    check_equal(
+        &selected.geometry(),
+        &verified.geometry(),
+        "two-byte jump-code I/O authority",
+    )?;
+    check_jump_code_io_execution(&source, &verified, vec![0xa5, 0x3c], 9)
 }
 
 #[test]

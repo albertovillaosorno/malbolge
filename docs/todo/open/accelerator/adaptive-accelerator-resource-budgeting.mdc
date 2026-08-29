@@ -118,10 +118,11 @@ example probe points, not supported-range endpoints.
   persistent sessions and equivalent-work retained performance evidence remain
   separate acceptance gaps.
 - The mixed jump-code/I/O proof demonstrates hidden input policy after four
-  source self-modifications. Its N10 resident request uses input `0xA5`,
-  consumes one byte, emits `0xA5`, and completes identically to safe Rust. The
-  same source
-  with no input is not narrowed because EOF output is width-sensitive.
+  source self-modifications. Its retained N10 resident request now carries
+  `[0xA5,0x3C]`, requires `MinimumLength(2)`, consumes both bytes, emits both
+  bytes, and completes identically to safe Rust. One-byte or empty input does
+  not acquire that derived authority because a later EOF output is width-
+  sensitive.
 - Resident batching groups by wire geometry rather than hidden verifier policy.
   `uP` (`Any`) and `ubO` (`MinimumLength(1)`) therefore share one N=10 CUDA
   batch when available, while response reconstruction reapplies the distinct

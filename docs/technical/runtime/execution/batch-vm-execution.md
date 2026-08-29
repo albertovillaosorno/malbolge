@@ -107,11 +107,14 @@ Raw classic and historical-profile execution ignore both current-profile knobs.
 The adaptive selector now includes conservative exact-address rotate and
 source-backed code-jump families. The code-jump verifier may follow repeated
 `i` transitions by applying XLAT2 to an exact mutable source shadow, so later
-source-backed jumps can depend on earlier self-encryption. A separate
-`JumpCodeIoHaltProjection` composes that prefix with byte input/output under a
-`MinimumLength(1)` token, so the same source stays canonical when CLI/EOF input
-would make the output width-sensitive. Recurrence-backed reads/targets and
-incompatible rotate programs remain canonical.
+source-backed jumps can depend on earlier self-encryption.
+
+A separate `JumpCodeIoHaltProjection` composes that prefix with one or more byte
+input/output pairs. Its token records `MinimumLength(k)` from the reached input
+count; retained coverage exercises `MinimumLength(2)` after four code jumps. The
+same source stays canonical when CLI/EOF input would make a later output width-
+sensitive. Recurrence-backed reads/targets and incompatible rotate programs
+remain canonical.
 
 The report variants `execute_batch_with_backend_report` and
 `execute_profile_batch_with_backend_report` preserve those result semantics

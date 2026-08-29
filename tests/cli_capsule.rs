@@ -213,7 +213,9 @@ fn source_backed_jump_code_io_chain() -> Result<Vec<u8>, String> {
     for (position, decoded) in [
         (79usize, profile.input_instruction()),
         (80usize, profile.output_instruction()),
-        (81usize, b'v'),
+        (81usize, profile.input_instruction()),
+        (82usize, profile.output_instruction()),
+        (83usize, b'v'),
     ] {
         let cell = source.get_mut(position).ok_or_else(|| {
             format!("missing CLI jump-code I/O cell {position}")
@@ -464,7 +466,7 @@ fn adaptive_jump_code_io_capsule_preserves_canonical_eof() -> Result<(), String>
     let geometry = read(&marker.path)
         .map_err(|error| format!("read jump-code I/O geometry: {error}"))?;
     if output.status.success()
-        && output.stdout == EXPECTED_EOF_OUTPUT
+        && output.stdout == [EXPECTED_EOF_OUTPUT, EXPECTED_EOF_OUTPUT].concat()
         && output.stderr.is_empty()
         && geometry == b"14"
     {

@@ -300,7 +300,7 @@ fn reviewed_width_cuda_requests(
         verified_profile_request(&initial, Vec::new(), 1)?,
         verified_profile_request(&input, Vec::new(), 2)?,
         verified_profile_request(&jump_code, Vec::new(), 5)?,
-        verified_profile_request(&jump_code_io, vec![0xa5], 7)?,
+        verified_profile_request(&jump_code_io, vec![0xa5, 0x3c], 9)?,
         verified_profile_request(&straight, vec![0xa5, 0x3c], 6)?,
         verified_profile_request(&crazy, Vec::new(), 4)?,
         verified_profile_request(&recovered, vec![0xa5], 6)?,
@@ -437,7 +437,9 @@ fn source_backed_jump_code_io_chain() -> TestResult<Vec<u8>> {
     for (position, decoded) in [
         (79usize, profile.input_instruction()),
         (80usize, profile.output_instruction()),
-        (81usize, b'v'),
+        (81usize, profile.input_instruction()),
+        (82usize, profile.output_instruction()),
+        (83usize, b'v'),
     ] {
         let cell = source.get_mut(position).ok_or_else(|| {
             format!("missing CUDA jump-code I/O cell {position}")
@@ -502,7 +504,7 @@ fn verified_n10_cuda_requests() -> TestResult<Vec<ProfileBatchRequest>> {
         verified_profile_request(&noop, Vec::new(), 2)?,
         verified_profile_request(&input, Vec::new(), 2)?,
         verified_profile_request(&jump_code, Vec::new(), 5)?,
-        verified_profile_request(&jump_code_io, vec![0xa5], 7)?,
+        verified_profile_request(&jump_code_io, vec![0xa5, 0x3c], 9)?,
         verified_profile_request(&io, vec![0xa5], 3)?,
         verified_profile_request(&straight, vec![0xa5, 0x3c], 6)?,
         verified_profile_request(&jumps, Vec::new(), 4)?,

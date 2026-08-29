@@ -1187,6 +1187,36 @@ fn verify_source_backed_code_jump_prefix(
     Err(ProfileWidthVerificationError::JumpCodeProjection)
 }
 
+fn advance_source_backed_expected_instruction(
+    prefix: &mut SourceBackedCodeJumpPrefix,
+    expected: u8,
+    memory_words: u32,
+) -> Result<(), ProfileWidthVerificationError> {
+    if prefix.decoded != expected {
+        return Err(ProfileWidthVerificationError::JumpCodeIoHaltInstruction {
+            position: prefix.code_pointer,
+            decoded: prefix.decoded,
+        });
+    }
+    (prefix.code_pointer, prefix.data_pointer) =
+        advance_source_backed_ordinary_instruction(
+            &mut prefix.shadow,
+            prefix.code_pointer,
+            prefix.data_pointer,
+            memory_words,
+        )?;
+    let code_index = usize::try_from(prefix.code_pointer)
+        .map_err(|_error| ProfileWidthVerificationError::GeometryInvariant)?;
+    let cell = prefix
+        .shadow
+        .get(code_index)
+        .copied()
+        .ok_or(ProfileWidthVerificationError::JumpCodeProjection)?;
+    prefix.decoded = decode_profile_instruction(cell, prefix.code_pointer)
+        .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+    Ok(())
+}
+
 fn advance_source_backed_ordinary_instruction(
     shadow: &mut [u32],
     code_pointer: u32,
@@ -1259,13 +1289,14 @@ pub fn verify_jump_code_halt_profile_width(
     })
 }
 
-/// Verifies source-backed code jumps followed by byte input, output, then halt.
+/// Verifies source-backed code jumps followed by byte I/O pairs, then halt.
 ///
 /// The exact jump prefix preserves physical C/D and source self-modification.
-/// One required non-EOF input then overwrites A with the same byte at candidate
-/// and canonical widths; the following output emits that byte exactly. The
+/// Each required non-EOF input overwrites A with the same byte at candidate and
+/// canonical widths; its following output emits that byte exactly. The reached
 /// input/output code cells are source-backed and encrypted identically before
-/// the exact reached halt.
+/// the exact halt. The hidden policy requires exactly the number of input bytes
+/// needed by the reached I/O pairs.
 ///
 /// # Errors
 ///
@@ -1285,36 +1316,23 @@ pub fn verify_jump_code_io_halt_profile_width(
             decoded: prefix.decoded,
         });
     }
-    for expected in [profile.input_instruction(), profile.output_instruction()]
-    {
-        if prefix.decoded != expected {
-            return Err(
-                ProfileWidthVerificationError::JumpCodeIoHaltInstruction {
-                    position: prefix.code_pointer,
-                    decoded: prefix.decoded,
-                },
-            );
-        }
-        (prefix.code_pointer, prefix.data_pointer) =
-            advance_source_backed_ordinary_instruction(
-                &mut prefix.shadow,
-                prefix.code_pointer,
-                prefix.data_pointer,
-                memory_words,
-            )?;
-        let code_index =
-            usize::try_from(prefix.code_pointer).map_err(|_error| {
-                ProfileWidthVerificationError::GeometryInvariant
-            })?;
-        let cell = prefix
-            .shadow
-            .get(code_index)
-            .copied()
-            .ok_or(ProfileWidthVerificationError::JumpCodeProjection)?;
-        prefix.decoded = decode_profile_instruction(cell, prefix.code_pointer)
+    let mut required_input = 0usize;
+    while prefix.decoded != b'v' {
+        required_input = required_input
+            .checked_add(1)
             .ok_or(ProfileWidthVerificationError::GeometryInvariant)?;
+        advance_source_backed_expected_instruction(
+            &mut prefix,
+            profile.input_instruction(),
+            memory_words,
+        )?;
+        advance_source_backed_expected_instruction(
+            &mut prefix,
+            profile.output_instruction(),
+            memory_words,
+        )?;
     }
-    if prefix.decoded != b'v' {
+    if required_input == 0 {
         return Err(ProfileWidthVerificationError::JumpCodeIoHaltInstruction {
             position: prefix.code_pointer,
             decoded: prefix.decoded,
@@ -1322,7 +1340,9 @@ pub fn verify_jump_code_io_halt_profile_width(
     }
     Ok(VerifiedProfileExecutionGeometry {
         geometry: ProfileExecutionGeometry {
-            input_policy: ProfileExecutionInputPolicy::MinimumLength(1),
+            input_policy: ProfileExecutionInputPolicy::MinimumLength(
+                required_input,
+            ),
             memory_words,
             profile,
             word_trits,
