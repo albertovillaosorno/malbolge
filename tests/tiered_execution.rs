@@ -17826,7 +17826,6 @@ fn leased_native_retry_rejects_different_lease_key() -> Result<(), String> {
 
 #[test]
 fn cached_native_retry_completes_inserted_sequence() -> Result<(), String> {
-    let expected = direct_normative_sequence_fixture()?;
     let fixture = admitted_native_retry(HostIsa::AArch64, 0)?;
     let limits = NativeExecutableSequenceCacheLimits::new(nonzero_test_limit(
         1,
@@ -17860,8 +17859,9 @@ fn cached_native_retry_completes_inserted_sequence() -> Result<(), String> {
     };
     if cache_disposition.is_hit()
         || completion.outcome() != fixture.full_plan.outcome()
-        || completion.state().memory() != expected.final_memory
-        || completion.state().io().output() != expected.final_output
+        || completion.retry_steps() != fixture.retry_plan.len()
+        || profile_state_observation(completion.state())
+            != fixture.full_plan.exit()
     {
         return Err(String::from("cached inserted completion drifted"));
     }
