@@ -127,6 +127,8 @@ pub enum GeometryNativeConcurrentCrossTemplateTryFailure<OperationError> {
 /// Failure while retrying transferred resident cleanup with the owned adapter.
 #[derive(Debug, Eq, PartialEq)]
 pub enum GeometryNativeConcurrentCrossTemplateCleanupRetryFailure<MemoryError> {
+    /// Another thread owns mutation authority; cleanup was not attempted.
+    Busy(Box<CacheReleaseFailure<MemoryError>>),
     /// The cache was already poisoned, so cleanup was not attempted.
     Poisoned(Box<CacheReleaseFailure<MemoryError>>),
     /// Cleanup was retried and still retains mapping ownership.
@@ -147,6 +149,8 @@ pub enum GeometryNativeConcurrentCrossTemplateLoadCleanupRetry<MemoryError> {
 pub enum GeometryNativeConcurrentCrossTemplateLoadCleanupRetryFailure<
     MemoryError,
 > {
+    /// Another thread owns mutation authority; the failure is untouched.
+    Busy(Box<ResidentLoadFailure<MemoryError>>),
     /// Cache authority is poisoned; the original failure is untouched.
     Poisoned(Box<ResidentLoadFailure<MemoryError>>),
 }
@@ -335,6 +339,10 @@ impl<MemoryError: Display> Display
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
+            Self::Busy(cleanup) => write!(
+                f,
+                "heterogeneous v5 cleanup blocked by busy cache: {cleanup}"
+            ),
             Self::Poisoned(cleanup) => write!(
                 f,
                 "heterogeneous v5 cleanup blocked by poisoned cache: {cleanup}"
@@ -374,6 +382,10 @@ impl<MemoryError: Display> Display
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
+            Self::Busy(error) => write!(
+                f,
+                "v5 concurrent load cleanup blocked by busy cache: {error}"
+            ),
             Self::Poisoned(error) => write!(
                 f,
                 "v5 concurrent load cleanup blocked by poisoned cache: {error}"
@@ -824,6 +836,68 @@ where
             .map_err(TryReleaseFailure::Operation);
         drop(state);
         result
+    }
+
+    /// Attempts transferred resident cleanup without waiting for the mutex.
+    ///
+    /// # Errors
+    ///
+    /// Returns the untouched cleanup token on `Busy` or `Poisoned`, or
+    /// refreshed cleanup ownership when the acquired retry release fails
+    /// again.
+    pub fn try_retry_cleanup(
+        &self,
+        cleanup: Box<CacheReleaseFailure<Adapter::Error>>,
+    ) -> GeometryNativeConcurrentCrossTemplateCleanupRetryResult<Adapter::Error>
+    {
+        let mut state = match self.inner.try_lock() {
+            Ok(state) => state,
+            Err(TryLockError::Poisoned(_error)) => {
+                return Err(Box::new(CleanupRetryFailure::Poisoned(cleanup)));
+            },
+            Err(TryLockError::WouldBlock) => {
+                return Err(Box::new(CleanupRetryFailure::Busy(cleanup)));
+            },
+        };
+        let result = (*cleanup)
+            .retry(&mut state.adapter)
+            .map_err(|error| Box::new(CleanupRetryFailure::Release(error)));
+        drop(state);
+        result
+    }
+
+    /// Attempts primary load rollback cleanup without waiting for the mutex.
+    ///
+    /// # Errors
+    ///
+    /// Returns the untouched primary failure on `Busy` or `Poisoned`.
+    pub fn try_retry_load_cleanup(
+        &self,
+        failure: Box<ResidentLoadFailure<Adapter::Error>>,
+    ) -> GeometryNativeConcurrentCrossTemplateLoadCleanupRetryResult<
+        Adapter::Error,
+    > {
+        let mut state = match self.inner.try_lock() {
+            Ok(state) => state,
+            Err(TryLockError::Poisoned(_error)) => {
+                return Err(Box::new(LoadCleanupFailure::Poisoned(failure)));
+            },
+            Err(TryLockError::WouldBlock) => {
+                return Err(Box::new(LoadCleanupFailure::Busy(failure)));
+            },
+        };
+        let retried = Box::new((*failure).retry_cleanup(&mut state.adapter));
+        let outcome = if retried.cleanup_pending() {
+            GeometryNativeConcurrentCrossTemplateLoadCleanupRetry::Pending(
+                retried,
+            )
+        } else {
+            GeometryNativeConcurrentCrossTemplateLoadCleanupRetry::Clean(
+                retried,
+            )
+        };
+        drop(state);
+        Ok(outcome)
     }
 
     /// Attempts one coherent snapshot without waiting for mutation ownership.

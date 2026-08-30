@@ -783,6 +783,9 @@ transfers, verification, and other separately measured costs.
   contract. `Busy` occurs before adapter work; acquired operations preserve
   exact
   release cleanup, previous-limit, partial-removal, and typed victim evidence.
+- Nonblocking cleanup retry now preserves transferred resident-release and
+  primary-load rollback ownership while the mutex is busy or poisoned. Once the
+  lock is available, retry delegates to the existing exact-adapter cleanup path.
 - Resident-release cleanup tokens transferred by eviction, rollback, explicit
   release, or reconfiguration can now retry through the synchronized owner's
   exact adapter. Repeated release failure refreshes the token without restoring

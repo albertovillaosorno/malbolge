@@ -921,10 +921,16 @@ Their operation failures remain unchanged. Release still transfers exact cleanup
 ownership, while failed shrink keeps prior limits published, reports completed
 removals, and exposes its typed victim cleanup for `retry_cleanup`.
 
+Cleanup retries also have nonblocking forms. `try_retry_cleanup` and
+`try_retry_load_cleanup` report `Busy` without consuming or modifying their
+resident-release or primary-load token; `Poisoned` likewise returns untouched
+ownership. Once the mutex is available, both delegate to the existing exact
+adapter retry path and preserve its normal success or refreshed-failure result.
+
 Transferred resident-release cleanup can now return to the same synchronized
 adapter through `retry_cleanup`. The cache no longer owns the mappings
-represented
-by that token; retry runs only their existing variant-specific release contract
+represented by that token; retry runs only their existing variant-specific
+release contract
 under the mutex. Repeated failure returns refreshed cleanup ownership, and later
 success does not republish resident authority.
 

@@ -284,6 +284,7 @@ use geometry_native_cross_template_concurrent_cache::{
     GeometryNativeConcurrentCrossTemplateExecutionFailure as SyncExecFailure,
     GeometryNativeConcurrentCrossTemplateFailure as CrossSyncFailure,
     GeometryNativeConcurrentCrossTemplateLoadCleanupRetry as SyncLoadCleanup,
+    GeometryNativeConcurrentCrossTemplateLoadCleanupRetryFailure as LoadRetry,
     GeometryNativeConcurrentCrossTemplateLruCache as CrossSyncCache,
     GeometryNativeConcurrentCrossTemplateTryFailure as TrySyncFailure,
     GeometryNativeConcurrentCrossTemplateTrySnapshotFailure as TrySnapFailure,
@@ -486,7 +487,8 @@ struct FakeNativeExecutableAdapter {
 }
 
 struct BlockingNativeExecutableAdapter {
-    blocked_once: bool,
+    allocate_attempts: usize,
+    block_at_allocate: usize,
     entered: mpsc::Sender<()>,
     inner: FakeNativeExecutableAdapter,
     proceed: mpsc::Receiver<()>,
@@ -908,8 +910,8 @@ impl NativeExecutableMemoryAdapter for BlockingNativeExecutableAdapter {
         &mut self,
         request: NativeExecutableAllocationRequest,
     ) -> Result<NativeExecutableMappingReport, Self::Error> {
-        if !self.blocked_once {
-            self.blocked_once = true;
+        self.allocate_attempts = self.allocate_attempts.saturating_add(1);
+        if self.allocate_attempts == self.block_at_allocate {
             let _sent = self.entered.send(());
             let _received = self.proceed.recv();
         }
@@ -13523,10 +13525,13 @@ fn concurrent_transferred_cleanup(
     }
 }
 
-fn concurrent_primary_load_failure(
-    cache: &CrossSyncCache<FakeNativeExecutableAdapter>,
+fn concurrent_primary_load_failure<Adapter>(
+    cache: &CrossSyncCache<Adapter>,
     plan: &CrossResidentPlan,
-) -> Result<Box<FakeCrossResidentLoadFailure>, String> {
+) -> Result<Box<FakeCrossResidentLoadFailure>, String>
+where
+    Adapter: NativeExecutableMemoryAdapter<Error = FakeNativeAdapterOperation>,
+{
     let Err(CrossSyncFailure::Operation(acquire_failure)) = cache.ensure(plan)
     else {
         return Err(String::from("concurrent load cleanup failure ignored"));
@@ -13535,6 +13540,26 @@ fn concurrent_primary_load_failure(
         return Err(String::from("concurrent primary load failure drifted"));
     };
     Ok(load_failure)
+}
+
+fn require_busy_load_cleanup<Adapter>(
+    cache: &CrossSyncCache<Adapter>,
+    failure: Box<FakeCrossResidentLoadFailure>,
+) -> Result<Box<FakeCrossResidentLoadFailure>, String>
+where
+    Adapter: NativeExecutableMemoryAdapter<Error = FakeNativeAdapterOperation>,
+{
+    let Err(busy_failure) = cache.try_retry_load_cleanup(failure) else {
+        return Err(String::from("try-load-cleanup ignored busy mutex"));
+    };
+    let LoadRetry::Busy(retained_failure) = *busy_failure else {
+        return Err(String::from("try-load-cleanup lost primary failure"));
+    };
+    if retained_failure.cleanup_pending() {
+        Ok(retained_failure)
+    } else {
+        Err(String::from("try-load-cleanup mutated busy token"))
+    }
 }
 
 fn require_clean_noop_copy_load_failure(
@@ -16234,7 +16259,8 @@ fn geometry_native_concurrent_cross_template_try_ensure_reports_busy()
     )?);
     let cache = Arc::new(CrossSyncCache::new(
         BlockingNativeExecutableAdapter {
-            blocked_once: false,
+            allocate_attempts: 0,
+            block_at_allocate: 1,
             entered: entered_tx,
             inner,
             proceed: proceed_rx,
@@ -16316,7 +16342,8 @@ fn geometry_native_concurrent_cross_template_try_mutations_report_busy()
     )?);
     let cache = Arc::new(CrossSyncCache::new(
         BlockingNativeExecutableAdapter {
-            blocked_once: false,
+            allocate_attempts: 0,
+            block_at_allocate: 1,
             entered: entered_tx,
             inner,
             proceed: proceed_rx,
@@ -16451,6 +16478,123 @@ fn geometry_native_concurrent_cross_template_try_reconfigure_preserves_cleanup()
 }
 
 #[test]
+fn geometry_native_concurrent_cross_template_try_retry_cleanup_reports_busy()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, _full_plan) = cross_template_resident_plans()?;
+    let inner = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(221)?,
+        native_executable_address(0x8_a000)?,
+    )
+    .with_release_failures(1);
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (proceed_tx, proceed_rx) = mpsc::channel();
+    let cache = Arc::new(CrossSyncCache::new(
+        BlockingNativeExecutableAdapter {
+            allocate_attempts: 0,
+            block_at_allocate: 3,
+            entered: entered_tx,
+            inner,
+            proceed: proceed_rx,
+        },
+        CrossLruLimits::new(nonzero_test_limit(1, "v5 try-cleanup")?),
+    ));
+    let acquisition = cache
+        .ensure(&noop_plan)
+        .map_err(|error| format!("try-cleanup acquire: {error}"))?;
+    drop(acquisition);
+    let Err(CrossSyncFailure::Operation(cleanup)) =
+        cache.release_if_unleased(&noop_plan)
+    else {
+        return Err(String::from("try-cleanup release failure was ignored"));
+    };
+    let worker_cache = Arc::clone(&cache);
+    let worker_plan = rotate_plan.clone();
+    let worker = thread::spawn(move || worker_cache.ensure(&worker_plan));
+    entered_rx
+        .recv_timeout(Duration::from_secs(2))
+        .map_err(|error| {
+            format!("try-cleanup worker never held mutex: {error}")
+        })?;
+    let Err(busy_failure) = cache.try_retry_cleanup(cleanup) else {
+        return Err(String::from("try-cleanup ignored busy mutex"));
+    };
+    let SyncCleanup::Busy(retained_cleanup) = *busy_failure else {
+        return Err(String::from("try-cleanup lost busy cleanup token"));
+    };
+    let _sent = proceed_tx.send(());
+    let rotate = worker
+        .join()
+        .map_err(|_panic| String::from("try-cleanup worker panicked"))?
+        .map_err(|error| format!("try-cleanup rotate load: {error}"))?;
+    cache
+        .try_retry_cleanup(retained_cleanup)
+        .map_err(|error| format!("try-cleanup retry after busy: {error}"))?;
+    drop(rotate);
+    cache
+        .release_if_unleased(&rotate_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("try-cleanup rotate release: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_try_retry_load_reports_busy()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, _full_plan) = cross_template_resident_plans()?;
+    let inner = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(222)?,
+        native_executable_address(0x8_b000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 1)
+    .with_release_failures(1);
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (proceed_tx, proceed_rx) = mpsc::channel();
+    let cache = Arc::new(CrossSyncCache::new(
+        BlockingNativeExecutableAdapter {
+            allocate_attempts: 0,
+            block_at_allocate: 2,
+            entered: entered_tx,
+            inner,
+            proceed: proceed_rx,
+        },
+        CrossLruLimits::new(nonzero_test_limit(1, "v5 try-load-cleanup")?),
+    ));
+    let load_failure = concurrent_primary_load_failure(&cache, &noop_plan)?;
+    if !load_failure.cleanup_pending() {
+        return Err(String::from("try-load-cleanup lost pending rollback"));
+    }
+    let worker_cache = Arc::clone(&cache);
+    let worker_plan = rotate_plan.clone();
+    let worker = thread::spawn(move || worker_cache.ensure(&worker_plan));
+    entered_rx
+        .recv_timeout(Duration::from_secs(2))
+        .map_err(|error| {
+            format!("try-load-cleanup worker never held mutex: {error}")
+        })?;
+    let retained_failure = require_busy_load_cleanup(&cache, load_failure)?;
+    let _sent = proceed_tx.send(());
+    let rotate = worker
+        .join()
+        .map_err(|_panic| String::from("try-load-cleanup worker panicked"))?
+        .map_err(|error| format!("try-load-cleanup rotate load: {error}"))?;
+    let retried =
+        cache
+            .try_retry_load_cleanup(retained_failure)
+            .map_err(|error| {
+                format!("try-load-cleanup retry after busy: {error}")
+            })?;
+    if !matches!(retried, SyncLoadCleanup::Clean(_))
+        || retried.failure().cleanup_pending()
+    {
+        return Err(String::from("try-load-cleanup did not complete cleanup"));
+    }
+    drop(rotate);
+    cache
+        .release_if_unleased(&rotate_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("try-load-cleanup rotate release: {error}"))
+}
+
+#[test]
 fn geometry_native_concurrent_cross_template_try_snapshot_reports_busy()
 -> Result<(), String> {
     let (noop_plan, _rotate_plan, _full_plan) =
@@ -16467,7 +16611,8 @@ fn geometry_native_concurrent_cross_template_try_snapshot_reports_busy()
     )?);
     let cache = Arc::new(CrossSyncCache::new(
         BlockingNativeExecutableAdapter {
-            blocked_once: false,
+            allocate_attempts: 0,
+            block_at_allocate: 1,
             entered: entered_tx,
             inner,
             proceed: proceed_rx,
