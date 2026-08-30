@@ -179,12 +179,13 @@ use execution_native::{
     PreflightedExecutionTier, PreparedNativeExecutableInvocation,
     PreparedNativeRegionInvocation, PreparedVerifiedDirectInvocation,
     ReadyNativeExecutable, ReadyNativeExecutableSequence,
-    StagedNativeExecutable, UntrustedNativeObjectArtifact,
-    VerifiedDirectInvocationError, VerifiedDirectLoadError,
-    VerifiedDirectLoadImage, VerifiedDirectNativeCache,
-    VerifiedDirectSequencePlan, VerifiedExecutionGeometryLoadImage,
-    compile_preflighted_clang_c23, emit_direct_crazy_coff,
-    emit_direct_deopt_coff, emit_direct_execution_geometry_initial_halt_coff,
+    StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
+    UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
+    VerifiedDirectLoadError, VerifiedDirectLoadImage,
+    VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
+    VerifiedExecutionGeometryLoadImage, compile_preflighted_clang_c23,
+    emit_direct_crazy_coff, emit_direct_deopt_coff,
+    emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_input_coff,
     emit_direct_jump_code_coff, emit_direct_jump_data_coff,
@@ -12180,6 +12181,102 @@ fn direct_execution_geometry_initial_halt_admits_exact_v5_geometry()
         assert_tampered_direct_profile_metadata(&n10_artifact)?;
     }
     Ok(())
+}
+
+#[test]
+fn execution_geometry_native_lifecycle_retains_v5_identity()
+-> Result<(), String> {
+    let (program, _checkpoint, _geometry) = derived_v5_handoff_fixture(10)?;
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &program,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 lifecycle emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_halt(&artifact, &program)
+            .map_err(|error| format!("v5 lifecycle verify: {error}"))?;
+    let image =
+        VerifiedExecutionGeometryLoadImage::from_initial_halt(&verified)
+            .map_err(|error| format!("v5 lifecycle image: {error}"))?;
+    let mapping_id = NativeExecutableMappingId::new(91)
+        .ok_or_else(|| String::from("v5 lifecycle mapping id invalid"))?;
+    let base = NonZeroUsize::new(0x9000)
+        .ok_or_else(|| String::from("v5 lifecycle base invalid"))?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let staged = StagedExecutionGeometryNativeExecutable::stage(
+        &image,
+        writable,
+        image.code(),
+    )
+    .map_err(|error| format!("v5 lifecycle stage: {error}"))?;
+    let executable = staged
+        .admit_read_execute(NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadExecute,
+        ))
+        .map_err(|error| format!("v5 lifecycle protect: {error}"))?
+        .admit_instruction_sync(NativeInstructionSyncReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+        ))
+        .map_err(|error| format!("v5 lifecycle sync: {error}"))?;
+    if executable.key() == verified.key()
+        && executable.image() == &image
+        && executable.mapping().mapping_id() == mapping_id
+        && executable.entry_address() == base
+        && executable.target() == verified.key().target()
+        && executable.release_request().mapping_id() == mapping_id
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 lifecycle changed exact artifact identity"))
+    }
+}
+
+#[test]
+fn geometry_native_lifecycle_rejects_code_drift() -> Result<(), String> {
+    let (program, _checkpoint, _geometry) = derived_v5_handoff_fixture(10)?;
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &program,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 lifecycle drift emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_halt(&artifact, &program)
+            .map_err(|error| format!("v5 lifecycle drift verify: {error}"))?;
+    let image =
+        VerifiedExecutionGeometryLoadImage::from_initial_halt(&verified)
+            .map_err(|error| format!("v5 lifecycle drift image: {error}"))?;
+    let mapping_id = NativeExecutableMappingId::new(92)
+        .ok_or_else(|| String::from("v5 lifecycle drift id invalid"))?;
+    let base = NonZeroUsize::new(0xa000)
+        .ok_or_else(|| String::from("v5 lifecycle drift base invalid"))?;
+    let mapping = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let mut copied = image.code().to_vec();
+    let first = copied
+        .first_mut()
+        .ok_or_else(|| String::from("v5 lifecycle code unexpectedly empty"))?;
+    *first ^= 1;
+    if StagedExecutionGeometryNativeExecutable::stage(&image, mapping, &copied)
+        == Err(NativeExecutableLifecycleError::CodeImage)
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 lifecycle admitted copied-code drift"))
+    }
 }
 
 #[test]

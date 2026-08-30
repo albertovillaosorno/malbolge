@@ -183,7 +183,9 @@ pub use invocation::{
 pub use lifecycle::{
     NativeExecutableLifecycleError, NativeExecutableMappingId,
     NativeExecutableMappingReport, NativeExecutableReleaseRequest,
-    NativeInstructionSyncReport, ReadyNativeExecutable, SealedNativeExecutable,
+    NativeInstructionSyncReport, ReadyExecutionGeometryNativeExecutable,
+    ReadyNativeExecutable, SealedExecutionGeometryNativeExecutable,
+    SealedNativeExecutable, StagedExecutionGeometryNativeExecutable,
     StagedNativeExecutable,
 };
 pub use loader::{

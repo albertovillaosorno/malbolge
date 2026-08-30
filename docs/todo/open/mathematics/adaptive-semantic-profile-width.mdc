@@ -626,8 +626,14 @@ transfers, verification, and other separately measured costs.
   reuses native result verification for exact applied/guard-miss completion. An
   applied halt reconstructs state with the original opaque geometry token; guard
   miss returns the untouched checkpoint.
-- Memory/input drift rejects before frame preparation. The remaining native
-  boundary is executable lifecycle tied to this preparation, followed by
+- Memory/input drift rejects before frame preparation.
+- Separate v5 executable typestates now admit exact copied code, same-mapping
+  RW-to-RX protection, full instruction synchronization, alignment/entry range,
+  and release identity while retaining the v5 load image. Copied-code drift
+  rejects, and `ReadyExecutionGeometryNativeExecutable` is a different type from
+  legacy `ReadyNativeExecutable`, so existing runners cannot call it. The
+  remaining native boundaries are platform-adapter orchestration and binding
+  that ready executable to the checkpoint-owned prepared ABI call, followed by
   reviewed derived-geometry templates for state-changing operations.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,

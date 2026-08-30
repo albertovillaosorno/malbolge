@@ -36,7 +36,10 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::{NonZeroU64, NonZeroUsize};
 
-use super::loader::{NativeExecutablePermission, VerifiedDirectLoadImage};
+use super::loader::{
+    NativeExecutablePermission, VerifiedDirectLoadImage,
+    VerifiedExecutionGeometryLoadImage,
+};
 use crate::execution_cache::{NativeArtifactKey, NativeTargetIdentity};
 
 /// Stable non-zero identity assigned by one platform mapping owner.
@@ -108,6 +111,28 @@ pub struct SealedNativeExecutable {
 pub struct ReadyNativeExecutable {
     entry_address: NonZeroUsize,
     image: VerifiedDirectLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Exact RX mapping for one verified explicit-geometry load image.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReadyExecutionGeometryNativeExecutable {
+    entry_address: NonZeroUsize,
+    image: VerifiedExecutionGeometryLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Explicit-geometry mapping admitted after its RW-to-RX transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SealedExecutionGeometryNativeExecutable {
+    image: VerifiedExecutionGeometryLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Verified explicit-geometry bytes admitted in one writable staging mapping.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StagedExecutionGeometryNativeExecutable {
+    image: VerifiedExecutionGeometryLoadImage,
     mapping: NativeExecutableMappingReport,
 }
 
@@ -257,6 +282,154 @@ impl Display for NativeExecutableLifecycleError {
     }
 }
 
+impl ReadyExecutionGeometryNativeExecutable {
+    /// Returns the non-zero explicit-geometry native entrypoint address.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.entry_address
+    }
+
+    /// Returns the exact verified v5 load image retained by this executable.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedExecutionGeometryLoadImage {
+        &self.image
+    }
+
+    /// Returns the complete retained v5 artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.image.key()
+    }
+
+    /// Returns the exact synchronized mapping report.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+
+    /// Returns an exact cleanup request for this complete mapping.
+    #[must_use]
+    pub const fn release_request(&self) -> NativeExecutableReleaseRequest {
+        NativeExecutableReleaseRequest::from_mapping(self.mapping)
+    }
+
+    /// Returns the exact target assumptions retained by this executable.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.image.target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.image.target_triple()
+    }
+}
+
+impl SealedExecutionGeometryNativeExecutable {
+    /// Admits synchronization of the complete explicit-geometry code range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] when mapping identity or the
+    /// synchronized range differs from the exact v5 image.
+    pub fn admit_instruction_sync(
+        self,
+        report: NativeInstructionSyncReport,
+    ) -> Result<
+        ReadyExecutionGeometryNativeExecutable,
+        NativeExecutableLifecycleError,
+    > {
+        if report.mapping_id() != self.mapping.mapping_id() {
+            return Err(NativeExecutableLifecycleError::MappingIdentity);
+        }
+        if report.start_address() != self.mapping.base_address()
+            || report.byte_len() != self.image.allocation_len()
+        {
+            return Err(NativeExecutableLifecycleError::SynchronizationRange);
+        }
+        let entry_address =
+            execution_geometry_entry_address(&self.image, self.mapping)?;
+        Ok(ReadyExecutionGeometryNativeExecutable {
+            entry_address,
+            image: self.image,
+            mapping: self.mapping,
+        })
+    }
+
+    /// Returns the exact verified v5 load image retained by this state.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedExecutionGeometryLoadImage {
+        &self.image
+    }
+
+    /// Returns the exact read-execute mapping report retained by this state.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+}
+
+impl StagedExecutionGeometryNativeExecutable {
+    /// Admits the exact RW-to-RX transition for this same v5 mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] when mapping identity, range,
+    /// or final permissions differ.
+    pub fn admit_read_execute(
+        self,
+        mapping: NativeExecutableMappingReport,
+    ) -> Result<
+        SealedExecutionGeometryNativeExecutable,
+        NativeExecutableLifecycleError,
+    > {
+        if !same_mapping(self.mapping, mapping) {
+            return Err(NativeExecutableLifecycleError::MappingIdentity);
+        }
+        if mapping.permissions() != self.image.policy().final_permissions() {
+            return Err(NativeExecutableLifecycleError::Permissions);
+        }
+        Ok(SealedExecutionGeometryNativeExecutable {
+            image: self.image,
+            mapping,
+        })
+    }
+
+    /// Returns the exact verified v5 load image retained by this state.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedExecutionGeometryLoadImage {
+        &self.image
+    }
+
+    /// Returns the exact writable mapping report retained by this state.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+
+    /// Admits exact copied v5 code in one writable platform mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] for permission, bytes,
+    /// alignment, capacity, address, or entry-range drift.
+    pub fn stage(
+        image: &VerifiedExecutionGeometryLoadImage,
+        mapping: NativeExecutableMappingReport,
+        copied_code: &[u8],
+    ) -> Result<Self, NativeExecutableLifecycleError> {
+        validate_execution_geometry_writable_mapping(image, mapping)?;
+        if copied_code != image.code() {
+            return Err(NativeExecutableLifecycleError::CodeImage);
+        }
+        Ok(Self {
+            image: image.clone(),
+            mapping,
+        })
+    }
+}
+
 impl StagedNativeExecutable {
     /// Admits the exact RW-to-RX transition for this same mapping.
     ///
@@ -402,6 +575,26 @@ impl ReadyNativeExecutable {
     }
 }
 
+fn execution_geometry_entry_address(
+    image: &VerifiedExecutionGeometryLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<NonZeroUsize, NativeExecutableLifecycleError> {
+    let value = mapping
+        .base_address()
+        .get()
+        .checked_add(image.entry_offset())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    let code_end = mapping
+        .base_address()
+        .get()
+        .checked_add(image.allocation_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    if value >= code_end {
+        return Err(NativeExecutableLifecycleError::EntryRange);
+    }
+    NonZeroUsize::new(value).ok_or(NativeExecutableLifecycleError::EntryRange)
+}
+
 fn entry_address(
     image: &VerifiedDirectLoadImage,
     mapping: NativeExecutableMappingReport,
@@ -438,6 +631,25 @@ const fn same_mapping(
         && left.mapping_id().get() == right.mapping_id().get()
 }
 
+pub(super) fn validate_execution_geometry_writable_mapping(
+    image: &VerifiedExecutionGeometryLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    if mapping.permissions() != image.policy().initial_permissions() {
+        return Err(NativeExecutableLifecycleError::Permissions);
+    }
+    if mapping.mapped_len() < image.allocation_len() {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    if !is_aligned(
+        mapping.base_address().get(),
+        image.minimum_instruction_alignment(),
+    ) {
+        return Err(NativeExecutableLifecycleError::MappingAlignment);
+    }
+    validate_execution_geometry_mapping_ranges(image, mapping)
+}
+
 pub(super) fn validate_writable_mapping(
     image: &VerifiedDirectLoadImage,
     mapping: NativeExecutableMappingReport,
@@ -455,6 +667,27 @@ pub(super) fn validate_writable_mapping(
         return Err(NativeExecutableLifecycleError::MappingAlignment);
     }
     validate_mapping_ranges(image, mapping)
+}
+
+fn validate_execution_geometry_mapping_ranges(
+    image: &VerifiedExecutionGeometryLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    let mapping_end = mapping
+        .base_address()
+        .get()
+        .checked_add(mapping.mapped_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    let code_end = mapping
+        .base_address()
+        .get()
+        .checked_add(image.allocation_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    if code_end > mapping_end {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    let _entry = execution_geometry_entry_address(image, mapping)?;
+    Ok(())
 }
 
 fn validate_mapping_ranges(

@@ -201,10 +201,22 @@ impl VerifiedExecutionGeometryLoadImage {
         &self.key
     }
 
+    /// Returns minimum instruction alignment required by the target ISA.
+    #[must_use]
+    pub const fn minimum_instruction_alignment(&self) -> usize {
+        minimum_instruction_alignment(self.host_isa())
+    }
+
     /// Returns the mandatory W^X and instruction-sync policy.
     #[must_use]
     pub const fn policy(&self) -> NativeExecutableLoadPolicy {
         self.policy
+    }
+
+    /// Returns exact target assumptions retained by this v5 load image.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.key.target()
     }
 
     /// Returns the exact selected Windows target triple.

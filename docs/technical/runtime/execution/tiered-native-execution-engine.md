@@ -574,9 +574,20 @@ executable-call method.
 Completion still uses the existing exact native result verifier. A guard miss
 returns the original checkpoint, while an exact applied halt reconstructs a
 `ProfileMachineState` with the original opaque geometry token. Tests cover exact
-applied completion, guard-miss rollback, and memory/input drift. Executable
-lifecycle remains the next authority boundary, and state-applying arithmetic
-templates remain canonical-only.
+applied completion, guard-miss rollback, and memory/input drift.
+
+Executable lifecycle now has separate v5 typestates.
+`StagedExecutionGeometryNativeExecutable`,
+`SealedExecutionGeometryNativeExecutable`, and
+`ReadyExecutionGeometryNativeExecutable` admit exact copied bytes, same-mapping
+RW-to-RX protection, full instruction synchronization, entry-range/alignment,
+and release identity while retaining `VerifiedExecutionGeometryLoadImage`. Code
+drift fails closed, and the resulting ready type is distinct from legacy
+`ReadyNativeExecutable`, so existing runners cannot invoke it.
+
+Platform-adapter orchestration and binding that ready executable to the prepared
+checkpoint-owned ABI call remain separate authority boundaries. State-applying
+arithmetic templates also remain canonical-only.
 
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine
