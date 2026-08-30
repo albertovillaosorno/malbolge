@@ -76,6 +76,10 @@ type ConcurrentExecutionResult<Adapter, Runner> =
     >;
 type ConcurrentStateGuard<'cache, Adapter> =
     MutexGuard<'cache, GeometryNativeConcurrentCrossTemplateState<Adapter>>;
+type TryAcquireFailure<MemoryError> =
+    GeometryNativeConcurrentCrossTemplateTryFailure<
+        Box<CacheAcquireFailure<MemoryError>>,
+    >;
 type TrySnapshotFailure =
     GeometryNativeConcurrentCrossTemplateTrySnapshotFailure;
 
@@ -92,6 +96,17 @@ pub enum GeometryNativeConcurrentCrossTemplateFailure<OperationError> {
     /// Existing cache or adapter operation failed with its exact evidence.
     Operation(OperationError),
     /// A prior panic poisoned mutation authority, so access is rejected.
+    Poisoned,
+}
+
+/// Failure from one nonblocking synchronized cache operation.
+#[derive(Debug, Eq, PartialEq)]
+pub enum GeometryNativeConcurrentCrossTemplateTryFailure<OperationError> {
+    /// Another thread currently owns the mutation mutex.
+    Busy,
+    /// Existing cache or adapter operation failed with exact evidence.
+    Operation(OperationError),
+    /// Prior mutation unwinding poisoned cache authority.
     Poisoned,
 }
 
@@ -192,6 +207,13 @@ pub type GeometryNativeConcurrentCrossTemplateSnapshotResult = Result<
     >,
 >;
 
+/// Result of one nonblocking heterogeneous resident acquisition.
+pub type GeometryNativeConcurrentCrossTemplateTryAcquireResult<MemoryError> =
+    Result<
+        GeometryNativeCrossTemplateLruAcquisition,
+        TryAcquireFailure<MemoryError>,
+    >;
+
 /// Result of one nonblocking coherent resident/cache snapshot.
 pub type GeometryNativeConcurrentCrossTemplateTrySnapshotResult = Result<
     GeometryNativeConcurrentCrossTemplateSnapshot,
@@ -245,6 +267,22 @@ impl<MemoryError: Display, RunnerError: Display> Display
                     f,
                     "heterogeneous v5 concurrent execution failed: {error}"
                 )
+            },
+        }
+    }
+}
+
+impl<OperationError: Display> Display
+    for GeometryNativeConcurrentCrossTemplateTryFailure<OperationError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Busy => {
+                f.write_str("heterogeneous v5 cache mutation is busy")
+            },
+            Self::Operation(error) => Display::fmt(error, f),
+            Self::Poisoned => {
+                f.write_str("heterogeneous v5 cache lock is poisoned")
             },
         }
     }
@@ -493,6 +531,40 @@ where
             resident: state.cache.contains(plan),
             usage,
         })
+    }
+
+    /// Attempts one exact resident acquisition without waiting for the mutex.
+    ///
+    /// Once mutation ownership is acquired, the normal cache transaction runs
+    /// to completion with the same adapter, eviction, rollback, and cleanup
+    /// semantics as [`Self::ensure`].
+    ///
+    /// # Errors
+    ///
+    /// Returns `Busy` before mutation when another thread owns the mutex,
+    /// `Poisoned` after interrupted mutation, or the exact cache acquisition
+    /// failure after ownership was acquired.
+    pub fn try_ensure(
+        &self,
+        plan: &GeometryNativeResidentPlan,
+    ) -> GeometryNativeConcurrentCrossTemplateTryAcquireResult<Adapter::Error>
+    {
+        let mut state = match self.inner.try_lock() {
+            Ok(state) => state,
+            Err(TryLockError::Poisoned(_error)) => {
+                return Err(TryAcquireFailure::Poisoned);
+            },
+            Err(TryLockError::WouldBlock) => {
+                return Err(TryAcquireFailure::Busy);
+            },
+        };
+        let GeometryNativeConcurrentCrossTemplateState { adapter, cache } =
+            &mut *state;
+        let result = cache
+            .ensure(adapter, plan)
+            .map_err(TryAcquireFailure::Operation);
+        drop(state);
+        result
     }
 
     /// Attempts one coherent snapshot without waiting for mutation ownership.

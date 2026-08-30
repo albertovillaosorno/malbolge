@@ -283,6 +283,7 @@ use geometry_native_cross_template_concurrent_cache::{
     GeometryNativeConcurrentCrossTemplateExecutionFailure as SyncExecFailure,
     GeometryNativeConcurrentCrossTemplateFailure as CrossSyncFailure,
     GeometryNativeConcurrentCrossTemplateLruCache as CrossSyncCache,
+    GeometryNativeConcurrentCrossTemplateTryFailure as TrySyncFailure,
     GeometryNativeConcurrentCrossTemplateTrySnapshotFailure as TrySnapFailure,
 };
 use geometry_native_cross_template_resident::{
@@ -16044,6 +16045,88 @@ fn geometry_native_cross_template_weighted_lru_release_failure_is_typed()
 }
 
 #[test]
+fn geometry_native_concurrent_cross_template_try_ensure_reports_busy()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let inner = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(213)?,
+        native_executable_address(0x8_2000)?,
+    );
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (proceed_tx, proceed_rx) = mpsc::channel();
+    let limits = CrossLruLimits::new(nonzero_test_limit(
+        1,
+        "v5 concurrent try-ensure capacity",
+    )?);
+    let cache = Arc::new(CrossSyncCache::new(
+        BlockingNativeExecutableAdapter {
+            blocked_once: false,
+            entered: entered_tx,
+            inner,
+            proceed: proceed_rx,
+        },
+        limits,
+    ));
+    let worker_cache = Arc::clone(&cache);
+    let worker_plan = noop_plan.clone();
+    let worker = thread::spawn(move || worker_cache.ensure(&worker_plan));
+    entered_rx
+        .recv_timeout(Duration::from_secs(2))
+        .map_err(|error| {
+            format!("try-ensure adapter never acquired lock: {error}")
+        })?;
+    let busy = cache.try_ensure(&noop_plan);
+    let _sent = proceed_tx.send(());
+    let inserted = worker
+        .join()
+        .map_err(|_panic| String::from("try-ensure worker panicked"))?
+        .map_err(|error| format!("try-ensure blocking load failed: {error}"))?;
+    if !matches!(busy, Err(TrySyncFailure::Busy)) {
+        return Err(String::from("try-ensure failed to report busy lock"));
+    }
+    drop(inserted);
+    let hit = cache
+        .try_ensure(&noop_plan)
+        .map_err(|error| format!("try-ensure post-busy failed: {error}"))?;
+    if hit.disposition() != CrossLruDisposition::Hit {
+        return Err(String::from(
+            "try-ensure did not reuse completed resident",
+        ));
+    }
+    drop(hit);
+    cache
+        .release_if_unleased(&noop_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("try-ensure busy cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_try_ensure_preserves_failure()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(214)?,
+        native_executable_address(0x8_3000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 1);
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    let Err(failure) = cache.try_ensure(&noop_plan) else {
+        return Err(String::from("try-ensure operation failure was ignored"));
+    };
+    if matches!(failure, TrySyncFailure::Operation(_error))
+        && !cache
+            .contains(&noop_plan)
+            .map_err(|error| error.to_string())?
+    {
+        Ok(())
+    } else {
+        Err(String::from("try-ensure operation failure lost evidence"))
+    }
+}
+
+#[test]
 fn geometry_native_concurrent_cross_template_try_snapshot_reports_busy()
 -> Result<(), String> {
     let (noop_plan, _rotate_plan, _full_plan) =
@@ -16494,6 +16577,10 @@ fn geometry_native_concurrent_cross_template_poison_fails_closed()
         || !matches!(
             cache.snapshot(&noop_plan),
             Err(CrossSyncFailure::Poisoned)
+        )
+        || !matches!(
+            cache.try_ensure(&noop_plan),
+            Err(TrySyncFailure::Poisoned)
         )
         || cache.try_snapshot(&noop_plan) != Err(TrySnapFailure::Poisoned)
         || cache.resident_count() != Err(CrossSyncAccessError::Poisoned)

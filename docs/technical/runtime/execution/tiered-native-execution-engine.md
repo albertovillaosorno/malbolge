@@ -905,6 +905,13 @@ same snapshot constructor as the blocking read. A blocking-adapter case proves
 `Busy` while `ensure` owns the mutex and a coherent snapshot immediately after
 the load completes.
 
+Mutation callers can likewise use `try_ensure(plan)` when waiting for the cache
+mutex is undesirable. `Busy` is reported before any adapter work, while a
+successful `try_lock` runs the complete existing `ensure` transaction; load,
+eviction, rollback, and cleanup failures therefore retain their original typed
+evidence. Focused cases also prove poisoned authority stays distinct and a retry
+after transient contention reuses the completed resident as a normal hit.
+
 Concurrent read-side scaling beyond one mutation mutex remains separate policy
 work.
 

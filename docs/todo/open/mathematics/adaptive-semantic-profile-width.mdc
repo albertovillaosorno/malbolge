@@ -775,6 +775,10 @@ transfers, verification, and other separately measured costs.
   telemetry. It reports `Busy` instead of waiting behind mutation, distinguishes
   poison from transient contention, and reuses the blocking snapshot's exact
   resident/lease/limit/usage construction.
+- Nonblocking `try_ensure` reports `Busy` before adapter work when mutation is
+  locked. Once it acquires the mutex it delegates to the complete existing
+  `ensure` transaction, preserving typed load/eviction/cleanup failure evidence;
+  poison remains distinct from transient contention.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without
