@@ -146,22 +146,22 @@ use execution_native::{
     DirectInputError, DirectJumpCodeError, DirectJumpDataError,
     DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
     DirectOutputError, DirectRotateError, DirectSelectionError,
-    DirectSequenceError, NATIVE_REGION_ABI_REVISION,
-    NATIVE_REGION_ACCUMULATOR_OFFSET, NATIVE_REGION_CODE_POINTER_OFFSET,
-    NATIVE_REGION_DATA_POINTER_OFFSET, NATIVE_REGION_INPUT_CONSUMED_OFFSET,
-    NATIVE_REGION_INPUT_LEN_OFFSET, NATIVE_REGION_INPUT_OFFSET,
-    NATIVE_REGION_MEMORY_OFFSET, NATIVE_REGION_MEMORY_WORDS_OFFSET,
-    NATIVE_REGION_OUTPUT_CAPACITY_OFFSET, NATIVE_REGION_OUTPUT_LEN_OFFSET,
-    NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
-    NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
-    NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
-    NativeExecutableExecutionPhase, NativeExecutableInvocationBindingError,
-    NativeExecutableLifecycleError, NativeExecutableLoadPhase,
-    NativeExecutableMappingId, NativeExecutableMappingReport,
-    NativeExecutableMemoryAdapter, NativeExecutableOperationEvidenceError,
-    NativeExecutablePermission, NativeExecutableReleaseRequest,
-    NativeExecutableRunner, NativeExecutableSequenceCache,
-    NativeExecutableSequenceCacheCapacityError,
+    DirectSequenceError, ExecutionGeometryNativeRunner,
+    NATIVE_REGION_ABI_REVISION, NATIVE_REGION_ACCUMULATOR_OFFSET,
+    NATIVE_REGION_CODE_POINTER_OFFSET, NATIVE_REGION_DATA_POINTER_OFFSET,
+    NATIVE_REGION_INPUT_CONSUMED_OFFSET, NATIVE_REGION_INPUT_LEN_OFFSET,
+    NATIVE_REGION_INPUT_OFFSET, NATIVE_REGION_MEMORY_OFFSET,
+    NATIVE_REGION_MEMORY_WORDS_OFFSET, NATIVE_REGION_OUTPUT_CAPACITY_OFFSET,
+    NATIVE_REGION_OUTPUT_LEN_OFFSET, NATIVE_REGION_OUTPUT_OFFSET,
+    NATIVE_REGION_STATE_SIZE, NATIVE_REGION_TERMINATION_OFFSET,
+    NativeArtifactError, NativeExecutableAllocationRequest,
+    NativeExecutableCodeCopyReport, NativeExecutableExecutionPhase,
+    NativeExecutableInvocationBindingError, NativeExecutableLifecycleError,
+    NativeExecutableLoadPhase, NativeExecutableMappingId,
+    NativeExecutableMappingReport, NativeExecutableMemoryAdapter,
+    NativeExecutableOperationEvidenceError, NativeExecutablePermission,
+    NativeExecutableReleaseRequest, NativeExecutableRunner,
+    NativeExecutableSequenceCache, NativeExecutableSequenceCacheCapacityError,
     NativeExecutableSequenceCacheDisposition,
     NativeExecutableSequenceCacheLimits, NativeExecutableSequenceKey,
     NativeExecutableSequenceLease, NativeExecutableSequenceLeaseCache,
@@ -176,8 +176,9 @@ use execution_native::{
     NativeRegionInvocationError, NativeRegionInvocationOutcome,
     NativeRegionMutationSurface, NativeRegionStatus,
     NativeSequenceExecutionOutcome, NativeTerminationTag,
-    PreflightedExecutionTier, PreparedNativeExecutableInvocation,
-    PreparedNativeRegionInvocation, PreparedVerifiedDirectInvocation,
+    PreflightedExecutionTier, PreparedExecutionGeometryNativeInvocation,
+    PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
+    PreparedVerifiedDirectInvocation, ReadyExecutionGeometryNativeExecutable,
     ReadyNativeExecutable, ReadyNativeExecutableSequence,
     StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
     UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
@@ -222,6 +223,8 @@ use geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltAdmission,
     ExecutionGeometryNativeInitialHaltAdmissionError,
     ExecutionGeometryNativeInitialHaltBindingError,
+    ExecutionGeometryNativeInitialHaltCompletionError,
+    ExecutionGeometryNativeInitialHaltExecutionError,
     ExecutionGeometryNativeInitialHaltPreparationError,
 };
 use interpreter_handoff::{
@@ -367,6 +370,15 @@ impl Display for FakeNativeRunnerError {
 }
 
 #[derive(Debug)]
+struct FakeExecutionGeometryNativeRunner {
+    behavior: FakeNativeRunnerBehavior,
+    calls: usize,
+    entry_addresses: Vec<NonZeroUsize>,
+    mapping_ids: Vec<NativeExecutableMappingId>,
+    state_pointers_non_null: Vec<bool>,
+}
+
+#[derive(Debug)]
 struct FakeNativeExecutableRunner {
     behavior: FakeNativeRunnerBehavior,
     calls: usize,
@@ -467,12 +479,31 @@ type DerivedV5HandoffFixture = (
     malbolge::ProfileExecutionGeometry,
 );
 
+struct GeometryNativeRunnerFixture {
+    adapter: FakeNativeExecutableAdapter,
+    admission: ExecutionGeometryNativeInitialHaltAdmission,
+    geometry: malbolge::ProfileExecutionGeometry,
+    ready: ReadyExecutionGeometryNativeExecutable,
+}
+
 #[derive(Debug)]
 struct DerivedV5SequenceFixture {
     geometry: malbolge::ProfileExecutionGeometry,
     programs: Vec<ExecutionGeometryRegionEffectProgram>,
     states: Vec<ProfileMachineState>,
     traces: Vec<ProfileStepTrace>,
+}
+
+impl FakeExecutionGeometryNativeRunner {
+    const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
+        Self {
+            behavior,
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
+        }
+    }
 }
 
 impl FakeNativeExecutableRunner {
@@ -751,6 +782,42 @@ impl NativeExecutableMemoryAdapter for FakeNativeExecutableAdapter {
             request.start_address(),
             byte_len,
         ))
+    }
+}
+
+impl ExecutionGeometryNativeRunner for FakeExecutionGeometryNativeRunner {
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedExecutionGeometryNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        self.state_pointers_non_null
+            .push(!invocation.state_mut_ptr().is_null());
+        match self.behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(0, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(0, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
     }
 }
 
@@ -12457,6 +12524,42 @@ fn execution_geometry_native_admission_rejects_checkpoint_geometry_drift()
     }
 }
 
+fn geometry_native_runner_fixture(
+    word_trits: u8,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<GeometryNativeRunnerFixture, String> {
+    let (program, checkpoint, geometry) =
+        derived_v5_handoff_fixture(word_trits)?;
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &program,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 runner emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_halt(&artifact, &program)
+            .map_err(|error| format!("v5 runner verify: {error}"))?;
+    let admission = ExecutionGeometryNativeInitialHaltAdmission::new(
+        program, checkpoint, verified,
+    )
+    .map_err(|error| format!("v5 runner admission: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_value)?,
+        native_executable_address(base_value)?,
+    );
+    let ready = load_execution_geometry_native_executable(
+        &mut adapter,
+        admission.load_image(),
+    )
+    .map_err(|error| format!("v5 runner load: {error}"))?;
+    Ok(GeometryNativeRunnerFixture {
+        adapter,
+        admission,
+        geometry,
+        ready,
+    })
+}
+
 #[test]
 fn geometry_native_binding_matches_checkpoint_owned_executable()
 -> Result<(), String> {
@@ -12565,6 +12668,173 @@ fn geometry_native_binding_rejects_different_geometry_executable()
     }
     release_execution_geometry_native_executable(&mut adapter, n11_ready)
         .map_err(|error| format!("v5 bind N11 release: {error}"))
+}
+
+#[test]
+fn geometry_native_runner_applies_bound_halt() -> Result<(), String> {
+    let GeometryNativeRunnerFixture {
+        mut adapter,
+        admission,
+        geometry,
+        ready,
+    } = geometry_native_runner_fixture(10, 97, 0xf000)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 runner prepare: {error}"))?;
+    let bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v5 runner bind: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let completion = bound
+        .execute(&mut runner)
+        .map_err(|error| format!("v5 runner execute: {error}"))?;
+    let evidence_matches = runner.calls == 1
+        && runner.entry_addresses == [ready.entry_address()]
+        && runner.mapping_ids == [ready.mapping().mapping_id()]
+        && runner.state_pointers_non_null == [true];
+    let state_matches = completion.state().geometry() == geometry
+        && completion.state().memory() == checkpoint.memory()
+        && completion.state().io().termination()
+            == Some(Termination::HaltInstruction)
+        && matches!(
+            completion.outcome(),
+            NativeRegionInvocationOutcome::Applied(observation)
+                if observation.termination
+                    == Some(Termination::HaltInstruction)
+        );
+    if !evidence_matches || !state_matches || memory != checkpoint.memory() {
+        return Err(String::from("v5 runner applied halt evidence drifted"));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v5 runner applied release: {error}"))
+}
+
+#[test]
+fn geometry_native_runner_completion_drift_restores_buffers()
+-> Result<(), String> {
+    let GeometryNativeRunnerFixture {
+        mut adapter,
+        admission,
+        geometry: _geometry,
+        ready,
+    } = geometry_native_runner_fixture(10, 98, 0x1_0000)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 drift runner prepare: {error}"))?;
+    let bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v5 drift runner bind: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::CompletionDrift,
+    );
+    let Err(execution_error) = bound.execute(&mut runner) else {
+        return Err(String::from("v5 completion drift was admitted"));
+    };
+    let completion_drift = matches!(
+        *execution_error,
+        ExecutionGeometryNativeInitialHaltExecutionError::Completion(
+            ExecutionGeometryNativeInitialHaltCompletionError::Invocation(
+                NativeRegionInvocationError::AppliedMemory { address: 0, .. },
+            ),
+        )
+    );
+    if !completion_drift
+        || runner.calls != 1
+        || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from("v5 completion drift rollback failed"));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready).map_err(
+        |release_error| format!("v5 drift runner release: {release_error}"),
+    )
+}
+
+#[test]
+fn geometry_native_runner_failure_restores_buffers() -> Result<(), String> {
+    let GeometryNativeRunnerFixture {
+        mut adapter,
+        admission,
+        geometry: _geometry,
+        ready,
+    } = geometry_native_runner_fixture(10, 99, 0x1_1000)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 failed runner prepare: {error}"))?;
+    let bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v5 failed runner bind: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(execution_error) = bound.execute(&mut runner) else {
+        return Err(String::from("v5 runner failure was ignored"));
+    };
+    let runner_failed = matches!(
+        *execution_error,
+        ExecutionGeometryNativeInitialHaltExecutionError::Runner(runner_error)
+            if *runner_error == FakeNativeRunnerError::Call
+    );
+    if !runner_failed
+        || runner.calls != 1
+        || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from("v5 runner failure rollback drifted"));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready).map_err(
+        |release_error| format!("v5 failed runner release: {release_error}"),
+    )
+}
+
+#[test]
+fn geometry_native_runner_guard_miss_preserves_state() -> Result<(), String> {
+    let GeometryNativeRunnerFixture {
+        mut adapter,
+        admission,
+        geometry: _geometry,
+        ready,
+    } = geometry_native_runner_fixture(10, 100, 0x1_2000)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 miss runner prepare: {error}"))?;
+    let bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v5 miss runner bind: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let completion = bound
+        .execute(&mut runner)
+        .map_err(|error| format!("v5 miss runner execute: {error}"))?;
+    if completion.outcome() != NativeRegionInvocationOutcome::GuardMiss
+        || completion.state() != &checkpoint
+        || runner.calls != 1
+        || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from("v5 runner guard miss changed checkpoint"));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v5 miss runner release: {error}"))
 }
 
 #[test]

@@ -9,31 +9,32 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Admission binding one verified v5 native artifact and load image to the
-//   - opaque execution geometry carried by one validated VM checkpoint.
+//   - Admission and safe runner orchestration binding one verified v5 native
+//   - initial-halt artifact to one opaque validated VM checkpoint geometry.
 // - Must-Not:
-//   - Map executable memory, invoke machine code, forge geometry tokens, or
-//   - route v5 through legacy direct-native execution APIs.
+//   - Map executable memory, implement the foreign call, forge geometry tokens,
+//   - or route v5 through legacy direct-native execution APIs.
 // - Allows:
-//   - Inputs: verified explicit-geometry initial-halt artifact, exact v5 IR,
-//   - and one complete validated profile-machine checkpoint.
-//   - Outputs: an affine checkpoint-bound native admission value.
-//   - Side effects: process-local allocation only.
+//   - Inputs: exact v5 IR/artifact/checkpoint, synchronized exact executable,
+//   - caller buffers, and one explicit geometry-native runner port.
+//   - Outputs: checkpoint-bound admission, prepared/bound call, or completion.
+//   - Side effects: process-local allocation plus supplied runner operations.
 // - Split-When:
 //   - Split when geometry-aware executable lifecycle or invocation gains
 //   - independent policy.
 // - Merge-When:
 //   - Merge when one geometry-native owner subsumes admission and execution.
 // - Summary:
-//   - Makes opaque checkpoint geometry prerequisite to v5 native authority.
+//   - Makes opaque checkpoint geometry prerequisite to guarded v5 native calls.
 // - Description:
-//   - Rechecks exact v5 identity beside normative checkpoint admission before
-//   - retaining any load-image evidence.
+//   - Rechecks v5 identity, binds exact synchronized code, and restores
+//     prepared
+//   - state on runner/completion failure before reconstructing opaque state.
 // - Usage:
-//   - Construct before any future geometry-aware mapping or invocation bridge.
+//   - Admit before mapping, then prepare/bind/execute through the v5-only port.
 // - Defaults:
-//   - Artifact, profile, geometry, observation, capacity, or live-in drift
-//   - fails closed without exposing executable authority.
+//   - Identity, geometry, buffer, runner, or completion drift fails closed and
+//   - restores the exact prepared entry snapshot where mutation was possible.
 //
 
 //! Checkpoint-bound admission for explicit-geometry native artifacts.
@@ -48,8 +49,9 @@ use malbolge::{
 
 use crate::execution_cache::{NativeArtifactKey, NativeIdentityError};
 use crate::execution_native::{
-    NativeRegionBuffers, NativeRegionInvocationError,
-    NativeRegionInvocationOutcome, PreparedNativeRegionInvocation,
+    ExecutionGeometryNativeRunner, NativeRegionBuffers,
+    NativeRegionInvocationError, NativeRegionInvocationOutcome,
+    PreparedExecutionGeometryNativeInvocation, PreparedNativeRegionInvocation,
     ReadyExecutionGeometryNativeExecutable, VerifiedDirectLoadError,
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     VerifiedExecutionGeometryLoadImage,
@@ -88,6 +90,23 @@ pub enum ExecutionGeometryNativeInitialHaltCompletionError {
     /// Reconstructing the opaque-geometry checkpoint failed validation.
     State(ProfileMachineError),
 }
+
+/// Failure after a checkpoint-bound v5 call enters the runner boundary.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeInitialHaltExecutionError<RunnerError> {
+    /// Returned status or caller-visible state failed exact completion
+    /// admission.
+    Completion(ExecutionGeometryNativeInitialHaltCompletionError),
+    /// External runner failed before returning a raw ABI status.
+    Runner(Box<RunnerError>),
+}
+
+/// Result of one dedicated checkpoint-bound v5 runner call.
+pub type ExecutionGeometryNativeInitialHaltExecutionResult<RunnerError> =
+    Result<
+        ExecutionGeometryNativeInitialHaltCompletion,
+        Box<ExecutionGeometryNativeInitialHaltExecutionError<RunnerError>>,
+    >;
 
 /// Failure while preparing checkpoint-exact caller buffers for the v5 ABI.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -163,6 +182,19 @@ impl Display for ExecutionGeometryNativeInitialHaltCompletionError {
         match self {
             Self::Invocation(error) => Display::fmt(error, f),
             Self::State(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
+    for ExecutionGeometryNativeInitialHaltExecutionError<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Completion(error) => Display::fmt(error, f),
+            Self::Runner(error) => {
+                write!(f, "v5 native runner failed: {error}")
+            },
         }
     }
 }
@@ -343,6 +375,58 @@ impl ExecutionGeometryNativeInitialHaltBoundCall<'_, '_, '_> {
     #[must_use]
     pub const fn executable(&self) -> &ReadyExecutionGeometryNativeExecutable {
         self.executable
+    }
+
+    /// Executes only this checkpoint-bound call through the dedicated v5 port.
+    ///
+    /// Runner failure restores the complete prepared entry snapshot before the
+    /// error escapes. A returned status still passes through exact native
+    /// result admission and opaque-geometry checkpoint reconstruction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeInitialHaltExecutionError`] when the
+    /// external runner fails or the returned transition fails admission.
+    pub fn execute<Runner>(
+        self,
+        runner: &mut Runner,
+    ) -> ExecutionGeometryNativeInitialHaltExecutionResult<Runner::Error>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        let Self { executable, prepared } = self;
+        let PreparedExecutionGeometryNativeInitialHalt {
+            admission,
+            invocation,
+        } = prepared;
+        let mut runner_invocation =
+            PreparedExecutionGeometryNativeInvocation::new(
+                executable, invocation,
+            );
+        let raw_status = match runner.run(&mut runner_invocation) {
+            Ok(raw_status) => raw_status,
+            Err(error) => {
+                runner_invocation.abort();
+                return Err(Box::new(
+                    ExecutionGeometryNativeInitialHaltExecutionError::Runner(
+                        Box::new(error),
+                    ),
+                ));
+            },
+        };
+        let outcome = runner_invocation.complete(raw_status).map_err(|error| {
+            use ExecutionGeometryNativeInitialHaltCompletionError as Completion;
+            use ExecutionGeometryNativeInitialHaltExecutionError as Execution;
+            Box::new(Execution::Completion(Completion::Invocation(error)))
+        })?;
+        let state = completion_state(admission, outcome).map_err(|error| {
+            Box::new(
+                ExecutionGeometryNativeInitialHaltExecutionError::Completion(
+                    error,
+                ),
+            )
+        })?;
+        Ok(ExecutionGeometryNativeInitialHaltCompletion { outcome, state })
     }
 }
 

@@ -176,9 +176,9 @@ pub use executable_sequence::{
 pub use invocation::{
     NativeExecutableInvocationBindingError, NativeRegionBuffers,
     NativeRegionInvocationError, NativeRegionInvocationOutcome,
-    NativeRegionMutationSurface, PreparedNativeExecutableInvocation,
-    PreparedNativeRegionInvocation, PreparedVerifiedDirectInvocation,
-    VerifiedDirectInvocationError,
+    NativeRegionMutationSurface, PreparedExecutionGeometryNativeInvocation,
+    PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
+    PreparedVerifiedDirectInvocation, VerifiedDirectInvocationError,
 };
 pub use lifecycle::{
     NativeExecutableLifecycleError, NativeExecutableMappingId,
@@ -212,10 +212,11 @@ pub use platform::{
     release_execution_geometry_native_executable, release_native_executable,
 };
 pub use runner::{
-    NativeExecutableExecutionFailure, NativeExecutableExecutionPhase,
-    NativeExecutableExecutionResult, NativeExecutableRunner,
-    NativeLoadedExecutionFailure, NativeLoadedExecutionResult,
-    execute_loaded_verified_native, execute_verified_native,
+    ExecutionGeometryNativeRunner, NativeExecutableExecutionFailure,
+    NativeExecutableExecutionPhase, NativeExecutableExecutionResult,
+    NativeExecutableRunner, NativeLoadedExecutionFailure,
+    NativeLoadedExecutionResult, execute_loaded_verified_native,
+    execute_verified_native,
 };
 pub use sequence_continuation::{
     NativeInterpreterContinuation, NativeInterpreterContinuationError,

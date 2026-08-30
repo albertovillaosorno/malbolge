@@ -49,7 +49,10 @@ use super::abi::{
     NativeRegionStatusError,
 };
 use super::direct::{DirectNativeKind, VerifiedDirectNativeArtifact};
-use super::lifecycle::{NativeExecutableMappingId, ReadyNativeExecutable};
+use super::lifecycle::{
+    NativeExecutableMappingId, ReadyExecutionGeometryNativeExecutable,
+    ReadyNativeExecutable,
+};
 use super::loader::{VerifiedDirectLoadError, VerifiedDirectLoadImage};
 use crate::execution_cache::{
     NativeArtifactKey, NativeIdentityError, NativeTargetIdentity,
@@ -190,6 +193,16 @@ pub enum VerifiedDirectInvocationError {
     Load(VerifiedDirectLoadError),
 }
 
+/// Runner-facing view of one checkpoint-bound explicit-geometry call.
+///
+/// Construction and completion are crate-owned so the public runner port cannot
+/// manufacture v5 execution authority from a ready mapping alone.
+#[derive(Debug)]
+pub struct PreparedExecutionGeometryNativeInvocation<'buffers, 'executable> {
+    executable: &'executable ReadyExecutionGeometryNativeExecutable,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
 /// One synchronized executable inseparably bound to one exact ABI call.
 #[derive(Debug)]
 pub struct PreparedNativeExecutableInvocation<'artifact, 'buffers, 'executable>
@@ -297,6 +310,76 @@ impl NativeRegionInvocationError {
 impl Display for NativeRegionInvocationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         f.write_str(self.message())
+    }
+}
+
+impl PreparedExecutionGeometryNativeInvocation<'_, '_> {
+    /// Restores the complete checkpoint-owned entry snapshot after runner
+    /// failure.
+    pub(crate) fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Simulates the exact expected foreign transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Admits one raw status through the exact v5 region contract.
+    pub(crate) fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<NativeRegionInvocationOutcome, NativeRegionInvocationError>
+    {
+        self.invocation.complete(raw_status)
+    }
+
+    /// Returns the synchronized non-zero explicit-geometry entrypoint.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized v5 executable retained by this view.
+    #[must_use]
+    pub const fn executable(&self) -> &ReadyExecutionGeometryNativeExecutable {
+        self.executable
+    }
+
+    /// Returns the exact platform mapping identity retained by this view.
+    #[must_use]
+    pub const fn mapping_id(&self) -> NativeExecutableMappingId {
+        self.executable.mapping().mapping_id()
+    }
+
+    pub(crate) const fn new<'buffers, 'executable>(
+        executable: &'executable ReadyExecutionGeometryNativeExecutable,
+        invocation: PreparedNativeRegionInvocation<'buffers>,
+    ) -> PreparedExecutionGeometryNativeInvocation<'buffers, 'executable> {
+        PreparedExecutionGeometryNativeInvocation { executable, invocation }
+    }
+
+    /// Returns the mutable ABI state pointer for the caller-owned runner.
+    ///
+    /// The runner receives this view only after checkpoint, artifact,
+    /// load-image, and synchronized-executable identity have all been
+    /// admitted.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Simulates one foreign guest-memory mutation for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn write_memory_for_test(
+        &mut self,
+        address: usize,
+        value: u32,
+    ) -> bool {
+        self.invocation.write_memory_for_test(address, value)
     }
 }
 

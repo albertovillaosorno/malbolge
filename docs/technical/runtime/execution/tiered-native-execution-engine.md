@@ -593,17 +593,27 @@ allocate, copy, protect, and synchronization ordering, but returns only
 the exact release request; explicit v5 release retains the ready executable for
 retry if cleanup fails.
 
-The platform path still cannot invoke code because no native runner accepts the
-v5 ready type. `PreparedExecutionGeometryNativeInitialHalt::bind_executable()`
-now consumes a checkpoint-owned prepared call only when the synchronized v5
-executable retains the exact same verified load image. A mismatched N10/N11
-executable aborts the prepared frame and restores its entry snapshot.
+`PreparedExecutionGeometryNativeInitialHalt::bind_executable()` consumes a
+checkpoint-owned prepared call only when the synchronized v5 executable retains
+the exact same verified load image. A mismatched N10/N11 executable aborts the
+prepared frame and restores its entry snapshot.
 
-The resulting `ExecutionGeometryNativeInitialHaltBoundCall` exposes synchronized
-entry/executable identity and exact completion admission, but no raw ABI state
-pointer and no machine-code invocation method. The remaining native authority
-boundary is therefore a dedicated geometry runner that can call only this bound
-contract. State-applying arithmetic templates also remain canonical-only.
+A separate `ExecutionGeometryNativeRunner` port now admits the actual call
+boundary without widening legacy `NativeExecutableRunner`. Its runner-facing
+`PreparedExecutionGeometryNativeInvocation` can be constructed only inside the
+crate after exact checkpoint/artifact/load-image/executable binding; only that
+borrow-scoped view exposes entrypoint, mapping identity, and the mutable ABI
+state pointer. The runner cannot manufacture v5 authority from a ready mapping.
+
+`ExecutionGeometryNativeInitialHaltBoundCall::execute()` consumes the bound
+call. Runner failure aborts and restores the complete entry snapshot. A returned
+status still passes through exact native completion admission; applied-state
+mutation drift is rejected and rolled back, guard miss preserves the checkpoint,
+and an exact halt reconstructs `ProfileMachineState` with the original opaque
+geometry token. Four runner cases cover those paths.
+
+Complete transactional load/call/release composition and state-applying
+derived-geometry templates remain separate work.
 
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine

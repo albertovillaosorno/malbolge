@@ -638,11 +638,15 @@ transfers, verification, and other separately measured costs.
   release retains the ready executable for retry on failure.
 - The checkpoint-owned prepared call now binds only to an exact synchronized v5
   executable image. N10 prepared state paired with an N11 executable rejects and
-  restores the entry snapshot. The bound value exposes entry/executable identity
-  plus result admission, but no raw ABI pointer or machine-code call method.
-- No runner accepts it yet. The remaining native authority boundary is a
-  dedicated geometry runner, followed by reviewed derived-geometry templates for
-  state-changing operations.
+  restores the entry snapshot.
+- A dedicated `ExecutionGeometryNativeRunner` remains separate from the legacy
+  runner.
+  Only a crate-created, borrow-scoped v5 invocation view exposes synchronized
+  entrypoint/mapping identity and the raw ABI state pointer after exact binding.
+  Applied halt preserves the opaque geometry token; guard miss preserves the
+  checkpoint; runner failure after mutation and completion drift both restore
+  exact entry buffers. Transactional load/call/release composition remains open,
+  followed by reviewed derived-geometry templates for state-changing operations.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

@@ -36,6 +36,7 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use super::invocation::{
     NativeExecutableInvocationBindingError, NativeRegionInvocationOutcome,
+    PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedVerifiedDirectInvocation,
     VerifiedDirectInvocationError,
 };
@@ -133,6 +134,31 @@ type NativeExecutableCallResult<Runner> = Result<
     NativeRegionInvocationOutcome,
     NativeExecutableCallFailure<<Runner as NativeExecutableRunner>::Error>,
 >;
+
+/// Caller-owned implementation of one checkpoint-bound v5 entrypoint call.
+///
+/// This port is deliberately separate from [`NativeExecutableRunner`]. The
+/// runner can inspect only a view that the crate constructs after explicit
+/// geometry authority and synchronized executable identity have been bound.
+pub trait ExecutionGeometryNativeRunner {
+    /// Stable runner-specific failure.
+    type Error;
+
+    /// Calls one exact synchronized v5 executable and returns its raw ABI
+    /// status.
+    ///
+    /// The implementation may inspect entry address, mapping identity, and the
+    /// mutable ABI state pointer. It must not retain borrowed state after
+    /// return.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runner's stable call failure.
+    fn run(
+        &mut self,
+        invocation: &mut PreparedExecutionGeometryNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error>;
+}
 
 /// Caller-owned implementation of the actual native entrypoint call.
 pub trait NativeExecutableRunner {
