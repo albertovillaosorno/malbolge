@@ -37,7 +37,6 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::execution_native::NativeExecutableMemoryAdapter;
 use crate::geometry_native_jump_rotate_halt_sequence::{
-    ExecutionGeometryNativeJumpRotateHaltResidentWeightError,
     ExecutionGeometryNativeJumpRotateHaltSequence,
     ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure,
     ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure,
@@ -56,7 +55,6 @@ use crate::geometry_native_sequence::{
     LoadedExecutionGeometryNativeNoopHaltSequence,
 };
 
-type WeightError = ExecutionGeometryNativeJumpRotateHaltResidentWeightError;
 type FullLoadFailure<MemoryError> =
     ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<MemoryError>;
 type FullReleaseFailure<MemoryError> =
@@ -110,6 +108,13 @@ pub struct GeometryNativeResidentWeight {
     mappings: usize,
 }
 
+/// Failure while deriving heterogeneous resident mapping weight.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GeometryNativeResidentWeightError {
+    /// Summed synchronized mapped bytes exceeded host `usize`.
+    MappedBytesOverflow,
+}
+
 /// Failure while loading one typed heterogeneous resident.
 #[derive(Debug, Eq, PartialEq)]
 pub enum GeometryNativeResidentLoadFailure<MemoryError> {
@@ -141,6 +146,16 @@ pub type GeometryNativeResidentLoadResult<MemoryError> = Result<
 /// Result of releasing one exact heterogeneous v5 resident.
 pub type GeometryNativeResidentReleaseResult<MemoryError> =
     Result<(), Box<GeometryNativeResidentReleaseFailure<MemoryError>>>;
+
+impl Display for GeometryNativeResidentWeightError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::MappedBytesOverflow => {
+                f.write_str("heterogeneous v5 resident mapped-byte overflow")
+            },
+        }
+    }
+}
 
 impl<MemoryError: Display> Display
     for GeometryNativeResidentLoadFailure<MemoryError>
@@ -250,13 +265,13 @@ impl GeometryNativeLoadedResident {
     /// Returns mapped-byte overflow when the resident reports cannot be summed.
     pub fn resident_weight(
         &self,
-    ) -> Result<
-        GeometryNativeResidentWeight,
-        ExecutionGeometryNativeJumpRotateHaltResidentWeightError,
-    > {
+    ) -> Result<GeometryNativeResidentWeight, GeometryNativeResidentWeightError>
+    {
         let (mapped_bytes, mappings) = match self {
             Self::FullPath(loaded) => {
-                let weight = loaded.resident_weight()?;
+                let weight = loaded.resident_weight().map_err(|_error| {
+                    GeometryNativeResidentWeightError::MappedBytesOverflow
+                })?;
                 (weight.mapped_bytes(), weight.mappings())
             },
             Self::NoOperationPair(loaded) => (
@@ -387,9 +402,9 @@ impl GeometryNativeResidentWeight {
 
 fn sum_mapped_bytes<const N: usize>(
     mapped_lengths: [usize; N],
-) -> Result<usize, WeightError> {
+) -> Result<usize, GeometryNativeResidentWeightError> {
     mapped_lengths
         .into_iter()
         .try_fold(0usize, usize::checked_add)
-        .ok_or(WeightError::MappedBytesOverflow)
+        .ok_or(GeometryNativeResidentWeightError::MappedBytesOverflow)
 }

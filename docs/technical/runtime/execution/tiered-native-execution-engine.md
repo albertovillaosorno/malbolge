@@ -818,9 +818,22 @@ semantics. The corresponding loaded-resident enum preserves exact variant
 identity, derives 2/2/3 mapping weights from synchronized reports, and delegates
 release/retry to the original specialized owner.
 
-Cross-template eviction can now build on this plan/owner boundary instead of
-inventing legacy keys or erasing cleanup types. Execution remains deliberately
-variant-specific, and concurrent cache mutation remains separate policy work.
+`GeometryNativeCrossTemplateLruCache` now performs the first real
+cross-template eviction over that typed boundary. Capacity is a nonzero resident
+entry count; hits refresh MRU position, leased residents are skipped, and
+all-leased saturation performs no adapter work.
+
+Victim release failure removes only the typed victim and returns its specialized
+cleanup ownership, while unrelated template residents survive. A later typed
+load failure leaves the evicted slot vacant instead of restoring stale
+authority.
+Five focused cases mix no-op/halt, rotate/halt, and full-path residents through
+recency, lease, saturation, release-failure, and vacancy paths.
+
+Execution remains deliberately variant-specific through the loaded-resident
+enum.
+Weighted cross-template limits, limit reconfiguration, and concurrent cache
+mutation remain separate policy work.
 
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence

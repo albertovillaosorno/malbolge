@@ -47,6 +47,8 @@ pub mod execution_native;
 pub mod geometry_interpreter_handoff;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_native.rs"]
 pub mod geometry_native_admission;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_xcache.rs"]
+pub mod geometry_native_cross_template_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xres.rs"]
 pub mod geometry_native_cross_template_resident;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jump.rs"]
@@ -263,6 +265,12 @@ use geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltExecutionError,
     ExecutionGeometryNativeInitialHaltPreparationError,
     ExecutionGeometryNativeInitialHaltTransactionFailure,
+};
+use geometry_native_cross_template_cache::{
+    GeometryNativeCrossTemplateLruAcquireFailure as CrossLruFailure,
+    GeometryNativeCrossTemplateLruCache as CrossLruCache,
+    GeometryNativeCrossTemplateLruDisposition as CrossLruDisposition,
+    GeometryNativeCrossTemplateLruRelease as CrossLruRelease,
 };
 use geometry_native_cross_template_resident::{
     GeometryNativeResidentKind as CrossResidentKind,
@@ -13228,6 +13236,13 @@ fn execution_geometry_native_admission_rejects_checkpoint_geometry_drift()
     }
 }
 
+fn cross_template_lru(capacity: usize) -> Result<CrossLruCache, String> {
+    Ok(CrossLruCache::new(nonzero_test_limit(
+        capacity,
+        "v5 cross-template LRU capacity",
+    )?))
+}
+
 fn cross_template_resident_plans() -> Result<CrossResidentPlanTriple, String> {
     let noop_fixture = derived_v5_noop_halt_sequence_fixture(10)?;
     let rotate_fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
@@ -15045,6 +15060,256 @@ fn geometry_native_noop_halt_loaded_late_failure_retains_prefix()
         .map_err(|error| format!("v5 loaded late no-op release: {error}"))?;
     release_execution_geometry_native_executable(&mut adapter, halt)
         .map_err(|error| format!("v5 loaded late halt release: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_lru_hit_refreshes_eviction()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(181)?,
+        native_executable_address(0x6_2000)?,
+    );
+    let mut cache = cross_template_lru(2)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &rotate_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let hit = cache
+        .ensure(&mut adapter, &noop_plan)
+        .map_err(|error| format!("cross LRU hit: {error}"))?;
+    if hit.disposition() != CrossLruDisposition::Hit
+        || hit.lease().kind() != CrossResidentKind::NoOperationPair
+        || adapter.operations.len() != 16
+    {
+        return Err(String::from("cross LRU hit remapped or lost kind"));
+    }
+    drop(hit);
+    let replacement = cache
+        .ensure(&mut adapter, &full_plan)
+        .map_err(|error| format!("cross LRU replacement: {error}"))?;
+    if replacement.disposition() != CrossLruDisposition::Evicted
+        || replacement.lease().kind() != CrossResidentKind::FullPath
+        || !cache.contains(&noop_plan)
+        || cache.contains(&rotate_plan)
+        || !cache.contains(&full_plan)
+        || adapter.operations.len() != 30
+    {
+        return Err(String::from("cross LRU recency did not select rotate"));
+    }
+    drop(replacement);
+    cache
+        .release_if_unleased(&mut adapter, &noop_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross LRU no-op cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &full_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross LRU full cleanup: {error}"))?;
+    if adapter.operations.len() == 35 {
+        Ok(())
+    } else {
+        Err(String::from("cross LRU final cleanup drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_lru_skips_leased() -> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(182)?,
+        native_executable_address(0x6_3000)?,
+    );
+    let mut cache = cross_template_lru(2)?;
+    let noop_lease = cache
+        .ensure(&mut adapter, &noop_plan)
+        .map_err(|error| error.to_string())?
+        .into_lease();
+    drop(
+        cache
+            .ensure(&mut adapter, &rotate_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let full_lease = cache
+        .ensure(&mut adapter, &full_plan)
+        .map_err(|error| format!("cross LRU leased eviction: {error}"))?
+        .into_lease();
+    if !cache.contains(&noop_plan)
+        || cache.contains(&rotate_plan)
+        || !cache.contains(&full_plan)
+        || cache.resident_lease_count(&noop_plan) != 1
+        || noop_lease.kind() != CrossResidentKind::NoOperationPair
+        || full_lease.kind() != CrossResidentKind::FullPath
+        || adapter.operations.len() != 30
+    {
+        return Err(String::from("cross LRU eviction crossed live lease"));
+    }
+    drop((noop_lease, full_lease));
+    cache
+        .release_if_unleased(&mut adapter, &noop_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross leased no-op cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &full_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross leased full cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_lru_saturates_when_all_leased()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(183)?,
+        native_executable_address(0x6_4000)?,
+    );
+    let mut cache = cross_template_lru(2)?;
+    let noop = cache
+        .ensure(&mut adapter, &noop_plan)
+        .map_err(|error| error.to_string())?;
+    let rotate = cache
+        .ensure(&mut adapter, &rotate_plan)
+        .map_err(|error| error.to_string())?;
+    let Err(failure) = cache.ensure(&mut adapter, &full_plan) else {
+        return Err(String::from("cross LRU all-leased saturation ignored"));
+    };
+    if !matches!(*failure, CrossLruFailure::Saturated {
+        leased_residents: 2,
+        residents: 2,
+    }) || adapter.operations.len() != 16
+        || !cache.contains(&noop_plan)
+        || !cache.contains(&rotate_plan)
+        || cache.contains(&full_plan)
+    {
+        return Err(String::from(
+            "cross LRU saturation performed adapter work",
+        ));
+    }
+    drop((noop, rotate));
+    cache
+        .release_if_unleased(&mut adapter, &noop_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross saturation no-op cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &rotate_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross saturation rotate cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_lru_eviction_failure_is_typed()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(184)?,
+        native_executable_address(0x6_5000)?,
+    )
+    .with_release_failures(2);
+    let mut cache = cross_template_lru(2)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &rotate_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(failure) = cache.ensure(&mut adapter, &full_plan) else {
+        return Err(String::from("cross LRU eviction cleanup failure ignored"));
+    };
+    let CrossLruFailure::EvictionRelease(cleanup) = *failure else {
+        return Err(String::from("cross LRU eviction failure phase drifted"));
+    };
+    let CrossResidentReleaseFailure::NoOperationPair(retry) = *cleanup else {
+        return Err(String::from("cross LRU victim cleanup lost template"));
+    };
+    if retry.halt_failure().is_none()
+        || retry.no_operation_failure().is_none()
+        || cache.contains(&noop_plan)
+        || !cache.contains(&rotate_plan)
+        || cache.contains(&full_plan)
+        || adapter.operations.len() != 18
+    {
+        return Err(String::from("cross LRU victim failure damaged survivor"));
+    }
+    CrossResidentReleaseFailure::NoOperationPair(retry)
+        .retry(&mut adapter)
+        .map_err(|error| format!("cross LRU victim retry: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &rotate_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross LRU survivor cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_lru_load_failure_leaves_vacancy()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(185)?,
+        native_executable_address(0x6_6000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 5);
+    let mut cache = cross_template_lru(2)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &rotate_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(failure) = cache.ensure(&mut adapter, &full_plan) else {
+        return Err(String::from(
+            "cross LRU post-eviction load failure ignored",
+        ));
+    };
+    if !matches!(
+        *failure,
+        CrossLruFailure::Load(error)
+            if matches!(&*error, CrossResidentLoadFailure::FullPath(_failure))
+    ) || cache.contains(&noop_plan)
+        || !cache.contains(&rotate_plan)
+        || cache.contains(&full_plan)
+        || cache.resident_count() != 1
+        || adapter.operations.len() != 19
+    {
+        return Err(String::from(
+            "cross LRU failed load restored stale victim",
+        ));
+    }
+    let inserted = cache
+        .ensure(&mut adapter, &full_plan)
+        .map_err(|error| format!("cross LRU vacancy refill: {error}"))?;
+    if inserted.disposition() != CrossLruDisposition::Inserted
+        || cache.resident_count() != 2
+        || adapter.operations.len() != 31
+    {
+        return Err(String::from("cross LRU vacancy was not reusable"));
+    }
+    drop(inserted);
+    cache
+        .release_if_unleased(&mut adapter, &rotate_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross load survivor cleanup: {error}"))?;
+    let released = cache
+        .release_if_unleased(&mut adapter, &full_plan)
+        .map_err(|error| format!("cross load refill cleanup: {error}"))?;
+    if released == CrossLruRelease::Released && adapter.operations.len() == 36 {
+        Ok(())
+    } else {
+        Err(String::from("cross LRU refill cleanup drifted"))
+    }
 }
 
 #[test]

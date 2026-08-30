@@ -734,10 +734,14 @@ transfers, verification, and other separately measured costs.
 - Mapping-count admission uses exact resident weight: full-path triples require
   three mappings, limit two rejects with rollback, and limit six evicts one LRU
   before admitting a third resident.
-- A typed cross-template resident plan now wraps no-op/halt, rotate/halt, and
+- A typed cross-template resident plan wraps no-op/halt, rotate/halt, and
   full-path admission without sharing execution semantics. Loaded owners retain
   exact variant identity, report 2/2/3 mapping weights, and preserve specialized
-  load/release retry ownership. Cross-template eviction remains open.
+  load/release retry ownership.
+- An entry-count heterogeneous LRU now lets those three template families share
+  residence. Hits refresh MRU, live leases are skipped, all-leased saturation is
+  side-effect free, and typed victim/load failures never resurrect stale
+  authority. Weighted limits and heterogeneous reconfiguration remain open.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without
@@ -745,8 +749,9 @@ transfers, verification, and other separately measured costs.
   exact retry ownership. Explicit replacement releases the old pair completely
   before loading the new identity and leaves the cache empty on either failure.
 - The no-op/halt, rotate/halt, and full-path single-resident caches remain
-  intentionally separate. The typed resident boundary is the only shared
-  lifecycle authority so far; additional state-changing templates remain open.
+  intentionally separate for operation-specific callers. The heterogeneous LRU
+  is the shared residency authority; additional state-changing templates remain
+  open.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only
   admissible Applied state. The separate load image, prepare/bind layer, v5
