@@ -698,6 +698,11 @@ transfers, verification, and other separately measured costs.
   admit before the first mapping. Global indices 0/1/2 preserve exact guard and
   failure position; mixed N10/N11 jump/suffix evidence rejects before adapter
   work. Generic v5 planning and a reusable three-executable cache remain open.
+- The full `(&O` sequence can additionally prebind three exact caller-owned
+  executables before borrowing machine buffers. Repeated prebound execution
+  performs no adapter work, mixed-geometry jump images reject before mutation,
+  and late halt failure retains the post-rotate checkpoint at global index 2.
+  Owned triple lifecycle and a reusable three-entry cache remain open.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

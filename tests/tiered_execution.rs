@@ -259,7 +259,7 @@ use geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltTransactionFailure,
 };
 use geometry_native_initial_jump_data as jump_native;
-use geometry_native_jump_rotate_halt_sequence as full_geometry_native;
+use geometry_native_jump_rotate_halt_sequence as full_native;
 use geometry_native_no_operation::{
     ExecutionGeometryNativeNoOperationAdmission,
     ExecutionGeometryNativeNoOperationBindingError,
@@ -565,18 +565,24 @@ struct SecondStepContinuationExpectation<'plan> {
 }
 
 type FullGeometryAdmissionError =
-    full_geometry_native::ExecutionGeometryNativeJumpRotateHaltAdmissionError;
+    full_native::ExecutionGeometryNativeJumpRotateHaltAdmissionError;
+type FullGeometryBindingError =
+    full_native::ExecutionGeometryNativeJumpRotateHaltExecutableBindingError;
 type FullGeometryEvidence =
-    full_geometry_native::ExecutionGeometryNativeJumpRotateHaltEvidence;
+    full_native::ExecutionGeometryNativeJumpRotateHaltEvidence;
 type FullGeometryFailureCause<MemoryError, RunnerError> =
-    full_geometry_native::ExecutionGeometryNativeJumpRotateHaltFailureCause<
+    full_native::ExecutionGeometryNativeJumpRotateHaltFailureCause<
         MemoryError,
         RunnerError,
     >;
+type FullGeometryLoadedFailureCause<RunnerError> =
+    full_native::ExecutionGeometryNativeJumpRotateHaltLoadedFailureCause<
+        RunnerError,
+    >;
 type FullGeometryOutcome =
-    full_geometry_native::ExecutionGeometryNativeJumpRotateHaltOutcome;
+    full_native::ExecutionGeometryNativeJumpRotateHaltOutcome;
 type FullGeometrySequence =
-    full_geometry_native::ExecutionGeometryNativeJumpRotateHaltSequence;
+    full_native::ExecutionGeometryNativeJumpRotateHaltSequence;
 
 type InitialJumpAdmission =
     jump_native::ExecutionGeometryNativeInitialJumpDataAdmission;
@@ -620,6 +626,11 @@ type GeometryNativeNoopHaltReadyPair = (
     ReadyExecutionGeometryNativeExecutable,
 );
 type GeometryNativeRotateHaltReadyPair = (
+    ReadyExecutionGeometryNativeExecutable,
+    ReadyExecutionGeometryNativeExecutable,
+);
+type GeometryNativeJumpRotateHaltReadyTriple = (
+    ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutable,
 );
@@ -13339,6 +13350,28 @@ fn geometry_native_noop_halt_sequence(
         .map_err(|error| error.to_string())
 }
 
+fn load_geometry_native_jump_rotate_halt_triple(
+    adapter: &mut FakeNativeExecutableAdapter,
+    sequence: &FullGeometrySequence,
+) -> Result<GeometryNativeJumpRotateHaltReadyTriple, String> {
+    let initial_jump = load_execution_geometry_native_executable(
+        adapter,
+        sequence.initial_jump().load_image(),
+    )
+    .map_err(|error| format!("v5 full prebind jump load: {error}"))?;
+    let rotate = load_execution_geometry_native_executable(
+        adapter,
+        sequence.suffix().rotate().load_image(),
+    )
+    .map_err(|error| format!("v5 full prebind rotate load: {error}"))?;
+    let halt = load_execution_geometry_native_executable(
+        adapter,
+        sequence.suffix().halt().load_image(),
+    )
+    .map_err(|error| format!("v5 full prebind halt load: {error}"))?;
+    Ok((initial_jump, rotate, halt))
+}
+
 fn load_geometry_native_rotate_halt_pair(
     adapter: &mut FakeNativeExecutableAdapter,
     sequence: &ExecutionGeometryNativeRotateHaltSequence,
@@ -14862,6 +14895,177 @@ fn geometry_native_noop_halt_loaded_late_failure_retains_prefix()
         .map_err(|error| format!("v5 loaded late no-op release: {error}"))?;
     release_execution_geometry_native_executable(&mut adapter, halt)
         .map_err(|error| format!("v5 loaded late halt release: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_prebind_rejects_mixed_jump()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let n11_fixture = derived_v5_jump_rotate_halt_sequence_fixture(11)?;
+    let n10 = geometry_native_jump_rotate_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_jump_rotate_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(136)?,
+        native_executable_address(0x3_6000)?,
+    );
+    let jump = load_execution_geometry_native_executable(
+        &mut adapter,
+        n11.initial_jump().load_image(),
+    )
+    .map_err(|error| format!("v5 mixed prebind jump load: {error}"))?;
+    let rotate = load_execution_geometry_native_executable(
+        &mut adapter,
+        n10.suffix().rotate().load_image(),
+    )
+    .map_err(|error| format!("v5 mixed prebind rotate load: {error}"))?;
+    let halt = load_execution_geometry_native_executable(
+        &mut adapter,
+        n10.suffix().halt().load_image(),
+    )
+    .map_err(|error| format!("v5 mixed prebind halt load: {error}"))?;
+    let rejected = matches!(
+        n10.bind_executables(&jump, &rotate, &halt),
+        Err(FullGeometryBindingError::InitialJump)
+    );
+    release_execution_geometry_native_executable(&mut adapter, jump)
+        .map_err(|error| format!("v5 mixed prebind jump release: {error}"))?;
+    release_execution_geometry_native_executable(&mut adapter, rotate)
+        .map_err(|error| format!("v5 mixed prebind rotate release: {error}"))?;
+    release_execution_geometry_native_executable(&mut adapter, halt)
+        .map_err(|error| format!("v5 mixed prebind halt release: {error}"))?;
+    if rejected && adapter.operations.len() == 15 {
+        Ok(())
+    } else {
+        Err(String::from("v5 mixed prebound jump was admitted"))
+    }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_prebound_late_failure_retains_rotate()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 prebound initial state missing"))?;
+    let rotate_state = fixture
+        .states
+        .get(2)
+        .ok_or_else(|| String::from("v5 prebound rotate state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(137)?,
+        native_executable_address(0x3_7000)?,
+    );
+    let (jump, rotate, halt) =
+        load_geometry_native_jump_rotate_halt_triple(&mut adapter, &sequence)?;
+    {
+        let bound = sequence
+            .bind_executables(&jump, &rotate, &halt)
+            .map_err(|error| format!("v5 full prebind bind: {error}"))?;
+        let mut memory = initial.memory().to_vec();
+        let input = initial.io().input().to_vec();
+        let mut output = initial.io().output().to_vec();
+        let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::FailureAfterMutation,
+        ]);
+        let Err(failure) = bound.execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ) else {
+            return Err(String::from("v5 prebound late failure was ignored"));
+        };
+        let suffix_halt_failure = matches!(
+            failure.cause(),
+            FullGeometryLoadedFailureCause::Suffix(suffix)
+                if matches!(
+                    suffix.cause(),
+                    RHLoadedCause::HaltExecution(_error)
+                )
+        );
+        if failure.index() != 2
+            || failure.state() != rotate_state
+            || memory != rotate_state.memory()
+            || runner.calls != 3
+            || adapter.operations.len() != 12
+            || !suffix_halt_failure
+        {
+            return Err(String::from("v5 prebound late failure lost rotate"));
+        }
+    }
+    release_execution_geometry_native_executable(&mut adapter, jump)
+        .map_err(|error| format!("v5 prebound jump release: {error}"))?;
+    release_execution_geometry_native_executable(&mut adapter, rotate)
+        .map_err(|error| format!("v5 prebound rotate release: {error}"))?;
+    release_execution_geometry_native_executable(&mut adapter, halt)
+        .map_err(|error| format!("v5 prebound halt release: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_prebound_reuses_three_executables()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 prebound initial state missing"))?;
+    let final_state = fixture
+        .states
+        .get(3)
+        .ok_or_else(|| String::from("v5 prebound final state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(138)?,
+        native_executable_address(0x3_8000)?,
+    );
+    let (jump, rotate, halt) =
+        load_geometry_native_jump_rotate_halt_triple(&mut adapter, &sequence)?;
+    {
+        let bound = sequence
+            .bind_executables(&jump, &rotate, &halt)
+            .map_err(|error| format!("v5 full prebind bind: {error}"))?;
+        let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::Applied,
+        ]);
+        for _iteration in 0usize..2usize {
+            let mut memory = initial.memory().to_vec();
+            let input = initial.io().input().to_vec();
+            let mut output = initial.io().output().to_vec();
+            let outcome = bound
+                .execute(
+                    &mut runner,
+                    NativeRegionBuffers::new(&mut memory, &input, &mut output),
+                )
+                .map_err(|error| format!("v5 full prebind execute: {error}"))?;
+            if outcome != FullGeometryOutcome::Completed(final_state.clone())
+                || memory != final_state.memory()
+                || output != final_state.io().output()
+            {
+                return Err(String::from("v5 prebound reuse state drifted"));
+            }
+        }
+        if runner.calls != 6 || adapter.operations.len() != 12 {
+            return Err(String::from("v5 prebound reuse remapped triple"));
+        }
+    }
+    release_execution_geometry_native_executable(&mut adapter, jump)
+        .map_err(|error| format!("v5 prebound jump release: {error}"))?;
+    release_execution_geometry_native_executable(&mut adapter, rotate)
+        .map_err(|error| format!("v5 prebound rotate release: {error}"))?;
+    release_execution_geometry_native_executable(&mut adapter, halt)
+        .map_err(|error| format!("v5 prebound halt release: {error}"))?;
+    if adapter.operations.len() == 15 {
+        Ok(())
+    } else {
+        Err(String::from("v5 prebound triple release drifted"))
+    }
 }
 
 #[test]

@@ -728,6 +728,19 @@ Five focused tests cover exact three-step completion, both prefix guard cases,
 late failure, and mixed-geometry rejection. This wrapper adds no generic v5
 planner or three-entry cache authority.
 
+The full path can now prebind three caller-owned synchronized executables before
+any caller buffer is borrowed. Initial-jump image identity is checked directly,
+while rotate/halt binding delegates to the already reviewed suffix prebinding
+contract. Prebound execution then performs no executable-memory adapter work;
+it only prepares each exact checkpoint, runs the dedicated v5 runner, and
+remaps suffix-local failures to global indices.
+
+Focused tests load one exact N10 triple once and execute it twice without any
+additional mapping operations, reject an N11 jump executable before mutation,
+and preserve the post-rotate checkpoint on a prebound halt failure. Mapping
+ownership and release remain external to this wrapper; reusable owned triples
+and a three-entry lease cache are still separate work.
+
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence
 equality is its sole identity authority; it does not share resident state or
