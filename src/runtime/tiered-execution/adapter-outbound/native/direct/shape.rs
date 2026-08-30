@@ -40,6 +40,8 @@ type ExecutionGeometryInitialHaltShapeResult = Result<
 >;
 type ExecutionGeometryNoOperationShapeResult =
     Result<DirectNoOperationProgram, DirectExecutionGeometryNoOperationError>;
+type ExecutionGeometryRotateShapeResult =
+    Result<DirectRotateProgram, DirectExecutionGeometryRotateError>;
 
 fn direct_program_header_supported(program: &RegionEffectProgram) -> bool {
     is_canonical_effect_ir_version(program.format_version)
@@ -200,6 +202,132 @@ pub(super) fn validate_execution_geometry_no_operation_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectExecutionGeometryNoOperationError::TargetFeatures);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_execution_geometry_rotate_program(
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> ExecutionGeometryRotateShapeResult {
+    if program.format_version() != EFFECT_IR_EXECUTION_GEOMETRY_VERSION
+        || !program.fits_execution_geometry_capacity()
+        || !program.fits_profile_capacity()
+        || program.step_budget() != 1
+        || program.memory_live_ins().len() != 2
+        || program.effects().len() != 1
+        || program.outcome() != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectExecutionGeometryRotateError::ProgramShape);
+    }
+    let effect = program
+        .effects()
+        .first()
+        .copied()
+        .ok_or(DirectExecutionGeometryRotateError::ProgramShape)?;
+    derive_execution_geometry_rotate_program(program, effect)
+        .ok_or(DirectExecutionGeometryRotateError::ProgramShape)
+}
+
+fn derive_execution_geometry_rotate_program(
+    program: &ExecutionGeometryRegionEffectProgram,
+    effect: EffectOp,
+) -> Option<DirectRotateProgram> {
+    let before = effect.before;
+    let code_pointer = before.registers.code_pointer;
+    let data_pointer = before.registers.data_pointer;
+    if code_pointer == data_pointer || before.termination.is_some() {
+        return None;
+    }
+    let code_live_in = program
+        .memory_live_ins()
+        .iter()
+        .copied()
+        .find(|live_in| live_in.address == code_pointer)?;
+    let data_live_in = program
+        .memory_live_ins()
+        .iter()
+        .copied()
+        .find(|live_in| live_in.address == data_pointer)?;
+    let commit = execution_geometry_rotate_commit(
+        program,
+        before,
+        code_live_in,
+        data_live_in,
+    )?;
+    let expected_after = ProfileMachineObservation {
+        registers: ProfileRegisters {
+            accumulator: commit.accumulator,
+            code_pointer: commit.next_code_pointer,
+            data_pointer: commit.next_data_pointer,
+        },
+        ..before
+    };
+    if effect.after != expected_after
+        || effect.input.is_some()
+        || effect.output.is_some()
+        || effect.memory_delta
+            != rotate_memory_delta(code_live_in, data_live_in, commit)
+    {
+        return None;
+    }
+    Some(DirectRotateProgram {
+        code_live_in,
+        commit,
+        data_live_in,
+        observation: before,
+    })
+}
+
+fn execution_geometry_rotate_commit(
+    program: &ExecutionGeometryRegionEffectProgram,
+    before: ProfileMachineObservation,
+    code_live_in: MemoryLiveIn,
+    data_live_in: MemoryLiveIn,
+) -> Option<DirectRotateCommit> {
+    let code_pointer = before.registers.code_pointer;
+    let data_pointer = before.registers.data_pointer;
+    if decode_profile_instruction(code_live_in.value, code_pointer)
+        != Some(b'*')
+    {
+        return None;
+    }
+    let memory_words = program.execution_geometry().memory_words();
+    if data_live_in.value >= memory_words {
+        return None;
+    }
+    let rotated_value = profile_rotate(data_live_in.value, memory_words);
+    Some(DirectRotateCommit {
+        accumulator: rotated_value,
+        data_address: data_pointer,
+        data_value: rotated_value,
+        encrypted_address: code_pointer,
+        encrypted_value: encrypt_profile_cell(code_live_in.value)?,
+        next_code_pointer: profile_pointer_successor(
+            code_pointer,
+            memory_words,
+        )?,
+        next_data_pointer: profile_pointer_successor(
+            data_pointer,
+            memory_words,
+        )?,
+    })
+}
+
+pub(super) fn validate_execution_geometry_rotate_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectExecutionGeometryRotateError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectExecutionGeometryRotateError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_EXECUTION_GEOMETRY_ROTATE_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_EXECUTION_GEOMETRY_ROTATE_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectExecutionGeometryRotateError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectExecutionGeometryRotateError::TargetFeatures);
     }
     Ok(())
 }

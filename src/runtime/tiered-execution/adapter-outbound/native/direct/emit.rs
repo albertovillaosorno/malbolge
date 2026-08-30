@@ -117,6 +117,29 @@ pub fn emit_direct_execution_geometry_no_operation_coff(
     ))
 }
 
+/// Emits guarded rotate code for one explicit-geometry v5 program.
+///
+/// The selected commit derives rotation and C/D successors from the explicit
+/// execution geometry rather than canonical profile capacity.
+///
+/// # Errors
+///
+/// Returns [`DirectExecutionGeometryRotateError`] when the v5 shape, target,
+/// identity, or canonical object cannot be represented.
+pub fn emit_direct_execution_geometry_rotate_coff(
+    program: &ExecutionGeometryRegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectExecutionGeometryRotateError> {
+    let selected = validate_execution_geometry_rotate_program(program)?;
+    validate_execution_geometry_rotate_target(&target)?;
+    let key = NativeArtifactKey::new_execution_geometry(program, target)?;
+    let triple = target_triple(key.target().host_isa());
+    let object = execution_geometry_rotate_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
 /// Emits the exact graphical halt-fetch termination fast path.
 ///
 /// # Errors

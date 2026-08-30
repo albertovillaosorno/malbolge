@@ -147,6 +147,38 @@ pub fn verify_direct_execution_geometry_no_operation(
     })
 }
 
+/// Promotes only guarded rotate code bound to exact v5 geometry.
+///
+/// # Errors
+///
+/// Returns [`DirectExecutionGeometryRotateError`] when v5 shape, identity,
+/// target, COFF structure, or any canonical object byte differs.
+pub fn verify_direct_execution_geometry_rotate(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> Result<
+    VerifiedExecutionGeometryRotateNativeObjectArtifact,
+    DirectExecutionGeometryRotateError,
+> {
+    let selected = validate_execution_geometry_rotate_program(program)?;
+    validate_execution_geometry_rotate_target(artifact.key().target())?;
+    let expected_key = NativeArtifactKey::new_execution_geometry(
+        program,
+        artifact.key().target().clone(),
+    )?;
+    if artifact.key() != &expected_key {
+        return Err(DirectExecutionGeometryRotateError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = execution_geometry_rotate_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectExecutionGeometryRotateError::ObjectBytes);
+    }
+    Ok(VerifiedExecutionGeometryRotateNativeObjectArtifact {
+        artifact: admitted,
+    })
+}
+
 /// Promotes only the canonical graphical halt-fetch object for its exact IR.
 ///
 /// # Errors

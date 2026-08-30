@@ -208,6 +208,30 @@ pub(super) fn execution_geometry_no_operation_coff(
         .ok_or(DirectExecutionGeometryNoOperationError::ObjectBytes)
 }
 
+pub(super) fn execution_geometry_rotate_coff(
+    key: &NativeArtifactKey,
+    selected: DirectRotateProgram,
+) -> Result<Vec<u8>, DirectExecutionGeometryRotateError> {
+    let observation = direct_entry_observation(selected.observation)
+        .ok_or(DirectExecutionGeometryRotateError::ObjectBytes)?;
+    let guard = DirectRotateGuard {
+        code_live_in: selected.code_live_in.value,
+        data_live_in: selected.data_live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::rotate_code(observation, guard, selected.commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::rotate_code(observation, guard, selected.commit)
+        },
+    }
+    .ok_or(DirectExecutionGeometryRotateError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectExecutionGeometryRotateError::ObjectBytes)
+}
+
 pub(super) fn halt_fetch_coff(
     key: &NativeArtifactKey,
     selected: DirectFetchedTerminalProgram,

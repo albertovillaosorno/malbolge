@@ -633,6 +633,18 @@ machine-code primitive. Real `DP` proof traces admit N10 and N11 independently
 on x86-64 and AArch64; keys/objects remain geometry-distinct and cross-geometry
 verification fails closed.
 
+`direct-execution-geometry-rotate` revision 1 adds a second state-changing v5
+artifact boundary without granting execution authority. The selector consumes
+the real rotate trace reached as step two of the independently certified `(&O`
+jump/rotate/halt theorem, requires two non-aliasing code/data live-ins, derives
+the rotated A/data value plus C/D successors from explicit execution geometry,
+and verifies the exact memory delta before emission. x86-64 and AArch64 reuse
+the reviewed rotate machine-code primitive only after those values are fixed.
+
+N10 and N11 retain distinct v5 keys/objects and cross-geometry verification
+rejects. No rotate load-image constructor, checkpoint admission, runner, or
+composition path exists yet, so this artifact alone cannot execute native code.
+
 The no-operation artifact retains its own verified wrapper and now reaches
 execution only through a separate checkpoint-bound composition module.
 `VerifiedExecutionGeometryLoadImage::from_no_operation()` admits its exact

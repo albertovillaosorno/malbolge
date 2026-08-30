@@ -658,6 +658,13 @@ transfers, verification, and other separately measured costs.
   the reviewed fetched-cell guards and machine-code commit primitive. Real `DP`
   traces admit N10 and N11 separately on x86-64/AArch64; their objects/keys
   remain distinct and cross-geometry verification rejects.
+- A second state-changing artifact boundary now admits explicit-geometry rotate
+  without granting loader or invocation authority. Real `(&O` theorem traces
+  supply the reached rotate step; selection derives the rotated A/data value
+  and successor C/D from execution geometry, verifies exact two-live-in writes,
+  and reuses reviewed x86-64/AArch64 rotate primitives only after that proof.
+  N10/N11 artifacts remain identity-distinct and cross-geometry verification
+  rejects. Rotate load/admission/execution and additional templates remain open.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only
   admissible Applied state. The separate load image, prepare/bind layer, v5
