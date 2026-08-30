@@ -94,6 +94,34 @@ pub fn emit_direct_execution_geometry_initial_halt_coff(
     ))
 }
 
+/// Emits guarded aliasing initial jump-data code for one explicit-geometry v5
+/// program.
+///
+/// C/D successors are derived from explicit execution geometry rather than
+/// canonical profile capacity.
+///
+/// # Errors
+///
+/// Returns [`DirectExecutionGeometryInitialJumpDataError`] when the v5 shape,
+/// target, identity, or canonical object cannot be represented.
+pub fn emit_direct_execution_geometry_initial_jump_data_coff(
+    program: &ExecutionGeometryRegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<
+    UntrustedNativeObjectArtifact,
+    DirectExecutionGeometryInitialJumpDataError,
+> {
+    let selected =
+        validate_execution_geometry_initial_jump_data_program(program)?;
+    validate_execution_geometry_initial_jump_data_target(&target)?;
+    let key = NativeArtifactKey::new_execution_geometry(program, target)?;
+    let triple = target_triple(key.target().host_isa());
+    let object = execution_geometry_initial_jump_data_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
 /// Emits guarded no-operation code for one explicit-geometry v5 program.
 ///
 /// # Errors

@@ -633,6 +633,24 @@ machine-code primitive. Real `DP` proof traces admit N10 and N11 independently
 on x86-64 and AArch64; keys/objects remain geometry-distinct and cross-geometry
 verification fails closed.
 
+`direct-execution-geometry-initial-jump-data` revision 1 admits the aliasing
+first `j` step of the certified `(&O` theorem without granting execution
+authority. At this entry checkpoint C and D are both zero, so fetch, semantic
+data read, and self-encryption read refer to one physical cell; v5 trace
+projection therefore carries one deduplicated live-in rather than the two
+non-aliasing live-ins required by legacy `direct-jump-data`. The selector
+requires C==D, decodes that sole cell as `j`, derives C' from C and D' from the
+same live-in using explicit execution geometry, and verifies the exact
+self-encryption-only memory delta.
+
+After semantic selection, x86-64 and AArch64 reuse the reviewed no-operation
+machine-code commit primitive because this particular aliasing jump has the same
+caller-visible mutation surface: one fetched-cell guard, one XLAT2 write,
+unchanged A, and precomputed C'/D'. The native key, backend identity, verified
+wrapper, and semantic admission remain jump-specific. Real `(&O` N10/N11
+traces produce distinct v5 keys/objects and cross-geometry verification rejects;
+no load-image or checkpoint execution authority is added by this artifact.
+
 `direct-execution-geometry-rotate` revision 1 adds a second state-changing v5
 artifact boundary without granting execution authority. The selector consumes
 the real rotate trace reached as step two of the independently certified `(&O`

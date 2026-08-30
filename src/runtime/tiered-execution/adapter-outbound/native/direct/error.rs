@@ -143,6 +143,65 @@ impl From<NativeIdentityError> for DirectExecutionGeometryInitialHaltError {
     }
 }
 
+/// Failure while emitting or verifying v5 guarded initial jump-data.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectExecutionGeometryInitialJumpDataError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this v5 program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical guarded aliasing initial
+    /// jump-data object.
+    ObjectBytes,
+    /// Explicit-geometry IR is outside the guarded aliasing initial jump-data
+    /// subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this v5 contract.
+    TargetBackend,
+    /// This v5 backend has no target-specific feature specializations.
+    TargetFeatures,
+    /// This v5 backend currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectExecutionGeometryInitialJumpDataError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => "v5 initial-jump COFF structure was rejected",
+            Self::Identity(_error) => {
+                "v5 initial jump-data identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "v5 initial-jump object differs from canonical bytes"
+            },
+            Self::ProgramShape => {
+                "explicit-geometry IR is outside v5 initial-jump subset"
+            },
+            Self::TargetBackend => {
+                "target does not select v5 initial jump-data backend"
+            },
+            Self::TargetFeatures => {
+                "v5 initial jump-data backend requires no CPU features"
+            },
+            Self::TargetFormat => {
+                "v5 initial-jump backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectExecutionGeometryInitialJumpDataError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectExecutionGeometryInitialJumpDataError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying v5 guarded no-operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectExecutionGeometryNoOperationError {

@@ -52,6 +52,7 @@ use coff::*;
 pub use emit::{
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_execution_geometry_initial_halt_coff,
+    emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_no_operation_coff,
     emit_direct_execution_geometry_rotate_coff, emit_direct_halt_fetch_coff,
     emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
@@ -91,6 +92,7 @@ use shape::*;
 pub use verify::{
     verify_direct_crazy, verify_direct_deopt_stub,
     verify_direct_execution_geometry_initial_halt,
+    verify_direct_execution_geometry_initial_jump_data,
     verify_direct_execution_geometry_no_operation,
     verify_direct_execution_geometry_rotate, verify_direct_halt_fetch,
     verify_direct_halt_registers, verify_direct_initial_halt,
@@ -132,6 +134,11 @@ pub const DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID: &str =
     "direct-execution-geometry-initial-halt";
 /// Guarded explicit-geometry initial-halt code-generation revision.
 pub const DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION: u32 = 1;
+/// Backend identity for explicit-geometry initial jump-data.
+pub const DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_ID: &str =
+    "direct-execution-geometry-initial-jump-data";
+/// Explicit-geometry jump-data code-generation revision.
+pub const DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_REVISION: u32 = 1;
 /// Backend identity for explicit-geometry one-step no-operation.
 pub const DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID: &str =
     "direct-execution-geometry-no-operation";
@@ -287,6 +294,15 @@ pub(super) struct DirectRotateCommit {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct DirectFetchedTerminalProgram {
     live_in: MemoryLiveIn,
+    observation: ProfileMachineObservation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DirectInitialJumpDataProgram {
+    encrypted_value: u32,
+    live_in: MemoryLiveIn,
+    next_code_pointer: u32,
+    next_data_pointer: u32,
     observation: ProfileMachineObservation,
 }
 

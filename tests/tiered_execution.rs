@@ -142,6 +142,8 @@ use execution_native::{
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION,
+    DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_ID,
+    DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_ROTATE_BACKEND_ID,
@@ -158,6 +160,7 @@ use execution_native::{
     DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
     DirectCacheDisposition, DirectCrazyError, DirectDeoptError,
     DirectExecutionGeometryInitialHaltError,
+    DirectExecutionGeometryInitialJumpDataError,
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryRotateError, DirectHaltFetchError,
     DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
@@ -205,6 +208,7 @@ use execution_native::{
     VerifiedExecutionGeometryLoadImage, compile_preflighted_clang_c23,
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_execution_geometry_initial_halt_coff,
+    emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_no_operation_coff,
     emit_direct_execution_geometry_rotate_coff, emit_direct_halt_fetch_coff,
     emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
@@ -224,6 +228,7 @@ use execution_native::{
     select_verified_direct_native, select_verified_direct_sequence,
     structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
     verify_direct_execution_geometry_initial_halt,
+    verify_direct_execution_geometry_initial_jump_data,
     verify_direct_execution_geometry_no_operation,
     verify_direct_execution_geometry_rotate, verify_direct_halt_fetch,
     verify_direct_halt_registers, verify_direct_initial_halt,
@@ -2428,6 +2433,22 @@ fn direct_execution_geometry_initial_halt_target(
         ),
         backend_revision:
             DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+fn direct_execution_geometry_initial_jump_data_target(
+    isa: HostIsa,
+) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(
+            DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_ID,
+        ),
+        backend_revision:
+            DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_REVISION,
         host_isa: isa,
         host_os: HostOperatingSystem::Windows,
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
@@ -12383,6 +12404,39 @@ fn derived_v5_handoff_fixture(
     Ok((program, checkpoint, verified.geometry()))
 }
 
+fn derived_v5_initial_jump_data_fixture(
+    word_trits: u8,
+) -> Result<DerivedV5HandoffFixture, String> {
+    let verified = verify_jump_rotate_halt_profile_width(
+        current_profile(),
+        b"(&O",
+        word_trits,
+    )
+    .map_err(|error| format!("v5 initial jump-data verification: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new()).map_err(
+            |error| format!("v5 initial jump-data machine: {error}"),
+        )?;
+    let checkpoint = machine.snapshot_state();
+    let mut trace_slot = None;
+    let outcome = machine
+        .step_traced(&mut |trace| trace_slot = Some(*trace))
+        .map_err(|error| format!("v5 initial jump-data trace: {error}"))?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from(
+            "v5 initial jump-data fixture did not advance",
+        ));
+    }
+    let trace = trace_slot
+        .ok_or_else(|| String::from("v5 initial jump-data trace missing"))?;
+    let program =
+        ExecutionGeometryRegionEffectProgram::from_profile_step_trace(&trace)
+            .map_err(|error| {
+            format!("v5 initial jump-data projection: {error:?}")
+        })?;
+    Ok((program, checkpoint, verified.geometry()))
+}
+
 fn derived_v5_no_operation_fixture(
     word_trits: u8,
 ) -> Result<DerivedV5HandoffFixture, String> {
@@ -12528,6 +12582,87 @@ fn derived_v5_noop_halt_sequence_fixture(
         states,
         traces,
     })
+}
+
+fn assert_v5_initial_jump_data_artifact(
+    isa: HostIsa,
+    n10: &ExecutionGeometryRegionEffectProgram,
+    n11: &ExecutionGeometryRegionEffectProgram,
+) -> Result<(), String> {
+    let n10_artifact = emit_direct_execution_geometry_initial_jump_data_coff(
+        n10,
+        direct_execution_geometry_initial_jump_data_target(isa),
+    )
+    .map_err(|error| {
+        format!("v5 initial jump-data N10 {isa:?} emit: {error}")
+    })?;
+    let n11_artifact = emit_direct_execution_geometry_initial_jump_data_coff(
+        n11,
+        direct_execution_geometry_initial_jump_data_target(isa),
+    )
+    .map_err(|error| {
+        format!("v5 initial jump-data N11 {isa:?} emit: {error}")
+    })?;
+    if n10_artifact.key() == n11_artifact.key()
+        || n10_artifact.object() == n11_artifact.object()
+    {
+        return Err(String::from(
+            "v5 initial jump-data geometry identity collapsed",
+        ));
+    }
+    let verified =
+        verify_direct_execution_geometry_initial_jump_data(&n10_artifact, n10)
+            .map_err(|error| {
+                format!("v5 initial jump-data N10 {isa:?} verify: {error}")
+            })?;
+    if verified.key() != n10_artifact.key()
+        || verified.object() != n10_artifact.object()
+        || verified.target_triple() != n10_artifact.target_triple()
+    {
+        return Err(String::from("v5 initial jump-data verification drifted"));
+    }
+    if verify_direct_execution_geometry_initial_jump_data(&n10_artifact, n11)
+        != Err(DirectExecutionGeometryInitialJumpDataError::ProgramShape)
+    {
+        return Err(String::from(
+            "v5 initial jump-data geometry mismatch admitted",
+        ));
+    }
+    assert_tampered_direct_profile_metadata(&n10_artifact)
+}
+
+#[test]
+fn direct_execution_geometry_initial_jump_data_admits_exact_v5_geometry()
+-> Result<(), String> {
+    let (n10, _n10_checkpoint, n10_geometry) =
+        derived_v5_initial_jump_data_fixture(10)?;
+    let (n11, _n11_checkpoint, _n11_geometry) =
+        derived_v5_initial_jump_data_fixture(11)?;
+    let [live_in] = n10.memory_live_ins() else {
+        return Err(String::from(
+            "v5 initial jump-data did not dedupe alias read",
+        ));
+    };
+    let entry = n10.entry_observation().ok_or_else(|| {
+        String::from("v5 initial jump-data entry observation missing")
+    })?;
+    let exit = n10.exit_observation().ok_or_else(|| {
+        String::from("v5 initial jump-data exit observation missing")
+    })?;
+    if entry.registers.code_pointer != entry.registers.data_pointer
+        || live_in.address != entry.registers.code_pointer
+        || exit.registers.data_pointer != live_in.value.saturating_add(1)
+        || n10.execution_geometry().memory_words()
+            != n10_geometry.memory_words()
+    {
+        return Err(String::from(
+            "v5 initial jump-data alias contract drifted",
+        ));
+    }
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_v5_initial_jump_data_artifact(isa, &n10, &n11)?;
+    }
+    Ok(())
 }
 
 #[test]

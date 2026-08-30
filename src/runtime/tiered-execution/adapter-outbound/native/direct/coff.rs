@@ -179,6 +179,35 @@ pub(super) fn execution_geometry_initial_halt_coff(
         .ok_or(DirectExecutionGeometryInitialHaltError::ObjectBytes)
 }
 
+pub(super) fn execution_geometry_initial_jump_data_coff(
+    key: &NativeArtifactKey,
+    selected: DirectInitialJumpDataProgram,
+) -> Result<Vec<u8>, DirectExecutionGeometryInitialJumpDataError> {
+    let observation = direct_entry_observation(selected.observation)
+        .ok_or(DirectExecutionGeometryInitialJumpDataError::ObjectBytes)?;
+    let guard = DirectFetchedCellGuard {
+        live_in_value: selected.live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let commit = DirectCodeWriteCommit {
+        encrypted_address: selected.live_in.address,
+        encrypted_value: selected.encrypted_value,
+        next_code_pointer: selected.next_code_pointer,
+        next_data_pointer: selected.next_data_pointer,
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::no_operation_code(observation, guard, commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::no_operation_code(observation, guard, commit)
+        },
+    }
+    .ok_or(DirectExecutionGeometryInitialJumpDataError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectExecutionGeometryInitialJumpDataError::ObjectBytes)
+}
+
 pub(super) fn execution_geometry_no_operation_coff(
     key: &NativeArtifactKey,
     selected: DirectNoOperationProgram,
