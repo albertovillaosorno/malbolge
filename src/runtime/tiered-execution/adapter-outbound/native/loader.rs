@@ -43,6 +43,7 @@ use super::coff::{
 use super::direct::{
     VerifiedDirectNativeArtifact,
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
+    VerifiedExecutionGeometryNoOperationNativeObjectArtifact,
 };
 use crate::execution_cache::{
     HostIsa, NativeArtifactKey, NativeTargetIdentity,
@@ -175,11 +176,35 @@ impl VerifiedExecutionGeometryLoadImage {
     pub fn from_initial_halt(
         artifact: &VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     ) -> Result<Self, VerifiedDirectLoadError> {
-        let parts = verified_load_image_parts(
+        Self::from_verified_parts(
             artifact.key(),
             artifact.object(),
             artifact.target_triple(),
-        )?;
+        )
+    }
+
+    /// Derives a relocation-free image from verified v5 no-operation bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectLoadError`] when COFF extraction, relocation, or
+    /// target instruction alignment is invalid.
+    pub fn from_no_operation(
+        artifact: &VerifiedExecutionGeometryNoOperationNativeObjectArtifact,
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        Self::from_verified_parts(
+            artifact.key(),
+            artifact.object(),
+            artifact.target_triple(),
+        )
+    }
+
+    fn from_verified_parts(
+        key: &NativeArtifactKey,
+        object: &[u8],
+        target_triple: &'static str,
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        let parts = verified_load_image_parts(key, object, target_triple)?;
         Ok(Self {
             code: parts.code,
             entry_offset: parts.entry_offset,

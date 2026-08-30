@@ -695,6 +695,50 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         self.expected_observation
     }
 
+    fn from_effect(
+        effect: EffectOp,
+        live_ins: &[MemoryLiveIn],
+        required: u64,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let NativeRegionBuffers { input, memory, output } = buffers;
+        if u64::try_from(memory.len())
+            .map_or(true, |available| available < required)
+        {
+            return Err(NativeRegionInvocationError::MemoryCapacity {
+                available: memory.len(),
+                required,
+            });
+        }
+        validate_live_ins(live_ins, memory)?;
+        validate_input(effect, input)?;
+
+        let entry_memory = memory.to_vec();
+        let entry_output = output.to_vec();
+        let mut expected_memory = entry_memory.clone();
+        apply_write(&mut expected_memory, effect.memory_delta.data)?;
+        apply_write(&mut expected_memory, effect.memory_delta.encryption)?;
+        let expected_output = derive_expected_output(effect, &entry_output)?;
+
+        let frame =
+            NativeRegionCallFrame::new(memory, input, output, effect.before)
+                .map_err(NativeRegionInvocationError::CallFrame)?;
+        let entry_state = *frame.state();
+        let expected_state = entry_state
+            .with_observation(effect.after)
+            .map_err(NativeRegionInvocationError::CallFrame)?;
+        Ok(Self {
+            entry_memory,
+            entry_output,
+            entry_state,
+            expected_memory,
+            expected_observation: effect.after,
+            expected_output,
+            expected_state,
+            frame,
+        })
+    }
+
     /// Returns the immutable input bytes retained by the ABI frame.
     #[must_use]
     pub const fn input(&self) -> &[u8] {
@@ -724,42 +768,12 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         output: &'buffers mut [u8],
     ) -> Result<Self, NativeRegionInvocationError> {
         let effect = exact_effect(program)?;
-        let required = program.required_memory_words();
-        if u64::try_from(memory.len())
-            .map_or(true, |available| available < required)
-        {
-            return Err(NativeRegionInvocationError::MemoryCapacity {
-                available: memory.len(),
-                required,
-            });
-        }
-        validate_live_ins(&program.memory_live_ins, memory)?;
-        validate_input(effect, input)?;
-
-        let entry_memory = memory.to_vec();
-        let entry_output = output.to_vec();
-        let mut expected_memory = entry_memory.clone();
-        apply_write(&mut expected_memory, effect.memory_delta.data)?;
-        apply_write(&mut expected_memory, effect.memory_delta.encryption)?;
-        let expected_output = derive_expected_output(effect, &entry_output)?;
-
-        let frame =
-            NativeRegionCallFrame::new(memory, input, output, effect.before)
-                .map_err(NativeRegionInvocationError::CallFrame)?;
-        let entry_state = *frame.state();
-        let expected_state = entry_state
-            .with_observation(effect.after)
-            .map_err(NativeRegionInvocationError::CallFrame)?;
-        Ok(Self {
-            entry_memory,
-            entry_output,
-            entry_state,
-            expected_memory,
-            expected_observation: effect.after,
-            expected_output,
-            expected_state,
-            frame,
-        })
+        Self::from_effect(
+            effect,
+            &program.memory_live_ins,
+            program.required_memory_words(),
+            NativeRegionBuffers::new(memory, input, output),
+        )
     }
 
     /// Prepares the guarded explicit-geometry initial-halt ABI transition.
@@ -801,34 +815,53 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         {
             return Err(NativeRegionInvocationError::ProgramShape);
         }
-        let required = program.required_memory_words();
-        if u64::try_from(memory.len())
-            .map_or(true, |available| available < required)
+        let effect = program
+            .effects()
+            .first()
+            .copied()
+            .ok_or(NativeRegionInvocationError::ProgramShape)?;
+        Self::from_effect(
+            effect,
+            program.memory_live_ins(),
+            program.required_memory_words(),
+            NativeRegionBuffers::new(memory, input, output),
+        )
+    }
+
+    /// Prepares one exact explicit-geometry no-operation ABI transition.
+    ///
+    /// The direct v5 verifier owns instruction semantics; this crate-private
+    /// constructor independently derives the only admitted caller-visible
+    /// effect from the exact one-step program.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeRegionInvocationError`] when shape, capacity, live-ins,
+    /// I/O, or declared memory writes disagree with caller-owned buffers.
+    pub(crate) fn new_execution_geometry_no_operation(
+        program: &ExecutionGeometryRegionEffectProgram,
+        memory: &'buffers mut [u32],
+        input: &'buffers [u8],
+        output: &'buffers mut [u8],
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let [effect] = program.effects() else {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        };
+        if !program.fits_execution_geometry_capacity()
+            || program.step_budget() != 1
+            || program.outcome() != (RunOutcome::BudgetExhausted { steps: 1 })
+            || effect.before.termination.is_some()
+            || effect.after.termination.is_some()
+            || program.memory_live_ins().len() != 1
         {
-            return Err(NativeRegionInvocationError::MemoryCapacity {
-                available: memory.len(),
-                required,
-            });
+            return Err(NativeRegionInvocationError::ProgramShape);
         }
-        validate_live_ins(program.memory_live_ins(), memory)?;
-        let entry_memory = memory.to_vec();
-        let entry_output = output.to_vec();
-        let frame = NativeRegionCallFrame::new(memory, input, output, before)
-            .map_err(NativeRegionInvocationError::CallFrame)?;
-        let entry_state = *frame.state();
-        let expected_state = entry_state
-            .with_observation(after)
-            .map_err(NativeRegionInvocationError::CallFrame)?;
-        Ok(Self {
-            entry_memory: entry_memory.clone(),
-            entry_output: entry_output.clone(),
-            entry_state,
-            expected_memory: entry_memory,
-            expected_observation: after,
-            expected_output: entry_output,
-            expected_state,
-            frame,
-        })
+        Self::from_effect(
+            *effect,
+            program.memory_live_ins(),
+            program.required_memory_words(),
+            NativeRegionBuffers::new(memory, input, output),
+        )
     }
 
     /// Returns the complete caller-owned output capacity.

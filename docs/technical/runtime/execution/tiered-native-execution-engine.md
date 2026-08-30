@@ -633,11 +633,30 @@ machine-code primitive. Real `DP` proof traces admit N10 and N11 independently
 on x86-64 and AArch64; keys/objects remain geometry-distinct and cross-geometry
 verification fails closed.
 
-The no-operation artifact retains its own verified wrapper and has no v5 load or
-invocation bridge yet. That separation prevents the new state-changing object
-from acquiring execution authority merely because its bytes are verified. The
-next native work is to extend the checkpoint-bound v5 load/invocation contract
-to this exact state-changing wrapper before reviewing broader templates.
+The no-operation artifact retains its own verified wrapper and now reaches
+execution only through a separate checkpoint-bound composition module.
+`VerifiedExecutionGeometryLoadImage::from_no_operation()` admits its exact
+relocation-free image, while `PreparedNativeRegionInvocation` exposes a
+crate-private v5 no-operation constructor that reuses the common snapshot,
+live-in, memory-write, I/O, and rollback machinery without routing through
+canonical IR.
+
+`ExecutionGeometryNativeNoOperationAdmission` goes further than initial halt:
+before any mapping, it normatively replays the exact v5 step from a cloned
+opaque checkpoint and stores the resulting checkpoint as the only admissible
+`Applied` state. Exact artifact identity and load-image extraction occur only
+after that
+reprojection succeeds. Preparation requires caller memory/input/output to equal
+the entry checkpoint; Applied must match exact ABI observation, self-encryption,
+and C/D advance, while GuardMiss returns the untouched entry checkpoint.
+
+The bound-call runner and transactional load/call/release path reuse the
+v5-specific runner and executable typestates. N10 prepared state cannot bind an
+N11 no-operation executable; runner failure and completion drift restore the
+entry snapshot; cleanup failure retains exact ready-executable ownership for
+retry; and cleanup failure after Applied retains the already normatively proven
+completion. Eight focused cases cover these admission, binding, rollback, and
+transaction properties. Broader state-changing templates remain separate work.
 
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine

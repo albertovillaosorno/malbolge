@@ -652,14 +652,21 @@ transfers, verification, and other separately measured costs.
   before cleanup, and failed release retains the exact ready executable for
   retry. A release failure after an admitted halt also retains the committed
   opaque-geometry completion.
-- The first state-changing v5 template is now independently admitted for
-  no-operation. Its selector derives successor C/D from explicit execution
-  geometry instead of the canonical N15 requirement, while reusing the reviewed
-  fetched-cell guards and machine-code commit primitive. Real `DP` traces admit
-  N10 and N11 separately on x86-64/AArch64; their objects/keys remain distinct
-  and cross-geometry verification rejects. The verified no-op wrapper still has
-  no v5 load/invocation authority, so extending the checkpoint-bound execution
-  bridge to this state-changing artifact is the next native step.
+- The first state-changing v5 template is now independently admitted and
+  executable for no-operation. Its selector derives successor C/D from explicit
+  execution geometry instead of the canonical N15 requirement, while reusing
+  the reviewed fetched-cell guards and machine-code commit primitive. Real `DP`
+  traces admit N10 and N11 separately on x86-64/AArch64; their objects/keys
+  remain distinct and cross-geometry verification rejects.
+- Checkpoint-bound no-operation admission normatively replays the exact v5 step
+  before mapping and retains that opaque-geometry exit checkpoint as the only
+  admissible Applied state. The separate load image, prepare/bind layer, v5
+  runner, and transactional cleanup path reject N10/N11 executable mismatch,
+  caller-memory drift, runner mutation failure, and completion drift with exact
+  rollback. Guard miss preserves the entry checkpoint, while failed release
+  retains the ready executable for retry and preserves committed Applied state.
+  The next native step is multistep geometry-native composition before broader
+  state-changing templates are reviewed.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and
