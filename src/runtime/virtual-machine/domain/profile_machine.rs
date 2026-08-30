@@ -53,6 +53,7 @@ use crate::profile_width::{
     ProfileExecutionGeometry, VerifiedProfileExecutionGeometry,
     select_minimum_verified_profile_width,
 };
+use crate::profile_word::{ChunkedProfileWord, ChunkedProfileWordError};
 use crate::trace::TraceInput;
 use crate::word::{profile_crazy, profile_low_byte};
 
@@ -1296,6 +1297,34 @@ pub(crate) fn admit_profile_source(
     Ok(words)
 }
 
+/// Decodes one chunked graphical code cell at a same-width code position.
+///
+/// The complete pointer may exceed primitive integer widths; only its modulo-94
+/// XLAT1 phase is projected. The graphical code cell itself must fit the small
+/// canonical translation domain.
+///
+/// # Errors
+///
+/// Returns [`ChunkedProfileWordError::WidthMismatch`] for different widths.
+pub fn decode_chunked_profile_instruction(
+    cell: &ChunkedProfileWord,
+    code_pointer: &ChunkedProfileWord,
+) -> Result<Option<u8>, ChunkedProfileWordError> {
+    if cell.trits() != code_pointer.trits() {
+        return Err(ChunkedProfileWordError::WidthMismatch {
+            right_trits: code_pointer.trits(),
+            left_trits: cell.trits(),
+        });
+    }
+    let Some(cell_value) = cell.to_u32() else {
+        return Ok(None);
+    };
+    let Some(phase) = code_pointer.residue(94).map(u32::from) else {
+        return Ok(None);
+    };
+    Ok(decode_profile_value(cell_value, phase))
+}
+
 /// Decodes one profile-width instruction cell at its exact code position.
 ///
 /// Returns `None` when `cell` is outside graphical ASCII. Graphical cells use
@@ -1315,6 +1344,15 @@ pub fn profile_cell_decodes_to_no_operation(
     decode_profile_instruction(cell, code_pointer).is_some_and(|decoded| {
         !matches!(decoded, b'j' | b'i' | b'*' | b'p' | b'<' | b'/' | b'v')
     })
+}
+
+/// Encrypts one graphical chunked code cell through canonical XLAT2.
+#[must_use]
+pub fn encrypt_chunked_profile_cell(
+    cell: &ChunkedProfileWord,
+) -> Option<ChunkedProfileWord> {
+    let encrypted = encrypt_profile_value(cell.to_u32()?)?;
+    ChunkedProfileWord::from_u64(cell.trits(), u64::from(encrypted)).ok()
 }
 
 /// Encrypts one graphical profile-width code cell after a committed step.

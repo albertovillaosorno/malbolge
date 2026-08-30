@@ -36,7 +36,6 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use crate::instruction::{decode_profile_value, encrypt_profile_value};
 use crate::semantic_width::{
     SEMANTIC_WIDTH_CHUNK_CARDINALITY, SEMANTIC_WIDTH_CHUNK_TRITS,
     SEMANTIC_WIDTH_RADIX,
@@ -189,40 +188,6 @@ impl ChunkedProfileWord {
             chunks: chunks.into_boxed_slice(),
             trits: self.trits,
         })
-    }
-
-    /// Decodes this exact graphical code cell at one same-width code pointer.
-    ///
-    /// The pointer is reduced modulo the 94-position XLAT1 phase without
-    /// narrowing the complete pointer value. Non-graphical cells return `None`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ChunkedProfileWordError::WidthMismatch`] for different widths.
-    pub fn decode(
-        &self,
-        code_pointer: &Self,
-    ) -> Result<Option<u8>, ChunkedProfileWordError> {
-        if self.trits != code_pointer.trits {
-            return Err(ChunkedProfileWordError::WidthMismatch {
-                right_trits: code_pointer.trits,
-                left_trits: self.trits,
-            });
-        }
-        let Some(cell) = self.to_u32() else {
-            return Ok(None);
-        };
-        let Some(phase) = code_pointer.residue(94).map(u32::from) else {
-            return Ok(None);
-        };
-        Ok(decode_profile_value(cell, phase))
-    }
-
-    /// Encrypts this word through XLAT2 when it is exactly graphical ASCII.
-    #[must_use]
-    pub fn encrypt(&self) -> Option<Self> {
-        let encrypted = encrypt_profile_value(self.to_u32()?)?;
-        Self::from_u64(self.trits, u64::from(encrypted)).ok()
     }
 
     /// Constructs the all-two-trit EOF word at any nonzero width.

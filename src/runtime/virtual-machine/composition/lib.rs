@@ -216,9 +216,10 @@ pub use profile::{
 pub use profile_machine::{
     ProfileLoadError, ProfileMachine, ProfileMachineError,
     ProfileMachineIoState, ProfileMachineState, ProfileRegisterName,
-    ProfileRegisters, decode_profile_instruction, encrypt_profile_cell,
-    profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
-    profile_pointer_successor, profile_rotate,
+    ProfileRegisters, decode_chunked_profile_instruction,
+    decode_profile_instruction, encrypt_chunked_profile_cell,
+    encrypt_profile_cell, profile_cell_decodes_to_no_operation,
+    profile_cell_is_graphical, profile_pointer_successor, profile_rotate,
 };
 pub use profile_resident_port::ProfileResidentTransport;
 pub use profile_resident_process::ProfileResidentProcessTransport;

@@ -38,8 +38,9 @@ use malbolge::{
     PROFILE_WORD_CHUNK_CARDINALITY, PROFILE_WORD_CHUNK_TRITS,
     SEMANTIC_WIDTH_CHUNK_CARDINALITY, SEMANTIC_WIDTH_CHUNK_TRITS,
     SEMANTIC_WIDTH_MAXIMUM_TRITS, SEMANTIC_WIDTH_MINIMUM_TRITS,
-    SEMANTIC_WIDTH_RADIX, decode_profile_instruction, encrypt_profile_cell,
-    profile_crazy, profile_rotate,
+    SEMANTIC_WIDTH_RADIX, decode_chunked_profile_instruction,
+    decode_profile_instruction, encrypt_chunked_profile_cell,
+    encrypt_profile_cell, profile_crazy, profile_rotate,
 };
 
 use super::{TestResult, check_equal};
@@ -314,8 +315,7 @@ fn chunked_profile_word_decode_and_encrypt_match_u32_primitives() -> TestResult
                 )
                 .map_err(|error| error.to_string())?;
                 check_equal(
-                    &cell
-                        .decode(&pointer)
+                    &decode_chunked_profile_instruction(&cell, &pointer)
                         .map_err(|error| error.to_string())?,
                     &decode_profile_instruction(cell_value, pointer_value),
                     "chunked decode equals u32 profile decode",
@@ -326,7 +326,8 @@ fn chunked_profile_word_decode_and_encrypt_match_u32_primitives() -> TestResult
                     String::from("graphical u32 encryption failed")
                 })?;
             check_equal(
-                &cell.encrypt().and_then(|word| word.to_u32()),
+                &encrypt_chunked_profile_cell(&cell)
+                    .and_then(|word| word.to_u32()),
                 &Some(expected_encrypted),
                 "chunked encryption equals u32 profile encryption",
             )?;
@@ -343,7 +344,8 @@ fn chunked_profile_word_decode_and_encrypt_support_n100_pointer() -> TestResult
         let cell = ChunkedProfileWord::from_u64(100, u64::from(cell_value))
             .map_err(|error| error.to_string())?;
         check_equal(
-            &cell.decode(&pointer).map_err(|error| error.to_string())?,
+            &decode_chunked_profile_instruction(&cell, &pointer)
+                .map_err(|error| error.to_string())?,
             &Some(decode_oracle(cell_value, &pointer)?),
             "N100 decode equals independent XLAT1 oracle",
         )?;
@@ -353,7 +355,7 @@ fn chunked_profile_word_decode_and_encrypt_support_n100_pointer() -> TestResult
             .copied()
             .ok_or_else(|| String::from("encryption oracle escaped XLAT2"))?;
         check_equal(
-            &cell.encrypt().and_then(|word| word.to_u32()),
+            &encrypt_chunked_profile_cell(&cell).and_then(|word| word.to_u32()),
             &Some(u32::from(encrypted)),
             "N100 encryption equals independent XLAT2 oracle",
         )?;
@@ -635,7 +637,7 @@ fn chunked_profile_word_decode_encrypt_reject_invalid_shapes() -> TestResult {
     let n11_zero =
         ChunkedProfileWord::zero(11).map_err(|error| error.to_string())?;
     check_equal(
-        &n10_zero.decode(&n11_zero),
+        &decode_chunked_profile_instruction(&n10_zero, &n11_zero),
         &Err(ChunkedProfileWordError::WidthMismatch {
             right_trits: 11,
             left_trits: 10,
@@ -643,14 +645,13 @@ fn chunked_profile_word_decode_encrypt_reject_invalid_shapes() -> TestResult {
         "chunked decode rejects pointer width mismatch",
     )?;
     check_equal(
-        &n10_zero
-            .decode(&n10_zero)
+        &decode_chunked_profile_instruction(&n10_zero, &n10_zero)
             .map_err(|error| error.to_string())?,
         &None,
         "non-graphical chunked cell does not decode",
     )?;
     check_equal(
-        &n10_zero.encrypt(),
+        &encrypt_chunked_profile_cell(&n10_zero),
         &None,
         "non-graphical cell does not encrypt",
     )
