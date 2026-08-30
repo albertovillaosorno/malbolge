@@ -180,9 +180,9 @@ use execution_native::{
     StagedNativeExecutable, UntrustedNativeObjectArtifact,
     VerifiedDirectInvocationError, VerifiedDirectLoadError,
     VerifiedDirectLoadImage, VerifiedDirectNativeCache,
-    VerifiedDirectSequencePlan, compile_preflighted_clang_c23,
-    emit_direct_crazy_coff, emit_direct_deopt_coff,
-    emit_direct_execution_geometry_initial_halt_coff,
+    VerifiedDirectSequencePlan, VerifiedExecutionGeometryLoadImage,
+    compile_preflighted_clang_c23, emit_direct_crazy_coff,
+    emit_direct_deopt_coff, emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_input_coff,
     emit_direct_jump_code_coff, emit_direct_jump_data_coff,
@@ -12145,10 +12145,23 @@ fn direct_execution_geometry_initial_halt_admits_exact_v5_geometry()
         let verified =
             verify_direct_execution_geometry_initial_halt(&n10_artifact, &n10)
                 .map_err(|error| format!("v5 N10 {isa:?} verify: {error}"))?;
+        let image =
+            VerifiedExecutionGeometryLoadImage::from_initial_halt(&verified)
+                .map_err(|error| {
+                    format!("v5 N10 {isa:?} load image: {error}")
+                })?;
         if verified.object() != n10_artifact.object()
             || verified.key() != n10_artifact.key()
+            || image.key() != verified.key()
+            || image.host_isa() != isa
+            || image.code().is_empty()
+            || image.entry_code().is_empty()
+            || image.allocation_len() != image.code().len()
+            || image.target_triple() != verified.target_triple()
         {
-            return Err(String::from("v5 verified artifact changed identity"));
+            return Err(String::from(
+                "v5 verified artifact/load image drifted",
+            ));
         }
         if verify_direct_execution_geometry_initial_halt(&n10_artifact, &n11)
             != Err(DirectExecutionGeometryInitialHaltError::ProgramShape)

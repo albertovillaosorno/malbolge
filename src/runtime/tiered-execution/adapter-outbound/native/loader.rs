@@ -40,7 +40,10 @@ use super::coff::{
     CoffAdmissionError, CoffExecutableTextError,
     extract_relocation_free_executable_text,
 };
-use super::direct::VerifiedDirectNativeArtifact;
+use super::direct::{
+    VerifiedDirectNativeArtifact,
+    VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
+};
 use crate::execution_cache::{
     HostIsa, NativeArtifactKey, NativeTargetIdentity,
 };
@@ -71,6 +74,19 @@ pub enum VerifiedDirectLoadError {
     Object(CoffAdmissionError),
     /// The object requires relocation processing not owned by this loader.
     Relocations,
+}
+
+/// Relocation-free image for one verified explicit-geometry native artifact.
+///
+/// This value has no lifecycle or invocation implementation. It only proves
+/// that admitted v5 COFF contains one relocation-free, ISA-aligned code image.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedExecutionGeometryLoadImage {
+    code: Box<[u8]>,
+    entry_offset: usize,
+    key: NativeArtifactKey,
+    policy: NativeExecutableLoadPolicy,
+    target_triple: &'static str,
 }
 
 /// Immutable relocation-free code image retaining complete artifact identity.
@@ -125,6 +141,79 @@ impl Display for VerifiedDirectLoadError {
     }
 }
 
+impl VerifiedExecutionGeometryLoadImage {
+    /// Returns the exact number of admitted code bytes.
+    #[must_use]
+    pub const fn allocation_len(&self) -> usize {
+        self.code.len()
+    }
+
+    /// Returns the complete relocation-free instruction stream.
+    #[must_use]
+    pub const fn code(&self) -> &[u8] {
+        &self.code
+    }
+
+    /// Returns code beginning at the required native entrypoint.
+    #[must_use]
+    pub fn entry_code(&self) -> &[u8] {
+        self.code.get(self.entry_offset..).unwrap_or_default()
+    }
+
+    /// Returns the entrypoint byte offset inside [`Self::code`].
+    #[must_use]
+    pub const fn entry_offset(&self) -> usize {
+        self.entry_offset
+    }
+
+    /// Derives a relocation-free image from verified v5 initial-halt bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectLoadError`] when COFF extraction, relocation, or
+    /// target instruction alignment is invalid.
+    pub fn from_initial_halt(
+        artifact: &VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        let parts = verified_load_image_parts(
+            artifact.key(),
+            artifact.object(),
+            artifact.target_triple(),
+        )?;
+        Ok(Self {
+            code: parts.code,
+            entry_offset: parts.entry_offset,
+            key: parts.key,
+            policy: parts.policy,
+            target_triple: parts.target_triple,
+        })
+    }
+
+    /// Returns the exact ISA retained by the v5 artifact identity.
+    #[must_use]
+    pub const fn host_isa(&self) -> HostIsa {
+        self.key.target().host_isa()
+    }
+
+    /// Returns the complete retained v5 artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        &self.key
+    }
+
+    /// Returns the mandatory W^X and instruction-sync policy.
+    #[must_use]
+    pub const fn policy(&self) -> NativeExecutableLoadPolicy {
+        self.policy
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.target_triple
+    }
+}
+
 impl VerifiedDirectLoadImage {
     /// Returns the exact number of admitted code bytes to allocate and copy.
     #[must_use]
@@ -164,24 +253,17 @@ impl VerifiedDirectLoadImage {
         artifact: &VerifiedDirectNativeArtifact,
         object: &[u8],
     ) -> Result<Self, VerifiedDirectLoadError> {
-        let isa = artifact.key().target().host_isa();
-        let executable = extract_relocation_free_executable_text(object, isa)
-            .map_err(map_executable_text_error)?;
-        let alignment = minimum_instruction_alignment(isa);
-        if !is_aligned(executable.entry_offset, alignment) {
-            return Err(VerifiedDirectLoadError::InstructionAlignment);
-        }
-        if isa == HostIsa::AArch64
-            && !is_aligned(executable.code.len(), alignment)
-        {
-            return Err(VerifiedDirectLoadError::InstructionAlignment);
-        }
+        let parts = verified_load_image_parts(
+            artifact.key(),
+            object,
+            artifact.target_triple(),
+        )?;
         Ok(Self {
-            code: executable.code,
-            entry_offset: executable.entry_offset,
-            key: artifact.key().clone(),
-            policy: NativeExecutableLoadPolicy::strict_wx(),
-            target_triple: artifact.target_triple(),
+            code: parts.code,
+            entry_offset: parts.entry_offset,
+            key: parts.key,
+            policy: parts.policy,
+            target_triple: parts.target_triple,
         })
     }
 
@@ -237,6 +319,38 @@ impl VerifiedDirectLoadImage {
     pub const fn target_triple(&self) -> &'static str {
         self.target_triple
     }
+}
+
+struct VerifiedLoadImageParts {
+    code: Box<[u8]>,
+    entry_offset: usize,
+    key: NativeArtifactKey,
+    policy: NativeExecutableLoadPolicy,
+    target_triple: &'static str,
+}
+
+fn verified_load_image_parts(
+    key: &NativeArtifactKey,
+    object: &[u8],
+    target_triple: &'static str,
+) -> Result<VerifiedLoadImageParts, VerifiedDirectLoadError> {
+    let isa = key.target().host_isa();
+    let executable = extract_relocation_free_executable_text(object, isa)
+        .map_err(map_executable_text_error)?;
+    let alignment = minimum_instruction_alignment(isa);
+    if !is_aligned(executable.entry_offset, alignment)
+        || (isa == HostIsa::AArch64
+            && !is_aligned(executable.code.len(), alignment))
+    {
+        return Err(VerifiedDirectLoadError::InstructionAlignment);
+    }
+    Ok(VerifiedLoadImageParts {
+        code: executable.code,
+        entry_offset: executable.entry_offset,
+        key: key.clone(),
+        policy: NativeExecutableLoadPolicy::strict_wx(),
+        target_triple,
+    })
 }
 
 const fn is_aligned(value: usize, alignment: usize) -> bool {

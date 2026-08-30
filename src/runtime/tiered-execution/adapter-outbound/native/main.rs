@@ -189,6 +189,7 @@ pub use lifecycle::{
 pub use loader::{
     NativeExecutableLoadPolicy, NativeExecutablePermission,
     VerifiedDirectLoadError, VerifiedDirectLoadImage,
+    VerifiedExecutionGeometryLoadImage,
 };
 use malbolge::{
     PortableProfileRequirementError, ProfileMachineObservation,
