@@ -897,6 +897,14 @@ publishes nothing if the lock is poisoned or resident-weight aggregation fails.
 A focused case proves lease-count transition from one to zero without changing
 the same snapshot's limits or usage.
 
+Telemetry can request the same observation without waiting for mutation.
+`try_snapshot(plan)` uses `Mutex::try_lock`: `Busy` reports live lock
+contention,
+`Poisoned` preserves fail-closed authority, and success delegates to the exact
+same snapshot constructor as the blocking read. A blocking-adapter case proves
+`Busy` while `ensure` owns the mutex and a coherent snapshot immediately after
+the load completes.
+
 Concurrent read-side scaling beyond one mutation mutex remains separate policy
 work.
 

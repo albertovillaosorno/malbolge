@@ -33,7 +33,7 @@
 //! Fail-closed concurrent owner for the heterogeneous explicit-geometry LRU.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard, TryLockError};
 
 use crate::execution_native::{
     ExecutionGeometryNativeRunner, NativeExecutableMemoryAdapter,
@@ -76,6 +76,8 @@ type ConcurrentExecutionResult<Adapter, Runner> =
     >;
 type ConcurrentStateGuard<'cache, Adapter> =
     MutexGuard<'cache, GeometryNativeConcurrentCrossTemplateState<Adapter>>;
+type TrySnapshotFailure =
+    GeometryNativeConcurrentCrossTemplateTrySnapshotFailure;
 
 /// Failure to acquire synchronized access to heterogeneous resident authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -114,6 +116,17 @@ pub struct GeometryNativeConcurrentCrossTemplateSnapshot {
     limits: GeometryNativeCrossTemplateLruLimits,
     resident: bool,
     usage: GeometryNativeCrossTemplateLruUsage,
+}
+
+/// Failure from one nonblocking coherent snapshot attempt.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GeometryNativeConcurrentCrossTemplateTrySnapshotFailure {
+    /// Another thread currently owns the mutation mutex.
+    Busy,
+    /// Prior mutation unwinding poisoned cache authority.
+    Poisoned,
+    /// Exact resident-weight aggregation failed while reading the snapshot.
+    ResidentWeight(GeometryNativeResidentWeightError),
 }
 
 /// One heterogeneous cache and its mapping adapter under a shared mutation
@@ -179,6 +192,12 @@ pub type GeometryNativeConcurrentCrossTemplateSnapshotResult = Result<
     >,
 >;
 
+/// Result of one nonblocking coherent resident/cache snapshot.
+pub type GeometryNativeConcurrentCrossTemplateTrySnapshotResult = Result<
+    GeometryNativeConcurrentCrossTemplateSnapshot,
+    GeometryNativeConcurrentCrossTemplateTrySnapshotFailure,
+>;
+
 /// Result of reading exact synchronized aggregate resident usage.
 pub type GeometryNativeConcurrentCrossTemplateUsageResult = Result<
     GeometryNativeCrossTemplateLruUsage,
@@ -227,6 +246,20 @@ impl<MemoryError: Display, RunnerError: Display> Display
                     "heterogeneous v5 concurrent execution failed: {error}"
                 )
             },
+        }
+    }
+}
+
+impl Display for GeometryNativeConcurrentCrossTemplateTrySnapshotFailure {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Busy => {
+                f.write_str("heterogeneous v5 cache snapshot is busy")
+            },
+            Self::Poisoned => {
+                f.write_str("heterogeneous v5 cache lock is poisoned")
+            },
+            Self::ResidentWeight(error) => Display::fmt(error, f),
         }
     }
 }
@@ -440,18 +473,51 @@ where
         let state = self.lock().map_err(|_error| {
             GeometryNativeConcurrentCrossTemplateFailure::Poisoned
         })?;
-        let usage = state
-            .cache
-            .usage()
-            .map_err(GeometryNativeConcurrentCrossTemplateFailure::Operation)?;
-        let snapshot = GeometryNativeConcurrentCrossTemplateSnapshot {
+        let snapshot = Self::snapshot_from_state(&state, plan)
+            .map_err(GeometryNativeConcurrentCrossTemplateFailure::Operation);
+        drop(state);
+        snapshot
+    }
+
+    fn snapshot_from_state(
+        state: &GeometryNativeConcurrentCrossTemplateState<Adapter>,
+        plan: &GeometryNativeResidentPlan,
+    ) -> Result<
+        GeometryNativeConcurrentCrossTemplateSnapshot,
+        GeometryNativeResidentWeightError,
+    > {
+        let usage = state.cache.usage()?;
+        Ok(GeometryNativeConcurrentCrossTemplateSnapshot {
             leases: state.cache.resident_lease_count(plan),
             limits: state.cache.limits(),
             resident: state.cache.contains(plan),
             usage,
+        })
+    }
+
+    /// Attempts one coherent snapshot without waiting for mutation ownership.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Busy` when another thread owns the mutex, `Poisoned` after
+    /// interrupted mutation, or exact resident-weight overflow evidence.
+    pub fn try_snapshot(
+        &self,
+        plan: &GeometryNativeResidentPlan,
+    ) -> GeometryNativeConcurrentCrossTemplateTrySnapshotResult {
+        let state = match self.inner.try_lock() {
+            Ok(state) => state,
+            Err(TryLockError::Poisoned(_error)) => {
+                return Err(TrySnapshotFailure::Poisoned);
+            },
+            Err(TryLockError::WouldBlock) => {
+                return Err(TrySnapshotFailure::Busy);
+            },
         };
+        let snapshot = Self::snapshot_from_state(&state, plan)
+            .map_err(TrySnapshotFailure::ResidentWeight);
         drop(state);
-        Ok(snapshot)
+        snapshot
     }
 
     /// Returns exact aggregate mapping usage under synchronized cache access.

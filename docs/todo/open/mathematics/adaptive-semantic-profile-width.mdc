@@ -771,6 +771,10 @@ transfers, verification, and other separately measured costs.
   reports residence, external leases, published limits, and aggregate mapping
   usage from one mutation epoch, and returns no partial observation after poison
   or resident-weight overflow.
+- Nonblocking `try_snapshot` provides the same coherent observation for
+  telemetry. It reports `Busy` instead of waiting behind mutation, distinguishes
+  poison from transient contention, and reuses the blocking snapshot's exact
+  resident/lease/limit/usage construction.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without
