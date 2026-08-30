@@ -49,6 +49,8 @@ pub mod geometry_interpreter_handoff;
 pub mod geometry_native_admission;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xcache.rs"]
 pub mod geometry_native_cross_template_cache;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_xsync.rs"]
+pub mod geometry_native_cross_template_concurrent_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xres.rs"]
 pub mod geometry_native_cross_template_resident;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jump.rs"]
@@ -90,9 +92,10 @@ pub mod retry_turn;
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::NonZeroUsize;
+use std::panic::resume_unwind;
 use std::path::Path;
 use std::str::from_utf8;
-use std::sync::Arc;
+use std::sync::{Arc, Barrier};
 use std::thread;
 
 use cached_cycle::{
@@ -273,6 +276,11 @@ use geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruLimits as CrossLruLimits,
     GeometryNativeCrossTemplateLruReconfigurationFailure as CrossLimitFailure,
     GeometryNativeCrossTemplateLruRelease as CrossLruRelease,
+};
+use geometry_native_cross_template_concurrent_cache::{
+    GeometryNativeConcurrentCrossTemplateAccessError as CrossSyncAccessError,
+    GeometryNativeConcurrentCrossTemplateFailure as CrossSyncFailure,
+    GeometryNativeConcurrentCrossTemplateLruCache as CrossSyncCache,
 };
 use geometry_native_cross_template_resident::{
     GeometryNativeResidentExecutionFailure as CrossExecutionFailure,
@@ -469,6 +477,10 @@ struct FakeNativeExecutableAdapter {
     release_failures_remaining: usize,
     release_requests: Vec<NativeExecutableReleaseRequest>,
     synchronization_requests: Vec<NativeInstructionSyncRequest>,
+}
+
+struct PanickingNativeExecutableAdapter {
+    inner: FakeNativeExecutableAdapter,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -849,6 +861,48 @@ impl FakeNativeExecutableAdapter {
     const fn with_release_failures(mut self, count: usize) -> Self {
         self.release_failures_remaining = count;
         self
+    }
+}
+
+impl NativeExecutableMemoryAdapter for PanickingNativeExecutableAdapter {
+    type Error = FakeNativeAdapterOperation;
+
+    fn allocate_writable(
+        &mut self,
+        _request: NativeExecutableAllocationRequest,
+    ) -> Result<NativeExecutableMappingReport, Self::Error> {
+        resume_unwind(Box::new(String::from(
+            "intentional synchronized-cache adapter unwind",
+        )))
+    }
+
+    fn copy_code(
+        &mut self,
+        mapping: NativeExecutableMappingReport,
+        code: &[u8],
+    ) -> Result<NativeExecutableCodeCopyReport, Self::Error> {
+        self.inner.copy_code(mapping, code)
+    }
+
+    fn protect_read_execute(
+        &mut self,
+        mapping: NativeExecutableMappingReport,
+    ) -> Result<NativeExecutableMappingReport, Self::Error> {
+        self.inner.protect_read_execute(mapping)
+    }
+
+    fn release(
+        &mut self,
+        request: NativeExecutableReleaseRequest,
+    ) -> Result<(), Self::Error> {
+        self.inner.release(request)
+    }
+
+    fn synchronize_instructions(
+        &mut self,
+        request: NativeInstructionSyncRequest,
+    ) -> Result<NativeInstructionSyncReport, Self::Error> {
+        self.inner.synchronize_instructions(request)
     }
 }
 
@@ -13271,6 +13325,17 @@ fn cross_template_limits(
     Ok(limits)
 }
 
+fn concurrent_cross_template_lru(
+    adapter: FakeNativeExecutableAdapter,
+    capacity: usize,
+) -> Result<CrossSyncCache<FakeNativeExecutableAdapter>, String> {
+    let limits = CrossLruLimits::new(nonzero_test_limit(
+        capacity,
+        "v5 concurrent cross-template LRU capacity",
+    )?);
+    Ok(CrossSyncCache::new(adapter, limits))
+}
+
 fn cross_template_weighted_lru(
     capacity: usize,
     mapped_byte_limit: Option<usize>,
@@ -15814,6 +15879,206 @@ fn geometry_native_cross_template_weighted_lru_release_failure_is_typed()
         .release_if_unleased(&mut adapter, &rotate_plan)
         .map(|_release| ())
         .map_err(|error| format!("cross weighted survivor cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_serializes_insert_and_hit()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(204)?,
+        native_executable_address(0x7_9000)?,
+    );
+    let cache = Arc::new(concurrent_cross_template_lru(adapter, 2)?);
+    let barrier = Arc::new(Barrier::new(3));
+    let first_cache = Arc::clone(&cache);
+    let first_barrier = Arc::clone(&barrier);
+    let first_plan = noop_plan.clone();
+    let first = thread::spawn(move || {
+        let _wait = first_barrier.wait();
+        first_cache
+            .ensure(&first_plan)
+            .map(|acquisition| acquisition.disposition())
+            .map_err(|error| error.to_string())
+    });
+    let second_cache = Arc::clone(&cache);
+    let second_barrier = Arc::clone(&barrier);
+    let second_plan = noop_plan.clone();
+    let second = thread::spawn(move || {
+        let _wait = second_barrier.wait();
+        second_cache
+            .ensure(&second_plan)
+            .map(|acquisition| acquisition.disposition())
+            .map_err(|error| error.to_string())
+    });
+    let _wait = barrier.wait();
+    let first_disposition = first
+        .join()
+        .map_err(|_panic| String::from("first concurrent ensure panicked"))??;
+    let second_disposition = second.join().map_err(|_panic| {
+        String::from("second concurrent ensure panicked")
+    })??;
+    let inserted =
+        usize::from(first_disposition == CrossLruDisposition::Inserted)
+            + usize::from(second_disposition == CrossLruDisposition::Inserted);
+    let hits = usize::from(first_disposition == CrossLruDisposition::Hit)
+        + usize::from(second_disposition == CrossLruDisposition::Hit);
+    if inserted != 1
+        || hits != 1
+        || cache.resident_count().map_err(|error| error.to_string())? != 1
+        || !cache
+            .contains(&noop_plan)
+            .map_err(|error| error.to_string())?
+    {
+        return Err(String::from(
+            "concurrent insert/hit serialization drifted",
+        ));
+    }
+    cache
+        .release_if_unleased(&noop_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("concurrent insert/hit cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_lease_blocks_eviction()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, _full_plan) = cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(205)?,
+        native_executable_address(0x7_a000)?,
+    );
+    let cache = Arc::new(concurrent_cross_template_lru(adapter, 1)?);
+    let retained_lease = cache
+        .ensure(&noop_plan)
+        .map_err(|error| error.to_string())?
+        .into_lease();
+    let worker_cache = Arc::clone(&cache);
+    let worker_plan = rotate_plan.clone();
+    let blocked = thread::spawn(move || worker_cache.ensure(&worker_plan))
+        .join()
+        .map_err(|_panic| {
+            String::from("concurrent eviction worker panicked")
+        })?;
+    if !matches!(
+        blocked,
+        Err(CrossSyncFailure::Operation(error))
+            if matches!(*error, CrossLruFailure::Saturated {
+                leased_residents: 1,
+                residents: 1,
+            })
+    ) || !cache
+        .contains(&noop_plan)
+        .map_err(|error| error.to_string())?
+    {
+        return Err(String::from("concurrent lease failed to block eviction"));
+    }
+    drop(retained_lease);
+    let replacement = cache
+        .ensure(&rotate_plan)
+        .map_err(|error| format!("concurrent replacement acquire: {error}"))?;
+    if replacement.disposition() != CrossLruDisposition::Evicted
+        || cache
+            .contains(&noop_plan)
+            .map_err(|error| error.to_string())?
+        || !cache
+            .contains(&rotate_plan)
+            .map_err(|error| error.to_string())?
+    {
+        return Err(String::from("concurrent replacement after lease drifted"));
+    }
+    drop(replacement);
+    cache
+        .release_if_unleased(&rotate_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("concurrent replacement cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_reconfigures_serially()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, _full_plan) = cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(206)?,
+        native_executable_address(0x7_b000)?,
+    );
+    let cache = concurrent_cross_template_lru(adapter, 2)?;
+    drop(
+        cache
+            .ensure(&noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&rotate_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let before = cache.usage().map_err(|error| error.to_string())?;
+    let requested = CrossLruLimits::new(nonzero_test_limit(
+        1,
+        "v5 concurrent shrink entry limit",
+    )?);
+    let reconfigured = cache
+        .reconfigure_limits(requested)
+        .map_err(|error| format!("concurrent shrink: {error}"))?;
+    let after = cache.usage().map_err(|error| error.to_string())?;
+    if before.entries() != 2
+        || before.mappings() != 4
+        || reconfigured.removed_residents() != 1
+        || reconfigured.new_limits() != requested
+        || cache.limits().map_err(|error| error.to_string())? != requested
+        || after.entries() != 1
+        || after.mappings() != 2
+    {
+        return Err(String::from("concurrent serialized shrink drifted"));
+    }
+    let survivor = if cache
+        .contains(&noop_plan)
+        .map_err(|error| error.to_string())?
+    {
+        &noop_plan
+    } else {
+        &rotate_plan
+    };
+    cache
+        .release_if_unleased(survivor)
+        .map(|_release| ())
+        .map_err(|error| format!("concurrent shrink cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_poison_fails_closed()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let inner = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(207)?,
+        native_executable_address(0x7_c000)?,
+    );
+    let limits = CrossLruLimits::new(nonzero_test_limit(
+        1,
+        "v5 concurrent poison entry limit",
+    )?);
+    let cache = Arc::new(CrossSyncCache::new(
+        PanickingNativeExecutableAdapter { inner },
+        limits,
+    ));
+    let worker_cache = Arc::clone(&cache);
+    let worker_plan = noop_plan.clone();
+    let panicked = thread::spawn(move || {
+        let _result = worker_cache.ensure(&worker_plan);
+    })
+    .join()
+    .is_err();
+    if !panicked
+        || cache.contains(&noop_plan) != Err(CrossSyncAccessError::Poisoned)
+        || !matches!(cache.ensure(&noop_plan), Err(CrossSyncFailure::Poisoned))
+        || cache.resident_count() != Err(CrossSyncAccessError::Poisoned)
+    {
+        return Err(String::from("concurrent poison did not fail closed"));
+    }
+    Ok(())
 }
 
 #[test]

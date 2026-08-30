@@ -71,6 +71,8 @@ pub mod geometry_native_sequence;
 pub mod geometry_native_cross_template_resident;
 #[path = "tier/geometry_xcache.rs"]
 pub mod geometry_native_cross_template_cache;
+#[path = "tier/geometry_xsync.rs"]
+pub mod geometry_native_cross_template_concurrent_cache;
 #[path = "tier/handoff.rs"]
 pub mod interpreter_handoff;
 #[path = "tier/leased_retry.rs"]

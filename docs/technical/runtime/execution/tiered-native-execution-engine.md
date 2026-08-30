@@ -867,7 +867,20 @@ failure reports `removed_residents`; release failure also returns the exact
 variant-specific cleanup ownership. Six focused cases cover expansion,
 entry/byte/mapping shrink, partial removal, lease blockage, and typed cleanup.
 
-Concurrent cache mutation remains separate policy work.
+`GeometryNativeConcurrentCrossTemplateLruCache` now owns one heterogeneous LRU
+and its executable-memory adapter under the same mutex. `ensure`, release,
+reconfiguration, usage, and identity reads serialize through that authority;
+returned acquisitions and leases outlive the guard, so native execution itself
+is not serialized by cache mutation.
+
+The synchronization boundary is fail-closed on mutex poisoning. A panic while
+adapter/cache mutation is locked poisons future access instead of recovering the
+possibly half-mutated authority with `PoisonError::into_inner`. Four focused
+cases prove concurrent insert/hit serialization, lease-safe eviction blocking,
+serialized shrink/usage, and poison rejection.
+
+Concurrent read-side scaling beyond one mutation mutex remains separate policy
+work.
 
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence
