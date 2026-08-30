@@ -670,8 +670,14 @@ transfers, verification, and other separately measured costs.
   exit checkpoint as the only Applied state. A dedicated load-image constructor,
   two-live-in ABI preparation, exact executable binding, v5 runner, completion
   rollback, transactional release, and cleanup-retry ownership mirror the
-  no-operation safety properties without merging operation policy. Rotate/halt
-  sequence planning, cache integration, and additional templates remain open.
+  no-operation safety properties without merging operation policy.
+- The certified `(&O` suffix can now compose rotate then halt after the
+  normative jump checkpoint. Rotate replay is the sole authority for halt
+  admission; guard misses stop at the exact index and late halt failure retains
+  the committed rotate checkpoint. Exact ready pairs may be prebound or owned,
+  reused without remapping, and released with partial-load/both-mapping cleanup
+  retry ownership. Rotate/halt pair-cache integration and additional templates
+  remain open.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only
   admissible Applied state. The separate load image, prepare/bind layer, v5

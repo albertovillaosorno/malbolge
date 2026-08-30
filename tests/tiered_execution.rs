@@ -53,6 +53,8 @@ pub mod geometry_native_no_operation;
 pub mod geometry_native_pair_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_rotate.rs"]
 pub mod geometry_native_rotate;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_rotseq.rs"]
+pub mod geometry_native_rotate_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_seq.rs"]
 pub mod geometry_native_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/handoff.rs"]
@@ -266,6 +268,16 @@ use geometry_native_rotate::{
     ExecutionGeometryNativeRotateExecutionError,
     ExecutionGeometryNativeRotatePreparationError,
     ExecutionGeometryNativeRotateTransactionFailure,
+};
+use geometry_native_rotate_sequence::{
+    ExecutionGeometryNativeRotateHaltAdmissionError,
+    ExecutionGeometryNativeRotateHaltEvidence,
+    ExecutionGeometryNativeRotateHaltExecutableBindingError,
+    ExecutionGeometryNativeRotateHaltFailureCause,
+    ExecutionGeometryNativeRotateHaltLoadedFailureCause as RHLoadedCause,
+    ExecutionGeometryNativeRotateHaltOutcome,
+    ExecutionGeometryNativeRotateHaltPairLoadFailure,
+    ExecutionGeometryNativeRotateHaltSequence,
 };
 use geometry_native_sequence::{
     ExecutionGeometryNativeNoopHaltAdmissionError,
@@ -551,6 +563,10 @@ type GeometryNativeRotateAdmissionFixture = (
     malbolge::ProfileExecutionGeometry,
 );
 type GeometryNativeNoopHaltReadyPair = (
+    ReadyExecutionGeometryNativeExecutable,
+    ReadyExecutionGeometryNativeExecutable,
+);
+type GeometryNativeRotateHaltReadyPair = (
     ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutable,
 );
@@ -12421,6 +12437,52 @@ fn derived_v5_rotate_fixture(
     Ok((program, checkpoint, verified.geometry()))
 }
 
+fn derived_v5_rotate_halt_sequence_fixture(
+    word_trits: u8,
+) -> Result<DerivedV5SequenceFixture, String> {
+    let verified = verify_jump_rotate_halt_profile_width(
+        current_profile(),
+        b"(&O",
+        word_trits,
+    )
+    .map_err(|error| format!("v5 rotate/halt verification: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new())
+            .map_err(|error| format!("v5 rotate/halt machine: {error}"))?;
+    if machine
+        .step()
+        .map_err(|error| format!("v5 rotate/halt jump: {error}"))?
+        != StepOutcome::Continued
+    {
+        return Err(String::from("v5 rotate/halt jump did not advance"));
+    }
+    let mut programs = Vec::new();
+    let mut states = vec![machine.snapshot_state()];
+    let mut traces = Vec::new();
+    for _index in 0usize..2usize {
+        let mut trace_slot = None;
+        let _outcome = machine
+            .step_traced(&mut |trace| trace_slot = Some(*trace))
+            .map_err(|error| format!("v5 rotate/halt trace: {error}"))?;
+        let trace = trace_slot
+            .ok_or_else(|| String::from("v5 rotate/halt trace missing"))?;
+        let program =
+            ExecutionGeometryRegionEffectProgram::from_profile_step_trace(
+                &trace,
+            )
+            .map_err(|error| format!("v5 rotate/halt projection: {error:?}"))?;
+        programs.push(program);
+        states.push(machine.snapshot_state());
+        traces.push(trace);
+    }
+    Ok(DerivedV5SequenceFixture {
+        geometry: verified.geometry(),
+        programs,
+        states,
+        traces,
+    })
+}
+
 fn derived_v5_noop_halt_sequence_fixture(
     word_trits: u8,
 ) -> Result<DerivedV5SequenceFixture, String> {
@@ -12885,6 +12947,52 @@ fn execution_geometry_native_admission_rejects_checkpoint_geometry_drift()
     }
 }
 
+fn geometry_native_rotate_halt_sequence(
+    fixture: &DerivedV5SequenceFixture,
+) -> Result<ExecutionGeometryNativeRotateHaltSequence, String> {
+    let rotate = fixture
+        .programs
+        .first()
+        .cloned()
+        .ok_or_else(|| String::from("v5 rotate/halt rotate missing"))?;
+    let halt = fixture
+        .programs
+        .get(1)
+        .cloned()
+        .ok_or_else(|| String::from("v5 rotate/halt halt missing"))?;
+    let checkpoint = fixture
+        .states
+        .first()
+        .cloned()
+        .ok_or_else(|| String::from("v5 rotate/halt checkpoint missing"))?;
+    let rotate_object = emit_direct_execution_geometry_rotate_coff(
+        &rotate,
+        direct_execution_geometry_rotate_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 rotate/halt rotate emit: {error}"))?;
+    let rotate_artifact =
+        verify_direct_execution_geometry_rotate(&rotate_object, &rotate)
+            .map_err(|error| {
+                format!("v5 rotate/halt rotate verify: {error}")
+            })?;
+    let halt_object = emit_direct_execution_geometry_initial_halt_coff(
+        &halt,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 rotate/halt halt emit: {error}"))?;
+    let halt_artifact =
+        verify_direct_execution_geometry_initial_halt(&halt_object, &halt)
+            .map_err(|error| format!("v5 rotate/halt halt verify: {error}"))?;
+    let evidence = ExecutionGeometryNativeRotateHaltEvidence::new(
+        rotate,
+        rotate_artifact,
+        halt,
+        halt_artifact,
+    );
+    ExecutionGeometryNativeRotateHaltSequence::new(evidence, checkpoint)
+        .map_err(|error| error.to_string())
+}
+
 fn geometry_native_noop_halt_sequence(
     fixture: &DerivedV5SequenceFixture,
 ) -> Result<ExecutionGeometryNativeNoopHaltSequence, String> {
@@ -12929,6 +13037,23 @@ fn geometry_native_noop_halt_sequence(
     );
     ExecutionGeometryNativeNoopHaltSequence::new(evidence, checkpoint)
         .map_err(|error| error.to_string())
+}
+
+fn load_geometry_native_rotate_halt_pair(
+    adapter: &mut FakeNativeExecutableAdapter,
+    sequence: &ExecutionGeometryNativeRotateHaltSequence,
+) -> Result<GeometryNativeRotateHaltReadyPair, String> {
+    let rotate = load_execution_geometry_native_executable(
+        adapter,
+        sequence.rotate().load_image(),
+    )
+    .map_err(|error| format!("v5 reusable rotate load: {error}"))?;
+    let halt = load_execution_geometry_native_executable(
+        adapter,
+        sequence.halt().load_image(),
+    )
+    .map_err(|error| format!("v5 reusable halt load: {error}"))?;
+    Ok((rotate, halt))
 }
 
 fn load_geometry_native_noop_halt_pair(
@@ -13076,6 +13201,245 @@ fn geometry_native_runner_fixture(
         geometry,
         ready,
     })
+}
+
+#[test]
+fn geometry_native_rotate_halt_loaded_rejects_mixed_ready_before_execution()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let n11_fixture = derived_v5_rotate_halt_sequence_fixture(11)?;
+    let n10 = geometry_native_rotate_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_rotate_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(116)?,
+        native_executable_address(0x2_2000)?,
+    );
+    let rotate = load_execution_geometry_native_executable(
+        &mut adapter,
+        n10.rotate().load_image(),
+    )
+    .map_err(|error| format!("v5 loaded N10 no-op: {error}"))?;
+    let halt = load_execution_geometry_native_executable(
+        &mut adapter,
+        n11.halt().load_image(),
+    )
+    .map_err(|error| format!("v5 loaded N11 halt: {error}"))?;
+    let rejected = matches!(
+        n10.bind_executables(&rotate, &halt),
+        Err(ExecutionGeometryNativeRotateHaltExecutableBindingError::Halt)
+    );
+    release_execution_geometry_native_executable(&mut adapter, rotate)
+        .map_err(|error| format!("v5 loaded N10 no-op release: {error}"))?;
+    release_execution_geometry_native_executable(&mut adapter, halt)
+        .map_err(|error| format!("v5 loaded N11 halt release: {error}"))?;
+    if rejected {
+        Ok(())
+    } else {
+        Err(String::from("v5 mixed ready pair was prebound"))
+    }
+}
+
+#[test]
+fn geometry_native_rotate_halt_pair_load_failure_releases_prefix()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(120)?,
+        native_executable_address(0x2_6000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 2);
+    let Err(failure) = sequence.load_pair(&mut adapter) else {
+        return Err(String::from("v5 pair halt load failure was ignored"));
+    };
+    let ExecutionGeometryNativeRotateHaltPairLoadFailure::Halt {
+        error,
+        rotate_release_failure,
+    } = *failure
+    else {
+        return Err(String::from("v5 pair load failure phase drifted"));
+    };
+    if error.phase() == NativeExecutableLoadPhase::Allocate
+        && rotate_release_failure.is_none()
+        && adapter.release_requests.len() == 1
+        && adapter.operations.last()
+            == Some(&FakeNativeAdapterOperation::Release)
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 pair partial load rollback drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_rotate_halt_pair_reuses_owned_executables()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 owned pair initial state missing"))?;
+    let final_state = fixture
+        .states
+        .get(2)
+        .ok_or_else(|| String::from("v5 owned pair final state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(119)?,
+        native_executable_address(0x2_5000)?,
+    );
+    let loaded = sequence
+        .load_pair(&mut adapter)
+        .map_err(|error| format!("v5 owned pair load: {error}"))?;
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    for _iteration in 0usize..2usize {
+        let mut memory = initial.memory().to_vec();
+        let input = initial.io().input().to_vec();
+        let mut output = initial.io().output().to_vec();
+        let outcome = loaded
+            .execute(
+                &mut runner,
+                NativeRegionBuffers::new(&mut memory, &input, &mut output),
+            )
+            .map_err(|error| format!("v5 owned pair execute: {error}"))?;
+        if outcome.state() != final_state || memory != final_state.memory() {
+            return Err(String::from("v5 owned pair execution drifted"));
+        }
+    }
+    if runner.calls != 4 || adapter.operations.len() != 8 {
+        return Err(String::from("v5 owned pair remapped during reuse"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned pair release: {error}"))?;
+    if adapter.operations.len() == 10 {
+        Ok(())
+    } else {
+        Err(String::from("v5 owned pair release count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_rotate_halt_loaded_reuses_two_ready_executables()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 loaded initial state missing"))?;
+    let final_state = fixture
+        .states
+        .get(2)
+        .ok_or_else(|| String::from("v5 loaded final state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(118)?,
+        native_executable_address(0x2_4000)?,
+    );
+    let (rotate, halt) =
+        load_geometry_native_rotate_halt_pair(&mut adapter, &sequence)?;
+    {
+        let bound = sequence
+            .bind_executables(&rotate, &halt)
+            .map_err(|error| format!("v5 reusable bind: {error}"))?;
+        let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::Applied,
+        ]);
+        for _iteration in 0usize..2usize {
+            let mut memory = initial.memory().to_vec();
+            let input = initial.io().input().to_vec();
+            let mut output = initial.io().output().to_vec();
+            let outcome = bound
+                .execute(
+                    &mut runner,
+                    NativeRegionBuffers::new(&mut memory, &input, &mut output),
+                )
+                .map_err(|error| format!("v5 reusable execute: {error}"))?;
+            if outcome.state() != final_state || memory != final_state.memory()
+            {
+                return Err(String::from("v5 loaded reuse result drifted"));
+            }
+        }
+        if runner.calls != 4 || adapter.operations.len() != 8 {
+            return Err(String::from("v5 loaded reuse remapped executables"));
+        }
+    }
+    release_execution_geometry_native_executable(&mut adapter, rotate)
+        .map_err(|error| format!("v5 reusable no-op release: {error}"))?;
+    release_execution_geometry_native_executable(&mut adapter, halt)
+        .map_err(|error| format!("v5 reusable halt release: {error}"))?;
+    if adapter.operations.len() == 10 {
+        Ok(())
+    } else {
+        Err(String::from("v5 reusable releases drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_rotate_halt_loaded_late_failure_retains_prefix()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 loaded initial state missing"))?;
+    let prefix = fixture
+        .states
+        .get(1)
+        .ok_or_else(|| String::from("v5 loaded prefix state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(117)?,
+        native_executable_address(0x2_3000)?,
+    );
+    let rotate = load_execution_geometry_native_executable(
+        &mut adapter,
+        sequence.rotate().load_image(),
+    )
+    .map_err(|error| format!("v5 loaded late no-op: {error}"))?;
+    let halt = load_execution_geometry_native_executable(
+        &mut adapter,
+        sequence.halt().load_image(),
+    )
+    .map_err(|error| format!("v5 loaded late halt: {error}"))?;
+    {
+        let bound = sequence
+            .bind_executables(&rotate, &halt)
+            .map_err(|error| format!("v5 loaded late bind: {error}"))?;
+        let mut memory = initial.memory().to_vec();
+        let input = initial.io().input().to_vec();
+        let mut output = initial.io().output().to_vec();
+        let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::FailureAfterMutation,
+        ]);
+        let Err(failure) = bound.execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ) else {
+            return Err(String::from("v5 loaded late failure was ignored"));
+        };
+        if failure.index() != 1
+            || failure.state() != prefix
+            || memory != prefix.memory()
+            || !matches!(failure.cause(), RHLoadedCause::HaltExecution(_error,))
+            || adapter.operations.len() != 8
+        {
+            return Err(String::from("v5 loaded late failure lost prefix"));
+        }
+    }
+    release_execution_geometry_native_executable(&mut adapter, rotate)
+        .map_err(|error| format!("v5 loaded late no-op release: {error}"))?;
+    release_execution_geometry_native_executable(&mut adapter, halt)
+        .map_err(|error| format!("v5 loaded late halt release: {error}"))
 }
 
 #[test]
@@ -13499,6 +13863,72 @@ fn geometry_native_noop_halt_pair_load_failure_releases_prefix()
 }
 
 #[test]
+fn geometry_native_rotate_halt_pair_load_failure_retains_cleanup_retry()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(121)?,
+        native_executable_address(0x2_7000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 2)
+    .with_release_failures(1);
+    let Err(failure) = sequence.load_pair(&mut adapter) else {
+        return Err(String::from("v5 pair cleanup failure was ignored"));
+    };
+    let ExecutionGeometryNativeRotateHaltPairLoadFailure::Halt {
+        error,
+        rotate_release_failure: Some(cleanup),
+    } = *failure
+    else {
+        return Err(String::from("v5 pair cleanup ownership was lost"));
+    };
+    if error.phase() != NativeExecutableLoadPhase::Allocate
+        || cleanup.executable().key() != sequence.rotate().artifact().key()
+    {
+        return Err(String::from("v5 pair cleanup retry identity drifted"));
+    }
+    cleanup
+        .retry(&mut adapter)
+        .map_err(|retry_error| format!("v5 pair cleanup retry: {retry_error}"))
+}
+
+#[test]
+fn geometry_native_rotate_halt_pair_release_retries_both_mappings()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(122)?,
+        native_executable_address(0x2_8000)?,
+    )
+    .with_release_failures(2);
+    let loaded = sequence
+        .load_pair(&mut adapter)
+        .map_err(|error| format!("v5 pair owned load: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from("v5 pair release failures were ignored"));
+    };
+    let halt_key_matches = failure.halt_failure().is_some_and(|error| {
+        error.executable().key() == sequence.halt().artifact().key()
+    });
+    let rotate_key_matches = failure.rotate_failure().is_some_and(|error| {
+        error.executable().key() == sequence.rotate().artifact().key()
+    });
+    if !halt_key_matches || !rotate_key_matches {
+        return Err(String::from("v5 pair release retry ownership drifted"));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 pair release retry: {error}"))?;
+    if adapter.release_requests.len() == 4 {
+        Ok(())
+    } else {
+        Err(String::from("v5 pair release retry attempts drifted"))
+    }
+}
+
+#[test]
 fn geometry_native_noop_halt_pair_load_failure_retains_cleanup_retry()
 -> Result<(), String> {
     let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
@@ -13738,6 +14168,238 @@ fn geometry_native_noop_halt_loaded_late_failure_retains_prefix()
         .map_err(|error| format!("v5 loaded late no-op release: {error}"))?;
     release_execution_geometry_native_executable(&mut adapter, halt)
         .map_err(|error| format!("v5 loaded late halt release: {error}"))
+}
+
+#[test]
+fn geometry_native_rotate_halt_applies_two_steps() -> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 sequence initial state missing"))?;
+    let final_state = fixture
+        .states
+        .get(2)
+        .ok_or_else(|| String::from("v5 sequence final state missing"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(112)?,
+        native_executable_address(0x1_e000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = sequence
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome
+        != ExecutionGeometryNativeRotateHaltOutcome::Completed(
+            final_state.clone(),
+        )
+        || outcome.state().geometry() != fixture.geometry
+        || memory != final_state.memory()
+        || output != final_state.io().output()
+        || runner.calls != 2
+        || adapter.operations.len() != 10
+    {
+        Err(String::from("v5 rotate/halt completion drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_rotate_halt_sequence_guard_miss_stops_first_suffix()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 sequence initial state missing"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(113)?,
+        native_executable_address(0x1_f000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = sequence
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome
+        != (ExecutionGeometryNativeRotateHaltOutcome::GuardMiss {
+            index: 0,
+            state: initial.clone(),
+        })
+        || runner.calls != 1
+        || memory != initial.memory()
+        || adapter.operations.len() != 5
+    {
+        Err(String::from("v5 first guard miss executed suffix"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_rotate_halt_sequence_guard_miss_retains_prefix()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 sequence initial state missing"))?;
+    let prefix = fixture
+        .states
+        .get(1)
+        .ok_or_else(|| String::from("v5 sequence prefix state missing"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(114)?,
+        native_executable_address(0x2_0000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let outcome = sequence
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome
+        != (ExecutionGeometryNativeRotateHaltOutcome::GuardMiss {
+            index: 1,
+            state: prefix.clone(),
+        })
+        || runner.calls != 2
+        || memory != prefix.memory()
+    {
+        Err(String::from("v5 second guard miss lost committed prefix"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_rotate_halt_sequence_late_failure_retains_prefix()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 sequence initial state missing"))?;
+    let prefix = fixture
+        .states
+        .get(1)
+        .ok_or_else(|| String::from("v5 sequence prefix state missing"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(115)?,
+        native_executable_address(0x2_1000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) = sequence.execute_transactionally(
+        &mut adapter,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 late sequence failure was ignored"));
+    };
+    if failure.index() != 1
+        || failure.state() != prefix
+        || memory != prefix.memory()
+        || !matches!(
+            failure.cause(),
+            ExecutionGeometryNativeRotateHaltFailureCause::Halt(_error)
+        )
+    {
+        Err(String::from("v5 late failure lost committed prefix"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_rotate_halt_sequence_rejects_mixed_geometry()
+-> Result<(), String> {
+    let n10 = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let n11 = derived_v5_rotate_halt_sequence_fixture(11)?;
+    let rotate = n10
+        .programs
+        .first()
+        .cloned()
+        .ok_or_else(|| String::from("v5 N10 rotate missing"))?;
+    let checkpoint = n10
+        .states
+        .first()
+        .cloned()
+        .ok_or_else(|| String::from("v5 N10 checkpoint missing"))?;
+    let halt = n11
+        .programs
+        .get(1)
+        .cloned()
+        .ok_or_else(|| String::from("v5 N11 halt missing"))?;
+    let rotate_object = emit_direct_execution_geometry_rotate_coff(
+        &rotate,
+        direct_execution_geometry_rotate_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 mixed rotate emit: {error}"))?;
+    let rotate_artifact =
+        verify_direct_execution_geometry_rotate(&rotate_object, &rotate)
+            .map_err(|error| format!("v5 mixed rotate verify: {error}"))?;
+    let halt_object = emit_direct_execution_geometry_initial_halt_coff(
+        &halt,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 mixed halt emit: {error}"))?;
+    let halt_artifact =
+        verify_direct_execution_geometry_initial_halt(&halt_object, &halt)
+            .map_err(|error| format!("v5 mixed halt verify: {error}"))?;
+    let evidence = ExecutionGeometryNativeRotateHaltEvidence::new(
+        rotate,
+        rotate_artifact,
+        halt,
+        halt_artifact,
+    );
+    if matches!(
+        ExecutionGeometryNativeRotateHaltSequence::new(evidence, checkpoint),
+        Err(ExecutionGeometryNativeRotateHaltAdmissionError::Halt(
+            _error
+        ))
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("v5 mixed sequence geometry was admitted"))
+    }
 }
 
 #[test]

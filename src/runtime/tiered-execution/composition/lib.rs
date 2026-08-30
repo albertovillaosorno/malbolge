@@ -51,6 +51,8 @@ pub mod geometry_native_admission;
 pub mod geometry_native_no_operation;
 #[path = "tier/geometry_rotate.rs"]
 pub mod geometry_native_rotate;
+#[path = "tier/geometry_rotseq.rs"]
+pub mod geometry_native_rotate_sequence;
 #[path = "tier/geometry_cache.rs"]
 pub mod geometry_native_pair_cache;
 #[path = "tier/geometry_seq.rs"]

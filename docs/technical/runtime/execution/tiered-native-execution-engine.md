@@ -662,6 +662,24 @@ state if final release fails. Eight focused rotate cases cover cross-geometry
 binding, normative Applied state, preparation drift, completion drift, runner
 failure, guard miss, successful release, and committed cleanup retry.
 
+The real `(&O` theorem now also supplies a two-step native suffix after its
+normative jump: rotate followed by halt. The suffix admits rotate from the
+post-jump checkpoint, then uses rotate's normatively replayed exit as the sole
+halt checkpoint authority before either step maps. Transactional execution
+stops exactly at a guard miss and preserves a committed rotate if halt later
+misses or fails.
+
+The rotate/halt suffix can additionally prebind or own both synchronized
+executables. Both images are checked before caller-state mutation; repeated
+execution of a loaded pair performs no new mapping work. Partial halt-load
+failure releases the ready rotate, cleanup failure retains exact retry
+ownership, and pair release attempts both mappings even if either release
+fails.
+
+Twelve focused suffix tests cover geometry continuity, indexed
+progress/failure, reusable prebinding, owned reuse, partial-load rollback, and
+single/both-mapping cleanup ownership. Pair-cache integration remains separate.
+
 The no-operation artifact retains its own verified wrapper and now reaches
 execution only through a separate checkpoint-bound composition module.
 `VerifiedExecutionGeometryLoadImage::from_no_operation()` admits its exact
