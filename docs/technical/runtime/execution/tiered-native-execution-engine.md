@@ -836,8 +836,13 @@ evidence reports prior removals so partial successful eviction is observable.
 
 Five entry-only and five weighted cases mix no-op/halt, rotate/halt, and
 full-path residents through recency, lease, saturation, byte/mapping pressure,
-rollback, release-failure, and vacancy paths. Execution remains deliberately
-variant-specific through the loaded-resident enum.
+rollback, release-failure, and vacancy paths.
+
+A heterogeneous lease can now execute its resident directly without cache or
+adapter work. The common execution boundary only tags the existing specialized
+outcome/failure as full-path, no-op/halt, or rotate/halt; it does not translate
+step indices, guard misses, committed checkpoints, or rollback semantics. Three
+focused cases cover two successful families and one typed rotate failure.
 
 The same heterogeneous cache can now reconfigure entry, mapped-byte, and mapping
 limits. Expansion or already-satisfied requests publish with no adapter work;

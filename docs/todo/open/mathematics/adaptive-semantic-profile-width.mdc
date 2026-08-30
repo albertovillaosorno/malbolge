@@ -750,6 +750,10 @@ transfers, verification, and other separately measured costs.
   template families in LRU order. Blockage or typed release failure keeps the
   previous limits published while reporting prior removals and cleanup
   ownership.
+- Heterogeneous leases now execute the retained specialized owner directly.
+  Outcomes and failures stay tagged as no-op/halt, rotate/halt, or full-path;
+  step indices, checkpoints, guard behavior, and rollback remain owned by the
+  original template implementation. Execution performs no adapter work.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

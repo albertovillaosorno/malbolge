@@ -35,20 +35,31 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use crate::execution_native::NativeExecutableMemoryAdapter;
+use malbolge::ProfileMachineState;
+
+use crate::execution_native::{
+    ExecutionGeometryNativeRunner, NativeExecutableMemoryAdapter,
+    NativeRegionBuffers,
+};
 use crate::geometry_native_jump_rotate_halt_sequence::{
+    ExecutionGeometryNativeJumpRotateHaltOutcome,
+    ExecutionGeometryNativeJumpRotateHaltOwnedFailure,
     ExecutionGeometryNativeJumpRotateHaltSequence,
     ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure,
     ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure,
     LoadedExecutionGeometryNativeJumpRotateHaltSequence,
 };
 use crate::geometry_native_rotate_sequence::{
+    ExecutionGeometryNativeRotateHaltLoadedFailure,
+    ExecutionGeometryNativeRotateHaltOutcome,
     ExecutionGeometryNativeRotateHaltPairLoadFailure,
     ExecutionGeometryNativeRotateHaltPairReleaseFailure,
     ExecutionGeometryNativeRotateHaltSequence,
     LoadedExecutionGeometryNativeRotateHaltSequence,
 };
 use crate::geometry_native_sequence::{
+    ExecutionGeometryNativeNoopHaltLoadedFailure,
+    ExecutionGeometryNativeNoopHaltOutcome,
     ExecutionGeometryNativeNoopHaltPairLoadFailure,
     ExecutionGeometryNativeNoopHaltPairReleaseFailure,
     ExecutionGeometryNativeNoopHaltSequence,
@@ -101,6 +112,34 @@ pub enum GeometryNativeLoadedResident {
     RotatePair(Box<LoadedExecutionGeometryNativeRotateHaltSequence>),
 }
 
+/// Successful or safely suspended execution through one typed resident.
+#[derive(Debug, Eq, PartialEq)]
+pub enum GeometryNativeResidentExecutionOutcome {
+    /// Complete initial-jump, rotate, halt outcome.
+    FullPath(Box<ExecutionGeometryNativeJumpRotateHaltOutcome>),
+    /// No-operation followed by halt outcome.
+    NoOperationPair(Box<ExecutionGeometryNativeNoopHaltOutcome>),
+    /// Rotate followed by halt outcome.
+    RotatePair(Box<ExecutionGeometryNativeRotateHaltOutcome>),
+}
+
+/// Typed execution failure retaining the specialized resident failure.
+#[derive(Debug, Eq, PartialEq)]
+pub enum GeometryNativeResidentExecutionFailure<RunnerError> {
+    /// Complete full-path execution failed.
+    FullPath(
+        Box<ExecutionGeometryNativeJumpRotateHaltOwnedFailure<RunnerError>>,
+    ),
+    /// No-operation/halt pair execution failed.
+    NoOperationPair(
+        Box<ExecutionGeometryNativeNoopHaltLoadedFailure<RunnerError>>,
+    ),
+    /// Rotate/halt pair execution failed.
+    RotatePair(
+        Box<ExecutionGeometryNativeRotateHaltLoadedFailure<RunnerError>>,
+    ),
+}
+
 /// Exact synchronized resources retained by one heterogeneous resident.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GeometryNativeResidentWeight {
@@ -139,6 +178,12 @@ pub enum GeometryNativeResidentReleaseFailure<MemoryError> {
     RotatePair(Box<RotateReleaseFailure<MemoryError>>),
 }
 
+/// Result of executing one exact loaded heterogeneous v5 resident.
+pub type GeometryNativeResidentExecutionResult<RunnerError> = Result<
+    GeometryNativeResidentExecutionOutcome,
+    Box<GeometryNativeResidentExecutionFailure<RunnerError>>,
+>;
+
 /// Result of loading one exact heterogeneous v5 resident.
 pub type GeometryNativeResidentLoadResult<MemoryError> = Result<
     GeometryNativeLoadedResident,
@@ -148,6 +193,18 @@ pub type GeometryNativeResidentLoadResult<MemoryError> = Result<
 /// Result of releasing one exact heterogeneous v5 resident.
 pub type GeometryNativeResidentReleaseResult<MemoryError> =
     Result<(), Box<GeometryNativeResidentReleaseFailure<MemoryError>>>;
+
+impl<RunnerError: Display> Display
+    for GeometryNativeResidentExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::FullPath(error) => Display::fmt(error, f),
+            Self::NoOperationPair(error) => Display::fmt(error, f),
+            Self::RotatePair(error) => Display::fmt(error, f),
+        }
+    }
+}
 
 impl Display for GeometryNativeResidentWeightError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -187,6 +244,64 @@ impl<MemoryError: Display> Display
 }
 
 impl GeometryNativeLoadedResident {
+    /// Executes through the specialized loaded owner without adapter work.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact variant-specific execution failure without changing
+    /// resident ownership or translating step semantics.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> GeometryNativeResidentExecutionResult<Runner::Error>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        match self {
+            Self::FullPath(loaded) => loaded
+                .execute(runner, buffers)
+                .map(|outcome| {
+                    GeometryNativeResidentExecutionOutcome::FullPath(Box::new(
+                        outcome,
+                    ))
+                })
+                .map_err(|error| {
+                    Box::new(GeometryNativeResidentExecutionFailure::FullPath(
+                        error,
+                    ))
+                }),
+            Self::NoOperationPair(loaded) => loaded
+                .execute(runner, buffers)
+                .map(|outcome| {
+                    GeometryNativeResidentExecutionOutcome::NoOperationPair(
+                        Box::new(outcome),
+                    )
+                })
+                .map_err(|error| {
+                    Box::new(
+                        GeometryNativeResidentExecutionFailure::NoOperationPair(
+                            error,
+                        ),
+                    )
+                }),
+            Self::RotatePair(loaded) => loaded
+                .execute(runner, buffers)
+                .map(|outcome| {
+                    GeometryNativeResidentExecutionOutcome::RotatePair(
+                        Box::new(outcome),
+                    )
+                })
+                .map_err(|error| {
+                    Box::new(
+                        GeometryNativeResidentExecutionFailure::RotatePair(
+                            error,
+                        ),
+                    )
+                }),
+        }
+    }
+
     /// Returns the exact reviewed template retained by this loaded owner.
     #[must_use]
     pub const fn kind(&self) -> GeometryNativeResidentKind {
@@ -295,6 +410,32 @@ impl GeometryNativeLoadedResident {
             ),
         };
         Ok(GeometryNativeResidentWeight { mapped_bytes, mappings })
+    }
+}
+
+impl GeometryNativeResidentExecutionOutcome {
+    /// Returns the reviewed template that produced this execution outcome.
+    #[must_use]
+    pub const fn kind(&self) -> GeometryNativeResidentKind {
+        match self {
+            Self::FullPath(_outcome) => GeometryNativeResidentKind::FullPath,
+            Self::NoOperationPair(_outcome) => {
+                GeometryNativeResidentKind::NoOperationPair
+            },
+            Self::RotatePair(_outcome) => {
+                GeometryNativeResidentKind::RotatePair
+            },
+        }
+    }
+
+    /// Returns the completed or last committed opaque-geometry checkpoint.
+    #[must_use]
+    pub fn state(&self) -> &ProfileMachineState {
+        match self {
+            Self::FullPath(outcome) => outcome.state(),
+            Self::NoOperationPair(outcome) => outcome.state(),
+            Self::RotatePair(outcome) => outcome.state(),
+        }
     }
 }
 

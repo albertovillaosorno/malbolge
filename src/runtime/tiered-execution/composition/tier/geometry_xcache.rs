@@ -42,12 +42,15 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use crate::execution_native::NativeExecutableMemoryAdapter;
+use crate::execution_native::{
+    ExecutionGeometryNativeRunner, NativeExecutableMemoryAdapter,
+    NativeRegionBuffers,
+};
 use crate::geometry_native_cross_template_resident::{
-    GeometryNativeLoadedResident, GeometryNativeResidentKind,
-    GeometryNativeResidentLoadFailure, GeometryNativeResidentPlan,
-    GeometryNativeResidentReleaseFailure, GeometryNativeResidentWeight,
-    GeometryNativeResidentWeightError,
+    GeometryNativeLoadedResident, GeometryNativeResidentExecutionResult,
+    GeometryNativeResidentKind, GeometryNativeResidentLoadFailure,
+    GeometryNativeResidentPlan, GeometryNativeResidentReleaseFailure,
+    GeometryNativeResidentWeight, GeometryNativeResidentWeightError,
 };
 
 type ResidentLoadFailure<MemoryError> =
@@ -968,6 +971,22 @@ impl GeometryNativeCrossTemplateLruCache {
 }
 
 impl GeometryNativeCrossTemplateLruLease {
+    /// Executes the retained specialized owner without cache or adapter work.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact typed resident execution failure.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> GeometryNativeResidentExecutionResult<Runner::Error>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        self.resident.execute(runner, buffers)
+    }
+
     /// Returns the reviewed template retained by this lease.
     #[must_use]
     pub fn kind(&self) -> GeometryNativeResidentKind {

@@ -275,6 +275,8 @@ use geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruRelease as CrossLruRelease,
 };
 use geometry_native_cross_template_resident::{
+    GeometryNativeResidentExecutionFailure as CrossExecutionFailure,
+    GeometryNativeResidentExecutionOutcome as CrossExecutionOutcome,
     GeometryNativeResidentKind as CrossResidentKind,
     GeometryNativeResidentLoadFailure as CrossResidentLoadFailure,
     GeometryNativeResidentPlan as CrossResidentPlan,
@@ -15812,6 +15814,172 @@ fn geometry_native_cross_template_weighted_lru_release_failure_is_typed()
         .release_if_unleased(&mut adapter, &rotate_plan)
         .map(|_release| ())
         .map_err(|error| format!("cross weighted survivor cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_lease_executes_noop_pair_without_remap()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::NoOperationPair(Box::new(
+        geometry_native_noop_halt_sequence(&fixture)?,
+    ));
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("cross no-op initial state missing"))?;
+    let expected = fixture
+        .states
+        .get(2)
+        .ok_or_else(|| String::from("cross no-op final state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(197)?,
+        native_executable_address(0x7_2000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    let acquisition = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross no-op lease acquire: {error}"))?;
+    let operations_before = adapter.operations.len();
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = acquisition
+        .lease()
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("cross no-op lease execute: {error}"))?;
+    if outcome.kind() != CrossResidentKind::NoOperationPair
+        || !matches!(outcome, CrossExecutionOutcome::NoOperationPair(_))
+        || outcome.state() != expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 2
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from("cross no-op lease execution drifted"));
+    }
+    drop(acquisition);
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross no-op lease cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_lease_executes_full_path_without_remap()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::FullPath(Box::new(
+        geometry_native_jump_rotate_halt_sequence(&fixture)?,
+    ));
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("cross full initial state missing"))?;
+    let expected = fixture
+        .states
+        .get(3)
+        .ok_or_else(|| String::from("cross full final state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(198)?,
+        native_executable_address(0x7_3000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    let acquisition = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross full lease acquire: {error}"))?;
+    let operations_before = adapter.operations.len();
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = acquisition
+        .lease()
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("cross full lease execute: {error}"))?;
+    if outcome.kind() != CrossResidentKind::FullPath
+        || !matches!(outcome, CrossExecutionOutcome::FullPath(_))
+        || outcome.state() != expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 3
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from("cross full lease execution drifted"));
+    }
+    drop(acquisition);
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross full lease cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_lease_failure_keeps_rotate_variant()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::RotatePair(Box::new(
+        geometry_native_rotate_halt_sequence(&fixture)?,
+    ));
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("cross rotate initial state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(199)?,
+        native_executable_address(0x7_4000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    let acquisition = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross rotate lease acquire: {error}"))?;
+    let operations_before = adapter.operations.len();
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) = acquisition.lease().execute(
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("cross rotate lease failure was ignored"));
+    };
+    let CrossExecutionFailure::RotatePair(cause) = *failure else {
+        return Err(String::from(
+            "cross rotate execution failure lost variant",
+        ));
+    };
+    if cause.index() != 0
+        || cause.state() != initial
+        || memory != initial.memory()
+        || output != initial.io().output()
+        || runner.calls != 1
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from(
+            "cross rotate lease failure rollback drifted",
+        ));
+    }
+    drop(acquisition);
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross rotate lease cleanup: {error}"))
 }
 
 #[test]
