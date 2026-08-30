@@ -40,11 +40,14 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use malbolge::{ExecutionGeometryRegionEffectProgram, ProfileMachineState};
 
 use crate::execution_native::{
-    ExecutionGeometryNativeRunner, NativeExecutableMemoryAdapter,
-    NativeRegionBuffers, NativeRegionInvocationOutcome,
-    ReadyExecutionGeometryNativeExecutable,
+    ExecutionGeometryNativeExecutableReleaseFailure,
+    ExecutionGeometryNativeRunner, NativeExecutableLoadFailure,
+    NativeExecutableMemoryAdapter, NativeRegionBuffers,
+    NativeRegionInvocationOutcome, ReadyExecutionGeometryNativeExecutable,
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     VerifiedExecutionGeometryNoOperationNativeObjectArtifact,
+    load_execution_geometry_native_executable,
+    release_execution_geometry_native_executable,
 };
 use crate::geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltAdmission,
@@ -120,6 +123,33 @@ pub struct ExecutionGeometryNativeNoopHaltLoadedFailure<RunnerError> {
     state: ProfileMachineState,
 }
 
+/// Failure while loading the exact reusable v5 no-operation/halt pair.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeNoopHaltPairLoadFailure<MemoryError> {
+    /// Halt loading failed after the no-operation was ready.
+    Halt {
+        /// Primary halt load failure.
+        error: Box<NativeExecutableLoadFailure<MemoryError>>,
+        /// Failed rollback retaining the ready no-operation for retry.
+        no_operation_release_failure: Option<
+            Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+        >,
+    },
+    /// No-operation loading failed before any ready executable existed.
+    NoOperation(Box<NativeExecutableLoadFailure<MemoryError>>),
+}
+
+/// Failed pair release retaining every mapping that still needs cleanup.
+#[derive(Debug, Eq, PartialEq)]
+pub struct ExecutionGeometryNativeNoopHaltPairReleaseFailure<MemoryError> {
+    halt_failure: Option<
+        Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+    >,
+    no_operation_failure: Option<
+        Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+    >,
+}
+
 /// Primary failure from one indexed step of the two-step native sequence.
 #[derive(Debug, Eq, PartialEq)]
 pub enum ExecutionGeometryNativeNoopHaltFailureCause<MemoryError, RunnerError> {
@@ -191,10 +221,30 @@ pub struct BoundExecutionGeometryNativeNoopHaltSequence<'sequence, 'executable>
     sequence: &'sequence ExecutionGeometryNativeNoopHaltSequence,
 }
 
+/// Owned ready no-operation/halt pair bound to one admitted sequence.
+#[derive(Debug)]
+pub struct LoadedExecutionGeometryNativeNoopHaltSequence<'sequence> {
+    halt: ReadyExecutionGeometryNativeExecutable,
+    no_operation: ReadyExecutionGeometryNativeExecutable,
+    sequence: &'sequence ExecutionGeometryNativeNoopHaltSequence,
+}
+
 /// Result of executing one prebound geometry-native pair.
 pub type ExecutionGeometryNativeNoopHaltLoadedResult<RunnerError> = Result<
     ExecutionGeometryNativeNoopHaltOutcome,
     Box<ExecutionGeometryNativeNoopHaltLoadedFailure<RunnerError>>,
+>;
+
+/// Result of loading both exact ready executables as one owned pair.
+pub type GeometryNativeNoopHaltPairLoadResult<'sequence, MemoryError> = Result<
+    LoadedExecutionGeometryNativeNoopHaltSequence<'sequence>,
+    Box<ExecutionGeometryNativeNoopHaltPairLoadFailure<MemoryError>>,
+>;
+
+/// Result of releasing every mapping owned by one loaded pair.
+pub type GeometryNativeNoopHaltPairReleaseResult<MemoryError> = Result<
+    (),
+    Box<ExecutionGeometryNativeNoopHaltPairReleaseFailure<MemoryError>>,
 >;
 
 /// Result of one concrete adapter/runner two-step transaction.
@@ -248,6 +298,34 @@ impl<RunnerError: Display> Display
             Cause::NoOperationExecution(error) => Display::fmt(error, f),
             Cause::NoOperationPreparation(error) => Display::fmt(error, f),
         }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for ExecutionGeometryNativeNoopHaltPairLoadFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Halt { error, .. } => {
+                write!(f, "v5 pair halt load failed: {error}")
+            },
+            Self::NoOperation(error) => {
+                write!(f, "v5 pair no-operation load failed: {error}")
+            },
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for ExecutionGeometryNativeNoopHaltPairReleaseFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        let halt = self.halt_failure.is_some();
+        let no_operation = self.no_operation_failure.is_some();
+        write!(
+            f,
+            "v5 pair release incomplete (halt={halt}, noop={no_operation})"
+        )
     }
 }
 
@@ -462,6 +540,110 @@ impl<RunnerError> ExecutionGeometryNativeNoopHaltLoadedFailure<RunnerError> {
     }
 }
 
+impl<MemoryError>
+    ExecutionGeometryNativeNoopHaltPairReleaseFailure<MemoryError>
+{
+    /// Returns the retained halt cleanup failure, when halt release failed.
+    #[must_use]
+    pub fn halt_failure(
+        &self,
+    ) -> Option<&ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>
+    {
+        self.halt_failure.as_deref()
+    }
+
+    /// Returns the retained no-operation cleanup failure, when release failed.
+    #[must_use]
+    pub fn no_operation_failure(
+        &self,
+    ) -> Option<&ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>
+    {
+        self.no_operation_failure.as_deref()
+    }
+
+    /// Retries every still-owned mapping and retains only repeated failures.
+    ///
+    /// # Errors
+    ///
+    /// Returns a refreshed pair cleanup failure when either release fails
+    /// again.
+    pub fn retry<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeNoopHaltPairReleaseResult<MemoryError>
+    where
+        Adapter: NativeExecutableMemoryAdapter<Error = MemoryError>,
+    {
+        let halt_failure = retry_pair_release(self.halt_failure, adapter);
+        let no_operation_failure =
+            retry_pair_release(self.no_operation_failure, adapter);
+        pair_release_result(halt_failure, no_operation_failure)
+    }
+}
+
+impl LoadedExecutionGeometryNativeNoopHaltSequence<'_> {
+    /// Executes through the owned synchronized pair without mapping operations.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact indexed execution failure while retaining both mappings.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> ExecutionGeometryNativeNoopHaltLoadedResult<Runner::Error>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        let bound = BoundExecutionGeometryNativeNoopHaltSequence {
+            halt: &self.halt,
+            no_operation: &self.no_operation,
+            sequence: self.sequence,
+        };
+        bound.execute(runner, buffers)
+    }
+
+    /// Returns the owned synchronized halt executable.
+    #[must_use]
+    pub const fn halt(&self) -> &ReadyExecutionGeometryNativeExecutable {
+        &self.halt
+    }
+
+    /// Returns the owned synchronized no-operation executable.
+    #[must_use]
+    pub const fn no_operation(
+        &self,
+    ) -> &ReadyExecutionGeometryNativeExecutable {
+        &self.no_operation
+    }
+
+    /// Releases both mappings, attempting both even when one release fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns retry ownership for every mapping whose release failed.
+    pub fn release<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeNoopHaltPairReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let halt_failure =
+            release_execution_geometry_native_executable(adapter, self.halt)
+                .err()
+                .map(Box::new);
+        let no_operation_failure =
+            release_execution_geometry_native_executable(
+                adapter,
+                self.no_operation,
+            )
+            .err()
+            .map(Box::new);
+        pair_release_result(halt_failure, no_operation_failure)
+    }
+}
+
 impl ExecutionGeometryNativeNoopHaltOutcome {
     /// Returns the completed or last committed opaque-geometry checkpoint.
     #[must_use]
@@ -585,6 +767,62 @@ impl ExecutionGeometryNativeNoopHaltSequence {
         &self.halt
     }
 
+    /// Loads both exact v5 executables and owns them as one reusable pair.
+    ///
+    /// Halt load failure immediately releases the already-ready no-operation.
+    /// Failed rollback retains that ready executable without replacing the
+    /// primary halt load error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeNoopHaltPairLoadFailure`] for either
+    /// load phase and any retryable partial-load cleanup ownership.
+    pub fn load_pair<'sequence, Adapter>(
+        &'sequence self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeNoopHaltPairLoadResult<'sequence, Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let no_operation = load_execution_geometry_native_executable(
+            adapter,
+            self.no_operation.load_image(),
+        )
+        .map_err(|error| {
+            Box::new(
+                ExecutionGeometryNativeNoopHaltPairLoadFailure::NoOperation(
+                    Box::new(error),
+                ),
+            )
+        })?;
+        let halt = match load_execution_geometry_native_executable(
+            adapter,
+            self.halt.load_image(),
+        ) {
+            Ok(halt) => halt,
+            Err(error) => {
+                let no_operation_release_failure =
+                    release_execution_geometry_native_executable(
+                        adapter,
+                        no_operation,
+                    )
+                    .err()
+                    .map(Box::new);
+                return Err(Box::new(
+                    ExecutionGeometryNativeNoopHaltPairLoadFailure::Halt {
+                        error: Box::new(error),
+                        no_operation_release_failure,
+                    },
+                ));
+            },
+        };
+        Ok(LoadedExecutionGeometryNativeNoopHaltSequence {
+            halt,
+            no_operation,
+            sequence: self,
+        })
+    }
+
     /// Admits a no-operation and its exact following halt before native
     /// mapping.
     ///
@@ -629,6 +867,38 @@ impl ExecutionGeometryNativeNoopHaltSequence {
     ) -> &ExecutionGeometryNativeNoOperationAdmission {
         &self.no_operation
     }
+}
+
+fn pair_release_result<MemoryError>(
+    halt_failure: Option<
+        Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+    >,
+    no_operation_failure: Option<
+        Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+    >,
+) -> GeometryNativeNoopHaltPairReleaseResult<MemoryError> {
+    if halt_failure.is_none() && no_operation_failure.is_none() {
+        Ok(())
+    } else {
+        Err(Box::new(
+            ExecutionGeometryNativeNoopHaltPairReleaseFailure {
+                halt_failure,
+                no_operation_failure,
+            },
+        ))
+    }
+}
+
+fn retry_pair_release<Adapter, MemoryError>(
+    failure: Option<
+        Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+    >,
+    adapter: &mut Adapter,
+) -> Option<Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>>
+where
+    Adapter: NativeExecutableMemoryAdapter<Error = MemoryError>,
+{
+    failure.and_then(|candidate| candidate.retry(adapter).err().map(Box::new))
 }
 
 fn halt_failure_state<MemoryError, RunnerError>(

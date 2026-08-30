@@ -252,6 +252,7 @@ use geometry_native_sequence::{
     ExecutionGeometryNativeNoopHaltFailureCause,
     ExecutionGeometryNativeNoopHaltLoadedFailureCause as LoadedNoopHaltCause,
     ExecutionGeometryNativeNoopHaltOutcome,
+    ExecutionGeometryNativeNoopHaltPairLoadFailure,
     ExecutionGeometryNativeNoopHaltSequence,
 };
 use interpreter_handoff::{
@@ -12940,6 +12941,159 @@ fn geometry_native_noop_halt_loaded_rejects_mixed_ready_before_execution()
         Ok(())
     } else {
         Err(String::from("v5 mixed ready pair was prebound"))
+    }
+}
+
+#[test]
+fn geometry_native_noop_halt_pair_load_failure_releases_prefix()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_noop_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(120)?,
+        native_executable_address(0x2_6000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 2);
+    let Err(failure) = sequence.load_pair(&mut adapter) else {
+        return Err(String::from("v5 pair halt load failure was ignored"));
+    };
+    let ExecutionGeometryNativeNoopHaltPairLoadFailure::Halt {
+        error,
+        no_operation_release_failure,
+    } = *failure
+    else {
+        return Err(String::from("v5 pair load failure phase drifted"));
+    };
+    if error.phase() == NativeExecutableLoadPhase::Allocate
+        && no_operation_release_failure.is_none()
+        && adapter.release_requests.len() == 1
+        && adapter.operations.last()
+            == Some(&FakeNativeAdapterOperation::Release)
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 pair partial load rollback drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_noop_halt_pair_load_failure_retains_cleanup_retry()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_noop_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(121)?,
+        native_executable_address(0x2_7000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 2)
+    .with_release_failures(1);
+    let Err(failure) = sequence.load_pair(&mut adapter) else {
+        return Err(String::from("v5 pair cleanup failure was ignored"));
+    };
+    let ExecutionGeometryNativeNoopHaltPairLoadFailure::Halt {
+        error,
+        no_operation_release_failure: Some(cleanup),
+    } = *failure
+    else {
+        return Err(String::from("v5 pair cleanup ownership was lost"));
+    };
+    if error.phase() != NativeExecutableLoadPhase::Allocate
+        || cleanup.executable().key()
+            != sequence.no_operation().artifact().key()
+    {
+        return Err(String::from("v5 pair cleanup retry identity drifted"));
+    }
+    cleanup
+        .retry(&mut adapter)
+        .map_err(|retry_error| format!("v5 pair cleanup retry: {retry_error}"))
+}
+
+#[test]
+fn geometry_native_noop_halt_pair_release_retries_both_mappings()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_noop_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(122)?,
+        native_executable_address(0x2_8000)?,
+    )
+    .with_release_failures(2);
+    let loaded = sequence
+        .load_pair(&mut adapter)
+        .map_err(|error| format!("v5 pair owned load: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from("v5 pair release failures were ignored"));
+    };
+    let halt_key_matches = failure.halt_failure().is_some_and(|error| {
+        error.executable().key() == sequence.halt().artifact().key()
+    });
+    let no_operation_key_matches =
+        failure.no_operation_failure().is_some_and(|error| {
+            error.executable().key() == sequence.no_operation().artifact().key()
+        });
+    if !halt_key_matches || !no_operation_key_matches {
+        return Err(String::from("v5 pair release retry ownership drifted"));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 pair release retry: {error}"))?;
+    if adapter.release_requests.len() == 4 {
+        Ok(())
+    } else {
+        Err(String::from("v5 pair release retry attempts drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_noop_halt_pair_reuses_owned_executables()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_noop_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 owned pair initial state missing"))?;
+    let final_state = fixture
+        .states
+        .get(2)
+        .ok_or_else(|| String::from("v5 owned pair final state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(119)?,
+        native_executable_address(0x2_5000)?,
+    );
+    let loaded = sequence
+        .load_pair(&mut adapter)
+        .map_err(|error| format!("v5 owned pair load: {error}"))?;
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    for _iteration in 0usize..2usize {
+        let mut memory = initial.memory().to_vec();
+        let input = initial.io().input().to_vec();
+        let mut output = initial.io().output().to_vec();
+        let outcome = loaded
+            .execute(
+                &mut runner,
+                NativeRegionBuffers::new(&mut memory, &input, &mut output),
+            )
+            .map_err(|error| format!("v5 owned pair execute: {error}"))?;
+        if outcome.state() != final_state || memory != final_state.memory() {
+            return Err(String::from("v5 owned pair execution drifted"));
+        }
+    }
+    if runner.calls != 4 || adapter.operations.len() != 8 {
+        return Err(String::from("v5 owned pair remapped during reuse"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned pair release: {error}"))?;
+    if adapter.operations.len() == 10 {
+        Ok(())
+    } else {
+        Err(String::from("v5 owned pair release count drifted"))
     }
 }
 

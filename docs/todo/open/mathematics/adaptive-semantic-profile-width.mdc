@@ -675,9 +675,12 @@ transfers, verification, and other separately measured costs.
 - Externally loaded no-op/halt executables can now be prebound as one exact
   pair before caller-state mutation. Mixed-geometry ready images reject before
   step zero, and the bound pair can execute repeatedly without new mapping
-  operations while preserving indexed guard/failure prefix semantics. Mapping
-  ownership and final release remain caller-owned; pair-level cache/release
-  orchestration and broader state-changing templates remain open.
+  operations while preserving indexed guard/failure prefix semantics.
+- An optional pair owner now coordinates loading and release. Halt-load failure
+  rolls back the already-ready no-op and retains it for cleanup retry if that
+  release fails. Final release attempts both mappings even when one fails, and
+  retry ownership keeps each unreleased ready executable independently. Pair
+  caching/lease reuse and broader state-changing templates remain open.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

@@ -684,8 +684,18 @@ admitted entry checkpoint.
 Two repeated `DP` executions therefore reuse the same synchronized mappings
 while preserving exact native completion checks. A late runner failure still
 restores only the failing halt step and retains the committed no-operation
-prefix. Mapping ownership remains with the caller: loading, caching, and final
-release are intentionally outside the borrow-scoped bound sequence.
+prefix.
+
+`load_pair()` now supplies an optional owner for those same two mappings. It
+loads no-operation first and halt second; halt-load failure immediately releases
+the ready no-operation, while failed rollback retains that exact executable for
+retry beside the primary halt-load error. The loaded pair executes repeatedly
+without adapter work and `release()` always attempts both mappings.
+
+If either or both releases fail, the returned pair cleanup failure retains every
+still-owned ready executable and can retry only those failures. Four cases cover
+successful reuse/release, partial-load cleanup, retryable partial cleanup, and
+dual release failure.
 
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine
