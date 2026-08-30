@@ -122,8 +122,13 @@ legacy native-continuation APIs still consume only `RegionEffectProgram`.
 A separate geometry interpreter path may consume one or more ordered v5 steps
 only when a validated checkpoint supplies the opaque geometry token. Every
 executed step requires normative replay and exact v5 reprojection, including
-after suspension/resume. The schema itself therefore never gains execution
-authority.
+after suspension/resume.
+
+Native identity and MBPF v5 metadata can also retain this declarative geometry.
+The first reviewed native consumer is a guarded initial-halt artifact whose code
+checks entry observation, fetched-cell live-in, and required memory before halt.
+That artifact is not accepted by legacy load/invocation APIs, so the schema
+itself still never gains execution authority.
 
 Native cache/artifact identity accepts canonical v3 and v4 bytes, preserving the
 IR version as part of exact identity. Native profile metadata follows that

@@ -160,6 +160,25 @@ pub(super) fn halt_registers_coff(
     build_minimal_coff(key, &text).ok_or(DirectHaltRegistersError::ObjectBytes)
 }
 
+pub(super) fn execution_geometry_initial_halt_coff(
+    key: &NativeArtifactKey,
+    selected: DirectFetchedTerminalProgram,
+) -> Result<Vec<u8>, DirectExecutionGeometryInitialHaltError> {
+    let observation = direct_entry_observation(selected.observation)
+        .ok_or(DirectExecutionGeometryInitialHaltError::ObjectBytes)?;
+    let guard = DirectFetchedCellGuard {
+        live_in_value: selected.live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => aarch64::halt_fetch_code(observation, guard),
+        HostIsa::X86_64 => x86_64::halt_fetch_code(observation, guard),
+    }
+    .ok_or(DirectExecutionGeometryInitialHaltError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectExecutionGeometryInitialHaltError::ObjectBytes)
+}
+
 pub(super) fn halt_fetch_coff(
     key: &NativeArtifactKey,
     selected: DirectFetchedTerminalProgram,

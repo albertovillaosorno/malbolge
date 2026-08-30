@@ -126,6 +126,8 @@ use execution_native::{
     CachedPreflightedExecutionTier, CoffAdmissionError,
     DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
+    DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID,
+    DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION,
     DIRECT_HALT_FETCH_BACKEND_ID, DIRECT_HALT_FETCH_BACKEND_REVISION,
     DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
     DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
@@ -137,11 +139,12 @@ use execution_native::{
     DIRECT_OUTPUT_BACKEND_ID, DIRECT_OUTPUT_BACKEND_REVISION,
     DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
     DirectCacheDisposition, DirectCrazyError, DirectDeoptError,
-    DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
-    DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
-    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
-    DirectNonGraphicalError, DirectOutputError, DirectRotateError,
-    DirectSelectionError, DirectSequenceError, NATIVE_REGION_ABI_REVISION,
+    DirectExecutionGeometryInitialHaltError, DirectHaltFetchError,
+    DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
+    DirectInputError, DirectJumpCodeError, DirectJumpDataError,
+    DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
+    DirectOutputError, DirectRotateError, DirectSelectionError,
+    DirectSequenceError, NATIVE_REGION_ABI_REVISION,
     NATIVE_REGION_ACCUMULATOR_OFFSET, NATIVE_REGION_CODE_POINTER_OFFSET,
     NATIVE_REGION_DATA_POINTER_OFFSET, NATIVE_REGION_INPUT_CONSUMED_OFFSET,
     NATIVE_REGION_INPUT_LEN_OFFSET, NATIVE_REGION_INPUT_OFFSET,
@@ -179,6 +182,7 @@ use execution_native::{
     VerifiedDirectLoadImage, VerifiedDirectNativeCache,
     VerifiedDirectSequencePlan, compile_preflighted_clang_c23,
     emit_direct_crazy_coff, emit_direct_deopt_coff,
+    emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_input_coff,
     emit_direct_jump_code_coff, emit_direct_jump_data_coff,
@@ -195,10 +199,11 @@ use execution_native::{
     select_cached_verified_direct_sequence, select_preflighted_execution_tier,
     select_verified_direct_native, select_verified_direct_sequence,
     structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
-    verify_direct_halt_fetch, verify_direct_halt_registers,
-    verify_direct_initial_halt, verify_direct_input, verify_direct_jump_code,
-    verify_direct_jump_data, verify_direct_no_operation,
-    verify_direct_non_graphical, verify_direct_output, verify_direct_rotate,
+    verify_direct_execution_geometry_initial_halt, verify_direct_halt_fetch,
+    verify_direct_halt_registers, verify_direct_initial_halt,
+    verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
+    verify_direct_no_operation, verify_direct_non_graphical,
+    verify_direct_output, verify_direct_rotate,
 };
 use geometry_interpreter_handoff::{
     ExecutionGeometryContinuationAdmissionError,
@@ -2166,6 +2171,22 @@ fn direct_deopt_target(isa: HostIsa) -> NativeTargetIdentity {
     NativeTargetIdentity::new(NativeTargetConfig {
         backend_id: String::from(DIRECT_DEOPT_BACKEND_ID),
         backend_revision: DIRECT_DEOPT_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+fn direct_execution_geometry_initial_halt_target(
+    isa: HostIsa,
+) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(
+            DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID,
+        ),
+        backend_revision:
+            DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION,
         host_isa: isa,
         host_os: HostOperatingSystem::Windows,
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
@@ -12090,6 +12111,55 @@ fn derived_v5_handoff_fixture(
         ExecutionGeometryRegionEffectProgram::from_profile_step_trace(&trace)
             .map_err(|error| format!("v5 projection: {error:?}"))?;
     Ok((program, checkpoint, verified.geometry()))
+}
+
+#[test]
+fn direct_execution_geometry_initial_halt_admits_exact_v5_geometry()
+-> Result<(), String> {
+    let (n10, _n10_checkpoint, _n10_geometry) = derived_v5_handoff_fixture(10)?;
+    let (n11, _n11_checkpoint, _n11_geometry) = derived_v5_handoff_fixture(11)?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let n10_artifact = emit_direct_execution_geometry_initial_halt_coff(
+            &n10,
+            direct_execution_geometry_initial_halt_target(isa),
+        )
+        .map_err(|error| format!("v5 N10 {isa:?} emit: {error}"))?;
+        let n11_artifact = emit_direct_execution_geometry_initial_halt_coff(
+            &n11,
+            direct_execution_geometry_initial_halt_target(isa),
+        )
+        .map_err(|error| format!("v5 N11 {isa:?} emit: {error}"))?;
+        let mbpf_v5 = b"MBPF\x05\x00";
+        if n10_artifact.key().ir().execution_geometry()
+            != Some(n10.execution_geometry())
+            || n10_artifact.key().ir().format_version()
+                != EFFECT_IR_EXECUTION_GEOMETRY_VERSION
+            || n10_artifact.object() == n11_artifact.object()
+            || !n10_artifact
+                .object()
+                .windows(mbpf_v5.len())
+                .any(|window| window == mbpf_v5)
+        {
+            return Err(String::from("v5 native object lost exact geometry"));
+        }
+        let verified =
+            verify_direct_execution_geometry_initial_halt(&n10_artifact, &n10)
+                .map_err(|error| format!("v5 N10 {isa:?} verify: {error}"))?;
+        if verified.object() != n10_artifact.object()
+            || verified.key() != n10_artifact.key()
+        {
+            return Err(String::from("v5 verified artifact changed identity"));
+        }
+        if verify_direct_execution_geometry_initial_halt(&n10_artifact, &n11)
+            != Err(DirectExecutionGeometryInitialHaltError::ProgramShape)
+        {
+            return Err(String::from(
+                "v5 artifact admitted different geometry",
+            ));
+        }
+        assert_tampered_direct_profile_metadata(&n10_artifact)?;
+    }
+    Ok(())
 }
 
 #[test]

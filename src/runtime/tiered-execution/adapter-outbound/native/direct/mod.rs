@@ -51,6 +51,7 @@ pub use artifact::*;
 use coff::*;
 pub use emit::{
     emit_direct_crazy_coff, emit_direct_deopt_coff,
+    emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_input_coff,
     emit_direct_jump_code_coff, emit_direct_jump_data_coff,
@@ -67,10 +68,12 @@ use emit::{
 };
 pub use error::*;
 use malbolge::{
-    EffectOp, MemoryLiveIn, PortableProfileRequirementError,
-    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
-    ProfileRegisters, RegionEffectProgram, RunOutcome, RuntimeCapability,
-    Termination, TraceInput, decode_profile_instruction, encrypt_profile_cell,
+    EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EffectOp,
+    ExecutionGeometryRegionEffectProgram, MemoryLiveIn,
+    PortableProfileRequirementError, ProfileMachineObservation,
+    ProfileMemoryDelta, ProfileMemoryWrite, ProfileRegisters,
+    RegionEffectProgram, RunOutcome, RuntimeCapability, Termination,
+    TraceInput, decode_profile_instruction, encrypt_profile_cell,
     is_canonical_effect_ir_version, preflight_portable_profile_requirement,
     profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
     profile_crazy, profile_eof_word, profile_low_byte,
@@ -84,7 +87,8 @@ pub use plan::{
 pub use sequence::*;
 use shape::*;
 pub use verify::{
-    verify_direct_crazy, verify_direct_deopt_stub, verify_direct_halt_fetch,
+    verify_direct_crazy, verify_direct_deopt_stub,
+    verify_direct_execution_geometry_initial_halt, verify_direct_halt_fetch,
     verify_direct_halt_registers, verify_direct_initial_halt,
     verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
     verify_direct_no_operation, verify_direct_non_graphical,
@@ -119,6 +123,11 @@ const REQUIRED_ENTRY: &str = "malbolge_native_region_apply";
 pub const DIRECT_DEOPT_BACKEND_ID: &str = "direct-deopt-stub";
 /// Direct deoptimization-stub code-generation revision.
 pub const DIRECT_DEOPT_BACKEND_REVISION: u32 = 4;
+/// Backend identity for guarded explicit-geometry initial halt.
+pub const DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID: &str =
+    "direct-execution-geometry-initial-halt";
+/// Guarded explicit-geometry initial-halt code-generation revision.
+pub const DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION: u32 = 1;
 /// Backend identity for the first state-applying direct native fast path.
 pub const DIRECT_INITIAL_HALT_BACKEND_ID: &str = "direct-initial-halt";
 /// Direct initial-halt code-generation revision.

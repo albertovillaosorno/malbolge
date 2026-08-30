@@ -34,6 +34,11 @@
 
 use super::*;
 
+type ExecutionGeometryInitialHaltShapeResult = Result<
+    DirectFetchedTerminalProgram,
+    DirectExecutionGeometryInitialHaltError,
+>;
+
 fn direct_program_header_supported(program: &RegionEffectProgram) -> bool {
     is_canonical_effect_ir_version(program.format_version)
         && u32::try_from(program.profile_requirement.memory_words).is_ok()
@@ -77,6 +82,74 @@ pub(super) fn fetched_terminal_program(
         live_in,
         observation: effect.before,
     })
+}
+
+pub(super) fn validate_execution_geometry_initial_halt_program(
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> ExecutionGeometryInitialHaltShapeResult {
+    if program.format_version() != EFFECT_IR_EXECUTION_GEOMETRY_VERSION
+        || !program.fits_execution_geometry_capacity()
+        || !program.fits_profile_capacity()
+        || program.step_budget() != 1
+        || program.memory_live_ins().len() != 1
+        || program.effects().len() != 1
+        || program.outcome()
+            != (RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 1,
+            })
+    {
+        return Err(DirectExecutionGeometryInitialHaltError::ProgramShape);
+    }
+    let effect = program
+        .effects()
+        .first()
+        .ok_or(DirectExecutionGeometryInitialHaltError::ProgramShape)?;
+    let live_in = program
+        .memory_live_ins()
+        .first()
+        .copied()
+        .ok_or(DirectExecutionGeometryInitialHaltError::ProgramShape)?;
+    let expected_after = ProfileMachineObservation {
+        termination: Some(Termination::HaltInstruction),
+        ..effect.before
+    };
+    if effect.before.termination.is_some()
+        || effect.after != expected_after
+        || effect.input.is_some()
+        || effect.output.is_some()
+        || effect.memory_delta != ProfileMemoryDelta::default()
+        || live_in.address != effect.before.registers.code_pointer
+        || decode_profile_instruction(
+            live_in.value,
+            effect.before.registers.code_pointer,
+        ) != Some(b'v')
+    {
+        return Err(DirectExecutionGeometryInitialHaltError::ProgramShape);
+    }
+    Ok(DirectFetchedTerminalProgram {
+        live_in,
+        observation: effect.before,
+    })
+}
+
+pub(super) fn validate_execution_geometry_initial_halt_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectExecutionGeometryInitialHaltError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectExecutionGeometryInitialHaltError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectExecutionGeometryInitialHaltError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectExecutionGeometryInitialHaltError::TargetFeatures);
+    }
+    Ok(())
 }
 
 pub(super) fn validate_halt_fetch_program(

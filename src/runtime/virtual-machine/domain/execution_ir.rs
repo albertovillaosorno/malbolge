@@ -297,6 +297,12 @@ impl ExecutionGeometryRegionEffectProgram {
         Ok(bytes)
     }
 
+    /// Returns the exact ordered effects retained by this v5 program.
+    #[must_use]
+    pub fn effects(&self) -> &[EffectOp] {
+        &self.program.effects
+    }
+
     /// Returns the exact entry observation retained by this one-step program.
     #[must_use]
     pub fn entry_observation(&self) -> Option<ProfileMachineObservation> {

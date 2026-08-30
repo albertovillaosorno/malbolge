@@ -600,8 +600,21 @@ transfers, verification, and other separately measured costs.
   behavior. A mixed N10/N11 sequence rejects before execution, while a forged
   second step commits the valid first prefix and fails at index 1 with that
   exact
-  checkpoint retained. The remaining boundary is independently verified native
-  admission; legacy `NativeInterpreterContinuation` remains canonical-only.
+  checkpoint retained. Legacy `NativeInterpreterContinuation` remains
+  canonical-only.
+- Native identity now binds v5 canonical bytes plus explicit geometry, and MBPF
+  v5 carries the same N/capacity pair after the unchanged canonical profile
+  envelope. A dedicated guarded initial-halt backend admits QP/N10 and QP/N11
+  artifacts independently on x86-64 and AArch64; exact entry observation, code
+  live-in, and minimum memory are checked by the reused halt-fetch guard before
+  termination. N10/N11 objects and keys remain distinct, mismatched geometry is
+  rejected by verification, and tampered MBPF metadata fails structural
+  admission.
+- The admitted wrapper is intentionally outside legacy direct load and
+  invocation
+  APIs. The remaining native boundary is a geometry-aware
+  checkpoint-to-invocation bridge plus reviewed derived-geometry templates for
+  state-changing operations.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

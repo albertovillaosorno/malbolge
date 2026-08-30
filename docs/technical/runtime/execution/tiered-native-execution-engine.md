@@ -534,6 +534,25 @@ execution geometry field. This is identity plumbing only; direct selection and
 invocation remain canonical-only until a reviewed v5 native subset admits the
 geometry.
 
+The first reviewed v5 native admission is now a guarded initial-halt artifact
+only. `direct-execution-geometry-initial-halt` accepts an exact one-step v5 halt
+whose sole live-in is the fetched code cell. Its x86-64 and AArch64 templates
+reuse the proven halt-fetch guard sequence: exact entry observation, minimum
+memory capacity, fetched-cell value, and clear termination are checked before
+committing halt. The artifact uses the v5 native key and MBPF v5 metadata, so
+N10 and N11 objects differ even though their machine-code template is otherwise
+the same.
+
+Verification reconstructs the exact v5 key and canonical COFF bytes. A different
+geometry or tampered profile metadata fails closed.
+
+This artifact is deliberately not a `VerifiedDirectNativeArtifact`. Existing
+load, prepared-invocation, sequence, and cache-selection APIs therefore cannot
+execute it accidentally. A future geometry-aware invocation bridge must bind the
+opaque verified checkpoint to this admitted artifact before execution authority
+can cross into native code. General state-applying direct templates also remain
+canonical-only because their arithmetic still reads canonical profile geometry.
+
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine
 `NativeInterpreterHandoffSuspension` with the original continuation, cumulative
