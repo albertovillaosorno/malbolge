@@ -13246,6 +13246,30 @@ fn full_weighted_lru_cache(
     ))
 }
 
+fn full_mapping_lru_cache(
+    capacity: usize,
+    mapping_limit: usize,
+) -> Result<FullLruCache, String> {
+    Ok(FullLruCache::new_with_mapping_limit(
+        nonzero_test_limit(capacity, "v5 mapping LRU capacity")?,
+        nonzero_test_limit(mapping_limit, "v5 mapping LRU mappings")?,
+    ))
+}
+
+fn full_lru_mapping_limits(
+    entries: usize,
+    mappings: usize,
+) -> Result<FullLruLimits, String> {
+    Ok(FullLruLimits::new(nonzero_test_limit(
+        entries,
+        "v5 mapping limit entries",
+    )?)
+    .with_mapping_limit(nonzero_test_limit(
+        mappings,
+        "v5 mapping limit mappings",
+    )?))
+}
+
 fn full_lru_limits(
     entries: usize,
     mapped_bytes: Option<usize>,
@@ -15261,6 +15285,157 @@ fn geometry_native_jump_rotate_halt_release_retries_all_three()
     } else {
         Err(String::from("v5 owned triple release retry drifted"))
     }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_mapping_lru_rejects_candidate()
+-> Result<(), String> {
+    let (s10, _s11, _s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(174)?,
+        native_executable_address(0x5_b000)?,
+    );
+    let mut cache = full_mapping_lru_cache(3, 2)?;
+    let Err(failure) = cache.ensure(&mut adapter, &s10) else {
+        return Err(String::from(
+            "v5 mapping LRU oversized candidate admitted",
+        ));
+    };
+    if !matches!(
+        *failure,
+        FullLruFailure::Mappings {
+            candidate_cleanup_failure: None,
+            limit,
+            required: 3,
+        } if limit.get() == 2
+    ) || cache.resident_count() != 0
+        || adapter.operations.len() != 15
+    {
+        return Err(String::from("v5 mapping LRU candidate rollback drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_mapping_lru_evicts_for_limit()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(175)?,
+        native_executable_address(0x5_c000)?,
+    );
+    let mut cache = full_mapping_lru_cache(3, 6)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let replacement = cache
+        .ensure(&mut adapter, &s12)
+        .map_err(|error| format!("v5 mapping LRU eviction: {error}"))?;
+    let usage = cache.usage().map_err(|error| error.to_string())?;
+    if replacement.disposition() != FullLruDisposition::Evicted
+        || cache.contains(&s10)
+        || !cache.contains(&s11)
+        || !cache.contains(&s12)
+        || usage.mappings() != 6
+        || adapter.operations.len() != 39
+    {
+        return Err(String::from("v5 mapping LRU did not enforce limit"));
+    }
+    drop(replacement);
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 mapping LRU N11 cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 mapping LRU N12 cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_mapping_lru_saturation_rolls_back()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(176)?,
+        native_executable_address(0x5_d000)?,
+    );
+    let mut cache = full_mapping_lru_cache(3, 6)?;
+    let lease10 = cache
+        .ensure(&mut adapter, &s10)
+        .map_err(|error| error.to_string())?;
+    let lease11 = cache
+        .ensure(&mut adapter, &s11)
+        .map_err(|error| error.to_string())?;
+    let Err(failure) = cache.ensure(&mut adapter, &s12) else {
+        return Err(String::from(
+            "v5 mapping LRU saturation admitted candidate",
+        ));
+    };
+    if !matches!(*failure, FullLruFailure::WeightedSaturated {
+        candidate_cleanup_failure: None,
+        leased_residents: 2,
+        residents: 2,
+        removed_residents: 0,
+    }) || cache.resident_count() != 2
+        || cache.contains(&s12)
+        || adapter.operations.len() != 39
+    {
+        return Err(String::from("v5 mapping LRU saturation rollback drifted"));
+    }
+    drop((lease10, lease11));
+    cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map(|_release| ())
+        .map_err(|error| {
+            format!("v5 mapping saturation N10 cleanup: {error}")
+        })?;
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 mapping saturation N11 cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_reconfigure_shrinks_mappings()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(177)?,
+        native_executable_address(0x5_e000)?,
+    );
+    let mut cache = full_lru_cache(3)?;
+    for sequence in [&s10, &s11, &s12] {
+        drop(
+            cache
+                .ensure(&mut adapter, sequence)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let requested = full_lru_mapping_limits(3, 3)?;
+    let transition = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v5 LRU mapping shrink: {error}"))?;
+    let usage = cache.usage().map_err(|error| error.to_string())?;
+    if transition.removed_residents() != 2
+        || cache.limits() != requested
+        || !full_lru_contains_only(&cache, &s12, &s10, &s11)
+        || usage.mappings() != 3
+        || adapter.operations.len() != 42
+    {
+        return Err(String::from("v5 LRU mapping shrink did not fit limit"));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU mapping shrink cleanup: {error}"))
 }
 
 #[test]

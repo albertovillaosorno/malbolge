@@ -84,6 +84,7 @@ pub enum GeometryNativeJumpRotateHaltLruDisposition {
 pub struct GeometryNativeJumpRotateHaltLruLimits {
     entries: NonZeroUsize,
     mapped_bytes: Option<NonZeroUsize>,
+    mappings: Option<NonZeroUsize>,
 }
 
 /// Successful publication of replacement LRU limits.
@@ -150,6 +151,17 @@ pub enum GeometryNativeJumpRotateHaltLruAcquireFailure<MemoryError> {
         /// Maximum admitted synchronized mapped bytes.
         limit: NonZeroUsize,
         /// Exact mapped bytes required by the candidate triple.
+        required: usize,
+    },
+    /// Exact loaded candidate exceeds the configured mapping-count limit.
+    Mappings {
+        /// Failed cleanup retaining the candidate, when release was
+        /// incomplete.
+        candidate_cleanup_failure:
+            Option<Box<TripleReleaseFailure<MemoryError>>>,
+        /// Maximum admitted live executable mappings.
+        limit: NonZeroUsize,
+        /// Exact live mappings required by the candidate triple.
         required: usize,
     },
     /// Exact candidate or aggregate resident weight overflowed host `usize`.
@@ -233,13 +245,14 @@ pub struct GeometryNativeJumpRotateHaltLruLease {
 pub struct GeometryNativeJumpRotateHaltLruCache {
     capacity: NonZeroUsize,
     mapped_byte_limit: Option<NonZeroUsize>,
+    mapping_limit: Option<NonZeroUsize>,
     residents: Vec<Arc<LoadedExecutionGeometryNativeJumpRotateHaltSequence>>,
 }
 
 #[derive(Debug)]
 struct WeightedCandidate {
+    limits: GeometryNativeJumpRotateHaltLruLimits,
     loaded: Box<LoadedExecutionGeometryNativeJumpRotateHaltSequence>,
-    mapped_byte_limit: NonZeroUsize,
     weight: ResidentWeight,
 }
 
@@ -283,6 +296,9 @@ impl<MemoryError: Display> Display
                 f,
                 "v5 LRU needs {required} mapped bytes; limit is {limit}"
             ),
+            Self::Mappings { limit, required, .. } => {
+                write!(f, "v5 LRU needs {required} mappings; limit is {limit}")
+            },
             Self::ResidentWeight { error, .. } => Display::fmt(error, f),
             Self::Saturated {
                 leased_residents,
@@ -363,12 +379,19 @@ impl GeometryNativeJumpRotateHaltLruLimits {
         self.mapped_bytes
     }
 
+    /// Returns the optional exact live executable mapping-count limit.
+    #[must_use]
+    pub const fn mapping_limit(self) -> Option<NonZeroUsize> {
+        self.mappings
+    }
+
     /// Constructs limits with only a positive entry bound.
     #[must_use]
     pub const fn new(entry_limit: NonZeroUsize) -> Self {
         Self {
             entries: entry_limit,
             mapped_bytes: None,
+            mappings: None,
         }
     }
 
@@ -379,6 +402,16 @@ impl GeometryNativeJumpRotateHaltLruLimits {
         mapped_byte_limit: NonZeroUsize,
     ) -> Self {
         self.mapped_bytes = Some(mapped_byte_limit);
+        self
+    }
+
+    /// Adds an exact live executable mapping-count limit.
+    #[must_use]
+    pub const fn with_mapping_limit(
+        mut self,
+        mapping_limit: NonZeroUsize,
+    ) -> Self {
+        self.mappings = Some(mapping_limit);
         self
     }
 }
@@ -530,8 +563,11 @@ impl GeometryNativeJumpRotateHaltLruCache {
                 lease,
             });
         }
-        if let Some(mapped_byte_limit) = self.mapped_byte_limit {
-            return self.ensure_weighted(adapter, sequence, mapped_byte_limit);
+        let limits = self.limits();
+        if limits.mapped_byte_limit().is_some()
+            || limits.mapping_limit().is_some()
+        {
+            return self.ensure_weighted(adapter, sequence, limits);
         }
         if self.residents.len() < self.capacity.get() {
             return self.load_and_insert(
@@ -575,7 +611,7 @@ impl GeometryNativeJumpRotateHaltLruCache {
         &mut self,
         adapter: &mut Adapter,
         sequence: &ExecutionGeometryNativeJumpRotateHaltSequence,
-        mapped_byte_limit: NonZeroUsize,
+        limits: GeometryNativeJumpRotateHaltLruLimits,
     ) -> GeometryNativeJumpRotateHaltLruAcquireResult<Adapter::Error>
     where
         Adapter: NativeExecutableMemoryAdapter,
@@ -594,17 +630,29 @@ impl GeometryNativeJumpRotateHaltLruCache {
                 }));
             },
         };
-        if weight.mapped_bytes() > mapped_byte_limit.get() {
+        if let Some(limit) = limits.mapped_byte_limit()
+            && weight.mapped_bytes() > limit.get()
+        {
             let candidate_cleanup_failure = loaded.release(adapter).err();
             return Err(Box::new(LruFailure::MappedBytes {
                 candidate_cleanup_failure,
-                limit: mapped_byte_limit,
+                limit,
                 required: weight.mapped_bytes(),
             }));
         }
+        if let Some(limit) = limits.mapping_limit()
+            && weight.mappings() > limit.get()
+        {
+            let candidate_cleanup_failure = loaded.release(adapter).err();
+            return Err(Box::new(LruFailure::Mappings {
+                candidate_cleanup_failure,
+                limit,
+                required: weight.mappings(),
+            }));
+        }
         self.fit_weighted_candidate(adapter, WeightedCandidate {
+            limits,
             loaded,
-            mapped_byte_limit,
             weight,
         })
     }
@@ -716,6 +764,7 @@ impl GeometryNativeJumpRotateHaltLruCache {
         GeometryNativeJumpRotateHaltLruLimits {
             entries: self.capacity,
             mapped_bytes: self.mapped_byte_limit,
+            mappings: self.mapping_limit,
         }
     }
 
@@ -751,6 +800,7 @@ impl GeometryNativeJumpRotateHaltLruCache {
         Self {
             capacity,
             mapped_byte_limit: None,
+            mapping_limit: None,
             residents: Vec::new(),
         }
     }
@@ -764,6 +814,21 @@ impl GeometryNativeJumpRotateHaltLruCache {
         Self {
             capacity,
             mapped_byte_limit: Some(mapped_byte_limit),
+            mapping_limit: None,
+            residents: Vec::new(),
+        }
+    }
+
+    /// Constructs an empty LRU with entry and exact mapping-count limits.
+    #[must_use]
+    pub const fn new_with_mapping_limit(
+        capacity: NonZeroUsize,
+        mapping_limit: NonZeroUsize,
+    ) -> Self {
+        Self {
+            capacity,
+            mapped_byte_limit: None,
+            mapping_limit: Some(mapping_limit),
             residents: Vec::new(),
         }
     }
@@ -815,6 +880,7 @@ impl GeometryNativeJumpRotateHaltLruCache {
             if !Self::usage_exceeds_limits(usage, requested_limits) {
                 self.capacity = requested_limits.entry_limit();
                 self.mapped_byte_limit = requested_limits.mapped_byte_limit();
+                self.mapping_limit = requested_limits.mapping_limit();
                 return Ok(GeometryNativeJumpRotateHaltLruReconfiguration {
                     new_limits: requested_limits,
                     previous_limits,
@@ -945,6 +1011,10 @@ impl GeometryNativeJumpRotateHaltLruCache {
                 Some(limit) => usage.mapped_bytes() > limit.get(),
                 None => false,
             }
+            || match limits.mapping_limit() {
+                Some(limit) => usage.mappings() > limit.get(),
+                None => false,
+            }
     }
 
     fn weighted_candidate_requires_eviction(
@@ -953,12 +1023,18 @@ impl GeometryNativeJumpRotateHaltLruCache {
         candidate: &WeightedCandidate,
     ) -> bool {
         self.residents.len() >= self.capacity.get()
-            || usage
-                .mapped_bytes()
-                .checked_add(candidate.weight.mapped_bytes())
-                .is_none_or(|projected| {
-                    projected > candidate.mapped_byte_limit.get()
-                })
+            || candidate.limits.mapped_byte_limit().is_some_and(|limit| {
+                usage
+                    .mapped_bytes()
+                    .checked_add(candidate.weight.mapped_bytes())
+                    .is_none_or(|projected| projected > limit.get())
+            })
+            || candidate.limits.mapping_limit().is_some_and(|limit| {
+                usage
+                    .mappings()
+                    .checked_add(candidate.weight.mappings())
+                    .is_none_or(|projected| projected > limit.get())
+            })
     }
 
     const fn weighted_disposition(
