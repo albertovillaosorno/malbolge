@@ -738,10 +738,13 @@ transfers, verification, and other separately measured costs.
   full-path admission without sharing execution semantics. Loaded owners retain
   exact variant identity, report 2/2/3 mapping weights, and preserve specialized
   load/release retry ownership.
-- An entry-count heterogeneous LRU now lets those three template families share
-  residence. Hits refresh MRU, live leases are skipped, all-leased saturation is
-  side-effect free, and typed victim/load failures never resurrect stale
-  authority. Weighted limits and heterogeneous reconfiguration remain open.
+- The heterogeneous LRU now accepts entry, exact mapped-byte, and mapping-count
+  limits. Resource-bounded misses load and measure the typed candidate first,
+  reject oversized residents with rollback, and can evict multiple unleased LRU
+  residents across template families until projected usage fits.
+- Weighted saturation rolls the candidate back, typed victim cleanup remains
+  retryable, and failures expose prior removals instead of implying a
+  side-effect-free rejection. Heterogeneous limit reconfiguration remains open.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

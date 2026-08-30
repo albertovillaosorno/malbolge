@@ -818,22 +818,29 @@ semantics. The corresponding loaded-resident enum preserves exact variant
 identity, derives 2/2/3 mapping weights from synchronized reports, and delegates
 release/retry to the original specialized owner.
 
-`GeometryNativeCrossTemplateLruCache` now performs the first real
-cross-template eviction over that typed boundary. Capacity is a nonzero resident
-entry count; hits refresh MRU position, leased residents are skipped, and
-all-leased saturation performs no adapter work.
+`GeometryNativeCrossTemplateLruCache` now performs real cross-template
+residency over that typed boundary. It always has a nonzero resident entry limit
+and can additionally bound exact synchronized mapped bytes and live mapping
+count. Hits still refresh MRU position without adapter work.
 
-Victim release failure removes only the typed victim and returns its specialized
-cleanup ownership, while unrelated template residents survive. A later typed
-load failure leaves the evicted slot vacant instead of restoring stale
-authority.
-Five focused cases mix no-op/halt, rotate/halt, and full-path residents through
-recency, lease, saturation, release-failure, and vacancy paths.
+A resource-bounded miss loads the typed candidate first because its exact weight
+comes from synchronized platform mapping reports. An oversized candidate rolls
+back without publication. Otherwise the cache can remove multiple unleased LRU
+residents, even across different template families, until entries, bytes, and
+mappings all fit.
 
-Execution remains deliberately variant-specific through the loaded-resident
-enum.
-Weighted cross-template limits, limit reconfiguration, and concurrent cache
-mutation remain separate policy work.
+Leased residents are skipped and all-leased weighted saturation rolls the loaded
+candidate back. Victim release failure removes only the typed victim, retains
+its specialized cleanup ownership, and also attempts candidate rollback. Failure
+evidence reports prior removals so partial successful eviction is observable.
+
+Five entry-only and five weighted cases mix no-op/halt, rotate/halt, and
+full-path residents through recency, lease, saturation, byte/mapping pressure,
+rollback, release-failure, and vacancy paths. Execution remains deliberately
+variant-specific through the loaded-resident enum.
+
+Heterogeneous limit reconfiguration and concurrent cache mutation remain
+separate policy work.
 
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence

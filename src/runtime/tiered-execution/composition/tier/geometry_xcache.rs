@@ -9,7 +9,7 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Entry-count-bounded LRU residency across reviewed v5 template families.
+//   - Resource-bounded LRU residency across reviewed v5 template families.
 // - Must-Not:
 //   - Erase typed resident identity, evict live leases, or merge execution
 //     APIs.
@@ -19,7 +19,7 @@
 //   - Side effects: resident load on miss and release of one unleased LRU
 //     victim.
 // - Split-When:
-//   - Weighted limits, reconfiguration, or concurrent mutation gain authority.
+//   - Limit reconfiguration or concurrent mutation gains authority.
 // - Merge-When:
 //   - A general v5 cache preserves typed plans, leases, LRU, and cleanup
 //     exactly.
@@ -32,11 +32,11 @@
 //   - Ensure exact plans, use immutable leases, then release identities
 //     explicitly.
 // - Defaults:
-//   - Capacity counts complete residents; all-leased saturation is side-effect
-//     free.
+//   - Entries are always bounded; optional bytes/mappings use exact loaded
+//     weight.
 //
 
-//! Entry-count LRU cache across reviewed explicit-geometry resident templates.
+//! Resource-bounded LRU across reviewed explicit-geometry resident templates.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::NonZeroUsize;
@@ -54,6 +54,20 @@ type ResidentLoadFailure<MemoryError> =
     GeometryNativeResidentLoadFailure<MemoryError>;
 type ResidentReleaseFailure<MemoryError> =
     GeometryNativeResidentReleaseFailure<MemoryError>;
+type CandidateCleanupFailure<MemoryError> =
+    Option<Box<ResidentReleaseFailure<MemoryError>>>;
+type WeightedVictimResult<MemoryError> =
+    Result<(), WeightedVictimFailure<MemoryError>>;
+type CrossLruFailure<MemoryError> =
+    GeometryNativeCrossTemplateLruAcquireFailure<MemoryError>;
+
+/// Positive resource limits for the heterogeneous v5 LRU.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GeometryNativeCrossTemplateLruLimits {
+    entries: NonZeroUsize,
+    mapped_bytes: Option<NonZeroUsize>,
+    mappings: Option<NonZeroUsize>,
+}
 
 /// Whether one heterogeneous acquisition hit, inserted, or evicted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -73,11 +87,59 @@ pub enum GeometryNativeCrossTemplateLruAcquireFailure<MemoryError> {
     EvictionRelease(Box<ResidentReleaseFailure<MemoryError>>),
     /// Loading the requested typed resident failed.
     Load(Box<ResidentLoadFailure<MemoryError>>),
+    /// Loaded candidate exceeds the complete mapped-byte limit.
+    MappedBytes {
+        /// Failed rollback retaining candidate cleanup ownership, when
+        /// present.
+        candidate_cleanup_failure: CandidateCleanupFailure<MemoryError>,
+        /// Maximum admitted synchronized mapped bytes.
+        limit: NonZeroUsize,
+        /// Exact mapped bytes required by the candidate.
+        required: usize,
+    },
+    /// Loaded candidate exceeds the complete live-mapping limit.
+    Mappings {
+        /// Failed rollback retaining candidate cleanup ownership, when
+        /// present.
+        candidate_cleanup_failure: CandidateCleanupFailure<MemoryError>,
+        /// Maximum admitted live mappings.
+        limit: NonZeroUsize,
+        /// Exact mappings required by the candidate.
+        required: usize,
+    },
+    /// Exact candidate or aggregate resident weight overflowed host `usize`.
+    ResidentWeight {
+        /// Failed rollback retaining candidate cleanup ownership, when
+        /// present.
+        candidate_cleanup_failure: CandidateCleanupFailure<MemoryError>,
+        /// Exact weight derivation failure.
+        error: GeometryNativeResidentWeightError,
+    },
     /// Every resident is leased, so no legal victim exists.
     Saturated {
         /// Residents with at least one external lease.
         leased_residents: usize,
         /// Residents currently occupying the configured capacity.
+        residents: usize,
+    },
+    /// Weighted eviction failed after the typed candidate was already loaded.
+    WeightedEvictionRelease {
+        /// Failed candidate rollback ownership, when its cleanup also failed.
+        candidate_cleanup_failure: CandidateCleanupFailure<MemoryError>,
+        /// Exact typed victim cleanup ownership from failed eviction.
+        eviction_failure: Box<ResidentReleaseFailure<MemoryError>>,
+        /// Residents already removed from active authority.
+        removed_residents: usize,
+    },
+    /// Resource admission found no unleased victim after candidate loading.
+    WeightedSaturated {
+        /// Failed candidate rollback ownership, when its cleanup also failed.
+        candidate_cleanup_failure: CandidateCleanupFailure<MemoryError>,
+        /// Residents with at least one external lease.
+        leased_residents: usize,
+        /// Residents already removed before saturation was discovered.
+        removed_residents: usize,
+        /// Residents still retained when admission became blocked.
         residents: usize,
     },
 }
@@ -103,6 +165,14 @@ pub enum GeometryNativeCrossTemplateLruRelease {
     Released,
 }
 
+/// Exact aggregate resource usage retained by heterogeneous residents.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GeometryNativeCrossTemplateLruUsage {
+    entries: usize,
+    mapped_bytes: usize,
+    mappings: usize,
+}
+
 /// One immutable external owner of a heterogeneous v5 resident.
 #[derive(Clone, Debug)]
 pub struct GeometryNativeCrossTemplateLruLease {
@@ -113,7 +183,21 @@ pub struct GeometryNativeCrossTemplateLruLease {
 #[derive(Debug)]
 pub struct GeometryNativeCrossTemplateLruCache {
     capacity: NonZeroUsize,
+    mapped_byte_limit: Option<NonZeroUsize>,
+    mapping_limit: Option<NonZeroUsize>,
     residents: Vec<Arc<GeometryNativeLoadedResident>>,
+}
+
+#[derive(Debug)]
+struct WeightedCandidate {
+    loaded: GeometryNativeLoadedResident,
+    weight: GeometryNativeResidentWeight,
+}
+
+#[derive(Debug)]
+enum WeightedVictimFailure<MemoryError> {
+    Release(Box<ResidentReleaseFailure<MemoryError>>),
+    Saturated,
 }
 
 /// Result of acquiring one exact heterogeneous resident lease.
@@ -139,6 +223,14 @@ impl<MemoryError: Display> Display
             Self::Load(error) => {
                 write!(f, "heterogeneous v5 LRU resident load failed: {error}")
             },
+            Self::MappedBytes { limit, required, .. } => {
+                write!(f, "v5 cross LRU needs {required} bytes; limit {limit}")
+            },
+            Self::Mappings { limit, required, .. } => write!(
+                f,
+                "v5 cross LRU needs {required} mappings; limit {limit}"
+            ),
+            Self::ResidentWeight { error, .. } => Display::fmt(error, f),
             Self::Saturated {
                 leased_residents,
                 residents,
@@ -146,7 +238,69 @@ impl<MemoryError: Display> Display
                 f,
                 "v5 cross LRU full ({leased_residents}/{residents} leased)"
             ),
+            Self::WeightedEvictionRelease { eviction_failure, .. } => write!(
+                f,
+                "v5 cross weighted victim release failed: {eviction_failure}"
+            ),
+            Self::WeightedSaturated {
+                leased_residents,
+                residents,
+                ..
+            } => write!(
+                f,
+                "v5 cross weighted full ({leased_residents}/{residents} leased)"
+            ),
         }
+    }
+}
+
+impl GeometryNativeCrossTemplateLruLimits {
+    /// Returns the positive complete-resident limit.
+    #[must_use]
+    pub const fn entry_limit(self) -> NonZeroUsize {
+        self.entries
+    }
+
+    /// Returns the optional exact synchronized mapped-byte limit.
+    #[must_use]
+    pub const fn mapped_byte_limit(self) -> Option<NonZeroUsize> {
+        self.mapped_bytes
+    }
+
+    /// Returns the optional exact live-mapping limit.
+    #[must_use]
+    pub const fn mapping_limit(self) -> Option<NonZeroUsize> {
+        self.mappings
+    }
+
+    /// Constructs limits with only a positive complete-resident bound.
+    #[must_use]
+    pub const fn new(entry_limit: NonZeroUsize) -> Self {
+        Self {
+            entries: entry_limit,
+            mapped_bytes: None,
+            mappings: None,
+        }
+    }
+
+    /// Adds an exact synchronized mapped-byte limit.
+    #[must_use]
+    pub const fn with_mapped_byte_limit(
+        mut self,
+        mapped_byte_limit: NonZeroUsize,
+    ) -> Self {
+        self.mapped_bytes = Some(mapped_byte_limit);
+        self
+    }
+
+    /// Adds an exact live-mapping limit.
+    #[must_use]
+    pub const fn with_mapping_limit(
+        mut self,
+        mapping_limit: NonZeroUsize,
+    ) -> Self {
+        self.mappings = Some(mapping_limit);
+        self
     }
 }
 
@@ -169,6 +323,38 @@ impl GeometryNativeCrossTemplateLruAcquisition {
     #[must_use]
     pub const fn lease(&self) -> &GeometryNativeCrossTemplateLruLease {
         &self.lease
+    }
+}
+
+impl GeometryNativeCrossTemplateLruUsage {
+    /// Returns the number of complete heterogeneous residents.
+    #[must_use]
+    pub const fn entries(self) -> usize {
+        self.entries
+    }
+
+    /// Returns exact synchronized mapped bytes retained by all residents.
+    #[must_use]
+    pub const fn mapped_bytes(self) -> usize {
+        self.mapped_bytes
+    }
+
+    /// Returns exact live executable mapping count across all residents.
+    #[must_use]
+    pub const fn mappings(self) -> usize {
+        self.mappings
+    }
+}
+
+impl WeightedCandidate {
+    fn cleanup<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> CandidateCleanupFailure<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        self.loaded.release(adapter).err()
     }
 }
 
@@ -214,6 +400,9 @@ impl GeometryNativeCrossTemplateLruCache {
                 disposition: GeometryNativeCrossTemplateLruDisposition::Hit,
                 lease,
             });
+        }
+        if self.mapped_byte_limit.is_some() || self.mapping_limit.is_some() {
+            return self.ensure_weighted(adapter, plan);
         }
         if self.residents.len() < self.capacity.get() {
             return self.load_and_insert(
@@ -261,11 +450,163 @@ impl GeometryNativeCrossTemplateLruCache {
         )
     }
 
+    fn ensure_weighted<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        plan: &GeometryNativeResidentPlan,
+    ) -> GeometryNativeCrossTemplateLruAcquireResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let loaded = plan.load(adapter).map_err(|error| {
+            Box::new(GeometryNativeCrossTemplateLruAcquireFailure::Load(error))
+        })?;
+        let weight = match loaded.resident_weight() {
+            Ok(weight) => weight,
+            Err(error) => {
+                let candidate_cleanup_failure = loaded.release(adapter).err();
+                return Err(Box::new(CrossLruFailure::ResidentWeight {
+                    candidate_cleanup_failure,
+                    error,
+                }));
+            },
+        };
+        if let Some(limit) = self.mapped_byte_limit
+            && weight.mapped_bytes() > limit.get()
+        {
+            let candidate_cleanup_failure = loaded.release(adapter).err();
+            return Err(Box::new(CrossLruFailure::MappedBytes {
+                candidate_cleanup_failure,
+                limit,
+                required: weight.mapped_bytes(),
+            }));
+        }
+        if let Some(limit) = self.mapping_limit
+            && weight.mappings() > limit.get()
+        {
+            let candidate_cleanup_failure = loaded.release(adapter).err();
+            return Err(Box::new(CrossLruFailure::Mappings {
+                candidate_cleanup_failure,
+                limit,
+                required: weight.mappings(),
+            }));
+        }
+        self.fit_weighted_candidate(adapter, WeightedCandidate {
+            loaded,
+            weight,
+        })
+    }
+
+    fn evict_weighted_victim<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+    ) -> WeightedVictimResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let Some(victim_index) = self
+            .residents
+            .iter()
+            .position(|resident| Arc::strong_count(resident) == 1)
+        else {
+            return Err(WeightedVictimFailure::Saturated);
+        };
+        let victim = self.residents.remove(victim_index);
+        let loaded_victim = match Arc::try_unwrap(victim) {
+            Ok(loaded) => loaded,
+            Err(retained) => {
+                self.residents.insert(victim_index, retained);
+                return Err(WeightedVictimFailure::Saturated);
+            },
+        };
+        loaded_victim
+            .release(adapter)
+            .map_err(WeightedVictimFailure::Release)
+    }
+
+    fn fit_weighted_candidate<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        candidate: WeightedCandidate,
+    ) -> GeometryNativeCrossTemplateLruAcquireResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let mut current_usage = match self.usage() {
+            Ok(usage) => usage,
+            Err(error) => {
+                let candidate_cleanup_failure = candidate.cleanup(adapter);
+                return Err(Box::new(CrossLruFailure::ResidentWeight {
+                    candidate_cleanup_failure,
+                    error,
+                }));
+            },
+        };
+        let mut removed_residents = 0usize;
+        while self
+            .weighted_candidate_requires_eviction(current_usage, &candidate)
+        {
+            match self.evict_weighted_victim(adapter) {
+                Ok(()) => {
+                    removed_residents = removed_residents.saturating_add(1);
+                },
+                Err(WeightedVictimFailure::Release(eviction_failure)) => {
+                    let candidate_cleanup_failure = candidate.cleanup(adapter);
+                    let removed_with_failure =
+                        removed_residents.saturating_add(1);
+                    return Err(Box::new(
+                        CrossLruFailure::WeightedEvictionRelease {
+                            candidate_cleanup_failure,
+                            eviction_failure,
+                            removed_residents: removed_with_failure,
+                        },
+                    ));
+                },
+                Err(WeightedVictimFailure::Saturated) => {
+                    let candidate_cleanup_failure = candidate.cleanup(adapter);
+                    return Err(Box::new(CrossLruFailure::WeightedSaturated {
+                        candidate_cleanup_failure,
+                        leased_residents: self.leased_resident_count(),
+                        removed_residents,
+                        residents: self.residents.len(),
+                    }));
+                },
+            }
+            current_usage = match self.usage() {
+                Ok(usage) => usage,
+                Err(error) => {
+                    let candidate_cleanup_failure = candidate.cleanup(adapter);
+                    return Err(Box::new(CrossLruFailure::ResidentWeight {
+                        candidate_cleanup_failure,
+                        error,
+                    }));
+                },
+            };
+        }
+        let resident = Arc::new(candidate.loaded);
+        let lease = GeometryNativeCrossTemplateLruLease {
+            resident: Arc::clone(&resident),
+        };
+        self.residents.push(resident);
+        let disposition = Self::weighted_disposition(removed_residents);
+        Ok(GeometryNativeCrossTemplateLruAcquisition { disposition, lease })
+    }
+
     fn leased_resident_count(&self) -> usize {
         self.residents
             .iter()
             .filter(|resident| Arc::strong_count(resident) > 1)
             .count()
+    }
+
+    /// Returns the currently published resource limits.
+    #[must_use]
+    pub const fn limits(&self) -> GeometryNativeCrossTemplateLruLimits {
+        GeometryNativeCrossTemplateLruLimits {
+            entries: self.capacity,
+            mapped_bytes: self.mapped_byte_limit,
+            mappings: self.mapping_limit,
+        }
     }
 
     fn load_and_insert<Adapter>(
@@ -293,6 +634,21 @@ impl GeometryNativeCrossTemplateLruCache {
     pub const fn new(capacity: NonZeroUsize) -> Self {
         Self {
             capacity,
+            mapped_byte_limit: None,
+            mapping_limit: None,
+            residents: Vec::new(),
+        }
+    }
+
+    /// Constructs an empty heterogeneous LRU from exact resource limits.
+    #[must_use]
+    pub const fn new_with_limits(
+        limits: GeometryNativeCrossTemplateLruLimits,
+    ) -> Self {
+        Self {
+            capacity: limits.entry_limit(),
+            mapped_byte_limit: limits.mapped_byte_limit(),
+            mapping_limit: limits.mapping_limit(),
             residents: Vec::new(),
         }
     }
@@ -359,6 +715,66 @@ impl GeometryNativeCrossTemplateLruCache {
                 Arc::strong_count(resident).saturating_sub(1)
             })
         })
+    }
+
+    /// Returns exact aggregate resource usage across all typed residents.
+    ///
+    /// # Errors
+    ///
+    /// Returns overflow when mapped bytes or mapping counts cannot be summed.
+    pub fn usage(
+        &self,
+    ) -> Result<
+        GeometryNativeCrossTemplateLruUsage,
+        GeometryNativeResidentWeightError,
+    > {
+        let mut mapped_bytes = 0usize;
+        let mut mappings = 0usize;
+        for resident in &self.residents {
+            let weight = resident.resident_weight()?;
+            mapped_bytes =
+                mapped_bytes.checked_add(weight.mapped_bytes()).ok_or(
+                    GeometryNativeResidentWeightError::MappedBytesOverflow,
+                )?;
+            mappings = mappings
+                .checked_add(weight.mappings())
+                .ok_or(GeometryNativeResidentWeightError::MappingsOverflow)?;
+        }
+        Ok(GeometryNativeCrossTemplateLruUsage {
+            entries: self.residents.len(),
+            mapped_bytes,
+            mappings,
+        })
+    }
+
+    fn weighted_candidate_requires_eviction(
+        &self,
+        usage: GeometryNativeCrossTemplateLruUsage,
+        candidate: &WeightedCandidate,
+    ) -> bool {
+        self.residents.len() >= self.capacity.get()
+            || self.mapped_byte_limit.is_some_and(|limit| {
+                usage
+                    .mapped_bytes()
+                    .checked_add(candidate.weight.mapped_bytes())
+                    .is_none_or(|projected| projected > limit.get())
+            })
+            || self.mapping_limit.is_some_and(|limit| {
+                usage
+                    .mappings()
+                    .checked_add(candidate.weight.mappings())
+                    .is_none_or(|projected| projected > limit.get())
+            })
+    }
+
+    const fn weighted_disposition(
+        removed_residents: usize,
+    ) -> GeometryNativeCrossTemplateLruDisposition {
+        if removed_residents > 0 {
+            GeometryNativeCrossTemplateLruDisposition::Evicted
+        } else {
+            GeometryNativeCrossTemplateLruDisposition::Inserted
+        }
     }
 }
 

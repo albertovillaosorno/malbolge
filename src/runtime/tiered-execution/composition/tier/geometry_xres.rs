@@ -113,6 +113,8 @@ pub struct GeometryNativeResidentWeight {
 pub enum GeometryNativeResidentWeightError {
     /// Summed synchronized mapped bytes exceeded host `usize`.
     MappedBytesOverflow,
+    /// Summed live mapping count exceeded host `usize`.
+    MappingsOverflow,
 }
 
 /// Failure while loading one typed heterogeneous resident.
@@ -152,6 +154,9 @@ impl Display for GeometryNativeResidentWeightError {
         match self {
             Self::MappedBytesOverflow => {
                 f.write_str("heterogeneous v5 resident mapped-byte overflow")
+            },
+            Self::MappingsOverflow => {
+                f.write_str("heterogeneous v5 resident mapping-count overflow")
             },
         }
     }
