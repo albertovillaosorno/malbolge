@@ -121,10 +121,21 @@ fn c_render_is_deterministic_and_profile_bound() -> Result<(), String> {
     if first != second {
         return Err(String::from("decompiler output is not deterministic"));
     }
-    if !first.contains(current_profile().fingerprint())
-        || !first.contains("#define MB_WORD_TRITS UINT32_C(14)")
-        || !first.contains("#define MB_INPUT_INSTRUCTION UINT32_C(47)")
-        || !first.contains("#define MB_OUTPUT_INSTRUCTION UINT32_C(60)")
+    let profile = current_profile();
+    let word_trits =
+        format!("#define MB_WORD_TRITS UINT32_C({})", profile.word_trits());
+    let input_instruction = format!(
+        "#define MB_INPUT_INSTRUCTION UINT32_C({})",
+        profile.input_instruction(),
+    );
+    let output_instruction = format!(
+        "#define MB_OUTPUT_INSTRUCTION UINT32_C({})",
+        profile.output_instruction(),
+    );
+    if !first.contains(profile.fingerprint())
+        || !first.contains(&word_trits)
+        || !first.contains(&input_instruction)
+        || !first.contains(&output_instruction)
         || !first.contains("#define MB_NON_GRAPHICAL_NO_PROGRESS 0")
         || !first.contains("uint32_t *memory")
         || first.contains("malloc(")
