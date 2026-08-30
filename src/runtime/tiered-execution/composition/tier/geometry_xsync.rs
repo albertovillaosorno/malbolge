@@ -86,6 +86,14 @@ type TryAcquireFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateTryFailure<
         Box<CacheAcquireFailure<MemoryError>>,
     >;
+type TryReconfigurationFailure<MemoryError> =
+    GeometryNativeConcurrentCrossTemplateTryFailure<
+        Box<CacheReconfigurationFailure<MemoryError>>,
+    >;
+type TryReleaseFailure<MemoryError> =
+    GeometryNativeConcurrentCrossTemplateTryFailure<
+        Box<CacheReleaseFailure<MemoryError>>,
+    >;
 type TrySnapshotFailure =
     GeometryNativeConcurrentCrossTemplateTrySnapshotFailure;
 
@@ -268,6 +276,21 @@ pub type GeometryNativeConcurrentCrossTemplateTryAcquireResult<MemoryError> =
     Result<
         GeometryNativeCrossTemplateLruAcquisition,
         TryAcquireFailure<MemoryError>,
+    >;
+
+/// Result of one nonblocking heterogeneous limit reconfiguration.
+pub type GeometryNativeConcurrentCrossTemplateTryReconfigurationResult<
+    MemoryError,
+> = Result<
+    GeometryNativeCrossTemplateLruReconfiguration,
+    TryReconfigurationFailure<MemoryError>,
+>;
+
+/// Result of one nonblocking exact resident release request.
+pub type GeometryNativeConcurrentCrossTemplateTryReleaseResult<MemoryError> =
+    Result<
+        GeometryNativeCrossTemplateLruRelease,
+        TryReleaseFailure<MemoryError>,
     >;
 
 /// Result of one nonblocking coherent resident/cache snapshot.
@@ -734,6 +757,71 @@ where
         let result = cache
             .ensure(adapter, plan)
             .map_err(TryAcquireFailure::Operation);
+        drop(state);
+        result
+    }
+
+    /// Attempts limit reconfiguration without waiting for mutation ownership.
+    ///
+    /// Once the mutex is acquired, the complete existing shrink/expand
+    /// transaction runs to completion and preserves its typed cleanup evidence.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Busy` before mutation, `Poisoned` after interrupted mutation,
+    /// or the exact reconfiguration failure after ownership was acquired.
+    pub fn try_reconfigure_limits(
+        &self,
+        requested_limits: GeometryNativeCrossTemplateLruLimits,
+    ) -> GeometryNativeConcurrentCrossTemplateTryReconfigurationResult<
+        Adapter::Error,
+    > {
+        let mut state = match self.inner.try_lock() {
+            Ok(state) => state,
+            Err(TryLockError::Poisoned(_error)) => {
+                return Err(TryReconfigurationFailure::Poisoned);
+            },
+            Err(TryLockError::WouldBlock) => {
+                return Err(TryReconfigurationFailure::Busy);
+            },
+        };
+        let GeometryNativeConcurrentCrossTemplateState { adapter, cache } =
+            &mut *state;
+        let result = cache
+            .reconfigure_limits(adapter, requested_limits)
+            .map_err(TryReconfigurationFailure::Operation);
+        drop(state);
+        result
+    }
+
+    /// Attempts one exact resident release without waiting for the mutex.
+    ///
+    /// Once the mutex is acquired, release uses the complete existing lease and
+    /// cleanup ownership contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Busy` before mutation, `Poisoned` after interrupted mutation,
+    /// or exact variant-specific cleanup ownership after a failed release.
+    pub fn try_release_if_unleased(
+        &self,
+        plan: &GeometryNativeResidentPlan,
+    ) -> GeometryNativeConcurrentCrossTemplateTryReleaseResult<Adapter::Error>
+    {
+        let mut state = match self.inner.try_lock() {
+            Ok(state) => state,
+            Err(TryLockError::Poisoned(_error)) => {
+                return Err(TryReleaseFailure::Poisoned);
+            },
+            Err(TryLockError::WouldBlock) => {
+                return Err(TryReleaseFailure::Busy);
+            },
+        };
+        let GeometryNativeConcurrentCrossTemplateState { adapter, cache } =
+            &mut *state;
+        let result = cache
+            .release_if_unleased(adapter, plan)
+            .map_err(TryReleaseFailure::Operation);
         drop(state);
         result
     }

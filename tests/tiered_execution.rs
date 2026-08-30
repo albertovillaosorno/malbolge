@@ -16300,6 +16300,157 @@ fn geometry_native_concurrent_cross_template_try_ensure_preserves_failure()
 }
 
 #[test]
+fn geometry_native_concurrent_cross_template_try_mutations_report_busy()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let inner = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(218)?,
+        native_executable_address(0x8_7000)?,
+    );
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (proceed_tx, proceed_rx) = mpsc::channel();
+    let limits = CrossLruLimits::new(nonzero_test_limit(
+        1,
+        "v5 concurrent try-mutation capacity",
+    )?);
+    let cache = Arc::new(CrossSyncCache::new(
+        BlockingNativeExecutableAdapter {
+            blocked_once: false,
+            entered: entered_tx,
+            inner,
+            proceed: proceed_rx,
+        },
+        limits,
+    ));
+    let worker_cache = Arc::clone(&cache);
+    let worker_plan = noop_plan.clone();
+    let worker = thread::spawn(move || worker_cache.ensure(&worker_plan));
+    entered_rx
+        .recv_timeout(Duration::from_secs(2))
+        .map_err(|error| {
+            format!("try-mutation adapter never acquired lock: {error}")
+        })?;
+    let requested =
+        CrossLruLimits::new(nonzero_test_limit(2, "v5 try-expand")?);
+    let busy_release = cache.try_release_if_unleased(&noop_plan);
+    let busy_reconfiguration = cache.try_reconfigure_limits(requested);
+    let _sent = proceed_tx.send(());
+    let acquisition = worker
+        .join()
+        .map_err(|_panic| String::from("try-mutation worker panicked"))?
+        .map_err(|error| {
+            format!("try-mutation blocking load failed: {error}")
+        })?;
+    if !matches!(busy_release, Err(TrySyncFailure::Busy))
+        || !matches!(busy_reconfiguration, Err(TrySyncFailure::Busy))
+    {
+        return Err(String::from("try-mutation failed to report busy lock"));
+    }
+    drop(acquisition);
+    let changed = cache
+        .try_reconfigure_limits(requested)
+        .map_err(|error| format!("try-mutation reconfigure: {error}"))?;
+    let released = cache
+        .try_release_if_unleased(&noop_plan)
+        .map_err(|error| format!("try-mutation release: {error}"))?;
+    if changed.new_limits() == requested
+        && released == CrossLruRelease::Released
+    {
+        Ok(())
+    } else {
+        Err(String::from("try-mutation post-busy result drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_try_release_preserves_cleanup()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(219)?,
+        native_executable_address(0x8_8000)?,
+    )
+    .with_release_failures(1);
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    drop(
+        cache
+            .ensure(&noop_plan)
+            .map_err(|error| format!("try-release acquire: {error}"))?,
+    );
+    let Err(TrySyncFailure::Operation(cleanup)) =
+        cache.try_release_if_unleased(&noop_plan)
+    else {
+        return Err(String::from("try-release cleanup failure was ignored"));
+    };
+    if cache
+        .contains(&noop_plan)
+        .map_err(|error| error.to_string())?
+    {
+        return Err(String::from("try-release retained stale resident"));
+    }
+    cache
+        .retry_cleanup(cleanup)
+        .map_err(|error| format!("try-release cleanup retry: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_try_reconfigure_preserves_cleanup()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, _full_plan) = cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(220)?,
+        native_executable_address(0x8_9000)?,
+    )
+    .with_release_failures(1);
+    let cache = concurrent_cross_template_lru(adapter, 2)?;
+    for plan in [&noop_plan, &rotate_plan] {
+        drop(cache.ensure(plan).map_err(|error| error.to_string())?);
+    }
+    let previous = cache.limits().map_err(|error| error.to_string())?;
+    let requested = CrossLruLimits::new(nonzero_test_limit(
+        1,
+        "v5 concurrent try-reconfigure capacity",
+    )?);
+    let Err(TrySyncFailure::Operation(failure)) =
+        cache.try_reconfigure_limits(requested)
+    else {
+        return Err(String::from(
+            "try-reconfigure cleanup failure was ignored",
+        ));
+    };
+    let CrossLimitFailure::Release {
+        error: cleanup,
+        previous_limits,
+        removed_residents: 1,
+        requested_limits,
+    } = *failure
+    else {
+        return Err(String::from("try-reconfigure failure phase drifted"));
+    };
+    if previous_limits != previous
+        || requested_limits != requested
+        || cache.limits().map_err(|error| error.to_string())? != previous
+        || cache
+            .contains(&noop_plan)
+            .map_err(|error| error.to_string())?
+        || !cache
+            .contains(&rotate_plan)
+            .map_err(|error| error.to_string())?
+    {
+        return Err(String::from("try-reconfigure cleanup evidence drifted"));
+    }
+    cache
+        .retry_cleanup(cleanup)
+        .map_err(|error| format!("try-reconfigure victim cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&rotate_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("try-reconfigure survivor cleanup: {error}"))
+}
+
+#[test]
 fn geometry_native_concurrent_cross_template_try_snapshot_reports_busy()
 -> Result<(), String> {
     let (noop_plan, _rotate_plan, _full_plan) =
@@ -16753,6 +16904,14 @@ fn geometry_native_concurrent_cross_template_poison_fails_closed()
         )
         || !matches!(
             cache.try_ensure(&noop_plan),
+            Err(TrySyncFailure::Poisoned)
+        )
+        || !matches!(
+            cache.try_reconfigure_limits(limits),
+            Err(TrySyncFailure::Poisoned)
+        )
+        || !matches!(
+            cache.try_release_if_unleased(&noop_plan),
             Err(TrySyncFailure::Poisoned)
         )
         || cache.try_snapshot(&noop_plan) != Err(TrySnapFailure::Poisoned)

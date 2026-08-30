@@ -912,6 +912,15 @@ eviction, rollback, and cleanup failures therefore retain their original typed
 evidence. Focused cases also prove poisoned authority stays distinct and a retry
 after transient contention reuses the completed resident as a normal hit.
 
+Nonblocking release and limit changes now use the same generic try-mutation
+contract. `try_release_if_unleased` and `try_reconfigure_limits` report `Busy`
+before adapter work, distinguish `Poisoned`, and otherwise run the complete
+existing release or reconfiguration transaction under the acquired mutex.
+
+Their operation failures remain unchanged. Release still transfers exact cleanup
+ownership, while failed shrink keeps prior limits published, reports completed
+removals, and exposes its typed victim cleanup for `retry_cleanup`.
+
 Transferred resident-release cleanup can now return to the same synchronized
 adapter through `retry_cleanup`. The cache no longer owns the mappings
 represented
