@@ -622,7 +622,22 @@ admitted halt additionally retains the committed opaque-geometry completion.
 
 Four transaction cases cover successful load/call/release, copy failure before
 runner entry, runner failure plus release retry, and committed completion plus
-release retry. State-applying derived-geometry templates remain separate work.
+release retry.
+
+The first state-changing explicit-geometry template is now admitted separately:
+`direct-execution-geometry-no-operation` revision 1 accepts only v5 one-step
+no-operation traces. Its selector derives C/D successor immediates from the
+explicit execution geometry rather than the unchanged canonical profile
+requirement, while reusing the reviewed fetched-cell guards and no-operation
+machine-code primitive. Real `DP` proof traces admit N10 and N11 independently
+on x86-64 and AArch64; keys/objects remain geometry-distinct and cross-geometry
+verification fails closed.
+
+The no-operation artifact retains its own verified wrapper and has no v5 load or
+invocation bridge yet. That separation prevents the new state-changing object
+from acquiring execution authority merely because its bytes are verified. The
+next native work is to extend the checkpoint-bound v5 load/invocation contract
+to this exact state-changing wrapper before reviewing broader templates.
 
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine

@@ -38,6 +38,8 @@ type ExecutionGeometryInitialHaltShapeResult = Result<
     DirectFetchedTerminalProgram,
     DirectExecutionGeometryInitialHaltError,
 >;
+type ExecutionGeometryNoOperationShapeResult =
+    Result<DirectNoOperationProgram, DirectExecutionGeometryNoOperationError>;
 
 fn direct_program_header_supported(program: &RegionEffectProgram) -> bool {
     is_canonical_effect_ir_version(program.format_version)
@@ -148,6 +150,56 @@ pub(super) fn validate_execution_geometry_initial_halt_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectExecutionGeometryInitialHaltError::TargetFeatures);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_execution_geometry_no_operation_program(
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> ExecutionGeometryNoOperationShapeResult {
+    if program.format_version() != EFFECT_IR_EXECUTION_GEOMETRY_VERSION
+        || !program.fits_execution_geometry_capacity()
+        || !program.fits_profile_capacity()
+        || program.step_budget() != 1
+        || program.memory_live_ins().len() != 1
+        || program.effects().len() != 1
+        || program.outcome() != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectExecutionGeometryNoOperationError::ProgramShape);
+    }
+    let effect = program
+        .effects()
+        .first()
+        .copied()
+        .ok_or(DirectExecutionGeometryNoOperationError::ProgramShape)?;
+    let live_in = program
+        .memory_live_ins()
+        .first()
+        .copied()
+        .ok_or(DirectExecutionGeometryNoOperationError::ProgramShape)?;
+    derive_no_operation_effect(
+        effect,
+        live_in,
+        program.execution_geometry().memory_words(),
+    )
+    .ok_or(DirectExecutionGeometryNoOperationError::ProgramShape)
+}
+
+pub(super) fn validate_execution_geometry_no_operation_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectExecutionGeometryNoOperationError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectExecutionGeometryNoOperationError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectExecutionGeometryNoOperationError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectExecutionGeometryNoOperationError::TargetFeatures);
     }
     Ok(())
 }
@@ -995,8 +1047,15 @@ pub(super) fn derive_no_operation_program(
     effect: EffectOp,
     live_in: MemoryLiveIn,
 ) -> Option<DirectNoOperationProgram> {
+    derive_no_operation_effect(effect, live_in, direct_memory_words(program)?)
+}
+
+fn derive_no_operation_effect(
+    effect: EffectOp,
+    live_in: MemoryLiveIn,
+    memory_words: u32,
+) -> Option<DirectNoOperationProgram> {
     let before = effect.before;
-    let memory_words = direct_memory_words(program)?;
     let next_code_pointer =
         profile_pointer_successor(before.registers.code_pointer, memory_words)?;
     let next_data_pointer =

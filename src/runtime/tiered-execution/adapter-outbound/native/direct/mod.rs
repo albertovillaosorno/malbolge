@@ -52,6 +52,7 @@ use coff::*;
 pub use emit::{
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_execution_geometry_initial_halt_coff,
+    emit_direct_execution_geometry_no_operation_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_input_coff,
     emit_direct_jump_code_coff, emit_direct_jump_data_coff,
@@ -88,7 +89,8 @@ pub use sequence::*;
 use shape::*;
 pub use verify::{
     verify_direct_crazy, verify_direct_deopt_stub,
-    verify_direct_execution_geometry_initial_halt, verify_direct_halt_fetch,
+    verify_direct_execution_geometry_initial_halt,
+    verify_direct_execution_geometry_no_operation, verify_direct_halt_fetch,
     verify_direct_halt_registers, verify_direct_initial_halt,
     verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
     verify_direct_no_operation, verify_direct_non_graphical,
@@ -128,6 +130,11 @@ pub const DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID: &str =
     "direct-execution-geometry-initial-halt";
 /// Guarded explicit-geometry initial-halt code-generation revision.
 pub const DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION: u32 = 1;
+/// Backend identity for explicit-geometry one-step no-operation.
+pub const DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID: &str =
+    "direct-execution-geometry-no-operation";
+/// Explicit-geometry no-operation code-generation revision.
+pub const DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_REVISION: u32 = 1;
 /// Backend identity for the first state-applying direct native fast path.
 pub const DIRECT_INITIAL_HALT_BACKEND_ID: &str = "direct-initial-halt";
 /// Direct initial-halt code-generation revision.

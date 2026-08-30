@@ -130,6 +130,8 @@ use execution_native::{
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION,
+    DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID,
+    DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_REVISION,
     DIRECT_HALT_FETCH_BACKEND_ID, DIRECT_HALT_FETCH_BACKEND_REVISION,
     DIRECT_HALT_REGISTERS_BACKEND_ID, DIRECT_HALT_REGISTERS_BACKEND_REVISION,
     DIRECT_INITIAL_HALT_BACKEND_ID, DIRECT_INITIAL_HALT_BACKEND_REVISION,
@@ -141,7 +143,8 @@ use execution_native::{
     DIRECT_OUTPUT_BACKEND_ID, DIRECT_OUTPUT_BACKEND_REVISION,
     DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
     DirectCacheDisposition, DirectCrazyError, DirectDeoptError,
-    DirectExecutionGeometryInitialHaltError, DirectHaltFetchError,
+    DirectExecutionGeometryInitialHaltError,
+    DirectExecutionGeometryNoOperationError, DirectHaltFetchError,
     DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
     DirectInputError, DirectJumpCodeError, DirectJumpDataError,
     DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
@@ -187,6 +190,7 @@ use execution_native::{
     VerifiedExecutionGeometryLoadImage, compile_preflighted_clang_c23,
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_execution_geometry_initial_halt_coff,
+    emit_direct_execution_geometry_no_operation_coff,
     emit_direct_halt_fetch_coff, emit_direct_halt_registers_coff,
     emit_direct_initial_halt_coff, emit_direct_input_coff,
     emit_direct_jump_code_coff, emit_direct_jump_data_coff,
@@ -204,7 +208,8 @@ use execution_native::{
     select_cached_verified_direct_sequence, select_preflighted_execution_tier,
     select_verified_direct_native, select_verified_direct_sequence,
     structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
-    verify_direct_execution_geometry_initial_halt, verify_direct_halt_fetch,
+    verify_direct_execution_geometry_initial_halt,
+    verify_direct_execution_geometry_no_operation, verify_direct_halt_fetch,
     verify_direct_halt_registers, verify_direct_initial_halt,
     verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
     verify_direct_no_operation, verify_direct_non_graphical,
@@ -252,6 +257,7 @@ use malbolge::{
     safe_rust_profiled_capability, target_profile,
     verify_initial_halt_profile_width, verify_input_then_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
+    verify_noop_prefix_halt_profile_width,
 };
 use native_retry::{
     NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,
@@ -2269,6 +2275,22 @@ fn direct_execution_geometry_initial_halt_target(
         ),
         backend_revision:
             DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+fn direct_execution_geometry_no_operation_target(
+    isa: HostIsa,
+) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(
+            DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID,
+        ),
+        backend_revision:
+            DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_REVISION,
         host_isa: isa,
         host_os: HostOperatingSystem::Windows,
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
@@ -12193,6 +12215,74 @@ fn derived_v5_handoff_fixture(
         ExecutionGeometryRegionEffectProgram::from_profile_step_trace(&trace)
             .map_err(|error| format!("v5 projection: {error:?}"))?;
     Ok((program, checkpoint, verified.geometry()))
+}
+
+fn derived_v5_no_operation_fixture(
+    word_trits: u8,
+) -> Result<ExecutionGeometryRegionEffectProgram, String> {
+    let verified = verify_noop_prefix_halt_profile_width(
+        current_profile(),
+        b"DP",
+        word_trits,
+    )
+    .map_err(|error| format!("v5 no-operation verification: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new())
+            .map_err(|error| format!("v5 no-operation machine: {error}"))?;
+    let mut trace_slot = None;
+    let outcome = machine
+        .step_traced(&mut |trace| trace_slot = Some(*trace))
+        .map_err(|error| format!("v5 no-operation trace: {error}"))?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from("v5 no-operation fixture did not advance"));
+    }
+    let trace = trace_slot
+        .ok_or_else(|| String::from("v5 no-operation trace missing"))?;
+    ExecutionGeometryRegionEffectProgram::from_profile_step_trace(&trace)
+        .map_err(|error| format!("v5 no-operation projection: {error:?}"))
+}
+
+#[test]
+fn direct_execution_geometry_no_operation_admits_exact_v5_geometry()
+-> Result<(), String> {
+    let n10 = derived_v5_no_operation_fixture(10)?;
+    let n11 = derived_v5_no_operation_fixture(11)?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let n10_artifact = emit_direct_execution_geometry_no_operation_coff(
+            &n10,
+            direct_execution_geometry_no_operation_target(isa),
+        )
+        .map_err(|error| format!("v5 no-op N10 {isa:?} emit: {error}"))?;
+        let n11_artifact = emit_direct_execution_geometry_no_operation_coff(
+            &n11,
+            direct_execution_geometry_no_operation_target(isa),
+        )
+        .map_err(|error| format!("v5 no-op N11 {isa:?} emit: {error}"))?;
+        if n10_artifact.key().ir().execution_geometry()
+            != Some(n10.execution_geometry())
+            || n10_artifact.key() == n11_artifact.key()
+            || n10_artifact.object() == n11_artifact.object()
+        {
+            return Err(String::from("v5 no-op geometry identity collapsed"));
+        }
+        let verified =
+            verify_direct_execution_geometry_no_operation(&n10_artifact, &n10)
+                .map_err(|error| {
+                    format!("v5 no-op N10 {isa:?} verify: {error}")
+                })?;
+        if verified.key() != n10_artifact.key()
+            || verified.object() != n10_artifact.object()
+            || verified.target_triple() != n10_artifact.target_triple()
+        {
+            return Err(String::from("v5 no-op verification drifted"));
+        }
+        if verify_direct_execution_geometry_no_operation(&n10_artifact, &n11)
+            != Err(DirectExecutionGeometryNoOperationError::ProgramShape)
+        {
+            return Err(String::from("v5 no-op geometry mismatch admitted"));
+        }
+    }
+    Ok(())
 }
 
 #[test]

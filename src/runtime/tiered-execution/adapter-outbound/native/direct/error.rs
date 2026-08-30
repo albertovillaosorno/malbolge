@@ -143,6 +143,63 @@ impl From<NativeIdentityError> for DirectExecutionGeometryInitialHaltError {
     }
 }
 
+/// Failure while emitting or verifying v5 guarded no-operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectExecutionGeometryNoOperationError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this v5 program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical guarded no-operation object.
+    ObjectBytes,
+    /// Explicit-geometry IR is outside the guarded no-operation subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this v5 contract.
+    TargetBackend,
+    /// This v5 backend has no target-specific feature specializations.
+    TargetFeatures,
+    /// This v5 backend currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectExecutionGeometryNoOperationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => "v5 no-operation COFF structure was rejected",
+            Self::Identity(_error) => {
+                "v5 no-operation identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "v5 no-operation object differs from canonical bytes"
+            },
+            Self::ProgramShape => {
+                "explicit-geometry IR is outside v5 no-operation subset"
+            },
+            Self::TargetBackend => {
+                "target does not select v5 no-operation backend"
+            },
+            Self::TargetFeatures => {
+                "v5 no-operation backend requires no CPU features"
+            },
+            Self::TargetFormat => {
+                "v5 no-operation backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectExecutionGeometryNoOperationError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectExecutionGeometryNoOperationError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying exact-observation direct halt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectHaltRegistersError {
