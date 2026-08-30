@@ -400,6 +400,43 @@ impl<MemoryError: Display> Display
     }
 }
 
+impl<MemoryError>
+    ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<MemoryError>
+{
+    /// Reports whether any rollback retained by this load failure is pending.
+    #[must_use]
+    pub fn cleanup_pending(&self) -> bool {
+        match self {
+            Self::InitialJump {
+                error,
+                suffix_release_failure,
+            } => error.cleanup_pending() || suffix_release_failure.is_some(),
+            Self::Suffix(error) => error.cleanup_pending(),
+        }
+    }
+
+    /// Retries retained rollback while preserving the primary load failure.
+    #[must_use]
+    pub fn retry_cleanup<Adapter>(self, adapter: &mut Adapter) -> Self
+    where
+        Adapter: NativeExecutableMemoryAdapter<Error = MemoryError>,
+    {
+        match self {
+            Self::InitialJump {
+                error,
+                suffix_release_failure,
+            } => Self::InitialJump {
+                error: Box::new((*error).retry_cleanup(adapter)),
+                suffix_release_failure: suffix_release_failure
+                    .and_then(|failure| (*failure).retry(adapter).err()),
+            },
+            Self::Suffix(error) => {
+                Self::Suffix(Box::new((*error).retry_cleanup(adapter)))
+            },
+        }
+    }
+}
+
 impl<MemoryError: Display> Display
     for ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure<MemoryError>
 {

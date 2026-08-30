@@ -919,9 +919,16 @@ by that token; retry runs only their existing variant-specific release contract
 under the mutex. Repeated failure returns refreshed cleanup ownership, and later
 success does not republish resident authority.
 
-Specialized cleanup retained inside a primary executable *load failure* remains
-a separate forwarding problem because those failures do not yet share the
-resident-release token shape.
+Primary executable load failures now retain retryable rollback without losing
+the primary failure. `NativeExecutableLoadFailure::retry_cleanup` preserves its
+phase, cause, and exact release request while refreshing only the secondary
+cleanup error.
+
+No-op/halt, rotate/halt, and full-path load failures propagate that contract
+through their nested rollback owners. The common heterogeneous resident load
+failure preserves its template variant and can retry every retained rollback
+through one adapter; forwarding that call through the synchronized owner remains
+separate policy work.
 
 Concurrent read-side scaling beyond one mutation mutex remains separate policy
 work.

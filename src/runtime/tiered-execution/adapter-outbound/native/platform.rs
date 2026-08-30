@@ -329,6 +329,12 @@ impl<Error> NativeExecutableLoadFailure<Error> {
         }
     }
 
+    /// Reports whether rollback after the primary load failure still failed.
+    #[must_use]
+    pub const fn cleanup_pending(&self) -> bool {
+        self.release_error.is_some()
+    }
+
     /// Returns operation-evidence drift, when report identity disagreed.
     #[must_use]
     pub const fn evidence_error(
@@ -374,6 +380,24 @@ impl<Error> NativeExecutableLoadFailure<Error> {
         &self,
     ) -> Option<NativeExecutableReleaseRequest> {
         self.release_request
+    }
+
+    /// Retries failed rollback while preserving the primary load failure.
+    ///
+    /// The original phase and primary cause remain unchanged. A successful
+    /// release clears only the secondary cleanup error; another adapter failure
+    /// replaces it while retaining the same release request for later retry.
+    #[must_use]
+    pub fn retry_cleanup<Adapter>(mut self, adapter: &mut Adapter) -> Self
+    where
+        Adapter: NativeExecutableMemoryAdapter<Error = Error>,
+    {
+        if self.release_error.is_some()
+            && let Some(request) = self.release_request
+        {
+            self.release_error = adapter.release(request).err().map(Box::new);
+        }
+        self
     }
 }
 

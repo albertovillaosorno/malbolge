@@ -219,6 +219,37 @@ impl Display for GeometryNativeResidentWeightError {
     }
 }
 
+impl<MemoryError> GeometryNativeResidentLoadFailure<MemoryError> {
+    /// Reports whether this primary load failure still owns rollback work.
+    #[must_use]
+    pub fn cleanup_pending(&self) -> bool {
+        match self {
+            Self::FullPath(error) => error.cleanup_pending(),
+            Self::NoOperationPair(error) => error.cleanup_pending(),
+            Self::RotatePair(error) => error.cleanup_pending(),
+        }
+    }
+
+    /// Retries retained rollback with the same adapter and preserves identity.
+    #[must_use]
+    pub fn retry_cleanup<Adapter>(self, adapter: &mut Adapter) -> Self
+    where
+        Adapter: NativeExecutableMemoryAdapter<Error = MemoryError>,
+    {
+        match self {
+            Self::FullPath(error) => {
+                Self::FullPath(Box::new((*error).retry_cleanup(adapter)))
+            },
+            Self::NoOperationPair(error) => {
+                Self::NoOperationPair(Box::new((*error).retry_cleanup(adapter)))
+            },
+            Self::RotatePair(error) => {
+                Self::RotatePair(Box::new((*error).retry_cleanup(adapter)))
+            },
+        }
+    }
+}
+
 impl<MemoryError: Display> Display
     for GeometryNativeResidentLoadFailure<MemoryError>
 {

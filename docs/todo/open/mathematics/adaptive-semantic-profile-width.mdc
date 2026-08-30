@@ -783,9 +783,12 @@ transfers, verification, and other separately measured costs.
   release, or reconfiguration can now retry through the synchronized owner's
   exact adapter. Repeated release failure refreshes the token without restoring
   stale resident authority.
-- Cleanup retained inside primary executable load failures still needs a common
-  forwarding contract before every concurrent load rollback is retryable through
-  the encapsulated adapter.
+- Primary executable load failures now expose pending rollback and retry it
+  without changing the original phase/cause. No-op/halt, rotate/halt, full-path,
+  and heterogeneous resident load failures propagate that contract while
+  preserving exact template identity.
+- The synchronized owner still needs to forward resident load-failure cleanup
+  through its encapsulated adapter; the underlying retry contract is now common.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

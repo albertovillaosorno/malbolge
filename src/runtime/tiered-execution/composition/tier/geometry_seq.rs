@@ -316,6 +316,46 @@ impl<MemoryError: Display> Display
     }
 }
 
+impl<MemoryError> ExecutionGeometryNativeNoopHaltPairLoadFailure<MemoryError> {
+    /// Reports whether any mapping rollback still requires adapter cleanup.
+    #[must_use]
+    pub fn cleanup_pending(&self) -> bool {
+        match self {
+            Self::Halt {
+                error,
+                no_operation_release_failure,
+            } => {
+                error.cleanup_pending()
+                    || no_operation_release_failure.is_some()
+            },
+            Self::NoOperation(error) => error.cleanup_pending(),
+        }
+    }
+
+    /// Retries every retained rollback while preserving the primary load error.
+    #[must_use]
+    pub fn retry_cleanup<Adapter>(self, adapter: &mut Adapter) -> Self
+    where
+        Adapter: NativeExecutableMemoryAdapter<Error = MemoryError>,
+    {
+        match self {
+            Self::Halt {
+                error,
+                no_operation_release_failure,
+            } => Self::Halt {
+                error: Box::new((*error).retry_cleanup(adapter)),
+                no_operation_release_failure: retry_pair_release(
+                    no_operation_release_failure,
+                    adapter,
+                ),
+            },
+            Self::NoOperation(error) => {
+                Self::NoOperation(Box::new((*error).retry_cleanup(adapter)))
+            },
+        }
+    }
+}
+
 impl<MemoryError: Display> Display
     for ExecutionGeometryNativeNoopHaltPairReleaseFailure<MemoryError>
 {

@@ -8847,20 +8847,29 @@ fn native_executable_loader_retains_cleanup_failure() -> Result<(), String> {
     let Err(error) = load_native_executable(&mut adapter, &image) else {
         return Err(String::from("copy and cleanup failures were ignored"));
     };
-    if error.phase() == NativeExecutableLoadPhase::Copy
-        && error.adapter_error() == Some(&FakeNativeAdapterOperation::Copy)
-        && error.release_error() == Some(&FakeNativeAdapterOperation::Release)
-        && error.release_request() == adapter.release_requests.first().copied()
-        && adapter.operations
-            == [
-                FakeNativeAdapterOperation::Allocate,
-                FakeNativeAdapterOperation::Copy,
-                FakeNativeAdapterOperation::Release,
-            ]
+    let expected_release = adapter.release_requests.first().copied();
+    if error.phase() != NativeExecutableLoadPhase::Copy
+        || error.adapter_error() != Some(&FakeNativeAdapterOperation::Copy)
+        || error.release_error() != Some(&FakeNativeAdapterOperation::Release)
+        || error.release_request() != expected_release
+        || !error.cleanup_pending()
+    {
+        return Err(String::from("loader cleanup failure evidence drifted"));
+    }
+    let retried = error.retry_cleanup(&mut adapter);
+    if retried.phase() == NativeExecutableLoadPhase::Copy
+        && retried.adapter_error() == Some(&FakeNativeAdapterOperation::Copy)
+        && retried.release_error().is_none()
+        && retried.release_request() == expected_release
+        && !retried.cleanup_pending()
+        && adapter.release_requests.len() == 2
+        && adapter.release_requests.first() == adapter.release_requests.get(1)
     {
         Ok(())
     } else {
-        Err(String::from("loader cleanup failure evidence drifted"))
+        Err(String::from(
+            "loader cleanup retry changed primary evidence",
+        ))
     }
 }
 
@@ -17093,16 +17102,70 @@ fn geometry_native_cross_template_resident_load_failure_keeps_variant()
         native_executable_mapping_id(179)?,
         native_executable_address(0x6_0000)?,
     )
-    .with_failure_at(FakeNativeAdapterOperation::Allocate, 1);
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 1)
+    .with_release_failures(1);
     let Err(failure) = plan.load(&mut adapter) else {
         return Err(String::from("cross resident load failure was ignored"));
     };
-    if matches!(*failure, CrossResidentLoadFailure::NoOperationPair(_error))
-        && adapter.operations.len() == 1
+    if !failure.cleanup_pending() {
+        return Err(String::from("cross resident load cleanup was lost"));
+    }
+    let CrossResidentLoadFailure::NoOperationPair(pair) = *failure else {
+        return Err(String::from("cross resident load failure lost template"));
+    };
+    let ExecutionGeometryNativeNoopHaltPairLoadFailure::NoOperation(error) =
+        *pair
+    else {
+        return Err(String::from("cross resident primary load stage drifted"));
+    };
+    if error.phase() != NativeExecutableLoadPhase::Copy
+        || error.adapter_error() != Some(&FakeNativeAdapterOperation::Copy)
     {
-        Ok(())
+        return Err(String::from("cross resident primary load error drifted"));
+    }
+    let retained_failure = CrossResidentLoadFailure::NoOperationPair(Box::new(
+        ExecutionGeometryNativeNoopHaltPairLoadFailure::NoOperation(error),
+    ));
+    let retried = retained_failure.retry_cleanup(&mut adapter);
+    if retried.cleanup_pending()
+        || !matches!(retried, CrossResidentLoadFailure::NoOperationPair(_))
+        || adapter.release_requests.len() != 2
+    {
+        Err(String::from("cross resident load cleanup retry drifted"))
     } else {
-        Err(String::from("cross resident load failure lost template"))
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_full_load_cleanup_retries_suffix()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::FullPath(Box::new(
+        geometry_native_jump_rotate_halt_sequence(&fixture)?,
+    ));
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(216)?,
+        native_executable_address(0x8_5000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 1)
+    .with_release_failures(1);
+    let Err(failure) = plan.load(&mut adapter) else {
+        return Err(String::from("cross full-path load failure was ignored"));
+    };
+    if !failure.cleanup_pending()
+        || !matches!(&*failure, CrossResidentLoadFailure::FullPath(_))
+    {
+        return Err(String::from("cross full-path cleanup ownership drifted"));
+    }
+    let retried = (*failure).retry_cleanup(&mut adapter);
+    if retried.cleanup_pending()
+        || !matches!(retried, CrossResidentLoadFailure::FullPath(_))
+        || adapter.release_requests.len() != 2
+    {
+        Err(String::from("cross full-path cleanup retry drifted"))
+    } else {
+        Ok(())
     }
 }
 
