@@ -720,8 +720,13 @@ transfers, verification, and other separately measured costs.
 - Victim release failure removes only that resident and transfers cleanup
   ownership; post-eviction load failure leaves a reusable vacancy rather than
   restoring stale authority. N10/N11/N12 tests cover recency, lease skipping,
-  saturation, isolation, and targeted release. Byte-weighted and cross-template
-  residency remain open.
+  saturation, isolation, and targeted release.
+- Full-path resident weight now comes from exact synchronized mapping reports,
+  not artifact/image byte estimates. Each triple reports mapped bytes plus three
+  live mappings; single/LRU leases expose the same weight and LRU usage sums
+  entries, mappings, and bytes with checked arithmetic. Oversized fake mappings
+  prove accounting follows actual admitted capacity. Byte-weighted eviction and
+  cross-template residency remain open.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

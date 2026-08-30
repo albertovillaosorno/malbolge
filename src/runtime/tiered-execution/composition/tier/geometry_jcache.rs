@@ -48,6 +48,8 @@ use crate::execution_native::{
 };
 use crate::geometry_native_jump_rotate_halt_sequence::{
     ExecutionGeometryNativeJumpRotateHaltOwnedResult,
+    ExecutionGeometryNativeJumpRotateHaltResidentWeight,
+    ExecutionGeometryNativeJumpRotateHaltResidentWeightError,
     ExecutionGeometryNativeJumpRotateHaltSequence,
     ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure,
     ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure,
@@ -203,6 +205,20 @@ impl GeometryNativeJumpRotateHaltTripleLease {
         Runner: ExecutionGeometryNativeRunner,
     {
         self.resident.execute(runner, buffers)
+    }
+
+    /// Returns exact resident weight from the synchronized mapping reports.
+    ///
+    /// # Errors
+    ///
+    /// Returns overflow when mapped byte capacities cannot be summed.
+    pub fn resident_weight(
+        &self,
+    ) -> Result<
+        ExecutionGeometryNativeJumpRotateHaltResidentWeight,
+        ExecutionGeometryNativeJumpRotateHaltResidentWeightError,
+    > {
+        self.resident.resident_weight()
     }
 
     /// Returns the exact admitted v5 sequence retained beside the mappings.

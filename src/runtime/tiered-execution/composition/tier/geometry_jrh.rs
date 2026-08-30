@@ -87,6 +87,8 @@ type RotateHaltReleaseFailure<MemoryError> =
     ExecutionGeometryNativeRotateHaltPairReleaseFailure<MemoryError>;
 type FullTripleLoadFailure<MemoryError> =
     ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<MemoryError>;
+type ResidentWeightError =
+    ExecutionGeometryNativeJumpRotateHaltResidentWeightError;
 
 /// Failure while admitting the exact three-step certified v5 path.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -173,6 +175,13 @@ pub enum ExecutionGeometryNativeJumpRotateHaltOwnedFailure<RunnerError> {
     ),
 }
 
+/// Failure while deriving exact resident weight from synchronized mappings.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeJumpRotateHaltResidentWeightError {
+    /// Summed mapped byte capacity exceeded host `usize`.
+    MappedBytesOverflow,
+}
+
 /// Primary transaction failure from one stage of the three-step path.
 #[derive(Debug, Eq, PartialEq)]
 pub enum ExecutionGeometryNativeJumpRotateHaltFailureCause<
@@ -220,6 +229,13 @@ pub enum ExecutionGeometryNativeJumpRotateHaltOutcome {
         /// Last fully committed opaque-geometry checkpoint.
         state: ProfileMachineState,
     },
+}
+
+/// Exact synchronized mapping weight retained by one owned v5 triple.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExecutionGeometryNativeJumpRotateHaltResidentWeight {
+    mapped_bytes: usize,
+    mappings: usize,
 }
 
 /// Exact verified evidence required by the certified three-step path.
@@ -395,6 +411,16 @@ impl<MemoryError: Display> Display
     }
 }
 
+impl Display for ExecutionGeometryNativeJumpRotateHaltResidentWeightError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::MappedBytesOverflow => {
+                f.write_str("v5 full triple mapped-byte weight overflowed")
+            },
+        }
+    }
+}
+
 impl ExecutionGeometryNativeJumpRotateHaltEvidence {
     /// Groups exact initial-jump evidence with exact rotate/halt suffix
     /// evidence.
@@ -507,6 +533,38 @@ impl<MemoryError>
     }
 }
 
+impl ExecutionGeometryNativeJumpRotateHaltResidentWeight {
+    fn from_loaded(
+        loaded: &LoadedExecutionGeometryNativeJumpRotateHaltSequence,
+    ) -> Result<Self, ExecutionGeometryNativeJumpRotateHaltResidentWeightError>
+    {
+        let mapped_bytes = [
+            loaded.initial_jump().mapping().mapped_len(),
+            loaded.suffix().rotate().mapping().mapped_len(),
+            loaded.suffix().halt().mapping().mapped_len(),
+        ]
+        .into_iter()
+        .try_fold(0usize, usize::checked_add)
+        .ok_or(ResidentWeightError::MappedBytesOverflow)?;
+        Ok(Self {
+            mapped_bytes,
+            mappings: 3,
+        })
+    }
+
+    /// Returns exact synchronized bytes retained by all three mappings.
+    #[must_use]
+    pub const fn mapped_bytes(self) -> usize {
+        self.mapped_bytes
+    }
+
+    /// Returns the exact number of live executable mappings in the triple.
+    #[must_use]
+    pub const fn mappings(self) -> usize {
+        self.mappings
+    }
+}
+
 impl LoadedExecutionGeometryNativeJumpRotateHaltSequence {
     /// Executes through the owned triple without executable-memory adapter
     /// work.
@@ -576,6 +634,21 @@ impl LoadedExecutionGeometryNativeJumpRotateHaltSequence {
             .map(Box::new);
         let suffix_failure = self.suffix.release(adapter).err();
         triple_release_result(initial_jump_failure, suffix_failure)
+    }
+
+    /// Returns exact resident weight from admitted synchronized mapping
+    /// reports.
+    ///
+    /// # Errors
+    ///
+    /// Returns overflow when the three mapped byte capacities cannot be summed.
+    pub fn resident_weight(
+        &self,
+    ) -> Result<
+        ExecutionGeometryNativeJumpRotateHaltResidentWeight,
+        ExecutionGeometryNativeJumpRotateHaltResidentWeightError,
+    > {
+        ExecutionGeometryNativeJumpRotateHaltResidentWeight::from_loaded(self)
     }
 
     /// Returns the exact immutable admission owned beside the ready triple.

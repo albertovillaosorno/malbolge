@@ -44,6 +44,8 @@ use crate::execution_native::{
 };
 use crate::geometry_native_jump_rotate_halt_sequence::{
     ExecutionGeometryNativeJumpRotateHaltOwnedResult,
+    ExecutionGeometryNativeJumpRotateHaltResidentWeight,
+    ExecutionGeometryNativeJumpRotateHaltResidentWeightError,
     ExecutionGeometryNativeJumpRotateHaltSequence,
     ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure,
     ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure,
@@ -54,6 +56,9 @@ type TripleLoadFailure<MemoryError> =
     ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<MemoryError>;
 type TripleReleaseFailure<MemoryError> =
     ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure<MemoryError>;
+type ResidentWeight = ExecutionGeometryNativeJumpRotateHaltResidentWeight;
+type ResidentWeightError =
+    ExecutionGeometryNativeJumpRotateHaltResidentWeightError;
 
 /// Whether one multi-resident acquisition hit, inserted, or evicted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -101,6 +106,14 @@ pub enum GeometryNativeJumpRotateHaltLruRelease {
     Missing,
     /// The unleased resident released all three mappings.
     Released,
+}
+
+/// Exact aggregate synchronized mapping usage retained by this LRU cache.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GeometryNativeJumpRotateHaltLruUsage {
+    entries: usize,
+    mapped_bytes: usize,
+    mappings: usize,
 }
 
 /// One immutable external owner of a multi-resident full-path triple.
@@ -172,6 +185,26 @@ impl GeometryNativeJumpRotateHaltLruAcquisition {
     }
 }
 
+impl GeometryNativeJumpRotateHaltLruUsage {
+    /// Returns the number of complete resident triples.
+    #[must_use]
+    pub const fn entries(self) -> usize {
+        self.entries
+    }
+
+    /// Returns exact synchronized mapped bytes retained by all residents.
+    #[must_use]
+    pub const fn mapped_bytes(self) -> usize {
+        self.mapped_bytes
+    }
+
+    /// Returns exact live executable mapping count across all residents.
+    #[must_use]
+    pub const fn mappings(self) -> usize {
+        self.mappings
+    }
+}
+
 impl GeometryNativeJumpRotateHaltLruLease {
     /// Executes through the resident exact triple without adapter work.
     ///
@@ -187,6 +220,17 @@ impl GeometryNativeJumpRotateHaltLruLease {
         Runner: ExecutionGeometryNativeRunner,
     {
         self.resident.execute(runner, buffers)
+    }
+
+    /// Returns exact resident weight from synchronized mapping reports.
+    ///
+    /// # Errors
+    ///
+    /// Returns overflow when mapped byte capacities cannot be summed.
+    pub fn resident_weight(
+        &self,
+    ) -> Result<ResidentWeight, ResidentWeightError> {
+        self.resident.resident_weight()
     }
 
     /// Returns the exact admitted sequence behind this resident.
@@ -403,6 +447,33 @@ impl GeometryNativeJumpRotateHaltLruCache {
             self.residents.get(index).map_or(0, |resident| {
                 Arc::strong_count(resident).saturating_sub(1)
             })
+        })
+    }
+
+    /// Returns exact aggregate usage from every synchronized resident mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns overflow if resident weights or their aggregate cannot fit
+    /// usize.
+    pub fn usage(
+        &self,
+    ) -> Result<GeometryNativeJumpRotateHaltLruUsage, ResidentWeightError> {
+        let mut mapped_bytes = 0usize;
+        let mut mappings = 0usize;
+        for resident in &self.residents {
+            let weight = resident.resident_weight()?;
+            mapped_bytes = mapped_bytes
+                .checked_add(weight.mapped_bytes())
+                .ok_or(ResidentWeightError::MappedBytesOverflow)?;
+            mappings = mappings
+                .checked_add(weight.mappings())
+                .ok_or(ResidentWeightError::MappedBytesOverflow)?;
+        }
+        Ok(GeometryNativeJumpRotateHaltLruUsage {
+            entries: self.residents.len(),
+            mapped_bytes,
+            mappings,
         })
     }
 }

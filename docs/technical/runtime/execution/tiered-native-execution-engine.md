@@ -780,13 +780,21 @@ other resident survives. If release succeeds but the replacement load fails,
 the victim is not resurrected and the vacant entry remains reusable.
 
 Targeted release likewise acts on one exact sequence identity and cannot cross
-a live lease. Seven N10/N11/N12 cases cover hit execution, recency refresh,
+a live lease. Eight N10/N11/N12 cases cover hit execution, recency refresh,
 leased victim skipping, all-leased saturation, isolated release failure,
-reusable vacancy after load failure, and identity-scoped release.
+reusable vacancy after load failure, identity-scoped release, and usage
+accounting.
 
-Byte-weighted budgeting, cross-template residency among no-op/halt,
-rotate/halt, and full-path entries, and concurrent cache mutation remain
-separate policy work.
+Each owned full-path triple now derives exact resident weight from the three
+synchronized `mapping().mapped_len()` reports, not from COFF or load-image
+lengths. The weight retains mapped bytes and mapping count, is available through
+single-resident and LRU leases, and the LRU exposes checked aggregate entries,
+bytes, and mappings. Tests intentionally enlarge platform mapping reports to
+prove the accounting follows observed resident capacity.
+
+Byte-weighted eviction is not enabled by this accounting alone. Cross-template
+residency among no-op/halt, rotate/halt, and full-path entries, byte-limit
+admission, and concurrent cache mutation remain separate policy work.
 
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence

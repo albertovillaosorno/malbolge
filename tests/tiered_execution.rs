@@ -14968,6 +14968,105 @@ fn geometry_native_noop_halt_loaded_late_failure_retains_prefix()
 }
 
 #[test]
+fn geometry_native_jump_rotate_halt_resident_weight_uses_mapping_reports()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_halt_sequence(&fixture)?;
+    let mapped_lengths = [4_096usize, 8_192usize, 16_384usize];
+    let expected_mapped_bytes = mapped_lengths.into_iter().sum::<usize>();
+    let image_bytes = sequence
+        .initial_jump()
+        .load_image()
+        .allocation_len()
+        .checked_add(sequence.suffix().rotate().load_image().allocation_len())
+        .and_then(|total| {
+            total.checked_add(
+                sequence.suffix().halt().load_image().allocation_len(),
+            )
+        })
+        .ok_or_else(|| String::from("v5 resident image-byte sum overflowed"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(159)?,
+        native_executable_address(0x4_d000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    let mut cache = FullLeaseCache::new();
+    let acquisition = cache
+        .ensure(&mut adapter, &sequence)
+        .map_err(|error| format!("v5 resident weight acquire: {error}"))?;
+    let weight = acquisition
+        .lease()
+        .resident_weight()
+        .map_err(|error| format!("v5 resident weight: {error}"))?;
+    if weight.mapped_bytes() != expected_mapped_bytes
+        || weight.mappings() != 3
+        || weight.mapped_bytes() == image_bytes
+    {
+        return Err(String::from("v5 resident weight ignored mapping reports"));
+    }
+    drop(acquisition);
+    cache
+        .release_if_unleased(&mut adapter)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 resident weight cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_usage_sums_mapping_reports()
+-> Result<(), String> {
+    let n10 = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let n11 = derived_v5_jump_rotate_halt_sequence_fixture(11)?;
+    let s10 = geometry_native_jump_rotate_halt_sequence(&n10)?;
+    let s11 = geometry_native_jump_rotate_halt_sequence(&n11)?;
+    let first_lengths = [4_096usize, 8_192usize, 16_384usize];
+    let second_lengths = [12_288usize, 20_480usize, 28_672usize];
+    let first_bytes = first_lengths.into_iter().sum::<usize>();
+    let second_bytes = second_lengths.into_iter().sum::<usize>();
+    let mut mapped_lengths = first_lengths.to_vec();
+    mapped_lengths.extend(second_lengths);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(160)?,
+        native_executable_address(0x4_e000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths);
+    let mut cache = full_lru_cache(2)?;
+    let first = cache
+        .ensure(&mut adapter, &s10)
+        .map_err(|error| format!("v5 LRU usage N10: {error}"))?;
+    let second = cache
+        .ensure(&mut adapter, &s11)
+        .map_err(|error| format!("v5 LRU usage N11: {error}"))?;
+    let first_weight = first
+        .lease()
+        .resident_weight()
+        .map_err(|error| format!("v5 LRU N10 weight: {error}"))?;
+    let second_weight = second
+        .lease()
+        .resident_weight()
+        .map_err(|error| format!("v5 LRU N11 weight: {error}"))?;
+    let usage = cache
+        .usage()
+        .map_err(|error| format!("v5 LRU aggregate usage: {error}"))?;
+    if first_weight.mapped_bytes() != first_bytes
+        || second_weight.mapped_bytes() != second_bytes
+        || usage.entries() != 2
+        || usage.mapped_bytes() != first_bytes.saturating_add(second_bytes)
+        || usage.mappings() != 6
+    {
+        return Err(String::from("v5 LRU aggregate usage drifted"));
+    }
+    drop((first, second));
+    cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU usage N10 cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU usage N11 cleanup: {error}"))
+}
+
+#[test]
 fn geometry_native_jump_rotate_halt_owned_reuses_three_executables()
 -> Result<(), String> {
     let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
