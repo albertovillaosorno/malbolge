@@ -35,8 +35,13 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::sync::{Mutex, MutexGuard};
 
-use crate::execution_native::NativeExecutableMemoryAdapter;
+use crate::execution_native::{
+    ExecutionGeometryNativeRunner, NativeExecutableMemoryAdapter,
+    NativeRegionBuffers,
+};
 use crate::geometry_native_cross_template_cache::{
+    GeometryNativeCrossTemplateCachedExecution,
+    GeometryNativeCrossTemplateCachedExecutionFailure,
     GeometryNativeCrossTemplateLruAcquireFailure,
     GeometryNativeCrossTemplateLruAcquisition,
     GeometryNativeCrossTemplateLruCache, GeometryNativeCrossTemplateLruLimits,
@@ -55,6 +60,20 @@ type CacheReconfigurationFailure<MemoryError> =
     GeometryNativeCrossTemplateLruReconfigurationFailure<MemoryError>;
 type CacheReleaseFailure<MemoryError> =
     GeometryNativeResidentReleaseFailure<MemoryError>;
+type ConcurrentAcquireFailure<MemoryError> =
+    GeometryNativeConcurrentCrossTemplateFailure<
+        Box<CacheAcquireFailure<MemoryError>>,
+    >;
+type ConcurrentExecutionFailure<MemoryError, RunnerError> =
+    GeometryNativeConcurrentCrossTemplateExecutionFailure<
+        MemoryError,
+        RunnerError,
+    >;
+type ConcurrentExecutionResult<Adapter, Runner> =
+    GeometryNativeConcurrentCrossTemplateExecutionResult<
+        <Adapter as NativeExecutableMemoryAdapter>::Error,
+        <Runner as ExecutionGeometryNativeRunner>::Error,
+    >;
 type ConcurrentStateGuard<'cache, Adapter> =
     MutexGuard<'cache, GeometryNativeConcurrentCrossTemplateState<Adapter>>;
 
@@ -72,6 +91,20 @@ pub enum GeometryNativeConcurrentCrossTemplateFailure<OperationError> {
     Operation(OperationError),
     /// A prior panic poisoned mutation authority, so access is rejected.
     Poisoned,
+}
+
+/// Failure from one acquire-then-execute concurrent cache request.
+#[derive(Debug, Eq, PartialEq)]
+pub enum GeometryNativeConcurrentCrossTemplateExecutionFailure<
+    MemoryError,
+    RunnerError,
+> {
+    /// Resident acquisition failed before native execution began.
+    Acquire(Box<ConcurrentAcquireFailure<MemoryError>>),
+    /// Native execution failed after a resident acquisition completed.
+    Execution(
+        Box<GeometryNativeCrossTemplateCachedExecutionFailure<RunnerError>>,
+    ),
 }
 
 /// One heterogeneous cache and its mapping adapter under a shared mutation
@@ -95,6 +128,20 @@ pub type GeometryNativeConcurrentCrossTemplateAcquireResult<MemoryError> =
             Box<CacheAcquireFailure<MemoryError>>,
         >,
     >;
+
+/// Result of acquiring and executing one synchronized resident request.
+pub type GeometryNativeConcurrentCrossTemplateExecutionResult<
+    MemoryError,
+    RunnerError,
+> = Result<
+    GeometryNativeCrossTemplateCachedExecution,
+    Box<
+        GeometryNativeConcurrentCrossTemplateExecutionFailure<
+            MemoryError,
+            RunnerError,
+        >,
+    >,
+>;
 
 /// Result of publishing synchronized replacement resource limits.
 pub type GeometryNativeConcurrentCrossTemplateReconfigurationResult<
@@ -146,6 +193,27 @@ impl<OperationError: Display> Display
     }
 }
 
+impl<MemoryError: Display, RunnerError: Display> Display
+    for GeometryNativeConcurrentCrossTemplateExecutionFailure<
+        MemoryError,
+        RunnerError,
+    >
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Acquire(error) => {
+                write!(f, "heterogeneous v5 concurrent acquire failed: {error}")
+            },
+            Self::Execution(error) => {
+                write!(
+                    f,
+                    "heterogeneous v5 concurrent execution failed: {error}"
+                )
+            },
+        }
+    }
+}
+
 impl<Adapter> GeometryNativeConcurrentCrossTemplateLruCache<Adapter>
 where
     Adapter: NativeExecutableMemoryAdapter,
@@ -186,6 +254,34 @@ where
             .map_err(GeometryNativeConcurrentCrossTemplateFailure::Operation);
         drop(state);
         result
+    }
+
+    /// Acquires under synchronized mutation, then executes outside the lock.
+    ///
+    /// The acquisition owns an `Arc` lease after [`Self::ensure`] releases its
+    /// mutex guard. Native execution therefore does not block cache reads or
+    /// other mutation attempts, while that lease still prevents illegal
+    /// eviction of the executing resident.
+    ///
+    /// # Errors
+    ///
+    /// Returns an acquire-phase failure before execution, or the exact typed
+    /// cached execution failure after successful acquisition.
+    pub fn execute<Runner>(
+        &self,
+        plan: &GeometryNativeResidentPlan,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> ConcurrentExecutionResult<Adapter, Runner>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        let acquisition = self.ensure(plan).map_err(|error| {
+            Box::new(ConcurrentExecutionFailure::Acquire(Box::new(error)))
+        })?;
+        acquisition.execute(runner, buffers).map_err(|error| {
+            Box::new(ConcurrentExecutionFailure::Execution(error))
+        })
     }
 
     /// Returns the currently published resource limits.

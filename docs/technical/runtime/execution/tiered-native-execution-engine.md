@@ -879,6 +879,17 @@ possibly half-mutated authority with `PoisonError::into_inner`. Four focused
 cases prove concurrent insert/hit serialization, lease-safe eviction blocking,
 serialized shrink/usage, and poison rejection.
 
+The concurrent owner also exposes acquire-then-execute as one typed request.
+Only `ensure` runs under the mutex; the returned acquisition executes after the
+guard is dropped. Acquire failures remain distinct from native execution
+failures, and both preserve the original typed cache evidence.
+
+A blocking-runner case proves the separation directly: while the first native
+step is stalled, another thread acquires the mutation mutex and receives
+`Leased { leases: 1 }` from `release_if_unleased`. Two additional cases prove
+that acquisition failure never calls the runner and native failure leaves the
+resident published for reuse.
+
 Concurrent read-side scaling beyond one mutation mutex remains separate policy
 work.
 

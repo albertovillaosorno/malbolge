@@ -95,8 +95,9 @@ use std::num::NonZeroUsize;
 use std::panic::resume_unwind;
 use std::path::Path;
 use std::str::from_utf8;
-use std::sync::{Arc, Barrier};
+use std::sync::{Arc, Barrier, mpsc};
 use std::thread;
+use std::time::Duration;
 
 use cached_cycle::{
     NativeContinuationCachedRetryAttempt,
@@ -279,6 +280,7 @@ use geometry_native_cross_template_cache::{
 };
 use geometry_native_cross_template_concurrent_cache::{
     GeometryNativeConcurrentCrossTemplateAccessError as CrossSyncAccessError,
+    GeometryNativeConcurrentCrossTemplateExecutionFailure as SyncExecFailure,
     GeometryNativeConcurrentCrossTemplateFailure as CrossSyncFailure,
     GeometryNativeConcurrentCrossTemplateLruCache as CrossSyncCache,
 };
@@ -481,6 +483,12 @@ struct FakeNativeExecutableAdapter {
 
 struct PanickingNativeExecutableAdapter {
     inner: FakeNativeExecutableAdapter,
+}
+
+struct BlockingExecutionGeometrySequenceRunner {
+    calls: usize,
+    entered: mpsc::Sender<()>,
+    proceed: mpsc::Receiver<()>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -726,6 +734,20 @@ struct GeometryNativeRunnerFixture {
     admission: ExecutionGeometryNativeInitialHaltAdmission,
     geometry: malbolge::ProfileExecutionGeometry,
     ready: ReadyExecutionGeometryNativeExecutable,
+}
+
+struct ConcurrentExecutionHarness {
+    entered: mpsc::Receiver<()>,
+    proceed: mpsc::Sender<()>,
+    worker: thread::JoinHandle<Result<ConcurrentExecutionObservation, String>>,
+}
+
+struct ConcurrentExecutionObservation {
+    calls: usize,
+    disposition: CrossLruDisposition,
+    memory: Vec<u32>,
+    output: Vec<u8>,
+    state: ProfileMachineState,
 }
 
 #[derive(Debug)]
@@ -1077,6 +1099,27 @@ impl NativeExecutableMemoryAdapter for FakeNativeExecutableAdapter {
             request.start_address(),
             byte_len,
         ))
+    }
+}
+
+impl ExecutionGeometryNativeRunner for BlockingExecutionGeometrySequenceRunner {
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedExecutionGeometryNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        if self.calls == 1 {
+            self.entered
+                .send(())
+                .map_err(|_error| FakeNativeRunnerError::Call)?;
+            self.proceed
+                .recv()
+                .map_err(|_error| FakeNativeRunnerError::Call)?;
+        }
+        invocation.apply_expected_for_test();
+        Ok(NativeRegionStatus::Applied.code())
     }
 }
 
@@ -13294,6 +13337,72 @@ fn execution_geometry_native_admission_rejects_checkpoint_geometry_drift()
     }
 }
 
+fn observe_release_during_concurrent_execution(
+    cache: &Arc<CrossSyncCache<FakeNativeExecutableAdapter>>,
+    plan: &CrossResidentPlan,
+    proceed: &mpsc::Sender<()>,
+) -> Result<(), String> {
+    let (release_tx, release_rx) = mpsc::channel();
+    let release_cache = Arc::clone(cache);
+    let release_plan = plan.clone();
+    let release_thread = thread::spawn(move || {
+        let result = release_cache.release_if_unleased(&release_plan);
+        release_tx.send(result)
+    });
+    let release_message = release_rx.recv_timeout(Duration::from_secs(2));
+    let _sent = proceed.send(());
+    let release = release_message.map_err(|error| {
+        format!("cache lock remained held during execute: {error}")
+    })?;
+    release_thread
+        .join()
+        .map_err(|_panic| String::from("concurrent release observer panicked"))?
+        .map_err(|error| format!("concurrent release send failed: {error}"))?;
+    if matches!(release, Ok(CrossLruRelease::Leased { leases: 1 })) {
+        Ok(())
+    } else {
+        Err(String::from("executing lease was not visible to mutation"))
+    }
+}
+
+fn spawn_blocked_concurrent_execution(
+    cache: Arc<CrossSyncCache<FakeNativeExecutableAdapter>>,
+    plan: CrossResidentPlan,
+    initial: &ProfileMachineState,
+) -> ConcurrentExecutionHarness {
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (proceed_tx, proceed_rx) = mpsc::channel();
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let worker = thread::spawn(move || {
+        let mut runner = BlockingExecutionGeometrySequenceRunner {
+            calls: 0,
+            entered: entered_tx,
+            proceed: proceed_rx,
+        };
+        let executed = cache
+            .execute(
+                &plan,
+                &mut runner,
+                NativeRegionBuffers::new(&mut memory, &input, &mut output),
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(ConcurrentExecutionObservation {
+            calls: runner.calls,
+            disposition: executed.disposition(),
+            memory,
+            output,
+            state: executed.outcome().state().clone(),
+        })
+    });
+    ConcurrentExecutionHarness {
+        entered: entered_rx,
+        proceed: proceed_tx,
+        worker,
+    }
+}
+
 fn cross_template_lru(capacity: usize) -> Result<CrossLruCache, String> {
     Ok(CrossLruCache::new(nonzero_test_limit(
         capacity,
@@ -15879,6 +15988,166 @@ fn geometry_native_cross_template_weighted_lru_release_failure_is_typed()
         .release_if_unleased(&mut adapter, &rotate_plan)
         .map(|_release| ())
         .map_err(|error| format!("cross weighted survivor cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_execution_releases_lock()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::NoOperationPair(Box::new(
+        geometry_native_noop_halt_sequence(&fixture)?,
+    ));
+    let initial = fixture.states.first().ok_or_else(|| {
+        String::from("concurrent execute initial state missing")
+    })?;
+    let expected = fixture.states.get(2).ok_or_else(|| {
+        String::from("concurrent execute final state missing")
+    })?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(208)?,
+        native_executable_address(0x7_d000)?,
+    );
+    let cache = Arc::new(concurrent_cross_template_lru(adapter, 1)?);
+    let harness = spawn_blocked_concurrent_execution(
+        Arc::clone(&cache),
+        plan.clone(),
+        initial,
+    );
+    harness
+        .entered
+        .recv_timeout(Duration::from_secs(2))
+        .map_err(|error| {
+            format!("concurrent execute never entered: {error}")
+        })?;
+    observe_release_during_concurrent_execution(
+        &cache,
+        &plan,
+        &harness.proceed,
+    )?;
+    let observation = harness.worker.join().map_err(|_panic| {
+        String::from("concurrent execute worker panicked")
+    })??;
+    if observation.disposition != CrossLruDisposition::Inserted
+        || observation.state != *expected
+        || observation.memory != expected.memory()
+        || observation.output != expected.io().output()
+        || observation.calls != 2
+        || !cache.contains(&plan).map_err(|error| error.to_string())?
+    {
+        return Err(String::from("concurrent execution outside lock drifted"));
+    }
+    cache
+        .release_if_unleased(&plan)
+        .map(|_release| ())
+        .map_err(|error| format!("concurrent execute cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_execute_separates_acquire_failure()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, _full_plan) = cross_template_resident_plans()?;
+    let rotate_fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let initial = rotate_fixture.states.first().ok_or_else(|| {
+        String::from("concurrent acquire-failure state missing")
+    })?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(209)?,
+        native_executable_address(0x7_e000)?,
+    );
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    let retained = cache
+        .ensure(&noop_plan)
+        .map_err(|error| error.to_string())?
+        .into_lease();
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let Err(failure) = cache.execute(
+        &rotate_plan,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("concurrent acquire failure executed"));
+    };
+    if !matches!(
+        &*failure,
+        SyncExecFailure::Acquire(error)
+            if matches!(
+                &**error,
+                CrossSyncFailure::Operation(cause)
+                    if matches!(
+                        &**cause,
+                        CrossLruFailure::Saturated {
+                            leased_residents: 1,
+                            residents: 1,
+                        }
+                    )
+            )
+    ) || runner.calls != 0
+        || memory != initial.memory()
+        || output != initial.io().output()
+        || !cache
+            .contains(&noop_plan)
+            .map_err(|error| error.to_string())?
+    {
+        return Err(String::from("concurrent acquire failure phase drifted"));
+    }
+    drop(retained);
+    cache
+        .release_if_unleased(&noop_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("concurrent acquire-failure cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_execute_separates_native_failure()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::RotatePair(Box::new(
+        geometry_native_rotate_halt_sequence(&fixture)?,
+    ));
+    let initial = fixture.states.first().ok_or_else(|| {
+        String::from("concurrent native-failure state missing")
+    })?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(210)?,
+        native_executable_address(0x7_f000)?,
+    );
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) = cache.execute(
+        &plan,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("concurrent native failure was ignored"));
+    };
+    if !matches!(
+        &*failure,
+        SyncExecFailure::Execution(error)
+            if error.disposition() == CrossLruDisposition::Inserted
+                && matches!(error.error(), CrossExecutionFailure::RotatePair(_))
+    ) || runner.calls != 1
+        || memory != initial.memory()
+        || output != initial.io().output()
+        || !cache.contains(&plan).map_err(|error| error.to_string())?
+        || cache.resident_count().map_err(|error| error.to_string())? != 1
+    {
+        return Err(String::from("concurrent native failure phase drifted"));
+    }
+    cache
+        .release_if_unleased(&plan)
+        .map(|_release| ())
+        .map_err(|error| format!("concurrent native-failure cleanup: {error}"))
 }
 
 #[test]

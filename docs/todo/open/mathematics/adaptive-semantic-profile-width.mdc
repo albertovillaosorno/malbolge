@@ -762,8 +762,11 @@ transfers, verification, and other separately measured costs.
   under one fail-closed mutex. Mutations and resource reads serialize, while
   returned `Arc` leases execute outside the lock and still block illegal
   eviction. Mutex poison rejects all later access rather than recovering
-  possibly
-  interrupted mapping authority.
+  possibly interrupted mapping authority.
+- Concurrent acquire-then-execute holds the mutex only through `ensure` and then
+  runs the cached lease outside it. Acquire failures remain distinct from native
+  execution failures; a blocked runner still permits concurrent mutation access,
+  which observes the executing lease and cannot release that resident.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without
