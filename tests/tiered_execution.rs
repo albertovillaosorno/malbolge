@@ -579,6 +579,10 @@ type FullGeometryLoadedFailureCause<RunnerError> =
     full_native::ExecutionGeometryNativeJumpRotateHaltLoadedFailureCause<
         RunnerError,
     >;
+type FullGeometryTripleLoadFailure<MemoryError> =
+    full_native::ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<
+        MemoryError,
+    >;
 type FullGeometryOutcome =
     full_native::ExecutionGeometryNativeJumpRotateHaltOutcome;
 type FullGeometrySequence =
@@ -14895,6 +14899,174 @@ fn geometry_native_noop_halt_loaded_late_failure_retains_prefix()
         .map_err(|error| format!("v5 loaded late no-op release: {error}"))?;
     release_execution_geometry_native_executable(&mut adapter, halt)
         .map_err(|error| format!("v5 loaded late halt release: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_owned_reuses_three_executables()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 owned triple initial state missing"))?;
+    let final_state = fixture
+        .states
+        .get(3)
+        .ok_or_else(|| String::from("v5 owned triple final state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(139)?,
+        native_executable_address(0x3_9000)?,
+    );
+    let loaded = sequence
+        .load_triple(&mut adapter)
+        .map_err(|error| format!("v5 owned triple load: {error}"))?;
+    if adapter.operations.len() != 12 || loaded.sequence() != &sequence {
+        return Err(String::from("v5 owned triple load identity drifted"));
+    }
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    for _iteration in 0usize..2usize {
+        let mut memory = initial.memory().to_vec();
+        let input = initial.io().input().to_vec();
+        let mut output = initial.io().output().to_vec();
+        let outcome = loaded
+            .execute(
+                &mut runner,
+                NativeRegionBuffers::new(&mut memory, &input, &mut output),
+            )
+            .map_err(|error| format!("v5 owned triple execute: {error}"))?;
+        if outcome != FullGeometryOutcome::Completed(final_state.clone())
+            || memory != final_state.memory()
+            || output != final_state.io().output()
+            || adapter.operations.len() != 12
+        {
+            return Err(String::from("v5 owned triple execution remapped"));
+        }
+    }
+    if runner.calls != 6 {
+        return Err(String::from("v5 owned triple runner count drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned triple release: {error}"))?;
+    if adapter.operations.len() == 15 {
+        Ok(())
+    } else {
+        Err(String::from("v5 owned triple release count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_jump_load_failure_releases_suffix()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(140)?,
+        native_executable_address(0x3_a000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 3);
+    let Err(failure) = sequence.load_triple(&mut adapter) else {
+        return Err(String::from("v5 owned jump load failure was ignored"));
+    };
+    let FullGeometryTripleLoadFailure::InitialJump {
+        error,
+        suffix_release_failure,
+    } = *failure
+    else {
+        return Err(String::from("v5 owned jump load failure phase drifted"));
+    };
+    if error.phase() == NativeExecutableLoadPhase::Allocate
+        && suffix_release_failure.is_none()
+        && adapter.release_requests.len() == 2
+        && adapter.operations.len() == 11
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 owned jump load rollback drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_jump_load_retains_suffix_cleanup()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(141)?,
+        native_executable_address(0x3_b000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 3)
+    .with_release_failures(2);
+    let Err(failure) = sequence.load_triple(&mut adapter) else {
+        return Err(String::from("v5 owned cleanup failure was ignored"));
+    };
+    let FullGeometryTripleLoadFailure::InitialJump {
+        error,
+        suffix_release_failure: Some(cleanup),
+    } = *failure
+    else {
+        return Err(String::from("v5 owned cleanup ownership was lost"));
+    };
+    if error.phase() != NativeExecutableLoadPhase::Allocate
+        || cleanup.halt_failure().is_none()
+        || cleanup.rotate_failure().is_none()
+        || adapter.operations.len() != 11
+    {
+        return Err(String::from("v5 owned suffix cleanup evidence drifted"));
+    }
+    cleanup.retry(&mut adapter).map_err(|retry_error| {
+        format!("v5 owned suffix cleanup retry: {retry_error}")
+    })?;
+    if adapter.operations.len() == 13 {
+        Ok(())
+    } else {
+        Err(String::from("v5 owned suffix cleanup retry drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_release_retries_all_three()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(142)?,
+        native_executable_address(0x3_c000)?,
+    )
+    .with_release_failures(3);
+    let loaded = sequence
+        .load_triple(&mut adapter)
+        .map_err(|error| format!("v5 owned release load: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from("v5 owned triple release failure ignored"));
+    };
+    let suffix_failure = failure.suffix_failure().ok_or_else(|| {
+        String::from("v5 owned suffix release failure missing")
+    })?;
+    if failure.initial_jump_failure().is_none()
+        || suffix_failure.halt_failure().is_none()
+        || suffix_failure.rotate_failure().is_none()
+        || adapter.release_requests.len() != 3
+        || adapter.operations.len() != 15
+    {
+        return Err(String::from("v5 owned triple release ownership drifted"));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 owned triple release retry: {error}"))?;
+    if adapter.operations.len() == 18 {
+        Ok(())
+    } else {
+        Err(String::from("v5 owned triple release retry drifted"))
+    }
 }
 
 #[test]

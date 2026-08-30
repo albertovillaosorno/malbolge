@@ -41,10 +41,13 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use malbolge::{ExecutionGeometryRegionEffectProgram, ProfileMachineState};
 
 use crate::execution_native::{
-    ExecutionGeometryNativeRunner, NativeExecutableMemoryAdapter,
-    NativeRegionBuffers, NativeRegionInvocationOutcome,
-    ReadyExecutionGeometryNativeExecutable,
+    ExecutionGeometryNativeExecutableReleaseFailure,
+    ExecutionGeometryNativeRunner, NativeExecutableLoadFailure,
+    NativeExecutableMemoryAdapter, NativeRegionBuffers,
+    NativeRegionInvocationOutcome, ReadyExecutionGeometryNativeExecutable,
     VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact,
+    load_execution_geometry_native_executable,
+    release_execution_geometry_native_executable,
 };
 use crate::geometry_native_initial_jump_data::{
     ExecutionGeometryNativeInitialJumpDataAdmission,
@@ -63,7 +66,10 @@ use crate::geometry_native_rotate_sequence::{
     ExecutionGeometryNativeRotateHaltFailure,
     ExecutionGeometryNativeRotateHaltLoadedFailure,
     ExecutionGeometryNativeRotateHaltOutcome,
+    ExecutionGeometryNativeRotateHaltPairLoadFailure,
+    ExecutionGeometryNativeRotateHaltPairReleaseFailure,
     ExecutionGeometryNativeRotateHaltSequence,
+    LoadedExecutionGeometryNativeRotateHaltSequence,
 };
 
 type FullAdapterResult<MemoryAdapter, Runner> =
@@ -77,6 +83,10 @@ type FullLoadedStepResult<Completion, RunnerError> = Result<
     Completion,
     Box<ExecutionGeometryNativeJumpRotateHaltLoadedFailure<RunnerError>>,
 >;
+type RotateHaltReleaseFailure<MemoryError> =
+    ExecutionGeometryNativeRotateHaltPairReleaseFailure<MemoryError>;
+type FullTripleLoadFailure<MemoryError> =
+    ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<MemoryError>;
 
 /// Failure while admitting the exact three-step certified v5 path.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -119,6 +129,48 @@ pub struct ExecutionGeometryNativeJumpRotateHaltLoadedFailure<RunnerError> {
     cause: ExecutionGeometryNativeJumpRotateHaltLoadedFailureCause<RunnerError>,
     index: usize,
     state: ProfileMachineState,
+}
+
+/// Failure while loading one reusable jump/rotate/halt executable triple.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<MemoryError> {
+    /// Initial jump load failed after the rotate/halt pair was ready.
+    InitialJump {
+        /// Primary jump load failure.
+        error: Box<NativeExecutableLoadFailure<MemoryError>>,
+        /// Failed rollback retaining suffix cleanup ownership, when present.
+        suffix_release_failure: Option<
+            Box<
+                ExecutionGeometryNativeRotateHaltPairReleaseFailure<
+                    MemoryError,
+                >,
+            >,
+        >,
+    },
+    /// Rotate/halt pair loading failed before any jump mapping existed.
+    Suffix(Box<ExecutionGeometryNativeRotateHaltPairLoadFailure<MemoryError>>),
+}
+
+/// Failed triple release retaining every mapping that still needs cleanup.
+#[derive(Debug, Eq, PartialEq)]
+pub struct ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure<
+    MemoryError,
+> {
+    initial_jump_failure: Option<
+        Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+    >,
+    suffix_failure: Option<Box<RotateHaltReleaseFailure<MemoryError>>>,
+}
+
+/// Failure while executing one owned exact executable triple.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeJumpRotateHaltOwnedFailure<RunnerError> {
+    /// Owned images unexpectedly failed exact prebinding.
+    Binding(Box<ExecutionGeometryNativeJumpRotateHaltExecutableBindingError>),
+    /// Exact prebound execution failed.
+    Execution(
+        Box<ExecutionGeometryNativeJumpRotateHaltLoadedFailure<RunnerError>>,
+    ),
 }
 
 /// Primary transaction failure from one stage of the three-step path.
@@ -198,12 +250,38 @@ pub struct BoundExecutionGeometryNativeJumpRotateHaltSequence<
         BoundExecutionGeometryNativeRotateHaltSequence<'sequence, 'executable>,
 }
 
+/// Owned exact ready triple bound to one admitted full sequence.
+#[derive(Debug)]
+pub struct LoadedExecutionGeometryNativeJumpRotateHaltSequence {
+    initial_jump: ReadyExecutionGeometryNativeExecutable,
+    sequence: ExecutionGeometryNativeJumpRotateHaltSequence,
+    suffix: LoadedExecutionGeometryNativeRotateHaltSequence,
+}
+
 /// Result of executing one exact prebound geometry-native triple.
 pub type ExecutionGeometryNativeJumpRotateHaltLoadedResult<RunnerError> =
     Result<
         ExecutionGeometryNativeJumpRotateHaltOutcome,
         Box<ExecutionGeometryNativeJumpRotateHaltLoadedFailure<RunnerError>>,
     >;
+
+/// Result of executing one owned exact geometry-native triple.
+pub type ExecutionGeometryNativeJumpRotateHaltOwnedResult<RunnerError> = Result<
+    ExecutionGeometryNativeJumpRotateHaltOutcome,
+    Box<ExecutionGeometryNativeJumpRotateHaltOwnedFailure<RunnerError>>,
+>;
+
+/// Result of loading one complete exact executable triple.
+pub type GeometryNativeJumpRotateHaltTripleLoadResult<MemoryError> = Result<
+    LoadedExecutionGeometryNativeJumpRotateHaltSequence,
+    Box<ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<MemoryError>>,
+>;
+
+/// Result of releasing every mapping owned by one loaded triple.
+pub type GeometryNativeJumpRotateHaltTripleReleaseResult<MemoryError> = Result<
+    (),
+    Box<ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure<MemoryError>>,
+>;
 
 /// Result of one concrete adapter/runner three-step transaction.
 pub type ExecutionGeometryNativeJumpRotateHaltAdapterResult<
@@ -280,6 +358,43 @@ impl<RunnerError: Display> Display
     }
 }
 
+impl<RunnerError: Display> Display
+    for ExecutionGeometryNativeJumpRotateHaltOwnedFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Binding(error) => Display::fmt(error, f),
+            Self::Execution(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::InitialJump { error, .. } => {
+                write!(f, "v5 full triple jump load failed: {error}")
+            },
+            Self::Suffix(error) => {
+                write!(f, "v5 full triple suffix load failed: {error}")
+            },
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        let initial_jump = self.initial_jump_failure.is_some();
+        let suffix = self.suffix_failure.is_some();
+        write!(f, "v5 triple release incomplete (jump={initial_jump}, ")?;
+        write!(f, "suffix={suffix})")
+    }
+}
+
 impl ExecutionGeometryNativeJumpRotateHaltEvidence {
     /// Groups exact initial-jump evidence with exact rotate/halt suffix
     /// evidence.
@@ -347,6 +462,136 @@ impl<RunnerError>
     #[must_use]
     pub const fn state(&self) -> &ProfileMachineState {
         &self.state
+    }
+}
+
+impl<MemoryError>
+    ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure<MemoryError>
+{
+    /// Returns retained initial-jump cleanup failure, when release failed.
+    #[must_use]
+    pub fn initial_jump_failure(
+        &self,
+    ) -> Option<&ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>
+    {
+        self.initial_jump_failure.as_deref()
+    }
+
+    /// Retries every still-owned mapping and retains repeated failures only.
+    ///
+    /// # Errors
+    ///
+    /// Returns refreshed cleanup ownership when any release fails again.
+    pub fn retry<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeJumpRotateHaltTripleReleaseResult<MemoryError>
+    where
+        Adapter: NativeExecutableMemoryAdapter<Error = MemoryError>,
+    {
+        let initial_jump_failure = self
+            .initial_jump_failure
+            .and_then(|failure| failure.retry(adapter).err().map(Box::new));
+        let suffix_failure = self
+            .suffix_failure
+            .and_then(|failure| failure.retry(adapter).err());
+        triple_release_result(initial_jump_failure, suffix_failure)
+    }
+
+    /// Returns retained rotate/halt cleanup failure, when release failed.
+    #[must_use]
+    pub fn suffix_failure(
+        &self,
+    ) -> Option<&RotateHaltReleaseFailure<MemoryError>> {
+        self.suffix_failure.as_deref()
+    }
+}
+
+impl LoadedExecutionGeometryNativeJumpRotateHaltSequence {
+    /// Executes through the owned triple without executable-memory adapter
+    /// work.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact binding or indexed execution failure while retaining all
+    /// mappings in this owner.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> ExecutionGeometryNativeJumpRotateHaltOwnedResult<Runner::Error>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        let bound = self
+            .sequence
+            .bind_executables(
+                &self.initial_jump,
+                self.suffix.rotate(),
+                self.suffix.halt(),
+            )
+            .map_err(|error| {
+                Box::new(
+                    ExecutionGeometryNativeJumpRotateHaltOwnedFailure::Binding(
+                        Box::new(error),
+                    ),
+                )
+            })?;
+        bound.execute(runner, buffers).map_err(|error| {
+            Box::new(
+                ExecutionGeometryNativeJumpRotateHaltOwnedFailure::Execution(
+                    error,
+                ),
+            )
+        })
+    }
+
+    /// Returns the owned synchronized initial-jump executable.
+    #[must_use]
+    pub const fn initial_jump(
+        &self,
+    ) -> &ReadyExecutionGeometryNativeExecutable {
+        &self.initial_jump
+    }
+
+    /// Releases all three mappings, attempting the suffix even if jump release
+    /// fails.
+    ///
+    /// # Errors
+    ///
+    /// Returns retry ownership for every mapping whose release failed.
+    pub fn release<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeJumpRotateHaltTripleReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let initial_jump_failure =
+            release_execution_geometry_native_executable(
+                adapter,
+                self.initial_jump,
+            )
+            .err()
+            .map(Box::new);
+        let suffix_failure = self.suffix.release(adapter).err();
+        triple_release_result(initial_jump_failure, suffix_failure)
+    }
+
+    /// Returns the exact immutable admission owned beside the ready triple.
+    #[must_use]
+    pub const fn sequence(
+        &self,
+    ) -> &ExecutionGeometryNativeJumpRotateHaltSequence {
+        &self.sequence
+    }
+
+    /// Returns the owned synchronized rotate/halt pair.
+    #[must_use]
+    pub const fn suffix(
+        &self,
+    ) -> &LoadedExecutionGeometryNativeRotateHaltSequence {
+        &self.suffix
     }
 }
 
@@ -583,6 +828,50 @@ impl ExecutionGeometryNativeJumpRotateHaltSequence {
         &self.initial_jump
     }
 
+    /// Loads and owns the complete exact v5 executable triple.
+    ///
+    /// The existing rotate/halt pair loads first. Only after that complete pair
+    /// is ready does the initial jump map. Jump load failure releases the pair;
+    /// failed rollback retains exact suffix cleanup ownership.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact suffix or jump load failure plus retryable cleanup
+    /// evidence.
+    pub fn load_triple<Adapter>(
+        &self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeJumpRotateHaltTripleLoadResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let suffix = self.suffix.load_pair(adapter).map_err(|error| {
+            Box::new(
+                ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure::Suffix(
+                    error,
+                ),
+            )
+        })?;
+        let initial_jump = match load_execution_geometry_native_executable(
+            adapter,
+            self.initial_jump.load_image(),
+        ) {
+            Ok(initial_jump) => initial_jump,
+            Err(error) => {
+                let suffix_release_failure = suffix.release(adapter).err();
+                return Err(Box::new(FullTripleLoadFailure::InitialJump {
+                    error: Box::new(error),
+                    suffix_release_failure,
+                }));
+            },
+        };
+        Ok(LoadedExecutionGeometryNativeJumpRotateHaltSequence {
+            initial_jump,
+            sequence: self.clone(),
+            suffix,
+        })
+    }
+
     /// Admits all three certified steps before any executable memory can map.
     ///
     /// Initial jump is replayed first. Its opaque exit checkpoint becomes the
@@ -624,6 +913,24 @@ impl ExecutionGeometryNativeJumpRotateHaltSequence {
     #[must_use]
     pub const fn suffix(&self) -> &ExecutionGeometryNativeRotateHaltSequence {
         &self.suffix
+    }
+}
+
+fn triple_release_result<MemoryError>(
+    initial_jump_failure: Option<
+        Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+    >,
+    suffix_failure: Option<Box<RotateHaltReleaseFailure<MemoryError>>>,
+) -> GeometryNativeJumpRotateHaltTripleReleaseResult<MemoryError> {
+    if initial_jump_failure.is_none() && suffix_failure.is_none() {
+        Ok(())
+    } else {
+        Err(Box::new(
+            ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure {
+                initial_jump_failure,
+                suffix_failure,
+            },
+        ))
     }
 }
 

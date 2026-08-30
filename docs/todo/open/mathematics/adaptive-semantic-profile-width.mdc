@@ -702,7 +702,11 @@ transfers, verification, and other separately measured costs.
   executables before borrowing machine buffers. Repeated prebound execution
   performs no adapter work, mixed-geometry jump images reject before mutation,
   and late halt failure retains the post-rotate checkpoint at global index 2.
-  Owned triple lifecycle and a reusable three-entry cache remain open.
+- The full sequence can now own one loaded executable triple. Rotate/halt loads
+  first, then jump; jump-load failure releases the suffix and returns exact
+  cleanup retry ownership on release failure. Owned execution never remaps, and
+  release attempts/retries all three mappings. A reusable full-path resident
+  cache and broader eviction policy remain open.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

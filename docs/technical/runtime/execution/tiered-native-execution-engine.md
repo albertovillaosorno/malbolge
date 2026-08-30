@@ -737,9 +737,19 @@ remaps suffix-local failures to global indices.
 
 Focused tests load one exact N10 triple once and execute it twice without any
 additional mapping operations, reject an N11 jump executable before mutation,
-and preserve the post-rotate checkpoint on a prebound halt failure. Mapping
-ownership and release remain external to this wrapper; reusable owned triples
-and a three-entry lease cache are still separate work.
+and preserve the post-rotate checkpoint on a prebound halt failure.
+
+The full path can now also own one exact loaded triple. The reviewed rotate/halt
+pair loads first; only after both suffix mappings are ready does the initial
+jump map. A jump-load failure releases the pair immediately, while failed
+rollback returns the exact suffix cleanup ownership for retry. Repeated owned
+execution delegates to the prebound triple and performs no mapping work.
+
+Owned release attempts the jump and both suffix mappings even when an earlier
+release fails. The returned cleanup object retains only failed mappings and can
+retry all of them without reconstructing identity. Four focused tests cover
+reuse, clean jump-load rollback, rollback cleanup ownership, and three-mapping
+release retry. No full-path residency or eviction policy is added yet.
 
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence
