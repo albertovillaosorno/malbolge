@@ -648,8 +648,22 @@ machine-code commit primitive because this particular aliasing jump has the same
 caller-visible mutation surface: one fetched-cell guard, one XLAT2 write,
 unchanged A, and precomputed C'/D'. The native key, backend identity, verified
 wrapper, and semantic admission remain jump-specific. Real `(&O` N10/N11
-traces produce distinct v5 keys/objects and cross-geometry verification rejects;
-no load-image or checkpoint execution authority is added by this artifact.
+traces produce distinct v5 keys/objects and cross-geometry verification rejects.
+
+Initial jump-data now reaches native execution through its own checkpoint-bound
+composition boundary. Admission first normatively replays the exact aliasing
+`j` from the opaque entry checkpoint; that replayed exit is the only state
+accepted for native `Applied`. Only after replay does admission reconstruct the
+exact v5 artifact identity and derive a relocation-free load image.
+
+Preparation requires exact caller memory/input/output and independently retains
+the one-live-in C==D ABI shape. Exact executable binding precedes the dedicated
+v5 runner; runner failure and completion drift restore the complete entry
+snapshot, while guard miss preserves it unchanged. Transactional execution
+maps, binds, runs, admits, and releases in order, retaining retryable executable
+ownership after cleanup failure and preserving committed normative state when
+final release fails. Eight focused cases cover those paths plus cross-geometry
+binding and caller-memory drift.
 
 `direct-execution-geometry-rotate` revision 1 adds a second state-changing v5
 artifact boundary without granting execution authority. The selector consumes

@@ -47,6 +47,8 @@ pub mod execution_native;
 pub mod geometry_interpreter_handoff;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_native.rs"]
 pub mod geometry_native_admission;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_jump.rs"]
+pub mod geometry_native_initial_jump_data;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_noop.rs"]
 pub mod geometry_native_no_operation;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_cache.rs"]
@@ -254,6 +256,7 @@ use geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltPreparationError,
     ExecutionGeometryNativeInitialHaltTransactionFailure,
 };
+use geometry_native_initial_jump_data as jump_native;
 use geometry_native_no_operation::{
     ExecutionGeometryNativeNoOperationAdmission,
     ExecutionGeometryNativeNoOperationBindingError,
@@ -558,6 +561,24 @@ struct SecondStepContinuationExpectation<'plan> {
     reason: NativeInterpreterContinuationReason,
 }
 
+type InitialJumpAdmission =
+    jump_native::ExecutionGeometryNativeInitialJumpDataAdmission;
+type InitialJumpBindingError =
+    jump_native::ExecutionGeometryNativeInitialJumpDataBindingError;
+type InitialJumpCompletionError =
+    jump_native::ExecutionGeometryNativeInitialJumpDataCompletionError;
+type InitialJumpExecutionError<RunnerError> =
+    jump_native::ExecutionGeometryNativeInitialJumpDataExecutionError<
+        RunnerError,
+    >;
+type InitialJumpPreparationError =
+    jump_native::ExecutionGeometryNativeInitialJumpDataPreparationError;
+type InitialJumpTransactionFailure<MemoryError, RunnerError> =
+    jump_native::ExecutionGeometryNativeInitialJumpDataTransactionFailure<
+        MemoryError,
+        RunnerError,
+    >;
+
 type DerivedV5HandoffFixture = (
     ExecutionGeometryRegionEffectProgram,
     ProfileMachineState,
@@ -567,6 +588,8 @@ type GeometryNativeAdmissionFixture = (
     ExecutionGeometryNativeInitialHaltAdmission,
     malbolge::ProfileExecutionGeometry,
 );
+type GeometryNativeInitialJumpDataAdmissionFixture =
+    (InitialJumpAdmission, malbolge::ProfileExecutionGeometry);
 type GeometryNativeNoOperationAdmissionFixture = (
     ExecutionGeometryNativeNoOperationAdmission,
     malbolge::ProfileExecutionGeometry,
@@ -583,6 +606,13 @@ type GeometryNativeRotateHaltReadyPair = (
     ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutable,
 );
+
+struct GeometryNativeInitialJumpDataRunnerFixture {
+    adapter: FakeNativeExecutableAdapter,
+    admission: InitialJumpAdmission,
+    geometry: malbolge::ProfileExecutionGeometry,
+    ready: ReadyExecutionGeometryNativeExecutable,
+}
 
 struct GeometryNativeNoOperationRunnerFixture {
     adapter: FakeNativeExecutableAdapter,
@@ -13216,6 +13246,50 @@ fn load_geometry_native_noop_halt_pair(
     Ok((no_operation, halt))
 }
 
+fn geometry_native_initial_jump_data_admission_fixture(
+    word_trits: u8,
+) -> Result<GeometryNativeInitialJumpDataAdmissionFixture, String> {
+    let (program, checkpoint, geometry) =
+        derived_v5_initial_jump_data_fixture(word_trits)?;
+    let artifact = emit_direct_execution_geometry_initial_jump_data_coff(
+        &program,
+        direct_execution_geometry_initial_jump_data_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 initial jump admission emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_jump_data(&artifact, &program)
+            .map_err(|error| {
+                format!("v5 initial jump admission verify: {error}")
+            })?;
+    let admission = InitialJumpAdmission::new(program, checkpoint, verified)
+        .map_err(|error| format!("v5 initial jump admission: {error}"))?;
+    Ok((admission, geometry))
+}
+
+fn geometry_native_initial_jump_data_runner_fixture(
+    word_trits: u8,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<GeometryNativeInitialJumpDataRunnerFixture, String> {
+    let (admission, geometry) =
+        geometry_native_initial_jump_data_admission_fixture(word_trits)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_value)?,
+        native_executable_address(base_value)?,
+    );
+    let ready = load_execution_geometry_native_executable(
+        &mut adapter,
+        admission.load_image(),
+    )
+    .map_err(|error| format!("v5 initial jump runner load: {error}"))?;
+    Ok(GeometryNativeInitialJumpDataRunnerFixture {
+        adapter,
+        admission,
+        geometry,
+        ready,
+    })
+}
+
 fn geometry_native_no_operation_admission_fixture(
     word_trits: u8,
 ) -> Result<GeometryNativeNoOperationAdmissionFixture, String> {
@@ -15129,6 +15203,253 @@ fn geometry_native_noop_halt_sequence_rejects_mixed_geometry()
 }
 
 #[test]
+fn geometry_native_initial_jump_binding_rejects_geometry() -> Result<(), String>
+{
+    let (admission, _geometry) =
+        geometry_native_initial_jump_data_admission_fixture(10)?;
+    let (n11, _checkpoint, _n11_geometry) =
+        derived_v5_initial_jump_data_fixture(11)?;
+    let n11_artifact = emit_direct_execution_geometry_initial_jump_data_coff(
+        &n11,
+        direct_execution_geometry_initial_jump_data_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 initial jump N11 bind emit: {error}"))?;
+    let n11_verified =
+        verify_direct_execution_geometry_initial_jump_data(&n11_artifact, &n11)
+            .map_err(|error| {
+                format!("v5 initial jump N11 bind verify: {error}")
+            })?;
+    let n11_image = VerifiedExecutionGeometryLoadImage::from_initial_jump_data(
+        &n11_verified,
+    )
+    .map_err(|error| format!("v5 initial jump N11 bind image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(105)?,
+        native_executable_address(0x1_7000)?,
+    );
+    let n11_ready =
+        load_execution_geometry_native_executable(&mut adapter, &n11_image)
+            .map_err(|error| {
+                format!("v5 initial jump N11 bind load: {error}")
+            })?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 initial jump bind prepare: {error}"))?;
+    if !matches!(
+        prepared.bind_executable(&n11_ready),
+        Err(InitialJumpBindingError::ExecutableIdentity)
+    ) || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from(
+            "v5 initial jump geometry bind rollback drifted",
+        ));
+    }
+    release_execution_geometry_native_executable(&mut adapter, n11_ready)
+        .map_err(|error| format!("v5 initial jump N11 bind release: {error}"))
+}
+
+#[test]
+fn geometry_native_initial_jump_applies_normative_state() -> Result<(), String>
+{
+    let GeometryNativeInitialJumpDataRunnerFixture {
+        mut adapter,
+        admission,
+        geometry,
+        ready,
+    } = geometry_native_initial_jump_data_runner_fixture(10, 106, 0x1_8000)?;
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    if expected == checkpoint || expected.geometry() != geometry {
+        return Err(String::from(
+            "v5 initial jump normative replay did not advance",
+        ));
+    }
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 initial jump runner prepare: {error}"))?;
+    let bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v5 initial jump runner bind: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let completion = bound
+        .execute(&mut runner)
+        .map_err(|error| format!("v5 initial jump runner execute: {error}"))?;
+    if completion.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 1
+        || runner.entry_addresses != [ready.entry_address()]
+        || runner.mapping_ids != [ready.mapping().mapping_id()]
+    {
+        return Err(String::from(
+            "v5 initial jump applied state drifted from replay",
+        ));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v5 initial jump runner release: {error}"))
+}
+
+#[test]
+fn geometry_native_initial_jump_rejects_memory_drift() -> Result<(), String> {
+    let (admission, _geometry) =
+        geometry_native_initial_jump_data_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let first = memory.first_mut().ok_or_else(|| {
+        String::from("v5 initial jump checkpoint memory missing")
+    })?;
+    *first = first.saturating_add(1);
+    let result = admission.prepare(NativeRegionBuffers::new(
+        &mut memory,
+        &input,
+        &mut output,
+    ));
+    if matches!(result, Err(InitialJumpPreparationError::Memory)) {
+        Ok(())
+    } else {
+        Err(String::from("v5 initial jump memory drift was admitted"))
+    }
+}
+
+#[test]
+fn geometry_native_initial_jump_completion_drift_rolls_back()
+-> Result<(), String> {
+    let GeometryNativeInitialJumpDataRunnerFixture {
+        mut adapter,
+        admission,
+        geometry: _geometry,
+        ready,
+    } = geometry_native_initial_jump_data_runner_fixture(10, 109, 0x1_b000)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 initial jump drift prepare: {error}"))?;
+    let bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v5 initial jump drift bind: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::CompletionDrift,
+    );
+    let Err(execution_error) = bound.execute(&mut runner) else {
+        return Err(String::from(
+            "v5 initial jump completion drift was admitted",
+        ));
+    };
+    let completion_drift = matches!(
+        *execution_error,
+        InitialJumpExecutionError::Completion(
+            InitialJumpCompletionError::Invocation(
+                NativeRegionInvocationError::AppliedMemory { address: 0, .. },
+            ),
+        )
+    );
+    if !completion_drift
+        || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from(
+            "v5 initial jump completion rollback drifted",
+        ));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v5 initial jump drift release: {error}"))
+}
+
+#[test]
+fn geometry_native_initial_jump_runner_failure_rollback() -> Result<(), String>
+{
+    let GeometryNativeInitialJumpDataRunnerFixture {
+        mut adapter,
+        admission,
+        geometry: _geometry,
+        ready,
+    } = geometry_native_initial_jump_data_runner_fixture(10, 107, 0x1_9000)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| {
+            format!("v5 initial jump failed runner prepare: {error}")
+        })?;
+    let bound = prepared.bind_executable(&ready).map_err(|error| {
+        format!("v5 initial jump failed runner bind: {error}")
+    })?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(execution_error) = bound.execute(&mut runner) else {
+        return Err(String::from("v5 initial jump runner failure was ignored"));
+    };
+    if !matches!(
+        *execution_error,
+        InitialJumpExecutionError::Runner(runner_error)
+            if *runner_error == FakeNativeRunnerError::Call
+    ) || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from("v5 initial jump runner rollback drifted"));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready).map_err(
+        |error| format!("v5 initial jump failed runner release: {error}"),
+    )
+}
+
+#[test]
+fn geometry_native_initial_jump_guard_miss_preserves_checkpoint()
+-> Result<(), String> {
+    let GeometryNativeInitialJumpDataRunnerFixture {
+        mut adapter,
+        admission,
+        geometry: _geometry,
+        ready,
+    } = geometry_native_initial_jump_data_runner_fixture(10, 108, 0x1_a000)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 initial jump miss prepare: {error}"))?;
+    let bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v5 initial jump miss bind: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let completion = bound
+        .execute(&mut runner)
+        .map_err(|error| format!("v5 initial jump miss execute: {error}"))?;
+    if completion.outcome() != NativeRegionInvocationOutcome::GuardMiss
+        || completion.state() != &checkpoint
+        || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from(
+            "v5 initial jump guard miss changed checkpoint",
+        ));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v5 initial jump miss release: {error}"))
+}
+
+#[test]
 fn geometry_native_rotate_binding_rejects_different_geometry()
 -> Result<(), String> {
     let (admission, _geometry) = geometry_native_rotate_admission_fixture(10)?;
@@ -15864,6 +16185,95 @@ fn geometry_native_runner_guard_miss_preserves_state() -> Result<(), String> {
     }
     release_execution_geometry_native_executable(&mut adapter, ready)
         .map_err(|error| format!("v5 miss runner release: {error}"))
+}
+
+#[test]
+fn geometry_native_initial_jump_transaction_applies_and_releases()
+-> Result<(), String> {
+    let (admission, geometry) =
+        geometry_native_initial_jump_data_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(110)?,
+        native_executable_address(0x1_c000)?,
+    );
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let completion = admission
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 initial jump transaction: {error}"))?;
+    if completion.state() != &expected
+        || completion.state().geometry() != geometry
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        Err(String::from("v5 initial jump transaction evidence drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_initial_jump_retains_committed_release_retry()
+-> Result<(), String> {
+    let (admission, _geometry) =
+        geometry_native_initial_jump_data_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(111)?,
+        native_executable_address(0x1_d000)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(failure) = admission.execute_transactionally(
+        &mut adapter,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from(
+            "v5 initial jump release failure was ignored",
+        ));
+    };
+    let InitialJumpTransactionFailure::Release {
+        completion,
+        release_failure,
+    } = *failure
+    else {
+        return Err(String::from("v5 initial jump cleanup ownership was lost"));
+    };
+    if completion.state() != &expected
+        || release_failure.executable().key() != admission.artifact().key()
+        || memory != expected.memory()
+        || output != expected.io().output()
+    {
+        return Err(String::from("v5 initial jump committed cleanup drifted"));
+    }
+    release_failure.retry(&mut adapter).map_err(|error| {
+        format!("v5 initial jump committed cleanup retry: {error}")
+    })
 }
 
 #[test]

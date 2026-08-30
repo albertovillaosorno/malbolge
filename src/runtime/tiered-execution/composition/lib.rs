@@ -45,6 +45,8 @@ pub mod execution_cache;
 pub mod execution_native;
 #[path = "tier/geometry_handoff.rs"]
 pub mod geometry_interpreter_handoff;
+#[path = "tier/geometry_jump.rs"]
+pub mod geometry_native_initial_jump_data;
 #[path = "tier/geometry_native.rs"]
 pub mod geometry_native_admission;
 #[path = "tier/geometry_noop.rs"]

@@ -665,8 +665,14 @@ transfers, verification, and other separately measured costs.
   exact XLAT2-only memory mutation, and rejects the non-aliasing legacy shape.
   x86-64/AArch64 reuse the reviewed no-op commit primitive only after
   independent
-  `j` admission. N10/N11 identities remain distinct; load/execution remains
-  open.
+  `j` admission. N10/N11 identities remain distinct.
+- Initial jump-data now has its own checkpoint-bound execution path. Admission
+  normatively replays the aliasing `j` before mapping and retains that opaque
+  exit checkpoint as the only Applied state. A dedicated load image, one-live-in
+  C==D ABI preparation, exact executable binding, v5 runner, completion
+  rollback,
+  transactional release, and cleanup-retry ownership mirror the other v5 step
+  boundaries without merging operation policy.
 - A second state-changing artifact boundary now admits explicit-geometry rotate
   without granting loader or invocation authority. Real `(&O` theorem traces
   supply the reached rotate step; selection derives the rotated A/data value
