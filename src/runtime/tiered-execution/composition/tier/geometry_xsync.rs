@@ -107,6 +107,14 @@ type TryReconfigurationFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateTryFailure<
         Box<CacheReconfigurationFailure<MemoryError>>,
     >;
+type TryReleaseAllFailure<MemoryError> =
+    GeometryNativeConcurrentCrossTemplateTryFailure<
+        Box<CacheReleaseAllFailure<MemoryError>>,
+    >;
+type TryReleaseAllResult<Adapter> =
+    GeometryNativeConcurrentCrossTemplateTryReleaseAllResult<
+        <Adapter as NativeExecutableMemoryAdapter>::Error,
+    >;
 type TryReleaseFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateTryFailure<
         Box<CacheReleaseFailure<MemoryError>>,
@@ -177,6 +185,8 @@ pub enum GeometryNativeConcurrentCrossTemplateLoadCleanupRetryFailure<
 pub enum GeometryNativeConcurrentCrossTemplateReleaseAllRetryFailure<
     MemoryError,
 > {
+    /// Another thread owns mutation authority; the token is untouched.
+    Busy(Box<CacheReleaseAllFailure<MemoryError>>),
     /// Cache authority is poisoned; the aggregate token is untouched.
     Poisoned(Box<CacheReleaseAllFailure<MemoryError>>),
     /// Retry still retains at least one exact resident cleanup owner.
@@ -367,6 +377,13 @@ pub type GeometryNativeConcurrentCrossTemplateTryReconfigurationResult<
     TryReconfigurationFailure<MemoryError>,
 >;
 
+/// Result of one nonblocking release-all request.
+pub type GeometryNativeConcurrentCrossTemplateTryReleaseAllResult<MemoryError> =
+    Result<
+        GeometryNativeCrossTemplateLruReleaseAll,
+        TryReleaseAllFailure<MemoryError>,
+    >;
+
 /// Result of one nonblocking exact resident release request.
 pub type GeometryNativeConcurrentCrossTemplateTryReleaseResult<MemoryError> =
     Result<
@@ -476,6 +493,10 @@ impl<MemoryError: Display> Display
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
+            Self::Busy(error) => write!(
+                f,
+                "v5 concurrent release-all retry blocked by busy cache: {error}"
+            ),
             Self::Poisoned(error) => write!(
                 f,
                 "v5 concurrent release-all retry blocked by poison: {error}"
@@ -998,6 +1019,31 @@ where
         result
     }
 
+    /// Attempts release-all without waiting for mutation ownership.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Busy` before adapter work, `Poisoned` after interrupted
+    /// mutation, or the exact aggregate release-all failure after lock acquire.
+    pub fn try_release_all_unleased(&self) -> TryReleaseAllResult<Adapter> {
+        let mut state = match self.inner.try_lock() {
+            Ok(state) => state,
+            Err(TryLockError::Poisoned(_error)) => {
+                return Err(TryReleaseAllFailure::Poisoned);
+            },
+            Err(TryLockError::WouldBlock) => {
+                return Err(TryReleaseAllFailure::Busy);
+            },
+        };
+        let GeometryNativeConcurrentCrossTemplateState { adapter, cache } =
+            &mut *state;
+        let result = cache
+            .release_all_unleased(adapter)
+            .map_err(TryReleaseAllFailure::Operation);
+        drop(state);
+        result
+    }
+
     /// Attempts one exact resident release without waiting for the mutex.
     ///
     /// Once the mutex is acquired, release uses the complete existing lease and
@@ -1090,6 +1136,36 @@ where
         };
         drop(state);
         Ok(outcome)
+    }
+
+    /// Attempts aggregate release-all cleanup without waiting for the mutex.
+    ///
+    /// # Errors
+    ///
+    /// Returns the untouched aggregate token on `Busy` or `Poisoned`, or a
+    /// refreshed aggregate token when acquired retry still fails.
+    pub fn try_retry_release_all_cleanup(
+        &self,
+        failure: Box<CacheReleaseAllFailure<Adapter::Error>>,
+    ) -> GeometryNativeConcurrentCrossTemplateReleaseAllRetryResult<
+        Adapter::Error,
+    > {
+        let mut state = match self.inner.try_lock() {
+            Ok(state) => state,
+            Err(TryLockError::Poisoned(_error)) => {
+                return Err(Box::new(ReleaseAllRetryFailure::Poisoned(
+                    failure,
+                )));
+            },
+            Err(TryLockError::WouldBlock) => {
+                return Err(Box::new(ReleaseAllRetryFailure::Busy(failure)));
+            },
+        };
+        let result = (*failure)
+            .retry(&mut state.adapter)
+            .map_err(|error| Box::new(ReleaseAllRetryFailure::Release(error)));
+        drop(state);
+        result
     }
 
     /// Attempts one coherent snapshot without waiting for mutation ownership.

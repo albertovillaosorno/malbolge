@@ -772,6 +772,10 @@ transfers, verification, and other separately measured costs.
   through its exact adapter. Leased identities remain active, aggregate failures
   retain exact plan plus typed cleanup ownership, and aggregate retry never
   republishes identities removed from cache authority.
+- Nonblocking bulk release and aggregate retry reuse the same lifecycle.
+  `try_release_all_unleased` reports `Busy` before adapter work, while
+  `try_retry_release_all_cleanup` preserves the whole cleanup token unchanged
+  until mutation ownership is acquired.
 - Concurrent acquire-then-execute holds the mutex only through `ensure` and then
   runs the cached lease outside it. Acquire failures remain distinct from native
   execution failures; a blocked runner still permits concurrent mutation access,

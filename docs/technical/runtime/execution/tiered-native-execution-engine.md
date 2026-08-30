@@ -902,6 +902,16 @@ Two focused cases cover a retained external lease and aggregate cleanup retry.
 The pass therefore provides explicit bulk reclamation without claiming a retired
 resident drain or weakening the existing lease contract.
 
+Bulk reclamation also has nonblocking entry points.
+`try_release_all_unleased` reports `Busy` before adapter work, while
+`try_retry_release_all_cleanup` returns the aggregate cleanup token untouched on
+`Busy` or poison. Once the mutex is acquired both delegate to the exact blocking
+release-all or aggregate-retry transaction.
+
+Focused contention proves the aggregate plan/failure evidence survives `Busy`
+and later retry unchanged. No separate cancellation or partial-release policy is
+introduced by the nonblocking surface.
+
 The concurrent owner also exposes acquire-then-execute as one typed request.
 Only `ensure` runs under the mutex; the returned acquisition executes after the
 guard is dropped. Acquire failures remain distinct from native execution

@@ -277,6 +277,7 @@ use geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruLimits as CrossLruLimits,
     GeometryNativeCrossTemplateLruReconfigurationFailure as CrossLimitFailure,
     GeometryNativeCrossTemplateLruRelease as CrossLruRelease,
+    GeometryNativeCrossTemplateLruReleaseAllFailure as CrossAllFailure,
 };
 use geometry_native_cross_template_concurrent_cache::{
     GeometryNativeConcurrentCrossTemplateAccessError as CrossSyncAccessError,
@@ -286,6 +287,7 @@ use geometry_native_cross_template_concurrent_cache::{
     GeometryNativeConcurrentCrossTemplateLoadCleanupRetry as SyncLoadCleanup,
     GeometryNativeConcurrentCrossTemplateLoadCleanupRetryFailure as LoadRetry,
     GeometryNativeConcurrentCrossTemplateLruCache as CrossSyncCache,
+    GeometryNativeConcurrentCrossTemplateReleaseAllRetryFailure as SyncAll,
     GeometryNativeConcurrentCrossTemplateTryExecutionFailure as TryExecFailure,
     GeometryNativeConcurrentCrossTemplateTryFailure as TrySyncFailure,
     GeometryNativeConcurrentCrossTemplateTrySnapshotFailure as TrySnapFailure,
@@ -642,6 +644,7 @@ type FakeCrossResidentLoadFailure =
     CrossResidentLoadFailure<FakeNativeAdapterOperation>;
 type FakeCrossResidentReleaseFailure =
     CrossResidentReleaseFailure<FakeNativeAdapterOperation>;
+type FakeCrossReleaseAllFailure = CrossAllFailure<FakeNativeAdapterOperation>;
 type FullGeometryAdmissionError =
     full_native::ExecutionGeometryNativeJumpRotateHaltAdmissionError;
 type FullGeometryBindingError =
@@ -13543,6 +13546,27 @@ where
     Ok(load_failure)
 }
 
+fn require_busy_release_all_cleanup(
+    cache: &CrossSyncCache<BlockingNativeExecutableAdapter>,
+    failure: Box<FakeCrossReleaseAllFailure>,
+    plan: &CrossResidentPlan,
+) -> Result<Box<FakeCrossReleaseAllFailure>, String> {
+    let Err(busy) = cache.try_retry_release_all_cleanup(failure) else {
+        return Err(String::from("try-release-all retry ignored busy mutex"));
+    };
+    let SyncAll::Busy(retained_failure) = *busy else {
+        return Err(String::from("try-release-all retry lost aggregate token"));
+    };
+    let Some(entry) = retained_failure.failures().first() else {
+        return Err(String::from("try-release-all busy token lost failure"));
+    };
+    if retained_failure.failures().len() == 1 && entry.plan() == plan {
+        Ok(retained_failure)
+    } else {
+        Err(String::from("try-release-all busy token drifted"))
+    }
+}
+
 fn require_busy_load_cleanup<Adapter>(
     cache: &CrossSyncCache<Adapter>,
     failure: Box<FakeCrossResidentLoadFailure>,
@@ -16651,10 +16675,7 @@ fn geometry_native_concurrent_cross_template_try_mutations_report_busy()
     );
     let (entered_tx, entered_rx) = mpsc::channel();
     let (proceed_tx, proceed_rx) = mpsc::channel();
-    let limits = CrossLruLimits::new(nonzero_test_limit(
-        1,
-        "v5 concurrent try-mutation capacity",
-    )?);
+    let limits = CrossLruLimits::new(nonzero_test_limit(1, "try-mutation")?);
     let cache = Arc::new(CrossSyncCache::new(
         BlockingNativeExecutableAdapter {
             allocate_attempts: 0,
@@ -16673,9 +16694,9 @@ fn geometry_native_concurrent_cross_template_try_mutations_report_busy()
         .map_err(|error| {
             format!("try-mutation adapter never acquired lock: {error}")
         })?;
-    let requested =
-        CrossLruLimits::new(nonzero_test_limit(2, "v5 try-expand")?);
+    let requested = CrossLruLimits::new(nonzero_test_limit(2, "try-expand")?);
     let busy_release = cache.try_release_if_unleased(&noop_plan);
+    let busy_release_all = cache.try_release_all_unleased();
     let busy_reconfiguration = cache.try_reconfigure_limits(requested);
     let _sent = proceed_tx.send(());
     let acquisition = worker
@@ -16685,6 +16706,7 @@ fn geometry_native_concurrent_cross_template_try_mutations_report_busy()
             format!("try-mutation blocking load failed: {error}")
         })?;
     if !matches!(busy_release, Err(TrySyncFailure::Busy))
+        || !matches!(busy_release_all, Err(TrySyncFailure::Busy))
         || !matches!(busy_reconfiguration, Err(TrySyncFailure::Busy))
     {
         return Err(String::from("try-mutation failed to report busy lock"));
@@ -16790,6 +16812,69 @@ fn geometry_native_concurrent_cross_template_try_reconfigure_preserves_cleanup()
         .release_if_unleased(&rotate_plan)
         .map(|_release| ())
         .map_err(|error| format!("try-reconfigure survivor cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_try_release_all_retry_is_busy()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, _full_plan) = cross_template_resident_plans()?;
+    let inner = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(231)?,
+        native_executable_address(0x9_4000)?,
+    )
+    .with_release_failures(1);
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (proceed_tx, proceed_rx) = mpsc::channel();
+    let cache = Arc::new(CrossSyncCache::new(
+        BlockingNativeExecutableAdapter {
+            allocate_attempts: 0,
+            block_at_allocate: 3,
+            entered: entered_tx,
+            inner,
+            proceed: proceed_rx,
+        },
+        CrossLruLimits::new(nonzero_test_limit(1, "v5 try-release-all")?),
+    ));
+    drop(
+        cache
+            .ensure(&noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(CrossSyncFailure::Operation(failure)) =
+        cache.release_all_unleased()
+    else {
+        return Err(String::from("try-release-all cleanup failure ignored"));
+    };
+    let worker_cache = Arc::clone(&cache);
+    let worker_plan = rotate_plan.clone();
+    let worker = thread::spawn(move || worker_cache.ensure(&worker_plan));
+    entered_rx
+        .recv_timeout(Duration::from_secs(2))
+        .map_err(|error| {
+            format!("try-release-all worker missed lock: {error}")
+        })?;
+    let retained_failure =
+        require_busy_release_all_cleanup(&cache, failure, &noop_plan)?;
+    let _sent = proceed_tx.send(());
+    let rotate = worker
+        .join()
+        .map_err(|_panic| String::from("try-release-all worker panicked"))?
+        .map_err(|error| format!("try-release-all rotate load: {error}"))?;
+    let retried = cache
+        .try_retry_release_all_cleanup(retained_failure)
+        .map_err(|error| {
+            format!("try-release-all retry after busy: {error}")
+        })?;
+    if retried.released_residents() != [noop_plan]
+        || !retried.retained_residents().is_empty()
+    {
+        return Err(String::from("try-release-all retry evidence drifted"));
+    }
+    drop(rotate);
+    cache
+        .release_if_unleased(&rotate_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("try-release-all rotate cleanup: {error}"))
 }
 
 #[test]
