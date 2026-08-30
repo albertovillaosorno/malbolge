@@ -636,9 +636,13 @@ transfers, verification, and other separately measured costs.
   allocate/copy/RW-to-RX/synchronize ordering and reuses phase-tagged cleanup
   evidence. A post-allocation copy failure releases the exact mapping, and v5
   release retains the ready executable for retry on failure.
-- No runner accepts the geometry-specific ready type. The remaining native
-  boundary is binding it to the checkpoint-owned prepared ABI call, followed by
-  reviewed derived-geometry templates for state-changing operations.
+- The checkpoint-owned prepared call now binds only to an exact synchronized v5
+  executable image. N10 prepared state paired with an N11 executable rejects and
+  restores the entry snapshot. The bound value exposes entry/executable identity
+  plus result admission, but no raw ABI pointer or machine-code call method.
+- No runner accepts it yet. The remaining native authority boundary is a
+  dedicated geometry runner, followed by reviewed derived-geometry templates for
+  state-changing operations.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

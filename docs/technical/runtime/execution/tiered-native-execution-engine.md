@@ -594,10 +594,16 @@ the exact release request; explicit v5 release retains the ready executable for
 retry if cleanup fails.
 
 The platform path still cannot invoke code because no native runner accepts the
-v5 ready type. Binding that ready executable to the prepared checkpoint-owned
-ABI call remains the next authority boundary. State-applying arithmetic
-templates
-also remain canonical-only.
+v5 ready type. `PreparedExecutionGeometryNativeInitialHalt::bind_executable()`
+now consumes a checkpoint-owned prepared call only when the synchronized v5
+executable retains the exact same verified load image. A mismatched N10/N11
+executable aborts the prepared frame and restores its entry snapshot.
+
+The resulting `ExecutionGeometryNativeInitialHaltBoundCall` exposes synchronized
+entry/executable identity and exact completion admission, but no raw ABI state
+pointer and no machine-code invocation method. The remaining native authority
+boundary is therefore a dedicated geometry runner that can call only this bound
+contract. State-applying arithmetic templates also remain canonical-only.
 
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine

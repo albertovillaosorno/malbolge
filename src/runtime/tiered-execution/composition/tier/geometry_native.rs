@@ -39,6 +39,7 @@
 //! Checkpoint-bound admission for explicit-geometry native artifacts.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
+use std::num::NonZeroUsize;
 
 use malbolge::{
     ExecutionGeometryRegionEffectProgram, ProfileMachineError,
@@ -49,13 +50,15 @@ use crate::execution_cache::{NativeArtifactKey, NativeIdentityError};
 use crate::execution_native::{
     NativeRegionBuffers, NativeRegionInvocationError,
     NativeRegionInvocationOutcome, PreparedNativeRegionInvocation,
-    VerifiedDirectLoadError,
+    ReadyExecutionGeometryNativeExecutable, VerifiedDirectLoadError,
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     VerifiedExecutionGeometryLoadImage,
 };
 use crate::geometry_interpreter_handoff::{
     ExecutionGeometryHandoffAdmissionError, ExecutionGeometryInterpreterHandoff,
 };
+
+type InitialHaltBindingError = ExecutionGeometryNativeInitialHaltBindingError;
 
 /// Failure before one v5 native artifact can retain checkpoint-bound authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -68,6 +71,13 @@ pub enum ExecutionGeometryNativeInitialHaltAdmissionError {
     Identity(NativeIdentityError),
     /// Verified COFF could not become one relocation-free aligned load image.
     Load(VerifiedDirectLoadError),
+}
+
+/// Failure while binding one prepared v5 call to synchronized code.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeInitialHaltBindingError {
+    /// Synchronized executable image differs from checkpoint-bound admission.
+    ExecutableIdentity,
 }
 
 /// Failure while admitting one completed geometry-bound ABI transition.
@@ -102,6 +112,17 @@ pub struct ExecutionGeometryNativeInitialHaltAdmission {
     program: ExecutionGeometryRegionEffectProgram,
 }
 
+/// Prepared checkpoint-owned ABI call bound to exact synchronized v5 code.
+#[derive(Debug)]
+pub struct ExecutionGeometryNativeInitialHaltBoundCall<
+    'admission,
+    'buffers,
+    'executable,
+> {
+    executable: &'executable ReadyExecutionGeometryNativeExecutable,
+    prepared: PreparedExecutionGeometryNativeInitialHalt<'admission, 'buffers>,
+}
+
 /// One admitted result retaining the opaque checkpoint geometry token.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecutionGeometryNativeInitialHaltCompletion {
@@ -128,6 +149,12 @@ impl Display for ExecutionGeometryNativeInitialHaltAdmissionError {
             },
             Self::Load(error) => Display::fmt(error, f),
         }
+    }
+}
+
+impl Display for ExecutionGeometryNativeInitialHaltBindingError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str("v5 synchronized executable identity differs from call")
     }
 }
 
@@ -279,6 +306,46 @@ impl ExecutionGeometryNativeInitialHaltAdmission {
     }
 }
 
+impl ExecutionGeometryNativeInitialHaltBoundCall<'_, '_, '_> {
+    /// Simulates the exact expected foreign transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.prepared.apply_expected_for_test();
+    }
+
+    /// Admits one raw status through the checkpoint-owned prepared call.
+    ///
+    /// This method does not invoke machine code. It only verifies a status and
+    /// caller-visible state after some future geometry-specific runner call.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeInitialHaltCompletionError`] when the
+    /// completed transition or reconstructed checkpoint fails admission.
+    pub fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        ExecutionGeometryNativeInitialHaltCompletion,
+        ExecutionGeometryNativeInitialHaltCompletionError,
+    > {
+        self.prepared.complete(raw_status)
+    }
+
+    /// Returns the synchronized entrypoint retained by this identity binding.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized v5 executable bound to this call.
+    #[must_use]
+    pub const fn executable(&self) -> &ReadyExecutionGeometryNativeExecutable {
+        self.executable
+    }
+}
+
 impl ExecutionGeometryNativeInitialHaltCompletion {
     /// Returns the exact admitted native call outcome.
     #[must_use]
@@ -293,12 +360,50 @@ impl ExecutionGeometryNativeInitialHaltCompletion {
     }
 }
 
-impl PreparedExecutionGeometryNativeInitialHalt<'_, '_> {
+impl<'admission, 'buffers>
+    PreparedExecutionGeometryNativeInitialHalt<'admission, 'buffers>
+{
     /// Simulates the exact expected foreign transition for contract tests.
     #[cfg(test)]
     #[doc(hidden)]
     pub fn apply_expected_for_test(&mut self) {
         self.invocation.apply_expected_for_test();
+    }
+
+    /// Binds this prepared checkpoint-owned call to exact synchronized v5 code.
+    ///
+    /// Identity mismatch consumes and aborts the prepared call, restoring its
+    /// entry snapshot. The returned bound value still exposes no raw state
+    /// pointer and has no machine-code invocation method.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeInitialHaltBindingError`] when the
+    /// ready executable carries any different verified load image.
+    pub fn bind_executable<'executable>(
+        self,
+        executable: &'executable ReadyExecutionGeometryNativeExecutable,
+    ) -> Result<
+        ExecutionGeometryNativeInitialHaltBoundCall<
+            'admission,
+            'buffers,
+            'executable,
+        >,
+        ExecutionGeometryNativeInitialHaltBindingError,
+    > {
+        let Self { admission, invocation } = self;
+        if admission.load_image() != executable.image() {
+            let error = InitialHaltBindingError::ExecutableIdentity;
+            invocation.abort();
+            return Err(error);
+        }
+        let prepared = Self { admission, invocation };
+        Ok(
+            ExecutionGeometryNativeInitialHaltBoundCall {
+                executable,
+                prepared,
+            },
+        )
     }
 
     /// Admits one raw status and reconstructs the opaque-geometry checkpoint.

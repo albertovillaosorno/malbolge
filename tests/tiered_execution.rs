@@ -221,6 +221,7 @@ use geometry_interpreter_handoff::{
 use geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltAdmission,
     ExecutionGeometryNativeInitialHaltAdmissionError,
+    ExecutionGeometryNativeInitialHaltBindingError,
     ExecutionGeometryNativeInitialHaltPreparationError,
 };
 use interpreter_handoff::{
@@ -12454,6 +12455,116 @@ fn execution_geometry_native_admission_rejects_checkpoint_geometry_drift()
     } else {
         Err(String::from("v5 admission ignored opaque geometry drift"))
     }
+}
+
+#[test]
+fn geometry_native_binding_matches_checkpoint_owned_executable()
+-> Result<(), String> {
+    let (program, checkpoint, geometry) = derived_v5_handoff_fixture(10)?;
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &program,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 bind emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_halt(&artifact, &program)
+            .map_err(|error| format!("v5 bind verify: {error}"))?;
+    let admission = ExecutionGeometryNativeInitialHaltAdmission::new(
+        program, checkpoint, verified,
+    )
+    .map_err(|error| format!("v5 bind admission: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(95)?,
+        native_executable_address(0xd000)?,
+    );
+    let ready = load_execution_geometry_native_executable(
+        &mut adapter,
+        admission.load_image(),
+    )
+    .map_err(|error| format!("v5 bind load: {error}"))?;
+    let mut memory = admission.checkpoint().memory().to_vec();
+    let input = admission.checkpoint().io().input().to_vec();
+    let mut output = admission.checkpoint().io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 bind prepare: {error}"))?;
+    let mut bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v5 executable bind: {error}"))?;
+    let artifact_identity_matches =
+        bound.executable().key() == admission.artifact().key();
+    let entry_matches = bound.entry_address() == ready.entry_address();
+    if !artifact_identity_matches || !entry_matches {
+        return Err(String::from("v5 bound executable identity drifted"));
+    }
+    bound.apply_expected_for_test();
+    let completion = bound
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| format!("v5 bound completion: {error}"))?;
+    if completion.state().geometry() != geometry {
+        return Err(String::from("v5 bound completion lost opaque geometry"));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v5 bound release: {error}"))
+}
+
+#[test]
+fn geometry_native_binding_rejects_different_geometry_executable()
+-> Result<(), String> {
+    let (n10, n10_checkpoint, _n10_geometry) = derived_v5_handoff_fixture(10)?;
+    let (n11, _n11_checkpoint, _n11_geometry) = derived_v5_handoff_fixture(11)?;
+    let n10_artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &n10,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 bind N10 emit: {error}"))?;
+    let n10_verified =
+        verify_direct_execution_geometry_initial_halt(&n10_artifact, &n10)
+            .map_err(|error| format!("v5 bind N10 verify: {error}"))?;
+    let admission = ExecutionGeometryNativeInitialHaltAdmission::new(
+        n10,
+        n10_checkpoint.clone(),
+        n10_verified,
+    )
+    .map_err(|error| format!("v5 bind N10 admission: {error}"))?;
+    let n11_artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &n11,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 bind N11 emit: {error}"))?;
+    let n11_verified =
+        verify_direct_execution_geometry_initial_halt(&n11_artifact, &n11)
+            .map_err(|error| format!("v5 bind N11 verify: {error}"))?;
+    let n11_image =
+        VerifiedExecutionGeometryLoadImage::from_initial_halt(&n11_verified)
+            .map_err(|error| format!("v5 bind N11 image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(96)?,
+        native_executable_address(0xe000)?,
+    );
+    let n11_ready =
+        load_execution_geometry_native_executable(&mut adapter, &n11_image)
+            .map_err(|error| format!("v5 bind N11 load: {error}"))?;
+    let mut memory = n10_checkpoint.memory().to_vec();
+    let input = n10_checkpoint.io().input().to_vec();
+    let mut output = n10_checkpoint.io().output().to_vec();
+    let expected_memory = memory.clone();
+    let expected_output = output.clone();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 bind mismatch prepare: {error}"))?;
+    if !matches!(
+        prepared.bind_executable(&n11_ready),
+        Err(ExecutionGeometryNativeInitialHaltBindingError::ExecutableIdentity)
+    ) || memory != expected_memory
+        || output != expected_output
+    {
+        return Err(String::from(
+            "v5 executable drift did not fail atomically",
+        ));
+    }
+    release_execution_geometry_native_executable(&mut adapter, n11_ready)
+        .map_err(|error| format!("v5 bind N11 release: {error}"))
 }
 
 #[test]
