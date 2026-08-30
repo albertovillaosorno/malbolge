@@ -15468,6 +15468,139 @@ fn geometry_native_noop_halt_loaded_late_failure_retains_prefix()
 }
 
 #[test]
+fn geometry_native_cross_template_release_all_unleased_releases_every_resident()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(226)?,
+        native_executable_address(0x8_f000)?,
+    );
+    let mut cache = cross_template_lru(3)?;
+    for plan in [&noop_plan, &rotate_plan, &full_plan] {
+        drop(
+            cache
+                .ensure(&mut adapter, plan)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let released = cache
+        .release_all_unleased(&mut adapter)
+        .map_err(|error| format!("cross release-all: {error}"))?;
+    let expected = [noop_plan, rotate_plan, full_plan];
+    let usage = cache.usage().map_err(|error| error.to_string())?;
+    if released.released_residents() != expected
+        || !released.retained_residents().is_empty()
+        || cache.resident_count() != 0
+        || usage.entries() != 0
+        || usage.mappings() != 0
+        || adapter.operations.len() != 35
+    {
+        Err(String::from("cross release-all complete pass drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_release_all_unleased_retains_live_lease()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(227)?,
+        native_executable_address(0x9_0000)?,
+    );
+    let mut cache = cross_template_lru(3)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let rotate = cache
+        .ensure(&mut adapter, &rotate_plan)
+        .map_err(|error| error.to_string())?;
+    drop(
+        cache
+            .ensure(&mut adapter, &full_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let first = cache
+        .release_all_unleased(&mut adapter)
+        .map_err(|error| format!("cross leased release-all: {error}"))?;
+    if first.released_residents() != [noop_plan.clone(), full_plan.clone()]
+        || first.retained_residents() != [rotate_plan.clone()]
+        || cache.resident_count() != 1
+        || !cache.contains(&rotate_plan)
+        || cache.resident_lease_count(&rotate_plan) != 1
+    {
+        return Err(String::from("cross release-all lost leased resident"));
+    }
+    drop(rotate);
+    let second = cache
+        .release_all_unleased(&mut adapter)
+        .map_err(|error| format!("cross final release-all: {error}"))?;
+    if second.released_residents() == [rotate_plan]
+        && second.retained_residents().is_empty()
+        && cache.resident_count() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "cross release-all did not reclaim returned lease",
+        ))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_release_all_unleased_aggregates_failure()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(228)?,
+        native_executable_address(0x9_1000)?,
+    );
+    let mut cache = cross_template_lru(3)?;
+    for plan in [&noop_plan, &rotate_plan, &full_plan] {
+        drop(
+            cache
+                .ensure(&mut adapter, plan)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    adapter.release_failures_remaining = 1;
+    let Err(failure) = cache.release_all_unleased(&mut adapter) else {
+        return Err(String::from("cross release-all release failure ignored"));
+    };
+    let entries = failure.failures();
+    let Some(entry) = entries.first() else {
+        return Err(String::from("cross release-all failure entry missing"));
+    };
+    if entries.len() != 1
+        || entry.plan() != &noop_plan
+        || !matches!(
+            entry.failure(),
+            CrossResidentReleaseFailure::NoOperationPair(_)
+        )
+        || failure.released_residents()
+            != [rotate_plan.clone(), full_plan.clone()]
+        || !failure.retained_residents().is_empty()
+        || cache.resident_count() != 0
+    {
+        return Err(String::from("cross release-all failure evidence drifted"));
+    }
+    let retried = (*failure)
+        .retry(&mut adapter)
+        .map_err(|error| format!("cross release-all retry: {error}"))?;
+    if retried.released_residents() != [rotate_plan, full_plan, noop_plan]
+        || !retried.retained_residents().is_empty()
+        || cache.resident_count() != 0
+    {
+        Err(String::from("cross release-all retry drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
 fn geometry_native_cross_template_lru_hit_refreshes_eviction()
 -> Result<(), String> {
     let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;

@@ -750,6 +750,11 @@ transfers, verification, and other separately measured costs.
   template families in LRU order. Blockage or typed release failure keeps the
   previous limits published while reporting prior removals and cleanup
   ownership.
+- The heterogeneous LRU can now release every currently unleased resident in
+  LRU order. Leased identities remain active and ordered; failed releases leave
+  cache authority and return exact plan plus typed cleanup ownership for retry.
+  This is not yet a retired-resident drain because live leases stay
+  lookup-visible.
 - Heterogeneous leases now execute the retained specialized owner directly.
   Outcomes and failures stay tagged as no-op/halt, rotate/halt, or full-path;
   step indices, checkpoints, guard behavior, and rollback remain owned by the

@@ -368,6 +368,24 @@ impl GeometryNativeLoadedResident {
         }
     }
 
+    /// Reconstructs the exact admitted plan retained by this loaded owner.
+    #[must_use]
+    pub fn plan(&self) -> GeometryNativeResidentPlan {
+        match self {
+            Self::FullPath(loaded) => GeometryNativeResidentPlan::FullPath(
+                Box::new(loaded.sequence().clone()),
+            ),
+            Self::NoOperationPair(loaded) => {
+                GeometryNativeResidentPlan::NoOperationPair(Box::new(
+                    loaded.sequence().clone(),
+                ))
+            },
+            Self::RotatePair(loaded) => GeometryNativeResidentPlan::RotatePair(
+                Box::new(loaded.sequence().clone()),
+            ),
+        }
+    }
+
     /// Releases the specialized owner and preserves typed cleanup retry
     /// evidence.
     ///

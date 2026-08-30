@@ -867,6 +867,18 @@ failure reports `removed_residents`; release failure also returns the exact
 variant-specific cleanup ownership. Six focused cases cover expansion,
 entry/byte/mapping shrink, partial removal, lease blockage, and typed cleanup.
 
+The heterogeneous LRU also supports an explicit `release_all_unleased` pass.
+It attempts every releasable resident in LRU-to-MRU order while retaining leased
+identities as active residents in their original relative order. Any release
+failure removes that identity from cache authority and returns its exact plan
+with variant-specific cleanup ownership; aggregate retry never restores lookup
+authority.
+
+This is intentionally not a retired-resident drain. A live lease keeps its
+resident lookup-visible until the lease is returned and a later pass can reclaim
+it. Focused cases cover full release, one retained lease, and aggregate release
+failure with exact retry ownership.
+
 `GeometryNativeConcurrentCrossTemplateLruCache` now owns one heterogeneous LRU
 and its executable-memory adapter under the same mutex. `ensure`, release,
 reconfiguration, usage, and identity reads serialize through that authority;

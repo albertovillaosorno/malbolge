@@ -39,6 +39,7 @@
 //! Resource-bounded LRU across reviewed explicit-geometry resident templates.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
+use std::mem::take;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
@@ -67,6 +68,8 @@ type CrossLruFailure<MemoryError> =
     GeometryNativeCrossTemplateLruAcquireFailure<MemoryError>;
 type CrossReconfigurationFailure<MemoryError> =
     GeometryNativeCrossTemplateLruReconfigurationFailure<MemoryError>;
+type ReleaseAllEntryFailure<MemoryError> =
+    GeometryNativeCrossTemplateLruReleaseAllEntryFailure<MemoryError>;
 
 /// Positive resource limits for the heterogeneous v5 LRU.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -220,6 +223,28 @@ pub struct GeometryNativeCrossTemplateCachedExecutionFailure<RunnerError> {
     error: Box<GeometryNativeResidentExecutionFailure<RunnerError>>,
 }
 
+/// One pass releasing every heterogeneous resident without external leases.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GeometryNativeCrossTemplateLruReleaseAll {
+    released_residents: Vec<GeometryNativeResidentPlan>,
+    retained_residents: Vec<GeometryNativeResidentPlan>,
+}
+
+/// One exact resident whose release failed during a release-all pass.
+#[derive(Debug, Eq, PartialEq)]
+pub struct GeometryNativeCrossTemplateLruReleaseAllEntryFailure<MemoryError> {
+    failure: Box<ResidentReleaseFailure<MemoryError>>,
+    plan: GeometryNativeResidentPlan,
+}
+
+/// Aggregate release-all failure after attempting every unleased resident.
+#[derive(Debug, Eq, PartialEq)]
+pub struct GeometryNativeCrossTemplateLruReleaseAllFailure<MemoryError> {
+    failures: Vec<ReleaseAllEntryFailure<MemoryError>>,
+    released_residents: Vec<GeometryNativeResidentPlan>,
+    retained_residents: Vec<GeometryNativeResidentPlan>,
+}
+
 /// Explicit outcome of releasing one exact heterogeneous resident identity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GeometryNativeCrossTemplateLruRelease {
@@ -287,6 +312,12 @@ pub type GeometryNativeCrossTemplateLruReconfigurationResult<MemoryError> =
         GeometryNativeCrossTemplateLruReconfiguration,
         Box<GeometryNativeCrossTemplateLruReconfigurationFailure<MemoryError>>,
     >;
+
+/// Result of attempting release for every currently unleased resident.
+pub type GeometryNativeCrossTemplateLruReleaseAllResult<MemoryError> = Result<
+    GeometryNativeCrossTemplateLruReleaseAll,
+    Box<GeometryNativeCrossTemplateLruReleaseAllFailure<MemoryError>>,
+>;
 
 /// Result of releasing one exact heterogeneous resident identity.
 pub type GeometryNativeCrossTemplateLruReleaseResult<MemoryError> = Result<
@@ -399,6 +430,18 @@ impl<RunnerError: Display> Display
             f,
             "v5 cross {disposition} resident execution failed: {}",
             self.error,
+        )
+    }
+}
+
+impl<MemoryError: Display> Display
+    for GeometryNativeCrossTemplateLruReleaseAllFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(
+            f,
+            "heterogeneous v5 release-all retained {} failed releases",
+            self.failures.len(),
         )
     }
 }
@@ -545,6 +588,100 @@ impl GeometryNativeCrossTemplateLruAcquisition {
     #[must_use]
     pub const fn lease(&self) -> &GeometryNativeCrossTemplateLruLease {
         &self.lease
+    }
+}
+
+impl GeometryNativeCrossTemplateLruReleaseAll {
+    /// Returns exact identities released by this pass.
+    #[must_use]
+    pub fn released_residents(&self) -> &[GeometryNativeResidentPlan] {
+        &self.released_residents
+    }
+
+    /// Returns exact identities retained because external leases remain.
+    #[must_use]
+    pub fn retained_residents(&self) -> &[GeometryNativeResidentPlan] {
+        &self.retained_residents
+    }
+}
+
+impl<MemoryError>
+    GeometryNativeCrossTemplateLruReleaseAllEntryFailure<MemoryError>
+{
+    /// Returns exact variant-specific cleanup ownership.
+    #[must_use]
+    pub fn failure(&self) -> &ResidentReleaseFailure<MemoryError> {
+        self.failure.as_ref()
+    }
+
+    /// Consumes this entry and returns exact cleanup ownership.
+    #[must_use]
+    pub fn into_failure(self) -> ResidentReleaseFailure<MemoryError> {
+        *self.failure
+    }
+
+    /// Returns the exact admitted identity removed from cache authority.
+    #[must_use]
+    pub const fn plan(&self) -> &GeometryNativeResidentPlan {
+        &self.plan
+    }
+}
+
+impl<MemoryError> GeometryNativeCrossTemplateLruReleaseAllFailure<MemoryError> {
+    /// Returns every exact resident release failure from this pass.
+    #[must_use]
+    pub fn failures(&self) -> &[ReleaseAllEntryFailure<MemoryError>] {
+        &self.failures
+    }
+
+    /// Returns identities released before or during this failed pass.
+    #[must_use]
+    pub fn released_residents(&self) -> &[GeometryNativeResidentPlan] {
+        &self.released_residents
+    }
+
+    /// Returns identities still resident because external leases blocked
+    /// release.
+    #[must_use]
+    pub fn retained_residents(&self) -> &[GeometryNativeResidentPlan] {
+        &self.retained_residents
+    }
+
+    /// Retries all cleanup ownership already transferred out of the cache.
+    ///
+    /// # Errors
+    ///
+    /// Returns only refreshed failures after attempting every retained owner.
+    pub fn retry<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeCrossTemplateLruReleaseAllResult<MemoryError>
+    where
+        Adapter: NativeExecutableMemoryAdapter<Error = MemoryError>,
+    {
+        let mut failures = Vec::new();
+        let mut released_residents = self.released_residents;
+        for entry in self.failures {
+            let plan = entry.plan;
+            match (*entry.failure).retry(adapter) {
+                Ok(()) => released_residents.push(plan),
+                Err(failure) => {
+                    failures.push(ReleaseAllEntryFailure { failure, plan });
+                },
+            }
+        }
+        if failures.is_empty() {
+            Ok(GeometryNativeCrossTemplateLruReleaseAll {
+                released_residents,
+                retained_residents: self.retained_residents,
+            })
+        } else {
+            Err(Box::new(Self {
+                failures,
+                released_residents,
+                retained_residents: self.retained_residents,
+            }))
+        }
     }
 }
 
@@ -954,6 +1091,62 @@ impl GeometryNativeCrossTemplateLruCache {
                     ));
                 },
             }
+        }
+    }
+
+    /// Releases every currently unleased resident in LRU-to-MRU order.
+    ///
+    /// Residents with external leases remain active in their original relative
+    /// order. Every unleased resident is removed from cache authority before
+    /// its specialized release runs, so failed release transfers exact
+    /// cleanup ownership instead of restoring stale lookup authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact plans plus typed cleanup ownership after attempting every
+    /// releasable resident.
+    pub fn release_all_unleased<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeCrossTemplateLruReleaseAllResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let residents = take(&mut self.residents);
+        let mut failures = Vec::new();
+        let mut released_residents = Vec::new();
+        let mut retained_residents = Vec::new();
+        for resident in residents {
+            let plan = resident.plan();
+            if Arc::strong_count(&resident) > 1 {
+                retained_residents.push(plan);
+                self.residents.push(resident);
+                continue;
+            }
+            match Arc::try_unwrap(resident) {
+                Ok(loaded) => match loaded.release(adapter) {
+                    Ok(()) => released_residents.push(plan),
+                    Err(failure) => {
+                        failures.push(ReleaseAllEntryFailure { failure, plan });
+                    },
+                },
+                Err(retained) => {
+                    retained_residents.push(plan);
+                    self.residents.push(retained);
+                },
+            }
+        }
+        if failures.is_empty() {
+            Ok(GeometryNativeCrossTemplateLruReleaseAll {
+                released_residents,
+                retained_residents,
+            })
+        } else {
+            Err(Box::new(GeometryNativeCrossTemplateLruReleaseAllFailure {
+                failures,
+                released_residents,
+                retained_residents,
+            }))
         }
     }
 
