@@ -767,6 +767,10 @@ transfers, verification, and other separately measured costs.
   runs the cached lease outside it. Acquire failures remain distinct from native
   execution failures; a blocked runner still permits concurrent mutation access,
   which observes the executing lease and cannot release that resident.
+- Concurrent inspection now has a single-lock snapshot for one exact plan. It
+  reports residence, external leases, published limits, and aggregate mapping
+  usage from one mutation epoch, and returns no partial observation after poison
+  or resident-weight overflow.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

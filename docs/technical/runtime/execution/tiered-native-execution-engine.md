@@ -890,6 +890,13 @@ step is stalled, another thread acquires the mutation mutex and receives
 that acquisition failure never calls the runner and native failure leaves the
 resident published for reuse.
 
+Concurrent inspection can now use one coherent snapshot instead of composing
+separately locked reads. `snapshot(plan)` captures exact residence, external
+lease count, published limits, and aggregate mapping usage under one guard, and
+publishes nothing if the lock is poisoned or resident-weight aggregation fails.
+A focused case proves lease-count transition from one to zero without changing
+the same snapshot's limits or usage.
+
 Concurrent read-side scaling beyond one mutation mutex remains separate policy
 work.
 

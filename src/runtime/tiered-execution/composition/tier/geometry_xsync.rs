@@ -107,6 +107,15 @@ pub enum GeometryNativeConcurrentCrossTemplateExecutionFailure<
     ),
 }
 
+/// One coherent read-side observation taken under a single cache lock.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GeometryNativeConcurrentCrossTemplateSnapshot {
+    leases: usize,
+    limits: GeometryNativeCrossTemplateLruLimits,
+    resident: bool,
+    usage: GeometryNativeCrossTemplateLruUsage,
+}
+
 /// One heterogeneous cache and its mapping adapter under a shared mutation
 /// lock.
 #[derive(Debug)]
@@ -162,6 +171,14 @@ pub type GeometryNativeConcurrentCrossTemplateReleaseResult<MemoryError> =
         >,
     >;
 
+/// Result of reading one coherent resident/cache snapshot.
+pub type GeometryNativeConcurrentCrossTemplateSnapshotResult = Result<
+    GeometryNativeConcurrentCrossTemplateSnapshot,
+    GeometryNativeConcurrentCrossTemplateFailure<
+        GeometryNativeResidentWeightError,
+    >,
+>;
+
 /// Result of reading exact synchronized aggregate resident usage.
 pub type GeometryNativeConcurrentCrossTemplateUsageResult = Result<
     GeometryNativeCrossTemplateLruUsage,
@@ -211,6 +228,32 @@ impl<MemoryError: Display, RunnerError: Display> Display
                 )
             },
         }
+    }
+}
+
+impl GeometryNativeConcurrentCrossTemplateSnapshot {
+    /// Returns external leases currently retaining the observed identity.
+    #[must_use]
+    pub const fn leases(self) -> usize {
+        self.leases
+    }
+
+    /// Returns the resource limits published in this observation.
+    #[must_use]
+    pub const fn limits(self) -> GeometryNativeCrossTemplateLruLimits {
+        self.limits
+    }
+
+    /// Reports whether the observed exact identity is resident.
+    #[must_use]
+    pub const fn resident(self) -> bool {
+        self.resident
+    }
+
+    /// Returns aggregate exact mapping usage from the same observation.
+    #[must_use]
+    pub const fn usage(self) -> GeometryNativeCrossTemplateLruUsage {
+        self.usage
     }
 }
 
@@ -379,6 +422,36 @@ where
         &self,
     ) -> Result<usize, GeometryNativeConcurrentCrossTemplateAccessError> {
         Ok(self.lock()?.cache.resident_count())
+    }
+
+    /// Reads identity state, limits, leases, and usage under one lock.
+    ///
+    /// This avoids composing separately locked reads that could observe
+    /// different mutation epochs.
+    ///
+    /// # Errors
+    ///
+    /// Returns poison or exact resident-weight overflow evidence without
+    /// publishing a partial snapshot.
+    pub fn snapshot(
+        &self,
+        plan: &GeometryNativeResidentPlan,
+    ) -> GeometryNativeConcurrentCrossTemplateSnapshotResult {
+        let state = self.lock().map_err(|_error| {
+            GeometryNativeConcurrentCrossTemplateFailure::Poisoned
+        })?;
+        let usage = state
+            .cache
+            .usage()
+            .map_err(GeometryNativeConcurrentCrossTemplateFailure::Operation)?;
+        let snapshot = GeometryNativeConcurrentCrossTemplateSnapshot {
+            leases: state.cache.resident_lease_count(plan),
+            limits: state.cache.limits(),
+            resident: state.cache.contains(plan),
+            usage,
+        };
+        drop(state);
+        Ok(snapshot)
     }
 
     /// Returns exact aggregate mapping usage under synchronized cache access.

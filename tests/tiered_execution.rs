@@ -15991,6 +15991,47 @@ fn geometry_native_cross_template_weighted_lru_release_failure_is_typed()
 }
 
 #[test]
+fn geometry_native_concurrent_cross_template_snapshot_is_coherent()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(211)?,
+        native_executable_address(0x8_0000)?,
+    );
+    let cache = concurrent_cross_template_lru(adapter, 2)?;
+    let acquisition = cache
+        .ensure(&noop_plan)
+        .map_err(|error| format!("concurrent snapshot acquire: {error}"))?;
+    let leased = cache
+        .snapshot(&noop_plan)
+        .map_err(|error| format!("concurrent leased snapshot: {error}"))?;
+    if !leased.resident()
+        || leased.leases() != 1
+        || leased.limits().entry_limit().get() != 2
+        || leased.usage().entries() != 1
+        || leased.usage().mappings() != 2
+    {
+        return Err(String::from("concurrent leased snapshot drifted"));
+    }
+    drop(acquisition);
+    let unleased = cache
+        .snapshot(&noop_plan)
+        .map_err(|error| format!("concurrent unleased snapshot: {error}"))?;
+    if !unleased.resident()
+        || unleased.leases() != 0
+        || unleased.limits() != leased.limits()
+        || unleased.usage() != leased.usage()
+    {
+        return Err(String::from("concurrent unleased snapshot drifted"));
+    }
+    cache
+        .release_if_unleased(&noop_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("concurrent snapshot cleanup: {error}"))
+}
+
+#[test]
 fn geometry_native_concurrent_cross_template_execution_releases_lock()
 -> Result<(), String> {
     let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
@@ -16343,6 +16384,10 @@ fn geometry_native_concurrent_cross_template_poison_fails_closed()
     if !panicked
         || cache.contains(&noop_plan) != Err(CrossSyncAccessError::Poisoned)
         || !matches!(cache.ensure(&noop_plan), Err(CrossSyncFailure::Poisoned))
+        || !matches!(
+            cache.snapshot(&noop_plan),
+            Err(CrossSyncFailure::Poisoned)
+        )
         || cache.resident_count() != Err(CrossSyncAccessError::Poisoned)
     {
         return Err(String::from("concurrent poison did not fail closed"));
