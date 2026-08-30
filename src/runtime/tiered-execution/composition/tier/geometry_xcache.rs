@@ -60,6 +60,8 @@ type WeightedVictimResult<MemoryError> =
     Result<(), WeightedVictimFailure<MemoryError>>;
 type CrossLruFailure<MemoryError> =
     GeometryNativeCrossTemplateLruAcquireFailure<MemoryError>;
+type CrossReconfigurationFailure<MemoryError> =
+    GeometryNativeCrossTemplateLruReconfigurationFailure<MemoryError>;
 
 /// Positive resource limits for the heterogeneous v5 LRU.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -67,6 +69,54 @@ pub struct GeometryNativeCrossTemplateLruLimits {
     entries: NonZeroUsize,
     mapped_bytes: Option<NonZeroUsize>,
     mappings: Option<NonZeroUsize>,
+}
+
+/// Successful publication of replacement heterogeneous LRU limits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GeometryNativeCrossTemplateLruReconfiguration {
+    new_limits: GeometryNativeCrossTemplateLruLimits,
+    previous_limits: GeometryNativeCrossTemplateLruLimits,
+    removed_residents: usize,
+}
+
+/// Failed heterogeneous LRU limit change retaining typed cleanup evidence.
+#[derive(Debug, Eq, PartialEq)]
+pub enum GeometryNativeCrossTemplateLruReconfigurationFailure<MemoryError> {
+    /// One required typed resident release failed during shrink.
+    Release {
+        /// Exact variant-specific cleanup ownership for the failed victim.
+        error: Box<ResidentReleaseFailure<MemoryError>>,
+        /// Limits that remain published after this failure.
+        previous_limits: GeometryNativeCrossTemplateLruLimits,
+        /// Residents removed from active authority before failure returned.
+        removed_residents: usize,
+        /// Limits requested by the rejected reconfiguration.
+        requested_limits: GeometryNativeCrossTemplateLruLimits,
+    },
+    /// Exact retained heterogeneous usage could not be represented safely.
+    ResidentWeight {
+        /// Exact aggregate resident-weight failure.
+        error: GeometryNativeResidentWeightError,
+        /// Limits that remain published after this failure.
+        previous_limits: GeometryNativeCrossTemplateLruLimits,
+        /// Residents removed from active authority before failure returned.
+        removed_residents: usize,
+        /// Limits requested by the rejected reconfiguration.
+        requested_limits: GeometryNativeCrossTemplateLruLimits,
+    },
+    /// Remaining live leases prevent the requested shrink from fitting.
+    Saturated {
+        /// Residents with at least one external lease.
+        leased_residents: usize,
+        /// Limits that remain published after this failure.
+        previous_limits: GeometryNativeCrossTemplateLruLimits,
+        /// Residents removed from active authority before failure returned.
+        removed_residents: usize,
+        /// Limits requested by the rejected reconfiguration.
+        requested_limits: GeometryNativeCrossTemplateLruLimits,
+        /// Residents still retained when shrink became blocked.
+        residents: usize,
+    },
 }
 
 /// Whether one heterogeneous acquisition hit, inserted, or evicted.
@@ -206,6 +256,13 @@ pub type GeometryNativeCrossTemplateLruAcquireResult<MemoryError> = Result<
     Box<GeometryNativeCrossTemplateLruAcquireFailure<MemoryError>>,
 >;
 
+/// Result of transactionally publishing heterogeneous replacement limits.
+pub type GeometryNativeCrossTemplateLruReconfigurationResult<MemoryError> =
+    Result<
+        GeometryNativeCrossTemplateLruReconfiguration,
+        Box<GeometryNativeCrossTemplateLruReconfigurationFailure<MemoryError>>,
+    >;
+
 /// Result of releasing one exact heterogeneous resident identity.
 pub type GeometryNativeCrossTemplateLruReleaseResult<MemoryError> = Result<
     GeometryNativeCrossTemplateLruRelease,
@@ -301,6 +358,47 @@ impl GeometryNativeCrossTemplateLruLimits {
     ) -> Self {
         self.mappings = Some(mapping_limit);
         self
+    }
+}
+
+impl<MemoryError: Display> Display
+    for GeometryNativeCrossTemplateLruReconfigurationFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Release { error, .. } => {
+                write!(f, "v5 cross LRU limit release failed: {error}")
+            },
+            Self::ResidentWeight { error, .. } => Display::fmt(error, f),
+            Self::Saturated {
+                leased_residents,
+                residents,
+                ..
+            } => write!(
+                f,
+                "v5 cross limit blocked ({leased_residents}/{residents} leased)"
+            ),
+        }
+    }
+}
+
+impl GeometryNativeCrossTemplateLruReconfiguration {
+    /// Returns the limits published after successful reconfiguration.
+    #[must_use]
+    pub const fn new_limits(self) -> GeometryNativeCrossTemplateLruLimits {
+        self.new_limits
+    }
+
+    /// Returns the limits that were published before this request.
+    #[must_use]
+    pub const fn previous_limits(self) -> GeometryNativeCrossTemplateLruLimits {
+        self.previous_limits
+    }
+
+    /// Returns residents removed before the new limits were published.
+    #[must_use]
+    pub const fn removed_residents(self) -> usize {
+        self.removed_residents
     }
 }
 
@@ -659,6 +757,82 @@ impl GeometryNativeCrossTemplateLruCache {
             .position(|resident| resident.matches_plan(plan))
     }
 
+    /// Publishes replacement heterogeneous resource limits after LRU cleanup.
+    ///
+    /// Expansion or already-satisfied requests publish without adapter work.
+    /// Shrink releases unleased LRU residents across template families until
+    /// retained usage fits. Failure keeps the prior limits published even when
+    /// earlier successful removals remain removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns prior/requested limits with exact weight, saturation, or typed
+    /// victim cleanup evidence.
+    pub fn reconfigure_limits<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        requested_limits: GeometryNativeCrossTemplateLruLimits,
+    ) -> GeometryNativeCrossTemplateLruReconfigurationResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let previous_limits = self.limits();
+        let mut removed_residents = 0usize;
+        loop {
+            let usage = match self.usage() {
+                Ok(usage) => usage,
+                Err(error) => {
+                    return Err(Box::new(
+                        CrossReconfigurationFailure::ResidentWeight {
+                            error,
+                            previous_limits,
+                            removed_residents,
+                            requested_limits,
+                        },
+                    ));
+                },
+            };
+            if !Self::usage_exceeds_limits(usage, requested_limits) {
+                self.capacity = requested_limits.entry_limit();
+                self.mapped_byte_limit = requested_limits.mapped_byte_limit();
+                self.mapping_limit = requested_limits.mapping_limit();
+                return Ok(GeometryNativeCrossTemplateLruReconfiguration {
+                    new_limits: requested_limits,
+                    previous_limits,
+                    removed_residents,
+                });
+            }
+            match self.evict_weighted_victim(adapter) {
+                Ok(()) => {
+                    removed_residents = removed_residents.saturating_add(1);
+                },
+                Err(WeightedVictimFailure::Release(error)) => {
+                    let removed_with_failure =
+                        removed_residents.saturating_add(1);
+                    return Err(Box::new(
+                        CrossReconfigurationFailure::Release {
+                            error,
+                            previous_limits,
+                            removed_residents: removed_with_failure,
+                            requested_limits,
+                        },
+                    ));
+                },
+                Err(WeightedVictimFailure::Saturated) => {
+                    return Err(Box::new(
+                        CrossReconfigurationFailure::Saturated {
+                            leased_residents: self.leased_resident_count(),
+                            previous_limits,
+                            removed_residents,
+                            requested_limits,
+                            residents: self.residents.len(),
+                        },
+                    ));
+                },
+            }
+        }
+    }
+
     /// Releases one exact typed resident only when it has no external leases.
     ///
     /// # Errors
@@ -745,6 +919,21 @@ impl GeometryNativeCrossTemplateLruCache {
             mapped_bytes,
             mappings,
         })
+    }
+
+    const fn usage_exceeds_limits(
+        usage: GeometryNativeCrossTemplateLruUsage,
+        limits: GeometryNativeCrossTemplateLruLimits,
+    ) -> bool {
+        usage.entries() > limits.entry_limit().get()
+            || match limits.mapped_byte_limit() {
+                Some(limit) => usage.mapped_bytes() > limit.get(),
+                None => false,
+            }
+            || match limits.mapping_limit() {
+                Some(limit) => usage.mappings() > limit.get(),
+                None => false,
+            }
     }
 
     fn weighted_candidate_requires_eviction(

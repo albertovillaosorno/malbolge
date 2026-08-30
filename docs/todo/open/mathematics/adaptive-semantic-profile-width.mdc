@@ -744,7 +744,12 @@ transfers, verification, and other separately measured costs.
   residents across template families until projected usage fits.
 - Weighted saturation rolls the candidate back, typed victim cleanup remains
   retryable, and failures expose prior removals instead of implying a
-  side-effect-free rejection. Heterogeneous limit reconfiguration remains open.
+  side-effect-free rejection.
+- Heterogeneous entry/byte/mapping limits can now be reconfigured. Expansion
+  publishes without adapter work; shrink evicts unleased residents across
+  template families in LRU order. Blockage or typed release failure keeps the
+  previous limits published while reporting prior removals and cleanup
+  ownership.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

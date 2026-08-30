@@ -839,8 +839,18 @@ full-path residents through recency, lease, saturation, byte/mapping pressure,
 rollback, release-failure, and vacancy paths. Execution remains deliberately
 variant-specific through the loaded-resident enum.
 
-Heterogeneous limit reconfiguration and concurrent cache mutation remain
-separate policy work.
+The same heterogeneous cache can now reconfigure entry, mapped-byte, and mapping
+limits. Expansion or already-satisfied requests publish with no adapter work;
+shrink removes unleased residents in the existing cross-template LRU order until
+retained aggregate usage fits.
+
+If leases block shrink or a typed victim release fails, the prior limits remain
+published. Residents already removed before failure are not resurrected, so the
+failure reports `removed_residents`; release failure also returns the exact
+variant-specific cleanup ownership. Six focused cases cover expansion,
+entry/byte/mapping shrink, partial removal, lease blockage, and typed cleanup.
+
+Concurrent cache mutation remains separate policy work.
 
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence

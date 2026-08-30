@@ -271,6 +271,7 @@ use geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruCache as CrossLruCache,
     GeometryNativeCrossTemplateLruDisposition as CrossLruDisposition,
     GeometryNativeCrossTemplateLruLimits as CrossLruLimits,
+    GeometryNativeCrossTemplateLruReconfigurationFailure as CrossLimitFailure,
     GeometryNativeCrossTemplateLruRelease as CrossLruRelease,
 };
 use geometry_native_cross_template_resident::{
@@ -13244,11 +13245,11 @@ fn cross_template_lru(capacity: usize) -> Result<CrossLruCache, String> {
     )?))
 }
 
-fn cross_template_weighted_lru(
+fn cross_template_limits(
     capacity: usize,
     mapped_byte_limit: Option<usize>,
     mapping_limit: Option<usize>,
-) -> Result<CrossLruCache, String> {
+) -> Result<CrossLruLimits, String> {
     let mut limits = CrossLruLimits::new(nonzero_test_limit(
         capacity,
         "v5 cross weighted entries",
@@ -13265,7 +13266,19 @@ fn cross_template_weighted_lru(
             "v5 cross weighted mappings",
         )?);
     }
-    Ok(CrossLruCache::new_with_limits(limits))
+    Ok(limits)
+}
+
+fn cross_template_weighted_lru(
+    capacity: usize,
+    mapped_byte_limit: Option<usize>,
+    mapping_limit: Option<usize>,
+) -> Result<CrossLruCache, String> {
+    Ok(CrossLruCache::new_with_limits(cross_template_limits(
+        capacity,
+        mapped_byte_limit,
+        mapping_limit,
+    )?))
 }
 
 fn cross_template_resident_plans() -> Result<CrossResidentPlanTriple, String> {
@@ -15335,6 +15348,271 @@ fn geometry_native_cross_template_lru_load_failure_leaves_vacancy()
     } else {
         Err(String::from("cross LRU refill cleanup drifted"))
     }
+}
+
+#[test]
+fn geometry_native_cross_template_lru_reconfigure_expands_without_work()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(191)?,
+        native_executable_address(0x6_c000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let previous = cache.limits();
+    let requested = cross_template_limits(3, Some(1_000_000), Some(9))?;
+    let operations_before = adapter.operations.len();
+    let transition = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("cross limit expansion: {error}"))?;
+    if transition.previous_limits() != previous
+        || transition.new_limits() != requested
+        || transition.removed_residents() != 0
+        || cache.limits() != requested
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from(
+            "cross limit expansion performed adapter work",
+        ));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &noop_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross limit expansion cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_lru_reconfigure_shrinks_entries()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(192)?,
+        native_executable_address(0x6_d000)?,
+    );
+    let mut cache = cross_template_lru(3)?;
+    for plan in [&noop_plan, &rotate_plan, &full_plan] {
+        drop(
+            cache
+                .ensure(&mut adapter, plan)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let requested = cross_template_limits(1, None, None)?;
+    let transition = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("cross entry shrink: {error}"))?;
+    let usage = cache.usage().map_err(|error| error.to_string())?;
+    if transition.removed_residents() != 2
+        || cache.limits() != requested
+        || cache.contains(&noop_plan)
+        || cache.contains(&rotate_plan)
+        || !cache.contains(&full_plan)
+        || usage.entries() != 1
+    {
+        return Err(String::from("cross entry shrink did not preserve MRU"));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &full_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross entry shrink cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_lru_reconfigure_shrinks_bytes()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(193)?,
+        native_executable_address(0x6_e000)?,
+    )
+    .with_mapped_len_overrides(vec![
+        4_096, 4_096, 8_192, 8_192, 16_384, 16_384, 16_384,
+    ]);
+    let mut cache = cross_template_lru(3)?;
+    for plan in [&noop_plan, &rotate_plan, &full_plan] {
+        drop(
+            cache
+                .ensure(&mut adapter, plan)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let requested = cross_template_limits(3, Some(50_000), None)?;
+    let transition = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("cross byte shrink: {error}"))?;
+    let usage = cache.usage().map_err(|error| error.to_string())?;
+    if transition.removed_residents() != 2
+        || cache.limits() != requested
+        || cache.contains(&noop_plan)
+        || cache.contains(&rotate_plan)
+        || !cache.contains(&full_plan)
+        || usage.mapped_bytes() != 49_152
+    {
+        return Err(String::from("cross byte shrink retained excess weight"));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &full_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross byte shrink cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_lru_reconfigure_shrinks_mappings()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(194)?,
+        native_executable_address(0x6_f000)?,
+    );
+    let mut cache = cross_template_lru(3)?;
+    for plan in [&noop_plan, &rotate_plan, &full_plan] {
+        drop(
+            cache
+                .ensure(&mut adapter, plan)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let requested = cross_template_limits(3, None, Some(3))?;
+    let transition = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("cross mapping shrink: {error}"))?;
+    let usage = cache.usage().map_err(|error| error.to_string())?;
+    if transition.removed_residents() != 2
+        || cache.limits() != requested
+        || cache.contains(&noop_plan)
+        || cache.contains(&rotate_plan)
+        || !cache.contains(&full_plan)
+        || usage.mappings() != 3
+    {
+        return Err(String::from(
+            "cross mapping shrink retained excess mappings",
+        ));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &full_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross mapping shrink cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_lru_reconfigure_reports_partial_removal()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(195)?,
+        native_executable_address(0x7_0000)?,
+    );
+    let mut cache = cross_template_lru(3)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let rotate_lease = cache
+        .ensure(&mut adapter, &rotate_plan)
+        .map_err(|error| error.to_string())?;
+    let full_lease = cache
+        .ensure(&mut adapter, &full_plan)
+        .map_err(|error| error.to_string())?;
+    let previous = cache.limits();
+    let requested = cross_template_limits(1, None, None)?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, requested) else {
+        return Err(String::from("cross leased shrink unexpectedly succeeded"));
+    };
+    if !matches!(
+        *failure,
+        CrossLimitFailure::Saturated {
+            leased_residents: 2,
+            previous_limits,
+            removed_residents: 1,
+            requested_limits,
+            residents: 2,
+        } if previous_limits == previous && requested_limits == requested
+    ) || cache.limits() != previous
+        || cache.contains(&noop_plan)
+        || !cache.contains(&rotate_plan)
+        || !cache.contains(&full_plan)
+    {
+        return Err(String::from(
+            "cross leased shrink lost partial-removal evidence",
+        ));
+    }
+    drop((rotate_lease, full_lease));
+    cache
+        .release_if_unleased(&mut adapter, &rotate_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross leased rotate cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &full_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross leased full cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_lru_reconfigure_release_failure_is_typed()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(196)?,
+        native_executable_address(0x7_1000)?,
+    )
+    .with_release_failures(2);
+    let mut cache = cross_template_lru(3)?;
+    for plan in [&noop_plan, &rotate_plan, &full_plan] {
+        drop(
+            cache
+                .ensure(&mut adapter, plan)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let previous = cache.limits();
+    let requested = cross_template_limits(2, None, None)?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, requested) else {
+        return Err(String::from("cross release-failing shrink succeeded"));
+    };
+    let CrossLimitFailure::Release {
+        error: release_failure,
+        previous_limits,
+        removed_residents: 1,
+        requested_limits,
+    } = *failure
+    else {
+        return Err(String::from("cross shrink cleanup phase drifted"));
+    };
+    if previous_limits != previous
+        || requested_limits != requested
+        || cache.limits() != previous
+        || !matches!(
+            &*release_failure,
+            CrossResidentReleaseFailure::NoOperationPair(_)
+        )
+        || cache.contains(&noop_plan)
+        || !cache.contains(&rotate_plan)
+        || !cache.contains(&full_plan)
+    {
+        return Err(String::from(
+            "cross shrink typed cleanup evidence drifted",
+        ));
+    }
+    (*release_failure)
+        .retry(&mut adapter)
+        .map_err(|retry_error| {
+            format!("cross shrink victim cleanup retry: {retry_error}")
+        })?;
+    cache
+        .release_if_unleased(&mut adapter, &rotate_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross shrink rotate cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &full_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross shrink full cleanup: {error}"))
 }
 
 #[test]
