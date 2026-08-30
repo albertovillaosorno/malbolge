@@ -101,7 +101,8 @@ its native trits, and implements crazy, rotate, modular successor, small-modulus
 residue, low-byte projection, EOF, and narrower-width projection without
 computing `3^N` in a host integer. VM-domain chunked decode and XLAT2 helpers
 consume that value contract: decode can use a wide code pointer through its
-modulo-94 phase while graphical code cells remain exact small values. An optional
+modulo-94 phase while graphical code cells remain exact small values. An
+optional
 `u32` conversion succeeds only when the concrete value fits; it is not a width
 admission rule.
 
