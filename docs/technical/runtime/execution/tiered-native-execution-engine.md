@@ -927,8 +927,13 @@ cleanup error.
 No-op/halt, rotate/halt, and full-path load failures propagate that contract
 through their nested rollback owners. The common heterogeneous resident load
 failure preserves its template variant and can retry every retained rollback
-through one adapter; forwarding that call through the synchronized owner remains
-separate policy work.
+through one adapter.
+
+The synchronized owner now forwards those resident load rollbacks through
+`retry_load_cleanup` with its exact encapsulated adapter. Retry returns
+`Pending`
+or `Clean` while preserving the primary load failure; neither state republishes
+resident authority, and a later normal acquisition can insert after cleanup.
 
 Concurrent read-side scaling beyond one mutation mutex remains separate policy
 work.

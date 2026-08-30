@@ -787,8 +787,9 @@ transfers, verification, and other separately measured costs.
   without changing the original phase/cause. No-op/halt, rotate/halt, full-path,
   and heterogeneous resident load failures propagate that contract while
   preserving exact template identity.
-- The synchronized owner still needs to forward resident load-failure cleanup
-  through its encapsulated adapter; the underlying retry contract is now common.
+- The synchronized owner now forwards resident load-failure rollback through its
+  exact encapsulated adapter. Retry reports `Pending` or `Clean`, keeps the
+  primary failure/template intact, and never republishes resident authority.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

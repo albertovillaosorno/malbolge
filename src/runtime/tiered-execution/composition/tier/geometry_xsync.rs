@@ -50,8 +50,8 @@ use crate::geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruRelease, GeometryNativeCrossTemplateLruUsage,
 };
 use crate::geometry_native_cross_template_resident::{
-    GeometryNativeResidentPlan, GeometryNativeResidentReleaseFailure,
-    GeometryNativeResidentWeightError,
+    GeometryNativeResidentLoadFailure, GeometryNativeResidentPlan,
+    GeometryNativeResidentReleaseFailure, GeometryNativeResidentWeightError,
 };
 
 type CacheAcquireFailure<MemoryError> =
@@ -62,6 +62,10 @@ type CacheReleaseFailure<MemoryError> =
     GeometryNativeResidentReleaseFailure<MemoryError>;
 type CleanupRetryFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateCleanupRetryFailure<MemoryError>;
+type LoadCleanupFailure<MemoryError> =
+    GeometryNativeConcurrentCrossTemplateLoadCleanupRetryFailure<MemoryError>;
+type ResidentLoadFailure<MemoryError> =
+    GeometryNativeResidentLoadFailure<MemoryError>;
 type ConcurrentAcquireFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateFailure<
         Box<CacheAcquireFailure<MemoryError>>,
@@ -119,6 +123,24 @@ pub enum GeometryNativeConcurrentCrossTemplateCleanupRetryFailure<MemoryError> {
     Poisoned(Box<CacheReleaseFailure<MemoryError>>),
     /// Cleanup was retried and still retains mapping ownership.
     Release(Box<CacheReleaseFailure<MemoryError>>),
+}
+
+/// Outcome of retrying rollback retained by a primary resident load failure.
+#[derive(Debug, Eq, PartialEq)]
+pub enum GeometryNativeConcurrentCrossTemplateLoadCleanupRetry<MemoryError> {
+    /// All rollback is complete; the primary load failure remains evidence.
+    Clean(Box<ResidentLoadFailure<MemoryError>>),
+    /// Rollback still owns mappings after another failed release attempt.
+    Pending(Box<ResidentLoadFailure<MemoryError>>),
+}
+
+/// Failure before resident load rollback could be retried.
+#[derive(Debug, Eq, PartialEq)]
+pub enum GeometryNativeConcurrentCrossTemplateLoadCleanupRetryFailure<
+    MemoryError,
+> {
+    /// Cache authority is poisoned; the original failure is untouched.
+    Poisoned(Box<ResidentLoadFailure<MemoryError>>),
 }
 
 /// Failure from one acquire-then-execute concurrent cache request.
@@ -198,6 +220,18 @@ pub type GeometryNativeConcurrentCrossTemplateExecutionResult<
         GeometryNativeConcurrentCrossTemplateExecutionFailure<
             MemoryError,
             RunnerError,
+        >,
+    >,
+>;
+
+/// Result of retrying rollback retained by a primary resident load failure.
+pub type GeometryNativeConcurrentCrossTemplateLoadCleanupRetryResult<
+    MemoryError,
+> = Result<
+    GeometryNativeConcurrentCrossTemplateLoadCleanupRetry<MemoryError>,
+    Box<
+        GeometryNativeConcurrentCrossTemplateLoadCleanupRetryFailure<
+            MemoryError,
         >,
     >,
 >;
@@ -310,6 +344,21 @@ impl<MemoryError: Display, RunnerError: Display> Display
     }
 }
 
+impl<MemoryError: Display> Display
+    for GeometryNativeConcurrentCrossTemplateLoadCleanupRetryFailure<
+        MemoryError,
+    >
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Poisoned(error) => write!(
+                f,
+                "v5 concurrent load cleanup blocked by poisoned cache: {error}"
+            ),
+        }
+    }
+}
+
 impl<OperationError: Display> Display
     for GeometryNativeConcurrentCrossTemplateTryFailure<OperationError>
 {
@@ -336,6 +385,26 @@ impl Display for GeometryNativeConcurrentCrossTemplateTrySnapshotFailure {
                 f.write_str("heterogeneous v5 cache lock is poisoned")
             },
             Self::ResidentWeight(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<MemoryError>
+    GeometryNativeConcurrentCrossTemplateLoadCleanupRetry<MemoryError>
+{
+    /// Returns the preserved primary resident load failure.
+    #[must_use]
+    pub fn failure(&self) -> &ResidentLoadFailure<MemoryError> {
+        match self {
+            Self::Clean(failure) | Self::Pending(failure) => failure,
+        }
+    }
+
+    /// Consumes the retry outcome and returns the primary load failure.
+    #[must_use]
+    pub fn into_failure(self) -> ResidentLoadFailure<MemoryError> {
+        match self {
+            Self::Clean(failure) | Self::Pending(failure) => *failure,
         }
     }
 }
@@ -560,6 +629,41 @@ where
             .map_err(|error| Box::new(CleanupRetryFailure::Release(error)));
         drop(state);
         result
+    }
+
+    /// Retries rollback retained by one primary resident load failure.
+    ///
+    /// The primary template, load phase, and load cause stay intact. This
+    /// method only restores access to the owned adapter for rollback
+    /// releases that failed during the original load transaction.
+    ///
+    /// # Errors
+    ///
+    /// Returns the untouched primary failure when cache authority is poisoned.
+    pub fn retry_load_cleanup(
+        &self,
+        failure: Box<ResidentLoadFailure<Adapter::Error>>,
+    ) -> GeometryNativeConcurrentCrossTemplateLoadCleanupRetryResult<
+        Adapter::Error,
+    > {
+        let mut state = match self.lock() {
+            Ok(state) => state,
+            Err(_error) => {
+                return Err(Box::new(LoadCleanupFailure::Poisoned(failure)));
+            },
+        };
+        let retried = Box::new((*failure).retry_cleanup(&mut state.adapter));
+        let outcome = if retried.cleanup_pending() {
+            GeometryNativeConcurrentCrossTemplateLoadCleanupRetry::Pending(
+                retried,
+            )
+        } else {
+            GeometryNativeConcurrentCrossTemplateLoadCleanupRetry::Clean(
+                retried,
+            )
+        };
+        drop(state);
+        Ok(outcome)
     }
 
     /// Reads identity state, limits, leases, and usage under one lock.

@@ -283,6 +283,7 @@ use geometry_native_cross_template_concurrent_cache::{
     GeometryNativeConcurrentCrossTemplateCleanupRetryFailure as SyncCleanup,
     GeometryNativeConcurrentCrossTemplateExecutionFailure as SyncExecFailure,
     GeometryNativeConcurrentCrossTemplateFailure as CrossSyncFailure,
+    GeometryNativeConcurrentCrossTemplateLoadCleanupRetry as SyncLoadCleanup,
     GeometryNativeConcurrentCrossTemplateLruCache as CrossSyncCache,
     GeometryNativeConcurrentCrossTemplateTryFailure as TrySyncFailure,
     GeometryNativeConcurrentCrossTemplateTrySnapshotFailure as TrySnapFailure,
@@ -634,6 +635,8 @@ struct SecondStepContinuationExpectation<'plan> {
 
 type CrossResidentPlanTriple =
     (CrossResidentPlan, CrossResidentPlan, CrossResidentPlan);
+type FakeCrossResidentLoadFailure =
+    CrossResidentLoadFailure<FakeNativeAdapterOperation>;
 type FakeCrossResidentReleaseFailure =
     CrossResidentReleaseFailure<FakeNativeAdapterOperation>;
 type FullGeometryAdmissionError =
@@ -13520,6 +13523,46 @@ fn concurrent_transferred_cleanup(
     }
 }
 
+fn concurrent_primary_load_failure(
+    cache: &CrossSyncCache<FakeNativeExecutableAdapter>,
+    plan: &CrossResidentPlan,
+) -> Result<Box<FakeCrossResidentLoadFailure>, String> {
+    let Err(CrossSyncFailure::Operation(acquire_failure)) = cache.ensure(plan)
+    else {
+        return Err(String::from("concurrent load cleanup failure ignored"));
+    };
+    let CrossLruFailure::Load(load_failure) = *acquire_failure else {
+        return Err(String::from("concurrent primary load failure drifted"));
+    };
+    Ok(load_failure)
+}
+
+fn require_clean_noop_copy_load_failure(
+    failure: &FakeCrossResidentLoadFailure,
+) -> Result<(), String> {
+    let CrossResidentLoadFailure::NoOperationPair(pair) = failure else {
+        return Err(String::from(
+            "concurrent load cleanup lost resident variant",
+        ));
+    };
+    let ExecutionGeometryNativeNoopHaltPairLoadFailure::NoOperation(error) =
+        pair.as_ref()
+    else {
+        return Err(String::from("concurrent load cleanup lost primary stage"));
+    };
+    if error.phase() == NativeExecutableLoadPhase::Copy
+        && error.adapter_error() == Some(&FakeNativeAdapterOperation::Copy)
+        && error.release_error().is_none()
+        && !failure.cleanup_pending()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "concurrent load cleanup changed primary error",
+        ))
+    }
+}
+
 fn concurrent_cross_template_lru(
     adapter: FakeNativeExecutableAdapter,
     capacity: usize,
@@ -16074,6 +16117,63 @@ fn geometry_native_cross_template_weighted_lru_release_failure_is_typed()
         .release_if_unleased(&mut adapter, &rotate_plan)
         .map(|_release| ())
         .map_err(|error| format!("cross weighted survivor cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_retries_load_cleanup()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(217)?,
+        native_executable_address(0x8_6000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 1)
+    .with_release_failures(2);
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    let load_failure = concurrent_primary_load_failure(&cache, &noop_plan)?;
+    if !load_failure.cleanup_pending()
+        || cache
+            .contains(&noop_plan)
+            .map_err(|error| error.to_string())?
+    {
+        return Err(String::from("concurrent load rollback ownership drifted"));
+    }
+    let first_retry =
+        cache.retry_load_cleanup(load_failure).map_err(|error| {
+            format!("concurrent first load cleanup retry: {error}")
+        })?;
+    if !matches!(first_retry, SyncLoadCleanup::Pending(_))
+        || !first_retry.failure().cleanup_pending()
+    {
+        return Err(String::from(
+            "concurrent load cleanup did not stay pending",
+        ));
+    }
+    let second_retry = cache
+        .retry_load_cleanup(Box::new(first_retry.into_failure()))
+        .map_err(|error| {
+            format!("concurrent final load cleanup retry: {error}")
+        })?;
+    if !matches!(second_retry, SyncLoadCleanup::Clean(_)) {
+        return Err(String::from("concurrent load cleanup did not complete"));
+    }
+    require_clean_noop_copy_load_failure(second_retry.failure())?;
+    let acquisition = cache.ensure(&noop_plan).map_err(|retry_error| {
+        format!("concurrent load cleanup reacquire: {retry_error}")
+    })?;
+    if acquisition.disposition() != CrossLruDisposition::Inserted {
+        return Err(String::from(
+            "concurrent cleaned resident did not reinsert",
+        ));
+    }
+    drop(acquisition);
+    cache
+        .release_if_unleased(&noop_plan)
+        .map(|_release| ())
+        .map_err(|release_error| {
+            format!("concurrent load cleanup final release: {release_error}")
+        })
 }
 
 #[test]
