@@ -697,7 +697,7 @@ transfers, verification, and other separately measured costs.
   authority, rotate replay remains the sole halt authority, and all three steps
   admit before the first mapping. Global indices 0/1/2 preserve exact guard and
   failure position; mixed N10/N11 jump/suffix evidence rejects before adapter
-  work. Generic v5 planning and a reusable three-executable cache remain open.
+  work. Generic v5 planning and multi-resident eviction remain open.
 - The full `(&O` sequence can additionally prebind three exact caller-owned
   executables before borrowing machine buffers. Repeated prebound execution
   performs no adapter work, mixed-geometry jump images reject before mutation,
@@ -705,16 +705,22 @@ transfers, verification, and other separately measured costs.
 - The full sequence can now own one loaded executable triple. Rotate/halt loads
   first, then jump; jump-load failure releases the suffix and returns exact
   cleanup retry ownership on release failure. Owned execution never remaps, and
-  release attempts/retries all three mappings. A reusable full-path resident
-  cache and broader eviction policy remain open.
+  release attempts/retries all three mappings.
+- A dedicated full-path single-resident lease cache now reuses the owned triple
+  by complete admitted jump/rotate/halt sequence equality. Exact hits avoid
+  adapter work, live leases block release/replacement, N10/N11 mismatch rejects
+  without eviction, failed loads publish nothing, and cleanup failure transfers
+  retry ownership. Explicit replacement fully releases the old triple before
+  loading a new identity and leaves the slot empty on either failure.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without
   implicit eviction, failed loads publish nothing, and cleanup failure transfers
   exact retry ownership. Explicit replacement releases the old pair completely
   before loading the new identity and leaves the cache empty on either failure.
-  The no-op/halt and rotate/halt caches remain intentionally separate; broader
-  multi-entry eviction and additional state-changing templates remain open.
+  The no-op/halt, rotate/halt, and full-path caches remain intentionally
+  separate; broader multi-entry eviction and additional state-changing
+  templates remain open.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only
   admissible Applied state. The separate load image, prepare/bind layer, v5

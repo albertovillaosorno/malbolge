@@ -49,6 +49,8 @@ pub mod geometry_interpreter_handoff;
 pub mod geometry_native_initial_jump_data;
 #[path = "tier/geometry_jrh.rs"]
 pub mod geometry_native_jump_rotate_halt_sequence;
+#[path = "tier/geometry_jcache.rs"]
+pub mod geometry_native_jump_rotate_halt_cache;
 #[path = "tier/geometry_native.rs"]
 pub mod geometry_native_admission;
 #[path = "tier/geometry_noop.rs"]

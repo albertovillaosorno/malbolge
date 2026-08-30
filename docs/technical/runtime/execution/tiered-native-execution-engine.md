@@ -749,7 +749,22 @@ Owned release attempts the jump and both suffix mappings even when an earlier
 release fails. The returned cleanup object retains only failed mappings and can
 retry all of them without reconstructing identity. Four focused tests cover
 reuse, clean jump-load rollback, rollback cleanup ownership, and three-mapping
-release retry. No full-path residency or eviction policy is added yet.
+release retry.
+
+The complete `(&O` path now has its own single-resident lease cache around the
+owned triple. Complete admitted jump/rotate/halt sequence equality is the only
+cache identity; exact hits clone the same `Arc` resident without adapter work,
+live leases block release or replacement, and N10/N11 mismatch rejects without
+implicit eviction. Failed triple loads publish no resident state, while cleanup
+failure empties the slot and transfers exact retry ownership.
+
+Explicit replacement follows the same fail-closed rule as the pair caches: an
+unleased old triple releases completely before a different identity can load,
+and either release or new-load failure leaves the cache empty. Nine focused
+cases cover hit reuse, lease blocking, identity rejection, failed publication,
+cleanup transfer, and all replacement outcomes. The no-op/halt, rotate/halt,
+and full-path caches remain intentionally separate; multi-resident eviction and
+a generic v5 cache policy remain open.
 
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence
