@@ -129,8 +129,11 @@ pub use differential::{
 };
 pub use execution::{ExecutionError, ExecutionErrorKind, ExecutionMachine};
 pub use execution_ir::{
-    EFFECT_IR_VERSION, EFFECT_IR_WIDE_PROFILE_VERSION, EffectOp,
-    IrEncodingError, MemoryLiveIn, RegionEffectProgram,
+    EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EFFECT_IR_VERSION,
+    EFFECT_IR_WIDE_PROFILE_VERSION, EffectOp,
+    ExecutionGeometryRegionEffectProgram, IrEncodingError, MemoryLiveIn,
+    ProfileExecutionGeometryRequirement,
+    ProfileExecutionGeometryRequirementError, RegionEffectProgram,
     StepProgramProjectionError, is_canonical_effect_ir_version,
 };
 pub use host_capability::{

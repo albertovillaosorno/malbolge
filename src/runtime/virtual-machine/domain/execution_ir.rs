@@ -36,19 +36,24 @@
 //! Portable bounded-region effect IR for tiered execution.
 
 use std::collections::BTreeMap;
+use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use crate::machine::{RunOutcome, StepOutcome, Termination};
-use crate::profile::TargetProfileRequirement;
+use crate::profile::{ProfileDescriptor, TargetProfileRequirement};
 use crate::profile_trace::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
     ProfileMemoryWrite, ProfileStepTrace,
 };
+use crate::profile_width::ProfileExecutionGeometry;
+use crate::semantic_width::SEMANTIC_WIDTH_MINIMUM_TRITS;
 use crate::trace::TraceInput;
 
 /// Frozen narrow-profile portable effect-IR schema version.
 pub const EFFECT_IR_VERSION: u16 = 3;
 /// Portable effect-IR schema with a 64-bit profile-capacity field.
 pub const EFFECT_IR_WIDE_PROFILE_VERSION: u16 = 4;
+/// Portable effect-IR schema carrying explicit verified execution geometry.
+pub const EFFECT_IR_EXECUTION_GEOMETRY_VERSION: u16 = 5;
 const IR_MAGIC: &[u8; 4] = b"MBIR";
 
 /// One architecture-neutral state-changing operation from a verified VM step.
@@ -75,6 +80,106 @@ pub struct MemoryLiveIn {
     pub value: u32,
 }
 
+/// Portable declarative execution geometry carried without verifier authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProfileExecutionGeometryRequirement {
+    memory_words: u32,
+    word_trits: u8,
+}
+
+/// Failure while validating one declarative execution geometry.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProfileExecutionGeometryRequirementError {
+    /// The declared memory length is not exactly `3^word_trits`.
+    MemoryWords,
+    /// The declared word width cannot be represented by the current `u32`
+    /// execution-geometry envelope.
+    WordWidth,
+}
+
+impl Display for ProfileExecutionGeometryRequirementError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::MemoryWords => f.write_str(
+                "execution geometry memory is not the exact ternary capacity",
+            ),
+            Self::WordWidth => f.write_str(
+                "execution geometry width exceeds the u32 capacity envelope",
+            ),
+        }
+    }
+}
+
+impl ProfileExecutionGeometryRequirement {
+    /// Returns the derived all-two-trit EOF value.
+    #[must_use]
+    pub const fn eof_word(self) -> u32 {
+        self.memory_words.saturating_sub(1)
+    }
+
+    /// Projects visible geometry from one opaque trusted execution token.
+    #[must_use]
+    pub const fn from_execution_geometry(
+        geometry: ProfileExecutionGeometry,
+    ) -> Self {
+        Self {
+            memory_words: geometry.memory_words(),
+            word_trits: geometry.word_trits(),
+        }
+    }
+
+    /// Returns whether this declaration equals one canonical profile geometry.
+    #[must_use]
+    pub const fn is_canonical_for(self, profile: &ProfileDescriptor) -> bool {
+        self.word_trits == profile.word_trits()
+            && self.memory_words == profile.memory_words()
+    }
+
+    /// Returns the exact declared resident memory length.
+    #[must_use]
+    pub const fn memory_words(self) -> u32 {
+        self.memory_words
+    }
+
+    /// Validates one portable declarative ternary execution geometry.
+    ///
+    /// This value is not proof authority. It can describe geometry carried by
+    /// portable IR, while trusted runtime construction still requires an opaque
+    /// [`ProfileExecutionGeometry`] emitted by independent verification.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProfileExecutionGeometryRequirementError`] when `3^N` exceeds
+    /// `u32` or the supplied memory length is not exactly `3^N`.
+    pub fn new(
+        word_trits: u8,
+        memory_words: u32,
+    ) -> Result<Self, ProfileExecutionGeometryRequirementError> {
+        if usize::from(word_trits) < SEMANTIC_WIDTH_MINIMUM_TRITS {
+            return Err(ProfileExecutionGeometryRequirementError::WordWidth);
+        }
+        let Some(expected) = ternary_memory_words(word_trits) else {
+            return Err(ProfileExecutionGeometryRequirementError::WordWidth);
+        };
+        if memory_words != expected {
+            return Err(ProfileExecutionGeometryRequirementError::MemoryWords);
+        }
+        Ok(Self { memory_words, word_trits })
+    }
+
+    /// Returns the exact declared ternary word modulus.
+    #[must_use]
+    pub const fn word_modulus(self) -> u32 {
+        self.memory_words
+    }
+
+    /// Returns the declared ternary word width.
+    #[must_use]
+    pub const fn word_trits(self) -> u8 {
+        self.word_trits
+    }
+}
+
 /// Versioned architecture-neutral bounded-region program.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RegionEffectProgram {
@@ -94,6 +199,17 @@ pub struct RegionEffectProgram {
     pub profile_requirement: TargetProfileRequirement,
     /// Verified semantic-step budget.
     pub step_budget: usize,
+}
+
+/// V5 portable program that binds explicit execution geometry to ordinary IR.
+///
+/// The embedded geometry is declarative evidence, not verifier authority.
+/// Native consumers continue to accept only [`RegionEffectProgram`] v3/v4 until
+/// they independently verify and preserve derived-geometry proof constraints.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExecutionGeometryRegionEffectProgram {
+    execution_geometry: ProfileExecutionGeometryRequirement,
+    program: RegionEffectProgram,
 }
 
 impl EffectOp {
@@ -127,7 +243,7 @@ pub enum IrEncodingError {
 pub enum StepProgramProjectionError {
     /// Two semantic reads claim different values for the same address.
     ConflictingMemoryRead,
-    /// The trace used execution geometry not represented by portable IR v1.
+    /// The trace requires explicit-geometry v5 rather than legacy v3.
     ExecutionGeometry,
     /// The semantic fetch did not read the entry code pointer.
     FetchAddress,
@@ -141,6 +257,153 @@ pub enum StepProgramProjectionError {
     RejectedTrace,
     /// Execution was already terminated before the requested step.
     TerminatedEntry,
+}
+
+type ProfileStepProjection = (Vec<MemoryLiveIn>, RunOutcome);
+
+impl ExecutionGeometryRegionEffectProgram {
+    /// Renders canonical v5 bytes with explicit execution geometry.
+    ///
+    /// The canonical profile identity/requirement remains unchanged. Explicit
+    /// execution width and capacity follow that profile requirement, so a
+    /// derived geometry cannot masquerade as a different canonical profile.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IrEncodingError`] when a host-sized count cannot be encoded.
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>, IrEncodingError> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(IR_MAGIC);
+        push_u16(&mut bytes, EFFECT_IR_EXECUTION_GEOMETRY_VERSION);
+        push_bytes(&mut bytes, self.program.profile_id.as_bytes())?;
+        push_bytes(&mut bytes, self.program.profile_fingerprint.as_bytes())?;
+        push_profile_requirement(
+            &mut bytes,
+            &self.program.profile_requirement,
+            EFFECT_IR_EXECUTION_GEOMETRY_VERSION,
+        )?;
+        push_execution_geometry(&mut bytes, self.execution_geometry);
+        push_usize(&mut bytes, self.program.step_budget)?;
+        push_run_outcome(&mut bytes, self.program.outcome)?;
+        push_usize(&mut bytes, self.program.memory_live_ins.len())?;
+        for live_in in &self.program.memory_live_ins {
+            push_u32(&mut bytes, live_in.address);
+            push_u32(&mut bytes, live_in.value);
+        }
+        push_usize(&mut bytes, self.program.effects.len())?;
+        for effect in &self.program.effects {
+            push_effect(&mut bytes, *effect)?;
+        }
+        Ok(bytes)
+    }
+
+    /// Returns the exact declarative execution geometry bound into v5.
+    #[must_use]
+    pub const fn execution_geometry(
+        &self,
+    ) -> ProfileExecutionGeometryRequirement {
+        self.execution_geometry
+    }
+
+    /// Reports whether every directly addressed word fits execution geometry.
+    #[must_use]
+    pub fn fits_execution_geometry_capacity(&self) -> bool {
+        self.required_memory_words()
+            <= u64::from(self.execution_geometry.memory_words())
+    }
+
+    /// Reports whether every directly addressed word fits canonical capacity.
+    #[must_use]
+    pub fn fits_profile_capacity(&self) -> bool {
+        self.required_memory_words()
+            <= self.program.profile_requirement.memory_words
+    }
+
+    /// Returns the fixed explicit-geometry IR schema version.
+    #[must_use]
+    pub const fn format_version(&self) -> u16 {
+        self.program.format_version
+    }
+
+    /// Projects one complete normative step trace to explicit-geometry v5 IR.
+    ///
+    /// Unlike [`RegionEffectProgram::from_profile_step_trace`], this projection
+    /// preserves derived execution geometry. The canonical profile requirement
+    /// remains canonical, and the result is still untrusted until a consumer
+    /// independently admits the geometry/proof domain.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StepProgramProjectionError`] for rejected or internally
+    /// inconsistent trace evidence.
+    pub fn from_profile_step_trace(
+        trace: &ProfileStepTrace,
+    ) -> Result<Self, StepProgramProjectionError> {
+        let (memory_live_ins, outcome) = project_profile_step_trace(trace)?;
+        Ok(Self {
+            execution_geometry:
+                ProfileExecutionGeometryRequirement::from_execution_geometry(
+                    trace.geometry,
+                ),
+            program: RegionEffectProgram {
+                effects: vec![EffectOp::from_trace(trace)],
+                format_version: EFFECT_IR_EXECUTION_GEOMETRY_VERSION,
+                memory_live_ins,
+                outcome,
+                profile_fingerprint: String::from(trace.profile.fingerprint()),
+                profile_id: String::from(trace.profile.id()),
+                profile_requirement: TargetProfileRequirement::from_descriptor(
+                    trace.profile,
+                ),
+                step_budget: 1,
+            },
+        })
+    }
+
+    /// Returns verifier-derived entry-memory live-ins.
+    #[must_use]
+    pub fn memory_live_ins(&self) -> &[MemoryLiveIn] {
+        &self.program.memory_live_ins
+    }
+
+    /// Returns the verified bounded-run outcome.
+    #[must_use]
+    pub const fn outcome(&self) -> RunOutcome {
+        self.program.outcome
+    }
+
+    /// Returns the canonical target-profile fingerprint.
+    #[must_use]
+    pub fn profile_fingerprint(&self) -> &str {
+        &self.program.profile_fingerprint
+    }
+
+    /// Returns the exact declared canonical target-profile identity.
+    #[must_use]
+    pub fn profile_id(&self) -> &str {
+        &self.program.profile_id
+    }
+
+    /// Returns the unchanged canonical target-profile requirement.
+    #[must_use]
+    pub const fn profile_requirement(&self) -> &TargetProfileRequirement {
+        &self.program.profile_requirement
+    }
+
+    /// Returns the minimum directly addressed memory required by this region.
+    #[must_use]
+    pub fn required_memory_words(&self) -> u64 {
+        required_memory_words(
+            &self.program.memory_live_ins,
+            &self.program.effects,
+        )
+    }
+
+    /// Returns the verified semantic-step budget.
+    #[must_use]
+    pub const fn step_budget(&self) -> usize {
+        self.program.step_budget
+    }
 }
 
 impl RegionEffectProgram {
@@ -209,53 +472,11 @@ impl RegionEffectProgram {
         if !trace_uses_canonical_geometry(trace) {
             return Err(StepProgramProjectionError::ExecutionGeometry);
         }
-        if trace.before.termination.is_some() {
-            return Err(StepProgramProjectionError::TerminatedEntry);
-        }
-        let fetch = trace
-            .memory_reads
-            .fetch
-            .ok_or(StepProgramProjectionError::MissingFetch)?;
-        if fetch.address != trace.before.registers.code_pointer {
-            return Err(StepProgramProjectionError::FetchAddress);
-        }
-        if trace.fetched_cell != Some(fetch.value) {
-            return Err(StepProgramProjectionError::FetchValue);
-        }
-        let outcome = match trace.result {
-            Ok(StepOutcome::Continued) if trace.after.termination.is_none() => {
-                RunOutcome::BudgetExhausted { steps: 1 }
-            },
-            Ok(StepOutcome::Terminated(reason))
-                if trace.after.termination == Some(reason) =>
-            {
-                RunOutcome::Terminated { reason, steps: 1 }
-            },
-            Ok(StepOutcome::Continued | StepOutcome::Terminated(_)) => {
-                return Err(StepProgramProjectionError::Outcome);
-            },
-            Err(_error) => {
-                return Err(StepProgramProjectionError::RejectedTrace);
-            },
-        };
-        let mut live_ins = BTreeMap::new();
-        for read in [
-            Some(fetch),
-            trace.memory_reads.data,
-            trace.memory_reads.encryption,
-        ]
-        .into_iter()
-        .flatten()
-        {
-            insert_trace_read(&mut live_ins, read)?;
-        }
+        let (memory_live_ins, outcome) = project_profile_step_trace(trace)?;
         Ok(Self {
             effects: vec![EffectOp::from_trace(trace)],
             format_version: EFFECT_IR_VERSION,
-            memory_live_ins: live_ins
-                .into_iter()
-                .map(|(address, value)| MemoryLiveIn { address, value })
-                .collect(),
+            memory_live_ins,
             outcome,
             profile_fingerprint: String::from(trace.profile.fingerprint()),
             profile_id: String::from(trace.profile.id()),
@@ -274,17 +495,60 @@ impl RegionEffectProgram {
     /// 4,294,967,296 words.
     #[must_use]
     pub fn required_memory_words(&self) -> u64 {
-        let from_live_ins =
-            self.memory_live_ins.iter().fold(0u64, |required, item| {
-                required.max(words_through_address(item.address))
-            });
-        self.effects
-            .iter()
-            .copied()
-            .fold(from_live_ins, |required, effect| {
-                required.max(effect_required_memory_words(effect))
-            })
+        required_memory_words(&self.memory_live_ins, &self.effects)
     }
+}
+
+fn project_profile_step_trace(
+    trace: &ProfileStepTrace,
+) -> Result<ProfileStepProjection, StepProgramProjectionError> {
+    if trace.before.termination.is_some() {
+        return Err(StepProgramProjectionError::TerminatedEntry);
+    }
+    let fetch = trace
+        .memory_reads
+        .fetch
+        .ok_or(StepProgramProjectionError::MissingFetch)?;
+    if fetch.address != trace.before.registers.code_pointer {
+        return Err(StepProgramProjectionError::FetchAddress);
+    }
+    if trace.fetched_cell != Some(fetch.value) {
+        return Err(StepProgramProjectionError::FetchValue);
+    }
+    let outcome = match trace.result {
+        Ok(StepOutcome::Continued) if trace.after.termination.is_none() => {
+            RunOutcome::BudgetExhausted { steps: 1 }
+        },
+        Ok(StepOutcome::Terminated(reason))
+            if trace.after.termination == Some(reason) =>
+        {
+            RunOutcome::Terminated { reason, steps: 1 }
+        },
+        Ok(StepOutcome::Continued | StepOutcome::Terminated(_)) => {
+            return Err(StepProgramProjectionError::Outcome);
+        },
+        Err(_error) => {
+            return Err(StepProgramProjectionError::RejectedTrace);
+        },
+    };
+    let mut live_ins = BTreeMap::new();
+    for read in [
+        Some(fetch),
+        trace.memory_reads.data,
+        trace.memory_reads.encryption,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        insert_trace_read(&mut live_ins, read)?;
+    }
+    Ok((
+        live_ins
+            .into_iter()
+            .map(|(address, value)| MemoryLiveIn { address, value })
+            .collect(),
+        outcome,
+    ))
 }
 
 const fn trace_uses_canonical_geometry(trace: &ProfileStepTrace) -> bool {
@@ -319,6 +583,21 @@ fn insert_trace_read(
     }
 }
 
+fn required_memory_words(
+    memory_live_ins: &[MemoryLiveIn],
+    effects: &[EffectOp],
+) -> u64 {
+    let from_live_ins = memory_live_ins.iter().fold(0u64, |required, item| {
+        required.max(words_through_address(item.address))
+    });
+    effects
+        .iter()
+        .copied()
+        .fold(from_live_ins, |required, effect| {
+            required.max(effect_required_memory_words(effect))
+        })
+}
+
 fn effect_required_memory_words(effect: EffectOp) -> u64 {
     let observations = observation_required_memory_words(effect.before)
         .max(observation_required_memory_words(effect.after));
@@ -345,6 +624,19 @@ fn observation_required_memory_words(
 
 fn words_through_address(address: u32) -> u64 {
     u64::from(address).saturating_add(1)
+}
+
+const fn ternary_memory_words(word_trits: u8) -> Option<u32> {
+    let mut value = 1u32;
+    let mut index = 0u8;
+    while index < word_trits {
+        let Some(next) = value.checked_mul(3) else {
+            return None;
+        };
+        value = next;
+        index = index.saturating_add(1);
+    }
+    Some(value)
 }
 
 fn push_bytes(
@@ -411,6 +703,14 @@ fn push_observation(
     Ok(())
 }
 
+fn push_execution_geometry(
+    output: &mut Vec<u8>,
+    geometry: ProfileExecutionGeometryRequirement,
+) {
+    output.push(geometry.word_trits());
+    push_u32(output, geometry.memory_words());
+}
+
 fn push_profile_requirement(
     output: &mut Vec<u8>,
     requirement: &TargetProfileRequirement,
@@ -430,7 +730,8 @@ fn push_profile_requirement(
                 })?;
             push_u32(output, memory_words);
         },
-        EFFECT_IR_WIDE_PROFILE_VERSION => {
+        EFFECT_IR_WIDE_PROFILE_VERSION
+        | EFFECT_IR_EXECUTION_GEOMETRY_VERSION => {
             push_u64(output, requirement.memory_words);
         },
         _ => return Err(IrEncodingError::UnsupportedFormatVersion),

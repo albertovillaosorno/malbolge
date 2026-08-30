@@ -9,6 +9,9 @@ future AOT and JIT backends after deterministic verifier admission.
 
 - `EffectOp`: one compact verified state transition effect.
 - `MemoryLiveIn`: one verifier-derived entry-memory dependency.
+- `ProfileExecutionGeometryRequirement`: a validated, portable declaration of
+  exact `3^N` execution width/capacity. It deliberately carries no hidden
+  verifier input-policy authority.
 - `RegionEffectProgram`: profile-bound bounded-region metadata plus ordered
   effects.
 - `RegionEffectProgram::from_profile_step_trace()`: exact one-step
@@ -21,6 +24,10 @@ future AOT and JIT backends after deterministic verifier admission.
 - `EFFECT_IR_VERSION`: the native-supported v3 schema identity.
 - `EFFECT_IR_WIDE_PROFILE_VERSION`: portable v4 identity with a `u64` profile
   capacity field.
+- `EFFECT_IR_EXECUTION_GEOMETRY_VERSION`: portable v5 identity that retains the
+  canonical profile requirement and adds an explicit execution-geometry field.
+- `ExecutionGeometryRegionEffectProgram`: v5 trace projection and canonical byte
+  transport. No native consumer accepts this type yet.
 
 ## Does Not Own
 
@@ -52,7 +59,20 @@ not make an arbitrary trace trusted, and it does not reconstruct intermediate
 reads from compact regional IR. Callers must obtain complete traces from a
 normative or independently admitted VM boundary.
 
-### Canonical identity encoding v3 and v4
+`ProfileExecutionGeometryRequirement` is the non-authoritative portable shape
+used by explicit-geometry v5. Its constructor validates exact `3^N` capacity
+within the current `u32` execution envelope, while `from_execution_geometry()`
+projects only visible width and capacity from the opaque trusted token. The
+hidden input-domain proof remains inside `ProfileExecutionGeometry`;
+constructing this declarative requirement never grants runtime execution
+authority.
+
+Legacy v3/v4 `RegionEffectProgram` projection therefore still rejects derived
+traces. `ExecutionGeometryRegionEffectProgram::from_profile_step_trace()`
+accepts the same complete trace and binds its exact visible geometry into v5
+without changing canonical profile identity.
+
+### Canonical identity encoding v3, v4, and v5
 
 `RegionEffectProgram::canonical_bytes()` is the byte authority for cache/native
 identity. It starts with ASCII `MBIR`, then the `u16` IR version. All integers
@@ -90,6 +110,15 @@ preserving
 the version-2 rule that profile aliases do not share compiler or cache identity
 silently. V4 adds four bytes only to widen profile capacity from `u32` to `u64`;
 N21 tests check the exact v4 header, length delta, and wide capacity.
+
+V5 uses the v4 `u64` canonical-profile capacity encoding and then appends the
+explicit execution geometry as one `u8` word-trit width plus one little-endian
+`u32` memory-word count before the step budget. That pair is validated as exact
+`3^N` geometry. V5 projection can therefore carry a QP/N10 trace while its
+profile requirement remains current canonical N15. The v5 wrapper is a separate
+portable type: native cache, lowering, direct templates, invocation, and
+interpreter continuation APIs still consume only legacy `RegionEffectProgram`
+and therefore do not gain derived-geometry execution authority from this schema.
 
 Native cache/artifact identity accepts canonical v3 and v4 bytes, preserving the
 IR version as part of exact identity. Native profile metadata follows that

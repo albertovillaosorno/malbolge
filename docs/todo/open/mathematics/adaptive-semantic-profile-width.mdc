@@ -577,14 +577,17 @@ transfers, verification, and other separately measured costs.
   an initial-halt continuation now fails closed with `CheckpointGeometry` before
   any interpreter transition. This prevents tiered fallback from silently
   reinterpreting a verified narrow checkpoint as canonical N=15.
-- Profile traces now carry their exact execution geometry. Portable IR v3/v4
-  projection accepts only traces whose geometry equals the canonical profile and
-  rejects derived traces with `ExecutionGeometry`. A new
-  `ProfileExecutionGeometryRequirement` projects the visible N/capacity pair
-  from an opaque verified token and validates exact `3^N` capacity without
-  carrying hidden input-policy authority. QP/N=10 therefore has a safe portable
-  geometry declaration but still cannot acquire direct-native authority through
-  `RegionEffectProgram` until a new IR schema binds that declaration explicitly.
+- Profile traces now carry their exact execution geometry. Legacy portable IR
+  v3 projection accepts only traces whose geometry equals the canonical profile
+  and rejects derived traces with `ExecutionGeometry`. Explicit-geometry IR v5
+  now binds a validated `ProfileExecutionGeometryRequirement` after the
+  unchanged canonical profile requirement; QP/N=10 projects successfully to v5
+  while its profile requirement remains canonical N15. The geometry declaration
+  carries no hidden input-policy authority, and native/cache/handoff APIs still
+  consume only legacy `RegionEffectProgram`, so v5 transport does not yet grant
+  direct-native execution authority; the next boundary is independent v5
+  admission plus continuation preservation of the opaque verified geometry/proof
+  domain.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

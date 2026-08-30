@@ -33,13 +33,16 @@
 //! Trusted product-side initial-halt adaptive-width verification fixtures.
 
 use malbolge::{
-    ProfileLoadError, ProfileMachine, ProfileMachineError,
-    ProfileMachineIoState, ProfileMachineState, ProfileStepTrace,
-    ProfileWidthProofKind, ProfileWidthVerificationError, RegionEffectProgram,
-    RunOutcome, StepProgramProjectionError, TargetProfileRequirement,
-    Termination, current_profile, decode_profile_instruction,
-    historical_profile, profile_crazy, select_minimum_verified_profile_width,
-    verify_initial_halt_profile_width, verify_input_output_halt_profile_width,
+    EFFECT_IR_EXECUTION_GEOMETRY_VERSION, ExecutionGeometryRegionEffectProgram,
+    ProfileExecutionGeometryRequirement,
+    ProfileExecutionGeometryRequirementError, ProfileLoadError, ProfileMachine,
+    ProfileMachineError, ProfileMachineIoState, ProfileMachineState,
+    ProfileStepTrace, ProfileWidthProofKind, ProfileWidthVerificationError,
+    RegionEffectProgram, RunOutcome, StepProgramProjectionError,
+    TargetProfileRequirement, Termination, current_profile,
+    decode_profile_instruction, historical_profile, profile_crazy,
+    select_minimum_verified_profile_width, verify_initial_halt_profile_width,
+    verify_input_output_halt_profile_width,
     verify_input_then_halt_profile_width, verify_jump_code_halt_profile_width,
     verify_jump_code_io_halt_profile_width,
     verify_jump_code_rotate_halt_profile_width,
@@ -2009,7 +2012,73 @@ fn noop_prefix_halt_verifier_rejects_empty_prefix_and_missing_halt()
 }
 
 #[test]
-fn derived_trace_cannot_claim_canonical_portable_ir_geometry() -> TestResult {
+fn portable_execution_geometry_projects_verified_width_without_authority()
+-> TestResult {
+    let verified = normalize_result(
+        verify_minimum_initial_halt_profile_width(current_profile(), QP),
+    )?;
+    let requirement =
+        ProfileExecutionGeometryRequirement::from_execution_geometry(
+            verified.geometry(),
+        );
+    check_equal(
+        &requirement.word_trits(),
+        &verified.word_trits(),
+        "portable geometry word width",
+    )?;
+    check_equal(
+        &requirement.memory_words(),
+        &verified.memory_words(),
+        "portable geometry memory",
+    )?;
+    check_equal(
+        &requirement.word_modulus(),
+        &verified.word_modulus(),
+        "portable geometry modulus",
+    )?;
+    check_equal(
+        &requirement.eof_word(),
+        &verified.eof_word(),
+        "portable geometry EOF",
+    )?;
+    check_equal(
+        &requirement.is_canonical_for(current_profile()),
+        &false,
+        "portable derived geometry classification",
+    )
+}
+
+#[test]
+fn portable_execution_geometry_validates_exact_ternary_capacity() -> TestResult
+{
+    let canonical =
+        normalize_result(ProfileExecutionGeometryRequirement::new(
+            current_profile().word_trits(),
+            current_profile().memory_words(),
+        ))?;
+    check_equal(
+        &canonical.is_canonical_for(current_profile()),
+        &true,
+        "canonical portable geometry classification",
+    )?;
+    check_equal(
+        &ProfileExecutionGeometryRequirement::new(9, 19_683),
+        &Err(ProfileExecutionGeometryRequirementError::WordWidth),
+        "portable geometry semantic minimum",
+    )?;
+    check_equal(
+        &ProfileExecutionGeometryRequirement::new(10, 59_048),
+        &Err(ProfileExecutionGeometryRequirementError::MemoryWords),
+        "portable geometry wrong ternary capacity",
+    )?;
+    check_equal(
+        &ProfileExecutionGeometryRequirement::new(21, u32::MAX),
+        &Err(ProfileExecutionGeometryRequirementError::WordWidth),
+        "portable geometry u32 width ceiling",
+    )
+}
+
+fn derived_initial_halt_trace() -> TestResult<ProfileStepTrace> {
     let verified = normalize_result(
         verify_minimum_initial_halt_profile_width(current_profile(), QP),
     )?;
@@ -2023,14 +2092,63 @@ fn derived_trace_cannot_claim_canonical_portable_ir_geometry() -> TestResult {
             trace_record = Some(*trace);
         },
     ))?;
-    let trace =
-        trace_record.ok_or_else(|| String::from("derived trace missing"))?;
-    check_equal(&trace.geometry, &verified.geometry(), "trace geometry")?;
+    trace_record.ok_or_else(|| String::from("derived trace missing"))
+}
+
+#[test]
+fn derived_trace_requires_explicit_geometry_portable_ir() -> TestResult {
+    let trace = derived_initial_halt_trace()?;
     check_equal(
         &RegionEffectProgram::from_profile_step_trace(&trace),
         &Err(StepProgramProjectionError::ExecutionGeometry),
-        "derived portable IR rejection",
-    )
+        "legacy portable IR derived rejection",
+    )?;
+
+    let explicit =
+        ExecutionGeometryRegionEffectProgram::from_profile_step_trace(&trace)
+            .map_err(|error| {
+                format!("explicit geometry projection: {error:?}")
+            })?;
+    check_equal(
+        &explicit.format_version(),
+        &EFFECT_IR_EXECUTION_GEOMETRY_VERSION,
+        "explicit geometry IR version",
+    )?;
+    check_equal(
+        &malbolge::is_canonical_effect_ir_version(explicit.format_version()),
+        &false,
+        "explicit geometry IR legacy native gate",
+    )?;
+    check_equal(
+        &explicit.execution_geometry(),
+        &ProfileExecutionGeometryRequirement::from_execution_geometry(
+            trace.geometry,
+        ),
+        "explicit geometry IR derived shape",
+    )?;
+    check_equal(
+        explicit.profile_requirement(),
+        &TargetProfileRequirement::from_descriptor(current_profile()),
+        "explicit geometry IR canonical profile requirement",
+    )?;
+    check_equal(
+        &explicit.fits_execution_geometry_capacity(),
+        &true,
+        "explicit geometry IR execution capacity",
+    )?;
+    check_equal(
+        &explicit.fits_profile_capacity(),
+        &true,
+        "explicit geometry IR profile capacity",
+    )?;
+    let bytes = explicit
+        .canonical_bytes()
+        .map_err(|error| format!("explicit geometry encoding: {error:?}"))?;
+    if bytes.get(..6) == Some(b"MBIR\x05\x00") {
+        Ok(())
+    } else {
+        Err(String::from("explicit geometry IR v5 header drifted"))
+    }
 }
 
 #[test]
