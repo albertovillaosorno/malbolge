@@ -38,9 +38,9 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::NonZeroUsize;
 
 use malbolge::{
-    EffectOp, ProfileMachineObservation, ProfileMemoryWrite,
-    RegionEffectProgram, RunOutcome, TraceInput,
-    is_canonical_effect_ir_version,
+    EffectOp, ExecutionGeometryRegionEffectProgram, MemoryLiveIn,
+    ProfileMachineObservation, ProfileMemoryWrite, RegionEffectProgram,
+    RunOutcome, Termination, TraceInput, is_canonical_effect_ir_version,
 };
 
 use super::abi::{
@@ -55,7 +55,7 @@ use crate::execution_cache::{
     NativeArtifactKey, NativeIdentityError, NativeTargetIdentity,
 };
 
-pub(super) type NativeRegionBufferParts<'buffers> =
+type NativeRegionBufferParts<'buffers> =
     (&'buffers mut [u32], &'buffers [u8], &'buffers mut [u8]);
 type U32Mismatch = (usize, u32, u32);
 type U8Mismatch = (usize, u8, u8);
@@ -220,7 +220,7 @@ pub struct PreparedNativeRegionInvocation<'buffers> {
 }
 
 impl<'buffers> NativeRegionBuffers<'buffers> {
-    pub(super) const fn into_parts(self) -> NativeRegionBufferParts<'buffers> {
+    pub(crate) const fn into_parts(self) -> NativeRegionBufferParts<'buffers> {
         (self.memory, self.input, self.output)
     }
 
@@ -650,7 +650,7 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
                 required,
             });
         }
-        validate_live_ins(program, memory)?;
+        validate_live_ins(&program.memory_live_ins, memory)?;
         validate_input(effect, input)?;
 
         let entry_memory = memory.to_vec();
@@ -674,6 +674,75 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
             expected_memory,
             expected_observation: effect.after,
             expected_output,
+            expected_state,
+            frame,
+        })
+    }
+
+    /// Prepares the guarded explicit-geometry initial-halt ABI transition.
+    ///
+    /// This constructor is crate-private because opaque checkpoint admission is
+    /// owned by the geometry-native composition boundary. It prepares no other
+    /// v5 operation and does not expose execution authority by itself.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeRegionInvocationError`] when the exact v5 halt shape,
+    /// caller memory capacity, or required live-ins disagree.
+    pub(crate) fn new_execution_geometry_initial_halt(
+        program: &ExecutionGeometryRegionEffectProgram,
+        memory: &'buffers mut [u32],
+        input: &'buffers [u8],
+        output: &'buffers mut [u8],
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let before = program
+            .entry_observation()
+            .ok_or(NativeRegionInvocationError::ProgramShape)?;
+        let after = program
+            .exit_observation()
+            .ok_or(NativeRegionInvocationError::ProgramShape)?;
+        let expected_after = ProfileMachineObservation {
+            termination: Some(Termination::HaltInstruction),
+            ..before
+        };
+        if !program.fits_execution_geometry_capacity()
+            || program.step_budget() != 1
+            || program.outcome()
+                != (RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 1,
+                })
+            || before.termination.is_some()
+            || after != expected_after
+            || program.memory_live_ins().len() != 1
+        {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        }
+        let required = program.required_memory_words();
+        if u64::try_from(memory.len())
+            .map_or(true, |available| available < required)
+        {
+            return Err(NativeRegionInvocationError::MemoryCapacity {
+                available: memory.len(),
+                required,
+            });
+        }
+        validate_live_ins(program.memory_live_ins(), memory)?;
+        let entry_memory = memory.to_vec();
+        let entry_output = output.to_vec();
+        let frame = NativeRegionCallFrame::new(memory, input, output, before)
+            .map_err(NativeRegionInvocationError::CallFrame)?;
+        let entry_state = *frame.state();
+        let expected_state = entry_state
+            .with_observation(after)
+            .map_err(NativeRegionInvocationError::CallFrame)?;
+        Ok(Self {
+            entry_memory: entry_memory.clone(),
+            entry_output: entry_output.clone(),
+            entry_state,
+            expected_memory: entry_memory,
+            expected_observation: after,
+            expected_output: entry_output,
             expected_state,
             frame,
         })
@@ -746,10 +815,10 @@ fn exact_effect(
 }
 
 fn validate_live_ins(
-    program: &RegionEffectProgram,
+    live_ins: &[MemoryLiveIn],
     memory: &[u32],
 ) -> Result<(), NativeRegionInvocationError> {
-    for live_in in &program.memory_live_ins {
+    for live_in in live_ins {
         let address = usize::try_from(live_in.address).map_err(|_error| {
             NativeRegionInvocationError::MemoryCapacity {
                 available: memory.len(),

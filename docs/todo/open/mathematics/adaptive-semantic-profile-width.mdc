@@ -619,9 +619,16 @@ transfers, verification, and other separately measured costs.
   the opaque checkpoint geometry/profile/entry/live-in authority first, then
   reconstructs exact v5 artifact identity before retaining the load image. N10
   paired with an N11 checkpoint and N10 paired with an N11 artifact both reject
-  before mapping. The remaining native boundary is borrow-scoped ABI preparation
-  plus executable lifecycle tied to that admission, followed by reviewed
-  derived-geometry templates for state-changing operations.
+  before mapping.
+- Borrow-scoped v5 initial-halt ABI preparation now requires memory, complete
+  input, and committed output to equal that admitted checkpoint exactly. It
+  retains the checkpoint-bound admission, hides the raw ABI state pointer, and
+  reuses native result verification for exact applied/guard-miss completion. An
+  applied halt reconstructs state with the original opaque geometry token; guard
+  miss returns the untouched checkpoint.
+- Memory/input drift rejects before frame preparation. The remaining native
+  boundary is executable lifecycle tied to this preparation, followed by
+  reviewed derived-geometry templates for state-changing operations.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

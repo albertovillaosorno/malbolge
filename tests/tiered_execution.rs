@@ -219,6 +219,7 @@ use geometry_interpreter_handoff::{
 use geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltAdmission,
     ExecutionGeometryNativeInitialHaltAdmissionError,
+    ExecutionGeometryNativeInitialHaltPreparationError,
 };
 use interpreter_handoff::{
     NativeInterpreterHandoff, NativeInterpreterHandoffAdmissionError,
@@ -12266,6 +12267,140 @@ fn execution_geometry_native_admission_rejects_checkpoint_geometry_drift()
     } else {
         Err(String::from("v5 admission ignored opaque geometry drift"))
     }
+}
+
+#[test]
+fn execution_geometry_native_preparation_admits_exact_halt_result()
+-> Result<(), String> {
+    let (program, checkpoint, geometry) = derived_v5_handoff_fixture(10)?;
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &program,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 prepare emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_halt(&artifact, &program)
+            .map_err(|error| format!("v5 prepare verify: {error}"))?;
+    let admission = ExecutionGeometryNativeInitialHaltAdmission::new(
+        program, checkpoint, verified,
+    )
+    .map_err(|error| format!("v5 prepare admission: {error}"))?;
+    let mut memory = admission.checkpoint().memory().to_vec();
+    let input = admission.checkpoint().io().input().to_vec();
+    let mut output = admission.checkpoint().io().output().to_vec();
+    let mut prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 ABI preparation: {error}"))?;
+    prepared.apply_expected_for_test();
+    let completion = prepared
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| format!("v5 ABI completion: {error}"))?;
+    if completion.state().geometry() == geometry
+        && completion.state().memory() == memory
+        && completion.state().io().input() == input
+        && completion.state().io().output() == output
+        && completion.state().io().termination()
+            == Some(Termination::HaltInstruction)
+        && matches!(
+            completion.outcome(),
+            NativeRegionInvocationOutcome::Applied(observation)
+                if observation.termination
+                    == Some(Termination::HaltInstruction)
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 prepared halt lost checkpoint authority"))
+    }
+}
+
+#[test]
+fn execution_geometry_native_preparation_guard_miss_preserves_checkpoint()
+-> Result<(), String> {
+    let (program, checkpoint, _geometry) = derived_v5_handoff_fixture(10)?;
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &program,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 miss emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_halt(&artifact, &program)
+            .map_err(|error| format!("v5 miss verify: {error}"))?;
+    let admission = ExecutionGeometryNativeInitialHaltAdmission::new(
+        program,
+        checkpoint.clone(),
+        verified,
+    )
+    .map_err(|error| format!("v5 miss admission: {error}"))?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 miss prepare: {error}"))?;
+    let completion = prepared
+        .complete(NativeRegionStatus::GuardMiss.code())
+        .map_err(|error| format!("v5 miss completion: {error}"))?;
+    if completion.outcome() == NativeRegionInvocationOutcome::GuardMiss
+        && completion.state() == &checkpoint
+        && memory == checkpoint.memory()
+        && output == checkpoint.io().output()
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 guard miss changed admitted checkpoint"))
+    }
+}
+
+#[test]
+fn execution_geometry_native_preparation_rejects_buffer_drift()
+-> Result<(), String> {
+    let (program, checkpoint, _geometry) = derived_v5_handoff_fixture(10)?;
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &program,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 buffer emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_halt(&artifact, &program)
+            .map_err(|error| format!("v5 buffer verify: {error}"))?;
+    let admission = ExecutionGeometryNativeInitialHaltAdmission::new(
+        program,
+        checkpoint.clone(),
+        verified,
+    )
+    .map_err(|error| format!("v5 buffer admission: {error}"))?;
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut memory_drift = checkpoint.memory().to_vec();
+    let first = memory_drift.first_mut().ok_or_else(|| {
+        String::from("v5 checkpoint memory unexpectedly empty")
+    })?;
+    *first ^= 1;
+    if !matches!(
+        admission.prepare(NativeRegionBuffers::new(
+            &mut memory_drift,
+            &input,
+            &mut output,
+        )),
+        Err(ExecutionGeometryNativeInitialHaltPreparationError::Memory)
+    ) {
+        return Err(String::from("v5 preparation accepted memory drift"));
+    }
+    let mut input_drift_memory = checkpoint.memory().to_vec();
+    let mut input_drift = input;
+    input_drift.push(0x55);
+    if !matches!(
+        admission.prepare(NativeRegionBuffers::new(
+            &mut input_drift_memory,
+            &input_drift,
+            &mut output,
+        )),
+        Err(ExecutionGeometryNativeInitialHaltPreparationError::Input)
+    ) {
+        return Err(String::from("v5 preparation accepted input drift"));
+    }
+    Ok(())
 }
 
 #[test]

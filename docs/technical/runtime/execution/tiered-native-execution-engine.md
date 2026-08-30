@@ -562,11 +562,21 @@ token, profile, entry observation, capacity, and live-ins, then independently
 reconstructs the v5 native key before retaining the relocation-free load image.
 
 N10/N11 checkpoint drift and artifact/program geometry drift both reject before
-any executable mapping. The admission value has no mapping or call API, so the
-next boundary remains borrow-scoped ABI preparation and executable lifecycle
-bound to this checkpoint-owned authority. General state-applying direct
-templates remain canonical-only because their arithmetic still reads canonical
-profile geometry.
+any executable mapping.
+
+The same boundary now owns borrow-scoped ABI preparation for guarded initial
+halt. `prepare()` accepts caller buffers only when memory, full input, and
+committed output exactly equal the admitted checkpoint. It then uses a
+crate-private v5 initial-halt constructor on `PreparedNativeRegionInvocation`;
+the prepared geometry wrapper exposes neither the raw ABI state pointer nor an
+executable-call method.
+
+Completion still uses the existing exact native result verifier. A guard miss
+returns the original checkpoint, while an exact applied halt reconstructs a
+`ProfileMachineState` with the original opaque geometry token. Tests cover exact
+applied completion, guard-miss rollback, and memory/input drift. Executable
+lifecycle remains the next authority boundary, and state-applying arithmetic
+templates remain canonical-only.
 
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine
