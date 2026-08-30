@@ -51,6 +51,8 @@ pub mod geometry_native_initial_jump_data;
 pub mod geometry_native_jump_rotate_halt_sequence;
 #[path = "tier/geometry_jcache.rs"]
 pub mod geometry_native_jump_rotate_halt_cache;
+#[path = "tier/geometry_jmcache.rs"]
+pub mod geometry_native_jump_rotate_halt_multi_cache;
 #[path = "tier/geometry_native.rs"]
 pub mod geometry_native_admission;
 #[path = "tier/geometry_noop.rs"]

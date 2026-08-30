@@ -697,7 +697,8 @@ transfers, verification, and other separately measured costs.
   authority, rotate replay remains the sole halt authority, and all three steps
   admit before the first mapping. Global indices 0/1/2 preserve exact guard and
   failure position; mixed N10/N11 jump/suffix evidence rejects before adapter
-  work. Generic v5 planning and multi-resident eviction remain open.
+  work. Generic v5 planning and byte-weighted cross-template caching remain
+  open.
 - The full `(&O` sequence can additionally prebind three exact caller-owned
   executables before borrowing machine buffers. Repeated prebound execution
   performs no adapter work, mixed-geometry jump images reject before mutation,
@@ -712,15 +713,24 @@ transfers, verification, and other separately measured costs.
   without eviction, failed loads publish nothing, and cleanup failure transfers
   retry ownership. Explicit replacement fully releases the old triple before
   loading a new identity and leaves the slot empty on either failure.
+- A full-path multi-resident LRU cache now accepts explicit nonzero entry-count
+  capacity. Exact hits refresh MRU order without adapter work; when full, the
+  least-recent resident without external leases is the only legal victim.
+  All-leased saturation rejects without side effects.
+- Victim release failure removes only that resident and transfers cleanup
+  ownership; post-eviction load failure leaves a reusable vacancy rather than
+  restoring stale authority. N10/N11/N12 tests cover recency, lease skipping,
+  saturation, isolation, and targeted release. Byte-weighted and cross-template
+  residency remain open.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without
   implicit eviction, failed loads publish nothing, and cleanup failure transfers
   exact retry ownership. Explicit replacement releases the old pair completely
   before loading the new identity and leaves the cache empty on either failure.
-  The no-op/halt, rotate/halt, and full-path caches remain intentionally
-  separate; broader multi-entry eviction and additional state-changing
-  templates remain open.
+  The no-op/halt, rotate/halt, and full-path single-resident caches remain
+  intentionally separate; cross-template residency, byte-weighted budgeting,
+  and additional state-changing templates remain open.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only
   admissible Applied state. The separate load image, prepare/bind layer, v5

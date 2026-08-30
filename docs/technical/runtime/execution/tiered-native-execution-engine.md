@@ -763,8 +763,30 @@ unleased old triple releases completely before a different identity can load,
 and either release or new-load failure leaves the cache empty. Nine focused
 cases cover hit reuse, lease blocking, identity rejection, failed publication,
 cleanup transfer, and all replacement outcomes. The no-op/halt, rotate/halt,
-and full-path caches remain intentionally separate; multi-resident eviction and
-a generic v5 cache policy remain open.
+and full-path single-resident caches remain intentionally separate.
+
+`GeometryNativeJumpRotateHaltLruCache` adds the first multi-resident v5 policy
+for the complete `(&O` path. Capacity is an explicit nonzero **entry count**,
+not an inferred byte budget. Residents are maintained in LRU-to-MRU order;
+exact hits move to MRU without adapter work.
+
+At full capacity the cache scans from LRU toward MRU and evicts the first triple
+with no external `Arc` lease. If all residents are leased, acquisition rejects
+without release or load operations.
+
+Eviction is fail-closed and local to one victim. Release failure removes only
+the victim and transfers its exact three-mapping cleanup ownership while every
+other resident survives. If release succeeds but the replacement load fails,
+the victim is not resurrected and the vacant entry remains reusable.
+
+Targeted release likewise acts on one exact sequence identity and cannot cross
+a live lease. Seven N10/N11/N12 cases cover hit execution, recency refresh,
+leased victim skipping, all-leased saturation, isolated release failure,
+reusable vacancy after load failure, and identity-scoped release.
+
+Byte-weighted budgeting, cross-template residency among no-op/halt,
+rotate/halt, and full-path entries, and concurrent cache mutation remain
+separate policy work.
 
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence

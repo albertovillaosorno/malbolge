@@ -51,6 +51,8 @@ pub mod geometry_native_admission;
 pub mod geometry_native_initial_jump_data;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jcache.rs"]
 pub mod geometry_native_jump_rotate_halt_cache;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_jmcache.rs"]
+pub mod geometry_native_jump_rotate_halt_multi_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrh.rs"]
 pub mod geometry_native_jump_rotate_halt_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_noop.rs"]
@@ -266,6 +268,12 @@ use geometry_native_jump_rotate_halt_cache::{
     GeometryNativeJumpRotateHaltTripleCacheDisposition as FullCacheDisposition,
     GeometryNativeJumpRotateHaltTripleCacheRelease as FullCacheRelease,
     GeometryNativeJumpRotateHaltTripleLeaseCache as FullLeaseCache,
+};
+use geometry_native_jump_rotate_halt_multi_cache::{
+    GeometryNativeJumpRotateHaltLruAcquireFailure as FullLruFailure,
+    GeometryNativeJumpRotateHaltLruCache as FullLruCache,
+    GeometryNativeJumpRotateHaltLruDisposition as FullLruDisposition,
+    GeometryNativeJumpRotateHaltLruRelease as FullLruRelease,
 };
 use geometry_native_jump_rotate_halt_sequence as full_native;
 use geometry_native_no_operation::{
@@ -591,10 +599,19 @@ type FullGeometryTripleLoadFailure<MemoryError> =
     full_native::ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<
         MemoryError,
     >;
+type FullGeometryTripleReleaseFailure<MemoryError> =
+    full_native::ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure<
+        MemoryError,
+    >;
 type FullGeometryOutcome =
     full_native::ExecutionGeometryNativeJumpRotateHaltOutcome;
 type FullGeometrySequence =
     full_native::ExecutionGeometryNativeJumpRotateHaltSequence;
+type FullGeometrySequenceTriple = (
+    FullGeometrySequence,
+    FullGeometrySequence,
+    FullGeometrySequence,
+);
 
 type InitialJumpAdmission =
     jump_native::ExecutionGeometryNativeInitialJumpDataAdmission;
@@ -13199,6 +13216,47 @@ fn execution_geometry_native_admission_rejects_checkpoint_geometry_drift()
     }
 }
 
+fn full_lru_sequences() -> Result<FullGeometrySequenceTriple, String> {
+    let n10 = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let n11 = derived_v5_jump_rotate_halt_sequence_fixture(11)?;
+    let n12 = derived_v5_jump_rotate_halt_sequence_fixture(12)?;
+    Ok((
+        geometry_native_jump_rotate_halt_sequence(&n10)?,
+        geometry_native_jump_rotate_halt_sequence(&n11)?,
+        geometry_native_jump_rotate_halt_sequence(&n12)?,
+    ))
+}
+
+fn full_lru_cache(capacity: usize) -> Result<FullLruCache, String> {
+    Ok(FullLruCache::new(nonzero_test_limit(
+        capacity,
+        "v5 full LRU capacity",
+    )?))
+}
+
+fn full_lru_cleanup_retains_all(
+    cleanup: &FullGeometryTripleReleaseFailure<FakeNativeAdapterOperation>,
+) -> bool {
+    let Some(suffix) = cleanup.suffix_failure() else {
+        return false;
+    };
+    cleanup.initial_jump_failure().is_some()
+        && suffix.halt_failure().is_some()
+        && suffix.rotate_failure().is_some()
+}
+
+fn full_lru_contains_only(
+    cache: &FullLruCache,
+    expected: &FullGeometrySequence,
+    absent_a: &FullGeometrySequence,
+    absent_b: &FullGeometrySequence,
+) -> bool {
+    cache.resident_count() == 1
+        && cache.contains(expected)
+        && !cache.contains(absent_a)
+        && !cache.contains(absent_b)
+}
+
 fn geometry_native_jump_rotate_halt_evidence(
     jump_fixture: &DerivedV5SequenceFixture,
     suffix_fixture: &DerivedV5SequenceFixture,
@@ -15074,6 +15132,341 @@ fn geometry_native_jump_rotate_halt_release_retries_all_three()
         Ok(())
     } else {
         Err(String::from("v5 owned triple release retry drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_hit_executes_without_remap()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_halt_sequence(&fixture)?;
+    let [initial, _jump, _rotate, final_state] = fixture.states.as_slice()
+    else {
+        return Err(String::from("v5 LRU state sequence incomplete"));
+    };
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(152)?,
+        native_executable_address(0x4_6000)?,
+    );
+    let mut cache = full_lru_cache(2)?;
+    let inserted = cache
+        .ensure(&mut adapter, &sequence)
+        .map_err(|error| format!("v5 LRU insert: {error}"))?;
+    drop(inserted);
+    let hit = cache
+        .ensure(&mut adapter, &sequence)
+        .map_err(|error| format!("v5 LRU hit: {error}"))?;
+    if hit.disposition() != FullLruDisposition::Hit
+        || adapter.operations.len() != 12
+    {
+        return Err(String::from("v5 LRU hit remapped resident"));
+    }
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = hit
+        .lease()
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 LRU hit execute: {error}"))?;
+    if outcome.state() != final_state
+        || memory != final_state.memory()
+        || adapter.operations.len() != 12
+    {
+        return Err(String::from("v5 LRU hit execution drifted"));
+    }
+    drop(hit);
+    cache
+        .release_if_unleased(&mut adapter, &sequence)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU hit cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_hit_refreshes_eviction()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(153)?,
+        native_executable_address(0x4_7000)?,
+    );
+    let mut cache = full_lru_cache(2)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let hit = cache
+        .ensure(&mut adapter, &s10)
+        .map_err(|error| error.to_string())?;
+    if hit.disposition() != FullLruDisposition::Hit {
+        return Err(String::from("v5 LRU recency hit was not reported"));
+    }
+    drop(hit);
+    let replacement = cache
+        .ensure(&mut adapter, &s12)
+        .map_err(|error| format!("v5 LRU eviction: {error}"))?;
+    if replacement.disposition() != FullLruDisposition::Evicted
+        || !cache.contains(&s10)
+        || cache.contains(&s11)
+        || !cache.contains(&s12)
+        || cache.resident_count() != 2
+        || adapter.operations.len() != 39
+    {
+        return Err(String::from("v5 LRU hit did not refresh eviction order"));
+    }
+    drop(replacement);
+    cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU N10 cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU N12 cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_skips_leased_victim()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(154)?,
+        native_executable_address(0x4_8000)?,
+    );
+    let mut cache = full_lru_cache(2)?;
+    let n10_lease = cache
+        .ensure(&mut adapter, &s10)
+        .map_err(|error| format!("v5 LRU leased N10: {error}"))?
+        .into_lease();
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let n12_lease = cache
+        .ensure(&mut adapter, &s12)
+        .map_err(|error| format!("v5 LRU skip lease: {error}"))?
+        .into_lease();
+    if !cache.contains(&s10)
+        || cache.contains(&s11)
+        || !cache.contains(&s12)
+        || cache.resident_lease_count(&s10) != 1
+        || n10_lease.sequence() != &s10
+        || adapter.operations.len() != 39
+    {
+        return Err(String::from("v5 LRU eviction crossed live lease"));
+    }
+    drop((n10_lease, n12_lease));
+    cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU leased N10 cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU leased N12 cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_saturates_when_all_leased()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(155)?,
+        native_executable_address(0x4_9000)?,
+    );
+    let mut cache = full_lru_cache(2)?;
+    let lease10 = cache
+        .ensure(&mut adapter, &s10)
+        .map_err(|error| error.to_string())?;
+    let lease11 = cache
+        .ensure(&mut adapter, &s11)
+        .map_err(|error| error.to_string())?;
+    let Err(failure) = cache.ensure(&mut adapter, &s12) else {
+        return Err(String::from("v5 LRU all-leased saturation was ignored"));
+    };
+    if !matches!(*failure, FullLruFailure::Saturated {
+        leased_residents: 2,
+        residents: 2,
+    }) || adapter.operations.len() != 24
+        || !cache.contains(&s10)
+        || !cache.contains(&s11)
+        || cache.contains(&s12)
+    {
+        return Err(String::from("v5 LRU saturation performed eviction work"));
+    }
+    drop((lease10, lease11));
+    cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU saturated N10 cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU saturated N11 cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_eviction_release_failure_isolated()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(156)?,
+        native_executable_address(0x4_a000)?,
+    )
+    .with_release_failures(3);
+    let mut cache = full_lru_cache(2)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(failure) = cache.ensure(&mut adapter, &s12) else {
+        return Err(String::from("v5 LRU eviction release failure ignored"));
+    };
+    let FullLruFailure::EvictionRelease(cleanup) = *failure else {
+        return Err(String::from("v5 LRU eviction release cause drifted"));
+    };
+    if !full_lru_cleanup_retains_all(&cleanup)
+        || !full_lru_contains_only(&cache, &s11, &s10, &s12)
+        || adapter.operations.len() != 27
+    {
+        return Err(String::from("v5 LRU release failure damaged survivors"));
+    }
+    cleanup
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 LRU victim cleanup retry: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU survivor cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_load_failure_leaves_vacancy()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(157)?,
+        native_executable_address(0x4_b000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 7);
+    let mut cache = full_lru_cache(2)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(failure) = cache.ensure(&mut adapter, &s12) else {
+        return Err(String::from("v5 LRU post-eviction load failure ignored"));
+    };
+    let load_failed = matches!(
+        *failure,
+        FullLruFailure::Load(error)
+            if matches!(
+                &*error,
+                FullGeometryTripleLoadFailure::Suffix(_error)
+            )
+    );
+    if !load_failed
+        || cache.contains(&s10)
+        || !cache.contains(&s11)
+        || cache.contains(&s12)
+        || cache.resident_count() != 1
+        || adapter.operations.len() != 28
+    {
+        return Err(String::from("v5 LRU failed load restored stale victim"));
+    }
+    let inserted = cache
+        .ensure(&mut adapter, &s12)
+        .map_err(|error| format!("v5 LRU vacancy refill: {error}"))?;
+    if inserted.disposition() != FullLruDisposition::Inserted
+        || cache.resident_count() != 2
+        || adapter.operations.len() != 40
+    {
+        return Err(String::from("v5 LRU vacancy was not reusable"));
+    }
+    drop(inserted);
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU load survivor cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU load refill cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_release_targets_identity()
+-> Result<(), String> {
+    let n10 = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let n11 = derived_v5_jump_rotate_halt_sequence_fixture(11)?;
+    let s10 = geometry_native_jump_rotate_halt_sequence(&n10)?;
+    let s11 = geometry_native_jump_rotate_halt_sequence(&n11)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(158)?,
+        native_executable_address(0x4_c000)?,
+    );
+    let mut cache = full_lru_cache(2)?;
+    let lease10 = cache
+        .ensure(&mut adapter, &s10)
+        .map_err(|error| format!("v5 LRU release N10 acquire: {error}"))?
+        .into_lease();
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let blocked = cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map_err(|error| format!("v5 LRU release N10 blocked: {error}"))?;
+    let released11 = cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map_err(|error| format!("v5 LRU release N11: {error}"))?;
+    if blocked != (FullLruRelease::Leased { leases: 1 })
+        || released11 != FullLruRelease::Released
+        || !cache.contains(&s10)
+        || cache.contains(&s11)
+        || cache.resident_count() != 1
+        || adapter.operations.len() != 27
+    {
+        return Err(String::from("v5 LRU targeted release crossed identity"));
+    }
+    drop(lease10);
+    let released10 = cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map_err(|error| format!("v5 LRU release N10 final: {error}"))?;
+    if released10 == FullLruRelease::Released
+        && cache.resident_count() == 0
+        && adapter.operations.len() == 30
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 LRU final targeted release drifted"))
     }
 }
 
