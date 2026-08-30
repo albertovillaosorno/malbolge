@@ -47,7 +47,10 @@ use crate::geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruCache, GeometryNativeCrossTemplateLruLimits,
     GeometryNativeCrossTemplateLruReconfiguration,
     GeometryNativeCrossTemplateLruReconfigurationFailure,
-    GeometryNativeCrossTemplateLruRelease, GeometryNativeCrossTemplateLruUsage,
+    GeometryNativeCrossTemplateLruRelease,
+    GeometryNativeCrossTemplateLruReleaseAll,
+    GeometryNativeCrossTemplateLruReleaseAllFailure,
+    GeometryNativeCrossTemplateLruUsage,
 };
 use crate::geometry_native_cross_template_resident::{
     GeometryNativeResidentLoadFailure, GeometryNativeResidentPlan,
@@ -60,12 +63,16 @@ type CacheReconfigurationFailure<MemoryError> =
     GeometryNativeCrossTemplateLruReconfigurationFailure<MemoryError>;
 type CacheReleaseFailure<MemoryError> =
     GeometryNativeResidentReleaseFailure<MemoryError>;
+type CacheReleaseAllFailure<MemoryError> =
+    GeometryNativeCrossTemplateLruReleaseAllFailure<MemoryError>;
 type CleanupRetryFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateCleanupRetryFailure<MemoryError>;
 type LoadCleanupFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateLoadCleanupRetryFailure<MemoryError>;
 type ResidentLoadFailure<MemoryError> =
     GeometryNativeResidentLoadFailure<MemoryError>;
+type ReleaseAllRetryFailure<MemoryError> =
+    GeometryNativeConcurrentCrossTemplateReleaseAllRetryFailure<MemoryError>;
 type ConcurrentAcquireFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateFailure<
         Box<CacheAcquireFailure<MemoryError>>,
@@ -163,6 +170,17 @@ pub enum GeometryNativeConcurrentCrossTemplateLoadCleanupRetryFailure<
     Busy(Box<ResidentLoadFailure<MemoryError>>),
     /// Cache authority is poisoned; the original failure is untouched.
     Poisoned(Box<ResidentLoadFailure<MemoryError>>),
+}
+
+/// Failure while retrying one aggregate release-all cleanup token.
+#[derive(Debug, Eq, PartialEq)]
+pub enum GeometryNativeConcurrentCrossTemplateReleaseAllRetryFailure<
+    MemoryError,
+> {
+    /// Cache authority is poisoned; the aggregate token is untouched.
+    Poisoned(Box<CacheReleaseAllFailure<MemoryError>>),
+    /// Retry still retains at least one exact resident cleanup owner.
+    Release(Box<CacheReleaseAllFailure<MemoryError>>),
 }
 
 /// Failure from one acquire-then-execute concurrent cache request.
@@ -279,6 +297,27 @@ pub type GeometryNativeConcurrentCrossTemplateReconfigurationResult<
     GeometryNativeCrossTemplateLruReconfiguration,
     GeometryNativeConcurrentCrossTemplateFailure<
         Box<CacheReconfigurationFailure<MemoryError>>,
+    >,
+>;
+
+/// Result of releasing every currently unleased resident under one lock.
+pub type GeometryNativeConcurrentCrossTemplateReleaseAllResult<MemoryError> =
+    Result<
+        GeometryNativeCrossTemplateLruReleaseAll,
+        GeometryNativeConcurrentCrossTemplateFailure<
+            Box<CacheReleaseAllFailure<MemoryError>>,
+        >,
+    >;
+
+/// Result of retrying one aggregate release-all cleanup token.
+pub type GeometryNativeConcurrentCrossTemplateReleaseAllRetryResult<
+    MemoryError,
+> = Result<
+    GeometryNativeCrossTemplateLruReleaseAll,
+    Box<
+        GeometryNativeConcurrentCrossTemplateReleaseAllRetryFailure<
+            MemoryError,
+        >,
     >,
 >;
 
@@ -427,6 +466,23 @@ impl<MemoryError: Display> Display
             Self::Poisoned(error) => write!(
                 f,
                 "v5 concurrent load cleanup blocked by poisoned cache: {error}"
+            ),
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for GeometryNativeConcurrentCrossTemplateReleaseAllRetryFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Poisoned(error) => write!(
+                f,
+                "v5 concurrent release-all retry blocked by poison: {error}"
+            ),
+            Self::Release(error) => write!(
+                f,
+                "v5 concurrent release-all retry retained cleanup: {error}"
             ),
         }
     }
@@ -660,6 +716,31 @@ where
         result
     }
 
+    /// Releases every currently unleased heterogeneous resident under one lock.
+    ///
+    /// Leased identities remain resident and lookup-visible. Any failed release
+    /// transfers exact plan plus typed cleanup ownership out of cache
+    /// authority.
+    ///
+    /// # Errors
+    ///
+    /// Returns poison or the aggregate existing release-all failure evidence.
+    pub fn release_all_unleased(
+        &self,
+    ) -> GeometryNativeConcurrentCrossTemplateReleaseAllResult<Adapter::Error>
+    {
+        let mut state = self.lock().map_err(|_error| {
+            GeometryNativeConcurrentCrossTemplateFailure::Poisoned
+        })?;
+        let GeometryNativeConcurrentCrossTemplateState { adapter, cache } =
+            &mut *state;
+        let result = cache
+            .release_all_unleased(adapter)
+            .map_err(GeometryNativeConcurrentCrossTemplateFailure::Operation);
+        drop(state);
+        result
+    }
+
     /// Releases one exact typed resident when external leases permit it.
     ///
     /// # Errors
@@ -755,6 +836,33 @@ where
         };
         drop(state);
         Ok(outcome)
+    }
+
+    /// Retries aggregate release-all cleanup with this cache's owned adapter.
+    ///
+    /// # Errors
+    ///
+    /// Returns the untouched aggregate token after poison or a refreshed token
+    /// when at least one release fails again.
+    pub fn retry_release_all_cleanup(
+        &self,
+        failure: Box<CacheReleaseAllFailure<Adapter::Error>>,
+    ) -> GeometryNativeConcurrentCrossTemplateReleaseAllRetryResult<
+        Adapter::Error,
+    > {
+        let mut state = match self.lock() {
+            Ok(state) => state,
+            Err(_error) => {
+                return Err(Box::new(ReleaseAllRetryFailure::Poisoned(
+                    failure,
+                )));
+            },
+        };
+        let result = (*failure)
+            .retry(&mut state.adapter)
+            .map_err(|error| Box::new(ReleaseAllRetryFailure::Release(error)));
+        drop(state);
+        result
     }
 
     /// Reads identity state, limits, leases, and usage under one lock.

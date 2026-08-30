@@ -768,6 +768,10 @@ transfers, verification, and other separately measured costs.
   returned `Arc` leases execute outside the lock and still block illegal
   eviction. Mutex poison rejects all later access rather than recovering
   possibly interrupted mapping authority.
+- The synchronized owner now forwards heterogeneous `release_all_unleased`
+  through its exact adapter. Leased identities remain active, aggregate failures
+  retain exact plan plus typed cleanup ownership, and aggregate retry never
+  republishes identities removed from cache authority.
 - Concurrent acquire-then-execute holds the mutex only through `ensure` and then
   runs the cached lease outside it. Acquire failures remain distinct from native
   execution failures; a blocked runner still permits concurrent mutation access,

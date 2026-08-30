@@ -891,6 +891,17 @@ possibly half-mutated authority with `PoisonError::into_inner`. Four focused
 cases prove concurrent insert/hit serialization, lease-safe eviction blocking,
 serialized shrink/usage, and poison rejection.
 
+The synchronized owner also forwards `release_all_unleased` through the same
+cache/adapter mutex. Leased residents remain active after the guard is released,
+while attempted releases leave cache authority even when cleanup fails.
+`retry_release_all_cleanup` later retries the aggregate token with the exact
+owned adapter and never republishes identities represented only by cleanup
+evidence.
+
+Two focused cases cover a retained external lease and aggregate cleanup retry.
+The pass therefore provides explicit bulk reclamation without claiming a retired
+resident drain or weakening the existing lease contract.
+
 The concurrent owner also exposes acquire-then-execute as one typed request.
 Only `ensure` runs under the mutex; the returned acquisition executes after the
 guard is dropped. Acquire failures remain distinct from native execution

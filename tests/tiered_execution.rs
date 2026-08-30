@@ -15526,7 +15526,7 @@ fn geometry_native_cross_template_release_all_unleased_retains_live_lease()
     let first = cache
         .release_all_unleased(&mut adapter)
         .map_err(|error| format!("cross leased release-all: {error}"))?;
-    if first.released_residents() != [noop_plan.clone(), full_plan.clone()]
+    if first.released_residents() != [noop_plan, full_plan]
         || first.retained_residents() != [rotate_plan.clone()]
         || cache.resident_count() != 1
         || !cache.contains(&rotate_plan)
@@ -17277,6 +17277,102 @@ fn geometry_native_concurrent_cross_template_lease_blocks_eviction()
         .release_if_unleased(&rotate_plan)
         .map(|_release| ())
         .map_err(|error| format!("concurrent replacement cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_release_all_retains_lease()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(229)?,
+        native_executable_address(0x9_2000)?,
+    );
+    let cache = concurrent_cross_template_lru(adapter, 3)?;
+    drop(
+        cache
+            .ensure(&noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let rotate = cache
+        .ensure(&rotate_plan)
+        .map_err(|error| error.to_string())?;
+    drop(
+        cache
+            .ensure(&full_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let first = cache
+        .release_all_unleased()
+        .map_err(|error| format!("concurrent release-all: {error}"))?;
+    if first.released_residents() != [noop_plan, full_plan]
+        || first.retained_residents() != [rotate_plan.clone()]
+        || cache.resident_count().map_err(|error| error.to_string())? != 1
+        || !cache
+            .contains(&rotate_plan)
+            .map_err(|error| error.to_string())?
+    {
+        return Err(String::from(
+            "concurrent release-all lost leased resident",
+        ));
+    }
+    drop(rotate);
+    let second = cache
+        .release_all_unleased()
+        .map_err(|error| format!("concurrent release-all final: {error}"))?;
+    if second.released_residents() == [rotate_plan]
+        && second.retained_residents().is_empty()
+        && cache.resident_count().map_err(|error| error.to_string())? == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("concurrent release-all did not reclaim lease"))
+    }
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_release_all_retries_cleanup()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(230)?,
+        native_executable_address(0x9_3000)?,
+    )
+    .with_release_failures(1);
+    let cache = concurrent_cross_template_lru(adapter, 3)?;
+    for plan in [&noop_plan, &rotate_plan, &full_plan] {
+        drop(cache.ensure(plan).map_err(|error| error.to_string())?);
+    }
+    let Err(CrossSyncFailure::Operation(failure)) =
+        cache.release_all_unleased()
+    else {
+        return Err(String::from("concurrent release-all failure ignored"));
+    };
+    let Some(entry) = failure.failures().first() else {
+        return Err(String::from("concurrent release-all cleanup missing"));
+    };
+    if failure.failures().len() != 1
+        || entry.plan() != &noop_plan
+        || !matches!(
+            entry.failure(),
+            CrossResidentReleaseFailure::NoOperationPair(_)
+        )
+        || failure.released_residents()
+            != [rotate_plan.clone(), full_plan.clone()]
+        || cache.resident_count().map_err(|error| error.to_string())? != 0
+    {
+        return Err(String::from("concurrent release-all evidence drifted"));
+    }
+    let retried = cache
+        .retry_release_all_cleanup(failure)
+        .map_err(|error| format!("concurrent release-all retry: {error}"))?;
+    if retried.released_residents() == [rotate_plan, full_plan, noop_plan]
+        && retried.retained_residents().is_empty()
+        && cache.resident_count().map_err(|error| error.to_string())? == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("concurrent release-all retry drifted"))
+    }
 }
 
 #[test]
