@@ -754,6 +754,10 @@ transfers, verification, and other separately measured costs.
   Outcomes and failures stay tagged as no-op/halt, rotate/halt, or full-path;
   step indices, checkpoints, guard behavior, and rollback remain owned by the
   original template implementation. Execution performs no adapter work.
+- Heterogeneous acquisitions can also execute while preserving the cache action
+  (`Inserted`, `Hit`, or `Evicted`) in success or failure. Consuming that
+  temporary acquisition drops its external lease after execution while resident
+  cache authority remains published for reuse.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

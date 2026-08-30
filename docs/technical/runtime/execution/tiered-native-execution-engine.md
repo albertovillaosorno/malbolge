@@ -844,6 +844,18 @@ outcome/failure as full-path, no-op/halt, or rotate/halt; it does not translate
 step indices, guard misses, committed checkpoints, or rollback semantics. Three
 focused cases cover two successful families and one typed rotate failure.
 
+`GeometryNativeCrossTemplateLruAcquisition::execute()` now consumes the
+temporary
+external lease and carries the acquisition disposition into the execution
+result. Success therefore preserves whether the resident was inserted, hit, or
+evicted into place; execution failure retains the same disposition beside the
+typed template failure. In either case the cache's resident `Arc` remains
+published with no external lease left behind.
+
+Four focused cases cover `Inserted`, `Hit`, and `Evicted` execution plus an
+inserted rotate failure that rolls back caller state while leaving the resident
+available for later reuse.
+
 The same heterogeneous cache can now reconfigure entry, mapped-byte, and mapping
 limits. Expansion or already-satisfied requests publish with no adapter work;
 shrink removes unleased residents in the existing cross-template LRU order until

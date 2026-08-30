@@ -47,10 +47,12 @@ use crate::execution_native::{
     NativeRegionBuffers,
 };
 use crate::geometry_native_cross_template_resident::{
-    GeometryNativeLoadedResident, GeometryNativeResidentExecutionResult,
-    GeometryNativeResidentKind, GeometryNativeResidentLoadFailure,
-    GeometryNativeResidentPlan, GeometryNativeResidentReleaseFailure,
-    GeometryNativeResidentWeight, GeometryNativeResidentWeightError,
+    GeometryNativeLoadedResident, GeometryNativeResidentExecutionFailure,
+    GeometryNativeResidentExecutionOutcome,
+    GeometryNativeResidentExecutionResult, GeometryNativeResidentKind,
+    GeometryNativeResidentLoadFailure, GeometryNativeResidentPlan,
+    GeometryNativeResidentReleaseFailure, GeometryNativeResidentWeight,
+    GeometryNativeResidentWeightError,
 };
 
 type ResidentLoadFailure<MemoryError> =
@@ -204,6 +206,20 @@ pub struct GeometryNativeCrossTemplateLruAcquisition {
     lease: GeometryNativeCrossTemplateLruLease,
 }
 
+/// Typed execution outcome retaining the cache action that produced the lease.
+#[derive(Debug, Eq, PartialEq)]
+pub struct GeometryNativeCrossTemplateCachedExecution {
+    disposition: GeometryNativeCrossTemplateLruDisposition,
+    outcome: GeometryNativeResidentExecutionOutcome,
+}
+
+/// Typed execution failure retaining the cache action that produced the lease.
+#[derive(Debug, Eq, PartialEq)]
+pub struct GeometryNativeCrossTemplateCachedExecutionFailure<RunnerError> {
+    disposition: GeometryNativeCrossTemplateLruDisposition,
+    error: Box<GeometryNativeResidentExecutionFailure<RunnerError>>,
+}
+
 /// Explicit outcome of releasing one exact heterogeneous resident identity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GeometryNativeCrossTemplateLruRelease {
@@ -257,6 +273,12 @@ enum WeightedVictimFailure<MemoryError> {
 pub type GeometryNativeCrossTemplateLruAcquireResult<MemoryError> = Result<
     GeometryNativeCrossTemplateLruAcquisition,
     Box<GeometryNativeCrossTemplateLruAcquireFailure<MemoryError>>,
+>;
+
+/// Result of executing through one acquired heterogeneous resident lease.
+pub type GeometryNativeCrossTemplateCachedExecutionResult<RunnerError> = Result<
+    GeometryNativeCrossTemplateCachedExecution,
+    Box<GeometryNativeCrossTemplateCachedExecutionFailure<RunnerError>>,
 >;
 
 /// Result of transactionally publishing heterogeneous replacement limits.
@@ -364,6 +386,23 @@ impl GeometryNativeCrossTemplateLruLimits {
     }
 }
 
+impl<RunnerError: Display> Display
+    for GeometryNativeCrossTemplateCachedExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        let disposition = match self.disposition {
+            GeometryNativeCrossTemplateLruDisposition::Evicted => "evicted",
+            GeometryNativeCrossTemplateLruDisposition::Hit => "hit",
+            GeometryNativeCrossTemplateLruDisposition::Inserted => "inserted",
+        };
+        write!(
+            f,
+            "v5 cross {disposition} resident execution failed: {}",
+            self.error,
+        )
+    }
+}
+
 impl<MemoryError: Display> Display
     for GeometryNativeCrossTemplateLruReconfigurationFailure<MemoryError>
 {
@@ -382,6 +421,56 @@ impl<MemoryError: Display> Display
                 "v5 cross limit blocked ({leased_residents}/{residents} leased)"
             ),
         }
+    }
+}
+
+impl GeometryNativeCrossTemplateCachedExecution {
+    /// Returns the cache action that acquired the executed resident.
+    #[must_use]
+    pub const fn disposition(
+        &self,
+    ) -> GeometryNativeCrossTemplateLruDisposition {
+        self.disposition
+    }
+
+    /// Consumes the cached execution and returns its typed outcome.
+    #[must_use]
+    pub fn into_outcome(self) -> GeometryNativeResidentExecutionOutcome {
+        self.outcome
+    }
+
+    /// Returns the exact typed execution outcome.
+    #[must_use]
+    pub const fn outcome(&self) -> &GeometryNativeResidentExecutionOutcome {
+        &self.outcome
+    }
+}
+
+impl<RunnerError>
+    GeometryNativeCrossTemplateCachedExecutionFailure<RunnerError>
+{
+    /// Returns the cache action that acquired the resident before failure.
+    #[must_use]
+    pub const fn disposition(
+        &self,
+    ) -> GeometryNativeCrossTemplateLruDisposition {
+        self.disposition
+    }
+
+    /// Returns the exact typed execution failure.
+    #[must_use]
+    pub const fn error(
+        &self,
+    ) -> &GeometryNativeResidentExecutionFailure<RunnerError> {
+        &self.error
+    }
+
+    /// Consumes the wrapper and returns the typed execution failure.
+    #[must_use]
+    pub fn into_error(
+        self,
+    ) -> GeometryNativeResidentExecutionFailure<RunnerError> {
+        *self.error
     }
 }
 
@@ -412,6 +501,38 @@ impl GeometryNativeCrossTemplateLruAcquisition {
         &self,
     ) -> GeometryNativeCrossTemplateLruDisposition {
         self.disposition
+    }
+
+    /// Executes the acquired resident and drops this external lease afterward.
+    ///
+    /// Cache resident authority remains published after either success or
+    /// failure; the returned wrapper preserves the acquisition disposition.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact typed execution failure plus the cache action that
+    /// produced this acquisition.
+    pub fn execute<Runner>(
+        self,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> GeometryNativeCrossTemplateCachedExecutionResult<Runner::Error>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        let disposition = self.disposition;
+        self.lease
+            .execute(runner, buffers)
+            .map(|outcome| GeometryNativeCrossTemplateCachedExecution {
+                disposition,
+                outcome,
+            })
+            .map_err(|error| {
+                Box::new(GeometryNativeCrossTemplateCachedExecutionFailure {
+                    disposition,
+                    error,
+                })
+            })
     }
 
     /// Consumes the acquisition and returns its immutable external lease.

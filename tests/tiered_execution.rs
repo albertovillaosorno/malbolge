@@ -15817,6 +15817,208 @@ fn geometry_native_cross_template_weighted_lru_release_failure_is_typed()
 }
 
 #[test]
+fn geometry_native_cross_template_cached_execution_reports_inserted()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::NoOperationPair(Box::new(
+        geometry_native_noop_halt_sequence(&fixture)?,
+    ));
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("cross cached initial state missing"))?;
+    let expected = fixture
+        .states
+        .get(2)
+        .ok_or_else(|| String::from("cross cached final state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(200)?,
+        native_executable_address(0x7_5000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    let acquisition = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross cached insert acquire: {error}"))?;
+    let operations_before = adapter.operations.len();
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let executed = acquisition
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("cross cached insert execute: {error}"))?;
+    if executed.disposition() != CrossLruDisposition::Inserted
+        || executed.outcome().state() != expected
+        || !cache.contains(&plan)
+        || cache.resident_lease_count(&plan) != 0
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from("cross cached insert execution drifted"));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross cached insert cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_cached_execution_reports_hit()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::NoOperationPair(Box::new(
+        geometry_native_noop_halt_sequence(&fixture)?,
+    ));
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("cross cached hit initial missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(201)?,
+        native_executable_address(0x7_6000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let operations_before = adapter.operations.len();
+    let acquisition = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross cached hit acquire: {error}"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let executed = acquisition
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("cross cached hit execute: {error}"))?;
+    if executed.disposition() != CrossLruDisposition::Hit
+        || !cache.contains(&plan)
+        || cache.resident_lease_count(&plan) != 0
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from("cross cached hit remapped resident"));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross cached hit cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_cached_execution_reports_evicted()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("cross cached evict initial missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(202)?,
+        native_executable_address(0x7_7000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let acquisition = cache
+        .ensure(&mut adapter, &full_plan)
+        .map_err(|error| format!("cross cached evict acquire: {error}"))?;
+    let operations_before = adapter.operations.len();
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let executed = acquisition
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("cross cached evict execute: {error}"))?;
+    if executed.disposition() != CrossLruDisposition::Evicted
+        || cache.contains(&noop_plan)
+        || !cache.contains(&full_plan)
+        || cache.resident_lease_count(&full_plan) != 0
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from("cross cached eviction authority drifted"));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &full_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross cached evict cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_cached_failure_retains_resident()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::RotatePair(Box::new(
+        geometry_native_rotate_halt_sequence(&fixture)?,
+    ));
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("cross cached failure initial missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(203)?,
+        native_executable_address(0x7_8000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    let acquisition = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross cached failure acquire: {error}"))?;
+    let operations_before = adapter.operations.len();
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) = acquisition.execute(
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("cross cached execution failure ignored"));
+    };
+    if failure.disposition() != CrossLruDisposition::Inserted
+        || !matches!(failure.error(), CrossExecutionFailure::RotatePair(_))
+        || !cache.contains(&plan)
+        || cache.resident_lease_count(&plan) != 0
+        || memory != initial.memory()
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from(
+            "cross cached failure lost resident authority",
+        ));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross cached failure cleanup: {error}"))
+}
+
+#[test]
 fn geometry_native_cross_template_lease_executes_noop_pair_without_remap()
 -> Result<(), String> {
     let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
