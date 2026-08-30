@@ -201,8 +201,12 @@ use execution_native::{
     verify_direct_non_graphical, verify_direct_output, verify_direct_rotate,
 };
 use geometry_interpreter_handoff::{
+    ExecutionGeometryContinuationAdmissionError,
+    ExecutionGeometryContinuationBudgetOutcome,
+    ExecutionGeometryContinuationExecutionCause,
     ExecutionGeometryHandoffAdmissionError,
     ExecutionGeometryHandoffExecutionCause,
+    ExecutionGeometryInterpreterContinuation,
     ExecutionGeometryInterpreterHandoff,
 };
 use interpreter_handoff::{
@@ -226,7 +230,7 @@ use malbolge::{
     decode_profile_instruction, historical_profile, preflight_profile,
     preflight_runtime_requirement, safe_rust_classic_capability,
     safe_rust_profiled_capability, target_profile,
-    verify_initial_halt_profile_width,
+    verify_initial_halt_profile_width, verify_input_then_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
 };
 use native_retry::{
@@ -446,6 +450,14 @@ type DerivedV5HandoffFixture = (
     ProfileMachineState,
     malbolge::ProfileExecutionGeometry,
 );
+
+#[derive(Debug)]
+struct DerivedV5SequenceFixture {
+    geometry: malbolge::ProfileExecutionGeometry,
+    programs: Vec<ExecutionGeometryRegionEffectProgram>,
+    states: Vec<ProfileMachineState>,
+    traces: Vec<ProfileStepTrace>,
+}
 
 impl FakeNativeExecutableRunner {
     const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
@@ -12104,6 +12116,233 @@ fn explicit_geometry_handoff_revalidates_untrusted_effects_normatively()
         Ok(())
     } else {
         Err(String::from("v5 replay did not fail closed to entry state"))
+    }
+}
+
+fn derived_v5_input_halt_sequence_fixture(
+    word_trits: u8,
+    input: Vec<u8>,
+) -> Result<DerivedV5SequenceFixture, String> {
+    let verified = verify_input_then_halt_profile_width(
+        current_profile(),
+        b"uP",
+        word_trits,
+    )
+    .map_err(|error| format!("v5 continuation verification: {error}"))?;
+    let mut machine = ProfileMachine::from_verified_source(&verified, input)
+        .map_err(|error| format!("v5 continuation machine: {error}"))?;
+    let mut programs = Vec::new();
+    let mut states = vec![machine.snapshot_state()];
+    let mut traces = Vec::new();
+    for _index in 0usize..2usize {
+        let mut trace_slot = None;
+        let _outcome = machine
+            .step_traced(&mut |trace| trace_slot = Some(*trace))
+            .map_err(|error| format!("v5 continuation trace: {error}"))?;
+        let trace = trace_slot
+            .ok_or_else(|| String::from("v5 continuation trace missing"))?;
+        let program =
+            ExecutionGeometryRegionEffectProgram::from_profile_step_trace(
+                &trace,
+            )
+            .map_err(|error| {
+                format!("v5 continuation projection: {error:?}")
+            })?;
+        programs.push(program);
+        states.push(machine.snapshot_state());
+        traces.push(trace);
+    }
+    Ok(DerivedV5SequenceFixture {
+        geometry: verified.geometry(),
+        programs,
+        states,
+        traces,
+    })
+}
+
+fn derived_v5_fixture_program(
+    fixture: &DerivedV5SequenceFixture,
+    index: usize,
+) -> Result<&ExecutionGeometryRegionEffectProgram, String> {
+    fixture
+        .programs
+        .get(index)
+        .ok_or_else(|| format!("v5 fixture program {index} missing"))
+}
+
+fn derived_v5_fixture_state(
+    fixture: &DerivedV5SequenceFixture,
+    index: usize,
+) -> Result<&ProfileMachineState, String> {
+    fixture
+        .states
+        .get(index)
+        .ok_or_else(|| format!("v5 fixture state {index} missing"))
+}
+
+fn derived_v5_fixture_trace(
+    fixture: &DerivedV5SequenceFixture,
+    index: usize,
+) -> Result<ProfileStepTrace, String> {
+    fixture
+        .traces
+        .get(index)
+        .copied()
+        .ok_or_else(|| format!("v5 fixture trace {index} missing"))
+}
+
+fn admit_v5_continuation_fixture(
+    fixture: &DerivedV5SequenceFixture,
+) -> Result<ExecutionGeometryInterpreterContinuation, String> {
+    let initial = derived_v5_fixture_state(fixture, 0)?;
+    let final_program = derived_v5_fixture_program(fixture, 1)?;
+    let continuation = ExecutionGeometryInterpreterContinuation::new(
+        fixture.programs.clone(),
+        initial.clone(),
+    )
+    .map_err(|error| error.to_string())?;
+    let expected_exit = final_program
+        .exit_observation()
+        .ok_or_else(|| String::from("v5 continuation exit missing"))?;
+    let expected_outcome = RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 2,
+    };
+    if continuation.completed_steps() == 0
+        && continuation.remaining_steps() == 2
+        && continuation.expected_exit() == expected_exit
+        && continuation.expected_outcome() == expected_outcome
+        && continuation.state().geometry() == fixture.geometry
+    {
+        Ok(continuation)
+    } else {
+        Err(String::from("v5 continuation admission drifted"))
+    }
+}
+
+fn suspend_v5_continuation_fixture(
+    continuation: ExecutionGeometryInterpreterContinuation,
+    fixture: &DerivedV5SequenceFixture,
+) -> Result<ExecutionGeometryInterpreterContinuation, String> {
+    let zero_outcome = continuation
+        .clone()
+        .execute_with_budget(0)
+        .map_err(|error| error.to_string())?;
+    let ExecutionGeometryContinuationBudgetOutcome::Suspended(zero_suspension) =
+        zero_outcome
+    else {
+        return Err(String::from("zero v5 budget completed work"));
+    };
+    if zero_suspension != continuation {
+        return Err(String::from("zero v5 budget changed continuation"));
+    }
+    let slice = continuation
+        .execute_with_budget(1)
+        .map_err(|error| error.to_string())?;
+    let ExecutionGeometryContinuationBudgetOutcome::Suspended(suspended) =
+        slice
+    else {
+        return Err(String::from("one-step v5 budget completed sequence"));
+    };
+    let expected_state = derived_v5_fixture_state(fixture, 1)?;
+    let expected_suffix = fixture
+        .programs
+        .get(1..)
+        .ok_or_else(|| String::from("v5 fixture suffix missing"))?;
+    if suspended.completed_steps() == 1
+        && suspended.resume_index() == 1
+        && suspended.remaining_steps() == 1
+        && suspended.remaining_programs() == expected_suffix
+        && suspended.state() == expected_state
+        && suspended.state().geometry() == fixture.geometry
+    {
+        Ok(suspended)
+    } else {
+        Err(String::from("v5 suspension lost exact suffix state"))
+    }
+}
+
+#[test]
+fn explicit_geometry_continuation_rejects_mixed_opaque_geometry()
+-> Result<(), String> {
+    let n10 = derived_v5_input_halt_sequence_fixture(10, vec![0xa5])?;
+    let n11 = derived_v5_input_halt_sequence_fixture(11, vec![0xa5])?;
+    let first = derived_v5_fixture_program(&n10, 0)?.clone();
+    let second = derived_v5_fixture_program(&n11, 1)?.clone();
+    let initial = derived_v5_fixture_state(&n10, 0)?.clone();
+    let observed = ExecutionGeometryInterpreterContinuation::new(
+        vec![first, second],
+        initial,
+    );
+    if observed
+        == Err(ExecutionGeometryContinuationAdmissionError::GeometryDrift {
+            index: 1,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 continuation admitted mixed geometry"))
+    }
+}
+
+#[test]
+fn explicit_geometry_continuation_suspends_and_resumes_opaque_geometry()
+-> Result<(), String> {
+    for input in [vec![0xa5], Vec::new()] {
+        let fixture = derived_v5_input_halt_sequence_fixture(10, input)?;
+        let continuation = admit_v5_continuation_fixture(&fixture)?;
+        let suspended =
+            suspend_v5_continuation_fixture(continuation, &fixture)?;
+        let completion =
+            suspended.execute().map_err(|error| error.to_string())?;
+        let expected_state = derived_v5_fixture_state(&fixture, 2)?;
+        let expected_outcome = RunOutcome::Terminated {
+            reason: Termination::HaltInstruction,
+            steps: 2,
+        };
+        if completion.outcome() != expected_outcome
+            || completion.programs() != fixture.programs
+            || completion.state() != expected_state
+            || completion.state().geometry() != fixture.geometry
+        {
+            return Err(String::from("v5 continuation resume drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn explicit_geometry_continuation_stops_at_forged_later_step()
+-> Result<(), String> {
+    let fixture = derived_v5_input_halt_sequence_fixture(10, vec![0xa5])?;
+    let mut forged_trace = derived_v5_fixture_trace(&fixture, 1)?;
+    forged_trace.output = Some(0x55);
+    let forged = ExecutionGeometryRegionEffectProgram::from_profile_step_trace(
+        &forged_trace,
+    )
+    .map_err(|error| format!("forged continuation projection: {error:?}"))?;
+    let first = derived_v5_fixture_program(&fixture, 0)?.clone();
+    let initial = derived_v5_fixture_state(&fixture, 0)?.clone();
+    let continuation = ExecutionGeometryInterpreterContinuation::new(
+        vec![first, forged],
+        initial,
+    )
+    .map_err(|error| error.to_string())?;
+    let Err(failure) = continuation.execute() else {
+        return Err(String::from("forged later v5 step replayed"));
+    };
+    let expected_state = derived_v5_fixture_state(&fixture, 1)?;
+    if failure.index() == 1
+        && failure.cause()
+            == ExecutionGeometryContinuationExecutionCause::Step(
+                ExecutionGeometryHandoffExecutionCause::ProgramMismatch,
+            )
+        && failure.state() == expected_state
+        && failure.programs().len() == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 later-step failure lost admitted prefix"))
     }
 }
 

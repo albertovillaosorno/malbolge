@@ -501,9 +501,25 @@ must agree before mutation.
 Execution uses the normative `ProfileMachine` and reprojects the complete trace
 back to v5. It publishes the final checkpoint only when that program is
 byte-structurally equal. A forged v5 effect returns the untouched entry
-checkpoint. This primitive grants no native key, lowering, cache, or multistep
-continuation authority, and the existing native interpreter handoff continues to
-reject derived checkpoint geometry.
+checkpoint. This one-step primitive grants no native key, lowering, or cache
+authority, and the existing native interpreter handoff continues to reject
+derived checkpoint geometry.
+
+`ExecutionGeometryInterpreterContinuation` composes those one-step replay
+boundaries without changing the trust model. Construction rejects empty,
+profile-mixed, geometry-mixed, discontinuous, over-capacity, or
+terminated-prefix
+v5 sequences and binds the first step to the supplied opaque checkpoint. Each
+executed step rechecks checkpoint admission and exact normative reprojection.
+
+A positive budget may suspend after any admitted prefix while retaining the
+exact
+checkpoint, absolute resume index, and v5 suffix; zero budget is a no-op. Final
+completion preserves the original bounded outcome. A forged later step fails at
+its exact index and returns the checkpoint after the last successful replay.
+Tests cover byte and EOF input through N10 input-then-halt, N10/N11 geometry
+mixing, suspension/resume, zero budget, and later-step forgery; no native
+artifact identity or execution authority is introduced.
 
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine

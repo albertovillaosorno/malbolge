@@ -119,9 +119,10 @@ profile requirement remains current canonical N15. The v5 wrapper is a separate
 portable type: native cache, lowering, direct templates, invocation, and
 legacy native-continuation APIs still consume only `RegionEffectProgram`.
 
-A separate one-step geometry interpreter handoff may consume v5 only when a
-validated checkpoint supplies the opaque geometry token and normative replay
-reprojects an exact v5 match. The schema itself therefore never gains execution
+A separate geometry interpreter path may consume one or more ordered v5 steps
+only when a validated checkpoint supplies the opaque geometry token. Every
+executed step requires normative replay and exact v5 reprojection, including
+after suspension/resume. The schema itself therefore never gains execution
 authority.
 
 Native cache/artifact identity accepts canonical v3 and v4 bytes, preserving the

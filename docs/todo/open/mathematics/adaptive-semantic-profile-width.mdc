@@ -586,15 +586,22 @@ transfers, verification, and other separately measured costs.
   carries no hidden input-policy authority, and native/cache/legacy-continuation
   APIs still consume only `RegionEffectProgram`, so v5 transport does not grant
   direct-native execution authority.
-- A separate one-step geometry interpreter handoff now admits v5 only beside a
-  validated checkpoint: canonical profile, visible geometry, entry observation,
-  capacity, and live-ins must agree, then normative `ProfileMachine` replay must
-  reproject the exact same v5 program. A forged effect returns the untouched
-  entry checkpoint, while a successful N10 QP halt preserves the original opaque
+- The separate geometry interpreter path admits v5 only beside a validated
+  checkpoint: canonical profile, visible geometry, entry observation, capacity,
+  and live-ins must agree, then normative `ProfileMachine` replay must reproject
+  the exact same v5 program. A forged one-step effect returns the untouched
+  entry
+  checkpoint, while a successful N10 QP halt preserves the original opaque
   geometry token. N10 v5 paired with an independently verified N11 checkpoint
-  rejects before execution. The remaining boundary is multistep geometry
-  continuation plus independently verified native admission; legacy
-  `NativeInterpreterContinuation` remains canonical-only.
+  rejects before execution.
+- `ExecutionGeometryInterpreterContinuation` now composes ordered v5 steps while
+  preserving that same authority model. N10 `uP` replay suspends after one step
+  and resumes exactly for both byte and EOF input, including zero-budget no-op
+  behavior. A mixed N10/N11 sequence rejects before execution, while a forged
+  second step commits the valid first prefix and fails at index 1 with that
+  exact
+  checkpoint retained. The remaining boundary is independently verified native
+  admission; legacy `NativeInterpreterContinuation` remains canonical-only.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and
