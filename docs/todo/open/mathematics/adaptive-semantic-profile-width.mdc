@@ -679,8 +679,14 @@ transfers, verification, and other separately measured costs.
 - An optional pair owner now coordinates loading and release. Halt-load failure
   rolls back the already-ready no-op and retains it for cleanup retry if that
   release fails. Final release attempts both mappings even when one fails, and
-  retry ownership keeps each unreleased ready executable independently. Pair
-  caching/lease reuse and broader state-changing templates remain open.
+  retry ownership keeps each unreleased ready executable independently.
+- A v5-only single-resident lease cache now reuses that pair behind cloneable
+  `Arc` leases using complete admitted sequence equality, not legacy canonical
+  keys. Exact hits perform no mapping work, N10/N11 identity mismatch rejects
+  without eviction, live leases block release, failed loads publish nothing,
+  and cleanup failure transfers retryable executable ownership out of the
+  cache. Multi-resident eviction/replacement and broader state-changing
+  templates remain open.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

@@ -49,6 +49,8 @@ pub mod geometry_interpreter_handoff;
 pub mod geometry_native_admission;
 #[path = "tier/geometry_noop.rs"]
 pub mod geometry_native_no_operation;
+#[path = "tier/geometry_cache.rs"]
+pub mod geometry_native_pair_cache;
 #[path = "tier/geometry_seq.rs"]
 pub mod geometry_native_sequence;
 #[path = "tier/handoff.rs"]

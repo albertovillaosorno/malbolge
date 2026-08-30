@@ -223,10 +223,10 @@ pub struct BoundExecutionGeometryNativeNoopHaltSequence<'sequence, 'executable>
 
 /// Owned ready no-operation/halt pair bound to one admitted sequence.
 #[derive(Debug)]
-pub struct LoadedExecutionGeometryNativeNoopHaltSequence<'sequence> {
+pub struct LoadedExecutionGeometryNativeNoopHaltSequence {
     halt: ReadyExecutionGeometryNativeExecutable,
     no_operation: ReadyExecutionGeometryNativeExecutable,
-    sequence: &'sequence ExecutionGeometryNativeNoopHaltSequence,
+    sequence: ExecutionGeometryNativeNoopHaltSequence,
 }
 
 /// Result of executing one prebound geometry-native pair.
@@ -236,8 +236,8 @@ pub type ExecutionGeometryNativeNoopHaltLoadedResult<RunnerError> = Result<
 >;
 
 /// Result of loading both exact ready executables as one owned pair.
-pub type GeometryNativeNoopHaltPairLoadResult<'sequence, MemoryError> = Result<
-    LoadedExecutionGeometryNativeNoopHaltSequence<'sequence>,
+pub type GeometryNativeNoopHaltPairLoadResult<MemoryError> = Result<
+    LoadedExecutionGeometryNativeNoopHaltSequence,
     Box<ExecutionGeometryNativeNoopHaltPairLoadFailure<MemoryError>>,
 >;
 
@@ -581,7 +581,7 @@ impl<MemoryError>
     }
 }
 
-impl LoadedExecutionGeometryNativeNoopHaltSequence<'_> {
+impl LoadedExecutionGeometryNativeNoopHaltSequence {
     /// Executes through the owned synchronized pair without mapping operations.
     ///
     /// # Errors
@@ -598,7 +598,7 @@ impl LoadedExecutionGeometryNativeNoopHaltSequence<'_> {
         let bound = BoundExecutionGeometryNativeNoopHaltSequence {
             halt: &self.halt,
             no_operation: &self.no_operation,
-            sequence: self.sequence,
+            sequence: &self.sequence,
         };
         bound.execute(runner, buffers)
     }
@@ -641,6 +641,12 @@ impl LoadedExecutionGeometryNativeNoopHaltSequence<'_> {
             .err()
             .map(Box::new);
         pair_release_result(halt_failure, no_operation_failure)
+    }
+
+    /// Returns the exact immutable admission owned beside the ready pair.
+    #[must_use]
+    pub const fn sequence(&self) -> &ExecutionGeometryNativeNoopHaltSequence {
+        &self.sequence
     }
 }
 
@@ -777,10 +783,10 @@ impl ExecutionGeometryNativeNoopHaltSequence {
     ///
     /// Returns [`ExecutionGeometryNativeNoopHaltPairLoadFailure`] for either
     /// load phase and any retryable partial-load cleanup ownership.
-    pub fn load_pair<'sequence, Adapter>(
-        &'sequence self,
+    pub fn load_pair<Adapter>(
+        &self,
         adapter: &mut Adapter,
-    ) -> GeometryNativeNoopHaltPairLoadResult<'sequence, Adapter::Error>
+    ) -> GeometryNativeNoopHaltPairLoadResult<Adapter::Error>
     where
         Adapter: NativeExecutableMemoryAdapter,
     {
@@ -819,7 +825,7 @@ impl ExecutionGeometryNativeNoopHaltSequence {
         Ok(LoadedExecutionGeometryNativeNoopHaltSequence {
             halt,
             no_operation,
-            sequence: self,
+            sequence: self.clone(),
         })
     }
 

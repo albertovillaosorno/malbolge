@@ -697,6 +697,23 @@ still-owned ready executable and can retry only those failures. Four cases cover
 successful reuse/release, partial-load cleanup, retryable partial cleanup, and
 dual release failure.
 
+`geometry_cache.rs` adds the first v5-only lease cache without reusing canonical
+sequence keys. It owns at most one `Arc`-backed loaded no-operation/halt
+pair and compares the complete admitted
+`ExecutionGeometryNativeNoopHaltSequence` before
+every hit. The first acquisition loads both mappings, exact later acquisitions
+clone the same resident allocation, and a different N10/N11 identity rejects
+without eviction or adapter work.
+
+Resident cleanup is explicit because the adapter is caller-owned. Live leases
+return a counted `Leased` disposition without release attempts; after all leases
+are dropped, cleanup consumes the unique `Arc` and releases the pair. Release
+failure empties cache authority and transfers both retryable mapping owners to
+the caller. Failed pair load never publishes resident state.
+
+Five cases cover insert/hit reuse, lease blocking, identity rejection,
+failed-load publication, and cleanup ownership transfer.
+
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine
 `NativeInterpreterHandoffSuspension` with the original continuation, cumulative
