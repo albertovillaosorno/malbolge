@@ -56,8 +56,10 @@ use crate::geometry_native_sequence::{
 pub enum GeometryNativeNoopHaltPairCacheDisposition {
     /// The exact sequence already owned resident mappings.
     Hit,
-    /// This acquisition loaded and published the resident pair.
+    /// This acquisition loaded and published an empty resident slot.
     Inserted,
+    /// An unleased different resident was released and replaced.
+    Replaced,
 }
 
 /// Failure while acquiring one exact resident v5 pair.
@@ -65,8 +67,17 @@ pub enum GeometryNativeNoopHaltPairCacheDisposition {
 pub enum GeometryNativeNoopHaltPairCacheAcquireFailure<MemoryError> {
     /// A different exact sequence already owns the single resident slot.
     IdentityOccupied,
+    /// Live leases prevent replacing a different resident identity.
+    Leased {
+        /// External resident owners that must be dropped first.
+        leases: usize,
+    },
     /// Loading the requested exact pair failed.
     Load(Box<ExecutionGeometryNativeNoopHaltPairLoadFailure<MemoryError>>),
+    /// Releasing the previous unleased resident failed during replacement.
+    Release(
+        Box<ExecutionGeometryNativeNoopHaltPairReleaseFailure<MemoryError>>,
+    ),
 }
 
 /// Lease plus whether its mappings were inserted or reused.
@@ -122,8 +133,14 @@ impl<MemoryError: Display> Display
             Self::IdentityOccupied => {
                 f.write_str("different v5 pair identity already resident")
             },
+            Self::Leased { leases } => {
+                write!(f, "v5 pair replacement blocked by {leases} lease(s)")
+            },
             Self::Load(error) => {
                 write!(f, "v5 pair resident load failed: {error}")
+            },
+            Self::Release(error) => {
+                write!(f, "v5 pair replacement release failed: {error}")
             },
         }
     }
@@ -221,11 +238,11 @@ impl GeometryNativeNoopHaltPairLeaseCache {
         let loaded = sequence.load_pair(adapter).map_err(|error| {
             Box::new(GeometryNativeNoopHaltPairCacheAcquireFailure::Load(error))
         })?;
-        let resident = Arc::new(loaded);
+        let replacement_resident = Arc::new(loaded);
         let lease = GeometryNativeNoopHaltPairLease {
-            resident: Arc::clone(&resident),
+            resident: Arc::clone(&replacement_resident),
         };
-        self.resident = Some(resident);
+        self.resident = Some(replacement_resident);
         Ok(GeometryNativeNoopHaltPairCacheAcquisition {
             disposition: GeometryNativeNoopHaltPairCacheDisposition::Inserted,
             lease,
@@ -284,6 +301,77 @@ impl GeometryNativeNoopHaltPairLeaseCache {
                 })
             },
         }
+    }
+
+    /// Replaces a different resident only after every external lease is gone.
+    ///
+    /// Equal identity delegates to ordinary hit acquisition. Different identity
+    /// with live leases rejects before adapter work. For an unleased different
+    /// resident, old mappings release completely before the new pair is loaded;
+    /// any release or load failure leaves the cache empty and transfers exact
+    /// cleanup ownership through the returned failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns lease blockage, previous-resident cleanup ownership, or new pair
+    /// load failure without publishing partial replacement state.
+    pub fn replace_if_unleased<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        sequence: &ExecutionGeometryNativeNoopHaltSequence,
+    ) -> GeometryNativeNoopHaltPairCacheAcquireResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let Some(current_resident) = self.resident.as_ref() else {
+            return self.ensure(adapter, sequence);
+        };
+        if current_resident.sequence() == sequence {
+            return self.ensure(adapter, sequence);
+        }
+        let current_leases =
+            Arc::strong_count(current_resident).saturating_sub(1);
+        if current_leases > 0 {
+            return Err(Box::new(
+                GeometryNativeNoopHaltPairCacheAcquireFailure::Leased {
+                    leases: current_leases,
+                },
+            ));
+        }
+        match self.release_if_unleased(adapter) {
+            Ok(
+                GeometryNativeNoopHaltPairCacheRelease::Released
+                | GeometryNativeNoopHaltPairCacheRelease::Missing,
+            ) => {},
+            Ok(GeometryNativeNoopHaltPairCacheRelease::Leased {
+                leases: blocked_leases,
+            }) => {
+                return Err(Box::new(
+                    GeometryNativeNoopHaltPairCacheAcquireFailure::Leased {
+                        leases: blocked_leases,
+                    },
+                ));
+            },
+            Err(error) => {
+                return Err(Box::new(
+                    GeometryNativeNoopHaltPairCacheAcquireFailure::Release(
+                        error,
+                    ),
+                ));
+            },
+        }
+        let loaded = sequence.load_pair(adapter).map_err(|error| {
+            Box::new(GeometryNativeNoopHaltPairCacheAcquireFailure::Load(error))
+        })?;
+        let replacement_resident = Arc::new(loaded);
+        let lease = GeometryNativeNoopHaltPairLease {
+            resident: Arc::clone(&replacement_resident),
+        };
+        self.resident = Some(replacement_resident);
+        Ok(GeometryNativeNoopHaltPairCacheAcquisition {
+            disposition: GeometryNativeNoopHaltPairCacheDisposition::Replaced,
+            lease,
+        })
     }
 
     /// Returns the number of external resident leases.

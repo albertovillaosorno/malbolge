@@ -12953,6 +12953,156 @@ fn geometry_native_noop_halt_loaded_rejects_mixed_ready_before_execution()
 }
 
 #[test]
+fn geometry_native_noop_halt_pair_cache_replace_blocks_live_lease()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let n11_fixture = derived_v5_noop_halt_sequence_fixture(11)?;
+    let n10 = geometry_native_noop_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_noop_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(128)?,
+        native_executable_address(0x2_e000)?,
+    );
+    let mut cache = GeometryNativeNoopHaltPairLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &n10)
+        .map_err(|error| format!("v5 replace N10 acquire: {error}"))?
+        .into_lease();
+    let Err(failure) = cache.replace_if_unleased(&mut adapter, &n11) else {
+        return Err(String::from("v5 replacement ignored live lease"));
+    };
+    if !matches!(
+        *failure,
+        GeometryNativeNoopHaltPairCacheAcquireFailure::Leased { leases: 1 }
+    ) || adapter.operations.len() != 8
+        || lease.sequence() != &n10
+    {
+        return Err(String::from("v5 live-lease replacement drifted"));
+    }
+    drop(lease);
+    cache
+        .release_if_unleased(&mut adapter)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 replace blocked cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_noop_halt_pair_cache_replace_publishes_new_identity()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let n11_fixture = derived_v5_noop_halt_sequence_fixture(11)?;
+    let n10 = geometry_native_noop_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_noop_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(129)?,
+        native_executable_address(0x2_f000)?,
+    );
+    let mut cache = GeometryNativeNoopHaltPairLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &n10)
+        .map_err(|error| format!("v5 replace first acquire: {error}"))?
+        .into_lease();
+    drop(first);
+    let replacement = cache
+        .replace_if_unleased(&mut adapter, &n11)
+        .map_err(|error| format!("v5 replace N11: {error}"))?;
+    if replacement.disposition()
+        != GeometryNativeNoopHaltPairCacheDisposition::Replaced
+        || replacement.lease().sequence() != &n11
+        || adapter.operations.len() != 18
+    {
+        return Err(String::from("v5 replacement publication drifted"));
+    }
+    drop(replacement);
+    let released = cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|error| format!("v5 replacement final cleanup: {error}"))?;
+    if released == GeometryNativeNoopHaltPairCacheRelease::Released
+        && adapter.operations.len() == 20
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 replacement final release drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_noop_halt_pair_cache_replace_release_failure_empties_cache()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let n11_fixture = derived_v5_noop_halt_sequence_fixture(11)?;
+    let n10 = geometry_native_noop_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_noop_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(130)?,
+        native_executable_address(0x3_0000)?,
+    )
+    .with_release_failures(2);
+    let mut cache = GeometryNativeNoopHaltPairLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &n10)
+        .map_err(|error| format!("v5 replace release acquire: {error}"))?
+        .into_lease();
+    drop(lease);
+    let Err(failure) = cache.replace_if_unleased(&mut adapter, &n11) else {
+        return Err(String::from("v5 replacement release failure ignored"));
+    };
+    let GeometryNativeNoopHaltPairCacheAcquireFailure::Release(cleanup) =
+        *failure
+    else {
+        return Err(String::from("v5 replacement release cause drifted"));
+    };
+    if cache.has_resident()
+        || cleanup.halt_failure().is_none()
+        || cleanup.no_operation_failure().is_none()
+        || adapter.operations.len() != 10
+    {
+        return Err(String::from("v5 replacement release ownership drifted"));
+    }
+    cleanup
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 replacement release retry: {error}"))
+}
+
+#[test]
+fn geometry_native_noop_halt_pair_cache_replace_load_failure_leaves_empty()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let n11_fixture = derived_v5_noop_halt_sequence_fixture(11)?;
+    let n10 = geometry_native_noop_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_noop_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(131)?,
+        native_executable_address(0x3_1000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 3);
+    let mut cache = GeometryNativeNoopHaltPairLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &n10)
+        .map_err(|error| format!("v5 replace load acquire: {error}"))?
+        .into_lease();
+    drop(lease);
+    let Err(failure) = cache.replace_if_unleased(&mut adapter, &n11) else {
+        return Err(String::from("v5 replacement load failure ignored"));
+    };
+    let load_failed = matches!(
+        *failure,
+        GeometryNativeNoopHaltPairCacheAcquireFailure::Load(error)
+            if matches!(
+                *error,
+                ExecutionGeometryNativeNoopHaltPairLoadFailure::NoOperation(_)
+            )
+    );
+    if load_failed && !cache.has_resident() && adapter.operations.len() == 11 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v5 replacement load failure publication drifted",
+        ))
+    }
+}
+
+#[test]
 fn geometry_native_noop_halt_pair_cache_insert_hit_reuses_resident()
 -> Result<(), String> {
     let fixture = derived_v5_noop_halt_sequence_fixture(10)?;

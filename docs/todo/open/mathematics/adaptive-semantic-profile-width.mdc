@@ -685,8 +685,13 @@ transfers, verification, and other separately measured costs.
   keys. Exact hits perform no mapping work, N10/N11 identity mismatch rejects
   without eviction, live leases block release, failed loads publish nothing,
   and cleanup failure transfers retryable executable ownership out of the
-  cache. Multi-resident eviction/replacement and broader state-changing
-  templates remain open.
+  cache.
+- The single-resident cache can now replace a different exact identity only
+  after every lease is gone. Replacement releases the old pair completely
+  before loading the new one; release or new-load failure leaves no resident
+  authority and transfers exact retry ownership. N10-to-N11 replacement is
+  therefore explicit and fail-closed. Multi-resident eviction and broader
+  state-changing templates remain open.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

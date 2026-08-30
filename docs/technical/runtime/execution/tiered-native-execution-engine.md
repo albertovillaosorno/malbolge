@@ -714,6 +714,17 @@ the caller. Failed pair load never publishes resident state.
 Five cases cover insert/hit reuse, lease blocking, identity rejection,
 failed-load publication, and cleanup ownership transfer.
 
+`replace_if_unleased()` adds an explicit single-resident identity transition.
+Equal identity remains an ordinary hit. A different identity with any live lease
+fails before adapter work; once unleased, the old pair must release completely
+before the requested pair can load and publish a `Replaced` acquisition.
+
+Replacement failure never restores stale cache authority. Old-pair release
+failure transfers its exact cleanup owners and leaves the slot empty; if old
+release succeeds but new loading fails, the slot likewise remains empty. Real
+N10-to-N11 tests cover lease blockage, successful replacement, old-release
+failure, and new-load failure.
+
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine
 `NativeInterpreterHandoffSuspension` with the original continuation, cumulative
