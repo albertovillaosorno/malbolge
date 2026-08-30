@@ -248,7 +248,9 @@ use geometry_native_no_operation::{
 use geometry_native_sequence::{
     ExecutionGeometryNativeNoopHaltAdmissionError,
     ExecutionGeometryNativeNoopHaltEvidence,
+    ExecutionGeometryNativeNoopHaltExecutableBindingError,
     ExecutionGeometryNativeNoopHaltFailureCause,
+    ExecutionGeometryNativeNoopHaltLoadedFailureCause as LoadedNoopHaltCause,
     ExecutionGeometryNativeNoopHaltOutcome,
     ExecutionGeometryNativeNoopHaltSequence,
 };
@@ -519,6 +521,10 @@ type GeometryNativeAdmissionFixture = (
 type GeometryNativeNoOperationAdmissionFixture = (
     ExecutionGeometryNativeNoOperationAdmission,
     malbolge::ProfileExecutionGeometry,
+);
+type GeometryNativeNoopHaltReadyPair = (
+    ReadyExecutionGeometryNativeExecutable,
+    ReadyExecutionGeometryNativeExecutable,
 );
 
 struct GeometryNativeNoOperationRunnerFixture {
@@ -12797,6 +12803,23 @@ fn geometry_native_noop_halt_sequence(
         .map_err(|error| error.to_string())
 }
 
+fn load_geometry_native_noop_halt_pair(
+    adapter: &mut FakeNativeExecutableAdapter,
+    sequence: &ExecutionGeometryNativeNoopHaltSequence,
+) -> Result<GeometryNativeNoopHaltReadyPair, String> {
+    let no_operation = load_execution_geometry_native_executable(
+        adapter,
+        sequence.no_operation().load_image(),
+    )
+    .map_err(|error| format!("v5 reusable no-op load: {error}"))?;
+    let halt = load_execution_geometry_native_executable(
+        adapter,
+        sequence.halt().load_image(),
+    )
+    .map_err(|error| format!("v5 reusable halt load: {error}"))?;
+    Ok((no_operation, halt))
+}
+
 fn geometry_native_no_operation_admission_fixture(
     word_trits: u8,
 ) -> Result<GeometryNativeNoOperationAdmissionFixture, String> {
@@ -12882,6 +12905,163 @@ fn geometry_native_runner_fixture(
         geometry,
         ready,
     })
+}
+
+#[test]
+fn geometry_native_noop_halt_loaded_rejects_mixed_ready_before_execution()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let n11_fixture = derived_v5_noop_halt_sequence_fixture(11)?;
+    let n10 = geometry_native_noop_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_noop_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(116)?,
+        native_executable_address(0x2_2000)?,
+    );
+    let no_operation = load_execution_geometry_native_executable(
+        &mut adapter,
+        n10.no_operation().load_image(),
+    )
+    .map_err(|error| format!("v5 loaded N10 no-op: {error}"))?;
+    let halt = load_execution_geometry_native_executable(
+        &mut adapter,
+        n11.halt().load_image(),
+    )
+    .map_err(|error| format!("v5 loaded N11 halt: {error}"))?;
+    let rejected = matches!(
+        n10.bind_executables(&no_operation, &halt),
+        Err(ExecutionGeometryNativeNoopHaltExecutableBindingError::Halt)
+    );
+    release_execution_geometry_native_executable(&mut adapter, no_operation)
+        .map_err(|error| format!("v5 loaded N10 no-op release: {error}"))?;
+    release_execution_geometry_native_executable(&mut adapter, halt)
+        .map_err(|error| format!("v5 loaded N11 halt release: {error}"))?;
+    if rejected {
+        Ok(())
+    } else {
+        Err(String::from("v5 mixed ready pair was prebound"))
+    }
+}
+
+#[test]
+fn geometry_native_noop_halt_loaded_reuses_two_ready_executables()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_noop_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 loaded initial state missing"))?;
+    let final_state = fixture
+        .states
+        .get(2)
+        .ok_or_else(|| String::from("v5 loaded final state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(118)?,
+        native_executable_address(0x2_4000)?,
+    );
+    let (no_operation, halt) =
+        load_geometry_native_noop_halt_pair(&mut adapter, &sequence)?;
+    {
+        let bound = sequence
+            .bind_executables(&no_operation, &halt)
+            .map_err(|error| format!("v5 reusable bind: {error}"))?;
+        let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::Applied,
+        ]);
+        for _iteration in 0usize..2usize {
+            let mut memory = initial.memory().to_vec();
+            let input = initial.io().input().to_vec();
+            let mut output = initial.io().output().to_vec();
+            let outcome = bound
+                .execute(
+                    &mut runner,
+                    NativeRegionBuffers::new(&mut memory, &input, &mut output),
+                )
+                .map_err(|error| format!("v5 reusable execute: {error}"))?;
+            if outcome.state() != final_state || memory != final_state.memory()
+            {
+                return Err(String::from("v5 loaded reuse result drifted"));
+            }
+        }
+        if runner.calls != 4 || adapter.operations.len() != 8 {
+            return Err(String::from("v5 loaded reuse remapped executables"));
+        }
+    }
+    release_execution_geometry_native_executable(&mut adapter, no_operation)
+        .map_err(|error| format!("v5 reusable no-op release: {error}"))?;
+    release_execution_geometry_native_executable(&mut adapter, halt)
+        .map_err(|error| format!("v5 reusable halt release: {error}"))?;
+    if adapter.operations.len() == 10 {
+        Ok(())
+    } else {
+        Err(String::from("v5 reusable releases drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_noop_halt_loaded_late_failure_retains_prefix()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_noop_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 loaded initial state missing"))?;
+    let prefix = fixture
+        .states
+        .get(1)
+        .ok_or_else(|| String::from("v5 loaded prefix state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(117)?,
+        native_executable_address(0x2_3000)?,
+    );
+    let no_operation = load_execution_geometry_native_executable(
+        &mut adapter,
+        sequence.no_operation().load_image(),
+    )
+    .map_err(|error| format!("v5 loaded late no-op: {error}"))?;
+    let halt = load_execution_geometry_native_executable(
+        &mut adapter,
+        sequence.halt().load_image(),
+    )
+    .map_err(|error| format!("v5 loaded late halt: {error}"))?;
+    {
+        let bound = sequence
+            .bind_executables(&no_operation, &halt)
+            .map_err(|error| format!("v5 loaded late bind: {error}"))?;
+        let mut memory = initial.memory().to_vec();
+        let input = initial.io().input().to_vec();
+        let mut output = initial.io().output().to_vec();
+        let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+            FakeNativeRunnerBehavior::Applied,
+            FakeNativeRunnerBehavior::FailureAfterMutation,
+        ]);
+        let Err(failure) = bound.execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ) else {
+            return Err(String::from("v5 loaded late failure was ignored"));
+        };
+        if failure.index() != 1
+            || failure.state() != prefix
+            || memory != prefix.memory()
+            || !matches!(
+                failure.cause(),
+                LoadedNoopHaltCause::HaltExecution(_error,)
+            )
+            || adapter.operations.len() != 8
+        {
+            return Err(String::from("v5 loaded late failure lost prefix"));
+        }
+    }
+    release_execution_geometry_native_executable(&mut adapter, no_operation)
+        .map_err(|error| format!("v5 loaded late no-op release: {error}"))?;
+    release_execution_geometry_native_executable(&mut adapter, halt)
+        .map_err(|error| format!("v5 loaded late halt release: {error}"))
 }
 
 #[test]

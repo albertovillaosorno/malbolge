@@ -42,22 +42,36 @@ use malbolge::{ExecutionGeometryRegionEffectProgram, ProfileMachineState};
 use crate::execution_native::{
     ExecutionGeometryNativeRunner, NativeExecutableMemoryAdapter,
     NativeRegionBuffers, NativeRegionInvocationOutcome,
+    ReadyExecutionGeometryNativeExecutable,
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     VerifiedExecutionGeometryNoOperationNativeObjectArtifact,
 };
 use crate::geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltAdmission,
     ExecutionGeometryNativeInitialHaltAdmissionError,
+    ExecutionGeometryNativeInitialHaltBindingError,
+    ExecutionGeometryNativeInitialHaltCompletion,
+    ExecutionGeometryNativeInitialHaltExecutionError,
+    ExecutionGeometryNativeInitialHaltPreparationError,
     ExecutionGeometryNativeInitialHaltTransactionFailure,
 };
 use crate::geometry_native_no_operation::{
     ExecutionGeometryNativeNoOperationAdmission,
     ExecutionGeometryNativeNoOperationAdmissionError,
+    ExecutionGeometryNativeNoOperationBindingError,
+    ExecutionGeometryNativeNoOperationCompletion,
+    ExecutionGeometryNativeNoOperationExecutionError,
+    ExecutionGeometryNativeNoOperationPreparationError,
     ExecutionGeometryNativeNoOperationTransactionFailure,
 };
 
 type VerifiedNoOperationArtifact =
     VerifiedExecutionGeometryNoOperationNativeObjectArtifact;
+
+type LoadedStepResult<Completion, RunnerError> = Result<
+    Completion,
+    Box<ExecutionGeometryNativeNoopHaltLoadedFailure<RunnerError>>,
+>;
 
 /// Failure while admitting the exact two-step v5 native sequence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -66,6 +80,44 @@ pub enum ExecutionGeometryNativeNoopHaltAdmissionError {
     Halt(ExecutionGeometryNativeInitialHaltAdmissionError),
     /// First no-operation could not bind to the entry checkpoint.
     NoOperation(ExecutionGeometryNativeNoOperationAdmissionError),
+}
+
+/// Failure while prebinding both synchronized executables to the sequence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeNoopHaltExecutableBindingError {
+    /// Ready halt image differs from the admitted halt image.
+    Halt,
+    /// Ready no-operation image differs from the admitted no-operation image.
+    NoOperation,
+}
+
+/// Failure cause while executing a prebound two-step native sequence.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeNoopHaltLoadedFailureCause<RunnerError> {
+    /// Final halt executable unexpectedly failed exact binding.
+    HaltBinding(ExecutionGeometryNativeInitialHaltBindingError),
+    /// Final halt runner/completion failed.
+    HaltExecution(
+        Box<ExecutionGeometryNativeInitialHaltExecutionError<RunnerError>>,
+    ),
+    /// Final halt buffer preparation failed.
+    HaltPreparation(ExecutionGeometryNativeInitialHaltPreparationError),
+    /// First no-operation executable unexpectedly failed exact binding.
+    NoOperationBinding(ExecutionGeometryNativeNoOperationBindingError),
+    /// First no-operation runner/completion failed.
+    NoOperationExecution(
+        Box<ExecutionGeometryNativeNoOperationExecutionError<RunnerError>>,
+    ),
+    /// First no-operation buffer preparation failed.
+    NoOperationPreparation(ExecutionGeometryNativeNoOperationPreparationError),
+}
+
+/// Indexed failure from a prebound sequence retaining last committed state.
+#[derive(Debug, Eq, PartialEq)]
+pub struct ExecutionGeometryNativeNoopHaltLoadedFailure<RunnerError> {
+    cause: ExecutionGeometryNativeNoopHaltLoadedFailureCause<RunnerError>,
+    index: usize,
+    state: ProfileMachineState,
 }
 
 /// Primary failure from one indexed step of the two-step native sequence.
@@ -130,6 +182,21 @@ pub struct ExecutionGeometryNativeNoopHaltSequence {
     no_operation: ExecutionGeometryNativeNoOperationAdmission,
 }
 
+/// Two exact synchronized executables prebound before caller-state mutation.
+#[derive(Debug)]
+pub struct BoundExecutionGeometryNativeNoopHaltSequence<'sequence, 'executable>
+{
+    halt: &'executable ReadyExecutionGeometryNativeExecutable,
+    no_operation: &'executable ReadyExecutionGeometryNativeExecutable,
+    sequence: &'sequence ExecutionGeometryNativeNoopHaltSequence,
+}
+
+/// Result of executing one prebound geometry-native pair.
+pub type ExecutionGeometryNativeNoopHaltLoadedResult<RunnerError> = Result<
+    ExecutionGeometryNativeNoopHaltOutcome,
+    Box<ExecutionGeometryNativeNoopHaltLoadedFailure<RunnerError>>,
+>;
+
 /// Result of one concrete adapter/runner two-step transaction.
 pub type ExecutionGeometryNativeNoopHaltAdapterResult<MemoryAdapter, Runner> =
     Result<
@@ -151,6 +218,35 @@ impl Display for ExecutionGeometryNativeNoopHaltAdmissionError {
             Self::NoOperation(error) => {
                 write!(f, "v5 sequence no-operation admission: {error}")
             },
+        }
+    }
+}
+
+impl Display for ExecutionGeometryNativeNoopHaltExecutableBindingError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Halt => "v5 sequence halt executable identity differs",
+            Self::NoOperation => {
+                "v5 sequence no-operation executable identity differs"
+            },
+        })
+    }
+}
+
+impl<RunnerError: Display> Display
+    for ExecutionGeometryNativeNoopHaltLoadedFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        use ExecutionGeometryNativeNoopHaltLoadedFailureCause as Cause;
+
+        write!(f, "v5 loaded sequence step {} failed: ", self.index)?;
+        match &self.cause {
+            Cause::HaltBinding(error) => Display::fmt(error, f),
+            Cause::HaltExecution(error) => Display::fmt(error, f),
+            Cause::HaltPreparation(error) => Display::fmt(error, f),
+            Cause::NoOperationBinding(error) => Display::fmt(error, f),
+            Cause::NoOperationExecution(error) => Display::fmt(error, f),
+            Cause::NoOperationPreparation(error) => Display::fmt(error, f),
         }
     }
 }
@@ -203,6 +299,129 @@ impl<MemoryError, RunnerError>
     }
 }
 
+impl BoundExecutionGeometryNativeNoopHaltSequence<'_, '_> {
+    /// Executes the prebound pair without executable-memory adapter operations.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeNoopHaltLoadedFailure`] at the exact
+    /// failing step while retaining every earlier committed checkpoint.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> ExecutionGeometryNativeNoopHaltLoadedResult<Runner::Error>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        let (memory, input, output) = buffers.into_parts();
+        let no_operation = self.execute_no_operation(
+            runner,
+            NativeRegionBuffers::new(&mut *memory, input, &mut *output),
+        )?;
+        if no_operation.outcome() == NativeRegionInvocationOutcome::GuardMiss {
+            return Ok(ExecutionGeometryNativeNoopHaltOutcome::GuardMiss {
+                index: 0,
+                state: no_operation.state().clone(),
+            });
+        }
+        let halt = self.execute_halt(
+            runner,
+            NativeRegionBuffers::new(&mut *memory, input, &mut *output),
+        )?;
+        if halt.outcome() == NativeRegionInvocationOutcome::GuardMiss {
+            Ok(ExecutionGeometryNativeNoopHaltOutcome::GuardMiss {
+                index: 1,
+                state: halt.state().clone(),
+            })
+        } else {
+            Ok(ExecutionGeometryNativeNoopHaltOutcome::Completed(
+                halt.state().clone(),
+            ))
+        }
+    }
+
+    fn execute_halt<Runner>(
+        &self,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> LoadedStepResult<
+        ExecutionGeometryNativeInitialHaltCompletion,
+        Runner::Error,
+    >
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        use ExecutionGeometryNativeNoopHaltLoadedFailureCause as Cause;
+
+        let prepared =
+            self.sequence.halt.prepare(buffers).map_err(|error| {
+                Box::new(ExecutionGeometryNativeNoopHaltLoadedFailure {
+                    cause: Cause::HaltPreparation(error),
+                    index: 1,
+                    state: self.sequence.halt.checkpoint().clone(),
+                })
+            })?;
+        let bound = prepared.bind_executable(self.halt).map_err(|error| {
+            Box::new(ExecutionGeometryNativeNoopHaltLoadedFailure {
+                cause: Cause::HaltBinding(error),
+                index: 1,
+                state: self.sequence.halt.checkpoint().clone(),
+            })
+        })?;
+        bound.execute(runner).map_err(|error| {
+            Box::new(ExecutionGeometryNativeNoopHaltLoadedFailure {
+                cause: Cause::HaltExecution(error),
+                index: 1,
+                state: self.sequence.halt.checkpoint().clone(),
+            })
+        })
+    }
+
+    fn execute_no_operation<Runner>(
+        &self,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> LoadedStepResult<
+        ExecutionGeometryNativeNoOperationCompletion,
+        Runner::Error,
+    >
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        use ExecutionGeometryNativeNoopHaltLoadedFailureCause as Cause;
+
+        let prepared =
+            self.sequence
+                .no_operation
+                .prepare(buffers)
+                .map_err(|error| {
+                    Box::new(ExecutionGeometryNativeNoopHaltLoadedFailure {
+                        cause: Cause::NoOperationPreparation(error),
+                        index: 0,
+                        state: self.sequence.no_operation.checkpoint().clone(),
+                    })
+                })?;
+        let bound =
+            prepared
+                .bind_executable(self.no_operation)
+                .map_err(|error| {
+                    Box::new(ExecutionGeometryNativeNoopHaltLoadedFailure {
+                        cause: Cause::NoOperationBinding(error),
+                        index: 0,
+                        state: self.sequence.no_operation.checkpoint().clone(),
+                    })
+                })?;
+        bound.execute(runner).map_err(|error| {
+            Box::new(ExecutionGeometryNativeNoopHaltLoadedFailure {
+                cause: Cause::NoOperationExecution(error),
+                index: 0,
+                state: self.sequence.no_operation.checkpoint().clone(),
+            })
+        })
+    }
+}
+
 impl ExecutionGeometryNativeNoopHaltEvidence {
     /// Groups the exact two reviewed v5 programs and verified native artifacts.
     #[must_use]
@@ -221,6 +440,28 @@ impl ExecutionGeometryNativeNoopHaltEvidence {
     }
 }
 
+impl<RunnerError> ExecutionGeometryNativeNoopHaltLoadedFailure<RunnerError> {
+    /// Returns the exact prebound execution failure cause.
+    #[must_use]
+    pub const fn cause(
+        &self,
+    ) -> &ExecutionGeometryNativeNoopHaltLoadedFailureCause<RunnerError> {
+        &self.cause
+    }
+
+    /// Returns the zero-based step that failed.
+    #[must_use]
+    pub const fn index(&self) -> usize {
+        self.index
+    }
+
+    /// Returns the last fully committed opaque-geometry checkpoint.
+    #[must_use]
+    pub const fn state(&self) -> &ProfileMachineState {
+        &self.state
+    }
+}
+
 impl ExecutionGeometryNativeNoopHaltOutcome {
     /// Returns the completed or last committed opaque-geometry checkpoint.
     #[must_use]
@@ -232,6 +473,36 @@ impl ExecutionGeometryNativeNoopHaltOutcome {
 }
 
 impl ExecutionGeometryNativeNoopHaltSequence {
+    /// Prebinds both ready executables before any caller buffer can mutate.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeNoopHaltExecutableBindingError`] when
+    /// either synchronized image differs from its admitted step.
+    pub fn bind_executables<'sequence, 'executable>(
+        &'sequence self,
+        no_operation: &'executable ReadyExecutionGeometryNativeExecutable,
+        halt: &'executable ReadyExecutionGeometryNativeExecutable,
+    ) -> Result<
+        BoundExecutionGeometryNativeNoopHaltSequence<'sequence, 'executable>,
+        ExecutionGeometryNativeNoopHaltExecutableBindingError,
+    > {
+        if self.no_operation.load_image() != no_operation.image() {
+            use ExecutionGeometryNativeNoopHaltExecutableBindingError as Error;
+            return Err(Error::NoOperation);
+        }
+        if self.halt.load_image() != halt.image() {
+            return Err(
+                ExecutionGeometryNativeNoopHaltExecutableBindingError::Halt,
+            );
+        }
+        Ok(BoundExecutionGeometryNativeNoopHaltSequence {
+            halt,
+            no_operation,
+            sequence: self,
+        })
+    }
+
     /// Executes no-operation then halt with per-step load/call/release
     /// ownership.
     ///

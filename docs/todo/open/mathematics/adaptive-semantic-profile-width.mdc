@@ -672,7 +672,12 @@ transfers, verification, and other separately measured costs.
   plus Applied reaches the exact normative halt checkpoint; guard miss at step
   zero skips the suffix, while guard miss or runner failure at step one retains
   the committed no-op self-encryption and C/D advance as the last valid state.
-  Broader state-changing templates and reusable multistep loading remain open.
+- Externally loaded no-op/halt executables can now be prebound as one exact
+  pair before caller-state mutation. Mixed-geometry ready images reject before
+  step zero, and the bound pair can execute repeatedly without new mapping
+  operations while preserving indexed guard/failure prefix semantics. Mapping
+  ownership and final release remain caller-owned; pair-level cache/release
+  orchestration and broader state-changing templates remain open.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

@@ -674,6 +674,19 @@ the normative halted `DP` checkpoint.
 Five cases cover completion, both guard positions, late failure, and
 mixed-geometry admission.
 
+The same sequence can now prebind an externally loaded no-operation/halt pair
+before caller buffers are exposed. Both ready images must equal the two admitted
+load images, so a mixed N10/N11 ready pair rejects before the first no-operation
+can commit. The resulting bound sequence performs no executable-memory adapter
+operations and can be reused across independent caller buffers that equal the
+admitted entry checkpoint.
+
+Two repeated `DP` executions therefore reuse the same synchronized mappings
+while preserving exact native completion checks. A late runner failure still
+restores only the failing halt step and retains the committed no-operation
+prefix. Mapping ownership remains with the caller: loading, caching, and final
+release are intentionally outside the borrow-scoped bound sequence.
+
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine
 `NativeInterpreterHandoffSuspension` with the original continuation, cumulative
