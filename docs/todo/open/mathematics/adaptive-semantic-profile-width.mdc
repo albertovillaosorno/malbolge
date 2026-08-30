@@ -713,20 +713,20 @@ transfers, verification, and other separately measured costs.
   without eviction, failed loads publish nothing, and cleanup failure transfers
   retry ownership. Explicit replacement fully releases the old triple before
   loading a new identity and leaves the slot empty on either failure.
-- A full-path multi-resident LRU cache now accepts explicit nonzero entry-count
-  capacity. Exact hits refresh MRU order without adapter work; when full, the
-  least-recent resident without external leases is the only legal victim.
-  All-leased saturation rejects without side effects.
-- Victim release failure removes only that resident and transfers cleanup
-  ownership; post-eviction load failure leaves a reusable vacancy rather than
-  restoring stale authority. N10/N11/N12 tests cover recency, lease skipping,
-  saturation, isolation, and targeted release.
-- Full-path resident weight now comes from exact synchronized mapping reports,
-  not artifact/image byte estimates. Each triple reports mapped bytes plus three
-  live mappings; single/LRU leases expose the same weight and LRU usage sums
-  entries, mappings, and bytes with checked arithmetic. Oversized fake mappings
-  prove accounting follows actual admitted capacity. Byte-weighted eviction and
-  cross-template residency remain open.
+- A full-path multi-resident LRU cache now accepts a nonzero entry limit and an
+  optional exact mapped-byte limit. Exact hits refresh MRU order without adapter
+  work. Entry-only saturation still rejects before load/release side effects.
+- Full-path resident weight comes from synchronized mapping reports, not
+  artifact/image estimates. Byte-bounded misses load first to obtain exact
+  weight; an oversized candidate is released and rejected without publication.
+- Weighted admission can remove multiple unleased LRU residents until projected
+  published bytes fit. Leased residents are skipped, weighted saturation rolls
+  the candidate back, and failures report how many residents were already
+  removed. Victim/candidate cleanup ownership remains independently retryable.
+- N10/N11/N12 tests cover exact accounting, oversized rollback, cleanup retry,
+  multiple byte-driven evictions, leased-victim skipping, weighted saturation,
+  partial-eviction reporting, and eviction-release failure. Cross-template
+  residency, mapping-count limits, and limit reconfiguration remain open.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without
@@ -734,8 +734,8 @@ transfers, verification, and other separately measured costs.
   exact retry ownership. Explicit replacement releases the old pair completely
   before loading the new identity and leaves the cache empty on either failure.
   The no-op/halt, rotate/halt, and full-path single-resident caches remain
-  intentionally separate; cross-template residency, byte-weighted budgeting,
-  and additional state-changing templates remain open.
+  intentionally separate; cross-template residency and additional
+  state-changing templates remain open.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only
   admissible Applied state. The separate load image, prepare/bind layer, v5

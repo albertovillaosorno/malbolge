@@ -766,35 +766,36 @@ cleanup transfer, and all replacement outcomes. The no-op/halt, rotate/halt,
 and full-path single-resident caches remain intentionally separate.
 
 `GeometryNativeJumpRotateHaltLruCache` adds the first multi-resident v5 policy
-for the complete `(&O` path. Capacity is an explicit nonzero **entry count**,
-not an inferred byte budget. Residents are maintained in LRU-to-MRU order;
-exact hits move to MRU without adapter work.
+for the complete `(&O` path. It always has a nonzero entry limit and can now
+optionally add an exact synchronized mapped-byte limit. Residents remain in
+LRU-to-MRU order, and exact hits move to MRU without adapter work.
 
-At full capacity the cache scans from LRU toward MRU and evicts the first triple
-with no external `Arc` lease. If all residents are leased, acquisition rejects
-without release or load operations.
+The entry-only constructor preserves the original behavior: a full cache scans
+from LRU toward MRU and evicts the first triple with no external `Arc` lease.
+If all residents are leased, acquisition rejects before release or load work.
+Targeted release still acts on one exact identity and cannot cross a live lease.
 
-Eviction is fail-closed and local to one victim. Release failure removes only
-the victim and transfers its exact three-mapping cleanup ownership while every
-other resident survives. If release succeeds but the replacement load fails,
-the victim is not resurrected and the vacant entry remains reusable.
+Each owned full-path triple derives resident weight from its three synchronized
+`mapping().mapped_len()` reports, not from COFF or load-image lengths. A
+byte-bounded miss therefore loads the candidate first, measures its exact
+weight, and releases it immediately if the candidate alone exceeds the limit.
+The LRU also exposes checked aggregate entries, mapped bytes, and mappings.
 
-Targeted release likewise acts on one exact sequence identity and cannot cross
-a live lease. Eight N10/N11/N12 cases cover hit execution, recency refresh,
-leased victim skipping, all-leased saturation, isolated release failure,
-reusable vacancy after load failure, identity-scoped release, and usage
-accounting.
+When projected published bytes exceed the limit, weighted admission can release
+multiple unleased LRU residents until both entry and byte limits fit. Leased
+residents are skipped; if no legal victim remains, the loaded candidate rolls
+back. Failures report `removed_residents` so partial successful evictions cannot
+be mistaken for a side-effect-free saturation.
 
-Each owned full-path triple now derives exact resident weight from the three
-synchronized `mapping().mapped_len()` reports, not from COFF or load-image
-lengths. The weight retains mapped bytes and mapping count, is available through
-single-resident and LRU leases, and the LRU exposes checked aggregate entries,
-bytes, and mappings. Tests intentionally enlarge platform mapping reports to
-prove the accounting follows observed resident capacity.
+A victim-release failure removes only that victim, retains its exact cleanup
+ownership, and also attempts candidate rollback. Failed candidate rollback is
+returned separately, while unrelated residents remain valid. Fifteen focused
+N10/N11/N12 cases cover entry-only/accounting behavior plus seven weighted
+capacity, lease, rollback, multiple-eviction, and ownership paths.
 
-Byte-weighted eviction is not enabled by this accounting alone. Cross-template
-residency among no-op/halt, rotate/halt, and full-path entries, byte-limit
-admission, and concurrent cache mutation remain separate policy work.
+Cross-template residency among no-op/halt, rotate/halt, and full-path entries,
+mapping-count limits, runtime limit reconfiguration, and concurrent cache
+mutation remain separate policy work.
 
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence

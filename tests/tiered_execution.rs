@@ -13234,6 +13234,16 @@ fn full_lru_cache(capacity: usize) -> Result<FullLruCache, String> {
     )?))
 }
 
+fn full_weighted_lru_cache(
+    capacity: usize,
+    mapped_byte_limit: usize,
+) -> Result<FullLruCache, String> {
+    Ok(FullLruCache::new_with_mapped_byte_limit(
+        nonzero_test_limit(capacity, "v5 weighted LRU capacity")?,
+        nonzero_test_limit(mapped_byte_limit, "v5 weighted LRU bytes")?,
+    ))
+}
+
 fn full_lru_cleanup_retains_all(
     cleanup: &FullGeometryTripleReleaseFailure<FakeNativeAdapterOperation>,
 ) -> bool {
@@ -15232,6 +15242,328 @@ fn geometry_native_jump_rotate_halt_release_retries_all_three()
     } else {
         Err(String::from("v5 owned triple release retry drifted"))
     }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_weighted_lru_rejects_oversized_candidate()
+-> Result<(), String> {
+    let (s10, _s11, _s12) = full_lru_sequences()?;
+    let mapped_lengths = [4_096usize, 8_192usize, 16_384usize];
+    let required = mapped_lengths.into_iter().sum::<usize>();
+    let limit = required.saturating_sub(1);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(161)?,
+        native_executable_address(0x4_f000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    let mut cache = full_weighted_lru_cache(2, limit)?;
+    let Err(failure) = cache.ensure(&mut adapter, &s10) else {
+        return Err(String::from(
+            "v5 weighted LRU oversized candidate admitted",
+        ));
+    };
+    if !matches!(
+        *failure,
+        FullLruFailure::MappedBytes {
+            candidate_cleanup_failure: None,
+            limit: byte_limit,
+            required: byte_required,
+        } if byte_limit.get() == limit && byte_required == required
+    ) || cache.resident_count() != 0
+        || adapter.operations.len() != 15
+        || cache
+            .usage()
+            .map_err(|error| error.to_string())?
+            .mapped_bytes()
+            != 0
+    {
+        return Err(String::from("v5 weighted LRU oversized rollback drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_weighted_lru_oversized_cleanup_retries()
+-> Result<(), String> {
+    let (s10, _s11, _s12) = full_lru_sequences()?;
+    let mapped_lengths = [4_096usize, 8_192usize, 16_384usize];
+    let required = mapped_lengths.into_iter().sum::<usize>();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(162)?,
+        native_executable_address(0x5_0000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec())
+    .with_release_failures(3);
+    let mut cache = full_weighted_lru_cache(2, required.saturating_sub(1))?;
+    let Err(failure) = cache.ensure(&mut adapter, &s10) else {
+        return Err(String::from("v5 weighted LRU cleanup failure ignored"));
+    };
+    let FullLruFailure::MappedBytes {
+        candidate_cleanup_failure: Some(cleanup),
+        ..
+    } = *failure
+    else {
+        return Err(String::from("v5 weighted LRU cleanup ownership missing"));
+    };
+    if !full_lru_cleanup_retains_all(&cleanup)
+        || cache.resident_count() != 0
+        || adapter.operations.len() != 15
+    {
+        return Err(String::from("v5 weighted LRU cleanup ownership drifted"));
+    }
+    cleanup.retry(&mut adapter).map_err(|error| {
+        format!("v5 weighted LRU candidate cleanup retry: {error}")
+    })?;
+    if adapter.operations.len() == 18 {
+        Ok(())
+    } else {
+        Err(String::from("v5 weighted LRU cleanup retry count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_weighted_lru_evicts_multiple_for_bytes()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let small = [4_096usize, 4_096usize, 4_096usize];
+    let large = [8_192usize, 8_192usize, 8_192usize];
+    let large_bytes = large.into_iter().sum::<usize>();
+    let mut mapped_lengths = small.to_vec();
+    mapped_lengths.extend(small);
+    mapped_lengths.extend(large);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(163)?,
+        native_executable_address(0x5_1000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths);
+    let mut cache = full_weighted_lru_cache(3, 30_000)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let replacement = cache.ensure(&mut adapter, &s12).map_err(|error| {
+        format!("v5 weighted LRU multiple eviction: {error}")
+    })?;
+    let usage = cache.usage().map_err(|error| error.to_string())?;
+    if replacement.disposition() != FullLruDisposition::Evicted
+        || !full_lru_contains_only(&cache, &s12, &s10, &s11)
+        || usage.entries() != 1
+        || usage.mapped_bytes() != large_bytes
+        || usage.mappings() != 3
+        || adapter.operations.len() != 42
+    {
+        return Err(String::from("v5 weighted LRU multiple eviction drifted"));
+    }
+    drop(replacement);
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 weighted LRU multiple cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_weighted_lru_skips_leased_victim()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let triple = [4_096usize, 4_096usize, 4_096usize];
+    let mut mapped_lengths = triple.to_vec();
+    mapped_lengths.extend(triple);
+    mapped_lengths.extend(triple);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(164)?,
+        native_executable_address(0x5_2000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths);
+    let mut cache = full_weighted_lru_cache(3, 24_576)?;
+    let lease10 = cache
+        .ensure(&mut adapter, &s10)
+        .map_err(|error| error.to_string())?
+        .into_lease();
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let lease12 = cache
+        .ensure(&mut adapter, &s12)
+        .map_err(|error| format!("v5 weighted LRU leased skip: {error}"))?
+        .into_lease();
+    if !cache.contains(&s10)
+        || cache.contains(&s11)
+        || !cache.contains(&s12)
+        || cache.resident_lease_count(&s10) != 1
+        || adapter.operations.len() != 39
+    {
+        return Err(String::from("v5 weighted LRU crossed leased victim"));
+    }
+    drop((lease10, lease12));
+    cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 weighted LRU N10 cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 weighted LRU N12 cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_weighted_lru_saturation_rolls_back()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let triple = [4_096usize, 4_096usize, 4_096usize];
+    let mut mapped_lengths = triple.to_vec();
+    mapped_lengths.extend(triple);
+    mapped_lengths.extend(triple);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(165)?,
+        native_executable_address(0x5_3000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths);
+    let mut cache = full_weighted_lru_cache(3, 24_576)?;
+    let lease10 = cache
+        .ensure(&mut adapter, &s10)
+        .map_err(|error| error.to_string())?;
+    let lease11 = cache
+        .ensure(&mut adapter, &s11)
+        .map_err(|error| error.to_string())?;
+    let Err(failure) = cache.ensure(&mut adapter, &s12) else {
+        return Err(String::from(
+            "v5 weighted LRU saturation admitted candidate",
+        ));
+    };
+    if !matches!(*failure, FullLruFailure::WeightedSaturated {
+        candidate_cleanup_failure: None,
+        leased_residents: 2,
+        residents: 2,
+        removed_residents: 0,
+    }) || adapter.operations.len() != 39
+        || !cache.contains(&s10)
+        || !cache.contains(&s11)
+        || cache.contains(&s12)
+    {
+        return Err(String::from(
+            "v5 weighted LRU saturation rollback drifted",
+        ));
+    }
+    drop((lease10, lease11));
+    cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map(|_release| ())
+        .map_err(|error| {
+            format!("v5 weighted saturation N10 cleanup: {error}")
+        })?;
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 weighted saturation N11 cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_weighted_lru_reports_partial_eviction()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let small = [4_096usize, 4_096usize, 4_096usize];
+    let large = [8_192usize, 8_192usize, 8_192usize];
+    let mut mapped_lengths = small.to_vec();
+    mapped_lengths.extend(small);
+    mapped_lengths.extend(large);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(166)?,
+        native_executable_address(0x5_4000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths);
+    let mut cache = full_weighted_lru_cache(3, 30_000)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    let lease11 = cache
+        .ensure(&mut adapter, &s11)
+        .map_err(|error| error.to_string())?;
+    let Err(failure) = cache.ensure(&mut adapter, &s12) else {
+        return Err(String::from(
+            "v5 weighted partial saturation was admitted",
+        ));
+    };
+    if !matches!(*failure, FullLruFailure::WeightedSaturated {
+        candidate_cleanup_failure: None,
+        leased_residents: 1,
+        residents: 1,
+        removed_residents: 1,
+    }) || !full_lru_contains_only(&cache, &s11, &s10, &s12)
+        || adapter.operations.len() != 42
+    {
+        return Err(String::from("v5 weighted partial eviction was hidden"));
+    }
+    drop(lease11);
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| {
+            format!("v5 weighted partial survivor cleanup: {error}")
+        })
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_weighted_lru_eviction_failure_cleans_up()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let triple = [4_096usize, 4_096usize, 4_096usize];
+    let mut mapped_lengths = triple.to_vec();
+    mapped_lengths.extend(triple);
+    mapped_lengths.extend(triple);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(166)?,
+        native_executable_address(0x5_4000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths)
+    .with_release_failures(1);
+    let mut cache = full_weighted_lru_cache(3, 24_576)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(failure) = cache.ensure(&mut adapter, &s12) else {
+        return Err(String::from(
+            "v5 weighted eviction release failure ignored",
+        ));
+    };
+    let FullLruFailure::WeightedEvictionRelease {
+        candidate_cleanup_failure: None,
+        eviction_failure,
+        removed_residents: 1,
+    } = *failure
+    else {
+        return Err(String::from("v5 weighted eviction ownership drifted"));
+    };
+    if eviction_failure.initial_jump_failure().is_none()
+        || eviction_failure.suffix_failure().is_some()
+        || !full_lru_contains_only(&cache, &s11, &s10, &s12)
+        || adapter.operations.len() != 42
+    {
+        return Err(String::from("v5 weighted eviction damaged survivor"));
+    }
+    eviction_failure.retry(&mut adapter).map_err(|error| {
+        format!("v5 weighted victim cleanup retry: {error}")
+    })?;
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 weighted survivor cleanup: {error}"))
 }
 
 #[test]
