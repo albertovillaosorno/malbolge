@@ -664,7 +664,14 @@ transfers, verification, and other separately measured costs.
   and successor C/D from execution geometry, verifies exact two-live-in writes,
   and reuses reviewed x86-64/AArch64 rotate primitives only after that proof.
   N10/N11 artifacts remain identity-distinct and cross-geometry verification
-  rejects. Rotate load/admission/execution and additional templates remain open.
+  rejects.
+- Rotate now has its own checkpoint-bound execution path. Admission normatively
+  replays the exact v5 rotate before mapping and retains that opaque-geometry
+  exit checkpoint as the only Applied state. A dedicated load-image constructor,
+  two-live-in ABI preparation, exact executable binding, v5 runner, completion
+  rollback, transactional release, and cleanup-retry ownership mirror the
+  no-operation safety properties without merging operation policy. Rotate/halt
+  sequence planning, cache integration, and additional templates remain open.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only
   admissible Applied state. The separate load image, prepare/bind layer, v5

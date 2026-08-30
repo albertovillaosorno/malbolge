@@ -642,8 +642,25 @@ and verifies the exact memory delta before emission. x86-64 and AArch64 reuse
 the reviewed rotate machine-code primitive only after those values are fixed.
 
 N10 and N11 retain distinct v5 keys/objects and cross-geometry verification
-rejects. No rotate load-image constructor, checkpoint admission, runner, or
-composition path exists yet, so this artifact alone cannot execute native code.
+rejects.
+
+Rotate now reaches execution through its own checkpoint-bound composition
+boundary. `ExecutionGeometryNativeRotateAdmission` first binds the v5 program
+to opaque checkpoint geometry and executes one normative interpreter replay;
+that replayed exit checkpoint is the only state returned for native `Applied`.
+Only afterward does admission reconstruct exact artifact identity and derive a
+relocation-free rotate load image.
+
+Preparation requires caller memory/input/output to equal the admitted entry
+checkpoint and the crate-private rotate ABI constructor retains exactly two
+live-ins. Exact executable-image binding precedes the dedicated v5 runner;
+runner failure, completion drift, and guard miss use the same complete snapshot
+rollback rules as no-operation without sharing its operation-specific policy.
+The transactional path maps, binds, executes, admits, and releases in order,
+retaining a ready executable for cleanup retry and preserving committed replay
+state if final release fails. Eight focused rotate cases cover cross-geometry
+binding, normative Applied state, preparation drift, completion drift, runner
+failure, guard miss, successful release, and committed cleanup retry.
 
 The no-operation artifact retains its own verified wrapper and now reaches
 execution only through a separate checkpoint-bound composition module.
