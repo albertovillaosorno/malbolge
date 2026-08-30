@@ -219,7 +219,8 @@ use leased_retry::{
     NativeContinuationLeasedRetryExecutionFailure,
 };
 use malbolge::{
-    EFFECT_IR_VERSION, EFFECT_IR_WIDE_PROFILE_VERSION, EffectOp,
+    EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EFFECT_IR_VERSION,
+    EFFECT_IR_WIDE_PROFILE_VERSION, EffectOp,
     ExecutionGeometryRegionEffectProgram, IrEncodingError, MemoryLiveIn,
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
     ProfileMachineObservation, ProfileMachineState, ProfileMemoryDelta,
@@ -1129,6 +1130,53 @@ fn native_identity_rejects_profile_capacity_wider_than_ir_v3()
         Ok(())
     } else {
         Err(String::from("N21 envelope acquired an IR-v3 native key"))
+    }
+}
+
+#[test]
+fn native_identity_binds_explicit_execution_geometry_v5() -> Result<(), String>
+{
+    let n10 = derived_v5_input_halt_sequence_fixture(10, vec![0xa5])?;
+    let n11 = derived_v5_input_halt_sequence_fixture(11, vec![0xa5])?;
+    let n10_program = derived_v5_fixture_program(&n10, 0)?;
+    let n11_program = derived_v5_fixture_program(&n11, 0)?;
+    let identity = RegionEffectIdentity::new_execution_geometry(n10_program)
+        .map_err(|error| format!("IR v5 region identity failed: {error:?}"))?;
+    let canonical = n10_program
+        .canonical_bytes()
+        .map_err(|error| format!("IR v5 canonical bytes failed: {error:?}"))?;
+    if identity.format_version() != EFFECT_IR_EXECUTION_GEOMETRY_VERSION
+        || identity.execution_geometry()
+            != Some(n10_program.execution_geometry())
+        || identity.canonical_bytes() != canonical
+        || identity.required_memory_words()
+            != n10_program.required_memory_words()
+    {
+        return Err(String::from("IR v5 region identity lost geometry"));
+    }
+    let target = NativeTargetIdentity::new(base_target_config());
+    let n10_key =
+        NativeArtifactKey::new_execution_geometry(n10_program, target.clone())
+            .map_err(|error| {
+                format!("IR v5 N10 native key failed: {error:?}")
+            })?;
+    let n11_key =
+        NativeArtifactKey::new_execution_geometry(n11_program, target)
+            .map_err(|error| {
+                format!("IR v5 N11 native key failed: {error:?}")
+            })?;
+    if n10_key == n11_key {
+        return Err(String::from(
+            "IR v5 native key ignored execution geometry",
+        ));
+    }
+    let mut cache = NativeArtifactCache::default();
+    let _n10_old = cache.insert(n10_key, "n10");
+    let _n11_old = cache.insert(n11_key, "n11");
+    if cache.len() == 2 {
+        Ok(())
+    } else {
+        Err(String::from("IR v5 geometry identities collided in cache"))
     }
 }
 

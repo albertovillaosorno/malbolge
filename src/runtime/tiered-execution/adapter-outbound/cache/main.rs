@@ -40,7 +40,9 @@ use std::mem::replace;
 use std::sync::Arc;
 
 use malbolge::{
-    IrEncodingError, RegionEffectProgram, TargetProfileRequirement,
+    ExecutionGeometryRegionEffectProgram, IrEncodingError,
+    ProfileExecutionGeometryRequirement, RegionEffectProgram,
+    TargetProfileRequirement,
 };
 
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
@@ -115,6 +117,7 @@ impl From<IrEncodingError> for NativeIdentityError {
 pub struct RegionEffectIdentity {
     bucket_digest: u64,
     canonical_bytes: Arc<[u8]>,
+    execution_geometry: Option<ProfileExecutionGeometryRequirement>,
     format_version: u16,
     profile_fingerprint: Arc<str>,
     profile_id: Arc<str>,
@@ -160,6 +163,7 @@ type BucketDigestFunction = fn(&[u8]) -> u64;
 impl PartialEq for RegionEffectIdentity {
     fn eq(&self, other: &Self) -> bool {
         self.canonical_bytes == other.canonical_bytes
+            && self.execution_geometry == other.execution_geometry
             && self.format_version == other.format_version
             && self.profile_fingerprint == other.profile_fingerprint
             && self.profile_id == other.profile_id
@@ -365,6 +369,19 @@ impl NativeArtifactKey {
         Self::with_digest(program, target, fnv_bytes)
     }
 
+    /// Constructs one native reuse key from explicit-geometry v5 IR.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeIdentityError`] when the region exceeds its execution
+    /// geometry or identity lengths cannot be represented.
+    pub fn new_execution_geometry(
+        program: &ExecutionGeometryRegionEffectProgram,
+        target: NativeTargetIdentity,
+    ) -> Result<Self, NativeIdentityError> {
+        Self::with_execution_geometry_digest(program, target, fnv_bytes)
+    }
+
     /// Returns the exact host/backend assumptions inside this key.
     #[must_use]
     pub const fn target(&self) -> &NativeTargetIdentity {
@@ -377,6 +394,23 @@ impl NativeArtifactKey {
         digest: BucketDigestFunction,
     ) -> Result<Self, NativeIdentityError> {
         let ir = RegionEffectIdentity::with_digest(program, digest)?;
+        let mut key_bytes = target.canonical_bytes()?;
+        key_bytes.extend_from_slice(ir.canonical_bytes());
+        Ok(Self {
+            bucket_digest: digest(&key_bytes),
+            ir,
+            target,
+        })
+    }
+
+    fn with_execution_geometry_digest(
+        program: &ExecutionGeometryRegionEffectProgram,
+        target: NativeTargetIdentity,
+        digest: BucketDigestFunction,
+    ) -> Result<Self, NativeIdentityError> {
+        let ir = RegionEffectIdentity::with_execution_geometry_digest(
+            program, digest,
+        )?;
         let mut key_bytes = target.canonical_bytes()?;
         key_bytes.extend_from_slice(ir.canonical_bytes());
         Ok(Self {
@@ -468,6 +502,14 @@ impl RegionEffectIdentity {
         &self.canonical_bytes
     }
 
+    /// Returns explicit execution geometry for v5 identity, when present.
+    #[must_use]
+    pub const fn execution_geometry(
+        &self,
+    ) -> Option<ProfileExecutionGeometryRequirement> {
+        self.execution_geometry
+    }
+
     /// Returns the exact portable effect-IR schema version bound into this key.
     #[must_use]
     pub const fn format_version(&self) -> u16 {
@@ -485,6 +527,18 @@ impl RegionEffectIdentity {
         program: &RegionEffectProgram,
     ) -> Result<Self, NativeIdentityError> {
         Self::with_digest(program, fnv_bytes)
+    }
+
+    /// Constructs canonical identity from explicit-geometry v5 IR.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeIdentityError`] when the region exceeds its execution
+    /// geometry or canonicalization fails.
+    pub fn new_execution_geometry(
+        program: &ExecutionGeometryRegionEffectProgram,
+    ) -> Result<Self, NativeIdentityError> {
+        Self::with_execution_geometry_digest(program, fnv_bytes)
     }
 
     /// Returns the canonical profile fingerprint bound into this IR.
@@ -523,6 +577,7 @@ impl RegionEffectIdentity {
         Ok(Self {
             bucket_digest: digest(&canonical),
             canonical_bytes: Arc::from(canonical),
+            execution_geometry: None,
             format_version: program.format_version,
             profile_fingerprint: Arc::from(
                 program.profile_fingerprint.as_str(),
@@ -530,6 +585,28 @@ impl RegionEffectIdentity {
             profile_id: Arc::from(program.profile_id.as_str()),
             profile_requirement: program.profile_requirement.clone(),
             required_memory_words,
+        })
+    }
+
+    fn with_execution_geometry_digest(
+        program: &ExecutionGeometryRegionEffectProgram,
+        digest: BucketDigestFunction,
+    ) -> Result<Self, NativeIdentityError> {
+        if !program.fits_execution_geometry_capacity()
+            || !program.fits_profile_capacity()
+        {
+            return Err(NativeIdentityError::ProfileCapacity);
+        }
+        let canonical = program.canonical_bytes()?;
+        Ok(Self {
+            bucket_digest: digest(&canonical),
+            canonical_bytes: Arc::from(canonical),
+            execution_geometry: Some(program.execution_geometry()),
+            format_version: program.format_version(),
+            profile_fingerprint: Arc::from(program.profile_fingerprint()),
+            profile_id: Arc::from(program.profile_id()),
+            profile_requirement: program.profile_requirement().clone(),
+            required_memory_words: program.required_memory_words(),
         })
     }
 }

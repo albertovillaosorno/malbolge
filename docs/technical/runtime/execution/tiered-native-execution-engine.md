@@ -521,6 +521,19 @@ Tests cover byte and EOF input through N10 input-then-halt, N10/N11 geometry
 mixing, suspension/resume, zero budget, and later-step forgery; no native
 artifact identity or execution authority is introduced.
 
+Native identity can now represent v5 without granting execution by itself.
+`RegionEffectIdentity::new_execution_geometry()` retains the complete canonical
+v5 bytes plus the explicit execution geometry, and
+`NativeArtifactKey::new_execution_geometry()` combines that identity with the
+ordinary host/backend assumptions. MBPF v5 metadata carries the unchanged
+canonical profile envelope followed by the explicit N/capacity pair.
+
+N10 and N11 therefore remain distinct under full cache equality even when their
+canonical profile identity is the same. Existing v3/v4 constructors retain no
+execution geometry field. This is identity plumbing only; direct selection and
+invocation remain canonical-only until a reviewed v5 native subset admits the
+geometry.
+
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine
 `NativeInterpreterHandoffSuspension` with the original continuation, cumulative
