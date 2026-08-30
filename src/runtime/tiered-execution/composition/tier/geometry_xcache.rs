@@ -1201,23 +1201,7 @@ impl GeometryNativeCrossTemplateLruCache {
         GeometryNativeCrossTemplateLruUsage,
         GeometryNativeResidentWeightError,
     > {
-        let mut mapped_bytes = 0usize;
-        let mut mappings = 0usize;
-        for resident in &self.residents {
-            let weight = resident.resident_weight()?;
-            mapped_bytes =
-                mapped_bytes.checked_add(weight.mapped_bytes()).ok_or(
-                    GeometryNativeResidentWeightError::MappedBytesOverflow,
-                )?;
-            mappings = mappings
-                .checked_add(weight.mappings())
-                .ok_or(GeometryNativeResidentWeightError::MappingsOverflow)?;
-        }
-        Ok(GeometryNativeCrossTemplateLruUsage {
-            entries: self.residents.len(),
-            mapped_bytes,
-            mappings,
-        })
+        resident_usage(&self.residents)
     }
 
     const fn usage_exceeds_limits(
@@ -1300,6 +1284,30 @@ impl GeometryNativeCrossTemplateLruDrain {
     #[must_use]
     pub const fn retired_count(&self) -> usize {
         self.retired.len()
+    }
+
+    /// Returns exact retired identities in original LRU relative order.
+    #[must_use]
+    pub fn retired_residents(&self) -> Vec<GeometryNativeResidentPlan> {
+        self.retired
+            .iter()
+            .map(|resident| resident.plan())
+            .collect()
+    }
+
+    /// Returns exact mapping usage still owned by retired residents.
+    ///
+    /// # Errors
+    ///
+    /// Returns the same mapped-byte or mapping-count overflow evidence as
+    /// active cache usage.
+    pub fn usage(
+        &self,
+    ) -> Result<
+        GeometryNativeCrossTemplateLruUsage,
+        GeometryNativeResidentWeightError,
+    > {
+        resident_usage(&self.retired)
     }
 }
 
@@ -1406,4 +1414,28 @@ where
             retained_residents,
         }))
     }
+}
+
+fn resident_usage(
+    residents: &[Arc<GeometryNativeLoadedResident>],
+) -> Result<
+    GeometryNativeCrossTemplateLruUsage,
+    GeometryNativeResidentWeightError,
+> {
+    let mut mapped_bytes = 0usize;
+    let mut mappings = 0usize;
+    for resident in residents {
+        let weight = resident.resident_weight()?;
+        mapped_bytes = mapped_bytes
+            .checked_add(weight.mapped_bytes())
+            .ok_or(GeometryNativeResidentWeightError::MappedBytesOverflow)?;
+        mappings = mappings
+            .checked_add(weight.mappings())
+            .ok_or(GeometryNativeResidentWeightError::MappingsOverflow)?;
+    }
+    Ok(GeometryNativeCrossTemplateLruUsage {
+        entries: residents.len(),
+        mapped_bytes,
+        mappings,
+    })
 }

@@ -15492,6 +15492,63 @@ fn geometry_native_noop_halt_loaded_late_failure_retains_prefix()
 }
 
 #[test]
+fn geometry_native_cross_template_drain_reports_exact_usage()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(235)?,
+        native_executable_address(0x9_8000)?,
+    )
+    .with_mapped_len_overrides(vec![4_096, 8_192, 16_384, 32_768, 65_536]);
+    let mut cache = cross_template_lru(2)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let full = cache
+        .ensure(&mut adapter, &full_plan)
+        .map_err(|error| error.to_string())?;
+    let mut drain = cache.into_drain();
+    let initial_usage = drain.usage().map_err(|error| error.to_string())?;
+    if drain.retired_residents() != [noop_plan.clone(), full_plan.clone()]
+        || initial_usage.entries() != 2
+        || initial_usage.mapped_bytes() != 126_976
+        || initial_usage.mappings() != 5
+    {
+        return Err(String::from("cross drain initial usage drifted"));
+    }
+    let first = drain
+        .reconcile(&mut adapter)
+        .map_err(|error| format!("cross drain usage reconcile: {error}"))?;
+    let retained_usage = drain.usage().map_err(|error| error.to_string())?;
+    if first.released_residents() != [noop_plan]
+        || first.retained_residents() != [full_plan.clone()]
+        || drain.retired_residents() != [full_plan.clone()]
+        || retained_usage.entries() != 1
+        || retained_usage.mapped_bytes() != 114_688
+        || retained_usage.mappings() != 3
+    {
+        return Err(String::from("cross drain retained usage drifted"));
+    }
+    drop(full);
+    let final_pass = drain
+        .reconcile(&mut adapter)
+        .map_err(|error| format!("cross drain usage final: {error}"))?;
+    let final_usage = drain.usage().map_err(|error| error.to_string())?;
+    if final_pass.released_residents() == [full_plan]
+        && final_pass.retained_residents().is_empty()
+        && final_usage.entries() == 0
+        && final_usage.mapped_bytes() == 0
+        && final_usage.mappings() == 0
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross drain final usage drifted"))
+    }
+}
+
+#[test]
 fn geometry_native_cross_template_drain_releases_all_unleased()
 -> Result<(), String> {
     let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;

@@ -891,6 +891,16 @@ and failed-release transfer plus retry. The synchronized owner does not yet
 expose an equivalent consuming transition because shared mutex ownership needs
 an explicit closed/draining state rather than silent recovery from `Arc` users.
 
+The drain now exposes exact retired identities and aggregate mapping usage using
+the same `resident_weight()` authority as the active LRU. A deliberately
+oversized mapping fixture observes 126,976 bytes across five mappings before
+reconciliation, 114,688 bytes across three mappings while one full-path lease
+remains retired, and zero usage after that lease is returned and reclaimed.
+
+This shared mapping-report accounting gives a future synchronized
+`Active -> Draining -> Closed` transition concrete closure evidence without
+estimating executable-image sizes.
+
 `GeometryNativeConcurrentCrossTemplateLruCache` now owns one heterogeneous LRU
 and its executable-memory adapter under the same mutex. `ensure`, release,
 reconfiguration, usage, and identity reads serialize through that authority;
