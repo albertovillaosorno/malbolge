@@ -810,8 +810,17 @@ cleanup retry.
 Mapping-count admission uses the same exact resident weight already reported by
 loaded triples. A limit below three rejects one candidate with rollback, while a
 limit of six admits two full-path residents and evicts LRU authority before a
-third can publish. Cross-template residency and concurrent cache mutation remain
-separate policy work.
+third can publish.
+
+`GeometryNativeResidentPlan` now gives the reviewed no-op/halt, rotate/halt, and
+full-path templates one typed lifecycle boundary without merging execution
+semantics. The corresponding loaded-resident enum preserves exact variant
+identity, derives 2/2/3 mapping weights from synchronized reports, and delegates
+release/retry to the original specialized owner.
+
+Cross-template eviction can now build on this plan/owner boundary instead of
+inventing legacy keys or erasing cleanup types. Execution remains deliberately
+variant-specific, and concurrent cache mutation remains separate policy work.
 
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence

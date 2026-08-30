@@ -67,6 +67,8 @@ pub mod geometry_native_rotate_pair_cache;
 pub mod geometry_native_pair_cache;
 #[path = "tier/geometry_seq.rs"]
 pub mod geometry_native_sequence;
+#[path = "tier/geometry_xres.rs"]
+pub mod geometry_native_cross_template_resident;
 #[path = "tier/handoff.rs"]
 pub mod interpreter_handoff;
 #[path = "tier/leased_retry.rs"]

@@ -47,6 +47,8 @@ pub mod execution_native;
 pub mod geometry_interpreter_handoff;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_native.rs"]
 pub mod geometry_native_admission;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_xres.rs"]
+pub mod geometry_native_cross_template_resident;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jump.rs"]
 pub mod geometry_native_initial_jump_data;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jcache.rs"]
@@ -261,6 +263,12 @@ use geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltExecutionError,
     ExecutionGeometryNativeInitialHaltPreparationError,
     ExecutionGeometryNativeInitialHaltTransactionFailure,
+};
+use geometry_native_cross_template_resident::{
+    GeometryNativeResidentKind as CrossResidentKind,
+    GeometryNativeResidentLoadFailure as CrossResidentLoadFailure,
+    GeometryNativeResidentPlan as CrossResidentPlan,
+    GeometryNativeResidentReleaseFailure as CrossResidentReleaseFailure,
 };
 use geometry_native_initial_jump_data as jump_native;
 use geometry_native_jump_rotate_halt_cache::{
@@ -582,6 +590,8 @@ struct SecondStepContinuationExpectation<'plan> {
     reason: NativeInterpreterContinuationReason,
 }
 
+type CrossResidentPlanTriple =
+    (CrossResidentPlan, CrossResidentPlan, CrossResidentPlan);
 type FullGeometryAdmissionError =
     full_native::ExecutionGeometryNativeJumpRotateHaltAdmissionError;
 type FullGeometryBindingError =
@@ -13218,6 +13228,23 @@ fn execution_geometry_native_admission_rejects_checkpoint_geometry_drift()
     }
 }
 
+fn cross_template_resident_plans() -> Result<CrossResidentPlanTriple, String> {
+    let noop_fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let rotate_fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let full_fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    Ok((
+        CrossResidentPlan::NoOperationPair(Box::new(
+            geometry_native_noop_halt_sequence(&noop_fixture)?,
+        )),
+        CrossResidentPlan::RotatePair(Box::new(
+            geometry_native_rotate_halt_sequence(&rotate_fixture)?,
+        )),
+        CrossResidentPlan::FullPath(Box::new(
+            geometry_native_jump_rotate_halt_sequence(&full_fixture)?,
+        )),
+    ))
+}
+
 fn full_lru_sequences() -> Result<FullGeometrySequenceTriple, String> {
     let n10 = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
     let n11 = derived_v5_jump_rotate_halt_sequence_fixture(11)?;
@@ -15018,6 +15045,121 @@ fn geometry_native_noop_halt_loaded_late_failure_retains_prefix()
         .map_err(|error| format!("v5 loaded late no-op release: {error}"))?;
     release_execution_geometry_native_executable(&mut adapter, halt)
         .map_err(|error| format!("v5 loaded late halt release: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_resident_preserves_identity_and_weight()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(178)?,
+        native_executable_address(0x5_f000)?,
+    )
+    .with_mapped_len_overrides(vec![
+        4_096, 8_192, 12_288, 16_384, 20_480, 24_576, 28_672,
+    ]);
+    let noop = noop_plan
+        .load(&mut adapter)
+        .map_err(|error| format!("cross resident no-op load: {error}"))?;
+    let rotate = rotate_plan
+        .load(&mut adapter)
+        .map_err(|error| format!("cross resident rotate load: {error}"))?;
+    let full = full_plan
+        .load(&mut adapter)
+        .map_err(|error| format!("cross resident full load: {error}"))?;
+    let noop_weight =
+        noop.resident_weight().map_err(|error| error.to_string())?;
+    let rotate_weight = rotate
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    let full_weight =
+        full.resident_weight().map_err(|error| error.to_string())?;
+    if noop.kind() != CrossResidentKind::NoOperationPair
+        || rotate.kind() != CrossResidentKind::RotatePair
+        || full.kind() != CrossResidentKind::FullPath
+        || !noop.matches_plan(&noop_plan)
+        || noop.matches_plan(&rotate_plan)
+        || !rotate.matches_plan(&rotate_plan)
+        || rotate.matches_plan(&full_plan)
+        || !full.matches_plan(&full_plan)
+        || full.matches_plan(&noop_plan)
+        || noop_weight.mappings() != 2
+        || noop_weight.mapped_bytes() != 12_288
+        || rotate_weight.mappings() != 2
+        || rotate_weight.mapped_bytes() != 28_672
+        || full_weight.mappings() != 3
+        || full_weight.mapped_bytes() != 73_728
+        || adapter.operations.len() != 28
+    {
+        return Err(String::from("cross resident identity or weight drifted"));
+    }
+    noop.release(&mut adapter)
+        .map_err(|error| format!("cross resident no-op release: {error}"))?;
+    rotate
+        .release(&mut adapter)
+        .map_err(|error| format!("cross resident rotate release: {error}"))?;
+    full.release(&mut adapter)
+        .map_err(|error| format!("cross resident full release: {error}"))?;
+    if adapter.operations.len() == 35 {
+        Ok(())
+    } else {
+        Err(String::from("cross resident release count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_resident_load_failure_keeps_variant()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::NoOperationPair(Box::new(
+        geometry_native_noop_halt_sequence(&fixture)?,
+    ));
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(179)?,
+        native_executable_address(0x6_0000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 1);
+    let Err(failure) = plan.load(&mut adapter) else {
+        return Err(String::from("cross resident load failure was ignored"));
+    };
+    if matches!(*failure, CrossResidentLoadFailure::NoOperationPair(_error))
+        && adapter.operations.len() == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross resident load failure lost template"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_resident_release_retry_keeps_variant()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::RotatePair(Box::new(
+        geometry_native_rotate_halt_sequence(&fixture)?,
+    ));
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(180)?,
+        native_executable_address(0x6_1000)?,
+    )
+    .with_release_failures(2);
+    let loaded = plan
+        .load(&mut adapter)
+        .map_err(|error| format!("cross resident retry load: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from("cross resident release failure ignored"));
+    };
+    let CrossResidentReleaseFailure::RotatePair(retry) = *failure else {
+        return Err(String::from("cross resident cleanup variant drifted"));
+    };
+    if retry.halt_failure().is_none() || retry.rotate_failure().is_none() {
+        return Err(String::from(
+            "cross resident cleanup ownership incomplete",
+        ));
+    }
+    CrossResidentReleaseFailure::RotatePair(retry)
+        .retry(&mut adapter)
+        .map_err(|error| format!("cross resident cleanup retry: {error}"))
 }
 
 #[test]
