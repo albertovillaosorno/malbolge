@@ -36,7 +36,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{booktabs}
 \usepackage{microtype,xurl}
-\setlength{\emergencystretch}{6em}
+\setlength{\emergencystretch}{12em}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 \begin{document}
@@ -146,10 +146,10 @@ rewrite. Initialization, mutable-global, complexity, and function-size rules
 require structural modernization beyond this compatibility transform.
 
 \subsection*{Priority findings resolved in this regeneration}
-The focused analyzer/bugprone pass now reports zero array-bound findings, dead
-stores, implementation-defined narrowing conversions, signed-char misuse,
-assignments or increments hidden in conditions, unparenthesized replacement
-macros, and late widening of multiplication results.
+The focused analyzer/bugprone pass is now clean for array bounds, dead stores,
+signed-char misuse, and late widening of multiplication results. It is also
+clean for implementation-defined narrowing conversions, hidden assignments or
+increments in conditions, and unparenthesized replacement macros.
 
 One concrete array-bound defect was fixed in the intermission map renderer. A
 single splat pointer was passed to code that always attempted two candidates.

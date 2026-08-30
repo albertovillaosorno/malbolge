@@ -35,8 +35,8 @@
 \documentclass{article}
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx,microtype,xurl}
-\newcommand{\fitmath}[1]{\resizebox{\linewidth}{!}{$\displaystyle #1$}}
-\setlength{\emergencystretch}{6em}
+\newcommand{\fitmath}[1]{\resizebox{0.99\linewidth}{!}{$\displaystyle #1$}}
+\setlength{\emergencystretch}{12em}
 \input{../malbolge-notation.tex}
 \title{Malbolge-Specific Optimization Mathematics}
 \author{Malbolge Project}
@@ -629,12 +629,12 @@ blocks give one canonical quintuple per count vector. Thus
   }
   \label{eq:optimization-crazy-preimage-cube-ordered-quintuple-quotient}
 \end{equation}
-At $k=14$, this gives 166871334960 classes instead of
-$32^{14}=1180591620717411303424$ raw ordered quintuples. The descending block
-convention reduces exactly to the ordered-quadruple representative when the
-fifth word is zero. This quotient applies only to quintuple analyses invariant
-under simultaneous ambiguity-coordinate relabeling; it is not position-
-sensitive Malbolge semantic equivalence or a wall-clock speedup claim.
+At $k=14$, this gives 166871334960 classes instead of $32^{14}$ raw ordered
+quintuples. The descending block convention reduces exactly to the
+ordered-quadruple representative when the fifth word is zero. This quotient
+applies only to quintuple analyses invariant under simultaneous
+ambiguity-coordinate relabeling; it is not position-sensitive Malbolge semantic
+equivalence or a wall-clock speedup claim.
 
 If quintuple endpoint order is also irrelevant, let $S_5$ permute the five
 words and hence the thirty-two joint-pattern labels. For the endpoint cycle
@@ -650,9 +650,12 @@ types $1^5$, $1^3 2$, $1^2 3$, $1\,2^2$, $1\,4$, $2\,3$, and $5$, define
     G_k&=[x^k](1-x)^{-2}(1-x^5)^{-6}.
   \end{aligned}
 \]
-The induced label cycles are respectively $1^{32}$, $1^{16}2^8$, $1^8 3^8$,
-$1^8 2^{12}$, $1^4 2^2 4^6$, $1^4 2^2 3^4 6^2$, and $1^2 5^6$, while the
-seven endpoint conjugacy classes have sizes $1,10,20,15,30,20,24$.
+The induced label-cycle types, in the order above, are
+\[
+  1^{32},\ 1^{16}2^8,\ 1^8 3^8,\ 1^8 2^{12},\
+  1^4 2^2 4^6,\ 1^4 2^2 3^4 6^2,\ 1^2 5^6.
+\]
+The seven endpoint conjugacy classes have sizes $1,10,20,15,30,20,24$.
 Burnside's lemma therefore gives
 \begin{equation}
   \fitmath{%
@@ -722,13 +725,17 @@ Burnside's lemma gives
   \quad 0\leq k\leq N,\ 1\leq N\leq14.
   \label{eq:optimization-crazy-preimage-cube-unordered-sextuple-quotient}
 \end{equation}
-At $k=14$, the eleven fixed counts are 839983521106400, 624814559200,
-281038424, 4150120800, 1846872, 2700856, 6050, 201249216, 171120, 217400,
-and 1020, yielding 1179940653635 endpoint-unordered classes. The evidence
-exhausts the coordinate quotient through dimension two and reconstructs the raw
-$64^k$ orbit mass there; Burnside arithmetic reaches dimension fourteen. This
-refinement applies only when endpoint order is irrelevant and makes no timing
-claim.
+At $k=14$, the eleven fixed counts are
+\begin{equation*}
+  \fitmath{%
+    (839983521106400,624814559200,281038424,4150120800,1846872,2700856,
+    6050,201249216,171120,217400,1020).
+  }
+\end{equation*}
+They yield 1179940653635 endpoint-unordered classes. The evidence exhausts the
+coordinate quotient through dimension two and reconstructs the raw $64^k$ orbit
+mass there; Burnside arithmetic reaches dimension fourteen. This refinement
+applies only when endpoint order is irrelevant and makes no timing claim.
 
 For pairwise analyses that also ignore endpoint order, let
 $G_k=S_k\times C_2$, where $S_k$ permutes both endpoints simultaneously and
@@ -1090,9 +1097,9 @@ The second equality follows from
 $\binom{k+7}{7}=\sum_{j=0}^{7}\binom{7}{j}\binom{k}{j}$ and the weighted
 binomial moments. The unquotiented ordered-triple mass is
 $\sum_k\binom{N}{k}2^k5^{N-k}8^k=21^N$. At $N=14$, the quotient has
-547751638341145 representatives instead of 3243919932521508681 raw ordered
-triples. This is an exact complete-domain search-space count only; it inherits
-the simultaneous-coordinate symmetry requirement and makes no timing claim.
+547751638341145 representatives instead of $21^{14}$ raw ordered triples. This
+is an exact complete-domain search-space count only; it inherits the
+simultaneous-coordinate symmetry requirement and makes no timing claim.
 
 The endpoint-unordered triple quotient also composes over the same reachable
 fixed-pair distribution. Let $G_N$ count canonical triples after simultaneous
@@ -1140,14 +1147,15 @@ reachable fixed accumulator/target preimage cube independently. Then
   }
   \label{eq:optimization-crazy-global-ordered-preimage-quadruple-quotient}
 \end{equation}
-The second equality follows from
-$\binom{k+15}{15}=\sum_{j=0}^{15}\binom{15}{j}\binom{k}{j}$ and the weighted
-binomial moments. The unquotiented ordered-quadruple mass is
-$\sum_k\binom{N}{k}2^k5^{N-k}16^k=37^N$. At $N=14$, the quotient has
-25678405217633865 representatives instead of 9012061295995008299689 raw
-ordered quadruples. This is an exact complete-domain search-space count only;
-it inherits the simultaneous-coordinate symmetry requirement and makes no
-timing claim.
+The weighted binomial moments give the second equality because
+\[
+  \binom{k+15}{15}=\sum_{j=0}^{15}\binom{15}{j}\binom{k}{j}.
+\]
+The unquotiented ordered-quadruple mass is $37^N$. At $N=14$, the quotient has
+$Q_{14}=25678405217633865$ representatives instead of $37^{14}$ raw ordered
+quadruples. This is an exact complete-domain search-space count only. It
+inherits the simultaneous-coordinate symmetry requirement and makes no timing
+claim.
 
 The endpoint-unordered quadruple quotient also composes over the same
 reachable fixed-pair distribution. Apply the binomial transform
@@ -1180,12 +1188,17 @@ four series gives
   }
   \label{eq:optimization-crazy-global-unordered-preimage-quadruple-quotient}
 \end{equation}
-At $N=14$, the five global fixed counts are 25678405217633865,
-1182834266824809, 180742210147993, 57110313884289, and 9848929136817,
-yielding 1409733897288413 endpoint-unordered representatives instead of
-$37^{14}=9012061295995008299689$ raw ordered quadruples. This is an exact
-complete-domain state count for analyses invariant under both stated symmetry
-actions and makes no timing claim.
+At $N=14$, the five global fixed counts are
+\begin{equation*}
+  \fitmath{%
+    (25678405217633865,1182834266824809,180742210147993,
+    57110313884289,9848929136817).
+  }
+\end{equation*}
+They yield 1409733897288413 endpoint-unordered representatives instead of
+$37^{14}$ raw ordered quadruples. This is an exact complete-domain state count
+for analyses invariant under both stated symmetry actions and makes no timing
+claim.
 
 Composing the same preimage-class distribution with the ordered cube-quintuple
 quotient gives another exact global representative count. Let $P_N$ be the
@@ -1230,12 +1243,16 @@ If $w_\lambda$ is the endpoint conjugacy-class size, then
   \qquad 1\leq N\leq14.
   \label{eq:optimization-crazy-global-unordered-preimage-quintuple-quotient}
 \end{equation}
-At $N=14$, the seven global fixed counts are 3571359808057227945,
-54779621914531305, 955501620651033, 3768908530569225, 84481568466345,
-101628460149705, and 6090369480725, yielding 34995940605821849 endpoint-
-unordered representatives instead of $69^{14}=55448176762342779635202921$ raw
-ordered quintuples. This is an exact complete-domain state count for analyses
-invariant under both symmetry actions and makes no timing claim.
+At $N=14$, the seven global fixed counts are
+\begin{equation*}
+  \fitmath{%
+    (3571359808057227945,54779621914531305,955501620651033,
+    3768908530569225,84481568466345,101628460149705,6090369480725).
+  }
+\end{equation*}
+They yield 34995940605821849 endpoint-unordered representatives instead of
+$69^{14}$ raw ordered quintuples. This is an exact complete-domain state count
+for analyses invariant under both symmetry actions and makes no timing claim.
 
 The ordered sextuple quotient composes with the reachable fixed-pair ambiguity
 distribution in the same way. Let $R_N$ count canonical ordered preimage
@@ -1273,14 +1290,18 @@ Then
   \qquad 1\leq N\leq14.
   \label{eq:optimization-crazy-global-unordered-preimage-sextuple-quotient}
 \end{equation}
-At $N=14$, the eleven global fixed counts are 1584315319509725541225,
-7054158423775528425, 38878022703262281, 175942582684950825,
-1460917013254953, 1806087636205929, 43767572733825, 18851333161147209,
-256827625272665, 244844111940225, and 13080355599105. Burnside yields
-2361488883978006005 endpoint-unordered representatives instead of $133^{14}$
-raw ordered sextuples. Direct ambiguity sums, the generic transform, and all
-reachable fixed pairs through width two agree. This is an exact state-count
-result only and makes no timing claim.
+At $N=14$, the eleven global fixed counts are
+\begin{equation*}
+  \fitmath{%
+    (1584315319509725541225,7054158423775528425,38878022703262281,
+    175942582684950825,1460917013254953,1806087636205929,43767572733825,
+    18851333161147209,256827625272665,244844111940225,13080355599105).
+  }
+\end{equation*}
+Burnside yields 2361488883978006005 endpoint-unordered representatives instead
+of $133^{14}$ raw ordered sextuples. Direct ambiguity sums, the generic
+transform, and all reachable fixed pairs through width two agree. This is an
+exact state-count result only and makes no timing claim.
 
 The endpoint-symmetric pair quotient also composes exactly over the reachable
 fixed-pair ambiguity distribution. Let $E_N$ count canonical ordered preimage
@@ -1561,13 +1582,9 @@ correspondence.
 
 \section{Measured implementation result}
 
-The versioned CPU VM benchmark evidence at
-\texttt{benchmarks/}\allowbreak{}%
-\texttt{interpreter/}\allowbreak{}%
-\texttt{evidence/}\allowbreak{}%
-\texttt{2026{-}07{-}26-windows-}\allowbreak{}%
-\texttt{x86\_64/}
-contains 15 raw
+The versioned CPU VM benchmark evidence is stored under
+\path{benchmarks/interpreter/evidence/} in the
+\texttt{2026{-}07{-}26{-}windows{-}x86\_64/} directory. It contains 15 raw
 samples per scalar/table implementation and identical checksums. On that
 identified host, the classic crazy factorization reduced the median from
 77,456,700 ns to 7,423,600 ns (10.43x), while rotate lookup reduced the median
