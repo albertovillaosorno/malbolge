@@ -712,6 +712,22 @@ Twelve focused suffix tests cover geometry continuity, indexed
 progress/failure, reusable prebinding, owned reuse, partial-load rollback, and
 single/both-mapping cleanup ownership.
 
+The complete certified `(&O` path now composes initial jump-data, rotate, and
+halt without executing the jump outside the native composition boundary.
+`ExecutionGeometryNativeJumpRotateHaltSequence` first admits the aliasing jump
+from the theorem entry checkpoint. Its normatively replayed exit is then the
+sole checkpoint accepted by the existing rotate/halt suffix, so all three
+steps are admitted before the first executable mapping can occur.
+
+Transactional execution reports global indices 0/1/2. A jump guard miss skips
+the complete suffix, a rotate miss retains the committed jump checkpoint, and
+a late halt failure retains the committed rotate checkpoint. Mixed N10/N11
+jump/suffix evidence rejects during admission.
+
+Five focused tests cover exact three-step completion, both prefix guard cases,
+late failure, and mixed-geometry rejection. This wrapper adds no generic v5
+planner or three-entry cache authority.
+
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence
 equality is its sole identity authority; it does not share resident state or

@@ -692,6 +692,12 @@ transfers, verification, and other separately measured costs.
   the committed rotate checkpoint. Exact ready pairs may be prebound or owned,
   reused without remapping, and released with partial-load/both-mapping cleanup
   retry ownership.
+- The complete certified `(&O` path now composes initial jump-data, rotate, and
+  halt under one checkpoint chain. Jump replay is the sole suffix entry
+  authority, rotate replay remains the sole halt authority, and all three steps
+  admit before the first mapping. Global indices 0/1/2 preserve exact guard and
+  failure position; mixed N10/N11 jump/suffix evidence rejects before adapter
+  work. Generic v5 planning and a reusable three-executable cache remain open.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

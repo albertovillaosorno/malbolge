@@ -49,6 +49,8 @@ pub mod geometry_interpreter_handoff;
 pub mod geometry_native_admission;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jump.rs"]
 pub mod geometry_native_initial_jump_data;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrh.rs"]
+pub mod geometry_native_jump_rotate_halt_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_noop.rs"]
 pub mod geometry_native_no_operation;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_cache.rs"]
@@ -257,6 +259,7 @@ use geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltTransactionFailure,
 };
 use geometry_native_initial_jump_data as jump_native;
+use geometry_native_jump_rotate_halt_sequence as full_geometry_native;
 use geometry_native_no_operation::{
     ExecutionGeometryNativeNoOperationAdmission,
     ExecutionGeometryNativeNoOperationBindingError,
@@ -560,6 +563,20 @@ struct SecondStepContinuationExpectation<'plan> {
     programs: &'plan [RegionEffectProgram],
     reason: NativeInterpreterContinuationReason,
 }
+
+type FullGeometryAdmissionError =
+    full_geometry_native::ExecutionGeometryNativeJumpRotateHaltAdmissionError;
+type FullGeometryEvidence =
+    full_geometry_native::ExecutionGeometryNativeJumpRotateHaltEvidence;
+type FullGeometryFailureCause<MemoryError, RunnerError> =
+    full_geometry_native::ExecutionGeometryNativeJumpRotateHaltFailureCause<
+        MemoryError,
+        RunnerError,
+    >;
+type FullGeometryOutcome =
+    full_geometry_native::ExecutionGeometryNativeJumpRotateHaltOutcome;
+type FullGeometrySequence =
+    full_geometry_native::ExecutionGeometryNativeJumpRotateHaltSequence;
 
 type InitialJumpAdmission =
     jump_native::ExecutionGeometryNativeInitialJumpDataAdmission;
@@ -12529,6 +12546,45 @@ fn derived_v5_rotate_fixture(
     Ok((program, checkpoint, verified.geometry()))
 }
 
+fn derived_v5_jump_rotate_halt_sequence_fixture(
+    word_trits: u8,
+) -> Result<DerivedV5SequenceFixture, String> {
+    let verified = verify_jump_rotate_halt_profile_width(
+        current_profile(),
+        b"(&O",
+        word_trits,
+    )
+    .map_err(|error| format!("v5 full-path verification: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new())
+            .map_err(|error| format!("v5 full-path machine: {error}"))?;
+    let mut programs = Vec::new();
+    let mut states = vec![machine.snapshot_state()];
+    let mut traces = Vec::new();
+    for _index in 0usize..3usize {
+        let mut trace_slot = None;
+        let _outcome = machine
+            .step_traced(&mut |trace| trace_slot = Some(*trace))
+            .map_err(|error| format!("v5 full-path trace: {error}"))?;
+        let trace = trace_slot
+            .ok_or_else(|| String::from("v5 full-path trace missing"))?;
+        let program =
+            ExecutionGeometryRegionEffectProgram::from_profile_step_trace(
+                &trace,
+            )
+            .map_err(|error| format!("v5 full-path projection: {error:?}"))?;
+        programs.push(program);
+        states.push(machine.snapshot_state());
+        traces.push(trace);
+    }
+    Ok(DerivedV5SequenceFixture {
+        geometry: verified.geometry(),
+        programs,
+        states,
+        traces,
+    })
+}
+
 fn derived_v5_rotate_halt_sequence_fixture(
     word_trits: u8,
 ) -> Result<DerivedV5SequenceFixture, String> {
@@ -13118,6 +13174,77 @@ fn execution_geometry_native_admission_rejects_checkpoint_geometry_drift()
     } else {
         Err(String::from("v5 admission ignored opaque geometry drift"))
     }
+}
+
+fn geometry_native_jump_rotate_halt_evidence(
+    jump_fixture: &DerivedV5SequenceFixture,
+    suffix_fixture: &DerivedV5SequenceFixture,
+) -> Result<FullGeometryEvidence, String> {
+    let initial_jump = jump_fixture
+        .programs
+        .first()
+        .cloned()
+        .ok_or_else(|| String::from("v5 full-path jump missing"))?;
+    let rotate = suffix_fixture
+        .programs
+        .get(1)
+        .cloned()
+        .ok_or_else(|| String::from("v5 full-path rotate missing"))?;
+    let halt = suffix_fixture
+        .programs
+        .get(2)
+        .cloned()
+        .ok_or_else(|| String::from("v5 full-path halt missing"))?;
+    let jump_object = emit_direct_execution_geometry_initial_jump_data_coff(
+        &initial_jump,
+        direct_execution_geometry_initial_jump_data_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 full-path jump emit: {error}"))?;
+    let jump_artifact = verify_direct_execution_geometry_initial_jump_data(
+        &jump_object,
+        &initial_jump,
+    )
+    .map_err(|error| format!("v5 full-path jump verify: {error}"))?;
+    let rotate_object = emit_direct_execution_geometry_rotate_coff(
+        &rotate,
+        direct_execution_geometry_rotate_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 full-path rotate emit: {error}"))?;
+    let rotate_artifact =
+        verify_direct_execution_geometry_rotate(&rotate_object, &rotate)
+            .map_err(|error| format!("v5 full-path rotate verify: {error}"))?;
+    let halt_object = emit_direct_execution_geometry_initial_halt_coff(
+        &halt,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 full-path halt emit: {error}"))?;
+    let halt_artifact =
+        verify_direct_execution_geometry_initial_halt(&halt_object, &halt)
+            .map_err(|error| format!("v5 full-path halt verify: {error}"))?;
+    let suffix = ExecutionGeometryNativeRotateHaltEvidence::new(
+        rotate,
+        rotate_artifact,
+        halt,
+        halt_artifact,
+    );
+    Ok(FullGeometryEvidence::new(
+        initial_jump,
+        jump_artifact,
+        suffix,
+    ))
+}
+
+fn geometry_native_jump_rotate_halt_sequence(
+    fixture: &DerivedV5SequenceFixture,
+) -> Result<FullGeometrySequence, String> {
+    let checkpoint = fixture
+        .states
+        .first()
+        .cloned()
+        .ok_or_else(|| String::from("v5 full-path checkpoint missing"))?;
+    let evidence = geometry_native_jump_rotate_halt_evidence(fixture, fixture)?;
+    FullGeometrySequence::new(evidence, checkpoint)
+        .map_err(|error| error.to_string())
 }
 
 fn geometry_native_rotate_halt_sequence(
@@ -14735,6 +14862,213 @@ fn geometry_native_noop_halt_loaded_late_failure_retains_prefix()
         .map_err(|error| format!("v5 loaded late no-op release: {error}"))?;
     release_execution_geometry_native_executable(&mut adapter, halt)
         .map_err(|error| format!("v5 loaded late halt release: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_applies_three_steps() -> Result<(), String>
+{
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 full-path initial state missing"))?;
+    let final_state = fixture
+        .states
+        .get(3)
+        .ok_or_else(|| String::from("v5 full-path final state missing"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(132)?,
+        native_executable_address(0x3_2000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = sequence
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome != FullGeometryOutcome::Completed(final_state.clone())
+        || outcome.state().geometry() != fixture.geometry
+        || memory != final_state.memory()
+        || output != final_state.io().output()
+        || runner.calls != 3
+        || adapter.operations.len() != 15
+    {
+        Err(String::from("v5 full-path completion drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_guard_miss_stops_at_jump()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 full-path initial state missing"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(133)?,
+        native_executable_address(0x3_3000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = sequence
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome
+        != (FullGeometryOutcome::GuardMiss {
+            index: 0,
+            state: initial.clone(),
+        })
+        || runner.calls != 1
+        || memory != initial.memory()
+        || adapter.operations.len() != 5
+    {
+        Err(String::from("v5 full-path jump miss executed suffix"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_rejects_mixed_geometry()
+-> Result<(), String> {
+    let n10 = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let n11 = derived_v5_jump_rotate_halt_sequence_fixture(11)?;
+    let checkpoint =
+        n10.states.first().cloned().ok_or_else(|| {
+            String::from("v5 mixed full-path checkpoint missing")
+        })?;
+    let evidence = geometry_native_jump_rotate_halt_evidence(&n10, &n11)?;
+    if matches!(
+        FullGeometrySequence::new(evidence, checkpoint),
+        Err(FullGeometryAdmissionError::Suffix(_error))
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("v5 mixed full-path geometry was admitted"))
+    }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_rotate_miss_retains_jump()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 full-path initial state missing"))?;
+    let jump_state = fixture
+        .states
+        .get(1)
+        .ok_or_else(|| String::from("v5 full-path jump state missing"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(134)?,
+        native_executable_address(0x3_4000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = sequence
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome
+        != (FullGeometryOutcome::GuardMiss {
+            index: 1,
+            state: jump_state.clone(),
+        })
+        || runner.calls != 2
+        || memory != jump_state.memory()
+        || adapter.operations.len() != 10
+    {
+        Err(String::from("v5 full-path rotate miss lost jump prefix"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_late_failure_retains_rotate()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 full-path initial state missing"))?;
+    let rotate_state = fixture
+        .states
+        .get(2)
+        .ok_or_else(|| String::from("v5 full-path rotate state missing"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(135)?,
+        native_executable_address(0x3_5000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) = sequence.execute_transactionally(
+        &mut adapter,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 full-path late failure was ignored"));
+    };
+    let suffix_halt_failure = matches!(
+        failure.cause(),
+        FullGeometryFailureCause::Suffix(suffix)
+            if matches!(
+                suffix.cause(),
+                ExecutionGeometryNativeRotateHaltFailureCause::Halt(_error)
+            )
+    );
+    if failure.index() != 2
+        || failure.state() != rotate_state
+        || memory != rotate_state.memory()
+        || runner.calls != 3
+        || adapter.operations.len() != 15
+        || !suffix_halt_failure
+    {
+        Err(String::from("v5 full-path late failure lost rotate prefix"))
+    } else {
+        Ok(())
+    }
 }
 
 #[test]
