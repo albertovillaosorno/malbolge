@@ -280,6 +280,7 @@ use geometry_native_cross_template_cache::{
 };
 use geometry_native_cross_template_concurrent_cache::{
     GeometryNativeConcurrentCrossTemplateAccessError as CrossSyncAccessError,
+    GeometryNativeConcurrentCrossTemplateCleanupRetryFailure as SyncCleanup,
     GeometryNativeConcurrentCrossTemplateExecutionFailure as SyncExecFailure,
     GeometryNativeConcurrentCrossTemplateFailure as CrossSyncFailure,
     GeometryNativeConcurrentCrossTemplateLruCache as CrossSyncCache,
@@ -633,6 +634,8 @@ struct SecondStepContinuationExpectation<'plan> {
 
 type CrossResidentPlanTriple =
     (CrossResidentPlan, CrossResidentPlan, CrossResidentPlan);
+type FakeCrossResidentReleaseFailure =
+    CrossResidentReleaseFailure<FakeNativeAdapterOperation>;
 type FullGeometryAdmissionError =
     full_native::ExecutionGeometryNativeJumpRotateHaltAdmissionError;
 type FullGeometryBindingError =
@@ -13488,6 +13491,26 @@ fn cross_template_limits(
     Ok(limits)
 }
 
+fn concurrent_transferred_cleanup(
+    cache: &CrossSyncCache<FakeNativeExecutableAdapter>,
+    plan: &CrossResidentPlan,
+) -> Result<Box<FakeCrossResidentReleaseFailure>, String> {
+    let Err(CrossSyncFailure::Operation(cleanup)) =
+        cache.release_if_unleased(plan)
+    else {
+        return Err(String::from(
+            "concurrent cleanup transfer was not exposed",
+        ));
+    };
+    if cache.contains(plan).map_err(|error| error.to_string())? {
+        Err(String::from(
+            "failed release retained stale cache authority",
+        ))
+    } else {
+        Ok(cleanup)
+    }
+}
+
 fn concurrent_cross_template_lru(
     adapter: FakeNativeExecutableAdapter,
     capacity: usize,
@@ -16042,6 +16065,47 @@ fn geometry_native_cross_template_weighted_lru_release_failure_is_typed()
         .release_if_unleased(&mut adapter, &rotate_plan)
         .map(|_release| ())
         .map_err(|error| format!("cross weighted survivor cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_retries_transferred_cleanup()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(215)?,
+        native_executable_address(0x8_4000)?,
+    )
+    .with_release_failures(3);
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    let acquisition = cache
+        .ensure(&noop_plan)
+        .map_err(|error| format!("concurrent cleanup acquire: {error}"))?;
+    drop(acquisition);
+    let cleanup = concurrent_transferred_cleanup(&cache, &noop_plan)?;
+    let Err(retry_failure) = cache.retry_cleanup(cleanup) else {
+        return Err(String::from(
+            "concurrent cleanup retry unexpectedly succeeded",
+        ));
+    };
+    let SyncCleanup::Release(refreshed_cleanup) = *retry_failure else {
+        return Err(String::from(
+            "concurrent cleanup retry lost release token",
+        ));
+    };
+    cache
+        .retry_cleanup(refreshed_cleanup)
+        .map_err(|error| format!("concurrent cleanup final retry: {error}"))?;
+    let snapshot = cache
+        .snapshot(&noop_plan)
+        .map_err(|error| format!("concurrent cleanup snapshot: {error}"))?;
+    if snapshot.resident() || snapshot.usage().entries() != 0 {
+        Err(String::from(
+            "concurrent cleanup retry republished authority",
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 #[test]

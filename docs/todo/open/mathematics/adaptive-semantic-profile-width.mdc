@@ -779,6 +779,13 @@ transfers, verification, and other separately measured costs.
   locked. Once it acquires the mutex it delegates to the complete existing
   `ensure` transaction, preserving typed load/eviction/cleanup failure evidence;
   poison remains distinct from transient contention.
+- Resident-release cleanup tokens transferred by eviction, rollback, explicit
+  release, or reconfiguration can now retry through the synchronized owner's
+  exact adapter. Repeated release failure refreshes the token without restoring
+  stale resident authority.
+- Cleanup retained inside primary executable load failures still needs a common
+  forwarding contract before every concurrent load rollback is retryable through
+  the encapsulated adapter.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

@@ -912,6 +912,17 @@ eviction, rollback, and cleanup failures therefore retain their original typed
 evidence. Focused cases also prove poisoned authority stays distinct and a retry
 after transient contention reuses the completed resident as a normal hit.
 
+Transferred resident-release cleanup can now return to the same synchronized
+adapter through `retry_cleanup`. The cache no longer owns the mappings
+represented
+by that token; retry runs only their existing variant-specific release contract
+under the mutex. Repeated failure returns refreshed cleanup ownership, and later
+success does not republish resident authority.
+
+Specialized cleanup retained inside a primary executable *load failure* remains
+a separate forwarding problem because those failures do not yet share the
+resident-release token shape.
+
 Concurrent read-side scaling beyond one mutation mutex remains separate policy
 work.
 

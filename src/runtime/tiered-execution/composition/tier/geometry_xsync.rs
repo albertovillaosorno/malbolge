@@ -60,6 +60,8 @@ type CacheReconfigurationFailure<MemoryError> =
     GeometryNativeCrossTemplateLruReconfigurationFailure<MemoryError>;
 type CacheReleaseFailure<MemoryError> =
     GeometryNativeResidentReleaseFailure<MemoryError>;
+type CleanupRetryFailure<MemoryError> =
+    GeometryNativeConcurrentCrossTemplateCleanupRetryFailure<MemoryError>;
 type ConcurrentAcquireFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateFailure<
         Box<CacheAcquireFailure<MemoryError>>,
@@ -108,6 +110,15 @@ pub enum GeometryNativeConcurrentCrossTemplateTryFailure<OperationError> {
     Operation(OperationError),
     /// Prior mutation unwinding poisoned cache authority.
     Poisoned,
+}
+
+/// Failure while retrying transferred resident cleanup with the owned adapter.
+#[derive(Debug, Eq, PartialEq)]
+pub enum GeometryNativeConcurrentCrossTemplateCleanupRetryFailure<MemoryError> {
+    /// The cache was already poisoned, so cleanup was not attempted.
+    Poisoned(Box<CacheReleaseFailure<MemoryError>>),
+    /// Cleanup was retried and still retains mapping ownership.
+    Release(Box<CacheReleaseFailure<MemoryError>>),
 }
 
 /// Failure from one acquire-then-execute concurrent cache request.
@@ -163,6 +174,17 @@ pub type GeometryNativeConcurrentCrossTemplateAcquireResult<MemoryError> =
         GeometryNativeCrossTemplateLruAcquisition,
         GeometryNativeConcurrentCrossTemplateFailure<
             Box<CacheAcquireFailure<MemoryError>>,
+        >,
+    >;
+
+/// Result of retrying one transferred heterogeneous cleanup token.
+pub type GeometryNativeConcurrentCrossTemplateCleanupRetryResult<MemoryError> =
+    Result<
+        (),
+        Box<
+            GeometryNativeConcurrentCrossTemplateCleanupRetryFailure<
+                MemoryError,
+            >,
         >,
     >;
 
@@ -246,6 +268,22 @@ impl<OperationError: Display> Display
             Self::Operation(error) => Display::fmt(error, f),
             Self::Poisoned => {
                 f.write_str("heterogeneous v5 cache lock is poisoned")
+            },
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for GeometryNativeConcurrentCrossTemplateCleanupRetryFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Poisoned(cleanup) => write!(
+                f,
+                "heterogeneous v5 cleanup blocked by poisoned cache: {cleanup}"
+            ),
+            Self::Release(cleanup) => {
+                write!(f, "heterogeneous v5 cleanup retry failed: {cleanup}")
             },
         }
     }
@@ -493,6 +531,35 @@ where
         &self,
     ) -> Result<usize, GeometryNativeConcurrentCrossTemplateAccessError> {
         Ok(self.lock()?.cache.resident_count())
+    }
+
+    /// Retries transferred resident cleanup with this cache's owned adapter.
+    ///
+    /// The cache itself no longer owns mappings represented by the cleanup
+    /// token. This method only restores access to the exact adapter authority
+    /// required by the token's existing
+    /// [`GeometryNativeResidentReleaseFailure::retry`] contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns the untouched cleanup token when authority is already poisoned,
+    /// or refreshed cleanup ownership when release fails again.
+    pub fn retry_cleanup(
+        &self,
+        cleanup: Box<CacheReleaseFailure<Adapter::Error>>,
+    ) -> GeometryNativeConcurrentCrossTemplateCleanupRetryResult<Adapter::Error>
+    {
+        let mut state = match self.lock() {
+            Ok(state) => state,
+            Err(_error) => {
+                return Err(Box::new(CleanupRetryFailure::Poisoned(cleanup)));
+            },
+        };
+        let result = (*cleanup)
+            .retry(&mut state.adapter)
+            .map_err(|error| Box::new(CleanupRetryFailure::Release(error)));
+        drop(state);
+        result
     }
 
     /// Reads identity state, limits, leases, and usage under one lock.
