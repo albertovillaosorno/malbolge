@@ -53,6 +53,8 @@ pub mod geometry_native_no_operation;
 pub mod geometry_native_pair_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_rotate.rs"]
 pub mod geometry_native_rotate;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_rhcache.rs"]
+pub mod geometry_native_rotate_pair_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_rotseq.rs"]
 pub mod geometry_native_rotate_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_seq.rs"]
@@ -268,6 +270,12 @@ use geometry_native_rotate::{
     ExecutionGeometryNativeRotateExecutionError,
     ExecutionGeometryNativeRotatePreparationError,
     ExecutionGeometryNativeRotateTransactionFailure,
+};
+use geometry_native_rotate_pair_cache::{
+    GeometryNativeRotateHaltPairCacheAcquireFailure,
+    GeometryNativeRotateHaltPairCacheDisposition,
+    GeometryNativeRotateHaltPairCacheRelease,
+    GeometryNativeRotateHaltPairLeaseCache,
 };
 use geometry_native_rotate_sequence::{
     ExecutionGeometryNativeRotateHaltAdmissionError,
@@ -13476,6 +13484,356 @@ fn geometry_native_noop_halt_loaded_rejects_mixed_ready_before_execution()
     } else {
         Err(String::from("v5 mixed ready pair was prebound"))
     }
+}
+
+#[test]
+fn geometry_native_rotate_halt_cache_replace_blocks_live_lease()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let n11_fixture = derived_v5_rotate_halt_sequence_fixture(11)?;
+    let n10 = geometry_native_rotate_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_rotate_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(128)?,
+        native_executable_address(0x2_e000)?,
+    );
+    let mut cache = GeometryNativeRotateHaltPairLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &n10)
+        .map_err(|error| format!("v5 replace N10 acquire: {error}"))?
+        .into_lease();
+    let Err(failure) = cache.replace_if_unleased(&mut adapter, &n11) else {
+        return Err(String::from("v5 replacement ignored live lease"));
+    };
+    if !matches!(
+        *failure,
+        GeometryNativeRotateHaltPairCacheAcquireFailure::Leased { leases: 1 }
+    ) || adapter.operations.len() != 8
+        || lease.sequence() != &n10
+    {
+        return Err(String::from("v5 live-lease replacement drifted"));
+    }
+    drop(lease);
+    cache
+        .release_if_unleased(&mut adapter)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 replace blocked cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_rotate_halt_cache_replace_publishes_identity()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let n11_fixture = derived_v5_rotate_halt_sequence_fixture(11)?;
+    let n10 = geometry_native_rotate_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_rotate_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(129)?,
+        native_executable_address(0x2_f000)?,
+    );
+    let mut cache = GeometryNativeRotateHaltPairLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &n10)
+        .map_err(|error| format!("v5 replace first acquire: {error}"))?
+        .into_lease();
+    drop(first);
+    let replacement = cache
+        .replace_if_unleased(&mut adapter, &n11)
+        .map_err(|error| format!("v5 replace N11: {error}"))?;
+    if replacement.disposition()
+        != GeometryNativeRotateHaltPairCacheDisposition::Replaced
+        || replacement.lease().sequence() != &n11
+        || adapter.operations.len() != 18
+    {
+        return Err(String::from("v5 replacement publication drifted"));
+    }
+    drop(replacement);
+    let released = cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|error| format!("v5 replacement final cleanup: {error}"))?;
+    if released == GeometryNativeRotateHaltPairCacheRelease::Released
+        && adapter.operations.len() == 20
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 replacement final release drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_rotate_halt_cache_replace_release_failure_empties()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let n11_fixture = derived_v5_rotate_halt_sequence_fixture(11)?;
+    let n10 = geometry_native_rotate_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_rotate_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(130)?,
+        native_executable_address(0x3_0000)?,
+    )
+    .with_release_failures(2);
+    let mut cache = GeometryNativeRotateHaltPairLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &n10)
+        .map_err(|error| format!("v5 replace release acquire: {error}"))?
+        .into_lease();
+    drop(lease);
+    let Err(failure) = cache.replace_if_unleased(&mut adapter, &n11) else {
+        return Err(String::from("v5 replacement release failure ignored"));
+    };
+    let GeometryNativeRotateHaltPairCacheAcquireFailure::Release(cleanup) =
+        *failure
+    else {
+        return Err(String::from("v5 replacement release cause drifted"));
+    };
+    if cache.has_resident()
+        || cleanup.halt_failure().is_none()
+        || cleanup.rotate_failure().is_none()
+        || adapter.operations.len() != 10
+    {
+        return Err(String::from("v5 replacement release ownership drifted"));
+    }
+    cleanup
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 replacement release retry: {error}"))
+}
+
+#[test]
+fn geometry_native_rotate_halt_cache_replace_load_failure_empties()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let n11_fixture = derived_v5_rotate_halt_sequence_fixture(11)?;
+    let n10 = geometry_native_rotate_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_rotate_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(131)?,
+        native_executable_address(0x3_1000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 3);
+    let mut cache = GeometryNativeRotateHaltPairLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &n10)
+        .map_err(|error| format!("v5 replace load acquire: {error}"))?
+        .into_lease();
+    drop(lease);
+    let Err(failure) = cache.replace_if_unleased(&mut adapter, &n11) else {
+        return Err(String::from("v5 replacement load failure ignored"));
+    };
+    let load_failed = matches!(
+        *failure,
+        GeometryNativeRotateHaltPairCacheAcquireFailure::Load(error)
+            if matches!(
+                *error,
+                ExecutionGeometryNativeRotateHaltPairLoadFailure::Rotate(_)
+            )
+    );
+    if load_failed && !cache.has_resident() && adapter.operations.len() == 11 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v5 replacement load failure publication drifted",
+        ))
+    }
+}
+
+#[test]
+fn geometry_native_rotate_halt_cache_insert_hit_reuses_resident()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let [initial, _prefix, final_state] = fixture.states.as_slice() else {
+        return Err(String::from("v5 cache state sequence incomplete"));
+    };
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(123)?,
+        native_executable_address(0x2_9000)?,
+    );
+    let mut cache = GeometryNativeRotateHaltPairLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &sequence)
+        .map_err(|error| format!("v5 cache insert: {error}"))?;
+    let first_disposition = first.disposition();
+    let first_lease = first.into_lease();
+    let second = cache
+        .ensure(&mut adapter, &sequence)
+        .map_err(|error| format!("v5 cache hit: {error}"))?;
+    let second_disposition = second.disposition();
+    let second_lease = second.into_lease();
+    if first_disposition
+        != GeometryNativeRotateHaltPairCacheDisposition::Inserted
+        || second_disposition
+            != GeometryNativeRotateHaltPairCacheDisposition::Hit
+        || !first_lease.shares_resident_with(&second_lease)
+        || cache.resident_lease_count() != 2
+        || adapter.operations.len() != 8
+    {
+        return Err(String::from("v5 cache resident reuse drifted"));
+    }
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = first_lease
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 cache lease execute: {error}"))?;
+    if outcome.state() != final_state || adapter.operations.len() != 8 {
+        return Err(String::from("v5 cache lease execution remapped"));
+    }
+    drop((first_lease, second_lease));
+    let released = cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|error| format!("v5 cache final release: {error}"))?;
+    if released != GeometryNativeRotateHaltPairCacheRelease::Released
+        || cache.has_resident()
+        || adapter.operations.len() != 10
+    {
+        return Err(String::from("v5 cache final release drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn geometry_native_rotate_halt_cache_live_lease_blocks_release()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(124)?,
+        native_executable_address(0x2_a000)?,
+    );
+    let mut cache = GeometryNativeRotateHaltPairLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &sequence)
+        .map_err(|error| format!("v5 cache lease acquire: {error}"))?
+        .into_lease();
+    let blocked = cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|error| format!("v5 cache blocked release: {error}"))?;
+    if blocked
+        != (GeometryNativeRotateHaltPairCacheRelease::Leased { leases: 1 })
+        || adapter.operations.len() != 8
+        || cache.resident_lease_count() != 1
+    {
+        return Err(String::from("v5 cache live lease did not block release"));
+    }
+    drop(lease);
+    let released = cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|error| format!("v5 cache unblocked release: {error}"))?;
+    if released == GeometryNativeRotateHaltPairCacheRelease::Released
+        && adapter.operations.len() == 10
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 cache unblocked release drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_rotate_halt_cache_rejects_different_identity()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let n11_fixture = derived_v5_rotate_halt_sequence_fixture(11)?;
+    let n10 = geometry_native_rotate_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_rotate_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(125)?,
+        native_executable_address(0x2_b000)?,
+    );
+    let mut cache = GeometryNativeRotateHaltPairLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &n10)
+        .map_err(|error| format!("v5 cache N10 acquire: {error}"))?
+        .into_lease();
+    let Err(failure) = cache.ensure(&mut adapter, &n11) else {
+        return Err(String::from("v5 cache mixed identity was admitted"));
+    };
+    if !matches!(
+        *failure,
+        GeometryNativeRotateHaltPairCacheAcquireFailure::IdentityOccupied
+    ) || adapter.operations.len() != 8
+        || lease.sequence() != &n10
+    {
+        return Err(String::from("v5 cache mixed identity handling drifted"));
+    }
+    drop(lease);
+    cache
+        .release_if_unleased(&mut adapter)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 cache N10 cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_rotate_halt_cache_load_failure_publishes_nothing()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(126)?,
+        native_executable_address(0x2_c000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 2);
+    let mut cache = GeometryNativeRotateHaltPairLeaseCache::new();
+    let Err(failure) = cache.ensure(&mut adapter, &sequence) else {
+        return Err(String::from("v5 cache load failure was published"));
+    };
+    let load_failed = matches!(
+        *failure,
+        GeometryNativeRotateHaltPairCacheAcquireFailure::Load(error)
+            if matches!(
+                *error,
+                ExecutionGeometryNativeRotateHaltPairLoadFailure::Halt { .. }
+            )
+    );
+    let release = cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|error| format!("v5 empty cache release: {error}"))?;
+    if load_failed
+        && !cache.has_resident()
+        && release == GeometryNativeRotateHaltPairCacheRelease::Missing
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 cache failed load left resident authority"))
+    }
+}
+
+#[test]
+fn geometry_native_rotate_halt_cache_release_transfers_ownership()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_rotate_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(127)?,
+        native_executable_address(0x2_d000)?,
+    )
+    .with_release_failures(2);
+    let mut cache = GeometryNativeRotateHaltPairLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &sequence)
+        .map_err(|error| format!("v5 cache release acquire: {error}"))?
+        .into_lease();
+    drop(lease);
+    let Err(failure) = cache.release_if_unleased(&mut adapter) else {
+        return Err(String::from("v5 cache release failure was ignored"));
+    };
+    if cache.has_resident()
+        || failure.halt_failure().is_none()
+        || failure.rotate_failure().is_none()
+    {
+        return Err(String::from(
+            "v5 cache cleanup ownership did not transfer",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 cache cleanup retry: {error}"))
 }
 
 #[test]

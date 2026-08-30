@@ -678,7 +678,21 @@ fails.
 
 Twelve focused suffix tests cover geometry continuity, indexed
 progress/failure, reusable prebinding, owned reuse, partial-load rollback, and
-single/both-mapping cleanup ownership. Pair-cache integration remains separate.
+single/both-mapping cleanup ownership.
+
+A separate rotate/halt single-resident lease cache now owns reusable loaded
+pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence
+equality is its sole identity authority; it does not share resident state or
+legacy canonical keys with the no-op/halt cache. Exact hits perform no adapter
+work, live leases block release/replacement, and different N10/N11 identities
+reject without implicit eviction.
+
+Explicit replacement is allowed only after every external lease is gone. The
+old pair releases fully before the new pair loads; release or load failure
+leaves
+no resident authority and transfers exact cleanup ownership to the caller. Nine
+focused cache cases cover hit reuse, lease blocking, identity rejection, failed
+load publication, cleanup transfer, and all replacement outcomes.
 
 The no-operation artifact retains its own verified wrapper and now reaches
 execution only through a separate checkpoint-bound composition module.

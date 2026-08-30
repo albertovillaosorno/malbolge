@@ -676,8 +676,15 @@ transfers, verification, and other separately measured costs.
   admission; guard misses stop at the exact index and late halt failure retains
   the committed rotate checkpoint. Exact ready pairs may be prebound or owned,
   reused without remapping, and released with partial-load/both-mapping cleanup
-  retry ownership. Rotate/halt pair-cache integration and additional templates
-  remain open.
+  retry ownership.
+- A separate rotate/halt single-resident lease cache now reuses owned pairs with
+  complete admitted sequence equality. Exact hits avoid mapping work, live
+  leases block release/replacement, N10/N11 identity mismatch rejects without
+  implicit eviction, failed loads publish nothing, and cleanup failure transfers
+  exact retry ownership. Explicit replacement releases the old pair completely
+  before loading the new identity and leaves the cache empty on either failure.
+  The no-op/halt and rotate/halt caches remain intentionally separate; broader
+  multi-entry eviction and additional state-changing templates remain open.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only
   admissible Applied state. The separate load image, prepare/bind layer, v5
