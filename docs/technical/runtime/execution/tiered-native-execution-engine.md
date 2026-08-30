@@ -585,9 +585,19 @@ and release identity while retaining `VerifiedExecutionGeometryLoadImage`. Code
 drift fails closed, and the resulting ready type is distinct from legacy
 `ReadyNativeExecutable`, so existing runners cannot invoke it.
 
-Platform-adapter orchestration and binding that ready executable to the prepared
-checkpoint-owned ABI call remain separate authority boundaries. State-applying
-arithmetic templates also remain canonical-only.
+Platform-adapter orchestration now accepts the v5 load image through a separate
+entrypoint. `load_execution_geometry_native_executable()` reuses the existing
+caller-owned memory adapter and phase-tagged failure/cleanup evidence for exact
+allocate, copy, protect, and synchronization ordering, but returns only
+`ReadyExecutionGeometryNativeExecutable`. Every post-allocation failure attempts
+the exact release request; explicit v5 release retains the ready executable for
+retry if cleanup fails.
+
+The platform path still cannot invoke code because no native runner accepts the
+v5 ready type. Binding that ready executable to the prepared checkpoint-owned
+ABI call remains the next authority boundary. State-applying arithmetic
+templates
+also remain canonical-only.
 
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine

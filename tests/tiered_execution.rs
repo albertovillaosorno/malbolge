@@ -195,9 +195,10 @@ use execution_native::{
     execute_loaded_cached_verified_native_sequence,
     execute_loaded_verified_native_sequence, execute_verified_native,
     execute_verified_native_sequence, load_cached_verified_native_sequence,
-    load_native_executable, load_verified_native_sequence, lower_clang_c23,
-    lower_preflighted_clang_c23, release_native_executable,
-    release_native_executable_sequence,
+    load_execution_geometry_native_executable, load_native_executable,
+    load_verified_native_sequence, lower_clang_c23,
+    lower_preflighted_clang_c23, release_execution_geometry_native_executable,
+    release_native_executable, release_native_executable_sequence,
     select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence, select_preflighted_execution_tier,
     select_verified_direct_native, select_verified_direct_sequence,
@@ -12276,6 +12277,95 @@ fn geometry_native_lifecycle_rejects_code_drift() -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from("v5 lifecycle admitted copied-code drift"))
+    }
+}
+
+#[test]
+fn geometry_native_platform_loads_and_releases_exact_image()
+-> Result<(), String> {
+    let (program, _checkpoint, _geometry) = derived_v5_handoff_fixture(10)?;
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &program,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 platform emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_halt(&artifact, &program)
+            .map_err(|error| format!("v5 platform verify: {error}"))?;
+    let image =
+        VerifiedExecutionGeometryLoadImage::from_initial_halt(&verified)
+            .map_err(|error| format!("v5 platform image: {error}"))?;
+    let mapping_id = native_executable_mapping_id(93)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        mapping_id,
+        native_executable_address(0xb000)?,
+    );
+    let ready = load_execution_geometry_native_executable(&mut adapter, &image)
+        .map_err(|error| format!("v5 platform load: {error}"))?;
+    if ready.key() != verified.key()
+        || ready.image() != &image
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+            ]
+    {
+        return Err(String::from("v5 platform load evidence drifted"));
+    }
+    let release = ready.release_request();
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v5 platform release: {error}"))?;
+    if adapter.release_requests == [release]
+        && adapter.operations.last()
+            == Some(&FakeNativeAdapterOperation::Release)
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 platform release evidence drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_platform_cleans_up_copy_failure() -> Result<(), String> {
+    let (program, _checkpoint, _geometry) = derived_v5_handoff_fixture(10)?;
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &program,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 cleanup emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_halt(&artifact, &program)
+            .map_err(|error| format!("v5 cleanup verify: {error}"))?;
+    let image =
+        VerifiedExecutionGeometryLoadImage::from_initial_halt(&verified)
+            .map_err(|error| format!("v5 cleanup image: {error}"))?;
+    let mapping_id = native_executable_mapping_id(94)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        mapping_id,
+        native_executable_address(0xc000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let Err(error) =
+        load_execution_geometry_native_executable(&mut adapter, &image)
+    else {
+        return Err(String::from("v5 copy failure was ignored"));
+    };
+    if error.phase() == NativeExecutableLoadPhase::Copy
+        && error.adapter_error() == Some(&FakeNativeAdapterOperation::Copy)
+        && error.release_error().is_none()
+        && error.release_request() == adapter.release_requests.first().copied()
+        && adapter.operations
+            == [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 copy failure cleanup evidence drifted"))
     }
 }
 

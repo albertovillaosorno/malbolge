@@ -200,12 +200,16 @@ use malbolge::{
     preflight_portable_profile_requirement,
 };
 pub use platform::{
+    ExecutionGeometryNativeExecutableLoadResult,
+    ExecutionGeometryNativeExecutableReleaseFailure,
+    ExecutionGeometryNativeExecutableReleaseResult,
     NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
     NativeExecutableLoadFailure, NativeExecutableLoadPhase,
     NativeExecutableLoadResult, NativeExecutableMemoryAdapter,
     NativeExecutableOperationEvidenceError, NativeExecutableReleaseFailure,
     NativeExecutableReleaseResult, NativeInstructionSyncRequest,
-    load_native_executable, release_native_executable,
+    load_execution_geometry_native_executable, load_native_executable,
+    release_execution_geometry_native_executable, release_native_executable,
 };
 pub use runner::{
     NativeExecutableExecutionFailure, NativeExecutableExecutionPhase,

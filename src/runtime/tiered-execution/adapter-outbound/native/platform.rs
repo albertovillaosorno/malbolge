@@ -39,10 +39,16 @@ use std::num::NonZeroUsize;
 use super::lifecycle::{
     NativeExecutableLifecycleError, NativeExecutableMappingId,
     NativeExecutableMappingReport, NativeExecutableReleaseRequest,
-    NativeInstructionSyncReport, ReadyNativeExecutable, SealedNativeExecutable,
-    StagedNativeExecutable, validate_writable_mapping,
+    NativeInstructionSyncReport, ReadyExecutionGeometryNativeExecutable,
+    ReadyNativeExecutable, SealedExecutionGeometryNativeExecutable,
+    SealedNativeExecutable, StagedExecutionGeometryNativeExecutable,
+    StagedNativeExecutable, validate_execution_geometry_writable_mapping,
+    validate_writable_mapping,
 };
-use super::loader::{NativeExecutablePermission, VerifiedDirectLoadImage};
+use super::loader::{
+    NativeExecutablePermission, VerifiedDirectLoadImage,
+    VerifiedExecutionGeometryLoadImage,
+};
 
 /// Exact writable allocation request derived from one verified load image.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -112,6 +118,23 @@ pub struct NativeExecutableReleaseFailure<Error> {
     error: Box<Error>,
     executable: Box<ReadyNativeExecutable>,
 }
+
+/// Failed v5 release retaining the exact executable for retry.
+#[derive(Debug, Eq, PartialEq)]
+pub struct ExecutionGeometryNativeExecutableReleaseFailure<Error> {
+    error: Box<Error>,
+    executable: Box<ReadyExecutionGeometryNativeExecutable>,
+}
+
+/// Result of loading one exact explicit-geometry native executable.
+pub type ExecutionGeometryNativeExecutableLoadResult<Error> = Result<
+    ReadyExecutionGeometryNativeExecutable,
+    NativeExecutableLoadFailure<Error>,
+>;
+
+/// Result of explicitly releasing one ready explicit-geometry executable.
+pub type ExecutionGeometryNativeExecutableReleaseResult<Error> =
+    Result<(), ExecutionGeometryNativeExecutableReleaseFailure<Error>>;
 
 /// Result of loading one exact verified native executable.
 pub type NativeExecutableLoadResult<Error> =
@@ -395,6 +418,51 @@ impl<Error: Display> Display for NativeExecutableLoadFailure<Error> {
     }
 }
 
+impl<Error> ExecutionGeometryNativeExecutableReleaseFailure<Error> {
+    /// Returns the platform release error.
+    #[must_use]
+    pub const fn error(&self) -> &Error {
+        &self.error
+    }
+
+    /// Returns the exact v5 ready executable retained for retry.
+    #[must_use]
+    pub fn executable(&self) -> &ReadyExecutionGeometryNativeExecutable {
+        self.executable.as_ref()
+    }
+
+    /// Retries release without losing v5 executable identity after failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns a refreshed failure retaining the same executable when release
+    /// fails again.
+    pub fn retry<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> ExecutionGeometryNativeExecutableReleaseResult<Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter<Error = Error>,
+    {
+        let request = self.executable.release_request();
+        match adapter.release(request) {
+            Ok(()) => Ok(()),
+            Err(error) => Err(Self {
+                error: Box::new(error),
+                executable: self.executable,
+            }),
+        }
+    }
+}
+
+impl<Error: Display> Display
+    for ExecutionGeometryNativeExecutableReleaseFailure<Error>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "v5 native executable release failed: {}", self.error)
+    }
+}
+
 impl<Error> NativeExecutableReleaseFailure<Error> {
     /// Returns the platform release error.
     #[must_use]
@@ -436,6 +504,51 @@ impl<Error> NativeExecutableReleaseFailure<Error> {
 impl<Error: Display> Display for NativeExecutableReleaseFailure<Error> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         write!(f, "native executable release failed: {}", self.error)
+    }
+}
+
+/// Loads one verified explicit-geometry image through the platform adapter.
+///
+/// Every post-allocation failure attempts exact release before returning. The
+/// resulting ready executable remains a v5-specific type with no runner path.
+///
+/// # Errors
+///
+/// Returns [`NativeExecutableLoadFailure`] when any adapter operation or v5
+/// lifecycle admission fails.
+pub fn load_execution_geometry_native_executable<Adapter>(
+    adapter: &mut Adapter,
+    image: &VerifiedExecutionGeometryLoadImage,
+) -> ExecutionGeometryNativeExecutableLoadResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let allocated = allocate_execution_geometry_image(adapter, image)?;
+    let staged = copy_execution_geometry_image(adapter, image, allocated)?;
+    let sealed = protect_execution_geometry_image(adapter, staged, allocated)?;
+    synchronize_execution_geometry_image(adapter, sealed, allocated)
+}
+
+/// Releases one ready v5 executable while preserving it for retry on failure.
+///
+/// # Errors
+///
+/// Returns [`ExecutionGeometryNativeExecutableReleaseFailure`] with the exact
+/// ready executable when the adapter rejects release.
+pub fn release_execution_geometry_native_executable<Adapter>(
+    adapter: &mut Adapter,
+    executable: ReadyExecutionGeometryNativeExecutable,
+) -> ExecutionGeometryNativeExecutableReleaseResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let request = executable.release_request();
+    match adapter.release(request) {
+        Ok(()) => Ok(()),
+        Err(error) => Err(ExecutionGeometryNativeExecutableReleaseFailure {
+            error: Box::new(error),
+            executable: Box::new(executable),
+        }),
     }
 }
 
@@ -485,6 +598,45 @@ where
     }
 }
 
+fn allocate_execution_geometry_image<Adapter>(
+    adapter: &mut Adapter,
+    image: &VerifiedExecutionGeometryLoadImage,
+) -> NativeExecutableLoadStepResult<AllocatedNativeMapping, Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let request = NativeExecutableAllocationRequest::new(
+        image.allocation_len(),
+        image.minimum_instruction_alignment(),
+        image.policy().initial_permissions(),
+    );
+    let mapping = match adapter.allocate_writable(request) {
+        Ok(mapping) => mapping,
+        Err(error) => {
+            return Err(NativeExecutableLoadFailure {
+                cause: NativeExecutableLoadFailureCause::Adapter(Box::new(
+                    error,
+                )),
+                phase: NativeExecutableLoadPhase::Allocate,
+                release_error: None,
+                release_request: None,
+            });
+        },
+    };
+    let release_request = NativeExecutableReleaseRequest::from_mapping(mapping);
+    if let Err(error) =
+        validate_execution_geometry_writable_mapping(image, mapping)
+    {
+        return Err(fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Allocate,
+            NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
+            release_request,
+        ));
+    }
+    Ok(AllocatedNativeMapping { mapping, release_request })
+}
+
 fn allocate_image<Adapter>(
     adapter: &mut Adapter,
     image: &VerifiedDirectLoadImage,
@@ -520,6 +672,63 @@ where
         ));
     }
     Ok(AllocatedNativeMapping { mapping, release_request })
+}
+
+fn copy_execution_geometry_image<Adapter>(
+    adapter: &mut Adapter,
+    image: &VerifiedExecutionGeometryLoadImage,
+    allocated: AllocatedNativeMapping,
+) -> NativeExecutableLoadStepResult<
+    StagedExecutionGeometryNativeExecutable,
+    Adapter::Error,
+>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let copied = match adapter.copy_code(allocated.mapping, image.code()) {
+        Ok(copied) => copied,
+        Err(error) => {
+            return Err(fail_with_release(
+                adapter,
+                NativeExecutableLoadPhase::Copy,
+                NativeExecutableLoadFailureCause::Adapter(Box::new(error)),
+                allocated.release_request,
+            ));
+        },
+    };
+    if copied.mapping_id() != allocated.mapping.mapping_id() {
+        return Err(fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Copy,
+            NativeExecutableLoadFailureCause::Evidence(Box::new(
+                NativeExecutableOperationEvidenceError::CopyMappingIdentity,
+            )),
+            allocated.release_request,
+        ));
+    }
+    if copied.start_address() != allocated.mapping.base_address() {
+        return Err(fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Copy,
+            NativeExecutableLoadFailureCause::Evidence(Box::new(
+                NativeExecutableOperationEvidenceError::CopyStartAddress,
+            )),
+            allocated.release_request,
+        ));
+    }
+    StagedExecutionGeometryNativeExecutable::stage(
+        image,
+        allocated.mapping,
+        copied.copied_code(),
+    )
+    .map_err(|error| {
+        fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Copy,
+            NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
+            allocated.release_request,
+        )
+    })
 }
 
 fn copy_image<Adapter>(
@@ -593,6 +802,38 @@ where
     }
 }
 
+fn protect_execution_geometry_image<Adapter>(
+    adapter: &mut Adapter,
+    staged: StagedExecutionGeometryNativeExecutable,
+    allocated: AllocatedNativeMapping,
+) -> NativeExecutableLoadStepResult<
+    SealedExecutionGeometryNativeExecutable,
+    Adapter::Error,
+>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let report = match adapter.protect_read_execute(allocated.mapping) {
+        Ok(report) => report,
+        Err(error) => {
+            return Err(fail_with_release(
+                adapter,
+                NativeExecutableLoadPhase::Protect,
+                NativeExecutableLoadFailureCause::Adapter(Box::new(error)),
+                allocated.release_request,
+            ));
+        },
+    };
+    staged.admit_read_execute(report).map_err(|error| {
+        fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Protect,
+            NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
+            allocated.release_request,
+        )
+    })
+}
+
 fn protect_image<Adapter>(
     adapter: &mut Adapter,
     staged: StagedNativeExecutable,
@@ -616,6 +857,40 @@ where
         fail_with_release(
             adapter,
             NativeExecutableLoadPhase::Protect,
+            NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
+            allocated.release_request,
+        )
+    })
+}
+
+fn synchronize_execution_geometry_image<Adapter>(
+    adapter: &mut Adapter,
+    sealed: SealedExecutionGeometryNativeExecutable,
+    allocated: AllocatedNativeMapping,
+) -> ExecutionGeometryNativeExecutableLoadResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let request = NativeInstructionSyncRequest::new(
+        sealed.mapping().mapping_id(),
+        sealed.mapping().base_address(),
+        sealed.image().allocation_len(),
+    );
+    let report = match adapter.synchronize_instructions(request) {
+        Ok(report) => report,
+        Err(error) => {
+            return Err(fail_with_release(
+                adapter,
+                NativeExecutableLoadPhase::Synchronize,
+                NativeExecutableLoadFailureCause::Adapter(Box::new(error)),
+                allocated.release_request,
+            ));
+        },
+    };
+    sealed.admit_instruction_sync(report).map_err(|error| {
+        fail_with_release(
+            adapter,
+            NativeExecutableLoadPhase::Synchronize,
             NativeExecutableLoadFailureCause::Lifecycle(Box::new(error)),
             allocated.release_request,
         )

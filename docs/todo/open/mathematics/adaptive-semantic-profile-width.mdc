@@ -632,8 +632,12 @@ transfers, verification, and other separately measured costs.
   and release identity while retaining the v5 load image. Copied-code drift
   rejects, and `ReadyExecutionGeometryNativeExecutable` is a different type from
   legacy `ReadyNativeExecutable`, so existing runners cannot call it. The
-  remaining native boundaries are platform-adapter orchestration and binding
-  that ready executable to the checkpoint-owned prepared ABI call, followed by
+  platform adapter now transactionally loads that v5 image through exact
+  allocate/copy/RW-to-RX/synchronize ordering and reuses phase-tagged cleanup
+  evidence. A post-allocation copy failure releases the exact mapping, and v5
+  release retains the ready executable for retry on failure.
+- No runner accepts the geometry-specific ready type. The remaining native
+  boundary is binding it to the checkpoint-owned prepared ABI call, followed by
   reviewed derived-geometry templates for state-changing operations.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
