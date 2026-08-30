@@ -793,9 +793,21 @@ returned separately, while unrelated residents remain valid. Fifteen focused
 N10/N11/N12 cases cover entry-only/accounting behavior plus seven weighted
 capacity, lease, rollback, multiple-eviction, and ownership paths.
 
+The same cache can now reconfigure its entry and byte limits at runtime.
+Expansion or an already-satisfied request publishes immediately without adapter
+work. Shrink removes unleased residents in existing LRU order until retained
+usage fits the requested limits, then publishes those limits atomically.
+
+If leases block shrink or a required release fails, the previously published
+limits remain authoritative. Successfully removed residents are not
+resurrected,
+so failure evidence reports `removed_residents`; release failure additionally
+returns exact cleanup ownership for the failed victim. Six focused cases
+cover expansion, entry/byte shrink, lease blockage, partial removal, and cleanup
+retry.
+
 Cross-template residency among no-op/halt, rotate/halt, and full-path entries,
-mapping-count limits, runtime limit reconfiguration, and concurrent cache
-mutation remain separate policy work.
+mapping-count limits, and concurrent cache mutation remain separate policy work.
 
 A separate rotate/halt single-resident lease cache now owns reusable loaded
 pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence

@@ -725,8 +725,12 @@ transfers, verification, and other separately measured costs.
   removed. Victim/candidate cleanup ownership remains independently retryable.
 - N10/N11/N12 tests cover exact accounting, oversized rollback, cleanup retry,
   multiple byte-driven evictions, leased-victim skipping, weighted saturation,
-  partial-eviction reporting, and eviction-release failure. Cross-template
-  residency, mapping-count limits, and limit reconfiguration remain open.
+  partial-eviction reporting, and eviction-release failure.
+- Entry/byte limits can now be reconfigured transactionally. Expansion publishes
+  without adapter work; shrink removes unleased LRU residents until usage fits.
+  Blockage or release failure retains the previously published limits while
+  reporting any residents already removed and exact failed-victim cleanup
+  ownership. Mapping-count limits and cross-template residency remain open.
 - A separate rotate/halt single-resident lease cache now reuses owned pairs with
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without

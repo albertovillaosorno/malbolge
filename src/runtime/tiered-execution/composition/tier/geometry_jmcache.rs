@@ -65,6 +65,8 @@ type CandidateCleanupFailure<MemoryError> =
     Option<Box<TripleReleaseFailure<MemoryError>>>;
 type WeightedVictimResult<MemoryError> =
     Result<(), WeightedVictimFailure<MemoryError>>;
+type ReconfigurationFailure<MemoryError> =
+    GeometryNativeJumpRotateHaltLruReconfigurationFailure<MemoryError>;
 
 /// Whether one multi-resident acquisition hit, inserted, or evicted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -75,6 +77,61 @@ pub enum GeometryNativeJumpRotateHaltLruDisposition {
     Hit,
     /// Capacity had a vacant entry and this identity loaded there.
     Inserted,
+}
+
+/// Positive resident limits for the full-path v5 LRU.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GeometryNativeJumpRotateHaltLruLimits {
+    entries: NonZeroUsize,
+    mapped_bytes: Option<NonZeroUsize>,
+}
+
+/// Successful publication of replacement LRU limits.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GeometryNativeJumpRotateHaltLruReconfiguration {
+    new_limits: GeometryNativeJumpRotateHaltLruLimits,
+    previous_limits: GeometryNativeJumpRotateHaltLruLimits,
+    removed_residents: usize,
+}
+
+/// Failed LRU limit change retaining prior limits and cleanup evidence.
+#[derive(Debug, Eq, PartialEq)]
+pub enum GeometryNativeJumpRotateHaltLruReconfigurationFailure<MemoryError> {
+    /// One required resident release failed during shrink.
+    Release {
+        /// Exact cleanup ownership for the failed removed resident.
+        error: Box<TripleReleaseFailure<MemoryError>>,
+        /// Limits that remain published after this failure.
+        previous_limits: GeometryNativeJumpRotateHaltLruLimits,
+        /// Residents removed from active authority before failure returned.
+        removed_residents: usize,
+        /// Limits requested by the rejected reconfiguration.
+        requested_limits: GeometryNativeJumpRotateHaltLruLimits,
+    },
+    /// Exact retained usage could not be represented safely.
+    ResidentWeight {
+        /// Exact resident-weight derivation failure.
+        error: ResidentWeightError,
+        /// Limits that remain published after this failure.
+        previous_limits: GeometryNativeJumpRotateHaltLruLimits,
+        /// Residents removed from active authority before failure returned.
+        removed_residents: usize,
+        /// Limits requested by the rejected reconfiguration.
+        requested_limits: GeometryNativeJumpRotateHaltLruLimits,
+    },
+    /// Remaining live leases prevent the requested shrink from fitting.
+    Saturated {
+        /// Residents with at least one external lease.
+        leased_residents: usize,
+        /// Limits that remain published after this failure.
+        previous_limits: GeometryNativeJumpRotateHaltLruLimits,
+        /// Residents removed from active authority before failure returned.
+        removed_residents: usize,
+        /// Limits requested by the rejected reconfiguration.
+        requested_limits: GeometryNativeJumpRotateHaltLruLimits,
+        /// Residents still retained when shrink became blocked.
+        residents: usize,
+    },
 }
 
 /// Failure while acquiring one exact triple in the bounded LRU cache.
@@ -198,6 +255,13 @@ pub type GeometryNativeJumpRotateHaltLruAcquireResult<MemoryError> = Result<
     Box<GeometryNativeJumpRotateHaltLruAcquireFailure<MemoryError>>,
 >;
 
+/// Result of transactionally publishing replacement LRU limits.
+pub type GeometryNativeJumpRotateHaltLruReconfigurationResult<MemoryError> =
+    Result<
+        GeometryNativeJumpRotateHaltLruReconfiguration,
+        Box<GeometryNativeJumpRotateHaltLruReconfigurationFailure<MemoryError>>,
+    >;
+
 /// Result of releasing one exact resident identity.
 pub type GeometryNativeJumpRotateHaltLruReleaseResult<MemoryError> = Result<
     GeometryNativeJumpRotateHaltLruRelease,
@@ -243,6 +307,27 @@ impl<MemoryError: Display> Display
     }
 }
 
+impl<MemoryError: Display> Display
+    for GeometryNativeJumpRotateHaltLruReconfigurationFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Release { error, .. } => {
+                write!(f, "v5 LRU reconfiguration release failed: {error}")
+            },
+            Self::ResidentWeight { error, .. } => Display::fmt(error, f),
+            Self::Saturated {
+                leased_residents,
+                residents,
+                ..
+            } => write!(
+                f,
+                "v5 LRU limits blocked ({leased_residents}/{residents} leased)"
+            ),
+        }
+    }
+}
+
 impl GeometryNativeJumpRotateHaltLruAcquisition {
     /// Returns the exact cache action used by this acquisition.
     #[must_use]
@@ -262,6 +347,61 @@ impl GeometryNativeJumpRotateHaltLruAcquisition {
     #[must_use]
     pub const fn lease(&self) -> &GeometryNativeJumpRotateHaltLruLease {
         &self.lease
+    }
+}
+
+impl GeometryNativeJumpRotateHaltLruLimits {
+    /// Returns the positive whole-entry resident limit.
+    #[must_use]
+    pub const fn entry_limit(self) -> NonZeroUsize {
+        self.entries
+    }
+
+    /// Returns the optional exact synchronized mapped-byte limit.
+    #[must_use]
+    pub const fn mapped_byte_limit(self) -> Option<NonZeroUsize> {
+        self.mapped_bytes
+    }
+
+    /// Constructs limits with only a positive entry bound.
+    #[must_use]
+    pub const fn new(entry_limit: NonZeroUsize) -> Self {
+        Self {
+            entries: entry_limit,
+            mapped_bytes: None,
+        }
+    }
+
+    /// Adds an exact synchronized mapped-byte limit.
+    #[must_use]
+    pub const fn with_mapped_byte_limit(
+        mut self,
+        mapped_byte_limit: NonZeroUsize,
+    ) -> Self {
+        self.mapped_bytes = Some(mapped_byte_limit);
+        self
+    }
+}
+
+impl GeometryNativeJumpRotateHaltLruReconfiguration {
+    /// Returns the limits published after successful reconfiguration.
+    #[must_use]
+    pub const fn new_limits(self) -> GeometryNativeJumpRotateHaltLruLimits {
+        self.new_limits
+    }
+
+    /// Returns the limits that were published before this request.
+    #[must_use]
+    pub const fn previous_limits(
+        self,
+    ) -> GeometryNativeJumpRotateHaltLruLimits {
+        self.previous_limits
+    }
+
+    /// Returns residents removed before the new limits were published.
+    #[must_use]
+    pub const fn removed_residents(self) -> usize {
+        self.removed_residents
     }
 }
 
@@ -570,6 +710,15 @@ impl GeometryNativeJumpRotateHaltLruCache {
             .count()
     }
 
+    /// Returns the currently published resident limits.
+    #[must_use]
+    pub const fn limits(&self) -> GeometryNativeJumpRotateHaltLruLimits {
+        GeometryNativeJumpRotateHaltLruLimits {
+            entries: self.capacity,
+            mapped_bytes: self.mapped_byte_limit,
+        }
+    }
+
     fn load_and_insert<Adapter>(
         &mut self,
         adapter: &mut Adapter,
@@ -626,6 +775,77 @@ impl GeometryNativeJumpRotateHaltLruCache {
         self.residents
             .iter()
             .position(|resident| resident.sequence() == sequence)
+    }
+
+    /// Publishes replacement entry/byte limits after required LRU cleanup.
+    ///
+    /// Expansion or already-satisfied limits publish without adapter work.
+    /// Shrink releases unleased LRU residents until retained usage fits. On
+    /// blockage or cleanup failure the previous limits remain published even
+    /// though successfully removed residents stay removed.
+    ///
+    /// # Errors
+    ///
+    /// Returns retained prior limits plus exact blocker, weight, or cleanup
+    /// ownership evidence.
+    pub fn reconfigure_limits<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        requested_limits: GeometryNativeJumpRotateHaltLruLimits,
+    ) -> GeometryNativeJumpRotateHaltLruReconfigurationResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let previous_limits = self.limits();
+        let mut removed_residents = 0usize;
+        loop {
+            let usage = match self.usage() {
+                Ok(usage) => usage,
+                Err(error) => {
+                    return Err(Box::new(
+                        ReconfigurationFailure::ResidentWeight {
+                            error,
+                            previous_limits,
+                            removed_residents,
+                            requested_limits,
+                        },
+                    ));
+                },
+            };
+            if !Self::usage_exceeds_limits(usage, requested_limits) {
+                self.capacity = requested_limits.entry_limit();
+                self.mapped_byte_limit = requested_limits.mapped_byte_limit();
+                return Ok(GeometryNativeJumpRotateHaltLruReconfiguration {
+                    new_limits: requested_limits,
+                    previous_limits,
+                    removed_residents,
+                });
+            }
+            match self.evict_weighted_victim(adapter) {
+                Ok(()) => {
+                    removed_residents = removed_residents.saturating_add(1);
+                },
+                Err(WeightedVictimFailure::Release(error)) => {
+                    let removed_with_failure =
+                        removed_residents.saturating_add(1);
+                    return Err(Box::new(ReconfigurationFailure::Release {
+                        error,
+                        previous_limits,
+                        removed_residents: removed_with_failure,
+                        requested_limits,
+                    }));
+                },
+                Err(WeightedVictimFailure::Saturated) => {
+                    return Err(Box::new(ReconfigurationFailure::Saturated {
+                        leased_residents: self.leased_resident_count(),
+                        previous_limits,
+                        removed_residents,
+                        requested_limits,
+                        residents: self.residents.len(),
+                    }));
+                },
+            }
+        }
     }
 
     /// Releases one exact resident only when it has no external leases.
@@ -714,6 +934,17 @@ impl GeometryNativeJumpRotateHaltLruCache {
             mapped_bytes,
             mappings,
         })
+    }
+
+    const fn usage_exceeds_limits(
+        usage: GeometryNativeJumpRotateHaltLruUsage,
+        limits: GeometryNativeJumpRotateHaltLruLimits,
+    ) -> bool {
+        usage.entries() > limits.entry_limit().get()
+            || match limits.mapped_byte_limit() {
+                Some(limit) => usage.mapped_bytes() > limit.get(),
+                None => false,
+            }
     }
 
     fn weighted_candidate_requires_eviction(

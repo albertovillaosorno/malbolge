@@ -273,6 +273,8 @@ use geometry_native_jump_rotate_halt_multi_cache::{
     GeometryNativeJumpRotateHaltLruAcquireFailure as FullLruFailure,
     GeometryNativeJumpRotateHaltLruCache as FullLruCache,
     GeometryNativeJumpRotateHaltLruDisposition as FullLruDisposition,
+    GeometryNativeJumpRotateHaltLruLimits as FullLruLimits,
+    GeometryNativeJumpRotateHaltLruReconfigurationFailure as ReconfigFailure,
     GeometryNativeJumpRotateHaltLruRelease as FullLruRelease,
 };
 use geometry_native_jump_rotate_halt_sequence as full_native;
@@ -13244,6 +13246,23 @@ fn full_weighted_lru_cache(
     ))
 }
 
+fn full_lru_limits(
+    entries: usize,
+    mapped_bytes: Option<usize>,
+) -> Result<FullLruLimits, String> {
+    let limits = FullLruLimits::new(nonzero_test_limit(
+        entries,
+        "v5 reconfigured LRU entries",
+    )?);
+    match mapped_bytes {
+        Some(bytes) => Ok(limits.with_mapped_byte_limit(nonzero_test_limit(
+            bytes,
+            "v5 reconfigured LRU bytes",
+        )?)),
+        None => Ok(limits),
+    }
+}
+
 fn full_lru_cleanup_retains_all(
     cleanup: &FullGeometryTripleReleaseFailure<FakeNativeAdapterOperation>,
 ) -> bool {
@@ -15242,6 +15261,282 @@ fn geometry_native_jump_rotate_halt_release_retries_all_three()
     } else {
         Err(String::from("v5 owned triple release retry drifted"))
     }
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_reconfigure_expands_without_work()
+-> Result<(), String> {
+    let (s10, s11, _s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(168)?,
+        native_executable_address(0x5_5000)?,
+    );
+    let mut cache = full_lru_cache(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    let previous = cache.limits();
+    let requested = full_lru_limits(2, None)?;
+    let transition = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v5 LRU expand limits: {error}"))?;
+    if transition.previous_limits() != previous
+        || transition.new_limits() != requested
+        || transition.removed_residents() != 0
+        || cache.limits() != requested
+        || adapter.operations.len() != 12
+    {
+        return Err(String::from("v5 LRU expansion performed cleanup work"));
+    }
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    if cache.resident_count() != 2 || adapter.operations.len() != 24 {
+        return Err(String::from("v5 LRU expansion was not published"));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU expand N10 cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU expand N11 cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_reconfigure_shrinks_entries()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(169)?,
+        native_executable_address(0x5_6000)?,
+    );
+    let mut cache = full_lru_cache(3)?;
+    for sequence in [&s10, &s11, &s12] {
+        drop(
+            cache
+                .ensure(&mut adapter, sequence)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let requested = full_lru_limits(2, None)?;
+    let transition = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v5 LRU entry shrink: {error}"))?;
+    if transition.removed_residents() != 1
+        || cache.limits() != requested
+        || cache.contains(&s10)
+        || !cache.contains(&s11)
+        || !cache.contains(&s12)
+        || adapter.operations.len() != 39
+    {
+        return Err(String::from("v5 LRU entry shrink did not evict LRU"));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU shrink N11 cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU shrink N12 cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_reconfigure_shrinks_bytes()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let triple = [4_096usize, 4_096usize, 4_096usize];
+    let mut mapped_lengths = triple.to_vec();
+    mapped_lengths.extend(triple);
+    mapped_lengths.extend(triple);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(170)?,
+        native_executable_address(0x5_7000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths);
+    let mut cache = full_weighted_lru_cache(3, 50_000)?;
+    for sequence in [&s10, &s11, &s12] {
+        drop(
+            cache
+                .ensure(&mut adapter, sequence)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let requested = full_lru_limits(3, Some(15_000))?;
+    let transition = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v5 LRU byte shrink: {error}"))?;
+    let usage = cache.usage().map_err(|error| error.to_string())?;
+    if transition.removed_residents() != 2
+        || cache.limits() != requested
+        || !full_lru_contains_only(&cache, &s12, &s10, &s11)
+        || usage.mapped_bytes() != 12_288
+        || adapter.operations.len() != 42
+    {
+        return Err(String::from("v5 LRU byte shrink did not fit limits"));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU byte shrink cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_reconfigure_blocked_keeps_limits()
+-> Result<(), String> {
+    let (s10, s11, _s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(171)?,
+        native_executable_address(0x5_8000)?,
+    );
+    let mut cache = full_lru_cache(2)?;
+    let lease10 = cache
+        .ensure(&mut adapter, &s10)
+        .map_err(|error| error.to_string())?;
+    let lease11 = cache
+        .ensure(&mut adapter, &s11)
+        .map_err(|error| error.to_string())?;
+    let previous = cache.limits();
+    let requested = full_lru_limits(1, None)?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, requested) else {
+        return Err(String::from("v5 LRU leased shrink was published"));
+    };
+    if !matches!(
+        *failure,
+        ReconfigFailure::Saturated {
+            leased_residents: 2,
+            previous_limits,
+            removed_residents: 0,
+            requested_limits,
+            residents: 2,
+        } if previous_limits == previous && requested_limits == requested
+    ) || cache.limits() != previous
+        || adapter.operations.len() != 24
+    {
+        return Err(String::from("v5 LRU blocked shrink changed limits"));
+    }
+    drop((lease10, lease11));
+    cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU blocked N10 cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU blocked N11 cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_reconfigure_reports_partial_removal()
+-> Result<(), String> {
+    let (s10, s11, s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(172)?,
+        native_executable_address(0x5_9000)?,
+    );
+    let mut cache = full_lru_cache(3)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    let lease11 = cache
+        .ensure(&mut adapter, &s11)
+        .map_err(|error| error.to_string())?;
+    let lease12 = cache
+        .ensure(&mut adapter, &s12)
+        .map_err(|error| error.to_string())?;
+    let previous = cache.limits();
+    let requested = full_lru_limits(1, None)?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, requested) else {
+        return Err(String::from("v5 LRU partial shrink was published"));
+    };
+    if !matches!(
+        *failure,
+        ReconfigFailure::Saturated {
+            leased_residents: 2,
+            previous_limits,
+            removed_residents: 1,
+            requested_limits,
+            residents: 2,
+        } if previous_limits == previous && requested_limits == requested
+    ) || cache.limits() != previous
+        || cache.contains(&s10)
+        || !cache.contains(&s11)
+        || !cache.contains(&s12)
+        || adapter.operations.len() != 39
+    {
+        return Err(String::from("v5 LRU partial shrink hid removal"));
+    }
+    drop((lease11, lease12));
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU partial N11 cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 LRU partial N12 cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_rotate_halt_lru_reconfigure_release_failure()
+-> Result<(), String> {
+    let (s10, s11, _s12) = full_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(173)?,
+        native_executable_address(0x5_a000)?,
+    )
+    .with_release_failures(1);
+    let mut cache = full_lru_cache(2)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let previous = cache.limits();
+    let requested = full_lru_limits(1, None)?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, requested) else {
+        return Err(String::from("v5 LRU release-failed shrink was published"));
+    };
+    let ReconfigFailure::Release {
+        error,
+        previous_limits,
+        removed_residents: 1,
+        requested_limits,
+    } = *failure
+    else {
+        return Err(String::from("v5 LRU release failure cause drifted"));
+    };
+    if previous_limits != previous
+        || requested_limits != requested
+        || cache.limits() != previous
+        || !full_lru_contains_only(&cache, &s11, &s10, &s10)
+        || error.initial_jump_failure().is_none()
+        || adapter.operations.len() != 27
+    {
+        return Err(String::from("v5 LRU failed shrink changed authority"));
+    }
+    error.retry(&mut adapter).map_err(|retry_error| {
+        format!("v5 LRU shrink cleanup retry: {retry_error}")
+    })?;
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|cleanup_error| {
+            format!("v5 LRU shrink survivor cleanup: {cleanup_error}")
+        })
 }
 
 #[test]
