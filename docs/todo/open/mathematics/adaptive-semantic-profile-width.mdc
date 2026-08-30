@@ -779,6 +779,11 @@ transfers, verification, and other separately measured costs.
   locked. Once it acquires the mutex it delegates to the complete existing
   `ensure` transaction, preserving typed load/eviction/cleanup failure evidence;
   poison remains distinct from transient contention.
+- Nonblocking `try_execute` composes try-acquisition with the existing cached
+  execution path. Acquire-phase `Busy` never calls the runner or mutates
+  buffers;
+  successful acquisition executes outside the lock and preserves typed native
+  failure plus resident reuse authority.
 - Nonblocking release and limit reconfiguration now share the same try-mutation
   contract. `Busy` occurs before adapter work; acquired operations preserve
   exact

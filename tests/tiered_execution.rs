@@ -286,6 +286,7 @@ use geometry_native_cross_template_concurrent_cache::{
     GeometryNativeConcurrentCrossTemplateLoadCleanupRetry as SyncLoadCleanup,
     GeometryNativeConcurrentCrossTemplateLoadCleanupRetryFailure as LoadRetry,
     GeometryNativeConcurrentCrossTemplateLruCache as CrossSyncCache,
+    GeometryNativeConcurrentCrossTemplateTryExecutionFailure as TryExecFailure,
     GeometryNativeConcurrentCrossTemplateTryFailure as TrySyncFailure,
     GeometryNativeConcurrentCrossTemplateTrySnapshotFailure as TrySnapFailure,
 };
@@ -13562,6 +13563,42 @@ where
     }
 }
 
+fn require_try_execute_busy(
+    cache: &CrossSyncCache<BlockingNativeExecutableAdapter>,
+    plan: &CrossResidentPlan,
+    initial: &ProfileMachineState,
+) -> Result<(), String> {
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let mut memory = initial.memory().to_vec();
+    let entry_memory = memory.clone();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let entry_output = output.clone();
+    let attempted = cache.try_execute(
+        plan,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    );
+    let Err(failure) = attempted else {
+        return Err(String::from("try-execute ignored busy mutex"));
+    };
+    let TryExecFailure::Acquire(acquire_failure) = *failure else {
+        return Err(String::from("try-execute busy phase drifted"));
+    };
+    if matches!(*acquire_failure, TrySyncFailure::Busy)
+        && runner.calls == 0
+        && memory == entry_memory
+        && output == entry_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("try-execute busy request mutated execution"))
+    }
+}
+
 fn require_clean_noop_copy_load_failure(
     failure: &FakeCrossResidentLoadFailure,
 ) -> Result<(), String> {
@@ -16323,6 +16360,151 @@ fn geometry_native_concurrent_cross_template_try_ensure_preserves_failure()
     } else {
         Err(String::from("try-ensure operation failure lost evidence"))
     }
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_try_execute_reports_busy()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::NoOperationPair(Box::new(
+        geometry_native_noop_halt_sequence(&fixture)?,
+    ));
+    let initial = fixture.states.first().ok_or_else(|| {
+        String::from("try-execute busy initial state missing")
+    })?;
+    let inner = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(223)?,
+        native_executable_address(0x8_c000)?,
+    );
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (proceed_tx, proceed_rx) = mpsc::channel();
+    let cache = Arc::new(CrossSyncCache::new(
+        BlockingNativeExecutableAdapter {
+            allocate_attempts: 0,
+            block_at_allocate: 1,
+            entered: entered_tx,
+            inner,
+            proceed: proceed_rx,
+        },
+        CrossLruLimits::new(nonzero_test_limit(1, "v5 try-execute busy")?),
+    ));
+    let worker_cache = Arc::clone(&cache);
+    let worker_plan = plan.clone();
+    let worker = thread::spawn(move || worker_cache.ensure(&worker_plan));
+    entered_rx
+        .recv_timeout(Duration::from_secs(2))
+        .map_err(|error| {
+            format!("try-execute worker never held mutex: {error}")
+        })?;
+    require_try_execute_busy(&cache, &plan, initial)?;
+    let _sent = proceed_tx.send(());
+    let acquisition = worker
+        .join()
+        .map_err(|_panic| String::from("try-execute worker panicked"))?
+        .map_err(|error| {
+            format!("try-execute blocking load failed: {error}")
+        })?;
+    drop(acquisition);
+    cache
+        .release_if_unleased(&plan)
+        .map(|_release| ())
+        .map_err(|error| format!("try-execute busy cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_try_execute_completes()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::NoOperationPair(Box::new(
+        geometry_native_noop_halt_sequence(&fixture)?,
+    ));
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("try-execute initial state missing"))?;
+    let expected = fixture
+        .states
+        .get(2)
+        .ok_or_else(|| String::from("try-execute final state missing"))?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(224)?,
+        native_executable_address(0x8_d000)?,
+    );
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let executed = cache
+        .try_execute(
+            &plan,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("try-execute completion: {error}"))?;
+    if executed.disposition() != CrossLruDisposition::Inserted
+        || executed.outcome().state() != expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 2
+        || !cache.contains(&plan).map_err(|error| error.to_string())?
+    {
+        return Err(String::from("try-execute completion drifted"));
+    }
+    cache
+        .release_if_unleased(&plan)
+        .map(|_release| ())
+        .map_err(|error| format!("try-execute completion cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_try_execute_keeps_native_failure()
+-> Result<(), String> {
+    let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
+    let plan = CrossResidentPlan::RotatePair(Box::new(
+        geometry_native_rotate_halt_sequence(&fixture)?,
+    ));
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("try-execute failure state missing"))?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(225)?,
+        native_executable_address(0x8_e000)?,
+    );
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) = cache.try_execute(
+        &plan,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("try-execute native failure was ignored"));
+    };
+    if !matches!(
+        &*failure,
+        TryExecFailure::Execution(error)
+            if error.disposition() == CrossLruDisposition::Inserted
+                && matches!(error.error(), CrossExecutionFailure::RotatePair(_))
+    ) || runner.calls != 1
+        || memory != initial.memory()
+        || output != initial.io().output()
+        || !cache.contains(&plan).map_err(|error| error.to_string())?
+    {
+        return Err(String::from("try-execute native failure phase drifted"));
+    }
+    cache
+        .release_if_unleased(&plan)
+        .map(|_release| ())
+        .map_err(|error| format!("try-execute failure cleanup: {error}"))
 }
 
 #[test]

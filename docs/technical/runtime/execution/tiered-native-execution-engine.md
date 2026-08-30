@@ -890,6 +890,13 @@ step is stalled, another thread acquires the mutation mutex and receives
 that acquisition failure never calls the runner and native failure leaves the
 resident published for reuse.
 
+Nonblocking execution now composes the same two phases through `try_execute`.
+`Busy`, poison, or cache admission failure is reported as an acquire-phase error
+before the runner can mutate caller buffers. A successful try-acquire executes
+the lease outside the mutex; completion preserves its cache disposition, while
+native failure remains a distinct typed execution-phase error and keeps resident
+authority published.
+
 Concurrent inspection can now use one coherent snapshot instead of composing
 separately locked reads. `snapshot(plan)` captures exact residence, external
 lease count, published limits, and aggregate mapping usage under one guard, and
@@ -930,8 +937,8 @@ adapter retry path and preserve its normal success or refreshed-failure result.
 Transferred resident-release cleanup can now return to the same synchronized
 adapter through `retry_cleanup`. The cache no longer owns the mappings
 represented by that token; retry runs only their existing variant-specific
-release contract
-under the mutex. Repeated failure returns refreshed cleanup ownership, and later
+release contract under the mutex. Repeated failure returns refreshed cleanup
+ownership, and later
 success does not republish resident authority.
 
 Primary executable load failures now retain retryable rollback without losing

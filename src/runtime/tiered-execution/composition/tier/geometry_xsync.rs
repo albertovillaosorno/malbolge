@@ -86,6 +86,16 @@ type TryAcquireFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateTryFailure<
         Box<CacheAcquireFailure<MemoryError>>,
     >;
+type TryExecutionFailure<MemoryError, RunnerError> =
+    GeometryNativeConcurrentCrossTemplateTryExecutionFailure<
+        MemoryError,
+        RunnerError,
+    >;
+type TryExecutionResult<Adapter, Runner> =
+    GeometryNativeConcurrentCrossTemplateTryExecutionResult<
+        <Adapter as NativeExecutableMemoryAdapter>::Error,
+        <Runner as ExecutionGeometryNativeRunner>::Error,
+    >;
 type TryReconfigurationFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateTryFailure<
         Box<CacheReconfigurationFailure<MemoryError>>,
@@ -164,6 +174,20 @@ pub enum GeometryNativeConcurrentCrossTemplateExecutionFailure<
     /// Resident acquisition failed before native execution began.
     Acquire(Box<ConcurrentAcquireFailure<MemoryError>>),
     /// Native execution failed after a resident acquisition completed.
+    Execution(
+        Box<GeometryNativeCrossTemplateCachedExecutionFailure<RunnerError>>,
+    ),
+}
+
+/// Failure from one nonblocking acquire-then-execute cache request.
+#[derive(Debug, Eq, PartialEq)]
+pub enum GeometryNativeConcurrentCrossTemplateTryExecutionFailure<
+    MemoryError,
+    RunnerError,
+> {
+    /// Nonblocking resident acquisition failed before execution began.
+    Acquire(Box<TryAcquireFailure<MemoryError>>),
+    /// Native execution failed after nonblocking acquisition succeeded.
     Execution(
         Box<GeometryNativeCrossTemplateCachedExecutionFailure<RunnerError>>,
     ),
@@ -282,6 +306,20 @@ pub type GeometryNativeConcurrentCrossTemplateTryAcquireResult<MemoryError> =
         TryAcquireFailure<MemoryError>,
     >;
 
+/// Result of one nonblocking acquire-then-execute request.
+pub type GeometryNativeConcurrentCrossTemplateTryExecutionResult<
+    MemoryError,
+    RunnerError,
+> = Result<
+    GeometryNativeCrossTemplateCachedExecution,
+    Box<
+        GeometryNativeConcurrentCrossTemplateTryExecutionFailure<
+            MemoryError,
+            RunnerError,
+        >,
+    >,
+>;
+
 /// Result of one nonblocking heterogeneous limit reconfiguration.
 pub type GeometryNativeConcurrentCrossTemplateTryReconfigurationResult<
     MemoryError,
@@ -390,6 +428,24 @@ impl<MemoryError: Display> Display
                 f,
                 "v5 concurrent load cleanup blocked by poisoned cache: {error}"
             ),
+        }
+    }
+}
+
+impl<MemoryError: Display, RunnerError: Display> Display
+    for GeometryNativeConcurrentCrossTemplateTryExecutionFailure<
+        MemoryError,
+        RunnerError,
+    >
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Acquire(error) => {
+                write!(f, "heterogeneous v5 try-acquire failed: {error}")
+            },
+            Self::Execution(error) => {
+                write!(f, "heterogeneous v5 try-execution failed: {error}")
+            },
         }
     }
 }
@@ -771,6 +827,34 @@ where
             .map_err(TryAcquireFailure::Operation);
         drop(state);
         result
+    }
+
+    /// Attempts resident acquisition without waiting, then executes outside the
+    /// lock.
+    ///
+    /// `Busy` and `Poisoned` are acquisition-phase failures and native
+    /// execution never begins. After successful acquisition, the lease
+    /// outlives the mutex exactly as in [`Self::execute`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a nonblocking acquire-phase failure or the exact typed cached
+    /// execution failure after acquisition succeeds.
+    pub fn try_execute<Runner>(
+        &self,
+        plan: &GeometryNativeResidentPlan,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> TryExecutionResult<Adapter, Runner>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        let acquisition = self.try_ensure(plan).map_err(|error| {
+            Box::new(TryExecutionFailure::Acquire(Box::new(error)))
+        })?;
+        acquisition
+            .execute(runner, buffers)
+            .map_err(|error| Box::new(TryExecutionFailure::Execution(error)))
     }
 
     /// Attempts limit reconfiguration without waiting for mutation ownership.
