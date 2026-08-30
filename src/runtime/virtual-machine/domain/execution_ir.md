@@ -117,8 +117,12 @@ explicit execution geometry as one `u8` word-trit width plus one little-endian
 `3^N` geometry. V5 projection can therefore carry a QP/N10 trace while its
 profile requirement remains current canonical N15. The v5 wrapper is a separate
 portable type: native cache, lowering, direct templates, invocation, and
-interpreter continuation APIs still consume only legacy `RegionEffectProgram`
-and therefore do not gain derived-geometry execution authority from this schema.
+legacy native-continuation APIs still consume only `RegionEffectProgram`.
+
+A separate one-step geometry interpreter handoff may consume v5 only when a
+validated checkpoint supplies the opaque geometry token and normative replay
+reprojects an exact v5 match. The schema itself therefore never gains execution
+authority.
 
 Native cache/artifact identity accepts canonical v3 and v4 bytes, preserving the
 IR version as part of exact identity. Native profile metadata follows that

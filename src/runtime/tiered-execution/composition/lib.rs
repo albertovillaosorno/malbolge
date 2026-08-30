@@ -43,6 +43,8 @@ pub mod continuation_scheduler;
 pub mod execution_cache;
 #[path = "../adapter-outbound/native/main.rs"]
 pub mod execution_native;
+#[path = "tier/geometry_handoff.rs"]
+pub mod geometry_interpreter_handoff;
 #[path = "tier/handoff.rs"]
 pub mod interpreter_handoff;
 #[path = "tier/leased_retry.rs"]

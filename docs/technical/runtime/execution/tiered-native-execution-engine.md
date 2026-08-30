@@ -490,6 +490,21 @@ combined-plan resume index. Completion combines native and interpreter step
 
 counts and validates the original plan exit and outcome.
 
+`geometry_handoff.rs` keeps derived-width replay separate from that legacy
+native-continuation contract. Its one-step `ExecutionGeometryInterpreterHandoff`
+admits an explicit-geometry v5 program only beside a validated
+`ProfileMachineState`. The checkpoint's opaque `ProfileExecutionGeometry` token
+is the authority; the v5 N/capacity pair must equal its visible projection, and
+canonical profile identity, entry observation, execution capacity, and live-ins
+must agree before mutation.
+
+Execution uses the normative `ProfileMachine` and reprojects the complete trace
+back to v5. It publishes the final checkpoint only when that program is
+byte-structurally equal. A forged v5 effect returns the untouched entry
+checkpoint. This primitive grants no native key, lowering, cache, or multistep
+continuation authority, and the existing native interpreter handoff continues to
+reject derived checkpoint geometry.
+
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine
 `NativeInterpreterHandoffSuspension` with the original continuation, cumulative

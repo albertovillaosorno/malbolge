@@ -583,11 +583,18 @@ transfers, verification, and other separately measured costs.
   now binds a validated `ProfileExecutionGeometryRequirement` after the
   unchanged canonical profile requirement; QP/N=10 projects successfully to v5
   while its profile requirement remains canonical N15. The geometry declaration
-  carries no hidden input-policy authority, and native/cache/handoff APIs still
-  consume only legacy `RegionEffectProgram`, so v5 transport does not yet grant
-  direct-native execution authority; the next boundary is independent v5
-  admission plus continuation preservation of the opaque verified geometry/proof
-  domain.
+  carries no hidden input-policy authority, and native/cache/legacy-continuation
+  APIs still consume only `RegionEffectProgram`, so v5 transport does not grant
+  direct-native execution authority.
+- A separate one-step geometry interpreter handoff now admits v5 only beside a
+  validated checkpoint: canonical profile, visible geometry, entry observation,
+  capacity, and live-ins must agree, then normative `ProfileMachine` replay must
+  reproject the exact same v5 program. A forged effect returns the untouched
+  entry checkpoint, while a successful N10 QP halt preserves the original opaque
+  geometry token. N10 v5 paired with an independently verified N11 checkpoint
+  rejects before execution. The remaining boundary is multistep geometry
+  continuation plus independently verified native admission; legacy
+  `NativeInterpreterContinuation` remains canonical-only.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

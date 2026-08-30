@@ -297,12 +297,24 @@ impl ExecutionGeometryRegionEffectProgram {
         Ok(bytes)
     }
 
+    /// Returns the exact entry observation retained by this one-step program.
+    #[must_use]
+    pub fn entry_observation(&self) -> Option<ProfileMachineObservation> {
+        self.program.effects.first().map(|effect| effect.before)
+    }
+
     /// Returns the exact declarative execution geometry bound into v5.
     #[must_use]
     pub const fn execution_geometry(
         &self,
     ) -> ProfileExecutionGeometryRequirement {
         self.execution_geometry
+    }
+
+    /// Returns the exact exit observation retained by this one-step program.
+    #[must_use]
+    pub fn exit_observation(&self) -> Option<ProfileMachineObservation> {
+        self.program.effects.last().map(|effect| effect.after)
     }
 
     /// Reports whether every directly addressed word fits execution geometry.

@@ -43,6 +43,8 @@ pub mod continuation_scheduler;
 pub mod execution_cache;
 #[path = "../src/runtime/tiered-execution/adapter-outbound/native/main.rs"]
 pub mod execution_native;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_handoff.rs"]
+pub mod geometry_interpreter_handoff;
 #[path = "../src/runtime/tiered-execution/composition/tier/handoff.rs"]
 pub mod interpreter_handoff;
 #[path = "../src/runtime/tiered-execution/composition/tier/leased_retry.rs"]
@@ -198,6 +200,11 @@ use execution_native::{
     verify_direct_jump_data, verify_direct_no_operation,
     verify_direct_non_graphical, verify_direct_output, verify_direct_rotate,
 };
+use geometry_interpreter_handoff::{
+    ExecutionGeometryHandoffAdmissionError,
+    ExecutionGeometryHandoffExecutionCause,
+    ExecutionGeometryInterpreterHandoff,
+};
 use interpreter_handoff::{
     NativeInterpreterHandoff, NativeInterpreterHandoffAdmissionError,
     NativeInterpreterHandoffBudgetOutcome, NativeInterpreterHandoffCompletion,
@@ -209,16 +216,18 @@ use leased_retry::{
 };
 use malbolge::{
     EFFECT_IR_VERSION, EFFECT_IR_WIDE_PROFILE_VERSION, EffectOp,
-    IrEncodingError, MemoryLiveIn, ProfileMachine, ProfileMachineError,
-    ProfileMachineIoState, ProfileMachineObservation, ProfileMachineState,
-    ProfileMemoryDelta, ProfileMemoryRead, ProfileMemoryWrite,
-    ProfileRegisters, ProfileRequirementErrorKind, ProfileStepTrace,
-    RegionEffectProgram, RunOutcome, RuntimeCapability,
-    StepProgramProjectionError, TargetProfileRequirement, Termination,
-    TraceInput, current_profile, decode_profile_instruction,
-    historical_profile, preflight_profile, preflight_runtime_requirement,
-    safe_rust_classic_capability, safe_rust_profiled_capability,
-    target_profile, verify_minimum_initial_halt_profile_width,
+    ExecutionGeometryRegionEffectProgram, IrEncodingError, MemoryLiveIn,
+    ProfileMachine, ProfileMachineError, ProfileMachineIoState,
+    ProfileMachineObservation, ProfileMachineState, ProfileMemoryDelta,
+    ProfileMemoryRead, ProfileMemoryWrite, ProfileRegisters,
+    ProfileRequirementErrorKind, ProfileStepTrace, RegionEffectProgram,
+    RunOutcome, RuntimeCapability, StepOutcome, StepProgramProjectionError,
+    TargetProfileRequirement, Termination, TraceInput, current_profile,
+    decode_profile_instruction, historical_profile, preflight_profile,
+    preflight_runtime_requirement, safe_rust_classic_capability,
+    safe_rust_profiled_capability, target_profile,
+    verify_initial_halt_profile_width,
+    verify_minimum_initial_halt_profile_width,
 };
 use native_retry::{
     NativeContinuationNativeRetry, NativeContinuationRetryAdmissionError,
@@ -431,6 +440,12 @@ struct SecondStepContinuationExpectation<'plan> {
     programs: &'plan [RegionEffectProgram],
     reason: NativeInterpreterContinuationReason,
 }
+
+type DerivedV5HandoffFixture = (
+    ExecutionGeometryRegionEffectProgram,
+    ProfileMachineState,
+    malbolge::ProfileExecutionGeometry,
+);
 
 impl FakeNativeExecutableRunner {
     const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
@@ -11993,6 +12008,102 @@ fn native_interpreter_handoff_completes_from_checkpoint() -> Result<(), String>
         Ok(())
     } else {
         Err(String::from("checkpoint interpreter handoff drifted"))
+    }
+}
+
+fn derived_v5_handoff_fixture(
+    word_trits: u8,
+) -> Result<DerivedV5HandoffFixture, String> {
+    let verified =
+        verify_initial_halt_profile_width(current_profile(), b"QP", word_trits)
+            .map_err(|error| format!("v5 handoff verification: {error}"))?;
+    let machine = ProfileMachine::from_verified_source(&verified, Vec::new())
+        .map_err(|error| format!("v5 handoff machine: {error}"))?;
+    let checkpoint = machine.snapshot_state();
+    let mut replay = ProfileMachine::from_snapshot(checkpoint.clone());
+    let mut trace_slot = None;
+    let _outcome = replay
+        .step_traced(&mut |trace| trace_slot = Some(*trace))
+        .map_err(|error| format!("v5 handoff trace: {error}"))?;
+    let trace = trace_slot.ok_or_else(|| String::from("v5 trace missing"))?;
+    let program =
+        ExecutionGeometryRegionEffectProgram::from_profile_step_trace(&trace)
+            .map_err(|error| format!("v5 projection: {error:?}"))?;
+    Ok((program, checkpoint, verified.geometry()))
+}
+
+#[test]
+fn explicit_geometry_handoff_preserves_opaque_checkpoint_geometry()
+-> Result<(), String> {
+    let (program, checkpoint, geometry) = derived_v5_handoff_fixture(10)?;
+    let expected = program.clone();
+    let completion =
+        ExecutionGeometryInterpreterHandoff::new(program, checkpoint)
+            .map_err(|error| error.to_string())?
+            .execute()
+            .map_err(|error| error.to_string())?;
+    if completion.outcome()
+        == StepOutcome::Terminated(Termination::HaltInstruction)
+        && completion.program() == &expected
+        && completion.state().geometry() == geometry
+        && completion.state().profile() == current_profile()
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 handoff lost derived geometry authority"))
+    }
+}
+
+#[test]
+fn explicit_geometry_handoff_rejects_checkpoint_geometry_drift()
+-> Result<(), String> {
+    let (program, _n10, _geometry) = derived_v5_handoff_fixture(10)?;
+    let (_n11_program, n11, _n11_geometry) = derived_v5_handoff_fixture(11)?;
+    if ExecutionGeometryInterpreterHandoff::new(program, n11)
+        == Err(ExecutionGeometryHandoffAdmissionError::CheckpointGeometry)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v5 handoff admitted different opaque geometry",
+        ))
+    }
+}
+
+#[test]
+fn explicit_geometry_handoff_revalidates_untrusted_effects_normatively()
+-> Result<(), String> {
+    let verified =
+        verify_initial_halt_profile_width(current_profile(), b"QP", 10)
+            .map_err(|error| format!("forged v5 verification: {error}"))?;
+    let machine = ProfileMachine::from_verified_source(&verified, Vec::new())
+        .map_err(|error| format!("forged v5 machine: {error}"))?;
+    let checkpoint = machine.snapshot_state();
+    let mut replay = ProfileMachine::from_snapshot(checkpoint.clone());
+    let mut trace_slot = None;
+    let _outcome = replay
+        .step_traced(&mut |trace| trace_slot = Some(*trace))
+        .map_err(|error| format!("forged v5 trace: {error}"))?;
+    let mut trace =
+        trace_slot.ok_or_else(|| String::from("forged trace missing"))?;
+    trace.output = Some(0x55);
+    let forged =
+        ExecutionGeometryRegionEffectProgram::from_profile_step_trace(&trace)
+            .map_err(|error| format!("forged v5 projection: {error:?}"))?;
+    let replay_result =
+        ExecutionGeometryInterpreterHandoff::new(forged, checkpoint.clone())
+            .map_err(|error| error.to_string())?
+            .execute();
+    let Err(failure) = replay_result else {
+        return Err(String::from("forged v5 effect passed normative replay"));
+    };
+    if failure.cause()
+        == ExecutionGeometryHandoffExecutionCause::ProgramMismatch
+        && failure.state() == &checkpoint
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 replay did not fail closed to entry state"))
     }
 }
 
