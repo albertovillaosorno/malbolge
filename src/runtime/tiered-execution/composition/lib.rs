@@ -45,6 +45,8 @@ pub mod execution_cache;
 pub mod execution_native;
 #[path = "tier/geometry_handoff.rs"]
 pub mod geometry_interpreter_handoff;
+#[path = "tier/geometry_native.rs"]
+pub mod geometry_native_admission;
 #[path = "tier/handoff.rs"]
 pub mod interpreter_handoff;
 #[path = "tier/leased_retry.rs"]

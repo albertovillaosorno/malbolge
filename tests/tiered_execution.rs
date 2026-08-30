@@ -45,6 +45,8 @@ pub mod execution_cache;
 pub mod execution_native;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_handoff.rs"]
 pub mod geometry_interpreter_handoff;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_native.rs"]
+pub mod geometry_native_admission;
 #[path = "../src/runtime/tiered-execution/composition/tier/handoff.rs"]
 pub mod interpreter_handoff;
 #[path = "../src/runtime/tiered-execution/composition/tier/leased_retry.rs"]
@@ -213,6 +215,10 @@ use geometry_interpreter_handoff::{
     ExecutionGeometryHandoffExecutionCause,
     ExecutionGeometryInterpreterContinuation,
     ExecutionGeometryInterpreterHandoff,
+};
+use geometry_native_admission::{
+    ExecutionGeometryNativeInitialHaltAdmission,
+    ExecutionGeometryNativeInitialHaltAdmissionError,
 };
 use interpreter_handoff::{
     NativeInterpreterHandoff, NativeInterpreterHandoffAdmissionError,
@@ -12173,6 +12179,93 @@ fn direct_execution_geometry_initial_halt_admits_exact_v5_geometry()
         assert_tampered_direct_profile_metadata(&n10_artifact)?;
     }
     Ok(())
+}
+
+#[test]
+fn execution_geometry_native_admission_binds_opaque_checkpoint()
+-> Result<(), String> {
+    let (program, checkpoint, geometry) = derived_v5_handoff_fixture(10)?;
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &program,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 admission emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_halt(&artifact, &program)
+            .map_err(|error| format!("v5 admission verify: {error}"))?;
+    let expected_key = verified.key().clone();
+    let expected_program = program.clone();
+    let expected_checkpoint = checkpoint.clone();
+    let admission = ExecutionGeometryNativeInitialHaltAdmission::new(
+        program, checkpoint, verified,
+    )
+    .map_err(|error| format!("v5 checkpoint admission: {error}"))?;
+    if admission.program() == &expected_program
+        && admission.checkpoint() == &expected_checkpoint
+        && admission.checkpoint().geometry() == geometry
+        && admission.artifact().key() == &expected_key
+        && admission.load_image().key() == &expected_key
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 checkpoint-native binding drifted"))
+    }
+}
+
+#[test]
+fn execution_geometry_native_admission_rejects_artifact_geometry_drift()
+-> Result<(), String> {
+    let (n10, n10_checkpoint, _n10_geometry) = derived_v5_handoff_fixture(10)?;
+    let (n11, _n11_checkpoint, _n11_geometry) = derived_v5_handoff_fixture(11)?;
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &n11,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 drift emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_halt(&artifact, &n11)
+            .map_err(|error| format!("v5 drift verify: {error}"))?;
+    if ExecutionGeometryNativeInitialHaltAdmission::new(
+        n10,
+        n10_checkpoint,
+        verified,
+    ) == Err(
+        ExecutionGeometryNativeInitialHaltAdmissionError::ArtifactIdentity,
+    ) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v5 admission accepted artifact geometry drift",
+        ))
+    }
+}
+
+#[test]
+fn execution_geometry_native_admission_rejects_checkpoint_geometry_drift()
+-> Result<(), String> {
+    let (n10, _n10_checkpoint, _n10_geometry) = derived_v5_handoff_fixture(10)?;
+    let (_n11, n11_checkpoint, _n11_geometry) = derived_v5_handoff_fixture(11)?;
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        &n10,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 checkpoint drift emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_initial_halt(&artifact, &n10)
+            .map_err(|error| format!("v5 checkpoint drift verify: {error}"))?;
+    let expected = ExecutionGeometryNativeInitialHaltAdmissionError::Checkpoint(
+        ExecutionGeometryHandoffAdmissionError::CheckpointGeometry,
+    );
+    if ExecutionGeometryNativeInitialHaltAdmission::new(
+        n10,
+        n11_checkpoint,
+        verified,
+    ) == Err(expected)
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 admission ignored opaque geometry drift"))
+    }
 }
 
 #[test]

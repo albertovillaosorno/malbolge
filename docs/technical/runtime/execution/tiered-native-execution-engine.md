@@ -553,11 +553,20 @@ the verified relocation-free, ISA-aligned entry image while retaining the v5 key
 and strict W^X policy, but no lifecycle API accepts that image for executable
 mapping.
 
-A future geometry-aware invocation bridge must bind the opaque verified
-checkpoint to the admitted artifact and load image before execution authority
-can
-cross into native code. General state-applying direct templates also remain
-canonical-only because their arithmetic still reads canonical profile geometry.
+`geometry_native.rs` now owns the first checkpoint-to-native admission boundary.
+`ExecutionGeometryNativeInitialHaltAdmission` consumes one exact v5 program, one
+verified guarded initial-halt artifact, and one validated `ProfileMachineState`.
+It reuses geometry-interpreter admission to bind the checkpoint's opaque
+geometry
+token, profile, entry observation, capacity, and live-ins, then independently
+reconstructs the v5 native key before retaining the relocation-free load image.
+
+N10/N11 checkpoint drift and artifact/program geometry drift both reject before
+any executable mapping. The admission value has no mapping or call API, so the
+next boundary remains borrow-scoped ABI preparation and executable lifecycle
+bound to this checkpoint-owned authority. General state-applying direct
+templates remain canonical-only because their arithmetic still reads canonical
+profile geometry.
 
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine
