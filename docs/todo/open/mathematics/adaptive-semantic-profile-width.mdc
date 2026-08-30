@@ -665,8 +665,14 @@ transfers, verification, and other separately measured costs.
   caller-memory drift, runner mutation failure, and completion drift with exact
   rollback. Guard miss preserves the entry checkpoint, while failed release
   retains the ready executable for retry and preserves committed Applied state.
-  The next native step is multistep geometry-native composition before broader
-  state-changing templates are reviewed.
+- The first multistep geometry-native composition now admits and executes the
+  certified `DP` no-op/halt pair. No-op admission normatively derives the exact
+  intermediate checkpoint and that opaque state is the sole authority accepted
+  by halt admission, so mixed N10/N11 sequences reject before mapping. Applied
+  plus Applied reaches the exact normative halt checkpoint; guard miss at step
+  zero skips the suffix, while guard miss or runner failure at step one retains
+  the committed no-op self-encryption and C/D advance as the last valid state.
+  Broader state-changing templates and reusable multistep loading remain open.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

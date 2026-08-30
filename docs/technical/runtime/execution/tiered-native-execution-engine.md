@@ -658,6 +658,22 @@ retry; and cleanup failure after Applied retains the already normatively proven
 completion. Eight focused cases cover these admission, binding, rollback, and
 transaction properties. Broader state-changing templates remain separate work.
 
+The first multistep geometry-native composition is the verified `DP` no-op/halt
+pair. `ExecutionGeometryNativeNoopHaltSequence` admits the no-operation from the
+entry checkpoint first, then uses its normatively replayed opaque checkpoint as
+the sole authority for admitting the following halt. Mixed N10/N11 evidence
+therefore rejects before either executable can map.
+
+Transactional execution preserves affine prefix progress across the two native
+steps. A guard miss at step zero stops before loading the halt suffix; a guard
+miss at step one retains the applied self-encryption and C/D advance from the
+no-operation. A later runner failure likewise reports index one and returns that
+same last committed checkpoint after rollback. Exact two-step Applied reaches
+the normative halted `DP` checkpoint.
+
+Five cases cover completion, both guard positions, late failure, and
+mixed-geometry admission.
+
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine
 `NativeInterpreterHandoffSuspension` with the original continuation, cumulative

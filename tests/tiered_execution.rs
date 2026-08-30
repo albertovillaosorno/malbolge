@@ -49,6 +49,8 @@ pub mod geometry_interpreter_handoff;
 pub mod geometry_native_admission;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_noop.rs"]
 pub mod geometry_native_no_operation;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_seq.rs"]
+pub mod geometry_native_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/handoff.rs"]
 pub mod interpreter_handoff;
 #[path = "../src/runtime/tiered-execution/composition/tier/leased_retry.rs"]
@@ -243,6 +245,13 @@ use geometry_native_no_operation::{
     ExecutionGeometryNativeNoOperationPreparationError,
     ExecutionGeometryNativeNoOperationTransactionFailure,
 };
+use geometry_native_sequence::{
+    ExecutionGeometryNativeNoopHaltAdmissionError,
+    ExecutionGeometryNativeNoopHaltEvidence,
+    ExecutionGeometryNativeNoopHaltFailureCause,
+    ExecutionGeometryNativeNoopHaltOutcome,
+    ExecutionGeometryNativeNoopHaltSequence,
+};
 use interpreter_handoff::{
     NativeInterpreterHandoff, NativeInterpreterHandoffAdmissionError,
     NativeInterpreterHandoffBudgetOutcome, NativeInterpreterHandoffCompletion,
@@ -396,6 +405,14 @@ struct FakeExecutionGeometryNativeRunner {
 }
 
 #[derive(Debug)]
+struct FakeExecutionGeometrySequenceRunner {
+    behaviors: Vec<FakeNativeRunnerBehavior>,
+    calls: usize,
+    entry_addresses: Vec<NonZeroUsize>,
+    mapping_ids: Vec<NativeExecutableMappingId>,
+}
+
+#[derive(Debug)]
 struct FakeNativeExecutableRunner {
     behavior: FakeNativeRunnerBehavior,
     calls: usize,
@@ -534,6 +551,17 @@ impl FakeExecutionGeometryNativeRunner {
             entry_addresses: Vec::new(),
             mapping_ids: Vec::new(),
             state_pointers_non_null: Vec::new(),
+        }
+    }
+}
+
+impl FakeExecutionGeometrySequenceRunner {
+    fn new(behaviors: impl Into<Vec<FakeNativeRunnerBehavior>>) -> Self {
+        Self {
+            behaviors: behaviors.into(),
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
         }
     }
 }
@@ -830,6 +858,45 @@ impl ExecutionGeometryNativeRunner for FakeExecutionGeometryNativeRunner {
         self.state_pointers_non_null
             .push(!invocation.state_mut_ptr().is_null());
         match self.behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(0, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(0, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
+    }
+}
+
+impl ExecutionGeometryNativeRunner for FakeExecutionGeometrySequenceRunner {
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedExecutionGeometryNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error> {
+        let behavior = self
+            .behaviors
+            .get(self.calls)
+            .copied()
+            .ok_or(FakeNativeRunnerError::Call)?;
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        match behavior {
             FakeNativeRunnerBehavior::Applied => {
                 invocation.apply_expected_for_test();
                 Ok(NativeRegionStatus::Applied.code())
@@ -12266,6 +12333,45 @@ fn derived_v5_no_operation_fixture(
     Ok((program, checkpoint, verified.geometry()))
 }
 
+fn derived_v5_noop_halt_sequence_fixture(
+    word_trits: u8,
+) -> Result<DerivedV5SequenceFixture, String> {
+    let verified = verify_noop_prefix_halt_profile_width(
+        current_profile(),
+        b"DP",
+        word_trits,
+    )
+    .map_err(|error| format!("v5 no-op/halt verification: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new())
+            .map_err(|error| format!("v5 no-op/halt machine: {error}"))?;
+    let mut programs = Vec::new();
+    let mut states = vec![machine.snapshot_state()];
+    let mut traces = Vec::new();
+    for _index in 0usize..2usize {
+        let mut trace_slot = None;
+        let _outcome = machine
+            .step_traced(&mut |trace| trace_slot = Some(*trace))
+            .map_err(|error| format!("v5 no-op/halt trace: {error}"))?;
+        let trace = trace_slot
+            .ok_or_else(|| String::from("v5 no-op/halt trace missing"))?;
+        let program =
+            ExecutionGeometryRegionEffectProgram::from_profile_step_trace(
+                &trace,
+            )
+            .map_err(|error| format!("v5 no-op/halt projection: {error:?}"))?;
+        programs.push(program);
+        states.push(machine.snapshot_state());
+        traces.push(trace);
+    }
+    Ok(DerivedV5SequenceFixture {
+        geometry: verified.geometry(),
+        programs,
+        states,
+        traces,
+    })
+}
+
 #[test]
 fn direct_execution_geometry_no_operation_admits_exact_v5_geometry()
 -> Result<(), String> {
@@ -12645,6 +12751,52 @@ fn execution_geometry_native_admission_rejects_checkpoint_geometry_drift()
     }
 }
 
+fn geometry_native_noop_halt_sequence(
+    fixture: &DerivedV5SequenceFixture,
+) -> Result<ExecutionGeometryNativeNoopHaltSequence, String> {
+    let no_operation = fixture
+        .programs
+        .first()
+        .cloned()
+        .ok_or_else(|| String::from("v5 sequence no-operation missing"))?;
+    let halt = fixture
+        .programs
+        .get(1)
+        .cloned()
+        .ok_or_else(|| String::from("v5 sequence halt missing"))?;
+    let checkpoint = fixture
+        .states
+        .first()
+        .cloned()
+        .ok_or_else(|| String::from("v5 sequence checkpoint missing"))?;
+    let no_operation_object = emit_direct_execution_geometry_no_operation_coff(
+        &no_operation,
+        direct_execution_geometry_no_operation_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 sequence no-operation emit: {error}"))?;
+    let no_operation_artifact = verify_direct_execution_geometry_no_operation(
+        &no_operation_object,
+        &no_operation,
+    )
+    .map_err(|error| format!("v5 sequence no-operation verify: {error}"))?;
+    let halt_object = emit_direct_execution_geometry_initial_halt_coff(
+        &halt,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 sequence halt emit: {error}"))?;
+    let halt_artifact =
+        verify_direct_execution_geometry_initial_halt(&halt_object, &halt)
+            .map_err(|error| format!("v5 sequence halt verify: {error}"))?;
+    let evidence = ExecutionGeometryNativeNoopHaltEvidence::new(
+        no_operation,
+        no_operation_artifact,
+        halt,
+        halt_artifact,
+    );
+    ExecutionGeometryNativeNoopHaltSequence::new(evidence, checkpoint)
+        .map_err(|error| error.to_string())
+}
+
 fn geometry_native_no_operation_admission_fixture(
     word_trits: u8,
 ) -> Result<GeometryNativeNoOperationAdmissionFixture, String> {
@@ -12730,6 +12882,239 @@ fn geometry_native_runner_fixture(
         geometry,
         ready,
     })
+}
+
+#[test]
+fn geometry_native_noop_halt_sequence_applies_two_steps() -> Result<(), String>
+{
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_noop_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 sequence initial state missing"))?;
+    let final_state = fixture
+        .states
+        .get(2)
+        .ok_or_else(|| String::from("v5 sequence final state missing"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(112)?,
+        native_executable_address(0x1_e000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = sequence
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome
+        != ExecutionGeometryNativeNoopHaltOutcome::Completed(
+            final_state.clone(),
+        )
+        || outcome.state().geometry() != fixture.geometry
+        || memory != final_state.memory()
+        || output != final_state.io().output()
+        || runner.calls != 2
+        || adapter.operations.len() != 10
+    {
+        Err(String::from("v5 no-op/halt completion drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_noop_halt_sequence_guard_miss_stops_first_suffix()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_noop_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 sequence initial state missing"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(113)?,
+        native_executable_address(0x1_f000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::GuardMiss,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = sequence
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome
+        != (ExecutionGeometryNativeNoopHaltOutcome::GuardMiss {
+            index: 0,
+            state: initial.clone(),
+        })
+        || runner.calls != 1
+        || memory != initial.memory()
+        || adapter.operations.len() != 5
+    {
+        Err(String::from("v5 first guard miss executed suffix"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_noop_halt_sequence_guard_miss_retains_prefix()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_noop_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 sequence initial state missing"))?;
+    let prefix = fixture
+        .states
+        .get(1)
+        .ok_or_else(|| String::from("v5 sequence prefix state missing"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(114)?,
+        native_executable_address(0x2_0000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let outcome = sequence
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| error.to_string())?;
+    if outcome
+        != (ExecutionGeometryNativeNoopHaltOutcome::GuardMiss {
+            index: 1,
+            state: prefix.clone(),
+        })
+        || runner.calls != 2
+        || memory != prefix.memory()
+    {
+        Err(String::from("v5 second guard miss lost committed prefix"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_noop_halt_sequence_late_failure_retains_prefix()
+-> Result<(), String> {
+    let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
+    let sequence = geometry_native_noop_halt_sequence(&fixture)?;
+    let initial = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 sequence initial state missing"))?;
+    let prefix = fixture
+        .states
+        .get(1)
+        .ok_or_else(|| String::from("v5 sequence prefix state missing"))?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(115)?,
+        native_executable_address(0x2_1000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let Err(failure) = sequence.execute_transactionally(
+        &mut adapter,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 late sequence failure was ignored"));
+    };
+    if failure.index() != 1
+        || failure.state() != prefix
+        || memory != prefix.memory()
+        || !matches!(
+            failure.cause(),
+            ExecutionGeometryNativeNoopHaltFailureCause::Halt(_error)
+        )
+    {
+        Err(String::from("v5 late failure lost committed prefix"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_noop_halt_sequence_rejects_mixed_geometry()
+-> Result<(), String> {
+    let n10 = derived_v5_noop_halt_sequence_fixture(10)?;
+    let n11 = derived_v5_noop_halt_sequence_fixture(11)?;
+    let no_operation = n10
+        .programs
+        .first()
+        .cloned()
+        .ok_or_else(|| String::from("v5 N10 no-operation missing"))?;
+    let checkpoint = n10
+        .states
+        .first()
+        .cloned()
+        .ok_or_else(|| String::from("v5 N10 checkpoint missing"))?;
+    let halt = n11
+        .programs
+        .get(1)
+        .cloned()
+        .ok_or_else(|| String::from("v5 N11 halt missing"))?;
+    let no_operation_object = emit_direct_execution_geometry_no_operation_coff(
+        &no_operation,
+        direct_execution_geometry_no_operation_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 mixed no-operation emit: {error}"))?;
+    let no_operation_artifact = verify_direct_execution_geometry_no_operation(
+        &no_operation_object,
+        &no_operation,
+    )
+    .map_err(|error| format!("v5 mixed no-operation verify: {error}"))?;
+    let halt_object = emit_direct_execution_geometry_initial_halt_coff(
+        &halt,
+        direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 mixed halt emit: {error}"))?;
+    let halt_artifact =
+        verify_direct_execution_geometry_initial_halt(&halt_object, &halt)
+            .map_err(|error| format!("v5 mixed halt verify: {error}"))?;
+    let evidence = ExecutionGeometryNativeNoopHaltEvidence::new(
+        no_operation,
+        no_operation_artifact,
+        halt,
+        halt_artifact,
+    );
+    if matches!(
+        ExecutionGeometryNativeNoopHaltSequence::new(evidence, checkpoint),
+        Err(ExecutionGeometryNativeNoopHaltAdmissionError::Halt(_error))
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("v5 mixed sequence geometry was admitted"))
+    }
 }
 
 #[test]
