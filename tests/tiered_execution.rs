@@ -226,6 +226,7 @@ use geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltCompletionError,
     ExecutionGeometryNativeInitialHaltExecutionError,
     ExecutionGeometryNativeInitialHaltPreparationError,
+    ExecutionGeometryNativeInitialHaltTransactionFailure,
 };
 use interpreter_handoff::{
     NativeInterpreterHandoff, NativeInterpreterHandoffAdmissionError,
@@ -476,6 +477,10 @@ struct SecondStepContinuationExpectation<'plan> {
 type DerivedV5HandoffFixture = (
     ExecutionGeometryRegionEffectProgram,
     ProfileMachineState,
+    malbolge::ProfileExecutionGeometry,
+);
+type GeometryNativeAdmissionFixture = (
+    ExecutionGeometryNativeInitialHaltAdmission,
     malbolge::ProfileExecutionGeometry,
 );
 
@@ -12524,25 +12529,32 @@ fn execution_geometry_native_admission_rejects_checkpoint_geometry_drift()
     }
 }
 
-fn geometry_native_runner_fixture(
+fn geometry_native_admission_fixture(
     word_trits: u8,
-    mapping_value: u64,
-    base_value: usize,
-) -> Result<GeometryNativeRunnerFixture, String> {
+) -> Result<GeometryNativeAdmissionFixture, String> {
     let (program, checkpoint, geometry) =
         derived_v5_handoff_fixture(word_trits)?;
     let artifact = emit_direct_execution_geometry_initial_halt_coff(
         &program,
         direct_execution_geometry_initial_halt_target(HostIsa::X86_64),
     )
-    .map_err(|error| format!("v5 runner emit: {error}"))?;
+    .map_err(|error| format!("v5 transaction emit: {error}"))?;
     let verified =
         verify_direct_execution_geometry_initial_halt(&artifact, &program)
-            .map_err(|error| format!("v5 runner verify: {error}"))?;
+            .map_err(|error| format!("v5 transaction verify: {error}"))?;
     let admission = ExecutionGeometryNativeInitialHaltAdmission::new(
         program, checkpoint, verified,
     )
-    .map_err(|error| format!("v5 runner admission: {error}"))?;
+    .map_err(|error| format!("v5 transaction admission: {error}"))?;
+    Ok((admission, geometry))
+}
+
+fn geometry_native_runner_fixture(
+    word_trits: u8,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<GeometryNativeRunnerFixture, String> {
+    let (admission, geometry) = geometry_native_admission_fixture(word_trits)?;
     let mut adapter = FakeNativeExecutableAdapter::new(
         native_executable_mapping_id(mapping_value)?,
         native_executable_address(base_value)?,
@@ -12835,6 +12847,182 @@ fn geometry_native_runner_guard_miss_preserves_state() -> Result<(), String> {
     }
     release_execution_geometry_native_executable(&mut adapter, ready)
         .map_err(|error| format!("v5 miss runner release: {error}"))
+}
+
+#[test]
+fn geometry_native_transaction_applies_and_releases() -> Result<(), String> {
+    let (admission, geometry) = geometry_native_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(101)?,
+        native_executable_address(0x1_3000)?,
+    );
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let completion = admission
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 transaction execute: {error}"))?;
+    if completion.state().geometry() != geometry
+        || completion.state().io().termination()
+            != Some(Termination::HaltInstruction)
+        || runner.calls != 1
+        || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        Err(String::from("v5 transaction completion evidence drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_transaction_load_failure_skips_runner() -> Result<(), String>
+{
+    let (admission, _geometry) = geometry_native_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(102)?,
+        native_executable_address(0x1_4000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(failure) = admission.execute_transactionally(
+        &mut adapter,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 transaction load failure ignored"));
+    };
+    let load_failed = matches!(
+        *failure,
+        ExecutionGeometryNativeInitialHaltTransactionFailure::Load(error)
+            if error.phase() == NativeExecutableLoadPhase::Copy
+    );
+    if !load_failed
+        || runner.calls != 0
+        || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        Err(String::from("v5 transaction load rollback drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_transaction_retains_runner_cleanup_retry()
+-> Result<(), String> {
+    let (admission, _geometry) = geometry_native_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(103)?,
+        native_executable_address(0x1_5000)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) = admission.execute_transactionally(
+        &mut adapter,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 transaction runner failure ignored"));
+    };
+    let ExecutionGeometryNativeInitialHaltTransactionFailure::Execution {
+        error: execution_error,
+        release_failure: Some(release_failure),
+    } = *failure
+    else {
+        return Err(String::from("v5 runner cleanup ownership was lost"));
+    };
+    if !matches!(
+        *execution_error,
+        ExecutionGeometryNativeInitialHaltExecutionError::Runner(runner_error)
+            if *runner_error == FakeNativeRunnerError::Call
+    ) || release_failure.executable().key() != admission.artifact().key()
+        || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from("v5 runner failure cleanup evidence drifted"));
+    }
+    release_failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 runner cleanup retry: {error}"))
+}
+
+#[test]
+fn geometry_native_transaction_retains_committed_release_retry()
+-> Result<(), String> {
+    let (admission, geometry) = geometry_native_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(104)?,
+        native_executable_address(0x1_6000)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(failure) = admission.execute_transactionally(
+        &mut adapter,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 transaction release failure ignored"));
+    };
+    let ExecutionGeometryNativeInitialHaltTransactionFailure::Release {
+        completion,
+        release_failure,
+    } = *failure
+    else {
+        return Err(String::from("v5 committed cleanup ownership was lost"));
+    };
+    if completion.state().geometry() != geometry
+        || completion.state().io().termination()
+            != Some(Termination::HaltInstruction)
+        || release_failure.executable().key() != admission.artifact().key()
+        || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from("v5 committed release evidence drifted"));
+    }
+    release_failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 committed release retry: {error}"))
 }
 
 #[test]

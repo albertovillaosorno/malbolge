@@ -612,8 +612,17 @@ mutation drift is rejected and rolled back, guard miss preserves the checkpoint,
 and an exact halt reconstructs `ProfileMachineState` with the original opaque
 geometry token. Four runner cases cover those paths.
 
-Complete transactional load/call/release composition and state-applying
-derived-geometry templates remain separate work.
+The admission also exposes `execute_transactionally()` for the complete guarded
+halt path. It prepares checkpoint-exact buffers before mapping, then reuses the
+v5 platform loader, exact executable binding, dedicated runner, completion
+admission, and explicit release in order. Load failure never calls the runner;
+post-ready runner/completion failures restore buffers before release. Cleanup
+failure retains the ready v5 executable for retry, and cleanup failure after an
+admitted halt additionally retains the committed opaque-geometry completion.
+
+Four transaction cases cover successful load/call/release, copy failure before
+runner entry, runner failure plus release retry, and committed completion plus
+release retry. State-applying derived-geometry templates remain separate work.
 
 `execute_with_budget()` limits each invocation to an explicit semantic-step
 budget. Exhausting the budget before the suffix completes returns an affine

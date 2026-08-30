@@ -645,8 +645,14 @@ transfers, verification, and other separately measured costs.
   entrypoint/mapping identity and the raw ABI state pointer after exact binding.
   Applied halt preserves the opaque geometry token; guard miss preserves the
   checkpoint; runner failure after mutation and completion drift both restore
-  exact entry buffers. Transactional load/call/release composition remains open,
-  followed by reviewed derived-geometry templates for state-changing operations.
+  exact entry buffers.
+- `execute_transactionally()` now prepares before mapping and composes the v5
+  loader, exact binding, dedicated runner, completion admission, and release.
+  Load failure skips the runner, post-ready execution failures restore buffers
+  before cleanup, and failed release retains the exact ready executable for
+  retry. A release failure after an admitted halt also retains the committed
+  opaque-geometry completion. Reviewed derived-geometry templates for
+  state-changing operations remain the next native work.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

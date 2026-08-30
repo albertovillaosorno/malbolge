@@ -12,13 +12,15 @@
 //   - Admission and safe runner orchestration binding one verified v5 native
 //   - initial-halt artifact to one opaque validated VM checkpoint geometry.
 // - Must-Not:
-//   - Map executable memory, implement the foreign call, forge geometry tokens,
-//   - or route v5 through legacy direct-native execution APIs.
+//   - Implement executable-memory platform operations or the foreign call,
+//     forge
+//   - geometry tokens, or route v5 through legacy direct-native execution APIs.
 // - Allows:
-//   - Inputs: exact v5 IR/artifact/checkpoint, synchronized exact executable,
-//   - caller buffers, and one explicit geometry-native runner port.
+//   - Inputs: exact v5 IR/artifact/checkpoint, caller buffers,
+//     executable-memory
+//   - adapter, synchronized exact executable, and geometry-native runner port.
 //   - Outputs: checkpoint-bound admission, prepared/bound call, or completion.
-//   - Side effects: process-local allocation plus supplied runner operations.
+//   - Side effects: process-local allocation plus supplied adapter/runner work.
 // - Split-When:
 //   - Split when geometry-aware executable lifecycle or invocation gains
 //   - independent policy.
@@ -31,7 +33,7 @@
 //     prepared
 //   - state on runner/completion failure before reconstructing opaque state.
 // - Usage:
-//   - Admit before mapping, then prepare/bind/execute through the v5-only port.
+//   - Admit first, then transact or manually prepare/bind/execute through v5.
 // - Defaults:
 //   - Identity, geometry, buffer, runner, or completion drift fails closed and
 //   - restores the exact prepared entry snapshot where mutation was possible.
@@ -49,12 +51,16 @@ use malbolge::{
 
 use crate::execution_cache::{NativeArtifactKey, NativeIdentityError};
 use crate::execution_native::{
-    ExecutionGeometryNativeRunner, NativeRegionBuffers,
+    ExecutionGeometryNativeExecutableReleaseFailure,
+    ExecutionGeometryNativeRunner, NativeExecutableLoadFailure,
+    NativeExecutableMemoryAdapter, NativeRegionBuffers,
     NativeRegionInvocationError, NativeRegionInvocationOutcome,
     PreparedExecutionGeometryNativeInvocation, PreparedNativeRegionInvocation,
     ReadyExecutionGeometryNativeExecutable, VerifiedDirectLoadError,
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     VerifiedExecutionGeometryLoadImage,
+    load_execution_geometry_native_executable,
+    release_execution_geometry_native_executable,
 };
 use crate::geometry_interpreter_handoff::{
     ExecutionGeometryHandoffAdmissionError, ExecutionGeometryInterpreterHandoff,
@@ -107,6 +113,71 @@ pub type ExecutionGeometryNativeInitialHaltExecutionResult<RunnerError> =
         ExecutionGeometryNativeInitialHaltCompletion,
         Box<ExecutionGeometryNativeInitialHaltExecutionError<RunnerError>>,
     >;
+
+/// Failure from one complete v5 load, call, admission, and release transaction.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeInitialHaltTransactionFailure<
+    MemoryError,
+    RunnerError,
+> {
+    /// Exact prepared call could not bind to the loaded v5 executable.
+    Binding {
+        /// Exact binding rejection.
+        error: ExecutionGeometryNativeInitialHaltBindingError,
+        /// Failed cleanup retaining the ready mapping, when release also
+        /// failed.
+        release_failure: Option<
+            Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+        >,
+    },
+    /// Bound v5 runner or completion admission failed.
+    Execution {
+        /// Exact runner/completion failure.
+        error:
+            Box<ExecutionGeometryNativeInitialHaltExecutionError<RunnerError>>,
+        /// Failed cleanup retaining the ready mapping, when release also
+        /// failed.
+        release_failure: Option<
+            Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+        >,
+    },
+    /// Executable mapping/lifecycle failed before the runner was called.
+    Load(Box<NativeExecutableLoadFailure<MemoryError>>),
+    /// Checkpoint-exact caller buffers failed preparation before mapping.
+    Preparation(ExecutionGeometryNativeInitialHaltPreparationError),
+    /// Native completion committed, but final mapping release failed.
+    Release {
+        /// Exact committed checkpoint/outcome retained despite cleanup
+        /// failure.
+        completion: Box<ExecutionGeometryNativeInitialHaltCompletion>,
+        /// Retryable ready executable and platform release error.
+        release_failure:
+            Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+    },
+}
+
+/// Result of one complete guarded v5 transaction for concrete adapter ports.
+pub type ExecutionGeometryNativeInitialHaltAdapterTransactionResult<
+    MemoryAdapter,
+    Runner,
+> = ExecutionGeometryNativeInitialHaltTransactionResult<
+    <MemoryAdapter as NativeExecutableMemoryAdapter>::Error,
+    <Runner as ExecutionGeometryNativeRunner>::Error,
+>;
+
+/// Result of one complete guarded v5 native transaction.
+pub type ExecutionGeometryNativeInitialHaltTransactionResult<
+    MemoryError,
+    RunnerError,
+> = Result<
+    ExecutionGeometryNativeInitialHaltCompletion,
+    Box<
+        ExecutionGeometryNativeInitialHaltTransactionFailure<
+            MemoryError,
+            RunnerError,
+        >,
+    >,
+>;
 
 /// Failure while preparing checkpoint-exact caller buffers for the v5 ABI.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -199,6 +270,33 @@ impl<RunnerError: Display> Display
     }
 }
 
+impl<MemoryError: Display, RunnerError: Display> Display
+    for ExecutionGeometryNativeInitialHaltTransactionFailure<
+        MemoryError,
+        RunnerError,
+    >
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Binding { error, .. } => {
+                write!(f, "v5 native transaction binding failed: {error}")
+            },
+            Self::Execution { error, .. } => {
+                write!(f, "v5 native transaction execution failed: {error}")
+            },
+            Self::Load(error) => {
+                write!(f, "v5 native transaction load failed: {error}")
+            },
+            Self::Preparation(error) => {
+                write!(f, "v5 native transaction preparation failed: {error}")
+            },
+            Self::Release { release_failure, .. } => {
+                write!(f, "v5 native transaction {release_failure}")
+            },
+        }
+    }
+}
+
 impl Display for ExecutionGeometryNativeInitialHaltPreparationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
@@ -229,6 +327,90 @@ impl ExecutionGeometryNativeInitialHaltAdmission {
     #[must_use]
     pub const fn checkpoint(&self) -> &ProfileMachineState {
         &self.checkpoint
+    }
+
+    /// Loads, binds, runs, admits, and releases one guarded v5 halt.
+    ///
+    /// Buffer preparation happens before executable mapping. Every failure
+    /// after a ready mapping exists attempts exact release; cleanup failure
+    /// retains the ready executable for retry. Release failure after
+    /// successful completion also retains the committed opaque-geometry
+    /// checkpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeInitialHaltTransactionFailure`] with
+    /// the exact failing phase and any retryable mapping cleanup ownership.
+    pub fn execute_transactionally<MemoryAdapter, Runner>(
+        &self,
+        memory_adapter: &mut MemoryAdapter,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> ExecutionGeometryNativeInitialHaltAdapterTransactionResult<
+        MemoryAdapter,
+        Runner,
+    >
+    where
+        MemoryAdapter: NativeExecutableMemoryAdapter,
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        use ExecutionGeometryNativeInitialHaltTransactionFailure as Failure;
+
+        let prepared = self
+            .prepare(buffers)
+            .map_err(|error| Box::new(Failure::Preparation(error)))?;
+        let ready = match load_execution_geometry_native_executable(
+            memory_adapter,
+            self.load_image(),
+        ) {
+            Ok(ready) => ready,
+            Err(error) => {
+                prepared.abort();
+                return Err(Box::new(Failure::Load(Box::new(error))));
+            },
+        };
+        let bound = match prepared.bind_executable(&ready) {
+            Ok(bound) => bound,
+            Err(error) => {
+                let release_failure =
+                    release_execution_geometry_native_executable(
+                        memory_adapter,
+                        ready,
+                    )
+                    .err()
+                    .map(Box::new);
+                return Err(Box::new(Failure::Binding {
+                    error,
+                    release_failure,
+                }));
+            },
+        };
+        let completion = match bound.execute(runner) {
+            Ok(completion) => completion,
+            Err(error) => {
+                let release_failure =
+                    release_execution_geometry_native_executable(
+                        memory_adapter,
+                        ready,
+                    )
+                    .err()
+                    .map(Box::new);
+                return Err(Box::new(Failure::Execution {
+                    error,
+                    release_failure,
+                }));
+            },
+        };
+        match release_execution_geometry_native_executable(
+            memory_adapter,
+            ready,
+        ) {
+            Ok(()) => Ok(completion),
+            Err(release_failure) => Err(Box::new(Failure::Release {
+                completion: Box::new(completion),
+                release_failure: Box::new(release_failure),
+            })),
+        }
     }
 
     /// Returns the relocation-free load image bound to the same exact v5 key.
@@ -447,6 +629,10 @@ impl ExecutionGeometryNativeInitialHaltCompletion {
 impl<'admission, 'buffers>
     PreparedExecutionGeometryNativeInitialHalt<'admission, 'buffers>
 {
+    fn abort(self) {
+        self.invocation.abort();
+    }
+
     /// Simulates the exact expected foreign transition for contract tests.
     #[cfg(test)]
     #[doc(hidden)]
