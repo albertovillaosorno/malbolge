@@ -753,8 +753,10 @@ transfers, verification, and other separately measured costs.
 - The heterogeneous LRU can now release every currently unleased resident in
   LRU order. Leased identities remain active and ordered; failed releases leave
   cache authority and return exact plan plus typed cleanup ownership for retry.
-  This is not yet a retired-resident drain because live leases stay
-  lookup-visible.
+- A separate consuming `into_drain` transition removes all active lookup
+  authority without adapter work. Drain reconciliation releases unleased
+  retired residents, keeps live leases retired instead of active, and transfers
+  exact plan plus typed cleanup on failed release.
 - Heterogeneous leases now execute the retained specialized owner directly.
   Outcomes and failures stay tagged as no-op/halt, rotate/halt, or full-path;
   step indices, checkpoints, guard behavior, and rollback remain owned by the
@@ -772,6 +774,9 @@ transfers, verification, and other separately measured costs.
   through its exact adapter. Leased identities remain active, aggregate failures
   retain exact plan plus typed cleanup ownership, and aggregate retry never
   republishes identities removed from cache authority.
+- A consuming retired-drain transition for the synchronized owner remains open.
+  Shared ownership needs an explicit draining/closed state so active lookup
+  authority cannot silently reappear while external `Arc` holders still exist.
 - Nonblocking bulk release and aggregate retry reuse the same lifecycle.
   `try_release_all_unleased` reports `Busy` before adapter work, while
   `try_retry_release_all_cleanup` preserves the whole cleanup token unchanged

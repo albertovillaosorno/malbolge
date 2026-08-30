@@ -874,10 +874,22 @@ failure removes that identity from cache authority and returns its exact plan
 with variant-specific cleanup ownership; aggregate retry never restores lookup
 authority.
 
-This is intentionally not a retired-resident drain. A live lease keeps its
-resident lookup-visible until the lease is returned and a later pass can reclaim
-it. Focused cases cover full release, one retained lease, and aggregate release
-failure with exact retry ownership.
+`release_all_unleased` itself is intentionally not a retired-resident drain. A
+live lease keeps its resident lookup-visible until the lease is returned and a
+later pass can reclaim it. Focused cases cover full release, one retained lease,
+and aggregate release failure with exact retry ownership.
+
+A separate consuming transition now provides true retired authority.
+`GeometryNativeCrossTemplateLruCache::into_drain` performs no adapter work and
+moves every active resident into a drain handle, so the original lookup cache no
+longer exists. `reconcile` releases retired residents without leases, retains
+leased residents only inside the drain, and transfers failed releases as the
+same exact plan plus typed cleanup evidence used by release-all.
+
+Three focused cases prove zero-work retirement, lease-retained reconciliation,
+and failed-release transfer plus retry. The synchronized owner does not yet
+expose an equivalent consuming transition because shared mutex ownership needs
+an explicit closed/draining state rather than silent recovery from `Arc` users.
 
 `GeometryNativeConcurrentCrossTemplateLruCache` now owns one heterogeneous LRU
 and its executable-memory adapter under the same mutex. `ensure`, release,

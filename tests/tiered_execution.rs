@@ -15492,6 +15492,132 @@ fn geometry_native_noop_halt_loaded_late_failure_retains_prefix()
 }
 
 #[test]
+fn geometry_native_cross_template_drain_releases_all_unleased()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(232)?,
+        native_executable_address(0x9_5000)?,
+    );
+    let mut cache = cross_template_lru(3)?;
+    for plan in [&noop_plan, &rotate_plan, &full_plan] {
+        drop(
+            cache
+                .ensure(&mut adapter, plan)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let operations_before = adapter.operations.len();
+    let mut drain = cache.into_drain();
+    if drain.retired_count() != 3
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from(
+            "cross drain retirement performed adapter work",
+        ));
+    }
+    let reconciled = drain
+        .reconcile(&mut adapter)
+        .map_err(|error| format!("cross drain reconcile: {error}"))?;
+    if reconciled.released_residents() == [noop_plan, rotate_plan, full_plan]
+        && reconciled.retained_residents().is_empty()
+        && drain.is_empty()
+        && adapter.operations.len() == 35
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross drain complete reconciliation drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_drain_retires_live_lease()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, _full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(233)?,
+        native_executable_address(0x9_6000)?,
+    );
+    let mut cache = cross_template_lru(2)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let rotate = cache
+        .ensure(&mut adapter, &rotate_plan)
+        .map_err(|error| error.to_string())?;
+    let mut drain = cache.into_drain();
+    let first = drain
+        .reconcile(&mut adapter)
+        .map_err(|error| format!("cross drain leased reconcile: {error}"))?;
+    if first.released_residents() != [noop_plan]
+        || first.retained_residents() != [rotate_plan.clone()]
+        || drain.retired_count() != 1
+    {
+        return Err(String::from("cross drain lost retired leased resident"));
+    }
+    drop(rotate);
+    let second = drain
+        .reconcile(&mut adapter)
+        .map_err(|error| format!("cross drain final reconcile: {error}"))?;
+    if second.released_residents() == [rotate_plan]
+        && second.retained_residents().is_empty()
+        && drain.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross drain failed to reclaim returned lease"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_drain_transfers_release_failure()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(234)?,
+        native_executable_address(0x9_7000)?,
+    )
+    .with_release_failures(1);
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let mut drain = cache.into_drain();
+    let Err(failure) = drain.reconcile(&mut adapter) else {
+        return Err(String::from("cross drain release failure ignored"));
+    };
+    let Some(entry) = failure.failures().first() else {
+        return Err(String::from("cross drain release failure missing"));
+    };
+    if failure.failures().len() != 1
+        || entry.plan() != &noop_plan
+        || !matches!(
+            entry.failure(),
+            CrossResidentReleaseFailure::NoOperationPair(_)
+        )
+        || !drain.is_empty()
+    {
+        return Err(String::from("cross drain release evidence drifted"));
+    }
+    let retried = (*failure)
+        .retry(&mut adapter)
+        .map_err(|error| format!("cross drain cleanup retry: {error}"))?;
+    if retried.released_residents() == [noop_plan]
+        && retried.retained_residents().is_empty()
+        && drain.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross drain cleanup retry drifted"))
+    }
+}
+
+#[test]
 fn geometry_native_cross_template_release_all_unleased_releases_every_resident()
 -> Result<(), String> {
     let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;

@@ -282,6 +282,12 @@ pub struct GeometryNativeCrossTemplateLruCache {
     residents: Vec<Arc<GeometryNativeLoadedResident>>,
 }
 
+/// Consumed heterogeneous cache authority awaiting lease-safe reclamation.
+#[derive(Debug)]
+pub struct GeometryNativeCrossTemplateLruDrain {
+    retired: Vec<Arc<GeometryNativeLoadedResident>>,
+}
+
 #[derive(Debug)]
 struct WeightedCandidate {
     loaded: GeometryNativeLoadedResident,
@@ -951,6 +957,16 @@ impl GeometryNativeCrossTemplateLruCache {
         Ok(GeometryNativeCrossTemplateLruAcquisition { disposition, lease })
     }
 
+    /// Consumes active lookup authority into a retired reconciliation handle.
+    ///
+    /// No adapter work occurs here. The returned drain owns every former cache
+    /// resident until [`GeometryNativeCrossTemplateLruDrain::reconcile`] can
+    /// release it or an external lease still retains it.
+    #[must_use]
+    pub fn into_drain(self) -> GeometryNativeCrossTemplateLruDrain {
+        GeometryNativeCrossTemplateLruDrain { retired: self.residents }
+    }
+
     fn leased_resident_count(&self) -> usize {
         self.residents
             .iter()
@@ -1113,41 +1129,7 @@ impl GeometryNativeCrossTemplateLruCache {
         Adapter: NativeExecutableMemoryAdapter,
     {
         let residents = take(&mut self.residents);
-        let mut failures = Vec::new();
-        let mut released_residents = Vec::new();
-        let mut retained_residents = Vec::new();
-        for resident in residents {
-            let plan = resident.plan();
-            if Arc::strong_count(&resident) > 1 {
-                retained_residents.push(plan);
-                self.residents.push(resident);
-                continue;
-            }
-            match Arc::try_unwrap(resident) {
-                Ok(loaded) => match loaded.release(adapter) {
-                    Ok(()) => released_residents.push(plan),
-                    Err(failure) => {
-                        failures.push(ReleaseAllEntryFailure { failure, plan });
-                    },
-                },
-                Err(retained) => {
-                    retained_residents.push(plan);
-                    self.residents.push(retained);
-                },
-            }
-        }
-        if failures.is_empty() {
-            Ok(GeometryNativeCrossTemplateLruReleaseAll {
-                released_residents,
-                retained_residents,
-            })
-        } else {
-            Err(Box::new(GeometryNativeCrossTemplateLruReleaseAllFailure {
-                failures,
-                released_residents,
-                retained_residents,
-            }))
-        }
+        reconcile_residents(adapter, residents, &mut self.residents)
     }
 
     /// Releases one exact typed resident only when it has no external leases.
@@ -1284,6 +1266,43 @@ impl GeometryNativeCrossTemplateLruCache {
     }
 }
 
+impl GeometryNativeCrossTemplateLruDrain {
+    /// Reports whether all retired resident ownership has been reclaimed.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.retired.is_empty()
+    }
+
+    /// Reconciles every retired resident that no longer has an external lease.
+    ///
+    /// Retained leases stay retired and never regain lookup authority. Failed
+    /// releases transfer exact plan plus typed cleanup ownership out of this
+    /// drain just as
+    /// [`GeometryNativeCrossTemplateLruCache::release_all_unleased`]
+    /// does for active residents.
+    ///
+    /// # Errors
+    ///
+    /// Returns aggregate typed cleanup evidence after attempting every
+    /// currently releasable retired resident.
+    pub fn reconcile<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeCrossTemplateLruReleaseAllResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let retired = take(&mut self.retired);
+        reconcile_residents(adapter, retired, &mut self.retired)
+    }
+
+    /// Returns retired residents still held behind external leases.
+    #[must_use]
+    pub const fn retired_count(&self) -> usize {
+        self.retired.len()
+    }
+}
+
 impl GeometryNativeCrossTemplateLruLease {
     /// Executes the retained specialized owner without cache or adapter work.
     ///
@@ -1341,5 +1360,50 @@ impl GeometryNativeCrossTemplateLruLease {
     #[must_use]
     pub fn strong_owner_count(&self) -> usize {
         Arc::strong_count(&self.resident)
+    }
+}
+
+fn reconcile_residents<Adapter>(
+    adapter: &mut Adapter,
+    residents: Vec<Arc<GeometryNativeLoadedResident>>,
+    retained: &mut Vec<Arc<GeometryNativeLoadedResident>>,
+) -> GeometryNativeCrossTemplateLruReleaseAllResult<Adapter::Error>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    let mut failures = Vec::new();
+    let mut released_residents = Vec::new();
+    let mut retained_residents = Vec::new();
+    for resident in residents {
+        let plan = resident.plan();
+        if Arc::strong_count(&resident) > 1 {
+            retained_residents.push(plan);
+            retained.push(resident);
+            continue;
+        }
+        match Arc::try_unwrap(resident) {
+            Ok(loaded) => match loaded.release(adapter) {
+                Ok(()) => released_residents.push(plan),
+                Err(failure) => {
+                    failures.push(ReleaseAllEntryFailure { failure, plan });
+                },
+            },
+            Err(still_retained) => {
+                retained_residents.push(plan);
+                retained.push(still_retained);
+            },
+        }
+    }
+    if failures.is_empty() {
+        Ok(GeometryNativeCrossTemplateLruReleaseAll {
+            released_residents,
+            retained_residents,
+        })
+    } else {
+        Err(Box::new(GeometryNativeCrossTemplateLruReleaseAllFailure {
+            failures,
+            released_residents,
+            retained_residents,
+        }))
     }
 }
