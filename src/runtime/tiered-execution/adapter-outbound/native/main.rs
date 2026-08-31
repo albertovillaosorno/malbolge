@@ -207,10 +207,20 @@ pub use executable_lease_cache::{
     NativeExecutableSequenceLeaseCacheReleaseFailure,
 };
 pub use executable_sequence::{
+    ExecutionGeometryNativeExecutableSequenceLoadFailure,
+    ExecutionGeometryNativeExecutableSequenceLoadResult,
+    ExecutionGeometryNativeExecutableSequenceReleaseFailure,
+    ExecutionGeometryNativeExecutableSequenceReleaseResult,
     NativeExecutableSequenceLoadFailure, NativeExecutableSequenceLoadResult,
     NativeExecutableSequenceReleaseFailure,
-    NativeExecutableSequenceReleaseResult, ReadyNativeExecutableSequence,
-    load_cached_verified_native_sequence, load_verified_native_sequence,
+    NativeExecutableSequenceReleaseResult,
+    ReadyExecutionGeometryNativeExecutableSequence,
+    ReadyNativeExecutableSequence,
+    load_cached_verified_execution_geometry_native_sequence,
+    load_cached_verified_native_sequence,
+    load_verified_execution_geometry_native_sequence,
+    load_verified_native_sequence,
+    release_execution_geometry_native_executable_sequence,
     release_native_executable_sequence,
 };
 pub use invocation::{

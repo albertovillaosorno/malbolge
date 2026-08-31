@@ -249,7 +249,8 @@ use execution_native::{
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
     PreparedVerifiedDirectInvocation,
     PreparedVerifiedExecutionGeometryInvocation,
-    ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
+    ReadyExecutionGeometryNativeExecutable,
+    ReadyExecutionGeometryNativeExecutableSequence, ReadyNativeExecutable,
     ReadyNativeExecutableSequence, StagedExecutionGeometryNativeExecutable,
     StagedNativeExecutable, UntrustedNativeObjectArtifact,
     VerifiedDirectInvocationError, VerifiedDirectLoadError,
@@ -273,10 +274,14 @@ use execution_native::{
     execute_loaded_verified_execution_geometry_native,
     execute_loaded_verified_execution_geometry_sequence,
     execute_loaded_verified_native_sequence, execute_verified_native,
-    execute_verified_native_sequence, load_cached_verified_native_sequence,
+    execute_verified_native_sequence,
+    load_cached_verified_execution_geometry_native_sequence,
+    load_cached_verified_native_sequence,
     load_execution_geometry_native_executable, load_native_executable,
+    load_verified_execution_geometry_native_sequence,
     load_verified_native_sequence, lower_clang_c23,
     lower_preflighted_clang_c23, release_execution_geometry_native_executable,
+    release_execution_geometry_native_executable_sequence,
     release_native_executable, release_native_executable_sequence,
     select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence,
@@ -13915,29 +13920,17 @@ fn direct_execution_geometry_generic_invocation_runner_failure_rolls_back()
 fn load_generic_v5_sequence(
     plan: &execution_native::VerifiedExecutionGeometryDirectSequencePlan,
     adapter: &mut FakeNativeExecutableAdapter,
-) -> Result<Vec<ReadyExecutionGeometryNativeExecutable>, String> {
-    plan.artifacts()
-        .iter()
-        .map(|artifact| {
-            let image = VerifiedExecutionGeometryLoadImage::new(artifact)
-                .map_err(|error| {
-                    format!("generic v5 sequence image: {error}")
-                })?;
-            load_execution_geometry_native_executable(adapter, &image)
-                .map_err(|error| format!("generic v5 sequence load: {error}"))
-        })
-        .collect()
+) -> Result<ReadyExecutionGeometryNativeExecutableSequence, String> {
+    load_verified_execution_geometry_native_sequence(adapter, plan)
+        .map_err(|error| format!("generic v5 sequence load: {error}"))
 }
 
 fn release_generic_v5_sequence(
     adapter: &mut FakeNativeExecutableAdapter,
-    executables: Vec<ReadyExecutionGeometryNativeExecutable>,
+    sequence: ReadyExecutionGeometryNativeExecutableSequence,
 ) -> Result<(), String> {
-    for executable in executables {
-        release_execution_geometry_native_executable(adapter, executable)
-            .map_err(|error| format!("generic v5 sequence release: {error}"))?;
-    }
-    Ok(())
+    release_execution_geometry_native_executable_sequence(adapter, sequence)
+        .map_err(|error| format!("generic v5 sequence release: {error}"))
 }
 
 #[test]
@@ -14034,24 +14027,30 @@ fn direct_execution_geometry_loaded_sequence_guard_miss_keeps_prefix()
 }
 
 #[test]
-fn direct_execution_geometry_loaded_sequence_rejects_swapped_mapping()
+fn direct_execution_geometry_loaded_sequence_rejects_mismatched_owner()
 -> Result<(), String> {
     use ExecutionGeometryLoadedSequenceAdmissionError as AdmissionError;
 
-    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
-    let plan = select_verified_execution_geometry_direct_sequence(
-        &fixture.programs,
+    let n10_fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let n11_fixture = derived_v5_jump_rotate_crazy_halt_fixture(11)?;
+    let n10_plan = select_verified_execution_geometry_direct_sequence(
+        &n10_fixture.programs,
         HostOperatingSystem::Windows,
         HostIsa::X86_64,
     )
-    .map_err(|error| format!("generic v5 swap plan: {error}"))?;
+    .map_err(|error| format!("generic v5 mismatch N10 plan: {error}"))?;
+    let n11_plan = select_verified_execution_geometry_direct_sequence(
+        &n11_fixture.programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("generic v5 mismatch N11 plan: {error}"))?;
     let mut adapter = FakeNativeExecutableAdapter::new(
         native_executable_mapping_id(373)?,
         native_executable_address(0xf_0000)?,
     );
-    let mut executables = load_generic_v5_sequence(&plan, &mut adapter)?;
-    executables.swap(0, 1);
-    let initial = derived_v5_fixture_state(&fixture, 0)?;
+    let sequence = load_generic_v5_sequence(&n11_plan, &mut adapter)?;
+    let initial = derived_v5_fixture_state(&n10_fixture, 0)?;
     let mut memory = initial.memory().to_vec();
     let entry_memory = memory.clone();
     let input = initial.io().input().to_vec();
@@ -14059,8 +14058,8 @@ fn direct_execution_geometry_loaded_sequence_rejects_swapped_mapping()
     let mut runner = FakeExecutionGeometrySequenceRunner::new(Vec::new());
     let result = execute_loaded_verified_execution_geometry_sequence(
         &mut runner,
-        &plan,
-        &executables,
+        &n10_plan,
+        &sequence,
         NativeRegionBuffers::new(&mut memory, &input, &mut output),
     );
     let rejected = result.as_ref().is_err_and(|error| {
@@ -14068,11 +14067,164 @@ fn direct_execution_geometry_loaded_sequence_rejects_swapped_mapping()
             == Some(AdmissionError::ExecutableIdentity { index: 0 })
     }) && runner.calls == 0
         && memory == entry_memory;
-    release_generic_v5_sequence(&mut adapter, executables)?;
+    release_generic_v5_sequence(&mut adapter, sequence)?;
     if rejected {
         Ok(())
     } else {
-        Err(String::from("generic v5 swapped mapping reached runner"))
+        Err(String::from("generic v5 mismatched owner reached runner"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_sequence_owner_reports_exact_weight()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let plan = select_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("generic v5 owner weight plan: {error}"))?;
+    let mapped_lengths =
+        vec![4_096, 8_192, 12_288, 16_384, 20_480, 24_576, 28_672];
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(380)?,
+        native_executable_address(0x10_0000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths);
+    let sequence =
+        load_verified_execution_geometry_native_sequence(&mut adapter, &plan)
+            .map_err(|error| format!("generic v5 owner weight load: {error}"))?;
+    let valid = sequence.len() == 7
+        && !sequence.is_empty()
+        && sequence.mapped_bytes() == Some(114_688)
+        && sequence.executables().len() == 7;
+    release_execution_geometry_native_executable_sequence(
+        &mut adapter,
+        sequence,
+    )
+    .map_err(|error| format!("generic v5 owner weight release: {error}"))?;
+    if valid {
+        Ok(())
+    } else {
+        Err(String::from("generic v5 owner weight drifted"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_sequence_owner_rolls_back_partial_load()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let plan = select_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("generic v5 rollback plan: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(387)?,
+        native_executable_address(0x11_0000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 4)
+    .with_release_failure_at(1);
+    let Err(failure) =
+        load_verified_execution_geometry_native_sequence(&mut adapter, &plan)
+    else {
+        return Err(String::from("generic v5 partial load failure ignored"));
+    };
+    let cleanup = failure.cleanup_failure().ok_or_else(|| {
+        String::from("generic v5 rollback cleanup ownership missing")
+    })?;
+    if failure.index() != 3
+        || failure.loaded_count() != 3
+        || failure.load_failure().is_none()
+        || cleanup.attempted_count() != 3
+        || cleanup.released_count() != 2
+        || cleanup.failed_count() != 1
+    {
+        return Err(String::from("generic v5 rollback evidence drifted"));
+    }
+    failure
+        .into_cleanup_failure()
+        .ok_or_else(|| String::from("generic v5 rollback retry owner missing"))?
+        .retry(&mut adapter)
+        .map_err(|error| format!("generic v5 rollback retry: {error}"))
+}
+
+#[test]
+fn direct_execution_geometry_sequence_owner_retries_all_releases()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let plan = select_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("generic v5 release plan: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(394)?,
+        native_executable_address(0x12_0000)?,
+    )
+    .with_release_failures(2);
+    let sequence =
+        load_verified_execution_geometry_native_sequence(&mut adapter, &plan)
+            .map_err(|error| format!("generic v5 release load: {error}"))?;
+    let Err(failure) = release_execution_geometry_native_executable_sequence(
+        &mut adapter,
+        sequence,
+    ) else {
+        return Err(String::from("generic v5 release failure ignored"));
+    };
+    if failure.attempted_count() != 7
+        || failure.released_count() != 5
+        || failure.failed_count() != 2
+        || failure.failures().len() != 2
+        || adapter.release_attempts != 7
+    {
+        return Err(String::from("generic v5 release aggregation drifted"));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("generic v5 release retry: {error}"))?;
+    if adapter.release_attempts == 9 {
+        Ok(())
+    } else {
+        Err(String::from("generic v5 release retry count drifted"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_cached_sequence_owner_loads_plan()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let host = DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let mut artifact_cache = VerifiedExecutionGeometryNativeCache::default();
+    let plan = select_cached_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        host,
+        &mut artifact_cache,
+    )
+    .map_err(|error| format!("generic v5 cached owner plan: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(401)?,
+        native_executable_address(0x13_0000)?,
+    );
+    let sequence = load_cached_verified_execution_geometry_native_sequence(
+        &mut adapter,
+        &plan,
+    )
+    .map_err(|error| format!("generic v5 cached owner load: {error}"))?;
+    let valid =
+        sequence.len() == plan.len() && sequence.mapped_bytes().is_some();
+    release_execution_geometry_native_executable_sequence(
+        &mut adapter,
+        sequence,
+    )
+    .map_err(|error| format!("generic v5 cached owner release: {error}"))?;
+    if valid {
+        Ok(())
+    } else {
+        Err(String::from("generic v5 cached owner drifted"))
     }
 }
 

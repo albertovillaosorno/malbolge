@@ -604,8 +604,13 @@ transfers, verification, and other separately measured costs.
   and every exact load image before the first call, then preserves committed
   prefixes while reporting exact guard-miss or failure indices. The seven-step
   N10 theorem applies end to end, a miss after two steps retains that prefix,
-  and swapped mappings fail before runner entry. Generic mapping load/cleanup
-  ownership and interpreter handoff remain open.
+  and an N11 mapping owner paired with the N10 plan fails before runner entry.
+- Generic verified-v5 mapping ownership now loads cached or uncached plans under
+  one immutable sequence owner. Partial-load failure releases the ready prefix
+  in reverse order and retains failed cleanup for retry; final release attempts
+  every mapping and likewise retains only failed cleanup. Exact mapped bytes are
+  derived from admitted mapping reports. Generic native-v5 interpreter handoff
+  remains open.
 - Profile traces now carry their exact execution geometry. Legacy portable IR
   v3 projection accepts only traces whose geometry equals the canonical profile
   and rejects derived traces with `ExecutionGeometry`. Explicit-geometry IR v5

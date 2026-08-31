@@ -701,13 +701,19 @@ port. All seven reviewed kinds apply through that boundary; guard miss is atomic
 and runner failure restores the current-step entry snapshot.
 
 Generic preloaded v5 sequence execution now admits the complete mapping count
-and
-every exact aggregate load image before the first guest mutation, then runs the
-verified plan in semantic order through that same generic call boundary. The
+and every exact aggregate load image before the first guest mutation, then runs
+the verified plan in semantic order through that same generic call boundary. The
 seven-step theorem applies completely; a guard miss after two steps preserves
-that committed prefix, while swapped mapping identity is rejected before the
-runner is called. Generic mapping load/cleanup ownership and interpreter handoff
-remain separate work.
+that committed prefix, while an N11 mapping owner paired with the N10 plan is
+rejected before the runner is called.
+
+`ReadyExecutionGeometryNativeExecutableSequence` now owns generic v5 mappings
+for cached or uncached plans. Loading derives every image before allocation,
+rolls back a ready prefix in reverse order on failure, retains failed
+rollback ownership for retry, and reports exact mapped-byte weight. Final
+release attempts every mapping and returns only the mappings whose cleanup
+failed for exact retry.
+Interpreter handoff from a generic native v5 miss remains separate work.
 
 `ExecutionGeometryInterpreterContinuation` composes those one-step replay
 boundaries without changing the trust model. Construction rejects empty,

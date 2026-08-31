@@ -47,7 +47,10 @@ use super::direct::{
     VerifiedExecutionGeometryDirectSequencePlan,
     VerifiedExecutionGeometryNativeArtifact,
 };
-use super::executable_sequence::ReadyNativeExecutableSequence;
+use super::executable_sequence::{
+    ReadyExecutionGeometryNativeExecutableSequence,
+    ReadyNativeExecutableSequence,
+};
 use super::invocation::{
     NativeRegionBuffers, NativeRegionInvocationOutcome,
     PreparedVerifiedDirectInvocation,
@@ -618,7 +621,7 @@ impl<MemoryError: Display, RunnerError: Display> Display
 pub fn execute_loaded_cached_verified_execution_geometry_sequence<Runner>(
     runner: &mut Runner,
     plan: &CachedVerifiedExecutionGeometryDirectSequencePlan,
-    executables: &[super::lifecycle::ReadyExecutionGeometryNativeExecutable],
+    sequence: &ReadyExecutionGeometryNativeExecutableSequence,
     buffers: NativeRegionBuffers<'_>,
 ) -> ExecutionGeometryLoadedSequenceExecutionResult<Runner::Error>
 where
@@ -637,7 +640,7 @@ where
             exit: plan.exit(),
             programs: plan.programs(),
         },
-        executables,
+        sequence.executables(),
         buffers,
     )
 }
@@ -654,7 +657,7 @@ where
 pub fn execute_loaded_verified_execution_geometry_sequence<Runner>(
     runner: &mut Runner,
     plan: &VerifiedExecutionGeometryDirectSequencePlan,
-    executables: &[super::lifecycle::ReadyExecutionGeometryNativeExecutable],
+    sequence: &ReadyExecutionGeometryNativeExecutableSequence,
     buffers: NativeRegionBuffers<'_>,
 ) -> ExecutionGeometryLoadedSequenceExecutionResult<Runner::Error>
 where
@@ -668,7 +671,7 @@ where
             exit: plan.exit(),
             programs: plan.programs(),
         },
-        executables,
+        sequence.executables(),
         buffers,
     )
 }

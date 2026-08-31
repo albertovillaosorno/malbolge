@@ -387,9 +387,14 @@ baseline; native tiers are accelerators of identical observable behavior.
   Generic preloaded verified-v5 sequence execution now validates complete
   mapping count and every exact load image before the first guest mutation.
   Applied prefixes remain committed with exact guard-miss/failure indices. The
-  seven-step theorem applies, a miss after two steps retains that prefix, and a
-  swapped mapping is rejected before runner entry. Generic mapping load/cleanup
-  ownership and interpreter handoff remain separate work.
+  seven-step theorem applies, a miss after two steps retains that prefix, and an
+  N11 mapping owner paired with the N10 plan rejects before runner entry.
+
+  `ReadyExecutionGeometryNativeExecutableSequence` now owns cached or uncached
+  verified-v5 mappings. Partial-load rollback releases the complete ready prefix
+  in reverse order and keeps failed cleanup retryable; final release attempts
+  every mapping and retains only failures. Exact mapped bytes come from admitted
+  mapping reports. Generic native-v5 interpreter handoff remains separate work.
 - `application/scheduler.rs` now consumes one affine handoff under one explicit
   complete, positive-slice, caller-yield, or native-retry-yield decision. Every
   pause preserves exact checkpoint, complete-plan index, key/program suffix, and
