@@ -444,8 +444,19 @@ retryable cleanup ownership.
 The same theorem sequence can now prebind seven already-synchronized executable
 images before any caller buffer mutation. It validates jump, rotate, halt, and
 each crazy image at its exact zero-based prefix index without adapter work.
-Prebinding only borrows those mappings; preloaded execution and aggregate
-seven-mapping ownership remain separate work.
+Prebinding only borrows those mappings.
+
+`LoadedExecutionGeometryNativeJumpRotateCrazyHaltSequence` now owns the same
+seven images through the existing one-step owners. Load follows theorem order;
+any later load failure releases every earlier owner, and failed rollback remains
+retryable beside the primary indexed load failure. Repeated execution prebinds
+all seven ready images before mutation and performs no adapter work afterward.
+
+Resident weight checked-sums the seven child mapping reports. A focused fixture
+proves 114,688 mapped bytes and seven mappings without artifact-size estimates.
+Final release attempts all seven owners even after one failure, and aggregate
+retry keeps only mappings whose release still fails. Whole-theorem cache policy
+remains separate work.
 
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low

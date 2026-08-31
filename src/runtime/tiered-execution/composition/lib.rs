@@ -53,6 +53,8 @@ pub mod geometry_native_crazy_prefix;
 pub mod geometry_native_crazy_prefix_halt_sequence;
 #[path = "tier/geometry_jrcph.rs"]
 pub mod geometry_native_jump_rotate_crazy_halt_sequence;
+#[path = "tier/geometry_jrco.rs"]
+pub mod geometry_native_jump_rotate_crazy_halt_owner;
 #[path = "tier/geometry_jump.rs"]
 pub mod geometry_native_initial_jump_data;
 #[path = "tier/geometry_input.rs"]

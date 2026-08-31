@@ -53,6 +53,8 @@ pub mod geometry_native_crazy;
 pub mod geometry_native_crazy_prefix;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_cph.rs"]
 pub mod geometry_native_crazy_prefix_halt_sequence;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrco.rs"]
+pub mod geometry_native_crazy_theorem_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xcache.rs"]
 pub mod geometry_native_cross_template_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xsync.rs"]
@@ -316,6 +318,7 @@ use geometry_native_crazy_prefix_halt_sequence::{
     ExecutionGeometryNativeCrazyPrefixHaltOutcome,
     ExecutionGeometryNativeCrazyPrefixHaltSequence,
 };
+use geometry_native_crazy_theorem_owner as crazy_owner;
 use geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruAcquireFailure as CrossLruFailure,
     GeometryNativeCrossTemplateLruCache as CrossLruCache,
@@ -24274,6 +24277,216 @@ fn geometry_native_input_transaction_retains_committed_release_retry()
     release_failure
         .retry(&mut adapter)
         .map_err(|error| format!("v5 input committed cleanup retry: {error}"))
+}
+
+fn full_crazy_applied_runner(
+    calls: usize,
+) -> FakeExecutionGeometrySequenceRunner {
+    FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied;
+        calls
+    ])
+}
+
+fn full_crazy_failure_runner() -> FakeExecutionGeometrySequenceRunner {
+    let mut behaviors = vec![FakeNativeRunnerBehavior::Applied; 3];
+    behaviors.push(FakeNativeRunnerBehavior::FailureAfterMutation);
+    FakeExecutionGeometrySequenceRunner::new(behaviors)
+}
+
+fn full_crazy_final_state(
+    fixture: &DerivedV5SequenceFixture,
+) -> Result<ProfileMachineState, String> {
+    fixture
+        .states
+        .last()
+        .cloned()
+        .ok_or_else(|| String::from("v5 owned crazy theorem final missing"))
+}
+
+#[test]
+fn geometry_native_full_crazy_owner_reuses_mappings() -> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let entry = sequence.initial_jump().checkpoint().clone();
+    let expected = full_crazy_final_state(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(309)?,
+        native_executable_address(0xe_2000)?,
+    )
+    .with_mapped_len_overrides(vec![
+        4_096, 8_192, 12_288, 16_384, 20_480, 24_576, 28_672,
+    ]);
+    let loaded =
+        crazy_owner::LoadedCrazyTheoremSequence::load(&sequence, &mut adapter)
+            .map_err(|error| format!("v5 owned crazy theorem load: {error}"))?;
+    let weight = loaded
+        .resident_weight()
+        .map_err(|error| format!("v5 owned crazy theorem weight: {error}"))?;
+    if weight.mapped_bytes() != 114_688
+        || weight.mappings() != 7
+        || adapter.operations.len() != 28
+    {
+        return Err(String::from("v5 owned crazy theorem weight drifted"));
+    }
+    let mut runner = full_crazy_applied_runner(14);
+    for _attempt in 0usize..2usize {
+        let mut memory = entry.memory().to_vec();
+        let input = entry.io().input().to_vec();
+        let mut output = entry.io().output().to_vec();
+        let outcome = loaded
+            .execute(
+                &mut runner,
+                NativeRegionBuffers::new(&mut memory, &input, &mut output),
+            )
+            .map_err(|error| {
+                format!("v5 owned crazy theorem execute: {error}")
+            })?;
+        if !matches!(
+            outcome,
+            ExecutionGeometryNativeJumpRotateCrazyHaltOutcome::Completed(_)
+        ) || outcome.state() != &expected
+            || memory != expected.memory()
+            || output != expected.io().output()
+            || adapter.operations.len() != 28
+        {
+            return Err(String::from("v5 owned crazy theorem reuse drifted"));
+        }
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned crazy theorem release: {error}"))?;
+    if adapter.operations.len() == 35 {
+        Ok(())
+    } else {
+        Err(String::from("v5 owned crazy theorem cleanup drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_full_crazy_owner_rolls_back_load() -> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(310)?,
+        native_executable_address(0xe_3000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 5)
+    .with_release_failure_at(1);
+    let Err(failure) =
+        crazy_owner::LoadedCrazyTheoremSequence::load(&sequence, &mut adapter)
+    else {
+        return Err(String::from(
+            "v5 owned crazy theorem load failure ignored",
+        ));
+    };
+    if failure.index() != 4 || !failure.cleanup_pending() {
+        return Err(String::from("v5 owned crazy theorem rollback lost"));
+    }
+    let retried = failure.retry_cleanup(&mut adapter);
+    if retried.cleanup_pending() {
+        Err(String::from(
+            "v5 owned crazy theorem rollback retry remained",
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_full_crazy_owner_failure_reuses_mappings()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let entry = sequence.initial_jump().checkpoint().clone();
+    let committed =
+        fixture.states.get(3).cloned().ok_or_else(|| {
+            String::from("v5 owned crazy theorem state missing")
+        })?;
+    let expected = full_crazy_final_state(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(311)?,
+        native_executable_address(0xe_4000)?,
+    );
+    let loaded =
+        crazy_owner::LoadedCrazyTheoremSequence::load(&sequence, &mut adapter)
+            .map_err(|error| format!("v5 owned crazy theorem load: {error}"))?;
+    let mut failing_runner = full_crazy_failure_runner();
+    let mut memory = entry.memory().to_vec();
+    let input = entry.io().input().to_vec();
+    let mut output = entry.io().output().to_vec();
+    let Err(failure) = loaded.execute(
+        &mut failing_runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from(
+            "v5 owned crazy theorem runner failure ignored",
+        ));
+    };
+    if failure.index() != 3
+        || failure.state() != &committed
+        || !matches!(
+            failure.cause(),
+            crazy_owner::CrazyTheoremOwnedCause::Crazy { index: 1, .. }
+        )
+        || memory != committed.memory()
+        || output != committed.io().output()
+        || adapter.operations.len() != 28
+    {
+        return Err(String::from("v5 owned crazy theorem failure drifted"));
+    }
+    let mut retry_runner = full_crazy_applied_runner(7);
+    let mut retry_memory = entry.memory().to_vec();
+    let mut retry_output = entry.io().output().to_vec();
+    let outcome = loaded
+        .execute(
+            &mut retry_runner,
+            NativeRegionBuffers::new(
+                &mut retry_memory,
+                &input,
+                &mut retry_output,
+            ),
+        )
+        .map_err(|error| format!("v5 owned crazy theorem retry: {error}"))?;
+    if outcome.state() != &expected || adapter.operations.len() != 28 {
+        return Err(String::from("v5 owned crazy theorem remapped on retry"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned crazy theorem cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_full_crazy_owner_release_retries_all() -> Result<(), String>
+{
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(312)?,
+        native_executable_address(0xe_5000)?,
+    )
+    .with_release_failure_at(3);
+    let loaded =
+        crazy_owner::LoadedCrazyTheoremSequence::load(&sequence, &mut adapter)
+            .map_err(|error| format!("v5 owned crazy theorem load: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from(
+            "v5 owned crazy theorem release failure ignored",
+        ));
+    };
+    if failure.failure_count() != 1 || adapter.operations.len() != 35 {
+        return Err(String::from(
+            "v5 owned crazy theorem release aggregation drifted",
+        ));
+    }
+    failure.retry(&mut adapter).map_err(|error| {
+        format!("v5 owned crazy theorem release retry: {error}")
+    })?;
+    if adapter.operations.len() == 36 {
+        Ok(())
+    } else {
+        Err(String::from("v5 owned crazy theorem retry count drifted"))
+    }
 }
 
 #[test]

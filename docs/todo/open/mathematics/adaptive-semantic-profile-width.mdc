@@ -982,8 +982,14 @@ transfers, verification, and other separately measured costs.
   release failure keeps specialized retryable cleanup ownership.
 - Seven already-synchronized theorem images can now prebind before caller
   mutation. Exact jump, rotate, halt, and indexed crazy mismatches reject with
-  no adapter work; the bound value only borrows those mappings. Preloaded
-  execution and aggregate seven-mapping ownership remain separate work.
+  no adapter work; the bound value only borrows those mappings.
+- The complete theorem path can now also own all seven mappings through its
+  specialized one-step owners. Partial load failure releases earlier owners and
+  preserves retryable rollback evidence; repeated execution prebinds all seven
+  images and performs no adapter work. Exact resident weight is 114,688 bytes
+  and seven mappings in the oversized-report fixture, while final release tries
+  every mapping and retries only failed cleanup. Whole-theorem cache residency
+  remains separate work.
 - Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
   dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical
