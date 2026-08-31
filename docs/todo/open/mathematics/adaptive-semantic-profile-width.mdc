@@ -576,11 +576,12 @@ transfers, verification, and other separately measured costs.
   handoff reconstructs/admits state against that exact token rather than profile
   dimensions. A derived N10 checkpoint still fails closed with
   `CheckpointGeometry` because ordinary direct planning consumes canonical v3/v4
-  IR only; verified-v5 native planning that can supply derived authority remains
-  separate work.
-- Verified-v5 native planning now has a uniform one-step selector over all seven
-  reviewed explicit-geometry templates: initial halt, initial jump-data, crazy,
-  rotate, input, output, and no-operation. The selector revalidates canonical
+  IR only. The separate verified-v5 path below supplies derived-geometry native
+  planning without changing that canonical boundary.
+- Verified-v5 native planning now has a uniform one-step selector over all eight
+  reviewed explicit-geometry templates: initial halt, initial jump-data,
+  jump-code, crazy, rotate, input, output, and no-operation. The selector
+  revalidates canonical
   profile identity, preserves exact v5 geometry in artifact identity, and routes
   through each existing emitter plus independent verifier on both reviewed ISAs.
   Unsupported shapes fail explicitly with no invented v5 deoptimization path.
@@ -596,10 +597,17 @@ transfers, verification, and other separately measured costs.
   N10 theorem inserts seven entries then hits all seven; a Linux target failure
   leaves a seeded Windows cache unchanged.
 - Generic verified-v5 invocation now reconstructs exact artifact identity,
-  derives the aggregate load image, dispatches only to the seven reviewed
+  derives the aggregate load image, dispatches only to the eight reviewed
   operation-specific ABI preparations, and binds one exact ready mapping before
-  the geometry-bound runner receives authority. All seven kinds apply through
+  the geometry-bound runner receives authority. All eight kinds apply through
   this path; guard miss and runner failure preserve the current-step entry.
+- Explicit-geometry jump-code revision 1 reuses the reviewed x86-64/AArch64
+  jump-code generators while deriving pointer successors and memory-domain
+  guards from v5 geometry. A source-backed adaptive N10 second jump-code selects
+  and loads on both ISAs, and generic preloaded sequence execution matches the
+  normative `ProfileMachine` memory and observation exactly. N10/N11 geometry
+  remains distinct in artifact identity; specialized jump-code residency is
+  still separate work.
 - Generic preloaded verified-v5 sequence execution now validates mapping count
   and every exact load image before the first call, then preserves committed
   prefixes while reporting exact guard-miss or failure indices. The seven-step
@@ -779,8 +787,9 @@ transfers, verification, and other separately measured costs.
   authority, rotate replay remains the sole halt authority, and all three steps
   admit before the first mapping. Global indices 0/1/2 preserve exact guard and
   failure position; mixed N10/N11 jump/suffix evidence rejects before adapter
-  work. Generic v5 planning remains open; later heterogeneous-LRU evidence below
-  closes byte-weighted cross-template caching for the reviewed resident set.
+  work. Generic v5 planning is now supplied by the uniform verified-v5 path;
+  later heterogeneous-LRU evidence below closes byte-weighted cross-template
+  caching for the established specialized resident set.
 - The full `(&O` sequence can additionally prebind three exact caller-owned
   executables before borrowing machine buffers. Repeated prebound execution
   performs no adapter work, mixed-geometry jump images reject before mutation,
@@ -1090,8 +1099,10 @@ transfers, verification, and other separately measured costs.
   LRU algorithm itself remains unchanged.
 - The no-op/halt, rotate/halt, and full-path single-resident caches remain
   intentionally separate for operation-specific callers. The heterogeneous LRU
-  is the shared residency authority; additional state-changing templates remain
-  open.
+  is the shared residency authority for its established variants. Generic
+  jump-code now executes through the shared verified-v5 path but does not yet
+  have specialized heterogeneous residency; additional state-changing templates
+  also remain open.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only
   admissible Applied state. The separate load image, prepare/bind layer, v5

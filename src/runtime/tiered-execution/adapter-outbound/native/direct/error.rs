@@ -133,6 +133,61 @@ impl From<NativeIdentityError> for DirectExecutionGeometryCrazyError {
     }
 }
 
+/// Failure while emitting or verifying v5 guarded jump-code.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectExecutionGeometryJumpCodeError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this v5 program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical guarded jump-code object.
+    ObjectBytes,
+    /// Explicit-geometry IR is outside the guarded jump-code subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this v5 contract.
+    TargetBackend,
+    /// This v5 backend has no target-specific feature specializations.
+    TargetFeatures,
+    /// This v5 backend currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectExecutionGeometryJumpCodeError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => "v5 jump-code COFF structure was rejected",
+            Self::Identity(_error) => {
+                "v5 jump-code identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "v5 jump-code object differs from canonical bytes"
+            },
+            Self::ProgramShape => {
+                "explicit-geometry IR is outside v5 jump-code subset"
+            },
+            Self::TargetBackend => {
+                "target does not select v5 jump-code backend"
+            },
+            Self::TargetFeatures => {
+                "v5 jump-code backend requires no CPU features"
+            },
+            Self::TargetFormat => "v5 jump-code backend requires Windows COFF",
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectExecutionGeometryJumpCodeError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectExecutionGeometryJumpCodeError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying v5 guarded initial halt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectExecutionGeometryInitialHaltError {

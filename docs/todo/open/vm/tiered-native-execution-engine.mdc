@@ -339,8 +339,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   execution-geometry token. Canonical plans revalidate profile identity before
   minting it, rebasing preserves it exactly, and handoff admission compares the
   checkpoint to that token rather than reconstructing geometry from profile
-  fields. Ordinary direct planning remains canonical-only; derived v5 native
-  planning is separate work.
+  fields. Ordinary direct planning remains canonical-only; the separate
+  verified-v5 planner now preserves derived geometry without changing that
+  boundary.
 
   Constructor/rebase and geometry-rejection cases retain this boundary. The
   application handoff resolves the exact canonical profile, admits either a full
@@ -356,7 +357,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   oversized budget completes. Ten cases cover both transfer forms, admission,
   budgets, repeated zero after progress, and rollback before/after suspension.
 - Direct-native planning now exposes one uniform verified-v5 artifact and
-  selector for all seven reviewed explicit-geometry one-step templates. It
+  selector for all eight reviewed explicit-geometry one-step templates. It
   revalidates canonical profile identity before deterministic shape dispatch,
   preserves explicit geometry in the native key, and reuses each established
   emitter/verifier pair. Unsupported v5 shape remains an explicit error instead
@@ -380,9 +381,15 @@ baseline; native tiers are accelerators of identical observable behavior.
 
   Generic verified-v5 invocation now binds any reviewed aggregate artifact to
   its exact v5 program, operation-specific ABI preparation, load image, and one
-  ready mapping before the geometry-bound runner can execute it. All seven kinds
+  ready mapping before the geometry-bound runner can execute it. All eight kinds
   apply through the shared boundary; guard miss is atomic and runner failure
   restores the current-step entry.
+
+  Explicit-geometry jump-code revision 1 now reuses the reviewed jump-code
+  machine-code generators with v5-derived pointer/memory guards. Adaptive N10
+  evidence selects and loads the source-backed non-aliasing jump-code on both
+  ISAs, and a generic preloaded one-step sequence matches normative replay.
+  Specialized jump-code residency remains separate work.
 
   Generic preloaded verified-v5 sequence execution now validates complete
   mapping count and every exact load image before the first guest mutation.

@@ -668,8 +668,9 @@ continuations continue to reject derived checkpoints.
 
 Direct-native planning now has a uniform one-step v5 selection boundary before
 any sequence generalization. `VerifiedExecutionGeometryNativeArtifact` tags the
-seven reviewed explicit-geometry templates: initial halt, initial jump-data,
-crazy, rotate, input, output, and no-operation. The selector revalidates
+eight reviewed explicit-geometry templates: initial halt, initial jump-data,
+jump-code, crazy, rotate, input, output, and no-operation. The selector
+revalidates
 canonical profile identity, performs deterministic semantic-shape dispatch, and
 then uses each existing emitter plus independent verifier; exact v5 geometry
 remains part of the artifact key.
@@ -694,11 +695,19 @@ those misses only after the complete sequence succeeds. The seven-step theorem
 inserts seven artifacts and then hits all seven; a Linux target failure leaves a
 seeded Windows cache unchanged.
 
-Generic verified-v5 invocation now binds any of those seven aggregate artifacts
-to its exact v5 program, operation-specific ABI preparation, derived load image,
-and one already-ready mapping before exposing the existing geometry-bound runner
-port. All seven reviewed kinds apply through that boundary; guard miss is atomic
-and runner failure restores the current-step entry snapshot.
+Generic verified-v5 invocation now binds any of those eight aggregate
+artifacts to its exact v5 program, operation-specific ABI preparation, derived
+load image, and one already-ready mapping before exposing the existing
+geometry-bound runner port. All eight reviewed kinds apply through that
+boundary; guard miss is atomic and runner failure restores the current-step
+entry snapshot.
+
+Explicit-geometry jump-code revision 1 reuses the reviewed architecture-specific
+jump-code generators while deriving pointer successors and memory-domain guards
+from v5 execution geometry. An adaptive N10 source-backed second jump-code
+selects and loads on both reviewed ISAs, and one generic preloaded sequence step
+matches normative `ProfileMachine` memory and observation exactly. N10/N11
+geometry remains distinct in artifact identity.
 
 Generic preloaded v5 sequence execution now admits the complete mapping count
 and every exact aggregate load image before the first guest mutation, then runs

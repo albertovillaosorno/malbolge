@@ -146,6 +146,30 @@ pub fn emit_direct_execution_geometry_initial_jump_data_coff(
     ))
 }
 
+/// Emits guarded jump-code for one explicit-geometry v5 program.
+///
+/// Pointer successors and memory-domain admission derive from explicit
+/// execution geometry while opcode and encryption semantics remain canonical.
+///
+/// # Errors
+///
+/// Returns [`DirectExecutionGeometryJumpCodeError`] when the v5 shape, target,
+/// identity, or canonical object cannot be represented.
+pub fn emit_direct_execution_geometry_jump_code_coff(
+    program: &ExecutionGeometryRegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectExecutionGeometryJumpCodeError>
+{
+    let selected = validate_execution_geometry_jump_code_program(program)?;
+    validate_execution_geometry_jump_code_target(&target)?;
+    let key = NativeArtifactKey::new_execution_geometry(program, target)?;
+    let triple = target_triple(key.target().host_isa());
+    let object = execution_geometry_jump_code_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
 /// Emits guarded input code for one explicit-geometry v5 program.
 ///
 /// Byte input remains byte-exact. EOF accumulator, pointer successors, and

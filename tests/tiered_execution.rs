@@ -186,6 +186,8 @@ use execution_native::{
     DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_REVISION,
+    DIRECT_EXECUTION_GEOMETRY_JUMP_CODE_BACKEND_ID,
+    DIRECT_EXECUTION_GEOMETRY_JUMP_CODE_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_ID,
@@ -501,7 +503,7 @@ use malbolge::{
     preflight_runtime_requirement, safe_rust_classic_capability,
     safe_rust_profiled_capability, target_profile,
     verify_initial_halt_profile_width, verify_input_output_halt_profile_width,
-    verify_input_then_halt_profile_width,
+    verify_input_then_halt_profile_width, verify_jump_code_halt_profile_width,
     verify_jump_rotate_crazy_halt_profile_width,
     verify_jump_rotate_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
@@ -12934,6 +12936,85 @@ fn native_interpreter_handoff_completes_from_checkpoint() -> Result<(), String>
     }
 }
 
+fn encoded_v5_profile_instruction(
+    decoded: u8,
+    position: usize,
+) -> Result<u8, String> {
+    let pointer = u32::try_from(position)
+        .map_err(|error| format!("v5 instruction position: {error}"))?;
+    (33u8..=126u8)
+        .find(|cell| {
+            decode_profile_instruction(u32::from(*cell), pointer)
+                == Some(decoded)
+        })
+        .ok_or_else(|| format!("missing encoded v5 {decoded} at {position}"))
+}
+
+fn v5_two_jump_code_source() -> Result<Vec<u8>, String> {
+    let first_target = encoded_v5_profile_instruction(b'i', 0)?;
+    let second_target = encoded_v5_profile_instruction(b'j', 1)?;
+    let second_jump = usize::from(first_target).saturating_add(1);
+    let halt_position = usize::from(second_target).saturating_add(1);
+    let source_len = second_jump.saturating_add(1);
+    let mut source = (0..source_len)
+        .map(|position| encoded_v5_profile_instruction(b'o', position))
+        .collect::<Result<Vec<_>, _>>()?;
+    *source
+        .get_mut(0)
+        .ok_or_else(|| String::from("v5 jump-code first source missing"))? =
+        first_target;
+    *source
+        .get_mut(1)
+        .ok_or_else(|| String::from("v5 jump-code first data missing"))? =
+        second_target;
+    *source
+        .get_mut(second_jump)
+        .ok_or_else(|| String::from("v5 jump-code second source missing"))? =
+        encoded_v5_profile_instruction(b'i', second_jump)?;
+    *source
+        .get_mut(halt_position)
+        .ok_or_else(|| String::from("v5 jump-code halt source missing"))? =
+        encoded_v5_profile_instruction(b'v', halt_position)?;
+    Ok(source)
+}
+
+fn derived_v5_jump_code_fixture(
+    word_trits: u8,
+) -> Result<DerivedV5HandoffFixture, String> {
+    let source = v5_two_jump_code_source()?;
+    let verified = verify_jump_code_halt_profile_width(
+        current_profile(),
+        &source,
+        word_trits,
+    )
+    .map_err(|error| format!("v5 jump-code verification: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new())
+            .map_err(|error| format!("v5 jump-code machine: {error}"))?;
+    if machine
+        .step()
+        .map_err(|error| format!("v5 jump-code first step: {error}"))?
+        != StepOutcome::Continued
+    {
+        return Err(String::from("v5 jump-code prefix did not advance"));
+    }
+    let checkpoint = machine.snapshot_state();
+    let mut trace_slot = None;
+    if machine
+        .step_traced(&mut |trace| trace_slot = Some(*trace))
+        .map_err(|error| format!("v5 jump-code trace: {error}"))?
+        != StepOutcome::Continued
+    {
+        return Err(String::from("v5 jump-code step did not advance"));
+    }
+    let trace =
+        trace_slot.ok_or_else(|| String::from("v5 jump-code trace missing"))?;
+    let program =
+        ExecutionGeometryRegionEffectProgram::from_profile_step_trace(&trace)
+            .map_err(|error| format!("v5 jump-code projection: {error:?}"))?;
+    Ok((program, checkpoint, verified.geometry()))
+}
+
 fn derived_v5_crazy_fixture(
     word_trits: u8,
 ) -> Result<DerivedV5HandoffFixture, String> {
@@ -13434,12 +13515,104 @@ fn assert_v5_crazy_artifact(
 }
 
 #[test]
+fn direct_execution_geometry_jump_code_selects_derived_geometry()
+-> Result<(), String> {
+    let (n10, _n10_state, n10_geometry) = derived_v5_jump_code_fixture(10)?;
+    let (n11, _n11_state, n11_geometry) = derived_v5_jump_code_fixture(11)?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let selected = select_verified_execution_geometry_direct_native(
+            &n10,
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("v5 jump-code select {isa:?}: {error}"))?;
+        let image = VerifiedExecutionGeometryLoadImage::new(&selected)
+            .map_err(|error| format!("v5 jump-code image {isa:?}: {error}"))?;
+        if selected.kind() != ExecutionGeometryDirectNativeKind::JumpCode
+            || selected.key().target().backend_id()
+                != DIRECT_EXECUTION_GEOMETRY_JUMP_CODE_BACKEND_ID
+            || selected.key().target().backend_revision()
+                != DIRECT_EXECUTION_GEOMETRY_JUMP_CODE_BACKEND_REVISION
+            || selected.key().ir().execution_geometry()
+                != Some(n10.execution_geometry())
+            || image.key() != selected.key()
+        {
+            return Err(String::from("v5 jump-code selected identity drifted"));
+        }
+    }
+    if n10_geometry != n11_geometry && n10 != n11 {
+        Ok(())
+    } else {
+        Err(String::from("v5 jump-code geometry identity collapsed"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_jump_code_sequence_matches_normative_replay()
+-> Result<(), String> {
+    let (program, checkpoint, _geometry) = derived_v5_jump_code_fixture(10)?;
+    let programs = [program];
+    let plan = select_verified_execution_geometry_direct_sequence(
+        &programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("v5 jump-code sequence plan: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(348)?,
+        native_executable_address(0xc_f000)?,
+    );
+    let sequence =
+        load_verified_execution_geometry_native_sequence(&mut adapter, &plan)
+            .map_err(|error| format!("v5 jump-code sequence load: {error}"))?;
+    let mut expected_machine =
+        ProfileMachine::from_snapshot(checkpoint.clone());
+    let _expected_outcome = expected_machine
+        .step()
+        .map_err(|error| format!("v5 jump-code normative step: {error}"))?;
+    let expected = expected_machine.snapshot_state();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let outcome = execute_loaded_verified_execution_geometry_sequence(
+        &mut runner,
+        &plan,
+        &sequence,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v5 jump-code sequence execute: {error}"))?;
+    let applied = outcome
+        == (NativeSequenceExecutionOutcome::Applied {
+            observation: profile_state_observation(&expected),
+            steps: 1,
+        })
+        && memory == expected.memory()
+        && output == expected.io().output()
+        && runner.calls == 1;
+    release_execution_geometry_native_executable_sequence(
+        &mut adapter,
+        sequence,
+    )
+    .map_err(|error| format!("v5 jump-code sequence release: {error}"))?;
+    if applied {
+        Ok(())
+    } else {
+        Err(String::from("v5 jump-code native result drifted"))
+    }
+}
+
+#[test]
 fn direct_execution_geometry_selector_covers_reviewed_one_step_kinds()
 -> Result<(), String> {
     let (crazy, _crazy_state, _crazy_geometry) = derived_v5_crazy_fixture(10)?;
     let (halt, _halt_state, _halt_geometry) = derived_v5_handoff_fixture(10)?;
     let (jump, _jump_state, _jump_geometry) =
         derived_v5_initial_jump_data_fixture(10)?;
+    let (jump_code, _jump_code_state, _jump_code_geometry) =
+        derived_v5_jump_code_fixture(10)?;
     let input = derived_v5_input_program(10, vec![0xa5])?;
     let (noop, _noop_state, _noop_geometry) =
         derived_v5_no_operation_fixture(10)?;
@@ -13452,6 +13625,7 @@ fn direct_execution_geometry_selector_covers_reviewed_one_step_kinds()
         (halt, ExecutionGeometryDirectNativeKind::InitialHalt),
         (jump, ExecutionGeometryDirectNativeKind::InitialJumpData),
         (input, ExecutionGeometryDirectNativeKind::Input),
+        (jump_code, ExecutionGeometryDirectNativeKind::JumpCode),
         (noop, ExecutionGeometryDirectNativeKind::NoOperation),
         (output, ExecutionGeometryDirectNativeKind::Output),
         (rotate, ExecutionGeometryDirectNativeKind::Rotate),
@@ -13807,15 +13981,18 @@ fn direct_execution_geometry_generic_invocation_covers_reviewed_kinds()
         0,
         353,
     )?;
+    let (jump_code, jump_code_state, _jump_code_geometry) =
+        derived_v5_jump_code_fixture(10)?;
+    execute_generic_v5_invocation_case(&jump_code, &jump_code_state, 0, 354)?;
     let (noop, noop_state, _noop_geometry) =
         derived_v5_no_operation_fixture(10)?;
-    execute_generic_v5_invocation_case(&noop, &noop_state, 0, 354)?;
+    execute_generic_v5_invocation_case(&noop, &noop_state, 0, 357)?;
     let (output, output_state, _output_geometry) =
         derived_v5_output_fixture(10)?;
     execute_generic_v5_invocation_case(&output, &output_state, 1, 355)?;
     let (rotate, rotate_state, _rotate_geometry) =
         derived_v5_rotate_fixture(10)?;
-    execute_generic_v5_invocation_case(&rotate, &rotate_state, 0, 356)
+    execute_generic_v5_invocation_case(&rotate, &rotate_state, 0, 357)
 }
 
 #[test]

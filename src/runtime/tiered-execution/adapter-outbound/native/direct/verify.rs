@@ -185,6 +185,38 @@ pub fn verify_direct_execution_geometry_initial_jump_data(
     )
 }
 
+/// Promotes only guarded jump-code bound to exact v5 geometry.
+///
+/// # Errors
+///
+/// Returns [`DirectExecutionGeometryJumpCodeError`] when v5 shape, identity,
+/// target, COFF structure, or any canonical object byte differs.
+pub fn verify_direct_execution_geometry_jump_code(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> Result<
+    VerifiedExecutionGeometryJumpCodeNativeObjectArtifact,
+    DirectExecutionGeometryJumpCodeError,
+> {
+    let selected = validate_execution_geometry_jump_code_program(program)?;
+    validate_execution_geometry_jump_code_target(artifact.key().target())?;
+    let expected_key = NativeArtifactKey::new_execution_geometry(
+        program,
+        artifact.key().target().clone(),
+    )?;
+    if artifact.key() != &expected_key {
+        return Err(DirectExecutionGeometryJumpCodeError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = execution_geometry_jump_code_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectExecutionGeometryJumpCodeError::ObjectBytes);
+    }
+    Ok(VerifiedExecutionGeometryJumpCodeNativeObjectArtifact {
+        artifact: admitted,
+    })
+}
+
 /// Promotes only guarded input code bound to exact v5 geometry.
 ///
 /// # Errors

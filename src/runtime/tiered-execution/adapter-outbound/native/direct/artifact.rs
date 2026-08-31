@@ -185,6 +185,32 @@ impl VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact {
     }
 }
 
+/// Native object proven to implement guarded explicit-geometry jump-code.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedExecutionGeometryJumpCodeNativeObjectArtifact {
+    pub(super) artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedExecutionGeometryJumpCodeNativeObjectArtifact {
+    /// Returns the exact v5 native artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns the exact verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact Windows target triple selected for linking.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
 /// Native object proven to implement guarded explicit-geometry input.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedExecutionGeometryInputNativeObjectArtifact {
@@ -300,6 +326,8 @@ pub enum ExecutionGeometryDirectNativeKind {
     InitialJumpData,
     /// One guarded input transition.
     Input,
+    /// One guarded non-aliasing jump-code transition.
+    JumpCode,
     /// One guarded no-operation transition.
     NoOperation,
     /// One guarded output transition.
@@ -321,6 +349,8 @@ pub enum VerifiedExecutionGeometryNativeArtifact {
     ),
     /// Guarded input object.
     Input(VerifiedExecutionGeometryInputNativeObjectArtifact),
+    /// Guarded jump-code object.
+    JumpCode(VerifiedExecutionGeometryJumpCodeNativeObjectArtifact),
     /// Guarded no-operation object.
     NoOperation(VerifiedExecutionGeometryNoOperationNativeObjectArtifact),
     /// Guarded output object.
@@ -338,6 +368,7 @@ impl VerifiedExecutionGeometryNativeArtifact {
             Self::InitialHalt(artifact) => artifact.key(),
             Self::InitialJumpData(artifact) => artifact.key(),
             Self::Input(artifact) => artifact.key(),
+            Self::JumpCode(artifact) => artifact.key(),
             Self::NoOperation(artifact) => artifact.key(),
             Self::Output(artifact) => artifact.key(),
             Self::Rotate(artifact) => artifact.key(),
@@ -356,6 +387,9 @@ impl VerifiedExecutionGeometryNativeArtifact {
                 ExecutionGeometryDirectNativeKind::InitialJumpData
             },
             Self::Input(_artifact) => ExecutionGeometryDirectNativeKind::Input,
+            Self::JumpCode(_artifact) => {
+                ExecutionGeometryDirectNativeKind::JumpCode
+            },
             Self::NoOperation(_artifact) => {
                 ExecutionGeometryDirectNativeKind::NoOperation
             },
@@ -376,6 +410,7 @@ impl VerifiedExecutionGeometryNativeArtifact {
             Self::InitialHalt(artifact) => artifact.object(),
             Self::InitialJumpData(artifact) => artifact.object(),
             Self::Input(artifact) => artifact.object(),
+            Self::JumpCode(artifact) => artifact.object(),
             Self::NoOperation(artifact) => artifact.object(),
             Self::Output(artifact) => artifact.object(),
             Self::Rotate(artifact) => artifact.object(),
@@ -390,6 +425,7 @@ impl VerifiedExecutionGeometryNativeArtifact {
             Self::InitialHalt(artifact) => artifact.target_triple(),
             Self::InitialJumpData(artifact) => artifact.target_triple(),
             Self::Input(artifact) => artifact.target_triple(),
+            Self::JumpCode(artifact) => artifact.target_triple(),
             Self::NoOperation(artifact) => artifact.target_triple(),
             Self::Output(artifact) => artifact.target_triple(),
             Self::Rotate(artifact) => artifact.target_triple(),
