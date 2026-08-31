@@ -101,6 +101,15 @@ parts:
     path: contract/reference.md
     kind: contract
     responsibility: Define serialized and cross-boundary representations.
+  - id: part-0015
+    path: adapter-outbound/adapters/doom/linux.c
+    kind: adapter-outbound
+    language: c
+    responsibility: Bind DOOM host capabilities to Linux through SDL2.
+  - id: part-0016
+    path: adapter-outbound/adapters/doom/build-linux.sh
+    kind: adapter-outbound
+    responsibility: Build the native Linux DOOM validation runner.
 projects: []
 tests: []
 graph:
