@@ -1193,9 +1193,13 @@ transfers, verification, and other separately measured costs.
   The same source with EOF is an adversarial negative fixture: both executions
   halt the same way but emit different bytes. These fixtures establish both
   input-domain sensitivity and the insufficiency of final-output comparison.
-- Required resource evidence: actual runtime capability discovery, exact
-  resident-byte accounting, and no-ceiling synthetic probes consistent with
-  `adaptive-accelerator-resource-budgeting`.
+- Required resource evidence is now retained: the 2026-08-31 RTX 4060 adaptive
+  profile resource-budget bundle records live Driver API memory/compute
+  discovery plus exact N10-through-N15 resident-byte/capacity rows. The existing
+  100,000-GiB synthetic bundle remains the explicit no-fixed-VRAM
+  counterexample.
+  Both consume `adaptive-accelerator-resource-budgeting`; neither grants width
+  authority or hardware-speed claims to synthetic rows.
 - Required-profile diagnostics and resource planning integrate through
   `required-profile-diagnostics` and `adaptive-accelerator-resource-budgeting`;
   those tasks consume a proved width but are not prerequisites for proving one.
