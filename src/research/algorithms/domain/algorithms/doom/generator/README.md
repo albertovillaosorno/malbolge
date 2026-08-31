@@ -4,10 +4,11 @@ This directory contains thin DOOM-specific recipes that configure generic
 generators. A recipe declares **what** source/oracle pair and policy to use; it
 does not implement the diff algorithm itself.
 
-`quality.py` is the first consumer. It configures `algorithms/diff` to learn the
-quality transformation from the local root `doom/` source and the ignored manual
+`quality.py` is the development consumer. It configures `algorithms/diff` to
+learn the quality transformation from `doom/source/` and the ignored manual
 oracle under `algorithms/doom/quality/in/doom/`. Its output is
-`src/research/algorithms/composition/algorithms/doom/quality/main.rs`.
+`src/research/algorithms/composition/algorithms/doom/quality/main.rs`. Users do
+not need this transform to produce the final `doom.c`.
 
 `doom.py` now owns the Linux DOOM C/H identity adapter. It selects only the
 `linuxdoom-1.10` C/header subtree, excludes WAD/IPX surfaces from source
@@ -71,12 +72,14 @@ provenance, embeds project headers once, keeps system headers external, orders
 macro-destructive translation units last, and isolates known private-name
 collisions.
 
-`amalgamate.py` is the completed second consumer. It binds accepted
-`quality/out/doom_fixed/linuxdoom-1.10/` source to the ignored one-file oracle
-and generates
-`src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs` through
-the same generic exact
-emitter used by quality.
+`amalgamate.py` is the standalone publication consumer. The ignored one-file
+oracle is still authored from accepted quality output, but the generated final
+transform binds that target directly against the exact original `doom/source/`
+snapshot. Therefore `amalgamate/main.rs` materializes the complete conditioned
+and amalgamated `doom.c` without requiring `quality/main.rs` or quality
+output at runtime. `amalgamate_domain.py` reuses the upstream source pin and
+requires the
+final authoring oracle to contain exactly one regular `doom.c`.
 
 The intended invocations are from the repository root:
 

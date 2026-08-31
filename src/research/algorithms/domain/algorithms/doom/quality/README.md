@@ -653,37 +653,32 @@ Compatibility with obsolete operating systems, 32-bit targets, or historical
 platform APIs is explicitly outside this algorithm's scope. A downstream port
 may add such support, but this pass does not carry compatibility debt for it.
 
-## Separation from Amalgamation
+## Separation from Final Publication
 
-Quality and amalgamation are intentionally separate algorithms. Quality owns
-semantic cleanup and produces the canonical normalized multi-file C tree.
-Amalgamation is a later optional lowering experiment, not part of source
-quality. Keeping the boundary explicit also preserves a future design in which
-the Malbolge C frontend can accept a directory of translation units directly
-without forcing every program through a single generated C file.
+Quality is the development transform. It owns semantic cleanup and materializes
+the readable normalized multi-file C tree used for review, validation, and
+playtest-oriented authoring.
 
-## Pipeline Position
+The final `amalgamate/main.rs` does **not** consume quality output when a user
+runs it. Maintainers use accepted quality output only to construct the ignored
+final `doom.c` oracle. The final diff recipe then binds that complete target
+back to the same exact original `doom/source/` snapshot, producing one
+standalone original-source-to-final-C transform.
 
-This algorithm runs **first**:
+## Authoring Position
 
 ```text
-user-supplied DOOM
-        |
-        v
-quality/main.rs
-        |
-        v
-normalized multi-file C tree
-        |
-        v
-amalgamate/main.rs
-        |
-        v
-one canonical C translation artifact
+doom/source/
+    -> quality/main.rs
+    -> normalized multi-file C tree
+    -> deterministic amalgamation oracle builder
+    -> accepted doom.c target
+    -> final diff bound against doom/source/
+    -> amalgamate/main.rs
 ```
 
-Amalgamation must consume the normalized output of this stage. It must not skip
-quality and operate directly on the original user-owned tree.
+This keeps quality useful for development without requiring users to execute two
+source transforms to obtain the canonical single-TU C artifact.
 
 ## Repository Boundary
 

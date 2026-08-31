@@ -7,31 +7,29 @@ survive a real, old, inconvenient codebase.
 
 ## Progress at a glance
 
-The source-level pipeline is complete:
+The user-facing source-level path is one transform:
 
 ```text
-lawful ignored root doom/
+doom/source/                 exact pinned original DOOM
         |
         v
-quality.py + algorithms/diff
+amalgamate/main.rs           standalone source-bound final transform
         |
         v
-quality/main.rs
-        |
-        v
-quality/out/doom_fixed/
-        |
-        v
-amalgamation_oracle.py
-        |
-        v
-amalgamate.py + algorithms/diff
-        |
-        v
-amalgamate/main.rs
-        |
-        v
-amalgamate/out/doom.c
+doom.c                       conditioned + amalgamated single TU
+```
+
+Quality remains a development workflow used to author and validate the target
+that the final transform reproduces:
+
+```text
+doom/source/
+    -> quality/main.rs
+    -> quality/out/doom_fixed/
+    -> amalgamation_oracle.py
+    -> ignored accepted oracle/doom.c
+    -> algorithms/diff against doom/source/
+    -> amalgamate/main.rs
 ```
 
 The next stage is still open: compile the accepted `doom.c` to
@@ -46,8 +44,8 @@ Malbolge semantics, and measure generated-code performance.
 | `generator/quality.py` | Configure source-to-normalized-tree generation. |
 | `quality/main.rs` | Materialize the accepted 130-file normalized tree. |
 | `generator/amalgamation_oracle.py` | Build the ignored single-TU oracle. |
-| `generator/amalgamate.py` | Configure normalized-tree-to-`doom.c`. |
-| `amalgamate/main.rs` | Materialize exactly one canonical `doom.c`. |
+| `generator/amalgamate.py` | Bind original source directly to final `doom.c`. |
+| `amalgamate/main.rs` | User-facing original-source-to-final-C transform. |
 | `cli/adapters/doom/` | Native debugging and capability scaffolds. |
 | `algorithms/diff/` | Generic binding, protection, and Rust emission. |
 
@@ -59,7 +57,8 @@ real artifact path and their payload literals are wrapped to the repository's
 
 These inputs are intentionally Git ignored:
 
-- `doom/`: exact pinned id Software source plus optional external `data/`;
+- `doom/source/`: exact pinned id Software source;
+- `doom/wad/`: optional user-owned external WADs;
 - `algorithms/doom/quality/in/doom/`: accepted modernization oracle;
 - `algorithms/doom/amalgamate/in/oracle/doom.c`: accepted single-TU oracle;
 - WADs, generated C trees, native executables, sanitizer logs, and play data.
@@ -85,46 +84,31 @@ The commands have separate responsibilities:
    `src/research/algorithms/composition/algorithms/doom/quality/main.rs`.
 2. `amalgamation_oracle` consumes accepted generated quality output and rewrites
    only the ignored local `in/oracle/doom.c` authoring evidence.
-3. `amalgamate` binds the normalized source/oracle pair and rewrites
+3. `amalgamate` binds the accepted final `doom.c` oracle directly against the
+   exact original `doom/source/` snapshot and rewrites the standalone
    `src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs`.
 
 Running each recipe twice must produce identical SHA-256 values.
 
-## Materialize the generated outputs
+## Materialize the final user artifact
 
-Compile the generated transforms with the pinned Rust toolchain. The example
-uses clean temporary output roots, so it is safe when canonical local outputs
-already exist:
+Users need only the final transform. Compile it with the pinned Rust toolchain
+and point it directly at the original source tree:
 
-```powershell
-$rustRoot = "C:/Repos/mit/jig/.dependencies/rust"
-$rust = "$rustRoot/stable-1.97.1-x86_64-pc-windows-gnu/bin/rustc.exe"
+```sh
+rust=.dependencies/rust/1.97.1/bin/rustc
+rm -rf .temp/doom-final-transform .temp/doom-final
 
-Remove-Item .temp/doom-quality-output -Recurse -Force `
-  -ErrorAction SilentlyContinue
-Remove-Item .temp/doom-amalgamate-output -Recurse -Force `
-  -ErrorAction SilentlyContinue
+"$rust" --edition 2024 -D warnings -C opt-level=2 \
+  src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs \
+  -o .temp/doom-final-transform
 
-& $rust --edition 2024 -D warnings -C opt-level=2 `
-  src/research/algorithms/composition/algorithms/doom/quality/main.rs `
-  -o .temp/doom-quality-transform.exe
-
-& .temp/doom-quality-transform.exe `
-  doom `
-  .temp/doom-quality-output
-
-& $rust --edition 2024 -D warnings -C opt-level=2 `
-  src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs `
-  -o .temp/doom-amalgamate-transform.exe
-
-& .temp/doom-amalgamate-transform.exe `
-  .temp/doom-quality-output/linuxdoom-1.10 `
-  .temp/doom-amalgamate-output
+.temp/doom-final-transform doom/source .temp/doom-final
 ```
 
-The quality transform publishes one normalized tree. The amalgamation transform
-publishes one file named `doom.c`. Existing output roots are rejected rather
-than merged.
+The output root contains exactly one file, `doom.c`. Maintainers may separately
+materialize `quality/main.rs` while developing the normalized multi-file corpus,
+but that intermediate tree is not a prerequisite for final artifact generation.
 
 ## Current artifact identity
 
@@ -139,10 +123,10 @@ than merged.
 ### Amalgamation transform
 
 - Path: `src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs`
-- Size: 3,573,797 bytes
-- Lines: 50,349
+- Size: 3,590,586 bytes
+- Lines: 50,583
 - SHA-256:
-  `e4ba6b14ec067b3836cc59b86f096b6f450651a2cb0eb6453a6f8c0de651cc39`
+  `668586c9e90721e524158cfc313bc1c99f42e883685900fb52e5c6c86f7a8afb`
 
 ### Canonical C output
 
@@ -169,7 +153,8 @@ playtested C artifact.
 - The canonical `doom.c` passes the pinned Clang pre-Malbolge C preflight.
 - Both generated Rust transforms compile with Rust 1.97.1 and `-D warnings`.
 - Fresh materialization reproduces the accepted quality tree byte-for-byte.
-- Fresh amalgamation reproduces the playtested `doom.c` byte-for-byte.
+- Fresh final materialization directly from the 165-file upstream source
+  reproduces the playtested `doom.c` byte-for-byte.
 - Canonical `malbolge doom.c` native debugging works on Linux and Windows host
   boundaries; the Linux path uses SDL2 and external `settings.json` presentation
   configuration.

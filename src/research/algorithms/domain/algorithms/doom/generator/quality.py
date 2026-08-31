@@ -41,7 +41,7 @@ from scripts.repository_root import repository_root
 
 REPOSITORY_ROOT = repository_root(Path(__file__))
 RECIPE = DiffRecipe(
-    source_root=REPOSITORY_ROOT / "doom",
+    source_root=REPOSITORY_ROOT / "doom" / "source",
     oracle_root=(
         REPOSITORY_ROOT
         / "src/research/algorithms/domain/algorithms/doom/quality/in/doom"

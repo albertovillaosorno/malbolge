@@ -6,14 +6,16 @@ Accepted exact source stage. C-to-Malbolge lowering remains separate and open.
 
 ## Purpose
 
-This second DOOM source transformation consumes only the accepted normalized
-multi-file C tree from quality and materializes one deterministic canonical
-`doom.c` without changing program semantics.
+This is the standalone user-facing DOOM transform. It consumes the exact
+pinned original id Software source tree and materializes one deterministic final
+`doom.c` containing both the accepted quality conditioning and the deterministic
+single-TU packaging.
 
-The implementation is not a hand-written concatenator. A deterministic C-aware
-oracle builder establishes the accepted single-TU form; the thin
-`generator/amalgamate.py` recipe then uses generic `algorithms/diff/` source
-binding to emit `amalgamate/main.rs`.
+The implementation is not a hand-written source rewriter. During development a
+deterministic C-aware oracle builder constructs the accepted single-TU target
+from reviewed quality output. The thin `generator/amalgamate.py` recipe then
+uses generic `algorithms/diff/` source binding to bind that final target
+directly against original upstream source and emit `amalgamate/main.rs`.
 
 ## Local Development Layout
 
@@ -28,14 +30,14 @@ algorithms/doom/
     `-- out/doom.c          # ignored materialized product
 ```
 
-The source is `quality/out/doom_fixed/linuxdoom-1.10/`, not original DOOM and
-not WAD data. The generated transform does not require the local single-file
-oracle at materialization time.
+The runtime source is original `doom/source/`, not quality output and not WAD
+data. The generated transform does not require `quality/main.rs`, the normalized
+tree, or the local single-file oracle at materialization time.
 
 ## Accepted Artifact
 
 - generated transform SHA-256:
-  `e4ba6b14ec067b3836cc59b86f096b6f450651a2cb0eb6453a6f8c0de651cc39`;
+  `668586c9e90721e524158cfc313bc1c99f42e883685900fb52e5c6c86f7a8afb`;
 - `doom.c` SHA-256:
   `4d5e7583baabeef6a7e21f3e7c3c560a4e4e44d7f467a8d4a9dcdc92775adc40`;
 - 1,543,214 bytes and 51,096 lines;
@@ -45,9 +47,10 @@ oracle at materialization time.
   elision.
 
 The generated transform compiles with pinned Rust 1.97.1 and `-D warnings`.
-Materializing it from a fresh accepted normalized tree reproduces the ignored
-single-TU oracle byte-for-byte. That output is also byte-identical to the
-`doom.c` exercised by the canonical Linux native-debug playtest.
+Materializing it directly from the exact 165-file original source snapshot
+reproduces the ignored single-TU oracle byte-for-byte. That output is also
+byte-identical to the `doom.c` exercised by the canonical Linux native-debug
+playtest.
 
 ## Semantic Evidence
 
@@ -66,8 +69,10 @@ claim that the C has already executed under Malbolge semantics.
 ## Source Binding
 
 Possessing `main.rs` alone is insufficient to materialize `doom.c`. The exact
-normalized source snapshot must match and recover the authenticated payload.
-Wrong, missing, or mutated source fails before output publication.
+pinned original source snapshot must match and recover the authenticated
+payload.
+Wrong, missing, extra, or mutated admitted source fails before output
+publication. Quality output is deliberately not part of this runtime boundary.
 
 ## Malbolge Boundary
 

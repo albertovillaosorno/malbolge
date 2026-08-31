@@ -1,5 +1,27 @@
 # DOOM Amalgamation Changelog
 
+## 2026-08-31 Standalone binding from original source to final `doom.c`
+
+The final publication transform no longer requires the normalized quality tree
+as its runtime input. Quality remains the development workflow used to author,
+validate, and playtest the accepted target. After that target is accepted,
+`amalgamate.py` now binds the complete single-TU `doom.c` directly against the
+same exact 165-file original id Software source snapshot.
+
+A fresh materialization therefore needs only `amalgamate/main.rs` and the pinned
+user-supplied `doom/source/` tree. It emits exactly one `doom.c`, byte-identical
+to the existing playtested oracle:
+
+- `amalgamate/main.rs`: 3,590,586 bytes, 50,583 lines, SHA-256
+  `668586c9e90721e524158cfc313bc1c99f42e883685900fb52e5c6c86f7a8afb`;
+- `doom.c`: 1,543,214 bytes, 51,096 lines, SHA-256
+  `4d5e7583baabeef6a7e21f3e7c3c560a4e4e44d7f467a8d4a9dcdc92775adc40`.
+
+Two consecutive generations produced the same final-transform hash. Compiling
+that Rust transform with pinned Rust 1.97.1 and running it directly against the
+original source reproduced the ignored oracle and previously playtested
+`doom.c` byte-for-byte.
+
 ## 2026-08-31 Regeneration from the accepted 63-TU single-player corpus
 
 The accepted quality tree is now the compact 130-file single-player baseline.

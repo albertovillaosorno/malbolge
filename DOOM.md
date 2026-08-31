@@ -1,19 +1,19 @@
 # DOOM interoperability quick start
 
-The DOOM source-level pipeline is ready for normal development and native debug
-play. It accepts the pinned id Software source, materializes the normalized
-single-player tree, materializes one canonical `doom.c`, and runs that C
-artifact through the canonical `malbolge doom.c` debug path on Windows or Linux.
+The published DOOM source transform has one user-facing job: take the exact
+pinned id Software source tree and materialize the final conditioned,
+amalgamated `doom.c`. The repository does not distribute DOOM source or game
+data.
 
-The remaining project milestone is different: generate `doom.malbolge`, link the
-versioned host capabilities, execute the result under Malbolge semantics, and
-make that generated program playable. Native `doom.c` is the comparison oracle,
-not proof that the Malbolge compiler stage is complete.
+`quality/main.rs` still exists, but it is a development transform. Maintainers
+use it to work on the normalized multi-file tree before accepting a new final
+`doom.c`. Users generating the final artifact need only `amalgamate/main.rs`.
 
-## 1. Put the DOOM source in `doom/`
+The remaining project milestone is C-to-Malbolge lowering. Native `doom.c` is
+the accepted comparison oracle; `doom.malbolge` has not yet been generated or
+executed.
 
-DOOM source and game data are user-supplied interoperability inputs and are
-ignored by Git. The repository does not redistribute them.
+## 1. Put original DOOM source under `doom/source/`
 
 Use id Software DOOM commit:
 
@@ -21,32 +21,27 @@ Use id Software DOOM commit:
 a77dfb96cb91780ca334d0d4cfd86957558007e0
 ```
 
-Copy the extracted checkout contents into the ignored repository root `doom/`.
-At minimum the source layout must include paths such as:
+Extract that checkout beneath the ignored repository `doom/source/` directory:
 
 ```text
 doom/
-|-- LICENSE.TXT
-|-- linuxdoom-1.10/
-|-- ipx/
-|-- sersrc/
-`-- sndserv/
+|-- source/
+|   |-- LICENSE.TXT
+|   |-- linuxdoom-1.10/
+|   |-- ipx/
+|   |-- sersrc/
+|   `-- sndserv/
+`-- wad/
+    |-- doom.wad
+    |-- doom2.wad
+    `-- ...
 ```
 
-The quality source identity is pinned to the 165 official files from that
-commit. A different engine revision fails closed rather than silently producing
-a possibly different port.
+The source directory is pinned to the 165 official files from that commit. A
+missing, extra, or modified admitted source file fails closed.
 
-WADs stay external. A convenient local layout is:
-
-```text
-doom/wad/doom.wad
-doom/wad/doom2.wad
-doom/wad/doomu.wad
-...
-```
-
-Never add WADs to Git.
+WADs are independent external inputs. Keep them under `doom/wad/` or another
+user-owned location and never add them to Git.
 
 ## 2. Build the `malbolge` command
 
@@ -64,53 +59,45 @@ src\interface\command-line\composition\scripts\build-windows.cmd
 
 The local CLI binary is written beneath
 `src/interface/command-line/composition/scripts/bin/`, which is ignored by Git.
-Re-run the host build script whenever the CLI or native debug adapter changes.
 
-## 3. Materialize normalized DOOM and `doom.c`
+## 3. Generate final `doom.c` with one algorithm
 
-The generated Rust transforms are versioned. Normal users do not need the local
-quality or amalgamation authoring oracles to use them.
+Compile the published final transform and run it directly against the original
+source tree. Quality output is not an input to this command.
 
-On Linux, from the repository root:
+Linux:
 
 ```sh
 rust=.dependencies/rust/1.97.1/bin/rustc
 
-rm -rf \
-  .temp/doom-quality-transform \
-  .temp/doom-quality-output \
-  .temp/doom-amalgamate-transform \
-  .temp/doom-amalgamate-output
-
-"$rust" --edition 2024 -D warnings -C opt-level=2 \
-  src/research/algorithms/composition/algorithms/doom/quality/main.rs \
-  -o .temp/doom-quality-transform
-
-.temp/doom-quality-transform \
-  doom \
-  .temp/doom-quality-output
+rm -rf .temp/doom-final-transform .temp/doom-final
 
 "$rust" --edition 2024 -D warnings -C opt-level=2 \
   src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs \
-  -o .temp/doom-amalgamate-transform
+  -o .temp/doom-final-transform
 
-.temp/doom-amalgamate-transform \
-  .temp/doom-quality-output/linuxdoom-1.10 \
-  .temp/doom-amalgamate-output
+.temp/doom-final-transform doom/source .temp/doom-final
 ```
 
-The final C file is:
+The only generated file is:
 
 ```text
-.temp/doom-amalgamate-output/doom.c
+.temp/doom-final/doom.c
 ```
 
-All `.temp/` products are local and ignored.
+The accepted artifact currently has SHA-256:
+
+```text
+4d5e7583baabeef6a7e21f3e7c3c560a4e4e44d7f467a8d4a9dcdc92775adc40
+```
+
+It is 1,543,214 bytes and 51,096 lines. All `.temp/` products remain local and
+ignored.
 
 ## 4. Configure video with `settings.json`
 
-Put `settings.json` beside the `doom.c` that you run. On Linux the debug adapter
-reads presentation and render settings before entering the guest.
+Put `settings.json` beside the `doom.c` that you run. On Linux the native debug
+adapter reads presentation and render settings before entering the guest.
 
 Recommended configuration:
 
@@ -122,13 +109,12 @@ Recommended configuration:
 }
 ```
 
-`resolution` is the physical window size when the window is not maximized.
-`maximized` selects the initial desktop window state.
+`resolution` is physical window size when not maximized. `render_resolution` is
+the corrected visual raster DOOM calculates. They are intentionally separate so
+a 1080p desktop window does not require a native 1080p software-rendered world.
 
-`render_resolution` is the corrected visual resolution that DOOM should render.
-It is intentionally separate from physical presentation resolution. Classic
-DOOM uses 5:6 pixel-aspect correction, so the Linux adapter converts the visual
-width to the raw guest framebuffer width before calling the game. For example:
+Classic DOOM uses 5:6 pixel-aspect correction. Linux converts the visual width
+to the raw guest framebuffer width before entering the game:
 
 | JSON `render_resolution` | Raw guest framebuffer | Corrected aspect |
 | --- | --- | --- |
@@ -137,23 +123,8 @@ width to the raw guest framebuffer width before calling the game. For example:
 | `[1280, 720]` | `1536x720` | 16:9 |
 | `[1920, 1080]` | `2304x1080` | 16:9 |
 
-The default Linux presentation is a maximized 1920x1080 window with a 640x360
-corrected render target. This keeps the desktop output sharp enough for normal
-play without forcing the software renderer to calculate a native 1080p world.
-
-Native 1080p rendering is supported, but it is expensive. `2304x1080` contains
-nine times as many guest pixels as `768x360`. The host can upscale a smaller
-indexed framebuffer cheaply; a future `doom.malbolge` should not spend Malbolge
-instructions drawing millions of extra pixels merely to match desktop output
-resolution.
-
-Explicit guest render switches override `render_resolution`, for example:
-
-```sh
-.../malbolge doom.c -render-height 360 -render-width 768
-```
-
-The raw `-render-width` value is the uncorrected guest framebuffer width.
+Explicit `-render-scale`, `-render-height`, or `-render-width` arguments
+override `render_resolution`.
 
 ## 5. Play
 
@@ -161,25 +132,47 @@ From the repository root:
 
 ```sh
 ./src/interface/command-line/composition/scripts/malbolge \
-  .temp/doom-amalgamate-output/doom.c \
+  .temp/doom-final/doom.c \
   -iwad doom/wad/doom.wad
 ```
 
-The command detects the DOOM host ABI in `doom.c`, compiles the C artifact only
-for native debugging, links the platform host adapter, and launches the game.
-This is intentionally not C-to-Malbolge compilation.
+For `.c`, the CLI performs native debugging only: it detects the DOOM host ABI,
+uses the platform host adapter, creates a temporary native executable, and runs
+it. This does not claim C-to-Malbolge compilation.
 
-The working directory becomes the directory containing `doom.c`, so
-`settings.json`, saves, `default.cfg`, and other local play data remain beside
-the generated artifact instead of polluting the repository root.
+The working directory becomes the directory containing `doom.c`. Put
+`settings.json` there when configuring presentation; saves and `default.cfg`
+then remain beside the generated artifact rather than in the repository root.
 
-## 6. Maintainers: regenerate the two algorithms
+## Maintainers: quality is the development workflow
 
-Only regenerate the versioned transformations after the manual quality tree and
-canonical `doom.c` have been accepted and playtested. Do not regenerate merely
-to hide an untested hand edit.
+Do not hand-edit `amalgamate/main.rs`. A new final algorithm is accepted only
+after the multi-file quality tree and the resulting single-TU C artifact have
+been reviewed and playtested.
 
-From the repository root:
+The authoring workflow is:
+
+```text
+doom/source/                    exact original user source
+    |
+    v
+quality/main.rs                 development-only conditioning transform
+    |
+    v
+quality/out/doom_fixed/         readable multi-file development corpus
+    |
+    v
+amalgamation_oracle.py          deterministic C-aware amalgamator
+    |
+    v
+ignored oracle/doom.c           accepted and playtested final target
+    |
+    | algorithms/diff binds target against doom/source/
+    v
+amalgamate/main.rs              standalone user-facing final transform
+```
+
+Regenerate authoring artifacts from the repository root with:
 
 ```sh
 export PYTHONPATH="src/research/algorithms/composition:\
@@ -191,27 +184,19 @@ python3 -m algorithms.doom.generator.amalgamation_oracle
 python3 -m algorithms.doom.generator.amalgamate
 ```
 
-The intended order is:
+`quality.py` and `amalgamation_oracle.py` are development tools. The final
+`amalgamate.py` recipe deliberately binds the accepted `doom.c` against the
+original pinned `doom/source/` tree, not against quality output.
 
-```text
-pinned user source
-    -> accepted quality oracle
-    -> quality/main.rs
-    -> normalized tree
-    -> accepted amalgamation oracle
-    -> amalgamate/main.rs
-    -> doom.c
-```
-
-Repeated generation must produce identical hashes. The generated `doom.c` must
-be byte-identical to the accepted amalgamation oracle before the new algorithms
-are committed.
+Repeated final generation must produce the same `amalgamate/main.rs` hash, and
+materializing that transform directly from `doom/source/` must reproduce the
+accepted oracle byte-for-byte.
 
 ## Current boundary
 
-The C base is ready: normalized source, canonical amalgamation, Windows/Linux
-native debug adapters, external WAD handling, scalable Hor+ rendering, audio,
-input, saves, and the single-player runtime profile are established.
+The C baseline is ready: one original-source-to-final-C transform reproduces the
+playtested single-player `doom.c`; Windows/Linux native debug adapters, external
+WAD handling, scalable Hor+ rendering, audio, input, and saves are established.
 
 The open work is the actual Malbolge stage. See
 [TODO.md](TODO.md#todo---doom-playable-generated-code-performance) for the

@@ -472,6 +472,11 @@ parts:
     path: domain/algorithms/superoptimization-research-program/lifecycle.toml
     kind: domain
     responsibility: Own pure rules and domain models.
+  - id: part-0096
+    path: domain/algorithms/doom/generator/amalgamate_domain.py
+    kind: domain
+    language: python
+    responsibility: Own pure rules and domain models.
 projects: []
 tests: []
 graph:

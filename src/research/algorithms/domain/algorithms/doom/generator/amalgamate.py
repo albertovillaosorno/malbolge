@@ -21,7 +21,7 @@
 # - Merge-When:
 #   - Merge when another file owns the exact same responsibility.
 # - Summary:
-#   - Generate the source-bound DOOM single-TU amalgamation transform.
+#   - Generate the standalone original-DOOM-to-doom.c transform.
 # - Description:
 #   - Implements the responsibility summarized by this module.
 # - Usage:
@@ -30,7 +30,7 @@
 #   - Invalid inputs or broken invariants fail closed.
 #
 
-"""Generate the source-bound DOOM single-TU amalgamation transform."""
+"""Generate the standalone original-DOOM-to-doom.c transform."""
 
 from pathlib import Path
 
@@ -41,19 +41,7 @@ from scripts.repository_root import repository_root
 
 REPOSITORY_ROOT = repository_root(Path(__file__))
 RECIPE = DiffRecipe(
-    source_root=(
-        REPOSITORY_ROOT
-        / "src"
-        / "research"
-        / "algorithms"
-        / "domain"
-        / "algorithms"
-        / "doom"
-        / "quality"
-        / "out"
-        / "doom_fixed"
-        / "linuxdoom-1.10"
-    ),
+    source_root=REPOSITORY_ROOT / "doom" / "source",
     oracle_root=(
         REPOSITORY_ROOT
         / "src/research/algorithms/domain/algorithms/doom/amalgamate/in/oracle"
@@ -63,8 +51,9 @@ RECIPE = DiffRecipe(
         / "src/research/algorithms/composition/algorithms/doom/amalgamate"
         / "main.rs"
     ),
-    profile="doom-amalgamate-v1",
+    profile="doom-final-v1",
     mode=TransformMode.EXACT_BASELINE,
+    domain_module=Path(__file__).with_name("amalgamate_domain.py"),
     source_binding_threshold=0.66,
     source_binding_maximum_anchors=127,
     source_binding_minimum_files=32,
@@ -72,7 +61,7 @@ RECIPE = DiffRecipe(
 
 
 def main() -> int:
-    """Write the exact source-bound amalgamation algorithm or fail closed.
+    """Write the exact standalone final DOOM algorithm or fail closed.
 
     Returns:
         Zero after deterministic transform generation.
