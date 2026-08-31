@@ -841,6 +841,11 @@ transfers, verification, and other separately measured costs.
   implicit eviction, failed loads publish nothing, and cleanup failure transfers
   exact retry ownership. Explicit replacement releases the old pair completely
   before loading the new identity and leaves the cache empty on either failure.
+- Rotate now also has a reusable one-mapping owner with heap-owned admission.
+  It reuses the exact prepare/bind runner path without remapping, preserves the
+  normatively replayed rotate mutation state, reports platform mapping weight,
+  rolls back runner failure, and transfers exact cleanup ownership on release
+  failure.
 - Initial jump-data now has a reusable one-mapping owner. It loads the exact
   admitted image once, reuses existing prepare/bind execution without remapping,
   preserves entry rollback after runner failure, reports weight from the actual

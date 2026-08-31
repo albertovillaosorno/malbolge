@@ -708,6 +708,18 @@ state if final release fails. Eight focused rotate cases cover cross-geometry
 binding, normative Applied state, preparation drift, completion drift, runner
 failure, guard miss, successful release, and committed cleanup retry.
 
+Rotate can now also own one reusable synchronized mapping directly.
+`ExecutionGeometryNativeRotateAdmission::load_owned` heap-retains the exact
+checkpoint-bound admission beside its ready executable and reuses the existing
+prepare/bind/runner path without adapter work. Repeated Applied calls reproduce
+the normatively replayed rotate memory/A/C/D state; runner failure restores the
+entry checkpoint and leaves the mapping reusable.
+
+The owner reports one live mapping and derives resident bytes from the platform
+`mapped_len()` report. Release delegates to the exact ready-executable cleanup
+contract. Two focused cases cover mapping reuse/weight and failure rollback
+followed by successful reuse.
+
 The real `(&O` theorem now also supplies a two-step native suffix after its
 normative jump: rotate followed by halt. The suffix admits rotate from the
 post-jump checkpoint, then uses rotate's normatively replayed exit as the sole

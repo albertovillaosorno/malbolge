@@ -98,10 +98,27 @@ pub enum ExecutionGeometryNativeRotateExecutionError<RunnerError> {
     Runner(Box<RunnerError>),
 }
 
+/// Failure while executing one reusable owned rotate mapping.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeRotateOwnedFailure<RunnerError> {
+    /// Prepared caller buffers could not bind to the retained ready mapping.
+    Binding(ExecutionGeometryNativeRotateBindingError),
+    /// Bound runner/completion admission failed.
+    Execution(Box<ExecutionGeometryNativeRotateExecutionError<RunnerError>>),
+    /// Caller buffers drifted from the admitted entry checkpoint.
+    Preparation(ExecutionGeometryNativeRotatePreparationError),
+}
+
 /// Result of one dedicated checkpoint-bound v5 rotate runner call.
 pub type ExecutionGeometryNativeRotateExecutionResult<RunnerError> = Result<
     ExecutionGeometryNativeRotateCompletion,
     Box<ExecutionGeometryNativeRotateExecutionError<RunnerError>>,
+>;
+
+/// Result of executing one reusable owned rotate mapping.
+pub type ExecutionGeometryNativeRotateOwnedResult<RunnerError> = Result<
+    ExecutionGeometryNativeRotateCompletion,
+    Box<ExecutionGeometryNativeRotateOwnedFailure<RunnerError>>,
 >;
 
 /// Failure while preparing checkpoint-exact buffers for v5 rotate.
@@ -181,6 +198,18 @@ pub type ExecutionGeometryNativeRotateTransactionResult<
     >,
 >;
 
+/// Result of loading one reusable exact rotate mapping.
+pub type GeometryNativeRotateOwnedLoadResult<MemoryError> = Result<
+    LoadedExecutionGeometryNativeRotate,
+    Box<NativeExecutableLoadFailure<MemoryError>>,
+>;
+
+/// Result of releasing one reusable exact rotate mapping.
+pub type GeometryNativeRotateOwnedReleaseResult<MemoryError> = Result<
+    (),
+    Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+>;
+
 /// Verified v5 rotate bound to one opaque checkpoint and normative exit.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecutionGeometryNativeRotateAdmission {
@@ -189,6 +218,20 @@ pub struct ExecutionGeometryNativeRotateAdmission {
     expected_state: ProfileMachineState,
     load_image: VerifiedExecutionGeometryLoadImage,
     program: ExecutionGeometryRegionEffectProgram,
+}
+
+/// Exact synchronized mapping weight retained by one owned rotate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExecutionGeometryNativeRotateResidentWeight {
+    mapped_bytes: usize,
+    mappings: usize,
+}
+
+/// One reusable ready rotate mapping beside exact admission.
+#[derive(Debug)]
+pub struct LoadedExecutionGeometryNativeRotate {
+    admission: Box<ExecutionGeometryNativeRotateAdmission>,
+    executable: ReadyExecutionGeometryNativeExecutable,
 }
 
 /// Prepared checkpoint-owned rotate bound to exact synchronized v5 code.
@@ -214,6 +257,18 @@ pub struct ExecutionGeometryNativeRotateCompletion {
 pub struct PreparedExecutionGeometryNativeRotate<'admission, 'buffers> {
     admission: &'admission ExecutionGeometryNativeRotateAdmission,
     invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
+impl<RunnerError: Display> Display
+    for ExecutionGeometryNativeRotateOwnedFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Binding(error) => Display::fmt(error, f),
+            Self::Execution(error) => Display::fmt(error, f),
+            Self::Preparation(error) => Display::fmt(error, f),
+        }
+    }
 }
 
 impl Display for ExecutionGeometryNativeRotateAdmissionError {
@@ -415,6 +470,30 @@ impl ExecutionGeometryNativeRotateAdmission {
         &self.load_image
     }
 
+    /// Loads and retains one reusable synchronized rotate mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact native executable load failure without publishing a
+    /// partial owner.
+    pub fn load_owned<Adapter>(
+        &self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeRotateOwnedLoadResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let executable = load_execution_geometry_native_executable(
+            adapter,
+            self.load_image(),
+        )
+        .map_err(Box::new)?;
+        Ok(LoadedExecutionGeometryNativeRotate {
+            admission: Box::new(self.clone()),
+            executable,
+        })
+    }
+
     /// Binds verified rotate evidence to a normatively replayed
     /// checkpoint.
     ///
@@ -507,6 +586,98 @@ impl ExecutionGeometryNativeRotateAdmission {
     #[must_use]
     pub const fn program(&self) -> &ExecutionGeometryRegionEffectProgram {
         &self.program
+    }
+}
+
+impl ExecutionGeometryNativeRotateResidentWeight {
+    /// Returns exact synchronized mapped bytes retained by this owner.
+    #[must_use]
+    pub const fn mapped_bytes(self) -> usize {
+        self.mapped_bytes
+    }
+
+    /// Returns the exact number of live executable mappings.
+    #[must_use]
+    pub const fn mappings(self) -> usize {
+        self.mappings
+    }
+}
+
+impl LoadedExecutionGeometryNativeRotate {
+    /// Returns the exact admission retained beside the ready mapping.
+    #[must_use]
+    pub const fn admission(&self) -> &ExecutionGeometryNativeRotateAdmission {
+        &self.admission
+    }
+
+    /// Returns the retained synchronized executable mapping.
+    #[must_use]
+    pub const fn executable(&self) -> &ReadyExecutionGeometryNativeExecutable {
+        &self.executable
+    }
+
+    /// Executes the retained mapping without executable-memory adapter work.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact preparation, binding, runner, or completion failure while
+    /// retaining this reusable mapping.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> ExecutionGeometryNativeRotateOwnedResult<Runner::Error>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        let prepared = self.admission.prepare(buffers).map_err(|error| {
+            Box::new(ExecutionGeometryNativeRotateOwnedFailure::Preparation(
+                error,
+            ))
+        })?;
+        let bound =
+            prepared
+                .bind_executable(&self.executable)
+                .map_err(|error| {
+                    Box::new(
+                        ExecutionGeometryNativeRotateOwnedFailure::Binding(
+                            error,
+                        ),
+                    )
+                })?;
+        bound.execute(runner).map_err(|error| {
+            Box::new(ExecutionGeometryNativeRotateOwnedFailure::Execution(
+                error,
+            ))
+        })
+    }
+
+    /// Releases the exact retained ready mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns retryable ready-executable ownership when platform release
+    /// fails.
+    pub fn release<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeRotateOwnedReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        release_execution_geometry_native_executable(adapter, self.executable)
+            .map_err(Box::new)
+    }
+
+    /// Returns exact synchronized mapping weight reported by the adapter.
+    #[must_use]
+    pub const fn resident_weight(
+        &self,
+    ) -> ExecutionGeometryNativeRotateResidentWeight {
+        ExecutionGeometryNativeRotateResidentWeight {
+            mapped_bytes: self.executable.mapping().mapped_len(),
+            mappings: 1,
+        }
     }
 }
 
