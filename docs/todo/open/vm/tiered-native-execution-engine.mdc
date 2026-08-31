@@ -399,8 +399,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   remains geometry-distinct from N11, and matches normative replay through the
   generic preloaded one-step path. The full four-step source selects initial
   jump-data, two general jump-data steps, then halt on both ISAs and executes to
-  the normative final state. Specialized jump-data residency remains separate
-  work.
+  the normative final state. General jump-data now also has checkpoint-bound
+  replay, reusable one-mapping ownership, and typed heterogeneous LRU residency;
+  aliasing InitialJump remains a distinct resident identity.
 
   Generic preloaded verified-v5 sequence execution now validates complete
   mapping count and every exact load image before the first guest mutation.

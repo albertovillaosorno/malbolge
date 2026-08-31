@@ -67,6 +67,8 @@ pub mod geometry_native_cross_template_resident;
 pub mod geometry_native_initial_jump_data;
 #[path = "tier/geometry_input.rs"]
 pub mod geometry_native_input;
+#[path = "tier/geometry_jdata.rs"]
+pub mod geometry_native_jump_data;
 #[path = "tier/geometry_jrcache.rs"]
 pub mod geometry_native_jump_rotate_crazy_halt_cache;
 #[path = "tier/geometry_jrlru.rs"]

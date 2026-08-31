@@ -1098,6 +1098,21 @@ mapping ownership already used by transactional execution. Two focused cases
 cover mapped-weight reuse and runner-failure rollback followed by successful
 reuse. The heterogeneous boundary now consumes this owner directly.
 
+General non-aliasing jump-data now has the same checkpoint-bound ownership
+shape without sharing aliasing policy.
+`ExecutionGeometryNativeJumpDataAdmission`
+normatively replays the exact v5 step before mapping, retains the verified
+JumpData artifact/load image, and prepares only the distinct-C/D two-live-in ABI
+shape. Its reusable owner reports one exact mapping, performs no adapter work on
+repeated execution, rolls back runner mutation failure to the entry checkpoint,
+and transfers exact cleanup ownership if release fails.
+
+The heterogeneous resident boundary now carries this owner as a distinct
+`JumpData` variant. Exact hits reuse its mapping, load/release failures remain
+JumpData-tagged, and aliasing `InitialJump` can coexist with non-aliasing
+`JumpData` under a two-mapping budget without identity collapse. The shared LRU
+adds no jump-specific eviction or weighting rule.
+
 The complete certified `(&O` path now composes initial jump-data, rotate, and
 halt without executing the jump outside the native composition boundary.
 `ExecutionGeometryNativeJumpRotateHaltSequence` first admits the aliasing jump
@@ -1206,10 +1221,10 @@ limit of six admits two full-path residents and evicts LRU authority before a
 third can publish.
 
 `GeometryNativeResidentPlan` now gives crazy, initial halt, initial jump-data,
-input, no-operation, no-op/halt, output, rotate, rotate/halt, and full-path
-templates one typed lifecycle boundary without merging execution semantics. The
-loaded-resident enum preserves exact variant identity, derives
-1/1/1/1/1/2/1/1/2/3 mapping weights from synchronized reports, and delegates
+input, jump-data, no-operation, no-op/halt, output, rotate, rotate/halt, and
+full-path templates one typed lifecycle boundary without merging execution
+semantics. The loaded-resident enum preserves exact variant identity, derives
+1/1/1/1/1/1/2/1/1/2/3 mapping weights from synchronized reports, and delegates
 load, execution, release, and retry to each specialized owner.
 
 `GeometryNativeCrossTemplateLruCache` now performs real cross-template
@@ -1240,7 +1255,8 @@ or weighting logic.
 A heterogeneous lease can now execute its resident directly without cache or
 adapter work. The common execution boundary only tags the existing specialized
 outcome/failure as crazy, full-path, initial halt, initial jump-data, input,
-no-operation, no-op/halt, output, rotate, or rotate/halt; it does not translate
+jump-data, no-operation, no-op/halt, output, rotate, or rotate/halt; it does not
+translate
 checkpoints, guard misses, committed state, or rollback semantics. The seven
 single-mapping templates therefore reuse their one-step completion and rollback
 contracts.

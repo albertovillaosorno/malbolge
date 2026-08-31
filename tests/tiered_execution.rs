@@ -71,6 +71,8 @@ pub mod geometry_native_cross_template_resident;
 pub mod geometry_native_initial_jump_data;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_input.rs"]
 pub mod geometry_native_input;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_jdata.rs"]
+pub mod geometry_native_jump_data;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrco.rs"]
 pub mod geometry_native_jump_rotate_crazy_halt_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrcph.rs"]
@@ -397,6 +399,7 @@ use geometry_native_input::{
     ExecutionGeometryNativeInputPreparationError,
     ExecutionGeometryNativeInputTransactionFailure,
 };
+use geometry_native_jump_data as jump_data_native;
 use geometry_native_jump_rotate_crazy_halt_owner as crazy_owner;
 use geometry_native_jump_rotate_crazy_halt_sequence::{
     ExecutionGeometryNativeJumpRotateCrazyHaltEvidence,
@@ -796,6 +799,12 @@ type InitialJumpOwnedFailure<RunnerError> =
     jump_native::ExecutionGeometryNativeInitialJumpDataOwnedFailure<
         RunnerError,
     >;
+type JumpDataOwnedFailure<RunnerError> =
+    jump_data_native::ExecutionGeometryNativeJumpDataOwnedFailure<RunnerError>;
+type JumpDataExecutionError<RunnerError> =
+    jump_data_native::ExecutionGeometryNativeJumpDataExecutionError<
+        RunnerError,
+    >;
 type FullGeometryAdmissionError =
     full_native::ExecutionGeometryNativeJumpRotateHaltAdmissionError;
 type FullGeometryBindingError =
@@ -846,6 +855,8 @@ type InitialJumpTransactionFailure<MemoryError, RunnerError> =
         MemoryError,
         RunnerError,
     >;
+type JumpDataAdmission =
+    jump_data_native::ExecutionGeometryNativeJumpDataAdmission;
 
 type DerivedV5HandoffFixture = (
     ExecutionGeometryRegionEffectProgram,
@@ -864,6 +875,8 @@ type GeometryNativeAdmissionFixture = (
 );
 type GeometryNativeInitialJumpDataAdmissionFixture =
     (InitialJumpAdmission, malbolge::ProfileExecutionGeometry);
+type GeometryNativeJumpDataAdmissionFixture =
+    (JumpDataAdmission, malbolge::ProfileExecutionGeometry);
 type GeometryNativeInputAdmissionFixture = (
     ExecutionGeometryNativeInputAdmission,
     malbolge::ProfileExecutionGeometry,
@@ -15927,6 +15940,12 @@ fn cross_template_initial_jump_plan() -> Result<CrossResidentPlan, String> {
     Ok(CrossResidentPlan::InitialJump(Box::new(admission)))
 }
 
+fn cross_template_jump_data_plan() -> Result<CrossResidentPlan, String> {
+    let (admission, _geometry) =
+        geometry_native_jump_data_admission_fixture(10)?;
+    Ok(CrossResidentPlan::JumpData(Box::new(admission)))
+}
+
 fn cross_template_no_operation_plan() -> Result<CrossResidentPlan, String> {
     let (admission, _geometry) =
         geometry_native_no_operation_admission_fixture(10)?;
@@ -16578,6 +16597,26 @@ fn geometry_native_initial_jump_data_runner_fixture(
         geometry,
         ready,
     })
+}
+
+fn geometry_native_jump_data_admission_fixture(
+    word_trits: u8,
+) -> Result<GeometryNativeJumpDataAdmissionFixture, String> {
+    let (program, checkpoint, geometry) =
+        derived_v5_jump_data_fixture(word_trits)?;
+    let artifact = emit_direct_execution_geometry_jump_data_coff(
+        &program,
+        direct_execution_geometry_jump_data_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 jump-data admission emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_jump_data(&artifact, &program)
+            .map_err(|error| {
+                format!("v5 jump-data admission verify: {error}")
+            })?;
+    let admission = JumpDataAdmission::new(program, checkpoint, verified)
+        .map_err(|error| format!("v5 jump-data admission: {error}"))?;
+    Ok((admission, geometry))
 }
 
 fn geometry_native_input_admission_fixture(
@@ -21567,6 +21606,195 @@ fn geometry_native_cross_template_initial_jump_counts_mapping_pressure()
 }
 
 #[test]
+fn geometry_native_cross_template_jump_data_resident_executes()
+-> Result<(), String> {
+    let plan = cross_template_jump_data_plan()?;
+    let CrossResidentPlan::JumpData(admission) = &plan else {
+        return Err(String::from("cross jump-data plan variant drifted"));
+    };
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(427)?,
+        native_executable_address(0x15_2000)?,
+    )
+    .with_mapped_len_overrides(vec![16_384]);
+    let loaded = plan
+        .load(&mut adapter)
+        .map_err(|error| format!("cross jump-data load: {error}"))?;
+    let weight = loaded
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = loaded
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("cross jump-data execute: {error}"))?;
+    if loaded.kind() != CrossResidentKind::JumpData
+        || !loaded.matches_plan(&plan)
+        || loaded.plan() != plan
+        || weight.mapped_bytes() != 16_384
+        || weight.mappings() != 1
+        || outcome.kind() != CrossResidentKind::JumpData
+        || !matches!(outcome, CrossExecutionOutcome::JumpData(_))
+        || outcome.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 1
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("cross jump-data resident drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("cross jump-data release: {error}"))?;
+    if adapter.operations.len() == 5 {
+        Ok(())
+    } else {
+        Err(String::from("cross jump-data release count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_jump_data_lru_hit_reuses_mapping()
+-> Result<(), String> {
+    let plan = cross_template_jump_data_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(428)?,
+        native_executable_address(0x15_3000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| format!("cross jump-data insert: {error}"))?,
+    );
+    let operations_before = adapter.operations.len();
+    let hit = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross jump-data hit: {error}"))?;
+    let weight = hit
+        .lease()
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    if hit.disposition() != CrossLruDisposition::Hit
+        || hit.lease().kind() != CrossResidentKind::JumpData
+        || !hit.lease().matches_plan(&plan)
+        || weight.mappings() != 1
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from("cross jump-data hit remapped resident"));
+    }
+    drop(hit);
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross jump-data hit cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_jump_data_load_retry_keeps_variant()
+-> Result<(), String> {
+    let plan = cross_template_jump_data_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(429)?,
+        native_executable_address(0x15_4000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 1)
+    .with_release_failures(1);
+    let Err(failure) = plan.load(&mut adapter) else {
+        return Err(String::from("cross jump-data load failure ignored"));
+    };
+    if !matches!(failure.as_ref(), CrossResidentLoadFailure::JumpData(_))
+        || !failure.cleanup_pending()
+    {
+        return Err(String::from("cross jump-data load cleanup drifted"));
+    }
+    let retried = (*failure).retry_cleanup(&mut adapter);
+    if matches!(&retried, CrossResidentLoadFailure::JumpData(_))
+        && !retried.cleanup_pending()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross jump-data load retry lost variant"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_jump_data_release_failure_is_typed()
+-> Result<(), String> {
+    let plan = cross_template_jump_data_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(430)?,
+        native_executable_address(0x15_5000)?,
+    )
+    .with_release_failures(1);
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(failure) = cache.release_if_unleased(&mut adapter, &plan) else {
+        return Err(String::from("cross jump-data release failure ignored"));
+    };
+    if !matches!(failure.as_ref(), CrossResidentReleaseFailure::JumpData(_))
+        || cache.contains(&plan)
+    {
+        return Err(String::from("cross jump-data cleanup authority drifted"));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|error| format!("cross jump-data cleanup retry: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_jump_kinds_coexist() -> Result<(), String> {
+    let initial_plan = cross_template_initial_jump_plan()?;
+    let jump_data_plan = cross_template_jump_data_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(431)?,
+        native_executable_address(0x15_6000)?,
+    );
+    let mut cache = cross_template_lru(2)?;
+    let initial = cache
+        .ensure(&mut adapter, &initial_plan)
+        .map_err(|error| format!("cross initial jump coexist: {error}"))?;
+    if initial.lease().kind() != CrossResidentKind::InitialJump {
+        return Err(String::from("cross initial jump coexist kind drifted"));
+    }
+    drop(initial);
+    let general = cache
+        .ensure(&mut adapter, &jump_data_plan)
+        .map_err(|error| format!("cross jump-data coexist: {error}"))?;
+    let usage = cache.usage().map_err(|error| error.to_string())?;
+    if general.lease().kind() != CrossResidentKind::JumpData
+        || !cache.contains(&initial_plan)
+        || !cache.contains(&jump_data_plan)
+        || initial_plan == jump_data_plan
+        || usage.entries() != 2
+        || usage.mappings() != 2
+    {
+        return Err(String::from("cross jump kinds collapsed residency"));
+    }
+    drop(general);
+    for plan in [&initial_plan, &jump_data_plan] {
+        cache
+            .release_if_unleased(&mut adapter, plan)
+            .map(|_release| ())
+            .map_err(|error| format!("cross jump coexist cleanup: {error}"))?;
+    }
+    Ok(())
+}
+
+#[test]
 fn geometry_native_cross_template_no_operation_resident_executes()
 -> Result<(), String> {
     let plan = cross_template_no_operation_plan()?;
@@ -25547,6 +25775,123 @@ fn geometry_native_initial_jump_applies_normative_state() -> Result<(), String>
     }
     release_execution_geometry_native_executable(&mut adapter, ready)
         .map_err(|error| format!("v5 initial jump runner release: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_data_owned_reuses_mapping() -> Result<(), String> {
+    let (admission, geometry) =
+        geometry_native_jump_data_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(425)?,
+        native_executable_address(0x15_0000)?,
+    )
+    .with_mapped_len_overrides(vec![12_288]);
+    let loaded = admission
+        .load_owned(&mut adapter)
+        .map_err(|error| format!("v5 owned jump-data load: {error}"))?;
+    let weight = loaded.resident_weight();
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    for _attempt in 0usize..2usize {
+        let mut memory = checkpoint.memory().to_vec();
+        let input = checkpoint.io().input().to_vec();
+        let mut output = checkpoint.io().output().to_vec();
+        let completion = loaded
+            .execute(
+                &mut runner,
+                NativeRegionBuffers::new(&mut memory, &input, &mut output),
+            )
+            .map_err(|error| format!("v5 owned jump-data execute: {error}"))?;
+        if completion.state() != &expected
+            || completion.state().geometry() != geometry
+            || memory != expected.memory()
+            || output != expected.io().output()
+        {
+            return Err(String::from("v5 owned jump-data completion drifted"));
+        }
+    }
+    if loaded.admission() != &admission
+        || weight.mapped_bytes() != 12_288
+        || weight.mappings() != 1
+        || runner.calls != 2
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("v5 owned jump-data remapped or lost weight"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned jump-data release: {error}"))?;
+    if adapter.operations.len() == 5 {
+        Ok(())
+    } else {
+        Err(String::from("v5 owned jump-data release count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_jump_data_owned_survives_runner_failure()
+-> Result<(), String> {
+    let (admission, _geometry) =
+        geometry_native_jump_data_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(426)?,
+        native_executable_address(0x15_1000)?,
+    );
+    let loaded = admission
+        .load_owned(&mut adapter)
+        .map_err(|error| format!("v5 owned jump-data failure load: {error}"))?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut failed_runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) = loaded.execute(
+        &mut failed_runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 owned jump-data runner failure ignored"));
+    };
+    if !matches!(
+        failure.as_ref(),
+        JumpDataOwnedFailure::Execution(error) if matches!(
+            error.as_ref(),
+            JumpDataExecutionError::Runner(runner_error)
+                if **runner_error == FakeNativeRunnerError::Call
+        )
+    ) || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from(
+            "v5 owned jump-data failure rollback drifted",
+        ));
+    }
+    let mut successful_runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let completion = loaded
+        .execute(
+            &mut successful_runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| {
+            format!("v5 owned jump-data retry execute: {error}")
+        })?;
+    if completion.state() != &expected
+        || memory != expected.memory()
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("v5 owned jump-data retry drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned jump-data retry release: {error}"))
 }
 
 #[test]
