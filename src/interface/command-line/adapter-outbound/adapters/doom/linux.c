@@ -31,6 +31,8 @@
 //   - Decorated 1280x720 window, relative mouse in-game, no networking.
 //
 
+//! Native Linux debug adapter for the normalized portable DOOM guest.
+
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 
