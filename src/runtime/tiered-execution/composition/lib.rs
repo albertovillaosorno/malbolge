@@ -57,6 +57,8 @@ pub mod geometry_native_jump_rotate_crazy_halt_sequence;
 pub mod geometry_native_jump_rotate_crazy_halt_owner;
 #[path = "tier/geometry_jrcache.rs"]
 pub mod geometry_native_jump_rotate_crazy_halt_cache;
+#[path = "tier/geometry_jrlru.rs"]
+pub mod geometry_native_jump_rotate_crazy_halt_multi_cache;
 #[path = "tier/geometry_jump.rs"]
 pub mod geometry_native_initial_jump_data;
 #[path = "tier/geometry_input.rs"]

@@ -55,6 +55,8 @@ pub mod geometry_native_crazy_prefix;
 pub mod geometry_native_crazy_prefix_halt_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrcache.rs"]
 pub mod geometry_native_crazy_theorem_cache;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrlru.rs"]
+pub mod geometry_native_crazy_theorem_multi_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xcache.rs"]
 pub mod geometry_native_cross_template_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xsync.rs"]
@@ -321,6 +323,7 @@ use geometry_native_crazy_prefix_halt_sequence::{
     ExecutionGeometryNativeCrazyPrefixHaltSequence,
 };
 use geometry_native_crazy_theorem_cache as gc;
+use geometry_native_crazy_theorem_multi_cache as gclru;
 use geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruAcquireFailure as CrossLruFailure,
     GeometryNativeCrossTemplateLruCache as CrossLruCache,
@@ -520,6 +523,21 @@ type CrazyCacheFailure<MemoryError> =
     gc::GeometryNativeJumpRotateCrazyHaltCacheAcquireFailure<MemoryError>;
 type CrazyCacheRelease = gc::GeometryNativeJumpRotateCrazyHaltCacheRelease;
 type CrazyLeaseCache = gc::GeometryNativeJumpRotateCrazyHaltLeaseCache;
+type CrazyLruCache = gclru::GeometryNativeJumpRotateCrazyHaltLruCache;
+type CrazyLruDisposition =
+    gclru::GeometryNativeJumpRotateCrazyHaltLruDisposition;
+type CrazyLruFailure<MemoryError> =
+    gclru::GeometryNativeJumpRotateCrazyHaltLruAcquireFailure<MemoryError>;
+type CrazyLruLimits = gclru::GeometryNativeJumpRotateCrazyHaltLruLimits;
+type CrazyReconfigFailure<MemoryError> =
+    gclru::GeometryNativeJumpRotateCrazyHaltLruReconfigurationFailure<
+        MemoryError,
+    >;
+type CrazyTheoremSequenceTriple = (
+    Box<gclru::CrazyTheoremSequence>,
+    Box<gclru::CrazyTheoremSequence>,
+    Box<gclru::CrazyTheoremSequence>,
+);
 
 type DirectSelectionCase =
     (RegionEffectProgram, DirectNativeKind, &'static str);
@@ -14480,6 +14498,50 @@ fn cross_template_resident_plans() -> Result<CrossResidentPlanTriple, String> {
     ))
 }
 
+fn crazy_lru_sequence(
+    width: u8,
+) -> Result<Box<gclru::CrazyTheoremSequence>, String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(width)?;
+    Ok(Box::new(geometry_native_jump_rotate_crazy_halt_sequence(
+        &fixture,
+    )?))
+}
+
+fn crazy_lru_sequences() -> Result<CrazyTheoremSequenceTriple, String> {
+    Ok((
+        crazy_lru_sequence(10)?,
+        crazy_lru_sequence(11)?,
+        crazy_lru_sequence(12)?,
+    ))
+}
+
+fn crazy_lru_cache(capacity: usize) -> Result<CrazyLruCache, String> {
+    Ok(CrazyLruCache::new(nonzero_test_limit(
+        capacity,
+        "v5 crazy theorem LRU capacity",
+    )?))
+}
+
+fn crazy_mapping_lru_cache(
+    capacity: usize,
+    mapping_limit: usize,
+) -> Result<CrazyLruCache, String> {
+    Ok(CrazyLruCache::new_with_mapping_limit(
+        nonzero_test_limit(capacity, "v5 crazy mapping LRU capacity")?,
+        nonzero_test_limit(mapping_limit, "v5 crazy mapping LRU mappings")?,
+    ))
+}
+
+fn crazy_weighted_lru_cache(
+    capacity: usize,
+    mapped_byte_limit: usize,
+) -> Result<CrazyLruCache, String> {
+    Ok(CrazyLruCache::new_with_mapped_byte_limit(
+        nonzero_test_limit(capacity, "v5 crazy weighted LRU capacity")?,
+        nonzero_test_limit(mapped_byte_limit, "v5 crazy weighted LRU bytes")?,
+    ))
+}
+
 fn full_lru_sequences() -> Result<FullGeometrySequenceTriple, String> {
     let n10 = derived_v5_jump_rotate_halt_sequence_fixture(10)?;
     let n11 = derived_v5_jump_rotate_halt_sequence_fixture(11)?;
@@ -24496,6 +24558,383 @@ fn geometry_native_full_crazy_owner_release_retries_all() -> Result<(), String>
     } else {
         Err(String::from("v5 owned crazy theorem retry count drifted"))
     }
+}
+
+#[test]
+fn geometry_native_full_crazy_lru_usage_sums_mapping_reports()
+-> Result<(), String> {
+    let (s10, s11, _s12) = crazy_lru_sequences()?;
+    let first_lengths =
+        [4_096usize, 8_192, 12_288, 16_384, 20_480, 24_576, 28_672];
+    let second_lengths = [8_192usize; 7];
+    let first_bytes = first_lengths.into_iter().sum::<usize>();
+    let second_bytes = second_lengths.into_iter().sum::<usize>();
+    let mut lengths = first_lengths.to_vec();
+    lengths.extend(second_lengths);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(318)?,
+        native_executable_address(0xe_b000)?,
+    )
+    .with_mapped_len_overrides(lengths);
+    let mut cache = crazy_lru_cache(2)?;
+    let first = cache
+        .ensure(&mut adapter, &s10)
+        .map_err(|error| error.to_string())?;
+    let second = cache
+        .ensure(&mut adapter, &s11)
+        .map_err(|error| error.to_string())?;
+    let usage = cache.usage().map_err(|error| error.to_string())?;
+    if usage.entries() != 2
+        || usage.mapped_bytes() != first_bytes.saturating_add(second_bytes)
+        || usage.mappings() != 14
+        || first
+            .lease()
+            .resident_weight()
+            .map_err(|error| error.to_string())?
+            .mappings()
+            != 7
+        || second
+            .lease()
+            .resident_weight()
+            .map_err(|error| error.to_string())?
+            .mappings()
+            != 7
+        || adapter.operations.len() != 56
+    {
+        return Err(String::from("v5 crazy theorem LRU usage drifted"));
+    }
+    drop((first, second));
+    cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map(|_release| ())
+        .map_err(|error| error.to_string())?;
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn geometry_native_full_crazy_lru_hit_refreshes_eviction() -> Result<(), String>
+{
+    let (s10, s11, s12) = crazy_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(319)?,
+        native_executable_address(0xe_c000)?,
+    );
+    let mut cache = crazy_lru_cache(2)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let hit = cache
+        .ensure(&mut adapter, &s10)
+        .map_err(|error| error.to_string())?;
+    if hit.disposition() != CrazyLruDisposition::Hit {
+        return Err(String::from("v5 crazy theorem LRU hit not reported"));
+    }
+    drop(hit);
+    let replacement = cache
+        .ensure(&mut adapter, &s12)
+        .map_err(|error| error.to_string())?;
+    if replacement.disposition() != CrazyLruDisposition::Evicted
+        || !cache.contains(&s10)
+        || cache.contains(&s11)
+        || !cache.contains(&s12)
+        || adapter.operations.len() != 91
+    {
+        return Err(String::from("v5 crazy theorem LRU recency drifted"));
+    }
+    drop(replacement);
+    cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map(|_release| ())
+        .map_err(|error| error.to_string())?;
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn geometry_native_full_crazy_lru_saturates_when_all_leased()
+-> Result<(), String> {
+    let (s10, s11, s12) = crazy_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(320)?,
+        native_executable_address(0xe_d000)?,
+    );
+    let mut cache = crazy_lru_cache(2)?;
+    let lease10 = cache
+        .ensure(&mut adapter, &s10)
+        .map_err(|error| error.to_string())?;
+    let lease11 = cache
+        .ensure(&mut adapter, &s11)
+        .map_err(|error| error.to_string())?;
+    let Err(failure) = cache.ensure(&mut adapter, &s12) else {
+        return Err(String::from("v5 crazy theorem all-leased LRU admitted"));
+    };
+    if !matches!(*failure, CrazyLruFailure::Saturated {
+        leased_residents: 2,
+        residents: 2,
+    }) || cache.contains(&s12)
+        || adapter.operations.len() != 56
+    {
+        return Err(String::from("v5 crazy theorem LRU saturation drifted"));
+    }
+    drop((lease10, lease11));
+    cache
+        .release_if_unleased(&mut adapter, &s10)
+        .map(|_release| ())
+        .map_err(|error| error.to_string())?;
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn geometry_native_full_crazy_mapping_lru_enforces_limit() -> Result<(), String>
+{
+    let (s10, s11, s12) = crazy_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(321)?,
+        native_executable_address(0xe_e000)?,
+    );
+    let mut cache = crazy_mapping_lru_cache(3, 14)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let replacement = cache
+        .ensure(&mut adapter, &s12)
+        .map_err(|error| error.to_string())?;
+    let usage = cache.usage().map_err(|error| error.to_string())?;
+    if replacement.disposition() != CrazyLruDisposition::Evicted
+        || cache.contains(&s10)
+        || !cache.contains(&s11)
+        || !cache.contains(&s12)
+        || usage.mappings() != 14
+        || adapter.operations.len() != 91
+    {
+        return Err(String::from("v5 crazy theorem mapping LRU drifted"));
+    }
+    drop(replacement);
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| error.to_string())?;
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn geometry_native_full_crazy_weighted_lru_rejects_candidate()
+-> Result<(), String> {
+    let (s10, _s11, _s12) = crazy_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(322)?,
+        native_executable_address(0xe_f000)?,
+    )
+    .with_mapped_len_overrides(vec![4_096usize; 7]);
+    let mut cache = crazy_weighted_lru_cache(2, 28_000)?;
+    let Err(failure) = cache.ensure(&mut adapter, &s10) else {
+        return Err(String::from(
+            "v5 crazy weighted oversized candidate admitted",
+        ));
+    };
+    if !matches!(*failure, CrazyLruFailure::MappedBytes {
+        candidate_cleanup_failure: None,
+        required: 28_672,
+        ..
+    }) || cache.resident_count() != 0
+        || adapter.operations.len() != 35
+    {
+        return Err(String::from(
+            "v5 crazy weighted candidate rollback drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn geometry_native_full_crazy_lru_reconfigures_mapping_limit()
+-> Result<(), String> {
+    let (s10, s11, s12) = crazy_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(323)?,
+        native_executable_address(0xf_0000)?,
+    );
+    let mut cache = crazy_lru_cache(3)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &s12)
+            .map_err(|error| error.to_string())?,
+    );
+    let requested =
+        CrazyLruLimits::new(nonzero_test_limit(3, "v5 crazy entries")?)
+            .with_mapping_limit(nonzero_test_limit(14, "v5 crazy mappings")?);
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| error.to_string())?;
+    let usage = cache.usage().map_err(|error| error.to_string())?;
+    if result.removed_residents() != 1
+        || result.new_limits() != requested
+        || cache.contains(&s10)
+        || !cache.contains(&s11)
+        || !cache.contains(&s12)
+        || usage.mappings() != 14
+        || adapter.operations.len() != 91
+    {
+        return Err(String::from("v5 crazy theorem LRU reconfigure drifted"));
+    }
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| error.to_string())?;
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn geometry_native_full_crazy_lru_eviction_release_failure_isolated()
+-> Result<(), String> {
+    let (s10, s11, s12) = crazy_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(324)?,
+        native_executable_address(0xf_1000)?,
+    )
+    .with_release_failure_at(1);
+    let mut cache = crazy_lru_cache(2)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &s11)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(failure) = cache.ensure(&mut adapter, &s12) else {
+        return Err(String::from(
+            "v5 crazy theorem LRU eviction release failure ignored",
+        ));
+    };
+    let CrazyLruFailure::EvictionRelease(cleanup) = *failure else {
+        return Err(String::from(
+            "v5 crazy theorem LRU eviction cause drifted",
+        ));
+    };
+    if cleanup.failure_count() != 1
+        || cache.contains(&s10)
+        || !cache.contains(&s11)
+        || cache.contains(&s12)
+        || cache.resident_count() != 1
+        || adapter.operations.len() != 63
+    {
+        return Err(String::from(
+            "v5 crazy theorem LRU eviction cleanup damaged survivor",
+        ));
+    }
+    cleanup.retry(&mut adapter).map_err(|error| {
+        format!("v5 crazy theorem LRU cleanup retry: {error}")
+    })?;
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| {
+            format!("v5 crazy theorem LRU survivor cleanup: {error}")
+        })
+}
+
+#[test]
+fn geometry_native_full_crazy_lru_reconfigure_reports_partial_removal()
+-> Result<(), String> {
+    let (s10, s11, s12) = crazy_lru_sequences()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(325)?,
+        native_executable_address(0xf_2000)?,
+    );
+    let mut cache = crazy_lru_cache(3)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &s10)
+            .map_err(|error| error.to_string())?,
+    );
+    let lease11 = cache
+        .ensure(&mut adapter, &s11)
+        .map_err(|error| error.to_string())?;
+    let lease12 = cache
+        .ensure(&mut adapter, &s12)
+        .map_err(|error| error.to_string())?;
+    let previous = cache.limits();
+    let requested = CrazyLruLimits::new(nonzero_test_limit(
+        1,
+        "v5 crazy partial shrink entries",
+    )?);
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, requested) else {
+        return Err(String::from("v5 crazy theorem partial shrink published"));
+    };
+    if !matches!(
+        *failure,
+        CrazyReconfigFailure::Saturated {
+            leased_residents: 2,
+            previous_limits,
+            removed_residents: 1,
+            requested_limits,
+            residents: 2,
+        } if previous_limits == previous && requested_limits == requested
+    ) || cache.limits() != previous
+        || cache.contains(&s10)
+        || !cache.contains(&s11)
+        || !cache.contains(&s12)
+        || adapter.operations.len() != 91
+    {
+        return Err(String::from(
+            "v5 crazy theorem partial shrink evidence drifted",
+        ));
+    }
+    drop((lease11, lease12));
+    cache
+        .release_if_unleased(&mut adapter, &s11)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 crazy partial N11 cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &s12)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 crazy partial N12 cleanup: {error}"))
 }
 
 #[test]

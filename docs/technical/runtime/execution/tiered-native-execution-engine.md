@@ -460,8 +460,20 @@ retry keeps only mappings whose release still fails.
 A single-resident theorem cache now reuses that exact seven-mapping owner behind
 cloneable leases. Full sequence identity controls hits; live leases block
 release or replacement; and failed load/release transfers cleanup ownership
-without publishing partial cache authority. Multi-entry and weighted theorem
-residency remain separate work.
+without publishing partial cache authority.
+
+`GeometryNativeJumpRotateCrazyHaltLruCache` extends that owner to multi-resident
+LRU policy. A positive entry bound can combine with exact mapped-byte and
+mapping-count limits derived only from synchronized mapping reports. Hits refresh
+MRU without adapter work, while misses evict the first unleased LRU identity or
+fail closed when every resident is leased.
+
+Weighted admission loads one complete candidate before deciding residency, so
+its exact seven-mapping report participates in capacity checks. Oversized or
+blocked candidates release without publication, victim-release failure transfers
+retryable cleanup ownership, and limit reconfiguration preserves old limits
+until retained usage satisfies requested entry/byte/mapping bounds. Shared
+heterogeneous residency for this complete theorem remains separate work.
 
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low

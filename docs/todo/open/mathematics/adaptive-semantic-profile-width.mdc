@@ -994,7 +994,14 @@ transfers, verification, and other separately measured costs.
   leases block release and cross-width replacement; failed load publishes no
   resident; failed release transfers retryable cleanup; and an unleased N10
   resident can be replaced explicitly by N11 only after complete release.
-  Multi-entry/weighted theorem residency remains separate work.
+- The same seven-mapping owner now also has multi-resident LRU authority. Entry,
+  mapped-byte, and mapping-count limits use exact synchronized reports; hits
+  refresh MRU without remapping; all-leased saturation rejects before eviction;
+  weighted candidate rejection rolls back without publication; and limit
+  reconfiguration evicts only unleased LRU residents until exact usage fits.
+  Focused N10/N11/N12 fixtures prove 14 mappings for two residents and
+  deterministic shrink from 21 mappings to 14. Shared heterogeneous residency
+  for the complete theorem remains separate work.
 - Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
   dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical
