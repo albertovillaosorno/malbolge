@@ -920,8 +920,10 @@ transfers, verification, and other separately measured costs.
   retryable executable ownership. Output also has a reusable one-mapping owner
   that reports exact platform mapped bytes, reuses the same synchronized image
   across calls, and preserves the full physical output buffer after runner
-  failure before a successful retry; heterogeneous output residency remains
-  open.
+  failure before a successful retry; output is now also a standalone
+  heterogeneous resident with exact admission identity, one-mapping weight,
+  hit reuse, specialized execution semantics, and typed cleanup retry while the
+  LRU algorithm itself remains unchanged.
 - The no-op/halt, rotate/halt, and full-path single-resident caches remain
   intentionally separate for operation-specific callers. The heterogeneous LRU
   is the shared residency authority; additional state-changing templates remain

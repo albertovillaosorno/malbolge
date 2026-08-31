@@ -946,18 +946,17 @@ evidence reports prior removals so partial successful eviction is observable.
 
 The existing entry-only and weighted cases still mix no-op/halt, rotate/halt,
 and full-path residents through recency, lease, saturation, byte/mapping
-pressure, rollback, release-failure, and vacancy paths. Five cases each for
-initial jump, initial halt, no-operation, and rotate add single-mapping
-lifecycle, hit reuse, load/release retry, and mixed resource-pressure coverage.
-Four single-step identities fit a four-mapping budget; admitting rotate/halt
-evicts the two LRU steps while preserving the MRU no-operation and rotate
-residents.
+pressure, rollback, release-failure, and vacancy paths. Focused cases for
+initial jump, initial halt, no-operation, output, and rotate add single-mapping
+lifecycle, hit reuse, typed cleanup, and resource-accounting coverage. Output
+joins this policy only through the typed resident boundary: its LRU insert/hit
+path does not add output-specific eviction or weighting logic.
 
 A heterogeneous lease can now execute its resident directly without cache or
 adapter work. The common execution boundary only tags the existing specialized
 outcome/failure as full-path, initial halt, initial jump-data, no-operation,
-no-op/halt, rotate, or rotate/halt; it does not translate checkpoints, guard
-misses, committed state, or rollback semantics. The four single-mapping
+no-op/halt, output, rotate, or rotate/halt; it does not translate checkpoints,
+guard misses, committed state, or rollback semantics. The five single-mapping
 templates therefore reuse their one-step completion and rollback contracts.
 
 `GeometryNativeCrossTemplateLruAcquisition::execute()` now consumes the
