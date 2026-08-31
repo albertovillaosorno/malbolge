@@ -551,13 +551,15 @@ The current source-bound quality transform is
 regenerated from the exact pinned 165-file id Software source and the ignored
 local quality oracle, with `data/` remaining an authenticated runtime
 passthrough root. Its current SHA-256 is
-`0bc5653de2a929651c23183f9412620276ee2036a23e92585e1ca0470806aec8`.
+`32c5effffb5f7de7c63ca6fe11095a43737048a694e86d86dc69cc00f6b1a21f`.
 
 This checkpoint specializes the guest to the supported single-player profile,
 keeps English localization only, retains music and sound, and incorporates the
 portable renderer/audio/input fixes validated during native playtesting. The
 legacy multiplayer command ring and consistency scheduler are gone: local input
-is built directly into player zero's tic command. Classic demo/save layouts are
+is built directly into player zero's tic command.
+
+Classic demo/save layouts are
 retained, while multiplayer payloads are rejected explicitly at their input
 boundaries. The normalized tree contains 130 files: 63 C translation units, 66
 headers, and the source license. No IWAD or PWAD bytes are part of the static
@@ -578,10 +580,10 @@ The current acceptance evidence is:
 - the generated transform itself compiles with pinned Rust 1.97.1 and
   materializes the accepted tree without the local oracle.
 
-The transform is 3,114,682 bytes and 43,997 lines. The pre-conditioning
+The transform is 3,113,222 bytes and 43,952 lines. The pre-conditioning
 transform was 5,228,662 bytes, so the current source-conditioning work reduces
-the durable transform by 2,113,980 bytes (40.43%). The immediately preceding
-single-player checkpoint was 3,166,762 bytes, making this pass another 52,080
+the durable transform by 2,115,440 bytes (40.46%). The immediately preceding
+single-player checkpoint was 3,166,762 bytes, making this pass another 53,540
 bytes smaller. That reduction is not a proxy for runtime speed; it records the
 smaller normalized semantic surface and exact source-bound correction payload.
 

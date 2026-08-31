@@ -62,7 +62,8 @@ I specialized the normalized guest around the behavior this target actually
 supports rather than carrying unreachable desktop-era infrastructure into later
 compiler stages. Networking and multiplayer scheduling/chat paths are gone, the
 language runtime is English-only, and platform behavior remains behind the
-existing host ABI. Music and sound stay in the guest; the MIDI synth was improved
+existing host ABI. Music and sound stay in the guest; the MIDI synth was
+improved
 rather than removed.
 
 The same playtest pass found and fixed practical portability bugs: Linux now has

@@ -45,13 +45,11 @@ from typing import TYPE_CHECKING
 from algorithms.diff.protected import ProtectedExactPlan
 from algorithms.diff.protected import ProtectedMetadata
 from algorithms.diff.protected import protected_plan_aad
-from scripts.repository_root import repository_root
 
 if TYPE_CHECKING:
     from algorithms.diff.source_binding import ThresholdBinding
 
 _RUNTIME_TEMPLATE = Path(__file__).with_name("rust_runtime.rs")
-_REPOSITORY_ROOT = repository_root(Path(__file__))
 _DEFAULT_OUTPUT_PATH = Path("generated/main.rs")
 _BEGIN = "// BEGIN GENERATED CONSTANTS"
 _END = "// END GENERATED CONSTANTS"
@@ -134,74 +132,41 @@ def _constants(plan: ProtectedExactPlan, profile: str) -> str:
     ))
 
 
-def _display_path(output_path: Path) -> str:
-    if not output_path.is_absolute():
-        return output_path.as_posix()
-    try:
-        resolved = output_path.resolve()
-    except OSError as error:
-        message = (
-            f"Rust output display path resolution failed: {output_path}: "
-            f"{error}"
-        )
-        raise RustEmissionError(message) from error
-    try:
-        return resolved.relative_to(_REPOSITORY_ROOT).as_posix()
-    except ValueError:
-        return output_path.name
-
-
-def _generated_header(output_path: Path) -> str:
-    display_path = _display_path(output_path)
-    return "\n".join((
-        "// File:",
-        f"//   - {Path(display_path).name}",
-        "// Path:",
-        f"//   - {display_path}",
-        "//",
-        "// Copyright:",
-        "//   - Copyright © 2026 Alberto Villa Osorno.",
-        "// SPDX-License-Identifier:",
-        "//   - MIT",
-        "// Confidential:",
-        "//   - false",
-        "// License-File:",
-        "//   - LICENSE-MIT",
-        "// Path-Rule:",
-        "//   - All paths in this header are repository-root relative.",
-        "//",
-        "// Boundary-Contract:",
-        "// - Owns:",
-        "//   - One generated exact source-bound transformation.",
-        "// - Must-Not:",
-        "//   - Materialize target bytes without admitted source evidence.",
-        "//   - Be hand-edited; regenerate it through the owning recipe.",
-        "// - Allows:",
-        "//   - Inputs: one admitted source tree and output directory.",
-        "//   - Outputs: one authenticated deterministic target tree.",
-        "//   - Side effects: transactional target publication.",
-        "// - Split-When:",
-        "//   - Split when another transform has a distinct source contract.",
-        "// - Merge-When:",
-        "//   - Merge only when source identity and target semantics match.",
-        "// - Summary:",
-        "//   - Generated standalone source-bound exact transform.",
-        "// - Description:",
-        "//   - Recovers protected target bytes from admitted source evidence.",
-        "// - Usage:",
-        "//   - `<transform> <source-root> <output-root>`.",
-        "// - Defaults:",
-        "//   - Fails closed before publishing mismatched or partial output.",
-        "//",
-        "// Related documents:",
-        "// - src/research/algorithms/composition/algorithms/diff/README.md",
-        "// - docs/technical/tooling/source-bound-diff-generator.md",
-        "//",
-        "// Large file:",
-        "//   - true",
-        "",
-        "",
-    ))
+_GENERATED_HEADER = (
+    "// Copyright:\n"
+    "//   - Copyright © 2026 Alberto Villa Osorno.\n"
+    "// SPDX-License-Identifier:\n"
+    "//   - MIT\n"
+    "// Confidential:\n"
+    "//   - false\n"
+    "// License-File:\n"
+    "//   - LICENSE-MIT\n"
+    "//\n"
+    "// Boundary-Contract:\n"
+    "// - Owns:\n"
+    "//   - One generated exact source-bound transformation.\n"
+    "// - Must-Not:\n"
+    "//   - Materialize target bytes without admitted source evidence.\n"
+    "//   - Be hand-edited; regenerate it through the owning recipe.\n"
+    "// - Allows:\n"
+    "//   - Inputs: one admitted source tree and output directory.\n"
+    "//   - Outputs: one authenticated deterministic target tree.\n"
+    "//   - Side effects: transactional target publication.\n"
+    "// - Split-When:\n"
+    "//   - Split when another transform has a distinct source contract.\n"
+    "// - Merge-When:\n"
+    "//   - Merge only when source identity and target semantics match.\n"
+    "// - Summary:\n"
+    "//   - Generated standalone source-bound exact transform.\n"
+    "// - Description:\n"
+    "//   - Recovers protected target bytes from admitted source evidence.\n"
+    "// - Usage:\n"
+    "//   - `<transform> <source-root> <output-root>`.\n"
+    "// - Defaults:\n"
+    "//   - Fails closed before publishing mismatched or partial output.\n"
+    "//\n"
+    "\n"
+)
 
 
 def _runtime_template_text() -> str:
@@ -246,14 +211,21 @@ def emit_rust_transform(
     """
     _validate_emission_inputs(plan, profile, output_path)
     template = _runtime_template_text()
-    start = template.find(_BEGIN)
-    end = template.find(_END)
+    module_start = template.find("//! ")
+    if module_start < 0:
+        message = "Rust runtime template lost module summary"
+        raise RustEmissionError(message)
+    body_template = template[module_start:]
+    start = body_template.find(_BEGIN)
+    end = body_template.find(_END)
     if start < 0 or end < start:
         message = "Rust runtime template lost generated-constant markers"
         raise RustEmissionError(message)
     end += len(_END)
-    body = template[:start] + _constants(plan, profile) + template[end:]
-    rendered = _generated_header(output_path) + body
+    body = (
+        body_template[:start] + _constants(plan, profile) + body_template[end:]
+    )
+    rendered = _GENERATED_HEADER + body
     return rendered.replace("\r\n", "\n")
 
 

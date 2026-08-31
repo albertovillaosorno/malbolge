@@ -75,10 +75,9 @@ _SENTINEL = b"preserve"
 _PASSTHROUGH_AUTHORING = b"authoring-external"
 _PASSTHROUGH_RUNTIME = b"runtime-external"
 _MAX_GENERATED_LINE_LENGTH = 80
-_GENERATED_PATH = "generated/main.rs"
 _RUNTIME_TEMPLATE_NAME = "rust_runtime.rs"
 _BOUNDARY_HEADER = "// Boundary-Contract:"
-_LARGE_FILE_HEADER = "// Large file:\n//   - true"
+_LEGACY_FILE_HEADER = "// File:"
 _LEGACY_TEMP = b"legacy-temp"
 _FOREIGN_TEMP = b"foreign-temp"
 _LINK_TARGET = b"link-target"
@@ -242,13 +241,17 @@ def test_emitted_rust_is_deterministic_and_hides_plaintext_literals(
     _expect(
         _STD_MARKER in first, "generated runtime lost std-only implementation"
     )
-    _expect(first.startswith("// File:\n//   - main.rs\n"), "header missing")
-    _expect(
-        f"//   - {_GENERATED_PATH}" in first,
-        "generated header path is incorrect",
-    )
+    _expect(first.startswith("// Copyright:\n"), "canonical header missing")
     _expect(_BOUNDARY_HEADER in first, "boundary header missing")
-    _expect(_LARGE_FILE_HEADER in first, "large-file flag missing")
+    _expect(first.count("// Copyright:") == 1, "copyright header duplicated")
+    _expect(
+        first.count(_BOUNDARY_HEADER) == 1,
+        "runtime template boundary header leaked into generated Rust",
+    )
+    _expect(
+        _LEGACY_FILE_HEADER not in first,
+        "legacy generated file header returned",
+    )
     longest = max(len(line) for line in first.splitlines())
     _expect(
         longest <= _MAX_GENERATED_LINE_LENGTH,
@@ -316,25 +319,15 @@ def test_emitter_wraps_runtime_template_read_failure(
         _ = emit_rust_transform(protected, _PROFILE)
 
 
-def test_emitter_wraps_absolute_display_path_resolution_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Header path rendering cannot leak a host resolution exception."""
+def test_emitter_output_location_does_not_change_source(tmp_path: Path) -> None:
+    """Filesystem destination is publication state, not transform identity."""
     _, _, _, protected = _fixture(tmp_path)
     output = tmp_path / "generated" / "transform.rs"
-    original_resolve = Path.resolve
 
-    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
-        if path == output:
-            message = "blocked generated display path"
-            raise PermissionError(message)
-        return original_resolve(path, strict=strict)
+    default = emit_rust_transform(protected, _PROFILE)
+    relocated = emit_rust_transform(protected, _PROFILE, output)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
-    with pytest.raises(
-        RustEmissionError, match="display path resolution failed"
-    ):
-        _ = emit_rust_transform(protected, _PROFILE, output)
+    _expect(relocated == default, "output location changed generated Rust")
 
 
 def test_writer_rejects_linked_output_file_when_supported(

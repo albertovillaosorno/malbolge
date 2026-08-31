@@ -1,8 +1,3 @@
-// File:
-//   - main.rs
-// Path:
-//   - src/research/algorithms/composition/algorithms/doom/quality/main.rs
-//
 // Copyright:
 //   - Copyright © 2026 Alberto Villa Osorno.
 // SPDX-License-Identifier:
@@ -11,8 +6,6 @@
 //   - false
 // License-File:
 //   - LICENSE-MIT
-// Path-Rule:
-//   - All paths in this header are repository-root relative.
 //
 // Boundary-Contract:
 // - Owns:
@@ -36,44 +29,6 @@
 //   - `<transform> <source-root> <output-root>`.
 // - Defaults:
 //   - Fails closed before publishing mismatched or partial output.
-//
-// Related documents:
-// - src/research/algorithms/composition/algorithms/diff/README.md
-// - docs/technical/tooling/source-bound-diff-generator.md
-//
-// Large file:
-//   - true
-
-// Copyright:
-//   - Copyright © 2026 Alberto Villa Osorno.
-// SPDX-License-Identifier:
-//   - MIT
-// Confidential:
-//   - false
-// License-File:
-//   - LICENSE-MIT
-//
-// Boundary-Contract:
-// - Owns:
-//   - The repository behavior implemented by this source file.
-// - Must-Not:
-//   - Bypass the contracts or authority boundaries of its owning package.
-// - Allows:
-//   - Inputs: values admitted by the file's public or internal interface.
-//   - Outputs: deterministic values or effects declared by that interface.
-//   - Side effects: only those explicitly owned by the implementation.
-// - Split-When:
-//   - Split when one responsibility gains an independent lifecycle.
-// - Merge-When:
-//   - Merge when another file owns the exact same responsibility.
-// - Summary:
-//   - Standalone std-only runtime template for emitted exact source-bound.
-// - Description:
-//   - Implements the responsibility summarized by this module.
-// - Usage:
-//   - Used through the owning package, executable, or document boundary.
-// - Defaults:
-//   - Invalid inputs or broken invariants fail closed.
 //
 
 //! Standalone std-only runtime template for emitted exact source-bound
