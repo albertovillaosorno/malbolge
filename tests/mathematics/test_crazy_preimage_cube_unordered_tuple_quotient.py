@@ -39,7 +39,9 @@
 from __future__ import annotations
 
 from collections import Counter
+from functools import cache
 from itertools import combinations_with_replacement
+from itertools import pairwise
 from itertools import permutations
 from math import comb
 from math import factorial
@@ -145,6 +147,7 @@ def _label_cycle_lengths(endpoint_order: tuple[int, ...]) -> tuple[int, ...]:
     return tuple(sorted(lengths))
 
 
+@cache
 def _endpoint_type_data(
     arity: int,
 ) -> tuple[tuple[tuple[int, ...], int, tuple[int, ...]], ...]:
@@ -171,6 +174,7 @@ def _fixed_count_from_cycles(cycles: tuple[int, ...], dimension: int) -> int:
     return coefficients[dimension]
 
 
+@cache
 def _unordered_tuple_classes(arity: int, dimension: int) -> int:
     numerator = sum(
         weight * _fixed_count_from_cycles(cycles, dimension)
@@ -436,3 +440,182 @@ def test_endpoint_canonical_rank_reaches_checked_arity_eight() -> None:
         assert len({next(iter(keys)) for keys in keys_by_weight.values()}) == (
             arity + 1
         )
+
+
+_AMBIGUOUS_MULTIPLICITY = 2
+_INDEPENDENT_CRAZY_TRIT = (
+    (1, 0, 0),
+    (1, 0, 2),
+    (2, 2, 1),
+)
+_RADIX = 3
+
+
+@cache
+def _unordered_class_table(arity: int, trit_count: int) -> tuple[int, ...]:
+    return tuple(
+        _unordered_tuple_classes(arity, dimension)
+        for dimension in range(trit_count + 1)
+    )
+
+
+def _quotient_budget_exceedance(
+    arity: int,
+    trit_count: int,
+    budget: int,
+) -> int:
+    class_counts = _unordered_class_table(arity, trit_count)
+    return sum(
+        _fixed_pair_class_count(trit_count, dimension)
+        for dimension, required in enumerate(class_counts)
+        if required > budget
+    )
+
+
+def _quotient_budget_coverage(
+    arity: int,
+    trit_count: int,
+    budget: int,
+) -> int:
+    return _integer_power(7, trit_count) - _quotient_budget_exceedance(
+        arity,
+        trit_count,
+        budget,
+    )
+
+
+def _minimum_quotient_budget(
+    arity: int,
+    trit_count: int,
+    target_pairs: int,
+) -> int | None:
+    reachable = _integer_power(7, trit_count)
+    if target_pairs < 0 or target_pairs > reachable:
+        return None
+    if target_pairs == 0:
+        return 0
+    cumulative = 0
+    for dimension, required in enumerate(
+        _unordered_class_table(arity, trit_count)
+    ):
+        cumulative += _fixed_pair_class_count(trit_count, dimension)
+        if cumulative >= target_pairs:
+            return required
+    raise AssertionError
+
+
+def _independent_ambiguity_dimension(
+    accumulator: int,
+    target: int,
+    trit_count: int,
+) -> int | None:
+    dimension = 0
+    for _ in range(trit_count):
+        local_accumulator = accumulator % _RADIX
+        local_target = target % _RADIX
+        multiplicity = sum(
+            _INDEPENDENT_CRAZY_TRIT[data][local_accumulator] == local_target
+            for data in range(_RADIX)
+        )
+        if multiplicity == 0:
+            return None
+        dimension += multiplicity == _AMBIGUOUS_MULTIPLICITY
+        accumulator //= _RADIX
+        target //= _RADIX
+    return dimension
+
+
+def test_unordered_tuple_class_thresholds_are_strictly_increasing() -> None:
+    """Checked dimensions have strictly increasing quotient budgets."""
+    for arity in range(_MINIMUM_ARITY, _MAXIMUM_ARITY + 1):
+        counts = _unordered_class_table(arity, _MAXIMUM_TRITS)
+        assert counts[0] == 1
+        assert all(left < right for left, right in pairwise(counts))
+
+
+@cache
+def _independent_reachable_dimensions(trit_count: int) -> tuple[int, ...]:
+    domain = _integer_power(_RADIX, trit_count)
+    dimensions: list[int] = []
+    for accumulator in range(domain):
+        for target in range(domain):
+            dimension = _independent_ambiguity_dimension(
+                accumulator,
+                target,
+                trit_count,
+            )
+            if dimension is not None:
+                dimensions.append(dimension)
+    return tuple(dimensions)
+
+
+def _check_small_budget_exceedance(arity: int, trit_count: int) -> None:
+    thresholds = _unordered_class_table(arity, trit_count)
+    dimensions = _independent_reachable_dimensions(trit_count)
+    for budget in {0, *thresholds}:
+        observed = sum(
+            thresholds[dimension] > budget for dimension in dimensions
+        )
+        assert observed == _quotient_budget_exceedance(
+            arity,
+            trit_count,
+            budget,
+        )
+
+
+def test_quotient_budget_exceedance_matches_small_pair_enumeration() -> None:
+    """Budget exceedance agrees with independent reachable-pair enumeration."""
+    for arity in range(_MINIMUM_ARITY, _MAXIMUM_ARITY + 1):
+        for trit_count in range(1, 4):
+            _check_small_budget_exceedance(arity, trit_count)
+
+
+def test_quotient_budget_exceedance_has_exact_checked_thresholds() -> None:
+    """Every checked budget threshold removes exactly one ambiguity class."""
+    for arity in range(_MINIMUM_ARITY, _MAXIMUM_ARITY + 1):
+        for trit_count in range(1, _MAXIMUM_TRITS + 1):
+            thresholds = _unordered_class_table(arity, trit_count)
+            assert _quotient_budget_exceedance(arity, trit_count, 0) == (
+                _integer_power(7, trit_count)
+            )
+            assert _quotient_budget_exceedance(
+                arity,
+                trit_count,
+                thresholds[-1],
+            ) == 0
+            cumulative = 0
+            for dimension, threshold in enumerate(thresholds):
+                cumulative += _fixed_pair_class_count(trit_count, dimension)
+                assert _quotient_budget_coverage(
+                    arity,
+                    trit_count,
+                    threshold,
+                ) == cumulative
+
+
+def test_minimum_quotient_budget_inverts_exact_pair_coverage() -> None:
+    """Minimum canonical-search budgets invert every checked class boundary."""
+    for arity in range(_MINIMUM_ARITY, _MAXIMUM_ARITY + 1):
+        for trit_count in range(1, _MAXIMUM_TRITS + 1):
+            thresholds = _unordered_class_table(arity, trit_count)
+            cumulative = 0
+            assert _minimum_quotient_budget(arity, trit_count, 0) == 0
+            for dimension, threshold in enumerate(thresholds):
+                previous = cumulative
+                cumulative += _fixed_pair_class_count(trit_count, dimension)
+                assert _minimum_quotient_budget(
+                    arity,
+                    trit_count,
+                    previous + 1,
+                ) == threshold
+                assert _minimum_quotient_budget(
+                    arity,
+                    trit_count,
+                    cumulative,
+                ) == threshold
+            assert cumulative == _integer_power(7, trit_count)
+            assert _minimum_quotient_budget(
+                arity,
+                trit_count,
+                cumulative + 1,
+            ) is None

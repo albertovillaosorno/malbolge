@@ -790,6 +790,26 @@ mechanism = "exact-ambiguity-class-sum-plus-conjugacy-cycle-binomial-transform"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_global_unordered_tuple_transform_matches_direct_sum", "tests/optimizer/test_crazy_target_search.py::test_profile_width_preimage_pair_distribution_matches_closed_form", "tests/mathematics/test_crazy_preimage_cube_global_sextuple_quotient.py::test_global_sextuple_quotients_have_exact_closed_counts"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-unordered-tuple-budget-exceedance"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-unordered-tuple-budget-exceedance"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "complete endpoint-unordered canonical tuple enumeration for reachable accumulator/target pairs at widths 1 through 14 and endpoint arities 3 through 8 under the established coordinate and endpoint symmetries"
+mechanism = "strict-quotient-thresholds-plus-exact-ambiguity-class-exceedance-sum"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_unordered_tuple_class_thresholds_are_strictly_increasing", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_quotient_budget_exceedance_matches_small_pair_enumeration", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_quotient_budget_exceedance_has_exact_checked_thresholds"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-unordered-tuple-minimum-coverage-budget"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-unordered-tuple-minimum-coverage-budget"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "integer coverage targets from zero through all 7^N reachable pairs at widths 1 through 14 and endpoint arities 3 through 8 for complete endpoint-unordered canonical tuple enumeration"
+mechanism = "strict-canonical-class-threshold-inversion-over-cumulative-ambiguity-classes"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_unordered_tuple_class_thresholds_are_strictly_increasing", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_minimum_quotient_budget_inverts_exact_pair_coverage"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-global-endpoint-symmetric-pair-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-global-endpoint-symmetric-pair-quotient"

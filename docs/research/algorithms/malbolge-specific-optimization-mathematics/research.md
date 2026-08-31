@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes seventy-seven exact reductions: classic five-trit crazy
+formalizes seventy-nine exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -91,8 +91,10 @@ unordered quintuple quotient under `S_5`, exact ordered sextuple quotient into
 a generic checked-arity ordered tuple quotient into
 `C(k+2^m-1,2^m-1)` classes for `1<=m<=8`, a dense combinadic rank/unrank over
 those classes, a generic endpoint-unordered Burnside quotient under `S_m` for
-`3<=m<=8`, exact combined coordinate/endpoint orbit masses, exact global ordered
-and endpoint-unordered checked-arity transforms, exact global ordered-triple and
+`3<=m<=8`, exact combined coordinate/endpoint orbit masses, endpoint-minimized
+canonical integer keys, exact canonical-search budget exceedance and inverse
+coverage laws, exact global ordered and endpoint-unordered checked-arity
+transforms, exact global ordered-triple and
 endpoint-
 unordered triple
 quotient counts, exact global ordered-quadruple and endpoint-unordered quadruple
@@ -896,8 +898,9 @@ classic/profile-width preimage-pair distributions and constructive reachable-
 pair ranking, profile-width mean/variance preimage evidence, the exact
 Binomial(N, 2/7)
 log-preimage exponent law, classic/profile-width unreachable-pair counts,
-and classic/profile-width preimage-budget exceedance plus exact minimum-coverage
-budget bounds are correctness-proved search
+classic/profile-width preimage-budget exceedance, exact minimum-coverage budget
+bounds, and endpoint-unordered canonical-search budget laws are correctness-
+proved search
 reductions, not
 measured performance results. None
 of these results establishes a universal speedup or proves broader synthesis
@@ -922,7 +925,8 @@ ordered cube-word triple, quadruple, quintuple, and sextuple quotients, the
 generic ordered tuple quotient through checked arity eight, its dense
 quotient-class rank/unrank, the generic endpoint-unordered quotient and exact
 combined orbit masses and canonical integer keys through checked arity eight,
-and both global checked-arity transforms, exact endpoint-
+exact canonical-search budget exceedance and inverse coverage laws, and both
+global checked-arity transforms, exact endpoint-
 unordered triple, quadruple, quintuple,
 and sextuple quotients, plus the
 established
@@ -948,8 +952,9 @@ exact profile-width mean/variance
 preimage evidence, the exact Binomial(N, 2/7) log-preimage exponent law, exact
 classic/profile-width unreachable-pair counts, and
 exact
-classic/profile-width preimage-budget exceedance bounds, and exact
-profile-width minimum coverage budgets as valid optimization building blocks.
+classic/profile-width preimage-budget exceedance bounds, exact profile-width
+minimum coverage budgets, and endpoint-unordered canonical-search budget laws as
+valid optimization building blocks.
 Continue the research for broader canonical forms, universal synthesis lower
 bounds, and search-space
 reductions; those remain unproved and receive no performance claim from this

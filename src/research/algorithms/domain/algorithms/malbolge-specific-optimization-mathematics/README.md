@@ -175,6 +175,14 @@ over every endpoint permutation of the joint-count vector; two vectors have the
 same key exactly when they occupy the same endpoint orbit. Small domains are
 exhaustive, and one-coordinate classes reach checked arity eight.
 
+Those quotient sizes also give exact complete-search budget thresholds. For each
+checked width and arity, the required canonical count grows strictly with fixed-
+pair ambiguity dimension, so the exact number of reachable pairs exceeding any
+integer budget is the corresponding ambiguity-class tail. Inverting those
+strict thresholds gives the minimum canonical-enumeration budget covering any
+requested number from zero through all `7^N` reachable pairs. These are bounded
+completeness-planning laws, not requirements on incomplete or stochastic search.
+
 If endpoint order is also irrelevant, the exact pair class count
 reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`; summed over every reachable

@@ -1479,6 +1479,48 @@ tuples across all reachable fixed pairs. The result inherits both symmetry
 preconditions and is exact complete-domain search-space accounting, not a
 runtime-speed claim.
 
+Write $U_{k,m}=|\mathcal{J}^{(m)}_k/S_m|$. These canonical-search requirements
+are strictly increasing in $k$: adding one zero-pattern coordinate gives an
+injective map from the $k$-coordinate quotient to the $(k+1)$-coordinate
+quotient because the zero pattern is fixed by every endpoint permutation, while
+a class with zero count on that pattern lies outside the image. Therefore, for
+any nonnegative integer canonical-enumeration budget $B$,
+\begin{equation}
+  E_{N,m}(B)
+    =\sum_{\substack{0\leq k\leq N\\ U_{k,m}>B}}
+      \binom{N}{k}2^k5^{N-k},
+  \quad 3\leq m\leq8,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-unordered-tuple-budget-exceedance}
+\end{equation}
+This is the exact number of reachable fixed accumulator/target pairs whose
+complete endpoint-unordered canonical tuple domain cannot fit in budget $B$.
+In particular $E_{N,m}(0)=7^N$ and $E_{N,m}(U_{N,m})=0$. It is a lower bound
+only for procedures that promise complete enumeration of this quotient domain;
+it does not constrain incomplete, stochastic, or direction-sensitive search.
+
+The strict thresholds can also be inverted exactly. Define
+\[
+  C_{N,m}(k)=\sum_{j=0}^{k}\binom{N}{j}2^j5^{N-j}.
+\]
+For an integer coverage target $Q\in\{0,\ldots,7^N\}$, the least nonnegative
+canonical-enumeration budget covering at least $Q$ reachable pairs is
+\begin{equation}
+  \fitmath{%
+    B_{N,m}(Q)=\begin{cases}
+      0,&Q=0,\\
+      U_{k^*,m},&1\leq Q\leq7^N,
+    \end{cases}
+    \qquad
+    k^*=\min\{k:C_{N,m}(k)\geq Q,\ 0\leq k\leq N\},
+    \quad 3\leq m\leq8,\ 1\leq N\leq14.
+  }
+  \label{eq:optimization-crazy-profile-unordered-tuple-minimum-coverage-budget}
+\end{equation}
+No smaller integer budget reaches ambiguity class $k^*$ because
+$U_{k^*-1,m}<U_{k^*,m}$ when $k^*>0$; for $k^*=0$, budget zero covers no
+positive canonical domain and budget one is minimal. This is exact bounded
+complete-search planning evidence and carries no runtime-speed claim.
+
 The endpoint-symmetric pair quotient also composes exactly over the reachable
 fixed-pair ambiguity distribution. Let $E_N$ count canonical ordered preimage
 pairs after simultaneous coordinate permutation and endpoint swap, and let

@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize seventy-seven exact reductions: classic
+- The proved slices now formalize seventy-nine exact reductions: classic
   five-trit
   crazy factorization, profile-width crazy chunking, exact zero-padded 15-trit
   crazy projection and uniform three-lookup factorization for semantic widths
@@ -65,6 +65,7 @@ force or stochastic optimization begins.
   stars-and-bars/combinadic rank-unrank for those quotient classes, one generic
   endpoint-unordered tuple quotient under `S_m` for `3<=m<=8`, exact combined
   coordinate/endpoint orbit masses, endpoint-minimized canonical integer keys,
+  exact canonical-search budget exceedance and inverse minimum-coverage laws,
   exact global checked-arity ordered and endpoint-unordered tuple counts, exact
   global
   ordered-triple
@@ -102,10 +103,10 @@ force or stochastic optimization begins.
   preimage-budget exceedance sum, its width-indexed generalization, and the
   exact minimum complete-preimage budget needed to cover any integer target
   from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. Four
-  reductions are consumed by runtime paths; the sixty search reductions,
+  reductions are consumed by runtime paths; the sixty-two search reductions,
   two padded-geometry equivalences, and eleven width-certification
   results carry no inherited runtime speedup claim.
-- Seventy-seven optimization research equations are registered in
+- Seventy-nine optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -139,7 +140,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes seventy-seven labelled optimization
+- Current mathematical evidence includes seventy-nine labelled optimization
   equations,
   executable correspondence, exact zero-padding projection and uniform
   three-lookup evidence for semantic widths 10 through 14, exact checked
@@ -173,8 +174,9 @@ force or stochastic optimization begins.
   mass accounting, dense combinadic quotient-class rank/unrank through dimension
   14, generic endpoint-unordered Burnside classes for arities three through
   eight, exact combined raw orbit-mass reconstruction and endpoint-canonical
-  integer keys, exact global checked-arity ordered and endpoint-unordered tuple
-  counts, exact
+  integer keys, exact complete canonical-search budget exceedance and inverse
+  minimum-coverage budgets, exact global checked-arity ordered and endpoint-
+  unordered tuple counts, exact
   global
   ordered-triple and endpoint-
   unordered triple quotient counts through width 14, exact global ordered-
