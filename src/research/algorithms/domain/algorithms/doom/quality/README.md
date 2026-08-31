@@ -555,14 +555,15 @@ passthrough root. Its current SHA-256 is
 
 This checkpoint specializes the guest to the supported single-player profile,
 keeps English localization only, retains music and sound, and incorporates the
-portable renderer/audio/input fixes validated during native playtesting. The
-legacy multiplayer command ring and consistency scheduler are gone: local input
-is built directly into player zero's tic command. Runtime player storage now
-contains exactly one `player_t`; the four classic player slots remain only where
-historic demo, save, map-start, and search-cursor formats require them. The
-runtime `ticcmd_t` also omits the obsolete consistency and chat fields while the
-save stream retains their historical reserved slots. Chat-input HUD widgets and
-other now-unreachable compatibility stubs are also absent from the guest.
+portable renderer/audio/input fixes validated during native playtesting.
+
+The legacy multiplayer command ring and consistency scheduler are gone: local
+input is built directly into player zero's tic command. Runtime player storage
+now contains exactly one `player_t`; the four classic player slots remain only
+where historic demo, save, map-start, and search-cursor formats require them.
+The runtime `ticcmd_t` also omits the obsolete consistency and chat fields while
+the save stream retains their historical reserved slots. Chat-input HUD widgets
+and other now-unreachable compatibility stubs are also absent from the guest.
 
 Classic demo/save layouts are retained, while multiplayer payloads are rejected
 explicitly at their input boundaries. Multiplayer-only player recolor tables and
