@@ -17,6 +17,35 @@ system effects behind a generic runtime boundary.
 The temporary native runners exist to prove that boundary. They are laboratory
 equipment, not the final product.
 
+## 2026-08-31: Compact Single-Player Tic Commands
+
+I removed the final networking/chat-only fields from the runtime `ticcmd_t`.
+`consistancy` no longer had a consumer after the network command path was
+removed, and `chatchar` no longer had a consumer after multiplayer chat was
+removed. The C32 runtime command therefore falls from 8 to 6 bytes while
+retaining movement, angle, and button semantics.
+
+The historical save layout is unchanged: the consistency and chat bytes remain
+physical reserved slots that are written as zero and consumed when loading old
+saves. Classic demos already serialize only movement, angle, and buttons, so
+their command stream is unchanged. A deterministic accelerated-clock A/B run of
+Plutonia `demo1` still completes at exactly `7403` gametics and `14807` reported
+realtics.
+
+The regenerated quality transform is 3,097,596 bytes and 43,735 lines with
+SHA-256
+`3caf1802abc1dea1b783bb31fb8ff70b74b78ac5736070225a591f2c14eedf66`.
+Its output tree SHA-256 is
+`6b5e71acf55c81e3486a4afe5ffb26c78548b16f8c30c8e36c7f9d8c5fcd2d2c`.
+The generated tree is byte-identical to the ignored oracle, all 63 translation
+units pass the complete guest validator, all 252 closed-include target checks
+pass, and all 57 platform-available DOOM generator tests pass.
+
+The transform is 22 bytes larger than the immediately preceding transform even
+though the runtime command is smaller. That is expected: exact source-bound diff
+encoding size is not a runtime-cost metric. Amalgamation remains deliberately
+untouched, and no WAD or `doom.c` is part of this checkpoint.
+
 ## 2026-08-31: Single-Player Runtime Storage and Renderer Cleanup
 
 I made the runtime representation match the already-admitted single-player

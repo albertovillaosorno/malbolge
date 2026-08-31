@@ -551,7 +551,7 @@ The current source-bound quality transform is
 regenerated from the exact pinned 165-file id Software source and the ignored
 local quality oracle, with `data/` remaining an authenticated runtime
 passthrough root. Its current SHA-256 is
-`52c88bb5bc10d5cceeeff770c3668bd01a8858df3d4e69af046bf21ab5a5c404`.
+`3caf1802abc1dea1b783bb31fb8ff70b74b78ac5736070225a591f2c14eedf66`.
 
 This checkpoint specializes the guest to the supported single-player profile,
 keeps English localization only, retains music and sound, and incorporates the
@@ -559,7 +559,9 @@ portable renderer/audio/input fixes validated during native playtesting. The
 legacy multiplayer command ring and consistency scheduler are gone: local input
 is built directly into player zero's tic command. Runtime player storage now
 contains exactly one `player_t`; the four classic player slots remain only where
-historic demo, save, map-start, and search-cursor formats require them.
+historic demo, save, map-start, and search-cursor formats require them. The
+runtime `ticcmd_t` also omits the obsolete consistency and chat fields while the
+save stream retains their historical reserved slots.
 
 Classic demo/save layouts are retained, while multiplayer payloads are rejected
 explicitly at their input boundaries. Multiplayer-only player recolor tables and
@@ -572,7 +574,7 @@ The current acceptance evidence is:
 
 - a fresh generated materialization is byte-identical to the ignored oracle;
 - the oracle and generated trees share aggregate file hash
-  `5b7c9889efd3b6b2dc1dc944bdb554ab319caed4ac8b021f4101c65a67aee47b`;
+  `6b5e71acf55c81e3486a4afe5ffb26c78548b16f8c30c8e36c7f9d8c5fcd2d2c`;
 - 63/63 translation units pass `validate_c_before_malbolge.py`, including the
   canonical ABI/libc/tools-tidy validation delegated by that entrypoint;
 - 252/252 strict closed-include syntax checks pass across i686 Linux, x86-64
@@ -583,12 +585,12 @@ The current acceptance evidence is:
 - the generated transform itself compiles with pinned Rust 1.97.1 and
   materializes the accepted tree without the local oracle.
 
-The transform is 3,097,574 bytes and 43,735 lines. The pre-conditioning
+The transform is 3,097,596 bytes and 43,735 lines. The pre-conditioning
 transform was 5,228,662 bytes, so the current source-conditioning work reduces
-the durable transform by 2,131,088 bytes (40.76%). The immediately preceding
-checked-in transform was 3,113,222 bytes, making this pass another 15,648 bytes
-smaller. That reduction is not a proxy for runtime speed; it records the smaller
-normalized semantic surface and exact source-bound correction payload.
+the durable transform by 2,131,066 bytes (40.76%). The immediately preceding
+checked-in transform was 3,097,574 bytes; this exact diff encoding is 22 bytes
+larger even though the C32 runtime `ticcmd_t` is two bytes smaller. Transform
+size is therefore not used as a proxy for runtime cost or optimization quality.
 
 The downstream amalgamation transform has deliberately **not** been regenerated
 for this checkpoint. Any previously recorded `doom.c` hash belongs to the prior
