@@ -18071,6 +18071,57 @@ fn geometry_native_concurrent_cross_template_try_execute_completes()
 }
 
 #[test]
+fn geometry_native_concurrent_cross_template_crazy_suffix_try_execute()
+-> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_halt_fixture(10)?;
+    let plan = CrossResidentPlan::CrazyPrefixHalt(Box::new(
+        geometry_native_crazy_prefix_halt_sequence(&fixture)?,
+    ));
+    let initial = fixture.states.first().ok_or_else(|| {
+        String::from("concurrent crazy suffix initial missing")
+    })?;
+    let expected = crazy_fixture_final_state(&fixture)?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(344)?,
+        native_executable_address(0x105_0000)?,
+    );
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    let mut runner = full_crazy_applied_runner(5);
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let executed = cache
+        .try_execute(
+            &plan,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("concurrent crazy suffix execute: {error}"))?;
+    let snapshot = cache.snapshot(&plan).map_err(|error| {
+        format!("concurrent crazy suffix snapshot: {error}")
+    })?;
+    if executed.disposition() != CrossLruDisposition::Inserted
+        || !matches!(
+            executed.outcome(),
+            CrossExecutionOutcome::CrazyPrefixHalt(_)
+        )
+        || executed.outcome().state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 5
+        || !snapshot.resident()
+        || snapshot.leases() != 0
+        || snapshot.usage().mappings() != 5
+    {
+        return Err(String::from("concurrent crazy suffix residency drifted"));
+    }
+    cache
+        .release_if_unleased(&plan)
+        .map(|_release| ())
+        .map_err(|error| format!("concurrent crazy suffix release: {error}"))
+}
+
+#[test]
 fn geometry_native_concurrent_cross_template_crazy_theorem_try_execute()
 -> Result<(), String> {
     let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
