@@ -76,6 +76,20 @@ Run with:
   -m benchmarks.accelerator.profile_width_throughput
 ```
 
+`profile_width_crazy_throughput.py` measures the compute-heavy companion sweep
+for N10 through N14. Each route executes 16,384 sequential `p`/crazy
+transitions against a disjoint zero-filled data span. Fifteen end-to-end
+`evaluate()` samples retain full-state costs, while fifteen resident-session
+`advance()` samples isolate synchronous kernel execution after upload; complete
+final memory is validated outside both timed regions.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.profile_width_crazy_throughput
+```
+
 `profile_run_phase_profile.py` measures the same current-profile workload with
 adapter diagnostics split into validation/planning, host construction,
 allocation, upload, kernel+sync, download, full result decode, and release. It
