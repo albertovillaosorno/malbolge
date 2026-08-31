@@ -17,6 +17,46 @@ system effects behind a generic runtime boundary.
 The temporary native runners exist to prove that boundary. They are laboratory
 equipment, not the final product.
 
+## 2026-08-31: Final Guest-Surface Cleanup
+
+I finished the source-only conditioning pass by removing APIs that became
+unreachable after multiplayer chat and native debug scaffolding were removed.
+The input-text HUD widget, cursor-only text rendering branch, empty read stubs,
+unused random-index accessor, unused unscaled native patch wrapper, and obsolete
+sound-card index declarations are gone. The remaining zero-caller candidates
+are inside an upstream `#if 0` sliding-door block and therefore do not enter the
+preprocessed guest program.
+
+The final audit found no hosted libc/OS dependency in executable guest code and
+no executable multiplayer state beyond historical demo/save bytes that are
+retained intentionally for compatibility. The normalized guest remains 63 C
+translation units and 66 headers, with music, sound, renderer, WAD loading,
+saves, demos, monsters, weapons, menus, HUD, and single-player intermissions
+retained.
+
+The canonical source gate was run exactly through
+`python -m scripts.validate.validate_c_before_malbolge`: all 63 translation
+units pass the complete pre-Malbolge validation entrypoint. The 57 available
+DOOM generator tests pass, with one Windows-only behavior probe skipped.
+
+The source-bound transform was regenerated twice without compiling or executing
+a native DOOM binary. Both generations are byte-identical. Current evidence:
+
+- `quality/main.rs`: 3,092,640 bytes, 43,667 lines, SHA-256
+  `27c3d2b0dba2ba043a4fb6ecc37c148643898552cab17a400840a2e60e0f3699`;
+- ignored oracle tree SHA-256
+  `7bf0723d2abca8e33a1db7eade698d90b3c7bf4c2611eccdccd6606cbeed1923`;
+- exact upstream source pin: 165 files;
+- normalized guest: 130 files, including 63 C files and 66 headers;
+- canonical complete validator: 63/63 clean;
+- DOOM generator tests: 57 passed, one Windows-only probe skipped; and
+- repeated transform generation: byte-identical.
+
+This checkpoint deliberately does not claim native build, generated-Rust
+materialization, `doom.c`, or `doom.malbolge` execution evidence. Those belong
+to later stages and are not prerequisites for this source-only conditioning
+checkpoint. Amalgamation and all WADs remain untouched.
+
 ## 2026-08-31: Compact Single-Player Tic Commands
 
 I removed the final networking/chat-only fields from the runtime `ticcmd_t`.

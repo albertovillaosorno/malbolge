@@ -551,7 +551,7 @@ The current source-bound quality transform is
 regenerated from the exact pinned 165-file id Software source and the ignored
 local quality oracle, with `data/` remaining an authenticated runtime
 passthrough root. Its current SHA-256 is
-`3caf1802abc1dea1b783bb31fb8ff70b74b78ac5736070225a591f2c14eedf66`.
+`27c3d2b0dba2ba043a4fb6ecc37c148643898552cab17a400840a2e60e0f3699`.
 
 This checkpoint specializes the guest to the supported single-player profile,
 keeps English localization only, retains music and sound, and incorporates the
@@ -561,7 +561,8 @@ is built directly into player zero's tic command. Runtime player storage now
 contains exactly one `player_t`; the four classic player slots remain only where
 historic demo, save, map-start, and search-cursor formats require them. The
 runtime `ticcmd_t` also omits the obsolete consistency and chat fields while the
-save stream retains their historical reserved slots.
+save stream retains their historical reserved slots. Chat-input HUD widgets and
+other now-unreachable compatibility stubs are also absent from the guest.
 
 Classic demo/save layouts are retained, while multiplayer payloads are rejected
 explicitly at their input boundaries. Multiplayer-only player recolor tables and
@@ -570,27 +571,27 @@ producer for their flags. The normalized tree contains 130 files: 63 C
 translation units, 66 headers, and the source license. No IWAD or PWAD bytes are
 part of the static transform payload.
 
-The current acceptance evidence is:
+The current source-only acceptance evidence is:
 
-- a fresh generated materialization is byte-identical to the ignored oracle;
-- the oracle and generated trees share aggregate file hash
-  `6b5e71acf55c81e3486a4afe5ffb26c78548b16f8c30c8e36c7f9d8c5fcd2d2c`;
-- 63/63 translation units pass `validate_c_before_malbolge.py`, including the
-  canonical ABI/libc/tools-tidy validation delegated by that entrypoint;
-- 252/252 strict closed-include syntax checks pass across i686 Linux, x86-64
-  Linux, AArch64 Linux, and wasm32 using pinned Clang 22.1.8;
-- all 63 translation units compile natively with `-std=c23 -O2 -Wall -Wextra
-  -Werror -ffreestanding -fno-builtin`;
-- repeated transform generation is byte-identical; and
-- the generated transform itself compiles with pinned Rust 1.97.1 and
-  materializes the accepted tree without the local oracle.
+- the ignored oracle tree has aggregate SHA-256
+  `7bf0723d2abca8e33a1db7eade698d90b3c7bf4c2611eccdccd6606cbeed1923`;
+- 63/63 translation units pass the canonical
+  `python -m scripts.validate.validate_c_before_malbolge` entrypoint, including
+  the delegated ABI/libc/tools-tidy validation;
+- all 57 platform-available DOOM generator tests pass, with one Windows-only
+  behavior probe skipped; and
+- repeated transform generation from the exact 165-file source pin and ignored
+  oracle is byte-identical.
 
-The transform is 3,097,596 bytes and 43,735 lines. The pre-conditioning
+The transform is 3,092,640 bytes and 43,667 lines. The pre-conditioning
 transform was 5,228,662 bytes, so the current source-conditioning work reduces
-the durable transform by 2,131,066 bytes (40.76%). The immediately preceding
-checked-in transform was 3,097,574 bytes; this exact diff encoding is 22 bytes
-larger even though the C32 runtime `ticcmd_t` is two bytes smaller. Transform
-size is therefore not used as a proxy for runtime cost or optimization quality.
+the durable transform by 2,136,022 bytes (40.85%). Transform size is not used as
+a proxy for runtime cost or optimization quality.
+
+This final source-only checkpoint deliberately does not rebuild DOOM, compile
+the generated Rust transform, or claim a fresh materialization/runtime result.
+The immediately preceding checkpoints retain that historical evidence; the
+current gate is specifically the canonical pre-Malbolge source validator.
 
 The downstream amalgamation transform has deliberately **not** been regenerated
 for this checkpoint. Any previously recorded `doom.c` hash belongs to the prior
