@@ -35,7 +35,10 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use malbolge::{ProfileMachineObservation, RegionEffectProgram, RunOutcome};
+use malbolge::{
+    ProfileExecutionGeometry, ProfileMachineObservation, RegionEffectProgram,
+    RunOutcome, TargetProfileRequirement, target_profile,
+};
 
 use super::direct::{
     CachedVerifiedDirectSequencePlan, VerifiedDirectSequencePlan,
@@ -60,6 +63,7 @@ pub enum NativeInterpreterContinuationReason {
 pub struct NativeInterpreterContinuation {
     expected_exit: ProfileMachineObservation,
     expected_outcome: RunOutcome,
+    geometry: ProfileExecutionGeometry,
     observation: ProfileMachineObservation,
     plan_key: NativeExecutableSequenceKey,
     reason: NativeInterpreterContinuationReason,
@@ -89,6 +93,8 @@ pub enum NativeInterpreterContinuationError {
         /// Transaction step reported by the failure.
         step: usize,
     },
+    /// The verified plan no longer resolves to its canonical profile identity.
+    ProfileIdentity,
     /// One supposedly verified remaining program was not one effect.
     ProgramShape {
         /// Zero-based malformed plan position.
@@ -117,6 +123,7 @@ pub type NativeInterpreterContinuationResult = Result<
 struct NativeContinuationPlanView<'plan> {
     expected_exit: ProfileMachineObservation,
     expected_outcome: RunOutcome,
+    geometry: ProfileExecutionGeometry,
     key: NativeExecutableSequenceKey,
     programs: &'plan [RegionEffectProgram],
 }
@@ -194,6 +201,7 @@ impl NativeInterpreterContinuation {
         Ok(Some(Self {
             expected_exit: self.expected_exit,
             expected_outcome: self.expected_outcome,
+            geometry: self.geometry,
             observation,
             plan_key: self.plan_key.clone(),
             reason,
@@ -232,7 +240,7 @@ impl NativeInterpreterContinuation {
         failure: &NativeSequenceExecutionFailure<MemoryError, RunnerError>,
     ) -> NativeInterpreterContinuationResult {
         continuation_from_failure(
-            cached_plan_view(plan),
+            cached_plan_view(plan)?,
             NativeContinuationFailureEvidence {
                 completed_steps: failure.completed_steps(),
                 observation: failure.observation(),
@@ -253,7 +261,7 @@ impl NativeInterpreterContinuation {
         failure: &NativeLoadedSequenceExecutionFailure<RunnerError>,
     ) -> NativeInterpreterContinuationResult {
         continuation_from_failure(
-            cached_plan_view(plan),
+            cached_plan_view(plan)?,
             NativeContinuationFailureEvidence {
                 completed_steps: failure.completed_steps(),
                 observation: failure.observation(),
@@ -273,7 +281,7 @@ impl NativeInterpreterContinuation {
         plan: &CachedVerifiedDirectSequencePlan,
         outcome: NativeSequenceExecutionOutcome,
     ) -> NativeInterpreterContinuationResult {
-        continuation_from_outcome(cached_plan_view(plan), outcome)
+        continuation_from_outcome(cached_plan_view(plan)?, outcome)
     }
 
     /// Derives optional interpreter work from one uncached indexed failure.
@@ -287,7 +295,7 @@ impl NativeInterpreterContinuation {
         failure: &NativeSequenceExecutionFailure<MemoryError, RunnerError>,
     ) -> NativeInterpreterContinuationResult {
         continuation_from_failure(
-            plan_view(plan),
+            plan_view(plan)?,
             NativeContinuationFailureEvidence {
                 completed_steps: failure.completed_steps(),
                 observation: failure.observation(),
@@ -309,7 +317,7 @@ impl NativeInterpreterContinuation {
         failure: &NativeLoadedSequenceExecutionFailure<RunnerError>,
     ) -> NativeInterpreterContinuationResult {
         continuation_from_failure(
-            plan_view(plan),
+            plan_view(plan)?,
             NativeContinuationFailureEvidence {
                 completed_steps: failure.completed_steps(),
                 observation: failure.observation(),
@@ -329,7 +337,13 @@ impl NativeInterpreterContinuation {
         plan: &VerifiedDirectSequencePlan,
         outcome: NativeSequenceExecutionOutcome,
     ) -> NativeInterpreterContinuationResult {
-        continuation_from_outcome(plan_view(plan), outcome)
+        continuation_from_outcome(plan_view(plan)?, outcome)
+    }
+
+    /// Returns the exact opaque execution geometry retained for handoff.
+    #[must_use]
+    pub const fn geometry(&self) -> ProfileExecutionGeometry {
+        self.geometry
     }
 
     /// Returns the exact observation at which interpreter work begins.
@@ -389,6 +403,9 @@ impl Display for NativeInterpreterContinuationError {
                 f,
                 "failure progress {completed}/{resume} at step {step}",
             ),
+            Self::ProfileIdentity => {
+                f.write_str("continuation profile identity is unavailable")
+            },
             Self::ProgramShape { index } => write!(
                 f,
                 "continuation program {index} is not exactly one effect",
@@ -407,13 +424,15 @@ impl Display for NativeInterpreterContinuationError {
 
 fn cached_plan_view(
     plan: &CachedVerifiedDirectSequencePlan,
-) -> NativeContinuationPlanView<'_> {
-    NativeContinuationPlanView {
+) -> Result<NativeContinuationPlanView<'_>, NativeInterpreterContinuationError>
+{
+    Ok(NativeContinuationPlanView {
         expected_exit: plan.exit(),
         expected_outcome: plan.outcome(),
+        geometry: canonical_plan_geometry(plan.programs())?,
         key: NativeExecutableSequenceKey::from_cached_plan(plan),
         programs: plan.programs(),
-    }
+    })
 }
 
 fn continuation_from_failure(
@@ -512,6 +531,7 @@ fn build_continuation(
     Ok(Some(NativeInterpreterContinuation {
         expected_exit: plan.expected_exit,
         expected_outcome: plan.expected_outcome,
+        geometry: plan.geometry,
         observation,
         plan_key: plan.key,
         reason,
@@ -523,13 +543,35 @@ fn build_continuation(
 
 fn plan_view(
     plan: &VerifiedDirectSequencePlan,
-) -> NativeContinuationPlanView<'_> {
-    NativeContinuationPlanView {
+) -> Result<NativeContinuationPlanView<'_>, NativeInterpreterContinuationError>
+{
+    Ok(NativeContinuationPlanView {
         expected_exit: plan.exit(),
         expected_outcome: plan.outcome(),
+        geometry: canonical_plan_geometry(plan.programs())?,
         key: NativeExecutableSequenceKey::from_plan(plan),
         programs: plan.programs(),
+    })
+}
+
+fn canonical_plan_geometry(
+    programs: &[RegionEffectProgram],
+) -> Result<ProfileExecutionGeometry, NativeInterpreterContinuationError> {
+    let Some(first) = programs.first() else {
+        return Err(NativeInterpreterContinuationError::ProgramShape {
+            index: 0,
+        });
+    };
+    let Some(profile) = target_profile(&first.profile_id) else {
+        return Err(NativeInterpreterContinuationError::ProfileIdentity);
+    };
+    if profile.fingerprint() != first.profile_fingerprint
+        || TargetProfileRequirement::from_descriptor(profile)
+            != first.profile_requirement
+    {
+        return Err(NativeInterpreterContinuationError::ProfileIdentity);
     }
+    Ok(ProfileExecutionGeometry::canonical(profile))
 }
 
 fn validate_remaining_programs(

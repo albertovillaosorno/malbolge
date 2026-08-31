@@ -48,7 +48,7 @@ use crate::execution_native::{
 /// Failure before any interpreter transition can begin.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NativeInterpreterHandoffAdmissionError {
-    /// The checkpoint geometry is not the continuation's canonical geometry.
+    /// The checkpoint geometry differs from exact continuation authority.
     CheckpointGeometry,
     /// The supplied checkpoint does not match the continuation observation.
     CheckpointObservation,
@@ -406,8 +406,8 @@ impl NativeInterpreterHandoff {
             observation.termination,
         )
         .map_err(NativeInterpreterHandoffAdmissionError::State)?;
-        let state = ProfileMachineState::new(
-            profile,
+        let state = ProfileMachineState::new_with_geometry(
+            continuation.geometry(),
             memory,
             observation.registers,
             io,
@@ -592,12 +592,7 @@ fn admit_handoff(
     if checkpoint.profile() != profile {
         return Err(NativeInterpreterHandoffAdmissionError::CheckpointProfile);
     }
-    let geometry = checkpoint.geometry();
-    if geometry.word_trits() != profile.word_trits()
-        || geometry.word_modulus() != profile.word_modulus()
-        || geometry.memory_words() != profile.memory_words()
-        || geometry.eof_word() != profile.eof_word()
-    {
+    if checkpoint.geometry() != continuation.geometry() {
         return Err(NativeInterpreterHandoffAdmissionError::CheckpointGeometry);
     }
     if state_observation(&checkpoint) != continuation.observation() {

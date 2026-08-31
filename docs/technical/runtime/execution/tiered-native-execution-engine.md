@@ -614,14 +614,19 @@ immutable semantic handoff independent of executable lifetime. It supports both
 cached and uncached plans plus ephemeral and already-loaded failures. Complete
 and suffix `NativeExecutableSequenceKey` values retain exact artifact identity;
 the continuation also clones only the remaining one-step programs and records
-resume observation, expected final observation/outcome, and guard/failure
-reason.
-Construction rejects forged applied counts, final observations, resume indices,
-resume observations, or inconsistent failure progress. Applied completion and
+resume observation, expected final observation/outcome, guard/failure reason,
+and one opaque `ProfileExecutionGeometry` token.
 
-terminal cleanup failure yield no continuation. `advance()` rebases the same
-complete-plan authority after additional admitted work from any tier. It keeps
-expected exit/outcome, advances the absolute resume index, and derives the exact
+Construction rejects forged applied counts, final observations, resume indices,
+resume observations, inconsistent failure progress, or a plan whose canonical
+profile ID/fingerprint/requirement no longer resolves exactly. Canonical direct
+plans mint only `ProfileExecutionGeometry::canonical(profile)`. Applied
+completion and terminal cleanup failure yield no continuation. `advance()`
+rebases the same complete-plan authority after additional admitted work from any
+tier while preserving the exact geometry token.
+
+It keeps expected exit/outcome,
+advances the absolute resume index, and derives the exact
 remaining key/program suffix; verified completion yields no continuation, while
 overshoot or boundary drift fails closed. Eleven deterministic cases cover all
 constructor families, malformed evidence, partial rebase, completion, and drift.
@@ -631,18 +636,20 @@ No interpreter call, buffer transfer, or scheduling policy is performed here.
 `application/interpreter_handoff.rs` consumes the continuation through the
 normative safe-Rust `ProfileMachine`. Admission accepts either a validated full
 checkpoint or owned memory/input plus the committed output prefix, then resolves
-canonical profile identity/fingerprint/requirement and compares the complete
-checkpoint observation and first remaining live-ins before mutation. Each suffix
-step uses `step_traced()` and reprojects its trace to exact one-step IR.
+canonical profile identity/fingerprint/requirement, exact continuation
+geometry, checkpoint observation, and first remaining live-ins before mutation.
+Each suffix step uses `step_traced()` and reprojects its trace to exact one-step
+IR.
 Machine,
 projection, program, or live-in drift returns the step-entry checkpoint with the
 combined-plan resume index. Completion combines native and interpreter step
 
 counts and validates the original plan exit and outcome.
 
-`geometry_handoff.rs` keeps derived-width replay separate from that legacy
-native-continuation contract. Its one-step `ExecutionGeometryInterpreterHandoff`
-admits an explicit-geometry v5 program only beside a validated
+`geometry_handoff.rs` keeps derived-width replay separate from ordinary
+canonical direct-native planning. Its one-step
+`ExecutionGeometryInterpreterHandoff` admits an explicit-geometry v5 program
+only beside a validated
 `ProfileMachineState`. The checkpoint's opaque `ProfileExecutionGeometry` token
 is the authority; the v5 N/capacity pair must equal its visible projection, and
 canonical profile identity, entry observation, execution capacity, and live-ins
@@ -652,8 +659,11 @@ Execution uses the normative `ProfileMachine` and reprojects the complete trace
 back to v5. It publishes the final checkpoint only when that program is
 byte-structurally equal. A forged v5 effect returns the untouched entry
 checkpoint. This one-step primitive grants no native key, lowering, or cache
-authority, and the existing native interpreter handoff continues to reject
-derived checkpoint geometry.
+authority.
+
+Ordinary native continuations now carry exact geometry explicitly,
+but canonical v3/v4 direct planning still mints only canonical tokens, so those
+continuations continue to reject derived checkpoints.
 
 `ExecutionGeometryInterpreterContinuation` composes those one-step replay
 boundaries without changing the trust model. Construction rejects empty,

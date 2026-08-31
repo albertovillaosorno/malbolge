@@ -34,7 +34,7 @@
 
 use malbolge::{
     EFFECT_IR_EXECUTION_GEOMETRY_VERSION, ExecutionGeometryRegionEffectProgram,
-    ProfileExecutionGeometryRequirement,
+    ProfileExecutionGeometry, ProfileExecutionGeometryRequirement,
     ProfileExecutionGeometryRequirementError, ProfileLoadError, ProfileMachine,
     ProfileMachineError, ProfileMachineIoState, ProfileMachineState,
     ProfileStepTrace, ProfileWidthProofKind, ProfileWidthVerificationError,
@@ -218,6 +218,36 @@ fn initial_halt_verifier_covers_every_reviewed_geometry() -> TestResult {
         )?;
     }
     Ok(())
+}
+
+#[test]
+fn canonical_geometry_constructor_cannot_narrow_profile() -> TestResult {
+    let profile = current_profile();
+    let canonical = ProfileExecutionGeometry::canonical(profile);
+    let narrowed = normalize_result(verify_initial_halt_profile_width(
+        profile,
+        QP,
+        MINIMUM_WORD_TRITS,
+    ))?
+    .geometry();
+    check_equal(&canonical.profile(), &profile, "canonical token profile")?;
+    check_equal(
+        &canonical.word_trits(),
+        &profile.word_trits(),
+        "canonical token width",
+    )?;
+    check_equal(
+        &canonical.memory_words(),
+        &profile.memory_words(),
+        "canonical token memory",
+    )?;
+    if canonical == narrowed {
+        Err(String::from(
+            "canonical constructor minted derived geometry",
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 #[test]

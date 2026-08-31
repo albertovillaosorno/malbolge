@@ -570,21 +570,23 @@ transfers, verification, and other separately measured costs.
   stays
   canonical N15. Both reached input instructions observe canonical EOF and the
   two outputs are `[0x6A,0x6A]`; no EOF-visible narrowing is inferred.
-- Tiered interpreter handoff remains canonical-only until its continuation
-  schema carries verified execution geometry explicitly. A derived N=10
-  checkpoint with the same canonical profile, observation, and live-in surface
-  as
-  an initial-halt continuation now fails closed with `CheckpointGeometry` before
-  any interpreter transition. This prevents tiered fallback from silently
-  reinterpreting a verified narrow checkpoint as canonical N=15.
+- Tiered `NativeInterpreterContinuation` now carries exact opaque execution
+  geometry explicitly. Canonical direct plans revalidate profile identity before
+  minting their canonical token, `advance()` preserves it, and interpreter
+  handoff reconstructs/admits state against that exact token rather than profile
+  dimensions. A derived N10 checkpoint still fails closed with
+  `CheckpointGeometry` because ordinary direct planning consumes canonical v3/v4
+  IR only; verified-v5 native planning that can supply derived authority remains
+  separate work.
 - Profile traces now carry their exact execution geometry. Legacy portable IR
   v3 projection accepts only traces whose geometry equals the canonical profile
   and rejects derived traces with `ExecutionGeometry`. Explicit-geometry IR v5
   now binds a validated `ProfileExecutionGeometryRequirement` after the
   unchanged canonical profile requirement; QP/N=10 projects successfully to v5
   while its profile requirement remains canonical N15. The geometry declaration
-  carries no hidden input-policy authority, and native/cache/legacy-continuation
-  APIs still consume only `RegionEffectProgram`, so v5 transport does not grant
+  carries no hidden input-policy authority, and native/cache/ordinary
+  continuation APIs still consume only `RegionEffectProgram`, so v5 transport
+  does not grant
   direct-native execution authority.
 - The separate geometry interpreter path admits v5 only beside a validated
   checkpoint: canonical profile, visible geometry, entry observation, capacity,

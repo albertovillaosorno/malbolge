@@ -157,7 +157,12 @@ impl ProfileExecutionGeometry {
         }
     }
 
-    pub(crate) const fn canonical(profile: &'static ProfileDescriptor) -> Self {
+    /// Constructs the exact canonical execution geometry for one profile.
+    ///
+    /// This cannot mint a derived width or hidden input restriction; only
+    /// trusted width verification can construct those narrower geometry tokens.
+    #[must_use]
+    pub const fn canonical(profile: &'static ProfileDescriptor) -> Self {
         Self {
             input_policy: ProfileExecutionInputPolicy::Any,
             memory_words: profile.memory_words(),

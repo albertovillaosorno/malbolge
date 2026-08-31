@@ -11971,7 +11971,10 @@ fn assert_second_step_continuation(
         .get(1..)
         .ok_or_else(|| String::from("second continuation suffix missing"))?;
     let observation = second_sequence_entry(expected.programs)?;
+    let expected_geometry =
+        malbolge::ProfileExecutionGeometry::canonical(current_profile());
     if continuation.completed_steps() == 1
+        && continuation.geometry() == expected_geometry
         && continuation.resume_index() == 1
         && continuation.remaining_steps() == remaining_programs.len()
         && continuation.observation() == observation
@@ -30560,6 +30563,7 @@ fn native_interpreter_continuation_advances_mixed_tier_suffix()
         .map_err(|error| error.to_string())?
         .ok_or_else(|| String::from("partial continuation completed"))?;
     if advanced.completed_steps() == 1
+        && advanced.geometry() == continuation.geometry()
         && advanced.resume_index() == 1
         && advanced.observation() == second_entry
         && advanced.reason() == NativeInterpreterContinuationReason::GuardMiss

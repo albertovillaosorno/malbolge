@@ -332,20 +332,26 @@ baseline; native tiers are accelerators of identical observable behavior.
   and guard/failure reason remain explicit. Constructors cover ephemeral and
   loaded failures. Forged counts, indices, observations, and progress fail
   closed; completed outcomes and terminal cleanup return no continuation.
+
   `advance()` rebases complete-plan authority after additional admitted work
-  from
-  any tier, deriving the exact new suffix or verified completion and rejecting
+  from any tier, deriving the exact new suffix or verified completion and
+  rejecting overshoot/boundary drift. The continuation now also owns one opaque
+  execution-geometry token. Canonical plans revalidate profile identity before
+  minting it, rebasing preserves it exactly, and handoff admission compares the
+  checkpoint to that token rather than reconstructing geometry from profile
+  fields. Ordinary direct planning remains canonical-only; derived v5 native
+  planning is separate work.
 
-  overshoot/boundary drift. Eleven cases cover constructors and rebase behavior.
-  The application handoff now resolves the
-  exact canonical profile, admits either a full checkpoint or transferred
-  memory/input/output-prefix state, and runs each remaining `step_traced()`
-  transition through exact IR reprojection. Any machine, program, projection, or
-  live-in drift returns the step-entry checkpoint and combined resume index;
-  completion validates full-plan exit/outcome. Explicit budgets now yield
-  completion or an affine suspension retaining cumulative progress, exact
+  Constructor/rebase and geometry-rejection cases retain this boundary. The
+  application handoff resolves the exact canonical profile, admits either a full
+  checkpoint or transferred memory/input/output-prefix state, and runs each
+  remaining `step_traced()` transition through exact IR reprojection. Any
+  machine, program, projection, or live-in drift returns the step-entry
+  checkpoint and combined resume index; completion validates full-plan
+  exit/outcome. Explicit budgets yield completion or an affine suspension
+  retaining cumulative progress, exact complete-plan resume index,
+  artifact/program suffix, and normative checkpoint.
 
-  complete-plan resume index, artifact/program suffix, and normative checkpoint.
   Zero budget is a no-op, partial budget resumes without readmission, and
   oversized budget completes. Ten cases cover both transfer forms, admission,
   budgets, repeated zero after progress, and rollback before/after suspension.
