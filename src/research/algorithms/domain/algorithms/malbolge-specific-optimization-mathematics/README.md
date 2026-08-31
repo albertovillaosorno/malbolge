@@ -163,6 +163,12 @@ reachable width-14 fixed pair, the corresponding global counts are
 apply only when endpoint order is irrelevant in addition to coordinate labels;
 they are exact search-space identities and make no timing claim.
 
+Each such canonical endpoint-unordered class also has an exact raw mass. The
+coordinate factor is the joint-count multinomial, while the endpoint factor is
+the size of that count vector's `S_m` orbit; their product reconstructs the
+combined `S_k x S_m` orbit. Exhaustive small tuple domains and all one-
+coordinate weight orbits through S8 reproduce their complete raw mass exactly.
+
 If endpoint order is also irrelevant, the exact pair class count
 reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`; summed over every reachable

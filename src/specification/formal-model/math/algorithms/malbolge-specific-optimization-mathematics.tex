@@ -824,6 +824,24 @@ the established descending-pattern representative gives one canonical tuple per
 orbit. The refinement requires endpoint-permutation invariance in addition to
 simultaneous coordinate symmetry and makes no timing claim.
 
+The commuting coordinate and endpoint actions also give each canonical class an
+exact raw ordered-tuple mass. For a joint-count vector $n=(n_s)_s$, let
+$S_m\!\cdot n$ be its endpoint-permutation orbit. Coordinate relabeling alone
+contributes the multinomial factor shown below, and every endpoint image has the
+same multiplicities. Therefore
+\begin{equation}
+  \left|[(x^{(1)},\ldots,x^{(m)})]_{S_k\times S_m}\right|
+    =\frac{k!}{\prod_s n_s!}\left|S_m\!\cdot n\right|,
+  \quad 3\leq m\leq8,\ 0\leq k\leq14.
+  \label{eq:optimization-crazy-preimage-cube-unordered-tuple-orbit-mass}
+\end{equation}
+The endpoint factor is equivalently
+$ m!/|\operatorname{Stab}_{S_m}(n)| $. Summing this mass over one canonical
+representative per endpoint orbit
+reconstructs the complete $(2^m)^k$ raw ordered-tuple domain. This is exact
+orbit accounting for symmetry-invariant analyses; it does not equate distinct
+position-sensitive Malbolge states.
+
 For pairwise analyses that also ignore endpoint order, let
 $G_k=S_k\times C_2$, where $S_k$ permutes both endpoints simultaneously and
 $\tau\in C_2$ swaps them: $\tau(x,y)=(y,x)$. These actions commute. On joint

@@ -504,6 +504,16 @@ mechanism = "integer-partition-conjugacy-classes-plus-induced-binary-label-cycle
 evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_endpoint_partitions_match_all_permutation_cycle_types", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_unordered_tuple_burnside_counts_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_unordered_sextuple_quotient.py::test_unordered_sextuple_burnside_counts_through_dimension_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-unordered-tuple-orbit-mass"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-unordered-tuple-orbit-mass"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "endpoint-unordered joint-count classes for checked arities 3 through 8 and ambiguity dimensions 0 through 14 under commuting simultaneous-coordinate and endpoint-permutation actions"
+mechanism = "coordinate-multinomial-orbit-mass-times-endpoint-count-vector-orbit-size"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_combined_orbit_mass_covers_small_tuple_domains", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_combined_orbit_mass_reaches_checked_arity_eight"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-endpoint-symmetric-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-endpoint-symmetric-pair-quotient"

@@ -39,6 +39,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from itertools import combinations_with_replacement
 from itertools import permutations
 from math import comb
 from math import factorial
@@ -304,3 +305,69 @@ def test_generic_global_unordered_tuple_transform_matches_direct_sum() -> None:
             arity,
             _MAXIMUM_TRITS,
         ) == _WIDTH_FOURTEEN_GLOBAL_COUNTS[arity]
+
+
+def _endpoint_label_orbit(
+    labels: tuple[int, ...],
+    arity: int,
+) -> set[tuple[int, ...]]:
+    return {
+        tuple(sorted(_permuted_symbol(label, order) for label in labels))
+        for order in permutations(range(arity))
+    }
+
+
+def _coordinate_orbit_mass(labels: tuple[int, ...]) -> int:
+    multiplicities = Counter(labels)
+    result = factorial(len(labels))
+    for multiplicity in multiplicities.values():
+        result //= factorial(multiplicity)
+    return result
+
+
+def _combined_orbit_mass(labels: tuple[int, ...], arity: int) -> int:
+    return _coordinate_orbit_mass(labels) * len(
+        _endpoint_label_orbit(labels, arity)
+    )
+
+
+def _check_small_combined_mass(arity: int, maximum_dimension: int) -> None:
+    pattern_count = 1 << arity
+    for dimension in range(maximum_dimension + 1):
+        canonical: dict[tuple[int, ...], int] = {}
+        for labels in combinations_with_replacement(
+            range(pattern_count),
+            dimension,
+        ):
+            orbit = _endpoint_label_orbit(labels, arity)
+            representative = min(orbit)
+            mass = _coordinate_orbit_mass(labels) * len(orbit)
+            if representative not in canonical:
+                canonical[representative] = mass
+            assert canonical[representative] == mass
+        assert sum(canonical.values()) == _integer_power(
+            pattern_count,
+            dimension,
+        )
+
+
+def test_generic_combined_orbit_mass_covers_small_tuple_domains() -> None:
+    """Reconstruct small raw domains from exact combined orbit masses."""
+    maximum_dimensions = {3: 3, 4: 2, 5: 2, 6: 2}
+    for arity, maximum_dimension in maximum_dimensions.items():
+        _check_small_combined_mass(arity, maximum_dimension)
+
+
+def test_generic_combined_orbit_mass_reaches_checked_arity_eight() -> None:
+    """Single-coordinate endpoint orbits have exact binomial mass through S8."""
+    for arity in range(_MINIMUM_ARITY, _MAXIMUM_ARITY + 1):
+        total = 0
+        for weight in range(arity + 1):
+            label = (1 << weight) - 1
+            labels = (label,)
+            assert _coordinate_orbit_mass(labels) == 1
+            endpoint_mass = len(_endpoint_label_orbit(labels, arity))
+            assert endpoint_mass == comb(arity, weight)
+            assert _combined_orbit_mass(labels, arity) == endpoint_mass
+            total += endpoint_mass
+        assert total == 1 << arity
