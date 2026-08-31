@@ -709,8 +709,8 @@ fn write_usage() -> Result<(), String> {
         .map_err(|error| format!("failed to write usage: {error}"))
 }
 
-fn doom_host_build_arguments(
-) -> Result<(&'static str, Vec<OsString>, Vec<OsString>), String> {
+fn doom_host_build_arguments()
+-> Result<(&'static str, Vec<OsString>, Vec<OsString>), String> {
     let mut compiler_arguments = vec![
         OsString::from("-Dmain=DoomGuestMain"),
         OsString::from("-ffreestanding"),
@@ -757,7 +757,8 @@ fn pkg_config_sdl2(mode: &str) -> Result<Vec<OsString>, String> {
             "SDL2 development files are required for Linux doom.c debugging",
         ));
     }
-    let flags = String::from_utf8(output.stdout)
-        .map_err(|_| String::from("pkg-config returned non-UTF-8 SDL2 flags"))?;
+    let flags = String::from_utf8(output.stdout).map_err(|error| {
+        format!("pkg-config returned non-UTF-8 SDL2 flags: {error}")
+    })?;
     Ok(flags.split_whitespace().map(OsString::from).collect())
 }

@@ -163,8 +163,9 @@ challenges remain responsible for scientific algorithm comparison.
 
 Exact generated artifact sizes, hashes, regeneration commands, validation
 matrices, and source-use boundaries belong in the
-DOOM algorithm record under `src/research/algorithms/`. The repository does not
-distribute DOOM source or game data.
+DOOM algorithm record under `src/research/algorithms/`. The repository does
+not distribute DOOM source or game data. For the end-to-end local source,
+generation, configuration, and play workflow, see [DOOM.md](DOOM.md).
 
 ## Self-hosting
 

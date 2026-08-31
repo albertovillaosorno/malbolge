@@ -398,10 +398,10 @@ evaluation, and verified block stitching.
 
 ### TODO - DOOM playable generated-code performance
 
-Optimize lowering, block selection, guest runtime, VM execution, JIT paths, and
-accelerator-assisted compilation until the user-supplied DOOM interoperability
-pipeline produces a `.malbolge` build that is genuinely interactive and playable
-under the modern runtime.
+The normalized C tree and canonical `doom.c` baseline are ready and playable
+through native debug adapters. Finish C-to-Malbolge lowering, capability
+linking, VM execution, and optimization until the generated `doom.malbolge`
+itself is genuinely interactive and playable under the modern runtime.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/applications/doom-playable-generated-code-performance.mdc](docs/todo/open/applications/doom-playable-generated-code-performance.mdc)

@@ -121,28 +121,39 @@ Without either, the CLI checks `MALBOLGE_DOOM_IWAD`, compatible filenames beside
 
 directory. WAD files remain external user-provided assets.
 
-The Windows adapter reads `iwad`, `wads`, `language`, `maximized`, `resolution`,
-`vsync`, and `show_fps` from `settings.json`. The settings file must fit wholly
-inside the fixed 65536-byte parser buffer; oversized files, short reads,
-embedded NUL bytes, truncated top-level structure, malformed JSON values,
-invalid escapes, and malformed requested values are ignored rather than parsed
-from a prefix. Key
-lookup inspects only top-level object members, skips syntactically valid
-quoted/nested decoys, rejects malformed unknown members before a requested key,
-and rejects duplicate instances of the requested key, including equivalent JSON
-escape spellings, rather than selecting one implicitly. A missing, empty, or
-oversized execution-source environment value clears the adapter's provenance
-override rather than retaining stale process state. Rebuilt debug argument
-vectors reserve and write the required null
-sentinel after `argv[argc]`; malformed or over-capacity vectors fail before the
+The Windows adapter reads `iwad`, `wads`, `language`, `maximized`,
+`resolution`, `vsync`, and `show_fps` from `settings.json`. The Linux adapter
+reads `maximized`, `resolution`, and `render_resolution`. `resolution` is the
+physical window size. Linux `render_resolution` is the corrected visual raster;
+the adapter converts its width through DOOM's historical 5:6 pixel-aspect ratio
+before adding guest `-render-height`/`-render-width` arguments.
 
-guest entry point is called. Gameplay uses centered relative mouse capture;
-pause, menus, automap, demos, and focus loss release the cursor. Native
-capture ownership is verified before the adapter hides/centers the cursor, and
-a failed cursor warp does not leave a synthetic-centering event armed. A failed
-capture release likewise keeps the adapter marked captured so a later update can
-retry instead of diverging from Win32 state. Focus loss also emits releases for
-tracked held keys and mouse buttons so an unfocused button-up
+Explicit render arguments suppress that JSON render default. Linux defaults to
+a maximized 1920x1080 presentation with a 640x360 corrected render target.
+
+The settings file must fit wholly inside the fixed 65536-byte parser buffer.
+Oversized files, short reads, embedded NUL bytes, truncated top-level structure,
+malformed JSON values, invalid escapes, and malformed requested values are
+ignored rather than parsed from a prefix. Key lookup inspects only top-level
+object members, skips syntactically valid quoted/nested decoys, rejects
+malformed unknown members before a requested key, and rejects duplicate
+instances of the
+requested key, including equivalent JSON escape spellings, rather than selecting
+one implicitly.
+
+A missing, empty, or oversized execution-source environment value clears the
+adapter's provenance override rather than retaining stale process state. Rebuilt
+debug argument vectors reserve and write the required null sentinel after
+`argv[argc]`; malformed or over-capacity vectors fail before the guest entry
+point is called.
+
+Gameplay uses centered relative mouse capture; pause, menus, automap, demos, and
+focus loss release the cursor. Native capture ownership is verified before the
+adapter hides/centers the cursor, and a failed cursor warp does not leave a
+synthetic-centering event armed. A failed capture release likewise keeps the
+adapter marked captured so a later update can retry instead of diverging from
+Win32 state. Focus loss also emits releases for tracked held keys and mouse
+buttons so an unfocused button-up
 
 cannot leave guest input latched on the next activation. Losing relative mouse
 capture independently releases any held mouse buttons for the same reason. If

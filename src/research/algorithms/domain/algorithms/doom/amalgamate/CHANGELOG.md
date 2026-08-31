@@ -1,5 +1,30 @@
 # DOOM Amalgamation Changelog
 
+## 2026-08-31 Regeneration from the accepted 63-TU single-player corpus
+
+The accepted quality tree is now the compact 130-file single-player baseline.
+After interactive native-debug play of a temporary amalgamation, I rebuilt the
+ignored single-TU oracle from that exact quality output and regenerated the
+source-bound amalgamation transform.
+
+Current identities:
+
+- `amalgamate/main.rs`: 3,573,797 bytes, 50,349 lines, SHA-256
+  `e4ba6b14ec067b3836cc59b86f096b6f450651a2cb0eb6453a6f8c0de651cc39`;
+- `doom.c`: 1,543,214 bytes, 51,096 lines, SHA-256
+  `4d5e7583baabeef6a7e21f3e7c3c560a4e4e44d7f467a8d4a9dcdc92775adc40`.
+
+The builder now processes 63 C translation units, 19 private bindings, 65 unique
+project headers, 128 expanded project includes, 529 duplicate-header elisions,
+and one guarded include-cycle elision. Fresh Rust materialization reproduces the
+playtested oracle byte-for-byte.
+
+The canonical `malbolge doom.c` debug path now works on Linux through the SDL2
+host adapter as well as through the established Windows boundary. The C artifact
+passes the pinned pre-Malbolge Clang preflight. This closes the accepted C
+packaging baseline; generation and execution of `doom.malbolge` remain separate
+open compiler/runtime work.
+
 This is the engineering log for the DOOM amalgamation stage inside Malbolge.
 
 ## 2026-07-28 Regeneration from the Hardened Quality Corpus

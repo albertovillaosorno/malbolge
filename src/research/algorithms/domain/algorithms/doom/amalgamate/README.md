@@ -35,32 +35,33 @@ oracle at materialization time.
 ## Accepted Artifact
 
 - generated transform SHA-256:
-  `7bcd19b073c5839c4c9119a0b871e4e4cd6e63dbedeb7571b6099f234e92f439`;
+  `e4ba6b14ec067b3836cc59b86f096b6f450651a2cb0eb6453a6f8c0de651cc39`;
 - `doom.c` SHA-256:
-  `a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`;
-- 2,507,561 bytes and 79,336 lines;
-- 65 translation units and 19 private bindings;
-- 83 unique embedded project headers;
-- 148 expanded includes, 564 duplicate-header elisions, one guarded cycle
+  `4d5e7583baabeef6a7e21f3e7c3c560a4e4e44d7f467a8d4a9dcdc92775adc40`;
+- 1,543,214 bytes and 51,096 lines;
+- 63 translation units and 19 private bindings;
+- 65 unique embedded project headers;
+- 128 expanded includes, 529 duplicate-header elisions, one guarded cycle
   elision.
 
-Repeated recipe generation and materialization are byte-identical. Empty and
-mutated normalized source trees are rejected before publication. The accepted
-output is byte-identical to the ignored oracle and to
-`tests/applications/doom/out/doom.c`.
+The generated transform compiles with pinned Rust 1.97.1 and `-D warnings`.
+Materializing it from a fresh accepted normalized tree reproduces the ignored
+single-TU oracle byte-for-byte. That output is also byte-identical to the
+`doom.c` exercised by the canonical Linux native-debug playtest.
 
 ## Semantic Evidence
 
-Pinned Clang remains the authority for the C surface. The materialized file:
+Pinned Clang remains the authority for the C surface. The current materialized
+file passes the canonical pre-Malbolge C preflight. The upstream normalized tree
+passes the complete validator across all 63 translation units, and a fresh
+quality materialization is byte-identical to the accepted quality oracle.
 
-- passes strict Clang 22.1.8 with `-Werror` on Linux, Windows, and macOS for
-  x86-64 and AArch64;
-- builds with ASan+UBSan and links with the Windows host adapter;
-- produces the same deterministic framebuffer/audio transcript as the 65-TU
-  normalized build: `92ff55046afd3976`, `4571f707b08d56cd`,
-  `912da30aff88aaed`;
-- is byte-identical to the native artifact manually played for roughly 20
-  minutes without reproducing the reported autoaim crash.
+The canonical Linux `malbolge doom.c` debug path compiles the exact single-TU C
+artifact with the SDL2 host adapter. Interactive play confirmed normal WAD load,
+world rendering, HUD, input, audio, and single-player gameplay. Presentation
+resolution is host-side configuration and does not change the accepted C
+artifact. Native-debug success is comparison-oracle evidence only; it is not a
+claim that the C has already executed under Malbolge semantics.
 
 ## Source Binding
 

@@ -29,15 +29,22 @@ validation:
 
 ## Objective
 
-Optimize lowering, block selection, guest runtime, VM execution, JIT paths, and
-accelerator-assisted compilation until the user-supplied DOOM interoperability
-pipeline produces a `.malbolge` build that is genuinely interactive and playable
-under the modern runtime. Measure compile latency, frame pacing, input latency,
-VM instructions per game tick, memory footprint, and generated-code size rather
-than declaring success merely because the program eventually runs. Preserve the
-same game semantics while optimizing; performance-specific substitutions require
-explicit equivalence evidence. The accepted native `doom.c` is the comparison
-oracle; no performance claim starts until the compiler generates
+The source-level baseline is ready: the normalized single-player C tree and
+canonical `doom.c` are reproducible, validate cleanly, and are interactively
+playable through the native Windows/Linux debug boundary. The remaining
+objective is to lower that accepted C baseline to `doom.malbolge`, link
+versioned host capabilities, execute it under Malbolge semantics, and optimize
+lowering,
+block selection, guest runtime, VM/JIT paths, and accelerator-assisted
+compilation until the generated program itself is genuinely interactive and
+playable.
+
+Measure compile latency, frame pacing, input latency, VM instructions per game
+tick, memory footprint, and generated-code size rather than declaring success
+merely because the program eventually runs. Preserve the same game semantics
+while optimizing; performance-specific substitutions require explicit
+equivalence evidence. The accepted native `doom.c` remains the comparison
+oracle; no Malbolge performance claim starts until the compiler generates
 `doom.malbolge` and the runtime executes that artifact under Malbolge semantics.
 
 ## Acceptance

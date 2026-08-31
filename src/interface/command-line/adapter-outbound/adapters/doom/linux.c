@@ -28,7 +28,8 @@
 // - Usage:
 //   - Selected by the command-line C debug path; never part of guest C.
 // - Defaults:
-//   - Decorated 1280x720 window, relative mouse in-game, no networking.
+//   - settings.json controls presentation; otherwise use a maximized 1080p
+//     window with a 640x360 corrected widescreen render target.
 //
 
 //! Linux host adapter for canonical `malbolge doom.c` debugging.
@@ -41,6 +42,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #include "abi.h"
@@ -55,6 +57,33 @@ int DoomGuestMain(int argc, char **argv);
 #define HOST_FILE_CAPACITY 64
 #define AUDIO_BLOCK_COUNT 8
 #define LINUX_MOUSE_DELTA_SCALE 4
+#define SETTINGS_BUFFER_BYTES 65536
+#define MAX_DEBUG_ARGUMENTS 1024
+#define DEFAULT_WINDOW_WIDTH 1920
+#define DEFAULT_WINDOW_HEIGHT 1080
+#define DEFAULT_RENDER_WIDTH 640
+#define DEFAULT_RENDER_HEIGHT 360
+
+typedef struct
+{
+        boolean maximized;
+        int window_width;
+        int window_height;
+        int render_width;
+        int render_height;
+} debug_settings_t;
+
+static debug_settings_t debug_settings = {
+    .maximized = true,
+    .window_width = DEFAULT_WINDOW_WIDTH,
+    .window_height = DEFAULT_WINDOW_HEIGHT,
+    .render_width = DEFAULT_RENDER_WIDTH,
+    .render_height = DEFAULT_RENDER_HEIGHT,
+};
+static char settings_json[SETTINGS_BUFFER_BYTES];
+static char *debug_arguments[MAX_DEBUG_ARGUMENTS];
+static char render_height_text[16];
+static char render_width_text[16];
 
 _Alignas(16) static unsigned char guest_memory[GUEST_MEMORY_BYTES];
 static FILE *file_handles[HOST_FILE_CAPACITY];
@@ -74,6 +103,547 @@ static SDL_AudioDeviceID audio_device;
 static int audio_frames_per_buffer;
 static int audio_channels;
 static int audio_capacity_frames;
+
+static const char *SkipJsonSpace(const char *cursor)
+{
+    while (*cursor == ' ' || *cursor == '\t' || *cursor == '\r' ||
+           *cursor == '\n')
+        ++cursor;
+    return cursor;
+}
+
+static boolean IsJsonHexDigit(char value)
+{
+    return (value >= '0' && value <= '9') || (value >= 'a' && value <= 'f') ||
+           (value >= 'A' && value <= 'F');
+}
+
+static const char *SkipJsonQuoted(const char *cursor)
+{
+    if (cursor == NULL || *cursor != (char)0x22)
+        return NULL;
+    ++cursor;
+    while (*cursor != 0)
+    {
+        if ((unsigned char)*cursor < 0x20U)
+            return NULL;
+        if (*cursor == (char)0x5C)
+        {
+            ++cursor;
+            if (*cursor == 'u')
+            {
+                ++cursor;
+                for (int index = 0; index < 4; ++index)
+                {
+                    if (*cursor == 0 || !IsJsonHexDigit(*cursor))
+                        return NULL;
+                    ++cursor;
+                }
+                continue;
+            }
+            if (*cursor != (char)0x22 && *cursor != (char)0x5C &&
+                *cursor != '/' && *cursor != 'b' && *cursor != 'f' &&
+                *cursor != 'n' && *cursor != 'r' && *cursor != 't')
+                return NULL;
+            ++cursor;
+            continue;
+        }
+        if (*cursor == (char)0x22)
+            return cursor + 1;
+        ++cursor;
+    }
+    return NULL;
+}
+
+static int JsonHexValue(char value)
+{
+    if (value >= '0' && value <= '9')
+        return value - '0';
+    if (value >= 'a' && value <= 'f')
+        return value - 'a' + 10;
+    if (value >= 'A' && value <= 'F')
+        return value - 'A' + 10;
+    return -1;
+}
+
+static boolean JsonKeyEquals(const char *start, const char *end,
+                             const char *key)
+{
+    if (start == NULL || end == NULL || key == NULL || start > end)
+        return false;
+    while (start < end && *key != 0)
+    {
+        unsigned int decoded = (unsigned char)*start++;
+        if (decoded == 0x5CU)
+        {
+            if (start >= end)
+                return false;
+            switch (*start++)
+            {
+                case (char)0x22:
+                    decoded = 0x22U;
+                    break;
+                case (char)0x5C:
+                    decoded = 0x5CU;
+                    break;
+                case '/':
+                    decoded = (unsigned int)'/';
+                    break;
+                case 'b':
+                    decoded = 0x08U;
+                    break;
+                case 'f':
+                    decoded = 0x0CU;
+                    break;
+                case 'n':
+                    decoded = 0x0AU;
+                    break;
+                case 'r':
+                    decoded = 0x0DU;
+                    break;
+                case 't':
+                    decoded = 0x09U;
+                    break;
+                case 'u':
+                    {
+                        unsigned int codepoint = 0U;
+                        for (int index = 0; index < 4; ++index)
+                        {
+                            const int digit =
+                                start < end ? JsonHexValue(*start++) : -1;
+                            if (digit < 0)
+                                return false;
+                            codepoint = codepoint * 16U + (unsigned int)digit;
+                        }
+                        if (codepoint > 0x7FU)
+                            return false;
+                        decoded = codepoint;
+                        break;
+                    }
+                default:
+                    return false;
+            }
+        }
+        if (decoded != (unsigned int)(unsigned char)*key)
+            return false;
+        ++key;
+    }
+    return start == end && *key == 0;
+}
+
+static const char *SkipJsonValueDepth(const char *cursor, int depth);
+
+static const char *SkipJsonArray(const char *cursor, int depth)
+{
+    ++cursor;
+    cursor = SkipJsonSpace(cursor);
+    if (*cursor == ']')
+        return cursor + 1;
+    for (;;)
+    {
+        cursor = SkipJsonValueDepth(cursor, depth + 1);
+        if (cursor == NULL)
+            return NULL;
+        cursor = SkipJsonSpace(cursor);
+        if (*cursor == ']')
+            return cursor + 1;
+        if (*cursor != ',')
+            return NULL;
+        cursor = SkipJsonSpace(cursor + 1);
+        if (*cursor == ']')
+            return NULL;
+    }
+}
+
+static const char *SkipJsonObject(const char *cursor, int depth)
+{
+    ++cursor;
+    cursor = SkipJsonSpace(cursor);
+    if (*cursor == '}')
+        return cursor + 1;
+    for (;;)
+    {
+        if (*cursor != (char)0x22)
+            return NULL;
+        cursor = SkipJsonQuoted(cursor);
+        if (cursor == NULL)
+            return NULL;
+        cursor = SkipJsonSpace(cursor);
+        if (*cursor != ':')
+            return NULL;
+        cursor = SkipJsonValueDepth(cursor + 1, depth + 1);
+        if (cursor == NULL)
+            return NULL;
+        cursor = SkipJsonSpace(cursor);
+        if (*cursor == '}')
+            return cursor + 1;
+        if (*cursor != ',')
+            return NULL;
+        cursor = SkipJsonSpace(cursor + 1);
+        if (*cursor == '}')
+            return NULL;
+    }
+}
+
+static boolean IsJsonNumberDelimiter(char value)
+{
+    return value == 0 || value == ' ' || value == '\t' || value == '\r' ||
+           value == '\n' || value == ',' || value == ']' || value == '}';
+}
+
+static const char *SkipJsonNumber(const char *cursor)
+{
+    if (*cursor == '-')
+        ++cursor;
+    if (*cursor == '0')
+        ++cursor;
+    else
+    {
+        if (*cursor < '1' || *cursor > '9')
+            return NULL;
+        do
+        {
+            ++cursor;
+        }
+        while (*cursor >= '0' && *cursor <= '9');
+    }
+    if (*cursor == '.')
+    {
+        ++cursor;
+        if (*cursor < '0' || *cursor > '9')
+            return NULL;
+        do
+        {
+            ++cursor;
+        }
+        while (*cursor >= '0' && *cursor <= '9');
+    }
+    if (*cursor == 'e' || *cursor == 'E')
+    {
+        ++cursor;
+        if (*cursor == '+' || *cursor == '-')
+            ++cursor;
+        if (*cursor < '0' || *cursor > '9')
+            return NULL;
+        do
+        {
+            ++cursor;
+        }
+        while (*cursor >= '0' && *cursor <= '9');
+    }
+    return IsJsonNumberDelimiter(*cursor) ? cursor : NULL;
+}
+
+static const char *SkipJsonLiteralValue(const char *cursor, const char *literal)
+{
+    while (*literal != 0)
+    {
+        if (*cursor != *literal)
+            return NULL;
+        ++cursor;
+        ++literal;
+    }
+    return IsJsonNumberDelimiter(*cursor) ? cursor : NULL;
+}
+
+static const char *SkipJsonValueDepth(const char *cursor, int depth)
+{
+    if (cursor == NULL || depth > 64)
+        return NULL;
+    cursor = SkipJsonSpace(cursor);
+    if (*cursor == (char)0x22)
+        return SkipJsonQuoted(cursor);
+    if (*cursor == '{')
+        return SkipJsonObject(cursor, depth);
+    if (*cursor == '[')
+        return SkipJsonArray(cursor, depth);
+    if (*cursor == 't')
+        return SkipJsonLiteralValue(cursor, "true");
+    if (*cursor == 'f')
+        return SkipJsonLiteralValue(cursor, "false");
+    if (*cursor == 'n')
+        return SkipJsonLiteralValue(cursor, "null");
+    return SkipJsonNumber(cursor);
+}
+
+static const char *SkipJsonValue(const char *cursor)
+{
+    return SkipJsonValueDepth(cursor, 0);
+}
+
+static const char *FindJsonValue(const char *json, const char *key)
+{
+    const char *cursor;
+    const char *found = NULL;
+
+    if (json == NULL || key == NULL || *key == 0)
+        return NULL;
+    cursor = SkipJsonSpace(json);
+    if (*cursor != '{')
+        return NULL;
+    ++cursor;
+
+    for (;;)
+    {
+        const char *name_start;
+        const char *name_end;
+        const char *value;
+        const char *after_value;
+        boolean matches;
+
+        cursor = SkipJsonSpace(cursor);
+        if (*cursor == '}')
+        {
+            cursor = SkipJsonSpace(cursor + 1);
+            return *cursor == 0 ? found : NULL;
+        }
+        if (*cursor != (char)0x22)
+            return NULL;
+        name_start = cursor + 1;
+        name_end = SkipJsonQuoted(cursor);
+        if (name_end == NULL)
+            return NULL;
+        matches = JsonKeyEquals(name_start, name_end - 1, key);
+        cursor = SkipJsonSpace(name_end);
+        if (*cursor != ':')
+            return NULL;
+        value = SkipJsonSpace(cursor + 1);
+        if (matches)
+        {
+            if (found != NULL)
+                return NULL;
+            found = value;
+        }
+        after_value = SkipJsonValue(value);
+        if (after_value == NULL)
+            return NULL;
+        cursor = SkipJsonSpace(after_value);
+        if (*cursor == ',')
+        {
+            cursor = SkipJsonSpace(cursor + 1);
+            if (*cursor == '}')
+                return NULL;
+            continue;
+        }
+        if (*cursor != '}')
+            return NULL;
+    }
+}
+
+static boolean IsJsonTokenTerminator(char value)
+{
+    return value == '\0' || value == ' ' || value == '\t' || value == '\r' ||
+           value == '\n' || value == ',' || value == '}' || value == ']';
+}
+
+static boolean MatchJsonLiteral(const char *cursor, const char *literal,
+                                const char **end)
+{
+    if (cursor == NULL || literal == NULL || end == NULL)
+        return false;
+    while (*literal != '\0')
+    {
+        if (*cursor == '\0' || *cursor != *literal)
+            return false;
+        ++cursor;
+        ++literal;
+    }
+    if (!IsJsonTokenTerminator(*cursor))
+        return false;
+    *end = cursor;
+    return true;
+}
+
+static boolean ParseJsonBoolean(const char *json, const char *key,
+                                boolean *value)
+{
+    const char *cursor = FindJsonValue(json, key);
+    const char *end = NULL;
+
+    if (cursor == NULL || value == NULL)
+        return false;
+    if (MatchJsonLiteral(cursor, "true", &end))
+    {
+        *value = true;
+        return true;
+    }
+    if (MatchJsonLiteral(cursor, "false", &end))
+    {
+        *value = false;
+        return true;
+    }
+    return false;
+}
+
+static boolean ParsePositiveInt(const char **cursor_ptr, int *value)
+{
+    const char *cursor = SkipJsonSpace(*cursor_ptr);
+    int result = 0;
+    int digits = 0;
+
+    while (*cursor >= '0' && *cursor <= '9')
+    {
+        const int digit = *cursor - '0';
+        if (result > (INT32_MAX - digit) / 10)
+            return false;
+        result = result * 10 + digit;
+        ++cursor;
+        ++digits;
+    }
+    if (digits == 0 || result <= 0)
+        return false;
+    *cursor_ptr = cursor;
+    *value = result;
+    return true;
+}
+
+static boolean ParseJsonResolution(const char *json, const char *key,
+                                   int *width, int *height)
+{
+    const char *cursor = FindJsonValue(json, key);
+
+    if (cursor == NULL || *cursor != '[')
+        return false;
+    ++cursor;
+    if (!ParsePositiveInt(&cursor, width))
+        return false;
+    cursor = SkipJsonSpace(cursor);
+    if (*cursor != ',')
+        return false;
+    ++cursor;
+    if (!ParsePositiveInt(&cursor, height))
+        return false;
+    cursor = SkipJsonSpace(cursor);
+    if (*cursor != ']')
+        return false;
+    ++cursor;
+    cursor = SkipJsonSpace(cursor);
+    return IsJsonTokenTerminator(*cursor);
+}
+
+static boolean HasArgument(int argc, char **argv, const char *name)
+{
+    for (int index = 1; index < argc; ++index)
+        if (strcmp(argv[index], name) == 0)
+            return true;
+    return false;
+}
+
+static boolean HasRenderArgument(int argc, char **argv)
+{
+    return HasArgument(argc, argv, "-render-scale") ||
+           HasArgument(argc, argv, "-render-height") ||
+           HasArgument(argc, argv, "-render-width");
+}
+
+static boolean AppendDebugArgument(int *count, char *value)
+{
+    if (count == NULL || value == NULL || *count < 0 ||
+        *count >= MAX_DEBUG_ARGUMENTS - 1)
+        return false;
+    debug_arguments[*count] = value;
+    ++*count;
+    return true;
+}
+
+static boolean CorrectedRenderWidth(int display_width, int height,
+                                    int *guest_width)
+{
+    int64_t scaled_width;
+    int64_t minimum_width;
+
+    if (guest_width == NULL || display_width <= 0 || height < 200 ||
+        height % 5 != 0)
+        return false;
+    scaled_width = (int64_t)display_width * 6;
+    if (scaled_width % 5 != 0 || scaled_width / 5 > INT_MAX)
+        return false;
+    *guest_width = (int)(scaled_width / 5);
+    minimum_width = (int64_t)8 * height / 5;
+    return (int64_t)*guest_width >= minimum_width && (*guest_width & 1) == 0;
+}
+
+static void LoadDebugSettings(void)
+{
+    FILE *file;
+    long size;
+    size_t bytes_read;
+    int width;
+    int height;
+
+    file = fopen("settings.json", "rb");
+    if (file == NULL)
+        return;
+    if (fseek(file, 0, SEEK_END) != 0)
+    {
+        (void)fclose(file);
+        return;
+    }
+    size = ftell(file);
+    if (size < 0 || size >= (long)sizeof(settings_json) ||
+        fseek(file, 0, SEEK_SET) != 0)
+    {
+        (void)fclose(file);
+        return;
+    }
+    bytes_read = fread(settings_json, 1, (size_t)size, file);
+    if (fclose(file) != 0 || bytes_read != (size_t)size)
+        return;
+    for (size_t index = 0; index < bytes_read; ++index)
+        if (settings_json[index] == '\0')
+            return;
+    settings_json[bytes_read] = '\0';
+
+    (void)ParseJsonBoolean(settings_json, "maximized",
+                           &debug_settings.maximized);
+    if (ParseJsonResolution(settings_json, "resolution", &width, &height) &&
+        width >= 320 && height >= 200)
+    {
+        debug_settings.window_width = width;
+        debug_settings.window_height = height;
+    }
+    if (ParseJsonResolution(settings_json, "render_resolution", &width,
+                            &height) &&
+        width >= 320 && height >= 200)
+    {
+        debug_settings.render_width = width;
+        debug_settings.render_height = height;
+    }
+}
+
+static int BuildDebugArguments(int argc, char **argv)
+{
+    static char arg_render_height[] = "-render-height";
+    static char arg_render_width[] = "-render-width";
+    int count = 0;
+    int guest_width;
+
+    for (int index = 0; index < argc; ++index)
+        if (!AppendDebugArgument(&count, argv[index]))
+            return -1;
+    if (!HasRenderArgument(argc, argv))
+    {
+        if (!CorrectedRenderWidth(debug_settings.render_width,
+                                  debug_settings.render_height, &guest_width))
+        {
+            (void)fprintf(stderr,
+                          "Invalid render_resolution in settings.json\n");
+            return -1;
+        }
+        if (snprintf(render_height_text, sizeof(render_height_text), "%d",
+                     debug_settings.render_height) <= 0 ||
+            snprintf(render_width_text, sizeof(render_width_text), "%d",
+                     guest_width) <= 0)
+            return -1;
+        if (!AppendDebugArgument(&count, arg_render_height) ||
+            !AppendDebugArgument(&count, render_height_text) ||
+            !AppendDebugArgument(&count, arg_render_width) ||
+            !AppendDebugArgument(&count, render_width_text))
+            return -1;
+    }
+    debug_arguments[count] = NULL;
+    return count;
+}
 
 static boolean EnsureSdl(uint32_t flags)
 {
@@ -212,9 +782,12 @@ boolean DoomHost_VideoInitialize(const doom_host_video_config_t *config)
     // Native debug windows stay decorated so the desktop window
     // manager can minimize, maximize, move, and close them normally.
     (void)config->borderless;
+    if (debug_settings.maximized)
+        flags |= SDL_WINDOW_MAXIMIZED;
     window_handle = SDL_CreateWindow(
         config->title != NULL ? config->title : "DOOM", SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED, 1280, 720, flags);
+        SDL_WINDOWPOS_CENTERED, debug_settings.window_width,
+        debug_settings.window_height, flags);
     if (window_handle == NULL)
     {
         (void)fprintf(stderr, "SDL window failed: %s\n", SDL_GetError());
@@ -635,6 +1208,12 @@ void DoomHost_DebugExecutionActivity(const char *language, const char *source,
 #ifndef MALBOLGE_DOOM_ADAPTER_NO_MAIN
 int main(int argc, char **argv)
 {
-    return DoomGuestMain(argc, argv);
+    int debug_argc;
+
+    LoadDebugSettings();
+    debug_argc = BuildDebugArguments(argc, argv);
+    if (debug_argc < 0)
+        return 2;
+    return DoomGuestMain(debug_argc, debug_arguments);
 }
 #endif

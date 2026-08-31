@@ -305,11 +305,9 @@ User-owned commercial IWADs remain external inputs and use the same opaque host
 data capability instead of being redistributed. Savegames and other persistence
 also remain host-backed raw data operations even when the base IWAD is packaged.
 
-The temporary desktop runner also exercises a small launcher-side
-`settings.json`
-schema. JSON remains a host/launcher concern; the DOOM guest does not parse
-JSON.
-The current schema is:
+The native desktop debug adapters also exercise a small launcher-side
+`settings.json` schema. JSON remains a host/launcher concern; the DOOM guest
+does not parse JSON. A representative cross-host file is:
 
 ```json
 {
@@ -317,11 +315,24 @@ The current schema is:
   "wads": [],
   "language": "english",
   "maximized": true,
-  "resolution": [1280, 720],
+  "resolution": [1920, 1080],
+  "render_resolution": [640, 360],
   "vsync": false,
   "show_fps": true
 }
 ```
+
+`resolution` describes the physical desktop window. On Linux,
+`render_resolution` independently selects the corrected visual raster. The host
+maps its width through the classic 5:6 pixel-aspect correction before adding the
+guest render arguments: `[640, 360]` becomes a raw `768x360` guest framebuffer,
+while `[1920, 1080]` becomes `2304x1080`.
+
+Explicit `-render-scale`, `-render-height`, or `-render-width` arguments
+override that Linux JSON render default. Keeping presentation resolution
+separate from render resolution allows a maximized 1080p desktop window without
+forcing the software renderer, or a future Malbolge program, to calculate a
+native 1080p framebuffer every frame.
 
 `iwad` selects exactly one base IWAD. An empty string means that the runner may
 use its packaged/autodetected resource, which is Freedoom in the current manual

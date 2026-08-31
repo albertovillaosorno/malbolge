@@ -531,7 +531,7 @@ paths = ["src/"]
 
 [taxonomy.role.root_governance]
 # jig-ignore-next-line: indivisible reviewed identifier
-paths = [".editorconfig", ".gitattributes", ".gitignore", "AGENTS.md", "CITATION.cff", "Cargo.lock", "Cargo.toml", "LICENSE-MIT", "README.md", "ROADMAP.md", "TODO.md", "malbolge.json"]
+paths = [".editorconfig", ".gitattributes", ".gitignore", "AGENTS.md", "CITATION.cff", "Cargo.lock", "Cargo.toml", "DOOM.md", "LICENSE-MIT", "README.md", "ROADMAP.md", "TODO.md", "malbolge.json"]
 
 [taxonomy.role.tests]
 paths = ["tests/"]

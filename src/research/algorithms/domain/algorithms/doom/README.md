@@ -131,43 +131,56 @@ than merged.
 ### Quality transform
 
 - Path: `src/research/algorithms/composition/algorithms/doom/quality/main.rs`
-- Size: 5,228,952 bytes (4.99 MiB)
-- Lines: 73,347
+- Size: 3,092,640 bytes
+- Lines: 43,667
 - SHA-256:
-  `83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`
+  `27c3d2b0dba2ba043a4fb6ecc37c148643898552cab17a400840a2e60e0f3699`
 
 ### Amalgamation transform
 
 - Path: `src/research/algorithms/composition/algorithms/doom/amalgamate/main.rs`
-- Size: 5,748,320 bytes (5.48 MiB)
-- Lines: 80,560
+- Size: 3,573,797 bytes
+- Lines: 50,349
 - SHA-256:
-  `7bcd19b073c5839c4c9119a0b871e4e4cd6e63dbedeb7571b6099f234e92f439`
+  `e4ba6b14ec067b3836cc59b86f096b6f450651a2cb0eb6453a6f8c0de651cc39`
 
 ### Canonical C output
 
 - Path: `algorithms/doom/amalgamate/out/doom.c` (ignored)
-- Size: 2,507,561 bytes (2.39 MiB)
-- Lines: 79,336
+- Size: 1,543,214 bytes
+- Lines: 51,096
 - SHA-256:
-  `a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`
+  `4d5e7583baabeef6a7e21f3e7c3c560a4e4e44d7f467a8d4a9dcdc92775adc40`
 
-The two Rust artifacts have a maximum physical line length of 80 characters.
-The canonical `doom.c`, its ignored oracle, repeated materialization, and the
-ignored application fixture are byte-identical.
+The normalized tree contains 130 files: 63 C translation units, 66 headers,
+and the root license file. The accepted quality oracle and generated quality
+materialization have aggregate tree SHA-256
+`7bf0723d2abca8e33a1db7eade698d90b3c7bf4c2611eccdccd6606cbeed1923`.
+
+The current amalgamation uses 63 translation units, 19 private bindings, 65
+unique embedded project headers, 128 expanded project includes, 529 duplicate
+header elisions, and one guarded include-cycle elision. The generated `doom.c`
+is byte-identical to the ignored amalgamation oracle and to the interactively
+playtested C artifact.
 
 ## Validation summary
 
-- 65/65 normalized C translation units pass the guest-C validator.
-- Final `doom.c` passes strict Clang 22.1.8 on six target combinations.
-- Generated Rust compiles with Rust 1.97.1 and `-D warnings`.
-- Multi-TU and single-TU framebuffer/audio transcripts are identical.
-- ASan+UBSan and the Windows adapter build successfully.
-- Roughly 20 minutes of native play did not reproduce the autoaim crash.
-- Missing or mutated source fails before target publication.
+- 63/63 normalized C translation units pass the complete pre-Malbolge validator.
+- The canonical `doom.c` passes the pinned Clang pre-Malbolge C preflight.
+- Both generated Rust transforms compile with Rust 1.97.1 and `-D warnings`.
+- Fresh materialization reproduces the accepted quality tree byte-for-byte.
+- Fresh amalgamation reproduces the playtested `doom.c` byte-for-byte.
+- Canonical `malbolge doom.c` native debugging works on Linux and Windows host
+  boundaries; the Linux path uses SDL2 and external `settings.json` presentation
+  configuration.
+- An interactive Linux playtest confirmed world rendering, HUD, input, audio,
+  WAD loading, and ordinary single-player gameplay with the canonical C
+  artifact.
+- Missing or mutated admitted source fails before target publication.
 
-This proves source-level guest-C readiness. It does not prove complete Malbolge
-compatibility because `doom.malbolge` has not been generated or executed.
+This proves the source-level C baseline is ready. It does not prove complete
+Malbolge compatibility because `doom.malbolge` has not yet been generated or
+executed.
 
 See `amalgamate/CHANGELOG.md`, `quality/CHANGELOG.md`, and the contracts
 under `docs/technical/interoperability/` for detailed history and evidence.
