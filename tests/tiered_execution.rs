@@ -280,6 +280,7 @@ use geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruReconfigurationFailure as CrossLimitFailure,
     GeometryNativeCrossTemplateLruRelease as CrossLruRelease,
     GeometryNativeCrossTemplateLruReleaseAllFailure as CrossAllFailure,
+    GeometryNativeCrossTemplateLruSnapshot as CrossActiveSnapshot,
 };
 use geometry_native_cross_template_concurrent_cache::{
     GeometryNativeConcurrentCrossTemplateAccessError as CrossSyncAccessError,
@@ -13537,6 +13538,46 @@ fn concurrent_transferred_cleanup(
     }
 }
 
+fn require_cross_active_snapshot(
+    snapshot: &CrossActiveSnapshot,
+    noop_plan: &CrossResidentPlan,
+    rotate_plan: &CrossResidentPlan,
+    full_plan: &CrossResidentPlan,
+) -> Result<(), String> {
+    let [noop, rotate, full] = snapshot.residents() else {
+        return Err(String::from("cross active snapshot shape drifted"));
+    };
+    let expected_plans = [noop_plan, rotate_plan, full_plan];
+    let snapshots = [noop, rotate, full];
+    let expected_bytes = [12_288usize, 28_672usize, 73_728usize];
+    let expected_mappings = [2usize, 2usize, 3usize];
+    let expected_leases = [0usize, 1usize, 0usize];
+    for ((((resident, plan), bytes), mappings), leases) in snapshots
+        .into_iter()
+        .zip(expected_plans)
+        .zip(expected_bytes)
+        .zip(expected_mappings)
+        .zip(expected_leases)
+    {
+        if resident.plan() != plan
+            || resident.leases() != leases
+            || resident.weight().mapped_bytes() != bytes
+            || resident.weight().mappings() != mappings
+        {
+            return Err(String::from("cross active resident snapshot drifted"));
+        }
+    }
+    if snapshot.limits().entry_limit().get() == 3
+        && snapshot.usage().entries() == 3
+        && snapshot.usage().mapped_bytes() == 114_688
+        && snapshot.usage().mappings() == 7
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross active aggregate snapshot drifted"))
+    }
+}
+
 fn require_cross_drain_initial_snapshot(
     snapshot: &CrossDrainSnapshot,
     noop_plan: &CrossResidentPlan,
@@ -15610,6 +15651,52 @@ fn geometry_native_noop_halt_loaded_late_failure_retains_prefix()
 }
 
 #[test]
+fn geometry_native_cross_template_lru_snapshot_is_coherent()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(264)?,
+        native_executable_address(0xb_5000)?,
+    )
+    .with_mapped_len_overrides(vec![
+        4_096, 8_192, 12_288, 16_384, 20_480, 24_576, 28_672,
+    ]);
+    let mut cache = cross_template_lru(3)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let rotate = cache
+        .ensure(&mut adapter, &rotate_plan)
+        .map_err(|error| error.to_string())?;
+    drop(
+        cache
+            .ensure(&mut adapter, &full_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let snapshot = cache.snapshot().map_err(|error| error.to_string())?;
+    require_cross_active_snapshot(
+        &snapshot,
+        &noop_plan,
+        &rotate_plan,
+        &full_plan,
+    )?;
+    drop(rotate);
+    let released = cache
+        .release_all_unleased(&mut adapter)
+        .map_err(|error| format!("cross active snapshot cleanup: {error}"))?;
+    if released.released_residents() == [noop_plan, rotate_plan, full_plan]
+        && released.retained_residents().is_empty()
+        && adapter.operations.len() == 35
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross active snapshot cleanup drifted"))
+    }
+}
+
+#[test]
 fn geometry_native_cross_template_drain_reports_exact_usage()
 -> Result<(), String> {
     let (noop_plan, _rotate_plan, full_plan) = cross_template_resident_plans()?;
@@ -17321,12 +17408,15 @@ fn geometry_native_concurrent_cross_template_try_snapshot_reports_busy()
             format!("try-snapshot adapter never acquired lock: {error}")
         })?;
     let busy = cache.try_snapshot(&noop_plan);
+    let busy_all = cache.try_snapshot_all();
     let _sent = proceed_tx.send(());
     let acquisition = worker
         .join()
         .map_err(|_panic| String::from("try-snapshot worker panicked"))?
         .map_err(|error| format!("try-snapshot load failed: {error}"))?;
-    if busy != Err(TrySnapFailure::Busy) {
+    if busy != Err(TrySnapFailure::Busy)
+        || busy_all != Err(TrySnapFailure::Busy)
+    {
         return Err(String::from("try-snapshot failed to report busy lock"));
     }
     let snapshot = cache
@@ -17381,6 +17471,53 @@ fn geometry_native_concurrent_cross_template_snapshot_is_coherent()
         .release_if_unleased(&noop_plan)
         .map(|_release| ())
         .map_err(|error| format!("concurrent snapshot cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_snapshot_all_is_coherent()
+-> Result<(), String> {
+    let (noop_plan, rotate_plan, full_plan) = cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(265)?,
+        native_executable_address(0xb_6000)?,
+    )
+    .with_mapped_len_overrides(vec![
+        4_096, 8_192, 12_288, 16_384, 20_480, 24_576, 28_672,
+    ]);
+    let cache = concurrent_cross_template_lru(adapter, 3)?;
+    drop(
+        cache
+            .ensure(&noop_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let rotate = cache
+        .ensure(&rotate_plan)
+        .map_err(|error| error.to_string())?;
+    drop(
+        cache
+            .ensure(&full_plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let snapshot = cache
+        .snapshot_all()
+        .map_err(|error| format!("concurrent snapshot-all: {error}"))?;
+    require_cross_active_snapshot(
+        &snapshot,
+        &noop_plan,
+        &rotate_plan,
+        &full_plan,
+    )?;
+    drop(rotate);
+    let released = cache
+        .release_all_unleased()
+        .map_err(|error| format!("concurrent snapshot-all cleanup: {error}"))?;
+    if released.released_residents() == [noop_plan, rotate_plan, full_plan]
+        && released.retained_residents().is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("concurrent snapshot-all cleanup drifted"))
+    }
 }
 
 #[test]

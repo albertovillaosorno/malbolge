@@ -50,6 +50,7 @@ use crate::geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruRelease,
     GeometryNativeCrossTemplateLruReleaseAll,
     GeometryNativeCrossTemplateLruReleaseAllFailure,
+    GeometryNativeCrossTemplateLruSnapshot,
     GeometryNativeCrossTemplateLruUsage,
 };
 use crate::geometry_native_cross_template_resident::{
@@ -348,6 +349,14 @@ pub type GeometryNativeConcurrentCrossTemplateSnapshotResult = Result<
     >,
 >;
 
+/// Result of reading one coherent all-resident active snapshot.
+pub type GeometryNativeConcurrentCrossTemplateSnapshotAllResult = Result<
+    GeometryNativeCrossTemplateLruSnapshot,
+    GeometryNativeConcurrentCrossTemplateFailure<
+        GeometryNativeResidentWeightError,
+    >,
+>;
+
 /// Result of one nonblocking heterogeneous resident acquisition.
 pub type GeometryNativeConcurrentCrossTemplateTryAcquireResult<MemoryError> =
     Result<
@@ -394,6 +403,12 @@ pub type GeometryNativeConcurrentCrossTemplateTryReleaseResult<MemoryError> =
 /// Result of one nonblocking coherent resident/cache snapshot.
 pub type GeometryNativeConcurrentCrossTemplateTrySnapshotResult = Result<
     GeometryNativeConcurrentCrossTemplateSnapshot,
+    GeometryNativeConcurrentCrossTemplateTrySnapshotFailure,
+>;
+
+/// Result of one nonblocking coherent all-resident active snapshot.
+pub type GeometryNativeConcurrentCrossTemplateTrySnapshotAllResult = Result<
+    GeometryNativeCrossTemplateLruSnapshot,
     GeometryNativeConcurrentCrossTemplateTrySnapshotFailure,
 >;
 
@@ -908,6 +923,27 @@ where
         snapshot
     }
 
+    /// Captures all active identities, leases, weights, limits, and usage.
+    ///
+    /// The complete active snapshot is produced while one mutex guard owns the
+    /// cache, so no mutation can split identity/lease/usage observations across
+    /// epochs.
+    ///
+    /// # Errors
+    ///
+    /// Returns poison or exact resident-weight overflow evidence.
+    pub fn snapshot_all(
+        &self,
+    ) -> GeometryNativeConcurrentCrossTemplateSnapshotAllResult {
+        let state = self.lock().map_err(|_error| {
+            GeometryNativeConcurrentCrossTemplateFailure::Poisoned
+        })?;
+        state
+            .cache
+            .snapshot()
+            .map_err(GeometryNativeConcurrentCrossTemplateFailure::Operation)
+    }
+
     fn snapshot_from_state(
         state: &GeometryNativeConcurrentCrossTemplateState<Adapter>,
         plan: &GeometryNativeResidentPlan,
@@ -1191,6 +1227,31 @@ where
             .map_err(TrySnapshotFailure::ResidentWeight);
         drop(state);
         snapshot
+    }
+
+    /// Attempts one all-resident active snapshot without waiting for the mutex.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Busy` before observation when another thread owns the mutex,
+    /// `Poisoned` after interrupted mutation, or exact weight overflow
+    /// evidence.
+    pub fn try_snapshot_all(
+        &self,
+    ) -> GeometryNativeConcurrentCrossTemplateTrySnapshotAllResult {
+        let state = match self.inner.try_lock() {
+            Ok(state) => state,
+            Err(TryLockError::Poisoned(_error)) => {
+                return Err(TrySnapshotFailure::Poisoned);
+            },
+            Err(TryLockError::WouldBlock) => {
+                return Err(TrySnapshotFailure::Busy);
+            },
+        };
+        state
+            .cache
+            .snapshot()
+            .map_err(TrySnapshotFailure::ResidentWeight)
     }
 
     /// Returns exact aggregate mapping usage under synchronized cache access.

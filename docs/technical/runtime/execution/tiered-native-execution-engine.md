@@ -940,6 +940,13 @@ live lease keeps its resident lookup-visible until the lease is returned and a
 later pass can reclaim it. Focused cases cover full release, one retained lease,
 and aggregate release failure with exact retry ownership.
 
+The active heterogeneous LRU can now capture one coherent all-resident
+snapshot before retirement. Each LRU-to-MRU entry records exact plan, external
+lease count, and owner-reported weight, while the same snapshot carries current
+limits and checked aggregate usage. A nonuniform three-resident fixture proves
+12,288/2, 28,672/2, and 73,728/3 weights sum to 114,688 bytes across seven
+mappings with the middle resident leased.
+
 A separate consuming transition now provides true retired authority.
 `GeometryNativeCrossTemplateLruCache::into_drain` performs no adapter work and
 moves every active resident into a drain handle, so the original lookup cache no
@@ -1031,13 +1038,20 @@ publishes nothing if the lock is poisoned or resident-weight aggregation fails.
 A focused case proves lease-count transition from one to zero without changing
 the same snapshot's limits or usage.
 
+`snapshot_all()` extends the same single-lock rule across the complete active
+resident set. It forwards the LRU all-resident snapshot under one mutex guard,
+including LRU order, exact identities, lease counts, owner weights, limits, and
+aggregate usage. The three-resident fixture matches the direct LRU snapshot
+without exposing the adapter or composing separate reads.
+
 Telemetry can request the same observation without waiting for mutation.
 `try_snapshot(plan)` uses `Mutex::try_lock`: `Busy` reports live lock
 contention,
 `Poisoned` preserves fail-closed authority, and success delegates to the exact
-same snapshot constructor as the blocking read. A blocking-adapter case proves
-`Busy` while `ensure` owns the mutex and a coherent snapshot immediately after
-the load completes.
+same snapshot constructor as the blocking read. `try_snapshot_all()` applies the
+same `try_lock` rule to the all-resident view. A blocking-adapter case proves
+both nonblocking forms report `Busy` while `ensure` owns the mutex, followed by
+a coherent snapshot after the load completes.
 
 Mutation callers can likewise use `try_ensure(plan)` when waiting for the cache
 mutex is undesirable. `Busy` is reported before any adapter work, while a

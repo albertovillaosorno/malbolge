@@ -267,6 +267,22 @@ pub struct GeometryNativeCrossTemplateLruUsage {
     mappings: usize,
 }
 
+/// One active resident observation from a single LRU epoch.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GeometryNativeCrossTemplateLruResidentSnapshot {
+    leases: usize,
+    plan: GeometryNativeResidentPlan,
+    weight: GeometryNativeResidentWeight,
+}
+
+/// Coherent active-resident observation in current LRU-to-MRU order.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GeometryNativeCrossTemplateLruSnapshot {
+    limits: GeometryNativeCrossTemplateLruLimits,
+    residents: Vec<GeometryNativeCrossTemplateLruResidentSnapshot>,
+    usage: GeometryNativeCrossTemplateLruUsage,
+}
+
 /// One immutable external owner of a heterogeneous v5 resident.
 #[derive(Clone, Debug)]
 pub struct GeometryNativeCrossTemplateLruLease {
@@ -723,6 +739,49 @@ impl GeometryNativeCrossTemplateLruUsage {
     #[must_use]
     pub const fn mappings(self) -> usize {
         self.mappings
+    }
+}
+
+impl GeometryNativeCrossTemplateLruResidentSnapshot {
+    /// Returns external leases retaining this active resident.
+    #[must_use]
+    pub const fn leases(&self) -> usize {
+        self.leases
+    }
+
+    /// Returns the exact admitted identity of this active resident.
+    #[must_use]
+    pub const fn plan(&self) -> &GeometryNativeResidentPlan {
+        &self.plan
+    }
+
+    /// Returns exact synchronized mapping weight for this active resident.
+    #[must_use]
+    pub const fn weight(&self) -> GeometryNativeResidentWeight {
+        self.weight
+    }
+}
+
+impl GeometryNativeCrossTemplateLruSnapshot {
+    /// Returns resource limits published in this same active-cache epoch.
+    #[must_use]
+    pub const fn limits(&self) -> GeometryNativeCrossTemplateLruLimits {
+        self.limits
+    }
+
+    /// Returns resident observations in current LRU-to-MRU order.
+    #[must_use]
+    pub fn residents(
+        &self,
+    ) -> &[GeometryNativeCrossTemplateLruResidentSnapshot] {
+        &self.residents
+    }
+
+    /// Returns exact aggregate resource usage from this same active-cache
+    /// epoch.
+    #[must_use]
+    pub const fn usage(&self) -> GeometryNativeCrossTemplateLruUsage {
+        self.usage
     }
 }
 
@@ -1202,6 +1261,51 @@ impl GeometryNativeCrossTemplateLruCache {
             self.residents.get(index).map_or(0, |resident| {
                 Arc::strong_count(resident).saturating_sub(1)
             })
+        })
+    }
+
+    /// Captures every active resident, lease count, weight, limits, and usage.
+    ///
+    /// Resident observations preserve current LRU-to-MRU order and all values
+    /// come from this single immutable cache epoch.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact resident-weight overflow before publishing a partial
+    /// observation.
+    pub fn snapshot(
+        &self,
+    ) -> Result<
+        GeometryNativeCrossTemplateLruSnapshot,
+        GeometryNativeResidentWeightError,
+    > {
+        let mut mapped_bytes = 0usize;
+        let mut mappings = 0usize;
+        let mut residents = Vec::with_capacity(self.residents.len());
+        for resident in &self.residents {
+            let weight = resident.resident_weight()?;
+            mapped_bytes =
+                mapped_bytes.checked_add(weight.mapped_bytes()).ok_or(
+                    GeometryNativeResidentWeightError::MappedBytesOverflow,
+                )?;
+            mappings = mappings
+                .checked_add(weight.mappings())
+                .ok_or(GeometryNativeResidentWeightError::MappingsOverflow)?;
+            residents.push(GeometryNativeCrossTemplateLruResidentSnapshot {
+                leases: Arc::strong_count(resident).saturating_sub(1),
+                plan: resident.plan(),
+                weight,
+            });
+        }
+        let usage = GeometryNativeCrossTemplateLruUsage {
+            entries: residents.len(),
+            mapped_bytes,
+            mappings,
+        };
+        Ok(GeometryNativeCrossTemplateLruSnapshot {
+            limits: self.limits(),
+            residents,
+            usage,
         })
     }
 

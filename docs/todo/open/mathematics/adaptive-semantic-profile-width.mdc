@@ -762,6 +762,10 @@ transfers, verification, and other separately measured costs.
 - The heterogeneous LRU can now release every currently unleased resident in
   LRU order. Leased identities remain active and ordered; failed releases leave
   cache authority and return exact plan plus typed cleanup ownership for retry.
+- Active LRU snapshots now capture every resident in LRU-to-MRU order with
+  exact plan, external leases, owner weight, current limits, and aggregate usage
+  from one cache epoch. A three-resident fixture proves individual weights sum
+  exactly to the same checked usage used by capacity policy.
 - A separate consuming `into_drain` transition removes all active lookup
   authority without adapter work. Drain reconciliation releases unleased
   retired residents, keeps live leases retired instead of active, and transfers
@@ -807,10 +811,14 @@ transfers, verification, and other separately measured costs.
   reports residence, external leases, published limits, and aggregate mapping
   usage from one mutation epoch, and returns no partial observation after poison
   or resident-weight overflow.
+- Concurrent `snapshot_all` now forwards the complete active LRU snapshot under
+  one mutex guard, preserving LRU order, exact identities, leases, weights,
+  limits, and aggregate usage from one mutation epoch.
 - Nonblocking `try_snapshot` provides the same coherent observation for
   telemetry. It reports `Busy` instead of waiting behind mutation, distinguishes
   poison from transient contention, and reuses the blocking snapshot's exact
-  resident/lease/limit/usage construction.
+  resident/lease/limit/usage construction. `try_snapshot_all` applies the same
+  contention rule to the all-resident view without partial observation.
 - Nonblocking `try_ensure` reports `Busy` before adapter work when mutation is
   locked. Once it acquires the mutex it delegates to the complete existing
   `ensure` transaction, preserving typed load/eviction/cleanup failure evidence;
