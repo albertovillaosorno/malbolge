@@ -973,6 +973,11 @@ transfers, verification, and other separately measured costs.
   adapter work while preserving indexed failure/committed-state evidence; exact
   weight checked-sums all four mapping reports; and final release attempts every
   mapping while retaining only failed cleanup.
+- The reusable four-crazy prefix is now also a typed `CrazyPrefix` resident in
+  the shared heterogeneous boundary. Exact plan identity, load rollback,
+  four-step execution, four-mapping weight, release retry, and mapping-free LRU
+  hits all delegate to the prefix owner. No prefix-specific eviction policy was
+  added; the five-step prefix/halt suffix remains separate shared-residency work.
 - The immediately reached halt now composes after that fixed crazy prefix. Halt
   admission is bound only to the fourth crazy's normative exit, and execution
   preserves one global `p p p p v` index with halt at 4. Applied halt reaches

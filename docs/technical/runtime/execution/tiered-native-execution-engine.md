@@ -425,6 +425,12 @@ and last committed checkpoint, and exact resident weight checked-sums all four
 mapping reports. Final release attempts every mapping and retries only failed
 cleanup.
 
+The same four-mapping owner is now a typed `CrazyPrefix` resident in the shared
+heterogeneous boundary. Exact prefix identity controls lookup, load and release
+failures retain the prefix variant, execution remains delegated to the owner,
+and shared LRU hits reuse all four mappings without adapter work. The generic
+cache consumes the owner's checked weight and adds no prefix-specific policy.
+
 `ExecutionGeometryNativeCrazyPrefixHaltSequence` extends that fixed theorem
 boundary by admitting the immediately reached halt only from the fourth crazy's
 normative exit. Execution preserves one global `p p p p v` index: crazy guards
