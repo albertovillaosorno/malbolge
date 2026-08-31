@@ -712,6 +712,20 @@ Twelve focused suffix tests cover geometry continuity, indexed
 progress/failure, reusable prebinding, owned reuse, partial-load rollback, and
 single/both-mapping cleanup ownership.
 
+Initial jump-data can now also own one reusable synchronized mapping directly.
+`ExecutionGeometryNativeInitialJumpDataAdmission::load_owned` retains the exact
+checkpoint-bound admission beside its ready executable, and repeated owner
+execution reuses the existing prepare/bind/runner path without mapping work.
+Runner failure still restores the full entry snapshot while leaving the mapping
+available for a later successful call.
+
+The owner reports one live mapping and derives its resident bytes directly from
+that mapping's `mapped_len()` report. Final release delegates to the existing
+ready-executable release contract, so failed cleanup transfers the same exact
+mapping ownership already used by transactional execution. Two focused cases
+cover mapped-weight reuse and runner-failure rollback followed by successful
+reuse. This owner is not yet a heterogeneous LRU resident.
+
 The complete certified `(&O` path now composes initial jump-data, rotate, and
 halt without executing the jump outside the native composition boundary.
 `ExecutionGeometryNativeJumpRotateHaltSequence` first admits the aliasing jump

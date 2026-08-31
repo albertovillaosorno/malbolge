@@ -834,6 +834,12 @@ transfers, verification, and other separately measured costs.
   implicit eviction, failed loads publish nothing, and cleanup failure transfers
   exact retry ownership. Explicit replacement releases the old pair completely
   before loading the new identity and leaves the cache empty on either failure.
+- Initial jump-data now has a reusable one-mapping owner. It loads the exact
+  admitted image once, reuses existing prepare/bind execution without remapping,
+  preserves entry rollback after runner failure, reports weight from the actual
+  mapping report, and transfers exact ready-executable cleanup on release.
+- Adding that initial-jump owner to the heterogeneous resident boundary remains
+  a separate step; input, output, and crazy native templates are still open.
 - The no-op/halt, rotate/halt, and full-path single-resident caches remain
   intentionally separate for operation-specific callers. The heterogeneous LRU
   is the shared residency authority; additional state-changing templates remain

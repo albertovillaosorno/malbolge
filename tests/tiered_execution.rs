@@ -646,6 +646,10 @@ type FakeCrossResidentLoadFailure =
 type FakeCrossResidentReleaseFailure =
     CrossResidentReleaseFailure<FakeNativeAdapterOperation>;
 type FakeCrossReleaseAllFailure = CrossAllFailure<FakeNativeAdapterOperation>;
+type InitialJumpOwnedFailure<RunnerError> =
+    jump_native::ExecutionGeometryNativeInitialJumpDataOwnedFailure<
+        RunnerError,
+    >;
 type FullGeometryAdmissionError =
     full_native::ExecutionGeometryNativeJumpRotateHaltAdmissionError;
 type FullGeometryBindingError =
@@ -20967,6 +20971,114 @@ fn geometry_native_initial_jump_applies_normative_state() -> Result<(), String>
     }
     release_execution_geometry_native_executable(&mut adapter, ready)
         .map_err(|error| format!("v5 initial jump runner release: {error}"))
+}
+
+#[test]
+fn geometry_native_initial_jump_owned_reuses_mapping() -> Result<(), String> {
+    let (admission, geometry) =
+        geometry_native_initial_jump_data_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(236)?,
+        native_executable_address(0x9_9000)?,
+    )
+    .with_mapped_len_overrides(vec![12_288]);
+    let loaded = admission
+        .load_owned(&mut adapter)
+        .map_err(|error| format!("v5 owned jump load: {error}"))?;
+    let weight = loaded.resident_weight();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let completion = loaded
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 owned jump execute: {error}"))?;
+    if loaded.admission() != &admission
+        || completion.state() != &expected
+        || completion.state().geometry() != geometry
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || weight.mapped_bytes() != 12_288
+        || weight.mappings() != 1
+        || adapter.operations.len() != 4
+        || runner.calls != 1
+    {
+        return Err(String::from("v5 owned jump reuse evidence drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned jump release: {error}"))?;
+    if adapter.operations.len() == 5 {
+        Ok(())
+    } else {
+        Err(String::from("v5 owned jump release count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_initial_jump_owned_survives_runner_failure()
+-> Result<(), String> {
+    let (admission, _geometry) =
+        geometry_native_initial_jump_data_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(237)?,
+        native_executable_address(0x9_a000)?,
+    );
+    let loaded = admission
+        .load_owned(&mut adapter)
+        .map_err(|error| format!("v5 owned jump failure load: {error}"))?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut failed_runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) = loaded.execute(
+        &mut failed_runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 owned jump runner failure ignored"));
+    };
+    if !matches!(
+        failure.as_ref(),
+        InitialJumpOwnedFailure::Execution(error) if matches!(
+            error.as_ref(),
+            InitialJumpExecutionError::Runner(runner_error)
+                if **runner_error == FakeNativeRunnerError::Call
+        )
+    ) || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("v5 owned jump failure rollback drifted"));
+    }
+    let mut successful_runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let completion = loaded
+        .execute(
+            &mut successful_runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 owned jump retry execute: {error}"))?;
+    if completion.state() != &expected
+        || memory != expected.memory()
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("v5 owned jump retry drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned jump retry release: {error}"))
 }
 
 #[test]
