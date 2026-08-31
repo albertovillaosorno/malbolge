@@ -730,9 +730,9 @@ misses or fails.
 The rotate/halt suffix can additionally prebind or own both synchronized
 executables. Both images are checked before caller-state mutation; repeated
 execution of a loaded pair performs no new mapping work. The loaded pair now
-retains its halt through the reusable initial-halt owner while preserving the
-same ready-executable accessor. Partial halt-load failure still releases rotate,
-and pair release still attempts both mappings with exact retry ownership.
+retains rotate and halt through their reusable one-step owners while preserving
+the same ready-executable accessors. Partial halt-load failure releases the
+owned rotate, and pair release delegates both exact cleanup contracts.
 
 Twelve focused suffix tests cover geometry continuity, indexed
 progress/failure, reusable prebinding, owned reuse, partial-load rollback, and

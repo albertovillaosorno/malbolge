@@ -846,6 +846,11 @@ transfers, verification, and other separately measured costs.
   normatively replayed rotate mutation state, reports platform mapping weight,
   rolls back runner failure, and transfers exact cleanup ownership on release
   failure.
+- The rotate/halt pair now owns both steps through their reusable single-step
+  owners. Halt-load rollback releases the rotate through its owner; final pair
+  release delegates both exact cleanup contracts while accessors and cache
+  identity remain unchanged. Operation counts, indexed suffix semantics, and
+  full-path behavior also stay unchanged.
 - Initial jump-data now has a reusable one-mapping owner. It loads the exact
   admitted image once, reuses existing prepare/bind execution without remapping,
   preserves entry rollback after runner failure, reports weight from the actual

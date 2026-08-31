@@ -45,8 +45,6 @@ use crate::execution_native::{
     NativeRegionInvocationOutcome, ReadyExecutionGeometryNativeExecutable,
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     VerifiedExecutionGeometryRotateNativeObjectArtifact,
-    load_execution_geometry_native_executable,
-    release_execution_geometry_native_executable,
 };
 use crate::geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltAdmission,
@@ -66,6 +64,7 @@ use crate::geometry_native_rotate::{
     ExecutionGeometryNativeRotateExecutionError,
     ExecutionGeometryNativeRotatePreparationError,
     ExecutionGeometryNativeRotateTransactionFailure,
+    LoadedExecutionGeometryNativeRotate,
 };
 
 type VerifiedRotateArtifact =
@@ -233,7 +232,7 @@ pub struct BoundExecutionGeometryNativeRotateHaltSequence<
 #[derive(Debug)]
 pub struct LoadedExecutionGeometryNativeRotateHaltSequence {
     halt: LoadedExecutionGeometryNativeInitialHalt,
-    rotate: ReadyExecutionGeometryNativeExecutable,
+    rotate: LoadedExecutionGeometryNativeRotate,
     sequence: ExecutionGeometryNativeRotateHaltSequence,
 }
 
@@ -631,7 +630,7 @@ impl LoadedExecutionGeometryNativeRotateHaltSequence {
     {
         let bound = BoundExecutionGeometryNativeRotateHaltSequence {
             halt: self.halt.executable(),
-            rotate: &self.rotate,
+            rotate: self.rotate.executable(),
             sequence: &self.sequence,
         };
         bound.execute(runner, buffers)
@@ -656,17 +655,14 @@ impl LoadedExecutionGeometryNativeRotateHaltSequence {
         Adapter: NativeExecutableMemoryAdapter,
     {
         let halt_failure = self.halt.release(adapter).err();
-        let rotate_failure =
-            release_execution_geometry_native_executable(adapter, self.rotate)
-                .err()
-                .map(Box::new);
+        let rotate_failure = self.rotate.release(adapter).err();
         pair_release_result(halt_failure, rotate_failure)
     }
 
     /// Returns the owned synchronized rotate executable.
     #[must_use]
     pub const fn rotate(&self) -> &ReadyExecutionGeometryNativeExecutable {
-        &self.rotate
+        self.rotate.executable()
     }
 
     /// Returns the exact immutable admission owned beside the ready pair.
@@ -815,24 +811,15 @@ impl ExecutionGeometryNativeRotateHaltSequence {
     where
         Adapter: NativeExecutableMemoryAdapter,
     {
-        let rotate = load_execution_geometry_native_executable(
-            adapter,
-            self.rotate.load_image(),
-        )
-        .map_err(|error| {
+        let rotate = self.rotate.load_owned(adapter).map_err(|error| {
             Box::new(ExecutionGeometryNativeRotateHaltPairLoadFailure::Rotate(
-                Box::new(error),
+                error,
             ))
         })?;
         let halt = match self.halt.load_owned(adapter) {
             Ok(halt) => halt,
             Err(error) => {
-                let rotate_release_failure =
-                    release_execution_geometry_native_executable(
-                        adapter, rotate,
-                    )
-                    .err()
-                    .map(Box::new);
+                let rotate_release_failure = rotate.release(adapter).err();
                 return Err(Box::new(
                     ExecutionGeometryNativeRotateHaltPairLoadFailure::Halt {
                         error,
