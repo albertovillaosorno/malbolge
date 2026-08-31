@@ -370,7 +370,14 @@ baseline; native tiers are accelerators of identical observable behavior.
   and no termination before the final step. It verifies every member before
   publishing the plan. The complete seven-step N10 crazy theorem selects on both
   reviewed ISAs; mixed geometry, observation gaps, and post-halt suffixes reject
-  before publication. Cache-aware v5 lookup/publication remains separate work.
+  before publication.
+
+  Cache-aware verified-v5 planning now prepares every exact target key before
+  lookup, preserves existing `Arc` identity on hits, stages unique verified
+  misses, and publishes them only after complete success. The seven-step theorem
+  inserts seven entries then reuses all seven, while target failure preserves a
+  seeded cache unchanged. Generic v5 loading/execution and interpreter handoff
+  from this plan remain separate work.
 - `application/scheduler.rs` now consumes one affine handoff under one explicit
   complete, positive-slice, caller-yield, or native-retry-yield decision. Every
   pause preserves exact checkpoint, complete-plan index, key/program suffix, and

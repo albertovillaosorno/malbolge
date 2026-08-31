@@ -34,7 +34,11 @@
 
 //! Verified multistep direct-native planning.
 
-use super::plan::{PreparedDirectTarget, prepare_verified_direct_target};
+use super::plan::{
+    PreparedDirectTarget, PreparedExecutionGeometryDirectTarget,
+    prepare_verified_direct_target,
+    prepare_verified_execution_geometry_direct_target,
+};
 use super::*;
 
 /// Failure while composing exact one-step programs into one direct sequence.
@@ -238,6 +242,81 @@ impl VerifiedExecutionGeometryDirectSequencePlan {
     }
 }
 
+/// Cache-aware ordered verified v5 artifacts for one exact region.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CachedVerifiedExecutionGeometryDirectSequencePlan {
+    artifacts: Vec<Arc<VerifiedExecutionGeometryNativeArtifact>>,
+    cache_hits: usize,
+    cache_insertions: usize,
+    entry: ProfileMachineObservation,
+    exit: ProfileMachineObservation,
+    geometry: ProfileExecutionGeometryRequirement,
+    outcome: RunOutcome,
+    programs: Vec<ExecutionGeometryRegionEffectProgram>,
+}
+
+impl CachedVerifiedExecutionGeometryDirectSequencePlan {
+    /// Returns all exact cached or newly verified v5 artifacts in order.
+    #[must_use]
+    pub fn artifacts(&self) -> &[Arc<VerifiedExecutionGeometryNativeArtifact>] {
+        &self.artifacts
+    }
+
+    /// Returns the number of sequence positions resolved from the cache.
+    #[must_use]
+    pub const fn cache_hits(&self) -> usize {
+        self.cache_hits
+    }
+
+    /// Returns the number of unique v5 artifacts inserted atomically.
+    #[must_use]
+    pub const fn cache_insertions(&self) -> usize {
+        self.cache_insertions
+    }
+
+    /// Returns the exact first-step entry observation.
+    #[must_use]
+    pub const fn entry(&self) -> ProfileMachineObservation {
+        self.entry
+    }
+
+    /// Returns the exact final-step exit observation.
+    #[must_use]
+    pub const fn exit(&self) -> ProfileMachineObservation {
+        self.exit
+    }
+
+    /// Returns the exact execution geometry shared by every step.
+    #[must_use]
+    pub const fn geometry(&self) -> ProfileExecutionGeometryRequirement {
+        self.geometry
+    }
+
+    /// Returns whether the plan contains no artifacts.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.artifacts.is_empty()
+    }
+
+    /// Returns the number of semantic steps represented by this plan.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.artifacts.len()
+    }
+
+    /// Returns the exact regional outcome derived from the final observation.
+    #[must_use]
+    pub const fn outcome(&self) -> RunOutcome {
+        self.outcome
+    }
+
+    /// Returns exact v5 one-step programs paired with ordered artifacts.
+    #[must_use]
+    pub fn programs(&self) -> &[ExecutionGeometryRegionEffectProgram] {
+        &self.programs
+    }
+}
+
 /// Ordered direct artifacts whose exact one-step boundaries form one region.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedDirectSequencePlan {
@@ -371,6 +450,19 @@ struct DirectSequenceBoundary {
 }
 
 #[derive(Clone, Debug)]
+struct StagedExecutionGeometryDirectArtifact {
+    artifact: Arc<VerifiedExecutionGeometryNativeArtifact>,
+    key: NativeArtifactKey,
+}
+
+#[derive(Clone, Debug)]
+struct ExecutionGeometrySequenceStaging {
+    artifacts: Vec<Arc<VerifiedExecutionGeometryNativeArtifact>>,
+    cache_hits: usize,
+    staged: Vec<StagedExecutionGeometryDirectArtifact>,
+}
+
+#[derive(Clone, Debug)]
 struct StagedDirectArtifact {
     artifact: Arc<VerifiedDirectNativeArtifact>,
     key: NativeArtifactKey,
@@ -423,6 +515,121 @@ pub fn select_verified_execution_geometry_direct_sequence(
         geometry,
         outcome: boundary.outcome,
         programs: programs.to_vec(),
+    })
+}
+
+/// Selects one cache-aware verified v5 sequence with atomic publication.
+///
+/// Every exact target key is prepared before cache lookup. Hits preserve their
+/// existing [`Arc`] identity. Misses are emitted and verified in local staging;
+/// unique staged values enter the caller-owned cache only after the complete
+/// sequence succeeds.
+///
+/// # Errors
+///
+/// Returns [`ExecutionGeometryDirectSequenceError`] under the same fail-closed
+/// conditions as [`select_verified_execution_geometry_direct_sequence`]. Any
+/// failure leaves `cache` unchanged.
+pub fn select_cached_verified_execution_geometry_direct_sequence(
+    programs: &[ExecutionGeometryRegionEffectProgram],
+    host: DirectHost,
+    cache: &mut VerifiedExecutionGeometryNativeCache,
+) -> Result<
+    CachedVerifiedExecutionGeometryDirectSequencePlan,
+    ExecutionGeometryDirectSequenceError,
+> {
+    let geometry = programs
+        .first()
+        .ok_or(ExecutionGeometryDirectSequenceError::Empty)?
+        .execution_geometry();
+    let boundary = validate_execution_geometry_sequence(programs)?;
+    let prepared = prepare_execution_geometry_sequence_targets(programs, host)?;
+    let staging = stage_execution_geometry_sequence(programs, prepared, cache)?;
+    let cache_insertions = staging.staged.len();
+    for item in staging.staged {
+        let _replaced = cache.entries.insert(item.key, item.artifact);
+    }
+    Ok(CachedVerifiedExecutionGeometryDirectSequencePlan {
+        artifacts: staging.artifacts,
+        cache_hits: staging.cache_hits,
+        cache_insertions,
+        entry: boundary.entry,
+        exit: boundary.exit,
+        geometry,
+        outcome: boundary.outcome,
+        programs: programs.to_vec(),
+    })
+}
+
+fn prepare_execution_geometry_sequence_targets(
+    programs: &[ExecutionGeometryRegionEffectProgram],
+    host: DirectHost,
+) -> Result<
+    Vec<PreparedExecutionGeometryDirectTarget>,
+    ExecutionGeometryDirectSequenceError,
+> {
+    let mut prepared = Vec::with_capacity(programs.len());
+    for (index, program) in programs.iter().enumerate() {
+        prepared.push(
+            prepare_verified_execution_geometry_direct_target(
+                program,
+                host.operating_system,
+                host.isa,
+            )
+            .map_err(|error| {
+                ExecutionGeometryDirectSequenceError::Step {
+                    index,
+                    error: Box::new(error),
+                }
+            })?,
+        );
+    }
+    Ok(prepared)
+}
+
+fn stage_execution_geometry_sequence(
+    programs: &[ExecutionGeometryRegionEffectProgram],
+    prepared: Vec<PreparedExecutionGeometryDirectTarget>,
+    cache: &VerifiedExecutionGeometryNativeCache,
+) -> Result<
+    ExecutionGeometrySequenceStaging,
+    ExecutionGeometryDirectSequenceError,
+> {
+    let mut artifacts = Vec::with_capacity(programs.len());
+    let mut cache_hits = 0usize;
+    let mut staged = Vec::<StagedExecutionGeometryDirectArtifact>::new();
+    for (index, (program, target)) in programs.iter().zip(prepared).enumerate()
+    {
+        if let Some(artifact) = cache.entries.get(target.key()) {
+            cache_hits = cache_hits.saturating_add(1);
+            artifacts.push(Arc::clone(artifact));
+            continue;
+        }
+        if let Some(existing) = staged
+            .iter()
+            .find(|candidate| candidate.key == *target.key())
+        {
+            artifacts.push(Arc::clone(&existing.artifact));
+            continue;
+        }
+        let key = target.key().clone();
+        let artifact =
+            Arc::new(target.emit_verified(program).map_err(|error| {
+                ExecutionGeometryDirectSequenceError::Step {
+                    index,
+                    error: Box::new(error),
+                }
+            })?);
+        staged.push(StagedExecutionGeometryDirectArtifact {
+            artifact: Arc::clone(&artifact),
+            key,
+        });
+        artifacts.push(artifact);
+    }
+    Ok(ExecutionGeometrySequenceStaging {
+        artifacts,
+        cache_hits,
+        staged,
     })
 }
 

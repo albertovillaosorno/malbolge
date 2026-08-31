@@ -251,9 +251,9 @@ use execution_native::{
     UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
     VerifiedDirectLoadError, VerifiedDirectLoadImage,
     VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
-    VerifiedExecutionGeometryLoadImage, compile_preflighted_clang_c23,
-    emit_direct_crazy_coff, emit_direct_deopt_coff,
-    emit_direct_execution_geometry_crazy_coff,
+    VerifiedExecutionGeometryLoadImage, VerifiedExecutionGeometryNativeCache,
+    compile_preflighted_clang_c23, emit_direct_crazy_coff,
+    emit_direct_deopt_coff, emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_input_coff,
@@ -273,8 +273,10 @@ use execution_native::{
     lower_preflighted_clang_c23, release_execution_geometry_native_executable,
     release_native_executable, release_native_executable_sequence,
     select_cached_preflighted_execution_tier,
-    select_cached_verified_direct_sequence, select_preflighted_execution_tier,
-    select_verified_direct_native, select_verified_direct_sequence,
+    select_cached_verified_direct_sequence,
+    select_cached_verified_execution_geometry_direct_sequence,
+    select_preflighted_execution_tier, select_verified_direct_native,
+    select_verified_direct_sequence,
     select_verified_execution_geometry_direct_native,
     select_verified_execution_geometry_direct_sequence,
     structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
@@ -13623,6 +13625,98 @@ fn direct_execution_geometry_sequence_rejects_post_termination_step()
         Ok(())
     } else {
         Err(String::from("v5 post-termination step was admitted"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_sequence_cache_reuses_exact_artifacts()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let host = DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let mut cache = VerifiedExecutionGeometryNativeCache::default();
+    if !cache.is_empty() {
+        return Err(String::from("v5 sequence cache did not start empty"));
+    }
+    let inserted = select_cached_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        host,
+        &mut cache,
+    )
+    .map_err(|error| format!("v5 sequence cache insert: {error}"))?;
+    if inserted.cache_hits() != 0
+        || inserted.cache_insertions() != 7
+        || inserted.len() != 7
+        || inserted.is_empty()
+        || cache.len() != 7
+    {
+        return Err(String::from("v5 sequence cache insertion drifted"));
+    }
+    let hit = select_cached_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        host,
+        &mut cache,
+    )
+    .map_err(|error| format!("v5 sequence cache hit: {error}"))?;
+    let reused = inserted
+        .artifacts()
+        .iter()
+        .zip(hit.artifacts())
+        .all(|(left, right)| Arc::ptr_eq(left, right));
+    if hit.cache_hits() != 7
+        || hit.cache_insertions() != 0
+        || hit.geometry() != inserted.geometry()
+        || hit.entry() != inserted.entry()
+        || hit.exit() != inserted.exit()
+        || hit.outcome() != inserted.outcome()
+        || hit.programs() != inserted.programs()
+        || !reused
+    {
+        return Err(String::from("v5 sequence cache hit drifted"));
+    }
+    cache.clear();
+    if cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("v5 sequence cache clear retained artifacts"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_sequence_cache_failure_preserves_entries()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let windows =
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::X86_64);
+    let linux = DirectHost::new(HostOperatingSystem::Linux, HostIsa::X86_64);
+    let mut cache = VerifiedExecutionGeometryNativeCache::default();
+    let _inserted = select_cached_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        windows,
+        &mut cache,
+    )
+    .map_err(|error| format!("v5 sequence cache seed: {error}"))?;
+    let before = cache.clone();
+    let result = select_cached_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        linux,
+        &mut cache,
+    );
+    let failed_at_first_target = matches!(
+        result,
+        Err(ExecutionGeometryDirectSequenceError::Step {
+            index: 0,
+            error,
+        }) if matches!(
+            *error,
+            ExecutionGeometryDirectSelectionError::InitialJumpData(
+                DirectExecutionGeometryInitialJumpDataError::TargetFormat
+            )
+        )
+    );
+    if failed_at_first_target && cache == before && cache.len() == 7 {
+        Ok(())
+    } else {
+        Err(String::from("v5 sequence cache failure mutated entries"))
     }
 }
 

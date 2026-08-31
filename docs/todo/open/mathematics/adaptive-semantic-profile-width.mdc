@@ -589,7 +589,13 @@ transfers, verification, and other separately measured costs.
   continuity, one-effect shape, and termination order all agree. The complete
   N10 seven-step crazy theorem selects on both reviewed ISAs, while N10/N11
   mixing, skipped observations, and post-halt work fail before publication.
-  Cache-aware v5 lookup/publication remains open.
+- Cache-aware verified-v5 sequence planning now prepares exact target keys
+  before
+  lookup, reuses exact `Arc` artifacts on hits, stages verified misses locally,
+  and publishes unique misses only after whole-sequence success. The seven-step
+  N10 theorem inserts seven entries then hits all seven; a Linux target failure
+  leaves a seeded Windows cache unchanged. Generic v5 loading, execution, and
+  interpreter handoff from this plan remain open.
 - Profile traces now carry their exact execution geometry. Legacy portable IR
   v3 projection accepts only traces whose geometry equals the canonical profile
   and rejects derived traces with `ExecutionGeometry`. Explicit-geometry IR v5

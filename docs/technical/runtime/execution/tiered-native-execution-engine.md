@@ -685,8 +685,15 @@ selected and verified before the plan is published.
 
 The complete N10 seven-step jump/rotate/four-crazy/halt theorem selects on both
 reviewed ISAs. Mixed N10/N11 geometry, skipped observations, and work after halt
-fail before plan publication. Cache-aware v5 lookup and atomic cache publication
-remain separate work.
+fail before plan publication.
+
+`VerifiedExecutionGeometryNativeCache` now adds exact-key v5 artifact reuse.
+Cache-aware planning prepares every target key before lookup, preserves existing
+`Arc` identity on hits, stages verified unique misses locally, and publishes
+those misses only after the complete sequence succeeds. The seven-step theorem
+inserts seven artifacts and then hits all seven; a Linux target failure leaves a
+seeded Windows cache unchanged. Generic v5 load/execution and interpreter
+handoff from this plan remain separate work.
 
 `ExecutionGeometryInterpreterContinuation` composes those one-step replay
 boundaries without changing the trust model. Construction rejects empty,

@@ -760,6 +760,14 @@ pub enum CachedPreflightedExecutionTier {
 pub struct VerifiedDirectNativeCache {
     pub(super) entries: NativeArtifactCache<Arc<VerifiedDirectNativeArtifact>>,
 }
+
+/// Caller-owned cache containing only semantically admitted v5 artifacts.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct VerifiedExecutionGeometryNativeCache {
+    pub(super) entries:
+        NativeArtifactCache<Arc<VerifiedExecutionGeometryNativeArtifact>>,
+}
+
 impl VerifiedDirectNativeArtifact {
     /// Returns the exact selected native artifact identity.
     #[must_use]

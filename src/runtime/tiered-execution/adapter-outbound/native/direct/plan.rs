@@ -66,6 +66,17 @@ pub(super) enum PreparedDirectTarget {
     Rotate(NativeArtifactKey),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum PreparedExecutionGeometryDirectTarget {
+    Crazy(NativeArtifactKey),
+    InitialHalt(NativeArtifactKey),
+    InitialJumpData(NativeArtifactKey),
+    Input(NativeArtifactKey),
+    NoOperation(NativeArtifactKey),
+    Output(NativeArtifactKey),
+    Rotate(NativeArtifactKey),
+}
+
 type VerifiedDirectSelectionResult<'requirement> =
     Result<VerifiedDirectNativeArtifact, DirectSelectionError<'requirement>>;
 
@@ -109,6 +120,25 @@ impl Display for ExecutionGeometryDirectSelectionError {
                 "explicit-geometry IR has no reviewed native template",
             ),
         }
+    }
+}
+
+impl VerifiedExecutionGeometryNativeCache {
+    /// Removes every retained verified v5 artifact.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    /// Reports whether no verified v5 artifacts are retained.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Returns the number of exact-key verified v5 artifacts.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.entries.len()
     }
 }
 
@@ -167,6 +197,68 @@ impl VerifiedDirectNativeCache {
     #[must_use]
     pub const fn len(&self) -> usize {
         self.entries.len()
+    }
+}
+
+impl PreparedExecutionGeometryDirectTarget {
+    pub(super) fn emit_verified(
+        self,
+        program: &ExecutionGeometryRegionEffectProgram,
+    ) -> Result<
+        VerifiedExecutionGeometryNativeArtifact,
+        ExecutionGeometryDirectSelectionError,
+    > {
+        match self {
+            Self::Crazy(key) => select_execution_geometry_crazy(
+                program,
+                key.target().host_os(),
+                key.target().host_isa(),
+            ),
+            Self::InitialHalt(key) => select_execution_geometry_initial_halt(
+                program,
+                key.target().host_os(),
+                key.target().host_isa(),
+            ),
+            Self::InitialJumpData(key) => {
+                select_execution_geometry_initial_jump_data(
+                    program,
+                    key.target().host_os(),
+                    key.target().host_isa(),
+                )
+            },
+            Self::Input(key) => select_execution_geometry_input(
+                program,
+                key.target().host_os(),
+                key.target().host_isa(),
+            ),
+            Self::NoOperation(key) => select_execution_geometry_no_operation(
+                program,
+                key.target().host_os(),
+                key.target().host_isa(),
+            ),
+            Self::Output(key) => select_execution_geometry_output(
+                program,
+                key.target().host_os(),
+                key.target().host_isa(),
+            ),
+            Self::Rotate(key) => select_execution_geometry_rotate(
+                program,
+                key.target().host_os(),
+                key.target().host_isa(),
+            ),
+        }
+    }
+
+    pub(super) const fn key(&self) -> &NativeArtifactKey {
+        match self {
+            Self::Crazy(key)
+            | Self::InitialHalt(key)
+            | Self::InitialJumpData(key)
+            | Self::Input(key)
+            | Self::NoOperation(key)
+            | Self::Output(key)
+            | Self::Rotate(key) => key,
+        }
     }
 }
 
@@ -561,35 +653,184 @@ pub fn select_verified_execution_geometry_direct_native(
     VerifiedExecutionGeometryNativeArtifact,
     ExecutionGeometryDirectSelectionError,
 > {
+    prepare_verified_execution_geometry_direct_target(
+        program, host_os, host_isa,
+    )?
+    .emit_verified(program)
+}
+
+pub(super) fn prepare_verified_execution_geometry_direct_target(
+    program: &ExecutionGeometryRegionEffectProgram,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<
+    PreparedExecutionGeometryDirectTarget,
+    ExecutionGeometryDirectSelectionError,
+> {
     validate_execution_geometry_profile(program)?;
+    let kind = select_execution_geometry_kind(program)
+        .ok_or(ExecutionGeometryDirectSelectionError::UnsupportedProgram)?;
+    prepare_execution_geometry_kind(
+        program,
+        kind,
+        DirectHost::new(host_os, host_isa),
+    )
+}
+
+fn select_execution_geometry_kind(
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> Option<ExecutionGeometryDirectNativeKind> {
     if validate_execution_geometry_initial_halt_program(program).is_ok() {
-        return select_execution_geometry_initial_halt(
-            program, host_os, host_isa,
-        );
+        return Some(ExecutionGeometryDirectNativeKind::InitialHalt);
     }
     if validate_execution_geometry_initial_jump_data_program(program).is_ok() {
-        return select_execution_geometry_initial_jump_data(
-            program, host_os, host_isa,
-        );
+        return Some(ExecutionGeometryDirectNativeKind::InitialJumpData);
     }
     if validate_execution_geometry_crazy_program(program).is_ok() {
-        return select_execution_geometry_crazy(program, host_os, host_isa);
+        return Some(ExecutionGeometryDirectNativeKind::Crazy);
     }
     if validate_execution_geometry_rotate_program(program).is_ok() {
-        return select_execution_geometry_rotate(program, host_os, host_isa);
+        return Some(ExecutionGeometryDirectNativeKind::Rotate);
     }
     if validate_execution_geometry_input_program(program).is_ok() {
-        return select_execution_geometry_input(program, host_os, host_isa);
+        return Some(ExecutionGeometryDirectNativeKind::Input);
     }
     if validate_execution_geometry_output_program(program).is_ok() {
-        return select_execution_geometry_output(program, host_os, host_isa);
+        return Some(ExecutionGeometryDirectNativeKind::Output);
     }
     if validate_execution_geometry_no_operation_program(program).is_ok() {
-        return select_execution_geometry_no_operation(
-            program, host_os, host_isa,
-        );
+        return Some(ExecutionGeometryDirectNativeKind::NoOperation);
     }
-    Err(ExecutionGeometryDirectSelectionError::UnsupportedProgram)
+    None
+}
+
+fn prepare_execution_geometry_kind(
+    program: &ExecutionGeometryRegionEffectProgram,
+    kind: ExecutionGeometryDirectNativeKind,
+    host: DirectHost,
+) -> Result<
+    PreparedExecutionGeometryDirectTarget,
+    ExecutionGeometryDirectSelectionError,
+> {
+    let (backend_id, backend_revision) = execution_geometry_backend(kind);
+    let key = NativeArtifactKey::new_execution_geometry(
+        program,
+        direct_target(
+            backend_id,
+            backend_revision,
+            host.operating_system,
+            host.isa,
+        ),
+    )
+    .map_err(|error| execution_geometry_identity_error(kind, error))?;
+    Ok(prepared_execution_geometry_target(kind, key))
+}
+
+const fn execution_geometry_backend(
+    kind: ExecutionGeometryDirectNativeKind,
+) -> (&'static str, u32) {
+    match kind {
+        ExecutionGeometryDirectNativeKind::Crazy => (
+            DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_REVISION,
+        ),
+        ExecutionGeometryDirectNativeKind::InitialHalt => (
+            DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION,
+        ),
+        ExecutionGeometryDirectNativeKind::InitialJumpData => (
+            DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_REVISION,
+        ),
+        ExecutionGeometryDirectNativeKind::Input => (
+            DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_REVISION,
+        ),
+        ExecutionGeometryDirectNativeKind::NoOperation => (
+            DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_REVISION,
+        ),
+        ExecutionGeometryDirectNativeKind::Output => (
+            DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_REVISION,
+        ),
+        ExecutionGeometryDirectNativeKind::Rotate => (
+            DIRECT_EXECUTION_GEOMETRY_ROTATE_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_ROTATE_BACKEND_REVISION,
+        ),
+    }
+}
+
+const fn execution_geometry_identity_error(
+    kind: ExecutionGeometryDirectNativeKind,
+    error: NativeIdentityError,
+) -> ExecutionGeometryDirectSelectionError {
+    match kind {
+        ExecutionGeometryDirectNativeKind::Crazy => {
+            ExecutionGeometryDirectSelectionError::Crazy(
+                DirectExecutionGeometryCrazyError::Identity(error),
+            )
+        },
+        ExecutionGeometryDirectNativeKind::InitialHalt => {
+            ExecutionGeometryDirectSelectionError::InitialHalt(
+                DirectExecutionGeometryInitialHaltError::Identity(error),
+            )
+        },
+        ExecutionGeometryDirectNativeKind::InitialJumpData => {
+            ExecutionGeometryDirectSelectionError::InitialJumpData(
+                DirectExecutionGeometryInitialJumpDataError::Identity(error),
+            )
+        },
+        ExecutionGeometryDirectNativeKind::Input => {
+            ExecutionGeometryDirectSelectionError::Input(
+                DirectExecutionGeometryInputError::Identity(error),
+            )
+        },
+        ExecutionGeometryDirectNativeKind::NoOperation => {
+            ExecutionGeometryDirectSelectionError::NoOperation(
+                DirectExecutionGeometryNoOperationError::Identity(error),
+            )
+        },
+        ExecutionGeometryDirectNativeKind::Output => {
+            ExecutionGeometryDirectSelectionError::Output(
+                DirectExecutionGeometryOutputError::Identity(error),
+            )
+        },
+        ExecutionGeometryDirectNativeKind::Rotate => {
+            ExecutionGeometryDirectSelectionError::Rotate(
+                DirectExecutionGeometryRotateError::Identity(error),
+            )
+        },
+    }
+}
+
+const fn prepared_execution_geometry_target(
+    kind: ExecutionGeometryDirectNativeKind,
+    key: NativeArtifactKey,
+) -> PreparedExecutionGeometryDirectTarget {
+    match kind {
+        ExecutionGeometryDirectNativeKind::Crazy => {
+            PreparedExecutionGeometryDirectTarget::Crazy(key)
+        },
+        ExecutionGeometryDirectNativeKind::InitialHalt => {
+            PreparedExecutionGeometryDirectTarget::InitialHalt(key)
+        },
+        ExecutionGeometryDirectNativeKind::InitialJumpData => {
+            PreparedExecutionGeometryDirectTarget::InitialJumpData(key)
+        },
+        ExecutionGeometryDirectNativeKind::Input => {
+            PreparedExecutionGeometryDirectTarget::Input(key)
+        },
+        ExecutionGeometryDirectNativeKind::NoOperation => {
+            PreparedExecutionGeometryDirectTarget::NoOperation(key)
+        },
+        ExecutionGeometryDirectNativeKind::Output => {
+            PreparedExecutionGeometryDirectTarget::Output(key)
+        },
+        ExecutionGeometryDirectNativeKind::Rotate => {
+            PreparedExecutionGeometryDirectTarget::Rotate(key)
+        },
+    }
 }
 
 fn select_execution_geometry_crazy(
