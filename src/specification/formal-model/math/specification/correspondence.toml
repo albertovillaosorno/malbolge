@@ -464,6 +464,16 @@ mechanism = "sixty-four-joint-count-orbits-plus-coordinate-multinomial-mass"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_sextuple_quotient.py::test_ordered_sextuple_joint_counts_cover_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_unordered_sextuple_quotient.py::test_sextuple_quotients_lift_to_small_reachable_pairs"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-ordered-tuple-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-ordered-tuple-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "ordered cube-word m-tuples for checked arities 1 through 8 in reachable fixed accumulator/target preimage cubes at widths 1 through 14, with raw orbit exhaustion under a 16-bit tuple-space cap and exact composition/multinomial arithmetic through dimension 14"
+mechanism = "generic-binary-joint-count-orbits-plus-canonical-coordinate-grouping"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_generic_ordered_tuple_orbits_are_exact_under_bounded_exhaustion", "tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_generic_ordered_tuple_counts_cover_checked_arities_and_dimensions", "tests/mathematics/test_crazy_preimage_gray.py::test_every_width_fourteen_ambiguity_mask_has_exact_cube_dimension"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-sextuple-quotient"
@@ -708,6 +718,16 @@ domain = "all reachable accumulator/target pairs at widths 1 through 14, with ea
 mechanism = "ambiguity-class-sum-plus-weighted-binomial-identity-at-arity-six"
 # jig-ignore-next-line: indivisible reviewed identifiers
 evidence = ["tests/mathematics/test_crazy_preimage_cube_global_sextuple_quotient.py::test_small_widths_match_independent_fixed_pair_enumeration", "tests/mathematics/test_crazy_preimage_cube_global_sextuple_quotient.py::test_global_sextuple_quotients_have_exact_closed_counts"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-global-ordered-tuple-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-global-ordered-preimage-tuple-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all reachable accumulator/target pairs at widths 1 through 14 and checked ordered endpoint arities 1 through 8 under simultaneous ambiguity-coordinate symmetry"
+mechanism = "exact-ambiguity-class-sum-plus-weighted-binomial-transform"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_generic_global_ordered_tuple_count_matches_independent_transform", "tests/optimizer/test_crazy_target_search.py::test_profile_width_preimage_pair_distribution_matches_closed_form"]
 
 [[correspondence]]
 id = "optimization-crazy-profile-global-unordered-sextuple-quotient"

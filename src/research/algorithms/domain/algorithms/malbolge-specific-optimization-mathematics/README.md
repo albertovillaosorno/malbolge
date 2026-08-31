@@ -138,6 +138,17 @@ width 14. At the same width, the ordered sextuple aggregate has
 1,584,315,319,509,725,541,225 classes and its endpoint-unordered `S_6` quotient
 has 2,361,488,883,978,006,005 classes.
 
+The ordered coordinate quotient is now parameterized for checked endpoint
+arities one through eight. Arity `m` has exactly
+`C(k+2^m-1,2^m-1)` joint-count classes in a dimension-`k` preimage cube; at
+`k=14`, arities seven and eight have 7,227,209,188,850,973,120 and
+84,466,573,066,471,253,216,128 classes. Summed over every reachable width-14
+fixed pair, those two arities have 2,119,509,834,155,204,235,011,305 and
+7,093,373,076,831,030,274,633,041,897 canonical ordered tuples. The statement
+keeps endpoint order visible and applies only under simultaneous ambiguity-
+coordinate relabeling; it is not a Malbolge semantic-equivalence or timing
+claim.
+
 If endpoint order is also irrelevant, the exact pair class count
 reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`; summed over every reachable

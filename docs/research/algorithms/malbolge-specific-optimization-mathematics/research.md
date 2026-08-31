@@ -18,7 +18,7 @@ force or stochastic optimization begins.
 
 - Status: Active
 - Research ID: `malbolge-specific-optimization-mathematics`
-- Last reviewed: 2026-08-11
+- Last reviewed: 2026-08-31
 
 ## Prior Work
 
@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes seventy exact reductions: classic five-trit crazy factorization,
+formalizes seventy-two exact reductions: classic five-trit crazy factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
 output/rotate-
@@ -87,7 +87,9 @@ endpoint-unordered quadruple quotient under `S_4`, exact ordered cube-word
 quintuple quotient into `C(k+31,31)` joint-count classes, exact endpoint-
 unordered quintuple quotient under `S_5`, exact ordered sextuple quotient into
 `C(k+63,63)` classes, exact endpoint-unordered sextuple quotient under `S_6`,
-exact global ordered-triple and endpoint-unordered triple
+a generic checked-arity ordered tuple quotient into
+`C(k+2^m-1,2^m-1)` classes for `1<=m<=8`, its exact global reachable-pair
+transform, exact global ordered-triple and endpoint-unordered triple
 quotient counts, exact global ordered-quadruple and endpoint-unordered quadruple
 quotient counts, exact ordered-quintuple and endpoint-unordered quintuple
 quotient counts, exact ordered and endpoint-unordered sextuple quotient counts
@@ -911,9 +913,10 @@ period canonicalization, crazy-target preimage cardinality, constructive
 preimage rank/unrank, exact preimage-hypercube Gray traversal, edit
 optimality, exact one-trit cube neighborhood graph, exact coordinate-
 permutation cube quotient, exact ordered cube-word pair quotient, exact
-ordered cube-word triple, quadruple, quintuple, and sextuple quotients, exact
-endpoint-unordered triple, quadruple, quintuple, and sextuple quotients, plus
-the
+ordered cube-word triple, quadruple, quintuple, and sextuple quotients, the
+generic ordered tuple quotient through checked arity eight and its global
+reachable-pair transform, exact endpoint-unordered triple, quadruple, quintuple,
+and sextuple quotients, plus the
 established
 triple/quadruple global aggregates, the quintuple global aggregate, and both
 sextuple global aggregates, exact global ordered-triple and ordered-quadruple

@@ -737,6 +737,36 @@ coordinate quotient through dimension two and reconstructs the raw $64^k$ orbit
 mass there; Burnside arithmetic reaches dimension fourteen. This refinement
 applies only when endpoint order is irrelevant and makes no timing claim.
 
+The ordered coordinate quotient admits one checked-arity statement instead of a
+new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
+$x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose
+$m$-bit endpoint pattern is $s\in\{0,1\}^m$, and define
+\[
+  \mathcal{J}^{(m)}_k=\left\{(n_s)_{s\in\{0,1\}^m}:
+    n_s\in\{0,\ldots,k\},\ \sum_s n_s=k\right\}.
+\]
+The $2^m$ joint counts are complete simultaneous-coordinate orbit invariants.
+Grouping coordinates in descending binary pattern order gives one canonical
+ordered tuple for each count vector, while choosing the coordinates in each
+block gives its exact multinomial orbit mass. Hence
+\begin{equation}
+  \fitmath{%
+    \left(\{0,1\}^k\right)^m/S_k
+      \overset{\sim}{\longrightarrow}\mathcal{J}^{(m)}_k,
+    \qquad
+    |\mathcal{J}^{(m)}_k|=\binom{k+2^m-1}{2^m-1},
+    \qquad
+    |[(x^{(1)},\ldots,x^{(m)})]|=\frac{k!}{\prod_s n_s!},
+    \quad 1\leq m\leq8,\ 0\leq k\leq N,\ 1\leq N\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-ordered-tuple-quotient}
+\end{equation}
+For $m=1$ through $6$ this specializes the preceding word-through-sextuple
+results. At $k=14$, the new checked arities seven and eight have respectively
+7227209188850973120 and 84466573066471253216128 coordinate classes. Endpoint
+order remains visible; this quotient applies only to analyses invariant under
+simultaneous ambiguity-coordinate relabeling and makes no timing claim.
+
 For pairwise analyses that also ignore endpoint order, let
 $G_k=S_k\times C_2$, where $S_k$ permutes both endpoints simultaneously and
 $\tau\in C_2$ swaps them: $\tau(x,y)=(y,x)$. These actions commute. On joint
@@ -1302,6 +1332,32 @@ Burnside yields 2361488883978006005 endpoint-unordered representatives instead
 of $133^{14}$ raw ordered sextuples. Direct ambiguity sums, the generic
 transform, and all reachable fixed pairs through width two agree. This is an
 exact state-count result only and makes no timing claim.
+
+The generic ordered-tuple quotient composes with the reachable fixed-pair
+ambiguity distribution for every checked endpoint arity. Put $q_m=2^m-1$ and
+let $O_{N,m}$ count coordinate-canonical ordered $m$-tuples across all reachable
+width-$N$ accumulator/target pairs. Then
+\begin{equation}
+  \fitmath{%
+    O_{N,m}
+      =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}\binom{k+q_m}{q_m}
+      =\sum_{j=0}^{\min(q_m,N)}
+        \binom{q_m}{j}\binom{N}{j}2^j7^{N-j},
+    \qquad
+    \text{raw ordered mass}=(5+2^{m+1})^N,
+    \quad 1\leq m\leq8,\ 1\leq N\leq14.
+  }
+  \label{eq:optimization-crazy-global-ordered-preimage-tuple-quotient}
+\end{equation}
+The second equality uses
+$\binom{k+q_m}{q_m}=\sum_j\binom{q_m}{j}\binom{k}{j}$ with the exact
+reachable-pair ambiguity weights. At $N=14$, the arity-seven and arity-eight
+canonical counts are
+\begin{equation*}
+  (2119509834155204235011305,\ 7093373076831030274633041897).
+\end{equation*}
+This is complete-domain search-space accounting only and inherits the same
+simultaneous-coordinate symmetry precondition; it makes no timing claim.
 
 The endpoint-symmetric pair quotient also composes exactly over the reachable
 fixed-pair ambiguity distribution. Let $E_N$ count canonical ordered preimage
