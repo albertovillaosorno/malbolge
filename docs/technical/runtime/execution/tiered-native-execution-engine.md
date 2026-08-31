@@ -431,8 +431,14 @@ normative exit. Execution preserves one global `p p p p v` index: crazy guards
 and failures remain 0 through 3, while halt uses index 4. Final Applied halt
 reaches the theorem's exact terminal checkpoint, and halt release failure keeps
 that committed state beside the ready executable's retryable cleanup ownership.
-Preloaded five-mapping ownership and the preceding jump/rotate composition stay
-separate work.
+
+`LoadedExecutionGeometryNativeCrazyPrefixHaltSequence` now composes the reusable
+four-mapping prefix owner with the existing one-mapping halt owner. Halt-load
+failure rolls the complete prefix back and preserves any failed prefix cleanup
+for retry. Repeated five-step execution performs no adapter work, retains the
+same global suffix index and last committed checkpoint, and exact resident
+weight checked-sums prefix plus halt reports. Final release attempts both child
+owners and keeps only mappings whose cleanup remains incomplete.
 
 `ExecutionGeometryNativeJumpRotateCrazyHaltSequence` now closes that preceding
 composition for the exact seven-step `j * p p p p v` theorem path. Initial jump

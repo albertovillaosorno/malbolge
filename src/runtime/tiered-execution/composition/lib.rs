@@ -51,6 +51,8 @@ pub mod geometry_native_admission;
 pub mod geometry_native_crazy;
 #[path = "tier/geometry_cprefix.rs"]
 pub mod geometry_native_crazy_prefix;
+#[path = "tier/geometry_cpho.rs"]
+pub mod geometry_native_crazy_prefix_halt_owner;
 #[path = "tier/geometry_cph.rs"]
 pub mod geometry_native_crazy_prefix_halt_sequence;
 #[path = "tier/geometry_cpo.rs"]

@@ -972,15 +972,19 @@ transfers, verification, and other separately measured costs.
   earlier mappings and retains rollback retry; repeated execution performs no
   adapter work while preserving indexed failure/committed-state evidence; exact
   weight checked-sums all four mapping reports; and final release attempts every
-  mapping while retaining only failed cleanup. The following halt remains
-  separate five-mapping ownership work.
+  mapping while retaining only failed cleanup.
 - The immediately reached halt now composes after that fixed crazy prefix. Halt
   admission is bound only to the fourth crazy's normative exit, and execution
   preserves one global `p p p p v` index with halt at 4. Applied halt reaches
-  the
-  theorem's exact terminal checkpoint, while halt release failure retains that
-  committed state plus retryable executable cleanup. Preloaded five-mapping
-  ownership and the preceding jump/rotate composition remain separate work.
+  the theorem's exact terminal checkpoint, while halt release failure retains
+  that committed state plus retryable executable cleanup.
+- The five-step suffix now also has reusable ownership by composing the complete
+  four-mapping prefix owner with the one-mapping halt owner. Halt-load failure
+  rolls the prefix back with retryable cleanup evidence; repeated execution
+  performs no adapter work and preserves global suffix indices; exact weight
+  checked-sums all five mappings; and final release attempts both child owners.
+  The preceding jump/rotate composition remains independently owned by the
+  complete seven-step theorem owner.
 - The theorem's complete `j * p p p p v` path now composes under one
   checkpoint authority line. Initial jump, rotate, and the fixed suffix admit
   strictly from the preceding normative exit, and execution preserves global

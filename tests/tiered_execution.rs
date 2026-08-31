@@ -51,6 +51,8 @@ pub mod geometry_native_admission;
 pub mod geometry_native_crazy;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_cprefix.rs"]
 pub mod geometry_native_crazy_prefix;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_cpho.rs"]
+pub mod geometry_native_crazy_prefix_halt_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_cph.rs"]
 pub mod geometry_native_crazy_prefix_halt_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_cpo.rs"]
@@ -318,6 +320,7 @@ use geometry_native_crazy_prefix::{
     ExecutionGeometryNativeCrazyPrefixOutcome,
     ExecutionGeometryNativeCrazyPrefixStepEvidence,
 };
+use geometry_native_crazy_prefix_halt_owner as cso;
 use geometry_native_crazy_prefix_halt_sequence::{
     ExecutionGeometryNativeCrazyPrefixHaltEvidence,
     ExecutionGeometryNativeCrazyPrefixHaltFailureCause,
@@ -536,6 +539,8 @@ type CrazyReconfigFailure<MemoryError> =
     gclru::GeometryNativeJumpRotateCrazyHaltLruReconfigurationFailure<
         MemoryError,
     >;
+type CrazySuffixOwner =
+    cso::LoadedExecutionGeometryNativeCrazyPrefixHaltSequence;
 type CrazyTheoremSequenceTriple = (
     Box<gclru::CrazyTheoremSequence>,
     Box<gclru::CrazyTheoremSequence>,
@@ -20256,7 +20261,7 @@ fn geometry_native_cross_template_no_operation_shares_single_mapping_budget()
 fn geometry_native_cross_template_crazy_theorem_resident_runs()
 -> Result<(), String> {
     let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
-    let expected = full_crazy_final_state(&fixture)?;
+    let expected = crazy_fixture_final_state(&fixture)?;
     let plan = CrossResidentPlan::CrazyTheorem(Box::new(
         geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?,
     ));
@@ -24599,7 +24604,7 @@ fn full_crazy_failure_runner() -> FakeExecutionGeometrySequenceRunner {
     FakeExecutionGeometrySequenceRunner::new(behaviors)
 }
 
-fn full_crazy_final_state(
+fn crazy_fixture_final_state(
     fixture: &DerivedV5SequenceFixture,
 ) -> Result<ProfileMachineState, String> {
     fixture
@@ -24614,7 +24619,7 @@ fn geometry_native_full_crazy_owner_reuses_mappings() -> Result<(), String> {
     let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
     let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
     let entry = sequence.initial_jump().checkpoint().clone();
-    let expected = full_crazy_final_state(&fixture)?;
+    let expected = crazy_fixture_final_state(&fixture)?;
     let mut adapter = FakeNativeExecutableAdapter::new(
         native_executable_mapping_id(309)?,
         native_executable_address(0xe_2000)?,
@@ -24708,7 +24713,7 @@ fn geometry_native_full_crazy_owner_failure_reuses_mappings()
         fixture.states.get(3).cloned().ok_or_else(|| {
             String::from("v5 owned crazy theorem state missing")
         })?;
-    let expected = full_crazy_final_state(&fixture)?;
+    let expected = crazy_fixture_final_state(&fixture)?;
     let mut adapter = FakeNativeExecutableAdapter::new(
         native_executable_mapping_id(311)?,
         native_executable_address(0xe_4000)?,
@@ -25177,7 +25182,7 @@ fn geometry_native_full_crazy_cache_insert_hit_reuses_resident()
     let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
     let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
     let entry = sequence.initial_jump().checkpoint().clone();
-    let expected = full_crazy_final_state(&fixture)?;
+    let expected = crazy_fixture_final_state(&fixture)?;
     let mut adapter = FakeNativeExecutableAdapter::new(
         native_executable_mapping_id(313)?,
         native_executable_address(0xe_6000)?,
@@ -25639,6 +25644,181 @@ fn geometry_native_full_crazy_rotate_release_keeps_committed_state()
     release_failure
         .retry(&mut adapter)
         .map_err(|error| format!("v5 full crazy rotate cleanup retry: {error}"))
+}
+
+#[test]
+fn geometry_native_crazy_prefix_halt_owner_reuses_mappings()
+-> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_halt_fixture(10)?;
+    let sequence = geometry_native_crazy_prefix_halt_sequence(&fixture)?;
+    let entry = sequence.prefix().entry_state().clone();
+    let expected =
+        fixture.states.last().cloned().ok_or_else(|| {
+            String::from("v5 crazy suffix owner final missing")
+        })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(322)?,
+        native_executable_address(0xe_f000)?,
+    )
+    .with_mapped_len_overrides(vec![4_096, 8_192, 12_288, 16_384, 20_480]);
+    let loaded = CrazySuffixOwner::load(&sequence, &mut adapter)
+        .map_err(|error| format!("v5 crazy suffix owner load: {error}"))?;
+    let weight = loaded
+        .resident_weight()
+        .map_err(|error| format!("v5 crazy suffix owner weight: {error}"))?;
+    if loaded.sequence() != &sequence
+        || weight.mapped_bytes() != 61_440
+        || weight.mappings() != 5
+        || adapter.operations.len() != 20
+    {
+        return Err(String::from("v5 crazy suffix owner weight drifted"));
+    }
+    let mut runner = full_crazy_applied_runner(10);
+    for _attempt in 0usize..2usize {
+        let mut memory = entry.memory().to_vec();
+        let input = entry.io().input().to_vec();
+        let mut output = entry.io().output().to_vec();
+        let outcome = loaded
+            .execute(
+                &mut runner,
+                NativeRegionBuffers::new(&mut memory, &input, &mut output),
+            )
+            .map_err(|error| {
+                format!("v5 crazy suffix owner execute: {error}")
+            })?;
+        if !matches!(
+            outcome,
+            ExecutionGeometryNativeCrazyPrefixHaltOutcome::Completed(_)
+        ) || outcome.state() != &expected
+            || memory != expected.memory()
+            || output != expected.io().output()
+            || adapter.operations.len() != 20
+        {
+            return Err(String::from("v5 crazy suffix owner remapped"));
+        }
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 crazy suffix owner release: {error}"))?;
+    if adapter.operations.len() == 25 {
+        Ok(())
+    } else {
+        Err(String::from("v5 crazy suffix owner cleanup drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_crazy_prefix_halt_owner_rolls_back_halt_load()
+-> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_halt_fixture(10)?;
+    let sequence = geometry_native_crazy_prefix_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(323)?,
+        native_executable_address(0xf_0000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 5)
+    .with_release_failure_at(2);
+    let Err(failure) = CrazySuffixOwner::load(&sequence, &mut adapter) else {
+        return Err(String::from("v5 crazy suffix halt load failure ignored"));
+    };
+    if failure.index() != 4 || !failure.cleanup_pending() {
+        return Err(String::from("v5 crazy suffix halt rollback lost"));
+    }
+    let retried = failure.retry_cleanup(&mut adapter);
+    if retried.cleanup_pending() || adapter.operations.len() != 22 {
+        Err(String::from("v5 crazy suffix halt rollback retry drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_crazy_prefix_halt_owner_failure_reuses_mappings()
+-> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_halt_fixture(10)?;
+    let sequence = geometry_native_crazy_prefix_halt_sequence(&fixture)?;
+    let entry = sequence.prefix().entry_state().clone();
+    let committed = sequence.halt().checkpoint().clone();
+    let expected = crazy_fixture_final_state(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(324)?,
+        native_executable_address(0xf_1000)?,
+    );
+    let loaded = CrazySuffixOwner::load(&sequence, &mut adapter)
+        .map_err(|error| format!("v5 crazy suffix owner load: {error}"))?;
+    let mut failing_runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let mut memory = entry.memory().to_vec();
+    let input = entry.io().input().to_vec();
+    let mut output = entry.io().output().to_vec();
+    let Err(failure) = loaded.execute(
+        &mut failing_runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 crazy suffix owner failure ignored"));
+    };
+    if failure.index() != 4
+        || failure.state() != &committed
+        || memory != committed.memory()
+        || output != committed.io().output()
+        || adapter.operations.len() != 20
+    {
+        return Err(String::from("v5 crazy suffix owner failure drifted"));
+    }
+    let mut retry_runner = full_crazy_applied_runner(5);
+    let mut retry_memory = entry.memory().to_vec();
+    let mut retry_output = entry.io().output().to_vec();
+    let outcome = loaded
+        .execute(
+            &mut retry_runner,
+            NativeRegionBuffers::new(
+                &mut retry_memory,
+                &input,
+                &mut retry_output,
+            ),
+        )
+        .map_err(|error| format!("v5 crazy suffix owner retry: {error}"))?;
+    if outcome.state() != &expected || adapter.operations.len() != 20 {
+        return Err(String::from("v5 crazy suffix owner retry remapped"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 crazy suffix owner cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_crazy_prefix_halt_owner_retries_release()
+-> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_halt_fixture(10)?;
+    let sequence = geometry_native_crazy_prefix_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(325)?,
+        native_executable_address(0xf_2000)?,
+    )
+    .with_release_failure_at(5);
+    let loaded = CrazySuffixOwner::load(&sequence, &mut adapter)
+        .map_err(|error| format!("v5 crazy suffix owner load: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from("v5 crazy suffix release failure ignored"));
+    };
+    if failure.failure_count() != 1 || adapter.operations.len() != 25 {
+        return Err(String::from(
+            "v5 crazy suffix release aggregation drifted",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 crazy suffix release retry: {error}"))?;
+    if adapter.operations.len() == 26 {
+        Ok(())
+    } else {
+        Err(String::from("v5 crazy suffix release retry count drifted"))
+    }
 }
 
 #[test]
