@@ -796,9 +796,14 @@ transfers, verification, and other separately measured costs.
   through its exact adapter. Leased identities remain active, aggregate failures
   retain exact plan plus typed cleanup ownership, and aggregate retry never
   republishes identities removed from cache authority.
-- A consuming retired-drain transition for the synchronized owner remains open.
-  Shared ownership needs an explicit draining/closed state so active lookup
-  authority cannot silently reappear while external `Arc` holders still exist.
+- The synchronized owner now also supports a consuming retired drain.
+  `into_drain(self)` removes active lookup authority by consuming the whole
+  owner, moves its exact adapter with the LRU, and leaves external `Arc` leases
+  valid only as retired mappings. Reconcile and aggregate cleanup retry use that
+  same adapter without recreating active authority.
+- Poison remains fail-closed across consuming retirement. Already-poisoned
+  ownership is returned intact, and poison evidence encountered while consuming
+  the mutex is retained opaquely without `PoisonError::into_inner` recovery.
 - Nonblocking bulk release and aggregate retry reuse the same lifecycle.
   `try_release_all_unleased` reports `Busy` before adapter work, while
   `try_retry_release_all_cleanup` preserves the whole cleanup token unchanged

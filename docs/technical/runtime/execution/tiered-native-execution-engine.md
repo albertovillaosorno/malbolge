@@ -955,9 +955,7 @@ leased residents only inside the drain, and transfers failed releases as the
 same exact plan plus typed cleanup evidence used by release-all.
 
 Three focused cases prove zero-work retirement, lease-retained reconciliation,
-and failed-release transfer plus retry. The synchronized owner does not yet
-expose an equivalent consuming transition because shared mutex ownership needs
-an explicit closed/draining state rather than silent recovery from `Arc` users.
+and failed-release transfer plus retry.
 
 The drain now exposes exact retired identities and aggregate mapping usage using
 the same `resident_weight()` authority as the active LRU. A deliberately
@@ -979,6 +977,24 @@ zero usage after final reconciliation.
 
 This avoids composing identity, lease, and usage reads from different retired
 states and gives any future synchronized close state a single closure witness.
+
+The synchronized owner now has an equivalent consuming transition without an
+internal mutable close state. `into_drain(self)` consumes the whole cache owner,
+moves its exact adapter and active LRU into a retired drain, and leaves existing
+external leases valid only as retired mapping owners because no active lookup
+cache survives the move.
+
+The concurrent drain forwards retired snapshots, usage, reconciliation, and
+aggregate cleanup retry through that same encapsulated adapter. A live lease is
+retained across reconciliation and releases only after its acquisition drops;
+a failed release transfers exact plan plus typed cleanup evidence and can retry
+without recreating active authority.
+
+Poison remains fail-closed during consumption. If poison is already visible,
+`into_drain` returns the original poisoned owner unchanged; any poison evidence
+from consuming the mutex is retained opaquely and never recovered through
+`PoisonError::into_inner`. Focused cases prove lease retirement, cleanup retry,
+and preservation of poisoned authority.
 
 `GeometryNativeConcurrentCrossTemplateLruCache` now owns one heterogeneous LRU
 and its executable-memory adapter under the same mutex. `ensure`, release,

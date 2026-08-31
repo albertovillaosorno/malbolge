@@ -17943,6 +17943,149 @@ fn geometry_native_concurrent_cross_template_reconfigures_serially()
 }
 
 #[test]
+fn geometry_native_concurrent_cross_template_into_drain_retires_lease()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(266)?,
+        native_executable_address(0xb_7000)?,
+    );
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    let acquisition = cache
+        .ensure(&noop_plan)
+        .map_err(|error| format!("concurrent drain acquire: {error}"))?;
+    let mut drain = cache
+        .into_drain()
+        .map_err(|error| format!("concurrent drain consume: {error}"))?;
+    let snapshot = drain
+        .snapshot()
+        .map_err(|error| format!("concurrent drain snapshot: {error}"))?;
+    let [retired] = snapshot.residents() else {
+        return Err(String::from("concurrent drain snapshot shape drifted"));
+    };
+    if retired.plan() != &noop_plan
+        || retired.leases() != 1
+        || retired.weight().mappings() != 2
+        || snapshot.usage().entries() != 1
+        || drain.retired_count() != 1
+    {
+        return Err(String::from("concurrent drain retirement drifted"));
+    }
+    let retained = drain.reconcile().map_err(|error| {
+        format!("concurrent drain retained reconcile: {error}")
+    })?;
+    if !retained.released_residents().is_empty()
+        || retained.retained_residents() != [noop_plan.clone()]
+    {
+        return Err(String::from("concurrent drain lost live lease"));
+    }
+    drop(acquisition);
+    let released = drain.reconcile().map_err(|error| {
+        format!("concurrent drain final reconcile: {error}")
+    })?;
+    if released.released_residents() == [noop_plan]
+        && released.retained_residents().is_empty()
+        && drain.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("concurrent drain final cleanup drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_drain_retries_cleanup()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(267)?,
+        native_executable_address(0xb_8000)?,
+    )
+    .with_release_failures(1);
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    drop(
+        cache.ensure(&noop_plan).map_err(|error| {
+            format!("concurrent drain retry acquire: {error}")
+        })?,
+    );
+    let mut drain = cache
+        .into_drain()
+        .map_err(|error| format!("concurrent drain retry consume: {error}"))?;
+    let Err(failure) = drain.reconcile() else {
+        return Err(String::from("concurrent drain release failure ignored"));
+    };
+    let Some(entry) = failure.failures().first() else {
+        return Err(String::from("concurrent drain cleanup evidence missing"));
+    };
+    if failure.failures().len() != 1
+        || entry.plan() != &noop_plan
+        || !matches!(
+            entry.failure(),
+            CrossResidentReleaseFailure::NoOperationPair(_)
+        )
+        || !drain.is_empty()
+    {
+        return Err(String::from("concurrent drain cleanup evidence drifted"));
+    }
+    let retried = drain
+        .retry_cleanup(*failure)
+        .map_err(|error| format!("concurrent drain cleanup retry: {error}"))?;
+    if retried.released_residents() == [noop_plan]
+        && retried.retained_residents().is_empty()
+        && drain.is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from("concurrent drain cleanup retry drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_drain_preserves_poison()
+-> Result<(), String> {
+    let (noop_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let inner = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(268)?,
+        native_executable_address(0xb_9000)?,
+    );
+    let limits = CrossLruLimits::new(nonzero_test_limit(
+        1,
+        "v5 concurrent drain poison entry limit",
+    )?);
+    let cache = Arc::new(CrossSyncCache::new(
+        PanickingNativeExecutableAdapter { inner },
+        limits,
+    ));
+    let worker_cache = Arc::clone(&cache);
+    let worker_plan = noop_plan.clone();
+    let panicked = thread::spawn(move || {
+        let _result = worker_cache.ensure(&worker_plan);
+    })
+    .join()
+    .is_err();
+    let owned = Arc::try_unwrap(cache).map_err(|_cache| {
+        String::from("concurrent drain poison cache still shared")
+    })?;
+    let Err(failure) = owned.into_drain() else {
+        return Err(String::from("concurrent drain recovered poisoned cache"));
+    };
+    let Some(poisoned) = failure.cache() else {
+        return Err(String::from("concurrent drain lost poisoned owner"));
+    };
+    if panicked
+        && poisoned.contains(&noop_plan) == Err(CrossSyncAccessError::Poisoned)
+        && matches!(poisoned.snapshot_all(), Err(CrossSyncFailure::Poisoned))
+    {
+        Ok(())
+    } else {
+        Err(String::from("concurrent drain poison authority drifted"))
+    }
+}
+
+#[test]
 fn geometry_native_concurrent_cross_template_poison_fails_closed()
 -> Result<(), String> {
     let (noop_plan, _rotate_plan, _full_plan) =

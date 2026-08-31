@@ -33,7 +33,7 @@
 //! Fail-closed concurrent owner for the heterogeneous explicit-geometry LRU.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
-use std::sync::{Mutex, MutexGuard, TryLockError};
+use std::sync::{Mutex, MutexGuard, PoisonError, TryLockError};
 
 use crate::execution_native::{
     ExecutionGeometryNativeRunner, NativeExecutableMemoryAdapter,
@@ -44,12 +44,15 @@ use crate::geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateCachedExecutionFailure,
     GeometryNativeCrossTemplateLruAcquireFailure,
     GeometryNativeCrossTemplateLruAcquisition,
-    GeometryNativeCrossTemplateLruCache, GeometryNativeCrossTemplateLruLimits,
+    GeometryNativeCrossTemplateLruCache, GeometryNativeCrossTemplateLruDrain,
+    GeometryNativeCrossTemplateLruDrainSnapshot,
+    GeometryNativeCrossTemplateLruLimits,
     GeometryNativeCrossTemplateLruReconfiguration,
     GeometryNativeCrossTemplateLruReconfigurationFailure,
     GeometryNativeCrossTemplateLruRelease,
     GeometryNativeCrossTemplateLruReleaseAll,
     GeometryNativeCrossTemplateLruReleaseAllFailure,
+    GeometryNativeCrossTemplateLruReleaseAllResult,
     GeometryNativeCrossTemplateLruSnapshot,
     GeometryNativeCrossTemplateLruUsage,
 };
@@ -74,6 +77,8 @@ type ResidentLoadFailure<MemoryError> =
     GeometryNativeResidentLoadFailure<MemoryError>;
 type ReleaseAllRetryFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateReleaseAllRetryFailure<MemoryError>;
+type PoisonedDrainAuthority<Adapter> =
+    GeometryNativeConcurrentCrossTemplatePoisonedDrainAuthority<Adapter>;
 type ConcurrentAcquireFailure<MemoryError> =
     GeometryNativeConcurrentCrossTemplateFailure<
         Box<CacheAcquireFailure<MemoryError>>,
@@ -242,6 +247,26 @@ pub enum GeometryNativeConcurrentCrossTemplateTrySnapshotFailure {
     ResidentWeight(GeometryNativeResidentWeightError),
 }
 
+/// Failure to consume synchronized active authority into a retired drain.
+#[derive(Debug)]
+pub struct GeometryNativeConcurrentCrossTemplateIntoDrainFailure<Adapter> {
+    authority:
+        GeometryNativeConcurrentCrossTemplatePoisonedDrainAuthority<Adapter>,
+}
+
+#[derive(Debug)]
+enum GeometryNativeConcurrentCrossTemplatePoisonedDrainAuthority<Adapter> {
+    Cache(GeometryNativeConcurrentCrossTemplateLruCache<Adapter>),
+    State(PoisonError<GeometryNativeConcurrentCrossTemplateState<Adapter>>),
+}
+
+/// Consumed synchronized authority retaining its adapter for retired cleanup.
+#[derive(Debug)]
+pub struct GeometryNativeConcurrentCrossTemplateDrain<Adapter> {
+    adapter: Adapter,
+    drain: GeometryNativeCrossTemplateLruDrain,
+}
+
 /// One heterogeneous cache and its mapping adapter under a shared mutation
 /// lock.
 #[derive(Debug)]
@@ -263,6 +288,12 @@ pub type GeometryNativeConcurrentCrossTemplateAcquireResult<MemoryError> =
             Box<CacheAcquireFailure<MemoryError>>,
         >,
     >;
+
+/// Result of consuming synchronized active authority into a retired drain.
+pub type GeometryNativeConcurrentCrossTemplateIntoDrainResult<Adapter> = Result<
+    GeometryNativeConcurrentCrossTemplateDrain<Adapter>,
+    GeometryNativeConcurrentCrossTemplateIntoDrainFailure<Adapter>,
+>;
 
 /// Result of retrying one transferred heterogeneous cleanup token.
 pub type GeometryNativeConcurrentCrossTemplateCleanupRetryResult<MemoryError> =
@@ -592,6 +623,27 @@ impl<MemoryError>
     }
 }
 
+impl<Adapter> Display
+    for GeometryNativeConcurrentCrossTemplateIntoDrainFailure<Adapter>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str("cannot retire poisoned heterogeneous v5 cache")
+    }
+}
+
+impl<Adapter> GeometryNativeConcurrentCrossTemplateIntoDrainFailure<Adapter> {
+    /// Returns the original poisoned owner when it was retained intact.
+    #[must_use]
+    pub const fn cache(
+        &self,
+    ) -> Option<&GeometryNativeConcurrentCrossTemplateLruCache<Adapter>> {
+        match &self.authority {
+            PoisonedDrainAuthority::Cache(cache) => Some(cache),
+            PoisonedDrainAuthority::State(_state) => None,
+        }
+    }
+}
+
 impl GeometryNativeConcurrentCrossTemplateSnapshot {
     /// Returns external leases currently retaining the observed identity.
     #[must_use]
@@ -615,6 +667,76 @@ impl GeometryNativeConcurrentCrossTemplateSnapshot {
     #[must_use]
     pub const fn usage(self) -> GeometryNativeCrossTemplateLruUsage {
         self.usage
+    }
+}
+
+impl<Adapter> GeometryNativeConcurrentCrossTemplateDrain<Adapter>
+where
+    Adapter: NativeExecutableMemoryAdapter,
+{
+    /// Reports whether every retired resident has been reclaimed or
+    /// transferred.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.drain.is_empty()
+    }
+
+    /// Reconciles every retired resident currently free of external leases.
+    ///
+    /// # Errors
+    ///
+    /// Returns aggregate typed cleanup ownership after attempting every
+    /// releasable retired resident with the encapsulated adapter.
+    pub fn reconcile(
+        &mut self,
+    ) -> GeometryNativeCrossTemplateLruReleaseAllResult<Adapter::Error> {
+        self.drain.reconcile(&mut self.adapter)
+    }
+
+    /// Returns retired residents still owned by this drain.
+    #[must_use]
+    pub const fn retired_count(&self) -> usize {
+        self.drain.retired_count()
+    }
+
+    /// Retries cleanup transferred by a failed drain reconciliation.
+    ///
+    /// # Errors
+    ///
+    /// Returns refreshed aggregate cleanup ownership when release still fails.
+    pub fn retry_cleanup(
+        &mut self,
+        failure: CacheReleaseAllFailure<Adapter::Error>,
+    ) -> GeometryNativeCrossTemplateLruReleaseAllResult<Adapter::Error> {
+        failure.retry(&mut self.adapter)
+    }
+
+    /// Captures exact retired identities, leases, weights, and aggregate usage.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact resident-weight overflow evidence.
+    pub fn snapshot(
+        &self,
+    ) -> Result<
+        GeometryNativeCrossTemplateLruDrainSnapshot,
+        GeometryNativeResidentWeightError,
+    > {
+        self.drain.snapshot()
+    }
+
+    /// Returns exact aggregate resources still owned by retired residents.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact resident-weight overflow evidence.
+    pub fn usage(
+        &self,
+    ) -> Result<
+        GeometryNativeCrossTemplateLruUsage,
+        GeometryNativeResidentWeightError,
+    > {
+        self.drain.usage()
     }
 }
 
@@ -685,6 +807,39 @@ where
         })?;
         acquisition.execute(runner, buffers).map_err(|error| {
             Box::new(ConcurrentExecutionFailure::Execution(error))
+        })
+    }
+
+    /// Consumes active lookup authority into a retired drain owner.
+    ///
+    /// A healthy mutex is consumed and its adapter moves with the LRU into the
+    /// returned drain. Existing external resident leases remain valid but are
+    /// retired because no active cache survives this move. Poison is never
+    /// recovered; the original poisoned owner is returned unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns the still-poisoned owner when prior mutation unwound under lock.
+    pub fn into_drain(
+        self,
+    ) -> GeometryNativeConcurrentCrossTemplateIntoDrainResult<Adapter> {
+        if self.inner.is_poisoned() {
+            return Err(
+                GeometryNativeConcurrentCrossTemplateIntoDrainFailure {
+                    authority: PoisonedDrainAuthority::Cache(self),
+                },
+            );
+        }
+        let state = self.inner.into_inner().map_err(|error| {
+            GeometryNativeConcurrentCrossTemplateIntoDrainFailure {
+                authority: PoisonedDrainAuthority::State(error),
+            }
+        })?;
+        let GeometryNativeConcurrentCrossTemplateState { adapter, cache } =
+            state;
+        Ok(GeometryNativeConcurrentCrossTemplateDrain {
+            adapter,
+            drain: cache.into_drain(),
         })
     }
 
