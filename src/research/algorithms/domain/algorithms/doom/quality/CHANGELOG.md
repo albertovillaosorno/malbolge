@@ -17,6 +17,54 @@ system effects behind a generic runtime boundary.
 The temporary native runners exist to prove that boundary. They are laboratory
 equipment, not the final product.
 
+## 2026-08-31: Single-Player Runtime Storage and Renderer Cleanup
+
+I made the runtime representation match the already-admitted single-player
+profile instead of retaining four-player state behind constant-false branches.
+`players` now stores one `player_t`; `consoleplayer`, `displayplayer`,
+`playeringame`, multiplayer spawn storage, frag state, and multiplayer
+intermission fields are gone. `CLASSIC_PLAYER_SLOTS` remains four only where the
+historic demo/save/map formats require four physical slots.
+
+The C32 layout became materially smaller: `player_t` fell from 312 to 288 bytes,
+`mobj_t` from 180 to 176 bytes, and `wbstartstruct_t` from 200 to 48 bytes. The
+classic `mobj_t.lastlook` cursor is retained as a byte in existing C32 padding,
+so values 0..3, RNG consumption, and the serialized integer slot remain
+compatible while avoiding a four-byte runtime field.
+
+The renderer no longer allocates or initializes the 768-byte player-color
+translation table, and the translated-column path and its `MF_TRANSLATION`
+flags are gone. Those paths only recolored PLAY sprites for players 2-4, for
+which the single-player guest has no producer. The unreachable Indigo, Brown,
+and Red player-name strings were removed with the same surface.
+
+The complete validator also exposed an independent Ultimate DOOM bug: episode 4
+indexed the three-episode `pars` table even though E4 intermissions do not
+show a par time. Episodes 1-3 retain the exact table lookup; episode 4 now
+records zero instead of performing an out-of-bounds read.
+
+A deterministic accelerated-clock A/B run of Plutonia `demo1` still completes
+at exactly `7403` gametics and `14807` reported realtics. The final materialized
+corpus passes all 63 translation units through the complete guest validator and
+all 252 closed-include target checks.
+
+Current durable evidence:
+
+- `quality/main.rs`: 3,097,574 bytes, 43,735 lines, SHA-256
+  `52c88bb5bc10d5cceeeff770c3668bd01a8858df3d4e69af046bf21ab5a5c404`;
+- output tree SHA-256
+  `5b7c9889efd3b6b2dc1dc944bdb554ab319caed4ac8b021f4101c65a67aee47b`;
+- 130 generated files: 63 C translation units, 66 headers, and the source
+  license;
+- generated output is byte-identical to the ignored oracle;
+- 63/63 translation units pass the complete guest validator;
+- 252/252 strict syntax checks pass on i686, x86-64, AArch64, and wasm32;
+- 57 DOOM generator tests pass, with one Windows-only probe skipped; and
+- repeated quality generation is byte-identical.
+
+Amalgamation remains deliberately untouched. No WAD or `doom.c` is part of this
+checkpoint.
+
 ## 2026-08-31: Direct Single-Player Tic Path and Dead Multiplayer Removal
 
 I finished the single-player specialization by removing the network command
