@@ -406,19 +406,26 @@ in heterogeneous residency without changing shared LRU policy.
 
 `ExecutionGeometryNativeCrazyPrefix` composes exactly the four `p` steps
 that the `(&<;:9K` theorem reaches after jump and rotate. The count is
-theorem-owned, not
-a generic sequence length: four verified v5 artifacts are admitted in order,
-and each normative crazy exit becomes the only checkpoint authority for the
-next step before any prefix execution begins.
+owned by that theorem rather than by a generic sequence length. Four verified
+v5 artifacts are admitted in order, and each normative crazy exit becomes the
+only checkpoint authority for the next step before prefix execution begins.
 
 Transactional prefix execution maps, runs, admits, and releases each crazy
 independently. Four Applied results reach the theorem's exact pre-halt
 checkpoint; GuardMiss stops at its zero-based crazy index with the last
-committed state. Per-step failure carries the same index and checkpoint, and
-release
-failure after Applied retains that newly committed state beside exact retryable
-cleanup ownership. A preloaded four-mapping owner and the final halt remain
-separate composition work.
+committed state. Per-step failure carries the same index and checkpoint, while
+release failure after Applied retains that newly committed state beside exact
+retryable cleanup ownership. A preloaded four-mapping owner remains separate
+composition work.
+
+`ExecutionGeometryNativeCrazyPrefixHaltSequence` extends that fixed theorem
+boundary by admitting the immediately reached halt only from the fourth crazy's
+normative exit. Execution preserves one global `p p p p v` index: crazy guards
+and failures remain 0 through 3, while halt uses index 4. Final Applied halt
+reaches the theorem's exact terminal checkpoint, and halt release failure keeps
+that committed state beside the ready executable's retryable cleanup ownership.
+Preloaded five-mapping ownership and the preceding jump/rotate composition stay
+separate work.
 
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low

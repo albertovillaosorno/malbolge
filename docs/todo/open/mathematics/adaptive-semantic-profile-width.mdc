@@ -966,8 +966,15 @@ transfers, verification, and other separately measured costs.
   admit in fixed order, each normative exit is the next step's sole checkpoint
   authority, and execution preserves exact index plus last committed state for
   GuardMiss or failure. Applied release failure keeps the newly committed state
-  with retryable per-step cleanup. Preloaded four-mapping ownership and the
-  final halt remain separate work; the prefix count is not generalized.
+  with retryable per-step cleanup; preloaded four-mapping ownership remains
+  open.
+- The immediately reached halt now composes after that fixed crazy prefix. Halt
+  admission is bound only to the fourth crazy's normative exit, and execution
+  preserves one global `p p p p v` index with halt at 4. Applied halt reaches
+  the
+  theorem's exact terminal checkpoint, while halt release failure retains that
+  committed state plus retryable executable cleanup. Preloaded five-mapping
+  ownership and the preceding jump/rotate composition remain separate work.
 - Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
   dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical
