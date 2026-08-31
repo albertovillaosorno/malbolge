@@ -15970,6 +15970,12 @@ fn cross_template_initial_jump_plan() -> Result<CrossResidentPlan, String> {
     Ok(CrossResidentPlan::InitialJump(Box::new(admission)))
 }
 
+fn cross_template_jump_code_plan() -> Result<CrossResidentPlan, String> {
+    let (admission, _geometry) =
+        geometry_native_jump_code_admission_fixture(10)?;
+    Ok(CrossResidentPlan::JumpCode(Box::new(admission)))
+}
+
 fn cross_template_jump_data_plan() -> Result<CrossResidentPlan, String> {
     let (admission, _geometry) =
         geometry_native_jump_data_admission_fixture(10)?;
@@ -19601,6 +19607,55 @@ fn geometry_native_concurrent_cross_template_try_execute_completes()
 }
 
 #[test]
+fn geometry_native_concurrent_cross_template_jump_code_try_execute()
+-> Result<(), String> {
+    let plan = cross_template_jump_code_plan()?;
+    let CrossResidentPlan::JumpCode(admission) = &plan else {
+        return Err(String::from("concurrent jump-code plan variant drifted"));
+    };
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(438)?,
+        native_executable_address(0x15_d000)?,
+    );
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let executed = cache
+        .try_execute(
+            &plan,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("concurrent jump-code execute: {error}"))?;
+    let snapshot = cache
+        .snapshot(&plan)
+        .map_err(|error| format!("concurrent jump-code snapshot: {error}"))?;
+    if executed.disposition() != CrossLruDisposition::Inserted
+        || !matches!(executed.outcome(), CrossExecutionOutcome::JumpCode(_))
+        || executed.outcome().state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 1
+        || !snapshot.resident()
+        || snapshot.leases() != 0
+        || snapshot.usage().entries() != 1
+        || snapshot.usage().mappings() != 1
+    {
+        return Err(String::from("concurrent jump-code residency drifted"));
+    }
+    cache
+        .release_if_unleased(&plan)
+        .map(|_release| ())
+        .map_err(|error| format!("concurrent jump-code release: {error}"))
+}
+
+#[test]
 fn geometry_native_concurrent_cross_template_crazy_suffix_try_execute()
 -> Result<(), String> {
     let fixture = derived_v5_crazy_prefix_halt_fixture(10)?;
@@ -21656,6 +21711,156 @@ fn geometry_native_cross_template_initial_jump_counts_mapping_pressure()
 }
 
 #[test]
+fn geometry_native_cross_template_jump_code_resident_executes()
+-> Result<(), String> {
+    let plan = cross_template_jump_code_plan()?;
+    let CrossResidentPlan::JumpCode(admission) = &plan else {
+        return Err(String::from("cross jump-code plan variant drifted"));
+    };
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(434)?,
+        native_executable_address(0x15_9000)?,
+    )
+    .with_mapped_len_overrides(vec![20_480]);
+    let loaded = plan
+        .load(&mut adapter)
+        .map_err(|error| format!("cross jump-code load: {error}"))?;
+    let weight = loaded
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = loaded
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("cross jump-code execute: {error}"))?;
+    if loaded.kind() != CrossResidentKind::JumpCode
+        || !loaded.matches_plan(&plan)
+        || loaded.plan() != plan
+        || weight.mapped_bytes() != 20_480
+        || weight.mappings() != 1
+        || outcome.kind() != CrossResidentKind::JumpCode
+        || !matches!(outcome, CrossExecutionOutcome::JumpCode(_))
+        || outcome.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 1
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("cross jump-code resident drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("cross jump-code release: {error}"))?;
+    if adapter.operations.len() == 5 {
+        Ok(())
+    } else {
+        Err(String::from("cross jump-code release count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_jump_code_lru_hit_reuses_mapping()
+-> Result<(), String> {
+    let plan = cross_template_jump_code_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(435)?,
+        native_executable_address(0x15_a000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| format!("cross jump-code insert: {error}"))?,
+    );
+    let operations_before = adapter.operations.len();
+    let hit = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross jump-code hit: {error}"))?;
+    let weight = hit
+        .lease()
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    if hit.disposition() != CrossLruDisposition::Hit
+        || hit.lease().kind() != CrossResidentKind::JumpCode
+        || !hit.lease().matches_plan(&plan)
+        || weight.mappings() != 1
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from("cross jump-code hit remapped resident"));
+    }
+    drop(hit);
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross jump-code hit cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_jump_code_load_retry_keeps_variant()
+-> Result<(), String> {
+    let plan = cross_template_jump_code_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(436)?,
+        native_executable_address(0x15_b000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 1)
+    .with_release_failures(1);
+    let Err(failure) = plan.load(&mut adapter) else {
+        return Err(String::from("cross jump-code load failure ignored"));
+    };
+    if !matches!(failure.as_ref(), CrossResidentLoadFailure::JumpCode(_))
+        || !failure.cleanup_pending()
+    {
+        return Err(String::from("cross jump-code load cleanup drifted"));
+    }
+    let retried = (*failure).retry_cleanup(&mut adapter);
+    if matches!(&retried, CrossResidentLoadFailure::JumpCode(_))
+        && !retried.cleanup_pending()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross jump-code load retry lost variant"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_jump_code_release_failure_is_typed()
+-> Result<(), String> {
+    let plan = cross_template_jump_code_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(437)?,
+        native_executable_address(0x15_c000)?,
+    )
+    .with_release_failures(1);
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(failure) = cache.release_if_unleased(&mut adapter, &plan) else {
+        return Err(String::from("cross jump-code release failure ignored"));
+    };
+    if !matches!(failure.as_ref(), CrossResidentReleaseFailure::JumpCode(_))
+        || cache.contains(&plan)
+    {
+        return Err(String::from("cross jump-code cleanup authority drifted"));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|error| format!("cross jump-code cleanup retry: {error}"))
+}
+
+#[test]
 fn geometry_native_cross_template_jump_data_resident_executes()
 -> Result<(), String> {
     let plan = cross_template_jump_data_plan()?;
@@ -21808,34 +22013,39 @@ fn geometry_native_cross_template_jump_data_release_failure_is_typed()
 #[test]
 fn geometry_native_cross_template_jump_kinds_coexist() -> Result<(), String> {
     let initial_plan = cross_template_initial_jump_plan()?;
+    let jump_code_plan = cross_template_jump_code_plan()?;
     let jump_data_plan = cross_template_jump_data_plan()?;
     let mut adapter = FakeNativeExecutableAdapter::new(
         native_executable_mapping_id(431)?,
         native_executable_address(0x15_6000)?,
     );
-    let mut cache = cross_template_lru(2)?;
-    let initial = cache
-        .ensure(&mut adapter, &initial_plan)
-        .map_err(|error| format!("cross initial jump coexist: {error}"))?;
-    if initial.lease().kind() != CrossResidentKind::InitialJump {
-        return Err(String::from("cross initial jump coexist kind drifted"));
+    let mut cache = cross_template_lru(3)?;
+    for (plan, kind) in [
+        (&initial_plan, CrossResidentKind::InitialJump),
+        (&jump_code_plan, CrossResidentKind::JumpCode),
+        (&jump_data_plan, CrossResidentKind::JumpData),
+    ] {
+        let acquired = cache
+            .ensure(&mut adapter, plan)
+            .map_err(|error| format!("cross jump coexist: {error}"))?;
+        if acquired.lease().kind() != kind {
+            return Err(String::from("cross jump coexist kind drifted"));
+        }
+        drop(acquired);
     }
-    drop(initial);
-    let general = cache
-        .ensure(&mut adapter, &jump_data_plan)
-        .map_err(|error| format!("cross jump-data coexist: {error}"))?;
     let usage = cache.usage().map_err(|error| error.to_string())?;
-    if general.lease().kind() != CrossResidentKind::JumpData
-        || !cache.contains(&initial_plan)
+    if !cache.contains(&initial_plan)
+        || !cache.contains(&jump_code_plan)
         || !cache.contains(&jump_data_plan)
+        || initial_plan == jump_code_plan
+        || jump_code_plan == jump_data_plan
         || initial_plan == jump_data_plan
-        || usage.entries() != 2
-        || usage.mappings() != 2
+        || usage.entries() != 3
+        || usage.mappings() != 3
     {
         return Err(String::from("cross jump kinds collapsed residency"));
     }
-    drop(general);
-    for plan in [&initial_plan, &jump_data_plan] {
+    for plan in [&initial_plan, &jump_code_plan, &jump_data_plan] {
         cache
             .release_if_unleased(&mut adapter, plan)
             .map(|_release| ())

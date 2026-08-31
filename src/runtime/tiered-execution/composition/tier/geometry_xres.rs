@@ -89,6 +89,12 @@ use crate::geometry_native_input::{
     ExecutionGeometryNativeInputOwnedFailure,
     LoadedExecutionGeometryNativeInput,
 };
+use crate::geometry_native_jump_code::{
+    ExecutionGeometryNativeJumpCodeAdmission,
+    ExecutionGeometryNativeJumpCodeCompletion,
+    ExecutionGeometryNativeJumpCodeOwnedFailure,
+    LoadedExecutionGeometryNativeJumpCode,
+};
 use crate::geometry_native_jump_data::{
     ExecutionGeometryNativeJumpDataAdmission,
     ExecutionGeometryNativeJumpDataCompletion,
@@ -186,6 +192,10 @@ type InitialJumpLoadFailure<MemoryError> =
     NativeExecutableLoadFailure<MemoryError>;
 type InitialJumpReleaseFailure<MemoryError> =
     ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>;
+type JumpCodeLoadFailure<MemoryError> =
+    NativeExecutableLoadFailure<MemoryError>;
+type JumpCodeReleaseFailure<MemoryError> =
+    ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>;
 type JumpDataLoadFailure<MemoryError> =
     NativeExecutableLoadFailure<MemoryError>;
 type JumpDataReleaseFailure<MemoryError> =
@@ -236,6 +246,8 @@ pub enum GeometryNativeResidentKind {
     InitialJump,
     /// One checkpoint-bound byte or EOF input step.
     Input,
+    /// One checkpoint-bound non-aliasing jump-code step.
+    JumpCode,
     /// One checkpoint-bound non-aliasing jump-data step.
     JumpData,
     /// One checkpoint-bound no-operation step.
@@ -269,6 +281,8 @@ pub enum GeometryNativeResidentPlan {
     InitialJump(Box<ExecutionGeometryNativeInitialJumpDataAdmission>),
     /// One exact checkpoint-bound input admission.
     Input(Box<ExecutionGeometryNativeInputAdmission>),
+    /// One exact checkpoint-bound non-aliasing jump-code admission.
+    JumpCode(Box<ExecutionGeometryNativeJumpCodeAdmission>),
     /// One exact checkpoint-bound non-aliasing jump-data admission.
     JumpData(Box<ExecutionGeometryNativeJumpDataAdmission>),
     /// One exact checkpoint-bound no-operation admission.
@@ -302,6 +316,8 @@ pub enum GeometryNativeLoadedResident {
     InitialJump(Box<LoadedExecutionGeometryNativeInitialJumpData>),
     /// One reusable checkpoint-bound input owner.
     Input(Box<LoadedExecutionGeometryNativeInput>),
+    /// One reusable checkpoint-bound non-aliasing jump-code owner.
+    JumpCode(Box<LoadedExecutionGeometryNativeJumpCode>),
     /// One reusable checkpoint-bound non-aliasing jump-data owner.
     JumpData(Box<LoadedExecutionGeometryNativeJumpData>),
     /// One reusable checkpoint-bound no-operation owner.
@@ -335,6 +351,8 @@ pub enum GeometryNativeResidentExecutionOutcome {
     InitialJump(Box<ExecutionGeometryNativeInitialJumpDataCompletion>),
     /// One input completion.
     Input(Box<ExecutionGeometryNativeInputCompletion>),
+    /// One non-aliasing jump-code completion.
+    JumpCode(Box<ExecutionGeometryNativeJumpCodeCompletion>),
     /// One non-aliasing jump-data completion.
     JumpData(Box<ExecutionGeometryNativeJumpDataCompletion>),
     /// One no-operation completion.
@@ -382,6 +400,8 @@ pub enum GeometryNativeResidentExecutionFailure<RunnerError> {
     ),
     /// Input owner execution failed.
     Input(Box<ExecutionGeometryNativeInputOwnedFailure<RunnerError>>),
+    /// Non-aliasing jump-code owner execution failed.
+    JumpCode(Box<ExecutionGeometryNativeJumpCodeOwnedFailure<RunnerError>>),
     /// Non-aliasing jump-data owner execution failed.
     JumpData(Box<ExecutionGeometryNativeJumpDataOwnedFailure<RunnerError>>),
     /// No-operation owner execution failed.
@@ -437,6 +457,8 @@ pub enum GeometryNativeResidentLoadFailure<MemoryError> {
     InitialJump(Box<InitialJumpLoadFailure<MemoryError>>),
     /// Input executable loading failed.
     Input(Box<InputLoadFailure<MemoryError>>),
+    /// Non-aliasing jump-code executable loading failed.
+    JumpCode(Box<JumpCodeLoadFailure<MemoryError>>),
     /// Non-aliasing jump-data executable loading failed.
     JumpData(Box<JumpDataLoadFailure<MemoryError>>),
     /// No-operation executable loading failed.
@@ -470,6 +492,8 @@ pub enum GeometryNativeResidentReleaseFailure<MemoryError> {
     InitialJump(Box<InitialJumpReleaseFailure<MemoryError>>),
     /// Input mapping cleanup remains incomplete.
     Input(Box<InputReleaseFailure<MemoryError>>),
+    /// Non-aliasing jump-code mapping cleanup remains incomplete.
+    JumpCode(Box<JumpCodeReleaseFailure<MemoryError>>),
     /// Non-aliasing jump-data mapping cleanup remains incomplete.
     JumpData(Box<JumpDataReleaseFailure<MemoryError>>),
     /// No-operation mapping cleanup remains incomplete.
@@ -512,6 +536,7 @@ impl<RunnerError: Display> Display
             Self::FullPath(error) => Display::fmt(error, f),
             Self::InitialHalt(error) => Display::fmt(error, f),
             Self::InitialJump(error) => Display::fmt(error, f),
+            Self::JumpCode(error) => Display::fmt(error, f),
             Self::JumpData(error) => Display::fmt(error, f),
             Self::Input(error) => Display::fmt(error, f),
             Self::NoOperation(error) => Display::fmt(error, f),
@@ -548,6 +573,7 @@ impl<MemoryError> GeometryNativeResidentLoadFailure<MemoryError> {
             Self::Crazy(error)
             | Self::InitialHalt(error)
             | Self::InitialJump(error)
+            | Self::JumpCode(error)
             | Self::JumpData(error)
             | Self::Input(error)
             | Self::NoOperation(error)
@@ -586,6 +612,9 @@ impl<MemoryError> GeometryNativeResidentLoadFailure<MemoryError> {
             Self::InitialJump(error) => {
                 Self::InitialJump(Box::new((*error).retry_cleanup(adapter)))
             },
+            Self::JumpCode(error) => {
+                Self::JumpCode(Box::new((*error).retry_cleanup(adapter)))
+            },
             Self::JumpData(error) => {
                 Self::JumpData(Box::new((*error).retry_cleanup(adapter)))
             },
@@ -623,6 +652,7 @@ impl<MemoryError: Display> Display
             Self::Crazy(error)
             | Self::InitialHalt(error)
             | Self::InitialJump(error)
+            | Self::JumpCode(error)
             | Self::JumpData(error)
             | Self::Input(error)
             | Self::NoOperation(error)
@@ -646,6 +676,7 @@ impl<MemoryError: Display> Display
             Self::Crazy(error)
             | Self::InitialHalt(error)
             | Self::InitialJump(error)
+            | Self::JumpCode(error)
             | Self::JumpData(error)
             | Self::Input(error)
             | Self::NoOperation(error)
@@ -691,6 +722,9 @@ impl GeometryNativeLoadedResident {
             },
             Self::InitialJump(loaded) => {
                 Self::execute_initial_jump(loaded, runner, buffers)
+            },
+            Self::JumpCode(loaded) => {
+                Self::execute_jump_code(loaded, runner, buffers)
             },
             Self::JumpData(loaded) => {
                 Self::execute_jump_data(loaded, runner, buffers)
@@ -895,6 +929,28 @@ impl GeometryNativeLoadedResident {
             })
     }
 
+    fn execute_jump_code<Runner>(
+        loaded: &LoadedExecutionGeometryNativeJumpCode,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> GeometryNativeResidentExecutionResult<Runner::Error>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        loaded
+            .execute(runner, buffers)
+            .map(|outcome| {
+                GeometryNativeResidentExecutionOutcome::JumpCode(Box::new(
+                    outcome,
+                ))
+            })
+            .map_err(|error| {
+                Box::new(GeometryNativeResidentExecutionFailure::JumpCode(
+                    error,
+                ))
+            })
+    }
+
     fn execute_jump_data<Runner>(
         loaded: &LoadedExecutionGeometryNativeJumpData,
         runner: &mut Runner,
@@ -1024,6 +1080,7 @@ impl GeometryNativeLoadedResident {
             Self::InitialJump(_loaded) => {
                 GeometryNativeResidentKind::InitialJump
             },
+            Self::JumpCode(_loaded) => GeometryNativeResidentKind::JumpCode,
             Self::JumpData(_loaded) => GeometryNativeResidentKind::JumpData,
             Self::Input(_loaded) => GeometryNativeResidentKind::Input,
             Self::NoOperation(_loaded) => {
@@ -1044,6 +1101,9 @@ impl GeometryNativeLoadedResident {
         &self,
         requested_plan: &GeometryNativeResidentPlan,
     ) -> bool {
+        if let Some(matches) = matches_general_jump_plan(self, requested_plan) {
+            return matches;
+        }
         match (self, requested_plan) {
             (
                 Self::Crazy(loaded),
@@ -1072,10 +1132,6 @@ impl GeometryNativeLoadedResident {
             (
                 Self::InitialJump(loaded),
                 GeometryNativeResidentPlan::InitialJump(exact_plan),
-            ) => loaded.admission() == exact_plan.as_ref(),
-            (
-                Self::JumpData(loaded),
-                GeometryNativeResidentPlan::JumpData(exact_plan),
             ) => loaded.admission() == exact_plan.as_ref(),
             (
                 Self::Input(loaded),
@@ -1140,6 +1196,7 @@ impl GeometryNativeLoadedResident {
                     loaded.admission().clone(),
                 ))
             },
+            Self::JumpCode(loaded) => reconstruct_jump_code_plan(loaded),
             Self::JumpData(loaded) => GeometryNativeResidentPlan::JumpData(
                 Box::new(loaded.admission().clone()),
             ),
@@ -1206,6 +1263,7 @@ impl GeometryNativeLoadedResident {
                     ))
                 })
             },
+            Self::JumpCode(loaded) => Self::release_jump_code(loaded, adapter),
             Self::JumpData(loaded) => Self::release_jump_data(loaded, adapter),
             Self::Input(loaded) => loaded.release(adapter).map_err(|error| {
                 Box::new(GeometryNativeResidentReleaseFailure::Input(error))
@@ -1304,6 +1362,18 @@ impl GeometryNativeLoadedResident {
         })
     }
 
+    fn release_jump_code<Adapter>(
+        loaded: Box<LoadedExecutionGeometryNativeJumpCode>,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeResidentReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        loaded.release(adapter).map_err(|error| {
+            Box::new(GeometryNativeResidentReleaseFailure::JumpCode(error))
+        })
+    }
+
     fn release_jump_data<Adapter>(
         loaded: Box<LoadedExecutionGeometryNativeJumpData>,
         adapter: &mut Adapter,
@@ -1353,6 +1423,7 @@ impl GeometryNativeLoadedResident {
                 (weight.mapped_bytes(), weight.mappings())
             },
             Self::InitialJump(loaded) => initial_jump_weight(loaded),
+            Self::JumpCode(loaded) => jump_code_weight(loaded),
             Self::JumpData(loaded) => jump_data_weight(loaded),
             Self::Input(loaded) => {
                 let weight = loaded.resident_weight();
@@ -1408,6 +1479,7 @@ impl GeometryNativeResidentExecutionOutcome {
             Self::InitialJump(_outcome) => {
                 GeometryNativeResidentKind::InitialJump
             },
+            Self::JumpCode(_outcome) => GeometryNativeResidentKind::JumpCode,
             Self::JumpData(_outcome) => GeometryNativeResidentKind::JumpData,
             Self::Input(_outcome) => GeometryNativeResidentKind::Input,
             Self::NoOperation(_outcome) => {
@@ -1435,6 +1507,7 @@ impl GeometryNativeResidentExecutionOutcome {
             Self::FullPath(outcome) => outcome.state(),
             Self::InitialHalt(outcome) => outcome.state(),
             Self::InitialJump(outcome) => outcome.state(),
+            Self::JumpCode(outcome) => outcome.state(),
             Self::JumpData(outcome) => outcome.state(),
             Self::Input(outcome) => outcome.state(),
             Self::NoOperation(outcome) => outcome.state(),
@@ -1462,6 +1535,7 @@ impl GeometryNativeResidentPlan {
             Self::FullPath(_plan) => GeometryNativeResidentKind::FullPath,
             Self::InitialHalt(_plan) => GeometryNativeResidentKind::InitialHalt,
             Self::InitialJump(_plan) => GeometryNativeResidentKind::InitialJump,
+            Self::JumpCode(_plan) => GeometryNativeResidentKind::JumpCode,
             Self::JumpData(_plan) => GeometryNativeResidentKind::JumpData,
             Self::Input(_plan) => GeometryNativeResidentKind::Input,
             Self::NoOperation(_plan) => GeometryNativeResidentKind::NoOperation,
@@ -1515,6 +1589,7 @@ impl GeometryNativeResidentPlan {
                         error,
                     ))
                 }),
+            Self::JumpCode(plan) => Self::load_jump_code(plan, adapter),
             Self::JumpData(plan) => Self::load_jump_data(plan, adapter),
             Self::Input(plan) => Self::load_input(plan, adapter),
             Self::NoOperation(plan) => Self::load_no_operation(plan, adapter),
@@ -1641,6 +1716,22 @@ impl GeometryNativeResidentPlan {
             })
     }
 
+    fn load_jump_code<Adapter>(
+        plan: &ExecutionGeometryNativeJumpCodeAdmission,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeResidentLoadResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        plan.load_owned(adapter)
+            .map(|loaded| {
+                GeometryNativeLoadedResident::JumpCode(Box::new(loaded))
+            })
+            .map_err(|error| {
+                Box::new(GeometryNativeResidentLoadFailure::JumpCode(error))
+            })
+    }
+
     fn load_jump_data<Adapter>(
         plan: &ExecutionGeometryNativeJumpDataAdmission,
         adapter: &mut Adapter,
@@ -1740,16 +1831,13 @@ impl<MemoryError> GeometryNativeResidentReleaseFailure<MemoryError> {
             Self::FullPath(error) => (*error)
                 .retry(adapter)
                 .map_err(|retry_error| Box::new(Self::FullPath(retry_error))),
-            Self::InitialHalt(error) => {
-                (*error).retry(adapter).map_err(|retry_error| {
-                    Box::new(Self::InitialHalt(Box::new(retry_error)))
-                })
-            },
+            Self::InitialHalt(error) => retry_initial_halt(*error, adapter),
             Self::InitialJump(error) => {
                 (*error).retry(adapter).map_err(|retry_error| {
                     Box::new(Self::InitialJump(Box::new(retry_error)))
                 })
             },
+            Self::JumpCode(error) => retry_jump_code_release(*error, adapter),
             Self::JumpData(error) => retry_jump_data_release(*error, adapter),
             Self::Input(error) => {
                 (*error).retry(adapter).map_err(|retry_error| {
@@ -1797,8 +1885,43 @@ impl GeometryNativeResidentWeight {
     }
 }
 
+fn matches_general_jump_plan(
+    loaded: &GeometryNativeLoadedResident,
+    requested: &GeometryNativeResidentPlan,
+) -> Option<bool> {
+    match (loaded, requested) {
+        (
+            GeometryNativeLoadedResident::JumpCode(owner),
+            GeometryNativeResidentPlan::JumpCode(plan),
+        ) => Some(owner.admission() == plan.as_ref()),
+        (
+            GeometryNativeLoadedResident::JumpData(owner),
+            GeometryNativeResidentPlan::JumpData(plan),
+        ) => Some(owner.admission() == plan.as_ref()),
+        (
+            GeometryNativeLoadedResident::JumpCode(_)
+            | GeometryNativeLoadedResident::JumpData(_),
+            _,
+        ) => Some(false),
+        _ => None,
+    }
+}
+
+fn reconstruct_jump_code_plan(
+    loaded: &LoadedExecutionGeometryNativeJumpCode,
+) -> GeometryNativeResidentPlan {
+    GeometryNativeResidentPlan::JumpCode(Box::new(loaded.admission().clone()))
+}
+
 const fn initial_jump_weight(
     loaded: &LoadedExecutionGeometryNativeInitialJumpData,
+) -> (usize, usize) {
+    let weight = loaded.resident_weight();
+    (weight.mapped_bytes(), weight.mappings())
+}
+
+const fn jump_code_weight(
+    loaded: &LoadedExecutionGeometryNativeJumpCode,
 ) -> (usize, usize) {
     let weight = loaded.resident_weight();
     (weight.mapped_bytes(), weight.mappings())
@@ -1831,6 +1954,34 @@ where
         Box::new(GeometryNativeResidentReleaseFailure::CrazyPrefixHalt(
             retry_error,
         ))
+    })
+}
+
+fn retry_initial_halt<MemoryError, Adapter>(
+    error: InitialHaltReleaseFailure<MemoryError>,
+    adapter: &mut Adapter,
+) -> GeometryNativeResidentReleaseResult<MemoryError>
+where
+    Adapter: NativeExecutableMemoryAdapter<Error = MemoryError>,
+{
+    error.retry(adapter).map_err(|retry_error| {
+        Box::new(GeometryNativeResidentReleaseFailure::InitialHalt(Box::new(
+            retry_error,
+        )))
+    })
+}
+
+fn retry_jump_code_release<MemoryError, Adapter>(
+    error: JumpCodeReleaseFailure<MemoryError>,
+    adapter: &mut Adapter,
+) -> GeometryNativeResidentReleaseResult<MemoryError>
+where
+    Adapter: NativeExecutableMemoryAdapter<Error = MemoryError>,
+{
+    error.retry(adapter).map_err(|retry_error| {
+        Box::new(GeometryNativeResidentReleaseFailure::JumpCode(Box::new(
+            retry_error,
+        )))
     })
 }
 

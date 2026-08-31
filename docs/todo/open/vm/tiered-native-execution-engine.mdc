@@ -389,8 +389,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   machine-code generators with v5-derived pointer/memory guards. Adaptive N10
   evidence selects and loads the source-backed non-aliasing jump-code on both
   ISAs, and a generic preloaded one-step sequence matches normative replay.
-  Jump-code now also has checkpoint-bound normative replay and reusable
-  one-mapping ownership; heterogeneous residency remains separate work.
+  Jump-code now also has checkpoint-bound normative replay, reusable
+  one-mapping ownership, typed heterogeneous LRU residency, and synchronized
+  `try_execute` evidence with one resident mapping and zero post-run leases.
 
   Explicit-geometry jump-data revision 1 now reuses the reviewed jump-data
   generators only after v5 admission proves two distinct C/D live-ins, exact

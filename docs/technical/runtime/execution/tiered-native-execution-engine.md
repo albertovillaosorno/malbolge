@@ -1104,7 +1104,14 @@ three-live-in step before mapping, retains the verified JumpCode artifact/load
 image, and reuses the operation-specific prepare/bind path. Repeated execution
 uses one synchronized mapping with adapter-derived weight; runner mutation
 failure restores the entry checkpoint while preserving that mapping for a later
-successful call. Heterogeneous JumpCode residency remains separate policy work.
+successful call.
+
+JumpCode is now also a typed heterogeneous resident. Exact admission is its
+identity; load, execution, weight, release, and cleanup retry remain
+JumpCode-tagged, exact hits perform no adapter work, and the shared LRU adds no
+jump-code-specific eviction or weighting rule. A synchronized `try_execute`
+case proves the same resident runs through the fail-closed mutex/lease layer and
+returns to zero external leases after execution.
 
 General non-aliasing jump-data now has the same checkpoint-bound ownership
 shape without sharing aliasing policy.
@@ -1229,10 +1236,11 @@ limit of six admits two full-path residents and evicts LRU authority before a
 third can publish.
 
 `GeometryNativeResidentPlan` now gives crazy, initial halt, initial jump-data,
-input, jump-data, no-operation, no-op/halt, output, rotate, rotate/halt, and
-full-path templates one typed lifecycle boundary without merging execution
-semantics. The loaded-resident enum preserves exact variant identity, derives
-1/1/1/1/1/1/2/1/1/2/3 mapping weights from synchronized reports, and delegates
+input, jump-code, jump-data, no-operation, no-op/halt, output, rotate,
+rotate/halt, and full-path templates one typed lifecycle boundary without
+merging execution semantics. The loaded-resident enum preserves exact variant
+identity, derives 1/1/1/1/1/1/1/2/1/1/2/3 mapping weights from synchronized
+reports, and delegates
 load, execution, release, and retry to each specialized owner.
 
 `GeometryNativeCrossTemplateLruCache` now performs real cross-template
@@ -1263,9 +1271,9 @@ or weighting logic.
 A heterogeneous lease can now execute its resident directly without cache or
 adapter work. The common execution boundary only tags the existing specialized
 outcome/failure as crazy, full-path, initial halt, initial jump-data, input,
-jump-data, no-operation, no-op/halt, output, rotate, or rotate/halt; it does not
-translate
-checkpoints, guard misses, committed state, or rollback semantics. The seven
+jump-code, jump-data, no-operation, no-op/halt, output, rotate, or rotate/halt;
+it does not translate
+checkpoints, guard misses, committed state, or rollback semantics. The nine
 single-mapping templates therefore reuse their one-step completion and rollback
 contracts.
 

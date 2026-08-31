@@ -608,8 +608,8 @@ transfers, verification, and other separately measured costs.
   and loads on both ISAs, and generic preloaded sequence execution matches the
   normative `ProfileMachine` memory and observation exactly. N10/N11 geometry
   remains distinct in artifact identity. Jump-code now also has checkpoint-bound
-  normative replay and reusable one-mapping ownership; heterogeneous residency
-  remains separate work.
+  normative replay, reusable one-mapping ownership, and typed heterogeneous
+  residency with exact hit reuse and cleanup retry.
 - Explicit-geometry jump-data revision 1 reuses the reviewed x86-64/AArch64
   jump-data generators after v5 admission proves distinct C/D live-ins, exact
   positional `j`, the data target domain, XLAT2 self-encryption, and
@@ -841,9 +841,10 @@ transfers, verification, and other separately measured costs.
   three mappings, limit two rejects with rollback, and limit six evicts one LRU
   before admitting a third resident.
 - A typed cross-template resident plan wraps initial halt, initial jump-data,
-  input, jump-data, no-operation, no-op/halt, output, rotate, rotate/halt, and
-  full-path admission without sharing execution semantics. Loaded owners retain
-  exact variant identity, report 1/1/1/1/1/2/1/1/2/3 mapping weights, and
+  input, jump-code, jump-data, no-operation, no-op/halt, output, rotate,
+  rotate/halt, and full-path admission without sharing execution semantics.
+  Loaded owners retain exact variant identity, report
+  1/1/1/1/1/1/2/1/1/2/3 mapping weights, and
   preserve
   specialized load/execution/release retry ownership.
 - The heterogeneous LRU now accepts entry, exact mapped-byte, and mapping-count
@@ -879,7 +880,8 @@ transfers, verification, and other separately measured costs.
   leased full-path resident and finally to empty zero-usage closure.
 - Heterogeneous leases now execute the retained specialized owner directly.
   Outcomes and failures stay tagged as initial halt, initial jump-data, input,
-  jump-data, no-operation, no-op/halt, output, rotate, rotate/halt, or
+  jump-code, jump-data, no-operation, no-op/halt, output, rotate, rotate/halt,
+  or
   full-path;
   checkpoints, guard behavior, and rollback remain owned by the original
   template implementation. Execution performs no adapter work.
@@ -1125,10 +1127,9 @@ transfers, verification, and other separately measured costs.
 - The no-op/halt, rotate/halt, and full-path single-resident caches remain
   intentionally separate for operation-specific callers. The heterogeneous LRU
   is the shared residency authority for its established variants. General
-  jump-data now has checkpoint-bound one-mapping heterogeneous residency;
-  generic
-  jump-code now also has checkpoint-bound one-mapping ownership but still lacks
-  heterogeneous residency. Additional state-changing templates also
+  jump-data and jump-code now both have checkpoint-bound one-mapping
+  heterogeneous residency with distinct exact admission identities. Additional
+  state-changing templates also
   remain open.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only
