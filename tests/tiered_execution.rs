@@ -18048,6 +18048,109 @@ fn geometry_native_concurrent_cross_template_try_execute_completes()
 }
 
 #[test]
+fn geometry_native_concurrent_cross_template_crazy_theorem_try_execute()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let plan = CrossResidentPlan::CrazyTheorem(Box::new(sequence));
+    let initial = fixture.states.first().ok_or_else(|| {
+        String::from("concurrent crazy theorem initial state missing")
+    })?;
+    let expected = fixture.states.last().ok_or_else(|| {
+        String::from("concurrent crazy theorem final state missing")
+    })?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(226)?,
+        native_executable_address(0x8_f000)?,
+    );
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    let mut runner = full_crazy_applied_runner(7);
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let executed = cache
+        .try_execute(
+            &plan,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| {
+            format!("concurrent crazy theorem try-execute: {error}")
+        })?;
+    let snapshot = cache.snapshot(&plan).map_err(|error| {
+        format!("concurrent crazy theorem snapshot: {error}")
+    })?;
+    if executed.disposition() != CrossLruDisposition::Inserted
+        || !matches!(executed.outcome(), CrossExecutionOutcome::CrazyTheorem(_))
+        || executed.outcome().state() != expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 7
+        || !snapshot.resident()
+        || snapshot.leases() != 0
+        || snapshot.usage().entries() != 1
+        || snapshot.usage().mappings() != 7
+    {
+        return Err(String::from(
+            "concurrent crazy theorem execution/residency drifted",
+        ));
+    }
+    let released = cache.release_if_unleased(&plan).map_err(|error| {
+        format!("concurrent crazy theorem release: {error}")
+    })?;
+    if released == CrossLruRelease::Released {
+        Ok(())
+    } else {
+        Err(String::from(
+            "concurrent crazy theorem post-execution release drifted",
+        ))
+    }
+}
+
+#[test]
+fn geometry_native_concurrent_cross_template_crazy_theorem_lease_blocks()
+-> Result<(), String> {
+    let plan = cross_template_crazy_theorem_plan()?;
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(227)?,
+        native_executable_address(0x9_0000)?,
+    );
+    let cache = concurrent_cross_template_lru(adapter, 1)?;
+    let acquisition = cache.ensure(&plan).map_err(|error| {
+        format!("concurrent crazy theorem acquire: {error}")
+    })?;
+    let snapshot = cache.snapshot(&plan).map_err(|error| {
+        format!("concurrent crazy theorem lease snapshot: {error}")
+    })?;
+    let blocked = cache.release_if_unleased(&plan).map_err(|error| {
+        format!("concurrent crazy theorem blocked release: {error}")
+    })?;
+    if acquisition.disposition() != CrossLruDisposition::Inserted
+        || !snapshot.resident()
+        || snapshot.leases() != 1
+        || snapshot.usage().mappings() != 7
+        || blocked != (CrossLruRelease::Leased { leases: 1 })
+    {
+        return Err(String::from(
+            "concurrent crazy theorem lease boundary drifted",
+        ));
+    }
+    drop(acquisition);
+    let released = cache.release_if_unleased(&plan).map_err(|error| {
+        format!("concurrent crazy theorem final release: {error}")
+    })?;
+    if released == CrossLruRelease::Released
+        && !cache.contains(&plan).map_err(|error| error.to_string())?
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "concurrent crazy theorem final release retained authority",
+        ))
+    }
+}
+
+#[test]
 fn geometry_native_concurrent_cross_template_try_execute_keeps_native_failure()
 -> Result<(), String> {
     let fixture = derived_v5_rotate_halt_sequence_fixture(10)?;

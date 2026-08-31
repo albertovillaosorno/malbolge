@@ -1005,8 +1005,13 @@ transfers, verification, and other separately measured costs.
   heterogeneous boundary. It delegates exact plan identity, load, seven-step
   execution, 114,688-byte/seven-mapping weight evidence, release, and cleanup
   retry to the existing owner. Shared LRU hits reuse it without remapping and
-  keep eviction/weight policy template-neutral. Broader concurrent shared
-  residency remains separate work.
+  keep eviction/weight policy template-neutral.
+- The synchronized heterogeneous owner now covers that same theorem plan.
+  Nonblocking acquire/execute publishes under the mutex and runs all seven
+  native steps after releasing it; the coherent snapshot then reports one
+  resident, zero leases, and seven mappings. A separately retained acquisition
+  reports one lease and blocks exact release until the lease is dropped. No
+  theorem-specific concurrent eviction or resource policy was introduced.
 - Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
   dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical

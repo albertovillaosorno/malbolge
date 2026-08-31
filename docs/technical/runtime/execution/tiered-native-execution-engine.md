@@ -479,7 +479,14 @@ heterogeneous resident boundary. Load, execute, exact weight, plan identity,
 release, and retry delegate to the same seven-mapping owner; the shared LRU adds
 no theorem-specific eviction or weighting logic. Focused evidence proves the
 114,688-byte/seven-mapping resident, mapping-free cache hits, and typed cleanup
-retry. Broader concurrent shared-residency policy remains separate work.
+retry.
+
+The synchronized heterogeneous owner now exercises that same theorem variant
+without adding theorem-specific locking policy. Nonblocking acquire/execute
+runs all seven steps outside the mutex after publication, while the post-run
+snapshot reports one resident, zero external leases, and seven mappings. A live
+concurrent acquisition reports one lease and blocks exact release until that
+lease is dropped.
 
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low
