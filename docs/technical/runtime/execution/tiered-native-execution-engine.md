@@ -680,7 +680,8 @@ final release fails. Eight focused cases cover those paths plus cross-geometry
 binding and caller-memory drift.
 
 `direct-execution-geometry-output` revision 1 adds a byte-verifiable v5 output
-artifact boundary without granting loader or invocation authority. Its selector
+artifact boundary with operation-specific execution authority composed below.
+Its selector
 consumes the real `<` trace reached after `/` in the independently verified
 `ubO` input/output/halt theorem with byte input `0xA5`. Canonical profile
 identity still selects the output opcode and emitted low byte, while explicit
@@ -701,9 +702,32 @@ authority. The N10 fixture preserves input cursor 1 and appends exactly `0xA5`;
 N11 checkpoint geometry and N11 artifact identity reject independently.
 
 Only after replay succeeds does admission reconstruct the exact native key and
-extract a relocation-free `VerifiedExecutionGeometryLoadImage`. Native buffer
-preparation, executable binding, runner/completion admission, transactional
-cleanup, reusable ownership, and residency remain separate follow-up work.
+extract a relocation-free `VerifiedExecutionGeometryLoadImage`. Output now also
+reaches the dedicated v5 runner through checkpoint-bound preparation and exact
+executable binding. Memory and complete input must equal the checkpoint. The
+mutable output slice is physical capacity: only its logical checkpoint prefix
+must match entry state, and the common ABI contract separately requires room for
+the exact appended byte while preserving unused capacity.
+
+The crate-private output invocation constructor independently requires one
+fetched live-in, no input effect, one output append, and one-step v5 shape
+before using the shared snapshot/write/output verifier. Applied completion
+returns only
+the normatively replayed checkpoint; GuardMiss returns the exact entry
+checkpoint. Runner failure and completion drift restore memory, state, and the
+complete physical output buffer. N10 prepared state cannot bind an N11 output
+mapping.
+
+`execute_transactionally()` prepares before mapping, then loads, binds, runs,
+admits, and releases in order. Successful execution performs the exact `0xA5`
+append in the theorem fixture. Final release failure retains both the committed
+opaque-geometry completion and exact ready executable for cleanup retry. Eleven
+focused output cases cover admission, capacity, cross-geometry binding, Applied,
+GuardMiss, runner/completion rollback, normal release, and committed cleanup
+retry.
+
+Reusable output ownership and heterogeneous residency remain separate follow-up
+work.
 
 `direct-execution-geometry-rotate` revision 1 adds a second state-changing v5
 artifact boundary without granting execution authority. The selector consumes

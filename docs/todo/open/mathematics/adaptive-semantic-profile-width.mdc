@@ -910,8 +910,14 @@ transfers, verification, and other separately measured costs.
   the same reusable initial-jump owner. Triple load/release no longer duplicate
   raw jump executable ownership while preserving existing suffix rollback and
   three-mapping cleanup contracts.
-- Input and crazy native templates remain open. Output now has exact v5
-  artifact, checkpoint replay, and load-image authority. Native invocation and
+- Input and crazy native templates remain open; output now has exact v5
+  artifact, checkpoint replay, load-image, prepare/bind, dedicated runner, and
+  transactional cleanup authority. Its mutable output slice is physical
+  capacity: only the checkpoint's logical prefix is entry state, while the ABI
+  separately requires room for the exact append and rolls the whole slice back
+  on guard/failure. N10/N11 binding mismatch rejects; Applied returns the
+  normative `0xA5` checkpoint; final cleanup failure retains committed state and
+  retryable executable ownership. Reusable output ownership and heterogeneous
   residency remain open.
 - The no-op/halt, rotate/halt, and full-path single-resident caches remain
   intentionally separate for operation-specific callers. The heterogeneous LRU

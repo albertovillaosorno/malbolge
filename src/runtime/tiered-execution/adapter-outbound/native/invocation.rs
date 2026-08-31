@@ -903,6 +903,45 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         )
     }
 
+    /// Prepares one exact explicit-geometry output ABI transition.
+    ///
+    /// The direct v5 verifier owns output instruction semantics. This
+    /// crate-private constructor independently requires one fetched live-in,
+    /// one output append, and no input effect before the common snapshot and
+    /// rollback contract is prepared.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeRegionInvocationError`] when shape, capacity, live-in,
+    /// output transition, or declared memory writes disagree with buffers.
+    pub(crate) fn new_execution_geometry_output(
+        program: &ExecutionGeometryRegionEffectProgram,
+        memory: &'buffers mut [u32],
+        input: &'buffers [u8],
+        output: &'buffers mut [u8],
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let [effect] = program.effects() else {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        };
+        if !program.fits_execution_geometry_capacity()
+            || program.step_budget() != 1
+            || program.outcome() != (RunOutcome::BudgetExhausted { steps: 1 })
+            || effect.before.termination.is_some()
+            || effect.after.termination.is_some()
+            || effect.input.is_some()
+            || effect.output.is_none()
+            || program.memory_live_ins().len() != 1
+        {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        }
+        Self::from_effect(
+            *effect,
+            program.memory_live_ins(),
+            program.required_memory_words(),
+            NativeRegionBuffers::new(memory, input, output),
+        )
+    }
+
     /// Prepares one exact explicit-geometry rotate ABI transition.
     ///
     /// The direct v5 verifier owns rotate semantics; this crate-private
