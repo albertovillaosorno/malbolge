@@ -724,7 +724,7 @@ that mapping's `mapped_len()` report. Final release delegates to the existing
 ready-executable release contract, so failed cleanup transfers the same exact
 mapping ownership already used by transactional execution. Two focused cases
 cover mapped-weight reuse and runner-failure rollback followed by successful
-reuse. This owner is not yet a heterogeneous LRU resident.
+reuse. The heterogeneous boundary now consumes this owner directly.
 
 The complete certified `(&O` path now composes initial jump-data, rotate, and
 halt without executing the jump outside the native composition boundary.
@@ -826,11 +826,12 @@ loaded triples. A limit below three rejects one candidate with rollback, while a
 limit of six admits two full-path residents and evicts LRU authority before a
 third can publish.
 
-`GeometryNativeResidentPlan` now gives the reviewed no-op/halt, rotate/halt, and
-full-path templates one typed lifecycle boundary without merging execution
-semantics. The corresponding loaded-resident enum preserves exact variant
-identity, derives 2/2/3 mapping weights from synchronized reports, and delegates
-release/retry to the original specialized owner.
+`GeometryNativeResidentPlan` now gives initial jump-data, no-op/halt,
+rotate/halt, and full-path templates one typed lifecycle boundary without
+merging execution semantics. The corresponding loaded-resident enum preserves
+exact variant identity, derives 1/2/2/3 mapping weights from synchronized
+reports, and delegates load, execution, release, and retry to each specialized
+owner.
 
 `GeometryNativeCrossTemplateLruCache` now performs real cross-template
 residency over that typed boundary. It always has a nonzero resident entry limit
@@ -848,15 +849,18 @@ candidate back. Victim release failure removes only the typed victim, retains
 its specialized cleanup ownership, and also attempts candidate rollback. Failure
 evidence reports prior removals so partial successful eviction is observable.
 
-Five entry-only and five weighted cases mix no-op/halt, rotate/halt, and
-full-path residents through recency, lease, saturation, byte/mapping pressure,
-rollback, release-failure, and vacancy paths.
+The existing entry-only and weighted cases still mix no-op/halt, rotate/halt,
+and full-path residents through recency, lease, saturation, byte/mapping
+pressure, rollback, release-failure, and vacancy paths. Five additional cases
+exercise initial jump-data lifecycle, hit reuse, primary-load rollback retry,
+typed release cleanup, and mixed 2+1-to-3 mapping pressure.
 
 A heterogeneous lease can now execute its resident directly without cache or
 adapter work. The common execution boundary only tags the existing specialized
-outcome/failure as full-path, no-op/halt, or rotate/halt; it does not translate
-step indices, guard misses, committed checkpoints, or rollback semantics. Three
-focused cases cover two successful families and one typed rotate failure.
+outcome/failure as full-path, initial jump-data, no-op/halt, or rotate/halt; it
+does not translate step indices, guard misses, committed checkpoints, or
+rollback semantics. Initial jump-data therefore reuses its one-step completion
+and rollback contract unchanged inside the same lease surface.
 
 `GeometryNativeCrossTemplateLruAcquisition::execute()` now consumes the
 temporary

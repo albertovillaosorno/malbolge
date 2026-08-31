@@ -13,7 +13,8 @@
 // - Must-Not:
 //   - Merge template identities, invent generic execution semantics, or cache.
 // - Allows:
-//   - Inputs: exact admitted no-op/halt, rotate/halt, or full-path sequences.
+//   - Inputs: exact admitted initial-jump, no-op/halt, rotate/halt, or
+//     full-path plans.
 //   - Outputs: typed loaded owner, exact resident weight, and cleanup
 //     ownership.
 //   - Side effects: delegated executable loading and release only.
@@ -38,8 +39,15 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use malbolge::ProfileMachineState;
 
 use crate::execution_native::{
-    ExecutionGeometryNativeRunner, NativeExecutableMemoryAdapter,
-    NativeRegionBuffers,
+    ExecutionGeometryNativeExecutableReleaseFailure,
+    ExecutionGeometryNativeRunner, NativeExecutableLoadFailure,
+    NativeExecutableMemoryAdapter, NativeRegionBuffers,
+};
+use crate::geometry_native_initial_jump_data::{
+    ExecutionGeometryNativeInitialJumpDataAdmission,
+    ExecutionGeometryNativeInitialJumpDataCompletion,
+    ExecutionGeometryNativeInitialJumpDataOwnedFailure,
+    LoadedExecutionGeometryNativeInitialJumpData,
 };
 use crate::geometry_native_jump_rotate_halt_sequence::{
     ExecutionGeometryNativeJumpRotateHaltOutcome,
@@ -70,6 +78,10 @@ type FullLoadFailure<MemoryError> =
     ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<MemoryError>;
 type FullReleaseFailure<MemoryError> =
     ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure<MemoryError>;
+type InitialJumpLoadFailure<MemoryError> =
+    NativeExecutableLoadFailure<MemoryError>;
+type InitialJumpReleaseFailure<MemoryError> =
+    ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>;
 type NoopLoadFailure<MemoryError> =
     ExecutionGeometryNativeNoopHaltPairLoadFailure<MemoryError>;
 type NoopReleaseFailure<MemoryError> =
@@ -84,6 +96,8 @@ type RotateReleaseFailure<MemoryError> =
 pub enum GeometryNativeResidentKind {
     /// Complete initial-jump, rotate, halt path.
     FullPath,
+    /// One checkpoint-bound aliasing initial jump-data step.
+    InitialJump,
     /// No-operation followed by halt.
     NoOperationPair,
     /// Rotate followed by halt.
@@ -95,6 +109,8 @@ pub enum GeometryNativeResidentKind {
 pub enum GeometryNativeResidentPlan {
     /// Complete initial-jump, rotate, halt sequence.
     FullPath(Box<ExecutionGeometryNativeJumpRotateHaltSequence>),
+    /// One exact checkpoint-bound initial jump-data admission.
+    InitialJump(Box<ExecutionGeometryNativeInitialJumpDataAdmission>),
     /// No-operation followed by halt sequence.
     NoOperationPair(Box<ExecutionGeometryNativeNoopHaltSequence>),
     /// Rotate followed by halt sequence.
@@ -106,6 +122,8 @@ pub enum GeometryNativeResidentPlan {
 pub enum GeometryNativeLoadedResident {
     /// Complete initial-jump, rotate, halt owner.
     FullPath(Box<LoadedExecutionGeometryNativeJumpRotateHaltSequence>),
+    /// One reusable checkpoint-bound initial jump-data owner.
+    InitialJump(Box<LoadedExecutionGeometryNativeInitialJumpData>),
     /// No-operation followed by halt owner.
     NoOperationPair(Box<LoadedExecutionGeometryNativeNoopHaltSequence>),
     /// Rotate followed by halt owner.
@@ -117,6 +135,8 @@ pub enum GeometryNativeLoadedResident {
 pub enum GeometryNativeResidentExecutionOutcome {
     /// Complete initial-jump, rotate, halt outcome.
     FullPath(Box<ExecutionGeometryNativeJumpRotateHaltOutcome>),
+    /// One initial jump-data completion.
+    InitialJump(Box<ExecutionGeometryNativeInitialJumpDataCompletion>),
     /// No-operation followed by halt outcome.
     NoOperationPair(Box<ExecutionGeometryNativeNoopHaltOutcome>),
     /// Rotate followed by halt outcome.
@@ -129,6 +149,10 @@ pub enum GeometryNativeResidentExecutionFailure<RunnerError> {
     /// Complete full-path execution failed.
     FullPath(
         Box<ExecutionGeometryNativeJumpRotateHaltOwnedFailure<RunnerError>>,
+    ),
+    /// Initial jump-data owner execution failed.
+    InitialJump(
+        Box<ExecutionGeometryNativeInitialJumpDataOwnedFailure<RunnerError>>,
     ),
     /// No-operation/halt pair execution failed.
     NoOperationPair(
@@ -161,6 +185,8 @@ pub enum GeometryNativeResidentWeightError {
 pub enum GeometryNativeResidentLoadFailure<MemoryError> {
     /// Complete full-path triple loading failed.
     FullPath(Box<FullLoadFailure<MemoryError>>),
+    /// Initial jump-data executable loading failed.
+    InitialJump(Box<InitialJumpLoadFailure<MemoryError>>),
     /// No-operation/halt pair loading failed.
     NoOperationPair(Box<NoopLoadFailure<MemoryError>>),
     /// Rotate/halt pair loading failed.
@@ -172,6 +198,8 @@ pub enum GeometryNativeResidentLoadFailure<MemoryError> {
 pub enum GeometryNativeResidentReleaseFailure<MemoryError> {
     /// Complete full-path cleanup remains incomplete.
     FullPath(Box<FullReleaseFailure<MemoryError>>),
+    /// Initial jump-data mapping cleanup remains incomplete.
+    InitialJump(Box<InitialJumpReleaseFailure<MemoryError>>),
     /// No-operation/halt cleanup remains incomplete.
     NoOperationPair(Box<NoopReleaseFailure<MemoryError>>),
     /// Rotate/halt cleanup remains incomplete.
@@ -200,6 +228,7 @@ impl<RunnerError: Display> Display
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
             Self::FullPath(error) => Display::fmt(error, f),
+            Self::InitialJump(error) => Display::fmt(error, f),
             Self::NoOperationPair(error) => Display::fmt(error, f),
             Self::RotatePair(error) => Display::fmt(error, f),
         }
@@ -225,6 +254,7 @@ impl<MemoryError> GeometryNativeResidentLoadFailure<MemoryError> {
     pub fn cleanup_pending(&self) -> bool {
         match self {
             Self::FullPath(error) => error.cleanup_pending(),
+            Self::InitialJump(error) => error.cleanup_pending(),
             Self::NoOperationPair(error) => error.cleanup_pending(),
             Self::RotatePair(error) => error.cleanup_pending(),
         }
@@ -239,6 +269,9 @@ impl<MemoryError> GeometryNativeResidentLoadFailure<MemoryError> {
         match self {
             Self::FullPath(error) => {
                 Self::FullPath(Box::new((*error).retry_cleanup(adapter)))
+            },
+            Self::InitialJump(error) => {
+                Self::InitialJump(Box::new((*error).retry_cleanup(adapter)))
             },
             Self::NoOperationPair(error) => {
                 Self::NoOperationPair(Box::new((*error).retry_cleanup(adapter)))
@@ -256,6 +289,7 @@ impl<MemoryError: Display> Display
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
             Self::FullPath(error) => Display::fmt(error, f),
+            Self::InitialJump(error) => Display::fmt(error, f),
             Self::NoOperationPair(error) => Display::fmt(error, f),
             Self::RotatePair(error) => Display::fmt(error, f),
         }
@@ -268,6 +302,7 @@ impl<MemoryError: Display> Display
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         match self {
             Self::FullPath(error) => Display::fmt(error, f),
+            Self::InitialJump(error) => Display::fmt(error, f),
             Self::NoOperationPair(error) => Display::fmt(error, f),
             Self::RotatePair(error) => Display::fmt(error, f),
         }
@@ -301,6 +336,20 @@ impl GeometryNativeLoadedResident {
                     Box::new(GeometryNativeResidentExecutionFailure::FullPath(
                         error,
                     ))
+                }),
+            Self::InitialJump(loaded) => loaded
+                .execute(runner, buffers)
+                .map(|outcome| {
+                    GeometryNativeResidentExecutionOutcome::InitialJump(
+                        Box::new(outcome),
+                    )
+                })
+                .map_err(|error| {
+                    Box::new(
+                        GeometryNativeResidentExecutionFailure::InitialJump(
+                            error,
+                        ),
+                    )
                 }),
             Self::NoOperationPair(loaded) => loaded
                 .execute(runner, buffers)
@@ -338,6 +387,9 @@ impl GeometryNativeLoadedResident {
     pub const fn kind(&self) -> GeometryNativeResidentKind {
         match self {
             Self::FullPath(_loaded) => GeometryNativeResidentKind::FullPath,
+            Self::InitialJump(_loaded) => {
+                GeometryNativeResidentKind::InitialJump
+            },
             Self::NoOperationPair(_loaded) => {
                 GeometryNativeResidentKind::NoOperationPair
             },
@@ -357,6 +409,10 @@ impl GeometryNativeLoadedResident {
                 GeometryNativeResidentPlan::FullPath(exact_plan),
             ) => loaded.sequence() == exact_plan.as_ref(),
             (
+                Self::InitialJump(loaded),
+                GeometryNativeResidentPlan::InitialJump(exact_plan),
+            ) => loaded.admission() == exact_plan.as_ref(),
+            (
                 Self::NoOperationPair(loaded),
                 GeometryNativeResidentPlan::NoOperationPair(exact_plan),
             ) => loaded.sequence() == exact_plan.as_ref(),
@@ -375,6 +431,11 @@ impl GeometryNativeLoadedResident {
             Self::FullPath(loaded) => GeometryNativeResidentPlan::FullPath(
                 Box::new(loaded.sequence().clone()),
             ),
+            Self::InitialJump(loaded) => {
+                GeometryNativeResidentPlan::InitialJump(Box::new(
+                    loaded.admission().clone(),
+                ))
+            },
             Self::NoOperationPair(loaded) => {
                 GeometryNativeResidentPlan::NoOperationPair(Box::new(
                     loaded.sequence().clone(),
@@ -404,6 +465,13 @@ impl GeometryNativeLoadedResident {
             Self::FullPath(loaded) => {
                 loaded.release(adapter).map_err(|error| {
                     Box::new(GeometryNativeResidentReleaseFailure::FullPath(
+                        error,
+                    ))
+                })
+            },
+            Self::InitialJump(loaded) => {
+                loaded.release(adapter).map_err(|error| {
+                    Box::new(GeometryNativeResidentReleaseFailure::InitialJump(
                         error,
                     ))
                 })
@@ -443,6 +511,10 @@ impl GeometryNativeLoadedResident {
                 })?;
                 (weight.mapped_bytes(), weight.mappings())
             },
+            Self::InitialJump(loaded) => {
+                let weight = loaded.resident_weight();
+                (weight.mapped_bytes(), weight.mappings())
+            },
             Self::NoOperationPair(loaded) => (
                 sum_mapped_bytes([
                     loaded.no_operation().mapping().mapped_len(),
@@ -468,6 +540,9 @@ impl GeometryNativeResidentExecutionOutcome {
     pub const fn kind(&self) -> GeometryNativeResidentKind {
         match self {
             Self::FullPath(_outcome) => GeometryNativeResidentKind::FullPath,
+            Self::InitialJump(_outcome) => {
+                GeometryNativeResidentKind::InitialJump
+            },
             Self::NoOperationPair(_outcome) => {
                 GeometryNativeResidentKind::NoOperationPair
             },
@@ -482,6 +557,7 @@ impl GeometryNativeResidentExecutionOutcome {
     pub fn state(&self) -> &ProfileMachineState {
         match self {
             Self::FullPath(outcome) => outcome.state(),
+            Self::InitialJump(outcome) => outcome.state(),
             Self::NoOperationPair(outcome) => outcome.state(),
             Self::RotatePair(outcome) => outcome.state(),
         }
@@ -494,6 +570,7 @@ impl GeometryNativeResidentPlan {
     pub const fn kind(&self) -> GeometryNativeResidentKind {
         match self {
             Self::FullPath(_plan) => GeometryNativeResidentKind::FullPath,
+            Self::InitialJump(_plan) => GeometryNativeResidentKind::InitialJump,
             Self::NoOperationPair(_plan) => {
                 GeometryNativeResidentKind::NoOperationPair
             },
@@ -522,6 +599,16 @@ impl GeometryNativeResidentPlan {
                 })
                 .map_err(|error| {
                     Box::new(GeometryNativeResidentLoadFailure::FullPath(error))
+                }),
+            Self::InitialJump(plan) => plan
+                .load_owned(adapter)
+                .map(|loaded| {
+                    GeometryNativeLoadedResident::InitialJump(Box::new(loaded))
+                })
+                .map_err(|error| {
+                    Box::new(GeometryNativeResidentLoadFailure::InitialJump(
+                        error,
+                    ))
                 }),
             Self::NoOperationPair(plan) => plan
                 .load_pair(adapter)
@@ -569,6 +656,11 @@ impl<MemoryError> GeometryNativeResidentReleaseFailure<MemoryError> {
             Self::FullPath(error) => (*error)
                 .retry(adapter)
                 .map_err(|retry_error| Box::new(Self::FullPath(retry_error))),
+            Self::InitialJump(error) => {
+                (*error).retry(adapter).map_err(|retry_error| {
+                    Box::new(Self::InitialJump(Box::new(retry_error)))
+                })
+            },
             Self::NoOperationPair(error) => {
                 (*error).retry(adapter).map_err(|retry_error| {
                     Box::new(Self::NoOperationPair(retry_error))
