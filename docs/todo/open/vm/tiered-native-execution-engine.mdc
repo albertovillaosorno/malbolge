@@ -394,7 +394,15 @@ baseline; native tiers are accelerators of identical observable behavior.
   verified-v5 mappings. Partial-load rollback releases the complete ready prefix
   in reverse order and keeps failed cleanup retryable; final release attempts
   every mapping and retains only failures. Exact mapped bytes come from admitted
-  mapping reports. Generic native-v5 interpreter handoff remains separate work.
+  mapping reports.
+
+  Generic native-v5 guard miss now bridges cached or uncached verified plans to
+  `ExecutionGeometryInterpreterContinuation` without reconstructing geometry
+  from native IR. Exact resume index/observation and an externally retained
+  checkpoint are revalidated before the geometry continuation admits profile,
+  opaque geometry, capacity, and live-ins. The N10 theorem applies two native
+  steps then replays five interpreter steps to the exact final state; forged
+  progress fails closed and hard native failures remain failures.
 - `application/scheduler.rs` now consumes one affine handoff under one explicit
   complete, positive-slice, caller-yield, or native-retry-yield decision. Every
   pause preserves exact checkpoint, complete-plan index, key/program suffix, and

@@ -713,7 +713,21 @@ rolls back a ready prefix in reverse order on failure, retains failed
 rollback ownership for retry, and reports exact mapped-byte weight. Final
 release attempts every mapping and returns only the mappings whose cleanup
 failed for exact retry.
-Interpreter handoff from a generic native v5 miss remains separate work.
+
+Generic native-v5 guard misses now enter geometry-preserving interpreter
+continuation without reconstructing geometry from native IR. The bridge
+validates the exact resume index and observation against cached or uncached
+verified plans, requires an externally retained checkpoint with that same
+observation, and then
+delegates profile, opaque geometry, capacity, and live-in admission to
+`ExecutionGeometryInterpreterContinuation::resume_at()`.
+
+A real N10 seven-step native run applies jump and rotate, misses at the first
+crazy step, and normatively replays the remaining five steps to the exact
+theorem final state. Cached handoff preserves the same derived geometry. Forged
+resume
+indices or observations fail before continuation construction; native execution
+failures are not converted into interpreter work.
 
 `ExecutionGeometryInterpreterContinuation` composes those one-step replay
 boundaries without changing the trust model. Construction rejects empty,

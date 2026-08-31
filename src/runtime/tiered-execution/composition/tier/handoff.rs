@@ -42,8 +42,51 @@ use malbolge::{
 };
 
 use crate::execution_native::{
+    CachedVerifiedExecutionGeometryDirectSequencePlan,
     NativeExecutableSequenceKey, NativeInterpreterContinuation,
+    NativeSequenceExecutionOutcome,
+    VerifiedExecutionGeometryDirectSequencePlan,
 };
+use crate::geometry_interpreter_handoff::{
+    ExecutionGeometryContinuationAdmissionError,
+    ExecutionGeometryInterpreterContinuation,
+};
+
+/// Rejection while translating verified-v5 native outcome into replay work.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeHandoffError {
+    /// Completed native execution reported the wrong final observation.
+    AppliedObservation,
+    /// Completed native execution reported the wrong number of steps.
+    AppliedSteps {
+        /// Exact complete-plan step count.
+        expected: usize,
+        /// Native outcome's reported committed count.
+        observed: usize,
+    },
+    /// Supplied checkpoint does not match the native continuation observation.
+    CheckpointObservation,
+    /// Geometry continuation admission rejected the supplied checkpoint/suffix.
+    Continuation(ExecutionGeometryContinuationAdmissionError),
+    /// Guard miss named no retained semantic step.
+    ResumeIndex {
+        /// Reported zero-based resume position.
+        observed: usize,
+        /// Exact complete-plan step count.
+        steps: usize,
+    },
+    /// Guard-miss observation differs from the exact current v5 step entry.
+    ResumeObservation {
+        /// Zero-based mismatching resume position.
+        index: usize,
+    },
+}
+
+#[derive(Clone, Copy)]
+struct ExecutionGeometryNativeContinuationPlanView<'plan> {
+    exit: ProfileMachineObservation,
+    programs: &'plan [malbolge::ExecutionGeometryRegionEffectProgram],
+}
 
 /// Failure before any interpreter transition can begin.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -194,6 +237,34 @@ pub type NativeInterpreterHandoffBudgetResult = Result<
     NativeInterpreterHandoffBudgetOutcome,
     Box<NativeInterpreterHandoffExecutionFailure>,
 >;
+
+impl Display for ExecutionGeometryNativeHandoffError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::AppliedObservation => {
+                f.write_str("v5 native completion observation drifted")
+            },
+            Self::AppliedSteps { expected, observed } => write!(
+                f,
+                "v5 native completion reported {observed} of {expected} steps",
+            ),
+            Self::CheckpointObservation => {
+                f.write_str("v5 native continuation checkpoint drifted")
+            },
+            Self::Continuation(error) => {
+                write!(f, "v5 interpreter continuation admission: {error}")
+            },
+            Self::ResumeIndex { observed, steps } => write!(
+                f,
+                "v5 native resume index {observed} exceeds {steps} steps",
+            ),
+            Self::ResumeObservation { index } => write!(
+                f,
+                "v5 native resume observation drifted at step {index}",
+            ),
+        }
+    }
+}
 
 impl Display for NativeInterpreterHandoffAdmissionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -551,6 +622,120 @@ impl NativeInterpreterHandoffExecutionFailure {
     #[must_use]
     pub const fn state(&self) -> &ProfileMachineState {
         &self.state
+    }
+}
+
+/// Converts one cached verified-v5 native outcome into optional replay work.
+///
+/// Completed outcomes produce no continuation after exact
+/// count/final-observation validation. Guard misses require the supplied
+/// checkpoint to match the native boundary and then delegate
+/// profile/geometry/live-in authority to the geometry continuation admission
+/// contract.
+///
+/// # Errors
+///
+/// Returns [`ExecutionGeometryNativeHandoffError`] when native
+/// progress, checkpoint observation, or geometry continuation admission drifts.
+pub fn execution_geometry_continuation_from_cached_native_outcome(
+    plan: &CachedVerifiedExecutionGeometryDirectSequencePlan,
+    outcome: NativeSequenceExecutionOutcome,
+    checkpoint: ProfileMachineState,
+) -> Result<
+    Option<ExecutionGeometryInterpreterContinuation>,
+    ExecutionGeometryNativeHandoffError,
+> {
+    execution_geometry_continuation_from_view(
+        ExecutionGeometryNativeContinuationPlanView {
+            exit: plan.exit(),
+            programs: plan.programs(),
+        },
+        outcome,
+        checkpoint,
+    )
+}
+
+/// Converts one uncached verified-v5 native outcome into optional replay work.
+///
+/// # Errors
+///
+/// Returns [`ExecutionGeometryNativeHandoffError`] under the
+/// same fail-closed conditions as the cached-plan bridge.
+pub fn execution_geometry_continuation_from_native_outcome(
+    plan: &VerifiedExecutionGeometryDirectSequencePlan,
+    outcome: NativeSequenceExecutionOutcome,
+    checkpoint: ProfileMachineState,
+) -> Result<
+    Option<ExecutionGeometryInterpreterContinuation>,
+    ExecutionGeometryNativeHandoffError,
+> {
+    execution_geometry_continuation_from_view(
+        ExecutionGeometryNativeContinuationPlanView {
+            exit: plan.exit(),
+            programs: plan.programs(),
+        },
+        outcome,
+        checkpoint,
+    )
+}
+
+fn execution_geometry_continuation_from_view(
+    plan: ExecutionGeometryNativeContinuationPlanView<'_>,
+    outcome: NativeSequenceExecutionOutcome,
+    checkpoint: ProfileMachineState,
+) -> Result<
+    Option<ExecutionGeometryInterpreterContinuation>,
+    ExecutionGeometryNativeHandoffError,
+> {
+    match outcome {
+        NativeSequenceExecutionOutcome::Applied { observation, steps } => {
+            if steps != plan.programs.len() {
+                return Err(
+                    ExecutionGeometryNativeHandoffError::AppliedSteps {
+                        expected: plan.programs.len(),
+                        observed: steps,
+                    },
+                );
+            }
+            if observation != plan.exit {
+                return Err(
+                    ExecutionGeometryNativeHandoffError::AppliedObservation,
+                );
+            }
+            if state_observation(&checkpoint) != observation {
+                return Err(
+                    ExecutionGeometryNativeHandoffError::CheckpointObservation,
+                );
+            }
+            Ok(None)
+        },
+        NativeSequenceExecutionOutcome::GuardMiss { index, observation } => {
+            let Some(program) = plan.programs.get(index) else {
+                return Err(ExecutionGeometryNativeHandoffError::ResumeIndex {
+                    observed: index,
+                    steps: plan.programs.len(),
+                });
+            };
+            if program.entry_observation() != Some(observation) {
+                return Err(
+                    ExecutionGeometryNativeHandoffError::ResumeObservation {
+                        index,
+                    },
+                );
+            }
+            if state_observation(&checkpoint) != observation {
+                return Err(
+                    ExecutionGeometryNativeHandoffError::CheckpointObservation,
+                );
+            }
+            ExecutionGeometryInterpreterContinuation::resume_at(
+                plan.programs.to_vec(),
+                index,
+                checkpoint,
+            )
+            .map(Some)
+            .map_err(ExecutionGeometryNativeHandoffError::Continuation)
+        },
     }
 }
 

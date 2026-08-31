@@ -476,9 +476,12 @@ use geometry_native_sequence::{
     ExecutionGeometryNativeNoopHaltSequence,
 };
 use interpreter_handoff::{
-    NativeInterpreterHandoff, NativeInterpreterHandoffAdmissionError,
+    ExecutionGeometryNativeHandoffError, NativeInterpreterHandoff,
+    NativeInterpreterHandoffAdmissionError,
     NativeInterpreterHandoffBudgetOutcome, NativeInterpreterHandoffCompletion,
     NativeInterpreterHandoffExecutionCause,
+    execution_geometry_continuation_from_cached_native_outcome,
+    execution_geometry_continuation_from_native_outcome,
 };
 use leased_retry::{
     NativeContinuationLeasedRetry, NativeContinuationLeasedRetryAdmissionError,
@@ -14225,6 +14228,150 @@ fn direct_execution_geometry_cached_sequence_owner_loads_plan()
         Ok(())
     } else {
         Err(String::from("generic v5 cached owner drifted"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_guard_miss_hands_off_to_geometry_interpreter()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let plan = select_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("generic v5 handoff plan: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(408)?,
+        native_executable_address(0x14_0000)?,
+    );
+    let sequence =
+        load_verified_execution_geometry_native_sequence(&mut adapter, &plan)
+            .map_err(|error| format!("generic v5 handoff load: {error}"))?;
+    let initial = derived_v5_fixture_state(&fixture, 0)?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let outcome = execute_loaded_verified_execution_geometry_sequence(
+        &mut runner,
+        &plan,
+        &sequence,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("generic v5 handoff execute: {error}"))?;
+    let checkpoint = derived_v5_fixture_state(&fixture, 2)?.clone();
+    if memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+        || outcome.observation() != profile_state_observation(&checkpoint)
+    {
+        return Err(String::from("generic v5 handoff prefix state drifted"));
+    }
+    let continuation = execution_geometry_continuation_from_native_outcome(
+        &plan, outcome, checkpoint,
+    )
+    .map_err(|error| error.to_string())?
+    .ok_or_else(|| String::from("generic v5 guard miss lost continuation"))?;
+    if continuation.resume_index() != 2 || continuation.remaining_steps() != 5 {
+        return Err(String::from("generic v5 handoff resume boundary drifted"));
+    }
+    let done = continuation.execute().map_err(|error| error.to_string())?;
+    let final_state = derived_v5_fixture_state(&fixture, 7)?;
+    release_execution_geometry_native_executable_sequence(
+        &mut adapter,
+        sequence,
+    )
+    .map_err(|error| format!("generic v5 handoff release: {error}"))?;
+    if done.state() == final_state
+        && done.outcome() == plan.outcome()
+        && runner.calls == 3
+    {
+        Ok(())
+    } else {
+        Err(String::from("generic v5 handoff completion drifted"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_cached_guard_miss_handoff_preserves_geometry()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let mut cache = VerifiedExecutionGeometryNativeCache::default();
+    let plan = select_cached_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        DirectHost::new(HostOperatingSystem::Windows, HostIsa::AArch64),
+        &mut cache,
+    )
+    .map_err(|error| format!("cached v5 handoff plan: {error}"))?;
+    let checkpoint = derived_v5_fixture_state(&fixture, 2)?.clone();
+    let outcome = NativeSequenceExecutionOutcome::GuardMiss {
+        index: 2,
+        observation: profile_state_observation(&checkpoint),
+    };
+    let continuation =
+        execution_geometry_continuation_from_cached_native_outcome(
+            &plan,
+            outcome,
+            checkpoint.clone(),
+        )
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| {
+            String::from("cached v5 guard miss lost continuation")
+        })?;
+    if continuation.resume_index() == 2
+        && continuation.state() == &checkpoint
+        && continuation.state().geometry() == fixture.geometry
+    {
+        Ok(())
+    } else {
+        Err(String::from("cached v5 handoff lost geometry"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_native_handoff_rejects_forged_outcome()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let plan = select_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("forged v5 handoff plan: {error}"))?;
+    let checkpoint = derived_v5_fixture_state(&fixture, 2)?.clone();
+    let bad_index = execution_geometry_continuation_from_native_outcome(
+        &plan,
+        NativeSequenceExecutionOutcome::GuardMiss {
+            index: plan.len(),
+            observation: profile_state_observation(&checkpoint),
+        },
+        checkpoint.clone(),
+    );
+    let bad_observation = execution_geometry_continuation_from_native_outcome(
+        &plan,
+        NativeSequenceExecutionOutcome::GuardMiss {
+            index: 2,
+            observation: plan.entry(),
+        },
+        checkpoint,
+    );
+    if bad_index
+        == Err(ExecutionGeometryNativeHandoffError::ResumeIndex {
+            observed: plan.len(),
+            steps: plan.len(),
+        })
+        && bad_observation
+            == Err(ExecutionGeometryNativeHandoffError::ResumeObservation {
+                index: 2,
+            })
+    {
+        Ok(())
+    } else {
+        Err(String::from("forged v5 native handoff was admitted"))
     }
 }
 
@@ -30488,6 +30635,93 @@ fn suspend_v5_continuation_fixture(
         Ok(suspended)
     } else {
         Err(String::from("v5 suspension lost exact suffix state"))
+    }
+}
+
+#[test]
+fn explicit_geometry_continuation_resumes_from_admitted_checkpoint()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let checkpoint = derived_v5_fixture_state(&fixture, 2)?.clone();
+    let continuation = ExecutionGeometryInterpreterContinuation::resume_at(
+        fixture.programs.clone(),
+        2,
+        checkpoint.clone(),
+    )
+    .map_err(|error| error.to_string())?;
+    let expected_suffix = fixture
+        .programs
+        .get(2..)
+        .ok_or_else(|| String::from("v5 resume suffix missing"))?;
+    if continuation.resume_index() != 2
+        || continuation.completed_steps() != 2
+        || continuation.remaining_steps() != 5
+        || continuation.state() != &checkpoint
+        || continuation.remaining_programs() != expected_suffix
+    {
+        return Err(String::from("v5 admitted resume boundary drifted"));
+    }
+    let completion =
+        continuation.execute().map_err(|error| error.to_string())?;
+    let final_state = derived_v5_fixture_state(&fixture, 7)?;
+    if completion.state() == final_state
+        && completion.outcome()
+            == (RunOutcome::Terminated {
+                reason: Termination::HaltInstruction,
+                steps: 7,
+            })
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 admitted resume completion drifted"))
+    }
+}
+
+#[test]
+fn explicit_geometry_continuation_resume_rejects_wrong_checkpoint()
+-> Result<(), String> {
+    let n10 = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let n11 = derived_v5_jump_rotate_crazy_halt_fixture(11)?;
+    let checkpoint = derived_v5_fixture_state(&n11, 2)?.clone();
+    let result = ExecutionGeometryInterpreterContinuation::resume_at(
+        n10.programs,
+        2,
+        checkpoint,
+    );
+    if result
+        == Err(ExecutionGeometryContinuationAdmissionError::Step {
+            error: ExecutionGeometryHandoffAdmissionError::CheckpointGeometry,
+            index: 2,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 resume admitted wrong checkpoint geometry"))
+    }
+}
+
+#[test]
+fn explicit_geometry_continuation_resume_rejects_completed_index()
+-> Result<(), String> {
+    let fixture = derived_v5_input_halt_sequence_fixture(10, vec![0xa5])?;
+    let checkpoint = derived_v5_fixture_state(&fixture, 2)?.clone();
+    let steps = fixture.programs.len();
+    let result = ExecutionGeometryInterpreterContinuation::resume_at(
+        fixture.programs,
+        steps,
+        checkpoint,
+    );
+    if result
+        == Err(ExecutionGeometryContinuationAdmissionError::ResumeIndex {
+            observed: steps,
+            steps,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v5 continuation admitted completed resume index",
+        ))
     }
 }
 

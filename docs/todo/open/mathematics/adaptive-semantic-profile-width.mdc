@@ -609,8 +609,15 @@ transfers, verification, and other separately measured costs.
   one immutable sequence owner. Partial-load failure releases the ready prefix
   in reverse order and retains failed cleanup for retry; final release attempts
   every mapping and likewise retains only failed cleanup. Exact mapped bytes are
-  derived from admitted mapping reports. Generic native-v5 interpreter handoff
-  remains open.
+  derived from admitted mapping reports.
+- Generic native-v5 guard miss now creates an
+  `ExecutionGeometryInterpreterContinuation` only after exact plan index and
+  observation checks plus admission of an externally retained checkpoint. The
+  checkpoint remains opaque geometry authority; the bridge does not reconstruct
+  derived geometry from v5/native identity. A real N10 theorem run applies two
+  native steps, misses at index 2, and normatively completes the remaining five
+  steps to the exact final state; cached plans preserve the same geometry and
+  forged native progress fails closed.
 - Profile traces now carry their exact execution geometry. Legacy portable IR
   v3 projection accepts only traces whose geometry equals the canonical profile
   and rejects derived traces with `ExecutionGeometry`. Explicit-geometry IR v5

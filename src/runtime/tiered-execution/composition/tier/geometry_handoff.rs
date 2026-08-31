@@ -148,9 +148,16 @@ pub enum ExecutionGeometryContinuationAdmissionError {
         /// Zero-based malformed sequence position.
         index: usize,
     },
-    /// Initial checkpoint admission failed before any transition.
+    /// Requested resume position is outside the retained complete sequence.
+    ResumeIndex {
+        /// Requested zero-based resume position.
+        observed: usize,
+        /// Exact number of retained sequence steps.
+        steps: usize,
+    },
+    /// Checkpoint admission failed at the requested current step.
     Step {
-        /// Zero-based sequence position, currently always zero.
+        /// Zero-based sequence position whose checkpoint admission failed.
         index: usize,
         /// Exact one-step checkpoint admission failure.
         error: ExecutionGeometryHandoffAdmissionError,
@@ -285,6 +292,10 @@ impl Display for ExecutionGeometryContinuationAdmissionError {
             Self::ProgramShape { index } => {
                 write!(f, "v5 continuation step {index} is not one step")
             },
+            Self::ResumeIndex { observed, steps } => write!(
+                f,
+                "v5 continuation resume index {observed} exceeds {steps} steps",
+            ),
             Self::Step { error, index } => {
                 write!(f, "v5 continuation step {index} admission: {error}")
             },
@@ -498,23 +509,7 @@ impl ExecutionGeometryInterpreterContinuation {
         programs: Vec<ExecutionGeometryRegionEffectProgram>,
         state: ProfileMachineState,
     ) -> Result<Self, ExecutionGeometryContinuationAdmissionError> {
-        let boundary = validate_continuation_programs(&programs)?;
-        let first = programs
-            .first()
-            .ok_or(ExecutionGeometryContinuationAdmissionError::Empty)?;
-        admit_program(first, &state).map_err(|error| {
-            ExecutionGeometryContinuationAdmissionError::Step {
-                error,
-                index: 0,
-            }
-        })?;
-        Ok(Self {
-            expected_exit: boundary.exit,
-            expected_outcome: boundary.outcome,
-            programs,
-            resume_index: 0,
-            state,
-        })
+        Self::resume_at(programs, 0, state)
     }
 
     /// Returns the complete ordered v5 evidence retained by this continuation.
@@ -535,6 +530,46 @@ impl ExecutionGeometryInterpreterContinuation {
     #[must_use]
     pub const fn remaining_steps(&self) -> usize {
         self.programs.len().saturating_sub(self.resume_index)
+    }
+
+    /// Binds a complete v5 sequence to an admitted mid-sequence checkpoint.
+    ///
+    /// The full sequence still owns final outcome and observation. The supplied
+    /// checkpoint must exactly admit the requested current step, so this API
+    /// cannot skip uncommitted work or mint geometry authority from v5 bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryContinuationAdmissionError`] for malformed
+    /// complete sequences, an out-of-range resume index, or checkpoint drift at
+    /// the requested current step.
+    pub fn resume_at(
+        programs: Vec<ExecutionGeometryRegionEffectProgram>,
+        resume_index: usize,
+        state: ProfileMachineState,
+    ) -> Result<Self, ExecutionGeometryContinuationAdmissionError> {
+        let boundary = validate_continuation_programs(&programs)?;
+        let Some(current) = programs.get(resume_index) else {
+            return Err(
+                ExecutionGeometryContinuationAdmissionError::ResumeIndex {
+                    observed: resume_index,
+                    steps: programs.len(),
+                },
+            );
+        };
+        admit_program(current, &state).map_err(|error| {
+            ExecutionGeometryContinuationAdmissionError::Step {
+                error,
+                index: resume_index,
+            }
+        })?;
+        Ok(Self {
+            expected_exit: boundary.exit,
+            expected_outcome: boundary.outcome,
+            programs,
+            resume_index,
+            state,
+        })
     }
 
     /// Returns the next zero-based sequence position to replay.
