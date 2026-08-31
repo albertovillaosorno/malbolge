@@ -109,6 +109,135 @@ impl Display for DirectSequenceError<'_> {
     }
 }
 
+/// Failure while composing explicit-geometry one-step programs into a region.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryDirectSequenceError {
+    /// A v5 direct sequence must contain at least one step.
+    Empty,
+    /// One step changed the exact explicit execution geometry.
+    GeometryMismatch {
+        /// Zero-based step whose execution geometry changed.
+        index: usize,
+    },
+    /// Adjacent before/after observations are not byte-exactly continuous.
+    ObservationChain {
+        /// Zero-based step whose entry disagrees with the prior exit.
+        index: usize,
+    },
+    /// One step changed canonical profile identity or requirement.
+    ProfileMismatch {
+        /// Zero-based step whose canonical profile identity changed.
+        index: usize,
+    },
+    /// One candidate is not represented by exactly one v5 effect.
+    ProgramShape {
+        /// Zero-based structurally invalid step position.
+        index: usize,
+    },
+    /// One exact step failed reviewed explicit-geometry native selection.
+    Step {
+        /// Zero-based step whose v5 selection failed.
+        index: usize,
+        /// Exact typed one-step selection or verification failure.
+        error: Box<ExecutionGeometryDirectSelectionError>,
+    },
+    /// A terminated observation was followed by another candidate step.
+    TerminationBeforeEnd {
+        /// Zero-based non-final step that terminated execution.
+        index: usize,
+    },
+}
+
+impl Display for ExecutionGeometryDirectSequenceError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Empty => {
+                f.write_str("v5 direct sequence requires at least one step")
+            },
+            Self::GeometryMismatch { index } => {
+                write!(f, "v5 direct sequence geometry changed at step {index}")
+            },
+            Self::ObservationChain { index } => write!(
+                f,
+                "v5 direct sequence observation chain broke at step {index}",
+            ),
+            Self::ProfileMismatch { index } => {
+                write!(f, "v5 direct sequence profile changed at step {index}")
+            },
+            Self::ProgramShape { index } => {
+                write!(f, "v5 direct sequence step {index} is not one effect")
+            },
+            Self::Step { error, index } => {
+                write!(f, "v5 direct sequence step {index} failed: {error}")
+            },
+            Self::TerminationBeforeEnd { index } => {
+                write!(f, "v5 step {index} terminated before sequence end")
+            },
+        }
+    }
+}
+
+/// Ordered verified v5 artifacts whose exact boundaries form one region.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedExecutionGeometryDirectSequencePlan {
+    artifacts: Vec<VerifiedExecutionGeometryNativeArtifact>,
+    entry: ProfileMachineObservation,
+    exit: ProfileMachineObservation,
+    geometry: ProfileExecutionGeometryRequirement,
+    outcome: RunOutcome,
+    programs: Vec<ExecutionGeometryRegionEffectProgram>,
+}
+
+impl VerifiedExecutionGeometryDirectSequencePlan {
+    /// Returns all verified explicit-geometry artifacts in execution order.
+    #[must_use]
+    pub fn artifacts(&self) -> &[VerifiedExecutionGeometryNativeArtifact] {
+        &self.artifacts
+    }
+
+    /// Returns the exact first-step entry observation.
+    #[must_use]
+    pub const fn entry(&self) -> ProfileMachineObservation {
+        self.entry
+    }
+
+    /// Returns the exact final-step exit observation.
+    #[must_use]
+    pub const fn exit(&self) -> ProfileMachineObservation {
+        self.exit
+    }
+
+    /// Returns the exact execution geometry shared by every step.
+    #[must_use]
+    pub const fn geometry(&self) -> ProfileExecutionGeometryRequirement {
+        self.geometry
+    }
+
+    /// Returns whether the plan contains no artifacts.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.artifacts.is_empty()
+    }
+
+    /// Returns the number of semantic steps represented by this plan.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.artifacts.len()
+    }
+
+    /// Returns the exact regional outcome derived from the final observation.
+    #[must_use]
+    pub const fn outcome(&self) -> RunOutcome {
+        self.outcome
+    }
+
+    /// Returns exact v5 one-step programs paired with the ordered artifacts.
+    #[must_use]
+    pub fn programs(&self) -> &[ExecutionGeometryRegionEffectProgram] {
+        &self.programs
+    }
+}
+
 /// Ordered direct artifacts whose exact one-step boundaries form one region.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedDirectSequencePlan {
@@ -245,6 +374,137 @@ struct DirectSequenceBoundary {
 struct StagedDirectArtifact {
     artifact: Arc<VerifiedDirectNativeArtifact>,
     key: NativeArtifactKey,
+}
+
+/// Selects and verifies every exact v5 one-step artifact before publication.
+///
+/// Complete projected trace evidence must already be split into exact one-step
+/// v5 programs. The plan requires one canonical profile identity, one explicit
+/// execution geometry, byte-exact observation continuity, and no termination
+/// before the final step. Every step passes through the reviewed one-step v5
+/// selector before the complete plan is published.
+///
+/// # Errors
+///
+/// Returns [`ExecutionGeometryDirectSequenceError`] for empty, mixed-profile,
+/// mixed-geometry, discontinuous, structurally non-unit, prematurely
+/// terminated, or unsupported/invalid selected steps.
+pub fn select_verified_execution_geometry_direct_sequence(
+    programs: &[ExecutionGeometryRegionEffectProgram],
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<
+    VerifiedExecutionGeometryDirectSequencePlan,
+    ExecutionGeometryDirectSequenceError,
+> {
+    let geometry = programs
+        .first()
+        .ok_or(ExecutionGeometryDirectSequenceError::Empty)?
+        .execution_geometry();
+    let boundary = validate_execution_geometry_sequence(programs)?;
+    let mut artifacts = Vec::with_capacity(programs.len());
+    for (index, program) in programs.iter().enumerate() {
+        artifacts.push(
+            select_verified_execution_geometry_direct_native(
+                program, host_os, host_isa,
+            )
+            .map_err(|error| {
+                ExecutionGeometryDirectSequenceError::Step {
+                    index,
+                    error: Box::new(error),
+                }
+            })?,
+        );
+    }
+    Ok(VerifiedExecutionGeometryDirectSequencePlan {
+        artifacts,
+        entry: boundary.entry,
+        exit: boundary.exit,
+        geometry,
+        outcome: boundary.outcome,
+        programs: programs.to_vec(),
+    })
+}
+
+fn validate_execution_geometry_sequence(
+    programs: &[ExecutionGeometryRegionEffectProgram],
+) -> Result<DirectSequenceBoundary, ExecutionGeometryDirectSequenceError> {
+    let Some(first) = programs.first() else {
+        return Err(ExecutionGeometryDirectSequenceError::Empty);
+    };
+    let first_effect = execution_geometry_one_effect(first, 0)?;
+    let mut previous_after = None;
+    for (index, program) in programs.iter().enumerate() {
+        let effect = execution_geometry_one_effect(program, index)?;
+        if !same_execution_geometry_sequence_profile(first, program) {
+            return Err(
+                ExecutionGeometryDirectSequenceError::ProfileMismatch { index },
+            );
+        }
+        if program.execution_geometry() != first.execution_geometry() {
+            return Err(
+                ExecutionGeometryDirectSequenceError::GeometryMismatch {
+                    index,
+                },
+            );
+        }
+        if previous_after.is_some_and(|after| after != effect.before) {
+            return Err(
+                ExecutionGeometryDirectSequenceError::ObservationChain {
+                    index,
+                },
+            );
+        }
+        let is_final = index == programs.len().saturating_sub(1);
+        if !is_final && effect.after.termination.is_some() {
+            return Err(
+                ExecutionGeometryDirectSequenceError::TerminationBeforeEnd {
+                    index,
+                },
+            );
+        }
+        previous_after = Some(effect.after);
+    }
+    let exit =
+        previous_after.ok_or(ExecutionGeometryDirectSequenceError::Empty)?;
+    let outcome = exit.termination.map_or(
+        RunOutcome::BudgetExhausted { steps: programs.len() },
+        |reason| RunOutcome::Terminated {
+            reason,
+            steps: programs.len(),
+        },
+    );
+    Ok(DirectSequenceBoundary {
+        entry: first_effect.before,
+        exit,
+        outcome,
+    })
+}
+
+fn execution_geometry_one_effect(
+    program: &ExecutionGeometryRegionEffectProgram,
+    index: usize,
+) -> Result<EffectOp, ExecutionGeometryDirectSequenceError> {
+    let [effect] = program.effects() else {
+        return Err(ExecutionGeometryDirectSequenceError::ProgramShape {
+            index,
+        });
+    };
+    if program.step_budget() != 1 {
+        return Err(ExecutionGeometryDirectSequenceError::ProgramShape {
+            index,
+        });
+    }
+    Ok(*effect)
+}
+
+fn same_execution_geometry_sequence_profile(
+    first: &ExecutionGeometryRegionEffectProgram,
+    candidate: &ExecutionGeometryRegionEffectProgram,
+) -> bool {
+    candidate.profile_id() == first.profile_id()
+        && candidate.profile_fingerprint() == first.profile_fingerprint()
+        && candidate.profile_requirement() == first.profile_requirement()
 }
 
 /// Selects and verifies every exact one-step artifact before publishing a plan.

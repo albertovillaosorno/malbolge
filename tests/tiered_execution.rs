@@ -213,22 +213,22 @@ use execution_native::{
     DirectNonGraphicalError, DirectOutputError, DirectRotateError,
     DirectSelectionError, DirectSequenceError,
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
-    ExecutionGeometryNativeRunner, NATIVE_REGION_ABI_REVISION,
-    NATIVE_REGION_ACCUMULATOR_OFFSET, NATIVE_REGION_CODE_POINTER_OFFSET,
-    NATIVE_REGION_DATA_POINTER_OFFSET, NATIVE_REGION_INPUT_CONSUMED_OFFSET,
-    NATIVE_REGION_INPUT_LEN_OFFSET, NATIVE_REGION_INPUT_OFFSET,
-    NATIVE_REGION_MEMORY_OFFSET, NATIVE_REGION_MEMORY_WORDS_OFFSET,
-    NATIVE_REGION_OUTPUT_CAPACITY_OFFSET, NATIVE_REGION_OUTPUT_LEN_OFFSET,
-    NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
-    NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
-    NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
-    NativeExecutableExecutionPhase, NativeExecutableInvocationBindingError,
-    NativeExecutableLifecycleError, NativeExecutableLoadPhase,
-    NativeExecutableMappingId, NativeExecutableMappingReport,
-    NativeExecutableMemoryAdapter, NativeExecutableOperationEvidenceError,
-    NativeExecutablePermission, NativeExecutableReleaseRequest,
-    NativeExecutableRunner, NativeExecutableSequenceCache,
-    NativeExecutableSequenceCacheCapacityError,
+    ExecutionGeometryDirectSequenceError, ExecutionGeometryNativeRunner,
+    NATIVE_REGION_ABI_REVISION, NATIVE_REGION_ACCUMULATOR_OFFSET,
+    NATIVE_REGION_CODE_POINTER_OFFSET, NATIVE_REGION_DATA_POINTER_OFFSET,
+    NATIVE_REGION_INPUT_CONSUMED_OFFSET, NATIVE_REGION_INPUT_LEN_OFFSET,
+    NATIVE_REGION_INPUT_OFFSET, NATIVE_REGION_MEMORY_OFFSET,
+    NATIVE_REGION_MEMORY_WORDS_OFFSET, NATIVE_REGION_OUTPUT_CAPACITY_OFFSET,
+    NATIVE_REGION_OUTPUT_LEN_OFFSET, NATIVE_REGION_OUTPUT_OFFSET,
+    NATIVE_REGION_STATE_SIZE, NATIVE_REGION_TERMINATION_OFFSET,
+    NativeArtifactError, NativeExecutableAllocationRequest,
+    NativeExecutableCodeCopyReport, NativeExecutableExecutionPhase,
+    NativeExecutableInvocationBindingError, NativeExecutableLifecycleError,
+    NativeExecutableLoadPhase, NativeExecutableMappingId,
+    NativeExecutableMappingReport, NativeExecutableMemoryAdapter,
+    NativeExecutableOperationEvidenceError, NativeExecutablePermission,
+    NativeExecutableReleaseRequest, NativeExecutableRunner,
+    NativeExecutableSequenceCache, NativeExecutableSequenceCacheCapacityError,
     NativeExecutableSequenceCacheDisposition,
     NativeExecutableSequenceCacheLimits, NativeExecutableSequenceKey,
     NativeExecutableSequenceLease, NativeExecutableSequenceLeaseCache,
@@ -275,8 +275,9 @@ use execution_native::{
     select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence, select_preflighted_execution_tier,
     select_verified_direct_native, select_verified_direct_sequence,
-    select_verified_execution_geometry_direct_native, structurally_admit_coff,
-    verify_direct_crazy, verify_direct_deopt_stub,
+    select_verified_execution_geometry_direct_native,
+    select_verified_execution_geometry_direct_sequence,
+    structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
     verify_direct_execution_geometry_crazy,
     verify_direct_execution_geometry_initial_halt,
     verify_direct_execution_geometry_initial_jump_data,
@@ -13481,6 +13482,147 @@ fn direct_execution_geometry_selector_keeps_target_failure_typed()
         Ok(())
     } else {
         Err(String::from("v5 selector target failure lost typed cause"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_sequence_plans_complete_crazy_theorem()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let expected_kinds = [
+        ExecutionGeometryDirectNativeKind::InitialJumpData,
+        ExecutionGeometryDirectNativeKind::Rotate,
+        ExecutionGeometryDirectNativeKind::Crazy,
+        ExecutionGeometryDirectNativeKind::Crazy,
+        ExecutionGeometryDirectNativeKind::Crazy,
+        ExecutionGeometryDirectNativeKind::Crazy,
+        ExecutionGeometryDirectNativeKind::InitialHalt,
+    ];
+    let expected_entry = fixture
+        .states
+        .first()
+        .map(profile_state_observation)
+        .ok_or_else(|| String::from("v5 sequence entry state missing"))?;
+    let expected_exit = fixture
+        .states
+        .last()
+        .map(profile_state_observation)
+        .ok_or_else(|| String::from("v5 sequence exit state missing"))?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_execution_geometry_direct_sequence(
+            &fixture.programs,
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("v5 theorem sequence {isa:?}: {error}"))?;
+        let kinds_match = plan
+            .artifacts()
+            .iter()
+            .zip(expected_kinds)
+            .all(|(artifact, expected)| artifact.kind() == expected);
+        let expected_geometry = fixture
+            .programs
+            .first()
+            .map(ExecutionGeometryRegionEffectProgram::execution_geometry)
+            .ok_or_else(|| String::from("v5 sequence program missing"))?;
+        if plan.len() != 7
+            || plan.is_empty()
+            || !kinds_match
+            || plan.geometry() != expected_geometry
+            || plan.entry() != expected_entry
+            || plan.exit() != expected_exit
+            || plan.outcome()
+                != (RunOutcome::Terminated {
+                    reason: Termination::HaltInstruction,
+                    steps: 7,
+                })
+            || plan.programs() != fixture.programs
+        {
+            return Err(String::from("v5 theorem sequence plan drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_execution_geometry_sequence_rejects_mixed_geometry()
+-> Result<(), String> {
+    let n10 = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let n11 = derived_v5_jump_rotate_crazy_halt_fixture(11)?;
+    let n10_first =
+        n10.programs.first().cloned().ok_or_else(|| {
+            String::from("v5 N10 sequence first step missing")
+        })?;
+    let n11_second =
+        n11.programs.get(1).cloned().ok_or_else(|| {
+            String::from("v5 N11 sequence second step missing")
+        })?;
+    let programs = vec![n10_first, n11_second];
+    let result = select_verified_execution_geometry_direct_sequence(
+        &programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    );
+    if result
+        == Err(ExecutionGeometryDirectSequenceError::GeometryMismatch {
+            index: 1,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 mixed geometry sequence was admitted"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_sequence_rejects_observation_gap()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let first = fixture
+        .programs
+        .first()
+        .cloned()
+        .ok_or_else(|| String::from("v5 gap first step missing"))?;
+    let third = fixture
+        .programs
+        .get(2)
+        .cloned()
+        .ok_or_else(|| String::from("v5 gap third step missing"))?;
+    let programs = vec![first, third];
+    let result = select_verified_execution_geometry_direct_sequence(
+        &programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    );
+    if result
+        == Err(ExecutionGeometryDirectSequenceError::ObservationChain {
+            index: 1,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 discontinuous sequence was admitted"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_sequence_rejects_post_termination_step()
+-> Result<(), String> {
+    let (halt, _state, _geometry) = derived_v5_handoff_fixture(10)?;
+    let programs = vec![halt.clone(), halt];
+    let result = select_verified_execution_geometry_direct_sequence(
+        &programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    );
+    if result
+        == Err(ExecutionGeometryDirectSequenceError::TerminationBeforeEnd {
+            index: 0,
+        })
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 post-termination step was admitted"))
     }
 }
 

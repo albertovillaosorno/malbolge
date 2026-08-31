@@ -675,8 +675,18 @@ then uses each existing emitter plus independent verifier; exact v5 geometry
 remains part of the artifact key.
 
 Unsupported shapes fail explicitly rather than receiving a deoptimization
-artifact, because no generic v5 deoptimization contract exists. Generic
-multi-step v5 planning and cache publication remain separate work.
+artifact, because no generic v5 deoptimization contract exists.
+
+`VerifiedExecutionGeometryDirectSequencePlan` now composes those reviewed steps
+without operation-specific sequence code. It requires one canonical profile,
+one exact execution geometry, byte-exact observation continuity, one effect per
+step, and no termination before the final step; every member is independently
+selected and verified before the plan is published.
+
+The complete N10 seven-step jump/rotate/four-crazy/halt theorem selects on both
+reviewed ISAs. Mixed N10/N11 geometry, skipped observations, and work after halt
+fail before plan publication. Cache-aware v5 lookup and atomic cache publication
+remain separate work.
 
 `ExecutionGeometryInterpreterContinuation` composes those one-step replay
 boundaries without changing the trust model. Construction rejects empty,

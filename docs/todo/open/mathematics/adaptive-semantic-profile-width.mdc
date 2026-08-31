@@ -584,7 +584,12 @@ transfers, verification, and other separately measured costs.
   profile identity, preserves exact v5 geometry in artifact identity, and routes
   through each existing emitter plus independent verifier on both reviewed ISAs.
   Unsupported shapes fail explicitly with no invented v5 deoptimization path.
-  Generic multi-step v5 planning/cache publication remains open.
+- Generic verified-v5 sequence planning now composes those one-step artifacts
+  only when canonical profile identity, exact execution geometry, observation
+  continuity, one-effect shape, and termination order all agree. The complete
+  N10 seven-step crazy theorem selects on both reviewed ISAs, while N10/N11
+  mixing, skipped observations, and post-halt work fail before publication.
+  Cache-aware v5 lookup/publication remains open.
 - Profile traces now carry their exact execution geometry. Legacy portable IR
   v3 projection accepts only traces whose geometry equals the canonical profile
   and rejects derived traces with `ExecutionGeometry`. Explicit-geometry IR v5

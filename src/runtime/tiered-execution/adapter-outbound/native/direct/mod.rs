@@ -76,9 +76,9 @@ pub use error::*;
 use malbolge::{
     EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EffectOp,
     ExecutionGeometryRegionEffectProgram, MemoryLiveIn,
-    PortableProfileRequirementError, ProfileMachineObservation,
-    ProfileMemoryDelta, ProfileMemoryWrite, ProfileRegisters,
-    RegionEffectProgram, RunOutcome, RuntimeCapability,
+    PortableProfileRequirementError, ProfileExecutionGeometryRequirement,
+    ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
+    ProfileRegisters, RegionEffectProgram, RunOutcome, RuntimeCapability,
     TargetProfileRequirement, Termination, TraceInput,
     decode_profile_instruction, encrypt_profile_cell,
     is_canonical_effect_ir_version, preflight_portable_profile_requirement,

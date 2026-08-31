@@ -363,8 +363,14 @@ baseline; native tiers are accelerators of identical observable behavior.
   of deoptimization.
 
   Both reviewed ISAs select every supported kind; non-Windows target failure
-  retains the selected template's typed cause. Generic multi-step v5 planning
-  and atomic cache publication remain separate work.
+  retains the selected template's typed cause.
+
+  Generic verified-v5 sequence planning now requires one canonical profile, one
+  exact execution geometry, byte-exact observation continuity, unit-step shape,
+  and no termination before the final step. It verifies every member before
+  publishing the plan. The complete seven-step N10 crazy theorem selects on both
+  reviewed ISAs; mixed geometry, observation gaps, and post-halt suffixes reject
+  before publication. Cache-aware v5 lookup/publication remains separate work.
 - `application/scheduler.rs` now consumes one affine handoff under one explicit
   complete, positive-slice, caller-yield, or native-retry-yield decision. Every
   pause preserves exact checkpoint, complete-plan index, key/program suffix, and
