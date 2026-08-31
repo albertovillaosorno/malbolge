@@ -197,6 +197,11 @@ uniform random order attains that bound. Absence certification requires all `R`
 queries. Substituting the ordered or endpoint-unordered tuple class count gives
 checked Malbolge-specific verifier-call bounds without making a timing claim.
 
+The same model adds exactly across all `7^N` reachable fixed pairs: worst-case
+calls equal the global canonical tuple count and minimax expected calls equal
+`(global_count + 7^N)/2`, provided no verifier answer carries information across
+fixed pairs.
+
 If endpoint order is also irrelevant, the exact pair class count
 reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`; summed over every reachable

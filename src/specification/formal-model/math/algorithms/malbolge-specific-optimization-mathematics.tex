@@ -1607,6 +1607,30 @@ for the ordered and endpoint-unordered domains respectively. These numbers
 inherit the exact symmetry preconditions of their quotient domains and are lower
 bounds only for the candidate-local binary-verifier model above.
 
+The same lower bound adds across independently searched reachable fixed pairs.
+There are exactly $7^N$ such pairs. Using the global canonical counts
+$O_{N,m}$ and $U_{N,m}$ above, the aggregate (worst-case/absence, minimax
+expected one-valid-candidate-per-pair) verifier-call bounds are
+\begin{equation}
+  \fitmath{%
+    \mathcal G^{\rm ord}_{N,m}
+      =\left(O_{N,m},\frac{O_{N,m}+7^N}{2}\right),
+      \quad 1\leq m\leq8,\ 1\leq N\leq14,\\
+    \mathcal G^{\rm unord}_{N,m}
+      =\left(U_{N,m},\frac{U_{N,m}+7^N}{2}\right),
+      \quad 3\leq m\leq8,\ 1\leq N\leq14.
+  }
+  \label{eq:optimization-crazy-global-tuple-verifier-call-lower-bound}
+\end{equation}
+For $N=14,m=8$, the expected bounds are respectively
+\[
+  (3546686538415515476428057373,\ 89075729430386044910709).
+\]
+This aggregation assumes one candidate-local query addresses one fixed pair and
+that no answer supplies reusable information about another pair. Cross-pair
+proofs, shared structural scores, batched semantic evidence, or richer oracle
+answers fall outside this lower-bound model.
+
 The endpoint-symmetric pair quotient also composes exactly over the reachable
 fixed-pair ambiguity distribution. Let $E_N$ count canonical ordered preimage
 pairs after simultaneous coordinate permutation and endpoint swap, and let

@@ -40,6 +40,7 @@ from __future__ import annotations
 from collections import Counter
 from fractions import Fraction
 from itertools import permutations
+from itertools import product
 from math import comb
 from math import factorial
 
@@ -48,6 +49,8 @@ _MAXIMUM_TRITS = 14
 _MINIMUM_UNORDERED_ARITY = 3
 _EXPECTED_ORDERED_ARITY_EIGHT = 84_466_573_066_471_253_216_128
 _EXPECTED_UNORDERED_ARITY_EIGHT = 2_103_669_236_921_739_401
+_EXPECTED_GLOBAL_ORDERED_ARITY_EIGHT = 7_093_373_076_831_030_274_633_041_897
+_EXPECTED_GLOBAL_UNORDERED_ARITY_EIGHT = 178_151_458_860_093_866_748_569
 
 
 def _integer_power(base: int, exponent: int) -> int:
@@ -216,3 +219,80 @@ def test_checked_tuple_quotients_substitute_exact_verifier_bounds() -> None:
             assert _expected_calls(unordered) == Fraction(unordered + 1, 2)
     assert _ordered_classes(8, 14) == _EXPECTED_ORDERED_ARITY_EIGHT
     assert _unordered_classes(8, 14) == _EXPECTED_UNORDERED_ARITY_EIGHT
+
+
+def _fixed_pair_class_count(trit_count: int, dimension: int) -> int:
+    return (
+        comb(trit_count, dimension)
+        * _integer_power(2, dimension)
+        * _integer_power(5, trit_count - dimension)
+    )
+
+
+def _global_ordered_classes(arity: int, trit_count: int) -> int:
+    return sum(
+        _fixed_pair_class_count(trit_count, dimension)
+        * _ordered_classes(arity, dimension)
+        for dimension in range(trit_count + 1)
+    )
+
+
+def _global_unordered_classes(arity: int, trit_count: int) -> int:
+    return sum(
+        _fixed_pair_class_count(trit_count, dimension)
+        * _unordered_classes(arity, dimension)
+        for dimension in range(trit_count + 1)
+    )
+
+
+def _global_expected_calls(global_classes: int, pair_count: int) -> Fraction:
+    return Fraction(global_classes + pair_count, 2)
+
+
+def test_product_candidate_families_have_exact_aggregate_call_bounds() -> None:
+    """Add worst and expected call bounds across finite domains."""
+    for sizes in ((1,), (1, 2), (2, 3), (1, 2, 4)):
+        orders = tuple(tuple(range(size)) for size in sizes)
+        totals = tuple(
+            sum(
+                map(
+                    _calls_to_unique_target,
+                    orders,
+                    targets,
+                    strict=True,
+                )
+            )
+            for targets in product(*(range(size) for size in sizes))
+        )
+        assert max(totals) == sum(sizes)
+        assert Fraction(sum(totals), len(totals)) == sum(
+            (_expected_calls(size) for size in sizes),
+            start=Fraction(),
+        )
+
+
+def test_checked_global_tuple_counts_give_exact_aggregate_bounds() -> None:
+    """Global quotient sums substitute exactly into aggregate call bounds."""
+    for trit_count in range(1, _MAXIMUM_TRITS + 1):
+        pair_count = _integer_power(7, trit_count)
+        for arity in range(1, _MAXIMUM_ARITY + 1):
+            ordered = _global_ordered_classes(arity, trit_count)
+            assert ordered >= pair_count
+            assert _global_expected_calls(ordered, pair_count) == Fraction(
+                ordered + pair_count,
+                2,
+            )
+            if arity < _MINIMUM_UNORDERED_ARITY:
+                continue
+            unordered = _global_unordered_classes(arity, trit_count)
+            assert pair_count <= unordered <= ordered
+            assert _global_expected_calls(unordered, pair_count) == Fraction(
+                unordered + pair_count,
+                2,
+            )
+    assert _global_ordered_classes(8, 14) == (
+        _EXPECTED_GLOBAL_ORDERED_ARITY_EIGHT
+    )
+    assert _global_unordered_classes(8, 14) == (
+        _EXPECTED_GLOBAL_UNORDERED_ARITY_EIGHT
+    )

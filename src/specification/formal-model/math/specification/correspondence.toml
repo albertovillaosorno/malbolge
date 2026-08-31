@@ -850,6 +850,16 @@ mechanism = "exact-quotient-cardinality-substitution-into-finite-binary-verifier
 evidence = ["tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_checked_tuple_quotients_substitute_exact_verifier_bounds", "tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_generic_ordered_tuple_counts_cover_checked_arities_and_dimensions", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_unordered_tuple_burnside_counts_through_dimension_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-global-tuple-verifier-call-lower-bound"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-global-tuple-verifier-call-lower-bound"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "independent candidate-local binary-verifier search over every reachable fixed accumulator/target pair at widths 1 through 14, using ordered tuple arities 1 through 8 or endpoint-unordered arities 3 through 8 under the established symmetry precondition"
+mechanism = "additive-finite-domain-query-lower-bound-plus-exact-global-canonical-tuple-counts"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_product_candidate_families_have_exact_aggregate_call_bounds", "tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_checked_global_tuple_counts_give_exact_aggregate_bounds", "tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_generic_global_ordered_tuple_count_matches_independent_transform", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_global_unordered_tuple_transform_matches_direct_sum"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-global-endpoint-symmetric-pair-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-global-endpoint-symmetric-pair-quotient"

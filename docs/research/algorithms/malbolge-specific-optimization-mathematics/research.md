@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes eighty-three exact reductions: classic five-trit crazy
+formalizes eighty-four exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -94,8 +94,8 @@ those classes, a generic endpoint-unordered Burnside quotient under `S_m` for
 `3<=m<=8`, exact combined coordinate/endpoint orbit masses, endpoint-minimized
 canonical integer keys, exact ordered and endpoint-unordered canonical-search
 budget exceedance and inverse coverage laws, a finite candidate-local binary-
-verifier call lower bound plus checked tuple substitution, exact global ordered
-and endpoint-
+verifier call lower bound plus checked tuple substitution and exact all-pair
+aggregation, exact global ordered and endpoint-
 unordered checked-arity
 transforms, exact global ordered-triple and
 endpoint-
@@ -903,8 +903,8 @@ Binomial(N, 2/7)
 log-preimage exponent law, classic/profile-width unreachable-pair counts,
 classic/profile-width preimage-budget exceedance, exact minimum-coverage budget
 bounds, ordered/endpoint-unordered canonical-search budget laws, and the
-candidate-local binary-verifier call lower bound are correctness-proved search
-reductions, not
+candidate-local binary-verifier call lower bound and all-reachable-pair
+aggregation are correctness-proved search reductions, not
 measured performance results. None
 of these results establishes a universal speedup or proves broader synthesis
 
@@ -930,8 +930,8 @@ quotient-class rank/unrank, the generic endpoint-unordered quotient and exact
 combined orbit masses and canonical integer keys through checked arity eight,
 exact ordered and endpoint-unordered canonical-search budget exceedance and
 inverse coverage laws, the finite candidate-local binary-verifier call lower
-bound and tuple specialization, and both global checked-arity transforms, exact
-endpoint-
+bound, tuple specialization, all-reachable-pair aggregation, and both global
+checked-arity transforms, exact endpoint-
 unordered triple, quadruple, quintuple,
 and sextuple quotients, plus the
 established
@@ -959,8 +959,9 @@ classic/profile-width unreachable-pair counts, and
 exact
 classic/profile-width preimage-budget exceedance bounds, exact profile-width
 minimum coverage budgets, ordered/endpoint-unordered canonical-search budget
-laws, and the candidate-local binary-verifier lower bound as valid optimization
-building blocks. Continue the research for broader canonical forms, synthesis
+laws, and the candidate-local binary-verifier local/global lower bounds as
+valid optimization building blocks. Continue the research for broader canonical
+forms, synthesis
 lower bounds outside that verifier model, and search-space
 reductions; those remain unproved and receive no performance claim from this
 result.
