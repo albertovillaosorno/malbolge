@@ -842,8 +842,10 @@ transfers, verification, and other separately measured costs.
   complete admitted sequence equality. Exact hits avoid mapping work, live
   leases block release/replacement, N10/N11 identity mismatch rejects without
   implicit eviction, failed loads publish nothing, and cleanup failure transfers
-  exact retry ownership. Explicit replacement releases the old pair completely
-  before loading the new identity and leaves the cache empty on either failure.
+  exact retry ownership. Inserted and hit leases expose the same exact pair
+  owner mapping weight without adapter work. Explicit replacement releases the
+  old pair completely before loading the new identity and leaves the cache
+  empty on either failure.
 - Rotate now also has a reusable one-mapping owner with heap-owned admission.
   It reuses the exact prepare/bind runner path without remapping, preserves the
   normatively replayed rotate mutation state, reports platform mapping weight,
@@ -931,7 +933,8 @@ transfers, verification, and other separately measured costs.
   keys. Exact hits perform no mapping work, N10/N11 identity mismatch rejects
   without eviction, live leases block release, failed loads publish nothing,
   and cleanup failure transfers retryable executable ownership out of the
-  cache.
+  cache. Inserted and hit leases expose the exact pair-owner mapping weight
+  without remapping.
 - The single-resident cache can now replace a different exact identity only
   after every lease is gone. Replacement releases the old pair completely
   before loading the new one; release or new-load failure leaves no resident

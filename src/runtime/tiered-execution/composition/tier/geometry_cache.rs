@@ -47,6 +47,8 @@ use crate::geometry_native_sequence::{
     ExecutionGeometryNativeNoopHaltLoadedResult,
     ExecutionGeometryNativeNoopHaltPairLoadFailure,
     ExecutionGeometryNativeNoopHaltPairReleaseFailure,
+    ExecutionGeometryNativeNoopHaltResidentWeight,
+    ExecutionGeometryNativeNoopHaltResidentWeightError,
     ExecutionGeometryNativeNoopHaltSequence,
     LoadedExecutionGeometryNativeNoopHaltSequence,
 };
@@ -183,6 +185,20 @@ impl GeometryNativeNoopHaltPairLease {
         Runner: ExecutionGeometryNativeRunner,
     {
         self.resident.execute(runner, buffers)
+    }
+
+    /// Returns exact synchronized weight reported by the resident pair owner.
+    ///
+    /// # Errors
+    ///
+    /// Returns overflow when the two child owner weights cannot be summed.
+    pub fn resident_weight(
+        &self,
+    ) -> Result<
+        ExecutionGeometryNativeNoopHaltResidentWeight,
+        ExecutionGeometryNativeNoopHaltResidentWeightError,
+    > {
+        self.resident.resident_weight()
     }
 
     /// Returns the exact admitted v5 sequence retained beside the mappings.

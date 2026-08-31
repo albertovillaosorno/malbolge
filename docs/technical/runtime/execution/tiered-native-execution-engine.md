@@ -1092,7 +1092,8 @@ pairs behind cloneable `Arc` leases. Complete admitted rotate/halt sequence
 equality is its sole identity authority; it does not share resident state or
 legacy canonical keys with the no-op/halt cache. Exact hits perform no adapter
 work, live leases block release/replacement, and different N10/N11 identities
-reject without implicit eviction.
+reject without implicit eviction. Inserted and hit leases expose the exact
+rotate/halt owner weight without rereading mappings or remapping code.
 
 Explicit replacement is allowed only after every external lease is gone. The
 old pair releases fully before the new pair loads; release or load failure
@@ -1192,8 +1193,13 @@ are dropped, cleanup consumes the unique `Arc` and releases the pair. Release
 failure empties cache authority and transfers both retryable mapping owners to
 the caller. Failed pair load never publishes resident state.
 
-Five cases cover insert/hit reuse, lease blocking, identity rejection,
-failed-load publication, and cleanup ownership transfer.
+Both inserted and hit leases expose the exact pair-owner resident weight without
+adapter work. Cache observation therefore uses the same hierarchical mapping
+authority as heterogeneous residency.
+
+Nine cases cover insert/hit reuse and weight, lease blocking, identity
+rejection, failed-load publication, cleanup ownership transfer, and replacement
+outcomes.
 
 `replace_if_unleased()` adds an explicit single-resident identity transition.
 Equal identity remains an ordinary hit. A different identity with any live lease

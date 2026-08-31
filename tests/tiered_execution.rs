@@ -330,7 +330,7 @@ use geometry_native_no_operation::{
 use geometry_native_pair_cache::{
     GeometryNativeNoopHaltPairCacheAcquireFailure,
     GeometryNativeNoopHaltPairCacheDisposition,
-    GeometryNativeNoopHaltPairCacheRelease,
+    GeometryNativeNoopHaltPairCacheRelease, GeometryNativeNoopHaltPairLease,
     GeometryNativeNoopHaltPairLeaseCache,
 };
 use geometry_native_rotate::{
@@ -346,7 +346,7 @@ use geometry_native_rotate_pair_cache::{
     GeometryNativeRotateHaltPairCacheAcquireFailure,
     GeometryNativeRotateHaltPairCacheDisposition,
     GeometryNativeRotateHaltPairCacheRelease,
-    GeometryNativeRotateHaltPairLeaseCache,
+    GeometryNativeRotateHaltPairLease, GeometryNativeRotateHaltPairLeaseCache,
 };
 use geometry_native_rotate_sequence::{
     ExecutionGeometryNativeRotateHaltAdmissionError,
@@ -14686,6 +14686,28 @@ fn geometry_native_rotate_halt_cache_replace_load_failure_empties()
     }
 }
 
+fn noop_halt_pair_lease_weight_matches(
+    lease: &GeometryNativeNoopHaltPairLease,
+    expected_mapped_bytes: usize,
+) -> Result<bool, String> {
+    let weight = lease.resident_weight().map_err(|error| error.to_string())?;
+    Ok(
+        weight.mapped_bytes() == expected_mapped_bytes
+            && weight.mappings() == 2,
+    )
+}
+
+fn rotate_halt_pair_lease_weight_matches(
+    lease: &GeometryNativeRotateHaltPairLease,
+    expected_mapped_bytes: usize,
+) -> Result<bool, String> {
+    let weight = lease.resident_weight().map_err(|error| error.to_string())?;
+    Ok(
+        weight.mapped_bytes() == expected_mapped_bytes
+            && weight.mappings() == 2,
+    )
+}
+
 #[test]
 fn geometry_native_rotate_halt_cache_insert_hit_reuses_resident()
 -> Result<(), String> {
@@ -14697,7 +14719,8 @@ fn geometry_native_rotate_halt_cache_insert_hit_reuses_resident()
     let mut adapter = FakeNativeExecutableAdapter::new(
         native_executable_mapping_id(123)?,
         native_executable_address(0x2_9000)?,
-    );
+    )
+    .with_mapped_len_overrides(vec![12_288, 16_384]);
     let mut cache = GeometryNativeRotateHaltPairLeaseCache::new();
     let first = cache
         .ensure(&mut adapter, &sequence)
@@ -14714,6 +14737,8 @@ fn geometry_native_rotate_halt_cache_insert_hit_reuses_resident()
         || second_disposition
             != GeometryNativeRotateHaltPairCacheDisposition::Hit
         || !first_lease.shares_resident_with(&second_lease)
+        || !rotate_halt_pair_lease_weight_matches(&first_lease, 28_672)?
+        || !rotate_halt_pair_lease_weight_matches(&second_lease, 28_672)?
         || cache.resident_lease_count() != 2
         || adapter.operations.len() != 8
     {
@@ -15041,18 +15066,14 @@ fn geometry_native_noop_halt_pair_cache_insert_hit_reuses_resident()
 -> Result<(), String> {
     let fixture = derived_v5_noop_halt_sequence_fixture(10)?;
     let sequence = geometry_native_noop_halt_sequence(&fixture)?;
-    let initial = fixture
-        .states
-        .first()
-        .ok_or_else(|| String::from("v5 cache initial state missing"))?;
-    let final_state = fixture
-        .states
-        .get(2)
-        .ok_or_else(|| String::from("v5 cache final state missing"))?;
+    let [initial, _prefix, final_state] = fixture.states.as_slice() else {
+        return Err(String::from("v5 cache state sequence incomplete"));
+    };
     let mut adapter = FakeNativeExecutableAdapter::new(
         native_executable_mapping_id(123)?,
         native_executable_address(0x2_9000)?,
-    );
+    )
+    .with_mapped_len_overrides(vec![4_096, 8_192]);
     let mut cache = GeometryNativeNoopHaltPairLeaseCache::new();
     let first = cache
         .ensure(&mut adapter, &sequence)
@@ -15067,6 +15088,8 @@ fn geometry_native_noop_halt_pair_cache_insert_hit_reuses_resident()
     if first_disposition != GeometryNativeNoopHaltPairCacheDisposition::Inserted
         || second_disposition != GeometryNativeNoopHaltPairCacheDisposition::Hit
         || !first_lease.shares_resident_with(&second_lease)
+        || !noop_halt_pair_lease_weight_matches(&first_lease, 12_288)?
+        || !noop_halt_pair_lease_weight_matches(&second_lease, 12_288)?
         || cache.resident_lease_count() != 2
         || adapter.operations.len() != 8
     {
