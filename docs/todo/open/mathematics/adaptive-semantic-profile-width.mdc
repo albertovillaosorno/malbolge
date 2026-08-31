@@ -375,8 +375,9 @@ transfers, verification, and other separately measured costs.
 - Indexed state-graph now preserves the opaque geometry token through lineage,
   digest, trace application, and checkpoint materialization. A QP/N=10 runtime
   trace roundtrips through `IndexedMachineState` to the exact derived checkpoint
-  instead of reconstructing canonical N=14. Tiered/native execution handoff is
-  still open.
+  instead of reconstructing canonical N=14. Later tiered/native evidence below
+  closes this handoff by carrying the same opaque geometry through continuation,
+  interpreter handoff, and verified-v5 planning.
 - The same indexed-state lifecycle now covers an input policy stricter than
   nonempty. `uCar_L` carries `MinimumLength(2)` through five continued effects,
   including both input and output transitions; materialization preserves the
@@ -1128,9 +1129,9 @@ transfers, verification, and other separately measured costs.
   intentionally separate for operation-specific callers. The heterogeneous LRU
   is the shared residency authority for its established variants. General
   jump-data and jump-code now both have checkpoint-bound one-mapping
-  heterogeneous residency with distinct exact admission identities. Additional
-  state-changing templates also
-  remain open.
+  heterogeneous residency with distinct exact admission identities. All nine
+  reviewed one-step v5 templates now have typed residency; additional composed
+  or template-specific resident families remain separate work.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only
   admissible Applied state. The separate load image, prepare/bind layer, v5
@@ -1179,8 +1180,9 @@ transfers, verification, and other separately measured costs.
   after every lease is gone. Replacement releases the old pair completely
   before loading the new one; release or new-load failure leaves no resident
   authority and transfers exact retry ownership. N10-to-N11 replacement is
-  therefore explicit and fail-closed. Multi-resident eviction and broader
-  state-changing templates remain open.
+  therefore explicit and fail-closed. Later multi-resident and heterogeneous-LRU
+  evidence above closes the eviction gap and extends residency across all nine
+  reviewed one-step v5 templates; this pair cache remains operation-specific.
 
 - Current differential fixtures: `CURRENT_SOURCE` produces identical outcome,
   output, input consumption, and final registers under canonical N15 and

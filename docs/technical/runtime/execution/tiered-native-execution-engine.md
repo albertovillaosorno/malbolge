@@ -1015,8 +1015,9 @@ Output can now also own one reusable synchronized mapping directly.
 checkpoint-bound admission beside its ready executable and reuses the existing
 prepare/bind/runner path without adapter work. Exact mapped bytes come from the
 platform mapping report, runner failure restores the complete physical output
-buffer, and the same mapping remains reusable before explicit release.
-Heterogeneous output residency remains separate follow-up work.
+buffer, and the same mapping remains reusable before explicit release. Later
+shared-resident evidence below closes heterogeneous output residency without
+changing this owner contract.
 
 `direct-execution-geometry-rotate` revision 1 adds a second state-changing v5
 artifact boundary without granting execution authority. The selector consumes
@@ -1527,7 +1528,9 @@ N11 no-operation executable; runner failure and completion drift restore the
 entry snapshot; cleanup failure retains exact ready-executable ownership for
 retry; and cleanup failure after Applied retains the already normatively proven
 completion. Eight focused cases cover these admission, binding, rollback, and
-transaction properties. Broader state-changing templates remain separate work.
+transaction properties. Later sections apply the same checkpoint-bound lifecycle
+to the remaining reviewed one-step state-changing templates; composed templates
+retain their own specialized contracts.
 
 No-operation can now also own one reusable synchronized mapping directly.
 `ExecutionGeometryNativeNoOperationAdmission::load_owned` heap-retains the exact
