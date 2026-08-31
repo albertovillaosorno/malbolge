@@ -57,6 +57,8 @@ pub mod geometry_native_jump_rotate_halt_multi_cache;
 pub mod geometry_native_admission;
 #[path = "tier/geometry_noop.rs"]
 pub mod geometry_native_no_operation;
+#[path = "tier/geometry_output.rs"]
+pub mod geometry_native_output;
 #[path = "tier/geometry_rotate.rs"]
 pub mod geometry_native_rotate;
 #[path = "tier/geometry_rotseq.rs"]

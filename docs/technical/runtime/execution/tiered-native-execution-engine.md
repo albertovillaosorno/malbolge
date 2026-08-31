@@ -691,10 +691,19 @@ code only after checking the exact entry observation, one fetched code live-in,
 output byte/index/length transition, self-encryption delta, and geometry-derived
 successors. N10 and N11 produce distinct v5 keys and object bytes.
 Cross-geometry verification rejects, and legacy direct-output byte-exact tests
-remain unchanged through a shared semantic derivation helper. Checkpoint-bound
-admission,
-load-image construction, invocation/runner execution, and residency remain
-separate follow-up work.
+remain unchanged through a shared semantic derivation helper.
+
+Output now also has checkpoint-bound semantic admission before any mapping.
+`ExecutionGeometryNativeOutputAdmission` binds the exact verified artifact to
+the opaque checkpoint reached after `/`, replays `<` through the normative
+interpreter, and retains that replayed state as the only future Applied
+authority. The N10 fixture preserves input cursor 1 and appends exactly `0xA5`;
+N11 checkpoint geometry and N11 artifact identity reject independently.
+
+Only after replay succeeds does admission reconstruct the exact native key and
+extract a relocation-free `VerifiedExecutionGeometryLoadImage`. Native buffer
+preparation, executable binding, runner/completion admission, transactional
+cleanup, reusable ownership, and residency remain separate follow-up work.
 
 `direct-execution-geometry-rotate` revision 1 adds a second state-changing v5
 artifact boundary without granting execution authority. The selector consumes

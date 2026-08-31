@@ -45,6 +45,7 @@ use super::direct::{
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact,
     VerifiedExecutionGeometryNoOperationNativeObjectArtifact,
+    VerifiedExecutionGeometryOutputNativeObjectArtifact,
     VerifiedExecutionGeometryRotateNativeObjectArtifact,
 };
 use crate::execution_cache::{
@@ -209,6 +210,22 @@ impl VerifiedExecutionGeometryLoadImage {
     /// target instruction alignment is invalid.
     pub fn from_no_operation(
         artifact: &VerifiedExecutionGeometryNoOperationNativeObjectArtifact,
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        Self::from_verified_parts(
+            artifact.key(),
+            artifact.object(),
+            artifact.target_triple(),
+        )
+    }
+
+    /// Derives a relocation-free image from verified v5 output bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectLoadError`] when COFF extraction, relocation, or
+    /// target instruction alignment is invalid.
+    pub fn from_output(
+        artifact: &VerifiedExecutionGeometryOutputNativeObjectArtifact,
     ) -> Result<Self, VerifiedDirectLoadError> {
         Self::from_verified_parts(
             artifact.key(),
