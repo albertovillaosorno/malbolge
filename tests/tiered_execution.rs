@@ -53,8 +53,8 @@ pub mod geometry_native_crazy;
 pub mod geometry_native_crazy_prefix;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_cph.rs"]
 pub mod geometry_native_crazy_prefix_halt_sequence;
-#[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrco.rs"]
-pub mod geometry_native_crazy_theorem_owner;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrcache.rs"]
+pub mod geometry_native_crazy_theorem_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xcache.rs"]
 pub mod geometry_native_cross_template_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xsync.rs"]
@@ -65,6 +65,8 @@ pub mod geometry_native_cross_template_resident;
 pub mod geometry_native_initial_jump_data;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_input.rs"]
 pub mod geometry_native_input;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrco.rs"]
+pub mod geometry_native_jump_rotate_crazy_halt_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrcph.rs"]
 pub mod geometry_native_jump_rotate_crazy_halt_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jcache.rs"]
@@ -318,7 +320,7 @@ use geometry_native_crazy_prefix_halt_sequence::{
     ExecutionGeometryNativeCrazyPrefixHaltOutcome,
     ExecutionGeometryNativeCrazyPrefixHaltSequence,
 };
-use geometry_native_crazy_theorem_owner as crazy_owner;
+use geometry_native_crazy_theorem_cache as gc;
 use geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruAcquireFailure as CrossLruFailure,
     GeometryNativeCrossTemplateLruCache as CrossLruCache,
@@ -362,6 +364,7 @@ use geometry_native_input::{
     ExecutionGeometryNativeInputPreparationError,
     ExecutionGeometryNativeInputTransactionFailure,
 };
+use geometry_native_jump_rotate_crazy_halt_owner as crazy_owner;
 use geometry_native_jump_rotate_crazy_halt_sequence::{
     ExecutionGeometryNativeJumpRotateCrazyHaltEvidence,
     ExecutionGeometryNativeJumpRotateCrazyHaltExecutableBindingError,
@@ -511,6 +514,12 @@ struct CoffCompileCase {
 }
 
 type CollisionKeys = (NativeArtifactKey, NativeArtifactKey);
+type CrazyCacheDisposition =
+    gc::GeometryNativeJumpRotateCrazyHaltCacheDisposition;
+type CrazyCacheFailure<MemoryError> =
+    gc::GeometryNativeJumpRotateCrazyHaltCacheAcquireFailure<MemoryError>;
+type CrazyCacheRelease = gc::GeometryNativeJumpRotateCrazyHaltCacheRelease;
+type CrazyLeaseCache = gc::GeometryNativeJumpRotateCrazyHaltLeaseCache;
 
 type DirectSelectionCase =
     (RegionEffectProgram, DirectNativeKind, &'static str);
@@ -24486,6 +24495,216 @@ fn geometry_native_full_crazy_owner_release_retries_all() -> Result<(), String>
         Ok(())
     } else {
         Err(String::from("v5 owned crazy theorem retry count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_full_crazy_cache_insert_hit_reuses_resident()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let entry = sequence.initial_jump().checkpoint().clone();
+    let expected = full_crazy_final_state(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(313)?,
+        native_executable_address(0xe_6000)?,
+    );
+    let mut cache = CrazyLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &sequence)
+        .map_err(|error| format!("v5 crazy theorem cache insert: {error}"))?;
+    let first_disposition = first.disposition();
+    let first_lease = first.into_lease();
+    let second = cache
+        .ensure(&mut adapter, &sequence)
+        .map_err(|error| format!("v5 crazy theorem cache hit: {error}"))?;
+    let second_disposition = second.disposition();
+    let second_lease = second.into_lease();
+    let weight = first_lease
+        .resident_weight()
+        .map_err(|error| format!("v5 crazy theorem cache weight: {error}"))?;
+    if first_disposition != CrazyCacheDisposition::Inserted
+        || second_disposition != CrazyCacheDisposition::Hit
+        || !first_lease.shares_resident_with(&second_lease)
+        || cache.resident_lease_count() != 2
+        || weight.mappings() != 7
+        || adapter.operations.len() != 28
+    {
+        return Err(String::from("v5 crazy theorem cache reuse drifted"));
+    }
+    let mut runner = full_crazy_applied_runner(7);
+    let mut memory = entry.memory().to_vec();
+    let input = entry.io().input().to_vec();
+    let mut output = entry.io().output().to_vec();
+    let outcome = first_lease
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 crazy theorem cache execute: {error}"))?;
+    if outcome.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || adapter.operations.len() != 28
+    {
+        return Err(String::from("v5 crazy theorem cache execution remapped"));
+    }
+    drop((first_lease, second_lease));
+    let released = cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|error| format!("v5 crazy theorem cache release: {error}"))?;
+    if released == CrazyCacheRelease::Released
+        && !cache.has_resident()
+        && adapter.operations.len() == 35
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 crazy theorem cache release drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_full_crazy_cache_blocks_live_identity() -> Result<(), String>
+{
+    let n10_fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let n11_fixture = derived_v5_jump_rotate_crazy_halt_fixture(11)?;
+    let n10 = geometry_native_jump_rotate_crazy_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_jump_rotate_crazy_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(314)?,
+        native_executable_address(0xe_7000)?,
+    );
+    let mut cache = CrazyLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &n10)
+        .map_err(|error| format!("v5 crazy theorem cache N10: {error}"))?
+        .into_lease();
+    let Err(identity_failure) = cache.ensure(&mut adapter, &n11) else {
+        return Err(String::from(
+            "v5 crazy theorem cache mixed identity admitted",
+        ));
+    };
+    let Err(replace_failure) = cache.replace_if_unleased(&mut adapter, &n11)
+    else {
+        return Err(String::from("v5 crazy theorem cache replaced live lease"));
+    };
+    let blocked = cache.release_if_unleased(&mut adapter).map_err(|error| {
+        format!("v5 crazy theorem cache blocked release: {error}")
+    })?;
+    if !matches!(*identity_failure, CrazyCacheFailure::IdentityOccupied)
+        || !matches!(*replace_failure, CrazyCacheFailure::Leased { leases: 1 })
+        || blocked != (CrazyCacheRelease::Leased { leases: 1 })
+        || adapter.operations.len() != 28
+    {
+        return Err(String::from(
+            "v5 crazy theorem cache lease boundary drifted",
+        ));
+    }
+    drop(lease);
+    cache
+        .release_if_unleased(&mut adapter)
+        .map(|_release| ())
+        .map_err(|error| format!("v5 crazy theorem cache cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_full_crazy_cache_load_failure_publishes_nothing()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(315)?,
+        native_executable_address(0xe_8000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 5);
+    let mut cache = CrazyLeaseCache::new();
+    let Err(failure) = cache.ensure(&mut adapter, &sequence) else {
+        return Err(String::from("v5 crazy theorem failed load was published"));
+    };
+    let load_failed = matches!(
+        *failure,
+        CrazyCacheFailure::Load(error) if error.index() == 4
+    );
+    let release = cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|error| format!("v5 crazy theorem empty release: {error}"))?;
+    if load_failed
+        && !cache.has_resident()
+        && release == CrazyCacheRelease::Missing
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v5 crazy theorem partial load gained cache authority",
+        ))
+    }
+}
+
+#[test]
+fn geometry_native_full_crazy_cache_release_transfers_cleanup()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(316)?,
+        native_executable_address(0xe_9000)?,
+    )
+    .with_release_failure_at(3);
+    let mut cache = CrazyLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &sequence)
+        .map_err(|error| format!("v5 crazy theorem release acquire: {error}"))?
+        .into_lease();
+    drop(lease);
+    let Err(failure) = cache.release_if_unleased(&mut adapter) else {
+        return Err(String::from(
+            "v5 crazy theorem cache release failure ignored",
+        ));
+    };
+    if cache.has_resident() || failure.failure_count() != 1 {
+        return Err(String::from("v5 crazy theorem cleanup transfer drifted"));
+    }
+    failure.retry(&mut adapter).map_err(|error| {
+        format!("v5 crazy theorem cache cleanup retry: {error}")
+    })
+}
+
+#[test]
+fn geometry_native_full_crazy_cache_replaces_unleased_identity()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let n11_fixture = derived_v5_jump_rotate_crazy_halt_fixture(11)?;
+    let n10 = geometry_native_jump_rotate_crazy_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_jump_rotate_crazy_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(317)?,
+        native_executable_address(0xe_a000)?,
+    );
+    let mut cache = CrazyLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &n10)
+        .map_err(|error| format!("v5 crazy theorem first cache: {error}"))?
+        .into_lease();
+    drop(first);
+    let replacement = cache
+        .replace_if_unleased(&mut adapter, &n11)
+        .map_err(|error| format!("v5 crazy theorem replacement: {error}"))?;
+    if replacement.disposition() != CrazyCacheDisposition::Replaced
+        || replacement.lease().sequence() != &n11
+        || adapter.operations.len() != 63
+    {
+        return Err(String::from("v5 crazy theorem replacement drifted"));
+    }
+    drop(replacement);
+    let released =
+        cache.release_if_unleased(&mut adapter).map_err(|error| {
+            format!("v5 crazy theorem replacement cleanup: {error}")
+        })?;
+    if released == CrazyCacheRelease::Released && adapter.operations.len() == 70
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 crazy theorem replacement release drifted"))
     }
 }
 

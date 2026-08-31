@@ -455,8 +455,12 @@ all seven ready images before mutation and performs no adapter work afterward.
 Resident weight checked-sums the seven child mapping reports. A focused fixture
 proves 114,688 mapped bytes and seven mappings without artifact-size estimates.
 Final release attempts all seven owners even after one failure, and aggregate
-retry keeps only mappings whose release still fails. Whole-theorem cache policy
-remains separate work.
+retry keeps only mappings whose release still fails. A single-resident theorem
+cache now reuses that exact seven-mapping owner behind cloneable leases. Full
+sequence identity controls hits; live leases block release or replacement; and
+failed load/release transfers cleanup ownership without publishing partial
+cache authority. Multi-entry and weighted theorem residency remain separate
+work.
 
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low

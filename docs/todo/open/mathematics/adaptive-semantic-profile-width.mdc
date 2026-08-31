@@ -988,8 +988,13 @@ transfers, verification, and other separately measured costs.
   preserves retryable rollback evidence; repeated execution prebinds all seven
   images and performs no adapter work. Exact resident weight is 114,688 bytes
   and seven mappings in the oversized-report fixture, while final release tries
-  every mapping and retries only failed cleanup. Whole-theorem cache residency
-  remains separate work.
+  every mapping and retries only failed cleanup.
+- The exact seven-mapping theorem owner now also has single-resident cache
+  authority. Exact sequence hits reuse one owner with no adapter work; live
+  leases block release and cross-width replacement; failed load publishes no
+  resident; failed release transfers retryable cleanup; and an unleased N10
+  resident can be replaced explicitly by N11 only after complete release.
+  Multi-entry/weighted theorem residency remains separate work.
 - Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
   dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical
