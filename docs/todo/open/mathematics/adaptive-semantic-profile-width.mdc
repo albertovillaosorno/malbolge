@@ -977,7 +977,7 @@ transfers, verification, and other separately measured costs.
   the shared heterogeneous boundary. Exact plan identity, load rollback,
   four-step execution, four-mapping weight, release retry, and mapping-free LRU
   hits all delegate to the prefix owner. No prefix-specific eviction policy was
-  added; the five-step prefix/halt suffix remains separate shared-residency work.
+  added.
 - The immediately reached halt now composes after that fixed crazy prefix. Halt
   admission is bound only to the fourth crazy's normative exit, and execution
   preserves one global `p p p p v` index with halt at 4. Applied halt reaches
@@ -990,6 +990,11 @@ transfers, verification, and other separately measured costs.
   checked-sums all five mappings; and final release attempts both child owners.
   The preceding jump/rotate composition remains independently owned by the
   complete seven-step theorem owner.
+- That five-step owner is now also a typed `CrazyPrefixHalt` resident in the
+  shared heterogeneous boundary. Exact sequence identity, halt-load rollback,
+  five-step execution, five-mapping weight, release retry, and mapping-free LRU
+  hits all delegate to the specialized owner. The generic cache adds no
+  suffix-specific eviction or resource policy.
 - The theorem's complete `j * p p p p v` path now composes under one
   checkpoint authority line. Initial jump, rotate, and the fixed suffix admit
   strictly from the preceding normative exit, and execution preserves global

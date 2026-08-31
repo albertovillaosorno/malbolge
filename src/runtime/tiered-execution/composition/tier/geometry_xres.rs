@@ -59,6 +59,17 @@ use crate::geometry_native_crazy_prefix::{
     ExecutionGeometryNativeCrazyPrefix,
     ExecutionGeometryNativeCrazyPrefixOutcome,
 };
+use crate::geometry_native_crazy_prefix_halt_owner::{
+    ExecutionGeometryNativeCrazyPrefixHaltLoadFailure,
+    ExecutionGeometryNativeCrazyPrefixHaltOwnedFailure,
+    ExecutionGeometryNativeCrazyPrefixHaltReleaseFailure,
+    ExecutionGeometryNativeCrazyPrefixHaltResidentWeightError,
+    LoadedExecutionGeometryNativeCrazyPrefixHaltSequence,
+};
+use crate::geometry_native_crazy_prefix_halt_sequence::{
+    ExecutionGeometryNativeCrazyPrefixHaltOutcome,
+    ExecutionGeometryNativeCrazyPrefixHaltSequence,
+};
 use crate::geometry_native_crazy_prefix_owner::{
     ExecutionGeometryNativeCrazyPrefixLoadFailure,
     ExecutionGeometryNativeCrazyPrefixOwnedFailure,
@@ -136,6 +147,12 @@ use crate::geometry_native_sequence::{
 };
 
 type CrazyLoadFailure<MemoryError> = NativeExecutableLoadFailure<MemoryError>;
+type CrazyPrefixHaltLoadFailure<MemoryError> =
+    ExecutionGeometryNativeCrazyPrefixHaltLoadFailure<MemoryError>;
+type CrazyPrefixHaltReleaseFailure<MemoryError> =
+    ExecutionGeometryNativeCrazyPrefixHaltReleaseFailure<MemoryError>;
+type CrazyPrefixHaltWeightError =
+    ExecutionGeometryNativeCrazyPrefixHaltResidentWeightError;
 type CrazyPrefixLoadFailure<MemoryError> =
     ExecutionGeometryNativeCrazyPrefixLoadFailure<MemoryError>;
 type CrazyPrefixReleaseFailure<MemoryError> =
@@ -178,6 +195,8 @@ type NoopWeightError = ExecutionGeometryNativeNoopHaltResidentWeightError;
 type OutputLoadFailure<MemoryError> = NativeExecutableLoadFailure<MemoryError>;
 type OutputReleaseFailure<MemoryError> =
     ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>;
+type ResidentWeightParts =
+    Result<(usize, usize), GeometryNativeResidentWeightError>;
 type RotateLoadFailure<MemoryError> =
     ExecutionGeometryNativeRotateHaltPairLoadFailure<MemoryError>;
 type RotateReleaseFailure<MemoryError> =
@@ -195,6 +214,8 @@ pub enum GeometryNativeResidentKind {
     Crazy,
     /// Exact four-crazy theorem prefix.
     CrazyPrefix,
+    /// Exact four-crazy prefix followed by halt.
+    CrazyPrefixHalt,
     /// Complete initial-jump, rotate, four-crazy, halt theorem path.
     CrazyTheorem,
     /// Complete initial-jump, rotate, halt path.
@@ -224,6 +245,8 @@ pub enum GeometryNativeResidentPlan {
     Crazy(Box<ExecutionGeometryNativeCrazyAdmission>),
     /// Exact four-crazy theorem prefix.
     CrazyPrefix(Box<ExecutionGeometryNativeCrazyPrefix>),
+    /// Exact four-crazy prefix followed by halt.
+    CrazyPrefixHalt(Box<ExecutionGeometryNativeCrazyPrefixHaltSequence>),
     /// Complete exact crazy-theorem sequence.
     CrazyTheorem(Box<ExecutionGeometryNativeJumpRotateCrazyHaltSequence>),
     /// Complete initial-jump, rotate, halt sequence.
@@ -253,6 +276,8 @@ pub enum GeometryNativeLoadedResident {
     Crazy(Box<LoadedExecutionGeometryNativeCrazy>),
     /// Reusable four-mapping crazy-prefix owner.
     CrazyPrefix(Box<LoadedExecutionGeometryNativeCrazyPrefix>),
+    /// Reusable five-mapping crazy-prefix/halt owner.
+    CrazyPrefixHalt(Box<LoadedExecutionGeometryNativeCrazyPrefixHaltSequence>),
     /// Complete reusable seven-mapping crazy-theorem owner.
     CrazyTheorem(Box<LoadedCrazyTheoremSequence>),
     /// Complete initial-jump, rotate, halt owner.
@@ -282,6 +307,8 @@ pub enum GeometryNativeResidentExecutionOutcome {
     Crazy(Box<ExecutionGeometryNativeCrazyCompletion>),
     /// Exact four-crazy prefix outcome.
     CrazyPrefix(Box<ExecutionGeometryNativeCrazyPrefixOutcome>),
+    /// Exact four-crazy prefix/halt outcome.
+    CrazyPrefixHalt(Box<ExecutionGeometryNativeCrazyPrefixHaltOutcome>),
     /// Complete crazy-theorem outcome.
     CrazyTheorem(Box<ExecutionGeometryNativeJumpRotateCrazyHaltOutcome>),
     /// Complete initial-jump, rotate, halt outcome.
@@ -312,6 +339,10 @@ pub enum GeometryNativeResidentExecutionFailure<RunnerError> {
     /// Four-crazy prefix owner execution failed.
     CrazyPrefix(
         Box<ExecutionGeometryNativeCrazyPrefixOwnedFailure<RunnerError>>,
+    ),
+    /// Four-crazy prefix/halt owner execution failed.
+    CrazyPrefixHalt(
+        Box<ExecutionGeometryNativeCrazyPrefixHaltOwnedFailure<RunnerError>>,
     ),
     /// Complete crazy-theorem owner execution failed.
     CrazyTheorem(
@@ -374,6 +405,8 @@ pub enum GeometryNativeResidentLoadFailure<MemoryError> {
     Crazy(Box<CrazyLoadFailure<MemoryError>>),
     /// Four-crazy prefix loading failed.
     CrazyPrefix(Box<CrazyPrefixLoadFailure<MemoryError>>),
+    /// Four-crazy prefix/halt loading failed.
+    CrazyPrefixHalt(Box<CrazyPrefixHaltLoadFailure<MemoryError>>),
     /// Complete crazy-theorem loading failed.
     CrazyTheorem(Box<CrazyTheoremLoadFailure<MemoryError>>),
     /// Complete full-path triple loading failed.
@@ -403,6 +436,8 @@ pub enum GeometryNativeResidentReleaseFailure<MemoryError> {
     Crazy(Box<CrazyReleaseFailure<MemoryError>>),
     /// Four-crazy prefix cleanup remains incomplete.
     CrazyPrefix(Box<CrazyPrefixReleaseFailure<MemoryError>>),
+    /// Four-crazy prefix/halt cleanup remains incomplete.
+    CrazyPrefixHalt(Box<CrazyPrefixHaltReleaseFailure<MemoryError>>),
     /// Complete crazy-theorem cleanup remains incomplete.
     CrazyTheorem(Box<CrazyTheoremReleaseFailure<MemoryError>>),
     /// Complete full-path cleanup remains incomplete.
@@ -448,6 +483,7 @@ impl<RunnerError: Display> Display
         match self {
             Self::Crazy(error) => Display::fmt(error, f),
             Self::CrazyPrefix(error) => Display::fmt(error, f),
+            Self::CrazyPrefixHalt(error) => Display::fmt(error, f),
             Self::CrazyTheorem(error) => Display::fmt(error, f),
             Self::FullPath(error) => Display::fmt(error, f),
             Self::InitialHalt(error) => Display::fmt(error, f),
@@ -482,6 +518,7 @@ impl<MemoryError> GeometryNativeResidentLoadFailure<MemoryError> {
         match self {
             Self::FullPath(error) => error.cleanup_pending(),
             Self::CrazyPrefix(error) => error.cleanup_pending(),
+            Self::CrazyPrefixHalt(error) => error.cleanup_pending(),
             Self::CrazyTheorem(error) => error.cleanup_pending(),
             Self::Crazy(error)
             | Self::InitialHalt(error)
@@ -507,6 +544,9 @@ impl<MemoryError> GeometryNativeResidentLoadFailure<MemoryError> {
             },
             Self::CrazyPrefix(error) => {
                 Self::CrazyPrefix(Box::new((*error).retry_cleanup(adapter)))
+            },
+            Self::CrazyPrefixHalt(error) => {
+                Self::CrazyPrefixHalt(Box::new((*error).retry_cleanup(adapter)))
             },
             Self::CrazyTheorem(error) => {
                 Self::CrazyTheorem(Box::new((*error).retry_cleanup(adapter)))
@@ -549,6 +589,7 @@ impl<MemoryError: Display> Display
         match self {
             Self::FullPath(error) => Display::fmt(error, f),
             Self::CrazyPrefix(error) => Display::fmt(error, f),
+            Self::CrazyPrefixHalt(error) => Display::fmt(error, f),
             Self::CrazyTheorem(error) => Display::fmt(error, f),
             Self::Crazy(error)
             | Self::InitialHalt(error)
@@ -570,6 +611,7 @@ impl<MemoryError: Display> Display
         match self {
             Self::FullPath(error) => Display::fmt(error, f),
             Self::CrazyPrefix(error) => Display::fmt(error, f),
+            Self::CrazyPrefixHalt(error) => Display::fmt(error, f),
             Self::CrazyTheorem(error) => Display::fmt(error, f),
             Self::Crazy(error)
             | Self::InitialHalt(error)
@@ -603,6 +645,9 @@ impl GeometryNativeLoadedResident {
             Self::Crazy(loaded) => Self::execute_crazy(loaded, runner, buffers),
             Self::CrazyPrefix(loaded) => {
                 Self::execute_crazy_prefix(loaded, runner, buffers)
+            },
+            Self::CrazyPrefixHalt(loaded) => {
+                Self::execute_crazy_prefix_halt(loaded, runner, buffers)
             },
             Self::CrazyTheorem(loaded) => {
                 Self::execute_crazy_theorem(loaded, runner, buffers)
@@ -694,6 +739,30 @@ impl GeometryNativeLoadedResident {
                 Box::new(GeometryNativeResidentExecutionFailure::CrazyPrefix(
                     error,
                 ))
+            })
+    }
+
+    fn execute_crazy_prefix_halt<Runner>(
+        loaded: &LoadedExecutionGeometryNativeCrazyPrefixHaltSequence,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> GeometryNativeResidentExecutionResult<Runner::Error>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        loaded
+            .execute(runner, buffers)
+            .map(|outcome| {
+                GeometryNativeResidentExecutionOutcome::CrazyPrefixHalt(
+                    Box::new(outcome),
+                )
+            })
+            .map_err(|error| {
+                Box::new(
+                    GeometryNativeResidentExecutionFailure::CrazyPrefixHalt(
+                        error,
+                    ),
+                )
             })
     }
 
@@ -875,6 +944,9 @@ impl GeometryNativeLoadedResident {
             Self::CrazyPrefix(_loaded) => {
                 GeometryNativeResidentKind::CrazyPrefix
             },
+            Self::CrazyPrefixHalt(_loaded) => {
+                GeometryNativeResidentKind::CrazyPrefixHalt
+            },
             Self::CrazyTheorem(_loaded) => {
                 GeometryNativeResidentKind::CrazyTheorem
             },
@@ -913,6 +985,10 @@ impl GeometryNativeLoadedResident {
                 Self::CrazyPrefix(loaded),
                 GeometryNativeResidentPlan::CrazyPrefix(exact_plan),
             ) => loaded.prefix() == exact_plan.as_ref(),
+            (
+                Self::CrazyPrefixHalt(loaded),
+                GeometryNativeResidentPlan::CrazyPrefixHalt(exact_plan),
+            ) => loaded.sequence() == exact_plan.as_ref(),
             (
                 Self::CrazyTheorem(loaded),
                 GeometryNativeResidentPlan::CrazyTheorem(exact_plan),
@@ -967,6 +1043,11 @@ impl GeometryNativeLoadedResident {
             Self::CrazyPrefix(loaded) => {
                 GeometryNativeResidentPlan::CrazyPrefix(Box::new(
                     loaded.prefix().clone(),
+                ))
+            },
+            Self::CrazyPrefixHalt(loaded) => {
+                GeometryNativeResidentPlan::CrazyPrefixHalt(Box::new(
+                    loaded.sequence().clone(),
                 ))
             },
             Self::CrazyTheorem(loaded) => {
@@ -1033,16 +1114,15 @@ impl GeometryNativeLoadedResident {
             Self::CrazyPrefix(loaded) => {
                 Self::release_crazy_prefix(loaded, adapter)
             },
+            Self::CrazyPrefixHalt(loaded) => {
+                Self::release_crazy_prefix_halt(loaded, adapter)
+            },
             Self::CrazyTheorem(loaded) => {
                 Self::release_crazy_theorem(loaded, adapter)
             },
             Self::FullPath(loaded) => Self::release_full_path(loaded, adapter),
             Self::InitialHalt(loaded) => {
-                loaded.release(adapter).map_err(|error| {
-                    Box::new(GeometryNativeResidentReleaseFailure::InitialHalt(
-                        error,
-                    ))
-                })
+                Self::release_initial_halt(loaded, adapter)
             },
             Self::InitialJump(loaded) => {
                 loaded.release(adapter).map_err(|error| {
@@ -1098,6 +1178,20 @@ impl GeometryNativeLoadedResident {
         })
     }
 
+    fn release_crazy_prefix_halt<Adapter>(
+        loaded: Box<LoadedExecutionGeometryNativeCrazyPrefixHaltSequence>,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeResidentReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        loaded.release(adapter).map_err(|error| {
+            Box::new(GeometryNativeResidentReleaseFailure::CrazyPrefixHalt(
+                error,
+            ))
+        })
+    }
+
     fn release_crazy_theorem<Adapter>(
         loaded: Box<LoadedCrazyTheoremSequence>,
         adapter: &mut Adapter,
@@ -1122,6 +1216,18 @@ impl GeometryNativeLoadedResident {
         })
     }
 
+    fn release_initial_halt<Adapter>(
+        loaded: Box<LoadedExecutionGeometryNativeInitialHalt>,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeResidentReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        loaded.release(adapter).map_err(|error| {
+            Box::new(GeometryNativeResidentReleaseFailure::InitialHalt(error))
+        })
+    }
+
     /// Returns exact synchronized mapping weight for this specialized owner.
     ///
     /// # Errors
@@ -1142,6 +1248,7 @@ impl GeometryNativeLoadedResident {
                     .map_err(map_crazy_prefix_weight_error)?;
                 (weight.mapped_bytes(), weight.mappings())
             },
+            Self::CrazyPrefixHalt(loaded) => prefix_halt_weight(loaded)?,
             Self::CrazyTheorem(loaded) => {
                 let weight = loaded
                     .resident_weight()
@@ -1202,6 +1309,9 @@ impl GeometryNativeResidentExecutionOutcome {
             Self::CrazyPrefix(_outcome) => {
                 GeometryNativeResidentKind::CrazyPrefix
             },
+            Self::CrazyPrefixHalt(_outcome) => {
+                GeometryNativeResidentKind::CrazyPrefixHalt
+            },
             Self::CrazyTheorem(_outcome) => {
                 GeometryNativeResidentKind::CrazyTheorem
             },
@@ -1233,6 +1343,7 @@ impl GeometryNativeResidentExecutionOutcome {
         match self {
             Self::Crazy(outcome) => outcome.state(),
             Self::CrazyPrefix(outcome) => outcome.state(),
+            Self::CrazyPrefixHalt(outcome) => outcome.state(),
             Self::CrazyTheorem(outcome) => outcome.state(),
             Self::FullPath(outcome) => outcome.state(),
             Self::InitialHalt(outcome) => outcome.state(),
@@ -1254,6 +1365,9 @@ impl GeometryNativeResidentPlan {
         match self {
             Self::Crazy(_plan) => GeometryNativeResidentKind::Crazy,
             Self::CrazyPrefix(_plan) => GeometryNativeResidentKind::CrazyPrefix,
+            Self::CrazyPrefixHalt(_plan) => {
+                GeometryNativeResidentKind::CrazyPrefixHalt
+            },
             Self::CrazyTheorem(_plan) => {
                 GeometryNativeResidentKind::CrazyTheorem
             },
@@ -1287,6 +1401,9 @@ impl GeometryNativeResidentPlan {
         match self {
             Self::Crazy(plan) => Self::load_crazy(plan, adapter),
             Self::CrazyPrefix(plan) => Self::load_crazy_prefix(plan, adapter),
+            Self::CrazyPrefixHalt(plan) => {
+                Self::load_crazy_prefix_halt(plan, adapter)
+            },
             Self::CrazyTheorem(plan) => Self::load_crazy_theorem(plan, adapter),
             Self::FullPath(plan) => Self::load_full_path(plan, adapter),
             Self::InitialHalt(plan) => plan
@@ -1368,6 +1485,24 @@ impl GeometryNativeResidentPlan {
             .map_err(|error| {
                 Box::new(GeometryNativeResidentLoadFailure::CrazyPrefix(error))
             })
+    }
+
+    fn load_crazy_prefix_halt<Adapter>(
+        plan: &ExecutionGeometryNativeCrazyPrefixHaltSequence,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeResidentLoadResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        LoadedExecutionGeometryNativeCrazyPrefixHaltSequence::load(
+            plan, adapter,
+        )
+        .map(|loaded| {
+            GeometryNativeLoadedResident::CrazyPrefixHalt(Box::new(loaded))
+        })
+        .map_err(|error| {
+            Box::new(GeometryNativeResidentLoadFailure::CrazyPrefixHalt(error))
+        })
     }
 
     fn load_crazy_theorem<Adapter>(
@@ -1480,15 +1615,16 @@ impl<MemoryError> GeometryNativeResidentReleaseFailure<MemoryError> {
         Adapter: NativeExecutableMemoryAdapter<Error = MemoryError>,
     {
         match self {
-            Self::Crazy(error) => {
-                (*error).retry(adapter).map_err(|retry_error| {
-                    Box::new(Self::Crazy(Box::new(retry_error)))
-                })
-            },
+            Self::Crazy(error) => error.retry(adapter).map_err(|retry_error| {
+                Box::new(Self::Crazy(Box::new(retry_error)))
+            }),
             Self::CrazyPrefix(error) => {
                 (*error).retry(adapter).map_err(|retry_error| {
                     Box::new(Self::CrazyPrefix(retry_error))
                 })
+            },
+            Self::CrazyPrefixHalt(error) => {
+                retry_crazy_prefix_halt(*error, adapter)
             },
             Self::CrazyTheorem(error) => {
                 (*error).retry(adapter).map_err(|retry_error| {
@@ -1551,6 +1687,42 @@ impl GeometryNativeResidentWeight {
     #[must_use]
     pub const fn mappings(self) -> usize {
         self.mappings
+    }
+}
+
+fn prefix_halt_weight(
+    loaded: &LoadedExecutionGeometryNativeCrazyPrefixHaltSequence,
+) -> ResidentWeightParts {
+    let weight = loaded
+        .resident_weight()
+        .map_err(map_crazy_prefix_halt_weight_error)?;
+    Ok((weight.mapped_bytes(), weight.mappings()))
+}
+
+fn retry_crazy_prefix_halt<MemoryError, Adapter>(
+    error: CrazyPrefixHaltReleaseFailure<MemoryError>,
+    adapter: &mut Adapter,
+) -> GeometryNativeResidentReleaseResult<MemoryError>
+where
+    Adapter: NativeExecutableMemoryAdapter<Error = MemoryError>,
+{
+    error.retry(adapter).map_err(|retry_error| {
+        Box::new(GeometryNativeResidentReleaseFailure::CrazyPrefixHalt(
+            retry_error,
+        ))
+    })
+}
+
+const fn map_crazy_prefix_halt_weight_error(
+    error: CrazyPrefixHaltWeightError,
+) -> GeometryNativeResidentWeightError {
+    match error {
+        CrazyPrefixHaltWeightError::MappedBytesOverflow => {
+            GeometryNativeResidentWeightError::MappedBytesOverflow
+        },
+        CrazyPrefixHaltWeightError::MappingsOverflow => {
+            GeometryNativeResidentWeightError::MappingsOverflow
+        },
     }
 }
 

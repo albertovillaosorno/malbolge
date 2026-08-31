@@ -446,6 +446,12 @@ same global suffix index and last committed checkpoint, and exact resident
 weight checked-sums prefix plus halt reports. Final release attempts both child
 owners and keeps only mappings whose cleanup remains incomplete.
 
+The five-step owner is now also a typed `CrazyPrefixHalt` resident in the shared
+heterogeneous boundary. Exact suffix identity controls lookup; load rollback,
+five-step execution, five-mapping weight, release retry, and mapping-free LRU
+hits all delegate to the owner. The shared cache adds no suffix-specific
+resource or eviction policy.
+
 `ExecutionGeometryNativeJumpRotateCrazyHaltSequence` now closes that preceding
 composition for the exact seven-step `j * p p p p v` theorem path. Initial jump
 admits from the theorem entry, rotate admits only from the jump replay exit, and

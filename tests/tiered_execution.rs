@@ -14463,6 +14463,14 @@ fn cross_template_crazy_prefix_plan() -> Result<CrossResidentPlan, String> {
     )))
 }
 
+fn cross_template_crazy_prefix_halt_plan() -> Result<CrossResidentPlan, String>
+{
+    let fixture = derived_v5_crazy_prefix_halt_fixture(10)?;
+    Ok(CrossResidentPlan::CrazyPrefixHalt(Box::new(
+        geometry_native_crazy_prefix_halt_sequence(&fixture)?,
+    )))
+}
+
 fn cross_template_crazy_theorem_plan() -> Result<CrossResidentPlan, String> {
     Ok(CrossResidentPlan::CrazyTheorem(crazy_lru_sequence(10)?))
 }
@@ -20410,6 +20418,156 @@ fn geometry_native_cross_template_crazy_prefix_release_failure_typed()
     (*failure)
         .retry(&mut adapter)
         .map_err(|error| format!("cross crazy prefix cleanup retry: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_crazy_prefix_halt_resident_runs()
+-> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_halt_fixture(10)?;
+    let expected = crazy_fixture_final_state(&fixture)?;
+    let plan = CrossResidentPlan::CrazyPrefixHalt(Box::new(
+        geometry_native_crazy_prefix_halt_sequence(&fixture)?,
+    ));
+    let CrossResidentPlan::CrazyPrefixHalt(sequence) = &plan else {
+        return Err(String::from("cross crazy suffix plan variant drifted"));
+    };
+    let checkpoint = sequence.prefix().entry_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(340)?,
+        native_executable_address(0x101_0000)?,
+    )
+    .with_mapped_len_overrides(vec![4_096, 8_192, 12_288, 16_384, 20_480]);
+    let loaded = plan
+        .load(&mut adapter)
+        .map_err(|error| format!("cross crazy suffix load: {error}"))?;
+    let weight = loaded
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut runner = full_crazy_applied_runner(5);
+    let outcome = loaded
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("cross crazy suffix execute: {error}"))?;
+    if loaded.kind() != CrossResidentKind::CrazyPrefixHalt
+        || !loaded.matches_plan(&plan)
+        || loaded.plan() != plan
+        || weight.mapped_bytes() != 61_440
+        || weight.mappings() != 5
+        || outcome.kind() != CrossResidentKind::CrazyPrefixHalt
+        || !matches!(outcome, CrossExecutionOutcome::CrazyPrefixHalt(_))
+        || outcome.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 5
+        || adapter.operations.len() != 20
+    {
+        return Err(String::from("cross crazy suffix resident drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("cross crazy suffix release: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_crazy_prefix_halt_lru_hit_reuses()
+-> Result<(), String> {
+    let plan = cross_template_crazy_prefix_halt_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(341)?,
+        native_executable_address(0x102_0000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| format!("cross crazy suffix insert: {error}"))?,
+    );
+    let operations_before = adapter.operations.len();
+    let hit = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross crazy suffix hit: {error}"))?;
+    let weight = hit
+        .lease()
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    if hit.disposition() != CrossLruDisposition::Hit
+        || hit.lease().kind() != CrossResidentKind::CrazyPrefixHalt
+        || !hit.lease().matches_plan(&plan)
+        || weight.mappings() != 5
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from("cross crazy suffix hit remapped resident"));
+    }
+    drop(hit);
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross crazy suffix hit cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_crazy_prefix_halt_load_retry_keeps_variant()
+-> Result<(), String> {
+    let plan = cross_template_crazy_prefix_halt_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(342)?,
+        native_executable_address(0x103_0000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 5)
+    .with_release_failures(1);
+    let Err(failure) = plan.load(&mut adapter) else {
+        return Err(String::from("cross crazy suffix load failure ignored"));
+    };
+    if !matches!(
+        failure.as_ref(),
+        CrossResidentLoadFailure::CrazyPrefixHalt(_)
+    ) || !failure.cleanup_pending()
+    {
+        return Err(String::from("cross crazy suffix load cleanup drifted"));
+    }
+    let retried = (*failure).retry_cleanup(&mut adapter);
+    if matches!(&retried, CrossResidentLoadFailure::CrazyPrefixHalt(_))
+        && !retried.cleanup_pending()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross crazy suffix load retry lost variant"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_crazy_prefix_halt_release_failure_typed()
+-> Result<(), String> {
+    let plan = cross_template_crazy_prefix_halt_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(343)?,
+        native_executable_address(0x104_0000)?,
+    )
+    .with_release_failure_at(5);
+    let mut cache = cross_template_lru(1)?;
+    drop(cache.ensure(&mut adapter, &plan).map_err(|error| {
+        format!("cross crazy suffix typed acquire: {error}")
+    })?);
+    let Err(failure) = cache.release_if_unleased(&mut adapter, &plan) else {
+        return Err(String::from("cross crazy suffix release failure ignored"));
+    };
+    if !matches!(
+        failure.as_ref(),
+        CrossResidentReleaseFailure::CrazyPrefixHalt(_)
+    ) || cache.contains(&plan)
+    {
+        return Err(String::from(
+            "cross crazy suffix cleanup authority drifted",
+        ));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|error| format!("cross crazy suffix cleanup retry: {error}"))
 }
 
 #[test]
