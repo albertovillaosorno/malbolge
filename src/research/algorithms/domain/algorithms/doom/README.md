@@ -44,7 +44,7 @@ Malbolge semantics, and measure generated-code performance.
 | --- | --- |
 | `generator/doom.py` | Exact DOOM source identity, provenance, and probes. |
 | `generator/quality.py` | Configure source-to-normalized-tree generation. |
-| `quality/main.rs` | Materialize the accepted 151-file normalized tree. |
+| `quality/main.rs` | Materialize the accepted 130-file normalized tree. |
 | `generator/amalgamation_oracle.py` | Build the ignored single-TU oracle. |
 | `generator/amalgamate.py` | Configure normalized-tree-to-`doom.c`. |
 | `amalgamate/main.rs` | Materialize exactly one canonical `doom.c`. |

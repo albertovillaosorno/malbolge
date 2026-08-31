@@ -17,6 +17,45 @@ system effects behind a generic runtime boundary.
 The temporary native runners exist to prove that boundary. They are laboratory
 equipment, not the final product.
 
+## 2026-08-31: Direct Single-Player Tic Path and Dead Multiplayer Removal
+
+I finished the single-player specialization by removing the network command
+transport that remained after networking itself had been deleted. Local input
+now writes directly to player zero's `ticcmd_t`; `netcmds`, `maketic`, `ticdup`,
+`BACKUPTICS`, the consistency ring, and the remaining net/deathmatch runtime
+state are gone. The historical `ticcmd_t` save layout remains unchanged, and
+classic demo/save player slots remain serialized for compatibility. Multiplayer
+demo and save payloads are rejected explicitly when read.
+
+This pass also removed unreachable deathmatch intermission/status-bar code,
+item-respawn queues, deathmatch start/respawn logic, deathmatch level timers,
+network-only menu messages, and their unused localized strings. Music, sound,
+renderer, WAD loading, save support, demos, monsters, weapons, and normal
+single-player intermissions remain in the guest.
+
+A deterministic accelerated-clock A/B run of Plutonia `demo1` completed at the
+same `7403` gametics and `14807` reported realtics before and after removing the
+single-player command ring. That run also exposed four precedence mistakes in
+an earlier `% power-of-two` to bit-mask optimization; all four expressions were
+corrected and the transformed RNG formulas were audited against the pinned
+upstream source.
+
+The durable quality transform was regenerated from the exact 165-file source
+pin and ignored oracle. Current evidence:
+
+- `quality/main.rs`: 3,114,682 bytes, 43,997 lines, SHA-256
+  `0bc5653de2a929651c23183f9412620276ee2036a23e92585e1ca0470806aec8`;
+- generated output: 130 files, including 63 C files and 66 headers;
+- generated output is byte-identical to the ignored oracle, with aggregate tree
+  SHA-256 `c57b31e3c3edc420433bb57fc51d565889ba8261a07034d07e86cb7a4984a071`;
+- 63/63 translation units pass the complete guest validator;
+- 252/252 closed-include strict syntax checks pass on i686, x86-64, AArch64,
+  and wasm32; and
+- repeated quality generation is byte-identical.
+
+I still did not regenerate amalgamation. No WAD or `doom.c` is part of this
+checkpoint.
+
 ## 2026-08-30: Single-Player Conditioning and Linux Validation
 
 I specialized the normalized guest around the behavior this target actually
