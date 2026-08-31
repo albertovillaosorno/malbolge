@@ -292,6 +292,10 @@ use geometry_native_admission::{
 use geometry_native_crazy::{
     ExecutionGeometryNativeCrazyAdmission,
     ExecutionGeometryNativeCrazyAdmissionError,
+    ExecutionGeometryNativeCrazyBindingError,
+    ExecutionGeometryNativeCrazyExecutionError,
+    ExecutionGeometryNativeCrazyPreparationError,
+    ExecutionGeometryNativeCrazyTransactionFailure,
 };
 use geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruAcquireFailure as CrossLruFailure,
@@ -793,6 +797,13 @@ type GeometryNativeJumpRotateHaltReadyTriple = (
     ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutable,
 );
+
+struct GeometryNativeCrazyRunnerFixture {
+    adapter: FakeNativeExecutableAdapter,
+    admission: ExecutionGeometryNativeCrazyAdmission,
+    geometry: malbolge::ProfileExecutionGeometry,
+    ready: ReadyExecutionGeometryNativeExecutable,
+}
 
 struct GeometryNativeInitialJumpDataRunnerFixture {
     adapter: FakeNativeExecutableAdapter,
@@ -14556,6 +14567,30 @@ fn geometry_native_crazy_admission_fixture(
     Ok((admission, geometry))
 }
 
+fn geometry_native_crazy_runner_fixture(
+    word_trits: u8,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<GeometryNativeCrazyRunnerFixture, String> {
+    let (admission, geometry) =
+        geometry_native_crazy_admission_fixture(word_trits)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_value)?,
+        native_executable_address(base_value)?,
+    );
+    let ready = load_execution_geometry_native_executable(
+        &mut adapter,
+        admission.load_image(),
+    )
+    .map_err(|error| format!("v5 crazy runner load: {error}"))?;
+    Ok(GeometryNativeCrazyRunnerFixture {
+        adapter,
+        admission,
+        geometry,
+        ready,
+    })
+}
+
 fn geometry_native_initial_jump_data_admission_fixture(
     word_trits: u8,
 ) -> Result<GeometryNativeInitialJumpDataAdmissionFixture, String> {
@@ -23797,6 +23832,315 @@ fn geometry_native_crazy_admission_rejects_checkpoint_geometry()
             "v5 crazy admitted different checkpoint geometry",
         ))
     }
+}
+
+#[test]
+fn geometry_native_crazy_binding_rejects_different_geometry()
+-> Result<(), String> {
+    let (admission, _geometry) = geometry_native_crazy_admission_fixture(10)?;
+    let (n11, _checkpoint, _n11_geometry) = derived_v5_crazy_fixture(11)?;
+    let n11_artifact = emit_direct_execution_geometry_crazy_coff(
+        &n11,
+        direct_execution_geometry_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 crazy N11 bind emit: {error}"))?;
+    let n11_verified =
+        verify_direct_execution_geometry_crazy(&n11_artifact, &n11)
+            .map_err(|error| format!("v5 crazy N11 bind verify: {error}"))?;
+    let n11_image =
+        VerifiedExecutionGeometryLoadImage::from_crazy(&n11_verified)
+            .map_err(|error| format!("v5 crazy N11 bind image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(285)?,
+        native_executable_address(0xc_a000)?,
+    );
+    let n11_ready =
+        load_execution_geometry_native_executable(&mut adapter, &n11_image)
+            .map_err(|error| format!("v5 crazy N11 bind load: {error}"))?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 crazy bind prepare: {error}"))?;
+    if !matches!(
+        prepared.bind_executable(&n11_ready),
+        Err(ExecutionGeometryNativeCrazyBindingError::ExecutableIdentity)
+    ) || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from("v5 crazy geometry bind did not roll back"));
+    }
+    release_execution_geometry_native_executable(&mut adapter, n11_ready)
+        .map_err(|error| format!("v5 crazy N11 bind release: {error}"))
+}
+
+#[test]
+fn geometry_native_crazy_preparation_rejects_drift() -> Result<(), String> {
+    let (admission, _geometry) = geometry_native_crazy_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let first = memory
+        .first_mut()
+        .ok_or_else(|| String::from("v5 crazy checkpoint memory missing"))?;
+    *first = first.saturating_add(1);
+    let result = admission.prepare(NativeRegionBuffers::new(
+        &mut memory,
+        &input,
+        &mut output,
+    ));
+    if matches!(
+        result,
+        Err(ExecutionGeometryNativeCrazyPreparationError::Memory)
+    ) {
+        Ok(())
+    } else {
+        Err(String::from("v5 crazy memory drift was admitted"))
+    }
+}
+
+#[test]
+fn geometry_native_crazy_runner_applies_normative_state() -> Result<(), String>
+{
+    let GeometryNativeCrazyRunnerFixture {
+        mut adapter,
+        admission,
+        geometry,
+        ready,
+    } = geometry_native_crazy_runner_fixture(10, 286, 0xc_b000)?;
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 crazy runner prepare: {error}"))?;
+    let bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v5 crazy runner bind: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let completion = bound
+        .execute(&mut runner)
+        .map_err(|error| format!("v5 crazy runner execute: {error}"))?;
+    if completion.state() != &expected
+        || completion.state().geometry() != geometry
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 1
+        || runner.entry_addresses != [ready.entry_address()]
+        || runner.mapping_ids != [ready.mapping().mapping_id()]
+    {
+        return Err(String::from("v5 crazy applied state drifted from replay"));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v5 crazy runner release: {error}"))
+}
+
+#[test]
+fn geometry_native_crazy_runner_completion_drift_restores_checkpoint()
+-> Result<(), String> {
+    let GeometryNativeCrazyRunnerFixture {
+        mut adapter,
+        admission,
+        geometry: _geometry,
+        ready,
+    } = geometry_native_crazy_runner_fixture(10, 287, 0xc_c000)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 crazy drift prepare: {error}"))?;
+    let bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v5 crazy drift bind: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::CompletionDrift,
+    );
+    let result = bound.execute(&mut runner);
+    if !matches!(
+        result,
+        Err(error)
+            if matches!(
+                error.as_ref(),
+                ExecutionGeometryNativeCrazyExecutionError::Completion(_)
+            )
+    ) || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from(
+            "v5 crazy completion drift did not roll back",
+        ));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v5 crazy drift release: {error}"))
+}
+
+#[test]
+fn geometry_native_crazy_runner_failure_restores_checkpoint()
+-> Result<(), String> {
+    let GeometryNativeCrazyRunnerFixture {
+        mut adapter,
+        admission,
+        geometry: _geometry,
+        ready,
+    } = geometry_native_crazy_runner_fixture(10, 288, 0xc_d000)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 crazy failure prepare: {error}"))?;
+    let bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v5 crazy failure bind: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let result = bound.execute(&mut runner);
+    if !matches!(
+        result,
+        Err(error)
+            if matches!(
+                error.as_ref(),
+                ExecutionGeometryNativeCrazyExecutionError::Runner(runner_error)
+                    if **runner_error == FakeNativeRunnerError::Call
+            )
+    ) || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from("v5 crazy runner failure did not roll back"));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v5 crazy failure release: {error}"))
+}
+
+#[test]
+fn geometry_native_crazy_runner_guard_miss_preserves_checkpoint()
+-> Result<(), String> {
+    let GeometryNativeCrazyRunnerFixture {
+        mut adapter,
+        admission,
+        geometry: _geometry,
+        ready,
+    } = geometry_native_crazy_runner_fixture(10, 289, 0xc_e000)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let prepared = admission
+        .prepare(NativeRegionBuffers::new(&mut memory, &input, &mut output))
+        .map_err(|error| format!("v5 crazy miss prepare: {error}"))?;
+    let bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v5 crazy miss bind: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let completion = bound
+        .execute(&mut runner)
+        .map_err(|error| format!("v5 crazy miss execute: {error}"))?;
+    if completion.outcome() != NativeRegionInvocationOutcome::GuardMiss
+        || completion.state() != &checkpoint
+        || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+    {
+        return Err(String::from("v5 crazy guard miss changed checkpoint"));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v5 crazy miss release: {error}"))
+}
+
+#[test]
+fn geometry_native_crazy_transaction_applies_release() -> Result<(), String> {
+    let (admission, geometry) = geometry_native_crazy_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(290)?,
+        native_executable_address(0xc_f000)?,
+    );
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let completion = admission
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 crazy transaction: {error}"))?;
+    if completion.state() != &expected
+        || completion.state().geometry() != geometry
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        Err(String::from("v5 crazy transaction evidence drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_crazy_transaction_retains_committed_release_retry()
+-> Result<(), String> {
+    let (admission, _geometry) = geometry_native_crazy_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(291)?,
+        native_executable_address(0xd_0000)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(failure) = admission.execute_transactionally(
+        &mut adapter,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 crazy release failure was ignored"));
+    };
+    let ExecutionGeometryNativeCrazyTransactionFailure::Release {
+        completion,
+        release_failure,
+    } = *failure
+    else {
+        return Err(String::from("v5 crazy cleanup ownership was lost"));
+    };
+    if completion.state() != &expected
+        || release_failure.executable().key() != admission.artifact().key()
+        || memory != expected.memory()
+        || output != expected.io().output()
+    {
+        return Err(String::from("v5 crazy committed cleanup drifted"));
+    }
+    release_failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 crazy cleanup retry: {error}"))
 }
 
 #[test]

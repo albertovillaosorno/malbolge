@@ -776,6 +776,44 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         )
     }
 
+    /// Prepares one exact explicit-geometry crazy ABI transition.
+    ///
+    /// The direct v5 verifier owns crazy semantics. This crate-private
+    /// constructor independently requires the exact two-live-in, no-I/O
+    /// one-step mutation surface before common snapshot/write verification.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeRegionInvocationError`] when shape, capacity, live-ins,
+    /// I/O, or declared memory writes disagree with caller-owned buffers.
+    pub(crate) fn new_execution_geometry_crazy(
+        program: &ExecutionGeometryRegionEffectProgram,
+        memory: &'buffers mut [u32],
+        input: &'buffers [u8],
+        output: &'buffers mut [u8],
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let [effect] = program.effects() else {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        };
+        if !program.fits_execution_geometry_capacity()
+            || program.step_budget() != 1
+            || program.outcome() != (RunOutcome::BudgetExhausted { steps: 1 })
+            || effect.before.termination.is_some()
+            || effect.after.termination.is_some()
+            || effect.input.is_some()
+            || effect.output.is_some()
+            || program.memory_live_ins().len() != 2
+        {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        }
+        Self::from_effect(
+            *effect,
+            program.memory_live_ins(),
+            program.required_memory_words(),
+            NativeRegionBuffers::new(memory, input, output),
+        )
+    }
+
     /// Prepares the guarded explicit-geometry initial-halt ABI transition.
     ///
     /// This constructor is crate-private because opaque checkpoint admission is

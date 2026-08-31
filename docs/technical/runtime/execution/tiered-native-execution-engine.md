@@ -381,8 +381,21 @@ Crazy now also has checkpoint-bound semantic admission before any mapping.
 opaque checkpoint after jump/rotate, normatively replays the exact `p`, and
 retains that replayed state as future Applied authority. Only after replay does
 it reconstruct the v5 key and extract a relocation-free load image. N10/N11
-artifact and checkpoint drift reject independently; ABI preparation, runner
-execution, reusable ownership, and residency remain separate work.
+artifact and checkpoint drift reject independently.
+
+Crazy now also reaches the dedicated v5 runner through checkpoint-exact ABI
+preparation and exact synchronized executable binding. Memory, complete input,
+and output must equal the admitted checkpoint; the common ABI independently
+validates both live-ins, exact data/self-encryption writes, and no I/O. Applied
+accepts only the replayed crazy exit, GuardMiss preserves the entry checkpoint,
+and runner or completion failure restores the complete entry buffers. N10
+prepared state cannot bind an N11 crazy executable.
+
+`execute_transactionally()` prepares before mapping, then loads, binds, runs,
+admits, and releases the exact v5 executable. Every post-load failure attempts
+cleanup, while final release failure retains the committed normative completion
+plus retryable executable ownership. Reusable ownership and heterogeneous
+residency remain separate work.
 
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low

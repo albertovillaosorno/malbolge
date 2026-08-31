@@ -35,20 +35,30 @@
 //! Checkpoint-bound semantic admission for explicit-geometry crazy.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
+use std::num::NonZeroUsize;
 
 use malbolge::{ExecutionGeometryRegionEffectProgram, ProfileMachineState};
 
 use crate::execution_cache::{NativeArtifactKey, NativeIdentityError};
 use crate::execution_native::{
-    VerifiedDirectLoadError,
+    ExecutionGeometryNativeExecutableReleaseFailure,
+    ExecutionGeometryNativeRunner, NativeExecutableLoadFailure,
+    NativeExecutableMemoryAdapter, NativeRegionBuffers,
+    NativeRegionInvocationError, NativeRegionInvocationOutcome,
+    PreparedExecutionGeometryNativeInvocation, PreparedNativeRegionInvocation,
+    ReadyExecutionGeometryNativeExecutable, VerifiedDirectLoadError,
     VerifiedExecutionGeometryCrazyNativeObjectArtifact,
     VerifiedExecutionGeometryLoadImage,
+    load_execution_geometry_native_executable,
+    release_execution_geometry_native_executable,
 };
 use crate::geometry_interpreter_handoff::{
     ExecutionGeometryHandoffAdmissionError,
     ExecutionGeometryHandoffExecutionCause,
     ExecutionGeometryInterpreterHandoff,
 };
+
+type CrazyBindingError = ExecutionGeometryNativeCrazyBindingError;
 
 /// Failure before one verified v5 crazy can retain checkpoint authority.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -65,6 +75,112 @@ pub enum ExecutionGeometryNativeCrazyAdmissionError {
     NormativeReplay(ExecutionGeometryHandoffExecutionCause),
 }
 
+/// Failure while binding one prepared v5 crazy to synchronized code.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeCrazyBindingError {
+    /// Synchronized executable image differs from checkpoint-bound admission.
+    ExecutableIdentity,
+}
+
+/// Failure while admitting one completed v5 crazy ABI transition.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeCrazyCompletionError {
+    /// Native result disagreed with the exact prepared transition.
+    Invocation(NativeRegionInvocationError),
+}
+
+/// Failure after a checkpoint-bound v5 crazy enters the runner.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeCrazyExecutionError<RunnerError> {
+    /// Returned status or caller-visible state failed exact completion.
+    Completion(ExecutionGeometryNativeCrazyCompletionError),
+    /// External runner failed before returning a raw ABI status.
+    Runner(Box<RunnerError>),
+}
+
+/// Result of one dedicated checkpoint-bound v5 crazy runner call.
+pub type ExecutionGeometryNativeCrazyExecutionResult<RunnerError> = Result<
+    ExecutionGeometryNativeCrazyCompletion,
+    Box<ExecutionGeometryNativeCrazyExecutionError<RunnerError>>,
+>;
+
+/// Failure while preparing checkpoint-exact buffers for v5 crazy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeCrazyPreparationError {
+    /// Borrowed input bytes differ from the admitted checkpoint.
+    Input,
+    /// Native ABI preparation rejected the exact v5 crazy contract.
+    Invocation(NativeRegionInvocationError),
+    /// Borrowed memory differs from the admitted checkpoint.
+    Memory,
+    /// Borrowed output bytes differ from the admitted checkpoint.
+    Output,
+}
+
+/// Failure from complete v5 crazy load/call/admit/release composition.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeCrazyTransactionFailure<
+    MemoryError,
+    RunnerError,
+> {
+    /// Exact prepared call could not bind to the loaded v5 executable.
+    Binding {
+        /// Exact binding rejection.
+        error: ExecutionGeometryNativeCrazyBindingError,
+        /// Failed cleanup retaining the ready mapping when release also
+        /// failed.
+        release_failure: Option<
+            Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+        >,
+    },
+    /// Bound v5 runner or completion admission failed.
+    Execution {
+        /// Exact runner/completion failure.
+        error: Box<ExecutionGeometryNativeCrazyExecutionError<RunnerError>>,
+        /// Failed cleanup retaining the ready mapping when release also
+        /// failed.
+        release_failure: Option<
+            Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+        >,
+    },
+    /// Executable mapping/lifecycle failed before runner entry.
+    Load(Box<NativeExecutableLoadFailure<MemoryError>>),
+    /// Checkpoint-exact caller buffers failed preparation before mapping.
+    Preparation(ExecutionGeometryNativeCrazyPreparationError),
+    /// Completion committed, but final mapping release failed.
+    Release {
+        /// Exact committed checkpoint/outcome retained despite cleanup
+        /// failure.
+        completion: Box<ExecutionGeometryNativeCrazyCompletion>,
+        /// Retryable ready executable and platform release error.
+        release_failure:
+            Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+    },
+}
+
+/// Result of one complete guarded crazy transaction for adapter ports.
+pub type ExecutionGeometryNativeCrazyAdapterTransactionResult<
+    MemoryAdapter,
+    Runner,
+> = ExecutionGeometryNativeCrazyTransactionResult<
+    <MemoryAdapter as NativeExecutableMemoryAdapter>::Error,
+    <Runner as ExecutionGeometryNativeRunner>::Error,
+>;
+
+/// Result of one complete guarded v5 crazy transaction.
+pub type ExecutionGeometryNativeCrazyTransactionResult<
+    MemoryError,
+    RunnerError,
+> = Result<
+    ExecutionGeometryNativeCrazyCompletion,
+    Box<
+        ExecutionGeometryNativeCrazyTransactionFailure<
+            MemoryError,
+            RunnerError,
+        >,
+    >,
+>;
+
 /// Verified v5 crazy bound to one opaque checkpoint and normative exit.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecutionGeometryNativeCrazyAdmission {
@@ -73,6 +189,31 @@ pub struct ExecutionGeometryNativeCrazyAdmission {
     expected_state: ProfileMachineState,
     load_image: VerifiedExecutionGeometryLoadImage,
     program: ExecutionGeometryRegionEffectProgram,
+}
+
+/// Prepared checkpoint-owned crazy bound to exact synchronized v5 code.
+#[derive(Debug)]
+pub struct ExecutionGeometryNativeCrazyBoundCall<
+    'admission,
+    'buffers,
+    'executable,
+> {
+    executable: &'executable ReadyExecutionGeometryNativeExecutable,
+    prepared: PreparedExecutionGeometryNativeCrazy<'admission, 'buffers>,
+}
+
+/// One admitted crazy result retaining opaque geometry authority.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExecutionGeometryNativeCrazyCompletion {
+    outcome: NativeRegionInvocationOutcome,
+    state: ProfileMachineState,
+}
+
+/// Borrow-scoped crazy ABI contract retaining checkpoint admission.
+#[derive(Debug)]
+pub struct PreparedExecutionGeometryNativeCrazy<'admission, 'buffers> {
+    admission: &'admission ExecutionGeometryNativeCrazyAdmission,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
 impl Display for ExecutionGeometryNativeCrazyAdmissionError {
@@ -91,6 +232,72 @@ impl Display for ExecutionGeometryNativeCrazyAdmissionError {
     }
 }
 
+impl Display for ExecutionGeometryNativeCrazyBindingError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str("v5 crazy executable identity differs from call")
+    }
+}
+
+impl Display for ExecutionGeometryNativeCrazyCompletionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Invocation(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
+    for ExecutionGeometryNativeCrazyExecutionError<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Completion(error) => Display::fmt(error, f),
+            Self::Runner(error) => write!(f, "v5 crazy runner failed: {error}"),
+        }
+    }
+}
+
+impl Display for ExecutionGeometryNativeCrazyPreparationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Input => {
+                f.write_str("v5 crazy input differs from checkpoint")
+            },
+            Self::Invocation(error) => Display::fmt(error, f),
+            Self::Memory => {
+                f.write_str("v5 crazy memory differs from checkpoint")
+            },
+            Self::Output => {
+                f.write_str("v5 crazy output differs from checkpoint")
+            },
+        }
+    }
+}
+
+impl<MemoryError: Display, RunnerError: Display> Display
+    for ExecutionGeometryNativeCrazyTransactionFailure<MemoryError, RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Binding { error, .. } => {
+                write!(f, "v5 crazy transaction binding failed: {error}")
+            },
+            Self::Execution { error, .. } => {
+                write!(f, "v5 crazy transaction execution failed: {error}")
+            },
+            Self::Load(error) => {
+                write!(f, "v5 crazy transaction load failed: {error}")
+            },
+            Self::Preparation(error) => {
+                write!(f, "v5 crazy transaction preparation failed: {error}")
+            },
+            Self::Release { release_failure, .. } => {
+                write!(f, "v5 crazy transaction {release_failure}")
+            },
+        }
+    }
+}
+
 impl ExecutionGeometryNativeCrazyAdmission {
     /// Returns the exact verified v5 crazy artifact retained by admission.
     #[must_use]
@@ -105,6 +312,89 @@ impl ExecutionGeometryNativeCrazyAdmission {
     #[must_use]
     pub const fn checkpoint(&self) -> &ProfileMachineState {
         &self.checkpoint
+    }
+
+    /// Loads, binds, runs, admits, and releases one guarded v5 crazy.
+    ///
+    /// Preparation occurs before mapping. Every failure after a ready mapping
+    /// exists attempts exact release, while cleanup failure retains the ready
+    /// executable for retry. A post-commit cleanup failure also retains the
+    /// normatively proven opaque-geometry completion.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeCrazyTransactionFailure`] with exact
+    /// primary failure and any retryable cleanup ownership.
+    pub fn execute_transactionally<MemoryAdapter, Runner>(
+        &self,
+        memory_adapter: &mut MemoryAdapter,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> ExecutionGeometryNativeCrazyAdapterTransactionResult<
+        MemoryAdapter,
+        Runner,
+    >
+    where
+        MemoryAdapter: NativeExecutableMemoryAdapter,
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        use ExecutionGeometryNativeCrazyTransactionFailure as Failure;
+
+        let prepared = self
+            .prepare(buffers)
+            .map_err(|error| Box::new(Failure::Preparation(error)))?;
+        let ready = match load_execution_geometry_native_executable(
+            memory_adapter,
+            self.load_image(),
+        ) {
+            Ok(ready) => ready,
+            Err(error) => {
+                prepared.abort();
+                return Err(Box::new(Failure::Load(Box::new(error))));
+            },
+        };
+        let bound = match prepared.bind_executable(&ready) {
+            Ok(bound) => bound,
+            Err(error) => {
+                let release_failure =
+                    release_execution_geometry_native_executable(
+                        memory_adapter,
+                        ready,
+                    )
+                    .err()
+                    .map(Box::new);
+                return Err(Box::new(Failure::Binding {
+                    error,
+                    release_failure,
+                }));
+            },
+        };
+        let completion = match bound.execute(runner) {
+            Ok(completion) => completion,
+            Err(error) => {
+                let release_failure =
+                    release_execution_geometry_native_executable(
+                        memory_adapter,
+                        ready,
+                    )
+                    .err()
+                    .map(Box::new);
+                return Err(Box::new(Failure::Execution {
+                    error,
+                    release_failure,
+                }));
+            },
+        };
+        match release_execution_geometry_native_executable(
+            memory_adapter,
+            ready,
+        ) {
+            Ok(()) => Ok(completion),
+            Err(release_failure) => Err(Box::new(Failure::Release {
+                completion: Box::new(completion),
+                release_failure: Box::new(release_failure),
+            })),
+        }
     }
 
     /// Returns the exact normative state accepted by future Applied execution.
@@ -166,9 +456,227 @@ impl ExecutionGeometryNativeCrazyAdmission {
         })
     }
 
+    /// Prepares exact checkpoint-owned buffers for guarded v5 crazy.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeCrazyPreparationError`] when any caller
+    /// buffer drifts or ABI preparation rejects the exact crazy effect.
+    pub fn prepare<'admission, 'buffers>(
+        &'admission self,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<
+        PreparedExecutionGeometryNativeCrazy<'admission, 'buffers>,
+        ExecutionGeometryNativeCrazyPreparationError,
+    > {
+        let (memory, input, output) = buffers.into_parts();
+        if input != self.checkpoint.io().input() {
+            return Err(ExecutionGeometryNativeCrazyPreparationError::Input);
+        }
+        if memory != self.checkpoint.memory() {
+            return Err(ExecutionGeometryNativeCrazyPreparationError::Memory);
+        }
+        if output != self.checkpoint.io().output() {
+            return Err(ExecutionGeometryNativeCrazyPreparationError::Output);
+        }
+        let invocation =
+            PreparedNativeRegionInvocation::new_execution_geometry_crazy(
+                &self.program,
+                memory,
+                input,
+                output,
+            )
+            .map_err(
+                ExecutionGeometryNativeCrazyPreparationError::Invocation,
+            )?;
+        Ok(PreparedExecutionGeometryNativeCrazy {
+            admission: self,
+            invocation,
+        })
+    }
+
     /// Returns the exact v5 crazy IR retained by admission.
     #[must_use]
     pub const fn program(&self) -> &ExecutionGeometryRegionEffectProgram {
         &self.program
+    }
+}
+impl ExecutionGeometryNativeCrazyBoundCall<'_, '_, '_> {
+    /// Simulates the exact expected foreign transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.prepared.apply_expected_for_test();
+    }
+
+    /// Admits one raw status without invoking machine code.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeCrazyCompletionError`] when the
+    /// completed transition violates exact prepared evidence.
+    pub fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        ExecutionGeometryNativeCrazyCompletion,
+        ExecutionGeometryNativeCrazyCompletionError,
+    > {
+        self.prepared.complete(raw_status)
+    }
+
+    /// Returns the synchronized entrypoint retained by exact identity binding.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized v5 executable bound to this call.
+    #[must_use]
+    pub const fn executable(&self) -> &ReadyExecutionGeometryNativeExecutable {
+        self.executable
+    }
+
+    /// Executes this checkpoint-bound call through the dedicated v5 runner.
+    ///
+    /// Runner failure restores the complete entry snapshot. Returned status and
+    /// caller-visible state still pass exact completion admission.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeCrazyExecutionError`] for runner or
+    /// completion failure.
+    pub fn execute<Runner>(
+        self,
+        runner: &mut Runner,
+    ) -> ExecutionGeometryNativeCrazyExecutionResult<Runner::Error>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        let Self { executable, prepared } = self;
+        let PreparedExecutionGeometryNativeCrazy { admission, invocation } =
+            prepared;
+        let mut runner_invocation =
+            PreparedExecutionGeometryNativeInvocation::new(
+                executable, invocation,
+            );
+        let raw_status = match runner.run(&mut runner_invocation) {
+            Ok(raw_status) => raw_status,
+            Err(error) => {
+                runner_invocation.abort();
+                return Err(Box::new(
+                    ExecutionGeometryNativeCrazyExecutionError::Runner(
+                        Box::new(error),
+                    ),
+                ));
+            },
+        };
+        let outcome =
+            runner_invocation.complete(raw_status).map_err(|error| {
+                use ExecutionGeometryNativeCrazyCompletionError as Completion;
+                use ExecutionGeometryNativeCrazyExecutionError as Execution;
+                Box::new(Execution::Completion(Completion::Invocation(error)))
+            })?;
+        Ok(ExecutionGeometryNativeCrazyCompletion {
+            outcome,
+            state: completion_state(admission, outcome),
+        })
+    }
+}
+
+impl ExecutionGeometryNativeCrazyCompletion {
+    /// Returns the exact admitted native call outcome.
+    #[must_use]
+    pub const fn outcome(&self) -> NativeRegionInvocationOutcome {
+        self.outcome
+    }
+
+    /// Returns the exact checkpoint after applied crazy or preserved miss.
+    #[must_use]
+    pub const fn state(&self) -> &ProfileMachineState {
+        &self.state
+    }
+}
+
+impl<'admission, 'buffers>
+    PreparedExecutionGeometryNativeCrazy<'admission, 'buffers>
+{
+    /// Restores the complete checkpoint-owned entry snapshot.
+    pub fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Simulates the exact expected foreign transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Binds prepared checkpoint state only to the exact synchronized v5 image.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeCrazyBindingError`] when the executable
+    /// carries any different verified load image.
+    pub fn bind_executable<'executable>(
+        self,
+        executable: &'executable ReadyExecutionGeometryNativeExecutable,
+    ) -> Result<
+        ExecutionGeometryNativeCrazyBoundCall<
+            'admission,
+            'buffers,
+            'executable,
+        >,
+        ExecutionGeometryNativeCrazyBindingError,
+    > {
+        let Self { admission, invocation } = self;
+        if admission.load_image() != executable.image() {
+            let error = CrazyBindingError::ExecutableIdentity;
+            invocation.abort();
+            return Err(error);
+        }
+        Ok(ExecutionGeometryNativeCrazyBoundCall {
+            executable,
+            prepared: Self { admission, invocation },
+        })
+    }
+
+    /// Admits raw native status and selects the already proven crazy
+    /// checkpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExecutionGeometryNativeCrazyCompletionError`] when exact ABI
+    /// completion fails.
+    pub fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        ExecutionGeometryNativeCrazyCompletion,
+        ExecutionGeometryNativeCrazyCompletionError,
+    > {
+        let outcome = self
+            .invocation
+            .complete(raw_status)
+            .map_err(ExecutionGeometryNativeCrazyCompletionError::Invocation)?;
+        Ok(ExecutionGeometryNativeCrazyCompletion {
+            outcome,
+            state: completion_state(self.admission, outcome),
+        })
+    }
+}
+
+fn completion_state(
+    admission: &ExecutionGeometryNativeCrazyAdmission,
+    outcome: NativeRegionInvocationOutcome,
+) -> ProfileMachineState {
+    match outcome {
+        NativeRegionInvocationOutcome::Applied(_observation) => {
+            admission.expected_state().clone()
+        },
+        NativeRegionInvocationOutcome::GuardMiss => {
+            admission.checkpoint().clone()
+        },
     }
 }

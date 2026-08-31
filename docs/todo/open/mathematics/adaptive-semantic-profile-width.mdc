@@ -945,8 +945,15 @@ transfers, verification, and other separately measured costs.
 - Crazy now also has checkpoint-bound semantic admission and a relocation-free
   load image. Admission replays the exact `p` from the opaque post-rotate
   checkpoint, retains the normative exit as future Applied authority, and
-  rejects artifact or checkpoint geometry drift before mapping. ABI invocation,
-  reusable ownership, and heterogeneous residency remain open.
+  rejects artifact or checkpoint geometry drift before mapping.
+- Crazy prepare/bind/runner execution now requires checkpoint-exact memory,
+  complete input, and output before the common ABI validates both live-ins,
+  exact data/self-encryption writes, and no I/O. N10/N11 executable mismatch
+  rejects atomically; Applied returns only the replayed state, GuardMiss
+  preserves entry, runner/completion failure rolls buffers back, and
+  transactional release retains committed state plus retryable executable
+  ownership on cleanup failure. Reusable ownership and heterogeneous residency
+  remain open.
 - Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
   dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical
