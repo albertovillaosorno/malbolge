@@ -55,6 +55,8 @@ pub mod geometry_native_cross_template_concurrent_cache;
 pub mod geometry_native_cross_template_resident;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jump.rs"]
 pub mod geometry_native_initial_jump_data;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_input.rs"]
+pub mod geometry_native_input;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jcache.rs"]
 pub mod geometry_native_jump_rotate_halt_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jmcache.rs"]
@@ -314,6 +316,10 @@ use geometry_native_cross_template_resident::{
     GeometryNativeResidentReleaseFailure as CrossResidentReleaseFailure,
 };
 use geometry_native_initial_jump_data as jump_native;
+use geometry_native_input::{
+    ExecutionGeometryNativeInputAdmission,
+    ExecutionGeometryNativeInputAdmissionError,
+};
 use geometry_native_jump_rotate_halt_cache::{
     GeometryNativeJumpRotateHaltTripleCacheAcquireFailure as FullCacheFailure,
     GeometryNativeJumpRotateHaltTripleCacheDisposition as FullCacheDisposition,
@@ -737,6 +743,10 @@ type GeometryNativeAdmissionFixture = (
 );
 type GeometryNativeInitialJumpDataAdmissionFixture =
     (InitialJumpAdmission, malbolge::ProfileExecutionGeometry);
+type GeometryNativeInputAdmissionFixture = (
+    ExecutionGeometryNativeInputAdmission,
+    malbolge::ProfileExecutionGeometry,
+);
 type GeometryNativeNoOperationAdmissionFixture = (
     ExecutionGeometryNativeNoOperationAdmission,
     malbolge::ProfileExecutionGeometry,
@@ -14421,6 +14431,27 @@ fn geometry_native_initial_jump_data_runner_fixture(
     })
 }
 
+fn geometry_native_input_admission_fixture(
+    word_trits: u8,
+    input: Vec<u8>,
+) -> Result<GeometryNativeInputAdmissionFixture, String> {
+    let fixture = derived_v5_input_halt_sequence_fixture(word_trits, input)?;
+    let program = derived_v5_fixture_program(&fixture, 0)?.clone();
+    let checkpoint = derived_v5_fixture_state(&fixture, 0)?.clone();
+    let artifact = emit_direct_execution_geometry_input_coff(
+        &program,
+        direct_execution_geometry_input_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 input admission emit: {error}"))?;
+    let verified = verify_direct_execution_geometry_input(&artifact, &program)
+        .map_err(|error| format!("v5 input admission verify: {error}"))?;
+    let admission = ExecutionGeometryNativeInputAdmission::new(
+        program, checkpoint, verified,
+    )
+    .map_err(|error| format!("v5 input admission: {error}"))?;
+    Ok((admission, fixture.geometry))
+}
+
 fn geometry_native_no_operation_admission_fixture(
     word_trits: u8,
 ) -> Result<GeometryNativeNoOperationAdmissionFixture, String> {
@@ -22790,6 +22821,97 @@ fn geometry_native_initial_jump_guard_miss_preserves_checkpoint()
     }
     release_execution_geometry_native_executable(&mut adapter, ready)
         .map_err(|error| format!("v5 initial jump miss release: {error}"))
+}
+
+#[test]
+fn geometry_native_input_admission_rejects_artifact_identity()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_input_halt_sequence_fixture(10, vec![0xa5])?;
+    let n11_fixture = derived_v5_input_halt_sequence_fixture(11, vec![0xa5])?;
+    let n10_program = derived_v5_fixture_program(&n10_fixture, 0)?.clone();
+    let n10_checkpoint = derived_v5_fixture_state(&n10_fixture, 0)?.clone();
+    let n11_program = derived_v5_fixture_program(&n11_fixture, 0)?.clone();
+    let n11_artifact = emit_direct_execution_geometry_input_coff(
+        &n11_program,
+        direct_execution_geometry_input_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 input mismatch emit: {error}"))?;
+    let n11_verified =
+        verify_direct_execution_geometry_input(&n11_artifact, &n11_program)
+            .map_err(|error| format!("v5 input mismatch verify: {error}"))?;
+    if ExecutionGeometryNativeInputAdmission::new(
+        n10_program,
+        n10_checkpoint,
+        n11_verified,
+    ) == Err(ExecutionGeometryNativeInputAdmissionError::ArtifactIdentity)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v5 input admitted different artifact identity",
+        ))
+    }
+}
+
+#[test]
+fn geometry_native_input_admission_rejects_checkpoint_geometry()
+-> Result<(), String> {
+    let n10_fixture = derived_v5_input_halt_sequence_fixture(10, Vec::new())?;
+    let n11_fixture = derived_v5_input_halt_sequence_fixture(11, Vec::new())?;
+    let n10_program = derived_v5_fixture_program(&n10_fixture, 0)?.clone();
+    let n11_checkpoint = derived_v5_fixture_state(&n11_fixture, 0)?.clone();
+    let n10_artifact = emit_direct_execution_geometry_input_coff(
+        &n10_program,
+        direct_execution_geometry_input_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 input checkpoint emit: {error}"))?;
+    let n10_verified =
+        verify_direct_execution_geometry_input(&n10_artifact, &n10_program)
+            .map_err(|error| format!("v5 input checkpoint verify: {error}"))?;
+    if ExecutionGeometryNativeInputAdmission::new(
+        n10_program,
+        n11_checkpoint,
+        n10_verified,
+    ) == Err(ExecutionGeometryNativeInputAdmissionError::Checkpoint(
+        ExecutionGeometryHandoffAdmissionError::CheckpointGeometry,
+    )) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v5 input admitted different checkpoint geometry",
+        ))
+    }
+}
+
+#[test]
+fn geometry_native_input_admission_replays_byte_and_eof() -> Result<(), String>
+{
+    for input in [vec![0xa5], Vec::new()] {
+        let eof = input.is_empty();
+        let (admission, geometry) =
+            geometry_native_input_admission_fixture(10, input)?;
+        let checkpoint = admission.checkpoint();
+        let expected = admission.expected_state();
+        let expected_accumulator = if eof {
+            geometry.eof_word()
+        } else {
+            0xa5
+        };
+        let expected_consumed = usize::from(!eof);
+        if checkpoint.geometry() != geometry
+            || expected.geometry() != geometry
+            || checkpoint.io().input_consumed() != 0
+            || expected.io().input_consumed() != expected_consumed
+            || expected.registers().accumulator != expected_accumulator
+            || admission.load_image().key() != admission.artifact().key()
+            || admission.load_image().entry_code().is_empty()
+            || admission.program().exit_observation()
+                != Some(profile_state_observation(expected))
+        {
+            return Err(String::from("v5 input admission replay drifted"));
+        }
+    }
+    Ok(())
 }
 
 #[test]

@@ -688,9 +688,14 @@ minimum memory guards, and the EOF accumulator through `eof_word()`.
 The v5 input path reuses the reviewed x86-64/AArch64 input machine code only
 after exact one-live-in, observation, cursor, self-encryption, and input-result
 checks. N10/N11 keys and COFF bytes remain distinct, cross-geometry verification
-rejects, and the legacy byte-exact direct-input fixtures remain unchanged. This
-slice grants artifact identity and verification only; checkpoint admission,
-load-image, invocation, reusable ownership, and residency remain separate work.
+rejects, and the legacy byte-exact direct-input fixtures remain unchanged.
+
+Input now also has checkpoint-bound semantic admission before any mapping.
+`ExecutionGeometryNativeInputAdmission` replays the exact byte or EOF step from
+the opaque checkpoint, retains that replayed state as future Applied authority,
+and only then reconstructs artifact identity and a relocation-free load image.
+N10/N11 artifact and checkpoint drift reject independently; ABI preparation,
+runner execution, reusable ownership, and residency remain separate work.
 
 `direct-execution-geometry-output` revision 1 adds a byte-verifiable v5 output
 artifact boundary with operation-specific execution authority composed below.

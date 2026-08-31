@@ -683,7 +683,12 @@ transfers, verification, and other separately measured costs.
   opcode, while explicit geometry supplies pointer wrap, memory-domain guards,
   and the EOF accumulator. N10/N11 keys and COFF bytes stay distinct on both
   reviewed ISAs, cross-geometry verification rejects, and legacy direct-input
-  fixtures remain byte-exact; checkpoint admission and execution remain open.
+  fixtures remain byte-exact.
+- Input now also has checkpoint-bound semantic admission and a relocation-free
+  load image. Admission replays Byte or EOF from the exact opaque checkpoint,
+  retains the normative exit as future Applied authority, and rejects artifact
+  or checkpoint geometry drift before mapping. ABI preparation, runner
+  execution, reusable ownership, and heterogeneous residency remain open.
 - A geometry-bound output artifact now exists for the reached `<` step of the
   certified `ubO` input/output/halt path with nonempty input. Profile identity
   still selects output opcode/byte semantics, while explicit geometry supplies
