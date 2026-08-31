@@ -952,8 +952,12 @@ transfers, verification, and other separately measured costs.
   rejects atomically; Applied returns only the replayed state, GuardMiss
   preserves entry, runner/completion failure rolls buffers back, and
   transactional release retains committed state plus retryable executable
-  ownership on cleanup failure. Reusable ownership and heterogeneous residency
-  remain open.
+  ownership on cleanup failure.
+- Crazy now also has a reusable one-mapping owner. Exact admission is retained
+  beside the synchronized image, repeated calls reuse the same mapping, resident
+  weight comes from the platform mapping report, and runner failure rolls caller
+  buffers back while preserving the owner for successful retry. Heterogeneous
+  residency remains open.
 - Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
   dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical

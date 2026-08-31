@@ -394,8 +394,15 @@ prepared state cannot bind an N11 crazy executable.
 `execute_transactionally()` prepares before mapping, then loads, binds, runs,
 admits, and releases the exact v5 executable. Every post-load failure attempts
 cleanup, while final release failure retains the committed normative completion
-plus retryable executable ownership. Reusable ownership and heterogeneous
-residency remain separate work.
+plus retryable executable ownership.
+
+Crazy now also has a reusable one-mapping owner. It heap-retains exact admission
+beside one synchronized executable, executes repeated calls without adapter
+remapping, reports resident weight from the platform mapping's exact
+`mapped_len()`, and releases through the same retryable ready-executable cleanup
+contract. Runner failure restores complete checkpoint buffers while preserving
+the owned mapping for a later successful retry. Heterogeneous residency remains
+separate work.
 
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low
