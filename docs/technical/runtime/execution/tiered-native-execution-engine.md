@@ -427,6 +427,21 @@ that committed state beside the ready executable's retryable cleanup ownership.
 Preloaded five-mapping ownership and the preceding jump/rotate composition stay
 separate work.
 
+`ExecutionGeometryNativeJumpRotateCrazyHaltSequence` now closes that preceding
+composition for the exact seven-step `j * p p p p v` theorem path. Initial jump
+admits from the theorem entry, rotate admits only from the jump replay exit, and
+the fixed crazy-prefix/halt suffix admits only from the rotate replay exit.
+Admission performs no executable mapping.
+
+Transactional execution preserves one global index across all seven steps.
+Jump and rotate occupy indices 0 and 1. The suffix maps its local 0 through 4
+to global 2 through 6.
+
+Guard miss returns the last committed checkpoint. Release failure after Applied
+jump/rotate/suffix work keeps the newly committed state beside the specialized
+retryable cleanup ownership. Preloaded seven-mapping ownership remains separate
+work.
+
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low
 byte, output length incremented by one, exact code encryption, modular `C/D`

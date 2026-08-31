@@ -975,6 +975,12 @@ transfers, verification, and other separately measured costs.
   theorem's exact terminal checkpoint, while halt release failure retains that
   committed state plus retryable executable cleanup. Preloaded five-mapping
   ownership and the preceding jump/rotate composition remain separate work.
+- The theorem's complete `j * p p p p v` path now composes under one
+  checkpoint authority line. Initial jump, rotate, and the fixed suffix admit
+  strictly from the preceding normative exit, and execution preserves global
+  indices 0 through 6 plus last committed state on GuardMiss or failure. Applied
+  release failure keeps specialized retryable cleanup ownership; preloaded
+  seven-mapping ownership remains separate work.
 - Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
   dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical

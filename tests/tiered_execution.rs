@@ -63,6 +63,8 @@ pub mod geometry_native_cross_template_resident;
 pub mod geometry_native_initial_jump_data;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_input.rs"]
 pub mod geometry_native_input;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrcph.rs"]
+pub mod geometry_native_jump_rotate_crazy_halt_sequence;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jcache.rs"]
 pub mod geometry_native_jump_rotate_halt_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jmcache.rs"]
@@ -356,6 +358,13 @@ use geometry_native_input::{
     ExecutionGeometryNativeInputOwnedFailure,
     ExecutionGeometryNativeInputPreparationError,
     ExecutionGeometryNativeInputTransactionFailure,
+};
+use geometry_native_jump_rotate_crazy_halt_sequence::{
+    ExecutionGeometryNativeJumpRotateCrazyHaltEvidence,
+    ExecutionGeometryNativeJumpRotateCrazyHaltFailureCause,
+    ExecutionGeometryNativeJumpRotateCrazyHaltOutcome,
+    ExecutionGeometryNativeJumpRotateCrazyHaltPrefixEvidence,
+    ExecutionGeometryNativeJumpRotateCrazyHaltSequence,
 };
 use geometry_native_jump_rotate_halt_cache::{
     GeometryNativeJumpRotateHaltTripleCacheAcquireFailure as FullCacheFailure,
@@ -12848,6 +12857,45 @@ fn derived_v5_crazy_fixture(
     Ok((program, checkpoint, verified.geometry()))
 }
 
+fn derived_v5_jump_rotate_crazy_halt_fixture(
+    word_trits: u8,
+) -> Result<DerivedV5SequenceFixture, String> {
+    let verified = verify_jump_rotate_crazy_halt_profile_width(
+        current_profile(),
+        b"(&<;:9K",
+        word_trits,
+    )
+    .map_err(|error| format!("v5 full crazy verification: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new())
+            .map_err(|error| format!("v5 full crazy machine: {error}"))?;
+    let mut programs = Vec::new();
+    let mut states = vec![machine.snapshot_state()];
+    let mut traces = Vec::new();
+    for _index in 0usize..7usize {
+        let mut trace_slot = None;
+        let _outcome = machine
+            .step_traced(&mut |trace| trace_slot = Some(*trace))
+            .map_err(|error| format!("v5 full crazy trace: {error}"))?;
+        let trace = trace_slot
+            .ok_or_else(|| String::from("v5 full crazy trace missing"))?;
+        let program =
+            ExecutionGeometryRegionEffectProgram::from_profile_step_trace(
+                &trace,
+            )
+            .map_err(|error| format!("v5 full crazy projection: {error:?}"))?;
+        programs.push(program);
+        states.push(machine.snapshot_state());
+        traces.push(trace);
+    }
+    Ok(DerivedV5SequenceFixture {
+        geometry: verified.geometry(),
+        programs,
+        states,
+        traces,
+    })
+}
+
 fn derived_v5_crazy_prefix_halt_fixture(
     word_trits: u8,
 ) -> Result<DerivedV5SequenceFixture, String> {
@@ -14758,11 +14806,10 @@ fn geometry_native_crazy_prefix(
         .map_err(|error| error.to_string())
 }
 
-fn geometry_native_crazy_prefix_halt_sequence(
-    fixture: &DerivedV5SequenceFixture,
-) -> Result<ExecutionGeometryNativeCrazyPrefixHaltSequence, String> {
-    let [first, second, third, fourth, halt] = fixture.programs.as_slice()
-    else {
+fn geometry_native_crazy_prefix_halt_evidence(
+    programs: &[ExecutionGeometryRegionEffectProgram],
+) -> Result<ExecutionGeometryNativeCrazyPrefixHaltEvidence, String> {
+    let [first, second, third, fourth, halt] = programs else {
         return Err(String::from("v5 crazy-prefix/halt program count drifted"));
     };
     let prefix = ExecutionGeometryNativeCrazyPrefixEvidence::new([
@@ -14781,17 +14828,72 @@ fn geometry_native_crazy_prefix_halt_sequence(
             .map_err(|error| {
                 format!("v5 crazy-prefix/halt halt verify: {error}")
             })?;
-    let evidence = ExecutionGeometryNativeCrazyPrefixHaltEvidence::new(
+    Ok(ExecutionGeometryNativeCrazyPrefixHaltEvidence::new(
         prefix,
         halt.clone(),
         halt_artifact,
-    );
+    ))
+}
+
+fn geometry_native_crazy_prefix_halt_sequence(
+    fixture: &DerivedV5SequenceFixture,
+) -> Result<ExecutionGeometryNativeCrazyPrefixHaltSequence, String> {
+    let evidence = geometry_native_crazy_prefix_halt_evidence(
+        fixture.programs.as_slice(),
+    )?;
     let checkpoint =
         fixture.states.first().cloned().ok_or_else(|| {
             String::from("v5 crazy-prefix/halt entry missing")
         })?;
     ExecutionGeometryNativeCrazyPrefixHaltSequence::new(evidence, checkpoint)
         .map_err(|error| error.to_string())
+}
+
+fn geometry_native_jump_rotate_crazy_halt_sequence(
+    fixture: &DerivedV5SequenceFixture,
+) -> Result<ExecutionGeometryNativeJumpRotateCrazyHaltSequence, String> {
+    let [jump, rotate, suffix @ ..] = fixture.programs.as_slice() else {
+        return Err(String::from("v5 full crazy program count drifted"));
+    };
+    if suffix.len() != 5 {
+        return Err(String::from("v5 full crazy suffix count drifted"));
+    }
+    let jump_object = emit_direct_execution_geometry_initial_jump_data_coff(
+        jump,
+        direct_execution_geometry_initial_jump_data_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 full crazy jump emit: {error}"))?;
+    let jump_artifact =
+        verify_direct_execution_geometry_initial_jump_data(&jump_object, jump)
+            .map_err(|error| format!("v5 full crazy jump verify: {error}"))?;
+    let rotate_object = emit_direct_execution_geometry_rotate_coff(
+        rotate,
+        direct_execution_geometry_rotate_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 full crazy rotate emit: {error}"))?;
+    let rotate_artifact =
+        verify_direct_execution_geometry_rotate(&rotate_object, rotate)
+            .map_err(|error| format!("v5 full crazy rotate verify: {error}"))?;
+    let suffix_evidence = geometry_native_crazy_prefix_halt_evidence(suffix)?;
+    let prefix = ExecutionGeometryNativeJumpRotateCrazyHaltPrefixEvidence::new(
+        jump.clone(),
+        jump_artifact,
+        rotate.clone(),
+        rotate_artifact,
+    );
+    let evidence = ExecutionGeometryNativeJumpRotateCrazyHaltEvidence::new(
+        prefix,
+        suffix_evidence,
+    );
+    let checkpoint = fixture
+        .states
+        .first()
+        .cloned()
+        .ok_or_else(|| String::from("v5 full crazy checkpoint missing"))?;
+    ExecutionGeometryNativeJumpRotateCrazyHaltSequence::new(
+        evidence, checkpoint,
+    )
+    .map_err(|error| error.to_string())
 }
 
 fn geometry_native_initial_jump_data_admission_fixture(
@@ -24074,6 +24176,193 @@ fn geometry_native_input_transaction_retains_committed_release_retry()
     release_failure
         .retry(&mut adapter)
         .map_err(|error| format!("v5 input committed cleanup retry: {error}"))
+}
+
+#[test]
+fn geometry_native_full_crazy_admission_chains_all_steps() -> Result<(), String>
+{
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let jump_exit = fixture
+        .states
+        .get(1)
+        .ok_or_else(|| String::from("v5 full crazy jump exit missing"))?;
+    let rotate_exit = fixture
+        .states
+        .get(2)
+        .ok_or_else(|| String::from("v5 full crazy rotate exit missing"))?;
+    let final_state = fixture
+        .states
+        .last()
+        .ok_or_else(|| String::from("v5 full crazy final missing"))?;
+    if sequence.initial_jump().expected_state() != jump_exit
+        || sequence.rotate().checkpoint() != jump_exit
+        || sequence.rotate().expected_state() != rotate_exit
+        || sequence.suffix().prefix().entry_state() != rotate_exit
+        || sequence.suffix().halt().checkpoint()
+            != fixture.states.get(6).ok_or_else(|| {
+                String::from("v5 full crazy halt entry missing")
+            })?
+        || final_state.geometry() != fixture.geometry
+    {
+        return Err(String::from("v5 full crazy admission chain drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn geometry_native_full_crazy_transaction_completes() -> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let entry = sequence.initial_jump().checkpoint().clone();
+    let expected = fixture
+        .states
+        .last()
+        .cloned()
+        .ok_or_else(|| String::from("v5 full crazy final missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(304)?,
+        native_executable_address(0xd_d000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let mut memory = entry.memory().to_vec();
+    let input = entry.io().input().to_vec();
+    let mut output = entry.io().output().to_vec();
+    let outcome = sequence
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 full crazy execute: {error}"))?;
+    if !matches!(
+        outcome,
+        ExecutionGeometryNativeJumpRotateCrazyHaltOutcome::Completed(_)
+    ) || outcome.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 7
+        || adapter.operations.len() != 35
+    {
+        return Err(String::from("v5 full crazy completion drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn geometry_native_full_crazy_suffix_guard_uses_global_index()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let entry = sequence.initial_jump().checkpoint().clone();
+    let expected = fixture
+        .states
+        .get(4)
+        .cloned()
+        .ok_or_else(|| String::from("v5 full crazy guard state missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(305)?,
+        native_executable_address(0xd_e000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let mut memory = entry.memory().to_vec();
+    let input = entry.io().input().to_vec();
+    let mut output = entry.io().output().to_vec();
+    let outcome = sequence
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 full crazy suffix guard: {error}"))?;
+    if !matches!(
+        outcome,
+        ExecutionGeometryNativeJumpRotateCrazyHaltOutcome::GuardMiss {
+            index: 4,
+            ..
+        }
+    ) || outcome.state() != &expected
+        || runner.calls != 5
+        || adapter.operations.len() != 25
+    {
+        return Err(String::from("v5 full crazy global guard index drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn geometry_native_full_crazy_rotate_release_keeps_committed_state()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let entry = sequence.initial_jump().checkpoint().clone();
+    let expected = fixture
+        .states
+        .get(2)
+        .cloned()
+        .ok_or_else(|| String::from("v5 full crazy rotate exit missing"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(306)?,
+        native_executable_address(0xd_f000)?,
+    )
+    .with_release_failure_at(2);
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let mut memory = entry.memory().to_vec();
+    let input = entry.io().input().to_vec();
+    let mut output = entry.io().output().to_vec();
+    let Err(failure) = sequence.execute_transactionally(
+        &mut adapter,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 full crazy rotate release ignored"));
+    };
+    if failure.index() != 1
+        || failure.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 2
+        || adapter.operations.len() != 10
+    {
+        return Err(String::from("v5 full crazy rotate cleanup state drifted"));
+    }
+    let ExecutionGeometryNativeJumpRotateCrazyHaltFailureCause::Rotate(cause) =
+        failure.into_cause()
+    else {
+        return Err(String::from("v5 full crazy rotate failure stage drifted"));
+    };
+    let ExecutionGeometryNativeRotateTransactionFailure::Release {
+        completion,
+        release_failure,
+    } = *cause
+    else {
+        return Err(String::from(
+            "v5 full crazy rotate cleanup ownership lost",
+        ));
+    };
+    if completion.state() != &expected {
+        return Err(String::from("v5 full crazy rotate completion drifted"));
+    }
+    release_failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 full crazy rotate cleanup retry: {error}"))
 }
 
 #[test]
