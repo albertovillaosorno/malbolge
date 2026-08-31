@@ -53,7 +53,7 @@ EXAMPLE_FINGERPRINT = (
     "221015e0ac4cbde88444ad6d55c703a2e2cc96904bd65b81cb44e256aa1f3177"
 )
 MISMATCH_FINGERPRINT = "malbolge-profile-v1:sha256:" + ("0" * 64)
-FIFTEEN_TRIT_WORDS = 14_348_907
+FOURTEEN_TRIT_WORDS = 4_782_969
 
 
 def _clone(document: validator.JsonObject) -> validator.JsonObject:
@@ -183,10 +183,10 @@ def test_canonical_id_cannot_be_redefined_externally() -> None:
     word = _object(profile["word"])
     memory = _object(profile["memory"])
     semantics = _object(profile["semantics"])
-    word["trits"] = 15
-    word["modulus"] = FIFTEEN_TRIT_WORDS
-    memory["words"] = FIFTEEN_TRIT_WORDS
-    semantics["eof_word"] = FIFTEEN_TRIT_WORDS - 1
+    word["trits"] = 14
+    word["modulus"] = FOURTEEN_TRIT_WORDS
+    memory["words"] = FOURTEEN_TRIT_WORDS
+    semantics["eof_word"] = FOURTEEN_TRIT_WORDS - 1
     _expect_profile_invalid(changed)
 
 
