@@ -67,6 +67,7 @@ use crate::geometry_native_rotate_sequence::{
     ExecutionGeometryNativeRotateHaltOutcome,
     ExecutionGeometryNativeRotateHaltPairLoadFailure,
     ExecutionGeometryNativeRotateHaltPairReleaseFailure,
+    ExecutionGeometryNativeRotateHaltResidentWeightError,
     ExecutionGeometryNativeRotateHaltSequence,
     LoadedExecutionGeometryNativeRotateHaltSequence,
 };
@@ -84,6 +85,8 @@ type FullLoadedStepResult<Completion, RunnerError> = Result<
 >;
 type RotateHaltReleaseFailure<MemoryError> =
     ExecutionGeometryNativeRotateHaltPairReleaseFailure<MemoryError>;
+type RotateHaltWeightError =
+    ExecutionGeometryNativeRotateHaltResidentWeightError;
 type FullTripleLoadFailure<MemoryError> =
     ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<MemoryError>;
 type ResidentWeightError =
@@ -179,6 +182,8 @@ pub enum ExecutionGeometryNativeJumpRotateHaltOwnedFailure<RunnerError> {
 pub enum ExecutionGeometryNativeJumpRotateHaltResidentWeightError {
     /// Summed mapped byte capacity exceeded host `usize`.
     MappedBytesOverflow,
+    /// Summed live mapping count exceeded host `usize`.
+    MappingsOverflow,
 }
 
 /// Primary transaction failure from one stage of the three-step path.
@@ -453,6 +458,9 @@ impl Display for ExecutionGeometryNativeJumpRotateHaltResidentWeightError {
             Self::MappedBytesOverflow => {
                 f.write_str("v5 full triple mapped-byte weight overflowed")
             },
+            Self::MappingsOverflow => {
+                f.write_str("v5 full triple mapping-count weight overflowed")
+            },
         }
     }
 }
@@ -574,18 +582,28 @@ impl ExecutionGeometryNativeJumpRotateHaltResidentWeight {
         loaded: &LoadedExecutionGeometryNativeJumpRotateHaltSequence,
     ) -> Result<Self, ExecutionGeometryNativeJumpRotateHaltResidentWeightError>
     {
-        let mapped_bytes = [
-            loaded.initial_jump().mapping().mapped_len(),
-            loaded.suffix().rotate().mapping().mapped_len(),
-            loaded.suffix().halt().mapping().mapped_len(),
-        ]
-        .into_iter()
-        .try_fold(0usize, usize::checked_add)
-        .ok_or(ResidentWeightError::MappedBytesOverflow)?;
-        Ok(Self {
-            mapped_bytes,
-            mappings: 3,
-        })
+        let initial_jump = loaded.initial_jump.resident_weight();
+        let suffix =
+            loaded
+                .suffix
+                .resident_weight()
+                .map_err(|error| match error {
+                    RotateHaltWeightError::MappedBytesOverflow => {
+                        ResidentWeightError::MappedBytesOverflow
+                    },
+                    RotateHaltWeightError::MappingsOverflow => {
+                        ResidentWeightError::MappingsOverflow
+                    },
+                })?;
+        let mapped_bytes = initial_jump
+            .mapped_bytes()
+            .checked_add(suffix.mapped_bytes())
+            .ok_or(ResidentWeightError::MappedBytesOverflow)?;
+        let mappings = initial_jump
+            .mappings()
+            .checked_add(suffix.mappings())
+            .ok_or(ResidentWeightError::MappingsOverflow)?;
+        Ok(Self { mapped_bytes, mappings })
     }
 
     /// Returns exact synchronized bytes retained by all three mappings.

@@ -14337,10 +14337,14 @@ fn geometry_native_rotate_halt_pair_reuses_owned_executables()
     let mut adapter = FakeNativeExecutableAdapter::new(
         native_executable_mapping_id(119)?,
         native_executable_address(0x2_5000)?,
-    );
+    )
+    .with_mapped_len_overrides(vec![12_288, 16_384]);
     let loaded = sequence
         .load_pair(&mut adapter)
         .map_err(|error| format!("v5 owned pair load: {error}"))?;
+    let weight = loaded
+        .resident_weight()
+        .map_err(|error| format!("v5 owned pair weight: {error}"))?;
     let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
         FakeNativeRunnerBehavior::Applied,
         FakeNativeRunnerBehavior::Applied,
@@ -14361,8 +14365,12 @@ fn geometry_native_rotate_halt_pair_reuses_owned_executables()
             return Err(String::from("v5 owned pair execution drifted"));
         }
     }
-    if runner.calls != 4 || adapter.operations.len() != 8 {
-        return Err(String::from("v5 owned pair remapped during reuse"));
+    if runner.calls != 4
+        || weight.mapped_bytes() != 28_672
+        || weight.mappings() != 2
+        || adapter.operations.len() != 8
+    {
+        return Err(String::from("v5 owned pair remapped or lost weight"));
     }
     loaded
         .release(&mut adapter)
@@ -15412,10 +15420,14 @@ fn geometry_native_noop_halt_pair_reuses_owned_executables()
     let mut adapter = FakeNativeExecutableAdapter::new(
         native_executable_mapping_id(119)?,
         native_executable_address(0x2_5000)?,
-    );
+    )
+    .with_mapped_len_overrides(vec![4_096, 8_192]);
     let loaded = sequence
         .load_pair(&mut adapter)
         .map_err(|error| format!("v5 owned pair load: {error}"))?;
+    let weight = loaded
+        .resident_weight()
+        .map_err(|error| format!("v5 owned pair weight: {error}"))?;
     let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
         FakeNativeRunnerBehavior::Applied,
         FakeNativeRunnerBehavior::Applied,
@@ -15436,8 +15448,12 @@ fn geometry_native_noop_halt_pair_reuses_owned_executables()
             return Err(String::from("v5 owned pair execution drifted"));
         }
     }
-    if runner.calls != 4 || adapter.operations.len() != 8 {
-        return Err(String::from("v5 owned pair remapped during reuse"));
+    if runner.calls != 4
+        || weight.mapped_bytes() != 12_288
+        || weight.mappings() != 2
+        || adapter.operations.len() != 8
+    {
+        return Err(String::from("v5 owned pair remapped or lost weight"));
     }
     loaded
         .release(&mut adapter)

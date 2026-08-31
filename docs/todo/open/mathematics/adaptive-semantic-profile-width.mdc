@@ -722,8 +722,11 @@ transfers, verification, and other separately measured costs.
   optional exact mapped-byte limit. Exact hits refresh MRU order without adapter
   work. Entry-only saturation still rejects before load/release side effects.
 - Full-path resident weight comes from synchronized mapping reports, not
-  artifact/image estimates. Byte-bounded misses load first to obtain exact
-  weight; an oversized candidate is released and rejected without publication.
+  artifact/image estimates. Weight authority is hierarchical: one-step owners
+  report their own mapping, pair owners checked-sum their two child weights, and
+  full-path checked-sums jump plus suffix. Heterogeneous active/drain accounting
+  consumes those owner reports without rereading internal mappings. Byte-bounded
+  misses still load first; oversized candidates release before publication.
 - Weighted admission can remove multiple unleased LRU residents until projected
   published bytes fit. Leased residents are skipped, weighted saturation rolls
   the candidate back, and failures report how many residents were already
@@ -856,6 +859,10 @@ transfers, verification, and other separately measured costs.
   release delegates both exact cleanup contracts while accessors and cache
   identity remain unchanged. Operation counts, indexed suffix semantics, and
   full-path behavior also stay unchanged.
+- Both loaded pair owners now own resident accounting too. Their exact mapped
+  bytes and mapping counts are checked sums of the two reusable step-owner
+  weights. Full-path composes initial-jump weight with rotate/halt weight, so no
+  composed cache layer needs direct mapping inspection.
 - Initial jump-data now has a reusable one-mapping owner. It loads the exact
   admitted image once, reuses existing prepare/bind execution without remapping,
   preserves entry rollback after runner failure, reports weight from the actual

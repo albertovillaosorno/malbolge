@@ -58,6 +58,7 @@ use crate::geometry_native_initial_jump_data::{
 use crate::geometry_native_jump_rotate_halt_sequence::{
     ExecutionGeometryNativeJumpRotateHaltOutcome,
     ExecutionGeometryNativeJumpRotateHaltOwnedFailure,
+    ExecutionGeometryNativeJumpRotateHaltResidentWeightError,
     ExecutionGeometryNativeJumpRotateHaltSequence,
     ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure,
     ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure,
@@ -80,6 +81,7 @@ use crate::geometry_native_rotate_sequence::{
     ExecutionGeometryNativeRotateHaltOutcome,
     ExecutionGeometryNativeRotateHaltPairLoadFailure,
     ExecutionGeometryNativeRotateHaltPairReleaseFailure,
+    ExecutionGeometryNativeRotateHaltResidentWeightError,
     ExecutionGeometryNativeRotateHaltSequence,
     LoadedExecutionGeometryNativeRotateHaltSequence,
 };
@@ -88,6 +90,7 @@ use crate::geometry_native_sequence::{
     ExecutionGeometryNativeNoopHaltOutcome,
     ExecutionGeometryNativeNoopHaltPairLoadFailure,
     ExecutionGeometryNativeNoopHaltPairReleaseFailure,
+    ExecutionGeometryNativeNoopHaltResidentWeightError,
     ExecutionGeometryNativeNoopHaltSequence,
     LoadedExecutionGeometryNativeNoopHaltSequence,
 };
@@ -96,6 +99,7 @@ type FullLoadFailure<MemoryError> =
     ExecutionGeometryNativeJumpRotateHaltTripleLoadFailure<MemoryError>;
 type FullReleaseFailure<MemoryError> =
     ExecutionGeometryNativeJumpRotateHaltTripleReleaseFailure<MemoryError>;
+type FullWeightError = ExecutionGeometryNativeJumpRotateHaltResidentWeightError;
 type InitialHaltLoadFailure<MemoryError> =
     NativeExecutableLoadFailure<MemoryError>;
 type InitialHaltReleaseFailure<MemoryError> =
@@ -112,10 +116,12 @@ type NoopLoadFailure<MemoryError> =
     ExecutionGeometryNativeNoopHaltPairLoadFailure<MemoryError>;
 type NoopReleaseFailure<MemoryError> =
     ExecutionGeometryNativeNoopHaltPairReleaseFailure<MemoryError>;
+type NoopWeightError = ExecutionGeometryNativeNoopHaltResidentWeightError;
 type RotateLoadFailure<MemoryError> =
     ExecutionGeometryNativeRotateHaltPairLoadFailure<MemoryError>;
 type RotateReleaseFailure<MemoryError> =
     ExecutionGeometryNativeRotateHaltPairReleaseFailure<MemoryError>;
+type RotateWeightError = ExecutionGeometryNativeRotateHaltResidentWeightError;
 type RotateStepLoadFailure<MemoryError> =
     NativeExecutableLoadFailure<MemoryError>;
 type RotateStepReleaseFailure<MemoryError> =
@@ -738,9 +744,8 @@ impl GeometryNativeLoadedResident {
     {
         let (mapped_bytes, mappings) = match self {
             Self::FullPath(loaded) => {
-                let weight = loaded.resident_weight().map_err(|_error| {
-                    GeometryNativeResidentWeightError::MappedBytesOverflow
-                })?;
+                let weight =
+                    loaded.resident_weight().map_err(map_full_weight_error)?;
                 (weight.mapped_bytes(), weight.mappings())
             },
             Self::InitialHalt(loaded) => {
@@ -755,24 +760,21 @@ impl GeometryNativeLoadedResident {
                 let weight = loaded.resident_weight();
                 (weight.mapped_bytes(), weight.mappings())
             },
-            Self::NoOperationPair(loaded) => (
-                sum_mapped_bytes([
-                    loaded.no_operation().mapping().mapped_len(),
-                    loaded.halt().mapping().mapped_len(),
-                ])?,
-                2,
-            ),
+            Self::NoOperationPair(loaded) => {
+                let weight =
+                    loaded.resident_weight().map_err(map_noop_weight_error)?;
+                (weight.mapped_bytes(), weight.mappings())
+            },
             Self::Rotate(loaded) => {
                 let weight = loaded.resident_weight();
                 (weight.mapped_bytes(), weight.mappings())
             },
-            Self::RotatePair(loaded) => (
-                sum_mapped_bytes([
-                    loaded.rotate().mapping().mapped_len(),
-                    loaded.halt().mapping().mapped_len(),
-                ])?,
-                2,
-            ),
+            Self::RotatePair(loaded) => {
+                let weight = loaded
+                    .resident_weight()
+                    .map_err(map_rotate_weight_error)?;
+                (weight.mapped_bytes(), weight.mappings())
+            },
         };
         Ok(GeometryNativeResidentWeight { mapped_bytes, mappings })
     }
@@ -1003,11 +1005,41 @@ impl GeometryNativeResidentWeight {
     }
 }
 
-fn sum_mapped_bytes<const N: usize>(
-    mapped_lengths: [usize; N],
-) -> Result<usize, GeometryNativeResidentWeightError> {
-    mapped_lengths
-        .into_iter()
-        .try_fold(0usize, usize::checked_add)
-        .ok_or(GeometryNativeResidentWeightError::MappedBytesOverflow)
+const fn map_full_weight_error(
+    error: FullWeightError,
+) -> GeometryNativeResidentWeightError {
+    match error {
+        FullWeightError::MappedBytesOverflow => {
+            GeometryNativeResidentWeightError::MappedBytesOverflow
+        },
+        FullWeightError::MappingsOverflow => {
+            GeometryNativeResidentWeightError::MappingsOverflow
+        },
+    }
+}
+
+const fn map_noop_weight_error(
+    error: NoopWeightError,
+) -> GeometryNativeResidentWeightError {
+    match error {
+        NoopWeightError::MappedBytesOverflow => {
+            GeometryNativeResidentWeightError::MappedBytesOverflow
+        },
+        NoopWeightError::MappingsOverflow => {
+            GeometryNativeResidentWeightError::MappingsOverflow
+        },
+    }
+}
+
+const fn map_rotate_weight_error(
+    error: RotateWeightError,
+) -> GeometryNativeResidentWeightError {
+    match error {
+        RotateWeightError::MappedBytesOverflow => {
+            GeometryNativeResidentWeightError::MappedBytesOverflow
+        },
+        RotateWeightError::MappingsOverflow => {
+            GeometryNativeResidentWeightError::MappingsOverflow
+        },
+    }
 }

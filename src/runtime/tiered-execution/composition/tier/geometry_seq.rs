@@ -71,6 +71,8 @@ use crate::geometry_native_no_operation::{
 type VerifiedNoOperationArtifact =
     VerifiedExecutionGeometryNoOperationNativeObjectArtifact;
 
+type ResidentWeightError = ExecutionGeometryNativeNoopHaltResidentWeightError;
+
 type LoadedStepResult<Completion, RunnerError> = Result<
     Completion,
     Box<ExecutionGeometryNativeNoopHaltLoadedFailure<RunnerError>>,
@@ -150,6 +152,15 @@ pub struct ExecutionGeometryNativeNoopHaltPairReleaseFailure<MemoryError> {
     >,
 }
 
+/// Failure while deriving exact resident weight from the two owned mappings.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeNoopHaltResidentWeightError {
+    /// Summed mapped byte capacity exceeded host `usize`.
+    MappedBytesOverflow,
+    /// Summed live mapping count exceeded host `usize`.
+    MappingsOverflow,
+}
+
 /// Primary failure from one indexed step of the two-step native sequence.
 #[derive(Debug, Eq, PartialEq)]
 pub enum ExecutionGeometryNativeNoopHaltFailureCause<MemoryError, RunnerError> {
@@ -194,6 +205,13 @@ pub enum ExecutionGeometryNativeNoopHaltOutcome {
         /// Last fully committed opaque-geometry checkpoint.
         state: ProfileMachineState,
     },
+}
+
+/// Exact synchronized mapping weight retained by one owned pair.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExecutionGeometryNativeNoopHaltResidentWeight {
+    mapped_bytes: usize,
+    mappings: usize,
 }
 
 /// Exact verified programs/artifacts required by the two-step sequence.
@@ -351,6 +369,19 @@ impl<MemoryError> ExecutionGeometryNativeNoopHaltPairLoadFailure<MemoryError> {
             },
             Self::NoOperation(error) => {
                 Self::NoOperation(Box::new((*error).retry_cleanup(adapter)))
+            },
+        }
+    }
+}
+
+impl Display for ExecutionGeometryNativeNoopHaltResidentWeightError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::MappedBytesOverflow => {
+                f.write_str("v5 pair mapped-byte weight overflowed")
+            },
+            Self::MappingsOverflow => {
+                f.write_str("v5 pair mapping-count weight overflowed")
             },
         }
     }
@@ -621,6 +652,36 @@ impl<MemoryError>
     }
 }
 
+impl ExecutionGeometryNativeNoopHaltResidentWeight {
+    fn from_loaded(
+        loaded: &LoadedExecutionGeometryNativeNoopHaltSequence,
+    ) -> Result<Self, ExecutionGeometryNativeNoopHaltResidentWeightError> {
+        let first = loaded.no_operation.resident_weight();
+        let halt = loaded.halt.resident_weight();
+        let mapped_bytes = first
+            .mapped_bytes()
+            .checked_add(halt.mapped_bytes())
+            .ok_or(ResidentWeightError::MappedBytesOverflow)?;
+        let mappings = first
+            .mappings()
+            .checked_add(halt.mappings())
+            .ok_or(ResidentWeightError::MappingsOverflow)?;
+        Ok(Self { mapped_bytes, mappings })
+    }
+
+    /// Returns exact synchronized mapped bytes retained by the pair.
+    #[must_use]
+    pub const fn mapped_bytes(self) -> usize {
+        self.mapped_bytes
+    }
+
+    /// Returns the exact number of live executable mappings in the pair.
+    #[must_use]
+    pub const fn mappings(self) -> usize {
+        self.mappings
+    }
+}
+
 impl LoadedExecutionGeometryNativeNoopHaltSequence {
     /// Executes through the owned synchronized pair without mapping operations.
     ///
@@ -672,6 +733,20 @@ impl LoadedExecutionGeometryNativeNoopHaltSequence {
         let halt_failure = self.halt.release(adapter).err();
         let no_operation_failure = self.no_operation.release(adapter).err();
         pair_release_result(halt_failure, no_operation_failure)
+    }
+
+    /// Returns exact resident weight from the two specialized step owners.
+    ///
+    /// # Errors
+    ///
+    /// Returns overflow when mapped bytes or mapping counts cannot be summed.
+    pub fn resident_weight(
+        &self,
+    ) -> Result<
+        ExecutionGeometryNativeNoopHaltResidentWeight,
+        ExecutionGeometryNativeNoopHaltResidentWeightError,
+    > {
+        ExecutionGeometryNativeNoopHaltResidentWeight::from_loaded(self)
     }
 
     /// Returns the exact immutable admission owned beside the ready pair.

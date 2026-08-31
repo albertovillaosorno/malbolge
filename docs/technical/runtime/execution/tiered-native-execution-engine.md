@@ -734,6 +734,13 @@ retains rotate and halt through their reusable one-step owners while preserving
 the same ready-executable accessors. Partial halt-load failure releases the
 owned rotate, and pair release delegates both exact cleanup contracts.
 
+Its resident weight is likewise owned by the pair. It checked-sums the rotate
+and halt owner weights rather than rereading their mappings. The no-op/halt
+owner uses the same two-child accounting rule. Focused reuse tests override
+platform mapping lengths and prove 28,672 bytes/2 mappings for rotate/halt and
+12,288 bytes/2 mappings for no-op/halt without changing adapter operation
+counts.
+
 Twelve focused suffix tests cover geometry continuity, indexed
 progress/failure, reusable prebinding, owned reuse, partial-load rollback, and
 single/both-mapping cleanup ownership.
@@ -816,11 +823,17 @@ from LRU toward MRU and evicts the first triple with no external `Arc` lease.
 If all residents are leased, acquisition rejects before release or load work.
 Targeted release still acts on one exact identity and cannot cross a live lease.
 
-Each owned full-path triple derives resident weight from its three synchronized
-`mapping().mapped_len()` reports, not from COFF or load-image lengths. A
-byte-bounded miss therefore loads the candidate first, measures its exact
-weight, and releases it immediately if the candidate alone exceeds the limit.
-The LRU also exposes checked aggregate entries, mapped bytes, and mappings.
+Resident-weight authority is now hierarchical. Each one-step owner reads only
+its own synchronized `mapped_len()` report. No-op/halt and rotate/halt pair
+owners checked-sum their two child weights, and full-path checked-sums the
+initial-jump owner with the rotate/halt suffix weight. The heterogeneous
+boundary, active LRU, and retired drain consume those owner-reported weights
+without rereading internal mappings or estimating from COFF/load-image lengths.
+
+A byte-bounded miss therefore still loads the candidate first, measures its
+exact composed weight, and releases it immediately if the candidate alone
+exceeds the limit. The LRU also exposes checked aggregate entries, mapped bytes,
+and mappings.
 
 When projected published bytes exceed the limit, weighted admission can release
 multiple unleased LRU residents until both entry and byte limits fit. Leased
