@@ -267,6 +267,7 @@ use geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltBindingError,
     ExecutionGeometryNativeInitialHaltCompletionError,
     ExecutionGeometryNativeInitialHaltExecutionError,
+    ExecutionGeometryNativeInitialHaltOwnedFailure,
     ExecutionGeometryNativeInitialHaltPreparationError,
     ExecutionGeometryNativeInitialHaltTransactionFailure,
 };
@@ -22002,6 +22003,122 @@ fn geometry_native_binding_rejects_different_geometry_executable()
     }
     release_execution_geometry_native_executable(&mut adapter, n11_ready)
         .map_err(|error| format!("v5 bind N11 release: {error}"))
+}
+
+#[test]
+fn geometry_native_initial_halt_owned_reuses_mapping() -> Result<(), String> {
+    let (admission, geometry) = geometry_native_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(243)?,
+        native_executable_address(0xa_0000)?,
+    )
+    .with_mapped_len_overrides(vec![12_288]);
+    let loaded = admission
+        .load_owned(&mut adapter)
+        .map_err(|error| format!("v5 owned halt load: {error}"))?;
+    let weight = loaded.resident_weight();
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    for _iteration in 0usize..2usize {
+        let mut memory = checkpoint.memory().to_vec();
+        let input = checkpoint.io().input().to_vec();
+        let mut output = checkpoint.io().output().to_vec();
+        let completion = loaded
+            .execute(
+                &mut runner,
+                NativeRegionBuffers::new(&mut memory, &input, &mut output),
+            )
+            .map_err(|error| format!("v5 owned halt execute: {error}"))?;
+        if completion.state().geometry() != geometry
+            || completion.state().memory() != checkpoint.memory()
+            || completion.state().io().termination()
+                != Some(Termination::HaltInstruction)
+            || memory != checkpoint.memory()
+            || output != checkpoint.io().output()
+        {
+            return Err(String::from("v5 owned halt completion drifted"));
+        }
+    }
+    if loaded.admission() != &admission
+        || weight.mapped_bytes() != 12_288
+        || weight.mappings() != 1
+        || runner.calls != 2
+        || runner.entry_addresses != [loaded.executable().entry_address(); 2]
+        || runner.mapping_ids != [loaded.executable().mapping().mapping_id(); 2]
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("v5 owned halt remapped or lost weight"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned halt release: {error}"))?;
+    if adapter.operations.len() == 5 {
+        Ok(())
+    } else {
+        Err(String::from("v5 owned halt release count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_initial_halt_owned_survives_runner_failure()
+-> Result<(), String> {
+    let (admission, _geometry) = geometry_native_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(244)?,
+        native_executable_address(0xa_1000)?,
+    );
+    let loaded = admission
+        .load_owned(&mut adapter)
+        .map_err(|error| format!("v5 owned halt failure load: {error}"))?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut failed_runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) = loaded.execute(
+        &mut failed_runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 owned halt runner failure ignored"));
+    };
+    if !matches!(
+        failure.as_ref(),
+        ExecutionGeometryNativeInitialHaltOwnedFailure::Execution(error)
+            if matches!(
+                error.as_ref(),
+                ExecutionGeometryNativeInitialHaltExecutionError::Runner(
+                    runner_error
+                ) if **runner_error == FakeNativeRunnerError::Call
+            )
+    ) || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("v5 owned halt failure rollback drifted"));
+    }
+    let mut successful_runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let completion = loaded
+        .execute(
+            &mut successful_runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 owned halt reuse: {error}"))?;
+    if completion.state().io().termination()
+        != Some(Termination::HaltInstruction)
+        || successful_runner.calls != 1
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("v5 owned halt reuse after failure drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned halt failure release: {error}"))
 }
 
 #[test]

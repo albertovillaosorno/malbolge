@@ -652,6 +652,11 @@ transfers, verification, and other separately measured costs.
   before cleanup, and failed release retains the exact ready executable for
   retry. A release failure after an admitted halt also retains the committed
   opaque-geometry completion.
+- Initial halt now also has a reusable one-mapping owner. It loads the admitted
+  image once, executes through the existing checkpoint-bound prepare/bind path
+  without remapping, reports exact bytes from the mapping report, preserves
+  rollback after runner failure, and transfers ready-executable cleanup on
+  release failure.
 - The first state-changing v5 template is now independently admitted and
   executable for no-operation. Its selector derives successor C/D from explicit
   execution geometry instead of the canonical N15 requirement, while reusing

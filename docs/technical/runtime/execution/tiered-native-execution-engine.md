@@ -624,6 +624,19 @@ Four transaction cases cover successful load/call/release, copy failure before
 runner entry, runner failure plus release retry, and committed completion plus
 release retry.
 
+Initial halt can now also own one reusable synchronized mapping directly.
+`ExecutionGeometryNativeInitialHaltAdmission::load_owned` retains the exact
+checkpoint-bound admission beside its ready executable. Repeated owner
+execution reuses the existing prepare/bind/runner path without adapter work.
+Runner failure still restores the full entry snapshot and leaves the mapping
+reusable.
+
+The owner reports one live mapping and derives resident bytes from the
+platform mapping's `mapped_len()` report. Release delegates to the existing
+exact ready-executable cleanup contract, so failed release transfers retryable
+mapping ownership rather than weakening cache authority. Two focused cases
+cover mapping reuse/weight and failure rollback followed by successful reuse.
+
 The first state-changing explicit-geometry template is now admitted separately:
 `direct-execution-geometry-no-operation` revision 1 accepts only v5 one-step
 no-operation traces. Its selector derives C/D successor immediates from the
