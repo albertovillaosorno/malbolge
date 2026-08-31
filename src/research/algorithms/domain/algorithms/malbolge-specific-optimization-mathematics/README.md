@@ -189,6 +189,14 @@ strict thresholds gives the minimum canonical-enumeration budget covering any
 requested number from zero through all `7^N` reachable pairs. These are bounded
 completeness-planning laws, not requirements on incomplete or stochastic search.
 
+A finite candidate domain searched only through candidate-local binary verifier
+answers also has an exact query lower bound. With one valid candidate, every
+deterministic order has worst case `R` and uniform-target mean `(R+1)/2`; any
+randomized strategy has some target with expected cost at least `(R+1)/2`, and a
+uniform random order attains that bound. Absence certification requires all `R`
+queries. Substituting the ordered or endpoint-unordered tuple class count gives
+checked Malbolge-specific verifier-call bounds without making a timing claim.
+
 If endpoint order is also irrelevant, the exact pair class count
 reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`; summed over every reachable

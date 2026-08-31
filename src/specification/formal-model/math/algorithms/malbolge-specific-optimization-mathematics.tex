@@ -1560,6 +1560,53 @@ $U_{k^*-1,m}<U_{k^*,m}$ when $k^*>0$; for $k^*=0$, budget zero covers no
 positive canonical domain and budget one is minimal. This is exact bounded
 complete-search planning evidence and carries no runtime-speed claim.
 
+A separate lower bound applies when search receives no information about a
+finite canonical candidate domain except a candidate-local binary verifier.
+Let $\mathcal C$ have $R\geq1$ candidates and exactly one valid element. Before
+the first positive answer, every deterministic strategy sees the same all-zero
+transcript, so its distinct queries have one fixed order. If $Q_A(c^*)$ is the
+number of verifier calls needed when $c^*$ is the valid candidate, then
+\begin{equation}
+  \fitmath{%
+    \max_{c^*\in\mathcal C}Q_A(c^*)=R,\qquad
+    \frac{1}{R}\sum_{c^*\in\mathcal C}Q_A(c^*)=\frac{R+1}{2},\qquad
+    \max_{c^*\in\mathcal C}\mathbb E[Q_{A_{\rm rand}}(c^*)]
+      \geq\frac{R+1}{2}.
+  }
+  \label{eq:optimization-canonical-search-verifier-call-lower-bound}
+\end{equation}
+Certifying absence also needs all $R$ negative queries, because any unqueried
+candidate remains consistent with a unique valid element. A uniformly random
+query order attains expected $(R+1)/2$ calls for every fixed valid candidate,
+so the randomized bound is minimax-tight in this model. The theorem does not
+apply when search obtains richer structural scores, gradients, proofs, or batch
+information, and verifier-call counts are not wall-clock timing claims.
+
+The checked crazy tuple quotients instantiate that finite-domain result. For
+coordinate-canonical ordered tuples let
+$O_{k,m}=\binom{k+2^m-1}{2^m-1}$, and under the additional endpoint-invariance
+precondition let $U_{k,m}=|\mathcal J^{(m)}_k/S_m|$. Their exact verifier-call
+lower-bound pairs, written as (worst-case/absence, minimax expected unique
+solution), are
+\begin{equation}
+  \fitmath{%
+    \mathcal L^{\rm ord}_{k,m}
+      =\left(O_{k,m},\frac{O_{k,m}+1}{2}\right),
+      \quad 1\leq m\leq8,\ 0\leq k\leq14,\\
+    \mathcal L^{\rm unord}_{k,m}
+      =\left(U_{k,m},\frac{U_{k,m}+1}{2}\right),
+      \quad 3\leq m\leq8,\ 0\leq k\leq14.
+  }
+  \label{eq:optimization-crazy-profile-tuple-verifier-call-lower-bound}
+\end{equation}
+For example, at $k=14,m=8$, the two worst-case call counts are
+\[
+  (84466573066471253216128,\ 2103669236921739401)
+\]
+for the ordered and endpoint-unordered domains respectively. These numbers
+inherit the exact symmetry preconditions of their quotient domains and are lower
+bounds only for the candidate-local binary-verifier model above.
+
 The endpoint-symmetric pair quotient also composes exactly over the reachable
 fixed-pair ambiguity distribution. Let $E_N$ count canonical ordered preimage
 pairs after simultaneous coordinate permutation and endpoint swap, and let

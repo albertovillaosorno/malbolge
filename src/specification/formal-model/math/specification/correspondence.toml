@@ -830,6 +830,26 @@ mechanism = "strict-canonical-class-threshold-inversion-over-cumulative-ambiguit
 evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_unordered_tuple_class_thresholds_are_strictly_increasing", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_minimum_quotient_budget_inverts_exact_pair_coverage"]
 
 [[correspondence]]
+id = "optimization-canonical-search-verifier-call-lower-bound"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-canonical-search-verifier-call-lower-bound"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "finite nonempty canonical candidate domains searched only by distinct candidate-local binary verifier queries, with either one valid candidate or complete absence certification"
+mechanism = "all-negative-prefix-adversary-plus-query-order-averaging-and-uniform-random-order-attainment"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_every_small_deterministic_order_has_exact_black_box_bounds", "tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_uniform_random_order_attains_minimax_expectation", "tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_negative_prefix_cannot_certify_absence_before_full_domain"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-tuple-verifier-call-lower-bound"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-tuple-verifier-call-lower-bound"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "checked crazy preimage tuple quotient domains through ambiguity dimension 14, ordered endpoint arities 1 through 8, and endpoint-unordered arities 3 through 8 only when endpoint permutation is search-invariant"
+mechanism = "exact-quotient-cardinality-substitution-into-finite-binary-verifier-lower-bound"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_checked_tuple_quotients_substitute_exact_verifier_bounds", "tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_generic_ordered_tuple_counts_cover_checked_arities_and_dimensions", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_unordered_tuple_burnside_counts_through_dimension_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-global-endpoint-symmetric-pair-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-global-endpoint-symmetric-pair-quotient"
