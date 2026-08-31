@@ -464,8 +464,9 @@ without publishing partial cache authority.
 
 `GeometryNativeJumpRotateCrazyHaltLruCache` extends that owner to multi-resident
 LRU policy. A positive entry bound can combine with exact mapped-byte and
-mapping-count limits derived only from synchronized mapping reports. Hits refresh
-MRU without adapter work, while misses evict the first unleased LRU identity or
+mapping-count limits derive only from synchronized mapping reports. Hits
+refresh MRU without adapter work, while misses evict the first unleased LRU
+identity or
 fail closed when every resident is leased.
 
 Weighted admission loads one complete candidate before deciding residency, so
