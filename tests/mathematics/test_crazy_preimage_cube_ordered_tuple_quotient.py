@@ -40,6 +40,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from itertools import combinations
 from itertools import product
 from math import comb
 from math import factorial
@@ -251,3 +252,122 @@ def test_generic_global_ordered_tuple_count_matches_independent_transform() -> (
             assert direct <= raw
     for arity, expected in _WIDTH_FOURTEEN_GLOBAL_COUNTS.items():
         assert _closed_global_count(arity, _MAXIMUM_TRITS) == expected
+
+
+def _composition_rank(counts: tuple[int, ...]) -> int:
+    separator_count = len(counts) - 1
+    prefix = 0
+    rank = 0
+    for index in range(separator_count):
+        prefix += counts[index]
+        separator = prefix + index
+        rank += comb(separator, index + 1)
+    return rank
+
+
+def _composition_unrank(
+    rank: int,
+    *,
+    symbol_count: int,
+    dimension: int,
+) -> tuple[int, ...] | None:
+    separator_count = symbol_count - 1
+    size = comb(dimension + separator_count, separator_count)
+    if rank < 0 or rank >= size:
+        return None
+    remaining = rank
+    separators = [0] * separator_count
+    upper = dimension + separator_count - 1
+    for order in range(separator_count, 0, -1):
+        separator = upper
+        while comb(separator, order) > remaining:
+            separator -= 1
+        separators[order - 1] = separator
+        remaining -= comb(separator, order)
+        upper = separator - 1
+    assert remaining == 0
+    counts = [0] * symbol_count
+    counts[0] = separators[0]
+    for index in range(1, separator_count):
+        counts[index] = separators[index] - separators[index - 1] - 1
+    counts[-1] = dimension + separator_count - 1 - separators[-1]
+    return tuple(counts)
+
+
+def _counts_from_separators(
+    separators: tuple[int, ...],
+    *,
+    symbol_count: int,
+    dimension: int,
+) -> tuple[int, ...]:
+    counts = [0] * symbol_count
+    counts[0] = separators[0]
+    for index in range(1, len(separators)):
+        counts[index] = separators[index] - separators[index - 1] - 1
+    counts[-1] = dimension + len(separators) - 1 - separators[-1]
+    return tuple(counts)
+
+
+def test_ordered_tuple_class_rank_exhausts_small_composition_domains() -> None:
+    """Colexicographic combinadics densely index every small quotient class."""
+    for arity in range(1, 4):
+        symbol_count = 1 << arity
+        separator_count = symbol_count - 1
+        for dimension in range(7):
+            size = _ordered_tuple_classes(arity, dimension)
+            observed: set[int] = set()
+            for separators in combinations(
+                range(dimension + separator_count),
+                separator_count,
+            ):
+                counts = _counts_from_separators(
+                    separators,
+                    symbol_count=symbol_count,
+                    dimension=dimension,
+                )
+                rank = _composition_rank(counts)
+                decoded = _composition_unrank(
+                    rank,
+                    symbol_count=symbol_count,
+                    dimension=dimension,
+                )
+                assert decoded == counts
+                observed.add(rank)
+            assert observed == set(range(size))
+
+
+def test_ordered_tuple_class_rank_roundtrips_checked_domain_edges() -> None:
+    """Rank and unrank stay exact through arity eight and dimension fourteen."""
+    for arity in range(1, _MAXIMUM_ARITY + 1):
+        symbol_count = 1 << arity
+        for dimension in range(_MAXIMUM_TRITS + 1):
+            size = _ordered_tuple_classes(arity, dimension)
+            ranks = {0, size - 1, size // 2}
+            for rank in ranks:
+                counts = _composition_unrank(
+                    rank,
+                    symbol_count=symbol_count,
+                    dimension=dimension,
+                )
+                assert counts is not None
+                assert len(counts) == symbol_count
+                assert sum(counts) == dimension
+                assert all(count >= 0 for count in counts)
+                assert _composition_rank(counts) == rank
+            first = (0,) * (symbol_count - 1) + (dimension,)
+            last = (dimension,) + (0,) * (symbol_count - 1)
+            assert _composition_rank(first) == 0
+            assert _composition_rank(last) == size - 1
+
+
+def test_ordered_tuple_class_unrank_rejects_outside_dense_domain() -> None:
+    """Dense quotient indexing rejects ranks outside its exact class count."""
+    symbol_count = 1 << _MAXIMUM_ARITY
+    dimension = _MAXIMUM_TRITS
+    size = comb(dimension + symbol_count - 1, symbol_count - 1)
+    for rank in (-1, size):
+        assert _composition_unrank(
+            rank,
+            symbol_count=symbol_count,
+            dimension=dimension,
+        ) is None

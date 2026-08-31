@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize seventy-two exact reductions: classic
+- The proved slices now formalize seventy-three exact reductions: classic
   five-trit
   crazy factorization, profile-width crazy chunking, exact zero-padded 15-trit
   crazy projection and uniform three-lookup factorization for semantic widths
@@ -61,8 +61,9 @@ force or stochastic optimization begins.
   quintuple quotient under `S_5` endpoint permutation, exact ordered sextuple
   quotient into `C(k+63,63)` joint-count classes, exact endpoint-unordered
   sextuple quotient under `S_6` endpoint permutation, one generic checked-arity
-  ordered tuple quotient with `C(k+2^m-1,2^m-1)` classes for `1<=m<=8`, exact
-  global checked-arity ordered tuple counts, exact global
+  ordered tuple quotient with `C(k+2^m-1,2^m-1)` classes for `1<=m<=8`, dense
+  stars-and-bars/combinadic rank-unrank for those quotient classes, exact global
+  checked-arity ordered tuple counts, exact global
   ordered-triple
   and endpoint-unordered triple quotient counts, exact global ordered-quadruple
   and endpoint-unordered quadruple quotient counts, exact ordered-quintuple and
@@ -98,10 +99,10 @@ force or stochastic optimization begins.
   preimage-budget exceedance sum, its width-indexed generalization, and the
   exact minimum complete-preimage budget needed to cover any integer target
   from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. Four
-  reductions are consumed by runtime paths; the fifty-five search reductions,
+  reductions are consumed by runtime paths; the fifty-six search reductions,
   two padded-geometry equivalences, and eleven width-certification
   results carry no inherited runtime speedup claim.
-- Seventy-two optimization research equations are registered in
+- Seventy-three optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -135,7 +136,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes seventy-two labelled optimization
+- Current mathematical evidence includes seventy-three labelled optimization
   equations,
   executable correspondence, exact zero-padding projection and uniform
   three-lookup evidence for semantic widths 10 through 14, exact checked
@@ -166,7 +167,8 @@ force or stochastic optimization begins.
   `S_5` through dimension 14, exact ordered and endpoint-unordered sextuple
   classes through dimension 14, the generic ordered tuple quotient for checked
   arities one through eight with exact weak-composition class and multinomial
-  mass accounting, exact global checked-arity ordered tuple counts, exact global
+  mass accounting, dense combinadic quotient-class rank/unrank through dimension
+  14, exact global checked-arity ordered tuple counts, exact global
   ordered-triple and endpoint-
   unordered triple quotient counts through width 14, exact global ordered-
   quadruple and endpoint-unordered quadruple quotient counts through width 14,

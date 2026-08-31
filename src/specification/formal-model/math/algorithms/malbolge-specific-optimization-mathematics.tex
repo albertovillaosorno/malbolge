@@ -767,6 +767,32 @@ results. At $k=14$, the new checked arities seven and eight have respectively
 order remains visible; this quotient applies only to analyses invariant under
 simultaneous ambiguity-coordinate relabeling and makes no timing claim.
 
+The same joint-count vector has a dense constructive index. Put $q=2^m$ and
+$r=q-1$. For $(n_0,\ldots,n_{q-1})\in\mathcal{J}^{(m)}_k$, encode the first
+$r$ stars-and-bars separators by
+\[
+  b_i=i+\sum_{h=0}^{i}n_h,\qquad 0\leq i<r.
+\]
+Then $0\leq b_0<\cdots<b_{r-1}\leq k+r-1$, and the colexicographic
+combinatorial-number-system rank is
+\begin{equation}
+  \fitmath{%
+    \rho_{k,m}(n_0,\ldots,n_{q-1})
+      =\sum_{i=0}^{r-1}\binom{b_i}{i+1},
+    \qquad
+    \rho_{k,m}:\mathcal{J}^{(m)}_k
+      \overset{\sim}{\longrightarrow}
+      \left\{0,\ldots,\binom{k+q-1}{q-1}-1\right\},
+    \quad 1\leq m\leq8,\ 0\leq k\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-ordered-tuple-ranking}
+\end{equation}
+The inverse is ordinary combinadic unranking of the separator set followed by
+stars-and-bars decoding. The all-mass-in-last-pattern vector has rank zero and
+the all-mass-in-first-pattern vector has the maximum rank. This indexes quotient
+classes only; it does not identify position-sensitive Malbolge states or remove
+the coordinate-symmetry precondition.
+
 For pairwise analyses that also ignore endpoint order, let
 $G_k=S_k\times C_2$, where $S_k$ permutes both endpoints simultaneously and
 $\tau\in C_2$ swaps them: $\tau(x,y)=(y,x)$. These actions commute. On joint

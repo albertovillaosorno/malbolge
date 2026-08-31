@@ -149,6 +149,11 @@ keeps endpoint order visible and applies only under simultaneous ambiguity-
 coordinate relabeling; it is not a Malbolge semantic-equivalence or timing
 claim.
 
+Those same joint-count vectors now have a dense canonical integer index.
+Stars-and-bars separator positions use colexicographic combinadic rank, covering
+exactly `0..C(k+2^m-1,2^m-1)-1`, with constructive unranking through checked
+arity eight and dimension fourteen.
+
 If endpoint order is also irrelevant, the exact pair class count
 reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`; summed over every reachable

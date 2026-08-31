@@ -474,6 +474,16 @@ mechanism = "generic-binary-joint-count-orbits-plus-canonical-coordinate-groupin
 evidence = ["tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_generic_ordered_tuple_orbits_are_exact_under_bounded_exhaustion", "tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_generic_ordered_tuple_counts_cover_checked_arities_and_dimensions", "tests/mathematics/test_crazy_preimage_gray.py::test_every_width_fourteen_ambiguity_mask_has_exact_cube_dimension"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-ordered-tuple-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-ordered-tuple-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "joint-count quotient classes for ordered endpoint arities 1 through 8 and ambiguity dimensions 0 through 14 under the established simultaneous-coordinate symmetry"
+mechanism = "stars-and-bars-separator-bijection-plus-colexicographic-combinadic-rank-unrank"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_ordered_tuple_class_rank_exhausts_small_composition_domains", "tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_ordered_tuple_class_rank_roundtrips_checked_domain_edges", "tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_ordered_tuple_class_unrank_rejects_outside_dense_domain"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-sextuple-quotient"
