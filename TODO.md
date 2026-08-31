@@ -17,15 +17,6 @@ labels belong here.
 
 ## P1 — Semantic and language foundations
 
-### TODO - Adaptive semantic profile width
-
-Determine the smallest semantic ternary width that is provably sufficient for
-one compiled program, initially within `10<=N<=14`, and execute only that
-`3^N`-word memory geometry when equivalence is established.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/mathematics/adaptive-semantic-profile-width.mdc](docs/todo/open/mathematics/adaptive-semantic-profile-width.mdc)
-
 ### TODO - Malbolge-specific optimization mathematics
 
 Derive algebraic decompositions, lookup-table factorizations, state reductions,

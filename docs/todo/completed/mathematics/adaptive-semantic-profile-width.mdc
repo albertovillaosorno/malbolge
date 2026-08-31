@@ -1,6 +1,6 @@
 ---
 id: "adaptive-semantic-profile-width"
-status: "active"
+status: "completed"
 lane: "7"
 priority: "p1"
 area: "mathematics"
@@ -97,12 +97,13 @@ transfers, verification, and other separately measured costs.
   `optimization-profile-width-finite-bisimulation-certificate`, and
   `optimization-profile-width-minimum-certified-selector` establish checked
   projection/loader laws, a fail-closed finite certificate shape, and the
-  deterministic minimum-width choice. No compiled program has yet been
-  certified narrower.
+  deterministic minimum-width choice. At this early research milestone no
+  product program had yet been certified narrower; later verifier/runtime
+  evidence below closes that activation gap.
 - Required correctness evidence: differential/reference execution plus
   adversarial width-boundary tests and independent verification of certificates.
 - First projection-preserving positive fixture: source `QP` decodes to halt at
-  position zero and preserves complete current-14 to historical-10 state
+  position zero and preserves complete published-N14 to historical-N10 state
   projection before and after termination for both available-byte and EOF input.
   Because halt performs no I/O, encryption, or pointer advance, this fixture is
   input-independent within the tested byte-stream interface. It remains
@@ -239,8 +240,8 @@ transfers, verification, and other separately measured costs.
   first-chunk capacities are 532, 177, 59, 19, 6, and 2 complete VMs
   respectively.
 - This remains capacity evidence only; it does not grant runtime width-selection
-  authority or satisfy the still-required equivalent-work throughput
-  measurements.
+  authority. At this milestone equivalent-work throughput was still pending;
+  the retained performance bundles near the end of this record close it.
 - The same reviewed N=10-through-15 geometries validate against the product
   `ProfileRunGeometry` contract with `word_modulus=memory_words=3^N`,
   `EOF=3^N-1`, and the existing `/` input plus `<` output assignments. That
@@ -259,13 +260,14 @@ transfers, verification, and other separately measured costs.
   direct product import is therefore not an admissible integration shortcut. The
   established accelerator pattern treats proposals and hints as untrusted until
   an independent verifier accepts them, while tiered preflight separately
-  requires the canonical profile requirement to remain canonical. Future width
-  activation must preserve that canonical identity and introduce a trusted,
-  source/input-bound admission of derived execution geometry rather than letting
-  research choose runtime semantics directly.
+  requires the canonical profile requirement to remain canonical. At this
+  milestone product activation still had to preserve that identity and add a
+  trusted source/input-bound geometry admission; later evidence below does so
+  without letting research choose runtime semantics directly.
 - Research-only downstream evidence now checks that the exact QP source/input
   subject selects N=10 and the 532-VM synthetic capacity row, while source drift
-  fails closed to canonical N=14 and the 6-VM row. This demonstrates fail-closed
+  fails closed to the published N14 research reference and its 6-VM row. This
+  demonstrates fail-closed
   composition without granting that composition product authority.
 - Existing Rust/Python target-profile requirement and geometry types are not
   that
@@ -283,8 +285,9 @@ transfers, verification, and other separately measured costs.
   source bytes, unchanged canonical `ProfileDescriptor`, proof kind, N, and
   `3^N` memory words. QP admits N=10; valid non-initial-halt DP, invalid source
   bytes, widths outside 10 through the canonical width, and source size beyond
-  the derived memory all reject without producing the verified type. No runtime,
-  accelerator, or compiler consumer executes this geometry yet.
+  the derived memory all reject without producing the verified type. At this
+  milestone no product consumer executed the geometry; later VM, CUDA, CLI, and
+  native evidence below closes that integration gap.
 - `verify_minimum_initial_halt_profile_width` now performs trusted deterministic
   minimum selection for this one proof family. It advances to the next N only
   after an exact derived-capacity `SourceTooLong`; lexical, decode, theorem, and
@@ -375,7 +378,8 @@ transfers, verification, and other separately measured costs.
 - Indexed state-graph now preserves the opaque geometry token through lineage,
   digest, trace application, and checkpoint materialization. A QP/N=10 runtime
   trace roundtrips through `IndexedMachineState` to the exact derived checkpoint
-  instead of reconstructing canonical N=14. Later tiered/native evidence below
+  instead of reconstructing the then-canonical N14 geometry. Later tiered/native
+  evidence below
   closes this handoff by carrying the same opaque geometry through continuation,
   interpreter handoff, and verified-v5 planning.
 - The same indexed-state lifecycle now covers an input policy stricter than
@@ -442,16 +446,16 @@ transfers, verification, and other separately measured costs.
 - The checked-in current capsules contain `ubO` with empty input, which is a
   concrete non-narrowing case: its derived input/output/halt token requires
   `MinimumLength(1)`, while canonical EOF output is width-sensitive. Adaptive
-  CLI
-  policy therefore leaves those capsules at N=14 even when explicitly enabled.
+  CLI policy therefore leaves those capsules at canonical N15 even when
+  explicitly enabled.
 - Product `select_minimum_verified_profile_width` now probes fifteen trusted
   theorem-family minimum verifiers and returns the narrowest successful artifact
-  whose hidden input policy admits the exact input. Equal-width N=14 artifacts
+  whose hidden input policy admits the exact input. Equal-width N15 artifacts
   are ignored so no-proof preserves canonical execution.
 - `ProfileMachine::from_adaptive_source` consumes that selector and fails closed
   to canonical `from_source` if no narrower artifact applies or derived loading
   fails. QP with empty input selects N=10; `ubO` with byte input selects N=10;
-  `ubO` with empty input remains canonical N=14 and emits `0x78`.
+  `ubO` with empty input remains canonical N15 and emits `0x6A`.
 - The CLI now exposes that constructor only under explicit
   `MALBOLGE_PROFILE_ADAPTIVE_WIDTH=1` for current-profile capsules. `0` keeps
   canonical N15 and invalid values fail closed. A synthetic MBPRN2 worker sees
