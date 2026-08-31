@@ -208,6 +208,31 @@ pub(super) fn execution_geometry_initial_jump_data_coff(
         .ok_or(DirectExecutionGeometryInitialJumpDataError::ObjectBytes)
 }
 
+pub(super) fn execution_geometry_input_coff(
+    key: &NativeArtifactKey,
+    selected: DirectInputProgram,
+) -> Result<Vec<u8>, DirectExecutionGeometryInputError> {
+    let observation = direct_entry_observation(selected.observation)
+        .ok_or(DirectExecutionGeometryInputError::ObjectBytes)?;
+    let guard = DirectInputGuard {
+        code_live_in: selected.live_in.value,
+        input: selected.input,
+        input_index: observation.input_consumed,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::input_code(observation, guard, selected.commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::input_code(observation, guard, selected.commit)
+        },
+    }
+    .ok_or(DirectExecutionGeometryInputError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectExecutionGeometryInputError::ObjectBytes)
+}
+
 pub(super) fn execution_geometry_no_operation_coff(
     key: &NativeArtifactKey,
     selected: DirectNoOperationProgram,

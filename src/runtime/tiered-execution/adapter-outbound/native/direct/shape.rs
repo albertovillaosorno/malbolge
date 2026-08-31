@@ -42,12 +42,21 @@ type ExecutionGeometryInitialJumpDataShapeResult = Result<
     DirectInitialJumpDataProgram,
     DirectExecutionGeometryInitialJumpDataError,
 >;
+type ExecutionGeometryInputShapeResult =
+    Result<DirectInputProgram, DirectExecutionGeometryInputError>;
 type ExecutionGeometryNoOperationShapeResult =
     Result<DirectNoOperationProgram, DirectExecutionGeometryNoOperationError>;
 type ExecutionGeometryOutputShapeResult =
     Result<DirectOutputProgram, DirectExecutionGeometryOutputError>;
 type ExecutionGeometryRotateShapeResult =
     Result<DirectRotateProgram, DirectExecutionGeometryRotateError>;
+
+#[derive(Clone, Copy)]
+struct DirectInputSemantics {
+    eof_word: u32,
+    input_instruction: u8,
+    memory_words: u32,
+}
 
 fn direct_program_header_supported(program: &RegionEffectProgram) -> bool {
     is_canonical_effect_ir_version(program.format_version)
@@ -264,6 +273,60 @@ pub(super) fn validate_execution_geometry_initial_jump_data_target(
         return Err(
             DirectExecutionGeometryInitialJumpDataError::TargetFeatures,
         );
+    }
+    Ok(())
+}
+
+pub(super) fn validate_execution_geometry_input_program(
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> ExecutionGeometryInputShapeResult {
+    if program.format_version() != EFFECT_IR_EXECUTION_GEOMETRY_VERSION
+        || !program.fits_execution_geometry_capacity()
+        || !program.fits_profile_capacity()
+        || program.step_budget() != 1
+        || program.memory_live_ins().len() != 1
+        || program.effects().len() != 1
+        || program.outcome() != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectExecutionGeometryInputError::ProgramShape);
+    }
+    let effect = program
+        .effects()
+        .first()
+        .copied()
+        .ok_or(DirectExecutionGeometryInputError::ProgramShape)?;
+    let live_in = program
+        .memory_live_ins()
+        .first()
+        .copied()
+        .ok_or(DirectExecutionGeometryInputError::ProgramShape)?;
+    let input_instruction = target_profile(program.profile_id())
+        .map(|profile| profile.input_instruction())
+        .ok_or(DirectExecutionGeometryInputError::ProgramShape)?;
+    let geometry = program.execution_geometry();
+    derive_input_effect(effect, live_in, DirectInputSemantics {
+        eof_word: geometry.eof_word(),
+        input_instruction,
+        memory_words: geometry.memory_words(),
+    })
+    .ok_or(DirectExecutionGeometryInputError::ProgramShape)
+}
+
+pub(super) fn validate_execution_geometry_input_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectExecutionGeometryInputError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectExecutionGeometryInputError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectExecutionGeometryInputError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectExecutionGeometryInputError::TargetFeatures);
     }
     Ok(())
 }
@@ -959,23 +1022,37 @@ pub(super) fn derive_input_program(
     effect: EffectOp,
     live_in: MemoryLiveIn,
 ) -> Option<DirectInputProgram> {
+    let input_instruction =
+        target_profile(&program.profile_id)?.input_instruction();
+    derive_input_effect(effect, live_in, DirectInputSemantics {
+        eof_word: profile_eof_word(program.profile_requirement.word_trits)?,
+        input_instruction,
+        memory_words: direct_memory_words(program)?,
+    })
+}
+
+fn derive_input_effect(
+    effect: EffectOp,
+    live_in: MemoryLiveIn,
+    semantics: DirectInputSemantics,
+) -> Option<DirectInputProgram> {
+    let DirectInputSemantics {
+        eof_word,
+        input_instruction,
+        memory_words,
+    } = semantics;
     let before = effect.before;
     let code_pointer = before.registers.code_pointer;
     let input = effect.input?;
     if before.termination.is_some()
         || live_in.address != code_pointer
         || decode_profile_instruction(live_in.value, code_pointer)
-            != target_profile(&program.profile_id)
-                .map(|profile| profile.input_instruction())
+            != Some(input_instruction)
     {
         return None;
     }
-    let (accumulator, next_input_consumed) = input_result(
-        input,
-        before.input_consumed,
-        program.profile_requirement.word_trits,
-    )?;
-    let memory_words = direct_memory_words(program)?;
+    let (accumulator, next_input_consumed) =
+        input_result(input, before.input_consumed, eof_word)?;
     let encrypted_value = encrypt_profile_cell(live_in.value)?;
     let next_code_pointer =
         profile_pointer_successor(code_pointer, memory_words)?;
@@ -1024,15 +1101,13 @@ pub(super) fn derive_input_program(
 fn input_result(
     input: TraceInput,
     input_consumed: usize,
-    word_trits: u8,
+    eof_word: u32,
 ) -> Option<(u32, usize)> {
     match input {
         TraceInput::Byte(byte) => {
             Some((u32::from(byte), input_consumed.checked_add(1)?))
         },
-        TraceInput::EndOfInput => {
-            Some((profile_eof_word(word_trits)?, input_consumed))
-        },
+        TraceInput::EndOfInput => Some((eof_word, input_consumed)),
     }
 }
 

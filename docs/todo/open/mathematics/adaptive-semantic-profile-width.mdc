@@ -678,6 +678,12 @@ transfers, verification, and other separately measured costs.
   rollback,
   transactional release, and cleanup-retry ownership mirror the other v5 step
   boundaries without merging operation policy.
+- A geometry-bound input artifact now admits both byte and EOF branches of the
+  certified `uP` input/halt path. The canonical profile still selects the input
+  opcode, while explicit geometry supplies pointer wrap, memory-domain guards,
+  and the EOF accumulator. N10/N11 keys and COFF bytes stay distinct on both
+  reviewed ISAs, cross-geometry verification rejects, and legacy direct-input
+  fixtures remain byte-exact; checkpoint admission and execution remain open.
 - A geometry-bound output artifact now exists for the reached `<` step of the
   certified `ubO` input/output/halt path with nonempty input. Profile identity
   still selects output opcode/byte semantics, while explicit geometry supplies
@@ -910,7 +916,8 @@ transfers, verification, and other separately measured costs.
   the same reusable initial-jump owner. Triple load/release no longer duplicate
   raw jump executable ownership while preserving existing suffix rollback and
   three-mapping cleanup contracts.
-- Input and crazy native templates remain open; output now has exact v5
+- Input native execution and crazy native templates remain open; output has
+  exact v5
   artifact, checkpoint replay, load-image, prepare/bind, dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical
   capacity: only the checkpoint's logical prefix is entry state, while the ABI

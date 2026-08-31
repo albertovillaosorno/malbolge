@@ -202,6 +202,53 @@ impl From<NativeIdentityError> for DirectExecutionGeometryInitialJumpDataError {
     }
 }
 
+/// Failure while emitting or verifying v5 guarded input.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectExecutionGeometryInputError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this v5 program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical guarded input object.
+    ObjectBytes,
+    /// Explicit-geometry IR is outside the guarded input subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this v5 contract.
+    TargetBackend,
+    /// This v5 backend has no target-specific feature specializations.
+    TargetFeatures,
+    /// This v5 backend currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectExecutionGeometryInputError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => "v5 input COFF structure was rejected",
+            Self::Identity(_error) => "v5 input identity construction failed",
+            Self::ObjectBytes => "v5 input object differs from canonical bytes",
+            Self::ProgramShape => {
+                "explicit-geometry IR is outside v5 input subset"
+            },
+            Self::TargetBackend => "target does not select v5 input backend",
+            Self::TargetFeatures => "v5 input backend requires no CPU features",
+            Self::TargetFormat => "v5 input backend requires Windows COFF",
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectExecutionGeometryInputError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectExecutionGeometryInputError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying v5 guarded no-operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectExecutionGeometryNoOperationError {

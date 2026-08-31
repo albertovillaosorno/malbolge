@@ -162,6 +162,8 @@ use execution_native::{
     DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_REVISION,
+    DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_ID,
+    DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_ID,
@@ -181,7 +183,7 @@ use execution_native::{
     DirectCacheDisposition, DirectCrazyError, DirectDeoptError,
     DirectExecutionGeometryInitialHaltError,
     DirectExecutionGeometryInitialJumpDataError,
-    DirectExecutionGeometryNoOperationError,
+    DirectExecutionGeometryInputError, DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
     DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
     DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
@@ -229,6 +231,7 @@ use execution_native::{
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
+    emit_direct_execution_geometry_input_coff,
     emit_direct_execution_geometry_no_operation_coff,
     emit_direct_execution_geometry_output_coff,
     emit_direct_execution_geometry_rotate_coff, emit_direct_halt_fetch_coff,
@@ -250,6 +253,7 @@ use execution_native::{
     structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
     verify_direct_execution_geometry_initial_halt,
     verify_direct_execution_geometry_initial_jump_data,
+    verify_direct_execution_geometry_input,
     verify_direct_execution_geometry_no_operation,
     verify_direct_execution_geometry_output,
     verify_direct_execution_geometry_rotate, verify_direct_halt_fetch,
@@ -2760,6 +2764,19 @@ fn direct_execution_geometry_initial_jump_data_target(
         ),
         backend_revision:
             DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+fn direct_execution_geometry_input_target(
+    isa: HostIsa,
+) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_ID),
+        backend_revision: DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_REVISION,
         host_isa: isa,
         host_os: HostOperatingSystem::Windows,
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
@@ -13070,6 +13087,105 @@ fn direct_execution_geometry_initial_jump_data_admits_exact_v5_geometry()
     }
     for isa in [HostIsa::X86_64, HostIsa::AArch64] {
         assert_v5_initial_jump_data_artifact(isa, &n10, &n11)?;
+    }
+    Ok(())
+}
+
+fn assert_v5_input_artifact(
+    isa: HostIsa,
+    n10: &ExecutionGeometryRegionEffectProgram,
+    n11: &ExecutionGeometryRegionEffectProgram,
+) -> Result<(), String> {
+    let n10_artifact = emit_direct_execution_geometry_input_coff(
+        n10,
+        direct_execution_geometry_input_target(isa),
+    )
+    .map_err(|error| format!("v5 input N10 {isa:?} emit: {error}"))?;
+    let n11_artifact = emit_direct_execution_geometry_input_coff(
+        n11,
+        direct_execution_geometry_input_target(isa),
+    )
+    .map_err(|error| format!("v5 input N11 {isa:?} emit: {error}"))?;
+    if n10_artifact.key() == n11_artifact.key()
+        || n10_artifact.object() == n11_artifact.object()
+        || n10_artifact.key().ir().execution_geometry()
+            != Some(n10.execution_geometry())
+    {
+        return Err(String::from("v5 input geometry identity collapsed"));
+    }
+    let verified =
+        verify_direct_execution_geometry_input(&n10_artifact, n10)
+            .map_err(|error| format!("v5 input N10 {isa:?} verify: {error}"))?;
+    if verified.key() != n10_artifact.key()
+        || verified.object() != n10_artifact.object()
+        || verified.target_triple() != n10_artifact.target_triple()
+    {
+        return Err(String::from("v5 input verification drifted"));
+    }
+    if verify_direct_execution_geometry_input(&n10_artifact, n11)
+        != Err(DirectExecutionGeometryInputError::ProgramShape)
+    {
+        return Err(String::from("v5 input geometry mismatch admitted"));
+    }
+    assert_tampered_direct_profile_metadata(&n10_artifact)
+}
+
+fn derived_v5_input_program(
+    word_trits: u8,
+    input: Vec<u8>,
+) -> Result<ExecutionGeometryRegionEffectProgram, String> {
+    let fixture = derived_v5_input_halt_sequence_fixture(word_trits, input)?;
+    Ok(derived_v5_fixture_program(&fixture, 0)?.clone())
+}
+
+#[test]
+fn direct_execution_geometry_input_byte_admits_exact_v5_geometry()
+-> Result<(), String> {
+    let n10 = derived_v5_input_program(10, vec![0xa5])?;
+    let n11 = derived_v5_input_program(11, vec![0xa5])?;
+    let [effect] = n10.effects() else {
+        return Err(String::from("v5 input byte effect count drifted"));
+    };
+    if effect.input != Some(TraceInput::Byte(0xa5))
+        || effect.before.input_consumed != 0
+        || effect.after.input_consumed != 1
+        || effect.after.registers.accumulator != 0xa5
+        || n10.execution_geometry() == n11.execution_geometry()
+    {
+        return Err(String::from("v5 input byte theorem trace drifted"));
+    }
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_v5_input_artifact(isa, &n10, &n11)?;
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_execution_geometry_input_eof_uses_exact_v5_geometry()
+-> Result<(), String> {
+    let n10 = derived_v5_input_program(10, Vec::new())?;
+    let n11 = derived_v5_input_program(11, Vec::new())?;
+    let [n10_effect] = n10.effects() else {
+        return Err(String::from("v5 input N10 EOF effect count drifted"));
+    };
+    let [n11_effect] = n11.effects() else {
+        return Err(String::from("v5 input N11 EOF effect count drifted"));
+    };
+    if n10_effect.input != Some(TraceInput::EndOfInput)
+        || n11_effect.input != Some(TraceInput::EndOfInput)
+        || n10_effect.after.input_consumed != n10_effect.before.input_consumed
+        || n11_effect.after.input_consumed != n11_effect.before.input_consumed
+        || n10_effect.after.registers.accumulator
+            != n10.execution_geometry().eof_word()
+        || n11_effect.after.registers.accumulator
+            != n11.execution_geometry().eof_word()
+        || n10_effect.after.registers.accumulator
+            == n11_effect.after.registers.accumulator
+    {
+        return Err(String::from("v5 input EOF geometry authority drifted"));
+    }
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_v5_input_artifact(isa, &n10, &n11)?;
     }
     Ok(())
 }

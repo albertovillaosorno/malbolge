@@ -53,6 +53,7 @@ pub use emit::{
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
+    emit_direct_execution_geometry_input_coff,
     emit_direct_execution_geometry_no_operation_coff,
     emit_direct_execution_geometry_output_coff,
     emit_direct_execution_geometry_rotate_coff, emit_direct_halt_fetch_coff,
@@ -94,6 +95,7 @@ pub use verify::{
     verify_direct_crazy, verify_direct_deopt_stub,
     verify_direct_execution_geometry_initial_halt,
     verify_direct_execution_geometry_initial_jump_data,
+    verify_direct_execution_geometry_input,
     verify_direct_execution_geometry_no_operation,
     verify_direct_execution_geometry_output,
     verify_direct_execution_geometry_rotate, verify_direct_halt_fetch,
@@ -141,6 +143,11 @@ pub const DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_ID: &str =
     "direct-execution-geometry-initial-jump-data";
 /// Explicit-geometry jump-data code-generation revision.
 pub const DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_REVISION: u32 = 1;
+/// Backend identity for explicit-geometry one-step input.
+pub const DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_ID: &str =
+    "direct-execution-geometry-input";
+/// Explicit-geometry input code-generation revision.
+pub const DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_REVISION: u32 = 1;
 /// Backend identity for explicit-geometry one-step no-operation.
 pub const DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID: &str =
     "direct-execution-geometry-no-operation";

@@ -679,6 +679,19 @@ ownership after cleanup failure and preserving committed normative state when
 final release fails. Eight focused cases cover those paths plus cross-geometry
 binding and caller-memory drift.
 
+`direct-execution-geometry-input` revision 1 now provides the matching
+artifact-only boundary for one explicit-geometry input step. Its selector
+accepts both theorem-derived byte input and end-of-input. The canonical profile
+selects the input opcode, while explicit geometry supplies C/D successor wrap,
+minimum memory guards, and the EOF accumulator through `eof_word()`.
+
+The v5 input path reuses the reviewed x86-64/AArch64 input machine code only
+after exact one-live-in, observation, cursor, self-encryption, and input-result
+checks. N10/N11 keys and COFF bytes remain distinct, cross-geometry verification
+rejects, and the legacy byte-exact direct-input fixtures remain unchanged. This
+slice grants artifact identity and verification only; checkpoint admission,
+load-image, invocation, reusable ownership, and residency remain separate work.
+
 `direct-execution-geometry-output` revision 1 adds a byte-verifiable v5 output
 artifact boundary with operation-specific execution authority composed below.
 Its selector
