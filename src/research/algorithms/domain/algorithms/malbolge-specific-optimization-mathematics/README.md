@@ -154,6 +154,15 @@ Stars-and-bars separator positions use colexicographic combinadic rank, covering
 exactly `0..C(k+2^m-1,2^m-1)-1`, with constructive unranking through checked
 arity eight and dimension fourteen.
 
+Full endpoint symmetry is now parameterized for checked arities three through
+eight using symmetric-group conjugacy partitions and the induced permutation
+cycles on binary joint labels. At `k=14`, the new S7 and S8 quotients have
+1,442,705,743,162,885 and 2,103,669,236,921,739,401 classes. Across every
+reachable width-14 fixed pair, the corresponding global counts are
+432,496,703,839,294,883,265 and 178,151,458,860,093,866,748,569. These counts
+apply only when endpoint order is irrelevant in addition to coordinate labels;
+they are exact search-space identities and make no timing claim.
+
 If endpoint order is also irrelevant, the exact pair class count
 reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`; summed over every reachable

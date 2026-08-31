@@ -494,6 +494,16 @@ mechanism = "S6-Burnside-label-cycle-index-plus-canonical-coordinate-multisets"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_sextuple_quotient.py::test_s6_endpoint_cycle_types_induce_exact_label_cycles", "tests/mathematics/test_crazy_preimage_cube_unordered_sextuple_quotient.py::test_unordered_sextuple_orbits_are_exact_through_dimension_two", "tests/mathematics/test_crazy_preimage_cube_unordered_sextuple_quotient.py::test_unordered_sextuple_burnside_counts_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_unordered_sextuple_quotient.py::test_sextuple_quotients_lift_to_small_reachable_pairs"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "ordered cube-word m-tuples for checked endpoint arities 3 through 8 and ambiguity dimensions 0 through 14, for analyses invariant under simultaneous ambiguity-coordinate permutation and all endpoint permutations"
+mechanism = "integer-partition-conjugacy-classes-plus-induced-binary-label-cycle-Burnside"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_endpoint_partitions_match_all_permutation_cycle_types", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_unordered_tuple_burnside_counts_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_unordered_sextuple_quotient.py::test_unordered_sextuple_burnside_counts_through_dimension_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-endpoint-symmetric-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-endpoint-symmetric-pair-quotient"
@@ -748,6 +758,16 @@ domain = "all reachable accumulator/target pairs at widths 1 through 14, with ea
 mechanism = "S6-Burnside-sum-plus-generic-binomial-transform-generating-function"
 # jig-ignore-next-line: indivisible reviewed identifiers
 evidence = ["tests/mathematics/test_crazy_preimage_cube_global_sextuple_quotient.py::test_small_widths_match_independent_fixed_pair_enumeration", "tests/mathematics/test_crazy_preimage_cube_global_sextuple_quotient.py::test_global_sextuple_quotients_have_exact_closed_counts"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-global-unordered-tuple-quotient"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-global-unordered-preimage-tuple-quotient"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all reachable accumulator/target pairs at widths 1 through 14 and checked endpoint arities 3 through 8 under simultaneous ambiguity-coordinate and full endpoint-permutation symmetry"
+mechanism = "exact-ambiguity-class-sum-plus-conjugacy-cycle-binomial-transform"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_global_unordered_tuple_transform_matches_direct_sum", "tests/optimizer/test_crazy_target_search.py::test_profile_width_preimage_pair_distribution_matches_closed_form", "tests/mathematics/test_crazy_preimage_cube_global_sextuple_quotient.py::test_global_sextuple_quotients_have_exact_closed_counts"]
 
 [[correspondence]]
 id = "optimization-crazy-profile-global-endpoint-symmetric-pair-quotient"

@@ -793,6 +793,37 @@ the all-mass-in-first-pattern vector has the maximum rank. This indexes quotient
 classes only; it does not identify position-sensitive Malbolge states or remove
 the coordinate-symmetry precondition.
 
+The endpoint-unordered refinement also has one checked-arity form. For
+$3\leq m\leq8$, let $\lambda\vdash m$ be an endpoint permutation cycle type,
+let $a_{\lambda,c}$ be the number of endpoint cycles of length $c$, and define
+its symmetric-group conjugacy-class size by
+\[
+  w_\lambda=\frac{m!}{\prod_c c^{a_{\lambda,c}}a_{\lambda,c}!}.
+\]
+Choose any endpoint permutation of type $\lambda$. Its induced permutation of
+the $2^m$ binary joint-pattern labels has $r_{\lambda,d}$ cycles of length $d$.
+The number of joint-count vectors of total mass $k$ fixed by that endpoint type
+is therefore
+\[
+  A_{\lambda,k}=[x^k]\prod_d(1-x^d)^{-r_{\lambda,d}}.
+\]
+Burnside's lemma gives the generic endpoint-unordered quotient
+\begin{equation}
+  \left|\mathcal{J}^{(m)}_k/S_m\right|
+    =\frac{1}{m!}\sum_{\lambda\vdash m}w_\lambda A_{\lambda,k},
+  \quad 3\leq m\leq8,\ 0\leq k\leq N,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-preimage-cube-unordered-tuple-quotient}
+\end{equation}
+This specializes the preceding $S_3$ through $S_6$ results. The new $k=14$
+counts for arities seven and eight are
+\begin{equation*}
+  (1442705743162885,\ 2103669236921739401).
+\end{equation*}
+Lexicographically minimizing the joint-count vector over $S_m$ and then using
+the established descending-pattern representative gives one canonical tuple per
+orbit. The refinement requires endpoint-permutation invariance in addition to
+simultaneous coordinate symmetry and makes no timing claim.
+
 For pairwise analyses that also ignore endpoint order, let
 $G_k=S_k\times C_2$, where $S_k$ permutes both endpoints simultaneously and
 $\tau\in C_2$ swaps them: $\tau(x,y)=(y,x)$. These actions commute. On joint
@@ -1384,6 +1415,31 @@ canonical counts are
 \end{equation*}
 This is complete-domain search-space accounting only and inherits the same
 simultaneous-coordinate symmetry precondition; it makes no timing claim.
+
+The generic endpoint-unordered quotient composes over the same reachable-pair
+ambiguity classes. For each endpoint type above define
+\[
+  A_\lambda(z)=\prod_d(1-z^d)^{-r_{\lambda,d}},\qquad
+  \widehat A_\lambda(y)=\frac{1}{1-5y}
+    A_\lambda\!\left(\frac{2y}{1-5y}\right).
+\]
+Then the exact global endpoint-unordered count is
+\begin{equation}
+  \fitmath{%
+    U_{N,m}
+      =\sum_{k=0}^{N}\binom{N}{k}2^k5^{N-k}
+        \left|\mathcal{J}^{(m)}_k/S_m\right|
+      =\frac{1}{m!}\sum_{\lambda\vdash m}w_\lambda
+        [y^N]\widehat A_\lambda(y),
+    \quad 3\leq m\leq8,\ 1\leq N\leq14.
+  }
+  \label{eq:optimization-crazy-global-unordered-preimage-tuple-quotient}
+\end{equation}
+At $N=14$, arities seven and eight have respectively
+432496703839294883265 and 178151458860093866748569 canonical endpoint-unordered
+tuples across all reachable fixed pairs. The result inherits both symmetry
+preconditions and is exact complete-domain search-space accounting, not a
+runtime-speed claim.
 
 The endpoint-symmetric pair quotient also composes exactly over the reachable
 fixed-pair ambiguity distribution. Let $E_N$ count canonical ordered preimage
