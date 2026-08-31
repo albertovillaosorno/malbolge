@@ -1098,6 +1098,14 @@ mapping ownership already used by transactional execution. Two focused cases
 cover mapped-weight reuse and runner-failure rollback followed by successful
 reuse. The heterogeneous boundary now consumes this owner directly.
 
+Explicit-geometry jump-code now also has a checkpoint-bound reusable owner.
+`ExecutionGeometryNativeJumpCodeAdmission` normatively replays the exact v5
+three-live-in step before mapping, retains the verified JumpCode artifact/load
+image, and reuses the operation-specific prepare/bind path. Repeated execution
+uses one synchronized mapping with adapter-derived weight; runner mutation
+failure restores the entry checkpoint while preserving that mapping for a later
+successful call. Heterogeneous JumpCode residency remains separate policy work.
+
 General non-aliasing jump-data now has the same checkpoint-bound ownership
 shape without sharing aliasing policy.
 `ExecutionGeometryNativeJumpDataAdmission`

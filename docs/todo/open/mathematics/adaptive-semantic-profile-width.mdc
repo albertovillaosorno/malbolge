@@ -607,8 +607,9 @@ transfers, verification, and other separately measured costs.
   guards from v5 geometry. A source-backed adaptive N10 second jump-code selects
   and loads on both ISAs, and generic preloaded sequence execution matches the
   normative `ProfileMachine` memory and observation exactly. N10/N11 geometry
-  remains distinct in artifact identity; specialized jump-code residency is
-  still separate work.
+  remains distinct in artifact identity. Jump-code now also has checkpoint-bound
+  normative replay and reusable one-mapping ownership; heterogeneous residency
+  remains separate work.
 - Explicit-geometry jump-data revision 1 reuses the reviewed x86-64/AArch64
   jump-data generators after v5 admission proves distinct C/D live-ins, exact
   positional `j`, the data target domain, XLAT2 self-encryption, and
@@ -1126,8 +1127,8 @@ transfers, verification, and other separately measured costs.
   is the shared residency authority for its established variants. General
   jump-data now has checkpoint-bound one-mapping heterogeneous residency;
   generic
-  jump-code still executes through the shared verified-v5 path without
-  specialized heterogeneous residency. Additional state-changing templates also
+  jump-code now also has checkpoint-bound one-mapping ownership but still lacks
+  heterogeneous residency. Additional state-changing templates also
   remain open.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only

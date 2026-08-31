@@ -71,6 +71,8 @@ pub mod geometry_native_cross_template_resident;
 pub mod geometry_native_initial_jump_data;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_input.rs"]
 pub mod geometry_native_input;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_jcode.rs"]
+pub mod geometry_native_jump_code;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jdata.rs"]
 pub mod geometry_native_jump_data;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrco.rs"]
@@ -269,6 +271,7 @@ use execution_native::{
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_input_coff,
+    emit_direct_execution_geometry_jump_code_coff,
     emit_direct_execution_geometry_jump_data_coff,
     emit_direct_execution_geometry_no_operation_coff,
     emit_direct_execution_geometry_output_coff,
@@ -303,6 +306,7 @@ use execution_native::{
     verify_direct_execution_geometry_initial_halt,
     verify_direct_execution_geometry_initial_jump_data,
     verify_direct_execution_geometry_input,
+    verify_direct_execution_geometry_jump_code,
     verify_direct_execution_geometry_jump_data,
     verify_direct_execution_geometry_no_operation,
     verify_direct_execution_geometry_output,
@@ -399,6 +403,7 @@ use geometry_native_input::{
     ExecutionGeometryNativeInputPreparationError,
     ExecutionGeometryNativeInputTransactionFailure,
 };
+use geometry_native_jump_code as jump_code_native;
 use geometry_native_jump_data as jump_data_native;
 use geometry_native_jump_rotate_crazy_halt_owner as crazy_owner;
 use geometry_native_jump_rotate_crazy_halt_sequence::{
@@ -799,6 +804,12 @@ type InitialJumpOwnedFailure<RunnerError> =
     jump_native::ExecutionGeometryNativeInitialJumpDataOwnedFailure<
         RunnerError,
     >;
+type JumpCodeOwnedFailure<RunnerError> =
+    jump_code_native::ExecutionGeometryNativeJumpCodeOwnedFailure<RunnerError>;
+type JumpCodeExecutionError<RunnerError> =
+    jump_code_native::ExecutionGeometryNativeJumpCodeExecutionError<
+        RunnerError,
+    >;
 type JumpDataOwnedFailure<RunnerError> =
     jump_data_native::ExecutionGeometryNativeJumpDataOwnedFailure<RunnerError>;
 type JumpDataExecutionError<RunnerError> =
@@ -855,6 +866,8 @@ type InitialJumpTransactionFailure<MemoryError, RunnerError> =
         MemoryError,
         RunnerError,
     >;
+type JumpCodeAdmission =
+    jump_code_native::ExecutionGeometryNativeJumpCodeAdmission;
 type JumpDataAdmission =
     jump_data_native::ExecutionGeometryNativeJumpDataAdmission;
 
@@ -875,6 +888,8 @@ type GeometryNativeAdmissionFixture = (
 );
 type GeometryNativeInitialJumpDataAdmissionFixture =
     (InitialJumpAdmission, malbolge::ProfileExecutionGeometry);
+type GeometryNativeJumpCodeAdmissionFixture =
+    (JumpCodeAdmission, malbolge::ProfileExecutionGeometry);
 type GeometryNativeJumpDataAdmissionFixture =
     (JumpDataAdmission, malbolge::ProfileExecutionGeometry);
 type GeometryNativeInputAdmissionFixture = (
@@ -2983,6 +2998,21 @@ fn direct_execution_geometry_initial_jump_data_target(
         ),
         backend_revision:
             DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+fn direct_execution_geometry_jump_code_target(
+    isa: HostIsa,
+) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(
+            DIRECT_EXECUTION_GEOMETRY_JUMP_CODE_BACKEND_ID,
+        ),
+        backend_revision: DIRECT_EXECUTION_GEOMETRY_JUMP_CODE_BACKEND_REVISION,
         host_isa: isa,
         host_os: HostOperatingSystem::Windows,
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
@@ -16599,6 +16629,26 @@ fn geometry_native_initial_jump_data_runner_fixture(
     })
 }
 
+fn geometry_native_jump_code_admission_fixture(
+    word_trits: u8,
+) -> Result<GeometryNativeJumpCodeAdmissionFixture, String> {
+    let (program, checkpoint, geometry) =
+        derived_v5_jump_code_fixture(word_trits)?;
+    let artifact = emit_direct_execution_geometry_jump_code_coff(
+        &program,
+        direct_execution_geometry_jump_code_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 jump-code admission emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_jump_code(&artifact, &program)
+            .map_err(|error| {
+                format!("v5 jump-code admission verify: {error}")
+            })?;
+    let admission = JumpCodeAdmission::new(program, checkpoint, verified)
+        .map_err(|error| format!("v5 jump-code admission: {error}"))?;
+    Ok((admission, geometry))
+}
+
 fn geometry_native_jump_data_admission_fixture(
     word_trits: u8,
 ) -> Result<GeometryNativeJumpDataAdmissionFixture, String> {
@@ -25775,6 +25825,123 @@ fn geometry_native_initial_jump_applies_normative_state() -> Result<(), String>
     }
     release_execution_geometry_native_executable(&mut adapter, ready)
         .map_err(|error| format!("v5 initial jump runner release: {error}"))
+}
+
+#[test]
+fn geometry_native_jump_code_owned_reuses_mapping() -> Result<(), String> {
+    let (admission, geometry) =
+        geometry_native_jump_code_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(432)?,
+        native_executable_address(0x15_7000)?,
+    )
+    .with_mapped_len_overrides(vec![12_288]);
+    let loaded = admission
+        .load_owned(&mut adapter)
+        .map_err(|error| format!("v5 owned jump-code load: {error}"))?;
+    let weight = loaded.resident_weight();
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    for _attempt in 0usize..2usize {
+        let mut memory = checkpoint.memory().to_vec();
+        let input = checkpoint.io().input().to_vec();
+        let mut output = checkpoint.io().output().to_vec();
+        let completion = loaded
+            .execute(
+                &mut runner,
+                NativeRegionBuffers::new(&mut memory, &input, &mut output),
+            )
+            .map_err(|error| format!("v5 owned jump-code execute: {error}"))?;
+        if completion.state() != &expected
+            || completion.state().geometry() != geometry
+            || memory != expected.memory()
+            || output != expected.io().output()
+        {
+            return Err(String::from("v5 owned jump-code completion drifted"));
+        }
+    }
+    if loaded.admission() != &admission
+        || weight.mapped_bytes() != 12_288
+        || weight.mappings() != 1
+        || runner.calls != 2
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("v5 owned jump-code remapped or lost weight"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned jump-code release: {error}"))?;
+    if adapter.operations.len() == 5 {
+        Ok(())
+    } else {
+        Err(String::from("v5 owned jump-code release count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_jump_code_owned_survives_runner_failure()
+-> Result<(), String> {
+    let (admission, _geometry) =
+        geometry_native_jump_code_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(433)?,
+        native_executable_address(0x15_8000)?,
+    );
+    let loaded = admission
+        .load_owned(&mut adapter)
+        .map_err(|error| format!("v5 owned jump-code failure load: {error}"))?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut failed_runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) = loaded.execute(
+        &mut failed_runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 owned jump-code runner failure ignored"));
+    };
+    if !matches!(
+        failure.as_ref(),
+        JumpCodeOwnedFailure::Execution(error) if matches!(
+            error.as_ref(),
+            JumpCodeExecutionError::Runner(runner_error)
+                if **runner_error == FakeNativeRunnerError::Call
+        )
+    ) || memory != checkpoint.memory()
+        || output != checkpoint.io().output()
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from(
+            "v5 owned jump-code failure rollback drifted",
+        ));
+    }
+    let mut successful_runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let completion = loaded
+        .execute(
+            &mut successful_runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| {
+            format!("v5 owned jump-code retry execute: {error}")
+        })?;
+    if completion.state() != &expected
+        || memory != expected.memory()
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("v5 owned jump-code retry drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 owned jump-code retry release: {error}"))
 }
 
 #[test]
