@@ -154,6 +154,12 @@ Stars-and-bars separator positions use colexicographic combinadic rank, covering
 exactly `0..C(k+2^m-1,2^m-1)-1`, with constructive unranking through checked
 arity eight and dimension fourteen.
 
+For endpoint-order-sensitive analyses, those ordered quotient sizes also define
+exact complete-search budget thresholds. Strict growth with ambiguity dimension
+gives both the exact reachable-pair exceedance count for any integer budget and
+the minimum budget covering any requested number of reachable pairs, through
+checked arity eight and width fourteen.
+
 Full endpoint symmetry is now parameterized for checked arities three through
 eight using symmetric-group conjugacy partitions and the induced permutation
 cycles on binary joint labels. At `k=14`, the new S7 and S8 quotients have

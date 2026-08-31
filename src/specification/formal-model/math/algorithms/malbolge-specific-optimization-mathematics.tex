@@ -1454,6 +1454,45 @@ canonical counts are
 This is complete-domain search-space accounting only and inherits the same
 simultaneous-coordinate symmetry precondition; it makes no timing claim.
 
+For direction-sensitive analyses, write
+$O_{k,m}=\binom{k+2^m-1}{2^m-1}$ for the complete ordered canonical tuple
+requirement of one ambiguity-$k$ fixed pair. Since $2^m-1>0$, these requirements
+are strictly increasing in $k$. Thus any nonnegative integer ordered canonical-
+enumeration budget $B$ has exact exceedance
+\begin{equation}
+  E^{\mathrm{ord}}_{N,m}(B)
+    =\sum_{\substack{0\leq k\leq N\\ O_{k,m}>B}}
+      \binom{N}{k}2^k5^{N-k},
+  \quad 1\leq m\leq8,\ 1\leq N\leq14.
+  \label{eq:optimization-crazy-profile-ordered-tuple-budget-exceedance}
+\end{equation}
+This counts reachable fixed pairs whose complete ordered quotient contains more
+than $B$ canonical tuples. The endpoint budgets satisfy
+\[
+  E^{\mathrm{ord}}_{N,m}(0)=7^N,
+  \qquad E^{\mathrm{ord}}_{N,m}(O_{N,m})=0.
+\]
+
+Using the same cumulative ambiguity weights
+$C_N(k)=\sum_{j=0}^{k}\binom{N}{j}2^j5^{N-j}$, the least nonnegative ordered
+canonical-enumeration budget covering at least
+$Q\in\{0,\ldots,7^N\}$ reachable pairs is
+\begin{equation}
+  \fitmath{%
+    B^{\mathrm{ord}}_{N,m}(Q)=\begin{cases}
+      0,&Q=0,\\
+      O_{k^*,m},&1\leq Q\leq7^N,
+    \end{cases}
+    \qquad
+    k^*=\min\{k:C_N(k)\geq Q,\ 0\leq k\leq N\},
+    \quad 1\leq m\leq8,\ 1\leq N\leq14.
+  }
+  \label{eq:optimization-crazy-profile-ordered-tuple-minimum-coverage-budget}
+\end{equation}
+Strict threshold growth makes this minimal among all integer budgets. These two
+laws apply only to complete ordered quotient enumeration and do not impose a
+cost model on incomplete or stochastic search.
+
 The generic endpoint-unordered quotient composes over the same reachable-pair
 ambiguity classes. For each endpoint type above define
 \[

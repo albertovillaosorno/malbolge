@@ -371,3 +371,113 @@ def test_ordered_tuple_class_unrank_rejects_outside_dense_domain() -> None:
             symbol_count=symbol_count,
             dimension=dimension,
         ) is None
+
+
+def _ordered_budget_exceedance(
+    arity: int,
+    trit_count: int,
+    budget: int,
+) -> int:
+    return sum(
+        _fixed_pair_class_count(trit_count, dimension)
+        for dimension in range(trit_count + 1)
+        if _ordered_tuple_classes(arity, dimension) > budget
+    )
+
+
+def _ordered_budget_coverage(
+    arity: int,
+    trit_count: int,
+    budget: int,
+) -> int:
+    return _integer_power(7, trit_count) - _ordered_budget_exceedance(
+        arity,
+        trit_count,
+        budget,
+    )
+
+
+def _minimum_ordered_budget(
+    arity: int,
+    trit_count: int,
+    target_pairs: int,
+) -> int | None:
+    reachable = _integer_power(7, trit_count)
+    if target_pairs < 0 or target_pairs > reachable:
+        return None
+    if target_pairs == 0:
+        return 0
+    cumulative = 0
+    for dimension in range(trit_count + 1):
+        cumulative += _fixed_pair_class_count(trit_count, dimension)
+        if cumulative >= target_pairs:
+            return _ordered_tuple_classes(arity, dimension)
+    raise AssertionError
+
+
+def test_ordered_tuple_class_thresholds_are_strictly_increasing() -> None:
+    """Checked ordered quotient budgets grow strictly with cube dimension."""
+    for arity in range(1, _MAXIMUM_ARITY + 1):
+        counts = tuple(
+            _ordered_tuple_classes(arity, dimension)
+            for dimension in range(_MAXIMUM_TRITS + 1)
+        )
+        assert counts[0] == 1
+        assert all(
+            counts[index] < counts[index + 1]
+            for index in range(len(counts) - 1)
+        )
+
+
+def test_ordered_budget_exceedance_has_exact_checked_thresholds() -> None:
+    """Every ordered budget threshold removes exactly one ambiguity class."""
+    for arity in range(1, _MAXIMUM_ARITY + 1):
+        for trit_count in range(1, _MAXIMUM_TRITS + 1):
+            thresholds = tuple(
+                _ordered_tuple_classes(arity, dimension)
+                for dimension in range(trit_count + 1)
+            )
+            assert _ordered_budget_exceedance(arity, trit_count, 0) == (
+                _integer_power(7, trit_count)
+            )
+            assert _ordered_budget_exceedance(
+                arity,
+                trit_count,
+                thresholds[-1],
+            ) == 0
+            cumulative = 0
+            for dimension, threshold in enumerate(thresholds):
+                cumulative += _fixed_pair_class_count(trit_count, dimension)
+                assert _ordered_budget_coverage(
+                    arity,
+                    trit_count,
+                    threshold,
+                ) == cumulative
+
+
+def test_minimum_ordered_budget_inverts_exact_pair_coverage() -> None:
+    """Minimum ordered-search budgets invert each checked ambiguity boundary."""
+    for arity in range(1, _MAXIMUM_ARITY + 1):
+        for trit_count in range(1, _MAXIMUM_TRITS + 1):
+            cumulative = 0
+            assert _minimum_ordered_budget(arity, trit_count, 0) == 0
+            for dimension in range(trit_count + 1):
+                threshold = _ordered_tuple_classes(arity, dimension)
+                previous = cumulative
+                cumulative += _fixed_pair_class_count(trit_count, dimension)
+                assert _minimum_ordered_budget(
+                    arity,
+                    trit_count,
+                    previous + 1,
+                ) == threshold
+                assert _minimum_ordered_budget(
+                    arity,
+                    trit_count,
+                    cumulative,
+                ) == threshold
+            assert cumulative == _integer_power(7, trit_count)
+            assert _minimum_ordered_budget(
+                arity,
+                trit_count,
+                cumulative + 1,
+            ) is None
