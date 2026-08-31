@@ -47,6 +47,8 @@ pub mod execution_native;
 pub mod geometry_interpreter_handoff;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_native.rs"]
 pub mod geometry_native_admission;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_crazy.rs"]
+pub mod geometry_native_crazy;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xcache.rs"]
 pub mod geometry_native_cross_template_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xsync.rs"]
@@ -286,6 +288,10 @@ use geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltOwnedFailure,
     ExecutionGeometryNativeInitialHaltPreparationError,
     ExecutionGeometryNativeInitialHaltTransactionFailure,
+};
+use geometry_native_crazy::{
+    ExecutionGeometryNativeCrazyAdmission,
+    ExecutionGeometryNativeCrazyAdmissionError,
 };
 use geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruAcquireFailure as CrossLruFailure,
@@ -746,6 +752,10 @@ type InitialJumpTransactionFailure<MemoryError, RunnerError> =
 type DerivedV5HandoffFixture = (
     ExecutionGeometryRegionEffectProgram,
     ProfileMachineState,
+    malbolge::ProfileExecutionGeometry,
+);
+type GeometryNativeCrazyAdmissionFixture = (
+    ExecutionGeometryNativeCrazyAdmission,
     malbolge::ProfileExecutionGeometry,
 );
 type GeometryNativeAdmissionFixture = (
@@ -14528,6 +14538,24 @@ fn load_geometry_native_noop_halt_pair(
     Ok((no_operation, halt))
 }
 
+fn geometry_native_crazy_admission_fixture(
+    word_trits: u8,
+) -> Result<GeometryNativeCrazyAdmissionFixture, String> {
+    let (program, checkpoint, geometry) = derived_v5_crazy_fixture(word_trits)?;
+    let artifact = emit_direct_execution_geometry_crazy_coff(
+        &program,
+        direct_execution_geometry_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 crazy admission emit: {error}"))?;
+    let verified = verify_direct_execution_geometry_crazy(&artifact, &program)
+        .map_err(|error| format!("v5 crazy admission verify: {error}"))?;
+    let admission = ExecutionGeometryNativeCrazyAdmission::new(
+        program, checkpoint, verified,
+    )
+    .map_err(|error| format!("v5 crazy admission: {error}"))?;
+    Ok((admission, geometry))
+}
+
 fn geometry_native_initial_jump_data_admission_fixture(
     word_trits: u8,
 ) -> Result<GeometryNativeInitialJumpDataAdmissionFixture, String> {
@@ -23691,6 +23719,84 @@ fn geometry_native_input_transaction_retains_committed_release_retry()
     release_failure
         .retry(&mut adapter)
         .map_err(|error| format!("v5 input committed cleanup retry: {error}"))
+}
+
+#[test]
+fn geometry_native_crazy_admission_replays_normative_state()
+-> Result<(), String> {
+    let (admission, geometry) = geometry_native_crazy_admission_fixture(10)?;
+    let checkpoint = admission.checkpoint();
+    let expected = admission.expected_state();
+    if checkpoint.geometry() != geometry
+        || expected.geometry() != geometry
+        || expected.registers().accumulator != 67
+        || admission.load_image().key() != admission.artifact().key()
+        || admission.load_image().entry_code().is_empty()
+        || admission.program().exit_observation()
+            != Some(profile_state_observation(expected))
+    {
+        return Err(String::from("v5 crazy admission replay drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn geometry_native_crazy_admission_rejects_artifact_identity()
+-> Result<(), String> {
+    let (n10_program, n10_checkpoint, _n10_geometry) =
+        derived_v5_crazy_fixture(10)?;
+    let (n11_program, _n11_checkpoint, _n11_geometry) =
+        derived_v5_crazy_fixture(11)?;
+    let n11_artifact = emit_direct_execution_geometry_crazy_coff(
+        &n11_program,
+        direct_execution_geometry_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 crazy mismatch emit: {error}"))?;
+    let n11_verified =
+        verify_direct_execution_geometry_crazy(&n11_artifact, &n11_program)
+            .map_err(|error| format!("v5 crazy mismatch verify: {error}"))?;
+    if ExecutionGeometryNativeCrazyAdmission::new(
+        n10_program,
+        n10_checkpoint,
+        n11_verified,
+    ) == Err(ExecutionGeometryNativeCrazyAdmissionError::ArtifactIdentity)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v5 crazy admitted different artifact identity",
+        ))
+    }
+}
+
+#[test]
+fn geometry_native_crazy_admission_rejects_checkpoint_geometry()
+-> Result<(), String> {
+    let (n10_program, _n10_checkpoint, _n10_geometry) =
+        derived_v5_crazy_fixture(10)?;
+    let (_n11_program, n11_checkpoint, _n11_geometry) =
+        derived_v5_crazy_fixture(11)?;
+    let n10_artifact = emit_direct_execution_geometry_crazy_coff(
+        &n10_program,
+        direct_execution_geometry_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 crazy checkpoint emit: {error}"))?;
+    let n10_verified =
+        verify_direct_execution_geometry_crazy(&n10_artifact, &n10_program)
+            .map_err(|error| format!("v5 crazy checkpoint verify: {error}"))?;
+    if ExecutionGeometryNativeCrazyAdmission::new(
+        n10_program,
+        n11_checkpoint,
+        n10_verified,
+    ) == Err(ExecutionGeometryNativeCrazyAdmissionError::Checkpoint(
+        ExecutionGeometryHandoffAdmissionError::CheckpointGeometry,
+    )) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v5 crazy admitted different checkpoint geometry",
+        ))
+    }
 }
 
 #[test]

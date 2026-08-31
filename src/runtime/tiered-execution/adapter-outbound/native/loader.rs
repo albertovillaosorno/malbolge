@@ -42,6 +42,7 @@ use super::coff::{
 };
 use super::direct::{
     VerifiedDirectNativeArtifact,
+    VerifiedExecutionGeometryCrazyNativeObjectArtifact,
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact,
     VerifiedExecutionGeometryInputNativeObjectArtifact,
@@ -169,6 +170,22 @@ impl VerifiedExecutionGeometryLoadImage {
     #[must_use]
     pub const fn entry_offset(&self) -> usize {
         self.entry_offset
+    }
+
+    /// Derives a relocation-free image from verified v5 crazy bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectLoadError`] when COFF extraction, relocation, or
+    /// target instruction alignment is invalid.
+    pub fn from_crazy(
+        artifact: &VerifiedExecutionGeometryCrazyNativeObjectArtifact,
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        Self::from_verified_parts(
+            artifact.key(),
+            artifact.object(),
+            artifact.target_triple(),
+        )
     }
 
     /// Derives a relocation-free image from verified v5 initial-halt bytes.

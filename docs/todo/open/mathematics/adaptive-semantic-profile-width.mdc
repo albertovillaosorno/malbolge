@@ -941,8 +941,12 @@ transfers, verification, and other separately measured costs.
   guarded `p` reached after jump/rotate in `(&<;:9K`. It derives word width,
   memory-domain checks, and C/D wrap from explicit geometry while preserving
   legacy direct-crazy bytes; N10/N11 keys and COFF bytes remain distinct on both
-  reviewed ISAs. Checkpoint replay, load-image, invocation, ownership, and
-  residency remain open for crazy.
+  reviewed ISAs.
+- Crazy now also has checkpoint-bound semantic admission and a relocation-free
+  load image. Admission replays the exact `p` from the opaque post-rotate
+  checkpoint, retains the normative exit as future Applied authority, and
+  rejects artifact or checkpoint geometry drift before mapping. ABI invocation,
+  reusable ownership, and heterogeneous residency remain open.
 - Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
   dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical

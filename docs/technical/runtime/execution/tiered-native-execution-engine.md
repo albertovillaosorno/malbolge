@@ -374,9 +374,15 @@ self-encryption writes, and operands inside the explicit geometry domain before
 reusing the reviewed x86-64/AArch64 crazy machine-code template. N10 and N11
 retain distinct v5 keys and COFF bytes; cross-geometry verification and tampered
 profile metadata reject. Legacy `direct-crazy` byte-exact fixtures remain
-unchanged. This boundary grants artifact identity and verification only;
-checkpoint replay, load-image, invocation, reusable ownership, and residency
-remain separate work.
+unchanged.
+
+Crazy now also has checkpoint-bound semantic admission before any mapping.
+`ExecutionGeometryNativeCrazyAdmission` binds the verified artifact to the
+opaque checkpoint after jump/rotate, normatively replays the exact `p`, and
+retains that replayed state as future Applied authority. Only after replay does
+it reconstruct the v5 key and extract a relocation-free load image. N10/N11
+artifact and checkpoint drift reject independently; ABI preparation, runner
+execution, reusable ownership, and residency remain separate work.
 
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low
