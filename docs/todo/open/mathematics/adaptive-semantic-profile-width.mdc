@@ -739,10 +739,11 @@ transfers, verification, and other separately measured costs.
 - Mapping-count admission uses exact resident weight: full-path triples require
   three mappings, limit two rejects with rollback, and limit six evicts one LRU
   before admitting a third resident.
-- A typed cross-template resident plan wraps initial jump-data, no-op/halt,
-  rotate/halt, and full-path admission without sharing execution semantics.
-  Loaded owners retain exact variant identity, report 1/2/2/3 mapping weights,
-  and preserve specialized load/execution/release retry ownership.
+- A typed cross-template resident plan wraps initial halt, initial jump-data,
+  no-op/halt, rotate/halt, and full-path admission without sharing execution
+  semantics. Loaded owners retain exact variant identity, report 1/1/2/2/3
+  mapping weights, and preserve specialized load/execution/release retry
+  ownership.
 - The heterogeneous LRU now accepts entry, exact mapped-byte, and mapping-count
   limits. Resource-bounded misses load and measure the typed candidate first,
   reject oversized residents with rollback, and can evict multiple unleased LRU
@@ -771,10 +772,10 @@ transfers, verification, and other separately measured costs.
   oversized fixture proves the snapshot contracts from two residents to one
   leased full-path resident and finally to empty zero-usage closure.
 - Heterogeneous leases now execute the retained specialized owner directly.
-  Outcomes and failures stay tagged as initial jump-data, no-op/halt,
-  rotate/halt, or full-path; checkpoints, guard behavior, and rollback remain
-  owned by the original template implementation. Execution performs no adapter
-  work.
+  Outcomes and failures stay tagged as initial halt, initial jump-data,
+  no-op/halt, rotate/halt, or full-path; checkpoints, guard behavior, and
+  rollback remain owned by the original template implementation. Execution
+  performs no adapter work.
 - Heterogeneous acquisitions can also execute while preserving the cache action
   (`Inserted`, `Hit`, or `Evicted`) in success or failure. Consuming that
   temporary acquisition drops its external lease after execution while resident
@@ -844,6 +845,10 @@ transfers, verification, and other separately measured costs.
   admitted image once, reuses existing prepare/bind execution without remapping,
   preserves entry rollback after runner failure, reports weight from the actual
   mapping report, and transfers exact ready-executable cleanup on release.
+- Initial halt is now also a heterogeneous resident with exact admission
+  identity, one-mapping weight, hit reuse, primary-load retry, typed release
+  cleanup, and unchanged checkpoint-bound execution. Halt and jump can coexist
+  under a two-mapping budget; a two-mapping pair evicts both when required.
 - Initial jump-data is now also a heterogeneous resident. Exact admission is
   its cache identity, hits reuse one mapping, primary-load rollback preserves
   the variant, release failure transfers typed cleanup, and mapping-count policy
