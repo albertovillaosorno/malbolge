@@ -698,7 +698,10 @@ transfers, verification, and other separately measured costs.
   reuses the same Byte/EOF prepare/bind path without remapping, reports exact
   platform mapped bytes plus one live mapping, survives runner failure with the
   ready executable intact, and transfers retryable cleanup on release failure.
-  Heterogeneous residency remains open.
+- Input is now also a standalone heterogeneous resident. Exact admission is its
+  identity, hits reuse one mapping without adapter work, execution/weight stay
+  Input-tagged, and release failure removes cache authority while transferring
+  typed ready-executable cleanup for retry. The LRU algorithm is unchanged.
 - A geometry-bound output artifact now exists for the reached `<` step of the
   certified `ubO` input/output/halt path with nonempty input. Profile identity
   still selects output opcode/byte semantics, while explicit geometry supplies
@@ -775,10 +778,10 @@ transfers, verification, and other separately measured costs.
   three mappings, limit two rejects with rollback, and limit six evicts one LRU
   before admitting a third resident.
 - A typed cross-template resident plan wraps initial halt, initial jump-data,
-  no-operation, no-op/halt, rotate, rotate/halt, and full-path admission without
-  sharing execution semantics. Loaded owners retain exact variant identity,
-  report 1/1/1/2/1/2/3 mapping weights, and preserve specialized
-  load/execution/release retry ownership.
+  input, no-operation, no-op/halt, output, rotate, rotate/halt, and full-path
+  admission without sharing execution semantics. Loaded owners retain exact
+  variant identity, report 1/1/1/1/2/1/1/2/3 mapping weights, and preserve
+  specialized load/execution/release retry ownership.
 - The heterogeneous LRU now accepts entry, exact mapped-byte, and mapping-count
   limits. Resource-bounded misses load and measure the typed candidate first,
   reject oversized residents with rollback, and can evict multiple unleased LRU
@@ -811,10 +814,10 @@ transfers, verification, and other separately measured costs.
   oversized fixture proves the snapshot contracts from two residents to one
   leased full-path resident and finally to empty zero-usage closure.
 - Heterogeneous leases now execute the retained specialized owner directly.
-  Outcomes and failures stay tagged as initial halt, initial jump-data,
-  no-operation, no-op/halt, rotate, rotate/halt, or full-path; checkpoints,
-  guard behavior, and rollback remain owned by the original template
-  implementation. Execution performs no adapter work.
+  Outcomes and failures stay tagged as initial halt, initial jump-data, input,
+  no-operation, no-op/halt, output, rotate, rotate/halt, or full-path;
+  checkpoints, guard behavior, and rollback remain owned by the original
+  template implementation. Execution performs no adapter work.
 - Heterogeneous acquisitions can also execute while preserving the cache action
   (`Inserted`, `Hit`, or `Evicted`) in success or failure. Consuming that
   temporary acquisition drops its external lease after execution while resident
@@ -931,9 +934,11 @@ transfers, verification, and other separately measured costs.
   the same reusable initial-jump owner. Triple load/release no longer duplicate
   raw jump executable ownership while preserving existing suffix rollback and
   three-mapping cleanup contracts.
-- Input native execution and crazy native templates remain open; output has
-  exact v5
-  artifact, checkpoint replay, load-image, prepare/bind, dedicated runner, and
+- Input now has exact Byte/EOF v5 artifact identity, checkpoint replay,
+  load-image, prepare/bind, dedicated runner, transactional cleanup, reusable
+  one-mapping ownership, and heterogeneous residency with typed cleanup retry.
+- Crazy native templates remain open; output has exact v5 artifact, checkpoint
+  replay, load-image, prepare/bind, dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical
   capacity: only the checkpoint's logical prefix is entry state, while the ABI
   separately requires room for the exact append and rolls the whole slice back

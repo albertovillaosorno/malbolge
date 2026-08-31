@@ -710,8 +710,13 @@ Input also has a reusable one-mapping owner with heap-owned exact admission. It
 loads once, executes Byte or EOF through the same prepare/bind runner path
 without remapping, reports exact platform mapped bytes plus one live mapping,
 and retains the ready executable across runner failure for later reuse. Release
-uses the same retryable executable cleanup contract. Heterogeneous residency
-remains separate work.
+uses the same retryable executable cleanup contract.
+
+Input is now also a standalone heterogeneous resident. Exact admission is its
+cache identity; load, execution, weight, release, and cleanup retry stay tagged
+as Input while the existing LRU remains operation-agnostic. Exact hits reuse the
+one mapping with no adapter work, and failed release removes cache authority
+while transferring the typed ready-executable cleanup token for retry.
 
 `direct-execution-geometry-output` revision 1 adds a byte-verifiable v5 output
 artifact boundary with operation-specific execution authority composed below.
@@ -955,12 +960,12 @@ loaded triples. A limit below three rejects one candidate with rollback, while a
 limit of six admits two full-path residents and evicts LRU authority before a
 third can publish.
 
-`GeometryNativeResidentPlan` now gives initial halt, initial jump-data,
-no-operation, no-op/halt, rotate, rotate/halt, and full-path templates one typed
-lifecycle boundary without merging execution semantics. The loaded-resident
-enum preserves exact variant identity, derives 1/1/1/2/1/2/3 mapping weights
-from synchronized reports, and delegates load, execution, release, and retry to
-each specialized owner.
+`GeometryNativeResidentPlan` now gives initial halt, initial jump-data, input,
+no-operation, no-op/halt, output, rotate, rotate/halt, and full-path templates
+one typed lifecycle boundary without merging execution semantics. The
+loaded-resident enum preserves exact variant identity, derives
+1/1/1/1/2/1/1/2/3 mapping weights from synchronized reports, and delegates
+load, execution, release, and retry to each specialized owner.
 
 `GeometryNativeCrossTemplateLruCache` now performs real cross-template
 residency over that typed boundary. It always has a nonzero resident entry limit
@@ -981,17 +986,19 @@ evidence reports prior removals so partial successful eviction is observable.
 The existing entry-only and weighted cases still mix no-op/halt, rotate/halt,
 and full-path residents through recency, lease, saturation, byte/mapping
 pressure, rollback, release-failure, and vacancy paths. Focused cases for
-initial jump, initial halt, no-operation, output, and rotate add single-mapping
-lifecycle, hit reuse, typed cleanup, and resource-accounting coverage. Output
-joins this policy only through the typed resident boundary: its LRU insert/hit
-path does not add output-specific eviction or weighting logic.
+initial jump, initial halt, input, no-operation, output, and rotate add
+single-mapping lifecycle, hit reuse, typed cleanup, and resource-accounting
+coverage. Input and output join this policy only through the typed resident
+boundary: their LRU insert/hit paths add no operation-specific eviction or
+weighting logic.
 
 A heterogeneous lease can now execute its resident directly without cache or
 adapter work. The common execution boundary only tags the existing specialized
-outcome/failure as full-path, initial halt, initial jump-data, no-operation,
-no-op/halt, output, rotate, or rotate/halt; it does not translate checkpoints,
-guard misses, committed state, or rollback semantics. The five single-mapping
-templates therefore reuse their one-step completion and rollback contracts.
+outcome/failure as full-path, initial halt, initial jump-data, input,
+no-operation, no-op/halt, output, rotate, or rotate/halt; it does not translate
+checkpoints, guard misses, committed state, or rollback semantics. The six
+single-mapping templates therefore reuse their one-step completion and rollback
+contracts.
 
 `GeometryNativeCrossTemplateLruAcquisition::execute()` now consumes the
 temporary

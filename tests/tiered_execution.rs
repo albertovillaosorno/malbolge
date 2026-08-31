@@ -14062,6 +14062,12 @@ fn cross_template_no_operation_plan() -> Result<CrossResidentPlan, String> {
     Ok(CrossResidentPlan::NoOperation(Box::new(admission)))
 }
 
+fn cross_template_input_plan() -> Result<CrossResidentPlan, String> {
+    let (admission, _geometry) =
+        geometry_native_input_admission_fixture(10, vec![0xa5])?;
+    Ok(CrossResidentPlan::Input(Box::new(admission)))
+}
+
 fn cross_template_output_plan() -> Result<CrossResidentPlan, String> {
     let (admission, _geometry) = geometry_native_output_admission_fixture(10)?;
     Ok(CrossResidentPlan::Output(Box::new(admission)))
@@ -19472,6 +19478,123 @@ fn geometry_native_cross_template_no_operation_shares_single_mapping_budget()
         .release_if_unleased(&mut adapter, &pair_plan)
         .map(|_release| ())
         .map_err(|error| format!("cross no-op pair cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_input_resident_runs() -> Result<(), String> {
+    let plan = cross_template_input_plan()?;
+    let CrossResidentPlan::Input(admission) = &plan else {
+        return Err(String::from("cross input plan variant drifted"));
+    };
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(282)?,
+        native_executable_address(0xc_7000)?,
+    )
+    .with_mapped_len_overrides(vec![16_384]);
+    let loaded = plan
+        .load(&mut adapter)
+        .map_err(|error| format!("cross input load: {error}"))?;
+    let weight = loaded
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = loaded
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("cross input execute: {error}"))?;
+    if loaded.kind() != CrossResidentKind::Input
+        || !loaded.matches_plan(&plan)
+        || loaded.plan() != plan
+        || weight.mapped_bytes() != 16_384
+        || weight.mappings() != 1
+        || outcome.kind() != CrossResidentKind::Input
+        || !matches!(outcome, CrossExecutionOutcome::Input(_))
+        || outcome.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 1
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("cross input resident execution drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("cross input resident release: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_input_lru_hit_reuses() -> Result<(), String> {
+    let plan = cross_template_input_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(283)?,
+        native_executable_address(0xc_8000)?,
+    )
+    .with_mapped_len_overrides(vec![16_384]);
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| format!("cross input insert: {error}"))?,
+    );
+    let operations_before = adapter.operations.len();
+    let hit = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross input hit: {error}"))?;
+    let weight = hit
+        .lease()
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    if hit.disposition() != CrossLruDisposition::Hit
+        || hit.lease().kind() != CrossResidentKind::Input
+        || !hit.lease().matches_plan(&plan)
+        || weight.mapped_bytes() != 16_384
+        || weight.mappings() != 1
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from("cross input hit remapped resident"));
+    }
+    drop(hit);
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross input hit cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_input_release_failure_typed()
+-> Result<(), String> {
+    let plan = cross_template_input_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(284)?,
+        native_executable_address(0xc_9000)?,
+    )
+    .with_release_failures(1);
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| format!("cross input typed acquire: {error}"))?,
+    );
+    let Err(failure) = cache.release_if_unleased(&mut adapter, &plan) else {
+        return Err(String::from("cross input release failure ignored"));
+    };
+    if !matches!(failure.as_ref(), CrossResidentReleaseFailure::Input(_))
+        || cache.contains(&plan)
+    {
+        return Err(String::from("cross input cleanup authority drifted"));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|error| format!("cross input cleanup retry: {error}"))
 }
 
 #[test]
