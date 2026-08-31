@@ -34,6 +34,8 @@
 
 use super::*;
 
+type ExecutionGeometryCrazyShapeResult =
+    Result<DirectCrazyProgram, DirectExecutionGeometryCrazyError>;
 type ExecutionGeometryInitialHaltShapeResult = Result<
     DirectFetchedTerminalProgram,
     DirectExecutionGeometryInitialHaltError,
@@ -101,6 +103,136 @@ pub(super) fn fetched_terminal_program(
         live_in,
         observation: effect.before,
     })
+}
+
+pub(super) fn validate_execution_geometry_crazy_program(
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> ExecutionGeometryCrazyShapeResult {
+    if program.format_version() != EFFECT_IR_EXECUTION_GEOMETRY_VERSION
+        || !program.fits_execution_geometry_capacity()
+        || !program.fits_profile_capacity()
+        || program.step_budget() != 1
+        || program.memory_live_ins().len() != 2
+        || program.effects().len() != 1
+        || program.outcome() != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectExecutionGeometryCrazyError::ProgramShape);
+    }
+    let effect = program
+        .effects()
+        .first()
+        .copied()
+        .ok_or(DirectExecutionGeometryCrazyError::ProgramShape)?;
+    derive_execution_geometry_crazy_program(program, effect)
+        .ok_or(DirectExecutionGeometryCrazyError::ProgramShape)
+}
+
+fn derive_execution_geometry_crazy_program(
+    program: &ExecutionGeometryRegionEffectProgram,
+    effect: EffectOp,
+) -> Option<DirectCrazyProgram> {
+    let before = effect.before;
+    let code_pointer = before.registers.code_pointer;
+    let data_pointer = before.registers.data_pointer;
+    if code_pointer == data_pointer || before.termination.is_some() {
+        return None;
+    }
+    let code_live_in = program
+        .memory_live_ins()
+        .iter()
+        .copied()
+        .find(|live_in| live_in.address == code_pointer)?;
+    let data_live_in = program
+        .memory_live_ins()
+        .iter()
+        .copied()
+        .find(|live_in| live_in.address == data_pointer)?;
+    let commit = execution_geometry_crazy_commit(
+        program,
+        before,
+        code_live_in,
+        data_live_in,
+    )?;
+    let expected_after = ProfileMachineObservation {
+        registers: ProfileRegisters {
+            accumulator: commit.accumulator,
+            code_pointer: commit.next_code_pointer,
+            data_pointer: commit.next_data_pointer,
+        },
+        ..before
+    };
+    if effect.after != expected_after
+        || effect.input.is_some()
+        || effect.output.is_some()
+        || effect.memory_delta
+            != rotate_memory_delta(code_live_in, data_live_in, commit)
+    {
+        return None;
+    }
+    Some(DirectCrazyProgram {
+        code_live_in,
+        commit,
+        data_live_in,
+        observation: before,
+    })
+}
+
+fn execution_geometry_crazy_commit(
+    program: &ExecutionGeometryRegionEffectProgram,
+    before: ProfileMachineObservation,
+    code_live_in: MemoryLiveIn,
+    data_live_in: MemoryLiveIn,
+) -> Option<DirectCrazyCommit> {
+    let code_pointer = before.registers.code_pointer;
+    let data_pointer = before.registers.data_pointer;
+    let geometry = program.execution_geometry();
+    let memory_words = geometry.memory_words();
+    if decode_profile_instruction(code_live_in.value, code_pointer)
+        != Some(b'p')
+        || data_live_in.value >= memory_words
+        || before.registers.accumulator >= memory_words
+    {
+        return None;
+    }
+    let value = profile_crazy(
+        data_live_in.value,
+        before.registers.accumulator,
+        geometry.word_trits(),
+    );
+    Some(DirectCrazyCommit {
+        accumulator: value,
+        data_address: data_pointer,
+        data_value: value,
+        encrypted_address: code_pointer,
+        encrypted_value: encrypt_profile_cell(code_live_in.value)?,
+        next_code_pointer: profile_pointer_successor(
+            code_pointer,
+            memory_words,
+        )?,
+        next_data_pointer: profile_pointer_successor(
+            data_pointer,
+            memory_words,
+        )?,
+    })
+}
+
+pub(super) fn validate_execution_geometry_crazy_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectExecutionGeometryCrazyError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectExecutionGeometryCrazyError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectExecutionGeometryCrazyError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectExecutionGeometryCrazyError::TargetFeatures);
+    }
+    Ok(())
 }
 
 pub(super) fn validate_execution_geometry_initial_halt_program(

@@ -86,6 +86,53 @@ impl From<NativeIdentityError> for DirectDeoptError {
     }
 }
 
+/// Failure while emitting or verifying v5 guarded crazy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectExecutionGeometryCrazyError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this v5 program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical guarded crazy object.
+    ObjectBytes,
+    /// Explicit-geometry IR is outside the guarded crazy subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this v5 contract.
+    TargetBackend,
+    /// This v5 backend has no target-specific feature specializations.
+    TargetFeatures,
+    /// This v5 backend currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectExecutionGeometryCrazyError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => "v5 crazy COFF structure was rejected",
+            Self::Identity(_error) => "v5 crazy identity construction failed",
+            Self::ObjectBytes => "v5 crazy object differs from canonical bytes",
+            Self::ProgramShape => {
+                "explicit-geometry IR is outside v5 crazy subset"
+            },
+            Self::TargetBackend => "target does not select v5 crazy backend",
+            Self::TargetFeatures => "v5 crazy backend requires no CPU features",
+            Self::TargetFormat => "v5 crazy backend requires Windows COFF",
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectExecutionGeometryCrazyError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectExecutionGeometryCrazyError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying v5 guarded initial halt.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectExecutionGeometryInitialHaltError {

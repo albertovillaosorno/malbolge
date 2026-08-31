@@ -160,6 +160,8 @@ use execution_native::{
     CachedPreflightedExecutionTier, CoffAdmissionError,
     DIRECT_CRAZY_BACKEND_ID, DIRECT_CRAZY_BACKEND_REVISION,
     DIRECT_DEOPT_BACKEND_ID, DIRECT_DEOPT_BACKEND_REVISION,
+    DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID,
+    DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_ID,
@@ -183,7 +185,7 @@ use execution_native::{
     DIRECT_OUTPUT_BACKEND_ID, DIRECT_OUTPUT_BACKEND_REVISION,
     DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
     DirectCacheDisposition, DirectCrazyError, DirectDeoptError,
-    DirectExecutionGeometryInitialHaltError,
+    DirectExecutionGeometryCrazyError, DirectExecutionGeometryInitialHaltError,
     DirectExecutionGeometryInitialJumpDataError,
     DirectExecutionGeometryInputError, DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
@@ -231,6 +233,7 @@ use execution_native::{
     VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
     VerifiedExecutionGeometryLoadImage, compile_preflighted_clang_c23,
     emit_direct_crazy_coff, emit_direct_deopt_coff,
+    emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_input_coff,
@@ -253,6 +256,7 @@ use execution_native::{
     select_cached_verified_direct_sequence, select_preflighted_execution_tier,
     select_verified_direct_native, select_verified_direct_sequence,
     structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
+    verify_direct_execution_geometry_crazy,
     verify_direct_execution_geometry_initial_halt,
     verify_direct_execution_geometry_initial_jump_data,
     verify_direct_execution_geometry_input,
@@ -425,6 +429,7 @@ use malbolge::{
     safe_rust_profiled_capability, target_profile,
     verify_initial_halt_profile_width, verify_input_output_halt_profile_width,
     verify_input_then_halt_profile_width,
+    verify_jump_rotate_crazy_halt_profile_width,
     verify_jump_rotate_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_noop_prefix_halt_profile_width,
@@ -2755,6 +2760,19 @@ fn direct_deopt_target(isa: HostIsa) -> NativeTargetIdentity {
     NativeTargetIdentity::new(NativeTargetConfig {
         backend_id: String::from(DIRECT_DEOPT_BACKEND_ID),
         backend_revision: DIRECT_DEOPT_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+fn direct_execution_geometry_crazy_target(
+    isa: HostIsa,
+) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID),
+        backend_revision: DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_REVISION,
         host_isa: isa,
         host_os: HostOperatingSystem::Windows,
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
@@ -12756,6 +12774,42 @@ fn native_interpreter_handoff_completes_from_checkpoint() -> Result<(), String>
     }
 }
 
+fn derived_v5_crazy_fixture(
+    word_trits: u8,
+) -> Result<DerivedV5HandoffFixture, String> {
+    let verified = verify_jump_rotate_crazy_halt_profile_width(
+        current_profile(),
+        b"(&<;:9K",
+        word_trits,
+    )
+    .map_err(|error| format!("v5 crazy verification: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new())
+            .map_err(|error| format!("v5 crazy machine: {error}"))?;
+    for label in ["jump", "rotate"] {
+        let outcome = machine
+            .step()
+            .map_err(|error| format!("v5 crazy {label}: {error}"))?;
+        if outcome != StepOutcome::Continued {
+            return Err(format!("v5 crazy {label} did not advance"));
+        }
+    }
+    let checkpoint = machine.snapshot_state();
+    let mut trace_slot = None;
+    let outcome = machine
+        .step_traced(&mut |trace| trace_slot = Some(*trace))
+        .map_err(|error| format!("v5 crazy trace: {error}"))?;
+    if outcome != StepOutcome::Continued {
+        return Err(String::from("v5 crazy fixture did not advance"));
+    }
+    let trace =
+        trace_slot.ok_or_else(|| String::from("v5 crazy trace missing"))?;
+    let program =
+        ExecutionGeometryRegionEffectProgram::from_profile_step_trace(&trace)
+            .map_err(|error| format!("v5 crazy projection: {error:?}"))?;
+    Ok((program, checkpoint, verified.geometry()))
+}
+
 fn derived_v5_handoff_fixture(
     word_trits: u8,
 ) -> Result<DerivedV5HandoffFixture, String> {
@@ -13031,6 +13085,74 @@ fn derived_v5_noop_halt_sequence_fixture(
         states,
         traces,
     })
+}
+
+fn assert_v5_crazy_artifact(
+    isa: HostIsa,
+    n10: &ExecutionGeometryRegionEffectProgram,
+    n11: &ExecutionGeometryRegionEffectProgram,
+) -> Result<(), String> {
+    let n10_artifact = emit_direct_execution_geometry_crazy_coff(
+        n10,
+        direct_execution_geometry_crazy_target(isa),
+    )
+    .map_err(|error| format!("v5 crazy N10 {isa:?} emit: {error}"))?;
+    let n11_artifact = emit_direct_execution_geometry_crazy_coff(
+        n11,
+        direct_execution_geometry_crazy_target(isa),
+    )
+    .map_err(|error| format!("v5 crazy N11 {isa:?} emit: {error}"))?;
+    if n10_artifact.key() == n11_artifact.key()
+        || n10_artifact.object() == n11_artifact.object()
+        || n10_artifact.key().ir().execution_geometry()
+            != Some(n10.execution_geometry())
+    {
+        return Err(String::from("v5 crazy geometry identity collapsed"));
+    }
+    let verified =
+        verify_direct_execution_geometry_crazy(&n10_artifact, n10)
+            .map_err(|error| format!("v5 crazy N10 {isa:?} verify: {error}"))?;
+    if verified.key() != n10_artifact.key()
+        || verified.object() != n10_artifact.object()
+        || verified.target_triple() != n10_artifact.target_triple()
+    {
+        return Err(String::from("v5 crazy verification drifted"));
+    }
+    if verify_direct_execution_geometry_crazy(&n10_artifact, n11)
+        != Err(DirectExecutionGeometryCrazyError::ProgramShape)
+    {
+        return Err(String::from("v5 crazy geometry mismatch admitted"));
+    }
+    assert_tampered_direct_profile_metadata(&n10_artifact)
+}
+
+#[test]
+fn direct_execution_geometry_crazy_admits_exact_v5_geometry()
+-> Result<(), String> {
+    let (n10, n10_checkpoint, n10_geometry) = derived_v5_crazy_fixture(10)?;
+    let (n11, _n11_checkpoint, _n11_geometry) = derived_v5_crazy_fixture(11)?;
+    let [effect] = n10.effects() else {
+        return Err(String::from("v5 crazy effect count drifted"));
+    };
+    let data_write = effect
+        .memory_delta
+        .data
+        .ok_or_else(|| String::from("v5 crazy data write missing"))?;
+    if effect.before.registers.data_pointer != 42
+        || n10_checkpoint.registers().data_pointer != 42
+        || data_write.address != 42
+        || data_write.after != 67
+        || effect.after.registers.accumulator != 67
+        || n10.execution_geometry().memory_words()
+            != n10_geometry.memory_words()
+        || n10.execution_geometry() == n11.execution_geometry()
+    {
+        return Err(String::from("v5 crazy theorem trace drifted"));
+    }
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_v5_crazy_artifact(isa, &n10, &n11)?;
+    }
+    Ok(())
 }
 
 fn assert_v5_initial_jump_data_artifact(

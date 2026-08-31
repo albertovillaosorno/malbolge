@@ -51,6 +51,7 @@ pub use artifact::*;
 use coff::*;
 pub use emit::{
     emit_direct_crazy_coff, emit_direct_deopt_coff,
+    emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_input_coff,
@@ -93,6 +94,7 @@ pub use sequence::*;
 use shape::*;
 pub use verify::{
     verify_direct_crazy, verify_direct_deopt_stub,
+    verify_direct_execution_geometry_crazy,
     verify_direct_execution_geometry_initial_halt,
     verify_direct_execution_geometry_initial_jump_data,
     verify_direct_execution_geometry_input,
@@ -133,6 +135,11 @@ const REQUIRED_ENTRY: &str = "malbolge_native_region_apply";
 pub const DIRECT_DEOPT_BACKEND_ID: &str = "direct-deopt-stub";
 /// Direct deoptimization-stub code-generation revision.
 pub const DIRECT_DEOPT_BACKEND_REVISION: u32 = 4;
+/// Backend identity for explicit-geometry one-step crazy.
+pub const DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID: &str =
+    "direct-execution-geometry-crazy";
+/// Explicit-geometry crazy code-generation revision.
+pub const DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_REVISION: u32 = 1;
 /// Backend identity for guarded explicit-geometry initial halt.
 pub const DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID: &str =
     "direct-execution-geometry-initial-halt";

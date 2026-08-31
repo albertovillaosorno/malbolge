@@ -160,6 +160,30 @@ pub(super) fn halt_registers_coff(
     build_minimal_coff(key, &text).ok_or(DirectHaltRegistersError::ObjectBytes)
 }
 
+pub(super) fn execution_geometry_crazy_coff(
+    key: &NativeArtifactKey,
+    selected: DirectCrazyProgram,
+) -> Result<Vec<u8>, DirectExecutionGeometryCrazyError> {
+    let observation = direct_entry_observation(selected.observation)
+        .ok_or(DirectExecutionGeometryCrazyError::ObjectBytes)?;
+    let guard = DirectCrazyGuard {
+        code_live_in: selected.code_live_in.value,
+        data_live_in: selected.data_live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::crazy_code(observation, guard, selected.commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::crazy_code(observation, guard, selected.commit)
+        },
+    }
+    .ok_or(DirectExecutionGeometryCrazyError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectExecutionGeometryCrazyError::ObjectBytes)
+}
+
 pub(super) fn execution_geometry_initial_halt_coff(
     key: &NativeArtifactKey,
     selected: DirectFetchedTerminalProgram,

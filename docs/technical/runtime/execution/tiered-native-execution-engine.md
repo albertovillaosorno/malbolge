@@ -363,6 +363,21 @@ successor helpers. Both ISAs guard the complete entry, exact 9-word footprint,
 structural-but-semantic tampering rejection bind the contract. Aliasing `C == D`
 remains rejected.
 
+`direct-execution-geometry-crazy` revision 1 adds an artifact-only v5 crazy
+boundary from the first `p` reached after jump and rotate in the independently
+verified `(&<;:9K` projection theorem. The canonical profile still selects the
+crazy opcode and cell encryption, while explicit geometry supplies the word
+width, memory domain, and modular C/D successors used by `profile_crazy()`.
+
+The selector independently requires distinct C/D live-ins, exact data and
+self-encryption writes, and operands inside the explicit geometry domain before
+reusing the reviewed x86-64/AArch64 crazy machine-code template. N10 and N11
+retain distinct v5 keys and COFF bytes; cross-geometry verification and tampered
+profile metadata reject. Legacy `direct-crazy` byte-exact fixtures remain
+unchanged. This boundary grants artifact identity and verification only;
+checkpoint replay, load-image, invocation, reusable ownership, and residency
+remain separate work.
+
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low
 byte, output length incremented by one, exact code encryption, modular `C/D`

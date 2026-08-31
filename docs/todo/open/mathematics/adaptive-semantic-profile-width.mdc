@@ -937,8 +937,14 @@ transfers, verification, and other separately measured costs.
 - Input now has exact Byte/EOF v5 artifact identity, checkpoint replay,
   load-image, prepare/bind, dedicated runner, transactional cleanup, reusable
   one-mapping ownership, and heterogeneous residency with typed cleanup retry.
-- Crazy native templates remain open; output has exact v5 artifact, checkpoint
-  replay, load-image, prepare/bind, dedicated runner, and
+- Crazy now has an artifact-only explicit-geometry v5 boundary from the first
+  guarded `p` reached after jump/rotate in `(&<;:9K`. It derives word width,
+  memory-domain checks, and C/D wrap from explicit geometry while preserving
+  legacy direct-crazy bytes; N10/N11 keys and COFF bytes remain distinct on both
+  reviewed ISAs. Checkpoint replay, load-image, invocation, ownership, and
+  residency remain open for crazy.
+- Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
+  dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical
   capacity: only the checkpoint's logical prefix is entry state, while the ABI
   separately requires room for the exact append and rolls the whole slice back

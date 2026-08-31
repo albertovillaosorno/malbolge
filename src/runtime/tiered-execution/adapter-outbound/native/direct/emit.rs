@@ -67,6 +67,30 @@ pub fn emit_direct_halt_registers_coff(
     emit_direct_halt_registers_with_key(key, observation)
 }
 
+/// Emits guarded crazy code for one explicit-geometry v5 program.
+///
+/// Crazy arithmetic, pointer successors, and memory-domain checks derive from
+/// explicit execution geometry. The canonical profile still selects opcode and
+/// cell-encryption semantics.
+///
+/// # Errors
+///
+/// Returns [`DirectExecutionGeometryCrazyError`] when the v5 shape, target,
+/// identity, or canonical object cannot be represented.
+pub fn emit_direct_execution_geometry_crazy_coff(
+    program: &ExecutionGeometryRegionEffectProgram,
+    target: NativeTargetIdentity,
+) -> Result<UntrustedNativeObjectArtifact, DirectExecutionGeometryCrazyError> {
+    let selected = validate_execution_geometry_crazy_program(program)?;
+    validate_execution_geometry_crazy_target(&target)?;
+    let key = NativeArtifactKey::new_execution_geometry(program, target)?;
+    let triple = target_triple(key.target().host_isa());
+    let object = execution_geometry_crazy_coff(&key, selected)?;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        key, object, triple,
+    ))
+}
+
 /// Emits guarded initial-halt code for one explicit-geometry v5 program.
 ///
 /// The object uses a v5-specific native key and MBPF v5 metadata. Its code

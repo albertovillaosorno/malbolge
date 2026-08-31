@@ -81,6 +81,38 @@ pub fn verify_direct_halt_registers(
     Ok(VerifiedHaltRegistersNativeObjectArtifact { artifact: admitted })
 }
 
+/// Promotes only guarded crazy code bound to exact v5 geometry.
+///
+/// # Errors
+///
+/// Returns [`DirectExecutionGeometryCrazyError`] when v5 shape, identity,
+/// target, COFF structure, or any canonical object byte differs.
+pub fn verify_direct_execution_geometry_crazy(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> Result<
+    VerifiedExecutionGeometryCrazyNativeObjectArtifact,
+    DirectExecutionGeometryCrazyError,
+> {
+    let selected = validate_execution_geometry_crazy_program(program)?;
+    validate_execution_geometry_crazy_target(artifact.key().target())?;
+    let expected_key = NativeArtifactKey::new_execution_geometry(
+        program,
+        artifact.key().target().clone(),
+    )?;
+    if artifact.key() != &expected_key {
+        return Err(DirectExecutionGeometryCrazyError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = execution_geometry_crazy_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectExecutionGeometryCrazyError::ObjectBytes);
+    }
+    Ok(VerifiedExecutionGeometryCrazyNativeObjectArtifact {
+        artifact: admitted,
+    })
+}
+
 /// Promotes only guarded initial-halt code bound to exact v5 geometry.
 ///
 /// # Errors
