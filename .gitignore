@@ -15,6 +15,9 @@ JIG_SHIT.md
 .DS_Store
 Thumbs.db
 
+# Local command-line host binaries.
+/src/interface/command-line/composition/scripts/bin/
+
 # Local interpreter and tool caches.
 **/__pycache__/
 **/.pytest_cache/

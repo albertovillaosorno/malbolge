@@ -93,7 +93,7 @@ struct CRunPlan {
     compiler_arguments: Vec<OsString>,
     environment: Vec<(OsString, OsString)>,
     extra_sources: Vec<PathBuf>,
-    needs_windows_libraries: bool,
+    linker_arguments: Vec<OsString>,
     working_directory: Option<PathBuf>,
 }
 
@@ -135,10 +135,8 @@ fn compile_c(
         .arg(source)
         .args(&plan.extra_sources)
         .arg("-o")
-        .arg(executable);
-    if plan.needs_windows_libraries {
-        add_windows_debug_libraries(&mut command);
-    }
+        .arg(executable)
+        .args(&plan.linker_arguments);
     let compile_status = command
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
@@ -176,7 +174,7 @@ fn plain_c_run_plan(arguments: &[OsString]) -> CRunPlan {
         compiler_arguments: Vec::new(),
         environment: Vec::new(),
         extra_sources: Vec::new(),
-        needs_windows_libraries: false,
+        linker_arguments: Vec::new(),
         working_directory: None,
     }
 }
@@ -202,17 +200,14 @@ fn build_doom_run_plan(
     source: &Path,
     arguments: &[OsString],
 ) -> Result<CRunPlan, String> {
-    if !cfg!(windows) {
-        return Err(String::from(
-            "native doom.c debugging currently has only a Windows adapter",
-        ));
-    }
     let root = repository_root().ok_or_else(|| {
         String::from("cannot locate repository root for DOOM debug adapter")
     })?;
-    let adapter = root.join(
-        "src/interface/command-line/adapter-outbound/adapters/doom/windows.c",
-    );
+    let (adapter_name, compiler_arguments, linker_arguments) =
+        doom_host_build_arguments()?;
+    let adapter = root
+        .join("src/interface/command-line/adapter-outbound/adapters/doom")
+        .join(adapter_name);
     if !adapter.is_file() {
         return Err(format!(
             "DOOM debug adapter is missing: {}",
@@ -246,10 +241,10 @@ fn build_doom_run_plan(
     ));
     Ok(CRunPlan {
         arguments: resolved_arguments,
-        compiler_arguments: vec![OsString::from("-Dmain=DoomGuestMain")],
+        compiler_arguments,
         environment,
         extra_sources: vec![adapter],
-        needs_windows_libraries: true,
+        linker_arguments,
         working_directory: Some(working_directory),
     })
 }
@@ -422,8 +417,10 @@ fn remove_if_present(path: &Path) -> Result<(), String> {
 }
 
 fn repository_root() -> Option<PathBuf> {
-    if let Some(configured) = env::var_os("MALBOLGE_ROOT") {
-        return Some(PathBuf::from(configured));
+    if let Some(configured) = env::var_os("MALBOLGE_ROOT")
+        && let Some(root) = find_repository_root(Path::new(&configured))
+    {
+        return Some(root);
     }
     env::current_dir()
         .ok()
@@ -712,20 +709,55 @@ fn write_usage() -> Result<(), String> {
         .map_err(|error| format!("failed to write usage: {error}"))
 }
 
-#[cfg(windows)]
-fn add_windows_debug_libraries(command: &mut Command) {
-    let _configured = command.args([
-        "-luser32",
-        "-lgdi32",
-        "-lwinmm",
-        "-lws2_32",
-        "-lole32",
-        "-luuid",
-        "-ldsound",
-        "-ldxguid",
-        "-lshell32",
-    ]);
+fn doom_host_build_arguments(
+) -> Result<(&'static str, Vec<OsString>, Vec<OsString>), String> {
+    let mut compiler_arguments = vec![
+        OsString::from("-Dmain=DoomGuestMain"),
+        OsString::from("-ffreestanding"),
+        OsString::from("-fno-builtin"),
+    ];
+    if cfg!(windows) {
+        let linker_arguments = [
+            "-luser32",
+            "-lgdi32",
+            "-lwinmm",
+            "-lws2_32",
+            "-lole32",
+            "-luuid",
+            "-ldsound",
+            "-ldxguid",
+            "-lshell32",
+        ]
+        .into_iter()
+        .map(OsString::from)
+        .collect();
+        return Ok(("windows.c", compiler_arguments, linker_arguments));
+    }
+    if cfg!(target_os = "linux") {
+        compiler_arguments.extend(pkg_config_sdl2("--cflags")?);
+        let mut linker_arguments = pkg_config_sdl2("--libs")?;
+        linker_arguments.push(OsString::from("-lm"));
+        return Ok(("linux.c", compiler_arguments, linker_arguments));
+    }
+    Err(String::from(
+        "native doom.c debugging has no host adapter for this operating system",
+    ))
 }
 
-#[cfg(not(windows))]
-const fn add_windows_debug_libraries(_command: &mut Command) {}
+fn pkg_config_sdl2(mode: &str) -> Result<Vec<OsString>, String> {
+    let output = Command::new("pkg-config")
+        .args([mode, "sdl2"])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| {
+            format!("failed to start pkg-config for SDL2: {error}")
+        })?;
+    if !output.status.success() {
+        return Err(String::from(
+            "SDL2 development files are required for Linux doom.c debugging",
+        ));
+    }
+    let flags = String::from_utf8(output.stdout)
+        .map_err(|_| String::from("pkg-config returned non-UTF-8 SDL2 flags"))?;
+    Ok(flags.split_whitespace().map(OsString::from).collect())
+}

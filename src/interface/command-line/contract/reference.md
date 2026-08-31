@@ -93,11 +93,12 @@ debug fallback when neither Zig nor a host compiler is available. Both are
 development tooling; generated
 `.malbolge` programs must not require either compiler at execution time.
 
-When a C file declares the version-one `DoomHost_*` ABI, the Windows CLI links
-`src/interface/command-line/adapter-outbound/adapters/doom/windows.c` as a
-separate host-only translation unit. The adapter supplies the debug window,
-keyboard/mouse input, audio, files, and clock. It does not embed an IWAD and is
-never part of `doom.c` or `doom.malbolge`.
+When a C file declares the version-one `DoomHost_*` ABI, the CLI links the
+platform host adapter as a separate host-only translation unit: `windows.c` on
+Windows and `linux.c` on Linux. The adapter supplies the debug window,
+keyboard/mouse input, audio, files, and clock. Linux obtains SDL2 compiler/linker
+flags from `pkg-config`. No adapter embeds an IWAD or becomes part of `doom.c` or
+`doom.malbolge`.
 
 When executable C tokens reference the function-like identifier
 `__malbolge_output_byte`, the CLI links
