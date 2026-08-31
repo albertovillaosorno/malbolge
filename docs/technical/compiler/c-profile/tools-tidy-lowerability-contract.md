@@ -34,7 +34,14 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Implementation Status
 
-Not implemented. This proposed contract does not claim executable support yet.
+The complete lowerability promise is not implemented yet. A transitional
+`validate_c_before_malbolge.py` entrypoint now runs a repository-pinned Clang
+preflight with the canonical `wasm32-unknown-unknown` ABI projection, closes the
+include universe to compiler/guest headers, promotes selected deterministic and
+undefined-behavior diagnostics to hard errors, and then delegates ABI, libc, and
+clang-tidy policy to the existing manual validator. This is early rejection
+evidence only; it does not claim that every surviving translation unit can
+already lower through the incomplete typed-IR/compiler pipeline.
 
 ## Invariants
 

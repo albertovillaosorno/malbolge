@@ -181,6 +181,11 @@ parts:
     kind: composition
     language: python
     responsibility: Build the Linux normalized C frontend from exact local LLVM.
+  - id: part-0030
+    path: composition/scripts/validate/validate_c_before_malbolge.py
+    kind: composition
+    language: python
+    responsibility: Run deterministic guest-C pre-lowering validation.
 projects: []
 tests: []
 graph:
