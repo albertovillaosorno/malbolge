@@ -91,7 +91,7 @@ and transform emission remain application-agnostic.
   language files missing attribution. The ignored authoring corpus was
   corrected, then
   the transform/output were regenerated. Final output preserves the source
-  LICENSE-MIT,
+  LICENSE,
   all 124 historical C/header attributions, and explicit derived-language
   provenance.
 - Repeated generation and materialization are byte-identical; absent or mutated

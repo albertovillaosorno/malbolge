@@ -193,7 +193,7 @@ real guest validator accepts all 65 translation units, the six-target matrix is
 source/oracle/generated,
 repeated materialization is identical, wrong/no-source runs fail before
 publication,
-and the source LICENSE-MIT plus all 124 historical C/header attributions
+and the source LICENSE plus all 124 historical C/header attributions
 survive.
 
 ### Comparison policy is additive, not a zero-by-redefinition shortcut

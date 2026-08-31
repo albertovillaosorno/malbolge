@@ -314,7 +314,7 @@ def test_eof_directive_end_uses_zero_width_raw_marker() -> None:
 def _quality_oracle_fixture(root: Path) -> None:
     (root / "data").mkdir(parents=True)
     (root / "linuxdoom-1.10").mkdir()
-    _ = (root / "LICENSE-MIT").write_bytes(b"license")
+    _ = (root / "LICENSE").write_bytes(b"license")
 
 
 def test_quality_oracle_preflight_accepts_exact_root_surface(
@@ -365,7 +365,7 @@ def test_quality_oracle_entry_status_error_fails_closed(
 ) -> None:
     """An inaccessible expected entry cannot degrade to a kind mismatch."""
     _quality_oracle_fixture(tmp_path)
-    blocked = tmp_path / "LICENSE-MIT"
+    blocked = tmp_path / "LICENSE"
     original_lstat = Path.lstat
 
     def fail_lstat(path: Path) -> object:
@@ -397,12 +397,12 @@ def test_quality_oracle_preflight_rejects_missing_or_wrong_kind(
 ) -> None:
     """Reject incomplete or structurally malformed oracle roots."""
     _quality_oracle_fixture(tmp_path)
-    (tmp_path / "LICENSE-MIT").unlink()
+    (tmp_path / "LICENSE").unlink()
 
     with pytest.raises(DoomIdentityError, match="missing"):
         validate_authoring_oracle(tmp_path)
 
-    (tmp_path / "LICENSE-MIT").mkdir()
+    (tmp_path / "LICENSE").mkdir()
     with pytest.raises(DoomIdentityError, match="must be a file"):
         validate_authoring_oracle(tmp_path)
 

@@ -138,7 +138,7 @@ syntax matrix. Repeated generation/materialization are deterministic, wrong or
 absent
 source fails before publication, fixed-point behavior matches the authoring
 source and
-oracle, and provenance checks preserve the source LICENSE-MIT plus historical
+oracle, and provenance checks preserve the source LICENSE plus historical
 attribution.
 The compact comparison evidence now uses the generated tree as the after corpus.
 The final regenerated quality transform SHA-256 is:

@@ -80,7 +80,7 @@ DOOM_SOURCE_PIN = SourcePin(
     repository=DOOM_UPSTREAM_REPOSITORY,
     commit=DOOM_UPSTREAM_COMMIT,
     roots=(
-        "LICENSE-MIT.TXT",
+        "LICENSE.TXT",
         "README.TXT",
         "ipx",
         DOOM_IDENTITY_SUBTREE,
@@ -94,10 +94,10 @@ _SOURCE_ALLOWED_ROOTS = frozenset((*DOOM_SOURCE_PIN.roots, ".git", "data"))
 _QUALITY_ORACLE_ROOTS = frozenset({
     "data",
     DOOM_IDENTITY_SUBTREE,
-    "LICENSE-MIT",
+    "LICENSE",
 })
 _QUALITY_ORACLE_DIRECTORIES = frozenset({"data", DOOM_IDENTITY_SUBTREE})
-_QUALITY_ORACLE_FILES = frozenset({"LICENSE-MIT"})
+_QUALITY_ORACLE_FILES = frozenset({"LICENSE"})
 
 _CODE_SUFFIXES = frozenset({".c", ".h"})
 _ASCII_WHITESPACE = frozenset(b" \t\n\v\f")

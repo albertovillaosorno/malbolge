@@ -574,7 +574,7 @@ Acceptance was rerun on the generated tree itself:
   generated
   output at transcript SHA-256
   `f0b37d59c86384e4ee628ec0e637c60aaa7ca35e5ecdb826687fc35c37d133e2`;
-- the output `LICENSE-MIT` is byte-identical to the pinned source license, all
+- the output `LICENSE` is byte-identical to the pinned source license, all
   124
   historical C/header files retain id Software attribution, and the derived
   runtime

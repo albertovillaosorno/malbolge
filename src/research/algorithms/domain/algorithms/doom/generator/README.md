@@ -44,7 +44,7 @@ but DOOM quality no longer needs fuzzy source admission.
 `validate_authoring_oracle()`
 requires the normalized oracle root to contain exactly `data/`,
 `linuxdoom-1.10/`,
-and `LICENSE-MIT`. Unexpected authoring artifacts fail closed rather than
+and `LICENSE`. Unexpected authoring artifacts fail closed rather than
 becoming
 target-only payload. The previously detected accidental PowerShell root entry
 was
