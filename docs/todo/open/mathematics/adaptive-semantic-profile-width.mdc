@@ -712,9 +712,9 @@ transfers, verification, and other separately measured costs.
 - Output now also has checkpoint-bound semantic admission and a relocation-free
   load image. Admission replays the exact `<` from the opaque checkpoint before
   mapping, retains the normative output state as future Applied authority, and
-  rejects checkpoint geometry or artifact identity drift independently.
-  Prepare/bind, runner execution, transaction cleanup, reusable ownership, and
-  residency remain open for output.
+  rejects checkpoint geometry or artifact identity drift independently. Later
+  evidence below closes prepare/bind, runner execution, transaction cleanup,
+  reusable ownership, and shared residency for this same output boundary.
 - A second state-changing artifact boundary now admits explicit-geometry rotate
   without granting loader or invocation authority. Real `(&O` theorem traces
   supply the reached rotate step; selection derives the rotated A/data value
@@ -739,8 +739,8 @@ transfers, verification, and other separately measured costs.
   authority, rotate replay remains the sole halt authority, and all three steps
   admit before the first mapping. Global indices 0/1/2 preserve exact guard and
   failure position; mixed N10/N11 jump/suffix evidence rejects before adapter
-  work. Generic v5 planning and byte-weighted cross-template caching remain
-  open.
+  work. Generic v5 planning remains open; later heterogeneous-LRU evidence below
+  closes byte-weighted cross-template caching for the reviewed resident set.
 - The full `(&O` sequence can additionally prebind three exact caller-owned
   executables before borrowing machine buffers. Repeated prebound execution
   performs no adapter work, mixed-geometry jump images reject before mutation,
