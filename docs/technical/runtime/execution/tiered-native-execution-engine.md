@@ -679,6 +679,23 @@ ownership after cleanup failure and preserving committed normative state when
 final release fails. Eight focused cases cover those paths plus cross-geometry
 binding and caller-memory drift.
 
+`direct-execution-geometry-output` revision 1 adds a byte-verifiable v5 output
+artifact boundary without granting loader or invocation authority. Its selector
+consumes the real `<` trace reached after `/` in the independently verified
+`ubO` input/output/halt theorem with byte input `0xA5`. Canonical profile
+identity still selects the output opcode and emitted low byte, while explicit
+execution geometry alone supplies C/D successor wrap and memory-domain guards.
+
+The geometry-output selector reuses the reviewed x86-64/AArch64 output machine
+code only after checking the exact entry observation, one fetched code live-in,
+output byte/index/length transition, self-encryption delta, and geometry-derived
+successors. N10 and N11 produce distinct v5 keys and object bytes.
+Cross-geometry verification rejects, and legacy direct-output byte-exact tests
+remain unchanged through a shared semantic derivation helper. Checkpoint-bound
+admission,
+load-image construction, invocation/runner execution, and residency remain
+separate follow-up work.
+
 `direct-execution-geometry-rotate` revision 1 adds a second state-changing v5
 artifact boundary without granting execution authority. The selector consumes
 the real rotate trace reached as step two of the independently certified `(&O`

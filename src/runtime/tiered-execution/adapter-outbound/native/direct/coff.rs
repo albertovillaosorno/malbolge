@@ -237,6 +237,29 @@ pub(super) fn execution_geometry_no_operation_coff(
         .ok_or(DirectExecutionGeometryNoOperationError::ObjectBytes)
 }
 
+pub(super) fn execution_geometry_output_coff(
+    key: &NativeArtifactKey,
+    selected: DirectOutputProgram,
+) -> Result<Vec<u8>, DirectExecutionGeometryOutputError> {
+    let observation = direct_entry_observation(selected.observation)
+        .ok_or(DirectExecutionGeometryOutputError::ObjectBytes)?;
+    let guard = DirectFetchedCellGuard {
+        live_in_value: selected.live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => {
+            aarch64::output_code(observation, guard, selected.commit)
+        },
+        HostIsa::X86_64 => {
+            x86_64::output_code(observation, guard, selected.commit)
+        },
+    }
+    .ok_or(DirectExecutionGeometryOutputError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectExecutionGeometryOutputError::ObjectBytes)
+}
+
 pub(super) fn execution_geometry_rotate_coff(
     key: &NativeArtifactKey,
     selected: DirectRotateProgram,

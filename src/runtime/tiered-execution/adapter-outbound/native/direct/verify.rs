@@ -186,6 +186,38 @@ pub fn verify_direct_execution_geometry_no_operation(
     })
 }
 
+/// Promotes only guarded output code bound to exact v5 geometry.
+///
+/// # Errors
+///
+/// Returns [`DirectExecutionGeometryOutputError`] when v5 shape, identity,
+/// target, COFF structure, or any canonical object byte differs.
+pub fn verify_direct_execution_geometry_output(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> Result<
+    VerifiedExecutionGeometryOutputNativeObjectArtifact,
+    DirectExecutionGeometryOutputError,
+> {
+    let selected = validate_execution_geometry_output_program(program)?;
+    validate_execution_geometry_output_target(artifact.key().target())?;
+    let expected_key = NativeArtifactKey::new_execution_geometry(
+        program,
+        artifact.key().target().clone(),
+    )?;
+    if artifact.key() != &expected_key {
+        return Err(DirectExecutionGeometryOutputError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = execution_geometry_output_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectExecutionGeometryOutputError::ObjectBytes);
+    }
+    Ok(VerifiedExecutionGeometryOutputNativeObjectArtifact {
+        artifact: admitted,
+    })
+}
+
 /// Promotes only guarded rotate code bound to exact v5 geometry.
 ///
 /// # Errors

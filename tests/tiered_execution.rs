@@ -162,6 +162,8 @@ use execution_native::{
     DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_REVISION,
+    DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_ID,
+    DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_REVISION,
     DIRECT_EXECUTION_GEOMETRY_ROTATE_BACKEND_ID,
     DIRECT_EXECUTION_GEOMETRY_ROTATE_BACKEND_REVISION,
     DIRECT_HALT_FETCH_BACKEND_ID, DIRECT_HALT_FETCH_BACKEND_REVISION,
@@ -178,12 +180,12 @@ use execution_native::{
     DirectExecutionGeometryInitialHaltError,
     DirectExecutionGeometryInitialJumpDataError,
     DirectExecutionGeometryNoOperationError,
-    DirectExecutionGeometryRotateError, DirectHaltFetchError,
-    DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
-    DirectInputError, DirectJumpCodeError, DirectJumpDataError,
-    DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
-    DirectOutputError, DirectRotateError, DirectSelectionError,
-    DirectSequenceError, ExecutionGeometryNativeRunner,
+    DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
+    DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
+    DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
+    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
+    DirectNonGraphicalError, DirectOutputError, DirectRotateError,
+    DirectSelectionError, DirectSequenceError, ExecutionGeometryNativeRunner,
     NATIVE_REGION_ABI_REVISION, NATIVE_REGION_ACCUMULATOR_OFFSET,
     NATIVE_REGION_CODE_POINTER_OFFSET, NATIVE_REGION_DATA_POINTER_OFFSET,
     NATIVE_REGION_INPUT_CONSUMED_OFFSET, NATIVE_REGION_INPUT_LEN_OFFSET,
@@ -226,6 +228,7 @@ use execution_native::{
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_no_operation_coff,
+    emit_direct_execution_geometry_output_coff,
     emit_direct_execution_geometry_rotate_coff, emit_direct_halt_fetch_coff,
     emit_direct_halt_registers_coff, emit_direct_initial_halt_coff,
     emit_direct_input_coff, emit_direct_jump_code_coff,
@@ -246,6 +249,7 @@ use execution_native::{
     verify_direct_execution_geometry_initial_halt,
     verify_direct_execution_geometry_initial_jump_data,
     verify_direct_execution_geometry_no_operation,
+    verify_direct_execution_geometry_output,
     verify_direct_execution_geometry_rotate, verify_direct_halt_fetch,
     verify_direct_halt_registers, verify_direct_initial_halt,
     verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
@@ -391,7 +395,8 @@ use malbolge::{
     decode_profile_instruction, historical_profile, preflight_profile,
     preflight_runtime_requirement, safe_rust_classic_capability,
     safe_rust_profiled_capability, target_profile,
-    verify_initial_halt_profile_width, verify_input_then_halt_profile_width,
+    verify_initial_halt_profile_width, verify_input_output_halt_profile_width,
+    verify_input_then_halt_profile_width,
     verify_jump_rotate_halt_profile_width,
     verify_minimum_initial_halt_profile_width,
     verify_noop_prefix_halt_profile_width,
@@ -2748,6 +2753,19 @@ fn direct_execution_geometry_no_operation_target(
         ),
         backend_revision:
             DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+fn direct_execution_geometry_output_target(
+    isa: HostIsa,
+) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_ID),
+        backend_revision: DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_REVISION,
         host_isa: isa,
         host_os: HostOperatingSystem::Windows,
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
@@ -12757,6 +12775,43 @@ fn derived_v5_no_operation_fixture(
     Ok((program, checkpoint, verified.geometry()))
 }
 
+fn derived_v5_output_fixture(
+    word_trits: u8,
+) -> Result<DerivedV5HandoffFixture, String> {
+    let verified = verify_input_output_halt_profile_width(
+        current_profile(),
+        b"ubO",
+        word_trits,
+    )
+    .map_err(|error| format!("v5 output verification: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, vec![0xa5])
+            .map_err(|error| format!("v5 output machine: {error}"))?;
+    let first = machine
+        .step()
+        .map_err(|error| format!("v5 output input step: {error}"))?;
+    if first != StepOutcome::Continued {
+        return Err(String::from("v5 output fixture input did not advance"));
+    }
+    let checkpoint = machine.snapshot_state();
+    let mut trace_slot = None;
+    let second = machine
+        .step_traced(&mut |trace| trace_slot = Some(*trace))
+        .map_err(|error| format!("v5 output trace: {error}"))?;
+    if second != StepOutcome::Continued || machine.output() != [0xa5] {
+        return Err(String::from("v5 output fixture did not emit input byte"));
+    }
+    let trace =
+        trace_slot.ok_or_else(|| String::from("v5 output trace missing"))?;
+    if trace.output != Some(0xa5) {
+        return Err(String::from("v5 output trace lost emitted byte"));
+    }
+    let program =
+        ExecutionGeometryRegionEffectProgram::from_profile_step_trace(&trace)
+            .map_err(|error| format!("v5 output projection: {error:?}"))?;
+    Ok((program, checkpoint, verified.geometry()))
+}
+
 fn derived_v5_rotate_fixture(
     word_trits: u8,
 ) -> Result<DerivedV5HandoffFixture, String> {
@@ -13037,6 +13092,64 @@ fn direct_execution_geometry_no_operation_admits_exact_v5_geometry()
         {
             return Err(String::from("v5 no-op geometry mismatch admitted"));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_execution_geometry_output_admits_exact_v5_geometry()
+-> Result<(), String> {
+    let (n10, n10_checkpoint, n10_geometry) = derived_v5_output_fixture(10)?;
+    let (n11, _n11_checkpoint, _n11_geometry) = derived_v5_output_fixture(11)?;
+    let entry = n10
+        .entry_observation()
+        .ok_or_else(|| String::from("v5 output entry observation missing"))?;
+    let exit = n10
+        .exit_observation()
+        .ok_or_else(|| String::from("v5 output exit observation missing"))?;
+    if n10_checkpoint.io().output().len() != entry.output_len
+        || entry.input_consumed != 1
+        || exit.output_len != entry.output_len.saturating_add(1)
+        || n10.execution_geometry().memory_words()
+            != n10_geometry.memory_words()
+    {
+        return Err(String::from("v5 output normative fixture drifted"));
+    }
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let n10_artifact = emit_direct_execution_geometry_output_coff(
+            &n10,
+            direct_execution_geometry_output_target(isa),
+        )
+        .map_err(|error| format!("v5 output N10 {isa:?} emit: {error}"))?;
+        let n11_artifact = emit_direct_execution_geometry_output_coff(
+            &n11,
+            direct_execution_geometry_output_target(isa),
+        )
+        .map_err(|error| format!("v5 output N11 {isa:?} emit: {error}"))?;
+        if n10_artifact.key().ir().execution_geometry()
+            != Some(n10.execution_geometry())
+            || n10_artifact.key() == n11_artifact.key()
+            || n10_artifact.object() == n11_artifact.object()
+        {
+            return Err(String::from("v5 output geometry identity collapsed"));
+        }
+        let verified =
+            verify_direct_execution_geometry_output(&n10_artifact, &n10)
+                .map_err(|error| {
+                    format!("v5 output N10 {isa:?} verify: {error}")
+                })?;
+        if verified.key() != n10_artifact.key()
+            || verified.object() != n10_artifact.object()
+            || verified.target_triple() != n10_artifact.target_triple()
+        {
+            return Err(String::from("v5 output verification drifted"));
+        }
+        if verify_direct_execution_geometry_output(&n10_artifact, &n11)
+            != Err(DirectExecutionGeometryOutputError::ProgramShape)
+        {
+            return Err(String::from("v5 output geometry mismatch admitted"));
+        }
+        assert_tampered_direct_profile_metadata(&n10_artifact)?;
     }
     Ok(())
 }

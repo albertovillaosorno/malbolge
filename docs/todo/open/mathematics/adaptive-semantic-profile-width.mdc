@@ -678,6 +678,13 @@ transfers, verification, and other separately measured costs.
   rollback,
   transactional release, and cleanup-retry ownership mirror the other v5 step
   boundaries without merging operation policy.
+- A geometry-bound output artifact now exists for the reached `<` step of the
+  certified `ubO` input/output/halt path with nonempty input. Profile identity
+  still selects output opcode/byte semantics, while explicit geometry supplies
+  pointer wrap and memory-domain guards. N10/N11 keys and COFF bytes stay
+  distinct on both reviewed ISAs and cross-geometry verification rejects.
+  Checkpoint admission, load-image/invocation, execution, and residency remain
+  open for output.
 - A second state-changing artifact boundary now admits explicit-geometry rotate
   without granting loader or invocation authority. Real `(&O` theorem traces
   supply the reached rotate step; selection derives the rotated A/data value
@@ -899,7 +906,8 @@ transfers, verification, and other separately measured costs.
   the same reusable initial-jump owner. Triple load/release no longer duplicate
   raw jump executable ownership while preserving existing suffix rollback and
   three-mapping cleanup contracts.
-- Input, output, and crazy native templates remain open.
+- Input and crazy native templates remain open. Output now has exact v5 artifact
+  authority, while its checkpoint-bound execution path remains open.
 - The no-op/halt, rotate/halt, and full-path single-resident caches remain
   intentionally separate for operation-specific callers. The heterogeneous LRU
   is the shared residency authority; additional state-changing templates remain

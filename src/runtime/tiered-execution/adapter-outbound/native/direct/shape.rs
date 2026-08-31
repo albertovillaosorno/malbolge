@@ -44,6 +44,8 @@ type ExecutionGeometryInitialJumpDataShapeResult = Result<
 >;
 type ExecutionGeometryNoOperationShapeResult =
     Result<DirectNoOperationProgram, DirectExecutionGeometryNoOperationError>;
+type ExecutionGeometryOutputShapeResult =
+    Result<DirectOutputProgram, DirectExecutionGeometryOutputError>;
 type ExecutionGeometryRotateShapeResult =
     Result<DirectRotateProgram, DirectExecutionGeometryRotateError>;
 
@@ -312,6 +314,60 @@ pub(super) fn validate_execution_geometry_no_operation_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectExecutionGeometryNoOperationError::TargetFeatures);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_execution_geometry_output_program(
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> ExecutionGeometryOutputShapeResult {
+    if program.format_version() != EFFECT_IR_EXECUTION_GEOMETRY_VERSION
+        || !program.fits_execution_geometry_capacity()
+        || !program.fits_profile_capacity()
+        || program.step_budget() != 1
+        || program.memory_live_ins().len() != 1
+        || program.effects().len() != 1
+        || program.outcome() != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectExecutionGeometryOutputError::ProgramShape);
+    }
+    let effect = program
+        .effects()
+        .first()
+        .copied()
+        .ok_or(DirectExecutionGeometryOutputError::ProgramShape)?;
+    let live_in = program
+        .memory_live_ins()
+        .first()
+        .copied()
+        .ok_or(DirectExecutionGeometryOutputError::ProgramShape)?;
+    let output_instruction = target_profile(program.profile_id())
+        .map(|profile| profile.output_instruction())
+        .ok_or(DirectExecutionGeometryOutputError::ProgramShape)?;
+    derive_output_effect(
+        effect,
+        live_in,
+        program.execution_geometry().memory_words(),
+        output_instruction,
+    )
+    .ok_or(DirectExecutionGeometryOutputError::ProgramShape)
+}
+
+pub(super) fn validate_execution_geometry_output_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectExecutionGeometryOutputError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectExecutionGeometryOutputError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectExecutionGeometryOutputError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectExecutionGeometryOutputError::TargetFeatures);
     }
     Ok(())
 }
@@ -1029,14 +1085,28 @@ pub(super) fn derive_output_program(
     effect: EffectOp,
     live_in: MemoryLiveIn,
 ) -> Option<DirectOutputProgram> {
+    let output_instruction =
+        target_profile(&program.profile_id)?.output_instruction();
+    derive_output_effect(
+        effect,
+        live_in,
+        direct_memory_words(program)?,
+        output_instruction,
+    )
+}
+
+fn derive_output_effect(
+    effect: EffectOp,
+    live_in: MemoryLiveIn,
+    memory_words: u32,
+    output_instruction: u8,
+) -> Option<DirectOutputProgram> {
     let before = effect.before;
     let code_pointer = before.registers.code_pointer;
-    let memory_words = direct_memory_words(program)?;
     if before.termination.is_some()
         || live_in.address != code_pointer
         || decode_profile_instruction(live_in.value, code_pointer)
-            != target_profile(&program.profile_id)
-                .map(|profile| profile.output_instruction())
+            != Some(output_instruction)
     {
         return None;
     }
