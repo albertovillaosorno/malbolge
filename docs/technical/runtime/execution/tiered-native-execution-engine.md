@@ -901,6 +901,17 @@ This shared mapping-report accounting gives a future synchronized
 `Active -> Draining -> Closed` transition concrete closure evidence without
 estimating executable-image sizes.
 
+Drain inspection can now capture one coherent retired snapshot. Each entry
+records the exact plan, external lease count, and resident mapping weight, while
+the snapshot carries aggregate usage from the same drain epoch. The oversized
+mapping case observes no-op at 12,288 bytes with zero leases and full-path at
+114,688 bytes with one lease before reconciliation; after reclaiming no-op, the
+snapshot contains only that leased full-path resident, then becomes empty with
+zero usage after final reconciliation.
+
+This avoids composing identity, lease, and usage reads from different retired
+states and gives any future synchronized close state a single closure witness.
+
 `GeometryNativeConcurrentCrossTemplateLruCache` now owns one heterogeneous LRU
 and its executable-memory adapter under the same mutex. `ensure`, release,
 reconfiguration, usage, and identity reads serialize through that authority;

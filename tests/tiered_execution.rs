@@ -274,6 +274,7 @@ use geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruAcquireFailure as CrossLruFailure,
     GeometryNativeCrossTemplateLruCache as CrossLruCache,
     GeometryNativeCrossTemplateLruDisposition as CrossLruDisposition,
+    GeometryNativeCrossTemplateLruDrainSnapshot as CrossDrainSnapshot,
     GeometryNativeCrossTemplateLruLimits as CrossLruLimits,
     GeometryNativeCrossTemplateLruReconfigurationFailure as CrossLimitFailure,
     GeometryNativeCrossTemplateLruRelease as CrossLruRelease,
@@ -13529,6 +13530,55 @@ fn concurrent_transferred_cleanup(
     }
 }
 
+fn require_cross_drain_initial_snapshot(
+    snapshot: &CrossDrainSnapshot,
+    noop_plan: &CrossResidentPlan,
+    full_plan: &CrossResidentPlan,
+) -> Result<(), String> {
+    let [noop_snapshot, full_snapshot] = snapshot.residents() else {
+        return Err(String::from("cross drain initial snapshot shape drifted"));
+    };
+    if noop_snapshot.plan() == noop_plan
+        && noop_snapshot.leases() == 0
+        && noop_snapshot.weight().mapped_bytes() == 12_288
+        && noop_snapshot.weight().mappings() == 2
+        && full_snapshot.plan() == full_plan
+        && full_snapshot.leases() == 1
+        && full_snapshot.weight().mapped_bytes() == 114_688
+        && full_snapshot.weight().mappings() == 3
+        && snapshot.usage().entries() == 2
+        && snapshot.usage().mapped_bytes() == 126_976
+        && snapshot.usage().mappings() == 5
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross drain initial snapshot drifted"))
+    }
+}
+
+fn require_cross_drain_retained_snapshot(
+    snapshot: &CrossDrainSnapshot,
+    full_plan: &CrossResidentPlan,
+) -> Result<(), String> {
+    let [retired_full] = snapshot.residents() else {
+        return Err(String::from(
+            "cross drain retained snapshot shape drifted",
+        ));
+    };
+    if retired_full.plan() == full_plan
+        && retired_full.leases() == 1
+        && retired_full.weight().mapped_bytes() == 114_688
+        && retired_full.weight().mappings() == 3
+        && snapshot.usage().entries() == 1
+        && snapshot.usage().mapped_bytes() == 114_688
+        && snapshot.usage().mappings() == 3
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross drain retained snapshot drifted"))
+    }
+}
+
 fn concurrent_primary_load_failure<Adapter>(
     cache: &CrossSyncCache<Adapter>,
     plan: &CrossResidentPlan,
@@ -15510,41 +15560,33 @@ fn geometry_native_cross_template_drain_reports_exact_usage()
         .ensure(&mut adapter, &full_plan)
         .map_err(|error| error.to_string())?;
     let mut drain = cache.into_drain();
-    let initial_usage = drain.usage().map_err(|error| error.to_string())?;
-    if drain.retired_residents() != [noop_plan.clone(), full_plan.clone()]
-        || initial_usage.entries() != 2
-        || initial_usage.mapped_bytes() != 126_976
-        || initial_usage.mappings() != 5
-    {
-        return Err(String::from("cross drain initial usage drifted"));
-    }
+    let initial = drain.snapshot().map_err(|error| error.to_string())?;
+    require_cross_drain_initial_snapshot(&initial, &noop_plan, &full_plan)?;
     let first = drain
         .reconcile(&mut adapter)
         .map_err(|error| format!("cross drain usage reconcile: {error}"))?;
-    let retained_usage = drain.usage().map_err(|error| error.to_string())?;
+    let retained = drain.snapshot().map_err(|error| error.to_string())?;
     if first.released_residents() != [noop_plan]
         || first.retained_residents() != [full_plan.clone()]
-        || drain.retired_residents() != [full_plan.clone()]
-        || retained_usage.entries() != 1
-        || retained_usage.mapped_bytes() != 114_688
-        || retained_usage.mappings() != 3
     {
-        return Err(String::from("cross drain retained usage drifted"));
+        return Err(String::from("cross drain reconcile evidence drifted"));
     }
+    require_cross_drain_retained_snapshot(&retained, &full_plan)?;
     drop(full);
     let final_pass = drain
         .reconcile(&mut adapter)
         .map_err(|error| format!("cross drain usage final: {error}"))?;
-    let final_usage = drain.usage().map_err(|error| error.to_string())?;
+    let final_snapshot = drain.snapshot().map_err(|error| error.to_string())?;
     if final_pass.released_residents() == [full_plan]
         && final_pass.retained_residents().is_empty()
-        && final_usage.entries() == 0
-        && final_usage.mapped_bytes() == 0
-        && final_usage.mappings() == 0
+        && final_snapshot.residents().is_empty()
+        && final_snapshot.usage().entries() == 0
+        && final_snapshot.usage().mapped_bytes() == 0
+        && final_snapshot.usage().mappings() == 0
     {
         Ok(())
     } else {
-        Err(String::from("cross drain final usage drifted"))
+        Err(String::from("cross drain final snapshot drifted"))
     }
 }
 

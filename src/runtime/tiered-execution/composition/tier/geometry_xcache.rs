@@ -288,6 +288,21 @@ pub struct GeometryNativeCrossTemplateLruDrain {
     retired: Vec<Arc<GeometryNativeLoadedResident>>,
 }
 
+/// One retired resident observation from a single drain epoch.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GeometryNativeCrossTemplateLruDrainResidentSnapshot {
+    leases: usize,
+    plan: GeometryNativeResidentPlan,
+    weight: GeometryNativeResidentWeight,
+}
+
+/// Coherent retired-resident observation from one consuming drain.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GeometryNativeCrossTemplateLruDrainSnapshot {
+    residents: Vec<GeometryNativeCrossTemplateLruDrainResidentSnapshot>,
+    usage: GeometryNativeCrossTemplateLruUsage,
+}
+
 #[derive(Debug)]
 struct WeightedCandidate {
     loaded: GeometryNativeLoadedResident,
@@ -1250,6 +1265,42 @@ impl GeometryNativeCrossTemplateLruCache {
     }
 }
 
+impl GeometryNativeCrossTemplateLruDrainResidentSnapshot {
+    /// Returns external lease owners retaining this retired resident.
+    #[must_use]
+    pub const fn leases(&self) -> usize {
+        self.leases
+    }
+
+    /// Returns the exact admitted identity of this retired resident.
+    #[must_use]
+    pub const fn plan(&self) -> &GeometryNativeResidentPlan {
+        &self.plan
+    }
+
+    /// Returns exact synchronized mapping weight for this retired resident.
+    #[must_use]
+    pub const fn weight(&self) -> GeometryNativeResidentWeight {
+        self.weight
+    }
+}
+
+impl GeometryNativeCrossTemplateLruDrainSnapshot {
+    /// Returns retired resident observations in original relative LRU order.
+    #[must_use]
+    pub fn residents(
+        &self,
+    ) -> &[GeometryNativeCrossTemplateLruDrainResidentSnapshot] {
+        &self.residents
+    }
+
+    /// Returns exact aggregate mapping usage from this same drain epoch.
+    #[must_use]
+    pub const fn usage(&self) -> GeometryNativeCrossTemplateLruUsage {
+        self.usage
+    }
+}
+
 impl GeometryNativeCrossTemplateLruDrain {
     /// Reports whether all retired resident ownership has been reclaimed.
     #[must_use]
@@ -1293,6 +1344,32 @@ impl GeometryNativeCrossTemplateLruDrain {
             .iter()
             .map(|resident| resident.plan())
             .collect()
+    }
+
+    /// Captures identity, leases, weight, and aggregate usage from this drain.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact resident-weight overflow before publishing a partial
+    /// observation.
+    pub fn snapshot(
+        &self,
+    ) -> Result<
+        GeometryNativeCrossTemplateLruDrainSnapshot,
+        GeometryNativeResidentWeightError,
+    > {
+        let mut residents = Vec::with_capacity(self.retired.len());
+        for resident in &self.retired {
+            residents.push(
+                GeometryNativeCrossTemplateLruDrainResidentSnapshot {
+                    leases: Arc::strong_count(resident).saturating_sub(1),
+                    plan: resident.plan(),
+                    weight: resident.resident_weight()?,
+                },
+            );
+        }
+        let usage = resident_usage(&self.retired)?;
+        Ok(GeometryNativeCrossTemplateLruDrainSnapshot { residents, usage })
     }
 
     /// Returns exact mapping usage still owned by retired residents.

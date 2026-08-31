@@ -761,6 +761,10 @@ transfers, verification, and other separately measured costs.
   mapped bytes, and mapping count through the same resident-weight aggregation
   as active LRU usage. Focused oversized mappings prove usage shrinks exactly as
   retired leases are reclaimed and reaches zero only after full reconciliation.
+- Retired drain snapshots now bind each exact plan to its external lease count
+  and mapping weight alongside aggregate usage from one drain epoch. The focused
+  oversized fixture proves the snapshot contracts from two residents to one
+  leased full-path resident and finally to empty zero-usage closure.
 - Heterogeneous leases now execute the retained specialized owner directly.
   Outcomes and failures stay tagged as no-op/halt, rotate/halt, or full-path;
   step indices, checkpoints, guard behavior, and rollback remain owned by the
