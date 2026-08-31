@@ -98,12 +98,31 @@ pub enum ExecutionGeometryNativeNoOperationExecutionError<RunnerError> {
     Runner(Box<RunnerError>),
 }
 
+/// Failure while executing one reusable owned no-operation mapping.
+#[derive(Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeNoOperationOwnedFailure<RunnerError> {
+    /// Prepared caller buffers could not bind to the retained ready mapping.
+    Binding(ExecutionGeometryNativeNoOperationBindingError),
+    /// Bound runner/completion admission failed.
+    Execution(
+        Box<ExecutionGeometryNativeNoOperationExecutionError<RunnerError>>,
+    ),
+    /// Caller buffers drifted from the admitted entry checkpoint.
+    Preparation(ExecutionGeometryNativeNoOperationPreparationError),
+}
+
 /// Result of one dedicated checkpoint-bound v5 no-operation runner call.
 pub type ExecutionGeometryNativeNoOperationExecutionResult<RunnerError> =
     Result<
         ExecutionGeometryNativeNoOperationCompletion,
         Box<ExecutionGeometryNativeNoOperationExecutionError<RunnerError>>,
     >;
+
+/// Result of executing one reusable owned no-operation mapping.
+pub type ExecutionGeometryNativeNoOperationOwnedResult<RunnerError> = Result<
+    ExecutionGeometryNativeNoOperationCompletion,
+    Box<ExecutionGeometryNativeNoOperationOwnedFailure<RunnerError>>,
+>;
 
 /// Failure while preparing checkpoint-exact buffers for v5 no-operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -183,6 +202,18 @@ pub type ExecutionGeometryNativeNoOperationTransactionResult<
     >,
 >;
 
+/// Result of loading one reusable exact no-operation mapping.
+pub type GeometryNativeNoOperationOwnedLoadResult<MemoryError> = Result<
+    LoadedExecutionGeometryNativeNoOperation,
+    Box<NativeExecutableLoadFailure<MemoryError>>,
+>;
+
+/// Result of releasing one reusable exact no-operation mapping.
+pub type GeometryNativeNoOperationOwnedReleaseResult<MemoryError> = Result<
+    (),
+    Box<ExecutionGeometryNativeExecutableReleaseFailure<MemoryError>>,
+>;
+
 /// Verified v5 no-operation bound to one opaque checkpoint and normative exit.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecutionGeometryNativeNoOperationAdmission {
@@ -191,6 +222,20 @@ pub struct ExecutionGeometryNativeNoOperationAdmission {
     expected_state: ProfileMachineState,
     load_image: VerifiedExecutionGeometryLoadImage,
     program: ExecutionGeometryRegionEffectProgram,
+}
+
+/// Exact synchronized mapping weight retained by one owned no-operation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExecutionGeometryNativeNoOperationResidentWeight {
+    mapped_bytes: usize,
+    mappings: usize,
+}
+
+/// One reusable ready no-operation mapping beside exact admission.
+#[derive(Debug)]
+pub struct LoadedExecutionGeometryNativeNoOperation {
+    admission: Box<ExecutionGeometryNativeNoOperationAdmission>,
+    executable: ReadyExecutionGeometryNativeExecutable,
 }
 
 /// Prepared checkpoint-owned no-operation bound to exact synchronized v5 code.
@@ -216,6 +261,18 @@ pub struct ExecutionGeometryNativeNoOperationCompletion {
 pub struct PreparedExecutionGeometryNativeNoOperation<'admission, 'buffers> {
     admission: &'admission ExecutionGeometryNativeNoOperationAdmission,
     invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
+impl<RunnerError: Display> Display
+    for ExecutionGeometryNativeNoOperationOwnedFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Binding(error) => Display::fmt(error, f),
+            Self::Execution(error) => Display::fmt(error, f),
+            Self::Preparation(error) => Display::fmt(error, f),
+        }
+    }
 }
 
 impl Display for ExecutionGeometryNativeNoOperationAdmissionError {
@@ -423,6 +480,30 @@ impl ExecutionGeometryNativeNoOperationAdmission {
         &self.load_image
     }
 
+    /// Loads and retains one reusable synchronized no-operation mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns the exact native executable load failure without publishing a
+    /// partial owner.
+    pub fn load_owned<Adapter>(
+        &self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeNoOperationOwnedLoadResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let executable = load_execution_geometry_native_executable(
+            adapter,
+            self.load_image(),
+        )
+        .map_err(Box::new)?;
+        Ok(LoadedExecutionGeometryNativeNoOperation {
+            admission: Box::new(self.clone()),
+            executable,
+        })
+    }
+
     /// Binds verified no-operation evidence to a normatively replayed
     /// checkpoint.
     ///
@@ -527,6 +608,102 @@ impl ExecutionGeometryNativeNoOperationAdmission {
     #[must_use]
     pub const fn program(&self) -> &ExecutionGeometryRegionEffectProgram {
         &self.program
+    }
+}
+
+impl ExecutionGeometryNativeNoOperationResidentWeight {
+    /// Returns exact synchronized mapped bytes retained by this owner.
+    #[must_use]
+    pub const fn mapped_bytes(self) -> usize {
+        self.mapped_bytes
+    }
+
+    /// Returns the exact number of live executable mappings.
+    #[must_use]
+    pub const fn mappings(self) -> usize {
+        self.mappings
+    }
+}
+
+impl LoadedExecutionGeometryNativeNoOperation {
+    /// Returns the exact admission retained beside the ready mapping.
+    #[must_use]
+    pub const fn admission(
+        &self,
+    ) -> &ExecutionGeometryNativeNoOperationAdmission {
+        &self.admission
+    }
+
+    /// Returns the retained synchronized executable mapping.
+    #[must_use]
+    pub const fn executable(&self) -> &ReadyExecutionGeometryNativeExecutable {
+        &self.executable
+    }
+
+    /// Executes the retained mapping without executable-memory adapter work.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact preparation, binding, runner, or completion failure while
+    /// retaining this reusable mapping.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> ExecutionGeometryNativeNoOperationOwnedResult<Runner::Error>
+    where
+        Runner: ExecutionGeometryNativeRunner,
+    {
+        let prepared = self.admission.prepare(buffers).map_err(|error| {
+            Box::new(
+                ExecutionGeometryNativeNoOperationOwnedFailure::Preparation(
+                    error,
+                ),
+            )
+        })?;
+        let bound =
+            prepared
+                .bind_executable(&self.executable)
+                .map_err(|error| {
+                    Box::new(
+                        ExecutionGeometryNativeNoOperationOwnedFailure::Binding(
+                            error,
+                        ),
+                    )
+                })?;
+        bound.execute(runner).map_err(|error| {
+            Box::new(ExecutionGeometryNativeNoOperationOwnedFailure::Execution(
+                error,
+            ))
+        })
+    }
+
+    /// Releases the exact retained ready mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns retryable ready-executable ownership when platform release
+    /// fails.
+    pub fn release<Adapter>(
+        self,
+        adapter: &mut Adapter,
+    ) -> GeometryNativeNoOperationOwnedReleaseResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        release_execution_geometry_native_executable(adapter, self.executable)
+            .map_err(Box::new)
+    }
+
+    /// Returns exact synchronized mapping weight reported by the adapter.
+    #[must_use]
+    pub const fn resident_weight(
+        &self,
+    ) -> ExecutionGeometryNativeNoOperationResidentWeight {
+        ExecutionGeometryNativeNoOperationResidentWeight {
+            mapped_bytes: self.executable.mapping().mapped_len(),
+            mappings: 1,
+        }
     }
 }
 

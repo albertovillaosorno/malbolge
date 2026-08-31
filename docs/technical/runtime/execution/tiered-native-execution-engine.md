@@ -1100,6 +1100,18 @@ retry; and cleanup failure after Applied retains the already normatively proven
 completion. Eight focused cases cover these admission, binding, rollback, and
 transaction properties. Broader state-changing templates remain separate work.
 
+No-operation can now also own one reusable synchronized mapping directly.
+`ExecutionGeometryNativeNoOperationAdmission::load_owned` heap-retains the exact
+checkpoint-bound admission beside its ready executable, then reuses the existing
+prepare/bind/runner path without mapping work. Repeated Applied calls reproduce
+the same normatively replayed self-encryption and C/D successor state, while a
+runner failure restores the entry snapshot and leaves the mapping reusable.
+
+The owner reports one live mapping and derives resident bytes from the platform
+`mapped_len()` report. Release delegates to the exact ready-executable cleanup
+contract. Two focused cases cover repeated mapping reuse/weight and mutation
+failure followed by successful reuse.
+
 The first multistep geometry-native composition is the verified `DP` no-op/halt
 pair. `ExecutionGeometryNativeNoopHaltSequence` admits the no-operation from the
 entry checkpoint first, then uses its normatively replayed opaque checkpoint as

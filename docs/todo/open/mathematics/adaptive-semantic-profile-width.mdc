@@ -874,6 +874,11 @@ transfers, verification, and other separately measured costs.
   caller-memory drift, runner mutation failure, and completion drift with exact
   rollback. Guard miss preserves the entry checkpoint, while failed release
   retains the ready executable for retry and preserves committed Applied state.
+- No-operation now also has a reusable one-mapping owner with heap-owned
+  admission. It reuses the exact prepare/bind runner path without remapping,
+  preserves the normatively replayed self-encryption/C-D state, reports platform
+  mapping weight, rolls back runner failure, and transfers exact cleanup
+  ownership on release failure.
 - The first multistep geometry-native composition now admits and executes the
   certified `DP` no-op/halt pair. No-op admission normatively derives the exact
   intermediate checkpoint and that opaque state is the sole authority accepted
