@@ -1000,8 +1000,13 @@ transfers, verification, and other separately measured costs.
   weighted candidate rejection rolls back without publication; and limit
   reconfiguration evicts only unleased LRU residents until exact usage fits.
   Focused N10/N11/N12 fixtures prove 14 mappings for two residents and
-  deterministic shrink from 21 mappings to 14. Shared heterogeneous residency
-  for the complete theorem remains separate work.
+  deterministic shrink from 21 mappings to 14.
+- The complete theorem is now also a typed `CrazyTheorem` resident in the shared
+  heterogeneous boundary. It delegates exact plan identity, load, seven-step
+  execution, 114,688-byte/seven-mapping weight evidence, release, and cleanup
+  retry to the existing owner. Shared LRU hits reuse it without remapping and
+  keep eviction/weight policy template-neutral. Broader concurrent shared
+  residency remains separate work.
 - Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
   dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical

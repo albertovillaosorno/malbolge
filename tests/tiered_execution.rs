@@ -14448,6 +14448,10 @@ fn cross_template_crazy_plan() -> Result<CrossResidentPlan, String> {
     Ok(CrossResidentPlan::Crazy(Box::new(admission)))
 }
 
+fn cross_template_crazy_theorem_plan() -> Result<CrossResidentPlan, String> {
+    Ok(CrossResidentPlan::CrazyTheorem(crazy_lru_sequence(10)?))
+}
+
 fn cross_template_initial_halt_plan() -> Result<CrossResidentPlan, String> {
     let (admission, _geometry) = geometry_native_admission_fixture(10)?;
     Ok(CrossResidentPlan::InitialHalt(Box::new(admission)))
@@ -20140,6 +20144,130 @@ fn geometry_native_cross_template_no_operation_shares_single_mapping_budget()
         .release_if_unleased(&mut adapter, &pair_plan)
         .map(|_release| ())
         .map_err(|error| format!("cross no-op pair cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_crazy_theorem_resident_runs()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let expected = full_crazy_final_state(&fixture)?;
+    let plan = CrossResidentPlan::CrazyTheorem(Box::new(
+        geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?,
+    ));
+    let CrossResidentPlan::CrazyTheorem(sequence) = &plan else {
+        return Err(String::from("cross crazy theorem plan variant drifted"));
+    };
+    let checkpoint = sequence.initial_jump().checkpoint().clone();
+    let mapped_lengths =
+        [4_096usize, 8_192, 12_288, 16_384, 20_480, 24_576, 28_672];
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(326)?,
+        native_executable_address(0xf_3000)?,
+    )
+    .with_mapped_len_overrides(mapped_lengths.to_vec());
+    let loaded = plan
+        .load(&mut adapter)
+        .map_err(|error| format!("cross crazy theorem load: {error}"))?;
+    let weight = loaded
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut runner = full_crazy_applied_runner(7);
+    let outcome = loaded
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("cross crazy theorem execute: {error}"))?;
+    if loaded.kind() != CrossResidentKind::CrazyTheorem
+        || !loaded.matches_plan(&plan)
+        || loaded.plan() != plan
+        || weight.mapped_bytes() != 114_688
+        || weight.mappings() != 7
+        || outcome.kind() != CrossResidentKind::CrazyTheorem
+        || !matches!(outcome, CrossExecutionOutcome::CrazyTheorem(_))
+        || outcome.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 7
+        || adapter.operations.len() != 28
+    {
+        return Err(String::from("cross crazy theorem resident drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("cross crazy theorem release: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_crazy_theorem_lru_hit_reuses()
+-> Result<(), String> {
+    let plan = cross_template_crazy_theorem_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(327)?,
+        native_executable_address(0xf_4000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| format!("cross crazy theorem insert: {error}"))?,
+    );
+    let operations_before = adapter.operations.len();
+    let hit = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross crazy theorem hit: {error}"))?;
+    let weight = hit
+        .lease()
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    if hit.disposition() != CrossLruDisposition::Hit
+        || hit.lease().kind() != CrossResidentKind::CrazyTheorem
+        || !hit.lease().matches_plan(&plan)
+        || weight.mappings() != 7
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from("cross crazy theorem hit remapped resident"));
+    }
+    drop(hit);
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross crazy theorem hit cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_crazy_theorem_release_failure_typed()
+-> Result<(), String> {
+    let plan = cross_template_crazy_theorem_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(328)?,
+        native_executable_address(0xf_5000)?,
+    )
+    .with_release_failure_at(3);
+    let mut cache = cross_template_lru(1)?;
+    drop(cache.ensure(&mut adapter, &plan).map_err(|error| {
+        format!("cross crazy theorem typed acquire: {error}")
+    })?);
+    let Err(failure) = cache.release_if_unleased(&mut adapter, &plan) else {
+        return Err(String::from(
+            "cross crazy theorem release failure ignored",
+        ));
+    };
+    if !matches!(
+        failure.as_ref(),
+        CrossResidentReleaseFailure::CrazyTheorem(_)
+    ) || cache.contains(&plan)
+    {
+        return Err(String::from(
+            "cross crazy theorem cleanup authority drifted",
+        ));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|error| format!("cross crazy theorem cleanup retry: {error}"))
 }
 
 #[test]

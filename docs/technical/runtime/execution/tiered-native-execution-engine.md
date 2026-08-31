@@ -464,17 +464,22 @@ without publishing partial cache authority.
 
 `GeometryNativeJumpRotateCrazyHaltLruCache` extends that owner to multi-resident
 LRU policy. A positive entry bound can combine with exact mapped-byte and
-mapping-count limits derive only from synchronized mapping reports. Hits
+mapping-count limits come only from synchronized mapping reports. Hits
 refresh MRU without adapter work, while misses evict the first unleased LRU
-identity or
-fail closed when every resident is leased.
+identity or fail closed when every resident is leased.
 
 Weighted admission loads one complete candidate before deciding residency, so
 its exact seven-mapping report participates in capacity checks. Oversized or
 blocked candidates release without publication. Victim-release failure transfers
 retryable cleanup ownership, and limit reconfiguration preserves old limits
-until retained usage satisfies requested entry/byte/mapping bounds. Shared
-heterogeneous residency for this complete theorem remains separate work.
+until retained usage satisfies requested entry/byte/mapping bounds.
+
+The complete theorem is now also a `CrazyTheorem` variant of the shared
+heterogeneous resident boundary. Load, execute, exact weight, plan identity,
+release, and retry delegate to the same seven-mapping owner; the shared LRU adds
+no theorem-specific eviction or weighting logic. Focused evidence proves the
+114,688-byte/seven-mapping resident, mapping-free cache hits, and typed cleanup
+retry. Broader concurrent shared-residency policy remains separate work.
 
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low
