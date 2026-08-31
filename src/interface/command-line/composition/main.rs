@@ -86,6 +86,8 @@ enum CDriver {
 
 type ConfiguredProfileBackend =
     ProfileResidentTransportBackend<ProfileResidentProcessTransport>;
+type DoomHostBuildResult =
+    Result<(&'static str, Vec<OsString>, Vec<OsString>), String>;
 
 #[derive(Debug)]
 struct CRunPlan {
@@ -709,8 +711,7 @@ fn write_usage() -> Result<(), String> {
         .map_err(|error| format!("failed to write usage: {error}"))
 }
 
-fn doom_host_build_arguments()
--> Result<(&'static str, Vec<OsString>, Vec<OsString>), String> {
+fn doom_host_build_arguments() -> DoomHostBuildResult {
     let mut compiler_arguments = vec![
         OsString::from("-Dmain=DoomGuestMain"),
         OsString::from("-ffreestanding"),
