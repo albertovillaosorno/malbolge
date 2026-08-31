@@ -849,6 +849,11 @@ transfers, verification, and other separately measured costs.
   identity, one-mapping weight, hit reuse, primary-load retry, typed release
   cleanup, and unchanged checkpoint-bound execution. Halt and jump can coexist
   under a two-mapping budget; a two-mapping pair evicts both when required.
+- Both no-op/halt and rotate/halt owners now delegate their halt mapping to the
+  reusable initial-halt owner while preserving existing pair accessors, load
+  rollback, release retry, operation counts, and full-path suffix semantics. The
+  owner heap-retains its admission so nested residents do not inflate stack
+  frames with another checkpoint copy.
 - Initial jump-data is now also a heterogeneous resident. Exact admission is
   its cache identity, hits reuse one mapping, primary-load rollback preserves
   the variant, release failure transfers typed cleanup, and mapping-count policy

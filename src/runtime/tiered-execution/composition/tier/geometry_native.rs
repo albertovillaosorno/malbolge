@@ -243,7 +243,7 @@ pub struct ExecutionGeometryNativeInitialHaltResidentWeight {
 /// One reusable ready initial-halt mapping beside exact admission.
 #[derive(Debug)]
 pub struct LoadedExecutionGeometryNativeInitialHalt {
-    admission: ExecutionGeometryNativeInitialHaltAdmission,
+    admission: Box<ExecutionGeometryNativeInitialHaltAdmission>,
     executable: ReadyExecutionGeometryNativeExecutable,
 }
 
@@ -495,7 +495,7 @@ impl ExecutionGeometryNativeInitialHaltAdmission {
         )
         .map_err(Box::new)?;
         Ok(LoadedExecutionGeometryNativeInitialHalt {
-            admission: self.clone(),
+            admission: Box::new(self.clone()),
             executable,
         })
     }

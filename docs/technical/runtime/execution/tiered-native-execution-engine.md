@@ -632,10 +632,11 @@ Runner failure still restores the full entry snapshot and leaves the mapping
 reusable.
 
 The owner reports one live mapping and derives resident bytes from the
-platform mapping's `mapped_len()` report. Release delegates to the existing
-exact ready-executable cleanup contract, so failed release transfers retryable
-mapping ownership rather than weakening cache authority. Two focused cases
-cover mapping reuse/weight and failure rollback followed by successful reuse.
+platform mapping's `mapped_len()` report. Its cloned admission is heap-owned so
+embedding this owner in larger pair/triple residents does not duplicate a large
+checkpoint on stack. Release delegates to the existing exact ready-executable
+cleanup contract, so failed release transfers retryable mapping ownership. Two
+focused cases cover mapping reuse/weight and failure rollback followed by reuse.
 
 The first state-changing explicit-geometry template is now admitted separately:
 `direct-execution-geometry-no-operation` revision 1 accepts only v5 one-step
@@ -716,10 +717,10 @@ misses or fails.
 
 The rotate/halt suffix can additionally prebind or own both synchronized
 executables. Both images are checked before caller-state mutation; repeated
-execution of a loaded pair performs no new mapping work. Partial halt-load
-failure releases the ready rotate, cleanup failure retains exact retry
-ownership, and pair release attempts both mappings even if either release
-fails.
+execution of a loaded pair performs no new mapping work. The loaded pair now
+retains its halt through the reusable initial-halt owner while preserving the
+same ready-executable accessor. Partial halt-load failure still releases rotate,
+and pair release still attempts both mappings with exact retry ownership.
 
 Twelve focused suffix tests cover geometry continuity, indexed
 progress/failure, reusable prebinding, owned reuse, partial-load rollback, and
@@ -1128,10 +1129,11 @@ restores only the failing halt step and retains the committed no-operation
 prefix.
 
 `load_pair()` now supplies an optional owner for those same two mappings. It
-loads no-operation first and halt second; halt-load failure immediately releases
-the ready no-operation, while failed rollback retains that exact executable for
-retry beside the primary halt-load error. The loaded pair executes repeatedly
-without adapter work and `release()` always attempts both mappings.
+loads no-operation first and halt second through the reusable initial-halt
+owner; halt-load failure immediately releases the ready no-operation, while
+failed rollback retains that exact executable beside the primary halt error.
+The loaded pair executes repeatedly without adapter work and release always
+attempts both mappings through their existing exact cleanup contracts.
 
 If either or both releases fail, the returned pair cleanup failure retains every
 still-owned ready executable and can retry only those failures. Four cases cover

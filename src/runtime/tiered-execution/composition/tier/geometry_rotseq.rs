@@ -56,6 +56,7 @@ use crate::geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltExecutionError,
     ExecutionGeometryNativeInitialHaltPreparationError,
     ExecutionGeometryNativeInitialHaltTransactionFailure,
+    LoadedExecutionGeometryNativeInitialHalt,
 };
 use crate::geometry_native_rotate::{
     ExecutionGeometryNativeRotateAdmission,
@@ -231,7 +232,7 @@ pub struct BoundExecutionGeometryNativeRotateHaltSequence<
 /// Owned ready rotate/halt pair bound to one admitted sequence.
 #[derive(Debug)]
 pub struct LoadedExecutionGeometryNativeRotateHaltSequence {
-    halt: ReadyExecutionGeometryNativeExecutable,
+    halt: LoadedExecutionGeometryNativeInitialHalt,
     rotate: ReadyExecutionGeometryNativeExecutable,
     sequence: ExecutionGeometryNativeRotateHaltSequence,
 }
@@ -629,7 +630,7 @@ impl LoadedExecutionGeometryNativeRotateHaltSequence {
         Runner: ExecutionGeometryNativeRunner,
     {
         let bound = BoundExecutionGeometryNativeRotateHaltSequence {
-            halt: &self.halt,
+            halt: self.halt.executable(),
             rotate: &self.rotate,
             sequence: &self.sequence,
         };
@@ -639,7 +640,7 @@ impl LoadedExecutionGeometryNativeRotateHaltSequence {
     /// Returns the owned synchronized halt executable.
     #[must_use]
     pub const fn halt(&self) -> &ReadyExecutionGeometryNativeExecutable {
-        &self.halt
+        self.halt.executable()
     }
 
     /// Releases both mappings, attempting both even when one release fails.
@@ -654,10 +655,7 @@ impl LoadedExecutionGeometryNativeRotateHaltSequence {
     where
         Adapter: NativeExecutableMemoryAdapter,
     {
-        let halt_failure =
-            release_execution_geometry_native_executable(adapter, self.halt)
-                .err()
-                .map(Box::new);
+        let halt_failure = self.halt.release(adapter).err();
         let rotate_failure =
             release_execution_geometry_native_executable(adapter, self.rotate)
                 .err()
@@ -826,10 +824,7 @@ impl ExecutionGeometryNativeRotateHaltSequence {
                 Box::new(error),
             ))
         })?;
-        let halt = match load_execution_geometry_native_executable(
-            adapter,
-            self.halt.load_image(),
-        ) {
+        let halt = match self.halt.load_owned(adapter) {
             Ok(halt) => halt,
             Err(error) => {
                 let rotate_release_failure =
@@ -840,7 +835,7 @@ impl ExecutionGeometryNativeRotateHaltSequence {
                     .map(Box::new);
                 return Err(Box::new(
                     ExecutionGeometryNativeRotateHaltPairLoadFailure::Halt {
-                        error: Box::new(error),
+                        error,
                         rotate_release_failure,
                     },
                 ));
