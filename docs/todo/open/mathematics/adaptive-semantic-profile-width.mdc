@@ -843,6 +843,10 @@ transfers, verification, and other separately measured costs.
   its cache identity, hits reuse one mapping, primary-load rollback preserves
   the variant, release failure transfers typed cleanup, and mapping-count policy
   composes its one mapping with the existing pair/triple weights.
+- The full jump/rotate/halt owner now delegates its jump mapping lifecycle to
+  the same reusable initial-jump owner. Triple load/release no longer duplicate
+  raw jump executable ownership while preserving existing suffix rollback and
+  three-mapping cleanup contracts.
 - Input, output, and crazy native templates remain open.
 - The no-op/halt, rotate/halt, and full-path single-resident caches remain
   intentionally separate for operation-specific callers. The heterogeneous LRU

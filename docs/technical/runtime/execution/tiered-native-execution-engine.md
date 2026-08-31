@@ -754,16 +754,17 @@ additional mapping operations, reject an N11 jump executable before mutation,
 and preserve the post-rotate checkpoint on a prebound halt failure.
 
 The full path can now also own one exact loaded triple. The reviewed rotate/halt
-pair loads first; only after both suffix mappings are ready does the initial
-jump map. A jump-load failure releases the pair immediately, while failed
-rollback returns the exact suffix cleanup ownership for retry. Repeated owned
-execution delegates to the prebound triple and performs no mapping work.
+pair loads first; only after both suffix mappings are ready does the reusable
+initial-jump owner map. Triple loading now delegates that jump mapping to the
+same `load_owned` lifecycle used by standalone and heterogeneous initial-jump
+residency. A jump-load failure still releases the pair immediately, while failed
+rollback returns the exact suffix cleanup ownership for retry.
 
-Owned release attempts the jump and both suffix mappings even when an earlier
-release fails. The returned cleanup object retains only failed mappings and can
-retry all of them without reconstructing identity. Four focused tests cover
-reuse, clean jump-load rollback, rollback cleanup ownership, and three-mapping
-release retry.
+Owned release delegates the jump mapping to that same reusable owner and still
+attempts the suffix even when jump release fails. The returned triple cleanup
+object retains only failed mappings and can retry all of them without
+reconstructing identity. Existing full-path tests preserve clean jump-load
+rollback, rollback cleanup ownership, reuse, and three-mapping release retry.
 
 The complete `(&O` path now has its own single-resident lease cache around the
 owned triple. Complete admitted jump/rotate/halt sequence equality is the only

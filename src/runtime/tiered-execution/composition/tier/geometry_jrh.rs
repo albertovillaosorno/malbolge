@@ -46,8 +46,6 @@ use crate::execution_native::{
     NativeExecutableMemoryAdapter, NativeRegionBuffers,
     NativeRegionInvocationOutcome, ReadyExecutionGeometryNativeExecutable,
     VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact,
-    load_execution_geometry_native_executable,
-    release_execution_geometry_native_executable,
 };
 use crate::geometry_native_initial_jump_data::{
     ExecutionGeometryNativeInitialJumpDataAdmission,
@@ -57,6 +55,7 @@ use crate::geometry_native_initial_jump_data::{
     ExecutionGeometryNativeInitialJumpDataExecutionError,
     ExecutionGeometryNativeInitialJumpDataPreparationError,
     ExecutionGeometryNativeInitialJumpDataTransactionFailure,
+    LoadedExecutionGeometryNativeInitialJumpData,
 };
 use crate::geometry_native_rotate_sequence::{
     BoundExecutionGeometryNativeRotateHaltSequence,
@@ -269,7 +268,7 @@ pub struct BoundExecutionGeometryNativeJumpRotateHaltSequence<
 /// Owned exact ready triple bound to one admitted full sequence.
 #[derive(Debug)]
 pub struct LoadedExecutionGeometryNativeJumpRotateHaltSequence {
-    initial_jump: ReadyExecutionGeometryNativeExecutable,
+    initial_jump: LoadedExecutionGeometryNativeInitialJumpData,
     sequence: ExecutionGeometryNativeJumpRotateHaltSequence,
     suffix: LoadedExecutionGeometryNativeRotateHaltSequence,
 }
@@ -621,7 +620,7 @@ impl LoadedExecutionGeometryNativeJumpRotateHaltSequence {
         let bound = self
             .sequence
             .bind_executables(
-                &self.initial_jump,
+                self.initial_jump.executable(),
                 self.suffix.rotate(),
                 self.suffix.halt(),
             )
@@ -646,7 +645,7 @@ impl LoadedExecutionGeometryNativeJumpRotateHaltSequence {
     pub const fn initial_jump(
         &self,
     ) -> &ReadyExecutionGeometryNativeExecutable {
-        &self.initial_jump
+        self.initial_jump.executable()
     }
 
     /// Releases all three mappings, attempting the suffix even if jump release
@@ -662,13 +661,7 @@ impl LoadedExecutionGeometryNativeJumpRotateHaltSequence {
     where
         Adapter: NativeExecutableMemoryAdapter,
     {
-        let initial_jump_failure =
-            release_execution_geometry_native_executable(
-                adapter,
-                self.initial_jump,
-            )
-            .err()
-            .map(Box::new);
+        let initial_jump_failure = self.initial_jump.release(adapter).err();
         let suffix_failure = self.suffix.release(adapter).err();
         triple_release_result(initial_jump_failure, suffix_failure)
     }
@@ -962,15 +955,12 @@ impl ExecutionGeometryNativeJumpRotateHaltSequence {
                 ),
             )
         })?;
-        let initial_jump = match load_execution_geometry_native_executable(
-            adapter,
-            self.initial_jump.load_image(),
-        ) {
+        let initial_jump = match self.initial_jump.load_owned(adapter) {
             Ok(initial_jump) => initial_jump,
             Err(error) => {
                 let suffix_release_failure = suffix.release(adapter).err();
                 return Err(Box::new(FullTripleLoadFailure::InitialJump {
-                    error: Box::new(error),
+                    error,
                     suffix_release_failure,
                 }));
             },
