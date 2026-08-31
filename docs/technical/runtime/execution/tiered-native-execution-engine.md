@@ -470,7 +470,7 @@ fail closed when every resident is leased.
 
 Weighted admission loads one complete candidate before deciding residency, so
 its exact seven-mapping report participates in capacity checks. Oversized or
-blocked candidates release without publication, victim-release failure transfers
+blocked candidates release without publication. Victim-release failure transfers
 retryable cleanup ownership, and limit reconfiguration preserves old limits
 until retained usage satisfies requested entry/byte/mapping bounds. Shared
 heterogeneous residency for this complete theorem remains separate work.
