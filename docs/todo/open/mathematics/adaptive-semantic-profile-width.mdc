@@ -687,8 +687,14 @@ transfers, verification, and other separately measured costs.
 - Input now also has checkpoint-bound semantic admission and a relocation-free
   load image. Admission replays Byte or EOF from the exact opaque checkpoint,
   retains the normative exit as future Applied authority, and rejects artifact
-  or checkpoint geometry drift before mapping. ABI preparation, runner
-  execution, reusable ownership, and heterogeneous residency remain open.
+  or checkpoint geometry drift before mapping.
+- Input prepare/bind/runner execution now requires checkpoint-exact memory,
+  complete input bytes, and output before the common ABI validates the Byte/EOF
+  cursor transition. N10/N11 executable binding rejects atomically; Applied
+  returns only the replayed state, GuardMiss preserves entry, runner/completion
+  failure rolls buffers back, and transactional release retains committed state
+  plus retryable executable ownership on cleanup failure. Reusable ownership
+  and heterogeneous residency remain open.
 - A geometry-bound output artifact now exists for the reached `<` step of the
   certified `ubO` input/output/halt path with nonempty input. Profile identity
   still selects output opcode/byte semantics, while explicit geometry supplies

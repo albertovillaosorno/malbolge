@@ -694,8 +694,18 @@ Input now also has checkpoint-bound semantic admission before any mapping.
 `ExecutionGeometryNativeInputAdmission` replays the exact byte or EOF step from
 the opaque checkpoint, retains that replayed state as future Applied authority,
 and only then reconstructs artifact identity and a relocation-free load image.
-N10/N11 artifact and checkpoint drift reject independently; ABI preparation,
-runner execution, reusable ownership, and residency remain separate work.
+N10/N11 artifact and checkpoint drift reject independently.
+
+Input now also reaches the dedicated v5 runner through checkpoint-exact ABI
+preparation and
+exact synchronized executable binding. Memory, complete immutable input bytes,
+and output must equal the admitted checkpoint before preparation; the common ABI
+input validator then distinguishes Byte from EOF through the checkpoint cursor.
+Applied accepts only the replayed exit, GuardMiss preserves the checkpoint, and
+runner/completion failure restores entry buffers. Transactional execution maps
+only after preparation, attempts release on every post-load exit, and preserves
+committed completion plus retryable executable ownership if final release fails,
+while reusable ownership and heterogeneous residency remain separate work.
 
 `direct-execution-geometry-output` revision 1 adds a byte-verifiable v5 output
 artifact boundary with operation-specific execution authority composed below.
