@@ -73,6 +73,7 @@ pub(super) enum PreparedExecutionGeometryDirectTarget {
     InitialJumpData(NativeArtifactKey),
     Input(NativeArtifactKey),
     JumpCode(NativeArtifactKey),
+    JumpData(NativeArtifactKey),
     NoOperation(NativeArtifactKey),
     Output(NativeArtifactKey),
     Rotate(NativeArtifactKey),
@@ -94,6 +95,8 @@ pub enum ExecutionGeometryDirectSelectionError {
     Input(DirectExecutionGeometryInputError),
     /// Guarded jump-code emission or verification failed.
     JumpCode(DirectExecutionGeometryJumpCodeError),
+    /// Guarded jump-data emission or verification failed.
+    JumpData(DirectExecutionGeometryJumpDataError),
     /// Guarded no-operation emission or verification failed.
     NoOperation(DirectExecutionGeometryNoOperationError),
     /// Guarded output emission or verification failed.
@@ -114,6 +117,7 @@ impl Display for ExecutionGeometryDirectSelectionError {
             Self::InitialJumpData(error) => Display::fmt(error, f),
             Self::Input(error) => Display::fmt(error, f),
             Self::JumpCode(error) => Display::fmt(error, f),
+            Self::JumpData(error) => Display::fmt(error, f),
             Self::NoOperation(error) => Display::fmt(error, f),
             Self::Output(error) => Display::fmt(error, f),
             Self::ProfileIdentity => {
@@ -240,6 +244,11 @@ impl PreparedExecutionGeometryDirectTarget {
                 key.target().host_os(),
                 key.target().host_isa(),
             ),
+            Self::JumpData(key) => select_execution_geometry_jump_data(
+                program,
+                key.target().host_os(),
+                key.target().host_isa(),
+            ),
             Self::NoOperation(key) => select_execution_geometry_no_operation(
                 program,
                 key.target().host_os(),
@@ -265,6 +274,7 @@ impl PreparedExecutionGeometryDirectTarget {
             | Self::InitialJumpData(key)
             | Self::Input(key)
             | Self::JumpCode(key)
+            | Self::JumpData(key)
             | Self::NoOperation(key)
             | Self::Output(key)
             | Self::Rotate(key) => key,
@@ -708,6 +718,9 @@ fn select_execution_geometry_kind(
     if validate_execution_geometry_jump_code_program(program).is_ok() {
         return Some(ExecutionGeometryDirectNativeKind::JumpCode);
     }
+    if validate_execution_geometry_jump_data_program(program).is_ok() {
+        return Some(ExecutionGeometryDirectNativeKind::JumpData);
+    }
     if validate_execution_geometry_output_program(program).is_ok() {
         return Some(ExecutionGeometryDirectNativeKind::Output);
     }
@@ -763,6 +776,10 @@ const fn execution_geometry_backend(
             DIRECT_EXECUTION_GEOMETRY_JUMP_CODE_BACKEND_ID,
             DIRECT_EXECUTION_GEOMETRY_JUMP_CODE_BACKEND_REVISION,
         ),
+        ExecutionGeometryDirectNativeKind::JumpData => (
+            DIRECT_EXECUTION_GEOMETRY_JUMP_DATA_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_JUMP_DATA_BACKEND_REVISION,
+        ),
         ExecutionGeometryDirectNativeKind::NoOperation => (
             DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID,
             DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_REVISION,
@@ -808,6 +825,11 @@ const fn execution_geometry_identity_error(
                 DirectExecutionGeometryJumpCodeError::Identity(error),
             )
         },
+        ExecutionGeometryDirectNativeKind::JumpData => {
+            ExecutionGeometryDirectSelectionError::JumpData(
+                DirectExecutionGeometryJumpDataError::Identity(error),
+            )
+        },
         ExecutionGeometryDirectNativeKind::NoOperation => {
             ExecutionGeometryDirectSelectionError::NoOperation(
                 DirectExecutionGeometryNoOperationError::Identity(error),
@@ -845,6 +867,9 @@ const fn prepared_execution_geometry_target(
         },
         ExecutionGeometryDirectNativeKind::JumpCode => {
             PreparedExecutionGeometryDirectTarget::JumpCode(key)
+        },
+        ExecutionGeometryDirectNativeKind::JumpData => {
+            PreparedExecutionGeometryDirectTarget::JumpData(key)
         },
         ExecutionGeometryDirectNativeKind::NoOperation => {
             PreparedExecutionGeometryDirectTarget::NoOperation(key)
@@ -971,6 +996,29 @@ fn select_execution_geometry_jump_code(
     verify_direct_execution_geometry_jump_code(&artifact, program)
         .map(VerifiedExecutionGeometryNativeArtifact::JumpCode)
         .map_err(ExecutionGeometryDirectSelectionError::JumpCode)
+}
+
+fn select_execution_geometry_jump_data(
+    program: &ExecutionGeometryRegionEffectProgram,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<
+    VerifiedExecutionGeometryNativeArtifact,
+    ExecutionGeometryDirectSelectionError,
+> {
+    let artifact = emit_direct_execution_geometry_jump_data_coff(
+        program,
+        direct_target(
+            DIRECT_EXECUTION_GEOMETRY_JUMP_DATA_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_JUMP_DATA_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ),
+    )
+    .map_err(ExecutionGeometryDirectSelectionError::JumpData)?;
+    verify_direct_execution_geometry_jump_data(&artifact, program)
+        .map(VerifiedExecutionGeometryNativeArtifact::JumpData)
+        .map_err(ExecutionGeometryDirectSelectionError::JumpData)
 }
 
 fn select_execution_geometry_no_operation(

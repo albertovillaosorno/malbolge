@@ -357,7 +357,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   oversized budget completes. Ten cases cover both transfer forms, admission,
   budgets, repeated zero after progress, and rollback before/after suspension.
 - Direct-native planning now exposes one uniform verified-v5 artifact and
-  selector for all eight reviewed explicit-geometry one-step templates. It
+  selector for all nine reviewed explicit-geometry one-step templates. It
   revalidates canonical profile identity before deterministic shape dispatch,
   preserves explicit geometry in the native key, and reuses each established
   emitter/verifier pair. Unsupported v5 shape remains an explicit error instead
@@ -381,7 +381,7 @@ baseline; native tiers are accelerators of identical observable behavior.
 
   Generic verified-v5 invocation now binds any reviewed aggregate artifact to
   its exact v5 program, operation-specific ABI preparation, load image, and one
-  ready mapping before the geometry-bound runner can execute it. All eight kinds
+  ready mapping before the geometry-bound runner can execute it. All nine kinds
   apply through the shared boundary; guard miss is atomic and runner failure
   restores the current-step entry.
 
@@ -390,6 +390,17 @@ baseline; native tiers are accelerators of identical observable behavior.
   evidence selects and loads the source-backed non-aliasing jump-code on both
   ISAs, and a generic preloaded one-step sequence matches normative replay.
   Specialized jump-code residency remains separate work.
+
+  Explicit-geometry jump-data revision 1 now reuses the reviewed jump-data
+  generators only after v5 admission proves two distinct C/D live-ins, exact
+  positional `j`, XLAT2 self-encryption, and geometry-derived successors. The
+  second `j` of adaptive repeated-jump source `('&N` selects on both ISAs at
+  N10,
+  remains geometry-distinct from N11, and matches normative replay through the
+  generic preloaded one-step path. The full four-step source selects initial
+  jump-data, two general jump-data steps, then halt on both ISAs and executes to
+  the normative final state. Specialized jump-data residency remains separate
+  work.
 
   Generic preloaded verified-v5 sequence execution now validates complete
   mapping count and every exact load image before the first guest mutation.

@@ -48,6 +48,8 @@ type ExecutionGeometryInputShapeResult =
     Result<DirectInputProgram, DirectExecutionGeometryInputError>;
 type ExecutionGeometryJumpCodeShapeResult =
     Result<DirectJumpCodeProgram, DirectExecutionGeometryJumpCodeError>;
+type ExecutionGeometryJumpDataShapeResult =
+    Result<DirectJumpDataProgram, DirectExecutionGeometryJumpDataError>;
 type ExecutionGeometryNoOperationShapeResult =
     Result<DirectNoOperationProgram, DirectExecutionGeometryNoOperationError>;
 type ExecutionGeometryOutputShapeResult =
@@ -599,6 +601,129 @@ pub(super) fn validate_execution_geometry_jump_code_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectExecutionGeometryJumpCodeError::TargetFeatures);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_execution_geometry_jump_data_program(
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> ExecutionGeometryJumpDataShapeResult {
+    if program.format_version() != EFFECT_IR_EXECUTION_GEOMETRY_VERSION
+        || !program.fits_execution_geometry_capacity()
+        || !program.fits_profile_capacity()
+        || program.step_budget() != 1
+        || program.memory_live_ins().len() != 2
+        || program.effects().len() != 1
+        || program.outcome() != (RunOutcome::BudgetExhausted { steps: 1 })
+    {
+        return Err(DirectExecutionGeometryJumpDataError::ProgramShape);
+    }
+    let effect = program
+        .effects()
+        .first()
+        .copied()
+        .ok_or(DirectExecutionGeometryJumpDataError::ProgramShape)?;
+    derive_execution_geometry_jump_data_program(program, effect)
+        .ok_or(DirectExecutionGeometryJumpDataError::ProgramShape)
+}
+
+fn derive_execution_geometry_jump_data_program(
+    program: &ExecutionGeometryRegionEffectProgram,
+    effect: EffectOp,
+) -> Option<DirectJumpDataProgram> {
+    let before = effect.before;
+    let code_pointer = before.registers.code_pointer;
+    let (code_live_in, data_live_in) =
+        execution_geometry_jump_data_live_ins(program, before)?;
+    if decode_profile_instruction(code_live_in.value, code_pointer)
+        != Some(b'j')
+    {
+        return None;
+    }
+    let memory_words = program.execution_geometry().memory_words();
+    if data_live_in.value >= memory_words {
+        return None;
+    }
+    let encrypted_value = encrypt_profile_cell(code_live_in.value)?;
+    let next_code_pointer =
+        profile_pointer_successor(code_pointer, memory_words)?;
+    let next_data_pointer =
+        profile_pointer_successor(data_live_in.value, memory_words)?;
+    let expected_after = ProfileMachineObservation {
+        registers: ProfileRegisters {
+            accumulator: before.registers.accumulator,
+            code_pointer: next_code_pointer,
+            data_pointer: next_data_pointer,
+        },
+        ..before
+    };
+    let expected_encryption = (code_live_in.value != encrypted_value)
+        .then_some(ProfileMemoryWrite {
+            address: code_pointer,
+            after: encrypted_value,
+            before: code_live_in.value,
+        });
+    if effect.after != expected_after
+        || effect.input.is_some()
+        || effect.output.is_some()
+        || effect.memory_delta
+            != (ProfileMemoryDelta {
+                data: None,
+                encryption: expected_encryption,
+            })
+    {
+        return None;
+    }
+    Some(DirectJumpDataProgram {
+        code_live_in,
+        commit: DirectCodeWriteCommit {
+            encrypted_address: code_pointer,
+            encrypted_value,
+            next_code_pointer,
+            next_data_pointer,
+        },
+        data_live_in,
+        observation: before,
+    })
+}
+
+fn execution_geometry_jump_data_live_ins(
+    program: &ExecutionGeometryRegionEffectProgram,
+    before: ProfileMachineObservation,
+) -> Option<(MemoryLiveIn, MemoryLiveIn)> {
+    let code_pointer = before.registers.code_pointer;
+    let data_pointer = before.registers.data_pointer;
+    if code_pointer == data_pointer || before.termination.is_some() {
+        return None;
+    }
+    let code_live_in = program
+        .memory_live_ins()
+        .iter()
+        .copied()
+        .find(|live_in| live_in.address == code_pointer)?;
+    let data_live_in = program
+        .memory_live_ins()
+        .iter()
+        .copied()
+        .find(|live_in| live_in.address == data_pointer)?;
+    Some((code_live_in, data_live_in))
+}
+
+pub(super) fn validate_execution_geometry_jump_data_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectExecutionGeometryJumpDataError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectExecutionGeometryJumpDataError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_EXECUTION_GEOMETRY_JUMP_DATA_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_EXECUTION_GEOMETRY_JUMP_DATA_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectExecutionGeometryJumpDataError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectExecutionGeometryJumpDataError::TargetFeatures);
     }
     Ok(())
 }

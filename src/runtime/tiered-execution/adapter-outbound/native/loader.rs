@@ -47,6 +47,7 @@ use super::direct::{
     VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact,
     VerifiedExecutionGeometryInputNativeObjectArtifact,
     VerifiedExecutionGeometryJumpCodeNativeObjectArtifact,
+    VerifiedExecutionGeometryJumpDataNativeObjectArtifact,
     VerifiedExecutionGeometryNativeArtifact,
     VerifiedExecutionGeometryNoOperationNativeObjectArtifact,
     VerifiedExecutionGeometryOutputNativeObjectArtifact,
@@ -254,6 +255,22 @@ impl VerifiedExecutionGeometryLoadImage {
         )
     }
 
+    /// Derives a relocation-free image from verified v5 jump-data bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectLoadError`] when COFF extraction, relocation, or
+    /// target instruction alignment is invalid.
+    pub fn from_jump_data(
+        artifact: &VerifiedExecutionGeometryJumpDataNativeObjectArtifact,
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        Self::from_verified_parts(
+            artifact.key(),
+            artifact.object(),
+            artifact.target_triple(),
+        )
+    }
+
     /// Derives a relocation-free image from verified v5 no-operation bytes.
     ///
     /// # Errors
@@ -359,6 +376,9 @@ impl VerifiedExecutionGeometryLoadImage {
             },
             VerifiedExecutionGeometryNativeArtifact::JumpCode(jump_code) => {
                 Self::from_jump_code(jump_code)
+            },
+            VerifiedExecutionGeometryNativeArtifact::JumpData(jump_data) => {
+                Self::from_jump_data(jump_data)
             },
             VerifiedExecutionGeometryNativeArtifact::NoOperation(
                 no_operation,

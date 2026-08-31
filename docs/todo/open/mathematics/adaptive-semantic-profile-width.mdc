@@ -578,9 +578,10 @@ transfers, verification, and other separately measured costs.
   `CheckpointGeometry` because ordinary direct planning consumes canonical v3/v4
   IR only. The separate verified-v5 path below supplies derived-geometry native
   planning without changing that canonical boundary.
-- Verified-v5 native planning now has a uniform one-step selector over all eight
+- Verified-v5 native planning now has a uniform one-step selector over all nine
   reviewed explicit-geometry templates: initial halt, initial jump-data,
-  jump-code, crazy, rotate, input, output, and no-operation. The selector
+  jump-code, jump-data, crazy, rotate, input, output, and no-operation. The
+  selector
   revalidates canonical
   profile identity, preserves exact v5 geometry in artifact identity, and routes
   through each existing emitter plus independent verifier on both reviewed ISAs.
@@ -597,9 +598,9 @@ transfers, verification, and other separately measured costs.
   N10 theorem inserts seven entries then hits all seven; a Linux target failure
   leaves a seeded Windows cache unchanged.
 - Generic verified-v5 invocation now reconstructs exact artifact identity,
-  derives the aggregate load image, dispatches only to the eight reviewed
+  derives the aggregate load image, dispatches only to the nine reviewed
   operation-specific ABI preparations, and binds one exact ready mapping before
-  the geometry-bound runner receives authority. All eight kinds apply through
+  the geometry-bound runner receives authority. All nine kinds apply through
   this path; guard miss and runner failure preserve the current-step entry.
 - Explicit-geometry jump-code revision 1 reuses the reviewed x86-64/AArch64
   jump-code generators while deriving pointer successors and memory-domain
@@ -608,6 +609,16 @@ transfers, verification, and other separately measured costs.
   normative `ProfileMachine` memory and observation exactly. N10/N11 geometry
   remains distinct in artifact identity; specialized jump-code residency is
   still separate work.
+- Explicit-geometry jump-data revision 1 reuses the reviewed x86-64/AArch64
+  jump-data generators after v5 admission proves distinct C/D live-ins, exact
+  positional `j`, the data target domain, XLAT2 self-encryption, and
+  geometry-derived C/D successors. The second `j` of adaptive repeated-jump
+  source `('&N` selects on both ISAs at N10; N10/N11 identity remains distinct,
+  and generic one-step sequence execution matches normative `ProfileMachine`
+  memory and observation exactly. The complete four-step chain selects initial
+  jump-data, two general jump-data steps, then halt on both ISAs and executes to
+  the normative final state. Specialized jump-data residency remains separate
+  work.
 - Generic preloaded verified-v5 sequence execution now validates mapping count
   and every exact load image before the first call, then preserves committed
   prefixes while reporting exact guard-miss or failure indices. The seven-step
@@ -1100,9 +1111,9 @@ transfers, verification, and other separately measured costs.
 - The no-op/halt, rotate/halt, and full-path single-resident caches remain
   intentionally separate for operation-specific callers. The heterogeneous LRU
   is the shared residency authority for its established variants. Generic
-  jump-code now executes through the shared verified-v5 path but does not yet
-  have specialized heterogeneous residency; additional state-changing templates
-  also remain open.
+  jump-code and jump-data now execute through the shared verified-v5 path but do
+  not yet have specialized heterogeneous residency; additional state-changing
+  templates also remain open.
 - Checkpoint-bound no-operation admission normatively replays the exact v5 step
   before mapping and retains that opaque-geometry exit checkpoint as the only
   admissible Applied state. The separate load image, prepare/bind layer, v5

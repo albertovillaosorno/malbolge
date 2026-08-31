@@ -668,8 +668,9 @@ continuations continue to reject derived checkpoints.
 
 Direct-native planning now has a uniform one-step v5 selection boundary before
 any sequence generalization. `VerifiedExecutionGeometryNativeArtifact` tags the
-eight reviewed explicit-geometry templates: initial halt, initial jump-data,
-jump-code, crazy, rotate, input, output, and no-operation. The selector
+nine reviewed explicit-geometry templates: initial halt, initial jump-data,
+jump-code, jump-data, crazy, rotate, input, output, and no-operation. The
+selector
 revalidates
 canonical profile identity, performs deterministic semantic-shape dispatch, and
 then uses each existing emitter plus independent verifier; exact v5 geometry
@@ -695,10 +696,10 @@ those misses only after the complete sequence succeeds. The seven-step theorem
 inserts seven artifacts and then hits all seven; a Linux target failure leaves a
 seeded Windows cache unchanged.
 
-Generic verified-v5 invocation now binds any of those eight aggregate
+Generic verified-v5 invocation now binds any of those nine aggregate
 artifacts to its exact v5 program, operation-specific ABI preparation, derived
 load image, and one already-ready mapping before exposing the existing
-geometry-bound runner port. All eight reviewed kinds apply through that
+geometry-bound runner port. All nine reviewed kinds apply through that
 boundary; guard miss is atomic and runner failure restores the current-step
 entry snapshot.
 
@@ -708,6 +709,17 @@ from v5 execution geometry. An adaptive N10 source-backed second jump-code
 selects and loads on both reviewed ISAs, and one generic preloaded sequence step
 matches normative `ProfileMachine` memory and observation exactly. N10/N11
 geometry remains distinct in artifact identity.
+
+Explicit-geometry jump-data revision 1 reuses the reviewed architecture-specific
+jump-data generators only after v5 semantic admission proves distinct C/D
+live-ins, positional `j`, the exact data target domain, XLAT2 self-encryption,
+and successors derived from execution geometry. The second `j` of
+adaptive
+repeated-jump source `('&N` selects on both reviewed ISAs at N10. N10/N11
+artifacts remain geometry-distinct, and a generic preloaded one-step execution
+matches normative `ProfileMachine` memory and observation exactly. The complete
+four-step source selects initial jump-data, two general jump-data steps, then
+halt on both ISAs and executes to the normative final state.
 
 Generic preloaded v5 sequence execution now admits the complete mapping count
 and every exact aggregate load image before the first guest mutation, then runs

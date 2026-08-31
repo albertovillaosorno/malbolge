@@ -1113,6 +1113,46 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         )
     }
 
+    /// Prepares one exact explicit-geometry non-aliasing jump-data transition.
+    ///
+    /// The direct v5 verifier owns jump-data semantics. This crate-private
+    /// constructor independently requires two distinct C/D live-ins and no I/O
+    /// before common snapshot and completion verification.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeRegionInvocationError`] when shape, capacity, live-ins,
+    /// I/O, or declared memory writes disagree with caller-owned buffers.
+    pub(crate) fn new_execution_geometry_jump_data(
+        program: &ExecutionGeometryRegionEffectProgram,
+        memory: &'buffers mut [u32],
+        input: &'buffers [u8],
+        output: &'buffers mut [u8],
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let [effect] = program.effects() else {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        };
+        if !program.fits_execution_geometry_capacity()
+            || program.step_budget() != 1
+            || program.outcome() != (RunOutcome::BudgetExhausted { steps: 1 })
+            || effect.before.termination.is_some()
+            || effect.after.termination.is_some()
+            || effect.input.is_some()
+            || effect.output.is_some()
+            || effect.before.registers.code_pointer
+                == effect.before.registers.data_pointer
+            || program.memory_live_ins().len() != 2
+        {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        }
+        Self::from_effect(
+            *effect,
+            program.memory_live_ins(),
+            program.required_memory_words(),
+            NativeRegionBuffers::new(memory, input, output),
+        )
+    }
+
     /// Prepares one exact explicit-geometry no-operation ABI transition.
     ///
     /// The direct v5 verifier owns instruction semantics; this crate-private
@@ -1299,6 +1339,11 @@ fn prepare_verified_execution_geometry_region<'buffers>(
         },
         ExecutionGeometryDirectNativeKind::JumpCode => {
             PreparedRegionInvocation::new_execution_geometry_jump_code(
+                program, memory, input, output,
+            )
+        },
+        ExecutionGeometryDirectNativeKind::JumpData => {
+            PreparedRegionInvocation::new_execution_geometry_jump_data(
                 program, memory, input, output,
             )
         },
