@@ -415,8 +415,15 @@ independently. Four Applied results reach the theorem's exact pre-halt
 checkpoint; GuardMiss stops at its zero-based crazy index with the last
 committed state. Per-step failure carries the same index and checkpoint, while
 release failure after Applied retains that newly committed state beside exact
-retryable cleanup ownership. A preloaded four-mapping owner remains separate
-composition work.
+retryable cleanup ownership.
+
+`LoadedExecutionGeometryNativeCrazyPrefix` now owns those four exact mappings
+through the existing one-step crazy owners. Partial load failure releases every
+previously loaded mapping and retains failed rollback for retry. Repeated
+execution performs no adapter work, preserves the same zero-based prefix index
+and last committed checkpoint, and exact resident weight checked-sums all four
+mapping reports. Final release attempts every mapping and retries only failed
+cleanup.
 
 `ExecutionGeometryNativeCrazyPrefixHaltSequence` extends that fixed theorem
 boundary by admitting the immediately reached halt only from the fourth crazy's

@@ -53,6 +53,8 @@ pub mod geometry_native_crazy;
 pub mod geometry_native_crazy_prefix;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_cph.rs"]
 pub mod geometry_native_crazy_prefix_halt_sequence;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_cpo.rs"]
+pub mod geometry_native_crazy_prefix_owner;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrcache.rs"]
 pub mod geometry_native_crazy_theorem_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_jrlru.rs"]
@@ -322,6 +324,7 @@ use geometry_native_crazy_prefix_halt_sequence::{
     ExecutionGeometryNativeCrazyPrefixHaltOutcome,
     ExecutionGeometryNativeCrazyPrefixHaltSequence,
 };
+use geometry_native_crazy_prefix_owner as crazy_prefix_owner;
 use geometry_native_crazy_theorem_cache as gc;
 use geometry_native_crazy_theorem_multi_cache as gclru;
 use geometry_native_cross_template_cache::{
@@ -25863,6 +25866,195 @@ fn geometry_native_crazy_prefix_halt_release_keeps_final_state()
     release_failure
         .retry(&mut adapter)
         .map_err(|error| format!("v5 crazy-prefix/halt cleanup retry: {error}"))
+}
+
+#[test]
+fn geometry_native_crazy_prefix_owner_reuses_mappings() -> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_fixture(10)?;
+    let prefix = geometry_native_crazy_prefix(&fixture)?;
+    let entry = prefix.entry_state().clone();
+    let expected = prefix.final_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(318)?,
+        native_executable_address(0xe_b000)?,
+    )
+    .with_mapped_len_overrides(vec![4_096, 8_192, 12_288, 16_384]);
+    let loaded =
+        crazy_prefix_owner::LoadedExecutionGeometryNativeCrazyPrefix::load(
+            &prefix,
+            &mut adapter,
+        )
+        .map_err(|error| format!("v5 crazy prefix owner load: {error}"))?;
+    let weight = loaded
+        .resident_weight()
+        .map_err(|error| format!("v5 crazy prefix owner weight: {error}"))?;
+    if loaded.prefix() != &prefix
+        || weight.mapped_bytes() != 40_960
+        || weight.mappings() != 4
+        || adapter.operations.len() != 16
+    {
+        return Err(String::from("v5 crazy prefix owner weight drifted"));
+    }
+    let mut runner = full_crazy_applied_runner(8);
+    for _attempt in 0usize..2usize {
+        let mut memory = entry.memory().to_vec();
+        let input = entry.io().input().to_vec();
+        let mut output = entry.io().output().to_vec();
+        let outcome = loaded
+            .execute(
+                &mut runner,
+                NativeRegionBuffers::new(&mut memory, &input, &mut output),
+            )
+            .map_err(|error| {
+                format!("v5 crazy prefix owner execute: {error}")
+            })?;
+        if !matches!(
+            outcome,
+            ExecutionGeometryNativeCrazyPrefixOutcome::Completed(_)
+        ) || outcome.state() != &expected
+            || memory != expected.memory()
+            || output != expected.io().output()
+            || adapter.operations.len() != 16
+        {
+            return Err(String::from("v5 crazy prefix owner remapped"));
+        }
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 crazy prefix owner release: {error}"))?;
+    if adapter.operations.len() == 20 {
+        Ok(())
+    } else {
+        Err(String::from("v5 crazy prefix owner cleanup drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_crazy_prefix_owner_rolls_back_load() -> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_fixture(10)?;
+    let prefix = geometry_native_crazy_prefix(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(319)?,
+        native_executable_address(0xe_c000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Allocate, 3)
+    .with_release_failure_at(1);
+    let Err(failure) =
+        crazy_prefix_owner::LoadedExecutionGeometryNativeCrazyPrefix::load(
+            &prefix,
+            &mut adapter,
+        )
+    else {
+        return Err(String::from("v5 crazy prefix owner load failure ignored"));
+    };
+    if failure.index() != 2 || !failure.cleanup_pending() {
+        return Err(String::from("v5 crazy prefix owner rollback lost"));
+    }
+    let retried = failure.retry_cleanup(&mut adapter);
+    if retried.cleanup_pending() || adapter.operations.len() != 12 {
+        Err(String::from("v5 crazy prefix owner rollback retry drifted"))
+    } else {
+        Ok(())
+    }
+}
+
+#[test]
+fn geometry_native_crazy_prefix_owner_failure_reuses_mappings()
+-> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_fixture(10)?;
+    let prefix = geometry_native_crazy_prefix(&fixture)?;
+    let entry = prefix.entry_state().clone();
+    let committed =
+        fixture.states.get(2).cloned().ok_or_else(|| {
+            String::from("v5 crazy prefix owner state missing")
+        })?;
+    let expected = prefix.final_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(320)?,
+        native_executable_address(0xe_d000)?,
+    );
+    let loaded =
+        crazy_prefix_owner::LoadedExecutionGeometryNativeCrazyPrefix::load(
+            &prefix,
+            &mut adapter,
+        )
+        .map_err(|error| format!("v5 crazy prefix owner load: {error}"))?;
+    let mut failing_runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    ]);
+    let mut memory = entry.memory().to_vec();
+    let input = entry.io().input().to_vec();
+    let mut output = entry.io().output().to_vec();
+    let Err(failure) = loaded.execute(
+        &mut failing_runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 crazy prefix owner failure ignored"));
+    };
+    if failure.index() != 2
+        || failure.state() != &committed
+        || memory != committed.memory()
+        || output != committed.io().output()
+        || adapter.operations.len() != 16
+    {
+        return Err(String::from("v5 crazy prefix owner failure drifted"));
+    }
+    let mut retry_runner = full_crazy_applied_runner(4);
+    let mut retry_memory = entry.memory().to_vec();
+    let mut retry_output = entry.io().output().to_vec();
+    let outcome = loaded
+        .execute(
+            &mut retry_runner,
+            NativeRegionBuffers::new(
+                &mut retry_memory,
+                &input,
+                &mut retry_output,
+            ),
+        )
+        .map_err(|error| format!("v5 crazy prefix owner retry: {error}"))?;
+    if outcome.state() != &expected || adapter.operations.len() != 16 {
+        return Err(String::from("v5 crazy prefix owner retry remapped"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v5 crazy prefix owner cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_crazy_prefix_owner_retries_release() -> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_fixture(10)?;
+    let prefix = geometry_native_crazy_prefix(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(321)?,
+        native_executable_address(0xe_e000)?,
+    )
+    .with_release_failure_at(2);
+    let loaded =
+        crazy_prefix_owner::LoadedExecutionGeometryNativeCrazyPrefix::load(
+            &prefix,
+            &mut adapter,
+        )
+        .map_err(|error| format!("v5 crazy prefix owner load: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from(
+            "v5 crazy prefix owner release failure ignored",
+        ));
+    };
+    if failure.failure_count() != 1 || adapter.operations.len() != 20 {
+        return Err(String::from(
+            "v5 crazy prefix release aggregation drifted",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 crazy prefix release retry: {error}"))?;
+    if adapter.operations.len() == 21 {
+        Ok(())
+    } else {
+        Err(String::from("v5 crazy prefix release retry count drifted"))
+    }
 }
 
 #[test]

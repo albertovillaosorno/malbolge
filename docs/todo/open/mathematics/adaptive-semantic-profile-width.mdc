@@ -966,8 +966,14 @@ transfers, verification, and other separately measured costs.
   admit in fixed order, each normative exit is the next step's sole checkpoint
   authority, and execution preserves exact index plus last committed state for
   GuardMiss or failure. Applied release failure keeps the newly committed state
-  with retryable per-step cleanup; preloaded four-mapping ownership remains
-  open.
+  with retryable per-step cleanup.
+- That exact prefix now also has reusable four-mapping ownership composed only
+  from the existing one-step crazy owners. Partial load failure releases all
+  earlier mappings and retains rollback retry; repeated execution performs no
+  adapter work while preserving indexed failure/committed-state evidence; exact
+  weight checked-sums all four mapping reports; and final release attempts every
+  mapping while retaining only failed cleanup. The following halt remains
+  separate five-mapping ownership work.
 - The immediately reached halt now composes after that fixed crazy prefix. Halt
   admission is bound only to the fourth crazy's normative exit, and execution
   preserves one global `p p p p v` index with halt at 4. Applied halt reaches
