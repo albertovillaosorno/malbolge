@@ -61,6 +61,21 @@ Run with:
   -m benchmarks.accelerator.profile_run_throughput
 ```
 
+`profile_width_throughput.py` measures the equivalent memory-bound workload at
+every reviewed adaptive width N10 through N15. Each route executes one VM for 64
+no-op transitions, validates the complete result outside the timed region, and
+retains 15 raw end-to-end `CudaProfileRunAdapter.evaluate` samples plus median
+and population standard deviation. Adapter construction/kernel compilation is
+outside timing. This is width-scaling evidence for full-state materialization,
+not a compute/search-heavy benchmark.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.profile_width_throughput
+```
+
 `profile_run_phase_profile.py` measures the same current-profile workload with
 adapter diagnostics split into validation/planning, host construction,
 allocation, upload, kernel+sync, download, full result decode, and release. It
