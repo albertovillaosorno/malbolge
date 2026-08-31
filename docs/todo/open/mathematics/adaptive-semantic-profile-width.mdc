@@ -600,8 +600,12 @@ transfers, verification, and other separately measured costs.
   operation-specific ABI preparations, and binds one exact ready mapping before
   the geometry-bound runner receives authority. All seven kinds apply through
   this path; guard miss and runner failure preserve the current-step entry.
-  Generic preloaded sequence coordination, load cleanup, and interpreter handoff
-  remain open.
+- Generic preloaded verified-v5 sequence execution now validates mapping count
+  and every exact load image before the first call, then preserves committed
+  prefixes while reporting exact guard-miss or failure indices. The seven-step
+  N10 theorem applies end to end, a miss after two steps retains that prefix,
+  and swapped mappings fail before runner entry. Generic mapping load/cleanup
+  ownership and interpreter handoff remain open.
 - Profile traces now carry their exact execution geometry. Legacy portable IR
   v3 projection accepts only traces whose geometry equals the canonical profile
   and rejects derived traces with `ExecutionGeometry`. Explicit-geometry IR v5

@@ -213,22 +213,24 @@ use execution_native::{
     DirectNonGraphicalError, DirectOutputError, DirectRotateError,
     DirectSelectionError, DirectSequenceError,
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
-    ExecutionGeometryDirectSequenceError, ExecutionGeometryNativeRunner,
-    NATIVE_REGION_ABI_REVISION, NATIVE_REGION_ACCUMULATOR_OFFSET,
-    NATIVE_REGION_CODE_POINTER_OFFSET, NATIVE_REGION_DATA_POINTER_OFFSET,
-    NATIVE_REGION_INPUT_CONSUMED_OFFSET, NATIVE_REGION_INPUT_LEN_OFFSET,
-    NATIVE_REGION_INPUT_OFFSET, NATIVE_REGION_MEMORY_OFFSET,
-    NATIVE_REGION_MEMORY_WORDS_OFFSET, NATIVE_REGION_OUTPUT_CAPACITY_OFFSET,
-    NATIVE_REGION_OUTPUT_LEN_OFFSET, NATIVE_REGION_OUTPUT_OFFSET,
-    NATIVE_REGION_STATE_SIZE, NATIVE_REGION_TERMINATION_OFFSET,
-    NativeArtifactError, NativeExecutableAllocationRequest,
-    NativeExecutableCodeCopyReport, NativeExecutableExecutionPhase,
-    NativeExecutableInvocationBindingError, NativeExecutableLifecycleError,
-    NativeExecutableLoadPhase, NativeExecutableMappingId,
-    NativeExecutableMappingReport, NativeExecutableMemoryAdapter,
-    NativeExecutableOperationEvidenceError, NativeExecutablePermission,
-    NativeExecutableReleaseRequest, NativeExecutableRunner,
-    NativeExecutableSequenceCache, NativeExecutableSequenceCacheCapacityError,
+    ExecutionGeometryDirectSequenceError,
+    ExecutionGeometryLoadedSequenceAdmissionError,
+    ExecutionGeometryNativeRunner, NATIVE_REGION_ABI_REVISION,
+    NATIVE_REGION_ACCUMULATOR_OFFSET, NATIVE_REGION_CODE_POINTER_OFFSET,
+    NATIVE_REGION_DATA_POINTER_OFFSET, NATIVE_REGION_INPUT_CONSUMED_OFFSET,
+    NATIVE_REGION_INPUT_LEN_OFFSET, NATIVE_REGION_INPUT_OFFSET,
+    NATIVE_REGION_MEMORY_OFFSET, NATIVE_REGION_MEMORY_WORDS_OFFSET,
+    NATIVE_REGION_OUTPUT_CAPACITY_OFFSET, NATIVE_REGION_OUTPUT_LEN_OFFSET,
+    NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
+    NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
+    NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
+    NativeExecutableExecutionPhase, NativeExecutableInvocationBindingError,
+    NativeExecutableLifecycleError, NativeExecutableLoadPhase,
+    NativeExecutableMappingId, NativeExecutableMappingReport,
+    NativeExecutableMemoryAdapter, NativeExecutableOperationEvidenceError,
+    NativeExecutablePermission, NativeExecutableReleaseRequest,
+    NativeExecutableRunner, NativeExecutableSequenceCache,
+    NativeExecutableSequenceCacheCapacityError,
     NativeExecutableSequenceCacheDisposition,
     NativeExecutableSequenceCacheLimits, NativeExecutableSequenceKey,
     NativeExecutableSequenceLease, NativeExecutableSequenceLeaseCache,
@@ -269,6 +271,7 @@ use execution_native::{
     emit_direct_rotate_coff, execute_cached_verified_native_sequence,
     execute_loaded_cached_verified_native_sequence,
     execute_loaded_verified_execution_geometry_native,
+    execute_loaded_verified_execution_geometry_sequence,
     execute_loaded_verified_native_sequence, execute_verified_native,
     execute_verified_native_sequence, load_cached_verified_native_sequence,
     load_execution_geometry_native_executable, load_native_executable,
@@ -13906,6 +13909,170 @@ fn direct_execution_geometry_generic_invocation_runner_failure_rolls_back()
         Ok(())
     } else {
         Err(String::from("generic v5 runner failure lost rollback"))
+    }
+}
+
+fn load_generic_v5_sequence(
+    plan: &execution_native::VerifiedExecutionGeometryDirectSequencePlan,
+    adapter: &mut FakeNativeExecutableAdapter,
+) -> Result<Vec<ReadyExecutionGeometryNativeExecutable>, String> {
+    plan.artifacts()
+        .iter()
+        .map(|artifact| {
+            let image = VerifiedExecutionGeometryLoadImage::new(artifact)
+                .map_err(|error| {
+                    format!("generic v5 sequence image: {error}")
+                })?;
+            load_execution_geometry_native_executable(adapter, &image)
+                .map_err(|error| format!("generic v5 sequence load: {error}"))
+        })
+        .collect()
+}
+
+fn release_generic_v5_sequence(
+    adapter: &mut FakeNativeExecutableAdapter,
+    executables: Vec<ReadyExecutionGeometryNativeExecutable>,
+) -> Result<(), String> {
+    for executable in executables {
+        release_execution_geometry_native_executable(adapter, executable)
+            .map_err(|error| format!("generic v5 sequence release: {error}"))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_execution_geometry_loaded_sequence_applies_complete_theorem()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let plan = select_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("generic v5 loaded plan: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(359)?,
+        native_executable_address(0xd_3000)?,
+    );
+    let executables = load_generic_v5_sequence(&plan, &mut adapter)?;
+    let initial = derived_v5_fixture_state(&fixture, 0)?;
+    let final_state = derived_v5_fixture_state(&fixture, 7)?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(
+        vec![FakeNativeRunnerBehavior::Applied; 7],
+    );
+    let outcome = execute_loaded_verified_execution_geometry_sequence(
+        &mut runner,
+        &plan,
+        &executables,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("generic v5 loaded execute: {error}"))?;
+    let valid = outcome
+        == (NativeSequenceExecutionOutcome::Applied {
+            observation: profile_state_observation(final_state),
+            steps: 7,
+        })
+        && memory == final_state.memory()
+        && output == final_state.io().output()
+        && runner.calls == 7;
+    release_generic_v5_sequence(&mut adapter, executables)?;
+    if valid {
+        Ok(())
+    } else {
+        Err(String::from("generic v5 loaded theorem execution drifted"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_loaded_sequence_guard_miss_keeps_prefix()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let plan = select_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("generic v5 miss plan: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(366)?,
+        native_executable_address(0xe_0000)?,
+    );
+    let executables = load_generic_v5_sequence(&plan, &mut adapter)?;
+    let initial = derived_v5_fixture_state(&fixture, 0)?;
+    let prefix = derived_v5_fixture_state(&fixture, 2)?;
+    let mut memory = initial.memory().to_vec();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let outcome = execute_loaded_verified_execution_geometry_sequence(
+        &mut runner,
+        &plan,
+        &executables,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("generic v5 miss execute: {error}"))?;
+    let valid = outcome
+        == (NativeSequenceExecutionOutcome::GuardMiss {
+            index: 2,
+            observation: profile_state_observation(prefix),
+        })
+        && memory == prefix.memory()
+        && runner.calls == 3;
+    release_generic_v5_sequence(&mut adapter, executables)?;
+    if valid {
+        Ok(())
+    } else {
+        Err(String::from("generic v5 guard miss lost committed prefix"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_loaded_sequence_rejects_swapped_mapping()
+-> Result<(), String> {
+    use ExecutionGeometryLoadedSequenceAdmissionError as AdmissionError;
+
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let plan = select_verified_execution_geometry_direct_sequence(
+        &fixture.programs,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("generic v5 swap plan: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(373)?,
+        native_executable_address(0xf_0000)?,
+    );
+    let mut executables = load_generic_v5_sequence(&plan, &mut adapter)?;
+    executables.swap(0, 1);
+    let initial = derived_v5_fixture_state(&fixture, 0)?;
+    let mut memory = initial.memory().to_vec();
+    let entry_memory = memory.clone();
+    let input = initial.io().input().to_vec();
+    let mut output = initial.io().output().to_vec();
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(Vec::new());
+    let result = execute_loaded_verified_execution_geometry_sequence(
+        &mut runner,
+        &plan,
+        &executables,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    );
+    let rejected = result.as_ref().is_err_and(|error| {
+        error.admission_error()
+            == Some(AdmissionError::ExecutableIdentity { index: 0 })
+    }) && runner.calls == 0
+        && memory == entry_memory;
+    release_generic_v5_sequence(&mut adapter, executables)?;
+    if rejected {
+        Ok(())
+    } else {
+        Err(String::from("generic v5 swapped mapping reached runner"))
     }
 }
 

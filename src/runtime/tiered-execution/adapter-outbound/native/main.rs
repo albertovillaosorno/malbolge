@@ -267,11 +267,16 @@ pub use sequence_continuation::{
     NativeInterpreterContinuationReason, NativeInterpreterContinuationResult,
 };
 pub use sequence_runner::{
+    ExecutionGeometryLoadedSequenceAdmissionError,
+    ExecutionGeometryLoadedSequenceExecutionFailure,
+    ExecutionGeometryLoadedSequenceExecutionResult,
     NativeLoadedSequenceAdmissionError, NativeLoadedSequenceExecutionFailure,
     NativeLoadedSequenceExecutionResult, NativeSequenceExecutionFailure,
     NativeSequenceExecutionOutcome, NativeSequenceExecutionResult,
     execute_cached_verified_native_sequence,
+    execute_loaded_cached_verified_execution_geometry_sequence,
     execute_loaded_cached_verified_native_sequence,
+    execute_loaded_verified_execution_geometry_sequence,
     execute_loaded_verified_native_sequence, execute_verified_native_sequence,
 };
 

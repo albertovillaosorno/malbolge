@@ -35,24 +35,84 @@
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
-use malbolge::{ProfileMachineObservation, RegionEffectProgram};
+use malbolge::{
+    ExecutionGeometryRegionEffectProgram, ProfileMachineObservation,
+    RegionEffectProgram,
+};
 
 use super::direct::{
-    CachedVerifiedDirectSequencePlan, VerifiedDirectNativeArtifact,
-    VerifiedDirectSequencePlan,
+    CachedVerifiedDirectSequencePlan,
+    CachedVerifiedExecutionGeometryDirectSequencePlan,
+    VerifiedDirectNativeArtifact, VerifiedDirectSequencePlan,
+    VerifiedExecutionGeometryDirectSequencePlan,
+    VerifiedExecutionGeometryNativeArtifact,
 };
 use super::executable_sequence::ReadyNativeExecutableSequence;
 use super::invocation::{
     NativeRegionBuffers, NativeRegionInvocationOutcome,
-    PreparedVerifiedDirectInvocation, VerifiedDirectInvocationError,
+    PreparedVerifiedDirectInvocation,
+    PreparedVerifiedExecutionGeometryInvocation, VerifiedDirectInvocationError,
+    VerifiedExecutionGeometryInvocationError,
 };
-use super::loader::{VerifiedDirectLoadError, VerifiedDirectLoadImage};
+use super::loader::{
+    VerifiedDirectLoadError, VerifiedDirectLoadImage,
+    VerifiedExecutionGeometryLoadImage,
+};
 use super::platform::NativeExecutableMemoryAdapter;
 use super::runner::{
+    ExecutionGeometryLoadedExecutionFailure, ExecutionGeometryNativeRunner,
     NativeExecutableExecutionFailure, NativeExecutableRunner,
-    NativeLoadedExecutionFailure, execute_loaded_verified_native,
-    execute_verified_native,
+    NativeLoadedExecutionFailure,
+    execute_loaded_verified_execution_geometry_native,
+    execute_loaded_verified_native, execute_verified_native,
 };
+
+/// Failure while admitting a preloaded v5 mapping chain against one plan.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryLoadedSequenceAdmissionError {
+    /// The ready mapping count differs from the semantic step count.
+    ExecutableCount {
+        /// Exact number of mappings required by the plan.
+        expected: usize,
+        /// Number of mappings supplied by the loaded chain.
+        observed: usize,
+    },
+    /// One ready mapping retains a different complete load image.
+    ExecutableIdentity {
+        /// Zero-based mismatching sequence position.
+        index: usize,
+    },
+    /// One expected v5 artifact no longer yields a loader-ready image.
+    Image {
+        /// Zero-based image derivation position.
+        index: usize,
+        /// Exact loader-ready image failure.
+        error: VerifiedDirectLoadError,
+    },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum ExecutionGeometryLoadedSequenceFailureCause<RunnerError> {
+    Admission(ExecutionGeometryLoadedSequenceAdmissionError),
+    Execution(Box<ExecutionGeometryLoadedExecutionFailure<RunnerError>>),
+    Preparation(Box<VerifiedExecutionGeometryInvocationError>),
+}
+
+/// Indexed failure while running one already-loaded verified-v5 sequence.
+#[derive(Debug, Eq, PartialEq)]
+pub struct ExecutionGeometryLoadedSequenceExecutionFailure<RunnerError> {
+    cause: ExecutionGeometryLoadedSequenceFailureCause<RunnerError>,
+    completed_steps: usize,
+    observation: ProfileMachineObservation,
+    resume_index: usize,
+    step_index: usize,
+}
+
+/// Result of executing one already-loaded verified-v5 sequence.
+pub type ExecutionGeometryLoadedSequenceExecutionResult<RunnerError> = Result<
+    NativeSequenceExecutionOutcome,
+    Box<ExecutionGeometryLoadedSequenceExecutionFailure<RunnerError>>,
+>;
 
 /// Admitted result of executing an ordered verified direct sequence.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -142,6 +202,19 @@ pub type NativeSequenceExecutionResult<MemoryError, RunnerError> = Result<
     Box<NativeSequenceExecutionFailure<MemoryError, RunnerError>>,
 >;
 
+type GeometrySequenceAdmissionError =
+    ExecutionGeometryLoadedSequenceAdmissionError;
+type ExecutionGeometryLoadedSequenceAdmissionResult =
+    Result<(), (usize, ExecutionGeometryLoadedSequenceAdmissionError)>;
+type ExecutionGeometryLoadedSequenceStepResult<Runner> = Result<
+    NativeRegionInvocationOutcome,
+    Box<
+        ExecutionGeometryLoadedSequenceExecutionFailure<
+            <Runner as ExecutionGeometryNativeRunner>::Error,
+        >,
+    >,
+>;
+
 type NativeLoadedSequenceAdmissionResult =
     Result<(), (usize, NativeLoadedSequenceAdmissionError)>;
 
@@ -160,6 +233,22 @@ type NativeSequenceAdapterResult<MemoryAdapter, Runner> =
         <Runner as NativeExecutableRunner>::Error,
     >;
 
+struct ExecutionGeometrySequencePlanView<'plan> {
+    artifacts: Vec<&'plan VerifiedExecutionGeometryNativeArtifact>,
+    entry: ProfileMachineObservation,
+    exit: ProfileMachineObservation,
+    programs: &'plan [ExecutionGeometryRegionEffectProgram],
+}
+
+#[derive(Clone, Copy)]
+struct ExecutionGeometryLoadedSequenceStep<'plan> {
+    artifact: &'plan VerifiedExecutionGeometryNativeArtifact,
+    entry: ProfileMachineObservation,
+    executable: &'plan super::lifecycle::ReadyExecutionGeometryNativeExecutable,
+    index: usize,
+    program: &'plan ExecutionGeometryRegionEffectProgram,
+}
+
 struct NativeSequencePlanView<'plan> {
     artifacts: Vec<&'plan VerifiedDirectNativeArtifact>,
     entry: ProfileMachineObservation,
@@ -174,6 +263,118 @@ struct NativeLoadedSequenceStep<'plan> {
     executable: &'plan super::lifecycle::ReadyNativeExecutable,
     index: usize,
     program: &'plan RegionEffectProgram,
+}
+
+impl Display for ExecutionGeometryLoadedSequenceAdmissionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::ExecutableCount { expected, observed } => write!(
+                f,
+                "v5 loaded mapping count {observed} differs from {expected}",
+            ),
+            Self::ExecutableIdentity { index } => {
+                write!(f, "v5 loaded mapping identity differs at step {index}")
+            },
+            Self::Image { error, index } => {
+                write!(f, "v5 load image failed at step {index}: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError> ExecutionGeometryLoadedSequenceExecutionFailure<RunnerError> {
+    /// Returns whole-chain admission failure, when topology disagreed.
+    #[must_use]
+    pub const fn admission_error(
+        &self,
+    ) -> Option<ExecutionGeometryLoadedSequenceAdmissionError> {
+        match &self.cause {
+            ExecutionGeometryLoadedSequenceFailureCause::Admission(error) => {
+                Some(*error)
+            },
+            ExecutionGeometryLoadedSequenceFailureCause::Execution(_)
+            | ExecutionGeometryLoadedSequenceFailureCause::Preparation(_) => {
+                None
+            },
+        }
+    }
+
+    /// Returns the number of already committed v5 steps.
+    #[must_use]
+    pub const fn completed_steps(&self) -> usize {
+        self.completed_steps
+    }
+
+    /// Returns loaded-call failure for the current v5 step, when applicable.
+    #[must_use]
+    pub const fn execution_error(
+        &self,
+    ) -> Option<&ExecutionGeometryLoadedExecutionFailure<RunnerError>> {
+        match &self.cause {
+            ExecutionGeometryLoadedSequenceFailureCause::Execution(error) => {
+                Some(error)
+            },
+            ExecutionGeometryLoadedSequenceFailureCause::Admission(_)
+            | ExecutionGeometryLoadedSequenceFailureCause::Preparation(_) => {
+                None
+            },
+        }
+    }
+
+    /// Returns the exact observation at the continuation boundary.
+    #[must_use]
+    pub const fn observation(&self) -> ProfileMachineObservation {
+        self.observation
+    }
+
+    /// Returns v5 call preparation failure, when caller buffers disagreed.
+    #[must_use]
+    pub const fn preparation_error(
+        &self,
+    ) -> Option<&VerifiedExecutionGeometryInvocationError> {
+        match &self.cause {
+            ExecutionGeometryLoadedSequenceFailureCause::Preparation(error) => {
+                Some(error)
+            },
+            ExecutionGeometryLoadedSequenceFailureCause::Admission(_)
+            | ExecutionGeometryLoadedSequenceFailureCause::Execution(_) => None,
+        }
+    }
+
+    /// Returns the next semantic step index for continuation.
+    #[must_use]
+    pub const fn resume_index(&self) -> usize {
+        self.resume_index
+    }
+
+    /// Returns the zero-based v5 step whose transaction failed.
+    #[must_use]
+    pub const fn step_index(&self) -> usize {
+        self.step_index
+    }
+}
+
+impl<RunnerError: Display> Display
+    for ExecutionGeometryLoadedSequenceExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(
+            f,
+            "loaded v5 sequence step {} failed after {} committed steps: ",
+            self.step_index, self.completed_steps,
+        )?;
+        match &self.cause {
+            ExecutionGeometryLoadedSequenceFailureCause::Admission(error) => {
+                write!(f, "admission: {error}")
+            },
+            ExecutionGeometryLoadedSequenceFailureCause::Execution(error) => {
+                write!(f, "{error}")
+            },
+            ExecutionGeometryLoadedSequenceFailureCause::Preparation(error) => {
+                write!(f, "preparation: {error}")
+            },
+        }
+    }
 }
 
 impl NativeSequenceExecutionOutcome {
@@ -402,6 +603,203 @@ impl<MemoryError: Display, RunnerError: Display> Display
             },
         }
     }
+}
+
+/// Executes one cache-aware v5 plan against mappings loaded before first call.
+///
+/// Complete mapping count and exact load-image identity are admitted before any
+/// caller buffer may change. Applied prefixes remain committed; guard miss
+/// returns the exact current-step observation without applying that step.
+///
+/// # Errors
+///
+/// Returns [`ExecutionGeometryLoadedSequenceExecutionFailure`] for whole-chain
+/// admission, current-step preparation, runner, or completion failure.
+pub fn execute_loaded_cached_verified_execution_geometry_sequence<Runner>(
+    runner: &mut Runner,
+    plan: &CachedVerifiedExecutionGeometryDirectSequencePlan,
+    executables: &[super::lifecycle::ReadyExecutionGeometryNativeExecutable],
+    buffers: NativeRegionBuffers<'_>,
+) -> ExecutionGeometryLoadedSequenceExecutionResult<Runner::Error>
+where
+    Runner: ExecutionGeometryNativeRunner,
+{
+    let artifacts = plan
+        .artifacts()
+        .iter()
+        .map(AsRef::as_ref)
+        .collect::<Vec<_>>();
+    execute_loaded_execution_geometry_sequence(
+        runner,
+        ExecutionGeometrySequencePlanView {
+            artifacts,
+            entry: plan.entry(),
+            exit: plan.exit(),
+            programs: plan.programs(),
+        },
+        executables,
+        buffers,
+    )
+}
+
+/// Executes one verified v5 plan against mappings loaded before first call.
+///
+/// Complete mapping count and exact load-image identity are admitted before any
+/// caller buffer may change. This function neither loads nor releases mappings.
+///
+/// # Errors
+///
+/// Returns [`ExecutionGeometryLoadedSequenceExecutionFailure`] for whole-chain
+/// admission, current-step preparation, runner, or completion failure.
+pub fn execute_loaded_verified_execution_geometry_sequence<Runner>(
+    runner: &mut Runner,
+    plan: &VerifiedExecutionGeometryDirectSequencePlan,
+    executables: &[super::lifecycle::ReadyExecutionGeometryNativeExecutable],
+    buffers: NativeRegionBuffers<'_>,
+) -> ExecutionGeometryLoadedSequenceExecutionResult<Runner::Error>
+where
+    Runner: ExecutionGeometryNativeRunner,
+{
+    execute_loaded_execution_geometry_sequence(
+        runner,
+        ExecutionGeometrySequencePlanView {
+            artifacts: plan.artifacts().iter().collect(),
+            entry: plan.entry(),
+            exit: plan.exit(),
+            programs: plan.programs(),
+        },
+        executables,
+        buffers,
+    )
+}
+
+fn execute_loaded_execution_geometry_sequence<Runner>(
+    runner: &mut Runner,
+    plan: ExecutionGeometrySequencePlanView<'_>,
+    executables: &[super::lifecycle::ReadyExecutionGeometryNativeExecutable],
+    buffers: NativeRegionBuffers<'_>,
+) -> ExecutionGeometryLoadedSequenceExecutionResult<Runner::Error>
+where
+    Runner: ExecutionGeometryNativeRunner,
+{
+    validate_loaded_execution_geometry_sequence(&plan, executables).map_err(
+        |(index, error)| {
+            Box::new(ExecutionGeometryLoadedSequenceExecutionFailure {
+                cause: ExecutionGeometryLoadedSequenceFailureCause::Admission(
+                    error,
+                ),
+                completed_steps: 0,
+                observation: plan.entry,
+                resume_index: 0,
+                step_index: index,
+            })
+        },
+    )?;
+    let (memory, input, output) = buffers.into_parts();
+    let step_count = plan.programs.len();
+    for (index, ((artifact, program), executable)) in plan
+        .artifacts
+        .into_iter()
+        .zip(plan.programs.iter())
+        .zip(executables.iter())
+        .enumerate()
+    {
+        let entry = program.entry_observation().unwrap_or(plan.exit);
+        let outcome = execute_loaded_execution_geometry_sequence_step(
+            runner,
+            ExecutionGeometryLoadedSequenceStep {
+                artifact,
+                entry,
+                executable,
+                index,
+                program,
+            },
+            NativeRegionBuffers::new(&mut *memory, input, &mut *output),
+        )?;
+        if outcome == NativeRegionInvocationOutcome::GuardMiss {
+            return Ok(NativeSequenceExecutionOutcome::GuardMiss {
+                index,
+                observation: entry,
+            });
+        }
+    }
+    Ok(NativeSequenceExecutionOutcome::Applied {
+        observation: plan.exit,
+        steps: step_count,
+    })
+}
+
+fn execute_loaded_execution_geometry_sequence_step<Runner>(
+    runner: &mut Runner,
+    step: ExecutionGeometryLoadedSequenceStep<'_>,
+    buffers: NativeRegionBuffers<'_>,
+) -> ExecutionGeometryLoadedSequenceStepResult<Runner>
+where
+    Runner: ExecutionGeometryNativeRunner,
+{
+    let prepared = PreparedVerifiedExecutionGeometryInvocation::new(
+        step.artifact,
+        step.program,
+        buffers,
+    )
+    .map_err(|error| {
+        Box::new(ExecutionGeometryLoadedSequenceExecutionFailure {
+            cause: ExecutionGeometryLoadedSequenceFailureCause::Preparation(
+                Box::new(error),
+            ),
+            completed_steps: step.index,
+            observation: step.entry,
+            resume_index: step.index,
+            step_index: step.index,
+        })
+    })?;
+    execute_loaded_verified_execution_geometry_native(
+        runner,
+        step.executable,
+        prepared,
+    )
+    .map_err(|error| {
+        Box::new(ExecutionGeometryLoadedSequenceExecutionFailure {
+            cause: ExecutionGeometryLoadedSequenceFailureCause::Execution(
+                error,
+            ),
+            completed_steps: step.index,
+            observation: step.entry,
+            resume_index: step.index,
+            step_index: step.index,
+        })
+    })
+}
+
+fn validate_loaded_execution_geometry_sequence(
+    plan: &ExecutionGeometrySequencePlanView<'_>,
+    executables: &[super::lifecycle::ReadyExecutionGeometryNativeExecutable],
+) -> ExecutionGeometryLoadedSequenceAdmissionResult {
+    if executables.len() != plan.artifacts.len() {
+        return Err((0, GeometrySequenceAdmissionError::ExecutableCount {
+            expected: plan.artifacts.len(),
+            observed: executables.len(),
+        }));
+    }
+    for (index, (artifact, executable)) in
+        plan.artifacts.iter().zip(executables).enumerate()
+    {
+        let image = VerifiedExecutionGeometryLoadImage::new(artifact).map_err(
+            |error| {
+                (index, GeometrySequenceAdmissionError::Image {
+                    index,
+                    error,
+                })
+            },
+        )?;
+        if executable.image() != &image {
+            return Err((
+                index,
+                GeometrySequenceAdmissionError::ExecutableIdentity { index },
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Executes one cache-aware plan against mappings loaded before the first call.

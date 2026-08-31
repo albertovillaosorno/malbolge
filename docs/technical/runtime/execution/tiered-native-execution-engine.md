@@ -698,9 +698,16 @@ Generic verified-v5 invocation now binds any of those seven aggregate artifacts
 to its exact v5 program, operation-specific ABI preparation, derived load image,
 and one already-ready mapping before exposing the existing geometry-bound runner
 port. All seven reviewed kinds apply through that boundary; guard miss is atomic
-and runner failure restores the current-step entry snapshot. Generic preloaded
-sequence coordination, loading/cleanup ownership, and interpreter handoff remain
-separate work.
+and runner failure restores the current-step entry snapshot.
+
+Generic preloaded v5 sequence execution now admits the complete mapping count
+and
+every exact aggregate load image before the first guest mutation, then runs the
+verified plan in semantic order through that same generic call boundary. The
+seven-step theorem applies completely; a guard miss after two steps preserves
+that committed prefix, while swapped mapping identity is rejected before the
+runner is called. Generic mapping load/cleanup ownership and interpreter handoff
+remain separate work.
 
 `ExecutionGeometryInterpreterContinuation` composes those one-step replay
 boundaries without changing the trust model. Construction rejects empty,
