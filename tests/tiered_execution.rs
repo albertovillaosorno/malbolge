@@ -211,22 +211,24 @@ use execution_native::{
     DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
     DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
     DirectNonGraphicalError, DirectOutputError, DirectRotateError,
-    DirectSelectionError, DirectSequenceError, ExecutionGeometryNativeRunner,
-    NATIVE_REGION_ABI_REVISION, NATIVE_REGION_ACCUMULATOR_OFFSET,
-    NATIVE_REGION_CODE_POINTER_OFFSET, NATIVE_REGION_DATA_POINTER_OFFSET,
-    NATIVE_REGION_INPUT_CONSUMED_OFFSET, NATIVE_REGION_INPUT_LEN_OFFSET,
-    NATIVE_REGION_INPUT_OFFSET, NATIVE_REGION_MEMORY_OFFSET,
-    NATIVE_REGION_MEMORY_WORDS_OFFSET, NATIVE_REGION_OUTPUT_CAPACITY_OFFSET,
-    NATIVE_REGION_OUTPUT_LEN_OFFSET, NATIVE_REGION_OUTPUT_OFFSET,
-    NATIVE_REGION_STATE_SIZE, NATIVE_REGION_TERMINATION_OFFSET,
-    NativeArtifactError, NativeExecutableAllocationRequest,
-    NativeExecutableCodeCopyReport, NativeExecutableExecutionPhase,
-    NativeExecutableInvocationBindingError, NativeExecutableLifecycleError,
-    NativeExecutableLoadPhase, NativeExecutableMappingId,
-    NativeExecutableMappingReport, NativeExecutableMemoryAdapter,
-    NativeExecutableOperationEvidenceError, NativeExecutablePermission,
-    NativeExecutableReleaseRequest, NativeExecutableRunner,
-    NativeExecutableSequenceCache, NativeExecutableSequenceCacheCapacityError,
+    DirectSelectionError, DirectSequenceError,
+    ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
+    ExecutionGeometryNativeRunner, NATIVE_REGION_ABI_REVISION,
+    NATIVE_REGION_ACCUMULATOR_OFFSET, NATIVE_REGION_CODE_POINTER_OFFSET,
+    NATIVE_REGION_DATA_POINTER_OFFSET, NATIVE_REGION_INPUT_CONSUMED_OFFSET,
+    NATIVE_REGION_INPUT_LEN_OFFSET, NATIVE_REGION_INPUT_OFFSET,
+    NATIVE_REGION_MEMORY_OFFSET, NATIVE_REGION_MEMORY_WORDS_OFFSET,
+    NATIVE_REGION_OUTPUT_CAPACITY_OFFSET, NATIVE_REGION_OUTPUT_LEN_OFFSET,
+    NATIVE_REGION_OUTPUT_OFFSET, NATIVE_REGION_STATE_SIZE,
+    NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
+    NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
+    NativeExecutableExecutionPhase, NativeExecutableInvocationBindingError,
+    NativeExecutableLifecycleError, NativeExecutableLoadPhase,
+    NativeExecutableMappingId, NativeExecutableMappingReport,
+    NativeExecutableMemoryAdapter, NativeExecutableOperationEvidenceError,
+    NativeExecutablePermission, NativeExecutableReleaseRequest,
+    NativeExecutableRunner, NativeExecutableSequenceCache,
+    NativeExecutableSequenceCacheCapacityError,
     NativeExecutableSequenceCacheDisposition,
     NativeExecutableSequenceCacheLimits, NativeExecutableSequenceKey,
     NativeExecutableSequenceLease, NativeExecutableSequenceLeaseCache,
@@ -273,7 +275,8 @@ use execution_native::{
     select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence, select_preflighted_execution_tier,
     select_verified_direct_native, select_verified_direct_sequence,
-    structurally_admit_coff, verify_direct_crazy, verify_direct_deopt_stub,
+    select_verified_execution_geometry_direct_native, structurally_admit_coff,
+    verify_direct_crazy, verify_direct_deopt_stub,
     verify_direct_execution_geometry_crazy,
     verify_direct_execution_geometry_initial_halt,
     verify_direct_execution_geometry_initial_jump_data,
@@ -13411,6 +13414,74 @@ fn assert_v5_crazy_artifact(
         return Err(String::from("v5 crazy geometry mismatch admitted"));
     }
     assert_tampered_direct_profile_metadata(&n10_artifact)
+}
+
+#[test]
+fn direct_execution_geometry_selector_covers_reviewed_one_step_kinds()
+-> Result<(), String> {
+    let (crazy, _crazy_state, _crazy_geometry) = derived_v5_crazy_fixture(10)?;
+    let (halt, _halt_state, _halt_geometry) = derived_v5_handoff_fixture(10)?;
+    let (jump, _jump_state, _jump_geometry) =
+        derived_v5_initial_jump_data_fixture(10)?;
+    let input = derived_v5_input_program(10, vec![0xa5])?;
+    let (noop, _noop_state, _noop_geometry) =
+        derived_v5_no_operation_fixture(10)?;
+    let (output, _output_state, _output_geometry) =
+        derived_v5_output_fixture(10)?;
+    let (rotate, _rotate_state, _rotate_geometry) =
+        derived_v5_rotate_fixture(10)?;
+    let cases = [
+        (crazy, ExecutionGeometryDirectNativeKind::Crazy),
+        (halt, ExecutionGeometryDirectNativeKind::InitialHalt),
+        (jump, ExecutionGeometryDirectNativeKind::InitialJumpData),
+        (input, ExecutionGeometryDirectNativeKind::Input),
+        (noop, ExecutionGeometryDirectNativeKind::NoOperation),
+        (output, ExecutionGeometryDirectNativeKind::Output),
+        (rotate, ExecutionGeometryDirectNativeKind::Rotate),
+    ];
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        for (program, expected_kind) in &cases {
+            let selected = select_verified_execution_geometry_direct_native(
+                program,
+                HostOperatingSystem::Windows,
+                isa,
+            )
+            .map_err(|error| {
+                format!("v5 selector {expected_kind:?}: {error}")
+            })?;
+            if selected.kind() != *expected_kind
+                || selected.key().ir().execution_geometry()
+                    != Some(program.execution_geometry())
+                || selected.object().is_empty()
+                || !selected.target_triple().contains("windows-msvc")
+            {
+                return Err(String::from(
+                    "v5 generic selector identity drifted",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn direct_execution_geometry_selector_keeps_target_failure_typed()
+-> Result<(), String> {
+    let (program, _state, _geometry) = derived_v5_crazy_fixture(10)?;
+    let result = select_verified_execution_geometry_direct_native(
+        &program,
+        HostOperatingSystem::Linux,
+        HostIsa::X86_64,
+    );
+    if result
+        == Err(ExecutionGeometryDirectSelectionError::Crazy(
+            DirectExecutionGeometryCrazyError::TargetFormat,
+        ))
+    {
+        Ok(())
+    } else {
+        Err(String::from("v5 selector target failure lost typed cause"))
+    }
 }
 
 #[test]

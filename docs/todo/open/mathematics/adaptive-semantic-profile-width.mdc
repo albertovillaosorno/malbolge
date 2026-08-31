@@ -578,6 +578,13 @@ transfers, verification, and other separately measured costs.
   `CheckpointGeometry` because ordinary direct planning consumes canonical v3/v4
   IR only; verified-v5 native planning that can supply derived authority remains
   separate work.
+- Verified-v5 native planning now has a uniform one-step selector over all seven
+  reviewed explicit-geometry templates: initial halt, initial jump-data, crazy,
+  rotate, input, output, and no-operation. The selector revalidates canonical
+  profile identity, preserves exact v5 geometry in artifact identity, and routes
+  through each existing emitter plus independent verifier on both reviewed ISAs.
+  Unsupported shapes fail explicitly with no invented v5 deoptimization path.
+  Generic multi-step v5 planning/cache publication remains open.
 - Profile traces now carry their exact execution geometry. Legacy portable IR
   v3 projection accepts only traces whose geometry equals the canonical profile
   and rejects derived traces with `ExecutionGeometry`. Explicit-geometry IR v5

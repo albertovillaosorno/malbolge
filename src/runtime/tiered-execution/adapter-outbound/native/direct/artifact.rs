@@ -289,6 +289,114 @@ impl VerifiedExecutionGeometryRotateNativeObjectArtifact {
     }
 }
 
+/// Reviewed explicit-geometry direct-native template selected for one step.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryDirectNativeKind {
+    /// One guarded crazy transition.
+    Crazy,
+    /// One guarded initial halt.
+    InitialHalt,
+    /// One guarded aliasing initial jump-data transition.
+    InitialJumpData,
+    /// One guarded input transition.
+    Input,
+    /// One guarded no-operation transition.
+    NoOperation,
+    /// One guarded output transition.
+    Output,
+    /// One guarded rotate transition.
+    Rotate,
+}
+
+/// One semantically verified explicit-geometry native object.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum VerifiedExecutionGeometryNativeArtifact {
+    /// Guarded crazy object.
+    Crazy(VerifiedExecutionGeometryCrazyNativeObjectArtifact),
+    /// Guarded initial-halt object.
+    InitialHalt(VerifiedExecutionGeometryInitialHaltNativeObjectArtifact),
+    /// Guarded aliasing initial jump-data object.
+    InitialJumpData(
+        VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact,
+    ),
+    /// Guarded input object.
+    Input(VerifiedExecutionGeometryInputNativeObjectArtifact),
+    /// Guarded no-operation object.
+    NoOperation(VerifiedExecutionGeometryNoOperationNativeObjectArtifact),
+    /// Guarded output object.
+    Output(VerifiedExecutionGeometryOutputNativeObjectArtifact),
+    /// Guarded rotate object.
+    Rotate(VerifiedExecutionGeometryRotateNativeObjectArtifact),
+}
+
+impl VerifiedExecutionGeometryNativeArtifact {
+    /// Returns the exact selected v5 artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        match self {
+            Self::Crazy(artifact) => artifact.key(),
+            Self::InitialHalt(artifact) => artifact.key(),
+            Self::InitialJumpData(artifact) => artifact.key(),
+            Self::Input(artifact) => artifact.key(),
+            Self::NoOperation(artifact) => artifact.key(),
+            Self::Output(artifact) => artifact.key(),
+            Self::Rotate(artifact) => artifact.key(),
+        }
+    }
+
+    /// Returns the reviewed explicit-geometry template selected for this step.
+    #[must_use]
+    pub const fn kind(&self) -> ExecutionGeometryDirectNativeKind {
+        match self {
+            Self::Crazy(_artifact) => ExecutionGeometryDirectNativeKind::Crazy,
+            Self::InitialHalt(_artifact) => {
+                ExecutionGeometryDirectNativeKind::InitialHalt
+            },
+            Self::InitialJumpData(_artifact) => {
+                ExecutionGeometryDirectNativeKind::InitialJumpData
+            },
+            Self::Input(_artifact) => ExecutionGeometryDirectNativeKind::Input,
+            Self::NoOperation(_artifact) => {
+                ExecutionGeometryDirectNativeKind::NoOperation
+            },
+            Self::Output(_artifact) => {
+                ExecutionGeometryDirectNativeKind::Output
+            },
+            Self::Rotate(_artifact) => {
+                ExecutionGeometryDirectNativeKind::Rotate
+            },
+        }
+    }
+
+    /// Returns the exact verified canonical COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        match self {
+            Self::Crazy(artifact) => artifact.object(),
+            Self::InitialHalt(artifact) => artifact.object(),
+            Self::InitialJumpData(artifact) => artifact.object(),
+            Self::Input(artifact) => artifact.object(),
+            Self::NoOperation(artifact) => artifact.object(),
+            Self::Output(artifact) => artifact.object(),
+            Self::Rotate(artifact) => artifact.object(),
+        }
+    }
+
+    /// Returns the exact Windows target triple selected for linking.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        match self {
+            Self::Crazy(artifact) => artifact.target_triple(),
+            Self::InitialHalt(artifact) => artifact.target_triple(),
+            Self::InitialJumpData(artifact) => artifact.target_triple(),
+            Self::Input(artifact) => artifact.target_triple(),
+            Self::NoOperation(artifact) => artifact.target_triple(),
+            Self::Output(artifact) => artifact.target_triple(),
+            Self::Rotate(artifact) => artifact.target_triple(),
+        }
+    }
+}
+
 /// Native object proven to implement exact graphical halt fetch.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedHaltFetchNativeObjectArtifact {

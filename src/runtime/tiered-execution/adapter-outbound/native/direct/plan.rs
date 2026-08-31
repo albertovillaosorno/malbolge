@@ -69,6 +69,49 @@ pub(super) enum PreparedDirectTarget {
 type VerifiedDirectSelectionResult<'requirement> =
     Result<VerifiedDirectNativeArtifact, DirectSelectionError<'requirement>>;
 
+/// Failure while selecting one reviewed explicit-geometry native template.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryDirectSelectionError {
+    /// Guarded crazy emission or verification failed.
+    Crazy(DirectExecutionGeometryCrazyError),
+    /// Guarded initial-halt emission or verification failed.
+    InitialHalt(DirectExecutionGeometryInitialHaltError),
+    /// Guarded initial jump-data emission or verification failed.
+    InitialJumpData(DirectExecutionGeometryInitialJumpDataError),
+    /// Guarded input emission or verification failed.
+    Input(DirectExecutionGeometryInputError),
+    /// Guarded no-operation emission or verification failed.
+    NoOperation(DirectExecutionGeometryNoOperationError),
+    /// Guarded output emission or verification failed.
+    Output(DirectExecutionGeometryOutputError),
+    /// The canonical profile identity does not match the v5 program header.
+    ProfileIdentity,
+    /// Guarded rotate emission or verification failed.
+    Rotate(DirectExecutionGeometryRotateError),
+    /// No reviewed v5 one-step template admits this program.
+    UnsupportedProgram,
+}
+
+impl Display for ExecutionGeometryDirectSelectionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Crazy(error) => Display::fmt(error, f),
+            Self::InitialHalt(error) => Display::fmt(error, f),
+            Self::InitialJumpData(error) => Display::fmt(error, f),
+            Self::Input(error) => Display::fmt(error, f),
+            Self::NoOperation(error) => Display::fmt(error, f),
+            Self::Output(error) => Display::fmt(error, f),
+            Self::ProfileIdentity => {
+                f.write_str("v5 native selection profile identity drifted")
+            },
+            Self::Rotate(error) => Display::fmt(error, f),
+            Self::UnsupportedProgram => f.write_str(
+                "explicit-geometry IR has no reviewed native template",
+            ),
+        }
+    }
+}
+
 impl VerifiedDirectNativeCache {
     /// Removes every retained verified artifact.
     pub fn clear(&mut self) {
@@ -496,6 +539,233 @@ fn emit_verified_no_operation(
     let verified = verify_direct_no_operation(&artifact, program)
         .map_err(|error| DirectSelectionError::NoOperation(Box::new(error)))?;
     Ok(VerifiedDirectNativeArtifact::NoOperation(verified))
+}
+
+/// Selects and independently verifies one reviewed explicit-geometry template.
+///
+/// Selection is deterministic and fail-closed. Unsupported v5 programs do not
+/// receive a deoptimization artifact, because no generic v5 deoptimization
+/// contract exists. Canonical profile identity is revalidated before shape
+/// dispatch, while exact execution geometry remains bound by v5 artifact keys.
+///
+/// # Errors
+///
+/// Returns [`ExecutionGeometryDirectSelectionError`] when canonical profile
+/// identity drifts, no reviewed one-step template admits the program, or the
+/// selected emitter/verifier rejects its exact target or object bytes.
+pub fn select_verified_execution_geometry_direct_native(
+    program: &ExecutionGeometryRegionEffectProgram,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<
+    VerifiedExecutionGeometryNativeArtifact,
+    ExecutionGeometryDirectSelectionError,
+> {
+    validate_execution_geometry_profile(program)?;
+    if validate_execution_geometry_initial_halt_program(program).is_ok() {
+        return select_execution_geometry_initial_halt(
+            program, host_os, host_isa,
+        );
+    }
+    if validate_execution_geometry_initial_jump_data_program(program).is_ok() {
+        return select_execution_geometry_initial_jump_data(
+            program, host_os, host_isa,
+        );
+    }
+    if validate_execution_geometry_crazy_program(program).is_ok() {
+        return select_execution_geometry_crazy(program, host_os, host_isa);
+    }
+    if validate_execution_geometry_rotate_program(program).is_ok() {
+        return select_execution_geometry_rotate(program, host_os, host_isa);
+    }
+    if validate_execution_geometry_input_program(program).is_ok() {
+        return select_execution_geometry_input(program, host_os, host_isa);
+    }
+    if validate_execution_geometry_output_program(program).is_ok() {
+        return select_execution_geometry_output(program, host_os, host_isa);
+    }
+    if validate_execution_geometry_no_operation_program(program).is_ok() {
+        return select_execution_geometry_no_operation(
+            program, host_os, host_isa,
+        );
+    }
+    Err(ExecutionGeometryDirectSelectionError::UnsupportedProgram)
+}
+
+fn select_execution_geometry_crazy(
+    program: &ExecutionGeometryRegionEffectProgram,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<
+    VerifiedExecutionGeometryNativeArtifact,
+    ExecutionGeometryDirectSelectionError,
+> {
+    let artifact = emit_direct_execution_geometry_crazy_coff(
+        program,
+        direct_target(
+            DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_CRAZY_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ),
+    )
+    .map_err(ExecutionGeometryDirectSelectionError::Crazy)?;
+    verify_direct_execution_geometry_crazy(&artifact, program)
+        .map(VerifiedExecutionGeometryNativeArtifact::Crazy)
+        .map_err(ExecutionGeometryDirectSelectionError::Crazy)
+}
+
+fn select_execution_geometry_initial_halt(
+    program: &ExecutionGeometryRegionEffectProgram,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<
+    VerifiedExecutionGeometryNativeArtifact,
+    ExecutionGeometryDirectSelectionError,
+> {
+    let artifact = emit_direct_execution_geometry_initial_halt_coff(
+        program,
+        direct_target(
+            DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_INITIAL_HALT_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ),
+    )
+    .map_err(ExecutionGeometryDirectSelectionError::InitialHalt)?;
+    verify_direct_execution_geometry_initial_halt(&artifact, program)
+        .map(VerifiedExecutionGeometryNativeArtifact::InitialHalt)
+        .map_err(ExecutionGeometryDirectSelectionError::InitialHalt)
+}
+
+fn select_execution_geometry_initial_jump_data(
+    program: &ExecutionGeometryRegionEffectProgram,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<
+    VerifiedExecutionGeometryNativeArtifact,
+    ExecutionGeometryDirectSelectionError,
+> {
+    let artifact = emit_direct_execution_geometry_initial_jump_data_coff(
+        program,
+        direct_target(
+            DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_INITIAL_JUMP_DATA_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ),
+    )
+    .map_err(ExecutionGeometryDirectSelectionError::InitialJumpData)?;
+    verify_direct_execution_geometry_initial_jump_data(&artifact, program)
+        .map(VerifiedExecutionGeometryNativeArtifact::InitialJumpData)
+        .map_err(ExecutionGeometryDirectSelectionError::InitialJumpData)
+}
+
+fn select_execution_geometry_input(
+    program: &ExecutionGeometryRegionEffectProgram,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<
+    VerifiedExecutionGeometryNativeArtifact,
+    ExecutionGeometryDirectSelectionError,
+> {
+    let artifact = emit_direct_execution_geometry_input_coff(
+        program,
+        direct_target(
+            DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_INPUT_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ),
+    )
+    .map_err(ExecutionGeometryDirectSelectionError::Input)?;
+    verify_direct_execution_geometry_input(&artifact, program)
+        .map(VerifiedExecutionGeometryNativeArtifact::Input)
+        .map_err(ExecutionGeometryDirectSelectionError::Input)
+}
+
+fn select_execution_geometry_no_operation(
+    program: &ExecutionGeometryRegionEffectProgram,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<
+    VerifiedExecutionGeometryNativeArtifact,
+    ExecutionGeometryDirectSelectionError,
+> {
+    let artifact = emit_direct_execution_geometry_no_operation_coff(
+        program,
+        direct_target(
+            DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_NO_OPERATION_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ),
+    )
+    .map_err(ExecutionGeometryDirectSelectionError::NoOperation)?;
+    verify_direct_execution_geometry_no_operation(&artifact, program)
+        .map(VerifiedExecutionGeometryNativeArtifact::NoOperation)
+        .map_err(ExecutionGeometryDirectSelectionError::NoOperation)
+}
+
+fn select_execution_geometry_output(
+    program: &ExecutionGeometryRegionEffectProgram,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<
+    VerifiedExecutionGeometryNativeArtifact,
+    ExecutionGeometryDirectSelectionError,
+> {
+    let artifact = emit_direct_execution_geometry_output_coff(
+        program,
+        direct_target(
+            DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_OUTPUT_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ),
+    )
+    .map_err(ExecutionGeometryDirectSelectionError::Output)?;
+    verify_direct_execution_geometry_output(&artifact, program)
+        .map(VerifiedExecutionGeometryNativeArtifact::Output)
+        .map_err(ExecutionGeometryDirectSelectionError::Output)
+}
+
+fn select_execution_geometry_rotate(
+    program: &ExecutionGeometryRegionEffectProgram,
+    host_os: HostOperatingSystem,
+    host_isa: HostIsa,
+) -> Result<
+    VerifiedExecutionGeometryNativeArtifact,
+    ExecutionGeometryDirectSelectionError,
+> {
+    let artifact = emit_direct_execution_geometry_rotate_coff(
+        program,
+        direct_target(
+            DIRECT_EXECUTION_GEOMETRY_ROTATE_BACKEND_ID,
+            DIRECT_EXECUTION_GEOMETRY_ROTATE_BACKEND_REVISION,
+            host_os,
+            host_isa,
+        ),
+    )
+    .map_err(ExecutionGeometryDirectSelectionError::Rotate)?;
+    verify_direct_execution_geometry_rotate(&artifact, program)
+        .map(VerifiedExecutionGeometryNativeArtifact::Rotate)
+        .map_err(ExecutionGeometryDirectSelectionError::Rotate)
+}
+
+fn validate_execution_geometry_profile(
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> Result<(), ExecutionGeometryDirectSelectionError> {
+    let Some(profile) = target_profile(program.profile_id()) else {
+        return Err(ExecutionGeometryDirectSelectionError::ProfileIdentity);
+    };
+    if profile.fingerprint() != program.profile_fingerprint()
+        || TargetProfileRequirement::from_descriptor(profile)
+            != *program.profile_requirement()
+    {
+        return Err(ExecutionGeometryDirectSelectionError::ProfileIdentity);
+    }
+    Ok(())
 }
 
 /// Selects the narrowest semantically admitted direct native template.

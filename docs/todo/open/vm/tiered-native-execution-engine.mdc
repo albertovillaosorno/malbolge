@@ -355,6 +355,16 @@ baseline; native tiers are accelerators of identical observable behavior.
   Zero budget is a no-op, partial budget resumes without readmission, and
   oversized budget completes. Ten cases cover both transfer forms, admission,
   budgets, repeated zero after progress, and rollback before/after suspension.
+- Direct-native planning now exposes one uniform verified-v5 artifact and
+  selector for all seven reviewed explicit-geometry one-step templates. It
+  revalidates canonical profile identity before deterministic shape dispatch,
+  preserves explicit geometry in the native key, and reuses each established
+  emitter/verifier pair. Unsupported v5 shape remains an explicit error instead
+  of deoptimization.
+
+  Both reviewed ISAs select every supported kind; non-Windows target failure
+  retains the selected template's typed cause. Generic multi-step v5 planning
+  and atomic cache publication remain separate work.
 - `application/scheduler.rs` now consumes one affine handoff under one explicit
   complete, positive-slice, caller-yield, or native-retry-yield decision. Every
   pause preserves exact checkpoint, complete-plan index, key/program suffix, and

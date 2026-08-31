@@ -665,6 +665,19 @@ Ordinary native continuations now carry exact geometry explicitly,
 but canonical v3/v4 direct planning still mints only canonical tokens, so those
 continuations continue to reject derived checkpoints.
 
+
+Direct-native planning now has a uniform one-step v5 selection boundary before
+any sequence generalization. `VerifiedExecutionGeometryNativeArtifact` tags the
+seven reviewed explicit-geometry templates: initial halt, initial jump-data,
+crazy, rotate, input, output, and no-operation. The selector revalidates
+canonical profile identity, performs deterministic semantic-shape dispatch, and
+then uses each existing emitter plus independent verifier; exact v5 geometry
+remains part of the artifact key.
+
+Unsupported shapes fail explicitly rather than receiving a deoptimization
+artifact, because no generic v5 deoptimization contract exists. Generic
+multi-step v5 planning and cache publication remain separate work.
+
 `ExecutionGeometryInterpreterContinuation` composes those one-step replay
 boundaries without changing the trust model. Construction rejects empty,
 profile-mixed, geometry-mixed, discontinuous, over-capacity, or

@@ -78,8 +78,9 @@ use malbolge::{
     ExecutionGeometryRegionEffectProgram, MemoryLiveIn,
     PortableProfileRequirementError, ProfileMachineObservation,
     ProfileMemoryDelta, ProfileMemoryWrite, ProfileRegisters,
-    RegionEffectProgram, RunOutcome, RuntimeCapability, Termination,
-    TraceInput, decode_profile_instruction, encrypt_profile_cell,
+    RegionEffectProgram, RunOutcome, RuntimeCapability,
+    TargetProfileRequirement, Termination, TraceInput,
+    decode_profile_instruction, encrypt_profile_cell,
     is_canonical_effect_ir_version, preflight_portable_profile_requirement,
     profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
     profile_crazy, profile_eof_word, profile_low_byte,
@@ -87,8 +88,10 @@ use malbolge::{
 };
 use plan::target_triple;
 pub use plan::{
+    ExecutionGeometryDirectSelectionError,
     select_cached_preflighted_execution_tier,
     select_preflighted_execution_tier, select_verified_direct_native,
+    select_verified_execution_geometry_direct_native,
 };
 pub use sequence::*;
 use shape::*;
