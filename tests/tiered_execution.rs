@@ -49,6 +49,8 @@ pub mod geometry_interpreter_handoff;
 pub mod geometry_native_admission;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_crazy.rs"]
 pub mod geometry_native_crazy;
+#[path = "../src/runtime/tiered-execution/composition/tier/geometry_cprefix.rs"]
+pub mod geometry_native_crazy_prefix;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xcache.rs"]
 pub mod geometry_native_cross_template_cache;
 #[path = "../src/runtime/tiered-execution/composition/tier/geometry_xsync.rs"]
@@ -297,6 +299,12 @@ use geometry_native_crazy::{
     ExecutionGeometryNativeCrazyOwnedFailure,
     ExecutionGeometryNativeCrazyPreparationError,
     ExecutionGeometryNativeCrazyTransactionFailure,
+};
+use geometry_native_crazy_prefix::{
+    ExecutionGeometryNativeCrazyPrefix,
+    ExecutionGeometryNativeCrazyPrefixEvidence,
+    ExecutionGeometryNativeCrazyPrefixOutcome,
+    ExecutionGeometryNativeCrazyPrefixStepEvidence,
 };
 use geometry_native_cross_template_cache::{
     GeometryNativeCrossTemplateLruAcquireFailure as CrossLruFailure,
@@ -12832,6 +12840,60 @@ fn derived_v5_crazy_fixture(
     Ok((program, checkpoint, verified.geometry()))
 }
 
+fn derived_v5_crazy_prefix_fixture(
+    word_trits: u8,
+) -> Result<DerivedV5SequenceFixture, String> {
+    let verified = verify_jump_rotate_crazy_halt_profile_width(
+        current_profile(),
+        b"(&<;:9K",
+        word_trits,
+    )
+    .map_err(|error| format!("v5 crazy prefix verification: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&verified, Vec::new())
+            .map_err(|error| format!("v5 crazy prefix machine: {error}"))?;
+    for label in ["jump", "rotate"] {
+        if machine
+            .step()
+            .map_err(|error| format!("v5 crazy prefix {label}: {error}"))?
+            != StepOutcome::Continued
+        {
+            return Err(format!("v5 crazy prefix {label} did not advance"));
+        }
+    }
+    let mut programs = Vec::new();
+    let mut states = vec![machine.snapshot_state()];
+    let mut traces = Vec::new();
+    for _index in 0usize..4usize {
+        let mut trace_slot = None;
+        if machine
+            .step_traced(&mut |trace| trace_slot = Some(*trace))
+            .map_err(|error| format!("v5 crazy prefix trace: {error}"))?
+            != StepOutcome::Continued
+        {
+            return Err(String::from("v5 crazy prefix step did not advance"));
+        }
+        let trace = trace_slot
+            .ok_or_else(|| String::from("v5 crazy prefix trace missing"))?;
+        let program =
+            ExecutionGeometryRegionEffectProgram::from_profile_step_trace(
+                &trace,
+            )
+            .map_err(|error| {
+                format!("v5 crazy prefix projection: {error:?}")
+            })?;
+        programs.push(program);
+        states.push(machine.snapshot_state());
+        traces.push(trace);
+    }
+    Ok(DerivedV5SequenceFixture {
+        geometry: verified.geometry(),
+        programs,
+        states,
+        traces,
+    })
+}
+
 fn derived_v5_handoff_fixture(
     word_trits: u8,
 ) -> Result<DerivedV5HandoffFixture, String> {
@@ -14595,6 +14657,43 @@ fn geometry_native_crazy_runner_fixture(
         geometry,
         ready,
     })
+}
+
+fn geometry_native_crazy_prefix_step_evidence(
+    program: &ExecutionGeometryRegionEffectProgram,
+) -> Result<ExecutionGeometryNativeCrazyPrefixStepEvidence, String> {
+    let artifact = emit_direct_execution_geometry_crazy_coff(
+        program,
+        direct_execution_geometry_crazy_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v5 crazy prefix emit: {error}"))?;
+    let verified =
+        verify_direct_execution_geometry_crazy(&artifact, program)
+            .map_err(|error| format!("v5 crazy prefix verify: {error}"))?;
+    Ok(ExecutionGeometryNativeCrazyPrefixStepEvidence::new(
+        program.clone(),
+        verified,
+    ))
+}
+
+fn geometry_native_crazy_prefix(
+    fixture: &DerivedV5SequenceFixture,
+) -> Result<ExecutionGeometryNativeCrazyPrefix, String> {
+    let [first, second, third, fourth] = fixture.programs.as_slice() else {
+        return Err(String::from("v5 crazy prefix program count drifted"));
+    };
+    let evidence = ExecutionGeometryNativeCrazyPrefixEvidence::new([
+        geometry_native_crazy_prefix_step_evidence(first)?,
+        geometry_native_crazy_prefix_step_evidence(second)?,
+        geometry_native_crazy_prefix_step_evidence(third)?,
+        geometry_native_crazy_prefix_step_evidence(fourth)?,
+    ]);
+    let checkpoint =
+        fixture.states.first().cloned().ok_or_else(|| {
+            String::from("v5 crazy prefix entry state missing")
+        })?;
+    ExecutionGeometryNativeCrazyPrefix::new(evidence, checkpoint)
+        .map_err(|error| error.to_string())
 }
 
 fn geometry_native_initial_jump_data_admission_fixture(
@@ -23877,6 +23976,179 @@ fn geometry_native_input_transaction_retains_committed_release_retry()
     release_failure
         .retry(&mut adapter)
         .map_err(|error| format!("v5 input committed cleanup retry: {error}"))
+}
+
+#[test]
+fn geometry_native_crazy_prefix_admits_four_replayed_steps()
+-> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_fixture(10)?;
+    let prefix = geometry_native_crazy_prefix(&fixture)?;
+    let entry = fixture
+        .states
+        .first()
+        .ok_or_else(|| String::from("v5 crazy prefix entry missing"))?;
+    let final_state = fixture
+        .states
+        .last()
+        .ok_or_else(|| String::from("v5 crazy prefix final state missing"))?;
+    if prefix.entry_state() != entry
+        || prefix.final_state() != final_state
+        || prefix.steps().len() != 4
+    {
+        return Err(String::from("v5 crazy prefix boundary state drifted"));
+    }
+    for (admission, state_pair) in
+        prefix.steps().iter().zip(fixture.states.windows(2))
+    {
+        let [step_entry, step_exit] = state_pair else {
+            return Err(String::from("v5 crazy prefix state pair drifted"));
+        };
+        if admission.checkpoint() != step_entry
+            || admission.expected_state() != step_exit
+            || admission.checkpoint().geometry() != fixture.geometry
+        {
+            return Err(String::from(
+                "v5 crazy prefix checkpoint chain drifted",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn geometry_native_crazy_prefix_transaction_applies_all_steps()
+-> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_fixture(10)?;
+    let prefix = geometry_native_crazy_prefix(&fixture)?;
+    let entry = prefix.entry_state().clone();
+    let expected = prefix.final_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(297)?,
+        native_executable_address(0xd_6000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let mut memory = entry.memory().to_vec();
+    let input = entry.io().input().to_vec();
+    let mut output = entry.io().output().to_vec();
+    let outcome = prefix
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 crazy prefix execute: {error}"))?;
+    if !matches!(
+        outcome,
+        ExecutionGeometryNativeCrazyPrefixOutcome::Completed(_)
+    ) || outcome.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 4
+        || adapter.operations.len() != 20
+    {
+        return Err(String::from("v5 crazy prefix completion drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn geometry_native_crazy_prefix_guard_miss_stops() -> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_fixture(10)?;
+    let prefix = geometry_native_crazy_prefix(&fixture)?;
+    let entry = prefix.entry_state().clone();
+    let expected =
+        fixture.states.get(2).cloned().ok_or_else(|| {
+            String::from("v5 crazy prefix guard state missing")
+        })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(298)?,
+        native_executable_address(0xd_7000)?,
+    );
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::GuardMiss,
+    ]);
+    let mut memory = entry.memory().to_vec();
+    let input = entry.io().input().to_vec();
+    let mut output = entry.io().output().to_vec();
+    let outcome = prefix
+        .execute_transactionally(
+            &mut adapter,
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v5 crazy prefix guard execute: {error}"))?;
+    if !matches!(
+        outcome,
+        ExecutionGeometryNativeCrazyPrefixOutcome::GuardMiss { index: 2, .. }
+    ) || outcome.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 3
+        || adapter.operations.len() != 15
+    {
+        return Err(String::from("v5 crazy prefix guard suspension drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn geometry_native_crazy_prefix_release_failure_keeps_committed_state()
+-> Result<(), String> {
+    let fixture = derived_v5_crazy_prefix_fixture(10)?;
+    let prefix = geometry_native_crazy_prefix(&fixture)?;
+    let entry = prefix.entry_state().clone();
+    let expected =
+        fixture.states.get(2).cloned().ok_or_else(|| {
+            String::from("v5 crazy prefix release state missing")
+        })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(299)?,
+        native_executable_address(0xd_8000)?,
+    )
+    .with_release_failure_at(2);
+    let mut runner = FakeExecutionGeometrySequenceRunner::new(vec![
+        FakeNativeRunnerBehavior::Applied,
+        FakeNativeRunnerBehavior::Applied,
+    ]);
+    let mut memory = entry.memory().to_vec();
+    let input = entry.io().input().to_vec();
+    let mut output = entry.io().output().to_vec();
+    let Err(failure) = prefix.execute_transactionally(
+        &mut adapter,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v5 crazy prefix release failure ignored"));
+    };
+    if failure.index() != 1
+        || failure.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || runner.calls != 2
+        || adapter.operations.len() != 10
+    {
+        return Err(String::from("v5 crazy prefix committed failure drifted"));
+    }
+    let ExecutionGeometryNativeCrazyTransactionFailure::Release {
+        completion,
+        release_failure,
+    } = failure.into_cause()
+    else {
+        return Err(String::from("v5 crazy prefix cleanup ownership lost"));
+    };
+    if completion.state() != &expected {
+        return Err(String::from("v5 crazy prefix cleanup state drifted"));
+    }
+    release_failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v5 crazy prefix cleanup retry: {error}"))
 }
 
 #[test]

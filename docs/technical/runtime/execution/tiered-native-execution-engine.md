@@ -401,8 +401,24 @@ beside one synchronized executable, executes repeated calls without adapter
 remapping, reports resident weight from the platform mapping's exact
 `mapped_len()`, and releases through the same retryable ready-executable cleanup
 contract. Runner failure restores complete checkpoint buffers while preserving
-the owned mapping for a later successful retry. Heterogeneous residency remains
-separate work.
+the owned mapping for a later successful retry. The same owner now participates
+in heterogeneous residency without changing shared LRU policy.
+
+`ExecutionGeometryNativeCrazyPrefix` composes exactly the four `p` steps
+that the `(&<;:9K` theorem reaches after jump and rotate. The count is
+theorem-owned, not
+a generic sequence length: four verified v5 artifacts are admitted in order,
+and each normative crazy exit becomes the only checkpoint authority for the
+next step before any prefix execution begins.
+
+Transactional prefix execution maps, runs, admits, and releases each crazy
+independently. Four Applied results reach the theorem's exact pre-halt
+checkpoint; GuardMiss stops at its zero-based crazy index with the last
+committed state. Per-step failure carries the same index and checkpoint, and
+release
+failure after Applied retains that newly committed state beside exact retryable
+cleanup ownership. A preloaded four-mapping owner and the final halt remain
+separate composition work.
 
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low

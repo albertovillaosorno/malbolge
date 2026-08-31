@@ -47,6 +47,8 @@ pub mod execution_native;
 pub mod geometry_interpreter_handoff;
 #[path = "tier/geometry_crazy.rs"]
 pub mod geometry_native_crazy;
+#[path = "tier/geometry_cprefix.rs"]
+pub mod geometry_native_crazy_prefix;
 #[path = "tier/geometry_jump.rs"]
 pub mod geometry_native_initial_jump_data;
 #[path = "tier/geometry_input.rs"]

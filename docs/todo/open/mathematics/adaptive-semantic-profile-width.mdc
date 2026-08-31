@@ -961,6 +961,13 @@ transfers, verification, and other separately measured costs.
   identity, one-mapping weight, specialized execution outcome/failure tagging,
   hit reuse without remapping, and typed release cleanup retry. The shared LRU
   gains no crazy-specific eviction or weighting logic.
+- The exact four-crazy prefix reached by `(&<;:9K` after jump/rotate now has a
+  checkpoint-bound transactional composition. Four theorem-derived artifacts
+  admit in fixed order, each normative exit is the next step's sole checkpoint
+  authority, and execution preserves exact index plus last committed state for
+  GuardMiss or failure. Applied release failure keeps the newly committed state
+  with retryable per-step cleanup. Preloaded four-mapping ownership and the
+  final halt remain separate work; the prefix count is not generalized.
 - Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
   dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical
