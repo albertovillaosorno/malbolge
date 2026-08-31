@@ -13739,6 +13739,12 @@ fn cross_template_initial_jump_plan() -> Result<CrossResidentPlan, String> {
     Ok(CrossResidentPlan::InitialJump(Box::new(admission)))
 }
 
+fn cross_template_no_operation_plan() -> Result<CrossResidentPlan, String> {
+    let (admission, _geometry) =
+        geometry_native_no_operation_admission_fixture(10)?;
+    Ok(CrossResidentPlan::NoOperation(Box::new(admission)))
+}
+
 fn cross_template_resident_plans() -> Result<CrossResidentPlanTriple, String> {
     let noop_fixture = derived_v5_noop_halt_sequence_fixture(10)?;
     let rotate_fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
@@ -18565,6 +18571,204 @@ fn geometry_native_cross_template_initial_jump_counts_mapping_pressure()
         .release_if_unleased(&mut adapter, &full_plan)
         .map(|_release| ())
         .map_err(|error| format!("cross mixed mapping cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_no_operation_resident_executes()
+-> Result<(), String> {
+    let plan = cross_template_no_operation_plan()?;
+    let CrossResidentPlan::NoOperation(admission) = &plan else {
+        return Err(String::from("cross no-op plan variant drifted"));
+    };
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(252)?,
+        native_executable_address(0xa_9000)?,
+    )
+    .with_mapped_len_overrides(vec![12_288]);
+    let loaded = plan
+        .load(&mut adapter)
+        .map_err(|error| format!("cross no-op load: {error}"))?;
+    let weight = loaded
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = loaded
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("cross no-op execute: {error}"))?;
+    if loaded.kind() != CrossResidentKind::NoOperation
+        || !loaded.matches_plan(&plan)
+        || loaded.plan() != plan
+        || outcome.kind() != CrossResidentKind::NoOperation
+        || outcome.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || weight.mapped_bytes() != 12_288
+        || weight.mappings() != 1
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("cross no-op resident drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("cross no-op release: {error}"))?;
+    if adapter.operations.len() == 5 {
+        Ok(())
+    } else {
+        Err(String::from("cross no-op release count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_no_operation_lru_hit_reuses_mapping()
+-> Result<(), String> {
+    let plan = cross_template_no_operation_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(253)?,
+        native_executable_address(0xa_a000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let operations_before = adapter.operations.len();
+    let hit = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross no-op hit: {error}"))?;
+    if hit.disposition() != CrossLruDisposition::Hit
+        || hit.lease().kind() != CrossResidentKind::NoOperation
+        || hit
+            .lease()
+            .resident_weight()
+            .map_err(|error| error.to_string())?
+            .mappings()
+            != 1
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from("cross no-op hit remapped resident"));
+    }
+    drop(hit);
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross no-op hit cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_no_operation_load_retry_keeps_variant()
+-> Result<(), String> {
+    let plan = cross_template_no_operation_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(254)?,
+        native_executable_address(0xa_b000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 1)
+    .with_release_failures(1);
+    let Err(failure) = plan.load(&mut adapter) else {
+        return Err(String::from("cross no-op load failure ignored"));
+    };
+    if !matches!(failure.as_ref(), CrossResidentLoadFailure::NoOperation(_))
+        || !failure.cleanup_pending()
+    {
+        return Err(String::from("cross no-op load cleanup drifted"));
+    }
+    let retried = (*failure).retry_cleanup(&mut adapter);
+    if matches!(&retried, CrossResidentLoadFailure::NoOperation(_))
+        && !retried.cleanup_pending()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross no-op load retry lost variant"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_no_operation_release_failure_is_typed()
+-> Result<(), String> {
+    let plan = cross_template_no_operation_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(255)?,
+        native_executable_address(0xa_c000)?,
+    )
+    .with_release_failures(1);
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(failure) = cache.release_if_unleased(&mut adapter, &plan) else {
+        return Err(String::from("cross no-op release failure ignored"));
+    };
+    if !matches!(
+        failure.as_ref(),
+        CrossResidentReleaseFailure::NoOperation(_)
+    ) || cache.contains(&plan)
+    {
+        return Err(String::from("cross no-op cleanup authority drifted"));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|error| format!("cross no-op cleanup retry: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_no_operation_shares_single_mapping_budget()
+-> Result<(), String> {
+    let halt_plan = cross_template_initial_halt_plan()?;
+    let jump_plan = cross_template_initial_jump_plan()?;
+    let noop_plan = cross_template_no_operation_plan()?;
+    let (pair_plan, _rotate_plan, _full_plan) =
+        cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(256)?,
+        native_executable_address(0xa_d000)?,
+    );
+    let mut cache = cross_template_weighted_lru(4, None, Some(3))?;
+    for plan in [&halt_plan, &jump_plan, &noop_plan] {
+        drop(
+            cache
+                .ensure(&mut adapter, plan)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let initial_usage = cache.usage().map_err(|error| error.to_string())?;
+    let pair = cache.ensure(&mut adapter, &pair_plan).map_err(|error| {
+        format!("cross single-map budget admission: {error}")
+    })?;
+    let final_usage = cache.usage().map_err(|error| error.to_string())?;
+    if initial_usage.entries() != 3
+        || initial_usage.mappings() != 3
+        || pair.disposition() != CrossLruDisposition::Evicted
+        || cache.contains(&halt_plan)
+        || cache.contains(&jump_plan)
+        || !cache.contains(&noop_plan)
+        || !cache.contains(&pair_plan)
+        || final_usage.entries() != 2
+        || final_usage.mappings() != 3
+    {
+        return Err(String::from("cross single-map budget accounting drifted"));
+    }
+    drop(pair);
+    cache
+        .release_if_unleased(&mut adapter, &noop_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross standalone no-op cleanup: {error}"))?;
+    cache
+        .release_if_unleased(&mut adapter, &pair_plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross no-op pair cleanup: {error}"))
 }
 
 #[test]

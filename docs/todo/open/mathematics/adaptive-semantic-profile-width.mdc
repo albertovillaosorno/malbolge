@@ -740,10 +740,10 @@ transfers, verification, and other separately measured costs.
   three mappings, limit two rejects with rollback, and limit six evicts one LRU
   before admitting a third resident.
 - A typed cross-template resident plan wraps initial halt, initial jump-data,
-  no-op/halt, rotate/halt, and full-path admission without sharing execution
-  semantics. Loaded owners retain exact variant identity, report 1/1/2/2/3
-  mapping weights, and preserve specialized load/execution/release retry
-  ownership.
+  no-operation, no-op/halt, rotate/halt, and full-path admission without sharing
+  execution semantics. Loaded owners retain exact variant identity, report
+  1/1/1/2/2/3 mapping weights, and preserve specialized load/execution/release
+  retry ownership.
 - The heterogeneous LRU now accepts entry, exact mapped-byte, and mapping-count
   limits. Resource-bounded misses load and measure the typed candidate first,
   reject oversized residents with rollback, and can evict multiple unleased LRU
@@ -773,9 +773,9 @@ transfers, verification, and other separately measured costs.
   leased full-path resident and finally to empty zero-usage closure.
 - Heterogeneous leases now execute the retained specialized owner directly.
   Outcomes and failures stay tagged as initial halt, initial jump-data,
-  no-op/halt, rotate/halt, or full-path; checkpoints, guard behavior, and
-  rollback remain owned by the original template implementation. Execution
-  performs no adapter work.
+  no-operation, no-op/halt, rotate/halt, or full-path; checkpoints, guard
+  behavior, and rollback remain owned by the original template implementation.
+  Execution performs no adapter work.
 - Heterogeneous acquisitions can also execute while preserving the cache action
   (`Inserted`, `Hit`, or `Evicted`) in success or failure. Consuming that
   temporary acquisition drops its external lease after execution while resident
@@ -879,6 +879,12 @@ transfers, verification, and other separately measured costs.
   preserves the normatively replayed self-encryption/C-D state, reports platform
   mapping weight, rolls back runner failure, and transfers exact cleanup
   ownership on release failure.
+- No-operation is now also a standalone heterogeneous resident. Exact admission
+  is its identity, hits reuse one mapping, load/release failures preserve the
+  no-operation variant, and mapping pressure composes it independently from the
+  two-step no-op/halt pair. Halt, jump, and no-op fit a three-mapping budget;
+  admitting the pair evicts the two LRU single-step identities while preserving
+  the MRU no-op.
 - The no-op/halt pair now owns both steps through their reusable single-step
   owners. Prefix load rollback and final release delegate to those same exact
   cleanup contracts while pair accessors, cache identity, operation counts, and
