@@ -854,11 +854,11 @@ limit of six admits two full-path residents and evicts LRU authority before a
 third can publish.
 
 `GeometryNativeResidentPlan` now gives initial halt, initial jump-data,
-no-operation, no-op/halt, rotate/halt, and full-path templates one typed
+no-operation, no-op/halt, rotate, rotate/halt, and full-path templates one typed
 lifecycle boundary without merging execution semantics. The loaded-resident
-enum preserves exact variant identity, derives 1/1/1/2/2/3 mapping weights from
-synchronized reports, and delegates load, execution, release, and retry to each
-specialized owner.
+enum preserves exact variant identity, derives 1/1/1/2/1/2/3 mapping weights
+from synchronized reports, and delegates load, execution, release, and retry to
+each specialized owner.
 
 `GeometryNativeCrossTemplateLruCache` now performs real cross-template
 residency over that typed boundary. It always has a nonzero resident entry limit
@@ -878,20 +878,19 @@ evidence reports prior removals so partial successful eviction is observable.
 
 The existing entry-only and weighted cases still mix no-op/halt, rotate/halt,
 and full-path residents through recency, lease, saturation, byte/mapping
-pressure, rollback, release-failure, and vacancy paths. Five initial-jump, five
-initial-halt, and five no-operation cases add single-mapping lifecycle, hit
-reuse, load/release retry, and mixed resource-pressure coverage. Halt and jump
-coexist under a two-mapping limit until a pair evicts both. Under a
-three-mapping limit, halt, jump, and no-operation coexist; admitting a pair
-removes the two LRU single-step residents while preserving the MRU no-operation
-identity.
+pressure, rollback, release-failure, and vacancy paths. Five cases each for
+initial jump, initial halt, no-operation, and rotate add single-mapping
+lifecycle, hit reuse, load/release retry, and mixed resource-pressure coverage.
+Four single-step identities fit a four-mapping budget; admitting rotate/halt
+evicts the two LRU steps while preserving the MRU no-operation and rotate
+residents.
 
 A heterogeneous lease can now execute its resident directly without cache or
 adapter work. The common execution boundary only tags the existing specialized
 outcome/failure as full-path, initial halt, initial jump-data, no-operation,
-no-op/halt, or rotate/halt; it does not translate checkpoints, guard misses,
-committed state, or rollback semantics. The three single-mapping templates
-therefore reuse their one-step completion and rollback contracts unchanged.
+no-op/halt, rotate, or rotate/halt; it does not translate checkpoints, guard
+misses, committed state, or rollback semantics. The four single-mapping
+templates therefore reuse their one-step completion and rollback contracts.
 
 `GeometryNativeCrossTemplateLruAcquisition::execute()` now consumes the
 temporary

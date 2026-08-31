@@ -13746,6 +13746,11 @@ fn cross_template_no_operation_plan() -> Result<CrossResidentPlan, String> {
     Ok(CrossResidentPlan::NoOperation(Box::new(admission)))
 }
 
+fn cross_template_rotate_plan() -> Result<CrossResidentPlan, String> {
+    let (admission, _geometry) = geometry_native_rotate_admission_fixture(10)?;
+    Ok(CrossResidentPlan::Rotate(Box::new(admission)))
+}
+
 fn cross_template_resident_plans() -> Result<CrossResidentPlanTriple, String> {
     let noop_fixture = derived_v5_noop_halt_sequence_fixture(10)?;
     let rotate_fixture = derived_v5_rotate_halt_sequence_fixture(10)?;
@@ -18770,6 +18775,203 @@ fn geometry_native_cross_template_no_operation_shares_single_mapping_budget()
         .release_if_unleased(&mut adapter, &pair_plan)
         .map(|_release| ())
         .map_err(|error| format!("cross no-op pair cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_rotate_resident_executes()
+-> Result<(), String> {
+    let plan = cross_template_rotate_plan()?;
+    let CrossResidentPlan::Rotate(admission) = &plan else {
+        return Err(String::from("cross rotate plan variant drifted"));
+    };
+    let checkpoint = admission.checkpoint().clone();
+    let expected = admission.expected_state().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(259)?,
+        native_executable_address(0xb_0000)?,
+    )
+    .with_mapped_len_overrides(vec![12_288]);
+    let loaded = plan
+        .load(&mut adapter)
+        .map_err(|error| format!("cross rotate load: {error}"))?;
+    let weight = loaded
+        .resident_weight()
+        .map_err(|error| error.to_string())?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = loaded
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("cross rotate execute: {error}"))?;
+    if loaded.kind() != CrossResidentKind::Rotate
+        || !loaded.matches_plan(&plan)
+        || loaded.plan() != plan
+        || outcome.kind() != CrossResidentKind::Rotate
+        || outcome.state() != &expected
+        || memory != expected.memory()
+        || output != expected.io().output()
+        || weight.mapped_bytes() != 12_288
+        || weight.mappings() != 1
+        || adapter.operations.len() != 4
+    {
+        return Err(String::from("cross rotate resident drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("cross rotate release: {error}"))?;
+    if adapter.operations.len() == 5 {
+        Ok(())
+    } else {
+        Err(String::from("cross rotate release count drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_rotate_lru_hit_reuses_mapping()
+-> Result<(), String> {
+    let plan = cross_template_rotate_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(260)?,
+        native_executable_address(0xb_1000)?,
+    );
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let operations_before = adapter.operations.len();
+    let hit = cache
+        .ensure(&mut adapter, &plan)
+        .map_err(|error| format!("cross rotate hit: {error}"))?;
+    if hit.disposition() != CrossLruDisposition::Hit
+        || hit.lease().kind() != CrossResidentKind::Rotate
+        || hit
+            .lease()
+            .resident_weight()
+            .map_err(|error| error.to_string())?
+            .mappings()
+            != 1
+        || adapter.operations.len() != operations_before
+    {
+        return Err(String::from("cross rotate hit remapped resident"));
+    }
+    drop(hit);
+    cache
+        .release_if_unleased(&mut adapter, &plan)
+        .map(|_release| ())
+        .map_err(|error| format!("cross rotate hit cleanup: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_rotate_load_retry_keeps_variant()
+-> Result<(), String> {
+    let plan = cross_template_rotate_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(261)?,
+        native_executable_address(0xb_2000)?,
+    )
+    .with_failure_at(FakeNativeAdapterOperation::Copy, 1)
+    .with_release_failures(1);
+    let Err(failure) = plan.load(&mut adapter) else {
+        return Err(String::from("cross rotate load failure ignored"));
+    };
+    if !matches!(failure.as_ref(), CrossResidentLoadFailure::Rotate(_))
+        || !failure.cleanup_pending()
+    {
+        return Err(String::from("cross rotate load cleanup drifted"));
+    }
+    let retried = (*failure).retry_cleanup(&mut adapter);
+    if matches!(&retried, CrossResidentLoadFailure::Rotate(_))
+        && !retried.cleanup_pending()
+    {
+        Ok(())
+    } else {
+        Err(String::from("cross rotate load retry lost variant"))
+    }
+}
+
+#[test]
+fn geometry_native_cross_template_rotate_release_failure_is_typed()
+-> Result<(), String> {
+    let plan = cross_template_rotate_plan()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(262)?,
+        native_executable_address(0xb_3000)?,
+    )
+    .with_release_failures(1);
+    let mut cache = cross_template_lru(1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &plan)
+            .map_err(|error| error.to_string())?,
+    );
+    let Err(failure) = cache.release_if_unleased(&mut adapter, &plan) else {
+        return Err(String::from("cross rotate release failure ignored"));
+    };
+    if !matches!(failure.as_ref(), CrossResidentReleaseFailure::Rotate(_))
+        || cache.contains(&plan)
+    {
+        return Err(String::from("cross rotate cleanup authority drifted"));
+    }
+    (*failure)
+        .retry(&mut adapter)
+        .map_err(|error| format!("cross rotate cleanup retry: {error}"))
+}
+
+#[test]
+fn geometry_native_cross_template_rotate_shares_single_mapping_budget()
+-> Result<(), String> {
+    let halt_plan = cross_template_initial_halt_plan()?;
+    let jump_plan = cross_template_initial_jump_plan()?;
+    let noop_plan = cross_template_no_operation_plan()?;
+    let rotate_plan = cross_template_rotate_plan()?;
+    let (_noop_pair, rotate_pair, _full_plan) =
+        cross_template_resident_plans()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(263)?,
+        native_executable_address(0xb_4000)?,
+    );
+    let mut cache = cross_template_weighted_lru(5, None, Some(4))?;
+    for plan in [&halt_plan, &jump_plan, &noop_plan, &rotate_plan] {
+        drop(
+            cache
+                .ensure(&mut adapter, plan)
+                .map_err(|error| error.to_string())?,
+        );
+    }
+    let initial_usage = cache.usage().map_err(|error| error.to_string())?;
+    let pair = cache
+        .ensure(&mut adapter, &rotate_pair)
+        .map_err(|error| format!("cross rotate budget admission: {error}"))?;
+    let final_usage = cache.usage().map_err(|error| error.to_string())?;
+    if initial_usage.entries() != 4
+        || initial_usage.mappings() != 4
+        || pair.disposition() != CrossLruDisposition::Evicted
+        || cache.contains(&halt_plan)
+        || cache.contains(&jump_plan)
+        || !cache.contains(&noop_plan)
+        || !cache.contains(&rotate_plan)
+        || !cache.contains(&rotate_pair)
+        || final_usage.entries() != 3
+        || final_usage.mappings() != 4
+    {
+        return Err(String::from("cross rotate budget accounting drifted"));
+    }
+    drop(pair);
+    for plan in [&noop_plan, &rotate_plan, &rotate_pair] {
+        cache
+            .release_if_unleased(&mut adapter, plan)
+            .map(|_release| ())
+            .map_err(|error| format!("cross rotate budget cleanup: {error}"))?;
+    }
+    Ok(())
 }
 
 #[test]
