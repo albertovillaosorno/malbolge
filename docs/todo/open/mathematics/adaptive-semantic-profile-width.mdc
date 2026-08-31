@@ -879,6 +879,10 @@ transfers, verification, and other separately measured costs.
   preserves the normatively replayed self-encryption/C-D state, reports platform
   mapping weight, rolls back runner failure, and transfers exact cleanup
   ownership on release failure.
+- The no-op/halt pair now owns both steps through their reusable single-step
+  owners. Prefix load rollback and final release delegate to those same exact
+  cleanup contracts while pair accessors, cache identity, operation counts, and
+  indexed two-step semantics remain unchanged.
 - The first multistep geometry-native composition now admits and executes the
   certified `DP` no-op/halt pair. No-op admission normatively derives the exact
   intermediate checkpoint and that opaque state is the sole authority accepted

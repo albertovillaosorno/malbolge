@@ -46,8 +46,6 @@ use crate::execution_native::{
     NativeRegionInvocationOutcome, ReadyExecutionGeometryNativeExecutable,
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     VerifiedExecutionGeometryNoOperationNativeObjectArtifact,
-    load_execution_geometry_native_executable,
-    release_execution_geometry_native_executable,
 };
 use crate::geometry_native_admission::{
     ExecutionGeometryNativeInitialHaltAdmission,
@@ -67,6 +65,7 @@ use crate::geometry_native_no_operation::{
     ExecutionGeometryNativeNoOperationExecutionError,
     ExecutionGeometryNativeNoOperationPreparationError,
     ExecutionGeometryNativeNoOperationTransactionFailure,
+    LoadedExecutionGeometryNativeNoOperation,
 };
 
 type VerifiedNoOperationArtifact =
@@ -226,7 +225,7 @@ pub struct BoundExecutionGeometryNativeNoopHaltSequence<'sequence, 'executable>
 #[derive(Debug)]
 pub struct LoadedExecutionGeometryNativeNoopHaltSequence {
     halt: LoadedExecutionGeometryNativeInitialHalt,
-    no_operation: ReadyExecutionGeometryNativeExecutable,
+    no_operation: LoadedExecutionGeometryNativeNoOperation,
     sequence: ExecutionGeometryNativeNoopHaltSequence,
 }
 
@@ -638,7 +637,7 @@ impl LoadedExecutionGeometryNativeNoopHaltSequence {
     {
         let bound = BoundExecutionGeometryNativeNoopHaltSequence {
             halt: self.halt.executable(),
-            no_operation: &self.no_operation,
+            no_operation: self.no_operation.executable(),
             sequence: &self.sequence,
         };
         bound.execute(runner, buffers)
@@ -655,7 +654,7 @@ impl LoadedExecutionGeometryNativeNoopHaltSequence {
     pub const fn no_operation(
         &self,
     ) -> &ReadyExecutionGeometryNativeExecutable {
-        &self.no_operation
+        self.no_operation.executable()
     }
 
     /// Releases both mappings, attempting both even when one release fails.
@@ -671,13 +670,7 @@ impl LoadedExecutionGeometryNativeNoopHaltSequence {
         Adapter: NativeExecutableMemoryAdapter,
     {
         let halt_failure = self.halt.release(adapter).err();
-        let no_operation_failure =
-            release_execution_geometry_native_executable(
-                adapter,
-                self.no_operation,
-            )
-            .err()
-            .map(Box::new);
+        let no_operation_failure = self.no_operation.release(adapter).err();
         pair_release_result(halt_failure, no_operation_failure)
     }
 
@@ -828,27 +821,19 @@ impl ExecutionGeometryNativeNoopHaltSequence {
     where
         Adapter: NativeExecutableMemoryAdapter,
     {
-        let no_operation = load_execution_geometry_native_executable(
-            adapter,
-            self.no_operation.load_image(),
-        )
-        .map_err(|error| {
-            Box::new(
-                ExecutionGeometryNativeNoopHaltPairLoadFailure::NoOperation(
-                    Box::new(error),
-                ),
-            )
-        })?;
+        let no_operation =
+            self.no_operation.load_owned(adapter).map_err(|error| {
+                Box::new(
+                    ExecutionGeometryNativeNoopHaltPairLoadFailure::NoOperation(
+                        error,
+                    ),
+                )
+            })?;
         let halt = match self.halt.load_owned(adapter) {
             Ok(halt) => halt,
             Err(error) => {
                 let no_operation_release_failure =
-                    release_execution_geometry_native_executable(
-                        adapter,
-                        no_operation,
-                    )
-                    .err()
-                    .map(Box::new);
+                    no_operation.release(adapter).err();
                 return Err(Box::new(
                     ExecutionGeometryNativeNoopHaltPairLoadFailure::Halt {
                         error,

@@ -1141,11 +1141,11 @@ restores only the failing halt step and retains the committed no-operation
 prefix.
 
 `load_pair()` now supplies an optional owner for those same two mappings. It
-loads no-operation first and halt second through the reusable initial-halt
-owner; halt-load failure immediately releases the ready no-operation, while
-failed rollback retains that exact executable beside the primary halt error.
-The loaded pair executes repeatedly without adapter work and release always
-attempts both mappings through their existing exact cleanup contracts.
+loads no-operation first through the reusable no-operation owner and halt second
+through the reusable initial-halt owner. Halt-load failure immediately releases
+the owned no-operation, while failed rollback retains that exact mapping beside
+the primary halt error. Repeated pair execution performs no adapter work, and
+release delegates both mappings to their specialized cleanup contracts.
 
 If either or both releases fail, the returned pair cleanup failure retains every
 still-owned ready executable and can retry only those failures. Four cases cover
