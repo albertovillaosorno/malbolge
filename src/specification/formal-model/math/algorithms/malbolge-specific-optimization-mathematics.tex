@@ -1631,6 +1631,43 @@ that no answer supplies reusable information about another pair. Cross-pair
 proofs, shared structural scores, batched semantic evidence, or richer oracle
 answers fall outside this lower-bound model.
 
+A broader information lower bound allows an arbitrary binary question about the
+unique hidden candidate rather than only exact-candidate verification. A binary
+decision tree identifying one of $R\geq1$ equiprobable hypotheses has worst-case
+and minimum uniform-target mean question counts
+\begin{equation}
+  \fitmath{%
+    D_\infty(R)=\left\lceil\log_2 R\right\rceil,\qquad
+    \overline D(R)=h+2-\frac{2^{h+1}}{R},\qquad
+    h=\left\lfloor\log_2 R\right\rfloor.
+  }
+  \label{eq:optimization-binary-oracle-identification-lower-bound}
+\end{equation}
+The worst-case bound follows because depth $d$ supplies at most $2^d$ leaves.
+For the mean, an optimal full binary tree has
+$2^{h+1}-R$ leaves at depth $h$ and $2R-2^{h+1}$ at depth $h+1$; those counts
+satisfy Kraft equality and attain the displayed mean. If absence is an
+additional possible outcome, replace $R$ by $R+1$. This theorem permits richer
+binary questions than the candidate-local verifier model, so its logarithmic
+bound is deliberately weaker than the linear result above.
+
+Substitution of the checked tuple quotient cardinalities gives
+\begin{equation}
+  \fitmath{%
+    \mathcal I^{\rm ord}_{k,m}
+      =\left(D_\infty(O_{k,m}),\overline D(O_{k,m})\right),
+      \quad 1\leq m\leq8,\ 0\leq k\leq14,\\
+    \mathcal I^{\rm unord}_{k,m}
+      =\left(D_\infty(U_{k,m}),\overline D(U_{k,m})\right),
+      \quad 3\leq m\leq8,\ 0\leq k\leq14.
+  }
+  \label{eq:optimization-crazy-profile-tuple-binary-oracle-lower-bound}
+\end{equation}
+At $k=14,m=8$, the ordered and endpoint-unordered worst-case information depths
+are 77 and 61 binary questions. The result assumes every question has at most
+two outcomes and must identify the unique canonical target; multi-valued
+oracles, side information, or non-identification objectives are outside scope.
+
 The endpoint-symmetric pair quotient also composes exactly over the reachable
 fixed-pair ambiguity distribution. Let $E_N$ count canonical ordered preimage
 pairs after simultaneous coordinate permutation and endpoint swap, and let

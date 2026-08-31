@@ -860,6 +860,26 @@ mechanism = "additive-finite-domain-query-lower-bound-plus-exact-global-canonica
 evidence = ["tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_product_candidate_families_have_exact_aggregate_call_bounds", "tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_checked_global_tuple_counts_give_exact_aggregate_bounds", "tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_generic_global_ordered_tuple_count_matches_independent_transform", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_global_unordered_tuple_transform_matches_direct_sum"]
 
 [[correspondence]]
+id = "optimization-binary-oracle-identification-lower-bound"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-binary-oracle-identification-lower-bound"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "finite nonempty hypothesis sets with one uniformly hidden valid target and arbitrary adaptive questions having at most two outcomes"
+mechanism = "binary-decision-tree-leaf-capacity-plus-optimal-prefix-depth-Kraft-accounting"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_binary_decision_tree_worst_depth_matches_leaf_capacity", "tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_uniform_binary_mean_matches_optimal_small_decision_trees", "tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_balanced_binary_leaf_depths_realize_exact_uniform_mean"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-tuple-binary-oracle-lower-bound"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-profile-tuple-binary-oracle-lower-bound"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "checked crazy preimage tuple quotient domains through ambiguity dimension 14, ordered endpoint arities 1 through 8, and endpoint-unordered arities 3 through 8 under the established symmetry precondition, with arbitrary binary identification questions"
+mechanism = "exact-quotient-cardinality-substitution-into-binary-decision-tree-information-bound"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_canonical_search_verifier_lower_bound.py::test_checked_tuple_counts_substitute_binary_information_bounds", "tests/mathematics/test_crazy_preimage_cube_ordered_tuple_quotient.py::test_generic_ordered_tuple_counts_cover_checked_arities_and_dimensions", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_unordered_tuple_burnside_counts_through_dimension_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-global-endpoint-symmetric-pair-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-global-endpoint-symmetric-pair-quotient"

@@ -296,3 +296,86 @@ def test_checked_global_tuple_counts_give_exact_aggregate_bounds() -> None:
     assert _global_unordered_classes(8, 14) == (
         _EXPECTED_GLOBAL_UNORDERED_ARITY_EIGHT
     )
+
+
+def _floor_log_two(value: int) -> int:
+    assert value >= 1
+    return value.bit_length() - 1
+
+
+def _minimum_binary_worst_queries(hypotheses: int) -> int:
+    if hypotheses <= 1:
+        return 0
+    return (hypotheses - 1).bit_length()
+
+
+def _minimum_uniform_binary_mean(hypotheses: int) -> Fraction:
+    assert hypotheses >= 1
+    height = _floor_log_two(hypotheses)
+    return Fraction(
+        height * hypotheses
+        + 2 * hypotheses
+        - _integer_power(2, height + 1),
+        hypotheses,
+    )
+
+
+def _optimal_uniform_binary_total_depth(hypotheses: int) -> int:
+    totals = [0] * (hypotheses + 1)
+    for size in range(2, hypotheses + 1):
+        totals[size] = size + min(
+            totals[left] + totals[size - left]
+            for left in range(1, size)
+        )
+    return totals[hypotheses]
+
+
+def test_binary_decision_tree_worst_depth_matches_leaf_capacity() -> None:
+    """Binary identification needs exactly ceil(log2 R) worst-case questions."""
+    for hypotheses in range(1, 257):
+        depth = _minimum_binary_worst_queries(hypotheses)
+        assert _integer_power(2, depth) >= hypotheses
+        if depth > 0:
+            assert _integer_power(2, depth - 1) < hypotheses
+
+
+def test_uniform_binary_mean_matches_optimal_small_decision_trees() -> None:
+    """Closed uniform mean matches split dynamic programs."""
+    for hypotheses in range(1, 65):
+        total_depth = _optimal_uniform_binary_total_depth(hypotheses)
+        assert Fraction(total_depth, hypotheses) == (
+            _minimum_uniform_binary_mean(hypotheses)
+        )
+
+
+def test_balanced_binary_leaf_depths_realize_exact_uniform_mean() -> None:
+    """Depth h/h+1 leaf counts satisfy Kraft equality and the exact mean."""
+    for hypotheses in range(1, 257):
+        height = _floor_log_two(hypotheses)
+        short = _integer_power(2, height + 1) - hypotheses
+        long = 2 * hypotheses - _integer_power(2, height + 1)
+        assert short >= 0
+        assert long >= 0
+        assert short + long == hypotheses
+        kraft = Fraction(short, _integer_power(2, height))
+        kraft += Fraction(long, _integer_power(2, height + 1))
+        assert kraft == 1
+        mean = Fraction(short * height + long * (height + 1), hypotheses)
+        assert mean == _minimum_uniform_binary_mean(hypotheses)
+
+
+def test_checked_tuple_counts_substitute_binary_information_bounds() -> None:
+    """Tuple quotient sizes give exact checked binary-question lower bounds."""
+    for arity in range(1, _MAXIMUM_ARITY + 1):
+        for dimension in range(_MAXIMUM_TRITS + 1):
+            ordered = _ordered_classes(arity, dimension)
+            assert _minimum_binary_worst_queries(ordered) <= ordered - 1
+            ordered_binary_mean = _minimum_uniform_binary_mean(ordered)
+            assert ordered_binary_mean <= _expected_calls(ordered)
+            if arity < _MINIMUM_UNORDERED_ARITY:
+                continue
+            unordered = _unordered_classes(arity, dimension)
+            assert _minimum_binary_worst_queries(unordered) <= unordered - 1
+            assert _minimum_uniform_binary_mean(unordered) <= (
+                _expected_calls(unordered)
+            )

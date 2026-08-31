@@ -202,6 +202,15 @@ calls equal the global canonical tuple count and minimax expected calls equal
 `(global_count + 7^N)/2`, provided no verifier answer carries information across
 fixed pairs.
 
+If search can ask arbitrary binary questions rather than only verify one
+candidate, decision-tree leaf capacity gives worst-case identification depth
+`ceil(log2 R)`. For a uniformly hidden target, the exact optimal mean is
+`h+2-2^(h+1)/R` with `h=floor(log2 R)`, attained by a balanced prefix tree.
+Substituting the same ordered/unordered quotient counts gives checked
+information
+lower bounds; oracles with more than two outcomes remain outside this
+theorem.
+
 If endpoint order is also irrelevant, the exact pair class count
 reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`; summed over every reachable
