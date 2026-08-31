@@ -1208,8 +1208,17 @@ transfers, verification, and other separately measured costs.
   validation outside timing. Median latency is 0.858/1.062/2.393/4.772/13.359/
   71.145 ms respectively.
 
-  Compute/search-heavy equivalent-work evidence remains open, so this
-  performance acceptance item is not yet complete.
+  The compute-heavy half is also retained in the 2026-08-31 RTX 4060 adaptive
+  profile-width crazy-throughput bundle. N10 through N14 each execute 16,384
+  identical disjoint `p`/crazy transitions with one warmup and 15 raw samples
+  for both complete `evaluate()` and resident-only synchronous `advance()`.
+
+  Resident medians are 8.177/8.513/9.135/10.986/10.212 ms for N10 through N14;
+  end-to-end medians are 12.741/16.283/15.155/24.627/32.052 ms. The N14
+  resident median beating N13 and N12 end-to-end median beating N11 are retained
+  non-monotone observations. Together with the memory-bound bundle above, this
+  satisfies the required N10-through-N14 benchmark classes without granting
+  width-selection authority or a universal scaling claim.
 - Related pruning work belongs to
   `search-pruning-and-state-canonicalization` and scaling-law work belongs to
   `empirical-malbolge-synthesis-scaling-law`; this TODO supplies geometry and
