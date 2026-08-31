@@ -692,8 +692,15 @@ Cache-aware planning prepares every target key before lookup, preserves existing
 `Arc` identity on hits, stages verified unique misses locally, and publishes
 those misses only after the complete sequence succeeds. The seven-step theorem
 inserts seven artifacts and then hits all seven; a Linux target failure leaves a
-seeded Windows cache unchanged. Generic v5 load/execution and interpreter
-handoff from this plan remain separate work.
+seeded Windows cache unchanged.
+
+Generic verified-v5 invocation now binds any of those seven aggregate artifacts
+to its exact v5 program, operation-specific ABI preparation, derived load image,
+and one already-ready mapping before exposing the existing geometry-bound runner
+port. All seven reviewed kinds apply through that boundary; guard miss is atomic
+and runner failure restores the current-step entry snapshot. Generic preloaded
+sequence coordination, loading/cleanup ownership, and interpreter handoff remain
+separate work.
 
 `ExecutionGeometryInterpreterContinuation` composes those one-step replay
 boundaries without changing the trust model. Construction rejects empty,

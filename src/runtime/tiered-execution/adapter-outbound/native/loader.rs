@@ -46,6 +46,7 @@ use super::direct::{
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact,
     VerifiedExecutionGeometryInputNativeObjectArtifact,
+    VerifiedExecutionGeometryNativeArtifact,
     VerifiedExecutionGeometryNoOperationNativeObjectArtifact,
     VerifiedExecutionGeometryOutputNativeObjectArtifact,
     VerifiedExecutionGeometryRotateNativeObjectArtifact,
@@ -315,6 +316,40 @@ impl VerifiedExecutionGeometryLoadImage {
     #[must_use]
     pub const fn minimum_instruction_alignment(&self) -> usize {
         minimum_instruction_alignment(self.host_isa())
+    }
+
+    /// Derives a relocation-free image from any reviewed verified v5 artifact.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedDirectLoadError`] when COFF extraction, relocation, or
+    /// target instruction alignment is invalid.
+    pub fn new(
+        verified: &VerifiedExecutionGeometryNativeArtifact,
+    ) -> Result<Self, VerifiedDirectLoadError> {
+        match verified {
+            VerifiedExecutionGeometryNativeArtifact::Crazy(crazy) => {
+                Self::from_crazy(crazy)
+            },
+            VerifiedExecutionGeometryNativeArtifact::InitialHalt(
+                initial_halt,
+            ) => Self::from_initial_halt(initial_halt),
+            VerifiedExecutionGeometryNativeArtifact::InitialJumpData(
+                initial_jump_data,
+            ) => Self::from_initial_jump_data(initial_jump_data),
+            VerifiedExecutionGeometryNativeArtifact::Input(input) => {
+                Self::from_input(input)
+            },
+            VerifiedExecutionGeometryNativeArtifact::NoOperation(
+                no_operation,
+            ) => Self::from_no_operation(no_operation),
+            VerifiedExecutionGeometryNativeArtifact::Output(output) => {
+                Self::from_output(output)
+            },
+            VerifiedExecutionGeometryNativeArtifact::Rotate(rotate) => {
+                Self::from_rotate(rotate)
+            },
+        }
     }
 
     /// Returns the mandatory W^X and instruction-sync policy.

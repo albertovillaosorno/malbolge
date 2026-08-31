@@ -376,8 +376,14 @@ baseline; native tiers are accelerators of identical observable behavior.
   lookup, preserves existing `Arc` identity on hits, stages unique verified
   misses, and publishes them only after complete success. The seven-step theorem
   inserts seven entries then reuses all seven, while target failure preserves a
-  seeded cache unchanged. Generic v5 loading/execution and interpreter handoff
-  from this plan remain separate work.
+  seeded cache unchanged.
+
+  Generic verified-v5 invocation now binds any reviewed aggregate artifact to
+  its exact v5 program, operation-specific ABI preparation, load image, and one
+  ready mapping before the geometry-bound runner can execute it. All seven kinds
+  apply through the shared boundary; guard miss is atomic and runner failure
+  restores the current-step entry. Generic preloaded sequence coordination,
+  load/cleanup ownership, and interpreter handoff remain separate work.
 - `application/scheduler.rs` now consumes one affine handoff under one explicit
   complete, positive-slice, caller-yield, or native-retry-yield decision. Every
   pause preserves exact checkpoint, complete-plan index, key/program suffix, and

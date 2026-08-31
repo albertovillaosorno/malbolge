@@ -245,15 +245,17 @@ use execution_native::{
     NativeSequenceExecutionOutcome, NativeTerminationTag,
     PreflightedExecutionTier, PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
-    PreparedVerifiedDirectInvocation, ReadyExecutionGeometryNativeExecutable,
-    ReadyNativeExecutable, ReadyNativeExecutableSequence,
-    StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
-    UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
-    VerifiedDirectLoadError, VerifiedDirectLoadImage,
-    VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
-    VerifiedExecutionGeometryLoadImage, VerifiedExecutionGeometryNativeCache,
-    compile_preflighted_clang_c23, emit_direct_crazy_coff,
-    emit_direct_deopt_coff, emit_direct_execution_geometry_crazy_coff,
+    PreparedVerifiedDirectInvocation,
+    PreparedVerifiedExecutionGeometryInvocation,
+    ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
+    ReadyNativeExecutableSequence, StagedExecutionGeometryNativeExecutable,
+    StagedNativeExecutable, UntrustedNativeObjectArtifact,
+    VerifiedDirectInvocationError, VerifiedDirectLoadError,
+    VerifiedDirectLoadImage, VerifiedDirectNativeCache,
+    VerifiedDirectSequencePlan, VerifiedExecutionGeometryLoadImage,
+    VerifiedExecutionGeometryNativeCache, compile_preflighted_clang_c23,
+    emit_direct_crazy_coff, emit_direct_deopt_coff,
+    emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
     emit_direct_execution_geometry_input_coff,
@@ -266,6 +268,7 @@ use execution_native::{
     emit_direct_non_graphical_coff, emit_direct_output_coff,
     emit_direct_rotate_coff, execute_cached_verified_native_sequence,
     execute_loaded_cached_verified_native_sequence,
+    execute_loaded_verified_execution_geometry_native,
     execute_loaded_verified_native_sequence, execute_verified_native,
     execute_verified_native_sequence, load_cached_verified_native_sequence,
     load_execution_geometry_native_executable, load_native_executable,
@@ -13717,6 +13720,192 @@ fn direct_execution_geometry_sequence_cache_failure_preserves_entries()
         Ok(())
     } else {
         Err(String::from("v5 sequence cache failure mutated entries"))
+    }
+}
+
+fn execute_generic_v5_invocation_case(
+    program: &ExecutionGeometryRegionEffectProgram,
+    checkpoint: &ProfileMachineState,
+    output_capacity: usize,
+    mapping_value: u64,
+) -> Result<(), String> {
+    let artifact = select_verified_execution_geometry_direct_native(
+        program,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("generic v5 select: {error}"))?;
+    let image = VerifiedExecutionGeometryLoadImage::new(&artifact)
+        .map_err(|error| format!("generic v5 image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_value)?,
+        native_executable_address(0xd_0000)?,
+    );
+    let ready = load_execution_geometry_native_executable(&mut adapter, &image)
+        .map_err(|error| format!("generic v5 load: {error}"))?;
+    let mut memory = checkpoint.memory().to_vec();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    output.resize(output.len().saturating_add(output_capacity), 0);
+    let prepared = PreparedVerifiedExecutionGeometryInvocation::new(
+        &artifact,
+        program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("generic v5 prepare: {error}"))?;
+    if prepared.artifact() != &artifact || prepared.load_image() != &image {
+        return Err(String::from("generic v5 preparation identity drifted"));
+    }
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_verified_execution_geometry_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("generic v5 execute: {error}"))?;
+    let expected = program
+        .exit_observation()
+        .ok_or_else(|| String::from("generic v5 exit missing"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || runner.calls != 1
+        || runner.entry_addresses != [ready.entry_address()]
+        || runner.mapping_ids != [ready.mapping().mapping_id()]
+    {
+        return Err(String::from("generic v5 execution identity drifted"));
+    }
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("generic v5 release: {error}"))
+}
+
+#[test]
+fn direct_execution_geometry_generic_invocation_covers_reviewed_kinds()
+-> Result<(), String> {
+    let (crazy, crazy_state, _crazy_geometry) = derived_v5_crazy_fixture(10)?;
+    execute_generic_v5_invocation_case(&crazy, &crazy_state, 0, 350)?;
+    let (halt, halt_state, _halt_geometry) = derived_v5_handoff_fixture(10)?;
+    execute_generic_v5_invocation_case(&halt, &halt_state, 0, 351)?;
+    let (jump, jump_state, _jump_geometry) =
+        derived_v5_initial_jump_data_fixture(10)?;
+    execute_generic_v5_invocation_case(&jump, &jump_state, 0, 352)?;
+    let input_fixture = derived_v5_input_halt_sequence_fixture(10, vec![0xa5])?;
+    execute_generic_v5_invocation_case(
+        derived_v5_fixture_program(&input_fixture, 0)?,
+        derived_v5_fixture_state(&input_fixture, 0)?,
+        0,
+        353,
+    )?;
+    let (noop, noop_state, _noop_geometry) =
+        derived_v5_no_operation_fixture(10)?;
+    execute_generic_v5_invocation_case(&noop, &noop_state, 0, 354)?;
+    let (output, output_state, _output_geometry) =
+        derived_v5_output_fixture(10)?;
+    execute_generic_v5_invocation_case(&output, &output_state, 1, 355)?;
+    let (rotate, rotate_state, _rotate_geometry) =
+        derived_v5_rotate_fixture(10)?;
+    execute_generic_v5_invocation_case(&rotate, &rotate_state, 0, 356)
+}
+
+#[test]
+fn direct_execution_geometry_generic_invocation_guard_miss_is_atomic()
+-> Result<(), String> {
+    let (program, checkpoint, _geometry) = derived_v5_crazy_fixture(10)?;
+    let artifact = select_verified_execution_geometry_direct_native(
+        &program,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("generic v5 miss select: {error}"))?;
+    let image = VerifiedExecutionGeometryLoadImage::new(&artifact)
+        .map_err(|error| format!("generic v5 miss image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(357)?,
+        native_executable_address(0xd_1000)?,
+    );
+    let ready = load_execution_geometry_native_executable(&mut adapter, &image)
+        .map_err(|error| format!("generic v5 miss load: {error}"))?;
+    let mut memory = checkpoint.memory().to_vec();
+    let entry_memory = memory.clone();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let entry_output = output.clone();
+    let prepared = PreparedVerifiedExecutionGeometryInvocation::new(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("generic v5 miss prepare: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let outcome = execute_loaded_verified_execution_geometry_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("generic v5 miss execute: {error}"))?;
+    let atomic = outcome == NativeRegionInvocationOutcome::GuardMiss
+        && memory == entry_memory
+        && output == entry_output
+        && runner.calls == 1;
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("generic v5 miss release: {error}"))?;
+    if atomic {
+        Ok(())
+    } else {
+        Err(String::from("generic v5 guard miss mutated state"))
+    }
+}
+
+#[test]
+fn direct_execution_geometry_generic_invocation_runner_failure_rolls_back()
+-> Result<(), String> {
+    let (program, checkpoint, _geometry) = derived_v5_crazy_fixture(10)?;
+    let artifact = select_verified_execution_geometry_direct_native(
+        &program,
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    )
+    .map_err(|error| format!("generic v5 failure select: {error}"))?;
+    let image = VerifiedExecutionGeometryLoadImage::new(&artifact)
+        .map_err(|error| format!("generic v5 failure image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(358)?,
+        native_executable_address(0xd_2000)?,
+    );
+    let ready = load_execution_geometry_native_executable(&mut adapter, &image)
+        .map_err(|error| format!("generic v5 failure load: {error}"))?;
+    let mut memory = checkpoint.memory().to_vec();
+    let entry_memory = memory.clone();
+    let input = checkpoint.io().input().to_vec();
+    let mut output = checkpoint.io().output().to_vec();
+    let entry_output = output.clone();
+    let prepared = PreparedVerifiedExecutionGeometryInvocation::new(
+        &artifact,
+        &program,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("generic v5 failure prepare: {error}"))?;
+    let mut runner = FakeExecutionGeometryNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let result = execute_loaded_verified_execution_geometry_native(
+        &mut runner,
+        &ready,
+        prepared,
+    );
+    let rolled_back = result.as_ref().is_err_and(|error| {
+        error.runner_error() == Some(&FakeNativeRunnerError::Call)
+    }) && memory == entry_memory
+        && output == entry_output
+        && runner.calls == 1;
+    release_execution_geometry_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("generic v5 failure release: {error}"))?;
+    if rolled_back {
+        Ok(())
+    } else {
+        Err(String::from("generic v5 runner failure lost rollback"))
     }
 }
 

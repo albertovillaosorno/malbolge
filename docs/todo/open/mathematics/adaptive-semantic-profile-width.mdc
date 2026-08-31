@@ -594,8 +594,14 @@ transfers, verification, and other separately measured costs.
   lookup, reuses exact `Arc` artifacts on hits, stages verified misses locally,
   and publishes unique misses only after whole-sequence success. The seven-step
   N10 theorem inserts seven entries then hits all seven; a Linux target failure
-  leaves a seeded Windows cache unchanged. Generic v5 loading, execution, and
-  interpreter handoff from this plan remain open.
+  leaves a seeded Windows cache unchanged.
+- Generic verified-v5 invocation now reconstructs exact artifact identity,
+  derives the aggregate load image, dispatches only to the seven reviewed
+  operation-specific ABI preparations, and binds one exact ready mapping before
+  the geometry-bound runner receives authority. All seven kinds apply through
+  this path; guard miss and runner failure preserve the current-step entry.
+  Generic preloaded sequence coordination, load cleanup, and interpreter handoff
+  remain open.
 - Profile traces now carry their exact execution geometry. Legacy portable IR
   v3 projection accepts only traces whose geometry equals the canonical profile
   and rejects derived traces with `ExecutionGeometry`. Explicit-geometry IR v5

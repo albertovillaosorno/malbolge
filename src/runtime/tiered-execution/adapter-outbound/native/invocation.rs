@@ -48,18 +48,26 @@ use super::abi::{
     NativeRegionObservationError, NativeRegionState, NativeRegionStatus,
     NativeRegionStatusError,
 };
-use super::direct::{DirectNativeKind, VerifiedDirectNativeArtifact};
+use super::direct::{
+    DirectNativeKind, ExecutionGeometryDirectNativeKind,
+    VerifiedDirectNativeArtifact, VerifiedExecutionGeometryNativeArtifact,
+};
 use super::lifecycle::{
     NativeExecutableMappingId, ReadyExecutionGeometryNativeExecutable,
     ReadyNativeExecutable,
 };
-use super::loader::{VerifiedDirectLoadError, VerifiedDirectLoadImage};
+use super::loader::{
+    VerifiedDirectLoadError, VerifiedDirectLoadImage,
+    VerifiedExecutionGeometryLoadImage,
+};
 use crate::execution_cache::{
     NativeArtifactKey, NativeIdentityError, NativeTargetIdentity,
 };
 
 type NativeRegionBufferParts<'buffers> =
     (&'buffers mut [u32], &'buffers [u8], &'buffers mut [u8]);
+type PreparedRegionInvocation<'buffers> =
+    PreparedNativeRegionInvocation<'buffers>;
 type U32Mismatch = (usize, u32, u32);
 type U8Mismatch = (usize, u8, u8);
 
@@ -193,6 +201,27 @@ pub enum VerifiedDirectInvocationError {
     Load(VerifiedDirectLoadError),
 }
 
+/// Failure while binding one verified v5 artifact to one exact call.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum VerifiedExecutionGeometryInvocationError {
+    /// The verified artifact key differs from the exact requested v5 program.
+    ArtifactIdentity,
+    /// Exact native identity could not be reconstructed.
+    Identity(NativeIdentityError),
+    /// Guest-buffer preparation or result admission failed.
+    Invocation(NativeRegionInvocationError),
+    /// Verified COFF could not become one relocation-free load image.
+    Load(VerifiedDirectLoadError),
+}
+
+/// One exact verified v5 artifact bound to one prepared ABI transition.
+#[derive(Debug)]
+pub struct PreparedVerifiedExecutionGeometryInvocation<'artifact, 'buffers> {
+    artifact: &'artifact VerifiedExecutionGeometryNativeArtifact,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+    load_image: VerifiedExecutionGeometryLoadImage,
+}
+
 /// Runner-facing view of one checkpoint-bound explicit-geometry call.
 ///
 /// Construction and completion are crate-owned so the public runner port cannot
@@ -272,6 +301,25 @@ impl VerifiedDirectInvocationError {
     }
 }
 
+impl VerifiedExecutionGeometryInvocationError {
+    const fn message(self) -> &'static str {
+        match self {
+            Self::ArtifactIdentity => {
+                "verified v5 artifact differs from requested program"
+            },
+            Self::Identity(_) => "verified v5 invocation identity failed",
+            Self::Invocation(_) => "verified v5 invocation contract failed",
+            Self::Load(_) => "verified v5 load-image preparation failed",
+        }
+    }
+}
+
+impl Display for VerifiedExecutionGeometryInvocationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(self.message())
+    }
+}
+
 impl Display for VerifiedDirectInvocationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         f.write_str(self.message())
@@ -310,6 +358,88 @@ impl NativeRegionInvocationError {
 impl Display for NativeRegionInvocationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         f.write_str(self.message())
+    }
+}
+
+impl<'artifact, 'buffers>
+    PreparedVerifiedExecutionGeometryInvocation<'artifact, 'buffers>
+{
+    /// Restores the complete entry snapshot after an uncompleted runner call.
+    pub fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Returns the exact semantically admitted v5 artifact.
+    #[must_use]
+    pub const fn artifact(&self) -> &VerifiedExecutionGeometryNativeArtifact {
+        self.artifact
+    }
+
+    /// Binds this exact v5 call to one synchronized executable image.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableInvocationBindingError`] when the executable
+    /// retains any different code, entry, key, target, or load policy.
+    pub fn bind_executable<'executable>(
+        self,
+        executable: &'executable ReadyExecutionGeometryNativeExecutable,
+    ) -> Result<
+        PreparedExecutionGeometryNativeInvocation<'buffers, 'executable>,
+        NativeExecutableInvocationBindingError,
+    > {
+        if self.load_image() != executable.image() {
+            self.abort();
+            return Err(
+                NativeExecutableInvocationBindingError::ExecutableIdentity,
+            );
+        }
+        Ok(PreparedExecutionGeometryNativeInvocation::new(
+            executable,
+            self.invocation,
+        ))
+    }
+
+    /// Returns the immutable relocation-free v5 image bound to this call.
+    #[must_use]
+    pub const fn load_image(&self) -> &VerifiedExecutionGeometryLoadImage {
+        &self.load_image
+    }
+
+    /// Binds one verified v5 artifact to one exact explicit-geometry call.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifiedExecutionGeometryInvocationError`] when complete
+    /// artifact identity, load-image extraction, or operation-specific ABI
+    /// preparation rejects the supplied program or buffers.
+    pub fn new(
+        artifact: &'artifact VerifiedExecutionGeometryNativeArtifact,
+        program: &ExecutionGeometryRegionEffectProgram,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, VerifiedExecutionGeometryInvocationError> {
+        let expected_key = NativeArtifactKey::new_execution_geometry(
+            program,
+            artifact.key().target().clone(),
+        )
+        .map_err(VerifiedExecutionGeometryInvocationError::Identity)?;
+        if artifact.key() != &expected_key {
+            return Err(
+                VerifiedExecutionGeometryInvocationError::ArtifactIdentity,
+            );
+        }
+        let load_image = VerifiedExecutionGeometryLoadImage::new(artifact)
+            .map_err(VerifiedExecutionGeometryInvocationError::Load)?;
+        let invocation = prepare_verified_execution_geometry_region(
+            artifact.kind(),
+            program,
+            buffers,
+        )?;
+        Ok(Self {
+            artifact,
+            invocation,
+            load_image,
+        })
     }
 }
 
@@ -1095,6 +1225,55 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         *cell = value;
         true
     }
+}
+
+fn prepare_verified_execution_geometry_region<'buffers>(
+    kind: ExecutionGeometryDirectNativeKind,
+    program: &ExecutionGeometryRegionEffectProgram,
+    buffers: NativeRegionBuffers<'buffers>,
+) -> Result<
+    PreparedRegionInvocation<'buffers>,
+    VerifiedExecutionGeometryInvocationError,
+> {
+    let NativeRegionBuffers { input, memory, output } = buffers;
+    let result = match kind {
+        ExecutionGeometryDirectNativeKind::Crazy => {
+            PreparedRegionInvocation::new_execution_geometry_crazy(
+                program, memory, input, output,
+            )
+        },
+        ExecutionGeometryDirectNativeKind::InitialHalt => {
+            PreparedRegionInvocation::new_execution_geometry_initial_halt(
+                program, memory, input, output,
+            )
+        },
+        ExecutionGeometryDirectNativeKind::InitialJumpData => {
+            PreparedRegionInvocation::new_execution_geometry_initial_jump_data(
+                program, memory, input, output,
+            )
+        },
+        ExecutionGeometryDirectNativeKind::Input => {
+            PreparedRegionInvocation::new_execution_geometry_input(
+                program, memory, input, output,
+            )
+        },
+        ExecutionGeometryDirectNativeKind::NoOperation => {
+            PreparedRegionInvocation::new_execution_geometry_no_operation(
+                program, memory, input, output,
+            )
+        },
+        ExecutionGeometryDirectNativeKind::Output => {
+            PreparedRegionInvocation::new_execution_geometry_output(
+                program, memory, input, output,
+            )
+        },
+        ExecutionGeometryDirectNativeKind::Rotate => {
+            PreparedRegionInvocation::new_execution_geometry_rotate(
+                program, memory, input, output,
+            )
+        },
+    };
+    result.map_err(VerifiedExecutionGeometryInvocationError::Invocation)
 }
 
 fn exact_effect(

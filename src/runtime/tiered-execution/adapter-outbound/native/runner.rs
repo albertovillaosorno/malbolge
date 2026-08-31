@@ -35,12 +35,15 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use super::invocation::{
-    NativeExecutableInvocationBindingError, NativeRegionInvocationOutcome,
-    PreparedExecutionGeometryNativeInvocation,
+    NativeExecutableInvocationBindingError, NativeRegionInvocationError,
+    NativeRegionInvocationOutcome, PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedVerifiedDirectInvocation,
-    VerifiedDirectInvocationError,
+    PreparedVerifiedExecutionGeometryInvocation, VerifiedDirectInvocationError,
 };
-use super::lifecycle::{NativeExecutableReleaseRequest, ReadyNativeExecutable};
+use super::lifecycle::{
+    NativeExecutableReleaseRequest, ReadyExecutionGeometryNativeExecutable,
+    ReadyNativeExecutable,
+};
 use super::platform::{
     NativeExecutableLoadFailure, NativeExecutableMemoryAdapter,
     NativeExecutableReleaseFailure, load_native_executable,
@@ -99,6 +102,25 @@ enum NativeExecutableCallFailure<RunnerError> {
     Completion(Box<VerifiedDirectInvocationError>),
     Runner(Box<RunnerError>),
 }
+
+#[derive(Debug, Eq, PartialEq)]
+enum ExecutionGeometryNativeCallFailure<RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(NativeRegionInvocationError),
+    Runner(Box<RunnerError>),
+}
+
+/// Failure while executing one verified v5 call against a loaded mapping.
+#[derive(Debug, Eq, PartialEq)]
+pub struct ExecutionGeometryLoadedExecutionFailure<RunnerError> {
+    cause: ExecutionGeometryNativeCallFailure<RunnerError>,
+}
+
+/// Result of one loaded verified-v5 call.
+pub type ExecutionGeometryLoadedExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<ExecutionGeometryLoadedExecutionFailure<RunnerError>>,
+>;
 
 /// Failure while executing against one already loaded exact mapping.
 #[derive(Debug, Eq, PartialEq)]
@@ -178,6 +200,60 @@ pub trait NativeExecutableRunner {
         &mut self,
         invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
     ) -> Result<i32, Self::Error>;
+}
+
+impl<RunnerError> ExecutionGeometryLoadedExecutionFailure<RunnerError> {
+    /// Returns exact ready-image binding failure, when identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            ExecutionGeometryNativeCallFailure::Binding(error) => Some(*error),
+            ExecutionGeometryNativeCallFailure::Completion(_)
+            | ExecutionGeometryNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns v5 result-admission failure after the runner returned.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<NativeRegionInvocationError> {
+        match &self.cause {
+            ExecutionGeometryNativeCallFailure::Completion(error) => {
+                Some(*error)
+            },
+            ExecutionGeometryNativeCallFailure::Binding(_)
+            | ExecutionGeometryNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact call phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match &self.cause {
+            ExecutionGeometryNativeCallFailure::Binding(_) => {
+                NativeExecutableExecutionPhase::Bind
+            },
+            ExecutionGeometryNativeCallFailure::Completion(_) => {
+                NativeExecutableExecutionPhase::Complete
+            },
+            ExecutionGeometryNativeCallFailure::Runner(_) => {
+                NativeExecutableExecutionPhase::Run
+            },
+        }
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            ExecutionGeometryNativeCallFailure::Runner(error) => Some(error),
+            ExecutionGeometryNativeCallFailure::Binding(_)
+            | ExecutionGeometryNativeCallFailure::Completion(_) => None,
+        }
+    }
 }
 
 impl<RunnerError> NativeLoadedExecutionFailure<RunnerError> {
@@ -360,6 +436,25 @@ impl<MemoryError, RunnerError>
 }
 
 impl<RunnerError: Display> Display
+    for ExecutionGeometryLoadedExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "loaded v5 execution failed during {}: ", self.phase())?;
+        match &self.cause {
+            ExecutionGeometryNativeCallFailure::Binding(error) => {
+                write!(f, "binding: {error}")
+            },
+            ExecutionGeometryNativeCallFailure::Completion(error) => {
+                write!(f, "completion: {error}")
+            },
+            ExecutionGeometryNativeCallFailure::Runner(error) => {
+                write!(f, "runner: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
     for NativeLoadedExecutionFailure<RunnerError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -429,6 +524,47 @@ impl<MemoryError: Display, RunnerError: Display> Display
         }
         Ok(())
     }
+}
+
+/// Binds, runs, and admits one verified-v5 call against a loaded mapping.
+///
+/// Runner failure aborts and restores the complete current-step entry snapshot.
+/// Completion rejection performs the same restoration through the invocation
+/// contract. This function neither loads nor releases executable memory.
+///
+/// # Errors
+///
+/// Returns [`ExecutionGeometryLoadedExecutionFailure`] for binding, runner, or
+/// completion failure.
+pub fn execute_loaded_verified_execution_geometry_native<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyExecutionGeometryNativeExecutable,
+    prepared: PreparedVerifiedExecutionGeometryInvocation<'_, '_>,
+) -> ExecutionGeometryLoadedExecutionResult<Runner::Error>
+where
+    Runner: ExecutionGeometryNativeRunner,
+{
+    let mut bound = prepared.bind_executable(executable).map_err(|error| {
+        Box::new(ExecutionGeometryLoadedExecutionFailure {
+            cause: ExecutionGeometryNativeCallFailure::Binding(error),
+        })
+    })?;
+    let raw_status = match runner.run(&mut bound) {
+        Ok(status) => status,
+        Err(error) => {
+            bound.abort();
+            return Err(Box::new(ExecutionGeometryLoadedExecutionFailure {
+                cause: ExecutionGeometryNativeCallFailure::Runner(Box::new(
+                    error,
+                )),
+            }));
+        },
+    };
+    bound.complete(raw_status).map_err(|error| {
+        Box::new(ExecutionGeometryLoadedExecutionFailure {
+            cause: ExecutionGeometryNativeCallFailure::Completion(error),
+        })
+    })
 }
 
 /// Binds, runs, and admits one call against an already loaded executable.
