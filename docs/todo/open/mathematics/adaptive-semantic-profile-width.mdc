@@ -1201,6 +1201,15 @@ transfers, verification, and other separately measured costs.
   those tasks consume a proved width but are not prerequisites for proving one.
 - Required performance evidence: retained raw samples for each admitted width,
   exact workload/profile/device identity, dispersion, and end-to-end throughput.
+  The memory-bound half is now retained in the 2026-08-31 RTX 4060 adaptive
+  profile-width throughput bundle under `benchmarks/accelerator/evidence`. One
+  RTX 4060 VM performs the same 64 no-op transitions at N10 through N15,
+  with one warmup plus 15 raw end-to-end samples per width and full result
+  validation outside timing. Median latency is 0.858/1.062/2.393/4.772/13.359/
+  71.145 ms respectively.
+
+  Compute/search-heavy equivalent-work evidence remains open, so this
+  performance acceptance item is not yet complete.
 - Related pruning work belongs to
   `search-pruning-and-state-canonicalization` and scaling-law work belongs to
   `empirical-malbolge-synthesis-scaling-law`; this TODO supplies geometry and
