@@ -361,6 +361,8 @@ use geometry_native_input::{
 };
 use geometry_native_jump_rotate_crazy_halt_sequence::{
     ExecutionGeometryNativeJumpRotateCrazyHaltEvidence,
+    ExecutionGeometryNativeJumpRotateCrazyHaltExecutableBindingError,
+    ExecutionGeometryNativeJumpRotateCrazyHaltExecutables,
     ExecutionGeometryNativeJumpRotateCrazyHaltFailureCause,
     ExecutionGeometryNativeJumpRotateCrazyHaltOutcome,
     ExecutionGeometryNativeJumpRotateCrazyHaltPrefixEvidence,
@@ -788,6 +790,8 @@ type GeometryNativeCrazyAdmissionFixture = (
     ExecutionGeometryNativeCrazyAdmission,
     malbolge::ProfileExecutionGeometry,
 );
+type FullCrazyBindingError =
+    ExecutionGeometryNativeJumpRotateCrazyHaltExecutableBindingError;
 type GeometryNativeAdmissionFixture = (
     ExecutionGeometryNativeInitialHaltAdmission,
     malbolge::ProfileExecutionGeometry,
@@ -823,6 +827,54 @@ type GeometryNativeJumpRotateHaltReadyTriple = (
     ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutable,
 );
+
+struct GeometryNativeFullCrazyReady {
+    crazy: [ReadyExecutionGeometryNativeExecutable; 4],
+    halt: ReadyExecutionGeometryNativeExecutable,
+    initial_jump: ReadyExecutionGeometryNativeExecutable,
+    rotate: ReadyExecutionGeometryNativeExecutable,
+}
+
+impl GeometryNativeFullCrazyReady {
+    const fn ready_set(
+        &self,
+    ) -> ExecutionGeometryNativeJumpRotateCrazyHaltExecutables<'_> {
+        let [first, second, third, fourth] = &self.crazy;
+        ExecutionGeometryNativeJumpRotateCrazyHaltExecutables::new(
+            &self.initial_jump,
+            &self.rotate,
+            [first, second, third, fourth],
+            &self.halt,
+        )
+    }
+
+    fn release(
+        self,
+        adapter: &mut FakeNativeExecutableAdapter,
+    ) -> Result<(), String> {
+        release_execution_geometry_native_executable(
+            adapter,
+            self.initial_jump,
+        )
+        .map_err(|error| {
+            format!("v5 full crazy ready jump release: {error}")
+        })?;
+        release_execution_geometry_native_executable(adapter, self.rotate)
+            .map_err(|error| {
+                format!("v5 full crazy ready rotate release: {error}")
+            })?;
+        for ready in self.crazy {
+            release_execution_geometry_native_executable(adapter, ready)
+                .map_err(|error| {
+                    format!("v5 full crazy ready crazy release: {error}")
+                })?;
+        }
+        release_execution_geometry_native_executable(adapter, self.halt)
+            .map_err(|error| {
+                format!("v5 full crazy ready halt release: {error}")
+            })
+    }
+}
 
 struct GeometryNativeCrazyRunnerFixture {
     adapter: FakeNativeExecutableAdapter,
@@ -14849,6 +14901,52 @@ fn geometry_native_crazy_prefix_halt_sequence(
         .map_err(|error| error.to_string())
 }
 
+fn geometry_native_full_crazy_ready(
+    sequence: &ExecutionGeometryNativeJumpRotateCrazyHaltSequence,
+    adapter: &mut FakeNativeExecutableAdapter,
+) -> Result<GeometryNativeFullCrazyReady, String> {
+    let initial_jump = load_execution_geometry_native_executable(
+        adapter,
+        sequence.initial_jump().load_image(),
+    )
+    .map_err(|error| format!("v5 full crazy ready jump load: {error}"))?;
+    let rotate = load_execution_geometry_native_executable(
+        adapter,
+        sequence.rotate().load_image(),
+    )
+    .map_err(|error| format!("v5 full crazy ready rotate load: {error}"))?;
+    let [first, second, third, fourth] = sequence.suffix().prefix().steps();
+    let crazy = [
+        load_execution_geometry_native_executable(adapter, first.load_image())
+            .map_err(|error| {
+                format!("v5 full crazy ready first load: {error}")
+            })?,
+        load_execution_geometry_native_executable(adapter, second.load_image())
+            .map_err(|error| {
+                format!("v5 full crazy ready second load: {error}")
+            })?,
+        load_execution_geometry_native_executable(adapter, third.load_image())
+            .map_err(|error| {
+                format!("v5 full crazy ready third load: {error}")
+            })?,
+        load_execution_geometry_native_executable(adapter, fourth.load_image())
+            .map_err(|error| {
+                format!("v5 full crazy ready fourth load: {error}")
+            })?,
+    ];
+    let halt = load_execution_geometry_native_executable(
+        adapter,
+        sequence.suffix().halt().load_image(),
+    )
+    .map_err(|error| format!("v5 full crazy ready halt load: {error}"))?;
+    Ok(GeometryNativeFullCrazyReady {
+        crazy,
+        halt,
+        initial_jump,
+        rotate,
+    })
+}
+
 fn geometry_native_jump_rotate_crazy_halt_sequence(
     fixture: &DerivedV5SequenceFixture,
 ) -> Result<ExecutionGeometryNativeJumpRotateCrazyHaltSequence, String> {
@@ -24176,6 +24274,79 @@ fn geometry_native_input_transaction_retains_committed_release_retry()
     release_failure
         .retry(&mut adapter)
         .map_err(|error| format!("v5 input committed cleanup retry: {error}"))
+}
+
+#[test]
+fn geometry_native_full_crazy_prebind_accepts_exact_images()
+-> Result<(), String> {
+    let fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let sequence = geometry_native_jump_rotate_crazy_halt_sequence(&fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(307)?,
+        native_executable_address(0xe_0000)?,
+    );
+    let ready = geometry_native_full_crazy_ready(&sequence, &mut adapter)?;
+    let operations_before = adapter.operations.len();
+    {
+        let bound = sequence
+            .bind_executables(ready.ready_set())
+            .map_err(|error| format!("v5 full crazy exact prebind: {error}"))?;
+        let _executables = bound.executables();
+        if bound.sequence() != &sequence
+            || operations_before != 28
+            || adapter.operations.len() != operations_before
+        {
+            return Err(String::from("v5 full crazy exact prebind drifted"));
+        }
+    }
+    ready.release(&mut adapter)?;
+    if adapter.operations.len() == 35 {
+        Ok(())
+    } else {
+        Err(String::from("v5 full crazy exact prebind cleanup drifted"))
+    }
+}
+
+#[test]
+fn geometry_native_full_crazy_prebind_rejects_mixed() -> Result<(), String> {
+    let n10_fixture = derived_v5_jump_rotate_crazy_halt_fixture(10)?;
+    let n11_fixture = derived_v5_jump_rotate_crazy_halt_fixture(11)?;
+    let n10 = geometry_native_jump_rotate_crazy_halt_sequence(&n10_fixture)?;
+    let n11 = geometry_native_jump_rotate_crazy_halt_sequence(&n11_fixture)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(308)?,
+        native_executable_address(0xe_1000)?,
+    );
+    let ready = geometry_native_full_crazy_ready(&n10, &mut adapter)?;
+    let [_first, _second, n11_third, _fourth] = n11.suffix().prefix().steps();
+    let mixed = load_execution_geometry_native_executable(
+        &mut adapter,
+        n11_third.load_image(),
+    )
+    .map_err(|error| format!("v5 full crazy mixed load: {error}"))?;
+    let [first, second, _third, fourth] = &ready.crazy;
+    let mixed_set = ExecutionGeometryNativeJumpRotateCrazyHaltExecutables::new(
+        &ready.initial_jump,
+        &ready.rotate,
+        [first, second, &mixed, fourth],
+        &ready.halt,
+    );
+    let operations_before = adapter.operations.len();
+    let rejected = matches!(
+        n10.bind_executables(mixed_set),
+        Err(FullCrazyBindingError::Crazy { index: 2 })
+    );
+    if !rejected || operations_before != 32 || adapter.operations.len() != 32 {
+        return Err(String::from("v5 full crazy mixed prebind was admitted"));
+    }
+    release_execution_geometry_native_executable(&mut adapter, mixed)
+        .map_err(|error| format!("v5 full crazy mixed release: {error}"))?;
+    ready.release(&mut adapter)?;
+    if adapter.operations.len() == 40 {
+        Ok(())
+    } else {
+        Err(String::from("v5 full crazy mixed prebind cleanup drifted"))
+    }
 }
 
 #[test]

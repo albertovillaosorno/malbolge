@@ -44,6 +44,7 @@ use malbolge::{ExecutionGeometryRegionEffectProgram, ProfileMachineState};
 use crate::execution_native::{
     ExecutionGeometryNativeRunner, NativeExecutableMemoryAdapter,
     NativeRegionBuffers, NativeRegionInvocationOutcome,
+    ReadyExecutionGeometryNativeExecutable,
     VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact,
     VerifiedExecutionGeometryRotateNativeObjectArtifact,
 };
@@ -76,6 +77,8 @@ type FullAdmissionResult = Result<
     ExecutionGeometryNativeJumpRotateCrazyHaltSequence,
     Box<ExecutionGeometryNativeJumpRotateCrazyHaltAdmissionFailure>,
 >;
+type FullBindingError =
+    ExecutionGeometryNativeJumpRotateCrazyHaltExecutableBindingError;
 type FullFailureBox<MemoryError, RunnerError> = Box<
     ExecutionGeometryNativeJumpRotateCrazyHaltFailure<MemoryError, RunnerError>,
 >;
@@ -114,6 +117,22 @@ pub enum ExecutionGeometryNativeJumpRotateCrazyHaltAdmissionFailure {
     Rotate(ExecutionGeometryNativeRotateAdmissionError),
     /// Crazy-prefix/halt suffix rejected the normatively replayed rotate exit.
     Suffix(Box<ExecutionGeometryNativeCrazyPrefixHaltAdmissionFailure>),
+}
+
+/// Failure while prebinding all seven synchronized theorem executables.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionGeometryNativeJumpRotateCrazyHaltExecutableBindingError {
+    /// One crazy image differs at its fixed zero-based prefix index.
+    Crazy {
+        /// Zero-based crazy index within the four-step theorem prefix.
+        index: usize,
+    },
+    /// Final halt image differs from the admitted halt image.
+    Halt,
+    /// Initial jump image differs from the admitted theorem entry step.
+    InitialJump,
+    /// Rotate image differs from the admitted replayed rotate step.
+    Rotate,
 }
 
 /// Primary execution failure retaining exact specialized cleanup ownership.
@@ -165,6 +184,26 @@ pub enum ExecutionGeometryNativeJumpRotateCrazyHaltOutcome {
     },
 }
 
+/// Seven synchronized ready executables supplied for exact prebinding.
+#[derive(Clone, Copy, Debug)]
+pub struct ExecutionGeometryNativeJumpRotateCrazyHaltExecutables<'executable> {
+    crazy: [&'executable ReadyExecutionGeometryNativeExecutable; 4],
+    halt: &'executable ReadyExecutionGeometryNativeExecutable,
+    initial_jump: &'executable ReadyExecutionGeometryNativeExecutable,
+    rotate: &'executable ReadyExecutionGeometryNativeExecutable,
+}
+
+/// Seven ready executables prebound to one exact theorem sequence.
+#[derive(Debug)]
+pub struct BoundExecutionGeometryNativeJumpRotateCrazyHaltSequence<
+    'sequence,
+    'executable,
+> {
+    executables:
+        ExecutionGeometryNativeJumpRotateCrazyHaltExecutables<'executable>,
+    sequence: &'sequence ExecutionGeometryNativeJumpRotateCrazyHaltSequence,
+}
+
 /// Exact seven-step theorem path admitted under one checkpoint authority line.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecutionGeometryNativeJumpRotateCrazyHaltSequence {
@@ -201,6 +240,30 @@ impl Display for ExecutionGeometryNativeJumpRotateCrazyHaltAdmissionFailure {
                 write!(f, "v5 full crazy path rotate admission: {error}")
             },
             Self::Suffix(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl Display
+    for ExecutionGeometryNativeJumpRotateCrazyHaltExecutableBindingError
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::Crazy { index } => {
+                write!(
+                    f,
+                    "v5 full crazy path crazy executable differs at {index}"
+                )
+            },
+            Self::Halt => {
+                f.write_str("v5 full crazy path halt executable differs")
+            },
+            Self::InitialJump => f.write_str(
+                "v5 full crazy path initial-jump executable differs",
+            ),
+            Self::Rotate => {
+                f.write_str("v5 full crazy path rotate executable differs")
+            },
         }
     }
 }
@@ -257,6 +320,26 @@ impl ExecutionGeometryNativeJumpRotateCrazyHaltPrefixEvidence {
     }
 }
 
+impl<'executable>
+    ExecutionGeometryNativeJumpRotateCrazyHaltExecutables<'executable>
+{
+    /// Retains borrowed ready mappings in theorem execution order.
+    #[must_use]
+    pub const fn new(
+        initial_jump: &'executable ReadyExecutionGeometryNativeExecutable,
+        rotate: &'executable ReadyExecutionGeometryNativeExecutable,
+        crazy: [&'executable ReadyExecutionGeometryNativeExecutable; 4],
+        halt: &'executable ReadyExecutionGeometryNativeExecutable,
+    ) -> Self {
+        Self {
+            crazy,
+            halt,
+            initial_jump,
+            rotate,
+        }
+    }
+}
+
 impl<MemoryError, RunnerError>
     ExecutionGeometryNativeJumpRotateCrazyHaltFailure<MemoryError, RunnerError>
 {
@@ -305,7 +388,71 @@ impl ExecutionGeometryNativeJumpRotateCrazyHaltOutcome {
     }
 }
 
+impl BoundExecutionGeometryNativeJumpRotateCrazyHaltSequence<'_, '_> {
+    /// Returns the exact borrowed ready-set validated by this prebinding.
+    #[must_use]
+    pub const fn executables(
+        &self,
+    ) -> ExecutionGeometryNativeJumpRotateCrazyHaltExecutables<'_> {
+        self.executables
+    }
+
+    /// Returns the exact theorem sequence validated by this prebinding.
+    #[must_use]
+    pub const fn sequence(
+        &self,
+    ) -> &ExecutionGeometryNativeJumpRotateCrazyHaltSequence {
+        self.sequence
+    }
+}
+
 impl ExecutionGeometryNativeJumpRotateCrazyHaltSequence {
+    /// Prebinds all seven ready executables before any caller-state mutation.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact stage/index identity for the first image mismatch.
+    pub fn bind_executables<'sequence, 'executable>(
+        &'sequence self,
+        executables: ExecutionGeometryNativeJumpRotateCrazyHaltExecutables<
+            'executable,
+        >,
+    ) -> Result<
+        BoundExecutionGeometryNativeJumpRotateCrazyHaltSequence<
+            'sequence,
+            'executable,
+        >,
+        ExecutionGeometryNativeJumpRotateCrazyHaltExecutableBindingError,
+    > {
+        use FullBindingError as Error;
+
+        if self.initial_jump.load_image() != executables.initial_jump.image() {
+            return Err(Error::InitialJump);
+        }
+        if self.rotate.load_image() != executables.rotate.image() {
+            return Err(Error::Rotate);
+        }
+        for (index, (admission, ready)) in self
+            .suffix
+            .prefix()
+            .steps()
+            .iter()
+            .zip(executables.crazy.iter())
+            .enumerate()
+        {
+            if admission.load_image() != ready.image() {
+                return Err(Error::Crazy { index });
+            }
+        }
+        if self.suffix.halt().load_image() != executables.halt.image() {
+            return Err(Error::Halt);
+        }
+        Ok(BoundExecutionGeometryNativeJumpRotateCrazyHaltSequence {
+            executables,
+            sequence: self,
+        })
+    }
+
     fn execute_suffix<MemoryAdapter, Runner>(
         &self,
         memory_adapter: &mut MemoryAdapter,

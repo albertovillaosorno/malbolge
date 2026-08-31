@@ -439,8 +439,13 @@ to global 2 through 6.
 
 Guard miss returns the last committed checkpoint. Release failure after Applied
 jump/rotate/suffix work keeps the newly committed state beside the specialized
-retryable cleanup ownership. Preloaded seven-mapping ownership remains separate
-work.
+retryable cleanup ownership.
+
+The same theorem sequence can now prebind seven already-synchronized executable
+images before any caller buffer mutation. It validates jump, rotate, halt, and
+each crazy image at its exact zero-based prefix index without adapter work.
+Prebinding only borrows those mappings; preloaded execution and aggregate
+seven-mapping ownership remain separate work.
 
 `direct-output` revision 1 adds the first reviewed direct I/O transition.
 Admission requires one live-in at entry `C`, VM-decoded `<`, one VM-owned low
