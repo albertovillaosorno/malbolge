@@ -704,8 +704,14 @@ input validator then distinguishes Byte from EOF through the checkpoint cursor.
 Applied accepts only the replayed exit, GuardMiss preserves the checkpoint, and
 runner/completion failure restores entry buffers. Transactional execution maps
 only after preparation, attempts release on every post-load exit, and preserves
-committed completion plus retryable executable ownership if final release fails,
-while reusable ownership and heterogeneous residency remain separate work.
+committed completion plus retryable executable ownership if final release fails.
+
+Input also has a reusable one-mapping owner with heap-owned exact admission. It
+loads once, executes Byte or EOF through the same prepare/bind runner path
+without remapping, reports exact platform mapped bytes plus one live mapping,
+and retains the ready executable across runner failure for later reuse. Release
+uses the same retryable executable cleanup contract. Heterogeneous residency
+remains separate work.
 
 `direct-execution-geometry-output` revision 1 adds a byte-verifiable v5 output
 artifact boundary with operation-specific execution authority composed below.

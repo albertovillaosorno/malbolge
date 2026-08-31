@@ -693,8 +693,12 @@ transfers, verification, and other separately measured costs.
   cursor transition. N10/N11 executable binding rejects atomically; Applied
   returns only the replayed state, GuardMiss preserves entry, runner/completion
   failure rolls buffers back, and transactional release retains committed state
-  plus retryable executable ownership on cleanup failure. Reusable ownership
-  and heterogeneous residency remain open.
+  plus retryable executable ownership on cleanup failure.
+- Input now also has a reusable one-mapping owner with heap-owned admission. It
+  reuses the same Byte/EOF prepare/bind path without remapping, reports exact
+  platform mapped bytes plus one live mapping, survives runner failure with the
+  ready executable intact, and transfers retryable cleanup on release failure.
+  Heterogeneous residency remains open.
 - A geometry-bound output artifact now exists for the reached `<` step of the
   certified `ubO` input/output/halt path with nonempty input. Profile identity
   still selects output opcode/byte semantics, while explicit geometry supplies
