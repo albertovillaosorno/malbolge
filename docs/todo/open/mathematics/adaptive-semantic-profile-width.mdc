@@ -956,8 +956,11 @@ transfers, verification, and other separately measured costs.
 - Crazy now also has a reusable one-mapping owner. Exact admission is retained
   beside the synchronized image, repeated calls reuse the same mapping, resident
   weight comes from the platform mapping report, and runner failure rolls caller
-  buffers back while preserving the owner for successful retry. Heterogeneous
-  residency remains open.
+  buffers back while preserving the owner for successful retry.
+- Crazy is now also a standalone heterogeneous resident with exact admission
+  identity, one-mapping weight, specialized execution outcome/failure tagging,
+  hit reuse without remapping, and typed release cleanup retry. The shared LRU
+  gains no crazy-specific eviction or weighting logic.
 - Output has exact v5 artifact, checkpoint replay, load-image, prepare/bind,
   dedicated runner, and
   transactional cleanup authority. Its mutable output slice is physical

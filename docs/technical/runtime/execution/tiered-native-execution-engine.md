@@ -1001,11 +1001,11 @@ loaded triples. A limit below three rejects one candidate with rollback, while a
 limit of six admits two full-path residents and evicts LRU authority before a
 third can publish.
 
-`GeometryNativeResidentPlan` now gives initial halt, initial jump-data, input,
-no-operation, no-op/halt, output, rotate, rotate/halt, and full-path templates
-one typed lifecycle boundary without merging execution semantics. The
+`GeometryNativeResidentPlan` now gives crazy, initial halt, initial jump-data,
+input, no-operation, no-op/halt, output, rotate, rotate/halt, and full-path
+templates one typed lifecycle boundary without merging execution semantics. The
 loaded-resident enum preserves exact variant identity, derives
-1/1/1/1/2/1/1/2/3 mapping weights from synchronized reports, and delegates
+1/1/1/1/1/2/1/1/2/3 mapping weights from synchronized reports, and delegates
 load, execution, release, and retry to each specialized owner.
 
 `GeometryNativeCrossTemplateLruCache` now performs real cross-template
@@ -1026,18 +1026,18 @@ evidence reports prior removals so partial successful eviction is observable.
 
 The existing entry-only and weighted cases still mix no-op/halt, rotate/halt,
 and full-path residents through recency, lease, saturation, byte/mapping
-pressure, rollback, release-failure, and vacancy paths. Focused cases for
+pressure, rollback, release-failure, and vacancy paths. Focused cases for crazy,
 initial jump, initial halt, input, no-operation, output, and rotate add
 single-mapping lifecycle, hit reuse, typed cleanup, and resource-accounting
-coverage. Input and output join this policy only through the typed resident
-boundary: their LRU insert/hit paths add no operation-specific eviction or
-weighting logic.
+coverage. Crazy, input, and output join this policy only through the typed
+resident boundary: their LRU insert/hit paths add no operation-specific eviction
+or weighting logic.
 
 A heterogeneous lease can now execute its resident directly without cache or
 adapter work. The common execution boundary only tags the existing specialized
-outcome/failure as full-path, initial halt, initial jump-data, input,
+outcome/failure as crazy, full-path, initial halt, initial jump-data, input,
 no-operation, no-op/halt, output, rotate, or rotate/halt; it does not translate
-checkpoints, guard misses, committed state, or rollback semantics. The six
+checkpoints, guard misses, committed state, or rollback semantics. The seven
 single-mapping templates therefore reuse their one-step completion and rollback
 contracts.
 
