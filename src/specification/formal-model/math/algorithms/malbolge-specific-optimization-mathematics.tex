@@ -842,6 +842,26 @@ reconstructs the complete $(2^m)^k$ raw ordered-tuple domain. This is exact
 orbit accounting for symmetry-invariant analyses; it does not equate distinct
 position-sensitive Malbolge states.
 
+The existing dense ordered-class rank also yields a compact canonical integer
+key for the endpoint-unordered quotient. Let $\rho_{k,m}$ be the checked
+stars-and-bars rank above and define
+\begin{equation}
+  \fitmath{%
+    \begin{aligned}
+      \kappa_{k,m}(n)&=\min_{\pi\in S_m}\rho_{k,m}(\pi\!\cdot n),\\
+      \kappa_{k,m}(n)=\kappa_{k,m}(n')
+        &\Longleftrightarrow S_m\!\cdot n=S_m\!\cdot n',
+    \end{aligned}
+    \qquad 3\leq m\leq8,\ 0\leq k\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-unordered-tuple-canonical-rank}
+\end{equation}
+The forward implication holds because the minimum is taken over the same orbit;
+for the converse, equality selects one ordered count vector with the same
+injective $\rho_{k,m}$ rank in both endpoint orbits, so the orbits intersect and
+are equal. The key occupies a canonical subset of the dense ordered-rank range;
+it is not claimed to be dense over endpoint-unordered classes.
+
 For pairwise analyses that also ignore endpoint order, let
 $G_k=S_k\times C_2$, where $S_k$ permutes both endpoints simultaneously and
 $\tau\in C_2$ swaps them: $\tau(x,y)=(y,x)$. These actions commute. On joint

@@ -371,3 +371,68 @@ def test_generic_combined_orbit_mass_reaches_checked_arity_eight() -> None:
             assert _combined_orbit_mass(labels, arity) == endpoint_mass
             total += endpoint_mass
         assert total == 1 << arity
+
+
+def _counts_from_labels(
+    labels: tuple[int, ...],
+    pattern_count: int,
+) -> tuple[int, ...]:
+    observed = Counter(labels)
+    return tuple(observed.get(label, 0) for label in range(pattern_count))
+
+
+def _ordered_class_rank(counts: tuple[int, ...]) -> int:
+    separator_count = len(counts) - 1
+    prefix = 0
+    rank = 0
+    for index in range(separator_count):
+        prefix += counts[index]
+        separator = prefix + index
+        rank += comb(separator, index + 1)
+    return rank
+
+
+def _endpoint_canonical_rank(labels: tuple[int, ...], arity: int) -> int:
+    pattern_count = 1 << arity
+    return min(
+        _ordered_class_rank(_counts_from_labels(image, pattern_count))
+        for image in _endpoint_label_orbit(labels, arity)
+    )
+
+
+def _check_small_canonical_rank(arity: int, maximum_dimension: int) -> None:
+    pattern_count = 1 << arity
+    for dimension in range(maximum_dimension + 1):
+        observed: dict[int, tuple[int, ...]] = {}
+        for labels in combinations_with_replacement(
+            range(pattern_count),
+            dimension,
+        ):
+            representative = min(_endpoint_label_orbit(labels, arity))
+            key = _endpoint_canonical_rank(labels, arity)
+            if key not in observed:
+                observed[key] = representative
+            assert observed[key] == representative
+        assert len(observed) == _unordered_tuple_classes(arity, dimension)
+
+
+def test_endpoint_canonical_rank_is_exact_on_small_tuple_domains() -> None:
+    """Canonical ordered ranks collide exactly on small endpoint orbits."""
+    maximum_dimensions = {3: 3, 4: 2, 5: 2, 6: 2}
+    for arity, maximum_dimension in maximum_dimensions.items():
+        _check_small_canonical_rank(arity, maximum_dimension)
+
+
+def test_endpoint_canonical_rank_reaches_checked_arity_eight() -> None:
+    """One-coordinate canonical keys quotient labels by weight through S8."""
+    for arity in range(_MINIMUM_ARITY, _MAXIMUM_ARITY + 1):
+        keys_by_weight: dict[int, set[int]] = {}
+        for label in range(1 << arity):
+            weight = label.bit_count()
+            key = _endpoint_canonical_rank((label,), arity)
+            keys_by_weight.setdefault(weight, set()).add(key)
+        assert set(keys_by_weight) == set(range(arity + 1))
+        assert all(len(keys) == 1 for keys in keys_by_weight.values())
+        assert len({next(iter(keys)) for keys in keys_by_weight.values()}) == (
+            arity + 1
+        )

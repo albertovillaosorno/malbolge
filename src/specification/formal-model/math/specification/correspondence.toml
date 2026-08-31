@@ -514,6 +514,16 @@ mechanism = "coordinate-multinomial-orbit-mass-times-endpoint-count-vector-orbit
 evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_combined_orbit_mass_covers_small_tuple_domains", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_generic_combined_orbit_mass_reaches_checked_arity_eight"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-unordered-tuple-canonical-rank"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-unordered-tuple-canonical-rank"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "endpoint-unordered joint-count classes for checked arities 3 through 8 and ambiguity dimensions 0 through 14, using the established dense ordered combinadic rank"
+mechanism = "minimum-injective-ordered-rank-over-endpoint-orbit"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_endpoint_canonical_rank_is_exact_on_small_tuple_domains", "tests/mathematics/test_crazy_preimage_cube_unordered_tuple_quotient.py::test_endpoint_canonical_rank_reaches_checked_arity_eight"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-endpoint-symmetric-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-endpoint-symmetric-pair-quotient"

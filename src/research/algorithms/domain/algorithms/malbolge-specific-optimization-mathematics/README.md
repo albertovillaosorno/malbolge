@@ -169,6 +169,12 @@ the size of that count vector's `S_m` orbit; their product reconstructs the
 combined `S_k x S_m` orbit. Exhaustive small tuple domains and all one-
 coordinate weight orbits through S8 reproduce their complete raw mass exactly.
 
+Endpoint-unordered classes also receive a canonical integer key without claiming
+a new dense numbering. The key is the minimum existing ordered combinadic rank
+over every endpoint permutation of the joint-count vector; two vectors have the
+same key exactly when they occupy the same endpoint orbit. Small domains are
+exhaustive, and one-coordinate classes reach checked arity eight.
+
 If endpoint order is also irrelevant, the exact pair class count
 reduces further to
 `(C(k+3,3)+floor((k+2)^2/4))/2`, or 372 at `k=14`; summed over every reachable
