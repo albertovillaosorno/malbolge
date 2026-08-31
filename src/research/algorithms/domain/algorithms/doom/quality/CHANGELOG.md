@@ -17,6 +17,46 @@ system effects behind a generic runtime boundary.
 The temporary native runners exist to prove that boundary. They are laboratory
 equipment, not the final product.
 
+## 2026-08-30: Single-Player Conditioning and Linux Validation
+
+I specialized the normalized guest around the behavior this target actually
+supports rather than carrying unreachable desktop-era infrastructure into later
+compiler stages. Networking and multiplayer scheduling/chat paths are gone, the
+language runtime is English-only, and platform behavior remains behind the
+existing host ABI. Music and sound stay in the guest; the MIDI synth was improved
+rather than removed.
+
+The same playtest pass found and fixed practical portability bugs: Linux now has
+a reproducible SDL2 debug runner, relative mouse behavior matches the Windows
+adapter more closely, menu mouse input is ignored, the window is normally
+decorated, and the classic 0..15 DOOM volume scale no longer gets interpreted as
+0..127. The final audio mixer still saturates to signed 16-bit PCM, so malformed
+mixes cannot wrap beyond full scale.
+
+The source was also conditioned without changing intended simulation results.
+`FixedMul` now uses the ABI-defined arithmetic right shift instead of a signed
+64-bit divide by 65536; boundary cases plus one million random operand pairs
+matched the previous implementation exactly. Power-of-two reductions of the
+byte-valued deterministic RNG use masks, zone alignment uses its power-of-two
+ABI guarantee, and the video layer has direct 1x paths that avoid repeated
+64-bit scale/divide work and copy complete rows where scaling is unnecessary.
+
+The durable quality transform was regenerated from the ignored oracle without
+adding DOOM source or WAD files to Git. Current evidence:
+
+- `quality/main.rs`: 3,166,762 bytes, 44,721 lines, SHA-256
+  `dd81d330889ce892c84cb7487372ab7b501d1cb777a7fc31b2b83866765cfb8a`;
+- generated output: 130 files, including 63 C files and 66 headers;
+- generated output is byte-identical to the local oracle;
+- 63/63 translation units pass the complete guest validator;
+- 252/252 closed-include strict syntax checks pass on i686, x86-64, AArch64,
+  and wasm32; and
+- repeated quality generation is byte-identical.
+
+I did not regenerate amalgamation in this pass. The previously recorded
+`doom.c` belongs to the earlier quality corpus and remains downstream evidence
+only until that stage is intentionally refreshed.
+
 ## 2026-07-28: Analyzer Hardening and Full Regeneration
 
 I prioritized diagnostics with direct correctness or portability value rather

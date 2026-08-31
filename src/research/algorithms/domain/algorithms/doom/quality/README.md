@@ -546,70 +546,45 @@ not currently clean.
 
 ## Generated Quality Acceptance Evidence
 
-The source-bound quality transform is now generated and executable. The accepted
-artifact is
-`src/research/algorithms/composition/algorithms/doom/quality/main.rs`, generated
-deterministically from the
-exact pinned id Software source and the ignored local oracle with `data/` as an
-authenticated runtime passthrough root. Its current SHA-256 is
-`83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`.
+The current source-bound quality transform is
+`src/research/algorithms/composition/algorithms/doom/quality/main.rs`. It was
+regenerated from the exact pinned 165-file id Software source and the ignored
+local quality oracle, with `data/` remaining an authenticated runtime
+passthrough root. Its current SHA-256 is
+`dd81d330889ce892c84cb7487372ab7b501d1cb777a7fc31b2b83866765cfb8a`.
 
-Running that transform against the untouched root `doom/` materializes 151 files
-under `quality/out/doom_fixed/`; the complete generated tree is byte-identical
-to the
-clean local oracle and the WAD bytes come from runtime passthrough rather than
-static
-transform payload. A second independent materialization matched the first
-exactly.
-Missing and deliberately mutated source trees were rejected before output
-publication.
+This checkpoint specializes the guest to the supported single-player profile,
+keeps English localization only, retains music and sound, and incorporates the
+portable renderer/audio/input fixes validated during native playtesting. The
+normalized tree contains 130 files: 63 C translation units, 66 headers, and the
+source license. No IWAD or PWAD bytes are part of the static transform payload.
 
-Acceptance was rerun on the generated tree itself:
+The current acceptance evidence is:
 
-- 65/65 C translation units pass the real guest validator;
-- 390/390 strict syntax checks are clean across x86-64/AArch64 Linux, Windows,
-  and
-  macOS targets;
-- the fixed-point executable behavior probe matches source, oracle, and
-  generated
-  output at transcript SHA-256
-  `f0b37d59c86384e4ee628ec0e637c60aaa7ca35e5ecdb826687fc35c37d133e2`;
-- the output `LICENSE` is byte-identical to the pinned source license, all
-  124
-  historical C/header files retain id Software attribution, and the derived
-  runtime
-  language tables carry explicit provenance; and
-- the compact comparison report now uses an additive policy: the guest-C
-  bootstrap is 65/65 clean and the strict compiler matrix is 390/390 clean, but
-  the general host/native profile still reports 36,519 unique findings after a
-  reduction from 143,662 (74.58%); and
-- the remaining general-profile findings are retained rather than relabeled as
-  zero. The dominant classes are 22,303 literal/table constants, 3,314
-  historical naming findings, 4,667 mechanical layout/include findings, 1,461
-  signed-bitwise findings, and 2,698 initialization/global-state findings.
+- a fresh generated materialization is byte-identical to the ignored oracle;
+- the oracle and generated trees share aggregate file hash
+  `c6aaf076dd8c2f73bb5b08fd3122e15dc64d537e063e197cf0b089eff138d2d2`;
+- 63/63 translation units pass `validate_c_before_malbolge.py`, including the
+  canonical ABI/libc/tools-tidy validation delegated by that entrypoint;
+- 252/252 strict closed-include syntax checks pass across i686 Linux, x86-64
+  Linux, AArch64 Linux, and wasm32 using pinned Clang 22.1.8;
+- all 63 translation units compile natively with `-std=c23 -O2 -Wall -Wextra
+  -Werror -ffreestanding -fno-builtin`;
+- repeated transform generation is byte-identical; and
+- the generated transform itself compiles with pinned Rust 1.97.1 and
+  materializes the accepted tree without the local oracle.
 
-The analyzer-hardening regeneration produced transform SHA-256
-`83f9c400ffd7ca17c75cc1cbc7a654794452ef37eac2adbf21af42a335766bd8`.
-It fixes an intermission-map candidate-array overread, validates marker, weapon,
-network-player, and boss-target indices, makes tic-command narrowing explicit,
-widens pointer arithmetic before multiplication, and removes high-value dead
-stores and condition side effects. The accepted normalized output remains
-byte-identical to its oracle.
+The transform is 3,166,762 bytes and 44,721 lines. The immediately preceding
+checked-in transform was 5,228,662 bytes, so this source-conditioning checkpoint
+reduces the durable transform by 2,061,900 bytes (39.43%). That reduction is not
+a proxy for runtime speed; it records the smaller normalized semantic surface
+and exact source-bound correction payload.
 
-The regenerated downstream `doom.c` has SHA-256
-`a7fbecc1a6faba9fb974399d2b1def32c52734f1a557c0d8dbcdbc9357daab80`
-and is validated separately by the completed amalgamation stage. Guest-C
-acceptance is source-level readiness, not proof that `doom.malbolge` has been
-generated or executed.
-
-The larger runtime/manual-play evidence recorded below was produced against the
-same
-byte-identical normalized corpus during oracle development, so generation
-introduces
-no code or data delta relative to that evidence. Historical commit-message
-repair now leaves zero `JIG-COMMIT-*` diagnostics. Remaining Jig findings
-concern
-current repository files and are unrelated to this corpus.
+The downstream amalgamation transform has deliberately **not** been regenerated
+for this checkpoint. Any previously recorded `doom.c` hash belongs to the prior
+quality corpus and must not be presented as the amalgamation of this 130-file
+tree. Quality remains the canonical multi-file input until amalgamation is
+explicitly refreshed and revalidated.
 
 ## Completion Criteria
 
