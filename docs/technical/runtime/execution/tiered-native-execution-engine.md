@@ -726,8 +726,13 @@ focused output cases cover admission, capacity, cross-geometry binding, Applied,
 GuardMiss, runner/completion rollback, normal release, and committed cleanup
 retry.
 
-Reusable output ownership and heterogeneous residency remain separate follow-up
-work.
+Output can now also own one reusable synchronized mapping directly.
+`ExecutionGeometryNativeOutputAdmission::load_owned` heap-retains the exact
+checkpoint-bound admission beside its ready executable and reuses the existing
+prepare/bind/runner path without adapter work. Exact mapped bytes come from the
+platform mapping report, runner failure restores the complete physical output
+buffer, and the same mapping remains reusable before explicit release.
+Heterogeneous output residency remains separate follow-up work.
 
 `direct-execution-geometry-rotate` revision 1 adds a second state-changing v5
 artifact boundary without granting execution authority. The selector consumes
