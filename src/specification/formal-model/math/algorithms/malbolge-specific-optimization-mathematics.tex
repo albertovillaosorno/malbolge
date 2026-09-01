@@ -1015,6 +1015,33 @@ rank/unrank is exhausted through mass six, and representative boundary and
 interior ranks are checked through mass fourteen. The two swapped edge blocks
 share one involution; sorting them independently would over-quotient the action.
 
+For the $2+2$ spoke shape, the equal-spoke stabilizer is
+$V_4\cong S_2\times S_2$. The pair-valued edges $01$ and $23$ are fixed, while
+the four cross edges form a $2\times2$ matrix of pair-valued cells. Quotient the
+row swap first, leaving an unordered pair of four-scalar rows. The descended
+column swap exchanges the two cell pairs in each row simultaneously. If one row
+is nonfixed, its canonical orientation fixes the common column orientation and
+leaves the other row raw. For equal row masses, two nonfixed row orbits retain
+one relative orientation bit; fixed/fixed and fixed/moving categories do not.
+Prefixing the four fixed-edge scalars, the unordered row masses, and these
+fixed/nonfixed blocks yields
+\begin{equation}
+  \fitmath{%
+    \rho^{(E,4)}_m:
+      \mathcal E^{(4)}_{V_4,m}
+      \overset{\sim}{\longrightarrow}
+      \{0,\ldots,C^{(E,4)}_m-1\},
+    \qquad C^{(E,4)}_{14}=1125240,
+    \quad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s4-v4-edge-ranking}
+\end{equation}
+Direct full-$V_4$ orbit exhaustion through mass three gives every rank once;
+dense rank/unrank is exhausted through mass six and checked at boundary and
+interior ranks through mass fourteen. The equal-row branch records relative
+orientation only after ordering the row-orbit identities, so lexicographic row
+reordering cannot collapse distinct parity classes.
+
 For the $3+1$ spoke shape, the equal-spoke stabilizer is $S_3$. Associate
 to each vertex in the equal triple one four-scalar bundle containing its
 pair-valued spoke to the singleton vertex and the opposite pair-valued triangle
