@@ -604,6 +604,16 @@ mechanism = "lexicographic-sorted-four-spoke-prefix-over-five-Young-stabilizer-s
 evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s4_residual_ranking.py::test_s4_residual_dispatch_covers_all_five_spoke_shapes", "tests/mathematics/test_crazy_preimage_cube_quintuple_s4_residual_ranking.py::test_s4_residual_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_quintuple_s4_residual_ranking.py::test_s4_residual_rank_matches_full_burnside_through_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_quintuple_s4_residual_ranking.py::test_distinct_spoke_local_block_is_plain_composition_domain"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-quintuple-s5-edge-core"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-quintuple-s5-edge-core"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "pair-valued K5 edge assignments of residual mass 0 through 14 under the full order-one-hundred-twenty S5 residual stabilizer induced when all five singleton-complement vertex-count pairs are equal"
+mechanism = "seven-S5-vertex-conjugacy-classes-with-induced-K5-edge-cycle-index-and-pair-valued-Burnside-coefficient-extraction"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s5_edge_core.py::test_s5_edge_conjugacy_types_have_exact_cycles_and_mass_fourteen_fixes", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_edge_core.py::test_s5_edge_burnside_sequence_is_exact_through_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_edge_core.py::test_s5_edge_burnside_matches_direct_small_orbits"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-ordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-ordered-sextuple-quotient"

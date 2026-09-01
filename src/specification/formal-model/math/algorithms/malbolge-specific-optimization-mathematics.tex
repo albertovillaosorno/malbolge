@@ -1110,6 +1110,38 @@ $C^{(E,24)}_{14}=34507258$. Thus the complete order-twenty-four residual domain
 has a dense constructive rank; the order-one-hundred-twenty residual stabilizer
 and complete dense $S_5$ ranking remain open.
 
+When all five vertex-count pairs are equal, the residual stabilizer is the full
+$S_5$ action on the ten pair-valued $K_5$ edges. Its seven vertex conjugacy
+classes have weights and induced edge-cycle types
+\[
+\begin{array}{c|c|c}
+\lambda & a_\lambda & \text{$K_5$ edge cycles}\\ \hline
+1^5 & 1 & 1^{10}\\
+2\,1^3 & 10 & 1^4 2^3\\
+2^2 1 & 15 & 1^2 2^4\\
+3\,1^2 & 20 & 1\,3^3\\
+3\,2 & 20 & 1\,3\,6\\
+4\,1 & 30 & 2\,4^2\\
+5 & 24 & 5^2
+\end{array}
+\]
+If $m_{\lambda,c}$ counts the $c$-cycles in the last column, then the exact
+edge-orbit count is
+\begin{equation}
+  \fitmath{%
+    C^{(E,120)}_m=
+      \frac1{120}\sum_{\lambda\vdash5}a_\lambda
+      [x^m]\prod_{c\geq1}(1-x^c)^{-2m_{\lambda,c}},
+    \qquad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s5-edge-core}
+\end{equation}
+The exponent two records the two scalar counts in every complementary edge
+pair. Direct full-$S_5$ edge-orbit exhaustion through mass three agrees with
+this cycle index, and the complete checked sequence ends at
+$C^{(E,120)}_{14}=6962786$. This isolates the last residual hard core; no dense
+order-one-hundred-twenty inverse or complete dense $S_5$ rank is claimed.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,
