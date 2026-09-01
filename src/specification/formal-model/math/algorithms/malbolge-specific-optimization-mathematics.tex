@@ -925,9 +925,37 @@ The second quotient is therefore
 Direct residual assignments through mass three reproduce the first $S_3$
 quotient, its descended-$S_2$ fixed subset, and the final product-group orbits.
 An independent twelve-element Burnside sum agrees through mass fourteen, where
-the final count is 68763298. This isolates the next constructive step: a dense
-prefix and inverse for the descended $S_2$ action on the first-$S_3$ quotient.
-No dense order-twelve or complete $S_5$ rank is claimed here.
+the final count is 68763298.
+
+The descended involution also admits a dense constructive inverse. For one
+six-component bundle of mass $s$, let $N_s=\binom{s+5}{5}$, let $H_s$ count
+bundles fixed by the internal swap of their two cell-count pairs, and set
+$P_s=(N_s-H_s)/2$ and $O_s=H_s+P_s$. Sort the three bundle masses as
+$a\leq b\leq c$. Distinct masses use the ordinary diagonal fixed/nonfixed
+involution rank. A repeated pair uses the induced involution on
+$\operatorname{Sym}^2(Z_s)$, whose fixed count is
+$\binom{H_s+1}{2}+P_s$. The all-equal block uses
+\[
+  \left|\operatorname{Sym}^3(Z_s)/\langle t\rangle\right|
+   =\frac{\binom{N_s+2}{3}+\binom{H_s+2}{3}+H_s P_s}{2}.
+\]
+Its inverse separates three fixed bundles, one fixed bundle plus one complete
+nonfixed pair, and the remaining fixed/nonfixed multiset categories. Prefixing
+the exact block sizes over all nondecreasing mass triples and then over the
+fixed-edge mass gives
+\begin{equation}
+  \fitmath{%
+    \rho^{(E,12)}_m:
+      \mathcal E^{(5)}_{S_3\times S_2,m}
+      \overset{\sim}{\longrightarrow}
+      \{0,\ldots,(R_m+4S_m+2T_m+3U_m+2V_m)/12-1\},
+    \qquad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s3s2-edge-ranking}
+\end{equation}
+Direct product-group orbit exhaustion through mass three gives every rank once,
+and boundary/interior ranks roundtrip through mass fourteen. This remains a
+residual-stabilizer result, not a complete dense $S_5$ rank.
 
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
