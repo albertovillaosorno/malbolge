@@ -1276,6 +1276,48 @@ checked at representative boundary/interior ranks through mass fourteen. This
 ranks the largest symmetric exception type only; the other seven nontrivial
 stabilizer types and the trivial-stabilizer minimum-root prefix remain open.
 
+The same exact-stabilizer filtering completes the other seven nontrivial
+symmetry strata. For one reviewed representative $H$ of each populated
+non-transposition conjugacy type, let $d_1,\ldots,d_r$ be its edge-orbit sizes.
+An $H$-fixed state is a tuple of pair-values
+$z=((a_1,b_1),\ldots,(a_r,b_r))$ with weighted mass
+$\sum_j d_j(a_j+b_j)=m$. Let $C_{H,m}$ be the lexicographically ordered set of
+canonical such states under the induced $N(H)/H$ action, and define
+\[
+  A_{H,m}=\{z\in C_{H,m}:\operatorname{Aut}(z)=H\}.
+\]
+Then
+\begin{equation}
+  \fitmath{%
+    \rho^{(E,H)}_m(z)=|\{y\in A_{H,m}:y<z\}|,
+    \qquad z\in A_{H,m},
+    \qquad 0\leq m\leq14,
+  }
+  \label{eq:optimization-crazy-quintuple-s5-remaining-ranking}
+\end{equation}
+and the inverse selects the rank-th member of $A_{H,m}$. Explicit subgroup
+generators define all seven representatives independently; full-$S_5$
+stabilizer testing removes every larger-symmetry state. At mass fourteen the
+canonical normalizer-quotient and retained exact-$H$ sizes are
+\[
+\begin{array}{c|c|r|r}
+|H| & \text{vertex orbits} & |C_{H,14}| & |A_{H,14}|\\ \hline
+2  & 2+2+1 & 33360 & 21920\\
+4  & 4+1   & 306   & 194\\
+4  & 2+2+1 & 10752 & 10466\\
+6  & 3+1+1 & 582   & 402\\
+8  & 4+1   & 112   & 106\\
+12 & 3+2   & 174   & 174\\
+24 & 4+1   & 6     & 6
+\end{array}
+\]
+Direct full-$S_5$ orbit checks through mass three give one orbit per retained
+rank; dense rank/unrank is exhausted through mass six and representative ranks
+round-trip through mass fourteen. Together with the single-transposition rank,
+all $272924$ nontrivial-stabilizer mass-fourteen classes now have dense local
+ranks. The remaining complete-$S_5$ gap is the $6689862$-class trivial-
+stabilizer minimum-root prefix rank.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,

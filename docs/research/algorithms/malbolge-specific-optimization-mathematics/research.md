@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes one hundred eleven exact reductions: classic five-trit crazy
+formalizes one hundred twelve exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -763,10 +763,17 @@ one dense 34,507,258-class order-24 residual rank at mass 14.
 
 The order-120 all-equal-vertex hard core has seven exact conjugacy-cycle types
 and 6,962,786 mass-14 edge classes. Exact inversion of all 156 S5 subgroups
-shows that 6,689,862 classes have trivial stabilizer; only eight nontrivial
-subgroup types remain populated at mass 14, and the same strata reconstruct the
-34,507,258 rooted classes. Dense order-120 inversion and complete dense S5
-ranking remain open.
+shows that 6,689,862 classes have trivial stabilizer; eight nontrivial subgroup
+types contain the other 272,924 classes. Rooted-view multiplicity is exactly
+automorphism vertex-orbit multiplicity, and the same strata reconstruct the
+34,507,258 rooted classes.
+
+Every nontrivial type now has dense rank/unrank. The single-transposition type
+filters a 261,450-class weighted S3 normalizer quotient to 239,656 exact-H
+classes. The other seven types use the same generic weighted H-edge-orbit,
+normalizer-canonicalization, exact-stabilizer-filter, and prefix/select
+construction; their mass-14 retained counts sum to 33,268. Only the 6,689,862
+trivial-stabilizer unique-minimum-root classes still lack a dense prefix rank.
 
 Ordered sextuples have sixty-four joint-pattern counts and exactly
 `C(k+63,63)` coordinate classes, or 839,983,521,106,400 at `k=14`. Adding the
