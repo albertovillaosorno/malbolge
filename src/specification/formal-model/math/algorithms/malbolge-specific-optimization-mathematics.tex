@@ -983,9 +983,35 @@ class count is
 The exponent two records the two scalar counts in every complementary edge
 pair. Raw $S_4$ orbit enumeration through mass three, the spoke/stabilizer
 factorization, and an independent full-group Burnside sum agree. At mass
-fourteen $C^{(E,24)}_{14}=34507258$. This is an exact structural reduction; it
-does not yet provide dense order-twenty-four rank/unrank or complete $S_5$
-ranking.
+fourteen $C^{(E,24)}_{14}=34507258$.
+
+The all-equal-spoke stratum has $H_q=S_4$ and admits a dense edge-only inverse.
+Partition the six $K_4$ edges into the three opposite-edge blocks
+$\{01,23\}$, $\{02,13\}$, and $\{03,12\}$. For one pair-valued block of
+mass $s$, let $N_s=\binom{s+3}{3}$, let $H_s$ count states fixed by swapping the
+two opposite edges, set $P_s=(N_s-H_s)/2$, and set $O_s=H_s+P_s$. With
+$O(x)=\sum_{s} O_{s} x^{s}$, $P(x)=\sum_{s} P_{s} x^{s}$, and
+\[
+  \mathsf M_3(A)(x)=
+    \frac{A(x)^3+3A(x)A(x^2)+2A(x^3)}{6},
+\]
+the exact edge-only quotient count is
+\begin{equation}
+  \fitmath{%
+    E^{(24)}_m=[x^m]\bigl(\mathsf M_3(O)+\mathsf M_3(P)\bigr),
+    \qquad E^{(24)}_{14}=191180.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s4-edge-core-ranking}
+\end{equation}
+The normal $V_4$ subgroup acts by even-parity internal flips on those three
+blocks, while $S_4/V_4\cong S_3$ permutes the blocks. Thus the first multiset
+term records the ordinary block-orbit multiset; only an all-moving triple keeps
+one flip-parity bit, represented by the second term. Prefixing nondecreasing
+block-mass triples and dense multiset ranks gives exact rank/unrank through mass
+fourteen. Direct full-$S_4$ edge-orbit exhaustion through mass three gives each
+rank once, and checked boundary/interior ranks roundtrip through mass fourteen.
+This is the hard all-equal-spoke core only; complete order-twenty-four K5
+residual rank/unrank and complete dense $S_5$ ranking remain open.
 
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern

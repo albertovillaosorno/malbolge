@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize one hundred one exact reductions: classic
+- The proved slices now formalize one hundred two exact reductions: classic
   five-trit
   crazy factorization, profile-width crazy chunking, exact zero-padded 15-trit
   crazy projection and uniform three-lookup factorization for semantic widths
@@ -64,7 +64,8 @@ force or stochastic optimization begins.
   vertex-pair/K5-edge-pair stabilizer decomposition and dense residual
   order-two, order-four, order-six, and order-twelve residual edge-orbit
   rank/unrank plus an exact order-twenty-four spoke/K4-edge stabilizer
-  decomposition, exact ordered sextuple
+  decomposition with dense full-S4 ranking for its all-equal-spoke edge core,
+  exact ordered sextuple
   quotient into `C(k+63,63)` joint-count classes, exact endpoint-unordered
   sextuple quotient under `S_6` endpoint permutation, one generic checked-arity
   ordered tuple quotient with `C(k+2^m-1,2^m-1)` classes for `1<=m<=8`, dense
@@ -115,10 +116,10 @@ force or stochastic optimization begins.
   preimage-budget exceedance sum, its width-indexed generalization, and the
   exact minimum complete-preimage budget needed to cover any integer target
   from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. Four
-  reductions are consumed by runtime paths; the eighty-four search reductions,
+  reductions are consumed by runtime paths; the eighty-five search reductions,
   two padded-geometry equivalences, and eleven width-certification
   results carry no inherited runtime speedup claim.
-- One hundred one optimization research equations are registered in
+- One hundred two optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -153,7 +154,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes one hundred one labelled optimization
+- Current mathematical evidence includes one hundred two labelled optimization
   equations,
   executable correspondence, exact zero-padding projection and uniform
   three-lookup evidence for semantic widths 10 through 14, exact checked
@@ -186,7 +187,8 @@ force or stochastic optimization begins.
   `S_5` through dimension 14 with a vertex/edge-pair stabilizer factorization
   and dense order-two/order-four/order-six/order-twelve residual edge ranking
   through mass 14 plus an exact order-twenty-four spoke/K4-edge stabilizer
-  decomposition, exact ordered and
+  decomposition and dense full-S4 ranking for its all-equal-spoke edge core,
+  exact ordered and
   endpoint-unordered sextuple
   classes through dimension 14, the generic ordered tuple quotient for checked
   arities one through eight with exact weak-composition class and multinomial

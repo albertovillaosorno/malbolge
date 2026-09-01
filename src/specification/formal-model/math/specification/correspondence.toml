@@ -554,6 +554,16 @@ mechanism = "sorted-four-spoke-pair-multiset-plus-equal-spoke-Young-stabilizer-B
 evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s4_edge_decomposition.py::test_s4_spoke_shapes_have_exact_stabilizer_orders", "tests/mathematics/test_crazy_preimage_cube_quintuple_s4_edge_decomposition.py::test_s4_decomposition_matches_direct_small_orbit_counts", "tests/mathematics/test_crazy_preimage_cube_quintuple_s4_edge_decomposition.py::test_s4_decomposition_is_exact_through_mass_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-quintuple-s4-edge-core-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-quintuple-s4-edge-core-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "pair-valued K4 edge assignments of residual mass 0 through 14 under full S4, equal to the all-equal-spoke core of the order-twenty-four residual S5 stabilizer"
+mechanism = "three-opposite-edge-block-internal-swap-orbits-plus-even-V4-flip-parity-and-S3-multiset-rank-unrank"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s4_edge_core_ranking.py::test_s4_edge_core_rank_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_quintuple_s4_edge_core_ranking.py::test_s4_edge_core_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_quintuple_s4_edge_core_ranking.py::test_s4_edge_core_rank_roundtrips_through_mass_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-ordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-ordered-sextuple-quotient"
