@@ -674,6 +674,16 @@ mechanism = "lexicographically-minimum-rooted-S4-view-selector-on-free-S5-orbits
 evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s5_trivial_ranking.py::test_trivial_rank_selects_unique_minimum_root_per_free_orbit", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_trivial_ranking.py::test_trivial_rank_is_dense_on_small_free_orbits", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_trivial_ranking.py::test_trivial_mass_fourteen_count_is_exact_from_proved_strata"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-quintuple-s5-complete-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-quintuple-s5-complete-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the complete full-S5 quotient of pair-valued K5 edge assignments at residual masses 0 through 14, partitioned by the trivial stabilizer stratum and eight populated nontrivial exact-stabilizer conjugacy types"
+mechanism = "cumulative-cardinality-prefix-concatenation-of-nine-disjoint-proved-dense-local-stabilizer-stratum-ranks-with-inverse-block-dispatch"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s5_complete_ranking.py::test_finite_dense_strata_concatenate_without_gaps", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_complete_ranking.py::test_mass_fourteen_complete_s5_blocks_are_exact_and_dense"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-ordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-ordered-sextuple-quotient"

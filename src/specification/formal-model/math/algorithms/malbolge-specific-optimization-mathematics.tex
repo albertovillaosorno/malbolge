@@ -1348,6 +1348,31 @@ Thus the generic stratum now has a dense prefix/select rank over all
 $6689862$ trivial-stabilizer classes. This construction is exact and finite; it
 makes no timing claim about materializing the full selected set.
 
+The nine dense stabilizer-stratum ranks compose into one complete $S_5$ rank.
+Fix any reviewed ordering $\tau_0,\ldots,\tau_8$ of the trivial stratum and the
+eight populated nontrivial stabilizer conjugacy types. Let $R_{i,m}$ be the
+proved class count and $\rho_{i,m}$ the proved dense local rank for stratum
+$\tau_i$. Then
+\begin{equation}
+  \fitmath{%
+    \rho^{(E,S_5)}_m(x)
+      =\sum_{j<i}R_{j,m}+\rho_{i,m}(x),
+    \qquad x\in\tau_i,
+    \qquad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-quintuple-s5-complete-ranking}
+\end{equation}
+The inverse subtracts cumulative stratum sizes until it reaches the unique block
+containing the requested rank, then delegates to that stratum's inverse. Since
+the exact-stabilizer strata are disjoint and exhaustive, finite dense intervals
+concatenate without gaps. At mass fourteen the reviewed block sizes are
+\[
+(6689862,239656,21920,10466,402,106,174,6,194),
+\]
+which sum to $6962786$. Thus the complete order-one-hundred-twenty quotient has
+one dense rank interval $0,\ldots,6962785$. This composition changes no local
+canonical order and makes no timing claim.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,

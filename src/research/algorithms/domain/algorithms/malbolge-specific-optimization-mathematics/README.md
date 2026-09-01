@@ -177,6 +177,8 @@ At mass 14 these ranks cover all 272,924 symmetric classes.
 The 6,689,862 trivial-stabilizer classes now use the unique lexicographically
 minimum rooted S4 view of each free S5 orbit, followed by prefix/select ranking.
 Every order-120 mass-14 class therefore has a dense local rank stratum.
+Cumulative offsets across the nine disjoint stabilizer strata give one complete
+dense 6,962,786-class S5 rank interval.
 Ordered sextuples have
 `C(k+63,63)` classes, or
 839,983,521,106,400 at `k=14`; the additional `S_6` endpoint quotient has
