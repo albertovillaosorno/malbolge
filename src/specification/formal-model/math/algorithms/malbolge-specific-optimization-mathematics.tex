@@ -894,6 +894,41 @@ rank/unrank. Direct $V_4$ orbit exhaustion through mass three gives every rank
 exactly once; checked boundary/interior ranks roundtrip through mass fourteen.
 This remains a residual-stabilizer result, not a complete dense $S_5$ rank.
 
+For a three-vertex equal block and a disjoint two-vertex equal block, the
+residual stabilizer is $S_3\times S_2$. On the twenty scalar edge-count
+components, define
+\[
+  \begin{aligned}
+    R_m&=\binom{m+19}{19},\\
+    S_m&=[x^m](1-x)^{-8}(1-x^2)^{-6},\\
+    T_m&=[x^m](1-x)^{-2}(1-x^3)^{-6},\\
+    U_m&=[x^m](1-x)^{-4}(1-x^2)^{-8},\\
+    V_m&=[x^m](1-x)^{-2}(1-x^3)^{-2}(1-x^6)^{-2}.
+  \end{aligned}
+\]
+Quotient first by the $S_3$ block. Its quotient count and the classes setwise
+fixed by the descended $S_2$ action are respectively
+\[
+  Q_m=\frac{R_m+3S_m+2T_m}{6},\qquad
+  F_m=\frac{S_m+3U_m+2V_m}{6}.
+\]
+The second quotient is therefore
+\begin{equation}
+  \fitmath{%
+    \left|\mathcal E^{(5)}_{S_3\times S_2,m}\right|
+      =\frac{Q_m+F_m}{2}
+      =\frac{R_m+4S_m+2T_m+3U_m+2V_m}{12},
+    \qquad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s3s2-edge-quotient}
+\end{equation}
+Direct residual assignments through mass three reproduce the first $S_3$
+quotient, its descended-$S_2$ fixed subset, and the final product-group orbits.
+An independent twelve-element Burnside sum agrees through mass fourteen, where
+the final count is 68763298. This isolates the next constructive step: a dense
+prefix and inverse for the descended $S_2$ action on the first-$S_3$ quotient.
+No dense order-twelve or complete $S_5$ rank is claimed here.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,
