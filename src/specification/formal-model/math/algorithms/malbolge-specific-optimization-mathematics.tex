@@ -1239,6 +1239,43 @@ order-twelve, and order-twenty-four stabilizer types need no further quotient.
 The exact counts reproduce all 272924 symmetric classes. This factorization
 does not itself define their dense local ranks.
 
+The largest symmetric exception stratum also has a dense constructive rank.
+Fix $H=\langle(01)\rangle$. An $H$-fixed pair-valued $K_5$ edge assignment is
+one fixed pair on edge $01$ plus three four-scalar bundles
+\[
+  b_i=(u_i,v_i,w_i,z_i),
+  \qquad |b_i|_H=2(u_i+v_i)+w_i+z_i,
+  \qquad i\in\{2,3,4\},
+\]
+where $(u_i,v_i)$ is the common value on edges $0i$ and $1i$, and
+$(w_i,z_i)$ is the value on the opposite edge among vertices $2,3,4$.
+The normalizer quotient $N(H)/H\cong S_3$ only permutes these three weighted
+bundles. Let $q_m$ be the dense quotient rank obtained by prefixing the fixed
+edge-pair mass/rank and then the nondecreasing weighted bundle multiset, and let
+\[
+  A_m=\{r:0\leq r<Q_m,\;
+    \operatorname{Aut}(q_m^{-1}(r))=H\}.
+\]
+Filtering the dense $H$-fixed normalizer quotient to $A_m$ gives
+\begin{equation}
+  \fitmath{%
+    \rho^{(E,H=2)}_m(q_m^{-1}(r))
+      =|\{a\in A_m:a<r\}|,
+    \qquad r\in A_m,
+    \qquad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s5-transposition-ranking}
+\end{equation}
+The inverse selects the rank-th member of $A_m$ and applies $q_m^{-1}$.
+Full-$S_5$ coset signatures test exact stabilizer membership, so no larger
+stabilizer is retained. At mass fourteen the unfiltered quotient has
+$Q_{14}=261450$ classes and $|A_{14}|=239656$, exactly the single-transposition
+conjugacy stratum above. Direct full-$S_5$ orbit checks through mass three give
+one orbit per dense rank; dense rank/unrank is exhausted through mass six and
+checked at representative boundary/interior ranks through mass fourteen. This
+ranks the largest symmetric exception type only; the other seven nontrivial
+stabilizer types and the trivial-stabilizer minimum-root prefix remain open.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,

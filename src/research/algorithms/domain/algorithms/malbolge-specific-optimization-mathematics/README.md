@@ -169,8 +169,10 @@ through mass 14. Rooted-view multiplicity is exactly the automorphism vertex-
 orbit count, giving every trivial-stabilizer class a unique minimum rooted rank.
 
 Every nontrivial exception further reduces to a normalizer quotient of order at
-most six. Dense minimum-root prefix ranking, dense exception ranks, and complete
-dense S5 rank remain open.
+most six. The largest, single-transposition stratum now has dense rank/unrank by
+filtering its weighted S3 normalizer quotient to exact-stabilizer indices. Dense
+minimum-root prefix ranking, seven smaller exception ranks, and complete dense
+S5 rank remain open.
 Ordered sextuples have
 `C(k+63,63)` classes, or
 839,983,521,106,400 at `k=14`; the additional `S_6` endpoint quotient has
