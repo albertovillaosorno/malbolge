@@ -836,6 +836,35 @@ agree with the dense rank. Boundary/interior ranks roundtrip through mass
 fourteen, where $E^{(3)}_{14}=137220618$. The result applies to any conjugate
 order-six residual vertex stabilizer and does not provide a complete $S_5$ rank.
 
+For two disjoint equal-vertex pairs, the residual stabilizer is
+$V_4=\langle a,b\rangle\cong S_2\times S_2$. On the twenty scalar edge-count
+components, either generator has cycle type $1^8 2^6$, while $ab$ has type
+$1^4 2^8$. Define
+\[
+  \begin{aligned}
+    A_m&=\binom{m+19}{19},\\
+    B_m&=[x^m](1-x)^{-8}(1-x^2)^{-6},\\
+    D_m&=[x^m](1-x)^{-4}(1-x^2)^{-8}.
+  \end{aligned}
+\]
+Quotient first by $a$. The first quotient has $Q_m=(A_m+B_m)/2$ classes, and
+the classes setwise fixed by the descended action of $b$ number
+$F_m=(B_m+D_m)/2$. Therefore
+\begin{equation}
+  \fitmath{%
+    \left|\mathcal E^{(5)}_{V_4,m}\right|
+      =\frac{Q_m+F_m}{2}
+      =\frac{A_m+2B_m+D_m}{4},
+    \qquad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-v4-edge-quotient}
+\end{equation}
+Direct residual assignments through mass three reproduce the first quotient,
+its $b$-fixed subset, and the final $V_4$ orbits. At mass fourteen the final
+count is 205482000. This identity isolates the remaining constructive problem:
+a dense prefix and inverse for the descended $b$ action on first-$S_2$ quotient
+classes. No dense $V_4$ or complete $S_5$ rank is claimed here.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,
