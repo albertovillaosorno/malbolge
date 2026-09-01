@@ -363,3 +363,114 @@ def test_endpoint_symmetric_quotient_lifts_to_small_reachable_pairs() -> None:
         for accumulator in range(domain):
             for target in range(domain):
                 _check_fixed_pair_lifting(target, accumulator, trit_count)
+
+
+def _canonical_count_block_size(residual: int) -> int:
+    return ((residual + 2) * (residual + 2)) // 4
+
+
+def _canonical_count_prefix(dimension: int, n00: int) -> int:
+    return sum(
+        _canonical_count_block_size(dimension - earlier_n00)
+        for earlier_n00 in range(n00)
+    )
+
+
+def _canonical_count_rank(
+    counts: tuple[int, int, int, int],
+) -> int | None:
+    n00, n01, n10, _ = counts
+    if min(counts) < 0 or n01 > n10:
+        return None
+    dimension = sum(counts)
+    residual = dimension - n00
+    return (
+        _canonical_count_prefix(dimension, n00)
+        + n01 * (residual - n01 + 2)
+        + (n10 - n01)
+    )
+
+
+def _unrank_canonical_count_row(
+    residual: int,
+    rank: int,
+) -> tuple[int, int, int]:
+    residual_rank = rank
+    for n01 in range((residual // 2) + 1):
+        row_size = residual - 2 * n01 + 1
+        if residual_rank >= row_size:
+            residual_rank -= row_size
+            continue
+        n10 = n01 + residual_rank
+        return n01, n10, residual - n01 - n10
+    raise AssertionError
+
+
+def _canonical_count_unrank(
+    dimension: int,
+    rank: int,
+) -> tuple[int, int, int, int] | None:
+    class_count = _endpoint_symmetric_class_count(dimension)
+    if rank < 0 or rank >= class_count:
+        return None
+    residual_rank = rank
+    for n00 in range(dimension + 1):
+        residual = dimension - n00
+        block_size = _canonical_count_block_size(residual)
+        if residual_rank >= block_size:
+            residual_rank -= block_size
+            continue
+        n01, n10, n11 = _unrank_canonical_count_row(residual, residual_rank)
+        return n00, n01, n10, n11
+    raise AssertionError
+
+
+def test_endpoint_symmetric_count_rank_is_dense() -> None:
+    """Every checked endpoint-symmetric class receives one dense rank."""
+    for dimension in range(_MAXIMUM_TRITS + 1):
+        canonical = tuple(
+            counts
+            for counts in _joint_count_vectors(dimension)
+            if counts[1] <= counts[2]
+        )
+        ranks = tuple(_canonical_count_rank(counts) for counts in canonical)
+        assert len(canonical) == _endpoint_symmetric_class_count(dimension)
+        assert ranks == tuple(range(len(canonical)))
+        assert tuple(
+            _canonical_count_unrank(dimension, rank)
+            for rank in range(len(canonical))
+        ) == canonical
+
+
+def test_endpoint_symmetric_count_rank_rejects_noncanonical_inputs() -> None:
+    """Rank and unrank fail closed outside the checked canonical domain."""
+    for dimension in range(_MAXIMUM_TRITS + 1):
+        class_count = _endpoint_symmetric_class_count(dimension)
+        assert _canonical_count_unrank(dimension, -1) is None
+        assert _canonical_count_unrank(dimension, class_count) is None
+        if dimension == 0:
+            continue
+        assert _canonical_count_rank((-1, 0, 0, dimension + 1)) is None
+        assert _canonical_count_rank((0, 1, 0, dimension - 1)) is None
+
+
+def test_endpoint_symmetric_rank_preserves_canonical_pair_identity() -> None:
+    """Raw swapped/coordinate-equivalent pairs land on the same dense rank."""
+    for dimension in range(_EXHAUSTIVE_DIMENSION + 1):
+        cube_size = 1 << dimension
+        observed: dict[tuple[int, int], int] = {}
+        for left in range(cube_size):
+            for right in range(cube_size):
+                canonical_pair, counts = _canonicalize_pair(
+                    left,
+                    right,
+                    dimension,
+                )
+                rank = _canonical_count_rank(counts)
+                assert rank is not None
+                assert _canonical_count_unrank(dimension, rank) == counts
+                previous = observed.setdefault(canonical_pair, rank)
+                assert previous == rank
+        assert set(observed.values()) == set(
+            range(_endpoint_symmetric_class_count(dimension))
+        )

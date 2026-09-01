@@ -534,6 +534,16 @@ mechanism = "endpoint-swap-fixed-classes-plus-canonical-orientation"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_endpoint_symmetric_quotient.py::test_endpoint_symmetric_pair_orbits_are_exact_through_dimension_eight", "tests/mathematics/test_crazy_preimage_cube_endpoint_symmetric_quotient.py::test_endpoint_symmetric_counts_cover_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_endpoint_symmetric_quotient.py::test_endpoint_symmetric_quotient_lifts_to_small_reachable_pairs"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-endpoint-symmetric-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-endpoint-symmetric-pair-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "endpoint-symmetric joint-count classes in reachable fixed accumulator/target preimage cubes at ambiguity dimensions 0 through 14, using canonical orientation n01<=n10 under simultaneous coordinate permutation and endpoint swap"
+mechanism = "residual-block-prefix-plus-within-block-row-prefix-dense-ranking-and-threshold-unranking"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_endpoint_symmetric_quotient.py::test_endpoint_symmetric_count_rank_is_dense", "tests/mathematics/test_crazy_preimage_cube_endpoint_symmetric_quotient.py::test_endpoint_symmetric_count_rank_rejects_noncanonical_inputs", "tests/mathematics/test_crazy_preimage_cube_endpoint_symmetric_quotient.py::test_endpoint_symmetric_rank_preserves_canonical_pair_identity"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-distance"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-profile-preimage-cube-distance"

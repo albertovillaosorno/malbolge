@@ -900,6 +900,35 @@ trit distance. This quotient applies only to objectives invariant under both
 ambiguity-coordinate relabeling and endpoint swap; it is not direction-
 sensitive Malbolge semantic equivalence or a wall-clock speedup claim.
 
+The same endpoint-oriented count vectors admit a dense constructive index. Let
+$n=(n_{00},n_{01},n_{10},n_{11})$ be canonical, so all components are
+nonnegative, sum to $k$, and $n_{01}\leq n_{10}$. Write
+$s=k-n_{00}$ and
+\[
+  B(s)=\left\lfloor\frac{(s+2)^2}{4}\right\rfloor.
+\]
+For lexicographic enumeration by $n_{00}$, then $n_{01}$, then $n_{10}$,
+define
+\begin{equation}
+  \fitmath{%
+    \rho_k(n)=
+      \sum_{a=0}^{n_{00}-1}B(k-a)
+      +n_{01}(s-n_{01}+2)
+      +(n_{10}-n_{01}),
+    \qquad
+    \rho_k:\mathcal U_k\overset{\sim}{\longrightarrow}\{0,\ldots,U_k-1\},
+    \quad 0\leq k\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-endpoint-symmetric-pair-ranking}
+\end{equation}
+For fixed $n_{00}$, residual $s$ gives exactly $B(s)$ canonical triples.
+A row with $n_{01}=b$ has $s-2b+1$ choices for $n_{10}$, and all earlier rows
+contain $b(s-b+2)$ entries. Unranking subtracts the unique $B(k-a)$ block and
+row, then reconstructs
+$n_{10}=b+r$ and $n_{11}=s-b-n_{10}$ from offset $r$. Checked evidence
+roundtrips every class through $k=14$ and every raw coordinate/endpoint-swap
+pair through $k=8$. This dense index requires the same endpoint invariance.
+
 The cube isomorphism also fixes every trit-distance shell. For any compatible
 word $d$, define
 $S_j(d)=\{x:\CrazyN{N}{x}{a}=t,\ H_3(d,x)=j\}$ and

@@ -218,6 +218,11 @@ width-14 fixed pair, this endpoint-symmetric quotient has
 18,096,618,233,793 canonical pairs. These quotients apply only to analyses with
 the stated coordinate and endpoint symmetries.
 
+Those endpoint-symmetric pair classes now also have a dense constructive index.
+For canonical joint counts with `n01<=n10`, residual block sizes are
+`floor((s+2)^2/4)` and the row prefix before `n01=b` is `b*(s-b+2)`; exact
+rank/unrank spans `0..U_k-1` through `k=14` and rejects noncanonical inputs.
+
 Distance shells are also exact: every origin has `C(k,j)` compatible words at
 trit distance `j`, radius `r` contains `sum_{j=0}^r C(k,j)` words, and
 

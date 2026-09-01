@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes eighty-six exact reductions: classic five-trit crazy
+formalizes eighty-seven exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -106,7 +106,8 @@ quotient counts, exact ordered-quintuple and endpoint-unordered quintuple
 quotient counts, exact ordered and endpoint-unordered sextuple quotient counts
 across all reachable fixed pairs, exact
 endpoint-symmetric pair quotient with
-`(C(k+3,3)+floor((k+2)^2/4))/2` classes, plus exact binomial distance
+`(C(k+3,3)+floor((k+2)^2/4))/2` classes and dense rank/unrank, plus exact
+binomial distance
 shells/balls, diameter, and shortest-path
 lower bounds/counts plus fixed-radius covering lower bounds, perfect
 radius-one Hamming covers, the exact checked perfect-partition dimensions, and
@@ -788,8 +789,12 @@ ordered pairs. The parity correction follows from the swap-fixed count and
 `(5-2)^N=3^N`; this is an exact complete-domain cardinality result only.
 
 Orienting the larger Hamming-weight endpoint first gives a canonical key
-`(max(wx,wy),min(wx,wy),d)`. This refinement applies only when endpoint order is
-irrelevant; direction-sensitive analyses retain the ordered-pair quotient.
+`(max(wx,wy),min(wx,wy),d)`. The oriented joint counts also have a dense rank:
+residual block sizes are `floor((s+2)^2/4)`, and the within-block prefix before
+`n01=b` is `b*(s-b+2)`. Exhaustive rank/unrank covers every class through
+`k=14` and every raw pair through `k=8`. This refinement applies only when
+endpoint order is irrelevant; direction-sensitive analyses retain the ordered-
+pair quotient.
 
 Moreover, from any compatible word the exact distance-`j` shell has `C(k,j)`
 words, a
@@ -889,8 +894,8 @@ coordinate-permutation cube quotient, exact ordered cube-word pair quotient,
 exact ordered cube-word triple, quadruple, and quintuple quotients, exact
 endpoint-unordered triple quotient, exact global ordered-triple, ordered-
 quadruple, and ordered-quintuple quotient
-counts, exact endpoint-symmetric pair quotient and its global aggregate, and
-exact preimage-cube distance
+counts, exact endpoint-symmetric pair quotient, dense rank/unrank, and its
+global aggregate, and exact preimage-cube distance
 shells/balls, exact mutation geodesics, fixed-radius
 covering lower bounds, perfect radius-one Hamming covers, exact checked
 perfect-partition dimensions, complete checked perfect-radius classification,
@@ -940,8 +945,7 @@ and sextuple quotients, plus the
 established
 triple/quadruple global aggregates, the quintuple global aggregate, and both
 sextuple global aggregates, exact global ordered-triple and ordered-quadruple
-quotient counts, exact endpoint-
-symmetric pair quotient,
+quotient counts, exact endpoint-symmetric pair quotient and dense rank/unrank,
 and
 exact binomial distance shells/balls,
 diameter,
