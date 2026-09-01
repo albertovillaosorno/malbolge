@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes ninety-five exact reductions: classic five-trit crazy
+formalizes ninety-six exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -729,8 +729,11 @@ vertex stabilizer.
 
 For an order-two stabilizer, four edges are fixed while three edge pairs swap
 together; treating those swaps as one unordered pair of six-component
-compositions gives exact dense residual rank/unrank through mass fourteen.
-Larger residual stabilizers and complete dense S5 ranking remain open.
+compositions gives exact dense residual rank/unrank through mass fourteen. For
+an order-six `S_3` stabilizer, one edge is fixed and the remaining edges form
+three six-component bundles permuted together; multiset ranking gives another
+exact dense residual index through mass fourteen. Other residual stabilizers and
+complete dense S5 ranking remain open.
 
 Ordered sextuples have sixty-four joint-pattern counts and exactly
 `C(k+63,63)` coordinate classes, or 839,983,521,106,400 at `k=14`. Adding the

@@ -806,6 +806,36 @@ rank, while checked boundary/interior ranks roundtrip through mass fourteen.
 At $m=14$, $E^{(2)}_{14}=410156688$. This result applies to any conjugate
 order-two residual vertex stabilizer and makes no full-$S_5$ dense-rank claim.
 
+For a residual $S_3$ block, one $K_5$ edge between the two fixed vertices is
+fixed. Associate to each of the other three vertices a six-component bundle:
+the count pair on the opposite triangle edge together with the two count pairs
+on its edges to the fixed vertices. Endpoint $S_3$ permutes exactly these three
+bundles. With $C_6(t)=\binom{t+5}{5}$, for a mass triple
+$a\leq b\leq c$ let $\mu_t$ be the multiplicity of mass $t$ and set
+\[
+  \begin{aligned}
+    M(a,b,c)&=\prod_t\binom{C_6(t)+\mu_t-1}{\mu_t},\\
+    T_m&=\sum_{\substack{a\leq b\leq c\\a+b+c=m}}M(a,b,c),\\
+    E^{(3)}_m&=\sum_{f=0}^{m}C_2(f)T_{m-f}.
+  \end{aligned}
+\]
+Ranking first the fixed two-component composition, then the nondecreasing mass
+triple, and finally the combinations-with-repetition of dense six-component
+composition ranks gives
+\begin{equation}
+  \fitmath{%
+    \rho^{(E,3)}_m:
+      \mathcal E^{(5)}_{S_3,m}
+      \overset{\sim}{\longrightarrow}\{0,\ldots,E^{(3)}_m-1\},
+    \qquad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s3-edge-ranking}
+\end{equation}
+Direct residual orbits through mass three and independent $S_3$ Burnside counts
+agree with the dense rank. Boundary/interior ranks roundtrip through mass
+fourteen, where $E^{(3)}_{14}=137220618$. The result applies to any conjugate
+order-six residual vertex stabilizer and does not provide a complete $S_5$ rank.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,

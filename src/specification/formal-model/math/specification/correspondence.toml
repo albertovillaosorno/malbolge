@@ -494,6 +494,16 @@ mechanism = "fixed-eight-component-composition-prefix-plus-coupled-unordered-pai
 evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s2_edge_ranking.py::test_s2_edge_action_has_four_fixed_and_three_swapped_edges", "tests/mathematics/test_crazy_preimage_cube_quintuple_s2_edge_ranking.py::test_dense_s2_edge_rank_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_quintuple_s2_edge_ranking.py::test_dense_s2_edge_rank_roundtrips_through_mass_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-quintuple-s3-edge-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-quintuple-s3-edge-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "pair-valued K5 edge assignments of residual mass 0 through 14 under any order-six residual S5 vertex stabilizer conjugate to S3 acting on three equal vertex-count pairs and fixing the other two vertices"
+mechanism = "fixed-two-component-composition-prefix-plus-multiset-of-three-six-component-bundle-composition-ranks"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s3_edge_ranking.py::test_s3_edge_bundles_transform_by_one_common_permutation", "tests/mathematics/test_crazy_preimage_cube_quintuple_s3_edge_ranking.py::test_dense_s3_edge_rank_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_quintuple_s3_edge_ranking.py::test_dense_s3_edge_rank_roundtrips_through_mass_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-ordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-ordered-sextuple-quotient"
