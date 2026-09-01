@@ -957,6 +957,36 @@ Direct product-group orbit exhaustion through mass three gives every rank once,
 and boundary/interior ranks roundtrip through mass fourteen. This remains a
 residual-stabilizer result, not a complete dense $S_5$ rank.
 
+For a four-vertex equal block and one fixed vertex, the residual stabilizer is
+$S_4$. Write $q_i\in\mathbb N^2$ for the pair-valued spoke from active vertex
+$i$ to the fixed vertex and $e_{ij}\in\mathbb N^2$ for the six pair-valued
+$K_4$ edges. Sort the four $q_i$ values. Their multiplicity partition is one of
+\[
+  1+1+1+1,\qquad 2+1+1,\qquad 2+2,\qquad 3+1,\qquad 4,
+\]
+with stabilizer orders $1,2,4,6,24$. For one sorted spoke multiset $q$, let
+$H_q\leq S_4$ be its equal-spoke stabilizer and let $m_{\pi,c}$ count
+$c$-cycles of $\pi\in H_q$ on the six $K_4$ edges. Then the exact residual
+class count is
+\begin{equation}
+  \fitmath{%
+    C^{(E,24)}_m=
+      \sum_{\substack{q_1\leq\cdots\leq q_4\\|q|\leq m}}
+      \frac{1}{|H_q|}
+      \sum_{\pi\in H_q}
+      [x^{m-|q|}]
+      \prod_{c\geq1}(1-x^c)^{-2m_{\pi,c}},
+    \qquad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s4-edge-decomposition}
+\end{equation}
+The exponent two records the two scalar counts in every complementary edge
+pair. Raw $S_4$ orbit enumeration through mass three, the spoke/stabilizer
+factorization, and an independent full-group Burnside sum agree. At mass
+fourteen $C^{(E,24)}_{14}=34507258$. This is an exact structural reduction; it
+does not yet provide dense order-twenty-four rank/unrank or complete $S_5$
+ranking.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,

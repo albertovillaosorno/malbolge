@@ -150,7 +150,9 @@ The order-four `S_2 x S_2` residual stabilizer now also has exact dense
 rank/unrank through mass 14 via a nested fixed/nonfixed diagonal-involution
 factorization. The order-twelve `S_3 x S_2` stabilizer now also has exact
 dense rank/unrank through mass 14 by nondecreasing three-bundle mass blocks and
-fixed/nonfixed involution ranks. Larger stabilizers and a complete S5 dense rank
+fixed/nonfixed involution ranks. The order-24 `S_4` residual stabilizer has an
+exact sorted-spoke/K4-edge stabilizer decomposition through mass 14, while its
+dense inverse, the order-120 residual stabilizer, and a complete S5 dense rank
 remain open. Ordered sextuples have
 `C(k+63,63)` classes, or
 839,983,521,106,400 at `k=14`; the additional `S_6` endpoint quotient has
