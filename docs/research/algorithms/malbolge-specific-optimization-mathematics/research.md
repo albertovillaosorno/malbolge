@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes ninety-one exact reductions: classic five-trit crazy
+formalizes ninety-two exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -759,10 +759,10 @@ Summing the endpoint-unordered quadruple quotient over the same fixed-pair
 distribution gives 1,409,733,897,288,413 canonical quadruples at `N=14`.
 Burnside's five global fixed counts are 25,678,405,217,633,865,
 1,182,834,266,824,809, 180,742,210,147,993, 57,110,313,884,289, and
-9,848,929,136,817. Independent width-1-through-3 pair enumeration and
-transformed generating functions verify the aggregate through width fourteen;
-this is a
-cardinality result only.
+9,848,929,136,817. The base-seven reachable-pair order composes with the local
+dense S4 rank by ambiguity-weighted suffix blocks, giving dense global
+rank/unrank through width fourteen. This is exact state accounting under both
+stated symmetry actions, not a timing claim.
 
 The ordered-quintuple aggregate is
 `sum_k C(N,k)2^k5^(N-k)C(k+31,31)`, equal to
@@ -959,8 +959,9 @@ arity transforms, exact endpoint-
 unordered triple, quadruple, quintuple,
 and sextuple quotients, plus the
 established
-triple/quadruple global aggregates, dense global unordered-triple rank/unrank,
-the quintuple global aggregate, and both sextuple global aggregates, exact
+triple/quadruple global aggregates, dense global unordered-triple and
+unordered-quadruple rank/unrank, the quintuple global aggregate, and both
+sextuple global aggregates, exact
 global ordered-triple and ordered-quadruple
 quotient counts, exact endpoint-symmetric pair quotient and dense local/global
 rank/unrank,

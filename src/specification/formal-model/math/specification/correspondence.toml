@@ -950,6 +950,16 @@ mechanism = "ambiguity-weighted-base-seven-digit-DP-prefix-with-exact-S3-local-c
 evidence = ["tests/mathematics/test_crazy_preimage_cube_global_unordered_triple_ranking.py::test_global_s3_rank_exhausts_small_ragged_domains", "tests/mathematics/test_crazy_preimage_cube_global_unordered_triple_ranking.py::test_global_s3_rank_roundtrips_checked_boundaries", "tests/mathematics/test_crazy_preimage_cube_global_unordered_triple_ranking.py::test_global_s3_prefix_matches_direct_small_pair_sums", "tests/mathematics/test_crazy_preimage_cube_unordered_triple_ranking.py::test_dense_rank_exhausts_every_class_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_global_unordered_triple_quotient.py::test_global_unordered_triple_quotient_has_exact_closed_count"]
 
 [[correspondence]]
+id = "optimization-crazy-global-unordered-quadruple-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-global-unordered-quadruple-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all endpoint-unordered S4 preimage-quadruple classes over every reachable fixed accumulator/target pair at widths 1 through 14, ordered by the established base-seven reachable-pair rank and then by the dense local S4 quotient rank"
+mechanism = "ambiguity-weighted-base-seven-digit-DP-prefix-with-exact-S4-local-class-counts-plus-local-dense-rank"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_global_unordered_quadruple_ranking.py::test_global_s4_rank_exhausts_small_ragged_domains", "tests/mathematics/test_crazy_preimage_cube_global_unordered_quadruple_ranking.py::test_global_s4_rank_roundtrips_checked_boundaries", "tests/mathematics/test_crazy_preimage_cube_global_unordered_quadruple_ranking.py::test_global_s4_prefix_matches_direct_small_pair_sums", "tests/mathematics/test_crazy_preimage_cube_unordered_quadruple_ranking.py::test_dense_s4_class_count_matches_burnside_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_global_unordered_quadruple_quotient.py::test_global_unordered_quadruple_quotient_has_exact_closed_count"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-mean-preimage-count"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-profile-mean-preimage-count"

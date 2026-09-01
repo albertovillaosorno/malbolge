@@ -1885,6 +1885,33 @@ through width fourteen reproduce the global $S_3$ count, including
 124279218052677 ranks at $N=14$. The construction inherits the fixed-pair,
 coordinate-symmetry, and endpoint-permutation preconditions.
 
+The same construction composes with the dense local $S_4$ rank. Write
+$U^{(4)}_k=|\mathcal J^{(4)}_k/S_4|$ and define
+\[
+  W^{(4)}_i(a)=\sum_{j=0}^{i}\binom{i}{j}2^j5^{i-j}U^{(4)}_{a+j},
+  \qquad
+  P^{(4)}_N(d)=\sum_{i=0}^{N-1}\sum_{v=0}^{d_i-1}
+    W^{(4)}_i\!\left(\kappa_{>i}+\epsilon(v)\right).
+\]
+For a local unordered-quadruple class with dense rank
+$r=\rho^{(4)}_\kappa(n)$, set
+\begin{equation}
+  \fitmath{%
+    \Gamma^{(4)}_N(d,n)=P^{(4)}_N(d)+\rho^{(4)}_\kappa(n),
+    \qquad
+    \Gamma^{(4)}_N:
+      \bigsqcup_{d\in\{0,\ldots,6\}^N}\mathcal J^{(4)}_{\kappa(d)}/S_4
+      \overset{\sim}{\longrightarrow}\{0,\ldots,U^{(4)}_N-1\},
+    \quad 1\leq N\leq14.
+  }
+  \label{eq:optimization-crazy-global-unordered-quadruple-ranking}
+\end{equation}
+Unranking subtracts high-digit suffix blocks and then interprets the residual
+as one local $S_4$ rank. Exhaustive enumeration through width four and checked
+boundary/interior roundtrips through width fourteen reproduce the global count,
+including 1409733897288413 ranks at $N=14$. The construction inherits the
+fixed-pair, coordinate-symmetry, and endpoint-permutation preconditions.
+
 A uniformly chosen reachable accumulator/target pair therefore has exact mean
 complete-domain preimage cardinality
 \begin{equation}

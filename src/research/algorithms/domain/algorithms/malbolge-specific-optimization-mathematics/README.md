@@ -129,7 +129,9 @@ count pairs and then ranks the six weighted-K4 edges under the residual equal-
 vertex stabilizer. Its block totals reproduce Burnside through dimension 14.
 
 Summed over every reachable width-14 fixed pair, that endpoint-unordered
-quadruple quotient has 1,409,733,897,288,413 canonical classes.
+quadruple quotient has 1,409,733,897,288,413 canonical classes. The base-seven
+reachable-pair DP composes with the local S4 rank, giving dense global
+rank/unrank across exactly those classes through width fourteen.
 
 Ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; if quintuple
 endpoint order is irrelevant, the additional `S_5` quotient has exactly
