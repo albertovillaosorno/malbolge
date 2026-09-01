@@ -223,6 +223,12 @@ For canonical joint counts with `n01<=n10`, residual block sizes are
 `floor((s+2)^2/4)` and the row prefix before `n01=b` is `b*(s-b+2)`; exact
 rank/unrank spans `0..U_k-1` through `k=14` and rejects noncanonical inputs.
 
+A second digit-DP composes that local index with the base-seven reachable-pair
+order. Each higher pair digit fixes its ambiguity contribution; suffix block
+weights sum `C(i,j)*2^j*5^(i-j)*U_(a+j)` over the remaining positions. This
+yields dense global rank/unrank across the ragged union of all fixed-pair
+quotients, with exactly 18,096,618,233,793 ranks at width fourteen.
+
 Distance shells are also exact: every origin has `C(k,j)` compatible words at
 trit distance `j`, radius `r` contains `sum_{j=0}^r C(k,j)` words, and
 

@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes eighty-seven exact reductions: classic five-trit crazy
+formalizes eighty-eight exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -106,8 +106,8 @@ quotient counts, exact ordered-quintuple and endpoint-unordered quintuple
 quotient counts, exact ordered and endpoint-unordered sextuple quotient counts
 across all reachable fixed pairs, exact
 endpoint-symmetric pair quotient with
-`(C(k+3,3)+floor((k+2)^2/4))/2` classes and dense rank/unrank, plus exact
-binomial distance
+`(C(k+3,3)+floor((k+2)^2/4))/2` classes, dense local rank/unrank, and dense
+global ragged-domain rank/unrank, plus exact binomial distance
 shells/balls, diameter, and shortest-path
 lower bounds/counts plus fixed-radius covering lower bounds, perfect
 radius-one Hamming covers, the exact checked perfect-partition dimensions, and
@@ -787,6 +787,10 @@ quotient has
 18,096,618,233,793 representatives instead of 3,937,376,385,699,289 raw
 ordered pairs. The parity correction follows from the swap-fixed count and
 `(5-2)^N=3^N`; this is an exact complete-domain cardinality result only.
+The base-seven reachable-pair order also composes with the local dense pair rank
+through ambiguity-weighted suffix block sums, yielding a dense global
+`0..E_N-1` rank/unrank. Exhaustive global enumeration reaches width four and
+boundary/midpoint roundtrips reach width fourteen.
 
 Orienting the larger Hamming-weight endpoint first gives a canonical key
 `(max(wx,wy),min(wx,wy),d)`. The oriented joint counts also have a dense rank:
@@ -894,8 +898,8 @@ coordinate-permutation cube quotient, exact ordered cube-word pair quotient,
 exact ordered cube-word triple, quadruple, and quintuple quotients, exact
 endpoint-unordered triple quotient, exact global ordered-triple, ordered-
 quadruple, and ordered-quintuple quotient
-counts, exact endpoint-symmetric pair quotient, dense rank/unrank, and its
-global aggregate, and exact preimage-cube distance
+counts, exact endpoint-symmetric pair quotient, dense local/global rank/unrank,
+and its global aggregate, and exact preimage-cube distance
 shells/balls, exact mutation geodesics, fixed-radius
 covering lower bounds, perfect radius-one Hamming covers, exact checked
 perfect-partition dimensions, complete checked perfect-radius classification,
@@ -945,7 +949,8 @@ and sextuple quotients, plus the
 established
 triple/quadruple global aggregates, the quintuple global aggregate, and both
 sextuple global aggregates, exact global ordered-triple and ordered-quadruple
-quotient counts, exact endpoint-symmetric pair quotient and dense rank/unrank,
+quotient counts, exact endpoint-symmetric pair quotient and dense local/global
+rank/unrank,
 and
 exact binomial distance shells/balls,
 diameter,

@@ -910,6 +910,16 @@ mechanism = "independent-seven-symbol-local-bijection-lifted-to-base-seven-ranki
 evidence = ["tests/mathematics/test_crazy_reachable_rank.py::test_local_reachable_crazy_pair_alphabet_is_exact", "tests/mathematics/test_crazy_reachable_rank.py::test_reachable_crazy_pair_rank_is_exact_for_checked_widths", "tests/mathematics/test_crazy_reachable_rank.py::test_reachable_crazy_pair_rank_exhausts_small_widths"]
 
 [[correspondence]]
+id = "optimization-crazy-global-endpoint-symmetric-pair-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-global-endpoint-symmetric-pair-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all endpoint-symmetric preimage-pair classes over every reachable fixed accumulator/target pair at widths 1 through 14, ordered first by the established base-seven reachable-pair rank and then by dense local endpoint-symmetric rank"
+mechanism = "ambiguity-weighted-base-seven-digit-DP-prefix-plus-local-dense-rank-and-inverse-block-subtraction"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_global_endpoint_symmetric_ranking.py::test_global_rank_exhausts_small_ragged_domains", "tests/mathematics/test_crazy_preimage_cube_global_endpoint_symmetric_ranking.py::test_global_rank_roundtrips_checked_width_boundaries", "tests/mathematics/test_crazy_preimage_cube_global_endpoint_symmetric_ranking.py::test_global_prefix_matches_direct_small_pair_weight_sums", "tests/mathematics/test_crazy_preimage_cube_global_endpoint_symmetric_quotient.py::test_global_endpoint_symmetric_quotient_has_exact_closed_count"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-mean-preimage-count"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-profile-mean-preimage-count"

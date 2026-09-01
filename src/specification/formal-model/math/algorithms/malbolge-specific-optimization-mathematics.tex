@@ -1749,6 +1749,41 @@ visit the $9^N-7^N$ impossible pairs. The bijection preserves pair identity; it
 does not equate distinct reachable pairs, infer external-corpus membership, or
 claim a runtime speedup.
 
+The reachable-pair order and local endpoint-symmetric rank compose into one
+dense index over the global ragged quotient domain. Let
+$\epsilon(v)\in\{0,1\}$ indicate whether reachable local symbol $q^{-1}(v)$ has
+two crazy preimages; exactly two of the seven symbols have $\epsilon(v)=1$.
+For $i$ lower positions and an already fixed ambiguity count $a$, define
+\[
+  W_i(a)=\sum_{j=0}^{i}\binom{i}{j}2^j5^{i-j}U_{a+j}.
+\]
+For reachable-pair digits $d_i=q(a_i,t_i)$, let
+$\kappa_{>i}=\sum_{r=i+1}^{N-1}\epsilon(d_r)$ and
+$\kappa=\sum_i\epsilon(d_i)$. The number of canonical objects preceding that
+fixed pair in base-seven order is
+\[
+  P_N(d)=\sum_{i=0}^{N-1}\sum_{v=0}^{d_i-1}
+    W_i\!\left(\kappa_{>i}+\epsilon(v)\right).
+\]
+Thus, for local endpoint-symmetric class $n\in\mathcal U_\kappa$,
+\begin{equation}
+  \fitmath{%
+    \Gamma_N(d,n)=P_N(d)+\rho_\kappa(n),\qquad
+    \Gamma_N:\bigsqcup_{d\in\{0,\ldots,6\}^N}\mathcal U_{\kappa(d)}
+      \overset{\sim}{\longrightarrow}\{0,\ldots,E_N-1\},
+    \quad 1\leq N\leq14.
+  }
+  \label{eq:optimization-crazy-global-endpoint-symmetric-pair-ranking}
+\end{equation}
+Unranking reads digits from most to least significant. At position $i$, it
+subtracts each candidate block
+$W_i(\kappa_{>i}+\epsilon(v))$ until the residual lies in one block, then
+continues with that digit; the final residual is unranked by $\rho_\kappa^{-1}$.
+Exhaustive global enumeration through width four and boundary/midpoint
+roundtrips through width fourteen reproduce the exact global count $E_N$,
+including 18096618233793 ranks at $N=14$. The construction inherits both the
+fixed-pair identity and endpoint-symmetry preconditions.
+
 A uniformly chosen reachable accumulator/target pair therefore has exact mean
 complete-domain preimage cardinality
 \begin{equation}
