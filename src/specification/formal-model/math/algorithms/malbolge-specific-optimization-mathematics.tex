@@ -1437,6 +1437,38 @@ coordinate quotient through dimension two and reconstructs the raw $64^k$ orbit
 mass there; Burnside arithmetic reaches dimension fourteen. This refinement
 applies only when endpoint order is irrelevant and makes no timing claim.
 
+The $S_6$ quotient also admits an exact stabilizer factorization that is more
+constructive than the cycle index alone. Split the sixty-four joint labels by
+Hamming weight. The weight-zero and weight-six labels are fixed scalars; the
+weight-one/five layers form six complement pair-values; the weight-two/four
+layers form fifteen edge pair-values; and the twenty weight-three labels form
+ten complementary middle pairs. Sort the six vertex pair-values and let
+$\lambda\vdash6$ be their multiplicity partition. Its Young stabilizer
+$H_\lambda\cong\prod_i S_{\lambda_i}$ acts on the remaining fifty-two scalar
+labels. If $V_{a,\lambda}$ counts sorted vertex-pair sequences of scalar mass
+$a$ and multiplicity partition $\lambda$, and
+\[
+  B_\lambda(r)=\frac{1}{|H_\lambda|}
+    \sum_{h\in H_\lambda}
+      [z^r]\prod_{c\in\operatorname{Cyc}_{52}(h)}(1-z^{|c|})^{-1},
+\]
+then
+\begin{equation}
+  \fitmath{%
+    \left|\mathcal J^{(6)}_k/S_6\right|
+      =\sum_{a=0}^{k}\sum_{\lambda\vdash6}
+        V_{a,\lambda}B_\lambda(k-a),
+    \qquad 0\leq k\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-decomposition}
+\end{equation}
+There are exactly eleven multiplicity partitions and only $37600$ sorted
+vertex-pair sequences with total mass at most fourteen. Direct full-$S_6$ orbit
+exhaustion through mass two agrees with the decomposition, and all eleven
+residual Young quotients reconstruct the full Burnside sequence through mass
+fourteen, including $1179940653635$ classes at $k=14$. This factorization does
+not yet supply dense $S_6$ rank/unrank.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose

@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes one hundred fifteen exact reductions: classic five-trit crazy
+formalizes one hundred sixteen exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -89,7 +89,8 @@ endpoint-unordered quadruple quotient under `S_4` with dense rank/unrank, exact
 ordered cube-word
 quintuple quotient into `C(k+31,31)` joint-count classes, exact endpoint-
 unordered quintuple quotient under `S_5`, exact ordered sextuple quotient into
-`C(k+63,63)` classes, exact endpoint-unordered sextuple quotient under `S_6`,
+`C(k+63,63)` classes, exact endpoint-unordered sextuple quotient under `S_6`
+with a six-vertex-pair/eleven-Young-stabilizer residual factorization,
 a generic checked-arity ordered tuple quotient into
 `C(k+2^m-1,2^m-1)` classes for `1<=m<=8`, a dense combinadic rank/unrank over
 those classes, a generic endpoint-unordered Burnside quotient under `S_m` for
@@ -782,8 +783,10 @@ local rank stratum.
 Ordered sextuples have sixty-four joint-pattern counts and exactly
 `C(k+63,63)` coordinate classes, or 839,983,521,106,400 at `k=14`. Adding the
 S₆ endpoint action yields eleven conjugacy classes and 1,179,940,653,635
-endpoint-unordered classes. Coordinate-quotient orbits are exhausted through Q2,
-fixed-pair lifting reaches width two, Burnside arithmetic reaches Q14, and no
+endpoint-unordered classes. Sorting the six weight-1/5 complement pair-values
+leaves one of eleven Young stabilizers on 52 residual scalar labels; summing
+those residual quotients exactly reproduces the full S6 Burnside sequence
+through Q14. Direct orbit exhaustion through Q2 agrees, and no dense S6 rank or
 timing claim is made.
 
 Combining that quotient with the exact ambiguity-class distribution gives a
@@ -1014,8 +1017,8 @@ inverse coverage laws, the finite candidate-local binary-verifier call lower
 bound, tuple specialization, all-reachable-pair aggregation, binary-decision-
 tree information lower bound and tuple specialization, and both global checked-
 arity transforms, exact endpoint-
-unordered triple, quadruple, quintuple,
-and sextuple quotients, plus the
+unordered triple, quadruple, quintuple, and sextuple quotients, including the
+S6 vertex-pair/Young-stabilizer factorization, plus the
 established
 triple/quadruple global aggregates, dense global unordered-triple and
 unordered-quadruple rank/unrank, the generic ambiguity-indexed global

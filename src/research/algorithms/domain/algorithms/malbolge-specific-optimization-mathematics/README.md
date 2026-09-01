@@ -179,10 +179,14 @@ minimum rooted S4 view of each free S5 orbit, followed by prefix/select ranking.
 Every order-120 mass-14 class therefore has a dense local rank stratum.
 Cumulative offsets across the nine disjoint stabilizer strata give one complete
 dense 6,962,786-class S5 rank interval.
+
 Ordered sextuples have
 `C(k+63,63)` classes, or
 839,983,521,106,400 at `k=14`; the additional `S_6` endpoint quotient has
-1,179,940,653,635 classes.
+1,179,940,653,635 classes. Sorting its six weight-1/5 complement pair-values
+leaves one of eleven Young stabilizers acting on 52 residual scalar labels; this
+factorization reproduces the full Burnside sequence through mass 14 but does
+not yet give dense S6 rank/unrank.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
