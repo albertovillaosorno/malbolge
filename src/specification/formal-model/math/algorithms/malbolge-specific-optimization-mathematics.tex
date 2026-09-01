@@ -1218,8 +1218,8 @@ those 6689862 classes have five distinct dense order-twenty-four rooted ranks
 and a unique minimum rooted rank, giving an exact canonical root selector for
 about $96.0802\%$ of the order-one-hundred-twenty hard core. Direct full-$S_5$
 orbit enumeration through mass three verifies rooted-view collision iff the two
-roots are automorphic. This selector does not yet densely rank the selected
-minimum-root subset or the 272924 symmetric exceptions.
+roots are automorphic. The symmetric exceptions are ranked below; the remaining
+selector problem is the trivial-stabilizer minimum-root subset.
 
 Each nontrivial exact-stabilizer stratum has a still smaller quotient. Let
 $X_H(m)$ be the mass-$m$ assignments with exact automorphism stabilizer $H$ and
@@ -1315,8 +1315,38 @@ Direct full-$S_5$ orbit checks through mass three give one orbit per retained
 rank; dense rank/unrank is exhausted through mass six and representative ranks
 round-trip through mass fourteen. Together with the single-transposition rank,
 all $272924$ nontrivial-stabilizer mass-fourteen classes now have dense local
-ranks. The remaining complete-$S_5$ gap is the $6689862$-class trivial-
-stabilizer minimum-root prefix rank.
+ranks. The following construction completes the $6689862$-class trivial-
+stabilizer stratum.
+
+The trivial-stabilizer stratum now has a dense rank as well. Give pair-valued
+$K_5$ edge vectors lexicographic order. For a root $v$, let $c_v(e)$ be the
+lexicographically least representative of $e$ under the $S_4$ subgroup fixing
+that root, written with the root in the distinguished fifth position. Define
+\[
+  M_m=\{c_4(e): |e|=m,\ \operatorname{Aut}(e)=1,
+    \ c_4(e)=\min_{0\leq v<5} c_v(e)\}.
+\]
+A trivial stabilizer gives five distinct rooted classes, so exactly one of them
+lies in $M_m$. Ordering $M_m$ lexicographically therefore gives
+\begin{equation}
+  \fitmath{%
+    \rho^{(E,1)}_m(z)=|\{y\in M_m:y<z\}|,
+    \qquad z\in M_m,
+    \qquad 0\leq m\leq14,
+  }
+  \label{eq:optimization-crazy-quintuple-s5-trivial-ranking}
+\end{equation}
+with inverse given by selecting the rank-th member of $M_m$. Direct full-$S_5$
+orbit exhaustion through mass three verifies one accepted rooted representative
+per free orbit and contiguous rank/unrank. At mass fourteen, full-$S_5$
+Burnside gives $6962786$ classes and the eight proved symmetric strata contain
+$272924$, hence
+\[
+  |M_{14}|=6962786-272924=6689862.
+\]
+Thus the generic stratum now has a dense prefix/select rank over all
+$6689862$ trivial-stabilizer classes. This construction is exact and finite; it
+makes no timing claim about materializing the full selected set.
 
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern

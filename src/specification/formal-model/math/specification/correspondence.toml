@@ -664,6 +664,16 @@ mechanism = "explicit-representative-H-edge-orbit-weighted-state-enumeration-nor
 evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s5_remaining_exception_ranking.py::test_remaining_exception_keys_are_the_seven_smaller_types", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_remaining_exception_ranking.py::test_remaining_exception_mass_fourteen_counts", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_remaining_exception_ranking.py::test_remaining_exception_rank_matches_direct_small_s5_orbits", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_remaining_exception_ranking.py::test_remaining_exception_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_remaining_exception_ranking.py::test_remaining_exception_rank_roundtrips_through_mass_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-quintuple-s5-trivial-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-quintuple-s5-trivial-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "pair-valued K5 edge assignments of residual mass 0 through 14 whose exact full-S5 automorphism stabilizer is trivial, ordered through rooted S4 canonical representatives"
+mechanism = "lexicographically-minimum-rooted-S4-view-selector-on-free-S5-orbits-followed-by-prefix-rank-and-select-unrank-over-the-selected-trivial-stabilizer-representatives"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s5_trivial_ranking.py::test_trivial_rank_selects_unique_minimum_root_per_free_orbit", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_trivial_ranking.py::test_trivial_rank_is_dense_on_small_free_orbits", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_trivial_ranking.py::test_trivial_mass_fourteen_count_is_exact_from_proved_strata"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-ordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-ordered-sextuple-quotient"

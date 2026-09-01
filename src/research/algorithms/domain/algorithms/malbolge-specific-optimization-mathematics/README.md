@@ -174,8 +174,9 @@ rank/unrank by canonicalizing weighted H-edge-orbit states under `N(H)/H`,
 filtering to exact stabilizer H, and prefix/select ranking the retained states.
 At mass 14 these ranks cover all 272,924 symmetric classes.
 
-Only the 6,689,862 trivial-stabilizer unique-minimum-root classes still lack a
-dense prefix rank.
+The 6,689,862 trivial-stabilizer classes now use the unique lexicographically
+minimum rooted S4 view of each free S5 orbit, followed by prefix/select ranking.
+Every order-120 mass-14 class therefore has a dense local rank stratum.
 Ordered sextuples have
 `C(k+63,63)` classes, or
 839,983,521,106,400 at `k=14`; the additional `S_6` endpoint quotient has
