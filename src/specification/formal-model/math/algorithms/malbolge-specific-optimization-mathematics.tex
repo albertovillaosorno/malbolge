@@ -1466,8 +1466,28 @@ There are exactly eleven multiplicity partitions and only $37600$ sorted
 vertex-pair sequences with total mass at most fourteen. Direct full-$S_6$ orbit
 exhaustion through mass two agrees with the decomposition, and all eleven
 residual Young quotients reconstruct the full Burnside sequence through mass
-fourteen, including $1179940653635$ classes at $k=14$. This factorization does
-not yet supply dense $S_6$ rank/unrank.
+fourteen, including $1179940653635$ classes at $k=14$.
+
+The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
+dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
+strictly distinct sorted vertex pair-values with scalar mass $a$. For
+$v\in D_a$, let $i_a(v)$ be its zero-based index, let $r=k-a$, and let
+$\sigma_r$ be the ordinary lexicographic weak-composition rank on the fifty-two
+residual scalar counts. Then
+\begin{equation}
+  \fitmath{%
+    \rho^{(6,1^6)}_k(v,x)
+      =\sum_{b<a}|D_b|\binom{k-b+51}{51}
+       +i_a(v)\binom{r+51}{51}+\sigma_r(x),
+    \qquad 0\leq k\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-distinct-vertex-ranking}
+\end{equation}
+Block subtraction plus weak-composition unranking is the inverse. The stratum is
+empty below mass eight; its counts at masses eight through fourteen are
+$1,64,2043,43604,702403,9129708,99892279$. Dense rank/unrank is exhausted
+through mass ten and checked at boundary/interior ranks through mass fourteen.
+The other ten Young stabilizer strata remain unranked.
 
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words

@@ -734,6 +734,16 @@ mechanism = "hamming-weight-layer-complement-pair-factorization-plus-sorted-six-
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_decomposition.py::test_s6_layers_have_exact_complement_pair_geometry", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_decomposition.py::test_s6_vertex_sequences_induce_all_eleven_young_stabilizers", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_decomposition.py::test_s6_decomposition_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_decomposition.py::test_s6_decomposition_matches_full_burnside_through_mass_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-distinct-vertex-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-distinct-vertex-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple stratum at ambiguity mass 0 through 14 whose six sorted weight-one-five vertex complement pair-values are all distinct, hence whose Young stabilizer is trivial"
+mechanism = "vertex-mass-prefix-plus-lexicographic-six-distinct-pair-sequence-rank-and-fifty-two-part-weak-composition-rank-unrank"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_distinct_vertex_ranking.py::test_distinct_vertex_s6_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_distinct_vertex_ranking.py::test_distinct_vertex_s6_rank_roundtrips_through_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_distinct_vertex_ranking.py::test_distinct_vertex_s6_counts_match_reviewed_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_decomposition.py::test_s6_vertex_sequences_induce_all_eleven_young_stabilizers"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"

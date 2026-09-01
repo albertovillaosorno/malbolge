@@ -185,8 +185,10 @@ Ordered sextuples have
 839,983,521,106,400 at `k=14`; the additional `S_6` endpoint quotient has
 1,179,940,653,635 classes. Sorting its six weight-1/5 complement pair-values
 leaves one of eleven Young stabilizers acting on 52 residual scalar labels; this
-factorization reproduces the full Burnside sequence through mass 14 but does
-not yet give dense S6 rank/unrank.
+factorization reproduces the full Burnside sequence through mass 14. The
+all-distinct vertex-pair stratum has trivial stabilizer and dense rank/unrank by
+vertex-sequence prefix plus a 52-part weak-composition rank, covering 99,892,279
+mass-14 classes. The other ten Young stabilizer strata remain unranked.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
