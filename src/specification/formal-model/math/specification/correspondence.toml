@@ -594,6 +594,16 @@ mechanism = "four-fixed-edge-scalars-plus-unordered-two-row-quotient-with-descen
 evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s4_v4_edge_ranking.py::test_s4_v4_edge_rank_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_quintuple_s4_v4_edge_ranking.py::test_s4_v4_edge_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_quintuple_s4_v4_edge_ranking.py::test_s4_v4_edge_rank_roundtrips_through_mass_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-quintuple-s4-residual-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-quintuple-s4-residual-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all pair-valued K5 edge assignments of residual mass 0 through 14 under any order-twenty-four residual S5 vertex stabilizer conjugate to S4 on four equal vertices with one fixed vertex"
+mechanism = "lexicographic-sorted-four-spoke-prefix-over-five-Young-stabilizer-shapes-dispatching-to-proved-identity-S2-V4-S3-S4-local-dense-edge-rank-unrank"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s4_residual_ranking.py::test_s4_residual_dispatch_covers_all_five_spoke_shapes", "tests/mathematics/test_crazy_preimage_cube_quintuple_s4_residual_ranking.py::test_s4_residual_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_quintuple_s4_residual_ranking.py::test_s4_residual_rank_matches_full_burnside_through_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_quintuple_s4_residual_ranking.py::test_distinct_spoke_local_block_is_plain_composition_domain"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-ordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-ordered-sextuple-quotient"

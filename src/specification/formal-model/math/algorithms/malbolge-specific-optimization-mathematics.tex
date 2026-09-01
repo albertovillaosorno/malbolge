@@ -1086,8 +1086,29 @@ one flip-parity bit, represented by the second term. Prefixing nondecreasing
 block-mass triples and dense multiset ranks gives exact rank/unrank through mass
 fourteen. Direct full-$S_4$ edge-orbit exhaustion through mass three gives each
 rank once, and checked boundary/interior ranks roundtrip through mass fourteen.
-This is the hard all-equal-spoke core only; complete order-twenty-four K5
-residual rank/unrank and complete dense $S_5$ ranking remain open.
+The five spoke multiplicity shapes now all have dense local edge ranks. Let
+$\mathcal Q_m$ be the lexicographically ordered set of nondecreasing four-spoke
+pair sequences $q$ with $|q|\leq m$, let $H_q$ be the equal-spoke stabilizer,
+and let $\rho_{H_q}$ denote the corresponding identity, $S_2$, $V_4$, $S_3$,
+or $S_4$ local edge rank. Then
+\begin{equation}
+  \fitmath{%
+    \rho^{(E,24,\mathrm{all})}_m(q,e)=
+      \sum_{\substack{q'\in\mathcal Q_m\\q'<q}}
+        C^{(E,H_{q'})}_{m-|q'|}
+      +\rho_{H_q}(e),
+    \qquad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s4-residual-ranking}
+\end{equation}
+The inverse subtracts these spoke blocks in the same order and invokes the
+proved local inverse for the first containing block. The distinct-spoke shape
+has trivial stabilizer and therefore uses ordinary twelve-scalar
+weak-composition rank/unrank. The five block families reproduce the independent
+full-$S_4$ Burnside count through mass fourteen and give
+$C^{(E,24)}_{14}=34507258$. Thus the complete order-twenty-four residual domain
+has a dense constructive rank; the order-one-hundred-twenty residual stabilizer
+and complete dense $S_5$ ranking remain open.
 
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern

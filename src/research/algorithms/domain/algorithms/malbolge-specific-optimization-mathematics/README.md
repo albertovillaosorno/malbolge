@@ -159,9 +159,11 @@ dense row/column V4 rank/unrank, and the `3+1` shape has dense edge rank/unrank
 as a weighted S3 multiset.
 
 The all-equal-spoke full-S4 edge core has exact dense rank/unrank via
-opposite-edge blocks and one all-moving parity bit. Only the trivial
-distinct-spoke block remains before complete order-24 ranking; order-120 and
-complete dense S5 ranking also remain open. Ordered sextuples have
+opposite-edge blocks and one all-moving parity bit. The trivial distinct-spoke
+shape uses ordinary composition ranking, so prefixing all five spoke shapes now
+gives complete dense order-24 residual rank/unrank through mass 14. The
+order-120 residual stabilizer and complete dense S5 ranking remain open. Ordered
+sextuples have
 `C(k+63,63)` classes, or
 839,983,521,106,400 at `k=14`; the additional `S_6` endpoint quotient has
 1,179,940,653,635 classes.
