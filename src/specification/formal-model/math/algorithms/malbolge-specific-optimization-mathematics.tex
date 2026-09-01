@@ -773,6 +773,39 @@ Summing the decomposition reproduces the full $S_5$ Burnside count through
 $k=14$, including 1426354541 classes. This factorization is a prerequisite for,
 not a claim of, dense $S_5$ rank/unrank.
 
+For an equal-vertex block of size two, the residual stabilizer is one
+transposition. Its action on $E(K_5)$ has four fixed edges and three edge
+transpositions. Because every edge carries a weight-two/weight-three count pair,
+write the eight scalar counts on fixed edges as $F\in\mathbb N^8$ and the six
+scalar counts from each side of the three swapped edges as
+$L,R\in\mathbb N^6$. The stabilizer acts only by $(L,R)\leftrightarrow(R,L)$.
+Let $C_d(t)=\binom{t+d-1}{d-1}$ and
+\[
+  \begin{aligned}
+    V_m&=\sum_{0\leq a<m-a}C_6(a)C_6(m-a)\\
+      &\quad+\mathbf 1_{2\mid m}
+        \frac{C_6(m/2)(C_6(m/2)+1)}{2},\\
+    E^{(2)}_m&=\sum_{f=0}^{m}C_8(f)V_{m-f}.
+  \end{aligned}
+\]
+Ordering first by fixed mass and dense eight-part composition rank, then by the
+unordered pair of dense six-part composition ranks, gives
+\begin{equation}
+  \fitmath{%
+    \rho^{(E,2)}_m:
+      \mathcal E^{(5)}_{\langle(12)\rangle,m}
+      \overset{\sim}{\longrightarrow}\{0,\ldots,E^{(2)}_m-1\},
+    \qquad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s2-edge-ranking}
+\end{equation}
+The three edge swaps remain coupled by the single transposition; sorting them
+independently would be a stronger and invalid quotient. Direct orbit exhaustion
+through residual mass four and independent Burnside counts agree with the dense
+rank, while checked boundary/interior ranks roundtrip through mass fourteen.
+At $m=14$, $E^{(2)}_{14}=410156688$. This result applies to any conjugate
+order-two residual vertex stabilizer and makes no full-$S_5$ dense-rank claim.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,
