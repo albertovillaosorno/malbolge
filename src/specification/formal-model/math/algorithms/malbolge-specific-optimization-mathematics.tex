@@ -1489,6 +1489,34 @@ $1,64,2043,43604,702403,9129708,99892279$. Dense rank/unrank is exhausted
 through mass ten and checked at boundary/interior ranks through mass fourteen.
 The other ten Young stabilizer strata remain unranked.
 
+The vertex multiplicity stratum $(2,1,1,1,1)$ has Young stabilizer $S_2$.
+Its nonidentity element induces cycle type $1^{24}2^{14}$ on the fifty-two
+residual scalar labels. Thus the residual quotient is twenty-four fixed scalar
+counts together with one unordered pair of fourteen-component count vectors.
+Let $Q_r^{(2)}$ be the resulting dense residual class count, let $D_a^{(2)}$ be
+the lexicographically ordered sorted vertex-pair sequences of scalar mass $a$
+with multiplicity partition $(2,1,1,1,1)$, and let $\eta_r^{(2)}$ be the dense
+residual involution rank. Then
+\begin{equation}
+  \fitmath{%
+    \rho^{(6,2 1^4)}_k(v,y)
+      =\sum_{b<a}|D_b^{(2)}|Q_{k-b}^{(2)}
+       +i_a(v)Q_{k-a}^{(2)}+\eta_{k-a}^{(2)}(y),
+    \qquad 0\leq k\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s2-vertex-ranking}
+\end{equation}
+The residual inverse subtracts the fixed-mass blocks, unranks the twenty-four
+fixed counts, and unranks one unordered pair of fourteen-component weak
+compositions; the outer inverse subtracts vertex-mass blocks. Direct residual
+orbit enumeration through mass three agrees with Burnside, complete stratum
+rank/unrank is exhausted through mass eight, and boundary/interior checks reach
+mass fourteen. The exact stratum counts from masses six through fourteen are
+\[
+  (3,134,3375,61650,894765,10816206,112245675,1022182400,8308559181).
+\]
+The remaining nine nontrivial Young stabilizer strata are still unranked.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose
