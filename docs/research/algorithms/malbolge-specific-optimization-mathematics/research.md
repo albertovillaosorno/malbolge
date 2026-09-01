@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes ninety exact reductions: classic five-trit crazy
+formalizes ninety-one exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -85,7 +85,8 @@ classes, exact ordered cube-word triple quotient into `C(k+7,7)` joint-count
 classes, exact endpoint-unordered triple quotient under `S_3` with dense
 rank/unrank, exact ordered cube-word quadruple quotient into `C(k+15,15)`
 joint-count classes, exact
-endpoint-unordered quadruple quotient under `S_4`, exact ordered cube-word
+endpoint-unordered quadruple quotient under `S_4` with dense rank/unrank, exact
+ordered cube-word
 quintuple quotient into `C(k+31,31)` joint-count classes, exact endpoint-
 unordered quintuple quotient under `S_5`, exact ordered sextuple quotient into
 `C(k+63,63)` classes, exact endpoint-unordered sextuple quotient under `S_6`,
@@ -701,9 +702,15 @@ joint-pattern labels. Its five endpoint conjugacy classes induce label-cycle
 types `1^16`, `1^8 2^4`, `1^4 2^6`, `1^4 3^4`, and `1^2 2 4^3`, so Burnside
 uses fixed-class weights `1,6,3,8,6`. At `k=14`, the five fixed counts are
 77,558,760, 722,696, 43,472, 5,256, and 308, giving 3,419,552 endpoint-
-unordered classes. Exhaustive raw orbits and fixed-pair lifting reach
-dimension/width three, Burnside arithmetic reaches dimension fourteen, and no
-timing claim is made.
+unordered classes.
+
+A dense S4 index now interprets the remaining counts as a weighted K4: four
+sorted singleton/complement vertex-count pairs and six weight-two edge counts.
+Only permutations inside equal vertex-pair blocks remain, so finite edge-orbit
+tables under that residual stabilizer give exact rank/unrank blocks. Canonical
+states are exhaustive through dimension four, ranks through dimension six, and
+checked boundary/interior roundtrips through dimension fourteen. No timing
+claim is made.
 
 Ordered quintuples under the same action have thirty-two joint bit-pattern
 counts and exactly `C(k+31,31)` classes. At `k=14`, that is 166,871,334,960

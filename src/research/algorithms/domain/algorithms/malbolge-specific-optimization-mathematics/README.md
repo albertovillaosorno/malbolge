@@ -124,8 +124,12 @@ rank/unrank across exactly those classes through width fourteen.
 
 Ordered quadruples have `C(k+15,15)` classes, or 77,558,760; if quadruple
 endpoint order is irrelevant, the additional `S_4` quotient has exactly
-3,419,552 classes. Summed over every reachable width-14 fixed pair, that
-endpoint-unordered quotient has 1,409,733,897,288,413 canonical classes.
+3,419,552 classes. A dense local index sorts four singleton/complement vertex-
+count pairs and then ranks the six weighted-K4 edges under the residual equal-
+vertex stabilizer. Its block totals reproduce Burnside through dimension 14.
+
+Summed over every reachable width-14 fixed pair, that endpoint-unordered
+quadruple quotient has 1,409,733,897,288,413 canonical classes.
 
 Ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; if quintuple
 endpoint order is irrelevant, the additional `S_5` quotient has exactly

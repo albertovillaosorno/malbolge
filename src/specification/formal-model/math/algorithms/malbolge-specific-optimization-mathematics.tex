@@ -651,6 +651,33 @@ $16^{14}=72057594037927936$ raw ordered quadruples. This refinement applies only
 to quadruple analyses invariant under endpoint permutation as well as
 simultaneous ambiguity-coordinate relabeling, and it makes no timing claim.
 
+The $S_4$ quotient also has a dense finite index. Keep $n_{0000}$ and
+$n_{1111}$ fixed. For each endpoint vertex $i$, pair the singleton and
+complement counts
+$u_i=(n_{e_i},n_{\bar e_i})$ and sort the four $u_i$ lexicographically. Equal
+$u_i$ blocks leave a residual stabilizer $H(u)\leq S_4$. The six weight-two
+labels are the edges of $K_4$; for residual edge mass $r$, let
+$\mathcal E_{H(u),r}$ be the lexicographically ordered set of weak six-part
+compositions of $r$, reduced to their minimum image under $H(u)$. Ordering the
+blocks by
+\[
+  \left(n_{0000},n_{1111},u,
+    \operatorname{index}_{\mathcal E_{H(u),r}}(e)\right)
+\]
+and summing the sizes of every preceding edge block defines
+\begin{equation}
+  \rho^{(4)}_k:\mathcal J^{(4)}_k/S_4
+    \overset{\sim}{\longrightarrow}
+    \{0,\ldots,|\mathcal J^{(4)}_k/S_4|-1\},
+  \qquad 0\leq k\leq14.
+  \label{eq:optimization-crazy-preimage-cube-unordered-quadruple-ranking}
+\end{equation}
+Unranking subtracts fixed-count, sorted-vertex, and edge-orbit blocks in the
+same order. Exhaustive canonical-state evidence reaches dimension four, every
+rank is exhausted through dimension six, and boundary/interior ranks roundtrip
+through dimension fourteen. The block totals equal the established Burnside
+counts at every checked dimension, including 3419552 ranks at $k=14$.
+
 The same action extends to ordered cube-word quintuples. For
 $v,w,x,y,z\in\{0,1\}^k$, let $n_s$ count coordinates whose five-bit joint
 pattern is $s\in\{0,1\}^5$, with simultaneous $S_k$ action on all five words.
