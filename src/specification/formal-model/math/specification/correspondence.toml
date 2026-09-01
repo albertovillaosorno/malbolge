@@ -624,6 +624,16 @@ mechanism = "fixed-edge-orbit-generating-functions-for-all-156-S5-subgroups-foll
 evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s5_stabilizer_spectrum.py::test_s5_has_exactly_156_subgroups_in_19_conjugacy_classes", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_stabilizer_spectrum.py::test_s5_mass_fourteen_exact_stabilizer_spectrum", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_stabilizer_spectrum.py::test_s5_stabilizer_inversion_reconstructs_rooted_s4_count", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_stabilizer_spectrum.py::test_s5_exact_stabilizers_match_direct_small_orbits"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-quintuple-s5-rooted-views"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-quintuple-s5-rooted-views"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "full order-one-hundred-twenty S5 pair-valued K5 edge orbits of residual mass 0 through 14 viewed through a distinguished vertex and the corresponding rooted order-twenty-four S4 quotient"
+mechanism = "bijection-between-distinct-rooted-S4-views-and-vertex-orbits-of-the-exact-S5-automorphism-stabilizer-with-unique-minimum-root-for-trivial-stabilizer-classes"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s5_stabilizer_spectrum.py::test_s5_rooted_views_equal_automorphism_vertex_orbits", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_stabilizer_spectrum.py::test_s5_mass_fourteen_rooted_view_multiplicity_spectrum"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-ordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-ordered-sextuple-quotient"

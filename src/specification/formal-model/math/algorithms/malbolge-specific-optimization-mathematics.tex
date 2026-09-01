@@ -1189,6 +1189,38 @@ Direct full-$S_5$ orbit/stabilizer enumeration through mass three agrees with
 this inversion. These counts isolate the generic and symmetric-root strata but
 do not yet assign dense order-one-hundred-twenty ranks.
 
+The subgroup spectrum also gives an exact rooted-view decomposition. For an
+unrooted edge orbit $[e]$ with automorphism stabilizer
+$H=\operatorname{Aut}(e)$,
+let $\mathcal R([e])$ be the set of rooted order-twenty-four classes obtained by
+choosing one distinguished vertex. Two roots define the same rooted class
+exactly when they lie in one $H$-orbit, hence
+\begin{equation}
+  \fitmath{%
+    |\mathcal R([e])|=|\{0,1,2,3,4\}/H|.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s5-rooted-views}
+\end{equation}
+At mass fourteen the exact unrooted-class multiplicities are
+\[
+\begin{array}{c|r}
+|\mathcal R([e])| & \text{classes}\\ \hline
+5 & 6689862\\
+4 & 239656\\
+3 & 32788\\
+2 & 480
+\end{array}
+\]
+and their weighted sum is
+$5(6689862)+4(239656)+3(32788)+2(480)=34507258$, the independent rooted count.
+The five-view case is equivalent to trivial automorphism stabilizer. Therefore
+those 6689862 classes have five distinct dense order-twenty-four rooted ranks
+and a unique minimum rooted rank, giving an exact canonical root selector for
+about $96.0802\%$ of the order-one-hundred-twenty hard core. Direct full-$S_5$
+orbit enumeration through mass three verifies rooted-view collision iff the two
+roots are automorphic. This selector does not yet densely rank the selected
+minimum-root subset or the 272924 symmetric exceptions.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,

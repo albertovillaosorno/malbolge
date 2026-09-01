@@ -349,3 +349,74 @@ def test_s5_exact_stabilizers_match_direct_small_orbits() -> None:
     """Direct S5 edge orbits agree with lattice inversion through mass three."""
     for total in range(_EXHAUSTIVE_MASS + 1):
         assert _orbit_count_by_order(total) == _direct_order_spectrum(total)
+
+
+_EXPECTED_ROOTED_VIEW_SPECTRUM = {
+    2: 480,
+    3: 32_788,
+    4: 239_656,
+    5: 6_689_862,
+}
+
+
+def _rooted_representative(edge_pairs: _EdgePairs, root: int) -> _EdgePairs:
+    return min(
+        _permute(edge_pairs, element)
+        for element, order in enumerate(_PERMUTATIONS)
+        if order[_ARITY - 1] == root
+    )
+
+
+def _stabilizer(edge_pairs: _EdgePairs) -> _Subgroup:
+    return frozenset(
+        element
+        for element in range(_S5_ORDER)
+        if _permute(edge_pairs, element) == edge_pairs
+    )
+
+
+def _rooted_view_spectrum(total: int) -> dict[int, int]:
+    exact = _exact_stabilizer_assignments(total)
+    numerators: Counter[int] = Counter()
+    for subgroup, count in exact.items():
+        if count == 0:
+            continue
+        vertex_orbits = len(_vertex_orbit_sizes(subgroup))
+        numerators[vertex_orbits] += count * len(subgroup)
+    assert all(value % _S5_ORDER == 0 for value in numerators.values())
+    return {
+        vertex_orbits: value // _S5_ORDER
+        for vertex_orbits, value in numerators.items()
+    }
+
+
+def test_s5_rooted_views_equal_automorphism_vertex_orbits() -> None:
+    """Rooted-view collisions occur exactly between automorphic vertices."""
+    for total in range(_EXHAUSTIVE_MASS + 1):
+        seen: set[_EdgePairs] = set()
+        for edge_pairs in _assignments(total):
+            representative = min(
+                _permute(edge_pairs, element)
+                for element in range(_S5_ORDER)
+            )
+            if representative in seen:
+                continue
+            seen.add(representative)
+            rooted_views = {
+                _rooted_representative(representative, root)
+                for root in range(_ARITY)
+            }
+            assert len(rooted_views) == len(
+                _vertex_orbit_sizes(_stabilizer(representative))
+            )
+
+
+def test_s5_mass_fourteen_rooted_view_multiplicity_spectrum() -> None:
+    """Mass 14 rooted-view multiplicities reconstruct the rooted quotient."""
+    spectrum = _rooted_view_spectrum(_MAXIMUM_MASS)
+    assert spectrum == _EXPECTED_ROOTED_VIEW_SPECTRUM
+    assert sum(spectrum.values()) == _WIDTH_FOURTEEN_CLASSES
+    assert sum(
+        views * count for views, count in spectrum.items()
+    ) == _WIDTH_FOURTEEN_ROOTED_CLASSES
+    assert spectrum[_ARITY] == _WIDTH_FOURTEEN_TRIVIAL_CLASSES
