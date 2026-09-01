@@ -514,6 +514,16 @@ mechanism = "nested-commuting-involution-Burnside-first-quotient-plus-second-fix
 evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_v4_edge_quotient.py::test_v4_generators_have_exact_commuting_scalar_cycle_types", "tests/mathematics/test_crazy_preimage_cube_quintuple_v4_edge_quotient.py::test_nested_v4_counts_match_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_quintuple_v4_edge_quotient.py::test_nested_v4_formula_is_exact_through_mass_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-quintuple-v4-edge-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-quintuple-v4-edge-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "pair-valued K5 edge assignments of residual mass 0 through 14 under any order-four residual S5 vertex stabilizer conjugate to V4=S2 times S2 on two disjoint equal vertex-pair blocks"
+mechanism = "first-S2-row-quotient-plus-descended-diagonal-involution-fixed-nonfixed-block-rank-unrank"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_v4_edge_ranking.py::test_v4_dense_rank_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_quintuple_v4_edge_ranking.py::test_v4_dense_rank_roundtrips_through_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_quintuple_v4_edge_ranking.py::test_v4_block_factorization_matches_nested_fixed_count"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-ordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-ordered-sextuple-quotient"

@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes ninety-seven exact reductions: classic five-trit crazy
+formalizes ninety-eight exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -732,11 +732,14 @@ together; treating those swaps as one unordered pair of six-component
 compositions gives exact dense residual rank/unrank through mass fourteen. For
 an order-six `S_3` stabilizer, one edge is fixed and the remaining edges form
 three six-component bundles permuted together; multiset ranking gives another
-exact dense residual index through mass fourteen. For an order-four
-`S_2 x S_2` stabilizer, nested commuting-involution Burnside arithmetic gives
-exact first-quotient, second-fixed, and final residual counts through mass
-fourteen; the final mass-14 count is 205,482,000. Its dense inverse and the
-remaining larger stabilizers are still open, as is complete dense S5 ranking.
+exact dense residual index through mass fourteen.
+
+For an order-four `S_2 x S_2` stabilizer, nested commuting-involution arithmetic
+first gives exact first-quotient, second-fixed, and final residual counts. A
+fixed/nonfixed factorization of the descended second involution then gives exact
+dense rank/unrank through mass fourteen; the final mass-14 domain has
+205,482,000 classes. Larger residual stabilizers and complete dense S5 ranking
+remain open.
 
 Ordered sextuples have sixty-four joint-pattern counts and exactly
 `C(k+63,63)` coordinate classes, or 839,983,521,106,400 at `k=14`. Adding the

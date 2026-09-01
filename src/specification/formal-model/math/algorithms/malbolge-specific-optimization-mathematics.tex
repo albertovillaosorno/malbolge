@@ -861,9 +861,38 @@ $F_m=(B_m+D_m)/2$. Therefore
 \end{equation}
 Direct residual assignments through mass three reproduce the first quotient,
 its $b$-fixed subset, and the final $V_4$ orbits. At mass fourteen the final
-count is 205482000. This identity isolates the remaining constructive problem:
-a dense prefix and inverse for the descended $b$ action on first-$S_2$ quotient
-classes. No dense $V_4$ or complete $S_5$ rank is claimed here.
+count is 205482000.
+
+The same nested action admits a dense inverse. After quotienting by $a$, split
+each state as $(x,y)$ where $x$ contains the eight scalar components on the
+$a$-fixed edges and $y$ is the unordered pair of six-component row bundles.
+The descended $b$ action is diagonal: it swaps the two column-margin pairs in
+$x$ and applies one internal cell-pair swap to both row bundles in $y$. For
+fixed $x$, rank $y$ in its descended $b$ quotient. For a nonfixed $x$ orbit,
+orient $x$ canonically and apply the same $b$ orientation to $y$, then retain
+the ordinary dense first-$a$ quotient rank of $y$. If $H_f$ is the number of
+$b$-fixed $x$ states of mass $f$, $P_f$ the number of nonfixed $x$ orbits,
+$Y_r$ the first-$a$ row-bundle quotient of mass $r$, and $O_r=|Y_r/\langle
+b\rangle|$, each mass split has exactly
+\[
+  H_f O_r+P_f|Y_r|
+\]
+contiguous ranks. Prefixing those blocks over $f+r=m$ yields
+\begin{equation}
+  \fitmath{%
+    \rho^{(E,4)}_m:
+      \mathcal E^{(5)}_{V_4,m}
+      \overset{\sim}{\longrightarrow}
+      \{0,\ldots,(A_m+2B_m+D_m)/4-1\},
+    \qquad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-v4-edge-ranking}
+\end{equation}
+The row-bundle quotient itself separates fixed internal-swap bundles from
+nonfixed two-cycles, so equal- and unequal-mass row pairs both have constructive
+rank/unrank. Direct $V_4$ orbit exhaustion through mass three gives every rank
+exactly once; checked boundary/interior ranks roundtrip through mass fourteen.
+This remains a residual-stabilizer result, not a complete dense $S_5$ rank.
 
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
