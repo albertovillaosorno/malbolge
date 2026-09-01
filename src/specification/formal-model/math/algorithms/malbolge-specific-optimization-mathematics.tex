@@ -542,6 +542,50 @@ $8^{14}=4398046511104$ raw ordered triples. This refinement applies only to
 triple analyses invariant under endpoint permutation as well as simultaneous
 ambiguity-coordinate relabeling, and it makes no timing claim.
 
+The $S_3$ quotient also has a dense constructive index. Keep the fixed label
+counts $a=n_{000}$ and $b=n_{111}$, and form the three complementary pairs
+\[
+  p_1=(n_{100},n_{011}),\quad
+  p_2=(n_{010},n_{101}),\quad
+  p_3=(n_{001},n_{110}).
+\]
+The endpoint action permutes these three pairs, so sorting them
+lexicographically is a complete orbit invariant together with $(a,b)$. For a
+minimum pair $p$ and $|q|=q_1+q_2$, define the finite suffix counts
+\[
+  H_0(t;p)=\mathbf 1_{t=0},\qquad
+  H_r(t;p)=\sum_{\substack{q\geq_{\rm lex}p\\ |q|\leq t}}
+    H_{r-1}(t-|q|;q).
+\]
+For sorted $p_1\leq p_2\leq p_3$, let
+\[
+  \begin{aligned}
+  P_k(a,b)&=\sum_{a'<a}\sum_{b'=0}^{k-a'}H_3(k-a'-b';(0,0))
+    +\sum_{b'<b}H_3(k-a-b';(0,0)),\\
+  L_r(t;p;q_1,\ldots,q_r)&=
+    \sum_{p\leq q<q_1}H_{r-1}(t-|q|;q)
+    +L_{r-1}(t-|q_1|;q_1;q_2,\ldots,q_r),\\
+  L_0(0;p;)&=0.
+  \end{aligned}
+\]
+Then
+\begin{equation}
+  \fitmath{%
+    \rho^{(3)}_k(n)=P_k(a,b)+L_3(k-a-b;(0,0);p_1,p_2,p_3),
+    \qquad
+    \rho^{(3)}_k:
+      \mathcal J^{(3)}_k/S_3\overset{\sim}{\longrightarrow}
+      \{0,\ldots,|\mathcal J^{(3)}_k/S_3|-1\},
+    \quad 0\leq k\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-unordered-triple-ranking}
+\end{equation}
+Unranking subtracts the same $a$ blocks, $b$ rows, and lexicographic pair
+suffix blocks in reverse. Exhaustive checked evidence roundtrips every quotient
+class through $k=14$, including all 21323 classes at $k=14$, and verifies raw
+endpoint-permutation invariance through dimension four. This is a quotient
+index only under the same $S_3$ endpoint-invariance precondition.
+
 The same action extends once more to ordered cube-word quadruples. For
 $w,x,y,z\in\{0,1\}^k$, let $n_s$ count coordinates whose four-bit joint
 pattern is $s\in\{0,1\}^4$, and let $S_k$ act simultaneously on all four

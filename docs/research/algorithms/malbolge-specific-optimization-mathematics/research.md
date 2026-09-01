@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes eighty-eight exact reductions: classic five-trit crazy
+formalizes eighty-nine exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -82,8 +82,9 @@ bijective complete traversal, exact binary-cube one-trit neighborhood
 structure, exact coordinate-permutation quotient into `k+1` Hamming-weight
 classes, exact ordered cube-word pair quotient into `C(k+3,3)` joint-count
 classes, exact ordered cube-word triple quotient into `C(k+7,7)` joint-count
-classes, exact endpoint-unordered triple quotient under `S_3`, exact ordered
-cube-word quadruple quotient into `C(k+15,15)` joint-count classes, exact
+classes, exact endpoint-unordered triple quotient under `S_3` with dense
+rank/unrank, exact ordered cube-word quadruple quotient into `C(k+15,15)`
+joint-count classes, exact
 endpoint-unordered quadruple quotient under `S_4`, exact ordered cube-word
 quintuple quotient into `C(k+31,31)` joint-count classes, exact endpoint-
 unordered quintuple quotient under `S_5`, exact ordered sextuple quotient into
@@ -681,9 +682,13 @@ pattern labels. Burnside gives
 `(C(k+7,7)+3*tau_k+2*chi_k)/6`, where `tau_k` and `chi_k` count classes fixed
 by one endpoint transposition and one endpoint three-cycle. At `k=14`, this is
 21,323 classes instead of 116,280 coordinate-only ordered classes or
-4,398,046,511,104 raw triples. Exhaustive raw orbits and fixed-pair lifting
-reach dimension/width four, count-vector arithmetic reaches dimension fourteen,
-and no timing claim is made.
+4,398,046,511,104 raw triples.
+
+The same quotient now has a dense index: retain `n000`/`n111`, sort the three
+complementary `(weight1,weight2)` count pairs, and rank their finite multiset by
+exact suffix-block counts. Every class roundtrips through dimension fourteen,
+while raw endpoint invariance is exhaustive through dimension four. No timing
+claim is made.
 
 Ordered quadruples under the same simultaneous coordinate action have sixteen
 joint bit-pattern counts and exactly `C(k+15,15)` classes. At `k=14`, that is

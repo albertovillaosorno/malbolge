@@ -414,6 +414,16 @@ mechanism = "S3-Burnside-plus-canonical-endpoint-ordering"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_triple_quotient.py::test_unordered_triple_orbits_are_exact_through_dimension_four", "tests/mathematics/test_crazy_preimage_cube_unordered_triple_quotient.py::test_unordered_triple_counts_cover_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_unordered_triple_quotient.py::test_unordered_triple_quotient_lifts_to_small_reachable_pairs"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-unordered-triple-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-unordered-triple-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "endpoint-unordered S3 joint-count classes in reachable fixed accumulator/target preimage cubes at ambiguity dimensions 0 through 14, using fixed 000/111 counts and a sorted multiset of three complementary weight-one/weight-two count pairs"
+mechanism = "fixed-count-prefix-plus-lexicographic-three-pair-multiset-suffix-DP-dense-ranking-and-inverse-block-subtraction"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_triple_ranking.py::test_paired_state_is_complete_endpoint_orbit_invariant", "tests/mathematics/test_crazy_preimage_cube_unordered_triple_ranking.py::test_dense_rank_exhausts_every_class_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_unordered_triple_ranking.py::test_dense_rank_is_endpoint_invariant_on_small_raw_triples", "tests/mathematics/test_crazy_preimage_cube_unordered_triple_ranking.py::test_dense_rank_rejects_out_of_range_unrank_requests"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-ordered-quadruple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-ordered-quadruple-quotient"
