@@ -1912,6 +1912,37 @@ boundary/interior roundtrips through width fourteen reproduce the global count,
 including 1409733897288413 ranks at $N=14$. The construction inherits the
 fixed-pair, coordinate-symmetry, and endpoint-permutation preconditions.
 
+The preceding constructions are instances of one generic ragged-domain lift.
+Let $\mathcal Q_k$ be any finite local quotient family whose identity depends
+only on ambiguity dimension $k$, with exact dense rank
+$\rho_k:\mathcal Q_k\overset{\sim}{\to}\{0,\ldots,U_k-1\}$. Define
+\[
+  W^{\mathcal Q}_i(a)=
+    \sum_{j=0}^{i}\binom{i}{j}2^j5^{i-j}U_{a+j},
+  \qquad
+  P^{\mathcal Q}_N(d)=\sum_{i=0}^{N-1}\sum_{v=0}^{d_i-1}
+    W^{\mathcal Q}_i\!\left(\kappa_{>i}+\epsilon(v)\right).
+\]
+Then
+\begin{equation}
+  \fitmath{%
+    \Gamma^{\mathcal Q}_N(d,q)=
+      P^{\mathcal Q}_N(d)+\rho_{\kappa(d)}(q),
+    \qquad
+    \Gamma^{\mathcal Q}_N:
+      \bigsqcup_{d\in\{0,\ldots,6\}^N}\mathcal Q_{\kappa(d)}
+      \overset{\sim}{\longrightarrow}
+      \{0,\ldots,W^{\mathcal Q}_N(0)-1\},
+    \quad 1\leq N\leq14.
+  }
+  \label{eq:optimization-crazy-global-ragged-quotient-ranking}
+\end{equation}
+High-digit block subtraction is the inverse. Exhaustive synthetic ragged-domain
+enumeration through width four proves the block partition independently of any
+specific endpoint group. Substituting the already-proved dense local $S_2$,
+$S_3$, and $S_4$ ranks reproduces their exact width-fourteen global counts.
+The lift does not assert that any other local quotient already has a dense rank.
+
 A uniformly chosen reachable accumulator/target pair therefore has exact mean
 complete-domain preimage cardinality
 \begin{equation}

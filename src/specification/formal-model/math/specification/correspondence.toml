@@ -960,6 +960,16 @@ mechanism = "ambiguity-weighted-base-seven-digit-DP-prefix-with-exact-S4-local-c
 evidence = ["tests/mathematics/test_crazy_preimage_cube_global_unordered_quadruple_ranking.py::test_global_s4_rank_exhausts_small_ragged_domains", "tests/mathematics/test_crazy_preimage_cube_global_unordered_quadruple_ranking.py::test_global_s4_rank_roundtrips_checked_boundaries", "tests/mathematics/test_crazy_preimage_cube_global_unordered_quadruple_ranking.py::test_global_s4_prefix_matches_direct_small_pair_sums", "tests/mathematics/test_crazy_preimage_cube_unordered_quadruple_ranking.py::test_dense_s4_class_count_matches_burnside_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_global_unordered_quadruple_quotient.py::test_global_unordered_quadruple_quotient_has_exact_closed_count"]
 
 [[correspondence]]
+id = "optimization-crazy-global-ragged-quotient-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-global-ragged-quotient-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "widths 1 through 14 over the base-seven reachable accumulator/target-pair order, for any finite local quotient family indexed only by ambiguity dimension and equipped with a separately proved exact dense local rank"
+mechanism = "generic-ambiguity-weighted-suffix-block-sum-plus-local-dense-rank-and-high-digit-inverse-subtraction"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_global_ragged_ranking.py::test_generic_ragged_rank_exhausts_synthetic_small_domains", "tests/mathematics/test_crazy_preimage_cube_global_ragged_ranking.py::test_generic_ragged_rank_rejects_invalid_local_or_pair_ranks", "tests/mathematics/test_crazy_preimage_cube_global_ragged_ranking.py::test_s2_s3_s4_specializations_match_exact_global_counts"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-mean-preimage-count"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-profile-mean-preimage-count"

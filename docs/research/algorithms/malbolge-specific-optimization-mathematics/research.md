@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes ninety-two exact reductions: classic five-trit crazy
+formalizes ninety-three exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -960,8 +960,9 @@ unordered triple, quadruple, quintuple,
 and sextuple quotients, plus the
 established
 triple/quadruple global aggregates, dense global unordered-triple and
-unordered-quadruple rank/unrank, the quintuple global aggregate, and both
-sextuple global aggregates, exact
+unordered-quadruple rank/unrank, the generic ambiguity-indexed global
+ragged-domain lift, the quintuple global aggregate, and both sextuple global
+aggregates, exact
 global ordered-triple and ordered-quadruple
 quotient counts, exact endpoint-symmetric pair quotient and dense local/global
 rank/unrank,

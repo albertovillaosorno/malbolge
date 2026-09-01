@@ -133,6 +133,12 @@ quadruple quotient has 1,409,733,897,288,413 canonical classes. The base-seven
 reachable-pair DP composes with the local S4 rank, giving dense global
 rank/unrank across exactly those classes through width fourteen.
 
+The same construction is generic: any finite local quotient family whose class
+identity depends only on ambiguity dimension can be lifted once it supplies an
+exact dense local rank. Independent synthetic enumeration proves the ragged
+block partition, and S2, S3, and S4 specializations reproduce their exact
+width-14 global totals. The theorem does not supply a missing local dense rank.
+
 Ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; if quintuple
 endpoint order is irrelevant, the additional `S_5` quotient has exactly
 1,426,354,541 classes. Ordered sextuples have `C(k+63,63)` classes, or
