@@ -115,9 +115,12 @@ coordinate action have `C(k+7,7)` exact joint-count classes, or 116,280 at
 `k=14`; if triple endpoint order is irrelevant, the additional `S_3` quotient
 has exactly 21,323 classes. Its dense rank keeps the fixed `000`/`111` counts,
 sorts three complementary weight-one/weight-two count pairs, and uses exact
-finite suffix-block counts for rank/unrank through dimension fourteen. Summed
-over every reachable width-14 fixed pair, that endpoint-unordered triple
-quotient has 124,279,218,052,677 canonical classes.
+finite suffix-block counts for rank/unrank through dimension fourteen.
+
+Summed over every reachable width-14 fixed pair, that endpoint-unordered triple
+quotient has 124,279,218,052,677 canonical classes. The same base-seven digit
+DP used for pair ranking composes with the local S3 rank, giving dense global
+rank/unrank across exactly those classes through width fourteen.
 
 Ordered quadruples have `C(k+15,15)` classes, or 77,558,760; if quadruple
 endpoint order is irrelevant, the additional `S_4` quotient has exactly

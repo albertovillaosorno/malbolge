@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes eighty-nine exact reductions: classic five-trit crazy
+formalizes ninety exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -99,10 +99,9 @@ verifier call lower bound plus checked tuple substitution and exact all-pair
 aggregation, an exact binary-decision-tree information lower bound plus checked
 tuple substitution, exact global ordered and endpoint-
 unordered checked-arity
-transforms, exact global ordered-triple and
-endpoint-
-unordered triple
-quotient counts, exact global ordered-quadruple and endpoint-unordered quadruple
+transforms, exact global ordered-triple and endpoint-unordered triple quotient
+counts with dense global S3 rank/unrank, exact global ordered-quadruple and
+endpoint-unordered quadruple
 quotient counts, exact ordered-quintuple and endpoint-unordered quintuple
 quotient counts, exact ordered and endpoint-unordered sextuple quotient counts
 across all reachable fixed pairs, exact
@@ -953,8 +952,9 @@ arity transforms, exact endpoint-
 unordered triple, quadruple, quintuple,
 and sextuple quotients, plus the
 established
-triple/quadruple global aggregates, the quintuple global aggregate, and both
-sextuple global aggregates, exact global ordered-triple and ordered-quadruple
+triple/quadruple global aggregates, dense global unordered-triple rank/unrank,
+the quintuple global aggregate, and both sextuple global aggregates, exact
+global ordered-triple and ordered-quadruple
 quotient counts, exact endpoint-symmetric pair quotient and dense local/global
 rank/unrank,
 and

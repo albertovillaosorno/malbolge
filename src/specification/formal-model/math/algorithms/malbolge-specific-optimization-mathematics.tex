@@ -1830,6 +1830,34 @@ roundtrips through width fourteen reproduce the exact global count $E_N$,
 including 18096618233793 ranks at $N=14$. The construction inherits both the
 fixed-pair identity and endpoint-symmetry preconditions.
 
+The same ragged-domain construction composes with the dense local $S_3$ rank.
+Write $U^{(3)}_k=|\mathcal J^{(3)}_k/S_3|$ and define
+\[
+  W^{(3)}_i(a)=\sum_{j=0}^{i}\binom{i}{j}2^j5^{i-j}U^{(3)}_{a+j},
+  \qquad
+  P^{(3)}_N(d)=\sum_{i=0}^{N-1}\sum_{v=0}^{d_i-1}
+    W^{(3)}_i\!\left(\kappa_{>i}+\epsilon(v)\right).
+\]
+For a local unordered-triple class with dense rank
+$r=\rho^{(3)}_\kappa(n)$, set
+\begin{equation}
+  \fitmath{%
+    \Gamma^{(3)}_N(d,n)=P^{(3)}_N(d)+\rho^{(3)}_\kappa(n),
+    \qquad
+    \Gamma^{(3)}_N:
+      \bigsqcup_{d\in\{0,\ldots,6\}^N}\mathcal J^{(3)}_{\kappa(d)}/S_3
+      \overset{\sim}{\longrightarrow}\{0,\ldots,G_N-1\},
+    \quad 1\leq N\leq14.
+  }
+  \label{eq:optimization-crazy-global-unordered-triple-ranking}
+\end{equation}
+Unranking subtracts the same high-digit suffix blocks and leaves one residual
+local rank, which is inverted by $(\rho^{(3)}_\kappa)^{-1}$. Exhaustive ragged-
+domain enumeration through width four and checked boundary/midpoint roundtrips
+through width fourteen reproduce the global $S_3$ count, including
+124279218052677 ranks at $N=14$. The construction inherits the fixed-pair,
+coordinate-symmetry, and endpoint-permutation preconditions.
+
 A uniformly chosen reachable accumulator/target pair therefore has exact mean
 complete-domain preimage cardinality
 \begin{equation}

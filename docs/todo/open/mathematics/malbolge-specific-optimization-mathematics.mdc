@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize eighty-nine exact reductions: classic
+- The proved slices now formalize ninety exact reductions: classic
   five-trit
   crazy factorization, profile-width crazy chunking, exact zero-padded 15-trit
   crazy projection and uniform three-lookup factorization for semantic widths
@@ -73,8 +73,8 @@ force or stochastic optimization begins.
   checked tuple-quotient specialization,
   exact global checked-arity ordered and endpoint-unordered tuple counts, exact
   global
-  ordered-triple
-  and endpoint-unordered triple quotient counts, exact global ordered-quadruple
+  ordered-triple and endpoint-unordered triple quotient counts with dense
+  global S_3 rank/unrank, exact global ordered-quadruple
   and endpoint-unordered quadruple quotient counts, exact ordered-quintuple and
   endpoint-unordered quintuple quotient counts, exact ordered and endpoint-
   unordered sextuple quotient counts across all reachable fixed pairs, exact
@@ -109,10 +109,10 @@ force or stochastic optimization begins.
   preimage-budget exceedance sum, its width-indexed generalization, and the
   exact minimum complete-preimage budget needed to cover any integer target
   from 0 through `7^N` reachable pairs for checked widths `1<=N<=14`. Four
-  reductions are consumed by runtime paths; the seventy-two search reductions,
+  reductions are consumed by runtime paths; the seventy-three search reductions,
   two padded-geometry equivalences, and eleven width-certification
   results carry no inherited runtime speedup claim.
-- Eighty-nine optimization research equations are registered in
+- Ninety optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -147,7 +147,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes eighty-nine labelled optimization
+- Current mathematical evidence includes ninety labelled optimization
   equations,
   executable correspondence, exact zero-padding projection and uniform
   three-lookup evidence for semantic widths 10 through 14, exact checked
@@ -189,9 +189,8 @@ force or stochastic optimization begins.
   decision-tree worst/mean information lower bounds with checked tuple
   substitution, exact global checked-arity ordered and endpoint-
   unordered tuple counts, exact
-  global
-  ordered-triple and endpoint-
-  unordered triple quotient counts through width 14, exact global ordered-
+  global ordered-triple and endpoint-unordered triple quotient counts with
+  dense global rank/unrank through width 14, exact global ordered-
   quadruple and endpoint-unordered quadruple quotient counts through width 14,
   exact global ordered-quintuple and endpoint-unordered quintuple quotient
   counts,
