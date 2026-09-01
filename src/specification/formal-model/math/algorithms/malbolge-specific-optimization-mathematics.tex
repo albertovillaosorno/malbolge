@@ -985,6 +985,36 @@ pair. Raw $S_4$ orbit enumeration through mass three, the spoke/stabilizer
 factorization, and an independent full-group Burnside sum agree. At mass
 fourteen $C^{(E,24)}_{14}=34507258$.
 
+For the $2+1+1$ spoke shape, the equal-spoke stabilizer is one $S_2$.
+The transposition fixes two pair-valued $K_4$ edges and swaps two labeled
+edge-pairs simultaneously. If the two four-scalar moving blocks have masses
+$a,b$, let $N_{a},N_{b}$ be their raw weak-composition counts, and let
+$H_{a},H_{b}$ be
+the internal-swap fixed counts, and let
+\[
+  D_{a,b}=\frac{N_{a}N_{b}+H_{a}H_{b}}{2}.
+\]
+Rank the first moving block into fixed states followed by nonfixed two-cycles.
+A fixed first block leaves the second block in its ordinary involution quotient;
+a nonfixed first block orients the common transposition and leaves the second
+block raw. Prefixing the four fixed-edge scalars, the two moving-block masses,
+and these diagonal blocks yields
+\begin{equation}
+  \fitmath{%
+    \rho^{(E,2)}_m:
+      \mathcal E^{(4)}_{S_2,m}
+      \overset{\sim}{\longrightarrow}
+      \{0,\ldots,C^{(E,2)}_m-1\},
+    \qquad C^{(E,2)}_{14}=2235960,
+    \quad 0\leq m\leq14.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s4-s2-edge-ranking}
+\end{equation}
+Direct orbit exhaustion through mass three gives every rank once. Dense
+rank/unrank is exhausted through mass six, and representative boundary and
+interior ranks are checked through mass fourteen. The two swapped edge blocks
+share one involution; sorting them independently would over-quotient the action.
+
 The all-equal-spoke stratum has $H_q=S_4$ and admits a dense edge-only inverse.
 Partition the six $K_4$ edges into the three opposite-edge blocks
 $\{01,23\}$, $\{02,13\}$, and $\{03,12\}$. For one pair-valued block of

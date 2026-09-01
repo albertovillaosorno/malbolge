@@ -153,11 +153,11 @@ dense rank/unrank through mass 14 by nondecreasing three-bundle mass blocks and
 fixed/nonfixed involution ranks.
 
 The order-24 `S_4` residual stabilizer has an exact sorted-spoke/K4-edge
-stabilizer decomposition through mass 14. Its all-equal-spoke full-S4 edge core
-now also has exact dense rank/unrank through mass 14 via opposite-edge blocks
-and one all-moving parity bit. The remaining spoke shapes, the order-120
-residual stabilizer, and a complete S5 dense rank remain open. Ordered sextuples
-have
+stabilizer decomposition through mass 14. The `2+1+1` spoke shape now has exact
+dense edge rank/unrank under its shared S2 involution, and the all-equal-spoke
+full-S4 edge core has exact dense rank/unrank via opposite-edge blocks and one
+all-moving parity bit. The remaining spoke shapes, the order-120 residual
+stabilizer, and a complete S5 dense rank remain open. Ordered sextuples have
 `C(k+63,63)` classes, or
 839,983,521,106,400 at `k=14`; the additional `S_6` endpoint quotient has
 1,179,940,653,635 classes.

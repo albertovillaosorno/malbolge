@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes one hundred two exact reductions: classic five-trit crazy
+formalizes one hundred three exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -749,11 +749,12 @@ fourteen; the final mass-14 domain has 68,763,298 classes.
 
 For the order-24 `S_4` stabilizer, sorting the four spoke count-pairs leaves one
 of five Young stabilizers of orders `1,2,4,6,24` acting on the six pair-valued
-K4 edges; that factorization reproduces all 34,507,258 mass-14 classes. In the
-all-equal-spoke stratum, three opposite-edge blocks reduce full S4 to even V4
-flip parity plus S3 block permutation, giving a dense 191,180-class edge-only
-rank at mass 14. The remaining spoke shapes, the order-120 residual stabilizer,
-and complete dense S5 ranking remain open.
+K4 edges; that factorization reproduces all 34,507,258 mass-14 classes. The
+`2+1+1` spoke shape has a dense shared-involution edge rank with 2,235,960
+mass-14 classes. In the all-equal-spoke stratum, three opposite-edge blocks
+reduce full S4 to even V4 flip parity plus S3 block permutation, giving a dense
+191,180-class edge-only rank at mass 14. The remaining spoke shapes, the
+order-120 residual stabilizer, and complete dense S5 ranking remain open.
 
 Ordered sextuples have sixty-four joint-pattern counts and exactly
 `C(k+63,63)` coordinate classes, or 839,983,521,106,400 at `k=14`. Adding the
