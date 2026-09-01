@@ -990,6 +990,16 @@ mechanism = "S5-Burnside-sum-plus-generic-binomial-transform-generating-function
 evidence = ["tests/mathematics/test_crazy_preimage_cube_global_unordered_quintuple_quotient.py::test_small_widths_match_independent_fixed_pair_enumeration", "tests/mathematics/test_crazy_preimage_cube_global_unordered_quintuple_quotient.py::test_global_unordered_quintuple_quotient_has_exact_closed_count"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-global-unordered-quintuple-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-global-unordered-quintuple-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all reachable accumulator-target pairs at widths 1 through 14, with each fixed-pair endpoint-unordered S5 quintuple quotient equipped with the proved complete dense local rank and ordered by the canonical base-seven reachable-pair code"
+mechanism = "generic-ambiguity-indexed-ragged-domain-lift-using-S5-local-class-count-suffix-weights-high-digit-prefix-rank-and-block-subtraction-unrank"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_global_unordered_quintuple_ranking.py::test_global_s5_rank_exhausts_small_ragged_domains", "tests/mathematics/test_crazy_preimage_cube_global_unordered_quintuple_ranking.py::test_global_s5_rank_roundtrips_checked_boundaries", "tests/mathematics/test_crazy_preimage_cube_global_unordered_quintuple_ranking.py::test_global_s5_prefix_matches_direct_small_pair_sums"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-global-ordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-global-ordered-preimage-sextuple-quotient"

@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes one hundred fourteen exact reductions: classic five-trit crazy
+formalizes one hundred fifteen exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -104,8 +104,8 @@ transforms, exact global ordered-triple and endpoint-unordered triple quotient
 counts with dense global S3 rank/unrank, exact global ordered-quadruple and
 endpoint-unordered quadruple
 quotient counts, exact ordered-quintuple and endpoint-unordered quintuple
-quotient counts, exact ordered and endpoint-unordered sextuple quotient counts
-across all reachable fixed pairs, exact
+quotient counts with dense global S5 rank/unrank, exact ordered and endpoint-
+unordered sextuple quotient counts across all reachable fixed pairs, exact
 endpoint-symmetric pair quotient with
 `(C(k+3,3)+floor((k+2)^2/4))/2` classes, dense local rank/unrank, and dense
 global ragged-domain rank/unrank, plus exact binomial distance
@@ -829,8 +829,13 @@ distribution gives 34,995,940,605,821,849 canonical quintuples at `N=14`.
 The seven global fixed counts are obtained independently by the generic
 binomial transform of each endpoint label-cycle generating function. Direct
 ambiguity summation, transformed coefficients through width fourteen, and
-independent all-pair enumeration through width two agree; this is a cardinality
-result only.
+independent all-pair enumeration through width two agree.
+
+The complete dense local S5 rank now lifts through canonical base-seven
+reachable-pair order; ragged-domain enumeration through width four and checked
+roundtrips through width fourteen give one dense global interval of
+34,995,940,605,821,849 ranks. This is a cardinality and canonical-ranking result
+only.
 
 The ordered-sextuple aggregate has 1,584,315,319,509,725,541,225 canonical
 representatives at `N=14`, while the endpoint-unordered S₆ aggregate has
@@ -1014,7 +1019,8 @@ and sextuple quotients, plus the
 established
 triple/quadruple global aggregates, dense global unordered-triple and
 unordered-quadruple rank/unrank, the generic ambiguity-indexed global
-ragged-domain lift, the quintuple global aggregate, and both sextuple global
+ragged-domain lift, the quintuple global aggregate with dense global S5
+rank/unrank, and both sextuple global
 aggregates, exact
 global ordered-triple and ordered-quadruple
 quotient counts, exact endpoint-symmetric pair quotient and dense local/global

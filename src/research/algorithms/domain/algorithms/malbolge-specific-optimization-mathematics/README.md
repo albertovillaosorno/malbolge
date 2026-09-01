@@ -190,7 +190,9 @@ triple quotient gives
 25,678,405,217,633,865 canonical ordered quadruples, and the quintuple quotient
 gives 3,571,359,808,057,227,945 canonical ordered quintuples. The endpoint-
 unordered quintuple aggregate has 34,995,940,605,821,849 canonical classes at
-width 14. At the same width, the ordered sextuple aggregate has
+width 14, now with dense global rank/unrank from the generic reachable-pair
+ragged lift and the complete local S5 rank. At the same width, the ordered
+sextuple aggregate has
 1,584,315,319,509,725,541,225 classes and its endpoint-unordered `S_6` quotient
 has 2,361,488,883,978,006,005 classes.
 

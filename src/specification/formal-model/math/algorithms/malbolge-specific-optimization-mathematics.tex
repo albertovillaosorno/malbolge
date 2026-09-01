@@ -2541,6 +2541,29 @@ boundary/interior roundtrips through width fourteen reproduce the global count,
 including 1409733897288413 ranks at $N=14$. The construction inherits the
 fixed-pair, coordinate-symmetry, and endpoint-permutation preconditions.
 
+The complete dense local $S_5$ rank now lifts in exactly the same way. Put
+$U^{(5)}_k=|\mathcal J^{(5)}_k/S_5|$ and
+\[
+  W^{(5)}_i(a)=\sum_{j=0}^{i}\binom{i}{j}2^j5^{i-j}U^{(5)}_{a+j}.
+\]
+For a reachable fixed-pair base-seven digit string $q$ with ambiguity count
+$k(q)$, let $P^{(5)}_N(q)$ be the sum of these suffix blocks over every earlier
+high-digit choice. Then
+\begin{equation}
+  \fitmath{%
+    \rho^{(5,\mathrm{global})}_N(q,c)
+      =P^{(5)}_N(q)+\rho^{(5)}_{k(q)}(c),
+    \qquad 1\leq N\leq14.
+  }
+  \label{eq:optimization-crazy-global-unordered-quintuple-ranking}
+\end{equation}
+High-digit block subtraction followed by the local $S_5$ inverse gives the
+inverse map. Exhaustive ragged-domain enumeration through width four and direct
+prefix sums agree exactly; boundary and interior roundtrips through width
+fourteen reproduce the established global count, including
+$34995940605821849$ ranks at $N=14$. This specialization inherits the reachable-
+pair and endpoint-symmetry preconditions and makes no timing claim.
+
 The preceding constructions are instances of one generic ragged-domain lift.
 Let $\mathcal Q_k$ be any finite local quotient family whose identity depends
 only on ambiguity dimension $k$, with exact dense rank
@@ -2569,8 +2592,9 @@ Then
 High-digit block subtraction is the inverse. Exhaustive synthetic ragged-domain
 enumeration through width four proves the block partition independently of any
 specific endpoint group. Substituting the already-proved dense local $S_2$,
-$S_3$, and $S_4$ ranks reproduces their exact width-fourteen global counts.
-The lift does not assert that any other local quotient already has a dense rank.
+$S_3$, $S_4$, and $S_5$ ranks reproduces their exact width-fourteen global
+counts. The lift does not
+assert that any other local quotient already has a dense rank.
 
 A uniformly chosen reachable accumulator/target pair therefore has exact mean
 complete-domain preimage cardinality
