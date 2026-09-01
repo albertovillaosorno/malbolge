@@ -141,7 +141,10 @@ width-14 global totals. The theorem does not supply a missing local dense rank.
 
 Ordered quintuples have `C(k+31,31)` classes, or 166,871,334,960; if quintuple
 endpoint order is irrelevant, the additional `S_5` quotient has exactly
-1,426,354,541 classes. Ordered sextuples have `C(k+63,63)` classes, or
+1,426,354,541 classes. Its structural factorization sorts five complementary
+vertex-count pairs, then quotients ten complementary K5 edge-count pairs by the
+residual equal-vertex stabilizer; this is not yet a dense rank. Ordered
+sextuples have `C(k+63,63)` classes, or
 839,983,521,106,400 at `k=14`; the additional `S_6` endpoint quotient has
 1,179,940,653,635 classes.
 

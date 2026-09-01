@@ -474,6 +474,16 @@ mechanism = "S5-Burnside-label-cycle-index-plus-canonical-endpoint-ordering"
 evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_quintuple_quotient.py::test_s5_endpoint_cycle_types_induce_exact_label_cycles", "tests/mathematics/test_crazy_preimage_cube_unordered_quintuple_quotient.py::test_unordered_quintuple_orbits_are_exact_through_dimension_two", "tests/mathematics/test_crazy_preimage_cube_unordered_quintuple_quotient.py::test_unordered_quintuple_burnside_counts_through_dimension_fourteen", "tests/mathematics/test_crazy_preimage_cube_unordered_quintuple_quotient.py::test_unordered_quintuple_quotient_lifts_to_small_reachable_pairs"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-unordered-quintuple-decomposition"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-unordered-quintuple-decomposition"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "endpoint-unordered S5 joint-count classes at ambiguity dimensions 0 through 14, decomposed into fixed 00000/11111 counts, sorted singleton/complement vertex-count pairs, and weight-two/weight-three complement-paired K5 edge counts modulo the equal-vertex stabilizer"
+mechanism = "sorted-five-vertex-pairs-plus-residual-K5-edge-pair-stabilizer-Burnside-factorization"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_unordered_quintuple_decomposition.py::test_s5_hamming_layers_map_as_vertex_and_edge_complement_pairs", "tests/mathematics/test_crazy_preimage_cube_unordered_quintuple_decomposition.py::test_s5_edge_pair_burnside_matches_small_direct_orbits", "tests/mathematics/test_crazy_preimage_cube_unordered_quintuple_decomposition.py::test_s5_vertex_edge_decomposition_matches_burnside"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-ordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-ordered-sextuple-quotient"

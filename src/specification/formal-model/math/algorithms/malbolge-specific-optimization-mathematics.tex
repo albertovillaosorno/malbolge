@@ -744,6 +744,35 @@ ordered classes or $32^{14}=1180591620717411303424$ raw ordered quintuples.
 This refinement applies only to analyses invariant under endpoint permutation
 and simultaneous ambiguity-coordinate relabeling, and it makes no timing claim.
 
+The $S_5$ quotient has a finer structural factorization. Keep the fixed counts
+$n_{00000}$ and $n_{11111}$. Pair each weight-one vertex count with its
+weight-four complement and sort the five pairs lexicographically; write $u$ for
+that ordered five-tuple and $H(u)\leq S_5$ for its equal-pair stabilizer. Pair
+each weight-two edge count with its complementary weight-three count, so the
+ten pairs form a pair-valued weighting of the edges of $K_5$. If
+$\mathcal E^{(5)}_{H,r}$ denotes total-mass-$r$ edge-pair assignments modulo
+$H$, then
+\begin{equation}
+  \fitmath{%
+    \mathcal J^{(5)}_k/S_5
+      \overset{\sim}{\longrightarrow}
+      \bigsqcup_{\substack{a+b+\sum_i |u_i|+r=k\\u_1\leq\cdots\leq u_5}}
+        \mathcal E^{(5)}_{H(u),r},
+    \qquad
+    |\mathcal E^{(5)}_{H,r}|=
+      \frac{1}{|H|}\sum_{\pi\in H}[x^r]
+      \prod_{C\in\operatorname{Orb}_{E(K_5)}(\pi)}
+        (1-x^{|C|})^{-2}.
+  }
+  \label{eq:optimization-crazy-preimage-cube-unordered-quintuple-decomposition}
+\end{equation}
+The exponent $-2$ records the weight-two and complementary weight-three counts
+on each edge orbit. Direct edge-pair orbits through residual mass three agree
+with the stabilizer Burnside term for all seven equal-vertex block shapes.
+Summing the decomposition reproduces the full $S_5$ Burnside count through
+$k=14$, including 1426354541 classes. This factorization is a prerequisite for,
+not a claim of, dense $S_5$ rank/unrank.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,
