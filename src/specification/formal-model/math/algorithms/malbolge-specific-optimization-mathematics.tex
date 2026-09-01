@@ -1142,6 +1142,53 @@ this cycle index, and the complete checked sequence ends at
 $C^{(E,120)}_{14}=6962786$. This isolates the last residual hard core; no dense
 order-one-hundred-twenty inverse or complete dense $S_5$ rank is claimed.
 
+The remaining order-one-hundred-twenty edge core has a small exact symmetry
+exception set. Let $\mathcal L$ be the subgroup lattice of $S_5$. For
+$H\in\mathcal L$, let $d_1(H),\ldots,d_{r(H)}(H)$ be the orbit sizes of $H$ on
+the ten $K_5$ edges and define
+\[
+  F_H(m)=[x^m]\prod_{j=1}^{r(H)}(1-x^{d_j(H)})^{-2}.
+\]
+If $E_H(m)$ is the number of labeled pair-valued edge assignments whose exact
+automorphism stabilizer is $H$, descending subgroup-lattice inversion gives
+\begin{equation}
+  \fitmath{%
+    E_H(m)=F_H(m)-\sum_{K>H}E_K(m),
+    \qquad
+    O_{[H]}(m)=\frac{|H|}{120}\sum_{K\in[H]}E_K(m).
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s5-stabilizer-spectrum}
+\end{equation}
+Here $[H]$ is an $S_5$ conjugacy class of subgroups and $O_{[H]}$ counts
+unlabeled edge orbits with exact stabilizer in that class. The full lattice has
+156 subgroups in 19 conjugacy classes. At mass fourteen only the following nine
+stabilizer types are nonempty:
+\[
+\begin{array}{c|c|c|r}
+|H| & \text{vertex orbits} & \text{edge orbits} & O_{[H]}(14)\\ \hline
+1  & 1+1+1+1+1 & 1^{10}       & 6689862\\
+2  & 2+1+1+1   & 2^3 1^4      & 239656\\
+2  & 2+2+1     & 2^4 1^2      & 21920\\
+4  & 4+1       & 4\,2^3       & 194\\
+4  & 2+2+1     & 4\,2^2 1^2   & 10466\\
+6  & 3+1+1     & 3^3 1        & 402\\
+8  & 4+1       & 4^2 2        & 106\\
+12 & 3+2       & 6\,3\,1      & 174\\
+24 & 4+1       & 6\,4          & 6
+\end{array}
+\]
+Thus 6689862 of the 6962786 mass-fourteen classes, or about $96.0802\%$, have
+trivial automorphism stabilizer. If $v(H)$ is the number of vertex orbits of
+$H$, the same exact-stratum counts recover the independently proved rooted
+order-twenty-four total through
+\[
+  R_m=\frac1{120}\sum_{H\leq S_5}E_H(m)|H|v(H),
+  \qquad R_{14}=34507258.
+\]
+Direct full-$S_5$ orbit/stabilizer enumeration through mass three agrees with
+this inversion. These counts isolate the generic and symmetric-root strata but
+do not yet assign dense order-one-hundred-twenty ranks.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,
