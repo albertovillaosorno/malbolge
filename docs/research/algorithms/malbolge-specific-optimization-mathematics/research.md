@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes one hundred eighteen exact reductions: classic five-trit crazy
+formalizes one hundred nineteen exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -91,8 +91,8 @@ quintuple quotient into `C(k+31,31)` joint-count classes, exact endpoint-
 unordered quintuple quotient under `S_5`, exact ordered sextuple quotient into
 `C(k+63,63)` classes, exact endpoint-unordered sextuple quotient under `S_6`
 with a six-vertex-pair/eleven-Young-stabilizer residual factorization,
-trivial-stabilizer distinct-vertex dense rank/unrank, and order-two Young-
-stabilizer dense rank/unrank,
+trivial-stabilizer distinct-vertex dense rank/unrank, order-two Young-
+stabilizer dense rank/unrank, and order-six Young-stabilizer dense rank/unrank,
 a generic checked-arity ordered tuple quotient into
 `C(k+2^m-1,2^m-1)` classes for `1<=m<=8`, a dense combinadic rank/unrank over
 those classes, a generic endpoint-unordered Burnside quotient under `S_m` for
@@ -794,9 +794,12 @@ The all-distinct vertex-pair stratum has trivial Young stabilizer, so a vertex-
 sequence prefix plus 52-part weak-composition rank densely indexes 99,892,279
 mass-14 classes. The `(2,1,1,1,1)` vertex multiplicity stratum leaves one
 coupled residual involution with 24 fixed scalars and 14 swapped pairs. Its
-dense
-rank covers another 8,308,559,181 mass-14 classes. The remaining nine nontrivial
-Young stabilizer strata stay unranked, and no timing claim is made.
+dense rank covers another 8,308,559,181 mass-14 classes.
+
+The `(3,1,1,1)` stratum reduces to 10 fixed scalars and a multiset of three
+14-component vectors; its dense rank covers 89,182,770,767 mass-14 classes. The
+remaining eight
+nontrivial Young stabilizer strata stay unranked, and no timing claim is made.
 
 Combining that quotient with the exact ambiguity-class distribution gives a
 closed global representative count. Width `N` has

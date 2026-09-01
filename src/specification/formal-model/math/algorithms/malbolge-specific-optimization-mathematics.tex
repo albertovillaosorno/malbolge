@@ -1517,6 +1517,38 @@ mass fourteen. The exact stratum counts from masses six through fourteen are
 \]
 The remaining nine nontrivial Young stabilizer strata are still unranked.
 
+The vertex multiplicity stratum $(3,1,1,1)$ has Young stabilizer $S_3$.
+On the fifty-two residual scalar labels, a transposition has cycle type
+$1^{24}2^{14}$ and a three-cycle has cycle type $1^{10}3^{14}$. Equivalently,
+the residual quotient is ten fixed scalar counts together with a multiset of
+three fourteen-component count vectors. Let $Q_r^{(3)}$ be that dense
+residual class count, and let $D_a^{(3)}$ be the sorted vertex-pair sequences
+of mass $a$ with
+multiplicity partition $(3,1,1,1)$, and let $\eta_r^{(3)}$ be the dense
+multiset-of-three residual rank. Then
+\begin{equation}
+  \fitmath{%
+    \rho^{(6,3 1^3)}_k(v,y)
+      =\sum_{b<a}|D_b^{(3)}|Q_{k-b}^{(3)}
+       +i_a(v)Q_{k-a}^{(3)}+\eta_{k-a}^{(3)}(y),
+    \qquad 0\leq k\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s3-vertex-ranking}
+\end{equation}
+The residual inverse subtracts fixed-mass blocks and then unranks a weighted
+multiset of three fourteen-component weak compositions. Direct residual orbit
+enumeration through mass two agrees with Burnside, complete stratum rank/unrank
+is exhausted through mass six, and boundary/interior checks reach mass
+fourteen. The exact stratum counts from masses four through ten are
+\[
+  (3,82,1491,22028,277480,3037588,29285304),
+\]
+and the counts from masses eleven through fourteen are
+\[
+  (251670820,1949654530,13754973430,89182770767).
+\]
+The remaining eight nontrivial Young stabilizer strata are still unranked.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose

@@ -192,7 +192,9 @@ rank/unrank by vertex-sequence prefix plus a 52-part weak-composition rank,
 covering 99,892,279
 mass-14 classes. The `(2,1,1,1,1)` stratum has residual cycle type `1^24 2^14`
 and a dense coupled-involution rank covering 8,308,559,181 mass-14 classes. The
-remaining nine nontrivial Young stabilizer strata remain unranked.
+`(3,1,1,1)` stratum is 10 fixed scalars plus a multiset of three 14-component
+vectors and has a dense rank covering 89,182,770,767 mass-14 classes. The
+remaining eight nontrivial Young stabilizer strata remain unranked.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
