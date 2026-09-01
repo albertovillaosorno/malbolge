@@ -91,7 +91,7 @@ unordered quintuple quotient under `S_5`, exact ordered sextuple quotient into
 a generic checked-arity ordered tuple quotient into
 `C(k+2^m-1,2^m-1)` classes for `1<=m<=8`, a dense combinadic rank/unrank over
 those classes, a generic endpoint-unordered Burnside quotient under `S_m` for
-`3<=m<=8`, exact combined coordinate/endpoint orbit masses, endpoint-minimized
+`1<=m<=8`, exact combined coordinate/endpoint orbit masses, endpoint-minimized
 canonical integer keys, exact ordered and endpoint-unordered canonical-search
 budget exceedance and inverse coverage laws, a finite candidate-local binary-
 verifier call lower bound plus checked tuple substitution and exact all-pair
@@ -937,8 +937,9 @@ optimality, exact one-trit cube neighborhood graph, exact coordinate-
 permutation cube quotient, exact ordered cube-word pair quotient, exact
 ordered cube-word triple, quadruple, quintuple, and sextuple quotients, the
 generic ordered tuple quotient through checked arity eight, its dense
-quotient-class rank/unrank, the generic endpoint-unordered quotient and exact
-combined orbit masses and canonical integer keys through checked arity eight,
+quotient-class rank/unrank, the generic endpoint-unordered quotient from arity
+one through eight and exact combined orbit masses and canonical integer keys
+through checked arity eight,
 exact ordered and endpoint-unordered canonical-search budget exceedance and
 inverse coverage laws, the finite candidate-local binary-verifier call lower
 bound, tuple specialization, all-reachable-pair aggregation, binary-decision-

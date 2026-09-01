@@ -160,14 +160,17 @@ gives both the exact reachable-pair exceedance count for any integer budget and
 the minimum budget covering any requested number of reachable pairs, through
 checked arity eight and width fourteen.
 
-Full endpoint symmetry is now parameterized for checked arities three through
+Full endpoint symmetry is now parameterized for checked arities one through
 eight using symmetric-group conjugacy partitions and the induced permutation
-cycles on binary joint labels. At `k=14`, the new S7 and S8 quotients have
-1,442,705,743,162,885 and 2,103,669,236,921,739,401 classes. Across every
-reachable width-14 fixed pair, the corresponding global counts are
-432,496,703,839,294,883,265 and 178,151,458,860,093,866,748,569. These counts
-apply only when endpoint order is irrelevant in addition to coordinate labels;
-they are exact search-space identities and make no timing claim.
+cycles on binary joint labels. S1 reproduces the coordinate quotient and S2
+reproduces the endpoint-symmetric pair formula exactly.
+
+At `k=14`, the new S7 and S8 quotients have 1,442,705,743,162,885 and
+2,103,669,236,921,739,401 classes. Across every reachable width-14 fixed pair,
+the corresponding global counts are 432,496,703,839,294,883,265 and
+178,151,458,860,093,866,748,569. These counts apply only when endpoint order is
+irrelevant in addition to coordinate labels; they are exact search-space
+identities and make no timing claim.
 
 Each such canonical endpoint-unordered class also has an exact raw mass. The
 coordinate factor is the joint-count multinomial, while the endpoint factor is

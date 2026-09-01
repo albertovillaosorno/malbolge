@@ -63,7 +63,7 @@ force or stochastic optimization begins.
   sextuple quotient under `S_6` endpoint permutation, one generic checked-arity
   ordered tuple quotient with `C(k+2^m-1,2^m-1)` classes for `1<=m<=8`, dense
   stars-and-bars/combinadic rank-unrank for those quotient classes, one generic
-  endpoint-unordered tuple quotient under `S_m` for `3<=m<=8`, exact combined
+  endpoint-unordered tuple quotient under `S_m` for `1<=m<=8`, exact combined
   coordinate/endpoint orbit masses, endpoint-minimized canonical integer keys,
   exact ordered and endpoint-unordered canonical-search budget exceedance and
   inverse minimum-coverage laws, an exact finite binary-verifier call lower
@@ -178,7 +178,7 @@ force or stochastic optimization begins.
   classes through dimension 14, the generic ordered tuple quotient for checked
   arities one through eight with exact weak-composition class and multinomial
   mass accounting, dense combinadic quotient-class rank/unrank through dimension
-  14, generic endpoint-unordered Burnside classes for arities three through
+  14, generic endpoint-unordered Burnside classes for arities one through
   eight, exact combined raw orbit-mass reconstruction and endpoint-canonical
   integer keys, exact complete ordered and endpoint-unordered canonical-search
   budget exceedance and inverse minimum-coverage budgets, exact candidate-local

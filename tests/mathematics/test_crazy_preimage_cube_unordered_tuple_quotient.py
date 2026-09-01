@@ -46,11 +46,13 @@ from itertools import permutations
 from math import comb
 from math import factorial
 
-_MINIMUM_ARITY = 3
+_MINIMUM_ARITY = 1
 _MAXIMUM_ARITY = 8
 _MAXIMUM_TRITS = 14
-_EXPECTED_PARTITION_COUNTS = {3: 3, 4: 5, 5: 7, 6: 11, 7: 15, 8: 22}
+_EXPECTED_PARTITION_COUNTS = {1: 1, 2: 2, 3: 3, 4: 5, 5: 7, 6: 11, 7: 15, 8: 22}
 _WIDTH_FOURTEEN_LOCAL_COUNTS = {
+    1: 15,
+    2: 372,
     3: 21_323,
     4: 3_419_552,
     5: 1_426_354_541,
@@ -59,6 +61,8 @@ _WIDTH_FOURTEEN_LOCAL_COUNTS = {
     8: 2_103_669_236_921_739_401,
 }
 _WIDTH_FOURTEEN_GLOBAL_COUNTS = {
+    1: 3_391_115_364_245,
+    2: 18_096_618_233_793,
     3: 124_279_218_052_677,
     4: 1_409_733_897_288_413,
     5: 34_995_940_605_821_849,
@@ -294,6 +298,18 @@ def test_generic_unordered_tuple_burnside_counts_through_dimension_fourteen(
             arity,
             _MAXIMUM_TRITS,
         ) == _WIDTH_FOURTEEN_LOCAL_COUNTS[arity]
+
+
+def test_generic_unordered_tuple_reproduces_arity_one_and_two_specializations(
+) -> None:
+    """Generic S_m arithmetic reproduces the established S1/S2 formulas."""
+    for dimension in range(_MAXIMUM_TRITS + 1):
+        assert _unordered_tuple_classes(1, dimension) == dimension + 1
+        ordered_pair = comb(dimension + 3, 3)
+        swap_fixed = ((dimension + 2) * (dimension + 2)) // 4
+        assert _unordered_tuple_classes(2, dimension) == (
+            (ordered_pair + swap_fixed) // 2
+        )
 
 
 def test_generic_global_unordered_tuple_transform_matches_direct_sum() -> None:

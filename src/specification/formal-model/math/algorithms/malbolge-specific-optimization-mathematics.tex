@@ -794,7 +794,7 @@ classes only; it does not identify position-sensitive Malbolge states or remove
 the coordinate-symmetry precondition.
 
 The endpoint-unordered refinement also has one checked-arity form. For
-$3\leq m\leq8$, let $\lambda\vdash m$ be an endpoint permutation cycle type,
+$1\leq m\leq8$, let $\lambda\vdash m$ be an endpoint permutation cycle type,
 let $a_{\lambda,c}$ be the number of endpoint cycles of length $c$, and define
 its symmetric-group conjugacy-class size by
 \[
@@ -811,11 +811,13 @@ Burnside's lemma gives the generic endpoint-unordered quotient
 \begin{equation}
   \left|\mathcal{J}^{(m)}_k/S_m\right|
     =\frac{1}{m!}\sum_{\lambda\vdash m}w_\lambda A_{\lambda,k},
-  \quad 3\leq m\leq8,\ 0\leq k\leq N,\ 1\leq N\leq14.
+  \quad 1\leq m\leq8,\ 0\leq k\leq N,\ 1\leq N\leq14.
   \label{eq:optimization-crazy-preimage-cube-unordered-tuple-quotient}
 \end{equation}
-This specializes the preceding $S_3$ through $S_6$ results. The new $k=14$
-counts for arities seven and eight are
+At arity one this reproduces the $k+1$ coordinate quotient, and at arity two
+it reproduces the endpoint-symmetric pair formula above; it also agrees with
+the established $S_3$ through $S_6$ results. The new $k=14$ counts for arities
+seven and eight are
 \begin{equation*}
   (1442705743162885,\ 2103669236921739401).
 \end{equation*}
@@ -832,7 +834,7 @@ same multiplicities. Therefore
 \begin{equation}
   \left|[(x^{(1)},\ldots,x^{(m)})]_{S_k\times S_m}\right|
     =\frac{k!}{\prod_s n_s!}\left|S_m\!\cdot n\right|,
-  \quad 3\leq m\leq8,\ 0\leq k\leq14.
+  \quad 1\leq m\leq8,\ 0\leq k\leq14.
   \label{eq:optimization-crazy-preimage-cube-unordered-tuple-orbit-mass}
 \end{equation}
 The endpoint factor is equivalently
@@ -852,7 +854,7 @@ stars-and-bars rank above and define
       \kappa_{k,m}(n)=\kappa_{k,m}(n')
         &\Longleftrightarrow S_m\!\cdot n=S_m\!\cdot n',
     \end{aligned}
-    \qquad 3\leq m\leq8,\ 0\leq k\leq14.
+    \qquad 1\leq m\leq8,\ 0\leq k\leq14.
   }
   \label{eq:optimization-crazy-preimage-cube-unordered-tuple-canonical-rank}
 \end{equation}
@@ -1537,7 +1539,7 @@ Then the exact global endpoint-unordered count is
         \left|\mathcal{J}^{(m)}_k/S_m\right|
       =\frac{1}{m!}\sum_{\lambda\vdash m}w_\lambda
         [y^N]\widehat A_\lambda(y),
-    \quad 3\leq m\leq8,\ 1\leq N\leq14.
+    \quad 1\leq m\leq8,\ 1\leq N\leq14.
   }
   \label{eq:optimization-crazy-global-unordered-preimage-tuple-quotient}
 \end{equation}
@@ -1557,7 +1559,7 @@ any nonnegative integer canonical-enumeration budget $B$,
   E_{N,m}(B)
     =\sum_{\substack{0\leq k\leq N\\ U_{k,m}>B}}
       \binom{N}{k}2^k5^{N-k},
-  \quad 3\leq m\leq8,\ 1\leq N\leq14.
+  \quad 1\leq m\leq8,\ 1\leq N\leq14.
   \label{eq:optimization-crazy-profile-unordered-tuple-budget-exceedance}
 \end{equation}
 This is the exact number of reachable fixed accumulator/target pairs whose
@@ -1580,7 +1582,7 @@ canonical-enumeration budget covering at least $Q$ reachable pairs is
     \end{cases}
     \qquad
     k^*=\min\{k:C_{N,m}(k)\geq Q,\ 0\leq k\leq N\},
-    \quad 3\leq m\leq8,\ 1\leq N\leq14.
+    \quad 1\leq m\leq8,\ 1\leq N\leq14.
   }
   \label{eq:optimization-crazy-profile-unordered-tuple-minimum-coverage-budget}
 \end{equation}
@@ -1624,7 +1626,7 @@ solution), are
       \quad 1\leq m\leq8,\ 0\leq k\leq14,\\
     \mathcal L^{\rm unord}_{k,m}
       =\left(U_{k,m},\frac{U_{k,m}+1}{2}\right),
-      \quad 3\leq m\leq8,\ 0\leq k\leq14.
+      \quad 1\leq m\leq8,\ 0\leq k\leq14.
   }
   \label{eq:optimization-crazy-profile-tuple-verifier-call-lower-bound}
 \end{equation}
@@ -1647,7 +1649,7 @@ expected one-valid-candidate-per-pair) verifier-call bounds are
       \quad 1\leq m\leq8,\ 1\leq N\leq14,\\
     \mathcal G^{\rm unord}_{N,m}
       =\left(U_{N,m},\frac{U_{N,m}+7^N}{2}\right),
-      \quad 3\leq m\leq8,\ 1\leq N\leq14.
+      \quad 1\leq m\leq8,\ 1\leq N\leq14.
   }
   \label{eq:optimization-crazy-global-tuple-verifier-call-lower-bound}
 \end{equation}
@@ -1688,7 +1690,7 @@ Substitution of the checked tuple quotient cardinalities gives
       \quad 1\leq m\leq8,\ 0\leq k\leq14,\\
     \mathcal I^{\rm unord}_{k,m}
       =\left(D_\infty(U_{k,m}),\overline D(U_{k,m})\right),
-      \quad 3\leq m\leq8,\ 0\leq k\leq14.
+      \quad 1\leq m\leq8,\ 0\leq k\leq14.
   }
   \label{eq:optimization-crazy-profile-tuple-binary-oracle-lower-bound}
 \end{equation}
