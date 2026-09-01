@@ -1221,6 +1221,24 @@ orbit enumeration through mass three verifies rooted-view collision iff the two
 roots are automorphic. This selector does not yet densely rank the selected
 minimum-root subset or the 272924 symmetric exceptions.
 
+Each nontrivial exact-stabilizer stratum has a still smaller quotient. Let
+$X_H(m)$ be the mass-$m$ assignments with exact automorphism stabilizer $H$ and
+let $N(H)=N_{S_5}(H)$ be its normalizer. The quotient $N(H)/H$ acts freely on
+$X_H(m)$, and one $S_5$ orbit with stabilizer conjugate to $H$ meets $X_H(m)$
+in exactly $|N(H)/H|$ assignments. Therefore
+\begin{equation}
+  \fitmath{%
+    O_{[H]}(m)=\frac{E_H(m)}{|N(H)/H|}.
+  }
+  \label{eq:optimization-crazy-preimage-cube-quintuple-s5-normalizer-strata}
+\end{equation}
+For the eight populated nontrivial mass-fourteen stabilizer types above, the
+normalizer-quotient orders are respectively $6,4,6,2,2,1,1,1$. Thus every
+symmetric exception reduces to a quotient of order at most six; the order-eight,
+order-twelve, and order-twenty-four stabilizer types need no further quotient.
+The exact counts reproduce all 272924 symmetric classes. This factorization
+does not itself define their dense local ranks.
+
 The same coordinate action extends to ordered cube-word sextuples. For six
 words in $\{0,1\}^k$, let $n_s$ count coordinates whose six-bit joint pattern
 is $s\in\{0,1\}^6$. The sixty-four joint counts are complete orbit invariants,

@@ -634,6 +634,16 @@ mechanism = "bijection-between-distinct-rooted-S4-views-and-vertex-orbits-of-the
 evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s5_stabilizer_spectrum.py::test_s5_rooted_views_equal_automorphism_vertex_orbits", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_stabilizer_spectrum.py::test_s5_mass_fourteen_rooted_view_multiplicity_spectrum"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-quintuple-s5-normalizer-strata"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-preimage-cube-quintuple-s5-normalizer-strata"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "every populated nontrivial exact-automorphism-stabilizer stratum of the full order-one-hundred-twenty S5 pair-valued K5 edge quotient at residual mass 14"
+mechanism = "free-action-of-the-subgroup-normalizer-quotient-N-S5-H-over-H-on-exact-H-fixed-assignments-with-orbit-count-E-H-divided-by-normalizer-quotient-order"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_quintuple_s5_stabilizer_spectrum.py::test_s5_symmetric_stabilizer_normalizer_quotients", "tests/mathematics/test_crazy_preimage_cube_quintuple_s5_stabilizer_spectrum.py::test_s5_mass_fourteen_exact_stabilizer_spectrum"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-ordered-sextuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-ordered-sextuple-quotient"

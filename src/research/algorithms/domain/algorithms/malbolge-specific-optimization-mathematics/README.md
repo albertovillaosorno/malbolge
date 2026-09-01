@@ -167,8 +167,10 @@ The order-120 all-equal-vertex hard core now has an exact seven-conjugacy-type
 edge cycle index/count and exact 156-subgroup automorphism-stabilizer inversion
 through mass 14. Rooted-view multiplicity is exactly the automorphism vertex-
 orbit count, giving every trivial-stabilizer class a unique minimum rooted rank.
-Dense minimum-root prefix ranking, symmetric exceptions, and complete dense S5
-rank remain open.
+
+Every nontrivial exception further reduces to a normalizer quotient of order at
+most six. Dense minimum-root prefix ranking, dense exception ranks, and complete
+dense S5 rank remain open.
 Ordered sextuples have
 `C(k+63,63)` classes, or
 839,983,521,106,400 at `k=14`; the additional `S_6` endpoint quotient has

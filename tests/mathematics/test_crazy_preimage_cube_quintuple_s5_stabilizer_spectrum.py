@@ -70,7 +70,7 @@ _EXPECTED_ORDER_SPECTRUM = {
     12: 174,
     24: 6,
 }
-_EXPECTED_CONJUGACY_SPECTRUM = {
+_EXPECTED_CONJUGACY_SPECTRUM: dict[tuple[object, ...], int] = {
     (1, (1, 1, 1, 1, 1), (1,) * 10): 6_689_862,
     (2, (2, 1, 1, 1), (1, 1, 1, 1, 2, 2, 2)): 239_656,
     (2, (2, 2, 1), (1, 1, 2, 2, 2, 2)): 21_920,
@@ -420,3 +420,44 @@ def test_s5_mass_fourteen_rooted_view_multiplicity_spectrum() -> None:
         views * count for views, count in spectrum.items()
     ) == _WIDTH_FOURTEEN_ROOTED_CLASSES
     assert spectrum[_ARITY] == _WIDTH_FOURTEEN_TRIVIAL_CLASSES
+
+
+_EXPECTED_NORMALIZER_QUOTIENTS: dict[tuple[object, ...], int] = {
+    (2, (2, 1, 1, 1), (1, 1, 1, 1, 2, 2, 2)): 6,
+    (2, (2, 2, 1), (1, 1, 2, 2, 2, 2)): 4,
+    (4, (4, 1), (2, 2, 2, 4)): 6,
+    (4, (2, 2, 1), (1, 1, 2, 2, 4)): 2,
+    (6, (3, 1, 1), (1, 3, 3, 3)): 2,
+    (8, (4, 1), (2, 4, 4)): 1,
+    (12, (3, 2), (1, 3, 6)): 1,
+    (24, (4, 1), (4, 6)): 1,
+}
+
+
+def _normalizer(subgroup: _Subgroup) -> _Subgroup:
+    return frozenset(
+        element
+        for element in range(_S5_ORDER)
+        if _conjugate(subgroup, element) == subgroup
+    )
+
+
+def test_s5_symmetric_stabilizer_normalizer_quotients() -> None:
+    """Nontrivial strata have the exact small residual quotient."""
+    exact = _exact_stabilizer_assignments(_MAXIMUM_MASS)
+    observed: dict[tuple[object, ...], int] = {}
+    for conjugacy_class in _subgroup_conjugacy_classes():
+        subgroup = conjugacy_class[0]
+        if len(subgroup) == 1 or exact[subgroup] == 0:
+            continue
+        key = (
+            len(subgroup),
+            _vertex_orbit_sizes(subgroup),
+            _edge_orbit_sizes(subgroup),
+        )
+        normalizer = _normalizer(subgroup)
+        quotient_order = len(normalizer) // len(subgroup)
+        observed[key] = quotient_order
+        expected_orbits = _EXPECTED_CONJUGACY_SPECTRUM[key]
+        assert exact[subgroup] // quotient_order == expected_orbits
+    assert observed == _EXPECTED_NORMALIZER_QUOTIENTS
