@@ -272,7 +272,9 @@ exclusion of 9,080 ranks fixed by its five strict supergroups gives a complete
 
 Together with the bounded symmetric strata and the two exact order-two ranks
 below, all 140,141,576 nontrivial-stabilizer mass-14 classes are constructive.
-Only the trivial-stabilizer stratum remains open in the widened full-S5 branch.
+The trivial stratum is also constructive via ordered edge-equality patterns and
+strictly increasing four-component edge values, completing the full-S5 hard
+core at 20,103,708,128 mass-14 classes.
 
 The single-transposition H-fixed quotient now has complete exact rank/unrank.
 One
@@ -289,6 +291,16 @@ an independent weight-two swap and a diagonal weight-one/weight-two swap.
 Restricting both factors to moving orbits gives the normalizer-free rank; only
 four mass-5 and sixteen mass-10 ranks have larger S5 stabilizers. Skipping those
 exceptions yields a complete exact rank of 4,743,872 mass-14 classes.
+
+The trivial-stabilizer stratum separates equality geometry from numeric edge
+values. Sorting distinct four-component values by mass and composition rank
+turns each state into an ordered partition of the ten K5 edges. A stabilizer
+chain selects each ordered block only up to the stabilizer of the preceding
+blocks and retains exactly chains ending at the identity. For each ordered
+block-size composition, strictly increasing values reduce to nondecreasing mass
+sequences and ordinary strict combinadics. Across all 512 block-size
+compositions this gives a dense exact rank of 19,963,566,552 mass-14 classes,
+matching independent subgroup-lattice inversion.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives

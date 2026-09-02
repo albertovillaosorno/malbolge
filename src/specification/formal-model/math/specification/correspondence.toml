@@ -1064,6 +1064,16 @@ mechanism = "descending-supergroup-subtraction-over-the-complete-156-subgroup-S5
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_stabilizer_lattice_has_156_subgroups", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_exact_stabilizer_spectrum", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_symmetric_normalizer_quotients", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_stabilizer_inversion_reconstructs_edge_core", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_stabilizers_match_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_edge_core.py::test_s6_s5_edge_burnside_sequence_is_exact_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-trivial-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-trivial-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the exact trivial-stabilizer forty-scalar widened K5 edge states inside endpoint-unordered S6 top-level partition 5,1 and second-layer all-equal partition 5 through mass 14 under the full residual S5 action"
+mechanism = "sort-distinct-four-component-edge-values-by-mass-and-composition-rank-rank-the-induced-ordered-edge-partition-by-an-S5-stabilizer-chain-ending-at-identity-and-rank-equal-mass-runs-of-strictly-increasing-values-by-combinadics"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_trivial_ranking.py::test_trivial_pattern_color_factorization_matches_lattice_counts", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_trivial_ranking.py::test_trivial_pattern_rank_exhausts_small_feasible_patterns", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_trivial_ranking.py::test_trivial_rank_matches_direct_small_s5_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_trivial_ranking.py::test_trivial_rank_roundtrips_through_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_exact_stabilizer_spectrum"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-small-exception-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-s5-small-exception-ranking"

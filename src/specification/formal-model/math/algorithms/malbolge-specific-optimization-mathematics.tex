@@ -2210,7 +2210,7 @@ edges, the exact widened hard-core count is
 The seven $S_5$ conjugacy types induce the reviewed edge-cycle structures.
 Direct widened edge orbits agree through mass two, while the Burnside sequence
 is exact through mass fourteen and ends at $20103708128$ residual classes. This
-is a target-count result; constructive dense order-120 rank/unrank remains open.
+is an exact target-count prerequisite; constructive ranking is given below.
 For each subgroup $H\leq S_5$, let $F_{r,H}^{(4)}$ count widened edge
 assignments fixed by $H$. Descending the complete 156-subgroup lattice gives
 exact stabilizer counts and therefore exact orbit strata
@@ -2398,6 +2398,31 @@ Direct S5 stabilizers agree with the exact rank through mass six and directly
 reject all twenty reviewed exceptional ranks. Boundary/interior exact-rank
 roundtrips reach mass fourteen, where the normalizer-free rank has no exceptions
 and contains exactly $4743872$ classes.
+
+For the trivial-stabilizer stratum, sort the distinct four-component edge
+values by the key consisting of value mass followed by composition rank. This
+induces an ordered partition $(B_1,\ldots,B_b)$ of the ten K5 edges with block
+sizes $w_i=|B_i|$. Starting from $G_0=S_5$, choose each $B_i$ as the minimum
+subset in its $G_{i-1}$ orbit and set
+$G_i=\operatorname{Stab}_{G_{i-1}}(B_i)$. Retaining exactly chains with
+$G_b=\{1\}$ isolates trivial stabilizer. For a fixed ordered block-size
+composition, the strictly increasing edge values have nondecreasing masses;
+equal-mass runs are ranked by strict combinadics. Prefixing block-size
+compositions, stabilizer-chain patterns, and strict-color ranks gives
+\begin{equation}
+  \fitmath{%
+    \rho^{(4,1)}_r:
+      \mathcal E_{r,\{1\}}^{(4)}/S_5
+      \overset{\sim}{\longrightarrow}
+      \{0,\ldots,C_{r,1}^{\mathrm{stab}}-1\},
+    \qquad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-trivial-ranking}
+\end{equation}
+The ordered-pattern/color factorization reproduces the independent subgroup-
+lattice trivial-stratum sequence through mass fourteen, ending at
+$C_{14,1}^{\mathrm{stab}}=19963566552$. Direct free S5 orbits agree through
+mass three, and dense boundary/interior rank-unrank samples reach mass fourteen.
 
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
