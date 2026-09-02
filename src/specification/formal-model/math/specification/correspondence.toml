@@ -844,6 +844,16 @@ mechanism = "row-swap-first-plus-descended-column-involution-dense-rank-on-two-f
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_v4_edge_ranking.py::test_s4_v4_edge_rank_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_v4_edge_ranking.py::test_s4_v4_edge_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_v4_edge_ranking.py::test_s4_v4_edge_rank_roundtrips_through_mass_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s4-v4-bundle-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s4-v4-bundle-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple stratum at ambiguity mass 0 through 14 with outer vertex partition 4,1,1 and second-layer six-component vertex-bundle multiplicity partition 2,2"
+mechanism = "strict-two-key-rank-for-the-two-distinct-six-component-bundles-each-repeated-twice-composed-with-four-fixed-scalars-and-the-proved-widened-V4-K4-edge-rank"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_v4_bundle_ranking.py::test_s6_s4_v4_bundle_pair_counts_match_nested_factorization", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_v4_bundle_ranking.py::test_s6_s4_v4_bundle_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_v4_bundle_ranking.py::test_s6_s4_v4_bundle_rank_roundtrips_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"
