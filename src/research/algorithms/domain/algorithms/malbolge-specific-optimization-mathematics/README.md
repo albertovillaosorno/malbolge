@@ -205,8 +205,11 @@ S3-first bundle-multiset rank followed by a diagonal involution, covering
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
-second-layer stabilizers `1/S2/V4/S3/S4`. Its complete mass-14 count is
-302,650,855,156. Six Young stabilizer strata remain unranked.
+second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now
+has dense rank/unrank and contributes 167,523,430,983 complete mass-14 S6
+classes; the other four second-layer stabilizers remain open. The full
+`(4,1,1)` stratum still contains 302,650,855,156 classes, so six top-level
+Young stabilizer strata remain incomplete.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives

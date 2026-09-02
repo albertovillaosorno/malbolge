@@ -1691,6 +1691,33 @@ sequences reconstructs exactly $302650855156$ mass-fourteen classes in the
 complete $(4,1,1)$ stratum. Dense ranking inside its five second-layer
 stabilizers remains a separate constructive question.
 
+In the nested $(4,1,1)$ factorization, the second-layer partition
+$(1,1,1,1)$ has trivial stabilizer. Four distinct six-component vertex bundles
+therefore orient the active endpoints uniquely; the six four-component edge
+bundles become twenty-four labelled scalar coordinates. Let $D_a$ count
+four-element sets of distinct six-component weak compositions of total mass
+$a$. Then
+\begin{equation}
+  \fitmath{%
+    R_r^{(4,1,1;1^4)}=
+      \sum_{f+a+e=r}{f+3\choose3}D_a{e+23\choose23},
+    \qquad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s4-distinct-bundle-ranking}
+\end{equation}
+A dense inverse first ranks the nondecreasing four-tuple of bundle masses. For
+each equal-mass group it applies a strict combinadic rank among the
+${m+5\choose5}$ six-component vectors, then lexicographically ranks the four
+fixed scalars and twenty-four edge scalars. Arbitrary $S_4$ presentations are
+canonicalized by sorting the four distinct bundle keys and applying that same
+endpoint permutation to the edge bundles. Direct residual $S_4$ orbits agree at
+the minimum admissible residual mass, complete ranks are exhausted through
+sextuple mass seven, and boundary/interior roundtrips reach mass fourteen.
+Here $R_{14}^{(4,1,1;1^4)}=1789926061826$ at residual mass fourteen, while
+prefixing the outer $(4,1,1)$ vertex-pair sequences yields exactly
+$167523430983$ mass-fourteen S6 classes. The four nontrivial second-layer
+stabilizers remain outside this theorem.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose

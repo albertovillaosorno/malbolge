@@ -804,6 +804,16 @@ mechanism = "four-fixed-scalar-plus-four-six-component-vertex-bundle-plus-six-fo
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_vertex_decomposition.py::test_s6_s4_residual_labels_have_exact_nested_geometry", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_vertex_decomposition.py::test_s6_s4_vertex_bundles_leave_exact_five_stabilizers", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_vertex_decomposition.py::test_s6_s4_nested_factorization_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_vertex_decomposition.py::test_s6_s4_nested_factorization_matches_burnside_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s4-distinct-bundle-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s4-distinct-bundle-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple stratum at ambiguity mass 0 through 14 with outer vertex partition 4,1,1 and four pairwise-distinct six-component second-layer S4 vertex bundles"
+mechanism = "unique-second-layer-endpoint-orientation-by-distinct-bundle-keys-plus-mass-block-strict-combinadic-bundle-rank-and-labelled-twenty-four-scalar-K4-edge-composition-rank"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_distinct_bundle_ranking.py::test_s6_s4_distinct_bundle_rank_matches_small_s4_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_distinct_bundle_ranking.py::test_s6_s4_distinct_bundle_rank_exhausts_small_full_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_distinct_bundle_ranking.py::test_s6_s4_distinct_bundle_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_distinct_bundle_ranking.py::test_s6_s4_distinct_bundle_counts_match_reviewed_sequence"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"
