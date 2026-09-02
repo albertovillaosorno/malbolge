@@ -97,7 +97,8 @@ rank/unrank, an exact nested S4 vertex-bundle/K4-edge factorization for the
 `(4,1,1)` stratum with complete dense rank/unrank composed across all five
 second-layer stabilizers, an exact `(5,1)` nested S5 factorization with dense
 trivial, S2, and S3 second-layer rank/unrank, an S4 spoke factorization with
-dense all-distinct, S2, V4, and S3 spoke rank/unrank, and an exact nested S2-cubed
+dense all-distinct, S2, V4, and S3 spoke rank/unrank, and an exact nested
+S2-cubed
 quotient/fixed-set
  decomposition,
 a generic
