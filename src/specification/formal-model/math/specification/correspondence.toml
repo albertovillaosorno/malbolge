@@ -894,6 +894,16 @@ mechanism = "two-fixed-scalars-plus-five-two-component-vertex-bundles-sorted-to-
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_residual_labels_have_exact_nested_geometry", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_vertex_bundles_leave_exact_five_stabilizers", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_nested_factorization_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_nested_factorization_matches_burnside_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-distinct-bundle-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-distinct-bundle-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple top-level vertex partition 5,1 at ambiguity mass 0 through 14 with five distinct second-layer two-component vertex bundles"
+mechanism = "strict-canonical-order-of-five-distinct-two-component-bundles-fixes-S5-orientation-then-composes-two-fixed-scalars-with-forty-labeled-K5-edge-scalars"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_distinct_bundle_ranking.py::test_s6_s5_distinct_bundle_rank_matches_small_s5_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_distinct_bundle_ranking.py::test_s6_s5_distinct_bundle_rank_exhausts_small_full_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_distinct_bundle_ranking.py::test_s6_s5_distinct_bundle_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_distinct_bundle_ranking.py::test_s6_s5_distinct_bundle_counts_match_reviewed_sequence"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-s3-bundle-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-s5-s3-bundle-ranking"
