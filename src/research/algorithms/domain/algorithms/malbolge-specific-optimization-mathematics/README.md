@@ -246,6 +246,11 @@ two fixed scalars, and top-level prefix gives one dense `(5,1;4,1)` interval of
 96,141,721,711 classes. The four completed second-layer shapes now cover
 210,177,959,050 of the 310,719,486,939 mass-14 `(5,1)` classes.
 
+The remaining `(2,2,1)` V4 branch now has a dense widened K5-edge rank. Its
+residual edge interval contains 601,406,812,712 classes at mass 14 and matches
+the independent V4 Burnside sequence through every checked mass. The outer
+bundle/top-level composition for that branch remains open.
+
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
 547,751,638,341,145 canonical ordered triples, the quadruple quotient gives

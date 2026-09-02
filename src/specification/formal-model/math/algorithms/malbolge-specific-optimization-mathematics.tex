@@ -2119,6 +2119,29 @@ six, while boundary/interior roundtrips reach mass fourteen. Prefixing the
 canonical top-level $(5,1)$ vertex sequence gives exactly $96141721711$
 complete mass-fourteen S6 classes.
 
+For second-layer multiplicity partition $(2,2,1)$, the residual stabilizer is
+$V_4=\langle(01),(23)\rangle$ on the ten four-component $K_5$ edge values.
+Quotient first by $(01)$. The fixed first-stage states form $X_x^{\mathrm{fix}}$,
+the moving first-stage orbits form $X_x^{\mathrm{mov}}$, and the two row bundles
+form an unordered state family $Y_y$ on which $(23)$ descends diagonally. Then
+\begin{equation}
+  \fitmath{%
+    E_r^{(V_4,4)}=
+      \bigsqcup_{x=0}^{r}\left(
+        X_x^{\mathrm{fix}}\times Y_{r-x}/\langle(23)\rangle
+        \;\sqcup\;
+        X_x^{\mathrm{mov}}\times Y_{r-x}
+      \right),
+    \qquad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-v4-edge-ranking}
+\end{equation}
+The nested fixed/nonfixed rank agrees with direct V4 edge orbits through mass
+two and with the independent V4 Burnside count through mass fourteen. Dense
+boundary/interior rank-unrank roundtrips reach the same boundary, whose residual
+edge interval contains exactly $601406812712$ classes. The outer $(2,2,1)$
+bundle composition remains separate.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose
