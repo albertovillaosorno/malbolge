@@ -317,6 +317,14 @@ rank after the canonical top-level `(5,1)` vertices. It contributes exactly
 shapes reconstruct the parent count sequence at every mass through fourteen and
 give a complete dense `(5,1)` interval of 310,719,486,939 mass-14 classes.
 
+The top-level `(2,2,2)` stratum now also has dense rank/unrank for its residual
+`S2^3` Young action. The 52 residual labels split into eight fixed coordinates,
+six invariant two-coordinate blocks, six invariant four-coordinate blocks, and
+one invariant eight-coordinate block. Sequential block canonicalization updates
+the remaining subgroup, while suffix-count dynamic programming provides dense
+prefixes. This reproduces the exact residual Burnside sequence through mass 14
+and yields 13,145,545,602 complete mass-14 `(2,2,2)` classes.
+
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
 547,751,638,341,145 canonical ordered triples, the quadruple quotient gives

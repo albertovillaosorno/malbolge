@@ -1618,8 +1618,30 @@ and the counts from masses eleven through fourteen are
 \[
   (42332500,313490464,2116502732,13145545602).
 \]
-This theorem supplies the exact third-involution fixed/nonfixed cardinalities,
-but not yet dense $S_2^3$ rank/unrank.
+This theorem supplies the exact third-involution fixed/nonfixed cardinalities.
+For a constructive rank, the fifty-two residual labels split into fourteen
+$E_8$-invariant blocks: eight fixed scalar coordinates collected into one block,
+six two-coordinate blocks, six four-coordinate blocks, and one eight-coordinate
+block. For block $i$, residual mass $r$, and current subgroup $G\leq E_8$, let
+$\mathcal O_{i,m}(G)$ be the canonical block assignments of mass $m$ modulo $G$.
+The suffix counts satisfy
+\begin{equation}
+  \fitmath{%
+    N_i(r,G)=\sum_{m=0}^{r}\sum_{x\in\mathcal O_{i,m}(G)}
+      N_{i+1}(r-m,\operatorname{Stab}_G(x)),
+    \quad N_{14}(0,G)=1,
+    \quad
+    \rho_k^{(6,2^3)}:\mathcal C_k^{(2,2,2)}
+      \overset{\sim}{\longrightarrow}\{0,\ldots,R_k^{(2,2,2)}-1\}.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s2-cubed-vertex-ranking}
+\end{equation}
+Dense ranking prefixes block mass, then canonical block representatives weighted
+by their stabilizer-dependent suffix counts. The inverse performs the same
+subtractions. Direct $E_8$ residual orbits agree through mass two, complete
+stratum ranks are exhausted through total mass six, and boundary/interior
+roundtrips reach mass fourteen. The residual count is $7636686343840$ and the
+complete $(2,2,2)$ stratum has $13145545602$ classes there.
 
 The vertex multiplicity stratum $(3,2,1)$ has Young stabilizer
 $S_3\times S_2$. Quotient the three repeated endpoints by $S_3$ first. The
