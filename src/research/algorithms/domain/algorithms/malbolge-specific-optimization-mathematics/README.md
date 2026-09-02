@@ -268,15 +268,18 @@ normalizer quotients of orders 6, 4, 2, 6, 2, 1, 1, and 1. Transitive V4, S3,
 D8, S3-times-S2, and S4 strata have dense rank/unrank for 39,352 combined
 mass-14 classes. The disjoint-V4 quotient has 1,842,416 H-fixed classes; sparse
 exclusion of 9,080 ranks fixed by its five strict supergroups gives a complete
-1,833,336-class exact rank. Thus 1,872,688 symmetric classes are constructive,
-leaving only the two order-two strata and the trivial stabilizer without dense
-ranks.
+1,833,336-class exact rank. Together with the bounded symmetric strata and the
+exact double-transposition rank below, 6,616,560 symmetric classes are
+constructive. Only exact single-transposition filtering and the trivial
+stabilizer remain open.
 
-The single-transposition H-fixed quotient now also has a scalable dense rank.
-One fixed four-vector prefixes an S3 multiset of three eight-scalar bundles,
-each with four weight-two spoke scalars and four weight-one opposite scalars.
-The mass-14 quotient has 137,230,360 classes and matches an independent S3
-Burnside average; exact-H filtering to 133,525,016 classes remains open.
+The single-transposition H-fixed quotient now has two scalable dense ranks. One
+fixed four-vector prefixes an S3 multiset of three eight-scalar bundles for the
+137,230,360-class quotient. Requiring the three bundle keys to be pairwise
+distinct gives the normalizer-free rank with 133,547,296 mass-14 classes.
+Independent lattice inversion shows its gap to the exact 133,525,016-class
+single-transposition stratum is exactly the 22,280-class S3 stratum at every
+mass through fourteen; mapping those already-ranked S3 classes remains open.
 
 The double-transposition H-fixed quotient now has both an exact residual-V4
 cycle index and scalable dense rank/unrank. The rank factors the V4 action into

@@ -9,24 +9,25 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Dense widened single-transposition H-fixed K5 edge rank modulo N(H)/H=S3.
+#   - Dense quotient and normalizer-free rank/unrank for widened
+#     single-transposition H-fixed K5 edges modulo N(H)/H=S3.
 # - Must-Not:
 #   - Claim exact-H filtering or the complete single-transposition S5 stratum.
 # - Allows:
 #   - Inputs: one fixed four-vector and three weighted eight-scalar bundles.
-#   - Outputs: dense ranks modulo permutation of the three residual vertices.
+#   - Outputs: dense quotient ranks and pairwise-distinct free-S3 ranks.
 #   - Side effects: none.
 # - Split-When:
-#   - Exact-H exclusion is composed into this quotient rank.
+#   - Exact-H exclusion maps the remaining S3-stabilizer classes.
 # - Merge-When:
 #   - Complete widened full-S5 dense ranking owns the same S3 quotient.
 # - Summary:
-#   - Rank one fixed edge and an S3 multiset of three weighted bundles.
+#   - Rank one fixed edge with multiset and pairwise-distinct bundle triples.
 # - Description:
 #   - Each bundle has four weight-two spoke scalars and four weight-one
 #     opposite scalars.
 # - Usage:
-#   - Scalable prerequisite for 133,525,016 exact mass-fourteen classes.
+#   - Free-S3 prerequisite with 133,547,296 mass-fourteen candidates.
 # - Defaults:
 #   - Exhaustive dense domains stop at mass six; arithmetic reaches fourteen.
 #
@@ -44,6 +45,24 @@ _BUNDLE_PARTS = 2
 _EXHAUSTIVE_MASS = 6
 _MAXIMUM_MASS = 14
 _WIDTH_FOURTEEN_COUNT = 137_230_360
+_WIDTH_FOURTEEN_FREE_COUNT = 133_547_296
+_EXPECTED_FREE_COUNTS = (
+    0,
+    0,
+    6,
+    84,
+    619,
+    3_420,
+    15_710,
+    63_224,
+    229_630,
+    767_648,
+    2_393_880,
+    7_033_408,
+    19_616_888,
+    52_250_304,
+    133_547_296,
+)
 _EXPECTED_COUNTS = (
     1,
     8,
@@ -403,6 +422,229 @@ def _unrank(total: int, rank: int) -> _State | None:
     raise AssertionError
 
 
+def _strict_pair_count(population: int) -> int:
+    return comb(population, 2)
+
+
+def _strict_pair_rank(left: int, right: int, population: int) -> int:
+    assert 0 <= left < right < population
+    return left * (2 * population - left - 1) // 2 + right - left - 1
+
+
+def _strict_pair_unrank(rank: int, population: int) -> tuple[int, int]:
+    remaining = rank
+    for left in range(population):
+        block = population - left - 1
+        if remaining >= block:
+            remaining -= block
+            continue
+        return left, left + 1 + remaining
+    raise AssertionError
+
+
+def _strict_triple_count(population: int) -> int:
+    return comb(population, 3)
+
+
+def _strict_triple_rank(
+    ranks: tuple[int, int, int],
+    population: int,
+) -> int:
+    first, second, third = ranks
+    assert 0 <= first < second < third < population
+    prefix_first = sum(
+        comb(population - value - 1, 2) for value in range(first)
+    )
+    prefix_second = sum(
+        population - value - 1 for value in range(first + 1, second)
+    )
+    return prefix_first + prefix_second + third - second - 1
+
+
+def _strict_triple_unrank(
+    rank: int,
+    population: int,
+) -> tuple[int, int, int]:
+    remaining = rank
+    for first in range(population):
+        block = comb(population - first - 1, 2)
+        if remaining >= block:
+            remaining -= block
+            continue
+        for second in range(first + 1, population):
+            second_block = population - second - 1
+            if remaining >= second_block:
+                remaining -= second_block
+                continue
+            return first, second, second + 1 + remaining
+    raise AssertionError
+
+
+def _free_triple_block_count(masses: tuple[int, int, int]) -> int:
+    first, second, third = masses
+    first_count, second_count, third_count = _triple_counts(masses)
+    if first == third:
+        result = _strict_triple_count(first_count)
+    elif first == second:
+        result = _strict_pair_count(first_count) * third_count
+    elif second == third:
+        result = first_count * _strict_pair_count(second_count)
+    else:
+        result = first_count * second_count * third_count
+    return result
+
+
+def _free_triple_count(total: int) -> int:
+    return sum(
+        _free_triple_block_count(masses) for masses in _mass_triples(total)
+    )
+
+
+def _free_triple_local_rank(
+    masses: tuple[int, int, int],
+    ranks: tuple[int, int, int],
+) -> int:
+    first, second, third = masses
+    first_rank, second_rank, third_rank = ranks
+    first_count, second_count, third_count = _triple_counts(masses)
+    if first == third:
+        result = _strict_triple_rank(ranks, first_count)
+    elif first == second:
+        result = (
+            _strict_pair_rank(first_rank, second_rank, first_count)
+            * third_count
+            + third_rank
+        )
+    elif second == third:
+        result = first_rank * _strict_pair_count(
+            second_count
+        ) + _strict_pair_rank(
+            second_rank,
+            third_rank,
+            second_count,
+        )
+    else:
+        result = (
+            first_rank * second_count + second_rank
+        ) * third_count + third_rank
+    return result
+
+
+def _free_triple_rank(bundles: _Bundles) -> int | None:
+    keys = tuple(sorted(_bundle_key(bundle) for bundle in bundles))
+    first, second, third = keys
+    if second in {first, third}:
+        return None
+    masses = first[0], second[0], third[0]
+    ranks = first[1], second[1], third[1]
+    total = sum(masses)
+    prefix = sum(
+        _free_triple_block_count(candidate)
+        for candidate in _mass_triples(total)
+        if candidate < masses
+    )
+    return prefix + _free_triple_local_rank(masses, ranks)
+
+
+def _free_unrank_first_pair(
+    rank: int,
+    first_count: int,
+    third_count: int,
+) -> tuple[int, int, int]:
+    pair_rank, third_rank = divmod(rank, third_count)
+    pair = _strict_pair_unrank(pair_rank, first_count)
+    return pair[0], pair[1], third_rank
+
+
+def _free_unrank_second_pair(
+    rank: int,
+    second_count: int,
+) -> tuple[int, int, int]:
+    first_rank, pair_rank = divmod(rank, _strict_pair_count(second_count))
+    pair = _strict_pair_unrank(pair_rank, second_count)
+    return first_rank, pair[0], pair[1]
+
+
+def _free_triple_local_unrank(
+    masses: tuple[int, int, int],
+    rank: int,
+) -> tuple[int, int, int]:
+    first, second, third = masses
+    first_count, second_count, third_count = _triple_counts(masses)
+    if first == third:
+        result = _strict_triple_unrank(rank, first_count)
+    elif first == second:
+        result = _free_unrank_first_pair(rank, first_count, third_count)
+    elif second == third:
+        result = _free_unrank_second_pair(rank, second_count)
+    else:
+        result = _unrank_distinct(rank, second_count, third_count)
+    return result
+
+
+def _free_triple_unrank(total: int, rank: int) -> _Bundles | None:
+    if rank < 0 or rank >= _free_triple_count(total):
+        return None
+    remaining = rank
+    for masses in _mass_triples(total):
+        block = _free_triple_block_count(masses)
+        if remaining >= block:
+            remaining -= block
+            continue
+        ranks = _free_triple_local_unrank(masses, remaining)
+        first = _bundle_unrank(masses[0], ranks[0])
+        second = _bundle_unrank(masses[1], ranks[1])
+        third = _bundle_unrank(masses[2], ranks[2])
+        assert first is not None
+        assert second is not None
+        assert third is not None
+        return first, second, third
+    raise AssertionError
+
+
+def _free_count(total: int) -> int:
+    return sum(
+        _composition_count(fixed_mass) * _free_triple_count(total - fixed_mass)
+        for fixed_mass in range(total + 1)
+    )
+
+
+def _free_rank(state: _State) -> int | None:
+    fixed, bundles = state
+    fixed_mass = sum(fixed)
+    fixed_rank = _composition_rank(fixed, fixed_mass)
+    bundle_total = sum(_bundle_mass(bundle) for bundle in bundles)
+    triple_rank = _free_triple_rank(bundles)
+    if fixed_rank is None or triple_rank is None:
+        return None
+    total = fixed_mass + bundle_total
+    prefix = sum(
+        _composition_count(mass) * _free_triple_count(total - mass)
+        for mass in range(fixed_mass)
+    )
+    return prefix + fixed_rank * _free_triple_count(bundle_total) + triple_rank
+
+
+def _free_unrank(total: int, rank: int) -> _State | None:
+    if rank < 0 or rank >= _free_count(total):
+        return None
+    remaining = rank
+    for fixed_mass in range(total + 1):
+        bundle_total = total - fixed_mass
+        triple_count = _free_triple_count(bundle_total)
+        block = _composition_count(fixed_mass) * triple_count
+        if remaining >= block:
+            remaining -= block
+            continue
+        fixed_rank, triple_rank = divmod(remaining, triple_count)
+        fixed = _composition_unrank(fixed_mass, fixed_rank)
+        bundles = _free_triple_unrank(bundle_total, triple_rank)
+        assert fixed is not None
+        assert bundles is not None
+        return fixed, bundles
+    raise AssertionError
+
+
 def _ordered_triple_count(total: int) -> int:
     return sum(
         _bundle_count(first)
@@ -441,6 +683,44 @@ def _burnside_count(total: int) -> int:
         * _burnside_triple_count(total - fixed_mass)
         for fixed_mass in range(total + 1)
     )
+
+
+def test_transposition_free_rank_has_reviewed_distinct_bundle_counts() -> None:
+    """Pairwise-distinct bundle counts match the reviewed free-S3 sequence."""
+    observed = tuple(_free_count(total) for total in range(_MAXIMUM_MASS + 1))
+    assert observed == _EXPECTED_FREE_COUNTS
+    assert observed[-1] == _WIDTH_FOURTEEN_FREE_COUNT
+
+
+def test_transposition_free_rank_exhausts_small_domains() -> None:
+    """Every free normalizer class through mass six has one dense rank."""
+    for total in range(_EXHAUSTIVE_MASS + 1):
+        for rank in range(_free_count(total)):
+            state = _free_unrank(total, rank)
+            assert state is not None
+            assert _free_rank(state) == rank
+            fixed, bundles = state
+            for order in permutations(range(3)):
+                permuted = (
+                    bundles[order[0]],
+                    bundles[order[1]],
+                    bundles[order[2]],
+                )
+                assert _free_rank((fixed, permuted)) == rank
+
+
+def test_transposition_free_rank_roundtrips_through_fourteen() -> None:
+    """Boundary and interior free-S3 ranks roundtrip through mass fourteen."""
+    for total in range(_MAXIMUM_MASS + 1):
+        count = _free_count(total)
+        assert _free_unrank(total, -1) is None
+        assert _free_unrank(total, count) is None
+        if count == 0:
+            continue
+        for rank in {0, count // 4, count // 2, (3 * count) // 4, count - 1}:
+            state = _free_unrank(total, rank)
+            assert state is not None
+            assert _free_rank(state) == rank
 
 
 def test_transposition_quotient_count_matches_s3_burnside() -> None:
