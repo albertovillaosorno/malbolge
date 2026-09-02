@@ -268,10 +268,11 @@ normalizer quotients of orders 6, 4, 2, 6, 2, 1, 1, and 1. Transitive V4, S3,
 D8, S3-times-S2, and S4 strata have dense rank/unrank for 39,352 combined
 mass-14 classes. The disjoint-V4 quotient has 1,842,416 H-fixed classes; sparse
 exclusion of 9,080 ranks fixed by its five strict supergroups gives a complete
-1,833,336-class exact rank. Together with the bounded symmetric strata and the
-exact double-transposition rank below, 6,616,560 symmetric classes are
-constructive. Only exact single-transposition filtering and the trivial
-stabilizer remain open.
+1,833,336-class exact rank.
+
+Together with the bounded symmetric strata and the exact double-transposition
+rank below, 6,616,560 symmetric classes are constructive. Only exact
+single-transposition filtering and the trivial stabilizer remain open.
 
 The single-transposition H-fixed quotient now has two scalable dense ranks. One
 fixed four-vector prefixes an S3 multiset of three eight-scalar bundles for the
