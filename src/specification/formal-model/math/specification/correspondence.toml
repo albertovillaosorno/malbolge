@@ -864,6 +864,26 @@ mechanism = "three-opposite-edge-eight-scalar-blocks-quotiented-by-even-parity-V
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_edge_core_ranking.py::test_s4_edge_core_rank_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_edge_core_ranking.py::test_s4_edge_core_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_edge_core_ranking.py::test_s4_edge_core_rank_roundtrips_through_mass_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s4-full-bundle-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s4-full-bundle-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple stratum at ambiguity mass 0 through 14 with outer vertex partition 4,1,1 and second-layer six-component vertex-bundle multiplicity partition 4"
+mechanism = "one-six-component-bundle-key-repeated-four-times-composed-with-four-fixed-scalars-and-the-proved-widened-full-S4-K4-edge-rank"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_full_bundle_ranking.py::test_s6_s4_full_bundle_counts_match_nested_factorization", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_full_bundle_ranking.py::test_s6_s4_full_bundle_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_full_bundle_ranking.py::test_s6_s4_full_bundle_rank_roundtrips_through_fourteen"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s4-complete-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s4-complete-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the complete endpoint-unordered S6 sextuple top-level vertex partition 4,1,1 at ambiguity mass 0 through 14 after all five second-layer S4 Young-stabilizer strata have dense local ranks"
+mechanism = "fixed-order-cumulative-offset-composition-of-the-all-distinct-S2-S3-V4-and-full-S4-second-layer-dense-rank-intervals-with-inverse-local-block-dispatch"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_complete_ranking.py::test_s6_s4_complete_rank_sums_all_five_second_layer_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_complete_ranking.py::test_s6_s4_complete_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_complete_ranking.py::test_s6_s4_complete_rank_roundtrips_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"

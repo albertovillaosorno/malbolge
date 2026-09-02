@@ -213,11 +213,11 @@ The `(2,1,1)` second-layer S2 case now adds 113,906,741,533 classes, so
 second-layer case adds another 17,436,163,856 classes. The `(2,2)` V4 case now
 has complete dense rank/unrank and adds 2,954,772,356 classes.
 
-The full-S4 widened edge core is also densely ranked over 255,543,816 mass-14
-edge classes; only its single repeated-bundle composition remains open. The full
-`(4,1,1)` stratum
-still contains 302,650,855,156 classes, so six top-level Young stabilizer strata
-remain incomplete.
+The full-S4 widened edge core and its single quadruple-repeated bundle are now
+composed as well, adding 829,746,428 classes. Fixed cumulative offsets across
+all five second-layer stabilizers give one complete dense `(4,1,1)` interval of
+302,650,855,156 classes. Five top-level Young-stabilizer strata remain
+incomplete.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives

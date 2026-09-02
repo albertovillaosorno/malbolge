@@ -1840,6 +1840,50 @@ opposite-edge blocks move. Direct full-S4 edge orbits agree through mass three,
 complete dense ranks are exhausted through mass six, and boundary/interior
 roundtrips reach mass fourteen, where $E_{14}^{(S_4,4)}=255543816$.
 
+Composing the full-$S_4$ widened edge rank with second-layer partition $(4)$
+requires only the common six-component bundle key repeated four times. If
+$B_a^{(4)}$ counts those common keys by their fourfold mass contribution and
+$E_e^{(S_4,4)}$ is the proved full-$S_4$ edge rank, then
+\begin{equation}
+  \fitmath{%
+    R_r^{(4,1,1;4)}=
+      \sum_{f+a+e=r}{f+3\choose3}
+      B_a^{(4)}E_e^{(S_4,4)},
+    \qquad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s4-full-bundle-ranking}
+\end{equation}
+The full S6 rank further prefixes the canonical top-level $(4,1,1)$ vertex
+sequence. The bundle count is zero unless its contribution is divisible by
+four, in which case it is the ordinary six-component weak-composition count at
+one quarter of that mass. Complete abstract ranks are exhausted through total
+mass eight, and boundary/interior roundtrips reach mass fourteen. This final
+second-layer stratum contributes exactly $829746428$ complete mass-fourteen S6
+classes, so all five second-layer stabilizer strata inside $(4,1,1)$ now have
+dense rank/unrank.
+
+The five dense second-layer ranks inside top-level partition $(4,1,1)$ are
+disjoint and therefore compose by fixed cumulative offsets. Order the local
+blocks as all-distinct, $S_2$, $S_3$, $V_4$, and full $S_4$. If
+$C_r^{(j)}$ is the proved cardinality of block $j$ and $\rho_r^{(j)}$ its local
+rank, define
+\begin{equation}
+  \fitmath{%
+    \rho_r^{(4,1,1)}(j,x)=
+      \sum_{i<j}C_r^{(i)}+\rho_r^{(j)}(x),
+    \qquad
+    C_r^{(4,1,1)}=\sum_{j=0}^{4}C_r^{(j)}.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s4-complete-ranking}
+\end{equation}
+Inverse ranking subtracts complete local blocks until the unique containing
+stratum is reached, then delegates to that proved local inverse. Complete
+abstract ranks are exhausted through mass six and boundary/interior ranks are
+checked through mass fourteen. At mass fourteen the five blocks have sizes
+$167523430983$, $113906741533$, $17436163856$, $2954772356$, and $829746428$,
+summing exactly to the independently proved $(4,1,1)$ count
+$302650855156$.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose
