@@ -1044,6 +1044,16 @@ mechanism = "one-triple-repeated-two-component-bundle-key-plus-one-distinct-doub
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s3s2_bundle_ranking.py::test_s6_s5_s3s2_bundle_counts_match_nested_factorization", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s3s2_bundle_ranking.py::test_s6_s5_s3s2_bundle_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s3s2_bundle_ranking.py::test_s6_s5_s3s2_bundle_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s3s2_edge_ranking.py::test_s6_s5_s3s2_dense_rank_roundtrips_through_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_nested_factorization_matches_burnside_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-edge-core"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-edge-core"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the forty widened K5 edge scalars inside endpoint-unordered S6 top-level partition 5,1 and second-layer all-equal vertex-bundle partition 5 under the residual full S5 action at mass 0 through 14"
+mechanism = "full-S5-Burnside-average-over-the-seven-vertex-conjugacy-types-with-four-scalar-compositions-per-K5-edge-orbit"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_edge_core.py::test_s6_s5_edge_conjugacy_types_have_exact_widened_fixes", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_edge_core.py::test_s6_s5_edge_burnside_sequence_is_exact_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_edge_core.py::test_s6_s5_edge_burnside_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_nested_factorization_matches_burnside_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"

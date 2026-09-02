@@ -258,6 +258,11 @@ double-repeated bundle keys, fixed scalars, and top-level prefix gives
 36,950,581,606 complete mass-14 classes. Dense `(5,1)` coverage is therefore
 282,526,449,972 of 310,719,486,939 classes, leaving only `(5,)` open.
 
+The final `(5,)` branch now has an exact widened full-S5 K5-edge hard core. Its
+Burnside sequence reaches 20,103,708,128 residual mass-14 classes and matches
+direct S5 orbits through mass two. This fixes the target for the remaining
+order-120 dense rank but does not claim that constructive rank yet.
+
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
 547,751,638,341,145 canonical ordered triples, the quadruple quotient gives

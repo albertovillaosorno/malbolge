@@ -2194,6 +2194,24 @@ boundary/interior roundtrips reach mass fourteen. Prefixing the canonical
 $(5,1)$ top-level vertex sequence gives exactly $36950581606$ complete
 mass-fourteen S6 classes.
 
+For second-layer multiplicity partition $(5)$, all five two-component vertex
+bundles are equal and the full $S_5$ action remains on the ten four-component
+$K_5$ edge values. If $m_{\pi,c}$ counts $c$-cycles of $\pi\in S_5$ on those ten
+edges, the exact widened hard-core count is
+\begin{equation}
+  \fitmath{%
+    C_r^{(E,120,4)}=
+      \frac{1}{120}\sum_{\pi\in S_5}
+      [x^r]\prod_{c\geq1}(1-x^c)^{-4m_{\pi,c}},
+    \qquad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-edge-core}
+\end{equation}
+The seven $S_5$ conjugacy types induce the reviewed edge-cycle structures.
+Direct widened edge orbits agree through mass two, while the Burnside sequence
+is exact through mass fourteen and ends at $20103708128$ residual classes. This
+is a target-count result; constructive dense order-120 rank/unrank remains open.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose
