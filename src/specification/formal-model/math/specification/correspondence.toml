@@ -934,6 +934,16 @@ mechanism = "four-four-component-spokes-sorted-to-five-Young-stabilizers-plus-si
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_spoke_decomposition.py::test_s6_s5_s4_edges_split_into_spokes_and_k4_edges", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_spoke_decomposition.py::test_s6_s5_s4_spokes_leave_exact_five_stabilizers", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_spoke_decomposition.py::test_s6_s5_s4_factorization_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_spoke_decomposition.py::test_s6_s5_s4_factorization_matches_burnside_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-s4-distinct-spoke-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-s4-distinct-spoke-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the widened residual S4 edge payload inside endpoint-unordered S6 top-level partition 5,1 and second-layer vertex-bundle partition 4,1, restricted to four pairwise-distinct four-component spokes at residual mass 0 through 14"
+mechanism = "strict-distinct-spoke-combinadic-rank-fixes-S4-orientation-followed-by-weak-composition-rank-over-twenty-four-labeled-K4-edge-scalars"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_distinct_spoke_ranking.py::test_s6_s5_s4_distinct_spoke_rank_is_s4_invariant", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_distinct_spoke_ranking.py::test_s6_s5_s4_distinct_spoke_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_distinct_spoke_ranking.py::test_s6_s5_s4_distinct_spoke_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_distinct_spoke_ranking.py::test_s6_s5_s4_distinct_spoke_counts_match_reviewed_sequence"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"

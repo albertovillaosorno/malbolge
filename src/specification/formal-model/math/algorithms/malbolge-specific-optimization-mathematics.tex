@@ -1990,7 +1990,24 @@ with the full $S_4$ Burnside quotient through mass fourteen. At mass fourteen
 it partitions all $96141721711$ complete $(5,1;4,1)$ classes into
 $35347204706$, $45289854118$, $2603914760$, $11867845606$, and $1032902521$
 classes for spoke stabilizers $1$, $S_2$, $V_4$, $S_3$, and $S_4$ respectively.
-Dense rank/unrank for those five spoke strata remains open.
+Constructive ranking for the five spoke strata begins below.
+
+For the all-distinct spoke partition $(1,1,1,1)$, strict canonical spoke order
+fixes the residual $S_4$ orientation. The six widened $K_4$ edges therefore
+leave twenty-four labelled scalars. Writing $H_{a,(1^4)}^{(4,4)}$ for the
+distinct-spoke histogram gives
+\begin{equation}
+  \fitmath{%
+    D_r^{(5,1;4,1;1^4)}=
+      \sum_{a+e=r}H_{a,(1^4)}^{(4,4)}{e+23\choose23},
+    \qquad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-s4-distinct-spoke-ranking}
+\end{equation}
+Dense rank exhaustion reaches residual mass five, S4 invariance is checked at
+the first populated mass, and boundary/interior rank-unrank roundtrips reach
+mass fourteen. The residual mass-fourteen interval contains exactly
+$53942379546$ classes.
 
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words

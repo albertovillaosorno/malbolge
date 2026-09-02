@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize one hundred thirty-six exact reductions:
+- The proved slices now formalize one hundred thirty-seven exact reductions:
   classic five-trit
   crazy factorization, profile-width crazy chunking, exact zero-padded 15-trit
   crazy projection and uniform three-lookup factorization for semantic widths
@@ -83,8 +83,8 @@ force or stochastic optimization begins.
   an exact nested S4 vertex-bundle/K4-edge factorization for the `(4,1,1)`
   stratum with complete dense rank/unrank composed across all five second-layer
   stabilizers, an exact `(5,1)` nested S5 factorization with dense trivial,
-  S2, and
-  S3 second-layer rank/unrank, and an exact nested S2-cubed
+  S2, and S3 second-layer rank/unrank, an S4 spoke factorization with dense
+  all-distinct spoke rank/unrank, and an exact nested S2-cubed
   quotient/fixed-set decomposition,
   one generic
   checked-arity
@@ -140,7 +140,7 @@ force or stochastic optimization begins.
   reductions are consumed by runtime paths; the one hundred one search
   reductions, two padded-geometry equivalences, and eleven width-certification
   results carry no inherited runtime speedup claim.
-- One hundred thirty-six optimization research equations are registered in
+- One hundred thirty-seven optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -175,7 +175,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes one hundred thirty-six labelled
+- Current mathematical evidence includes one hundred thirty-seven labelled
   optimization equations,
   executable correspondence, exact zero-padding projection and uniform
   three-lookup evidence for semantic widths 10 through 14, exact checked

@@ -229,7 +229,9 @@ The `(3,1,1)` S3 and `(2,1,1,1)` S2 cases contribute 86,903,339,017 and
 26,007,971,192 classes respectively. Four second-layer stabilizers remain open.
 The `(4,1)` slice further factors its four widened spokes into five Young
 stabilizers whose complete mass-14 contributions sum to 96,141,721,711 classes.
-Dense spoke-stratum ranking remains open there.
+The all-distinct spoke stratum now has dense local rank/unrank and contains
+53,942,379,546 edge-payload classes at residual mass 14. Four nontrivial spoke
+stabilizers remain open there.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
