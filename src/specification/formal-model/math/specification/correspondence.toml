@@ -904,6 +904,16 @@ mechanism = "one-triple-repeated-two-component-bundle-plus-two-distinct-singleto
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s3_bundle_ranking.py::test_s6_s5_s3_bundle_and_edge_counts_match_factorization", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s3_bundle_ranking.py::test_s6_s5_s3_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s3_bundle_ranking.py::test_s6_s5_s3_rank_roundtrips_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-s2-bundle-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-s2-bundle-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple top-level vertex partition 5,1 at ambiguity mass 0 through 14 with second-layer two-component vertex-bundle multiplicity partition 2,1,1,1"
+mechanism = "one-double-repeated-two-component-bundle-plus-three-distinct-singletons-composed-with-two-fixed-scalars-sixteen-fixed-edge-scalars-and-one-unordered-pair-of-twelve-component-edge-side-vectors"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s2_bundle_ranking.py::test_s6_s5_s2_bundle_and_edge_counts_match_factorization", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s2_bundle_ranking.py::test_s6_s5_s2_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s2_bundle_ranking.py::test_s6_s5_s2_rank_roundtrips_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"

@@ -222,9 +222,10 @@ incomplete. The largest,
 and ten four-component K5-edge bundles.
 
 Sorting the five vertex bundles leaves seven Young stabilizers and reconstructs
-all 310,719,486,939 mass-14 classes. The `(3,1,1)` S3 second-layer case now has
-dense rank/unrank and contributes 86,903,339,017 classes; six second-layer
-stabilizers remain open there.
+all 310,719,486,939 mass-14 classes. The `(3,1,1)` S3 and `(2,1,1,1)` S2
+second-layer cases now have dense rank/unrank and contribute 86,903,339,017 and
+26,007,971,192 classes respectively. Five second-layer stabilizers remain open
+there.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
