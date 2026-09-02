@@ -238,6 +238,8 @@ The `(2,2)` V4 spoke stratum adds 2,603,914,760 classes with dense rank/unrank.
 The `(3,1)` S3 spoke stratum adds another 11,867,845,606 classes. The all-equal
 full-S4 spoke stratum adds the remaining 1,032,902,521 classes with dense local
 rank/unrank, so all five spoke stabilizers now have constructive local ranks.
+Fixed cumulative offsets concatenate them into one dense residual S4 edge
+interval of 100,371,765,432 mass-14 classes.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives

@@ -984,6 +984,16 @@ mechanism = "one-four-component-spoke-key-repeated-four-times-prefixed-before-th
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_full_spoke_ranking.py::test_s6_s5_s4_full_spoke_counts_match_nested_factorization", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_full_spoke_ranking.py::test_s6_s5_s4_full_spoke_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_full_spoke_ranking.py::test_s6_s5_s4_full_spoke_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_edge_core_ranking.py::test_s4_edge_core_rank_roundtrips_through_mass_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-s4-complete-spoke-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-s4-complete-spoke-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the complete widened residual S4 edge payload inside endpoint-unordered S6 top-level partition 5,1 and second-layer vertex-bundle partition 4,1 at residual mass 0 through 14 after all five spoke Young-stabilizer strata have dense local ranks"
+mechanism = "fixed-order-cumulative-offset-concatenation-of-the-all-distinct-S2-V4-S3-and-full-S4-spoke-dense-rank-intervals"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_complete_spoke_ranking.py::test_s6_s5_s4_complete_spoke_rank_sums_all_five_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_complete_spoke_ranking.py::test_s6_s5_s4_complete_spoke_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_complete_spoke_ranking.py::test_s6_s5_s4_complete_spoke_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_spoke_decomposition.py::test_s6_s5_s4_factorization_matches_burnside_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"
