@@ -1588,6 +1588,39 @@ and the counts from masses eleven through fourteen are
 \]
 The remaining seven nontrivial Young stabilizer strata are still unranked.
 
+The vertex multiplicity stratum $(2,2,2)$ has Young stabilizer
+$E_8\cong S_2^3$. Let $a,b,c$ swap its three repeated vertex pairs and let
+$E_r,S_r,D_r,T_r$ count residual assignments of scalar mass $r$ fixed by the
+identity, one swap, two swaps, or all three swaps, respectively. Their residual
+cycle types are $1^{52}$, $1^{24}2^{14}$, $1^{12}2^{20}$, and
+$1^8 2^{22}$. Quotient first by $H=\langle a,b\rangle\cong V_4$. The number
+of $H$-classes fixed by the descended third swap is the commuting-coset average
+of $cH$, so
+\begin{equation}
+  \fitmath{%
+    V_r=\frac{E_r+2S_r+D_r}{4},\qquad
+    F_r=\frac{S_r+2D_r+T_r}{4},\qquad
+    Q_r^{(2^3)}=\frac{V_r+F_r}{2}
+      =\frac{E_r+3S_r+3D_r+T_r}{8}.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s2-cubed-decomposition}
+\end{equation}
+Direct residual enumeration through mass two checks the intermediate $V_4$
+classes, the subset fixed by $c$, and the final eight-element quotient
+independently. At residual mass fourteen,
+$Q_{14}^{(2^3)}=7636686343840$. Prefixing the sorted vertex-pair sequences with
+multiplicity partition $(2,2,2)$ gives $13145545602$ complete classes at mass
+fourteen. The exact complete-stratum counts from masses four through ten are
+\[
+  (1,21,340,4591,54193,562006,5160194),
+\]
+and the counts from masses eleven through fourteen are
+\[
+  (42332500,313490464,2116502732,13145545602).
+\]
+This theorem supplies the exact third-involution fixed/nonfixed cardinalities,
+but not yet dense $S_2^3$ rank/unrank.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose

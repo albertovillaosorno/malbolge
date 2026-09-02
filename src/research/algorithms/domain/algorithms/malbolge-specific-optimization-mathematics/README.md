@@ -196,8 +196,11 @@ and a dense coupled-involution rank covering 8,308,559,181 mass-14 classes. The
 vectors and has a dense rank covering 89,182,770,767 mass-14 classes.
 
 The `(2,2,1,1)` stratum has a nested V4 rank with `X=(12;6,6)` and `Z=(6;4,4)`
-involution shapes, covering 39,233,740,619 mass-14 classes. The remaining seven
-nontrivial Young stabilizer strata remain unranked.
+involution shapes, covering 39,233,740,619 mass-14 classes. The `(2,2,2)`
+stratum now has an exact V4-first quotient and commuting-coset fixed-set formula
+for its third swap, yielding 13,145,545,602 mass-14 classes; dense rank/unrank
+for that stratum remains open. Seven nontrivial Young stabilizer strata remain
+unranked.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
