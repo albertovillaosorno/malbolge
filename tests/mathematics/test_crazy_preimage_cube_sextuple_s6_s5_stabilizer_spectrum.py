@@ -48,6 +48,7 @@ _EXHAUSTIVE_MASS = 2
 _MAXIMUM_MASS = 14
 _S5_ORDER = factorial(_ARITY)
 _SUBGROUP_COUNT = 156
+_SUBGROUP_CONJUGACY_CLASS_COUNT = 19
 _WIDTH_FOURTEEN_CLASSES = 20_103_708_128
 _WIDTH_FOURTEEN_TRIVIAL_CLASSES = 19_963_566_552
 _EXPECTED_ORDER_SPECTRUM = {
@@ -58,6 +59,27 @@ _EXPECTED_ORDER_SPECTRUM = {
     8: 1_728,
     12: 7_312,
     24: 40,
+}
+_EXPECTED_CONJUGACY_SPECTRUM: dict[tuple[object, ...], int] = {
+    (1, (1, 1, 1, 1, 1), (1, 1, 1, 1, 1, 1, 1, 1, 1, 1)): 19_963_566_552,
+    (2, (2, 1, 1, 1), (1, 1, 1, 1, 2, 2, 2)): 133_525_016,
+    (2, (2, 2, 1), (1, 1, 2, 2, 2, 2)): 4_743_872,
+    (4, (2, 2, 1), (1, 1, 2, 2, 4)): 1_833_336,
+    (4, (4, 1), (2, 2, 2, 4)): 7_992,
+    (6, (3, 1, 1), (1, 3, 3, 3)): 22_280,
+    (8, (4, 1), (2, 4, 4)): 1_728,
+    (12, (3, 2), (1, 3, 6)): 7_312,
+    (24, (4, 1), (4, 6)): 40,
+}
+_EXPECTED_NORMALIZER_QUOTIENTS: dict[tuple[object, ...], int] = {
+    (2, (2, 1, 1, 1), (1, 1, 1, 1, 2, 2, 2)): 6,
+    (2, (2, 2, 1), (1, 1, 2, 2, 2, 2)): 4,
+    (4, (2, 2, 1), (1, 1, 2, 2, 4)): 2,
+    (4, (4, 1), (2, 2, 2, 4)): 6,
+    (6, (3, 1, 1), (1, 3, 3, 3)): 2,
+    (8, (4, 1), (2, 4, 4)): 1,
+    (12, (3, 2), (1, 3, 6)): 1,
+    (24, (4, 1), (4, 6)): 1,
 }
 _EXPECTED_COUNTS = (
     1,
@@ -101,6 +123,14 @@ _MULTIPLICATION = tuple(
     tuple(_compose(left, right) for right in range(_S5_ORDER))
     for left in range(_S5_ORDER)
 )
+
+
+def _inverse(element: int) -> int:
+    order = _PERMUTATIONS[element]
+    result = [0] * _ARITY
+    for source, destination in enumerate(order):
+        result[destination] = source
+    return _PERMUTATION_INDEX[tuple(result)]
 
 
 def _closure_step(subgroup: set[int], generators: tuple[int, ...]) -> set[int]:
@@ -166,6 +196,17 @@ def _edge_orbit_sizes(subgroup: _Subgroup) -> tuple[int, ...]:
     return tuple(sorted(sizes))
 
 
+def _vertex_orbit_sizes(subgroup: _Subgroup) -> tuple[int, ...]:
+    unseen = set(range(_ARITY))
+    sizes: list[int] = []
+    while unseen:
+        seed = min(unseen)
+        orbit = {_PERMUTATIONS[element][seed] for element in subgroup}
+        unseen -= orbit
+        sizes.append(len(orbit))
+    return tuple(sorted(sizes, reverse=True))
+
+
 def _fixed_count(subgroup: _Subgroup, total: int) -> int:
     coefficients = [1] + [0] * total
     for orbit_size in _edge_orbit_sizes(subgroup):
@@ -214,6 +255,52 @@ def _orbit_count_by_order(total: int) -> dict[int, int]:
     }
 
 
+def _conjugate(subgroup: _Subgroup, element: int) -> _Subgroup:
+    inverse = _inverse(element)
+    return frozenset(
+        _MULTIPLICATION[_MULTIPLICATION[element][member]][inverse]
+        for member in subgroup
+    )
+
+
+def _subgroup_conjugacy_classes() -> tuple[tuple[_Subgroup, ...], ...]:
+    unseen = set(_subgroups())
+    result: list[tuple[_Subgroup, ...]] = []
+    while unseen:
+        subgroup = next(iter(unseen))
+        conjugates = {
+            _conjugate(subgroup, element) for element in range(_S5_ORDER)
+        }
+        result.append(tuple(conjugates))
+        unseen -= conjugates
+    return tuple(result)
+
+
+def _conjugacy_spectrum(total: int) -> dict[tuple[object, ...], int]:
+    exact = _exact_stabilizer_assignments(total)
+    result: dict[tuple[object, ...], int] = {}
+    for conjugacy_class in _subgroup_conjugacy_classes():
+        subgroup = conjugacy_class[0]
+        assignments = sum(exact[member] for member in conjugacy_class)
+        if assignments == 0:
+            continue
+        key = (
+            len(subgroup),
+            _vertex_orbit_sizes(subgroup),
+            _edge_orbit_sizes(subgroup),
+        )
+        result[key] = assignments * len(subgroup) // _S5_ORDER
+    return result
+
+
+def _normalizer(subgroup: _Subgroup) -> _Subgroup:
+    return frozenset(
+        element
+        for element in range(_S5_ORDER)
+        if _conjugate(subgroup, element) == subgroup
+    )
+
+
 def _weak_compositions(total: int, parts: int) -> tuple[_Vector, ...]:
     if parts == 1:
         return ((total,),)
@@ -257,6 +344,7 @@ def _direct_order_spectrum(total: int) -> dict[int, int]:
 def test_s6_s5_widened_stabilizer_lattice_has_156_subgroups() -> None:
     """The same complete S5 subgroup lattice governs widened edge values."""
     assert len(_subgroups()) == _SUBGROUP_COUNT
+    assert len(_subgroup_conjugacy_classes()) == _SUBGROUP_CONJUGACY_CLASS_COUNT
 
 
 def test_s6_s5_widened_mass_fourteen_exact_stabilizer_spectrum() -> None:
@@ -265,6 +353,32 @@ def test_s6_s5_widened_mass_fourteen_exact_stabilizer_spectrum() -> None:
     assert spectrum == _EXPECTED_ORDER_SPECTRUM
     assert sum(spectrum.values()) == _WIDTH_FOURTEEN_CLASSES
     assert spectrum[1] == _WIDTH_FOURTEEN_TRIVIAL_CLASSES
+
+
+def test_s6_s5_widened_mass_fourteen_conjugacy_spectrum() -> None:
+    """Nine nonempty exact-stabilizer types split the widened edge core."""
+    observed = _conjugacy_spectrum(_MAXIMUM_MASS)
+    assert observed == _EXPECTED_CONJUGACY_SPECTRUM
+    assert sum(observed.values()) == _WIDTH_FOURTEEN_CLASSES
+
+
+def test_s6_s5_widened_symmetric_normalizer_quotients() -> None:
+    """Every nontrivial widened stratum keeps the reviewed small quotient."""
+    exact = _exact_stabilizer_assignments(_MAXIMUM_MASS)
+    observed: dict[tuple[object, ...], int] = {}
+    for conjugacy_class in _subgroup_conjugacy_classes():
+        subgroup = conjugacy_class[0]
+        if len(subgroup) == 1 or exact[subgroup] == 0:
+            continue
+        key = (
+            len(subgroup),
+            _vertex_orbit_sizes(subgroup),
+            _edge_orbit_sizes(subgroup),
+        )
+        quotient = len(_normalizer(subgroup)) // len(subgroup)
+        observed[key] = quotient
+        assert exact[subgroup] // quotient == _EXPECTED_CONJUGACY_SPECTRUM[key]
+    assert observed == _EXPECTED_NORMALIZER_QUOTIENTS
 
 
 def test_s6_s5_widened_stabilizer_inversion_reconstructs_edge_core() -> None:
