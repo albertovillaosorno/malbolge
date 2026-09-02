@@ -1074,6 +1074,16 @@ mechanism = "enumerate-H-fixed-four-component-edge-orbit-values-by-weighted-mass
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_small_exception_ranking.py::test_s6_s5_small_exception_keys_are_the_five_bounded_types", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_small_exception_ranking.py::test_s6_s5_small_exception_mass_fourteen_counts", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_small_exception_ranking.py::test_s6_s5_small_exception_rank_matches_direct_small_s5_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_small_exception_ranking.py::test_s6_s5_small_exception_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_small_exception_ranking.py::test_s6_s5_small_exception_rank_roundtrips_through_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-transitive-v4-quotient-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-transitive-v4-quotient-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the H-fixed forty-scalar widened K5 edge states for the transitive V4 exact-stabilizer candidate inside endpoint-unordered S6 top-level partition 5,1 and second-layer all-equal partition 5, modulo the order-two normalizer quotient through mass 14"
+mechanism = "split-the-two-weight-one-and-two-weight-two-four-component-orbit-value-pairs-into-fixed-and-moving-swap-orbits-compose-their-relative-orientation-under-the-diagonal-normalizer-involution-and-prefix-the-fixed-weight-four-value"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transitive_v4_quotient_ranking.py::test_transitive_v4_quotient_count_matches_burnside_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transitive_v4_quotient_ranking.py::test_transitive_v4_quotient_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transitive_v4_quotient_ranking.py::test_transitive_v4_quotient_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"
