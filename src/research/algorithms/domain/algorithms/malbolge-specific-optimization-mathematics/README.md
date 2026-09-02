@@ -260,8 +260,10 @@ double-repeated bundle keys, fixed scalars, and top-level prefix gives
 
 The final `(5,)` branch now has an exact widened full-S5 K5-edge hard core. Its
 Burnside sequence reaches 20,103,708,128 residual mass-14 classes and matches
-direct S5 orbits through mass two. This fixes the target for the remaining
-order-120 dense rank but does not claim that constructive rank yet.
+direct S5 orbits through mass two. Subgroup-lattice inversion shows
+19,963,566,552 trivial-stabilizer classes and 140,141,576 symmetric classes.
+This fixes the strata for the remaining order-120 dense rank but does not claim
+that constructive rank yet.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives

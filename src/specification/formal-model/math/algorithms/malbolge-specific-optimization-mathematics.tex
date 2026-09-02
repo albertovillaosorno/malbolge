@@ -2211,6 +2211,24 @@ The seven $S_5$ conjugacy types induce the reviewed edge-cycle structures.
 Direct widened edge orbits agree through mass two, while the Burnside sequence
 is exact through mass fourteen and ends at $20103708128$ residual classes. This
 is a target-count result; constructive dense order-120 rank/unrank remains open.
+For each subgroup $H\leq S_5$, let $F_{r,H}^{(4)}$ count widened edge
+assignments fixed by $H$. Descending the complete 156-subgroup lattice gives
+exact stabilizer counts and therefore exact orbit strata
+\begin{equation}
+  \fitmath{%
+    A_{r,H}^{\mathrm{exact}}=
+      F_{r,H}^{(4)}-\sum_{K>H}A_{r,K}^{\mathrm{exact}},
+    \qquad
+    C_{r,d}^{\mathrm{stab}}=
+      \frac{d}{120}\sum_{\substack{H\leq S_5\\|H|=d}}
+      A_{r,H}^{\mathrm{exact}}.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-stabilizer-spectrum}
+\end{equation}
+Direct widened edge orbits agree with the inversion through mass two, and the
+strata reconstruct the full edge-core sequence through mass fourteen. At the
+mass-fourteen boundary the trivial-stabilizer stratum has $19963566552$ classes;
+the remaining $140141576$ classes have stabilizer orders $2,4,6,8,12,$ or $24$.
 
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
