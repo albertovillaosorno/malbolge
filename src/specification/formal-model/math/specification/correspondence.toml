@@ -1094,6 +1094,26 @@ mechanism = "concatenate-the-eleven-proved-exact-stabilizer-local-rank-intervals
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_complete_ranking.py::test_complete_s5_rank_sums_all_eleven_exact_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_complete_ranking.py::test_complete_s5_rank_dispatches_without_gaps_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_complete_ranking.py::test_complete_s5_rank_roundtrips_sampled_global_ranks", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_stabilizer_inversion_reconstructs_edge_core"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-s5-bundle-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-s5-bundle-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple top-level vertex partition 5,1 at ambiguity mass 0 through 14 with second-layer all-equal two-component vertex-bundle multiplicity partition 5 and the complete residual full-S5 edge rank"
+mechanism = "prefix-the-canonical-top-level-5-1-vertex-sequence-two-fixed-scalars-one-two-component-bundle-value-repeated-five-times-and-the-complete-eleven-stratum-full-S5-edge-rank-by-lexicographic-mass-blocks"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s5_bundle_ranking.py::test_s6_s5_s5_bundle_counts_match_nested_factorization", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s5_bundle_ranking.py::test_s6_s5_s5_bundle_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s5_bundle_ranking.py::test_s6_s5_s5_bundle_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_complete_ranking.py::test_complete_s5_rank_sums_all_eleven_exact_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_nested_factorization_matches_burnside_through_fourteen"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-complete-bundle-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-complete-bundle-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the complete endpoint-unordered S6 sextuple top-level vertex partition 5,1 at ambiguity mass 0 through 14 across all seven second-layer two-component vertex-bundle multiplicity shapes"
+mechanism = "concatenate-the-seven-proved-second-layer-dense-rank-intervals-by-cumulative-cardinality-prefixes-while-preserving-each-branch-local-canonical-order"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_complete_bundle_ranking.py::test_complete_s5_bundle_rank_sums_all_seven_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_complete_bundle_ranking.py::test_complete_s5_bundle_rank_dispatches_without_gaps", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_complete_bundle_ranking.py::test_complete_s5_bundle_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_nested_factorization_matches_burnside_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-small-exception-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-s5-small-exception-ranking"

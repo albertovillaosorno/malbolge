@@ -255,8 +255,8 @@ Dense `(5,1)` coverage is therefore 245,575,868,366 of 310,719,486,939 classes.
 The `(3,2)` branch has a dense widened S3-times-S2 K5-edge rank whose residual
 mass-14 interval contains 200,608,118,832 classes. Composing the triple- and
 double-repeated bundle keys, fixed scalars, and top-level prefix gives
-36,950,581,606 complete mass-14 classes. Dense `(5,1)` coverage is therefore
-282,526,449,972 of 310,719,486,939 classes, leaving only `(5,)` open.
+36,950,581,606 complete mass-14 classes. These first six second-layer shapes
+cover 282,526,449,972 of the 310,719,486,939 mass-14 `(5,1)` classes.
 
 The final `(5,)` branch now has an exact widened full-S5 K5-edge hard core. Its
 Burnside sequence reaches 20,103,708,128 residual mass-14 classes and matches
@@ -309,6 +309,13 @@ mass 0 and four at mass 10. Their two-five-edge-orbit and one-ten-edge-orbit
 geometries give direct dense ranks. Concatenating these with the nine populated
 mass-14 types yields a complete dense full-S5 edge rank at every residual mass
 through fourteen, ending at 20,103,708,128 classes.
+
+The final `(5,)` second-layer branch prefixes one two-component bundle value
+repeated five times, two fixed scalars, and the complete residual full-S5 edge
+rank after the canonical top-level `(5,1)` vertices. It contributes exactly
+28,193,036,967 mass-14 classes. Fixed offsets across all seven second-layer
+shapes reconstruct the parent count sequence at every mass through fourteen and
+give a complete dense `(5,1)` interval of 310,719,486,939 mass-14 classes.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives

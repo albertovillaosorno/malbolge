@@ -2451,6 +2451,40 @@ local intervals. Prefix concatenation gives
 The eleven intervals reconstruct the independent full-S5 Burnside sequence at
 every residual mass through fourteen, ending at $20103708128$ classes.
 
+For the second-layer multiplicity partition $(5)$, one two-component bundle
+value $b$ repeats five times and leaves the complete residual full-$S_5$ edge
+rank above. Prefixing the canonical top-level $(5,1)$ vertex sequence, the two
+fixed scalars, $b$, and the residual edge rank gives a dense bijection
+\begin{equation}
+  \fitmath{%
+    \rho_r^{(5,1;5)}:
+      \mathcal C_r^{(5,1;5)}
+      \overset{\sim}{\longrightarrow}
+      \{0,\ldots,R_r^{(5,1;5)}-1\},
+    \qquad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-s5-bundle-ranking}
+\end{equation}
+The bundle has weighted mass $5|b|$ and therefore contributes $q+1$ choices at
+bundle mass $5q$. Complete abstract ranks are exhausted through total mass six,
+and boundary/interior roundtrips reach mass fourteen, where
+$R_{14}^{(5,1;5)}=28193036967$.
+
+Let $c_{r,j}$ be the proved dense count of the $j$-th second-layer bundle
+multiplicity shape in the fixed order
+$(1^5),(2,1^3),(3,1,1),(4,1),(2,2,1),(3,2),(5)$. Their disjoint union is the
+whole nested $(5,1)$ stratum, so cumulative offsets give
+\begin{equation}
+  \fitmath{%
+    \rho_r^{(5,1),\mathrm{complete}}(j,q)
+      =q+\sum_{i<j}c_{r,i},
+    \qquad 0\leq q<c_{r,j},\quad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-complete-bundle-ranking}
+\end{equation}
+The seven local sequences reproduce the independent parent nested-factorization
+sequence at every mass through fourteen, ending at $310719486939$ classes.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose
