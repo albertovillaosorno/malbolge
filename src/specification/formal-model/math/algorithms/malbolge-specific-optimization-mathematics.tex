@@ -2307,6 +2307,23 @@ fourteen. Complete quotient domains are exhausted through mass six and
 boundary/interior roundtrips reach mass fourteen, where
 $Q_{14}^{(S_2,4)}=137230360$. Exact-H filtering remains open; the exact
 single-transposition stratum has $133525016$ classes.
+For the double-transposition type $H=\langle(01)(23)\rangle$, the six widened
+H-edge-orbit values have weights $(1,1,2,2,2,2)$ and
+$N_{S_5}(H)/H\cong V_4$. The four residual maps induce effective weight
+multisets $(1,1,2,2,2,2)$, $(1,1,2,2,4)$, $(2,2,2,4)$, and $(2,4,4)$, so
+\begin{equation}
+  \fitmath{%
+    Q_r^{(S_2^\mathrm{dbl},4)}=
+      \frac14\sum_{g\in V_4}[x^r]
+      \prod_{w\in W_g}(1-x^w)^{-4},
+    \qquad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-double-transposition-quotient}
+\end{equation}
+Direct widened quotient orbits agree through mass two, and the exact Burnside
+sequence reaches $Q_{14}^{(S_2^\mathrm{dbl},4)}=6611992$. Dense quotient
+rank/unrank and exact-H filtering remain open; the exact double-transposition
+stratum has $4743872$ classes.
 
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
