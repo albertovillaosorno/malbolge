@@ -794,6 +794,16 @@ mechanism = "S3-first-three-bundle-multiset-rank-followed-by-a-descended-diagona
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s3s2_vertex_ranking.py::test_s6_s3s2_label_layout_has_exact_product_geometry", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s3s2_vertex_ranking.py::test_s6_s3s2_residual_rank_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s3s2_vertex_ranking.py::test_s6_s3s2_rank_exhausts_small_full_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s3s2_vertex_ranking.py::test_s6_s3s2_rank_roundtrips_through_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s3s2_vertex_ranking.py::test_s6_s3s2_counts_match_reviewed_sequence"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s4-vertex-decomposition"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s4-vertex-decomposition"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple stratum at ambiguity mass 0 through 14 whose outer sorted vertex complement pair-values have multiplicity partition 4,1,1 and hence Young stabilizer S4"
+mechanism = "four-fixed-scalar-plus-four-six-component-vertex-bundle-plus-six-four-component-K4-edge-bundle-factorization-with-five-second-layer-Young-stabilizers"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_vertex_decomposition.py::test_s6_s4_residual_labels_have_exact_nested_geometry", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_vertex_decomposition.py::test_s6_s4_vertex_bundles_leave_exact_five_stabilizers", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_vertex_decomposition.py::test_s6_s4_nested_factorization_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_vertex_decomposition.py::test_s6_s4_nested_factorization_matches_burnside_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"

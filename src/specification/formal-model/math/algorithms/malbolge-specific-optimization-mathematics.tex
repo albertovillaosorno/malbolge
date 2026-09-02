@@ -1659,6 +1659,38 @@ and from masses nine through fourteen are
 Thus the mass-fourteen $(3,2,1)$ stratum contributes $180275648841$ densely
 ranked classes. Six Young-stabilizer strata remain without dense rank/unrank.
 
+The vertex multiplicity stratum $(4,1,1)$ has Young stabilizer $S_4$.
+Its fifty-two residual scalar coordinates admit a second exact factorization:
+four coordinates are fixed, twenty-four form four six-component vertex
+bundles, and twenty-four form six four-component $K_4$ edge bundles. Sorting
+the four vertex bundles leaves exactly the five second-layer multiplicity
+partitions
+\[
+  (1,1,1,1),\quad(2,1,1),\quad(2,2),\quad(3,1),\quad(4),
+\]
+with stabilizers $1,S_2,V_4,S_3,S_4$, respectively.
+
+Let $B_{a,\lambda}$ count sorted vertex-bundle multisets of mass $a$ and
+multiplicity partition $\lambda$, and let $E_{b,\lambda}$ be the exact quotient
+count of the six four-component edge bundles under that stabilizer. Then
+\begin{equation}
+  \fitmath{%
+    Q_r^{(4,1,1)}=
+      \sum_{f+a+b=r}{f+3\choose3}
+      \sum_{\lambda\vdash4}B_{a,\lambda}E_{b,\lambda},
+    \qquad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s4-vertex-decomposition}
+\end{equation}
+A multiplicity dynamic program over six-component weak compositions computes
+$B_{a,\lambda}$, while Burnside over the corresponding Young subgroup computes
+$E_{b,\lambda}$. Direct residual $S_4$ orbits agree through mass two, and the
+factorization agrees with full residual Burnside through mass fourteen, where
+$Q_{14}^{(4,1,1)}=2549713246880$. Prefixing the outer sorted vertex-pair
+sequences reconstructs exactly $302650855156$ mass-fourteen classes in the
+complete $(4,1,1)$ stratum. Dense ranking inside its five second-layer
+stabilizers remains a separate constructive question.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose

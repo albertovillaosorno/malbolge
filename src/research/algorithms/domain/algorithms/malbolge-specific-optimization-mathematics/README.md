@@ -201,7 +201,12 @@ stratum now has an exact V4-first quotient and commuting-coset fixed-set formula
 for its third swap, yielding 13,145,545,602 mass-14 classes; dense rank/unrank
 for that stratum remains open. The `(3,2,1)` S3-times-S2 stratum has a dense
 S3-first bundle-multiset rank followed by a diagonal involution, covering
-180,275,648,841 mass-14 classes. Six Young stabilizer strata remain unranked.
+180,275,648,841 mass-14 classes.
+
+The `(4,1,1)` stratum now factors again into four fixed scalars, four
+six-component vertex bundles, and six four-component K4-edge bundles, leaving
+second-layer stabilizers `1/S2/V4/S3/S4`. Its complete mass-14 count is
+302,650,855,156. Six Young stabilizer strata remain unranked.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
