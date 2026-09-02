@@ -1884,6 +1884,28 @@ $167523430983$, $113906741533$, $17436163856$, $2954772356$, and $829746428$,
 summing exactly to the independently proved $(4,1,1)$ count
 $302650855156$.
 
+For top-level S6 vertex partition $(5,1)$, fix the singleton endpoint and let
+$S_5$ act on the other five endpoints. The remaining 52 joint-label counts
+split into two fixed scalars, five two-component vertex bundles, and ten
+four-component $K_5$ edge bundles. Sorting the five vertex bundles leaves the
+seven Young stabilizers indexed by the integer partitions of five. If
+$H_{a,\lambda}^{(5)}$ counts sorted vertex-bundle states of mass $a$ with
+multiplicity partition $\lambda\vdash5$, and $E_{e,\lambda}^{(5,4)}$ is the
+four-component $K_5$ edge quotient under that Young subgroup, then
+\begin{equation}
+  \fitmath{%
+    C_r^{(5,1)}=
+      \sum_{f+a+e=r}(f+1)
+      H_{a,\lambda}^{(5)}E_{e,\lambda}^{(5,4)},
+    \qquad \lambda\vdash5.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-vertex-decomposition}
+\end{equation}
+The factorization agrees with direct S5 residual orbits through mass two and
+with full S5 Burnside counts through mass fourteen. At mass fourteen it gives
+$511090971734$ residual classes and $310719486939$ complete $(5,1)$ classes.
+Dense rank/unrank for these seven second-layer stabilizers remains open.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose

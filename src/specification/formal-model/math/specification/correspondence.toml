@@ -884,6 +884,16 @@ mechanism = "fixed-order-cumulative-offset-composition-of-the-all-distinct-S2-S3
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_complete_ranking.py::test_s6_s4_complete_rank_sums_all_five_second_layer_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_complete_ranking.py::test_s6_s4_complete_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_complete_ranking.py::test_s6_s4_complete_rank_roundtrips_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-vertex-decomposition"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-vertex-decomposition"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple top-level vertex partition 5,1 at ambiguity mass 0 through 14 after fixing the singleton endpoint and retaining the residual S5 action"
+mechanism = "two-fixed-scalars-plus-five-two-component-vertex-bundles-sorted-to-seven-Young-stabilizers-plus-ten-four-component-K5-edge-bundles-quotiented-by-the-residual-stabilizer"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_residual_labels_have_exact_nested_geometry", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_vertex_bundles_leave_exact_five_stabilizers", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_nested_factorization_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_nested_factorization_matches_burnside_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"
