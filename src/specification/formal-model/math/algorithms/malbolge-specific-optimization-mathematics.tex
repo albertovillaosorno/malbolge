@@ -1969,6 +1969,29 @@ through total mass five and representative roundtrips reach mass fourteen.
 Prefixing the canonical top-level $(5,1)$ vertex sequence gives exactly
 $26007971192$ complete mass-fourteen S6 classes.
 
+Inside the top-level S6 $(5,1)$ slice, second-layer vertex-bundle partition
+$(4,1)$ leaves an $S_4$ action on four repeated endpoints. Its forty scalar
+edge coordinates split into four four-component spokes to the singleton and six
+four-component $K_4$ edges. Sorting the four spokes leaves exactly the five
+Young stabilizers indexed by partitions of four. If $H_{a,\mu}^{(4,4)}$ counts
+spoke multisets of mass $a$ and multiplicity partition $\mu\vdash4$, while
+$E_{e,\mu}^{(K_4,4)}$ is the widened $K_4$ edge quotient under that stabilizer,
+then
+\begin{equation}
+  \fitmath{%
+    Q_r^{(5,1;4,1)}=
+      \sum_{a+e=r}H_{a,\mu}^{(4,4)}E_{e,\mu}^{(K_4,4)},
+    \qquad \mu\vdash4.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-s4-spoke-decomposition}
+\end{equation}
+The factorization agrees with direct $S_4$ scalar orbits through mass two and
+with the full $S_4$ Burnside quotient through mass fourteen. At mass fourteen
+it partitions all $96141721711$ complete $(5,1;4,1)$ classes into
+$35347204706$, $45289854118$, $2603914760$, $11867845606$, and $1032902521$
+classes for spoke stabilizers $1$, $S_2$, $V_4$, $S_3$, and $S_4$ respectively.
+Dense rank/unrank for those five spoke strata remains open.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose
