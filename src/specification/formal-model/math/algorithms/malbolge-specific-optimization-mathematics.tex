@@ -2325,6 +2325,25 @@ boundary/interior roundtrips reach mass fourteen, where
 $F_{14}^{(S_2,4)}=133547296$. Independent subgroup-lattice inversion shows
 $F_r^{(S_2,4)}-E_r^{(S_2,4)}$ equals the exact S3-stratum count at every mass
 through fourteen; at mass fourteen the remaining gap is exactly $22280$.
+Choose the canonical S3 extension on vertices $\{0,1,2\}$. Its four edge-orbit
+values have weights $(3,3,3,1)$; quotienting the two external weight-three
+values by their swap and mapping $(a,b,c,d)$ to the H-state with fixed value
+$a$ and bundles $(a,d),(b,c),(c,b)$ gives precisely the free ranks with an S3
+extension. If $B_r^{(S_3\supset S_2,4)}$ is that sorted rank set, then sparse
+prefix exclusion gives
+\begin{equation}
+  \fitmath{%
+    \rho^{(4,S_2),\mathrm{exact}}_r(x)=
+      \rho^{(4,S_2),\mathrm{free}}_r(x)
+      -\left|\left\{b\in B_r^{(S_3\supset S_2,4)}:
+        b<\rho^{(4,S_2),\mathrm{free}}_r(x)\right\}\right|.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-transposition-exact-ranking}
+\end{equation}
+The mapped exclusion counts agree with the independent exact-S3 spectrum at
+every mass through fourteen. Exact rank/unrank exhausts the small domains and
+roundtrips through mass fourteen, where $|B_{14}^{(S_3\supset S_2,4)}|=22280$
+and the exact single-transposition interval has $133525016$ classes.
 For the double-transposition type $H=\langle(01)(23)\rangle$, the six widened
 H-edge-orbit values have weights $(1,1,2,2,2,2)$ and
 $N_{S_5}(H)/H\cong V_4$. The four residual maps induce effective weight

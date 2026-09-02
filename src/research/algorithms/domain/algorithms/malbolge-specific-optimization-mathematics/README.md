@@ -270,25 +270,25 @@ mass-14 classes. The disjoint-V4 quotient has 1,842,416 H-fixed classes; sparse
 exclusion of 9,080 ranks fixed by its five strict supergroups gives a complete
 1,833,336-class exact rank.
 
-Together with the bounded symmetric strata and the exact double-transposition
-rank below, 6,616,560 symmetric classes are constructive. Only exact
-single-transposition filtering and the trivial stabilizer remain open.
+Together with the bounded symmetric strata and the two exact order-two ranks
+below, all 140,141,576 nontrivial-stabilizer mass-14 classes are constructive.
+Only the trivial-stabilizer stratum remains open in the widened full-S5 branch.
 
-The single-transposition H-fixed quotient now has two scalable dense ranks. One
+The single-transposition H-fixed quotient now has complete exact rank/unrank.
+One
 fixed four-vector prefixes an S3 multiset of three eight-scalar bundles for the
-137,230,360-class quotient. Requiring the three bundle keys to be pairwise
-distinct gives the normalizer-free rank with 133,547,296 mass-14 classes.
-Independent lattice inversion shows its gap to the exact 133,525,016-class
-single-transposition stratum is exactly the 22,280-class S3 stratum at every
-mass through fourteen; mapping those already-ranked S3 classes remains open.
+137,230,360-class quotient, while pairwise-distinct bundle keys give a
+133,547,296-class normalizer-free interval. Canonical S3-fixed edge assignments
+map exactly 22,280 mass-14 ranks into that interval, matching the independent S3
+stabilizer spectrum at every mass through fourteen. Sparse exclusion of those
+ranks yields the exact 133,525,016-class single-transposition interval.
 
 The double-transposition H-fixed quotient now has both an exact residual-V4
 cycle index and scalable dense rank/unrank. The rank factors the V4 action into
 an independent weight-two swap and a diagonal weight-one/weight-two swap.
 Restricting both factors to moving orbits gives the normalizer-free rank; only
 four mass-5 and sixteen mass-10 ranks have larger S5 stabilizers. Skipping those
-exceptions yields a complete exact rank of 4,743,872 mass-14 classes, bringing
-constructive symmetric coverage to 6,616,560 classes.
+exceptions yields a complete exact rank of 4,743,872 mass-14 classes.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives

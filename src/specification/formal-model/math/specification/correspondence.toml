@@ -1114,6 +1114,16 @@ mechanism = "rank-the-fixed-four-vector-and-the-graded-S3-orbit-of-three-weighte
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transposition_quotient_ranking.py::test_transposition_free_rank_has_reviewed_distinct_bundle_counts", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transposition_quotient_ranking.py::test_transposition_free_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transposition_quotient_ranking.py::test_transposition_free_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-transposition-exact-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-transposition-exact-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the exact-H widened K5 edge states for a single-transposition candidate inside endpoint-unordered S6 top-level partition 5,1 and second-layer all-equal partition 5 through mass 14"
+mechanism = "map-canonical-S3-fixed-weight-3-3-3-1-edge-assignments-into-the-normalizer-free-single-transposition-rank-set-and-sparsely-exclude-those-ranks-by-prefix-count-to-obtain-the-exact-H-interval"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transposition_quotient_ranking.py::test_transposition_s3_exception_counts_match_reviewed_spectrum", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transposition_quotient_ranking.py::test_transposition_exact_counts_match_reviewed_lattice_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transposition_quotient_ranking.py::test_transposition_exact_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transposition_quotient_ranking.py::test_transposition_exact_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-double-transposition-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-s5-double-transposition-quotient"

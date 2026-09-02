@@ -36,6 +36,9 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
+from bisect import bisect_right
+from functools import cache
 from itertools import permutations
 from math import comb
 from operator import itemgetter
@@ -46,6 +49,41 @@ _EXHAUSTIVE_MASS = 6
 _MAXIMUM_MASS = 14
 _WIDTH_FOURTEEN_COUNT = 137_230_360
 _WIDTH_FOURTEEN_FREE_COUNT = 133_547_296
+_WIDTH_FOURTEEN_EXACT_COUNT = 133_525_016
+_EXPECTED_EXACT_COUNTS = (
+    0,
+    0,
+    6,
+    80,
+    607,
+    3_380,
+    15_602,
+    62_956,
+    229_096,
+    766_508,
+    2_391_636,
+    7_029_316,
+    19_609_430,
+    52_237_020,
+    133_525_016,
+)
+_EXPECTED_S3_EXCEPTIONS = (
+    0,
+    0,
+    0,
+    4,
+    12,
+    40,
+    108,
+    268,
+    534,
+    1_140,
+    2_244,
+    4_092,
+    7_458,
+    13_284,
+    22_280,
+)
 _EXPECTED_FREE_COUNTS = (
     0,
     0,
@@ -85,6 +123,8 @@ type _Vector = tuple[int, ...]
 type _Bundle = tuple[_Vector, _Vector]
 type _Bundles = tuple[_Bundle, _Bundle, _Bundle]
 type _State = tuple[_Vector, _Bundles]
+type _S3Block = tuple[int, int, int, int]
+type _S3Values = tuple[_Vector, _Vector, _Vector, _Vector]
 
 
 def _composition_count(total: int) -> int:
@@ -645,6 +685,109 @@ def _free_unrank(total: int, rank: int) -> _State | None:
     raise AssertionError
 
 
+@cache
+def _values_of_mass(total: int) -> tuple[_Vector, ...]:
+    return tuple(
+        (first, second, third, total - first - second - third)
+        for first in range(total + 1)
+        for second in range(total - first + 1)
+        for third in range(total - first - second + 1)
+    )
+
+
+def _s3_mass_blocks(total: int) -> tuple[_S3Block, ...]:
+    return tuple(
+        (triangle, first_external, second_external, external_edge)
+        for triangle in range(total // 3 + 1)
+        for first_external in range((total - 3 * triangle) // 3 + 1)
+        for second_external in range(
+            first_external,
+            (total - 3 * triangle - 3 * first_external) // 3 + 1,
+        )
+        for external_edge in (
+            total - 3 * (triangle + first_external + second_external),
+        )
+        if external_edge >= 0
+    )
+
+
+def _s3_assignment_state(values: _S3Values) -> _State:
+    triangle, first_external, second_external, external_edge = values
+    return (
+        triangle,
+        (
+            (triangle, external_edge),
+            (first_external, second_external),
+            (second_external, first_external),
+        ),
+    )
+
+
+def _s3_states_for_block(block: _S3Block) -> tuple[_State, ...]:
+    triangle_mass, first_mass, second_mass, external_mass = block
+    same_external_mass = first_mass == second_mass
+    return tuple(
+        _s3_assignment_state((triangle, first_external, second_external, edge))
+        for triangle in _values_of_mass(triangle_mass)
+        for first_external in _values_of_mass(first_mass)
+        for second_external in _values_of_mass(second_mass)
+        if not same_external_mass or first_external <= second_external
+        for edge in _values_of_mass(external_mass)
+    )
+
+
+@cache
+def _s3_exception_ranks(total: int) -> tuple[int, ...]:
+    exclusions = {
+        free_rank
+        for block in _s3_mass_blocks(total)
+        for state in _s3_states_for_block(block)
+        if (free_rank := _free_rank(state)) is not None
+    }
+    return tuple(sorted(exclusions))
+
+
+def _exact_count(total: int) -> int:
+    return _free_count(total) - len(_s3_exception_ranks(total))
+
+
+def _exact_rank(state: _State) -> int | None:
+    free_rank = _free_rank(state)
+    if free_rank is None:
+        return None
+    fixed, bundles = state
+    total = sum(fixed) + sum(_bundle_mass(bundle) for bundle in bundles)
+    exclusions = _s3_exception_ranks(total)
+    index = bisect_left(exclusions, free_rank)
+    if index < len(exclusions) and exclusions[index] == free_rank:
+        return None
+    return free_rank - index
+
+
+def _inflate_exact_rank(rank: int, exclusions: tuple[int, ...]) -> int:
+    free_rank = rank
+    while True:
+        updated = rank + bisect_right(exclusions, free_rank)
+        if updated == free_rank:
+            return free_rank
+        free_rank = updated
+
+
+def _exact_unrank(total: int, rank: int) -> _State | None:
+    if rank < 0 or rank >= _exact_count(total):
+        return None
+    free_rank = _inflate_exact_rank(rank, _s3_exception_ranks(total))
+    return _free_unrank(total, free_rank)
+
+
+def _has_s3_extension(state: _State) -> bool:
+    fixed, bundles = state
+    return any(
+        fixed == first[0] and second[0] == third[1] and third[0] == second[1]
+        for first, second, third in permutations(bundles)
+    )
+
+
 def _ordered_triple_count(total: int) -> int:
     return sum(
         _bundle_count(first)
@@ -683,6 +826,67 @@ def _burnside_count(total: int) -> int:
         * _burnside_triple_count(total - fixed_mass)
         for fixed_mass in range(total + 1)
     )
+
+
+def test_transposition_s3_exception_counts_match_reviewed_spectrum() -> None:
+    """Mapped S3 extensions equal the independent exact-S3 spectrum."""
+    observed = tuple(
+        len(_s3_exception_ranks(total)) for total in range(_MAXIMUM_MASS + 1)
+    )
+    assert observed == _EXPECTED_S3_EXCEPTIONS
+
+
+def test_transposition_exact_counts_match_reviewed_lattice_sequence() -> None:
+    """Removing mapped S3 extensions gives the exact-H count sequence."""
+    observed = tuple(_exact_count(total) for total in range(_MAXIMUM_MASS + 1))
+    assert observed == _EXPECTED_EXACT_COUNTS
+    assert observed[-1] == _WIDTH_FOURTEEN_EXACT_COUNT
+
+
+def test_transposition_s3_exception_ranks_have_s3_extension() -> None:
+    """Reviewed exception samples satisfy one residual S3 extension law."""
+    for total in range(_MAXIMUM_MASS + 1):
+        exclusions = _s3_exception_ranks(total)
+        if not exclusions:
+            continue
+        indices = (
+            range(len(exclusions))
+            if total <= _EXHAUSTIVE_MASS
+            else {0, len(exclusions) // 2, len(exclusions) - 1}
+        )
+        for index in indices:
+            state = _free_unrank(total, exclusions[index])
+            assert state is not None
+            assert _has_s3_extension(state)
+
+
+def test_transposition_exact_rank_exhausts_small_domains() -> None:
+    """Every non-S3 free class through mass six has one dense exact rank."""
+    for total in range(_EXHAUSTIVE_MASS + 1):
+        exclusions = set(_s3_exception_ranks(total))
+        observed: list[int] = []
+        for free_rank in range(_free_count(total)):
+            state = _free_unrank(total, free_rank)
+            assert state is not None
+            exact_rank = _exact_rank(state)
+            assert (exact_rank is None) == (free_rank in exclusions)
+            if exact_rank is not None:
+                observed.append(exact_rank)
+        assert observed == list(range(_exact_count(total)))
+
+
+def test_transposition_exact_rank_roundtrips_through_fourteen() -> None:
+    """Boundary and interior exact-H ranks roundtrip through mass fourteen."""
+    for total in range(_MAXIMUM_MASS + 1):
+        count = _exact_count(total)
+        assert _exact_unrank(total, -1) is None
+        assert _exact_unrank(total, count) is None
+        if count == 0:
+            continue
+        for rank in {0, count // 4, count // 2, (3 * count) // 4, count - 1}:
+            state = _exact_unrank(total, rank)
+            assert state is not None
+            assert _exact_rank(state) == rank
 
 
 def test_transposition_free_rank_has_reviewed_distinct_bundle_counts() -> None:
