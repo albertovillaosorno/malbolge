@@ -235,7 +235,8 @@ The all-distinct spoke stratum now has dense rank/unrank and contributes
 has dense rank/unrank and contributes another 45,289,854,118 classes.
 
 The `(2,2)` V4 spoke stratum adds 2,603,914,760 classes with dense rank/unrank.
-Two nontrivial spoke stabilizers remain open there.
+The `(3,1)` S3 spoke stratum adds another 11,867,845,606 classes. Only the
+full-S4 spoke stabilizer remains open there.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
