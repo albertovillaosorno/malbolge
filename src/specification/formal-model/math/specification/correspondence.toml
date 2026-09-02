@@ -944,6 +944,16 @@ mechanism = "strict-distinct-spoke-combinadic-rank-fixes-S4-orientation-followed
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_distinct_spoke_ranking.py::test_s6_s5_s4_distinct_spoke_rank_is_s4_invariant", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_distinct_spoke_ranking.py::test_s6_s5_s4_distinct_spoke_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_distinct_spoke_ranking.py::test_s6_s5_s4_distinct_spoke_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_distinct_spoke_ranking.py::test_s6_s5_s4_distinct_spoke_counts_match_reviewed_sequence"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-s4-s2-spoke-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-s4-s2-spoke-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the widened residual S4 edge payload inside endpoint-unordered S6 top-level partition 5,1 and second-layer vertex-bundle partition 4,1, restricted to four four-component spokes with multiplicity partition 2,1,1 at residual mass 0 through 14"
+mechanism = "repeated-spoke-plus-two-distinct-singleton-canonicalization-composed-with-two-fixed-widened-K4-edges-and-two-eight-scalar-moving-blocks-under-one-shared-S2-half-swap"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_s2_spoke_ranking.py::test_s6_s5_s4_s2_spoke_rank_matches_small_s4_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_s2_spoke_ranking.py::test_s6_s5_s4_s2_spoke_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_s2_spoke_ranking.py::test_s6_s5_s4_s2_spoke_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_s2_spoke_ranking.py::test_s6_s5_s4_s2_spoke_counts_match_reviewed_sequences"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"
