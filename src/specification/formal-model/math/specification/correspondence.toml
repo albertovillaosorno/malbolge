@@ -1074,6 +1074,26 @@ mechanism = "sort-distinct-four-component-edge-values-by-mass-and-composition-ra
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_trivial_ranking.py::test_trivial_pattern_color_factorization_matches_lattice_counts", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_trivial_ranking.py::test_trivial_pattern_rank_exhausts_small_feasible_patterns", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_trivial_ranking.py::test_trivial_rank_matches_direct_small_s5_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_trivial_ranking.py::test_trivial_rank_roundtrips_through_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_exact_stabilizer_spectrum"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-low-mass-exception-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-low-mass-exception-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the exact D10 and full-S5 widened K5 edge stabilizer types occurring only below mass 14 inside endpoint-unordered S6 top-level partition 5,1 and second-layer all-equal partition 5"
+mechanism = "rank-two-distinct-four-component-values-on-the-D10-five-edge-orbits-by-strict-unordered-pair-combinadics-and-rank-the-single-four-component-value-on-the-full-S5-ten-edge-orbit"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_low_mass_exception_ranking.py::test_low_mass_exception_counts_match_lattice_spectrum", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_low_mass_exception_ranking.py::test_d10_rank_roundtrips_and_has_exact_stabilizer", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_low_mass_exception_ranking.py::test_full_s5_rank_roundtrips_and_has_exact_stabilizer"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-complete-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-complete-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "all widened K5 edge orbits inside endpoint-unordered S6 top-level partition 5,1 and second-layer all-equal partition 5 at every residual mass 0 through 14 under the full residual S5 action"
+mechanism = "concatenate-the-eleven-proved-exact-stabilizer-local-rank-intervals-by-cumulative-cardinality-prefixes-while-preserving-each-local-canonical-order"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_complete_ranking.py::test_complete_s5_rank_sums_all_eleven_exact_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_complete_ranking.py::test_complete_s5_rank_dispatches_without_gaps_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_complete_ranking.py::test_complete_s5_rank_roundtrips_sampled_global_ranks", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_stabilizer_inversion_reconstructs_edge_core"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-small-exception-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-s5-small-exception-ranking"

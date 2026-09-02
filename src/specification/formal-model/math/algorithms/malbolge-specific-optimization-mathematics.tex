@@ -2424,6 +2424,33 @@ sequence through mass fourteen. It ends at
 $C_{14,1}^{\mathrm{stab}}=19963566552$. Direct free S5 orbits agree through mass
 three, and dense rank-unrank samples reach mass fourteen.
 
+Two additional stabilizer types occur only below the mass-fourteen boundary.
+D10 has two five-edge orbits with distinct four-component values, while full S5
+has one ten-edge orbit. Their exact dense ranks satisfy
+\begin{equation}
+  \fitmath{%
+    \rho_r^{(4,D_{10})}:\mathcal E_{r,D_{10}}^{(4)}/S_5
+      \overset{\sim}{\longrightarrow}\{0,\ldots,D_r-1\},
+    \quad
+    \rho_r^{(4,S_5)}:\mathcal E_{r,S_5}^{(4)}/S_5
+      \overset{\sim}{\longrightarrow}\{0,\ldots,U_r-1\}.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-low-mass-exception-ranking}
+\end{equation}
+Here $D_5=4$, $D_{10}=16$, $U_0=1$, and $U_{10}=4$; all other checked entries
+are zero. These two types and the nine mass-fourteen types form eleven exact
+local intervals. Prefix concatenation gives
+\begin{equation}
+  \fitmath{%
+    \rho_r^{(4,S_5),\mathrm{complete}}(j,q)
+      =q+\sum_{i<j}c_{r,i},
+    \qquad 0\leq q<c_{r,j},\quad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-complete-ranking}
+\end{equation}
+The eleven intervals reconstruct the independent full-S5 Burnside sequence at
+every residual mass through fourteen, ending at $20103708128$ classes.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose

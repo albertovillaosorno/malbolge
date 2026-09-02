@@ -303,6 +303,13 @@ nondecreasing mass sequences and ordinary strict combinadics. Across all 512
 block-size compositions this gives a dense exact rank of 19,963,566,552 mass-14
 classes, matching independent subgroup-lattice inversion.
 
+Two stabilizers occur only below the mass-14 boundary: D10 contributes four
+classes at mass 5 and sixteen at mass 10, while full S5 contributes one class at
+mass 0 and four at mass 10. Their two-five-edge-orbit and one-ten-edge-orbit
+geometries give direct dense ranks. Concatenating these with the nine populated
+mass-14 types yields a complete dense full-S5 edge rank at every residual mass
+through fourteen, ending at 20,103,708,128 classes.
+
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
 547,751,638,341,145 canonical ordered triples, the quadruple quotient gives
