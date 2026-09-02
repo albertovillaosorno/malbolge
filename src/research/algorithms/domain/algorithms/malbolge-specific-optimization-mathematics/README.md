@@ -193,8 +193,11 @@ covering 99,892,279
 mass-14 classes. The `(2,1,1,1,1)` stratum has residual cycle type `1^24 2^14`
 and a dense coupled-involution rank covering 8,308,559,181 mass-14 classes. The
 `(3,1,1,1)` stratum is 10 fixed scalars plus a multiset of three 14-component
-vectors and has a dense rank covering 89,182,770,767 mass-14 classes. The
-remaining eight nontrivial Young stabilizer strata remain unranked.
+vectors and has a dense rank covering 89,182,770,767 mass-14 classes.
+
+The `(2,2,1,1)` stratum has a nested V4 rank with `X=(12;6,6)` and `Z=(6;4,4)`
+involution shapes, covering 39,233,740,619 mass-14 classes. The remaining seven
+nontrivial Young stabilizer strata remain unranked.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives

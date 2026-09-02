@@ -764,6 +764,16 @@ mechanism = "vertex-mass-and-sequence-prefix-around-ten-fixed-residual-scalars-a
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s3_vertex_ranking.py::test_s6_order_six_residual_action_is_three_bundle_multiset", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s3_vertex_ranking.py::test_s6_order_six_residual_rank_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s3_vertex_ranking.py::test_s6_order_six_rank_exhausts_small_full_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s3_vertex_ranking.py::test_s6_order_six_rank_roundtrips_through_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s3_vertex_ranking.py::test_s6_order_six_counts_match_reviewed_sequence"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-v4-vertex-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-v4-vertex-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple stratum at ambiguity mass 0 through 14 whose six sorted weight-one-five vertex complement pair-values have multiplicity partition 2,2,1,1 and hence Young stabilizer V4 isomorphic to S2 times S2"
+mechanism = "nested-commuting-involution-rank-after-first-S2-quotient-with-a-twelve-fixed-plus-six-pair-X-vector-and-an-unordered-pair-of-six-fixed-plus-four-pair-Z-vectors"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_v4_vertex_ranking.py::test_s6_v4_label_layout_has_exact_nested_involution_geometry", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_v4_vertex_ranking.py::test_s6_v4_residual_rank_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_v4_vertex_ranking.py::test_s6_v4_rank_exhausts_small_full_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_v4_vertex_ranking.py::test_s6_v4_rank_roundtrips_through_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_v4_vertex_ranking.py::test_s6_v4_counts_match_reviewed_sequence"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"

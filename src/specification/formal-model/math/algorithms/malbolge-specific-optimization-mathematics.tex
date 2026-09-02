@@ -1549,6 +1549,45 @@ and the counts from masses eleven through fourteen are
 \]
 The remaining eight nontrivial Young stabilizer strata are still unranked.
 
+The vertex multiplicity stratum $(2,2,1,1)$ has Young stabilizer
+$V_4\cong S_2\times S_2$. Let $a$ and $b$ swap the two repeated vertex pairs.
+On the fifty-two residual scalar labels, each single swap has cycle type
+$1^{24}2^{14}$ and their product has cycle type $1^{12}2^{20}$. Quotient by
+$a$ first. Its twenty-four fixed coordinates form a vector $X$ on which $b$
+has shape $(12;6,6)$, while the remaining coordinates become an unordered pair
+$Y=\operatorname{Sym}^2(Z)$ of fourteen-component vectors on which $b$ has
+shape $(6;4,4)$ within each $Z$. The label pairs can be oriented so this
+descended action introduces no side reversal on fixed $Z$ coordinates.
+
+Let $Q_r^{(2,2)}$ be the resulting dense residual class count, let
+$D_a^{(2,2)}$ be the sorted vertex-pair sequences of mass $a$ with multiplicity
+partition $(2,2,1,1)$, and let $\eta_r^{(2,2)}$ be the nested dense residual
+rank. Then
+\begin{equation}
+  \fitmath{%
+    \rho^{(6,2^2 1^2)}_k(v,y)
+      =\sum_{b<a}|D_b^{(2,2)}|Q_{k-b}^{(2,2)}
+       +i_a(v)Q_{k-a}^{(2,2)}+\eta_{k-a}^{(2,2)}(y),
+    \qquad 0\leq k\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-v4-vertex-ranking}
+\end{equation}
+The residual inverse uses the fixed/nonfixed decomposition of the descended
+involution on $X\times Y$. For equal-mass $Z$ pairs, fixed/fixed, fixed/moving,
+and moving/moving classes are ranked separately, with one parity bit for the
+last case. Direct residual orbit enumeration through mass two agrees with
+Burnside, complete stratum rank/unrank is exhausted through mass six, and
+boundary/interior checks reach mass fourteen. The exact stratum counts from
+masses five through ten are
+\[
+  (6,188,3772,59113,770882,8602203),
+\]
+and the counts from masses eleven through fourteen are
+\[
+  (83705886,721443423,5582322358,39233740619).
+\]
+The remaining seven nontrivial Young stabilizer strata are still unranked.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose
