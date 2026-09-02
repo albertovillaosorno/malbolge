@@ -2321,9 +2321,26 @@ multisets $(1,1,2,2,2,2)$, $(1,1,2,2,4)$, $(2,2,2,4)$, and $(2,4,4)$, so
   \label{eq:optimization-crazy-sextuple-s6-s5-double-transposition-quotient}
 \end{equation}
 Direct widened quotient orbits agree through mass two, and the exact Burnside
-sequence reaches $Q_{14}^{(S_2^\mathrm{dbl},4)}=6611992$. Dense quotient
-rank/unrank and exact-H filtering remain open; the exact double-transposition
-stratum has $4743872$ classes.
+sequence reaches $Q_{14}^{(S_2^\mathrm{dbl},4)}=6611992$.
+The residual $V_4$ action factors into two commuting involutions: one swaps a
+weight-two pair, while the other simultaneously swaps a weight-one pair and a
+second weight-two pair. Dense unordered-pair rank and dense diagonal two-pair
+rank therefore compose over weighted mass blocks as
+\begin{equation}
+  \fitmath{%
+    \rho^{(4,S_2^\mathrm{dbl}),\mathrm{quot}}_r:
+      \mathcal E_{r,S_2^\mathrm{dbl}}^{(4),H\text{-fixed}}
+        /(N_{S_5}(H)/H)
+      \overset{\sim}{\longrightarrow}
+      \{0,\ldots,Q_r^{(S_2^\mathrm{dbl},4)}-1\},
+    \qquad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-double-transposition-ranking}
+\end{equation}
+Complete quotient domains are exhausted through mass six, all four residual
+$V_4$ transforms receive the same rank there, and boundary/interior roundtrips
+reach mass fourteen. Exact-H filtering remains open; the exact
+double-transposition stratum has $4743872$ classes.
 
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words

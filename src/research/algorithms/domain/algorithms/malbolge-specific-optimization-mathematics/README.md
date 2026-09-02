@@ -278,9 +278,11 @@ each with four weight-two spoke scalars and four weight-one opposite scalars.
 The mass-14 quotient has 137,230,360 classes and matches an independent S3
 Burnside average; exact-H filtering to 133,525,016 classes remains open.
 
-The double-transposition H-fixed quotient now has an exact residual-V4 cycle
-index and count. Its mass-14 quotient has 6,611,992 classes; dense quotient
-rank/unrank and exact-H filtering to 4,743,872 classes remain open.
+The double-transposition H-fixed quotient now has both an exact residual-V4
+cycle index and scalable dense rank/unrank. The rank factors the V4 action into
+an independent swap of one weight-two pair and a diagonal swap of the remaining
+weight-one and weight-two pairs. Its mass-14 quotient has 6,611,992 classes;
+exact-H filtering to 4,743,872 classes remains open.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives

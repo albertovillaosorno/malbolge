@@ -1111,7 +1111,17 @@ label = "eq:optimization-crazy-sextuple-s6-s5-double-transposition-quotient"
 domain = "the H-fixed forty-scalar widened K5 edge states for a double-transposition candidate inside endpoint-unordered S6 top-level partition 5,1 and second-layer all-equal partition 5, modulo the residual V4 normalizer quotient through mass 14"
 mechanism = "apply-Burnside-to-the-four-reviewed-residual-V4-maps-on-two-weight-one-and-four-weight-two-four-component-H-edge-orbit-values-using-their-effective-cycle-weight-multisets"
 # jig-ignore-next-line: indivisible reviewed identifiers
-evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_double_transposition_quotient.py::test_double_transposition_quotient_has_reviewed_v4_cycle_weights", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_double_transposition_quotient.py::test_double_transposition_quotient_burnside_sequence_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_double_transposition_quotient.py::test_double_transposition_quotient_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum"]
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_double_transposition_quotient_ranking.py::test_double_transposition_quotient_rank_matches_burnside", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_double_transposition_quotient_ranking.py::test_double_transposition_quotient_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_double_transposition_quotient_ranking.py::test_double_transposition_quotient_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-double-transposition-quotient-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-double-transposition-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the H-fixed forty-scalar widened K5 edge states for a double-transposition candidate inside endpoint-unordered S6 top-level partition 5,1 and second-layer all-equal partition 5, modulo the residual V4 normalizer quotient through mass 14"
+mechanism = "factor-the-residual-V4-into-an-independent-weight-two-pair-swap-and-a-diagonal-swap-on-one-weight-one-plus-one-weight-two-pair-then-compose-the-two-dense-involution-ranks-over-weighted-mass-blocks"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_double_transposition_quotient_ranking.py::test_double_transposition_quotient_rank_matches_burnside", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_double_transposition_quotient_ranking.py::test_double_transposition_quotient_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_double_transposition_quotient_ranking.py::test_double_transposition_quotient_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum"]
 
 [[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
