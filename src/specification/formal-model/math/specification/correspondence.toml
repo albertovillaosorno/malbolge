@@ -1081,7 +1081,17 @@ label = "eq:optimization-crazy-sextuple-s6-s5-disjoint-v4-quotient-ranking"
 domain = "the H-fixed forty-scalar widened K5 edge states for the disjoint V4 exact-stabilizer candidate inside endpoint-unordered S6 top-level partition 5,1 and second-layer all-equal partition 5, modulo the order-two normalizer quotient through mass 14"
 mechanism = "split-the-two-weight-one-and-two-weight-two-four-component-orbit-value-pairs-into-fixed-and-moving-swap-orbits-compose-their-relative-orientation-under-the-diagonal-normalizer-involution-and-prefix-the-fixed-weight-four-value"
 # jig-ignore-next-line: indivisible reviewed identifiers
-evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_disjoint_v4_quotient_ranking.py::test_disjoint_v4_quotient_count_matches_burnside_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_disjoint_v4_quotient_ranking.py::test_disjoint_v4_quotient_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_disjoint_v4_quotient_ranking.py::test_disjoint_v4_quotient_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum"]
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_disjoint_v4_ranking.py::test_disjoint_v4_quotient_count_matches_burnside_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_disjoint_v4_ranking.py::test_disjoint_v4_quotient_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_disjoint_v4_ranking.py::test_disjoint_v4_quotient_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum"]
+
+[[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-disjoint-v4-exact-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-disjoint-v4-exact-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the exact disjoint-V4 stabilizer stratum of forty widened K5 edge scalars in endpoint-unordered S6 top-level partition 5,1 and second-layer all-equal partition 5 through mass 14"
+mechanism = "rank-the-order-two-normalizer-quotient-then-remove-the-sorted-union-of-quotient-ranks-fixed-by-the-five-strict-S5-supergroups-using-binary-search-prefix-offsets-for-dense-exact-rank-and-unrank"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_disjoint_v4_ranking.py::test_disjoint_v4_has_exactly_five_strict_supergroups", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_disjoint_v4_ranking.py::test_disjoint_v4_exact_rank_matches_direct_small_stabilizers", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_disjoint_v4_ranking.py::test_disjoint_v4_exact_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum"]
 
 [[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"

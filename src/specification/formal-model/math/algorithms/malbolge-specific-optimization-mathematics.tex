@@ -2267,9 +2267,26 @@ Splitting each pair into fixed and moving involution orbits gives
 \end{equation}
 The dense count agrees with the independent order-two Burnside average at every
 checked mass. Complete ranks are exhausted through mass six, boundary/interior
-roundtrips reach mass fourteen, and $Q_{14}^{(V_4,4)}=1842416$. Exact-H
-filtering remains separate; the exact mass-fourteen disjoint-V4 stratum has
-$1833336$ classes.
+roundtrips reach mass fourteen, and $Q_{14}^{(V_4,4)}=1842416$.
+The disjoint $V_4$ subgroup has exactly five strict supergroups in $S_5$: one
+order-eight group, two order-twelve groups, one order-twenty-four group, and
+$S_5$ itself. Let $B_r^{(V_4,4)}$ be the sorted quotient ranks fixed by at least
+one of these strict supergroups. Removing those sparse ranks gives the exact-H
+rank
+\begin{equation}
+  \fitmath{%
+    \rho^{(4,V_4),\mathrm{exact}}_r(e)=
+      \rho^{(4,V_4)}_r(e)-
+      \left|B_r^{(V_4,4)}\cap
+      \{0,\ldots,\rho^{(4,V_4)}_r(e)-1\}\right|,
+    \qquad
+    \rho^{(4,V_4)}_r(e)\notin B_r^{(V_4,4)}.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-disjoint-v4-exact-ranking}
+\end{equation}
+Direct stabilizer checks agree through mass six and exact rank/unrank roundtrips
+reach mass fourteen. There $|B_{14}^{(V_4,4)}|=9080$, leaving exactly $1833336$
+disjoint-V4 classes.
 
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words

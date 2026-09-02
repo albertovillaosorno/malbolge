@@ -265,12 +265,12 @@ direct S5 orbits through mass two. Subgroup-lattice inversion shows
 
 The symmetric mass splits into eight nontrivial conjugacy strata with
 normalizer quotients of orders 6, 4, 2, 6, 2, 1, 1, and 1. Transitive V4, S3,
-D8, S3-times-S2, and S4 strata now have dense rank/unrank for 39,352 combined
-mass-14 classes. The disjoint-V4 normalizer quotient is also densely ranked:
-1,842,416 mass-14 H-fixed classes modulo its residual involution, before exact-H
-filtering to 1,833,336 classes. Single- and double-transposition plus the
-trivial
-stabilizer remain without scalable dense ranks.
+D8, S3-times-S2, and S4 strata have dense rank/unrank for 39,352 combined
+mass-14 classes. The disjoint-V4 quotient has 1,842,416 H-fixed classes; sparse
+exclusion of 9,080 ranks fixed by its five strict supergroups gives a complete
+1,833,336-class exact rank. Thus 1,872,688 symmetric classes are constructive,
+leaving only the two order-two strata and the trivial stabilizer without dense
+ranks.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
