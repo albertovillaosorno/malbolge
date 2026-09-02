@@ -209,8 +209,9 @@ second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
 dense rank/unrank and contributes 167,523,430,983 complete mass-14 S6 classes.
 
 The `(2,1,1)` second-layer S2 case now adds 113,906,741,533 classes, so
-281,430,172,516 classes in `(4,1,1)` are densely ranked. Its V4, S3, and S4
-second-layer stabilizers remain open. The full `(4,1,1)` stratum still contains
+281,430,172,516 classes in `(4,1,1)` are densely ranked. The `(3,1)` S3
+second-layer case adds another 17,436,163,856 classes, leaving only V4 and S4
+second-layer stabilizers open. The full `(4,1,1)` stratum still contains
 302,650,855,156 classes, so six top-level Young stabilizer strata remain
 incomplete.
 
