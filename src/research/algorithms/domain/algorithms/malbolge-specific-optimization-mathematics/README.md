@@ -226,7 +226,8 @@ all 310,719,486,939 mass-14 classes. The all-distinct trivial-stabilizer case
 has dense rank/unrank and contributes 1,124,927,130 classes.
 
 The `(3,1,1)` S3 and `(2,1,1,1)` S2 cases contribute 86,903,339,017 and
-26,007,971,192 classes respectively. Four second-layer stabilizers remain open.
+26,007,971,192 classes respectively. The `(4,1)` S4 case is now also densely
+ranked, leaving three second-layer stabilizers open.
 
 The `(4,1)` slice further factors its four widened spokes into five Young
 stabilizers whose complete mass-14 contributions sum to 96,141,721,711 classes.
@@ -239,7 +240,10 @@ The `(3,1)` S3 spoke stratum adds another 11,867,845,606 classes. The all-equal
 full-S4 spoke stratum adds the remaining 1,032,902,521 classes with dense local
 rank/unrank, so all five spoke stabilizers now have constructive local ranks.
 Fixed cumulative offsets concatenate them into one dense residual S4 edge
-interval of 100,371,765,432 mass-14 classes.
+interval of 100,371,765,432 mass-14 classes. Composing the four-plus-one bundle,
+two fixed scalars, and top-level prefix gives one dense `(5,1;4,1)` interval of
+96,141,721,711 classes. The four completed second-layer shapes now cover
+210,177,959,050 of the 310,719,486,939 mass-14 `(5,1)` classes.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives

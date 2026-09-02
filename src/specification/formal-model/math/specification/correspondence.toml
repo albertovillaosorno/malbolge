@@ -994,6 +994,16 @@ mechanism = "fixed-order-cumulative-offset-concatenation-of-the-all-distinct-S2-
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_complete_spoke_ranking.py::test_s6_s5_s4_complete_spoke_rank_sums_all_five_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_complete_spoke_ranking.py::test_s6_s5_s4_complete_spoke_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_complete_spoke_ranking.py::test_s6_s5_s4_complete_spoke_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_spoke_decomposition.py::test_s6_s5_s4_factorization_matches_burnside_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-s4-bundle-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-s4-bundle-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple top-level vertex partition 5,1 at ambiguity mass 0 through 14 with second-layer two-component vertex-bundle multiplicity partition 4,1 and the complete residual S4 edge rank"
+mechanism = "one-fourfold-repeated-two-component-bundle-plus-one-distinct-singleton-composed-with-two-fixed-scalars-and-the-complete-dense-residual-S4-spoke-stratum-rank"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_bundle_ranking.py::test_s6_s5_s4_bundle_counts_match_nested_factorization", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_bundle_ranking.py::test_s6_s5_s4_bundle_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_bundle_ranking.py::test_s6_s5_s4_bundle_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s4_complete_spoke_ranking.py::test_s6_s5_s4_complete_spoke_rank_sums_all_five_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_nested_factorization_matches_burnside_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"
