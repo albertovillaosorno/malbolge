@@ -2158,6 +2158,27 @@ boundary/interior roundtrips reach mass fourteen. Prefixing the canonical
 $(5,1)$ top-level vertex sequence gives exactly $35397909316$ complete
 mass-fourteen S6 classes.
 
+For second-layer multiplicity partition $(3,2)$, the residual stabilizer is
+$S_3\times S_2$. One four-component edge between the two repeated-block
+vertices is fixed, while the remaining nine widened edges form three
+12-component bundles. Quotienting those three bundles by $S_3$ and then by the
+common internal $S_2$ involution gives a dense residual rank
+\begin{equation}
+  \fitmath{%
+    \rho^{(E,12,4)}_r:
+      \mathcal E^{(5,1;3,2)}_r
+      \overset{\sim}{\longrightarrow}
+      \{0,\ldots,E_r^{(S_3\times S_2,4)}-1\},
+    \qquad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-s3s2-edge-ranking}
+\end{equation}
+Direct product-group orbit exhaustion through mass two gives every rank once,
+and boundary/interior ranks roundtrip through mass fourteen. The constructive
+count matches the independent product-group Burnside sequence at every checked
+mass; the mass-fourteen residual edge interval contains exactly $200608118832$
+classes. The outer $(3,2)$ bundle composition remains separate.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose

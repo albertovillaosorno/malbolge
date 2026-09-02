@@ -252,6 +252,11 @@ V4 Burnside sequence. Composing its two repeated bundle pairs, singleton, fixed
 scalars, and top-level prefix gives 35,397,909,316 complete mass-14 classes.
 Dense `(5,1)` coverage is therefore 245,575,868,366 of 310,719,486,939 classes.
 
+The remaining `(3,2)` branch now has a dense widened S3-times-S2 K5-edge rank.
+Its residual edge interval contains 200,608,118,832 mass-14 classes and matches
+direct product-group orbits at small mass plus the independent Burnside sequence
+through mass 14. Its outer bundle/top-level composition remains open.
+
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
 547,751,638,341,145 canonical ordered triples, the quadruple quotient gives
