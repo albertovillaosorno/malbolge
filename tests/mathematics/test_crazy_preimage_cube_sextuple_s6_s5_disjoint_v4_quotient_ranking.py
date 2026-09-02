@@ -9,9 +9,9 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Dense rank/unrank for widened transitive-V4-fixed K5 edges modulo N(H)/H.
+#   - Dense rank/unrank for widened disjoint-V4-fixed K5 edges modulo N(H)/H.
 # - Must-Not:
-#   - Claim exact-H filtering or the complete transitive-V4 S5 stratum.
+#   - Claim exact-H filtering or the complete disjoint-V4 S5 stratum.
 # - Allows:
 #   - Inputs: five four-component H-edge-orbit values through mass fourteen.
 #   - Outputs: dense ranks modulo the residual normalizer involution.
@@ -25,12 +25,12 @@
 # - Description:
 #   - N(H)/H swaps both equal-weight orbit pairs simultaneously.
 # - Usage:
-#   - Scalable prerequisite for the 1,833,336 exact transitive-V4 classes.
+#   - Scalable prerequisite for the 1,833,336 exact disjoint-V4 classes.
 # - Defaults:
 #   - Exhaustive quotient domains stop at mass six; arithmetic reaches fourteen.
 #
 
-"""Dense widened transitive-V4 normalizer quotient for the full-S5 edge core."""
+"""Dense widened disjoint-V4 normalizer quotient for the full-S5 edge core."""
 
 from __future__ import annotations
 
@@ -440,9 +440,7 @@ def _burnside_count(total: int) -> int:
     return (raw + fixed) // 2
 
 
-def test_transitive_v4_quotient_count_matches_burnside_through_fourteen() -> (
-    None
-):
+def test_disjoint_v4_quotient_count_matches_burnside_through_fourteen() -> None:
     """The diagonal involution count matches independent Burnside counts."""
     observed = tuple(_count(total) for total in range(_MAXIMUM_MASS + 1))
     assert observed == _EXPECTED_COUNTS
@@ -452,7 +450,7 @@ def test_transitive_v4_quotient_count_matches_burnside_through_fourteen() -> (
     assert observed[-1] == _WIDTH_FOURTEEN_COUNT
 
 
-def test_transitive_v4_quotient_rank_exhausts_small_domains() -> None:
+def test_disjoint_v4_quotient_rank_exhausts_small_domains() -> None:
     """Every quotient class through mass six receives one contiguous rank."""
     for total in range(_EXHAUSTIVE_MASS + 1):
         for rank in range(_count(total)):
@@ -462,7 +460,7 @@ def test_transitive_v4_quotient_rank_exhausts_small_domains() -> None:
             assert _rank(_swap(state)) == rank
 
 
-def test_transitive_v4_quotient_rank_roundtrips_through_fourteen() -> None:
+def test_disjoint_v4_quotient_rank_roundtrips_through_fourteen() -> None:
     """Boundary and interior quotient ranks roundtrip through mass fourteen."""
     for total in range(_MAXIMUM_MASS + 1):
         count = _count(total)

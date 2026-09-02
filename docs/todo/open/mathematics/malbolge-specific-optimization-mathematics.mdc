@@ -86,7 +86,7 @@ force or stochastic optimization begins.
   S2, S3, S4, V4, and S3-times-S2 second-layer rank/unrank plus an exact
   widened full-S5 edge hard-core count and stabilizer-order spectrum plus
   dense rank/unrank for five bounded symmetric strata plus a scalable
-  transitive-V4 normalizer-quotient rank, where the S4 branch has
+  disjoint-V4 normalizer-quotient rank, where the S4 branch has
   complete
   dense spoke rank/unrank across all five stabilizers and their combined
   residual interval, and an exact nested S2-cubed
