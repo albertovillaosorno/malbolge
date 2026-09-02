@@ -262,6 +262,7 @@ The final `(5,)` branch now has an exact widened full-S5 K5-edge hard core. Its
 Burnside sequence reaches 20,103,708,128 residual mass-14 classes and matches
 direct S5 orbits through mass two. Subgroup-lattice inversion shows
 19,963,566,552 trivial-stabilizer classes and 140,141,576 symmetric classes.
+
 The symmetric mass splits into eight nontrivial conjugacy strata with
 normalizer quotients of orders 6, 4, 2, 6, 2, 1, 1, and 1. This fixes the nine
 strata for the remaining order-120 dense rank but does not claim that
