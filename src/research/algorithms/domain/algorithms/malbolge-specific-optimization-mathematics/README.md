@@ -264,9 +264,10 @@ direct S5 orbits through mass two. Subgroup-lattice inversion shows
 19,963,566,552 trivial-stabilizer classes and 140,141,576 symmetric classes.
 
 The symmetric mass splits into eight nontrivial conjugacy strata with
-normalizer quotients of orders 6, 4, 2, 6, 2, 1, 1, and 1. This fixes the nine
-strata for the remaining order-120 dense rank but does not claim that
-constructive rank yet.
+normalizer quotients of orders 6, 4, 2, 6, 2, 1, 1, and 1. Fixed-point V4, S3,
+D8, S3-times-S2, and S4 strata now have dense rank/unrank for 39,352 combined
+mass-14 classes. The single-transposition, double-transposition, transitive-V4,
+and trivial-stabilizer strata remain open constructively.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
