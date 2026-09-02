@@ -894,6 +894,16 @@ mechanism = "two-fixed-scalars-plus-five-two-component-vertex-bundles-sorted-to-
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_residual_labels_have_exact_nested_geometry", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_vertex_bundles_leave_exact_five_stabilizers", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_nested_factorization_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_vertex_decomposition.py::test_s6_s5_nested_factorization_matches_burnside_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-s3-bundle-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-s3-bundle-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple top-level vertex partition 5,1 at ambiguity mass 0 through 14 with second-layer two-component vertex-bundle multiplicity partition 3,1,1"
+mechanism = "one-triple-repeated-two-component-bundle-plus-two-distinct-singletons-composed-with-two-fixed-scalars-one-fixed-four-component-edge-and-a-weighted-S3-multiset-of-three-twelve-component-edge-blocks"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s3_bundle_ranking.py::test_s6_s5_s3_bundle_and_edge_counts_match_factorization", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s3_bundle_ranking.py::test_s6_s5_s3_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_s3_bundle_ranking.py::test_s6_s5_s3_rank_roundtrips_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"

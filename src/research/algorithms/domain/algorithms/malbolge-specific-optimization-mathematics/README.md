@@ -216,11 +216,15 @@ has complete dense rank/unrank and adds 2,954,772,356 classes.
 The full-S4 widened edge core and its single quadruple-repeated bundle are now
 composed as well, adding 829,746,428 classes. Fixed cumulative offsets across
 all five second-layer stabilizers give one complete dense `(4,1,1)` interval of
-302,650,855,156 classes. Five top-level Young-stabilizer strata remain incomplete. The largest,
+302,650,855,156 classes. Five top-level Young-stabilizer strata remain
+incomplete. The largest,
 `(5,1)`, now factors into two fixed scalars, five two-component vertex bundles,
-and ten four-component K5-edge bundles. Sorting the five vertex bundles leaves
-seven Young stabilizers and reconstructs all 310,719,486,939 mass-14 classes;
-dense rank/unrank remains open there.
+and ten four-component K5-edge bundles.
+
+Sorting the five vertex bundles leaves seven Young stabilizers and reconstructs
+all 310,719,486,939 mass-14 classes. The `(3,1,1)` S3 second-layer case now has
+dense rank/unrank and contributes 86,903,339,017 classes; six second-layer
+stabilizers remain open there.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
