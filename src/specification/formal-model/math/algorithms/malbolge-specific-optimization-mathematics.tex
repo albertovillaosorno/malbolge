@@ -1621,6 +1621,44 @@ and the counts from masses eleven through fourteen are
 This theorem supplies the exact third-involution fixed/nonfixed cardinalities,
 but not yet dense $S_2^3$ rank/unrank.
 
+The vertex multiplicity stratum $(3,2,1)$ has Young stabilizer
+$S_3\times S_2$. Quotient the three repeated endpoints by $S_3$ first. The
+fifty-two residual labels become a ten-component vector $X$ together with an
+unordered triple $\operatorname{Sym}^3(Z)$ of fourteen-component vectors. The
+commuting swap on the repeated pair preserves the three bundle identities and
+acts on $X$ with shape $(6;2,2)$ and on every $Z$ with shape $(6;4,4)$.
+
+Let $D_a^{(3,2,1)}$ be the sorted vertex-pair sequences of mass $a$ with
+multiplicity partition $(3,2,1)$, let $Q_r^{(3,2,1)}$ be the exact residual
+product-group class count, and let $\eta_r^{(3,2,1)}$ be the dense residual
+rank. Then
+\begin{equation}
+  \fitmath{%
+    \rho^{(6,321)}_k(v,y)
+      =\sum_{b<a}|D_b^{(3,2,1)}|Q_{k-b}^{(3,2,1)}
+       +i_a(v)Q_{k-a}^{(3,2,1)}+\eta_{k-a}^{(3,2,1)}(y),
+    \qquad 0\leq k\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s3s2-vertex-ranking}
+\end{equation}
+The descended involution is ranked diagonally. Fixed $X$ states use the dense
+quotient of $\operatorname{Sym}^3(Z)$ by the common internal involution, while
+moving $X$ orbit representatives orient one raw $S_3$ bundle multiset. Equal-
+mass bundle blocks split into the fixed/moving multiset categories required for
+an exact inverse. Direct twelve-element residual orbits agree through mass two,
+complete-stratum ranks are exhausted through mass five, and boundary/interior
+roundtrips reach mass fourteen. The complete stratum counts from masses three
+through eight are
+\[
+  (2,44,680,8972,105464,1108403),
+\]
+and from masses nine through fourteen are
+\[
+  (10428550,88217154,675502692,4718732554,30306550190,180275648841).
+\]
+Thus the mass-fourteen $(3,2,1)$ stratum contributes $180275648841$ densely
+ranked classes. Six Young-stabilizer strata remain without dense rank/unrank.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose

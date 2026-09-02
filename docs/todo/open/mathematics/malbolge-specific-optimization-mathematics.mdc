@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize one hundred twenty-one exact reductions:
+- The proved slices now formalize one hundred twenty-two exact reductions:
   classic five-trit
   crazy factorization, profile-width crazy chunking, exact zero-padded 15-trit
   crazy projection and uniform three-lookup factorization for semantic widths
@@ -79,8 +79,9 @@ force or stochastic optimization begins.
   pair/eleven-Young-stabilizer residual factorization, dense distinct-vertex
   trivial-stabilizer rank/unrank, dense order-two Young-stabilizer
   rank/unrank, dense order-six Young-stabilizer rank/unrank, dense V4 Young-
-  stabilizer rank/unrank, and an exact nested S2-cubed quotient/fixed-set
-  decomposition, one generic checked-arity
+  stabilizer rank/unrank, dense S3-times-S2 Young-stabilizer rank/unrank,
+  and an exact nested S2-cubed quotient/fixed-set decomposition, one generic
+  checked-arity
   ordered tuple quotient with `C(k+2^m-1,2^m-1)` classes for `1<=m<=8`, dense
   stars-and-bars/combinadic rank-unrank for those quotient classes, one generic
   endpoint-unordered tuple quotient under `S_m` for `1<=m<=8`, exact combined
@@ -133,7 +134,7 @@ force or stochastic optimization begins.
   reductions are consumed by runtime paths; the one hundred one search
   reductions, two padded-geometry equivalences, and eleven width-certification
   results carry no inherited runtime speedup claim.
-- One hundred twenty-one optimization research equations are registered in
+- One hundred twenty-two optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -168,7 +169,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes one hundred twenty-one labelled
+- Current mathematical evidence includes one hundred twenty-two labelled
   optimization equations,
   executable correspondence, exact zero-padding projection and uniform
   three-lookup evidence for semantic widths 10 through 14, exact checked
@@ -213,8 +214,9 @@ force or stochastic optimization begins.
   ordered and endpoint-unordered sextuple classes through dimension 14 with an
   exact six-vertex-pair/eleven-Young-stabilizer residual factorization plus
   dense distinct-vertex trivial-stabilizer, order-two, order-six, and V4
-  Young-stabilizer rank/unrank plus an exact S2-cubed nested quotient/fixed-set
-  decomposition, the generic ordered
+  Young-stabilizer rank/unrank, dense S3-times-S2 Young-stabilizer rank/unrank,
+  plus an exact S2-cubed nested quotient/fixed-set decomposition, the generic
+  ordered
   tuple quotient for checked
   arities one through eight with exact weak-composition class and multinomial
   mass accounting, dense combinadic quotient-class rank/unrank through dimension
