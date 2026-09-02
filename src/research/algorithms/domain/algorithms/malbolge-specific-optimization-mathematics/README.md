@@ -272,6 +272,12 @@ exclusion of 9,080 ranks fixed by its five strict supergroups gives a complete
 leaving only the two order-two strata and the trivial stabilizer without dense
 ranks.
 
+The single-transposition H-fixed quotient now also has a scalable dense rank.
+One fixed four-vector prefixes an S3 multiset of three eight-scalar bundles,
+each with four weight-two spoke scalars and four weight-one opposite scalars.
+The mass-14 quotient has 137,230,360 classes and matches an independent S3
+Burnside average; exact-H filtering to 133,525,016 classes remains open.
+
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
 547,751,638,341,145 canonical ordered triples, the quadruple quotient gives

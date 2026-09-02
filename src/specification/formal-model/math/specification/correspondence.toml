@@ -1094,6 +1094,16 @@ mechanism = "rank-the-order-two-normalizer-quotient-then-remove-the-sorted-union
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_disjoint_v4_ranking.py::test_disjoint_v4_has_exactly_five_strict_supergroups", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_disjoint_v4_ranking.py::test_disjoint_v4_exact_rank_matches_direct_small_stabilizers", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_disjoint_v4_ranking.py::test_disjoint_v4_exact_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s5-transposition-quotient-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s5-transposition-quotient-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the H-fixed forty-scalar widened K5 edge states for a single-transposition candidate inside endpoint-unordered S6 top-level partition 5,1 and second-layer all-equal partition 5, modulo the residual S3 normalizer quotient through mass 14"
+mechanism = "densely-rank-each-four-weight-two-plus-four-weight-one-residual-vertex-bundle-then-rank-the-graded-multiset-of-three-bundles-under-S3-and-prefix-the-fixed-four-component-edge-value"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transposition_quotient_ranking.py::test_transposition_quotient_count_matches_s3_burnside", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transposition_quotient_ranking.py::test_transposition_quotient_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_transposition_quotient_ranking.py::test_transposition_quotient_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s5_stabilizer_spectrum.py::test_s6_s5_widened_mass_fourteen_conjugacy_spectrum"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"

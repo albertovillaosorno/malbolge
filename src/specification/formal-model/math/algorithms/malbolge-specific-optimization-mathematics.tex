@@ -2287,6 +2287,26 @@ rank
 Direct stabilizer checks agree through mass six and exact rank/unrank roundtrips
 reach mass fourteen. There $|B_{14}^{(V_4,4)}|=9080$, leaving exactly $1833336$
 disjoint-V4 classes.
+For the single-transposition type $H=\langle(01)\rangle$, one widened edge value
+is fixed while the remaining H-edge orbits form three bundles. Each bundle is a
+pair $(s,o)\in\mathbb N^4\times\mathbb N^4$ with weighted mass
+$2|s|+|o|$, and $N_{S_5}(H)/H\cong S_3$ permutes the three bundles. Ranking each
+weighted bundle first and then applying graded three-multiset combinadics gives
+\begin{equation}
+  \fitmath{%
+    \rho^{(4,S_2),\mathrm{quot}}_r:
+      \mathcal E_{r,S_2}^{(4),H\text{-fixed}}/(N_{S_5}(H)/H)
+      \overset{\sim}{\longrightarrow}
+      \{0,\ldots,Q_r^{(S_2,4)}-1\},
+    \qquad 0\leq r\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-transposition-quotient-ranking}
+\end{equation}
+The quotient count matches the independent $S_3$ Burnside average through mass
+fourteen. Complete quotient domains are exhausted through mass six and
+boundary/interior roundtrips reach mass fourteen, where
+$Q_{14}^{(S_2,4)}=137230360$. Exact-H filtering remains open; the exact
+single-transposition stratum has $133525016$ classes.
 
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
