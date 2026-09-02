@@ -1820,6 +1820,26 @@ eight, and boundary/interior roundtrips reach mass fourteen. This gives exactly
 $2954772356$ complete mass-fourteen S6 classes. Only the full-$S_4$
 second-layer stabilizer remains open inside the $(4,1,1)$ stratum.
 
+For the final second-layer partition $(4)$, all four six-component vertex
+bundles are equal and the full $S_4$ stabilizer acts on the six four-component
+$K_4$ edge bundles. Pair the six edges into three opposite-edge blocks, each
+containing eight scalars. The normal $V_4$ subgroup performs even-parity
+half-swaps inside those three blocks, while $S_4/V_4\cong S_3$ permutes the
+blocks. If $O_e$ counts one block modulo its internal half-swap and $P_e$ counts
+its moving block orbits, then
+\begin{equation}
+  \fitmath{%
+    E_e^{(S_4,4)}=\operatorname{Sym}^3(O)_e+
+      \operatorname{Sym}^3(P)_e,
+    \qquad 0\leq e\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s4-edge-core-ranking}
+\end{equation}
+The second summand is exactly the extra parity copy retained when all three
+opposite-edge blocks move. Direct full-S4 edge orbits agree through mass three,
+complete dense ranks are exhausted through mass six, and boundary/interior
+roundtrips reach mass fourteen, where $E_{14}^{(S_4,4)}=255543816$.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose

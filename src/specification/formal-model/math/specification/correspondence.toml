@@ -854,6 +854,16 @@ mechanism = "strict-two-key-rank-for-the-two-distinct-six-component-bundles-each
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_v4_bundle_ranking.py::test_s6_s4_v4_bundle_pair_counts_match_nested_factorization", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_v4_bundle_ranking.py::test_s6_s4_v4_bundle_rank_exhausts_small_abstract_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_v4_bundle_ranking.py::test_s6_s4_v4_bundle_rank_roundtrips_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s4-edge-core-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s4-edge-core-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the four-component K4 edge payload at ambiguity mass 0 through 14 remaining after second-layer S6 vertex-bundle multiplicity partition 4 leaves the full S4 Young stabilizer"
+mechanism = "three-opposite-edge-eight-scalar-blocks-quotiented-by-even-parity-V4-half-swaps-and-S3-block-permutation-with-one-extra-parity-copy-for-all-moving-multisets"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_edge_core_ranking.py::test_s4_edge_core_rank_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_edge_core_ranking.py::test_s4_edge_core_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_edge_core_ranking.py::test_s4_edge_core_rank_roundtrips_through_mass_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"
