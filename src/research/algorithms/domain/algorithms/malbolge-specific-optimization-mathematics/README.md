@@ -232,7 +232,8 @@ The `(4,1)` slice further factors its four widened spokes into five Young
 stabilizers whose complete mass-14 contributions sum to 96,141,721,711 classes.
 The all-distinct spoke stratum now has dense rank/unrank and contributes
 35,347,204,706 complete mass-14 S6 classes. The `(2,1,1)` S2 spoke stratum now
-has dense rank/unrank and contributes another 45,289,854,118 classes. Three
+has dense rank/unrank and contributes another 45,289,854,118 classes. The
+`(2,2)` V4 spoke stratum adds 2,603,914,760 classes with dense rank/unrank. Two
 nontrivial spoke stabilizers remain open there.
 
 Summed over every reachable width-14 fixed pair, the
