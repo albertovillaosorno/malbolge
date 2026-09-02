@@ -296,11 +296,12 @@ The trivial-stabilizer stratum separates equality geometry from numeric edge
 values. Sorting distinct four-component values by mass and composition rank
 turns each state into an ordered partition of the ten K5 edges. A stabilizer
 chain selects each ordered block only up to the stabilizer of the preceding
-blocks and retains exactly chains ending at the identity. For each ordered
-block-size composition, strictly increasing values reduce to nondecreasing mass
-sequences and ordinary strict combinadics. Across all 512 block-size
-compositions this gives a dense exact rank of 19,963,566,552 mass-14 classes,
-matching independent subgroup-lattice inversion.
+blocks and retains exactly chains ending at the identity.
+
+For each ordered block-size composition, strictly increasing values reduce to
+nondecreasing mass sequences and ordinary strict combinadics. Across all 512
+block-size compositions this gives a dense exact rank of 19,963,566,552 mass-14
+classes, matching independent subgroup-lattice inversion.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives
