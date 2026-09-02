@@ -9,23 +9,24 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Dense widened double-transposition H-fixed K5 edge rank modulo N(H)/H.
+#   - Dense quotient and exact-H rank/unrank for widened double-transposition
+#     edges.
 # - Must-Not:
-#   - Claim exact-H filtering or the complete double-transposition S5 stratum.
+#   - Claim exact single-transposition or trivial-stabilizer S5 ranking.
 # - Allows:
 #   - Inputs: six four-component H-edge-orbit values through mass fourteen.
-#   - Outputs: dense ranks modulo the residual Klein-four normalizer action.
+#   - Outputs: dense quotient ranks and low-mass-filtered exact-H ranks.
 #   - Side effects: none.
 # - Split-When:
-#   - Exact-H exclusion is composed into this quotient rank.
+#   - The twenty reviewed low-mass exact-H exceptions need separate structure.
 # - Merge-When:
 #   - Complete widened full-S5 dense ranking owns the same V4 quotient.
 # - Summary:
-#   - Factor the residual V4 into two commuting involution quotient ranks.
+#   - Factor residual V4, then skip twenty reviewed low-mass exceptions.
 # - Description:
 #   - One swap acts on a weight-two pair; one diagonal swap acts on two pairs.
 # - Usage:
-#   - Scalable prerequisite for 4,743,872 exact mass-fourteen classes.
+#   - Complete dense rank for all 4,743,872 exact mass-fourteen classes.
 # - Defaults:
 #   - Exhaustive dense domains stop at mass six; arithmetic reaches fourteen.
 #
@@ -34,12 +35,37 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
+from itertools import permutations
 from math import comb
 
+_H_ORDER = 2
 _COMPONENTS = 4
 _EXHAUSTIVE_MASS = 6
 _MAXIMUM_MASS = 14
 _WIDTH_FOURTEEN_COUNT = 6_611_992
+_WIDTH_FOURTEEN_EXACT_COUNT = 4_743_872
+_EXPECTED_EXACT_COUNTS = (
+    0,
+    0,
+    0,
+    16,
+    80,
+    428,
+    1_600,
+    5_792,
+    17_792,
+    52_576,
+    141_488,
+    366_784,
+    893_664,
+    2_105_792,
+    4_743_872,
+)
+_EXACT_EXCLUSIONS = {
+    5: (4, 45, 86, 127),
+    10: tuple(range(13_904, 22_080, 545)),
+}
 _EXPECTED_COUNTS = (
     1,
     4,
@@ -464,6 +490,151 @@ _SWAP_INDEPENDENT = (0, 1, 3, 2, 4, 5)
 _SWAP_DIAGONAL = (1, 0, 2, 3, 5, 4)
 
 
+def _diagonal_fixed_count(block: tuple[int, int, int]) -> int:
+    return _fixed_pair_count(block[0]) * _fixed_pair_count(block[2])
+
+
+def _free_block_count(block: tuple[int, int, int]) -> int:
+    diagonal_moving = _pair_product_count(
+        block[0], block[2]
+    ) - _diagonal_fixed_count(block)
+    return diagonal_moving * _moving_pair_count(block[1])
+
+
+def _free_count(total: int) -> int:
+    return sum(_free_block_count(block) for block in _mass_blocks(total))
+
+
+def _free_rank(state: _State) -> int | None:
+    block = _state_block(state)
+    diagonal_rank = _pair_product_rank(
+        (state[0], state[1]),
+        (state[4], state[5]),
+    )
+    independent = _moving_pair_rank(state[2], state[3])
+    fixed_prefix = _diagonal_fixed_count(block)
+    if (
+        diagonal_rank is None
+        or diagonal_rank < fixed_prefix
+        or independent is None
+    ):
+        return None
+    total = block[0] + 2 * block[1] + 2 * block[2]
+    prefix = sum(
+        _free_block_count(candidate)
+        for candidate in _mass_blocks(total)
+        if candidate < block
+    )
+    return (
+        prefix
+        + (diagonal_rank - fixed_prefix) * _moving_pair_count(block[1])
+        + independent[0]
+    )
+
+
+def _free_unrank(total: int, rank: int) -> _State | None:
+    if rank < 0 or rank >= _free_count(total):
+        return None
+    remaining = rank
+    for block in _mass_blocks(total):
+        block_count = _free_block_count(block)
+        if remaining >= block_count:
+            remaining -= block_count
+            continue
+        independent_count = _moving_pair_count(block[1])
+        diagonal_rank, independent_rank = divmod(remaining, independent_count)
+        diagonal = _pair_product_unrank(
+            block[0],
+            block[2],
+            _diagonal_fixed_count(block) + diagonal_rank,
+        )
+        independent = _moving_pair_unrank(block[1], independent_rank)
+        assert diagonal is not None
+        assert independent is not None
+        return (
+            diagonal[0][0],
+            diagonal[0][1],
+            independent[0],
+            independent[1],
+            diagonal[1][0],
+            diagonal[1][1],
+        )
+    raise AssertionError
+
+
+def _exact_exclusions(total: int) -> tuple[int, ...]:
+    return _EXACT_EXCLUSIONS.get(total, ())
+
+
+def _exact_count(total: int) -> int:
+    return _free_count(total) - len(_exact_exclusions(total))
+
+
+def _exact_rank(state: _State) -> int | None:
+    free_rank = _free_rank(state)
+    if free_rank is None:
+        return None
+    total = (
+        _state_block(state)[0]
+        + 2 * _state_block(state)[1]
+        + 2 * _state_block(state)[2]
+    )
+    exclusions = _exact_exclusions(total)
+    index = bisect_left(exclusions, free_rank)
+    if index < len(exclusions) and exclusions[index] == free_rank:
+        return None
+    return free_rank - index
+
+
+def _exact_unrank(total: int, rank: int) -> _State | None:
+    if rank < 0 or rank >= _exact_count(total):
+        return None
+    free_rank = rank
+    for exclusion in _exact_exclusions(total):
+        if exclusion > free_rank:
+            break
+        free_rank += 1
+    return _free_unrank(total, free_rank)
+
+
+_ARITY = 5
+_EDGES = tuple(
+    (left, right) for left in range(_ARITY) for right in range(left + 1, _ARITY)
+)
+_EDGE_INDEX = {edge: index for index, edge in enumerate(_EDGES)}
+_H_EDGE_ORBITS = ((0,), (7,), (1, 5), (2, 4), (3, 6), (8, 9))
+_S5 = tuple(permutations(range(_ARITY)))
+
+
+def _edge_permutation(order: tuple[int, ...]) -> tuple[int, ...]:
+    result: list[int] = []
+    for left, right in _EDGES:
+        image = tuple(sorted((order[left], order[right])))
+        result.append(_EDGE_INDEX[image[0], image[1]])
+    return tuple(result)
+
+
+_EDGE_PERMUTATIONS = tuple(_edge_permutation(order) for order in _S5)
+
+
+def _edge_values(state: _State) -> tuple[_Vector, ...]:
+    result: list[_Vector | None] = [None] * len(_EDGES)
+    for value, orbit in zip(state, _H_EDGE_ORBITS, strict=True):
+        for edge in orbit:
+            result[edge] = value
+    assert all(value is not None for value in result)
+    return tuple(value for value in result if value is not None)
+
+
+def _stabilizer_order(state: _State) -> int:
+    edge_values = _edge_values(state)
+    return sum(
+        tuple(edge_values[mapping[index]] for index in range(len(_EDGES)))
+        == edge_values
+        for mapping in _EDGE_PERMUTATIONS
+    )
+
+
 def _raw_fixed_count(weights: tuple[int, ...], total: int) -> int:
     coefficients = [1] + [0] * total
     for weight in weights:
@@ -488,6 +659,54 @@ def _burnside_count(total: int) -> int:
     )
     assert sum(fixed_counts) % 4 == 0
     return sum(fixed_counts) // 4
+
+
+def test_double_transposition_free_rank_matches_exact_lattice_counts() -> None:
+    """Normalizer-free and exact-H counts differ only twice."""
+    observed = tuple(_exact_count(total) for total in range(_MAXIMUM_MASS + 1))
+    assert observed == _EXPECTED_EXACT_COUNTS
+    assert observed[-1] == _WIDTH_FOURTEEN_EXACT_COUNT
+    assert _free_count(5) - observed[5] == len(_EXACT_EXCLUSIONS[5])
+    assert _free_count(10) - observed[10] == len(_EXACT_EXCLUSIONS[10])
+    assert _free_count(_MAXIMUM_MASS) == observed[-1]
+
+
+def test_double_transposition_exact_exceptions_have_larger_stabilizer() -> None:
+    """Every reviewed low-mass exclusion has stabilizer strictly above H."""
+    for total, exclusions in _EXACT_EXCLUSIONS.items():
+        for free_rank in exclusions:
+            state = _free_unrank(total, free_rank)
+            assert state is not None
+            assert _stabilizer_order(state) > _H_ORDER
+
+
+def test_double_transposition_exact_rank_exhausts_small_domains() -> None:
+    """Exact rank agrees with direct S5 stabilizers through mass six."""
+    for total in range(_EXHAUSTIVE_MASS + 1):
+        observed: list[int] = []
+        for free_rank in range(_free_count(total)):
+            state = _free_unrank(total, free_rank)
+            assert state is not None
+            exact_rank = _exact_rank(state)
+            is_exact = _stabilizer_order(state) == _H_ORDER
+            assert (exact_rank is not None) == is_exact
+            if exact_rank is not None:
+                observed.append(exact_rank)
+        assert observed == list(range(_exact_count(total)))
+
+
+def test_double_transposition_exact_rank_roundtrips_through_fourteen() -> None:
+    """Exact-H boundary and interior ranks roundtrip through mass fourteen."""
+    for total in range(_MAXIMUM_MASS + 1):
+        count = _exact_count(total)
+        assert _exact_unrank(total, -1) is None
+        assert _exact_unrank(total, count) is None
+        if count == 0:
+            continue
+        for rank in {0, count // 4, count // 2, (3 * count) // 4, count - 1}:
+            state = _exact_unrank(total, rank)
+            assert state is not None
+            assert _exact_rank(state) == rank
 
 
 def test_double_transposition_quotient_rank_matches_burnside() -> None:

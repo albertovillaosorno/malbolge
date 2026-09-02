@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize one hundred fifty-five exact reductions:
+- The proved slices now formalize one hundred fifty-six exact reductions:
   classic five-trit
   crazy factorization, profile-width crazy chunking, exact zero-padded 15-trit
   crazy projection and uniform three-lookup factorization for semantic widths
@@ -87,8 +87,8 @@ force or stochastic optimization begins.
   widened full-S5 edge hard-core count and stabilizer-order spectrum plus
   dense rank/unrank for five bounded symmetric strata plus scalable
   disjoint-V4 quotient/exact rank, single-transposition S3 quotient rank, and
-  exact double-transposition V4 quotient count plus dense rank/unrank, where
-  the S4 branch has
+  exact double-transposition V4 quotient count plus quotient/exact rank/unrank,
+  where the S4 branch has
   complete
   dense spoke rank/unrank across all five stabilizers and their combined
   residual interval, and an exact nested S2-cubed
@@ -147,7 +147,7 @@ force or stochastic optimization begins.
   reductions are consumed by runtime paths; the one hundred one search
   reductions, two padded-geometry equivalences, and eleven width-certification
   results carry no inherited runtime speedup claim.
-- One hundred fifty-five optimization research equations are registered in
+- One hundred fifty-six optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -182,7 +182,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes one hundred fifty-five labelled
+- Current mathematical evidence includes one hundred fifty-six labelled
   optimization equations,
   executable correspondence, exact zero-padding projection and uniform
   three-lookup evidence for semantic widths 10 through 14, exact checked

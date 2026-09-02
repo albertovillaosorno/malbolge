@@ -280,9 +280,11 @@ Burnside average; exact-H filtering to 133,525,016 classes remains open.
 
 The double-transposition H-fixed quotient now has both an exact residual-V4
 cycle index and scalable dense rank/unrank. The rank factors the V4 action into
-an independent swap of one weight-two pair and a diagonal swap of the remaining
-weight-one and weight-two pairs. Its mass-14 quotient has 6,611,992 classes;
-exact-H filtering to 4,743,872 classes remains open.
+an independent weight-two swap and a diagonal weight-one/weight-two swap.
+Restricting both factors to moving orbits gives the normalizer-free rank; only
+four mass-5 and sixteen mass-10 ranks have larger S5 stabilizers. Skipping those
+exceptions yields a complete exact rank of 4,743,872 mass-14 classes, bringing
+constructive symmetric coverage to 6,616,560 classes.
 
 Summed over every reachable width-14 fixed pair, the
 triple quotient gives

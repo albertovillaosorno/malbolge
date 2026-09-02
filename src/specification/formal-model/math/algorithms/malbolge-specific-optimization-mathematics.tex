@@ -2341,6 +2341,26 @@ Complete quotient domains are exhausted through mass six, all four residual
 $V_4$ transforms receive the same rank there, and boundary/interior roundtrips
 reach mass fourteen. Exact-H filtering remains open; the exact
 double-transposition stratum has $4743872$ classes.
+Inside the quotient, exact stabilizer $H$ first requires both commuting
+involution factors to move. This gives a dense normalizer-free rank
+$\rho^{\mathrm{free}}_r$. Independent subgroup-lattice inversion agrees with
+that rank at every mass except $r=5$ and $r=10$: exactly four and sixteen
+normalizer-free ranks, respectively, have a larger S5 stabilizer. Let
+$B_5=\{4,45,86,127\}$, let
+$B_{10}=\{13904+545j:0\leq j<16\}$, and let $B_r=\varnothing$ otherwise. Then
+\begin{equation}
+  \fitmath{%
+    \rho^{(4,S_2^\mathrm{dbl}),\mathrm{exact}}_r(e)=
+      \rho^{\mathrm{free}}_r(e)-
+      \left|B_r\cap\{0,\ldots,\rho^{\mathrm{free}}_r(e)-1\}\right|,
+    \qquad \rho^{\mathrm{free}}_r(e)\notin B_r.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s5-double-transposition-exact}
+\end{equation}
+Direct S5 stabilizers agree with the exact rank through mass six and directly
+reject all twenty reviewed exceptional ranks. Boundary/interior exact-rank
+roundtrips reach mass fourteen, where the normalizer-free rank has no exceptions
+and contains exactly $4743872$ classes.
 
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
