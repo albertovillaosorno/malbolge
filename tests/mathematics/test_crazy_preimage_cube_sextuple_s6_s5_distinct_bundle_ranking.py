@@ -109,7 +109,8 @@ def _composition_rank(vector: _Vector, parts: int) -> int | None:
     for index, value in enumerate(vector[:-1]):
         tail = parts - index - 1
         rank += sum(
-            _composition_count(remaining - earlier, tail) for earlier in range(value)
+            _composition_count(remaining - earlier, tail)
+            for earlier in range(value)
         )
         remaining -= value
     return rank
@@ -220,7 +221,9 @@ def _bundle_block_count(
 
 @cache
 def _bundle_count(total: int) -> int:
-    return sum(_bundle_block_count(masses) for masses in _mass_quintuples(total))
+    return sum(
+        _bundle_block_count(masses) for masses in _mass_quintuples(total)
+    )
 
 
 def _bundle_local_rank(
@@ -278,7 +281,8 @@ def _bundle_group_ranks(
 ) -> tuple[int, ...]:
     groups = _mass_groups(masses)
     counts = tuple(
-        comb(_raw_bundle_count(masses[start]), end - start) for start, end in groups
+        comb(_raw_bundle_count(masses[start]), end - start)
+        for start, end in groups
     )
     remaining = rank
     reversed_ranks: list[int] = []
@@ -295,7 +299,9 @@ def _bundle_block_unrank(
 ) -> _Bundles:
     group_ranks = _bundle_group_ranks(masses, rank)
     result: list[_Vector] = []
-    for (start, end), group_rank in zip(_mass_groups(masses), group_ranks, strict=True):
+    for (start, end), group_rank in zip(
+        _mass_groups(masses), group_ranks, strict=True
+    ):
         mass = masses[start]
         population = _raw_bundle_count(mass)
         raw_ranks = _strict_combination_unrank(
@@ -307,8 +313,7 @@ def _bundle_block_unrank(
             bundle = _composition_unrank(mass, _VERTEX_COMPONENTS, raw_rank)
             assert bundle is not None
             result.append(bundle)
-    first, second, third, fourth, fifth = result
-    return first, second, third, fourth, fifth
+    return _as_bundles(tuple(result))
 
 
 def _bundle_unrank(total: int, rank: int) -> _Bundles | None:
@@ -336,8 +341,30 @@ def _as_bundles(values: tuple[_Vector, ...]) -> _Bundles:
 
 def _as_edges(values: tuple[_Vector, ...]) -> _Edges:
     assert len(values) == _EDGE_COUNT
-    first, second, third, fourth, fifth, sixth, seventh, eighth, ninth, tenth = values
-    return first, second, third, fourth, fifth, sixth, seventh, eighth, ninth, tenth
+    (
+        first,
+        second,
+        third,
+        fourth,
+        fifth,
+        sixth,
+        seventh,
+        eighth,
+        ninth,
+        tenth,
+    ) = values
+    return (
+        first,
+        second,
+        third,
+        fourth,
+        fifth,
+        sixth,
+        seventh,
+        eighth,
+        ninth,
+        tenth,
+    )
 
 
 def _valid_residual_shapes(state: _Residual) -> bool:
@@ -346,14 +373,20 @@ def _valid_residual_shapes(state: _Residual) -> bool:
         len(fixed) == _FIXED_COMPONENTS
         and all(len(bundle) == _VERTEX_COMPONENTS for bundle in bundles)
         and all(len(edge) == _EDGE_COMPONENTS for edge in edges)
-        and all(value >= 0 for vector in (fixed, *bundles, *edges) for value in vector)
+        and all(
+            value >= 0
+            for vector in (fixed, *bundles, *edges)
+            for value in vector
+        )
     )
 
 
 def _bundle_order(
     bundles: _Bundles,
 ) -> tuple[int, int, int, int, int] | None:
-    keyed = sorted((_bundle_key(bundle), index) for index, bundle in enumerate(bundles))
+    keyed = sorted(
+        (_bundle_key(bundle), index) for index, bundle in enumerate(bundles)
+    )
     if len({key for key, _ in keyed}) != _ACTIVE_COUNT:
         return None
     indices = tuple(index for _, index in keyed)
@@ -577,7 +610,8 @@ def _vertices_of_mass(mass: int) -> tuple[_Vertices, ...]:
 @cache
 def _class_count(total: int) -> int:
     return sum(
-        len(_vertices_of_mass(vertex_mass)) * _residual_count(total - vertex_mass)
+        len(_vertices_of_mass(vertex_mass))
+        * _residual_count(total - vertex_mass)
         for vertex_mass in range(total + 1)
     )
 
@@ -606,7 +640,9 @@ def _state_rank_data(
     residual_mass = total - vertex_mass
     vertex_rank = _vertex_rank(vertices, vertex_mass)
     residual_rank = _residual_rank(residual)
-    valid_mass = vertex_mass <= total and _residual_mass(residual) == residual_mass
+    valid_mass = (
+        vertex_mass <= total and _residual_mass(residual) == residual_mass
+    )
     if not valid_mass or vertex_rank is None or residual_rank is None:
         return None
     return vertex_mass, vertex_rank, residual_mass, residual_rank
@@ -652,7 +688,9 @@ def _weak_compositions(total: int, parts: int) -> tuple[_Vector, ...]:
 
 
 def _vector_to_residual(vector: _Vector) -> _Residual:
-    expected = _FIXED_COMPONENTS + _ACTIVE_COUNT * _VERTEX_COMPONENTS + _EDGE_SCALARS
+    expected = (
+        _FIXED_COMPONENTS + _ACTIVE_COUNT * _VERTEX_COMPONENTS + _EDGE_SCALARS
+    )
     assert len(vector) == expected
     cursor = _FIXED_COMPONENTS
     fixed = vector[:cursor]
