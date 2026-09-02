@@ -1774,6 +1774,29 @@ stratum contributes exactly $17436163856$ complete mass-fourteen S6 classes.
 Only the $V_4$ and full-$S_4$ second-layer stabilizers remain open inside the
 $(4,1,1)$ outer stratum.
 
+For second-layer partition $(2,2)$, the residual $V_4$ action on the six
+four-component $K_4$ edge bundles is the same row/column action as in the
+pair-valued order-twenty-four construction, with each edge payload widened from
+two to four scalar components. Two edges are fixed; the four cross edges form a
+$2\times2$ matrix of four-component cells. Quotienting the row swap first
+leaves an unordered pair of eight-component rows, and the descended column
+swap is ranked by the same fixed/moving diagonal-involution split.
+
+Let $E_e^{(V_4,4)}$ denote this dense edge quotient. Then
+\begin{equation}
+  \fitmath{%
+    E_e^{(V_4,4)}=
+      \frac14\sum_{g\in V_4}\operatorname{Fix}_e(g),
+    \qquad 0\leq e\leq14.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s4-v4-edge-ranking}
+\end{equation}
+Direct V4 edge orbits agree through mass three, complete dense ranks are
+exhausted through mass six, and boundary/interior roundtrips reach mass
+fourteen, where $E_{14}^{(V_4,4)}=1528935120$. This theorem supplies the
+nontrivial edge core for the nested $(2,2)$ vertex-bundle stratum but does not
+yet compose the repeated bundle pairs into a complete S6 rank.
+
 The ordered coordinate quotient admits one checked-arity statement instead of a
 new theorem for every endpoint count. For $1\leq m\leq8$ ordered cube words
 $x^{(1)},\ldots,x^{(m)}\in\{0,1\}^k$, let $n_s$ count coordinates whose

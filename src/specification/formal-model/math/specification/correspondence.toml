@@ -834,6 +834,16 @@ mechanism = "triple-bundle-plus-singleton-canonicalization-and-S3-multiset-rank-
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_s3_bundle_ranking.py::test_s6_s4_s3_bundle_rank_matches_small_s4_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_s3_bundle_ranking.py::test_s6_s4_s3_bundle_rank_exhausts_small_full_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_s3_bundle_ranking.py::test_s6_s4_s3_bundle_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_s3_bundle_ranking.py::test_s6_s4_s3_bundle_counts_match_reviewed_sequence"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s4-v4-edge-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s4-v4-edge-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the four-component K4 edge payload at ambiguity mass 0 through 14 remaining after second-layer S6 vertex-bundle multiplicity partition 2,2 leaves the V4 Young stabilizer"
+mechanism = "row-swap-first-plus-descended-column-involution-dense-rank-on-two-fixed-four-component-edges-and-a-two-by-two-matrix-of-four-component-cross-edge-cells"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_v4_edge_ranking.py::test_s4_v4_edge_rank_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_v4_edge_ranking.py::test_s4_v4_edge_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4_v4_edge_ranking.py::test_s4_v4_edge_rank_roundtrips_through_mass_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-unordered-tuple-quotient"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-preimage-cube-unordered-tuple-quotient"
