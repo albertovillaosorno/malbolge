@@ -15,7 +15,8 @@
 #   - Apply endpoint-permutation equivalence to direction-sensitive analyses.
 # - Allows:
 #   - Inputs: reachable fixed accumulator/target pairs through width fourteen.
-#   - Outputs: exact ordered and endpoint-unordered sextuple class counts.
+#   - Outputs: exact ordered and endpoint-unordered sextuple class counts
+#     through mathematical ambiguity dimension fifteen.
 #   - Side effects: none.
 # - Split-When:
 #   - A larger tuple arity or a different endpoint symmetry group is required.
@@ -24,12 +25,12 @@
 # - Summary:
 #   - Classify sextuples by joint counts and then quotient endpoint order.
 # - Description:
-#   - Exhausts the coordinate quotient through Q2 and checks Burnside to Q14.
+#   - Exhausts the coordinate quotient through Q2 and checks Burnside to Q15.
 # - Usage:
 #   - Referenced by the mathematical correspondence manifest.
 # - Defaults:
 #   - Coordinate-quotient orbit enumeration stops at dimension two; Burnside
-#     arithmetic reaches 14; fixed-pair lifting stops at width two.
+#     arithmetic reaches 15; fixed-pair lifting stops at width two.
 #
 
 """Evidence for ordered and endpoint-unordered cube-sextuple quotients."""
@@ -47,6 +48,7 @@ _ARITY = 6
 _EXHAUSTIVE_DIMENSION = 2
 _EXHAUSTIVE_TRITS = 2
 _MAXIMUM_TRITS = 14
+_CERTIFIED_DIMENSION = 15
 _PATTERN_COUNT = 1 << _ARITY
 _RADIX = 3
 _S6_ORDER = factorial(_ARITY)
@@ -63,6 +65,20 @@ _WIDTH_FOURTEEN_FIXED_COUNTS = (
     171_120,
     217_400,
     1_020,
+)
+_DIMENSION_FIFTEEN_COUNT = 6_113_218_719_516
+_DIMENSION_FIFTEEN_FIXED_COUNTS = (
+    4_367_914_309_753_280,
+    2_202_760_826_080,
+    658_537_568,
+    11_708_057_200,
+    3_468_088,
+    5_152_048,
+    8_980,
+    505_130_808,
+    298_012,
+    405_080,
+    1_476,
 )
 _ENDPOINT_PERMUTATIONS = tuple(permutations(range(_ARITY)))
 _INDEPENDENT_CRAZY_TRIT = (
@@ -160,8 +176,7 @@ def _unordered_sextuple_class_count(dimension: int) -> int:
 def _endpoint_symbol_maps() -> tuple[tuple[int, ...], ...]:
     return tuple(
         tuple(
-            _permuted_symbol(symbol, order)
-            for symbol in range(_PATTERN_COUNT)
+            _permuted_symbol(symbol, order) for symbol in range(_PATTERN_COUNT)
         )
         for order in _ENDPOINT_PERMUTATIONS
     )
@@ -256,8 +271,9 @@ def test_s6_endpoint_cycle_types_induce_exact_label_cycles() -> None:
     assert sum(weight for weight, _ in data.values()) == _S6_ORDER
 
 
-def test_ordered_sextuple_joint_counts_cover_through_dimension_fourteen(
-) -> None:
+def test_ordered_sextuple_joint_counts_cover_through_dimension_fourteen() -> (
+    None
+):
     """The identity fixed count equals the ordered joint-count quotient."""
     identity_cycles = _endpoint_type_data()[1, 1, 1, 1, 1, 1][1]
     for dimension in range(_MAXIMUM_TRITS + 1):
@@ -287,22 +303,42 @@ def test_unordered_sextuple_orbits_are_exact_through_dimension_two() -> None:
         assert raw_mass == _integer_power(_PATTERN_COUNT, dimension)
 
 
-def test_unordered_sextuple_burnside_counts_through_dimension_fourteen(
-) -> None:
+def test_unordered_sextuple_burnside_counts_through_dimension_fourteen() -> (
+    None
+):
     """S6 Burnside arithmetic remains integral through the admitted bound."""
     data = _endpoint_type_data()
     for dimension in range(_MAXIMUM_TRITS + 1):
-        assert 1 <= _unordered_sextuple_class_count(
-            dimension
-        ) <= _ordered_sextuple_class_count(dimension)
+        assert (
+            1
+            <= _unordered_sextuple_class_count(dimension)
+            <= _ordered_sextuple_class_count(dimension)
+        )
     fixed = tuple(
         _fixed_count_from_cycles(cycles, _MAXIMUM_TRITS)
         for _, cycles in data.values()
     )
     assert sorted(fixed) == sorted(_WIDTH_FOURTEEN_FIXED_COUNTS)
-    assert _unordered_sextuple_class_count(
-        _MAXIMUM_TRITS
-    ) == _WIDTH_FOURTEEN_COUNT
+    assert (
+        _unordered_sextuple_class_count(_MAXIMUM_TRITS) == _WIDTH_FOURTEEN_COUNT
+    )
+
+
+def test_unordered_sextuple_burnside_extends_to_dimension_fifteen() -> None:
+    """Pure S6 Burnside arithmetic extends beyond the 14-trit profile."""
+    data = _endpoint_type_data()
+    fixed = tuple(
+        _fixed_count_from_cycles(cycles, _CERTIFIED_DIMENSION)
+        for _, cycles in data.values()
+    )
+    assert sorted(fixed) == sorted(_DIMENSION_FIFTEEN_FIXED_COUNTS)
+    assert (
+        _ordered_sextuple_class_count(_CERTIFIED_DIMENSION)
+        == (_DIMENSION_FIFTEEN_FIXED_COUNTS[0])
+    )
+    assert _unordered_sextuple_class_count(_CERTIFIED_DIMENSION) == (
+        _DIMENSION_FIFTEEN_COUNT
+    )
 
 
 def test_sextuple_quotients_lift_to_small_reachable_pairs() -> None:

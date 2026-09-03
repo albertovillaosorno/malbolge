@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize one hundred seventy-seven exact reductions:
+- The proved slices now formalize one hundred seventy-eight exact reductions:
   classic five-trit
   crazy factorization, profile-width crazy chunking, exact zero-padded 15-trit
   crazy projection and uniform three-lookup factorization for semantic widths
@@ -75,8 +75,10 @@ force or stochastic optimization begins.
   exact
   ordered sextuple
   quotient into `C(k+63,63)` joint-count classes, exact endpoint-unordered
-  sextuple quotient under `S_6` endpoint permutation with an exact six-vertex-
-  pair/eleven-Young-stabilizer residual factorization, dense distinct-vertex
+  sextuple quotient under `S_6` endpoint permutation with an exact mathematical
+  mass-fifteen Burnside/Young-stratum extension and stabilizer-type stability
+  theorem plus an exact six-vertex-pair/eleven-Young-stabilizer residual
+  factorization, dense distinct-vertex
   trivial-stabilizer rank/unrank, dense order-two Young-stabilizer
   rank/unrank, dense order-six Young-stabilizer rank/unrank, dense V4 Young-
   stabilizer rank/unrank, dense S3-times-S2 Young-stabilizer rank/unrank,
@@ -163,7 +165,7 @@ force or stochastic optimization begins.
   reductions are consumed by runtime paths; the one hundred one search
   reductions, two padded-geometry equivalences, and eleven width-certification
   results carry no inherited runtime speedup claim.
-- One hundred seventy-seven optimization research equations are registered in
+- One hundred seventy-eight optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -198,7 +200,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes one hundred seventy-seven labelled
+- Current mathematical evidence includes one hundred seventy-eight labelled
   optimization equations,
   executable correspondence, exact zero-padding projection and uniform
   three-lookup evidence for semantic widths 10 through 14, exact checked
@@ -240,8 +242,9 @@ force or stochastic optimization begins.
   unique-minimum-root rank/unrank for the trivial-stabilizer stratum, and
   complete dense S_5 rank/unrank across all nine stabilizer strata,
   exact
-  ordered and endpoint-unordered sextuple classes through dimension 14 with an
-  exact six-vertex-pair/eleven-Young-stabilizer residual factorization plus
+  ordered and endpoint-unordered sextuple classes through mathematical
+  dimension 15 with an exact six-vertex-pair/eleven-Young-stabilizer residual
+  factorization plus
   dense distinct-vertex trivial-stabilizer, order-two, order-six, and V4
   Young-stabilizer rank/unrank, dense S3-times-S2 Young-stabilizer rank/unrank,
   plus an exact S2-cubed nested quotient/fixed-set decomposition, dense

@@ -187,6 +187,20 @@ Ordered sextuples have
 leaves one of eleven Young stabilizers acting on 52 residual scalar labels; this
 factorization reproduces the full Burnside sequence through mass 14.
 
+The pure S6 counting theory now extends one mathematical mass beyond the
+current 14-trit product profile. At ambiguity mass 15, direct S6 Burnside
+arithmetic gives 6,113,218,719,516 endpoint-unordered classes. Independently,
+the eleven Young-stratum contributions sum to the same integer exactly. The
+ratio from mass 14 is about 5.180954, while the ordered stars-and-bars quotient
+grows by exactly 5.2.
+
+This extension changes multiplicities rather than symmetry types. No new Young
+partition first appears at mass 15, and the all-equal `(6)` residual spectrum
+has exactly the same 35 populated stabilizer signatures at masses 14 and 15.
+The latter residual count rises from 85,431,118,919 to 374,868,922,598. These
+are count/stability statements only; they do not extend every dense rank/unrank
+primitive or the current target profile to 15 trits.
+
 The all-distinct vertex-pair stratum has trivial stabilizer and dense
 rank/unrank by vertex-sequence prefix plus a 52-part weak-composition rank,
 covering 99,892,279

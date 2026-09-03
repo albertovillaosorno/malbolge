@@ -122,6 +122,35 @@ _EXPECTED_NORMALIZER_QUOTIENT_TYPE_COUNTS = {
 _EXPECTED_SYMMETRIC_CLASSES = 1_423_110_078
 _EXPECTED_ROOT_DEFICIT = 1_495_741_780
 _MAX_NORMALIZER_QUOTIENT = 24
+_MASS_FIFTEEN = 15
+_EXPECTED_MASS_FIFTEEN_UNROOTED = 374_868_922_598
+_EXPECTED_MASS_FIFTEEN_ORDER_SPECTRUM = {
+    1: 370_630_073_601,
+    2: 4_171_439_245,
+    3: 8_433,
+    4: 64_079_419,
+    6: 2_142_281,
+    8: 798_444,
+    10: 286,
+    12: 354_004,
+    16: 16_282,
+    24: 3_226,
+    36: 3_891,
+    48: 3_220,
+    60: 6,
+    72: 168,
+    120: 74,
+    720: 18,
+}
+_EXPECTED_MASS_FIFTEEN_ROOTED_VIEW_SPECTRUM = {
+    1: 1_528,
+    2: 156_417,
+    3: 9_408_998,
+    4: 156_173_192,
+    5: 4_073_108_862,
+    6: 370_630_073_601,
+}
+_EXPECTED_POPULATED_STABILIZER_TYPES = 35
 
 
 type _Permutation = tuple[int, int, int, int, int, int]
@@ -372,6 +401,11 @@ def _rooted_view_spectrum(total: int) -> dict[int, int]:
     return dict(sorted(result.items()))
 
 
+def _stabilizer_signature(row: _SpectrumRow) -> tuple[object, ...]:
+    _, order, normalizer, quotient, vertex_orbits, label_orbits, _ = row
+    return order, normalizer, quotient, vertex_orbits, label_orbits
+
+
 def test_s6_has_exact_subgroup_conjugacy_lattice() -> None:
     """S6 has 56 subgroup conjugacy classes containing 1,455 subgroups."""
     classes = _subgroup_conjugacy_classes()
@@ -429,6 +463,26 @@ def test_s6_mass_fourteen_rooted_view_multiplicity_spectrum() -> None:
         == _EXPECTED_ROOT_DEFICIT
     )
     assert spectrum[_ARITY] == _EXPECTED_ORDER_SPECTRUM[1]
+
+
+def test_s6_mass_fifteen_preserves_populated_stabilizer_types() -> None:
+    """Mass 15 changes multiplicities but introduces no new stabilizer type."""
+    rows_fourteen = _spectrum_rows(_MAXIMUM_MASS)
+    rows_fifteen = _spectrum_rows(_MASS_FIFTEEN)
+    assert len(rows_fourteen) == _EXPECTED_POPULATED_STABILIZER_TYPES
+    assert len(rows_fifteen) == _EXPECTED_POPULATED_STABILIZER_TYPES
+    assert {_stabilizer_signature(row) for row in rows_fifteen} == {
+        _stabilizer_signature(row) for row in rows_fourteen
+    }
+    assert (
+        sum(row[0] for row in rows_fifteen) == _EXPECTED_MASS_FIFTEEN_UNROOTED
+    )
+    assert (
+        _order_spectrum(_MASS_FIFTEEN) == _EXPECTED_MASS_FIFTEEN_ORDER_SPECTRUM
+    )
+    assert _rooted_view_spectrum(_MASS_FIFTEEN) == (
+        _EXPECTED_MASS_FIFTEEN_ROOTED_VIEW_SPECTRUM
+    )
 
 
 def test_s6_symmetric_normalizer_quotients_are_bounded() -> None:

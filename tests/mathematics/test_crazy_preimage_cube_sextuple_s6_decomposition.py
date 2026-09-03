@@ -13,7 +13,7 @@
 # - Must-Not:
 #   - Claim dense S6 rank/unrank or a wall-clock search improvement.
 # - Allows:
-#   - Inputs: joint-count mass 0 through 14 under full S6 endpoint permutation.
+#   - Inputs: joint-count mass 0 through 15 under full S6 endpoint permutation.
 #   - Outputs: exact vertex-pair/Young-stabilizer residual quotient counts.
 #   - Side effects: none.
 # - Split-When:
@@ -27,7 +27,7 @@
 # - Usage:
 #   - Canonical-form prerequisite for future dense endpoint-unordered sextuples.
 # - Defaults:
-#   - Direct orbit exhaustion stops at mass two; arithmetic reaches mass 14.
+#   - Direct orbit exhaustion stops at mass two; arithmetic reaches mass 15.
 #
 
 """Vertex-pair/Young-stabilizer decomposition of the S6 sextuple quotient."""
@@ -43,10 +43,11 @@ from math import factorial
 
 _ARITY = 6
 _PATTERN_COUNT = 1 << _ARITY
-_MAXIMUM_MASS = 14
+_MAXIMUM_MASS = 15
 _EXHAUSTIVE_MASS = 2
 _S6_ORDER = factorial(_ARITY)
 _WIDTH_FOURTEEN_COUNT = 1_179_940_653_635
+_WIDTH_FIFTEEN_COUNT = 6_113_218_719_516
 _FIXED_LABEL_COUNT = 2
 _VERTEX_LABEL_COUNT = 12
 _EDGE_LABEL_COUNT = 30
@@ -55,7 +56,7 @@ _RESIDUAL_LABEL_COUNT = 52
 _VERTEX_PAIR_COUNT = 6
 _EDGE_PAIR_COUNT = 15
 _MIDDLE_PAIR_COUNT = 10
-_VERTEX_SEQUENCE_COUNT = 37_600
+_VERTEX_SEQUENCE_COUNT = 62_232
 _EDGE_WEIGHT = 2
 _MIDDLE_WEIGHT = _ARITY // 2
 _EXPECTED_PARTITIONS = {
@@ -70,6 +71,31 @@ _EXPECTED_PARTITIONS = {
     (2, 2, 1, 1),
     (2, 1, 1, 1, 1),
     (1, 1, 1, 1, 1, 1),
+}
+
+_EXPECTED_MASS_FIFTEEN_CONTRIBUTIONS = {
+    (1, 1, 1, 1, 1, 1): 947_337_096,
+    (2, 1, 1, 1, 1): 61_102_879_048,
+    (2, 2, 1, 1): 252_977_228_906,
+    (2, 2, 2): 75_711_510_622,
+    (3, 1, 1, 1): 535_644_842_010,
+    (3, 2, 1): 999_783_370_710,
+    (3, 3): 151_067_487_866,
+    (4, 1, 1): 1_582_177_016_210,
+    (4, 2): 606_213_169_660,
+    (5, 1): 1_472_680_693_792,
+    (6,): 374_913_183_596,
+}
+
+_EXPECTED_EXACT_MASS_FIFTEEN_VERTEX_PARTITIONS = {
+    (1, 1, 1, 1, 1, 1),
+    (2, 1, 1, 1, 1),
+    (2, 2, 1, 1),
+    (3, 1, 1, 1),
+    (3, 2, 1),
+    (3, 3),
+    (4, 1, 1),
+    (5, 1),
 }
 
 type _Pair = tuple[int, int]
@@ -90,8 +116,7 @@ _S6: tuple[_Permutation, ...] = tuple(
 
 def _permuted_symbol(symbol: int, order: _Permutation) -> int:
     bits = tuple(
-        (symbol >> (_ARITY - endpoint - 1)) & 1
-        for endpoint in range(_ARITY)
+        (symbol >> (_ARITY - endpoint - 1)) & 1 for endpoint in range(_ARITY)
     )
     result = 0
     for source in order:
@@ -226,6 +251,15 @@ def _vertex_histogram() -> Counter[tuple[int, _Partition]]:
     return result
 
 
+def _partition_contribution(partition: _Partition, mass: int) -> int:
+    histogram = _vertex_histogram()
+    return sum(
+        histogram[vertex_mass, partition]
+        * _residual_class_count(partition, mass - vertex_mass)
+        for vertex_mass in range(mass + 1)
+    )
+
+
 def _decomposed_count(mass: int) -> int:
     histogram = _vertex_histogram()
     return sum(
@@ -297,8 +331,32 @@ def test_s6_decomposition_matches_direct_small_orbits() -> None:
         assert _decomposed_count(mass) == _direct_orbit_count(mass)
 
 
-def test_s6_decomposition_matches_full_burnside_through_mass_fourteen() -> None:
+def test_s6_mass_fifteen_has_exact_young_stratum_contributions() -> None:
+    """All eleven Young strata have reviewed exact mass-15 contributions."""
+    histogram = _vertex_histogram()
+    observed = {
+        partition: _partition_contribution(partition, _MAXIMUM_MASS)
+        for partition in _EXPECTED_PARTITIONS
+    }
+    exact_partitions = {
+        partition
+        for (mass, partition), count in histogram.items()
+        if mass == _MAXIMUM_MASS and count > 0
+    }
+    prior_partitions = {
+        partition
+        for (mass, partition), count in histogram.items()
+        if mass < _MAXIMUM_MASS and count > 0
+    }
+    assert observed == _EXPECTED_MASS_FIFTEEN_CONTRIBUTIONS
+    assert sum(observed.values()) == _WIDTH_FIFTEEN_COUNT
+    assert exact_partitions == _EXPECTED_EXACT_MASS_FIFTEEN_VERTEX_PARTITIONS
+    assert exact_partitions <= prior_partitions
+
+
+def test_s6_decomposition_matches_full_burnside_through_mass_fifteen() -> None:
     """Eleven residual Young quotients reconstruct full S6 exactly."""
     for mass in range(_MAXIMUM_MASS + 1):
         assert _decomposed_count(mass) == _full_class_count(mass)
-    assert _decomposed_count(_MAXIMUM_MASS) == _WIDTH_FOURTEEN_COUNT
+    assert _decomposed_count(14) == _WIDTH_FOURTEEN_COUNT
+    assert _decomposed_count(_MAXIMUM_MASS) == _WIDTH_FIFTEEN_COUNT

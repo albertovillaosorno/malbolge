@@ -1422,7 +1422,7 @@ Burnside's lemma gives
 \begin{equation}
   \left|\mathcal{J}^{(6)}_k/S_6\right|
     =\frac{1}{720}\sum_\lambda w_\lambda A_{\lambda,k},
-  \quad 0\leq k\leq N,\ 1\leq N\leq14.
+  \quad 0\leq k\leq N,\ 1\leq N\leq15.
   \label{eq:optimization-crazy-preimage-cube-unordered-sextuple-quotient}
 \end{equation}
 At $k=14$, the eleven fixed counts are
@@ -1434,8 +1434,11 @@ At $k=14$, the eleven fixed counts are
 \end{equation*}
 They yield 1179940653635 endpoint-unordered classes. The evidence exhausts the
 coordinate quotient through dimension two and reconstructs the raw $64^k$ orbit
-mass there; Burnside arithmetic reaches dimension fourteen. This refinement
-applies only when endpoint order is irrelevant and makes no timing claim.
+mass there; Burnside arithmetic reaches mathematical dimension fifteen. At
+$k=15$ the
+identity fixed count is $4367914309753280$ and the quotient count is
+$6113218719516$. This refinement applies only when endpoint order is irrelevant
+and makes no timing or target-profile claim.
 
 The $S_6$ quotient also admits an exact stabilizer factorization that is more
 constructive than the cycle index alone. Split the sixty-four joint labels by
@@ -1458,15 +1461,44 @@ then
     \left|\mathcal J^{(6)}_k/S_6\right|
       =\sum_{a=0}^{k}\sum_{\lambda\vdash6}
         V_{a,\lambda}B_\lambda(k-a),
-    \qquad 0\leq k\leq14.
+    \qquad 0\leq k\leq15.
   }
   \label{eq:optimization-crazy-sextuple-s6-decomposition}
 \end{equation}
-There are exactly eleven multiplicity partitions and only $37600$ sorted
-vertex-pair sequences with total mass at most fourteen. Direct full-$S_6$ orbit
-exhaustion through mass two agrees with the decomposition, and all eleven
-residual Young quotients reconstruct the full Burnside sequence through mass
-fourteen, including $1179940653635$ classes at $k=14$.
+There are exactly eleven multiplicity partitions, $37600$ sorted vertex-pair
+sequences through mass fourteen, and $62232$ through mass fifteen. Direct
+full-$S_6$ orbit exhaustion through mass two agrees with the decomposition, and
+all eleven residual Young quotients reconstruct the full Burnside sequence
+through mass fifteen, including $1179940653635$ classes at $k=14$ and
+$6113218719516$ at $k=15$.
+
+The mass-fifteen extension can be certified without changing the current
+fourteen-trit target profile. Ordering the eleven Young partitions as
+$(1^6),(2,1^4),(2^2,1^2),(2^3),(3,1^3),(3,2,1),(3^2),(4,1^2),(4,2),(5,1),(6)$,
+their exact mass-fifteen contributions are
+\[
+  (947337096,61102879048,252977228906,75711510622,535644842010,
+   999783370710,151067487866,1582177016210,606213169660,
+   1472680693792,374913183596).
+\]
+Their sum agrees with the independent Burnside total. Moreover, no Young
+partition first appears at mass fifteen. In the all-equal $(6)$ residual
+stratum, let $\operatorname{Supp}(\Sigma_r)$ be the set of populated exact
+stabilizer signatures (order, normalizer, vertex-orbit sizes, and residual-label
+orbit sizes). Exact subgroup-lattice inversion gives
+\begin{equation}
+  \fitmath{%
+    \left|\mathcal J^{(6)}_{15}/S_6\right|=6113218719516,
+    \qquad
+    \operatorname{Supp}(\Sigma_{15})=\operatorname{Supp}(\Sigma_{14}),
+    \quad |\operatorname{Supp}(\Sigma_{15})|=35.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-mass-fifteen-stability}
+\end{equation}
+Thus the step from mass fourteen to fifteen changes multiplicities, not the
+populated stabilizer-type support. The quotient grows by a factor
+$6113218719516/1179940653635\approx5.180954$, while the ordered stars-and-bars
+count grows by exactly $5.2$.
 
 For the final all-equal vertex stratum, let $L$ be either all fifty-two
 residual labels, the thirty weight-two/four labels, or the twenty weight-three
