@@ -102,6 +102,40 @@ _EXPECTED_ORDER_SPECTRUM = {
     120: 55,
     720: 15,
 }
+_EXPECTED_ROOTED_TRIVIAL_COUNTS = (
+    0,
+    0,
+    0,
+    40,
+    1_340,
+    21_462,
+    242_629,
+    2_204_012,
+    17_109_191,
+    117_488_832,
+    729_410_921,
+    4_155_525_962,
+    21_962_281_262,
+    108_578_479_120,
+    505_481_889_514,
+)
+_EXPECTED_ROOTED_TRIVIAL_SYMMETRIC = (
+    0,
+    0,
+    0,
+    34,
+    500,
+    4_290,
+    27_517,
+    147_014,
+    688_247,
+    2_911_572,
+    11_347_709,
+    41_291_108,
+    141_622_448,
+    461_171_566,
+    1_433_836_468,
+)
 _EXPECTED_ROOTED_VIEW_SPECTRUM = {
     1: 1_046,
     2: 91_227,
@@ -401,6 +435,38 @@ def _rooted_view_spectrum(total: int) -> dict[int, int]:
     return dict(sorted(result.items()))
 
 
+def _trivial_point_orbit_count(subgroup: _Subgroup) -> int:
+    unseen = set(range(_ARITY))
+    result = 0
+    while unseen:
+        root = min(unseen)
+        orbit = {_PERMUTATIONS[element][root] for element in subgroup}
+        unseen -= orbit
+        point_stabilizer = sum(
+            _PERMUTATIONS[element][root] == root for element in subgroup
+        )
+        if point_stabilizer == 1:
+            result += 1
+    return result
+
+
+def _rooted_trivial_counts(total: int) -> tuple[int, int]:
+    rooted = 0
+    symmetric = 0
+    for subgroup, exact_per_subgroup in _exact_assignment_counts(total).items():
+        if exact_per_subgroup == 0:
+            continue
+        normalizer = _S6_ORDER // len(_conjugates(subgroup))
+        numerator = exact_per_subgroup * len(subgroup)
+        assert numerator % normalizer == 0
+        orbit_count = numerator // normalizer
+        contribution = orbit_count * _trivial_point_orbit_count(subgroup)
+        rooted += contribution
+        if len(subgroup) != 1:
+            symmetric += contribution
+    return rooted, symmetric
+
+
 def _stabilizer_signature(row: _SpectrumRow) -> tuple[object, ...]:
     _, order, normalizer, quotient, vertex_orbits, label_orbits, _ = row
     return order, normalizer, quotient, vertex_orbits, label_orbits
@@ -432,6 +498,23 @@ def test_s6_stabilizer_inversion_reconstructs_reviewed_counts() -> None:
         rooted.append(sum(row[0] * len(row[4]) for row in rows))
     assert tuple(unrooted) == _EXPECTED_UNROOTED_COUNTS
     assert tuple(rooted) == _EXPECTED_ROOTED_COUNTS
+
+
+def test_s6_rooted_trivial_classes_split_full_s6_trivial_and_symmetric() -> (
+    None
+):
+    """Trivial point stabilizers split into full-S6 free and symmetric roots."""
+    observed = tuple(_rooted_trivial_counts(total) for total in range(15))
+    assert (
+        tuple(value[0] for value in observed) == _EXPECTED_ROOTED_TRIVIAL_COUNTS
+    )
+    assert (
+        tuple(value[1] for value in observed)
+        == _EXPECTED_ROOTED_TRIVIAL_SYMMETRIC
+    )
+    for total, (rooted, symmetric) in enumerate(observed):
+        full_free = rooted - symmetric
+        assert full_free == _ARITY * _order_spectrum(total).get(1, 0)
 
 
 def test_s6_mass_fourteen_exact_stabilizer_order_spectrum() -> None:

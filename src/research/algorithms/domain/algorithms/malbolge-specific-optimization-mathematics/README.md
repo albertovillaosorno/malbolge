@@ -385,6 +385,23 @@ there are no nonnormalizing extension families. The mass-14 residual interval
 has 1,156,668 classes, and the repeated-six vertex prefix gives 1,168,542
 complete classes.
 
+The rooted-S5 trivial-stabilizer quotient is now constructive. Rooting endpoint
+five splits the 52 residual coordinates into two fixed scalars, five
+two-component vertex bundles, and ten four-component K5 edges. Sorting the five
+bundles leaves one of sixteen ordered Young run patterns. The K5 pattern/color
+stabilizer-chain rank is parameterized by that Young group and retains exactly
+edge assignments with trivial residual point stabilizer.
+
+The resulting dense rooted interval has 505,481,889,514 mass-14 classes. The
+seven unordered Young-partition contributions are 36,138,820,806;
+139,829,538,243; 58,148,591,048; 148,170,968,754; 64,809,370,672;
+55,291,253,944; and 3,093,346,047. Independent S6 stabilizer inversion gives
+the same rooted-trivial sequence and shows that 1,433,836,468 mass-14 rooted
+views come from nontrivial S6 stabilizers. Removing those leaves
+504,048,053,046 views, exactly six per each of the 84,008,008,841 trivial-S6
+classes. Dense unrooted trivial-S6 rank still requires a canonical one-of-six
+root selector; rooted-trivial rank alone does not supply that selector.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has

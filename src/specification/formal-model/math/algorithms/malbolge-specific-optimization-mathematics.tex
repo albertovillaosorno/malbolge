@@ -1880,6 +1880,40 @@ exact rank/unrank. Direct full-$S_6$ samples have stabilizer order four through
 mass fourteen. Prefixing the repeated-six vertex pair gives one complete
 mass-fourteen interval of $1168542$ classes.
 
+Rooting one endpoint leaves an $S_5$ action on the full fifty-two-label residual
+family. Its coordinates split into two fixed scalars, five two-component vertex
+bundles, and ten four-component $K_5$ edge values. Sorting the five bundles
+leaves a Young group determined by their ordered equality-run sizes. For each
+of the sixteen possible run compositions of five, apply the ordered edge
+pattern/color stabilizer chain with that Young group as its initial stabilizer
+and require the final edge stabilizer to be trivial. Concatenating fixed-scalar,
+bundle, and free-edge intervals gives
+\begin{equation}
+  \fitmath{%
+    (R_0^{S_5,1},\ldots,R_{14}^{S_5,1})=
+    (0,0,0,40,1340,21462,242629,2204012,17109191,117488832,
+     729410921,4155525962,21962281262,108578479120,505481889514).
+  }
+  \label{eq:optimization-crazy-sextuple-s6-rooted-s5-trivial-ranking}
+\end{equation}
+The seven Young-partition contributions at mass fourteen are
+\[
+  \fitmath{%
+    (36138820806,139829538243,58148591048,148170968754,
+     64809370672,55291253944,3093346047).
+  }
+\]
+Independent full-$S_6$ stabilizer inversion reconstructs the same rooted-trivial
+sequence. Of its mass-fourteen classes, $1433836468$ rooted views arise from
+nontrivial full-$S_6$ stabilizers. Therefore
+\[
+  505481889514-1433836468
+    =504048053046=6\cdot84008008841.
+\]
+Thus every trivial-$S_6$ residual orbit contributes six rooted-trivial views,
+but dense unrooted rank still requires deleting the symmetric rooted views and
+selecting one canonical root from each remaining six-tuple.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For
