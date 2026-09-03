@@ -453,6 +453,36 @@ def _edge_unrank(total: int, rank: int) -> _EdgePairs | None:
     return _edges_from_blocks(blocks)
 
 
+def s4_pair_edge_class_count(total: int) -> int:
+    """Return the dense S4 quotient count for six pair-valued K4 edges.
+
+    Returns:
+        Number of quotient classes at the requested mass.
+
+    """
+    return _edge_class_count(total)
+
+
+def s4_pair_edge_rank(edge_pairs: _EdgePairs) -> int | None:
+    """Rank six pair-valued K4 edges under S4.
+
+    Returns:
+        Dense quotient rank, or ``None`` for an invalid state.
+
+    """
+    return _edge_rank(edge_pairs)
+
+
+def s4_pair_edge_unrank(total: int, rank: int) -> _EdgePairs | None:
+    """Invert the dense S4 quotient rank for pair-valued K4 edges.
+
+    Returns:
+        Canonical edge-pair state, or ``None`` when the rank is out of range.
+
+    """
+    return _edge_unrank(total, rank)
+
+
 def _fixed_count_from_cycles(cycles: tuple[int, ...], total: int) -> int:
     coefficients = [1] + [0] * total
     for cycle_length in cycles:
