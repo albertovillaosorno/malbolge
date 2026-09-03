@@ -1939,6 +1939,25 @@ This is a sparse canonical selector, not yet a dense unrooted rank.
 Densification still requires counting selected minima below an arbitrary
 rooted-rank prefix.
 
+A larger constructive factor is obtained before root selection by retaining only
+the fifteen $K_6$ edges carrying the weight-two count and its complementary
+weight-four count. For a subgroup $H\leq S_6$, if its edge orbits have sizes
+$d_1,\ldots,d_s$, the $H$-fixed pair-valued count has generating function
+$\prod_i(1-x^{d_i})^{-2}$. Subgroup-incidence inversion gives trivial pair-graph
+orbit counts through pair mass fourteen ending at $105908244$. Once the pair
+graph has trivial stabilizer, all endpoints are oriented and the twenty
+weight-three labels are ordinary labeled scalars. Therefore
+\begin{equation}
+  \fitmath{%
+    P_k=\sum_{f+p+t=k}(f+1)\,Q_p^{\mathrm{pair},1}\binom{t+19}{19},
+    \qquad P_{14}=63276927716.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-pair-trivial-factor}
+\end{equation}
+Thus $63276927716$ of the $84008008841$ trivial-$S_6$ residual mass-fourteen
+classes already have a trivial pair graph. The remaining $20731081125$ require
+the weight-three labels to break a nontrivial pair-graph stabilizer.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For

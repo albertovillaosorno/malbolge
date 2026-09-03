@@ -415,6 +415,18 @@ a unique canonical root. At mass 14 this selects exactly 84,008,008,841 sparse
 rooted ranks. Dense trivial-S6 rank still requires a prefix counter for how many
 selected minima precede a rooted rank.
 
+A stronger factorization avoids that prefix problem for most free classes. Keep
+only the fifteen K6 edges carrying the weight-2 label count and its weight-4
+complement count. Exact S6 subgroup inversion for these pair-valued edges gives
+105,908,244 trivial-stabilizer pair graphs at pair mass 14.
+
+Whenever this pair graph is already S6-trivial it fixes the endpoint orientation
+completely, so the two fixed scalars and twenty weight-3 labels may be ranked as
+ordinary labeled compositions. Summing all fixed/pair/triple mass splits through
+14 gives 63,276,927,716 full residual trivial-S6 classes at mass 14. This is
+75.32% of 84,008,008,841; the remaining 20,731,081,125 classes are exactly the
+cases where weight-3 labels must break a nontrivial pair-graph stabilizer.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has

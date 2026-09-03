@@ -914,6 +914,16 @@ mechanism = "identify-distinct-rooted-quotient-classes-with-vertex-orbits-of-the
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_stabilizer_spectrum.py::test_s6_six_distinct_rooted_trivial_views_select_exactly_free_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_stabilizer_spectrum.py::test_s6_rooted_trivial_classes_split_full_s6_trivial_and_symmetric", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_rooted_s5_trivial_ranking.py::test_rooted_s5_trivial_rank_roundtrips_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-pair-trivial-factor"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-pair-trivial-factor"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the exact trivial-stabilizer factor of the top-level all-equal S6 residual quotient at ambiguity mass 0 through 14 whose fifteen weight-two/weight-four complementary K6 edge pairs already have trivial S6 stabilizer before the twenty weight-three labels are considered"
+mechanism = "act-with-each-of-the-56-S6-subgroup-types-on-the-15-K6-edges-count-H-fixed-pair-valued-edge-assignments-from-the-product-over-edge-orbits-of-one-minus-x-to-the-orbit-size-to-the-minus-two-invert-conjugate-containment-incidence-to-obtain-exact-trivial-pair-graph-orbits-and-then-compose-the-result-with-two-fixed-scalars-and-twenty-labeled-weight-three-scalars-because-a-trivial-pair-graph-fixes-all-endpoint-orientation"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_stabilizer_spectrum.py::test_s6_pair_trivial_factor_covers_most_free_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_stabilizer_spectrum.py::test_s6_mass_fourteen_exact_stabilizer_order_spectrum"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-distinct-vertex-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-distinct-vertex-ranking"

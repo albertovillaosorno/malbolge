@@ -43,6 +43,7 @@ from collections import defaultdict
 from collections import deque
 from functools import cache
 from itertools import permutations
+from math import comb
 from typing import cast
 
 _ARITY = 6
@@ -119,6 +120,41 @@ _EXPECTED_ROOTED_TRIVIAL_COUNTS = (
     108_578_479_120,
     505_481_889_514,
 )
+_EXPECTED_PAIR_TRIVIAL_COUNTS = (
+    0,
+    0,
+    0,
+    0,
+    10,
+    156,
+    1_315,
+    8_260,
+    42_975,
+    195_100,
+    796_976,
+    2_987_812,
+    10_420_165,
+    34_143_362,
+    105_908_244,
+)
+_EXPECTED_PAIR_TRIVIAL_FULL_COUNTS = (
+    0,
+    0,
+    0,
+    0,
+    10,
+    376,
+    7_277,
+    96_898,
+    999_634,
+    8_523_090,
+    62_536_621,
+    405_870_644,
+    2_376_530_747,
+    12_741_994_672,
+    63_276_927_716,
+)
+_EXPECTED_PAIR_SYMMETRY_REMAINDER = 20_731_081_125
 _EXPECTED_TRIVIAL_S6_COUNTS = (
     0,
     0,
@@ -452,6 +488,93 @@ def _rooted_view_spectrum(total: int) -> dict[int, int]:
     return dict(sorted(result.items()))
 
 
+_K6_EDGES = tuple(
+    (left, right) for left in range(_ARITY) for right in range(left + 1, _ARITY)
+)
+_K6_EDGE_INDEX = {edge: index for index, edge in enumerate(_K6_EDGES)}
+
+
+def _ordered_edge(left: int, right: int) -> tuple[int, int]:
+    return (left, right) if left < right else (right, left)
+
+
+_K6_EDGE_MAPS = tuple(
+    tuple(
+        _K6_EDGE_INDEX[
+            _ordered_edge(
+                _PERMUTATIONS[element][left],
+                _PERMUTATIONS[element][right],
+            )
+        ]
+        for left, right in _K6_EDGES
+    )
+    for element in range(_S6_ORDER)
+)
+
+
+@cache
+def _pair_edge_orbit_sizes(subgroup: _Subgroup) -> tuple[int, ...]:
+    unseen = set(range(len(_K6_EDGES)))
+    result: list[int] = []
+    while unseen:
+        seed = min(unseen)
+        orbit = {_K6_EDGE_MAPS[element][seed] for element in subgroup}
+        unseen -= orbit
+        result.append(len(orbit))
+    return tuple(sorted(result))
+
+
+@cache
+def _pair_fixed_count(subgroup: _Subgroup, total: int) -> int:
+    coefficients = [1] + [0] * total
+    for orbit_size in _pair_edge_orbit_sizes(subgroup):
+        next_coefficients = [0] * (total + 1)
+        for degree, coefficient in enumerate(coefficients):
+            if coefficient == 0:
+                continue
+            for pair_mass in range((total - degree) // orbit_size + 1):
+                addition = pair_mass * orbit_size
+                next_coefficients[degree + addition] += coefficient * (
+                    pair_mass + 1
+                )
+        coefficients = next_coefficients
+    return coefficients[total]
+
+
+@cache
+def _pair_exact_assignment_counts(total: int) -> dict[_Subgroup, int]:
+    exact: dict[_Subgroup, int] = {}
+    for subgroup in _subgroup_conjugacy_classes():
+        value = _pair_fixed_count(subgroup, total)
+        for larger, exact_value in exact.items():
+            if len(larger) > len(subgroup):
+                value -= _containment_incidence(subgroup, larger) * exact_value
+        assert value >= 0
+        exact[subgroup] = value
+    return exact
+
+
+def _pair_trivial_count(total: int) -> int:
+    identity = next(
+        subgroup
+        for subgroup in _subgroup_conjugacy_classes()
+        if len(subgroup) == 1
+    )
+    exact = _pair_exact_assignment_counts(total)[identity]
+    assert exact % _S6_ORDER == 0
+    return exact // _S6_ORDER
+
+
+def _pair_trivial_full_count(total: int) -> int:
+    return sum(
+        (fixed_mass + 1)
+        * _pair_trivial_count(pair_mass)
+        * comb(total - fixed_mass - pair_mass + 19, 19)
+        for fixed_mass in range(total + 1)
+        for pair_mass in range(total - fixed_mass + 1)
+    )
+
+
 def _trivial_point_orbit_count(subgroup: _Subgroup) -> int:
     unseen = set(range(_ARITY))
     result = 0
@@ -532,6 +655,24 @@ def test_s6_rooted_trivial_classes_split_full_s6_trivial_and_symmetric() -> (
     for total, (rooted, symmetric) in enumerate(observed):
         full_free = rooted - symmetric
         assert full_free == _ARITY * _order_spectrum(total).get(1, 0)
+
+
+def test_s6_pair_trivial_factor_covers_most_free_mass_fourteen() -> None:
+    """A trivial pair-valued K6 edge graph fixes all endpoint orientation."""
+    pair = tuple(_pair_trivial_count(total) for total in range(15))
+    full = tuple(_pair_trivial_full_count(total) for total in range(15))
+    assert pair == _EXPECTED_PAIR_TRIVIAL_COUNTS
+    assert full == _EXPECTED_PAIR_TRIVIAL_FULL_COUNTS
+    assert all(
+        covered <= trivial
+        for covered, trivial in zip(
+            full, _EXPECTED_TRIVIAL_S6_COUNTS, strict=True
+        )
+    )
+    assert (
+        _EXPECTED_TRIVIAL_S6_COUNTS[-1] - full[-1]
+        == _EXPECTED_PAIR_SYMMETRY_REMAINDER
+    )
 
 
 def test_s6_six_distinct_rooted_trivial_views_select_exactly_free_orbits() -> (
