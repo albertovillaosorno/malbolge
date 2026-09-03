@@ -447,6 +447,11 @@ four two-coordinate H-orbits, and two regular four-coordinate H-orbits. A
 five-subgroup stabilizer chain ranks the free V4 triple quotient, yielding
 1,953,448,034 residual and 1,953,917,146 complete mass-14 classes.
 
+The pair double-transposition branch is constructive too. Its exact pair counts
+end at 171,252, while the involution acts on the twenty triples as four fixed
+coordinates and eight swapped pairs. The same unequal-vector involution rank
+gives 996,191,056 residual and 996,310,736 complete mass-14 classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
