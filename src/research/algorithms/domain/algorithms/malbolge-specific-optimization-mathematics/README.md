@@ -309,6 +309,10 @@ Sparse inverse lifting and the repeated-six vertex prefix give 1,067,872
 complete mass-14 classes. Exhaustive ranks reach mass 7 and sampled ranks plus
 direct stabilizer-order 6 checks reach mass 14.
 
+The exact transposition outer count is now fixed as well. Lifting the free and
+exact residual sequences through the repeated-six vertex pair gives
+1,357,132,447 free complete mass-14 classes and 1,356,064,575 exact classes.
+Their difference is 1,067,872, exactly the complete exact-S3 interval above.
 Dense exact transposition rank remains open.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
