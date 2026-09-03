@@ -459,6 +459,12 @@ ends at 37,160 classes. The twenty triples split into six two-coordinate and two
 four-coordinate H-orbits; the five-subgroup stabilizer chain yields 862,445,920
 residual and 862,718,688 complete mass-14 classes.
 
+The point-S3 pair branch is constructive too. Its exact pair counts end at
+20,490. The twenty triples split into two fixed H-orbits and six three-element
+H-orbits; a six-subgroup stabilizer chain gives 135,716,442 free triple classes
+at mass 14. Composition yields 579,329,955 residual and 579,603,457 complete
+mass-14 classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
