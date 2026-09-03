@@ -1484,6 +1484,31 @@ The weight-two/four and weight-three layer deficits are respectively $6635545$
 and $92506$. Independent Burnside arithmetic verifies every mass through
 fourteen.
 
+The all-equal residual stabilizer lattice can be inverted exactly without
+enumerating every subgroup independently. There are $56$ subgroup conjugacy
+classes and $1455$ actual subgroups in $S_6$. For representatives $H,K$, let
+$c(H,K)$ be the number of conjugates of $K$ containing $H$, let $F_H(r)$ count
+assignments fixed by $H$, and let $E_H(r)$ count assignments whose stabilizer is
+exactly that representative. Descending by subgroup order gives
+\begin{equation}
+  \fitmath{%
+    E_H(r)=F_H(r)-\sum_{|K|>|H|}c(H,K)E_K(r),\qquad
+    O_H(r)=\frac{|H|}{|N_{S_6}(H)|}E_H(r).
+  }
+  \label{eq:optimization-crazy-sextuple-s6-full-stabilizer-spectrum}
+\end{equation}
+At residual mass fourteen the trivial-stabilizer term is $84008008841$ and the
+remaining $1423110078$ symmetric classes occupy $34$ populated nontrivial
+stabilizer types. Their normalizer quotients have orders in
+$\{1,2,4,6,8,12,24\}$. Grouping by the number of vertex orbits of the
+stabilizer gives rooted-view multiplicities
+\[
+  (1046,91227,4215311,63923215,1354879279,84008008841)
+\]
+for one through six distinct rooted views. Their weighted sum is
+$511090971734$, independently recovering the rooted-$S_5$ quotient and the
+previous root deficit through mass fourteen.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For
