@@ -303,9 +303,11 @@ The exact S3 family is now constructive as well. A weighted stabilizer chain
 ranks the free external-S3 quotient directly, without materializing the
 6,973,200 raw S3-fixed assignments at residual mass 14. The 2,011 exact-S4
 representatives map to distinct free ranks; deleting them leaves 1,053,877
-residual classes. Sparse inverse lifting and the repeated-six vertex prefix give
-1,067,872 complete mass-14 classes. Exhaustive ranks reach mass 7 and sampled
-ranks plus direct stabilizer-order 6 checks reach mass 14.
+residual classes.
+
+Sparse inverse lifting and the repeated-six vertex prefix give 1,067,872
+complete mass-14 classes. Exhaustive ranks reach mass 7 and sampled ranks plus
+direct stabilizer-order 6 checks reach mass 14.
 
 Dense exact transposition rank remains open.
 
