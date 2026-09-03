@@ -263,9 +263,10 @@ The exact point-stabilizer S5 stratum is also constructive. Its eight residual
 orbits have sizes `1,1,5,5,10,10,10,10`. This S5 is maximal in S6 and
 self-normalizing, so filtering the at-most-70 S5-fixed mass-14 states by exact
 stabilizer order leaves 55 residual classes and needs no further normalizer
-quotient. Prefixing the repeated-six vertex pair yields 71 complete mass-14
-classes. Other proper residual stabilizers and the complete full-S6 rank remain
-open.
+quotient.
+
+Prefixing the repeated-six vertex pair yields 71 complete mass-14 classes. Other
+proper residual stabilizers and the complete full-S6 rank remain open.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
