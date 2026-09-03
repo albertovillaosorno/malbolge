@@ -212,7 +212,14 @@ Burnside suffix counts preserve dense prefixes. It reproduces the independent
 residual sequence through mass 14 and gives 28,825,612,500 complete mass-14
 classes.
 
-Only top-level `(4,2)` and `(6)` remain without dense rank/unrank.
+The top-level `(4,2)` stratum now has an exact S4-first decomposition. Quotient
+the fourfold block by S4, then the commuting swap of the two equal endpoints
+descends to an involution on S4 classes. Its fixed-set count is the average over
+the swap coset. At residual mass 14 the S4 quotient has 2,549,713,246,880
+classes, 1,494,366,928 are fixed by the descended swap, and the final
+S4-times-S2 quotient has 1,275,603,806,904 classes. Prefixing `(4,2)` vertex sequences gives
+122,060,462,590 complete mass-14 classes. Dense rank/unrank for this descended
+involution remains open; top-level `(6)` is the other remaining dense-rank gap.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving

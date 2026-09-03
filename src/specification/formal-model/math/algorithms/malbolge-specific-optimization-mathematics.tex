@@ -1703,7 +1703,27 @@ and from masses nine through fourteen are
   (10428550,88217154,675502692,4718732554,30306550190,180275648841).
 \]
 Thus the mass-fourteen $(3,2,1)$ stratum contributes $180275648841$ densely
-ranked classes. Six Young-stabilizer strata remain without dense rank/unrank.
+ranked classes.
+
+For vertex multiplicity partition $(4,2)$, first quotient the residual labels by
+the $S_4$ acting on the fourfold vertex block. The swap $c$ of the equal
+remaining endpoint pair commutes with that $S_4$. If $V_r$ counts residual
+$S_4$ classes and $F_r$ counts those fixed by the descended swap, the commuting
+coset average gives
+\begin{equation}
+  \fitmath{%
+    V_r=\frac1{24}\sum_{h\in S_4}\operatorname{Fix}_r(h),\qquad
+    F_r=\frac1{24}\sum_{h\in S_4}\operatorname{Fix}_r(ch),\qquad
+    Q_r^{(4,2)}=\frac{V_r+F_r}{2}.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s4s2-decomposition}
+\end{equation}
+Direct residual orbit/fixed-set enumeration agrees through mass two, and the
+formula matches the independent $S_4\times S_2$ Burnside quotient through mass
+fourteen. There $V_{14}=2549713246880$, $F_{14}=1494366928$, and
+$Q_{14}^{(4,2)}=1275603806904$; prefixing the sorted $(4,2)$ vertex sequences
+gives $122060462590$ complete classes. This is a count decomposition only; dense
+rank/unrank for the descended involution remains open.
 
 The vertex multiplicity stratum $(4,1,1)$ has Young stabilizer $S_4$.
 Its fifty-two residual scalar coordinates admit a second exact factorization:
