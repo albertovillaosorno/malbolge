@@ -210,7 +210,9 @@ three-coordinate blocks, and four invariant nine-coordinate blocks. A
 nonabelian stabilizer chain canonicalizes one block at a time, while exact
 Burnside suffix counts preserve dense prefixes. It reproduces the independent
 residual sequence through mass 14 and gives 28,825,612,500 complete mass-14
-classes. Only top-level `(4,2)` and `(6)` remain without dense rank/unrank.
+classes.
+
+Only top-level `(4,2)` and `(6)` remain without dense rank/unrank.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
