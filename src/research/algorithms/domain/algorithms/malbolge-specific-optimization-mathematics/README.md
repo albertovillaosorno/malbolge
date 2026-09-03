@@ -337,6 +337,20 @@ repeated six times gives 1,356,064,575 complete classes. Boundary/interior
 rank/unrank checks reach mass 14 without materializing the 1,053,877 scattered
 S3 exclusion ranks.
 
+The double-transposition stabilizer is constructive too. For
+`H=< (23)(45) >`, the normalizer has order 16 and its quotient has order 8.
+The 32 H-orbit coordinates split into one fixed four-scalar block, four moving
+four-coordinate blocks, and six moving two-coordinate blocks. A stabilizer
+chain over the quotient's 16 subgroups gives 35,878,792 normalizer-free
+mass-14 classes.
+
+Only 8,773 free ranks have nonnormalizing extensions: 8,618 exact `S3(3,3)`
+states and 155 exact `D10(5,1)` states. Enumerating each extension's weighted
+fixed assignments and rejecting assignments fixed by any strict `<K,g>`
+extension generates those ranks exactly. Sparse deletion leaves 35,870,019
+residual classes, and the repeated-six vertex prefix gives 35,953,167 complete
+mass-14 classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has

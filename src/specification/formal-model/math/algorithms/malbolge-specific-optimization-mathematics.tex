@@ -1746,6 +1746,40 @@ through mass four and sampled boundary/interior ranks through mass fourteen
 roundtrip exactly. Composing the repeated-six two-component vertex prefix gives
 one complete mass-fourteen interval of $1356064575$ classes.
 
+The next exact order-two type is the double transposition
+$H=\langle(2\ 3)(4\ 5)\rangle$. Its normalizer has order sixteen, so
+$N_{S_6}(H)/H$ has order eight and sixteen subgroups. The thirty-two $H$-orbit
+coordinates split into one fixed four-scalar block, four moving blocks of size
+four, and six moving blocks of size two. Stabilizer-chain suffix inversion gives
+\[
+  (F_0^{(2,2)},\ldots,F_{14}^{(2,2)})=
+  (0,0,0,6,60,424,2274,10408,41818,152452,511870,1606062,
+   4750838,13354968,35878792).
+\]
+A normalizer-free class can still acquire a nonnormalizing supergroup. Exact
+extension enumeration shows that every such class has stabilizer type either
+$S_3$ on two three-vertex orbits or $D_{10}$ on a five-plus-one orbit. Their
+mass-by-mass class sequences sum to
+\[
+  (0,0,0,1,5,18,51,121,244,498,987,1767,3123,5363,8773).
+\]
+For each extension $K$, weighted $K$-fixed assignments are retained precisely
+when they are not fixed by any strict one-generator extension
+$\langle K,g\rangle$. Mapping these retained states into the free quotient gives
+pairwise distinct excluded ranks. Hence
+\begin{equation}
+  \fitmath{%
+    E_r^{(2,2)}=F_r^{(2,2)}-|X_r^{(S_3)}|-|X_r^{(D_{10})}|,
+    \qquad
+    E_{14}^{(2,2)}=35870019.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-full-double-transposition-ranking}
+\end{equation}
+Sparse rank deletion and inverse lifting give dense exact residual rank/unrank.
+Sampled representatives have direct full-$S_6$ stabilizer order two through
+mass fourteen. Prefixing the repeated-six two-component vertex value produces
+one complete mass-fourteen interval of $35953167$ classes.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For
