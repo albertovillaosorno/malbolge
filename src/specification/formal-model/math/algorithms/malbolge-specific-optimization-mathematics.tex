@@ -1822,6 +1822,41 @@ Sparse rank deletion and inverse lifting give dense exact residual rank/unrank;
 full-$S_6$ samples have stabilizer order four. Prefixing the repeated-six
 vertex pair gives one complete mass-fourteen interval of $27158479$ classes.
 
+For the fixed-point-free involution take
+$H=\langle(0\ 1)(2\ 3)(4\ 5)\rangle$. Its normalizer has order forty-eight,
+so $N_{S_6}(H)/H$ has order twenty-four with thirty subgroups. The thirty
+$H$-orbit residual coordinates have orbit spectrum $1^8 2^{22}$ and split into
+seven invariant rank blocks of sizes
+\[
+  (2,6,6,6,4,3,3)
+\]
+with scalar weights $(1,2,2,2,2,1,1)$. Descending subgroup inversion gives
+\[
+  \fitmath{%
+    (F_0^{(2,2,2)},\ldots,F_{14}^{(2,2,2)})=
+    (0,0,0,0,3,36,217,1002,3930,13656,43463,128256,356906,
+     941492,2377435).
+  }
+\]
+Every normalizer-free but nonexact state extends to a transitive $S_3$ on the
+six endpoints. The four such extension groups form one normalizer orbit, so a
+single representative suffices to generate the excluded free ranks. Their
+mass-by-mass count is
+\[
+  (0,0,0,0,0,0,1,2,4,14,25,44,88,140,217).
+\]
+Hence
+\begin{equation}
+  \fitmath{%
+    E_r^{(2,2,2)}=F_r^{(2,2,2)}-|X_r^{(S_3)}|,
+    \qquad E_{14}^{(2,2,2)}=2377218.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-full-triple-transposition-ranking}
+\end{equation}
+Sparse rank deletion and inverse lifting give dense exact residual rank/unrank;
+full-$S_6$ samples have stabilizer order two. Prefixing the repeated-six vertex
+pair gives one complete mass-fourteen interval of $2385070$ classes.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For

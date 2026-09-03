@@ -364,6 +364,17 @@ discovered through `K g K` double-coset representatives. Sparse deletion leaves
 26,999,319 residual classes, and the repeated-six vertex prefix gives
 27,158,479 complete mass-14 classes.
 
+The fixed-point-free triple transposition is constructive too. For
+`H=< (01)(23)(45) >`, the normalizer has order 48 and its quotient has order 24
+with 30 subgroups. The 30 H-orbit residual coordinates split into seven rank
+blocks with sizes `2,6,6,6,4,3,3` and weights `1,2,2,2,2,1,1`.
+
+The normalizer-free mass-14 quotient has 2,377,435 classes. Exactly 217 ranks
+extend to a transitive S3 stabilizer; the four possible S3 extensions form one
+normalizer orbit, so one representative generates the sparse exclusion set.
+Deleting those ranks leaves 2,377,218 residual classes, and the repeated-six
+vertex prefix gives 2,385,070 complete mass-14 classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
