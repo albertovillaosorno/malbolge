@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes one hundred seventy-two exact reductions: classic five-trit crazy
+formalizes one hundred seventy-three exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and
@@ -114,7 +114,8 @@ rooted-S5/full-S6 deficit decomposition plus an exact 56-conjugacy-class S6
 subgroup-lattice stabilizer spectrum plus dense exact full-S6-stabilizer
 rank/unrank plus dense exact point-stabilizer S5 rank/unrank plus a dense
 normalizer-free
-single-transposition S4-quotient rank for the remaining all-equal stratum,
+single-transposition S4-quotient rank plus an exact S3-extension/S4-exception
+count decomposition for the remaining all-equal stratum,
 a generic
 checked-arity ordered tuple quotient into
 `C(k+2^m-1,2^m-1)` classes for `1<=m<=8`, a dense combinadic rank/unrank over

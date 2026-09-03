@@ -275,8 +275,14 @@ counts only suffixes whose final quotient stabilizer is trivial.
 
 At residual mass 14 this gives 1,355,933,156 free quotient classes. The exact
 transposition spectrum contains 1,354,879,279 classes, and the difference
-1,053,877 is exactly the S3 stabilizer family on one three-vertex orbit. Exact
-dense transposition rank still requires removing those mapped S3 exceptions.
+1,053,877 is exactly the S3 stabilizer family on one three-vertex orbit.
+
+That S3 family is now decomposed one level further. For S3 on vertices `0,1,2`,
+the 52 labels become 10 singleton and 14 triple orbits; the external normalizer
+quotient is another S3. Its free mass-14 quotient has 1,055,888 classes, only
+2,011 above the exact S3 count 1,053,877. The difference is exactly the S4
+stabilizer family on one four-vertex orbit, mass-by-mass through 14. Dense exact
+S3 and exact transposition ranks remain open.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving

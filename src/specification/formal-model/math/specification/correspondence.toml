@@ -784,6 +784,16 @@ mechanism = "collapse-to-24-singleton-and-14-paired-H-orbit-coordinates-process-
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_ranking.py::test_transposition_normalizer_geometry_is_exact", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_ranking.py::test_transposition_free_counts_match_reviewed_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_ranking.py::test_transposition_free_minus_exact_is_s3_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_ranking.py::test_transposition_free_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_ranking.py::test_transposition_free_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_stabilizer_spectrum.py::test_s6_mass_fourteen_exact_stabilizer_order_spectrum"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-full-s3-extension-decomposition"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-full-s3-extension-decomposition"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the S3-on-three-vertices extension family inside the single-transposition free quotient at residual ambiguity mass 0 through 14, quotiented by its external S3 normalizer quotient"
+mechanism = "collapse-the-52-labels-to-10-singleton-and-14-triple-S3-orbits-compute-the-free-external-S3-quotient-by-fixed-subspace-inversion-over-its-six-subgroups-and-identify-the-difference-from-the-exact-S3-spectrum-with-the-exact-S4-four-vertex-extension-family"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s3_extension_decomposition.py::test_s3_extension_geometry_is_exact", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s3_extension_decomposition.py::test_s3_extension_free_counts_match_reviewed_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s3_extension_decomposition.py::test_s3_extension_free_minus_exact_is_s4_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_ranking.py::test_transposition_free_minus_exact_is_s3_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_stabilizer_spectrum.py::test_s6_mass_fourteen_exact_stabilizer_order_spectrum"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-distinct-vertex-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-distinct-vertex-ranking"
