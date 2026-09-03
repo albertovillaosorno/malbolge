@@ -1722,8 +1722,36 @@ Direct residual orbit/fixed-set enumeration agrees through mass two, and the
 formula matches the independent $S_4\times S_2$ Burnside quotient through mass
 fourteen. There $V_{14}=2549713246880$, $F_{14}=1494366928$, and
 $Q_{14}^{(4,2)}=1275603806904$; prefixing the sorted $(4,2)$ vertex sequences
-gives $122060462590$ complete classes. This is a count decomposition only; dense
-rank/unrank for the descended involution remains open.
+gives $122060462590$ complete classes. This count decomposition is independent
+of the constructive rank below.
+
+For dense $(4,2)$ ranking, the full $S_4\times S_2$ action splits the fifty-two
+residual labels into invariant blocks of sizes
+$12,8,8,6,6,4,4,4$. Process the twelve-coordinate block first. It is six
+pair-valued $K_4$ edges: the proved full-$S_4$ edge rank $\kappa_m$ quotients the
+edge positions, and the commuting singleton swap exchanges the two components
+of every pair. Thus its local orbit key is the smaller of
+$\kappa_m(x)$ and $\kappa_m(cx)$. After choosing that class, retain its exact
+stabilizer and process each smaller block canonically. If $G$ is the current
+stabilizer and $\mathcal L_i(G)$ is the set of remaining coordinate cycles, the
+suffix count and final rank satisfy
+\begin{equation}
+  \fitmath{%
+    N_i(r,G)=\frac1{|G|}\sum_{g\in G}[z^r]
+      \prod_{\ell\in\mathcal L_i(g)}(1-z^\ell)^{-1},
+    \qquad
+    \rho_k^{(6,42)}:\mathcal C_k^{(4,2)}
+      \overset{\sim}{\longrightarrow}\{0,\ldots,R_k^{(4,2)}-1\}.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s4s2-vertex-ranking}
+\end{equation}
+Local mass and canonical-class prefixes are weighted by these stabilizer suffix
+counts, and the inverse subtracts the same blocks. Because a $(4,2)$ vertex
+prefix has scalar mass at least two, residual mass twelve is the largest needed
+for complete total mass fourteen. Direct residual orbits agree through mass two,
+residual boundary/interior ranks roundtrip through mass twelve, complete ranks
+are exhausted through total mass six, and complete boundary/interior roundtrips
+reach mass fourteen. The final stratum has $122060462590$ classes there.
 
 The vertex multiplicity stratum $(4,1,1)$ has Young stabilizer $S_4$.
 Its fifty-two residual scalar coordinates admit a second exact factorization:

@@ -824,6 +824,16 @@ mechanism = "quotient-the-residual-labels-by-the-fourfold-block-S4-first-count-S
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4s2_decomposition.py::test_s6_s4s2_groups_are_exact_commuting_extension", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4s2_decomposition.py::test_s6_s4s2_descended_fixed_set_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4s2_decomposition.py::test_s6_s4s2_nested_count_matches_full_product_burnside", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4s2_decomposition.py::test_s6_s4s2_stratum_counts_match_reviewed_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_decomposition.py::test_s6_decomposition_matches_full_burnside_through_mass_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s4s2-vertex-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-s4s2-vertex-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the endpoint-unordered S6 sextuple stratum at ambiguity mass 0 through 14 whose sorted weight-one-five vertex complement pair-values have multiplicity partition 4,2, with residual dense rank required only through mass 12 because every such vertex prefix has mass at least two"
+mechanism = "rank-the-twelve-coordinate-pair-valued-K4-block-first-by-the-proved-full-S4-edge-rank-and-global-pair-component-swap-then-canonicalize-the-seven-smaller-invariant-blocks-under-successive-exact-stabilizers-with-Burnside-suffix-count-prefixes"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4s2_vertex_ranking.py::test_s6_s4s2_rank_has_exact_hard_block_geometry", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4s2_vertex_ranking.py::test_s6_s4s2_rank_matches_direct_small_residual_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4s2_vertex_ranking.py::test_s6_s4s2_rank_counts_match_reviewed_residual_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4s2_vertex_ranking.py::test_s6_s4s2_residual_rank_roundtrips_through_mass_twelve", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4s2_vertex_ranking.py::test_s6_s4s2_full_rank_exhausts_small_strata", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4s2_vertex_ranking.py::test_s6_s4s2_full_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_s4s2_decomposition.py::test_s6_s4s2_nested_count_matches_full_product_burnside"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-s4-vertex-decomposition"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-s4-vertex-decomposition"

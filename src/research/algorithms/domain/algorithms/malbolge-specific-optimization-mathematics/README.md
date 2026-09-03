@@ -220,8 +220,16 @@ the swap coset.
 At residual mass 14 the S4 quotient has 2,549,713,246,880 classes, and
 1,494,366,928 are fixed by the descended swap. The final S4-times-S2 quotient
 has 1,275,603,806,904 classes. Prefixing `(4,2)` vertex sequences gives
-122,060,462,590 complete mass-14 classes. Dense rank/unrank for this descended
-involution remains open; top-level `(6)` is the other remaining dense-rank gap.
+122,060,462,590 complete mass-14 classes.
+
+Dense rank/unrank is now constructive for every residual mass reachable inside
+total mass 14. The 48-element action splits the 52 labels into blocks of sizes
+`12,8,8,6,6,4,4,4`. The size-12 block is handled first by the pair-valued K4
+S4 rank followed by the singleton-component swap; its stabilizer then drives
+Burnside suffix counts over the seven smaller blocks. Residual rank/unrank is
+checked through mass 12, the largest residual mass reachable after a `(4,2)`
+vertex prefix, and the complete stratum rank reaches mass 14. Only top-level
+`(6)` remains without dense rank/unrank.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
