@@ -1509,6 +1509,26 @@ for one through six distinct rooted views. Their weighted sum is
 $511090971734$, independently recovering the rooted-$S_5$ quotient and the
 previous root deficit through mass fourteen.
 
+The exact full-$S_6$ automorphism stratum has a closed dense rank throughout the
+admitted total-mass range. Its residual label-orbit sizes are
+$(1,1,15,15,20)$, so for $k\leq14$ only the two singleton residual labels can
+carry positive mass. Let $q$ be the scalar mass of the two-component vertex
+value repeated six times, let $r=k-6q$, and let $i_q$ and $i_r$ be the ordinary
+two-part weak-composition ranks. Then
+\begin{equation}
+  \fitmath{%
+    \rho_k^{(6,S_6)}(v,f)=
+      \sum_{a<q}(a+1)(k-6a+1)+i_q(v)(r+1)+i_r(f),
+    \qquad
+    C_k^{(6,S_6)}=\sum_{q=0}^{\lfloor k/6\rfloor}(q+1)(k-6q+1).
+  }
+  \label{eq:optimization-crazy-sextuple-s6-full-s6-stabilizer-ranking}
+\end{equation}
+Block subtraction and two-part composition unranking invert the map. Exhaustive
+rank/unrank covers every total mass through fourteen, where the interval has
+$42$ classes. Direct endpoint permutation confirms every produced residual
+state is fixed by all $720$ elements of $S_6$.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For

@@ -244,10 +244,19 @@ The exact stabilizer spectrum is now available. S6 has 56 subgroup conjugacy
 classes and 1,455 actual subgroups. At residual mass 14, 84,008,008,841 of the
 85,431,118,919 classes have trivial automorphism stabilizer, leaving
 1,423,110,078 symmetric classes across 34 populated nontrivial subgroup types.
+
 Their normalizer quotients have orders only `1,2,4,6,8,12,24`. The rooted-view
 multiplicity spectrum is `1:1046, 2:91227, 3:4215311, 4:63923215,
 5:1354879279, 6:84008008841`, whose weighted sum independently recovers the
-511,090,971,734 rooted classes. Dense full-S6 rank/unrank remains open.
+511,090,971,734 rooted classes.
+
+The exact full-S6 stabilizer stratum is now constructive through total mass 14.
+The five full-S6 residual label orbits have sizes `1,1,15,15,20`, so no
+nontrivial residual orbit can carry positive mass in this range. A state is
+therefore one two-component vertex value repeated six times plus the two fixed
+residual scalars. Prefixing by repeated-vertex mass gives one dense interval;
+at total mass 14 it contains 42 classes. Proper residual stabilizers and the
+complete full-S6 rank remain open.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
