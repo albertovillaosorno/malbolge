@@ -479,7 +479,8 @@ disjoint endpoint transpositions. Pair ranks end at 6,466 classes at pair mass
 14. The twenty triples form six two-element H-orbits and one regular
 eight-element orbit; the subgroup-lattice stabilizer chain gives 101,760,920
 free triple classes. Composition yields 353,197,784 residual and 353,396,004
-complete mass-14 classes, raising pair-first residual coverage to 83,499,960,937.
+complete mass-14 classes, raising pair-first residual coverage to
+83,499,960,937.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
