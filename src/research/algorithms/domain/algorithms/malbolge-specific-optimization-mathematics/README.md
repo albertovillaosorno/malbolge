@@ -281,8 +281,15 @@ That S3 family is now decomposed one level further. For S3 on vertices `0,1,2`,
 the 52 labels become 10 singleton and 14 triple orbits; the external normalizer
 quotient is another S3. Its free mass-14 quotient has 1,055,888 classes, only
 2,011 above the exact S3 count 1,053,877. The difference is exactly the S4
-stabilizer family on one four-vertex orbit, mass-by-mass through 14. Dense exact
-S3 and exact transposition ranks remain open.
+stabilizer family on one four-vertex orbit, mass-by-mass through 14.
+
+The S4 exception family also terminates cleanly. For S4 on vertices `0..3`,
+the external normalizer quotient is S2. Its free mass-14 quotient has 2,066
+classes; subtracting the exact S4 count 2,011 leaves exactly 55, the already
+constructive point-stabilizer S5 residual count. This identity also holds at
+every residual mass through 14.
+
+Dense exact S4, exact S3, and exact transposition ranks remain open.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
