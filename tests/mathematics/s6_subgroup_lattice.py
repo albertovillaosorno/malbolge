@@ -6,6 +6,29 @@
 #   - false
 # License-File:
 #   - LICENSE-MIT
+#
+# Boundary-Contract:
+# - Owns:
+#   - Reusable exact subgroup enumeration for the natural S6 action.
+# - Must-Not:
+#   - Define optimization semantics or replace owning mathematical proofs.
+# - Allows:
+#   - Inputs: subgroup generators and the natural six-point permutation action.
+#   - Outputs: 56 conjugacy representatives and 1,455 concrete subgroups.
+#   - Side effects: none.
+# - Split-When:
+#   - Another group action needs an independent reusable lattice.
+# - Merge-When:
+#   - A repository-owned general finite-group lattice utility owns this role.
+# - Summary:
+#   - Share the reviewed S6 subgroup lattice across bounded mathematics proofs.
+# - Description:
+#   - Enumerates generated subgroups and their conjugates deterministically.
+# - Usage:
+#   - Imported by S6 mathematics evidence that needs concrete subgroup incidence.
+# - Defaults:
+#   - The action is fixed to S6 on six endpoints.
+#
 
 """Reusable exact subgroup lattice for the natural six-point S6 action."""
 
