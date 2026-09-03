@@ -25,7 +25,8 @@
 # - Description:
 #   - Enumerates generated subgroups and their conjugates deterministically.
 # - Usage:
-#   - Imported by S6 mathematics evidence that needs concrete subgroup incidence.
+#   - Imported by S6 mathematics evidence that needs concrete subgroup
+#     incidence.
 # - Defaults:
 #   - The action is fixed to S6 on six endpoints.
 #
