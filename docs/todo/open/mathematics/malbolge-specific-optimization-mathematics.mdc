@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize one hundred sixty-four exact reductions:
+- The proved slices now formalize one hundred sixty-five exact reductions:
   classic five-trit
   crazy factorization, profile-width crazy chunking, exact zero-padded 15-trit
   crazy projection and uniform three-lookup factorization for semantic widths
@@ -97,7 +97,8 @@ force or stochastic optimization begins.
   complete
   dense spoke rank/unrank across all five stabilizers and their combined
   residual interval, an exact nested S2-cubed quotient/fixed-set
-  decomposition, and dense S2-cubed stabilizer-chain rank/unrank,
+  decomposition, dense S2-cubed stabilizer-chain rank/unrank, and dense
+  S3-times-S3 Young-stratum rank/unrank,
   one generic
   checked-arity
   ordered tuple quotient with `C(k+2^m-1,2^m-1)` classes for `1<=m<=8`, dense
@@ -152,7 +153,7 @@ force or stochastic optimization begins.
   reductions are consumed by runtime paths; the one hundred one search
   reductions, two padded-geometry equivalences, and eleven width-certification
   results carry no inherited runtime speedup claim.
-- One hundred sixty-four optimization research equations are registered in
+- One hundred sixty-five optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.
@@ -187,7 +188,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes one hundred sixty-four labelled
+- Current mathematical evidence includes one hundred sixty-five labelled
   optimization equations,
   executable correspondence, exact zero-padding projection and uniform
   three-lookup evidence for semantic widths 10 through 14, exact checked
@@ -233,8 +234,9 @@ force or stochastic optimization begins.
   exact six-vertex-pair/eleven-Young-stabilizer residual factorization plus
   dense distinct-vertex trivial-stabilizer, order-two, order-six, and V4
   Young-stabilizer rank/unrank, dense S3-times-S2 Young-stabilizer rank/unrank,
-  plus an exact S2-cubed nested quotient/fixed-set decomposition and dense
-  stabilizer-chain rank/unrank, the generic
+  plus an exact S2-cubed nested quotient/fixed-set decomposition, dense
+  S2-cubed stabilizer-chain rank/unrank, and dense S3-times-S3 Young-stratum
+  rank/unrank, the generic
   ordered
   tuple quotient for checked
   arities one through eight with exact weak-composition class and multinomial

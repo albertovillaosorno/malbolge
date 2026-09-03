@@ -197,11 +197,20 @@ vectors and has a dense rank covering 89,182,770,767 mass-14 classes.
 
 The `(2,2,1,1)` stratum has a nested V4 rank with `X=(12;6,6)` and `Z=(6;4,4)`
 involution shapes, covering 39,233,740,619 mass-14 classes. The `(2,2,2)`
-stratum now has an exact V4-first quotient and commuting-coset fixed-set formula
-for its third swap, yielding 13,145,545,602 mass-14 classes; dense rank/unrank
-for that stratum remains open. The `(3,2,1)` S3-times-S2 stratum has a dense
+stratum has both the exact V4-first quotient/commuting-coset count and dense
+stabilizer-chain rank/unrank, yielding 13,145,545,602 mass-14 classes.
+
+The `(3,2,1)` S3-times-S2 stratum has a dense
 S3-first bundle-multiset rank followed by a diagonal involution, covering
 180,275,648,841 mass-14 classes.
+
+The `(3,3)` stratum now also has dense rank/unrank under residual `S3 x S3`.
+Its 52 residual labels split into four fixed coordinates, four invariant
+three-coordinate blocks, and four invariant nine-coordinate blocks. A
+nonabelian stabilizer chain canonicalizes one block at a time, while exact
+Burnside suffix counts preserve dense prefixes. It reproduces the independent
+residual sequence through mass 14 and gives 28,825,612,500 complete mass-14
+classes. Only top-level `(4,2)` and `(6)` remain without dense rank/unrank.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving

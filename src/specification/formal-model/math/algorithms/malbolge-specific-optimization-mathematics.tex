@@ -1643,6 +1643,30 @@ stratum ranks are exhausted through total mass six, and boundary/interior
 roundtrips reach mass fourteen. The residual count is $7636686343840$ and the
 complete $(2,2,2)$ stratum has $13145545602$ classes there.
 
+For vertex multiplicity partition $(3,3)$, the residual Young group is
+$S_3\times S_3$. Its fifty-two residual labels split into one four-coordinate
+fixed block, four invariant three-coordinate blocks, and four invariant
+nine-coordinate blocks. For block $i$, remaining mass $r$, and the current
+stabilizer $G\leq S_3\times S_3$, let $\mathcal O_{i,m}(G)$ contain canonical
+block assignments of mass $m$. Exact Burnside suffix counts on the remaining
+invariant labels give
+\begin{equation}
+  \fitmath{%
+    N_i(r,G)=\frac{1}{|G|}\sum_{g\in G}
+      [x^r]\prod_{c\in\operatorname{Cyc}_{i:}(g)}(1-x^c)^{-1},
+    \qquad
+    \rho_k^{(6,3^2)}:\mathcal C_k^{(3,3)}
+      \overset{\sim}{\longrightarrow}\{0,\ldots,R_k^{(3,3)}-1\}.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-s3s3-vertex-ranking}
+\end{equation}
+Dense ranking prefixes block mass and then canonical block representatives,
+weighted by $N_{i+1}(r-m,\operatorname{Stab}_G(x))$; unranking performs the same
+subtractions. Direct residual $S_3\times S_3$ orbits agree through mass two,
+complete stratum ranks are exhausted through total mass six, and sampled
+roundtrips reach mass fourteen. The residual interval there has
+$1699875471048$ classes and the complete $(3,3)$ stratum has $28825612500$.
+
 The vertex multiplicity stratum $(3,2,1)$ has Young stabilizer
 $S_3\times S_2$. Quotient the three repeated endpoints by $S_3$ first. The
 fifty-two residual labels become a ten-component vector $X$ together with an
