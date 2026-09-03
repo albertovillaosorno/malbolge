@@ -490,6 +490,13 @@ inversion gives 67,715,928 free triple classes. Composition contributes
 
 Pair-first residual coverage therefore rises to 83,729,853,615.
 
+The unique self-normalizing order-16 pair branch on vertex orbits `(4,2)` is
+constructive too. Pair ranks end at 516 classes at pair mass 14. Its twenty
+triples form H-orbits `(4,4,4,8)`; subgroup-lattice suffix inversion gives
+50,865,824 free triple classes. Composition contributes 116,036,750 residual
+and 116,130,922 complete mass-14 classes, raising pair-first residual coverage
+to 83,845,890,365.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
