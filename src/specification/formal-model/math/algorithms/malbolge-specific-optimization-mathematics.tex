@@ -1554,6 +1554,32 @@ The exact filter, prefix, and inverse are exhausted through total mass fourteen;
 the final interval has $71$ classes. Direct full-$S_6$ scans confirm every
 retained residual assignment has stabilizer order $120$.
 
+For the single-transposition subgroup $H=\langle(01)\rangle$, the fifty-two
+residual labels form $24$ singleton and $14$ two-element $H$-orbits. The
+normalizer quotient $N_{S_6}(H)/H\cong S_4$ acts on these thirty-eight orbit
+coordinates in invariant blocks of sizes
+$(4,6,6,6,4,4,4,4)$ with coordinate weights
+$(1,1,1,2,1,1,2,2)$. Let $F_r^{(2)}$ be the quotient classes whose residual
+stabilizer in this $S_4$ action is trivial. A stabilizer-chain rank using exact
+free-suffix counts from the thirty actual $S_4$ subgroups gives
+\begin{equation}
+  \fitmath{%
+    (F_0^{(2)},\ldots,F_{14}^{(2)})=
+    (0,0,1,34,431,3584,23151,125700,599644,2583332,10236354,
+     37793678,131270971,432112216,1355933156).
+  }
+  \label{eq:optimization-crazy-sextuple-s6-full-transposition-free-ranking}
+\end{equation}
+Dense rank/unrank is exhaustive through residual mass five and sampled through
+mass fourteen. Comparing with the exact subgroup-lattice spectrum gives
+\[
+  F_r^{(2)}-E_r^{(2)}=E_r^{(S_3)},\qquad 0\leq r\leq14,
+\]
+where the $S_3$ stabilizer acts on one three-vertex orbit. At mass fourteen the
+difference is $1053877$, leaving $1354879279$ exact-transposition classes.
+Thus the remaining exact-rank step is precisely removal of mapped $S_3$
+extensions; this theorem does not claim that final subtraction yet.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For

@@ -265,8 +265,17 @@ self-normalizing, so filtering the at-most-70 S5-fixed mass-14 states by exact
 stabilizer order leaves 55 residual classes and needs no further normalizer
 quotient.
 
-Prefixing the repeated-six vertex pair yields 71 complete mass-14 classes. Other
-proper residual stabilizers and the complete full-S6 rank remain open.
+Prefixing the repeated-six vertex pair yields 71 complete mass-14 classes.
+
+The dominant single-transposition stabilizer now has a scalable normalizer-free
+rank. For `H=<01>`, the 52 residual labels become 24 H-singletons and 14
+H-pairs. The quotient `N(H)/H` is S4 and acts in eight invariant blocks of
+sizes `4,6,6,6,4,4,4,4`; subgroup inversion over the 30 actual S4 subgroups
+counts only suffixes whose final quotient stabilizer is trivial. At residual
+mass 14 this gives 1,355,933,156 free quotient classes. The exact transposition
+spectrum contains 1,354,879,279 classes, and the difference 1,053,877 is
+exactly the S3 stabilizer family on one three-vertex orbit. Exact dense
+transposition rank still requires removing those mapped S3 exceptions.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
