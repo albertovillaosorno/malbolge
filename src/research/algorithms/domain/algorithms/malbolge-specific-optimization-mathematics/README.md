@@ -404,6 +404,16 @@ of the 84,008,008,841 trivial-S6 classes. Dense unrooted trivial-S6 rank still
 requires a canonical one-of-six root selector; rooted-trivial rank alone does
 not supply that selector.
 
+The selector itself is now exact. For any full-S6 stabilizer `G`, distinct
+rooted quotient classes are the vertex orbits of `G`; a rooted class has
+trivial point stabilizer exactly when its vertex stabilizer in `G` is trivial.
+Across all 56 S6 subgroup conjugacy types, exactly `G=1` has six distinct
+rooted-trivial views. Therefore a trivial-S6 class has six distinct rooted ranks
+and their
+minimum is a unique canonical root. At mass 14 this selects exactly
+84,008,008,841 sparse rooted ranks. Dense trivial-S6 rank still requires a
+prefix counter for how many selected minima precede a rooted rank.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has

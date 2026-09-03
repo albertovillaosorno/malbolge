@@ -119,6 +119,23 @@ _EXPECTED_ROOTED_TRIVIAL_COUNTS = (
     108_578_479_120,
     505_481_889_514,
 )
+_EXPECTED_TRIVIAL_S6_COUNTS = (
+    0,
+    0,
+    0,
+    1,
+    140,
+    2_862,
+    35_852,
+    342_833,
+    2_736_824,
+    19_096_210,
+    119_677_202,
+    685_705_809,
+    3_636_776_469,
+    18_019_551_259,
+    84_008_008_841,
+)
 _EXPECTED_ROOTED_TRIVIAL_SYMMETRIC = (
     0,
     0,
@@ -515,6 +532,22 @@ def test_s6_rooted_trivial_classes_split_full_s6_trivial_and_symmetric() -> (
     for total, (rooted, symmetric) in enumerate(observed):
         full_free = rooted - symmetric
         assert full_free == _ARITY * _order_spectrum(total).get(1, 0)
+
+
+def test_s6_six_distinct_rooted_trivial_views_select_exactly_free_orbits() -> (
+    None
+):
+    """Exactly trivial S6 stabilizers have six distinct rooted-trivial views."""
+    classes = _subgroup_conjugacy_classes()
+    assert all(
+        (_trivial_point_orbit_count(group) == _ARITY) == (len(group) == 1)
+        for group in classes
+    )
+    observed = tuple(_order_spectrum(total).get(1, 0) for total in range(15))
+    assert observed == _EXPECTED_TRIVIAL_S6_COUNTS
+    for total, selected in enumerate(observed):
+        rooted, symmetric = _rooted_trivial_counts(total)
+        assert rooted - symmetric == _ARITY * selected
 
 
 def test_s6_mass_fourteen_exact_stabilizer_order_spectrum() -> None:

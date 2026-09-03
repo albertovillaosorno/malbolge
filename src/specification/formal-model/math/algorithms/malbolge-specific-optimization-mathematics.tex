@@ -1914,6 +1914,31 @@ Thus every trivial-$S_6$ residual orbit contributes six rooted-trivial views,
 but dense unrooted rank still requires deleting the symmetric rooted views and
 selecting one canonical root from each remaining six-tuple.
 
+Let $G\leq S_6$ be the exact stabilizer of one residual assignment. Its distinct
+rooted quotient classes are indexed by the vertex orbits of $G$, and a rooted
+class has trivial rooted $S_5$ stabilizer exactly when the corresponding point
+stabilizer $G_v$ is trivial. Inspection of all fifty-six subgroup-conjugacy
+classes gives
+\begin{equation}
+  \fitmath{%
+    \bigl(\#\{G\text{-vertex orbits with }G_v=1\}=6\bigr)
+      \Longleftrightarrow G=1.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-trivial-root-selector}
+\end{equation}
+Consequently every trivial-$S_6$ residual class has six distinct values under
+the dense rooted-trivial rank, and their minimum selects one unique canonical
+root. The selected-orbit counts through mass fourteen are
+\[
+  \fitmath{%
+    (0,0,0,1,140,2862,35852,342833,2736824,19096210,119677202,
+     685705809,3636776469,18019551259,84008008841).
+  }
+\]
+This is a sparse canonical selector, not yet a dense unrooted rank.
+Densification still requires counting selected minima below an arbitrary
+rooted-rank prefix.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For
