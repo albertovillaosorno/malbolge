@@ -299,7 +299,15 @@ Composing the repeated-six vertex pair gives 2,171 complete mass-14 classes.
 Exhaustive rank/unrank and direct stabilizer order 24 checks cover every
 admitted mass through 14.
 
-Dense exact S3 and exact transposition ranks remain open.
+The exact S3 family is now constructive as well. A weighted stabilizer chain
+ranks the free external-S3 quotient directly, without materializing the
+6,973,200 raw S3-fixed assignments at residual mass 14. The 2,011 exact-S4
+representatives map to distinct free ranks; deleting them leaves 1,053,877
+residual classes. Sparse inverse lifting and the repeated-six vertex prefix give
+1,067,872 complete mass-14 classes. Exhaustive ranks reach mass 7 and sampled
+ranks plus direct stabilizer-order 6 checks reach mass 14.
+
+Dense exact transposition rank remains open.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving

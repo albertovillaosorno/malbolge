@@ -1639,6 +1639,28 @@ mass-fourteen interval of $2171$ classes. Exhaustive residual and complete
 rank/unrank through total mass fourteen, together with direct endpoint scans,
 confirms every retained residual representative has stabilizer order $24$.
 
+The exact-$S_3$ extension uses the same sparse-exclusion construction at the
+next level. A weighted stabilizer chain under the external $S_3$ gives dense
+free ranks without enumerating all $6973200$ raw $S_3$-fixed assignments at
+residual mass fourteen. Let $Y_r^{(S_4)}$ be the sorted set of free ranks
+induced by exact-$S_4$ representatives. The mapped ranks are distinct and
+$|Y_r^{(S_4)}|=E_r^{(S_4)}$, so
+\begin{equation}
+  \fitmath{%
+    \rho_r^{(S_3)}(j)=j-
+      |\{y\in Y_r^{(S_4)}:y<j\}|,
+    \qquad
+    C_r^{(S_3)}=F_r^{(S_3)}-|Y_r^{(S_4)}|.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-full-s3-stabilizer-ranking}
+\end{equation}
+At residual mass fourteen this gives $1055888-2011=1053877$. Inversion lifts
+an exact rank across the sparse excluded set and applies the free stabilizer
+chain inverse. Prefixing by the repeated-six vertex pair yields $1067872$
+complete mass-fourteen classes. Exhaustive residual checks through mass seven
+and sampled residual and complete ranks through mass fourteen include direct
+endpoint scans confirming stabilizer order $6$.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For
