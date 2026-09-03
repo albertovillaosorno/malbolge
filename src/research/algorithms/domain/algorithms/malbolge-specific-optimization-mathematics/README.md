@@ -482,6 +482,13 @@ free triple classes. Composition yields 353,197,784 residual and 353,396,004
 complete mass-14 classes, raising pair-first residual coverage to
 83,499,960,937.
 
+The full `S3×S2` pair branch on vertex orbits `(3,2,1)` is constructive as
+well. Its self-normalizing stabilizer gives 2,102 pair classes at pair mass 14.
+The triple action has H-orbit sizes `(1,1,3,3,6,6)`; subgroup-lattice suffix
+inversion gives 67,715,928 free triple classes. Composition contributes
+229,892,678 residual and 230,043,638 complete mass-14 classes, raising pair-first
+residual coverage to 83,729,853,615.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
