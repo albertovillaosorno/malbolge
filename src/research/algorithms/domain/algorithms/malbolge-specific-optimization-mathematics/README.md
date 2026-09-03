@@ -440,6 +440,13 @@ acts on the twenty triples as eight fixed coordinates and six swapped pairs.
 Ranking unequal swapped six-vectors removes that last involution, giving
 15,051,537,432 residual classes and 15,053,237,024 complete classes at mass 14.
 
+The next pair-symmetric branch is also constructive. Pair graphs with exact
+`S2×S2` stabilizer on two disjoint endpoint pairs contribute 169,250 pair
+classes at pair mass 14. Their twenty triples split into four fixed coordinates,
+four two-coordinate H-orbits, and two regular four-coordinate H-orbits. A
+five-subgroup stabilizer chain ranks the free V4 triple quotient, yielding
+1,953,448,034 residual and 1,953,917,146 complete mass-14 classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
