@@ -1472,20 +1472,29 @@ all eleven residual Young quotients reconstruct the full Burnside sequence
 through mass fifteen, including $1179940653635$ classes at $k=14$ and
 $6113218719516$ at $k=15$.
 
-The mass-fifteen extension can be certified without changing the current
-fourteen-trit target profile. Ordering the eleven Young partitions as
-$(1^6),(2,1^4),(2^2,1^2),(2^3),(3,1^3),(3,2,1),(3^2),(4,1^2),(4,2),(5,1),(6)$,
-their exact mass-fifteen contributions are
+The mass-fifteen extension is certified without changing the current
+fourteen-trit target profile. Order the eleven Young partitions by
 \[
-  (947337096,61102879048,252977228906,75711510622,535644842010,
-   999783370710,151067487866,1582177016210,606213169660,
-   1472680693792,374913183596).
+  \fitmath{%
+    (1^6),(2,1^4),(2^2,1^2),(2^3),(3,1^3),(3,2,1),(3^2),
+    (4,1^2),(4,2),(5,1),(6).
+  }
 \]
-Their sum agrees with the independent Burnside total. Moreover, no Young
-partition first appears at mass fifteen. In the all-equal $(6)$ residual
-stratum, let $\operatorname{Supp}(\Sigma_r)$ be the set of populated exact
-stabilizer signatures (order, normalizer, vertex-orbit sizes, and residual-label
-orbit sizes). Exact subgroup-lattice inversion gives
+Their exact mass-fifteen contributions in that order are
+\[
+  \fitmath{%
+    (947337096,61102879048,252977228906,75711510622,535644842010,
+    999783370710,151067487866,1582177016210,606213169660,
+    1472680693792,374913183596).
+  }
+\]
+Their sum agrees with the independent Burnside total, and no Young partition
+first appears at mass fifteen.
+
+In the all-equal $(6)$ residual stratum, let $\operatorname{Supp}(\Sigma_r)$
+be the populated exact stabilizer signatures: group order, normalizer order,
+vertex-orbit sizes, and residual-label orbit sizes. Exact subgroup-lattice
+inversion gives
 \begin{equation}
   \fitmath{%
     \left|\mathcal J^{(6)}_{15}/S_6\right|=6113218719516,
@@ -1495,10 +1504,9 @@ orbit sizes). Exact subgroup-lattice inversion gives
   }
   \label{eq:optimization-crazy-sextuple-s6-mass-fifteen-stability}
 \end{equation}
-Thus the step from mass fourteen to fifteen changes multiplicities, not the
-populated stabilizer-type support. The quotient grows by a factor
-$6113218719516/1179940653635\approx5.180954$, while the ordered stars-and-bars
-count grows by exactly $5.2$.
+Thus mass fifteen changes multiplicities, not the populated stabilizer support.
+The quotient grows by approximately $5.180954$, while the ordered
+stars-and-bars count grows by exactly $5.2$.
 
 For the final all-equal vertex stratum, let $L$ be either all fifty-two
 residual labels, the thirty weight-two/four labels, or the twenty weight-three
