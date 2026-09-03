@@ -351,6 +351,19 @@ extension generates those ranks exactly. Sparse deletion leaves 35,870,019
 residual classes, and the repeated-six vertex prefix gives 35,953,167 complete
 mass-14 classes.
 
+The independent-pair `S2-times-S2` stabilizer is constructive too. For
+`H=< (23),(45) >`, the normalizer again has order 16 but its quotient has order
+4 and only five subgroups. The H-fixed residual coordinates have orbit spectrum
+`1^12 2^12 4^4`; grouping fixed coordinates by weight gives ten rank blocks.
+The normalizer-free mass-14 quotient has 27,210,496 classes.
+
+Exactly 211,177 free ranks have nonnormalizing extensions: 208,432 exact
+`S3-times-S2` states with vertex orbit type `(3,2,1)` and 2,745 exact
+`S3-times-S3` states with type `(3,3)`. Minimal one-generator extensions are
+discovered through `K g K` double-coset representatives. Sparse deletion leaves
+26,999,319 residual classes, and the repeated-six vertex prefix gives
+27,158,479 complete mass-14 classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
