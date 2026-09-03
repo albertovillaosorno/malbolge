@@ -469,8 +469,10 @@ The pair triple-transposition branch is constructive too. Its exact pair counts
 end at 71,863. The involution has no fixed triples: all twenty triple
 coordinates form ten swapped pairs. Ranking unequal ten-vectors gives
 409,398,880 free triple classes at mass 14 and composes to 426,883,040 residual
-and 426,929,360 complete classes. The seven constructive pair-first branches
-therefore cover 83,146,763,153 of 84,008,008,841 trivial-S6 residual classes.
+and 426,929,360 complete classes.
+
+The seven constructive pair-first branches therefore cover 83,146,763,153 of
+84,008,008,841 trivial-S6 residual classes.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
