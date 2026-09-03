@@ -1976,6 +1976,26 @@ scalars and twenty labelled weight-three coordinates, and $C_{14}$ prefixes the
 two-component vertex value repeated six times. Exhaustive pair ranks reach mass
 five and sampled pair, residual, and complete ranks reach mass fourteen.
 
+The dominant pair-symmetric branch has exact pair-graph stabilizer
+$H=\langle(01)\rangle$. For each subgroup $L\leq S_6$, define
+$c_H(L)=\sum_{K\leq L,\,K\sim H}\mu(K,L)$. Target-Mobius suffix counts rank
+these pair graphs densely. On the twenty triple coordinates, $H$ has eight fixed
+coordinates and six swapped pairs, so unequal swapped six-vectors give the
+free-$H$ triple quotient. Hence
+\begin{equation}
+  \fitmath{%
+    F^H_G(R,w)=\frac{|H|}{|G|}\sum_{L\leq G}c_H(L)
+      \operatorname{Fix}_L(R,w),\qquad
+    (Q^H_{14},B^H_{14},C^H_{14})
+      =(5546516,15051537432,15053237024).
+  }
+  \label{eq:optimization-crazy-sextuple-s6-pair-transposition-ranking}
+\end{equation}
+Here $B^H$ composes the pair rank with two fixed scalars and free triple ranks,
+while $C^H$ also prefixes the two-component vertex value repeated six times.
+Exact pair ranks are exhausted through mass five and sampled pair, triple,
+residual, and complete ranks invert through mass fourteen.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For

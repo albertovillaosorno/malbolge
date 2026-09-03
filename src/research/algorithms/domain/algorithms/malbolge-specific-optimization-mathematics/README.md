@@ -433,6 +433,13 @@ six times gives 63,278,926,984 complete classes. The remaining
 20,731,081,125 residual trivial-S6 classes are exactly those where weight-3
 labels must break a nontrivial pair-graph stabilizer.
 
+The dominant pair-symmetric branch is now constructive as well. Exact
+transposition pair graphs use target-Mobius suffix counts over the S6 subgroup
+lattice and give 5,546,516 pair classes at pair mass 14. Their transposition
+acts on the twenty triples as eight fixed coordinates and six swapped pairs.
+Ranking unequal swapped six-vectors removes that last involution, giving
+15,051,537,432 residual classes and 15,053,237,024 complete classes at mass 14.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
