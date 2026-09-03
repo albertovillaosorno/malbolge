@@ -232,6 +232,14 @@ Residual rank/unrank is checked through mass 12, the largest residual mass
 reachable after a `(4,2)` vertex prefix, and the complete stratum rank reaches
 mass 14. Only top-level `(6)` remains without dense rank/unrank.
 
+Its 52 residual labels now also have an exact rooted-S5 decomposition. At residual mass 14 there are
+85,431,118,919 unrooted S6 classes and 511,090,971,734 classes with one
+distinguished endpoint, so the six-root deficit is 1,495,741,780. The paired
+weight-two/four layer has deficit 6,635,545 and the weight-three layer has
+deficit 92,506. These are weighted missing rooted-view multiplicities, not
+symmetric-class counts; an exact stabilizer spectrum is still required before
+canonical-root ranking can be completed.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has

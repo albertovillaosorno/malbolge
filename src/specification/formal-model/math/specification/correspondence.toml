@@ -734,6 +734,16 @@ mechanism = "hamming-weight-layer-complement-pair-factorization-plus-sorted-six-
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_decomposition.py::test_s6_layers_have_exact_complement_pair_geometry", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_decomposition.py::test_s6_vertex_sequences_induce_all_eleven_young_stabilizers", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_decomposition.py::test_s6_decomposition_matches_direct_small_orbits", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_decomposition.py::test_s6_decomposition_matches_full_burnside_through_mass_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-full-rooted-decomposition"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-full-rooted-decomposition"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the top-level all-equal-vertex S6 sextuple residual domain at ambiguity mass 0 through 14, together with its full 52-label, paired weight-two/four 30-label, and weight-three 20-label invariant families"
+mechanism = "compare-full-S6-Burnside-classes-with-the-S5-quotient-obtained-by-distinguishing-one-endpoint-and-record-six-times-unrooted-minus-rooted-as-the-weighted-root-view-deficit-without-identifying-that-deficit-as-a-symmetric-class-count"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_rooted_decomposition.py::test_s6_full_rooted_groups_and_layers_have_exact_sizes", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_rooted_decomposition.py::test_s6_full_rooted_counts_match_reviewed_full_sequences", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_rooted_decomposition.py::test_s6_full_rooted_layer_deficits_match_reviewed_values", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_rooted_decomposition.py::test_s6_full_root_deficit_is_not_a_class_count_identity", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_decomposition.py::test_s6_decomposition_matches_full_burnside_through_mass_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-distinct-vertex-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-distinct-vertex-ranking"
