@@ -323,11 +323,19 @@ Sparse inverse lifting and the repeated-six vertex prefix give 1,067,872
 complete mass-14 classes. Exhaustive ranks reach mass 7 and sampled ranks plus
 direct stabilizer-order 6 checks reach mass 14.
 
-The exact transposition outer count is now fixed as well. Lifting the free and
-exact residual sequences through the repeated-six vertex pair gives
-1,357,132,447 free complete mass-14 classes and 1,356,064,575 exact classes.
-Their difference is 1,067,872, exactly the complete exact-S3 interval above.
-Dense exact transposition rank remains open.
+The exact transposition rank is now constructive as well. Four possible S3
+extensions witness every non-normalizing exception; two distinct witnesses
+generate an S4 containing a nontrivial normalizer symmetry, so a normalizer-free
+class has at most one witness. Processing the eight invariant blocks in order
+`1,6,0,7,2,4,3,5` leaves at most three live equality constraints per witness.
+
+A memoized suffix count stores only those crossing values, performs fixed-space
+inversion over the 30 current S4 subgroups, and subtracts the S3-witness suffix
+count from the normalizer-free suffix count. The resulting dense residual rank
+contains 1,354,879,279 mass-14 classes. Prefixing the two-component vertex value
+repeated six times gives 1,356,064,575 complete classes. Boundary/interior
+rank/unrank checks reach mass 14 without materializing the 1,053,877 scattered
+S3 exclusion ranks.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving

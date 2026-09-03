@@ -844,6 +844,16 @@ mechanism = "for-each-total-mass-prefix-by-the-scalar-mass-of-the-two-component-
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_outer_decomposition.py::test_transposition_outer_free_and_exact_counts_are_exact", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_outer_decomposition.py::test_transposition_outer_difference_is_exact_s3_interval", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s3_stabilizer_ranking.py::test_exact_s3_complete_counts_match_outer_prefix", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_ranking.py::test_transposition_free_minus_exact_is_s3_sequence"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-full-transposition-exact-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-full-transposition-exact-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the exact single-transposition stabilizer classes inside the top-level all-equal S6 sextuple stratum at residual and complete ambiguity mass 0 through 14, after quotienting H-fixed assignments by the S4 normalizer quotient and excluding all S3 extensions"
+mechanism = "process-the-eight-S4-invariant-H-orbit-blocks-in-the-frontier-minimizing-order-1-6-0-7-2-4-3-5-retain-only-the-at-most-three-live-S3-equality-values-per-witness-count-witness-extending-suffixes-by-fixed-space-inversion-over-the-30-current-S4-subgroups-subtract-those-from-normalizer-free-suffix-counts-and-use-the-exact-suffix-counts-as-dense-rank-prefix-weights-before-composing-the-repeated-six-vertex-pair"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_ranking.py::test_transposition_s3_witnesses_are_unique_on_free_classes", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_ranking.py::test_transposition_exact_frontier_and_counts_are_exact", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_ranking.py::test_transposition_exact_rank_exhausts_small_domains", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_ranking.py::test_transposition_exact_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_transposition_ranking.py::test_transposition_complete_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_stabilizer_spectrum.py::test_s6_mass_fourteen_exact_stabilizer_order_spectrum"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-distinct-vertex-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-distinct-vertex-ranking"
