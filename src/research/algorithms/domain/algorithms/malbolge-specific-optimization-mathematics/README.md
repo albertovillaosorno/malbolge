@@ -452,6 +452,13 @@ end at 171,252, while the involution acts on the twenty triples as four fixed
 coordinates and eight swapped pairs. The same unequal-vector involution rank
 gives 996,191,056 residual and 996,310,736 complete mass-14 classes.
 
+The three-pair V4 branch is constructive as well. This is the order-four
+`(2,2,2)` subgroup class containing a transposition, hence the class with
+normalizer 16 rather than the other V4 class with normalizer 48. Its pair rank
+ends at 37,160 classes. The twenty triples split into six two-coordinate and two
+four-coordinate H-orbits; the five-subgroup stabilizer chain yields 862,445,920
+residual and 862,718,688 complete mass-14 classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
