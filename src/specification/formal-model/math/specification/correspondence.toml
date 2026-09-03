@@ -924,6 +924,16 @@ mechanism = "act-with-each-of-the-56-S6-subgroup-types-on-the-15-K6-edges-count-
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_stabilizer_spectrum.py::test_s6_pair_trivial_factor_covers_most_free_mass_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_stabilizer_spectrum.py::test_s6_mass_fourteen_exact_stabilizer_order_spectrum"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-pair-trivial-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-pair-trivial-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the pair-trivial branch of the top-level all-equal S6 residual domain through mass 14, including dense pair-graph rank, labeled fixed/triple composition, and the repeated-six vertex prefix, while excluding pair-symmetric graphs whose stabilizer must be broken by weight-three labels"
+mechanism = "order-two-component-K6-edge-colors-by-mass-and-first-component-process-canonical-color-block-orbits-under-the-current-S6-subgroup-count-free-suffixes-by-Mobius-inversion-over-all-1455-actual-S6-subgroups-rank-colors-by-combinadics-compose-with-two-fixed-scalars-and-twenty-labeled-weight-three-coordinates-and-prefix-the-two-component-vertex-value-repeated-six-times"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_pair_trivial_ranking.py::test_k6_pair_trivial_counts_match_independent_lattice_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_pair_trivial_ranking.py::test_k6_pair_trivial_rank_exhausts_masses_four_through_six", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_pair_trivial_ranking.py::test_k6_pair_trivial_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_pair_trivial_ranking.py::test_pair_trivial_residual_and_complete_counts_match_factorization", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_pair_trivial_ranking.py::test_pair_trivial_composed_ranks_roundtrip_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-distinct-vertex-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-distinct-vertex-ranking"

@@ -61,7 +61,7 @@ The first verified reduction slice is positive for the existing CPU VM table
 implementation.
 <!-- jig-ignore-next-line: canonical path or identifier is indivisible -->
 `src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex`
-formalizes one hundred eighty-six exact reductions: classic five-trit crazy
+formalizes one hundred eighty-seven exact reductions: classic five-trit crazy
 factorization,
 general profile-width crazy chunking, exact parametric five-trit padding and
 uniform chunk factorization, exact checked profile-width projection laws and

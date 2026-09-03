@@ -420,12 +420,18 @@ only the fifteen K6 edges carrying the weight-2 label count and its weight-4
 complement count. Exact S6 subgroup inversion for these pair-valued edges gives
 105,908,244 trivial-stabilizer pair graphs at pair mass 14.
 
+The pair-trivial factor is now constructive. Canonical color blocks on the
+fifteen K6 edges use subgroup-Mobius suffix counts over all 1,455 actual S6
+subgroups; two-component edge colors use increasing-mass combinadics. This gives
+dense rank/unrank for all 105,908,244 pair-trivial graphs at pair mass 14.
+
 Whenever this pair graph is already S6-trivial it fixes the endpoint orientation
-completely, so the two fixed scalars and twenty weight-3 labels may be ranked as
-ordinary labeled compositions. Summing all fixed/pair/triple mass splits through
-14 gives 63,276,927,716 full residual trivial-S6 classes at mass 14. This is
-75.32% of 84,008,008,841; the remaining 20,731,081,125 classes are exactly the
-cases where weight-3 labels must break a nontrivial pair-graph stabilizer.
+completely, so the two fixed scalars and twenty weight-3 labels are ordinary
+labeled compositions. Dense mixed-radix composition gives 63,276,927,716
+residual classes at mass 14. Prefixing the two-component vertex value repeated
+six times gives 63,278,926,984 complete classes. The remaining
+20,731,081,125 residual trivial-S6 classes are exactly those where weight-3
+labels must break a nontrivial pair-graph stabilizer.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving

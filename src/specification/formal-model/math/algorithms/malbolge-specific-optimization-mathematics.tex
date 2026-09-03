@@ -1958,6 +1958,23 @@ Thus $63276927716$ of the $84008008841$ trivial-$S_6$ residual mass-fourteen
 classes already have a trivial pair graph. The remaining $20731081125$ require
 the weight-three labels to break a nontrivial pair-graph stabilizer.
 
+The pair-trivial branch also admits dense rank/unrank. Order distinct pair-valued
+edge colors by mass and first component, then process canonical edge-color blocks
+under the current subgroup $G\leq S_6$. For remaining edge set $R$ and ordered
+block-size suffix $w$, use the subgroup-lattice Mobius count
+\begin{equation}
+  \fitmath{%
+    F_G(R,w)=\frac{1}{|G|}\sum_{H\leq G}\mu_{S_6}(H)
+      \operatorname{Fix}_H(R,w),\qquad
+    (Q_{14},R_{14},C_{14})=(105908244,63276927716,63278926984).
+  }
+  \label{eq:optimization-crazy-sextuple-s6-pair-trivial-ranking}
+\end{equation}
+Here $Q_{14}$ is the pair-graph interval, $R_{14}$ also includes the two fixed
+scalars and twenty labelled weight-three coordinates, and $C_{14}$ prefixes the
+two-component vertex value repeated six times. Exhaustive pair ranks reach mass
+five and sampled pair, residual, and complete ranks reach mass fourteen.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For
