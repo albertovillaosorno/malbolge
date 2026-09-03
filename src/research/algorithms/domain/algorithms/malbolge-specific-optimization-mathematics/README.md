@@ -289,7 +289,15 @@ classes; subtracting the exact S4 count 2,011 leaves exactly 55, the already
 constructive point-stabilizer S5 residual count. This identity also holds at
 every residual mass through 14.
 
-Dense exact S4, exact S3, and exact transposition ranks remain open.
+The exact S4 family is now constructive. At each residual mass, the free
+external-S2 representatives are ordered lexicographically and the mapped
+point-S5 representatives occupy distinct free ranks. Deleting those sparse
+ranks gives dense exact-S4 rank/unrank; at residual mass 14 it removes 55 from
+2,066 and leaves 2,011 classes. Composing the repeated-six vertex pair gives
+2,171 complete mass-14 classes. Exhaustive rank/unrank and direct stabilizer
+order 24 checks cover every admitted mass through 14.
+
+Dense exact S3 and exact transposition ranks remain open.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving

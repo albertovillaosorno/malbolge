@@ -1618,6 +1618,27 @@ Here $S_5$ is the point stabilizer already ranked above. At residual mass
 fourteen the difference is $55$, since $2066-2011=55$. The identity holds at
 every mass through fourteen and is a count decomposition only.
 
+The exact-$S_4$ extension admits a dense sparse-exclusion rank. Order the free
+external-$S_2$ representatives lexicographically at each residual mass $r$, and
+let $X_r^{(S_5)}$ be the sorted set of their ranks induced by exact point-$S_5$
+states. These mapped ranks are distinct and
+$|X_r^{(S_5)}|=E_r^{(S_5)}$. For a free rank $j\notin X_r^{(S_5)}$, define
+\begin{equation}
+  \fitmath{%
+    \rho_r^{(S_4)}(j)=j-
+      |\{x\in X_r^{(S_5)}:x<j\}|,
+    \qquad
+    C_r^{(S_4)}=F_r^{(S_4)}-|X_r^{(S_5)}|.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-full-s4-stabilizer-ranking}
+\end{equation}
+Selecting the corresponding nonexcluded free rank inverts the residual map.
+At residual mass fourteen, $2066-55=2011$. Prefixing by the mass and ordinary
+two-part rank of the vertex value repeated six times gives a complete
+mass-fourteen interval of $2171$ classes. Exhaustive residual and complete
+rank/unrank through total mass fourteen, together with direct endpoint scans,
+confirms every retained residual representative has stabilizer order $24$.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For

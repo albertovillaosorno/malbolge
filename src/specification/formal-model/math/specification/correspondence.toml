@@ -804,6 +804,16 @@ mechanism = "collapse-the-52-labels-to-the-S4-orbit-size-spectrum-1-power-4-4-po
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s4_extension_decomposition.py::test_s4_extension_geometry_is_exact", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s4_extension_decomposition.py::test_s4_extension_free_counts_match_reviewed_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s4_extension_decomposition.py::test_s4_extension_free_minus_exact_is_point_s5_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s5_stabilizer_ranking.py::test_point_s5_exact_residual_counts_match_spectrum", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_stabilizer_spectrum.py::test_s6_mass_fourteen_exact_stabilizer_order_spectrum"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-full-s4-stabilizer-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-full-s4-stabilizer-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the exact S4-on-four-vertices automorphism family inside the top-level all-equal S6 stratum at residual and total ambiguity mass 0 through 14, with the external S2 normalizer quotient and point-stabilizer S5 extensions removed"
+mechanism = "enumerate-the-at-most-2066-free-external-S2-S4-fixed-representatives-map-each-already-exact-point-S5-residual-state-to-its-distinct-free-rank-delete-those-sparse-ranks-and-prefix-the-result-by-the-two-component-vertex-value-repeated-six-times"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s4_stabilizer_ranking.py::test_exact_s4_exclusion_map_matches_point_s5_counts", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s4_stabilizer_ranking.py::test_exact_s4_residual_states_have_stabilizer_order_24", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s4_stabilizer_ranking.py::test_exact_s4_residual_rank_exhausts_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s4_stabilizer_ranking.py::test_exact_s4_complete_counts_match_outer_prefix", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s4_stabilizer_ranking.py::test_exact_s4_complete_rank_exhausts_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_s4_extension_decomposition.py::test_s4_extension_free_minus_exact_is_point_s5_sequence"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-distinct-vertex-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-distinct-vertex-ranking"
