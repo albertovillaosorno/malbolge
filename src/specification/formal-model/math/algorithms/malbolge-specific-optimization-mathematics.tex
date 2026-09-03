@@ -1529,6 +1529,31 @@ rank/unrank covers every total mass through fourteen, where the interval has
 $42$ classes. Direct endpoint permutation confirms every produced residual
 state is fixed by all $720$ elements of $S_6$.
 
+Let $H\cong S_5$ be the stabilizer of one distinguished endpoint. Its eight
+residual label orbits have weights $(1,1,5,5,10,10,10,10)$. Since $H$ is
+maximal and self-normalizing in $S_6$, an $H$-fixed assignment has exact
+stabilizer $H$ precisely when it is not fixed by a larger endpoint group. Let
+$A_r^{(S_5)}$ be the lexicographically ordered exact-$H$ weighted assignments
+of residual mass $r$, and let $E_r^{(S_5)}=|A_r^{(S_5)}|$. Through mass
+fourteen,
+\[
+  (E_0^{(S_5)},\ldots,E_{14}^{(S_5)})
+   =(0,0,0,0,0,2,4,6,8,10,19,28,37,46,55).
+\]
+For repeated-six vertex-pair mass $q$, residual mass $r=k-6q$, pair rank $i_q$,
+and exact residual index $j_r$, define
+\begin{equation}
+  \fitmath{%
+    \rho_k^{(6,S_5)}(v,u)=
+      \sum_{a<q}(a+1)E_{k-6a}^{(S_5)}
+      +i_q(v)E_r^{(S_5)}+j_r(u).
+  }
+  \label{eq:optimization-crazy-sextuple-s6-full-s5-stabilizer-ranking}
+\end{equation}
+The exact filter, prefix, and inverse are exhausted through total mass fourteen;
+the final interval has $71$ classes. Direct full-$S_6$ scans confirm every
+retained residual assignment has stabilizer order $120$.
+
 The distinct-vertex stratum has trivial Young stabilizer and therefore admits a
 dense rank immediately. Let $D_a$ be the lexicographically ordered set of six
 strictly distinct sorted vertex pair-values with scalar mass $a$. For
