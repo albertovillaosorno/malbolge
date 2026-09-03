@@ -30,7 +30,7 @@ force or stochastic optimization begins.
 
 **Current implementation.**
 
-- The proved slices now formalize one hundred ninety-three exact reductions:
+- The proved slices now formalize one hundred ninety-four exact reductions:
   classic five-trit
   crazy factorization, profile-width crazy chunking, exact zero-padded 15-trit
   crazy projection and uniform three-lookup factorization for semantic widths
@@ -116,8 +116,8 @@ force or stochastic optimization begins.
   unique-minimum rooted selector for full-S6 trivial classes plus an exact
   pair-trivial K6-edge factor with dense rank/unrank covering over three
   quarters of the free stratum plus dense exact-transposition and
-  S2-times-S2, double-transposition, three-pair-V4, S3, and triple-transposition
-  pair-graph/triple-breaking branches,
+  S2-times-S2, double-transposition, three-pair-V4, S3, triple-transposition,
+  and C2-cubed pair-graph/triple-breaking branches,
   an exact
   S3-extension/S4-exception count decomposition plus an
   exact S4-
@@ -179,7 +179,7 @@ force or stochastic optimization begins.
   reductions are consumed by runtime paths; the one hundred one search
   reductions, two padded-geometry equivalences, and eleven width-certification
   results carry no inherited runtime speedup claim.
-- One hundred ninety-three optimization research equations are registered in
+- One hundred ninety-four optimization research equations are registered in
   `src/specification/formal-model/math/specification/correspondence.toml`;
   exhaustive classic table tests and
   current-profile scalar/runtime fixtures provide the declared correspondence.

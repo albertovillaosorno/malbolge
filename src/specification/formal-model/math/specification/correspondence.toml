@@ -994,6 +994,16 @@ mechanism = "target-Mobius-inversion-over-all-conjugate-triple-transposition-sub
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_triple_transposition_ranking.py::test_pair_triple_transposition_counts_match_lattice", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_triple_transposition_ranking.py::test_pair_triple_transposition_rank_exhausts_small_masses", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_triple_transposition_ranking.py::test_pair_triple_transposition_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_triple_transposition_ranking.py::test_pair_triple_transposition_triple_count_matches_branch", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_triple_transposition_ranking.py::test_triple_transposition_triple_rank_matches_free_counts", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_triple_transposition_ranking.py::test_triple_transposition_branch_rank_roundtrips_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-pair-c2-cubed-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-pair-c2-cubed-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the pair-graph exact C2-cubed branch of the top-level all-equal S6 residual domain through mass 14, for the unique order-eight endpoint-orbit-(2,2,2) subgroup class, including dense pair-graph rank, dense free-H rank on the twenty triples, two fixed scalars, and the repeated-six vertex prefix"
+mechanism = "target-Mobius-inversion-over-all-conjugates-of-the-order-eight-C2-cubed-subgroup-generated-by-three-disjoint-transpositions-during-canonical-K6-edge-color-block-ranking-then-process-seven-H-invariant-triple-blocks-of-sizes-two-two-two-two-two-two-eight-with-subgroup-lattice-stabilizer-chain-and-Mobius-counted-trivial-stabilizer-suffixes-compose-with-two-fixed-scalars-and-prefix-the-two-component-vertex-value-repeated-six-times"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_c2_cubed_ranking.py::test_pair_c2_cubed_counts_match_independent_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_c2_cubed_ranking.py::test_pair_c2_cubed_rank_exhausts_masses_three_through_five", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_c2_cubed_ranking.py::test_pair_c2_cubed_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_c2_cubed_ranking.py::test_pair_c2_cubed_triple_geometry_and_counts", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_c2_cubed_ranking.py::test_pair_c2_cubed_branch_rank_roundtrips_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-distinct-vertex-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-distinct-vertex-ranking"
