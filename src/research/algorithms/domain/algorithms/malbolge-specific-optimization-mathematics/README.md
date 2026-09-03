@@ -293,9 +293,11 @@ The exact S4 family is now constructive. At each residual mass, the free
 external-S2 representatives are ordered lexicographically and the mapped
 point-S5 representatives occupy distinct free ranks. Deleting those sparse
 ranks gives dense exact-S4 rank/unrank; at residual mass 14 it removes 55 from
-2,066 and leaves 2,011 classes. Composing the repeated-six vertex pair gives
-2,171 complete mass-14 classes. Exhaustive rank/unrank and direct stabilizer
-order 24 checks cover every admitted mass through 14.
+2,066 and leaves 2,011 classes.
+
+Composing the repeated-six vertex pair gives 2,171 complete mass-14 classes.
+Exhaustive rank/unrank and direct stabilizer order 24 checks cover every
+admitted mass through 14.
 
 Dense exact S3 and exact transposition ranks remain open.
 
