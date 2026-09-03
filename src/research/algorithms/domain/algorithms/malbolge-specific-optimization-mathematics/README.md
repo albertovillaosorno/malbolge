@@ -395,12 +395,14 @@ edge assignments with trivial residual point stabilizer.
 The resulting dense rooted interval has 505,481,889,514 mass-14 classes. The
 seven unordered Young-partition contributions are 36,138,820,806;
 139,829,538,243; 58,148,591,048; 148,170,968,754; 64,809,370,672;
-55,291,253,944; and 3,093,346,047. Independent S6 stabilizer inversion gives
-the same rooted-trivial sequence and shows that 1,433,836,468 mass-14 rooted
-views come from nontrivial S6 stabilizers. Removing those leaves
-504,048,053,046 views, exactly six per each of the 84,008,008,841 trivial-S6
-classes. Dense unrooted trivial-S6 rank still requires a canonical one-of-six
-root selector; rooted-trivial rank alone does not supply that selector.
+55,291,253,944; and 3,093,346,047.
+
+Independent S6 stabilizer inversion gives the same rooted-trivial sequence and
+shows that 1,433,836,468 mass-14 rooted views come from nontrivial S6
+stabilizers. Removing those leaves 504,048,053,046 views, exactly six per each
+of the 84,008,008,841 trivial-S6 classes. Dense unrooted trivial-S6 rank still
+requires a canonical one-of-six root selector; rooted-trivial rank alone does
+not supply that selector.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
