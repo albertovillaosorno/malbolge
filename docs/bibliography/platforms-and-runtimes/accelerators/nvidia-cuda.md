@@ -22,7 +22,9 @@ dependency of the compiler.
 The official NVIDIA Programming Guide is the primary source for the CUDA
 programming model, GPU execution concepts, and memory hierarchy. The official
 CUDA Driver API is the primary source for low-level runtime interfaces used by
-the repository adapter.
+the repository adapter. The official Best Practices Guide is the primary source
+for constant-memory access and warp-level performance behavior used by
+structural memory diagnostics.
 
 ## Identity And Version
 
@@ -64,6 +66,12 @@ terms into the repository MIT license.
   shared-memory size. The repository uses the actual 256-thread launch and zero
   dynamic shared bytes, so the result is theoretical launch capacity rather than
   observed runtime utilization.
+- CUDA Best Practices Guide 13.3 states that constant memory is cached and that
+  different constant-memory addresses requested by threads in one warp are
+  serialized, with cost scaling with the number of unique addresses. It also
+  identifies 32 as the warp size on current GPUs. Repository address-fanout
+  evidence uses those statements only to model serialization pressure; it does
+  not claim physical cache hit or miss counts.
 
 ### Unresolved
 
@@ -78,5 +86,7 @@ scaling claim is accepted without repository measurements on identified devices.
   Driver API 13.3.1 execution-control reference, accessed 2026-09-04.
 - <https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html> - CUDA
   Driver API 13.3.1 function-attribute enumeration, accessed 2026-09-04.
+- <https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/> - CUDA C++ Best
+  Practices Guide 13.3 constant-memory and warp guidance, accessed 2026-09-04.
 - <https://developer.download.nvidia.com/compute/cuda/redist/> - accessed
   2026-08-05.

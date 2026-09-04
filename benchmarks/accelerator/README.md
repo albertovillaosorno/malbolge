@@ -118,6 +118,22 @@ Run with:
   -m benchmarks.accelerator.profile_width_crazy_geometry_throughput
 ```
 
+`crazy_lookup_address_fanout.py` applies the exact five-trit lookup-address
+formula to the existing `classic-crazy-target-full-domain-multiposition-v1`
+search order. It compares all 59,049 ordinary candidates with the production
+exact 1,024-position projection and reports distinct constant-table addresses
+requested by each 32-lane CUDA warp for the low and middle lookup.
+This is deterministic serialization-pressure evidence from the CUDA programming
+model, not a hardware cache hit/miss measurement, and the current candidate
+search kernel remains tritwise.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.crazy_lookup_address_fanout
+```
+
 `profile_run_phase_profile.py` measures the same current-profile workload with
 adapter diagnostics split into validation/planning, host construction,
 allocation, upload, kernel+sync, download, full result decode, and release. It
