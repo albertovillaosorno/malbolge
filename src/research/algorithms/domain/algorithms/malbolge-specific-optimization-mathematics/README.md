@@ -520,6 +520,11 @@ normalizer order 48. Pair rank ends at 642 and five four-coordinate triple
 blocks yield 102,118,992 free classes. Composition contributes 17,877,258
 residual and 17,881,014 complete mass-14 classes, leaving 41,992,770.
 
+The next `(4,2)` pair branch is the `V4` class with three nonidentity
+involutions and normalizer order 16. Its pair rank ends at 1,208 classes, and
+triple blocks `(2,2,4,4,4,4)` yield 204,669,024 free classes. Composition adds
+7,716,564 residual and 7,716,836 complete mass-14 classes, leaving 34,276,206.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
