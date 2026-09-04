@@ -503,8 +503,10 @@ twenty triples split as `(12,4,4)` under a hard-block-first rank: the
 twelve-coordinate block reuses the proved pair-valued K4 edge rank, then the
 two four-coordinate blocks finish the stabilizer chain. This gives 16,826,295
 free triple classes, 76,201,929 residual classes, and 76,320,371 complete
-mass-14 classes. Pair-first residual coverage therefore rises to 83,922,092,294,
-leaving 85,916,547 trivial-S6 residual classes.
+mass-14 classes.
+
+Pair-first residual coverage therefore rises to 83,922,092,294, leaving
+85,916,547 trivial-S6 residual classes.
 
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving

@@ -125,7 +125,8 @@ trivial-stabilizer rank/unrank plus an exact unique-minimum rooted selector for
 full-S6 trivial classes plus an exact pair-trivial K6-edge factor covering over
 three quarters of the mass-fourteen free stratum plus dense pair-transposition,
 pair-S2-times-S2, pair-double-transposition, pair-three-pair-V4, pair-S3,
-pair-triple-transposition, pair-C2-cubed, pair-S3-times-S2, pair-order16-42, and pair-S4-times-S2 K6-edge/
+pair-triple-transposition, pair-C2-cubed, pair-S3-times-S2, pair-order16-42, and
+  pair-S4-times-S2 K6-edge/
 triple-breaking branches, an exact
 S3-extension/S4-exception count decomposition plus an exact S4-extension/point-
 S5-exception count decomposition,
