@@ -90,6 +90,24 @@ Run with:
   -m benchmarks.accelerator.profile_width_crazy_throughput
 ```
 
+`profile_width_crazy_geometry_throughput.py` reuses that exact N10-N14 workload
+and complete-state oracle under a separate benchmark identity. It compares the
+resident tritwise baseline with native `5+5+r` and padded `5+5+5` lookup
+kernels. Each width keeps one CUDA context at a time, records 15 end-to-end and
+15 resident samples per route, and cyclically rotates which route block goes
+first by width. Rows also report source-declared constant bytes so the 59,049
+byte crazy lookup table is visible as resource pressure.
+
+Adapter construction and NVRTC compilation remain outside timing. Retained
+register/occupancy/cache measurements are a separate evidence obligation.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.profile_width_crazy_geometry_throughput
+```
+
 `profile_run_phase_profile.py` measures the same current-profile workload with
 adapter diagnostics split into validation/planning, host construction,
 allocation, upload, kernel+sync, download, full result decode, and release. It

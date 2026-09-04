@@ -114,9 +114,16 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   bytes.
 
   Live CUDA development checks execute N10 and N14 through all three modes with
-  complete-state equality. These checks are correctness evidence, not retained
-  performance results; geometry-specific throughput and resource measurements
-  remain open.
+  complete-state equality. A separate
+  `cuda-profile-width-crazy-geometry-throughput-v1` harness reuses the frozen
+  N10-N14 workload and complete-state oracle, emits 15 end-to-end plus 15
+  resident samples per geometry/width, rotates the first route block by width,
+  and reports source-declared constant bytes. A full live development smoke on
+  the RTX 4060 completed all 15 geometry/width rows; its timing output was
+  deleted rather than promoted as evidence.
+
+  Retained geometry performance, register/occupancy/cache behavior, and the
+  resulting evidence-driven selection decision remain open.
 - Required implementation evidence: differential equality against the trusted
   profile semantics before any performance result is considered.
 - Required benchmark matrix: widths 10, 11, 12, 13, and 14; representative
