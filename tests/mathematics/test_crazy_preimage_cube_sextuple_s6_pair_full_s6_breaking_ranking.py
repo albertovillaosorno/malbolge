@@ -6,17 +6,31 @@
 #   - false
 # License-File:
 #   - LICENSE-MIT
-# RESEARCH-ONLY PROOF BOUNDARY
-# Scope:
-#   - Pair graph fixed by the full S6 action in the all-equal vertex stratum.
-#   - Twenty weight-three triples whose exact final S6 stabilizer is trivial.
-# Non-goals:
-#   - Rank other pair-graph stabilizer branches here.
-# Method:
-#   - Rank equality patterns of the twenty triples by an S6 stabilizer chain.
-#   - Mobius-invert subgroup-fixed pattern suffixes to require final identity.
-#   - Rank strictly increasing scalar colors for each equality multiplicity.
-#   - Compose with two fixed residual scalars and the repeated-six vertex pair.
+#
+# Boundary-Contract:
+# - Owns:
+#   - Dense rank/unrank for the full-S6 pair-graph branch whose triple values
+#     break the remaining stabilizer to the identity.
+# - Must-Not:
+#   - Claim coverage for pair-graph stabilizer branches other than full S6.
+# - Allows:
+#   - Inputs: twenty scalar triple values through ambiguity mass fourteen.
+#   - Outputs: dense triple, residual, and complete branch ranks.
+#   - Side effects: none.
+# - Split-When:
+#   - Another full-S6 residual block needs a different coordinate action.
+# - Merge-When:
+#   - A generic scalar equality-pattern quotient owns this specialization.
+# - Summary:
+#   - Equality patterns plus scalar colors rank free triple assignments.
+# - Description:
+#   - Subgroup Mobius suffix counts force the final S6 stabilizer to identity.
+# - Usage:
+#   - Supplies the full-S6 pair branch in the pair-first trivial-S6 factor.
+# - Defaults:
+#   - Exhaustive triple ranks reach mass six; sampled ranks reach fourteen.
+#
+
 """Dense rank for the full-S6 pair branch broken by triple values."""
 
 from __future__ import annotations
