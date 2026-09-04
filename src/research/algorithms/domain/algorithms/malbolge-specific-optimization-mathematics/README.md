@@ -536,6 +536,13 @@ normalizer has order 48, giving 15 conjugates. Pair rank ends at 108 classes,
 and triple blocks `(4,4,6,6)` yield 33,733,000 free classes. Composition adds
 6,090,912 residual and 6,092,228 complete mass-14 classes, leaving 20,876,174.
 
+The unique transitive order-48 pair branch is constructive too. Its pair
+sequence is populated only at masses 3, 6, 9, and 12 with counts `2,3,4,7`.
+The triples split as `(12,8)`; a pattern-plus-color rank handles the
+twelve-coordinate orbit and the eight-coordinate orbit finishes the stabilizer
+chain. This gives 16,945,480 free triples, 5,493,876 residual classes, and
+5,498,136 complete mass-14 classes, leaving 15,382,298 residual classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
