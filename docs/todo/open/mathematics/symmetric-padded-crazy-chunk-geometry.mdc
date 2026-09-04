@@ -106,9 +106,17 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   Retained CPU measurements and SIMD/vectorized variants remain open.
 - Existing CUDA width evidence measures the same 16,384 crazy-heavy VM steps at
   N10 through N14 on the tritwise kernel, including resident and end-to-end
-  timing with full result validation. It is useful width-scaling evidence but
-  does not compare native residual and uniform padded chunk kernels, so that
-  geometry-specific CUDA comparison remains open.
+  timing with full result validation. The resident renderer now also exposes
+  explicit research-only native `5+5+r` and padded `5+5+5` modes for N10
+  through N14 while ordinary product rendering remains tritwise by default.
+  Both lookup modes use one exhaustively checked 59,049-byte `u8` table; with
+  the two 94-byte decode/encryption tables, declared constant data is 59,237
+  bytes.
+
+  Live CUDA development checks execute N10 and N14 through all three modes with
+  complete-state equality. These checks are correctness evidence, not retained
+  performance results; geometry-specific throughput and resource measurements
+  remain open.
 - Required implementation evidence: differential equality against the trusted
   profile semantics before any performance result is considered.
 - Required benchmark matrix: widths 10, 11, 12, 13, and 14; representative

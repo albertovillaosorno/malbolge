@@ -70,6 +70,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Sequence
 
+    from accelerator.cuda.resident_kernel import ResidentCrazyGeometry
     from accelerator.cuda.runtime import CudaOrderedDtoHStream
     from accelerator.profile_run import ProfileRunGeometry
     from accelerator.profile_run import ProfileRunRequest
@@ -998,6 +999,28 @@ class _ResidentContext:
     runtime: CudaRuntime
 
 
+def _profile_kernel_source(
+    geometry: ProfileRunGeometry,
+    crazy_geometry: ResidentCrazyGeometry | None,
+) -> str:
+    kernel_geometry = ResidentGeometry(
+        interpreter_authority=False,
+        eof_word=geometry.eof_word,
+        input_instruction=geometry.input_instruction,
+        memory_words=geometry.memory_words,
+        output_instruction=geometry.output_instruction,
+        word_modulus=geometry.word_modulus,
+        word_trits=geometry.word_trits,
+    )
+    if crazy_geometry is None:
+        return resident_kernel_source(kernel_geometry, _KERNEL_NAME)
+    return resident_kernel_source(
+        kernel_geometry,
+        _KERNEL_NAME,
+        crazy_geometry=crazy_geometry,
+    )
+
+
 @final
 class CudaProfileRunAdapter:
     """Resident CUDA executor for one validated modular profile geometry."""
@@ -1006,6 +1029,8 @@ class CudaProfileRunAdapter:
         self,
         geometry: ProfileRunGeometry,
         device_id: int = 0,
+        *,
+        crazy_geometry: ResidentCrazyGeometry | None = None,
     ) -> None:
         """Compile one geometry-bound resident profile kernel.
 
@@ -1014,21 +1039,10 @@ class CudaProfileRunAdapter:
 
         """
         admitted = geometry.validated()
+        source = _profile_kernel_source(admitted, crazy_geometry)
         runtime = CudaRuntime(device_id)
         try:
             info = runtime.device_info
-            source = resident_kernel_source(
-                ResidentGeometry(
-                    interpreter_authority=False,
-                    eof_word=admitted.eof_word,
-                    input_instruction=admitted.input_instruction,
-                    memory_words=admitted.memory_words,
-                    output_instruction=admitted.output_instruction,
-                    word_modulus=admitted.word_modulus,
-                    word_trits=admitted.word_trits,
-                ),
-                _KERNEL_NAME,
-            )
             module = runtime.compile_module(source, info.arch)
             kernel = runtime.get_kernel(module, _KERNEL_NAME.encode("ascii"))
         except AcceleratorExecutionError:

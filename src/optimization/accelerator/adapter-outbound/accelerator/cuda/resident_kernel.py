@@ -35,11 +35,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
+from functools import cache
 
 from accelerator.cuda.classic_step import XLAT1
 from accelerator.cuda.classic_step import XLAT2
+from accelerator.exact_primitives import CRAZY_TRIT_TABLE
 
+CRAZY_CHUNK_VALUES = 243
+CRAZY_TABLE_ENTRIES = CRAZY_CHUNK_VALUES * CRAZY_CHUNK_VALUES
+MINIMUM_RESEARCH_CRAZY_WIDTH = 10
+RESEARCH_CRAZY_WIDTHS = range(MINIMUM_RESEARCH_CRAZY_WIDTH, 15)
 STATE_WORDS = 16
+
+
+class ResidentCrazyGeometry(Enum):
+    """Crazy arithmetic implementation selected for one rendered kernel."""
+
+    NATIVE = "native-5+5+r"
+    PADDED = "padded-5+5+5"
+    TRITWISE = "tritwise"
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,32 +70,41 @@ class ResidentGeometry:
     word_trits: int
 
 
-def resident_kernel_source(geometry: ResidentGeometry, kernel_name: str) -> str:
+def resident_kernel_source(
+    geometry: ResidentGeometry,
+    kernel_name: str,
+    *,
+    crazy_geometry: object = ResidentCrazyGeometry.TRITWISE,
+) -> str:
     """Render one exact CUDA kernel for a validated resident geometry.
 
     Returns:
         CUDA C++ source compiled by the pinned NVRTC boundary.
 
     """
+    admitted_crazy_geometry = _validate_crazy_geometry(
+        geometry.word_trits,
+        crazy_geometry,
+    )
+    crazy_table = _crazy_table_source(admitted_crazy_geometry)
+    crazy_word = _crazy_word_source(
+        geometry.word_trits,
+        admitted_crazy_geometry,
+    )
     interpreter_authority = int(geometry.interpreter_authority)
-    eof_word = geometry.eof_word
-    input_instruction = geometry.input_instruction
-    memory_words = geometry.memory_words
-    output_instruction = geometry.output_instruction
-    word_modulus = geometry.word_modulus
-    word_trits = geometry.word_trits
     xlat1 = ",".join(str(value) for value in XLAT1)
     xlat2 = ",".join(str(value) for value in XLAT2)
     return f"""
 #define INTERPRETER_AUTHORITY {interpreter_authority}u
-#define MEMORY_WORDS {memory_words}u
+#define MEMORY_WORDS {geometry.memory_words}u
 #define STATE_WORDS {STATE_WORDS}u
-#define MAX_WORD {word_modulus - 1}u
-#define WORD_TRITS {word_trits}u
-#define ROTATE_HIGH_WEIGHT {word_modulus // 3}u
-#define EOF_WORD {eof_word}u
-#define INPUT_INSTRUCTION {input_instruction}u
-#define OUTPUT_INSTRUCTION {output_instruction}u
+#define MAX_WORD {geometry.word_modulus - 1}u
+#define WORD_MODULUS {geometry.word_modulus}u
+#define WORD_TRITS {geometry.word_trits}u
+#define ROTATE_HIGH_WEIGHT {geometry.word_modulus // 3}u
+#define EOF_WORD {geometry.eof_word}u
+#define INPUT_INSTRUCTION {geometry.input_instruction}u
+#define OUTPUT_INSTRUCTION {geometry.output_instruction}u
 #define STATUS_BUDGET 0u
 #define STATUS_TERMINATED 1u
 #define STATUS_ERROR 2u
@@ -93,7 +117,7 @@ def resident_kernel_source(geometry: ResidentGeometry, kernel_name: str) -> str:
 
 static __device__ __constant__ unsigned char XLAT1[94] = {{{xlat1}}};
 static __device__ __constant__ unsigned char XLAT2[94] = {{{xlat2}}};
-
+{crazy_table}
 static __device__ unsigned int successor(unsigned int value) {{
     return value == MAX_WORD ? 0u : value + 1u;
 }}
@@ -117,20 +141,7 @@ static __device__ unsigned int crazy_trit(
     return 0u;
 }}
 
-static __device__ unsigned int crazy_word(
-    unsigned int data,
-    unsigned int acc
-) {{
-    unsigned int result = 0u;
-    unsigned int place = 1u;
-    for (unsigned int trit = 0u; trit < WORD_TRITS; ++trit) {{
-        result += crazy_trit(data % 3u, acc % 3u) * place;
-        place *= 3u;
-        data /= 3u;
-        acc /= 3u;
-    }}
-    return result;
-}}
+{crazy_word}
 
 static __device__ bool graphical(unsigned int value) {{
     return value >= 33u && value <= 126u;
@@ -310,3 +321,135 @@ extern "C" __global__ void {kernel_name}(
     state[10] = termination;
 }}
 """
+
+
+@cache
+def _crazy_chunk_table_values() -> tuple[int, ...]:
+    """Return the exact five-trit crazy lookup table.
+
+    Returns:
+        Row-major outputs indexed by ``data * 243 + accumulator``.
+
+    """
+    values: list[int] = []
+    for data in range(CRAZY_CHUNK_VALUES):
+        for accumulator in range(CRAZY_CHUNK_VALUES):
+            remaining_data = data
+            remaining_accumulator = accumulator
+            result = 0
+            place = 1
+            for _ in range(5):
+                output = CRAZY_TRIT_TABLE[remaining_data % 3][
+                    remaining_accumulator % 3
+                ]
+                result += output * place
+                place *= 3
+                remaining_data //= 3
+                remaining_accumulator //= 3
+            values.append(result)
+    return tuple(values)
+
+
+def _crazy_table_source(crazy_geometry: ResidentCrazyGeometry) -> str:
+    if crazy_geometry is ResidentCrazyGeometry.TRITWISE:
+        return ""
+    values = ",".join(str(value) for value in _crazy_chunk_table_values())
+    return (
+        f"#define CRAZY_CHUNK_VALUES {CRAZY_CHUNK_VALUES}u\n"
+        f"static __device__ __constant__ unsigned char "
+        f"CRAZY_CHUNK_TABLE[{CRAZY_TABLE_ENTRIES}] = {{{values}}};\n"
+        "static __device__ unsigned int crazy_chunk_lookup(\n"
+        "    unsigned int data,\n"
+        "    unsigned int acc\n"
+        ") {\n"
+        "    return CRAZY_CHUNK_TABLE[(data * CRAZY_CHUNK_VALUES) + acc];\n"
+        "}\n"
+    )
+
+
+def _crazy_word_source(
+    word_trits: int,
+    crazy_geometry: ResidentCrazyGeometry,
+) -> str:
+    if crazy_geometry is ResidentCrazyGeometry.TRITWISE:
+        return r"""static __device__ unsigned int crazy_word(
+    unsigned int data,
+    unsigned int acc
+) {
+    unsigned int result = 0u;
+    unsigned int place = 1u;
+    for (unsigned int trit = 0u; trit < WORD_TRITS; ++trit) {
+        result += crazy_trit(data % 3u, acc % 3u) * place;
+        place *= 3u;
+        data /= 3u;
+        acc /= 3u;
+    }
+    return result;
+}"""
+    if crazy_geometry is ResidentCrazyGeometry.NATIVE:
+        return r"""static __device__ unsigned int crazy_word(
+    unsigned int data,
+    unsigned int acc
+) {
+    unsigned int low = crazy_chunk_lookup(
+        data % CRAZY_CHUNK_VALUES,
+        acc % CRAZY_CHUNK_VALUES
+    );
+    data /= CRAZY_CHUNK_VALUES;
+    acc /= CRAZY_CHUNK_VALUES;
+    unsigned int middle = crazy_chunk_lookup(
+        data % CRAZY_CHUNK_VALUES,
+        acc % CRAZY_CHUNK_VALUES
+    );
+    data /= CRAZY_CHUNK_VALUES;
+    acc /= CRAZY_CHUNK_VALUES;
+    unsigned int result = low + (middle * CRAZY_CHUNK_VALUES);
+    unsigned int place = CRAZY_CHUNK_VALUES * CRAZY_CHUNK_VALUES;
+    for (unsigned int trit = 10u; trit < WORD_TRITS; ++trit) {
+        result += crazy_trit(data % 3u, acc % 3u) * place;
+        place *= 3u;
+        data /= 3u;
+        acc /= 3u;
+    }
+    return result;
+}"""
+    high = "" if word_trits == MINIMUM_RESEARCH_CRAZY_WIDTH else r"""
+    unsigned int high = crazy_chunk_lookup(
+        (data / (CRAZY_CHUNK_VALUES * CRAZY_CHUNK_VALUES)) % CRAZY_CHUNK_VALUES,
+        (acc / (CRAZY_CHUNK_VALUES * CRAZY_CHUNK_VALUES)) % CRAZY_CHUNK_VALUES
+    );
+    result += high * CRAZY_CHUNK_VALUES * CRAZY_CHUNK_VALUES;
+"""
+    return r"""static __device__ unsigned int crazy_word(
+    unsigned int data,
+    unsigned int acc
+) {
+    unsigned int low = crazy_chunk_lookup(
+        data % CRAZY_CHUNK_VALUES,
+        acc % CRAZY_CHUNK_VALUES
+    );
+    unsigned int middle = crazy_chunk_lookup(
+        (data / CRAZY_CHUNK_VALUES) % CRAZY_CHUNK_VALUES,
+        (acc / CRAZY_CHUNK_VALUES) % CRAZY_CHUNK_VALUES
+    );
+    unsigned int result = low + (middle * CRAZY_CHUNK_VALUES);
+""" + high + r"""    return result % WORD_MODULUS;
+}"""
+
+
+def _validate_crazy_geometry(
+    word_trits: int,
+    crazy_geometry: object,
+) -> ResidentCrazyGeometry:
+    if not isinstance(crazy_geometry, ResidentCrazyGeometry):
+        message = "resident crazy geometry must use the exact enum"
+        raise TypeError(message)
+    if (
+        crazy_geometry is not ResidentCrazyGeometry.TRITWISE
+        and word_trits not in RESEARCH_CRAZY_WIDTHS
+    ):
+        message = (
+            "chunked resident crazy geometry is limited to N10 through N14"
+        )
+        raise ValueError(message)
+    return crazy_geometry
