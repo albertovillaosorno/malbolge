@@ -559,6 +559,13 @@ masses 5 and 10 with counts `2,8`; four five-coordinate triple blocks yield
 81,825,696 free classes. Composition adds 2,844,160 residual and 2,844,768
 complete mass-14 classes, leaving 5,223,154 residual classes.
 
+The pair graph fixed by the full `S6` action has one class at pair mass zero and
+no positive pair mass. Its twenty triples form one `S6` orbit. Equality
+patterns are ranked by an `S6` stabilizer chain with subgroup-Mobius suffix
+counts, then strictly increasing scalar colors fill each equality block. This
+gives 1,101,650 free triple classes, 3,063,168 residual classes, and 3,071,896
+complete mass-14 classes, leaving 2,159,986 residual classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
