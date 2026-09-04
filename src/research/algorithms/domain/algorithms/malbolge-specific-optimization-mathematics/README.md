@@ -600,6 +600,17 @@ normalizer has order 36, giving 20 conjugates. Pair ranks occur only at masses
 272,936,070 free classes. Composition contributes 45,072 residual and complete
 mass-14 classes, leaving 107,758 residual classes.
 
+The final pair-symmetric branch is the unique transitive order-72 subgroup. It
+is self-normalizing, so there are ten conjugates. Pair ranks occur only at
+masses 6, 9, and 12 with counts `2,2,3`. The triples split as `(18,2)`; through
+mass fourteen the hard eighteen-coordinate equality pattern needs at most five
+distinct scalar colors, then the two-coordinate block finishes the stabilizer
+chain. This yields 11,237,656 free triples and 107,758 residual and complete
+mass-14 classes. The 27 constructive pair-first branches therefore cover all
+84,008,008,841 exact trivial-S6 residual mass-14 classes. This closes the
+trivial-stabilizer branch, not the remaining symmetric stabilizer branches in
+the complete top-level `(6)` stratum.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
