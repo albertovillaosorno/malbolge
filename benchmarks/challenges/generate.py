@@ -58,6 +58,7 @@ _ARITHMETIC_DAG_FAMILY: Final = "arithmetic-dag"
 _BRANCH_MIX_FAMILY: Final = "branch-mix"
 _BINARY_TREE_FAMILY: Final = "binary-tree"
 _CALL_CHAIN_FAMILY: Final = "call-chain"
+_COMPOSED_PIPELINE_FAMILY: Final = "composed-pipeline"
 _LINEAR_MIX_FAMILY: Final = "linear-mix"
 _MEMORY_WALK_FAMILY: Final = "memory-walk"
 _POINTER_WALK_FAMILY: Final = "pointer-walk"
@@ -74,6 +75,7 @@ _FAMILY_ALGORITHMS: Final = {
     _BRANCH_MIX_FAMILY: "splitmix64-branch-mix-v1",
     _BINARY_TREE_FAMILY: "splitmix64-binary-tree-v1",
     _CALL_CHAIN_FAMILY: "splitmix64-call-chain-v1",
+    _COMPOSED_PIPELINE_FAMILY: "splitmix64-composed-pipeline-v1",
     _LINEAR_MIX_FAMILY: "splitmix64-linear-mix-v1",
     _MEMORY_WALK_FAMILY: "splitmix64-memory-walk-v1",
     _POINTER_WALK_FAMILY: "splitmix64-pointer-walk-v1",
@@ -91,6 +93,7 @@ _VERSION: Final = 1
 _BRANCH_MIX_SEED_SALT: Final = 0x4252_414E_4348_4D58
 _BINARY_TREE_SEED_SALT: Final = 0x4254_5245_455F_5631
 _CALL_CHAIN_SEED_SALT: Final = 0x4341_4C4C_4348_414E
+_COMPOSED_PIPELINE_SEED_SALT: Final = 0x434F_4D50_5049_5045
 _LINEAR_MIX_SEED_SALT: Final = 0x4C49_4E45_4152_4D58
 _MEMORY_WALK_SEED_SALT: Final = 0x4D45_4D4F_5259_574B
 _POINTER_WALK_SEED_SALT: Final = 0x5054_5257_414C_4B31
@@ -103,6 +106,8 @@ _LAYOUT_CHAIN_SEED_SALT: Final = 0x4C41_594F_5554_4348
 _TERNARY_FOLD_SEED_SALT: Final = 0x5445_524E_4152_5931
 _NESTED_STATE_SEED_SALT: Final = 0x4E45_5354_5354_4154
 _NESTED_STATE_LANES: Final = 4
+_COMPOSED_PIPELINE_CELLS: Final = 8
+_PIPELINE_MIX_CONSTANT: Final = 2_654_435_761
 _MEMORY_WALK_CELLS: Final = 8
 _CLASSIC_TRITS: Final = 10
 _CLASSIC_MODULUS: Final = 59_049
@@ -1043,6 +1048,124 @@ def _nested_state_payload(identity: ChallengeIdentity) -> tuple[bytes, bytes]:
     )
 
 
+def _pipeline_mix_value(value: int, token: int) -> int:
+    rotated = _rotate_left(value, 5)
+    return ((rotated ^ token) + _PIPELINE_MIX_CONSTANT) & _MASK32
+
+
+@dataclass(frozen=True, slots=True)
+class _ComposedPipelineData:
+    initial: int
+    cells: tuple[int, ...]
+    tokens: tuple[int, ...]
+    addends: tuple[int, ...]
+    masks: tuple[int, ...]
+
+
+def _composed_pipeline_oracle(data: _ComposedPipelineData) -> int:
+    state = data.initial
+    oracle_cells = list(data.cells)
+    for index, token in enumerate(data.tokens):
+        slot = state & (_COMPOSED_PIPELINE_CELLS - 1)
+        mixed = _pipeline_mix_value(
+            (state + token) & _MASK32,
+            oracle_cells[slot],
+        )
+        if mixed & 1:
+            mixed = (mixed + data.addends[index]) & _MASK32
+        else:
+            mixed ^= data.masks[index]
+        cell_value = mixed ^ ((token + data.masks[index]) & _MASK32)
+        oracle_cells[slot] = cell_value
+        state = _pipeline_mix_value(
+            mixed,
+            (cell_value + data.addends[index]) & _MASK32,
+        )
+    return state
+
+
+def _uint32_initializer(values: tuple[int, ...]) -> tuple[str, ...]:
+    return tuple(f"        UINT32_C({value})," for value in values)
+
+
+def _composed_pipeline_payload(
+    identity: ChallengeIdentity,
+) -> tuple[bytes, bytes]:
+    rng = _SplitMix64(identity.seed ^ _COMPOSED_PIPELINE_SEED_SALT)
+    data = _ComposedPipelineData(
+        initial=rng.next_u32(),
+        cells=tuple(
+            rng.next_u32() for _index in range(_COMPOSED_PIPELINE_CELLS)
+        ),
+        tokens=tuple(rng.next_u32() for _index in range(identity.nodes)),
+        addends=tuple(rng.next_u32() for _index in range(identity.nodes)),
+        masks=tuple(rng.next_u32() for _index in range(identity.nodes)),
+    )
+    state = _composed_pipeline_oracle(data)
+    lines = [
+        "#include <stdint.h>",
+        "",
+        "uint32_t malbolge_pipeline_mix(uint32_t value, uint32_t token) {",
+        "    uint32_t rotated = (value << 5) | (value >> 27);",
+        (
+            "    return (rotated ^ token) + "
+            f"UINT32_C({_PIPELINE_MIX_CONSTANT});"
+        ),
+        "}",
+        "",
+        f"uint32_t {_ENTRY_SYMBOL}(void) {{",
+        f"    uint32_t cells[{_COMPOSED_PIPELINE_CELLS}] = {{",
+        *_uint32_initializer(data.cells),
+        "    };",
+        f"    uint32_t tokens[{identity.nodes}] = {{",
+        *_uint32_initializer(data.tokens),
+        "    };",
+        f"    uint32_t addends[{identity.nodes}] = {{",
+        *_uint32_initializer(data.addends),
+        "    };",
+        f"    uint32_t masks[{identity.nodes}] = {{",
+        *_uint32_initializer(data.masks),
+        "    };",
+        f"    uint32_t state = UINT32_C({data.initial});",
+        (
+            "    for (uint32_t index = UINT32_C(0); "
+            f"index < UINT32_C({identity.nodes}); "
+            "index += UINT32_C(1)) {"
+        ),
+        (
+            "        uint32_t slot = state & "
+            f"UINT32_C({_COMPOSED_PIPELINE_CELLS - 1});"
+        ),
+        (
+            "        uint32_t mixed = malbolge_pipeline_mix("
+            "state + tokens[index], cells[slot]);"
+        ),
+        "        if ((mixed & UINT32_C(1)) != UINT32_C(0)) {",
+        "            mixed += addends[index];",
+        "        } else {",
+        "            mixed ^= masks[index];",
+        "        }",
+        "        cells[slot] = mixed ^ (tokens[index] + masks[index]);",
+        (
+            "        state = malbolge_pipeline_mix("
+            "mixed, cells[slot] + addends[index]);"
+        ),
+        "    }",
+        "    return state;",
+        "}",
+        "",
+        "int main(void) {",
+        f"    uint32_t result = {_ENTRY_SYMBOL}();",
+        "    return (int)(result & UINT32_C(2147483647));",
+        "}",
+        "",
+    ]
+    return (
+        chr(10).join(lines).encode(),
+        state.to_bytes(_ORACLE_BYTES, byteorder="little"),
+    )
+
+
 def _ternary_mix_value(value: int, token: int) -> int:
     result = 0
     place = 1
@@ -1122,6 +1245,7 @@ _PAYLOAD_RENDERERS: Final = {
     _BRANCH_MIX_FAMILY: _branch_mix_payload,
     _BINARY_TREE_FAMILY: _binary_tree_payload,
     _CALL_CHAIN_FAMILY: _call_chain_payload,
+    _COMPOSED_PIPELINE_FAMILY: _composed_pipeline_payload,
     _LINEAR_MIX_FAMILY: _linear_mix_payload,
     _MEMORY_WALK_FAMILY: _memory_walk_payload,
     _POINTER_WALK_FAMILY: _pointer_walk_payload,

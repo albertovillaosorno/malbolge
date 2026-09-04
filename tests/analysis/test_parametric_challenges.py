@@ -106,6 +106,7 @@ _ARITHMETIC_DAG_FAMILY = "arithmetic-dag"
 _BRANCH_MIX_FAMILY = "branch-mix"
 _BINARY_TREE_FAMILY = "binary-tree"
 _CALL_CHAIN_FAMILY = "call-chain"
+_COMPOSED_PIPELINE_FAMILY = "composed-pipeline"
 _LINEAR_MIX_FAMILY = "linear-mix"
 _MEMORY_WALK_FAMILY = "memory-walk"
 _POINTER_WALK_FAMILY = "pointer-walk"
@@ -117,6 +118,10 @@ _GRID_ACCUMULATE_FAMILY = "grid-accumulate"
 _LAYOUT_CHAIN_FAMILY = "layout-chain"
 _TERNARY_FOLD_FAMILY = "ternary-fold"
 _NESTED_STATE_FAMILY = "nested-state"
+_COMPOSED_PIPELINE_CELL_REFERENCES = 3
+_COMPOSED_PIPELINE_MIX_REFERENCES = 3
+_COMPOSED_PIPELINE_INDEX_REFERENCES = 2
+_REPLAY_PROFILE = "malbolge-2026.3"
 
 
 def _linux_frontend_build_tools_available() -> bool:
@@ -143,6 +148,7 @@ _FAMILIES = (
     _BRANCH_MIX_FAMILY,
     _BINARY_TREE_FAMILY,
     _CALL_CHAIN_FAMILY,
+    _COMPOSED_PIPELINE_FAMILY,
     _LINEAR_MIX_FAMILY,
     _MEMORY_WALK_FAMILY,
     _POINTER_WALK_FAMILY,
@@ -163,6 +169,7 @@ _LARGE_GENERATION_STRESS_FAMILIES = (
     _GRID_ACCUMULATE_FAMILY,
     _TERNARY_FOLD_FAMILY,
     _NESTED_STATE_FAMILY,
+    _COMPOSED_PIPELINE_FAMILY,
 )
 _ARITHMETIC_DAG_V1_SOURCE_SHA256 = (
     "dcadb0753d70d16a19601bac1c05b6868767432a48eea67d599056ab28880607"
@@ -171,7 +178,7 @@ _ARITHMETIC_DAG_V1_ORACLE_SHA256 = (
     "0868382fe8067330f2ca3ccfcb4042ce5bcd38aaab75399d31f5f1994604b2ab"
 )
 _ARITHMETIC_DAG_V1_MANIFEST_SHA256 = (
-    "f51043df00825e1b16fc9ded26cfeec71b10979bc852fd9533184b8aefe2d489"
+    "d181e1ea27130c38065dda04f63e8a46aa3f0db79928c16ced682e676ee975a4"
 )
 _POINTER_WALK_V1_SOURCE_SHA256 = (
     "97a040fffa3d73fd1114944b6cd41e8fff158c54e19b6f1a9ef8209a8c4d0181"
@@ -180,56 +187,62 @@ _POINTER_WALK_V1_ORACLE_SHA256 = (
     "ac0317e131d5170fc13ff5b310406b1dce9473cd3c92575a8a8438acab24ada8"
 )
 _POINTER_WALK_V1_MANIFEST_SHA256 = (
-    "e92dcb30cc2a6f1477564b3c9843a6bc47c04ed06beaafa74589dbaf788854cf"
+    "c02cba95e356f80d63c5a3b2ab3f4845962a1a7880286275fc3f92bbdbe71830"
 )
 _NEW_V1_REPLAY_VECTORS = (
     (
         _SORT_REDUCE_FAMILY,
         "2508aa418e7a2c9ff82c3a4070ee89a708feb9753912c56a7f3346e9a1448086",
         "707f0db23b85cc31c45d6d98dced0fa33446a994f864923e83ab0dd129e5f385",
-        "42eed53ab110f9b6b8677ab20b7a963304626f39aa8124b2932f7fa75c2b44cc",
+        "5730ffa58ff90452c230ee417751622f86d8021c8ebc3b09eccb29f45613d5ba",
     ),
     (
         _BINARY_TREE_FAMILY,
         "90fad2f641fc83997419acf9b4fa6db8e249763c6b7ea2848945a8b0ef9fff1d",
         "2b88d974b6b5de98d8dfb53017db4e336551ed9b608c413332e74a80d8c7ab17",
-        "54e304bd954bd67eed9c0787d3552841b90a2e5796cb148b1eb734a1e95b41da",
+        "7498540e24794f002d927ddf4258677edb98d12110f852f506a90f26ae92da09",
     ),
     (
         _STREAM_STATE_FAMILY,
         "44aab52f684af9ce29e25571e1bcc8bc923a0e8e727ef289cce05cda28e6e979",
         "5ba8e9887d2497d962179fc1b875aa6edc422e238eab9904e490a9b8e8064f6f",
-        "64388aa9f928af85fb7d7efcd350cd55ae837d477f2e2d74dbdc9097b42be5b1",
+        "cc6fd8e2d51c27ba9370ff82ec327f252c26dbbfd26847ee17489895127a9abd",
     ),
     (
         _GRAPH_REDUCE_FAMILY,
         "995762c8fe399e74b4ad504de29a96f989ede21efebc81daa91f53a20e374def",
         "5c73807e22a3b5e48c88dc6d47a479fad932a1303666aa4500ac63e56144defe",
-        "a08cbd085c66c4547d0bfa0a65c91d673ddba98b7edd0b50ffd1da32f348ba0c",
+        "5ad533adb080c03f8cd5b3cdaf0bfd5659b0c45a718a83602469847c7402835c",
     ),
     (
         _GRID_ACCUMULATE_FAMILY,
         "3975e8eb80c8b4e5bf7ccea6ef7839e42256a162c3ec8d495e7da2209ee31c71",
         "c969b91b2fac7328745a3035233b6efbb613acc1a59096a82ce42901f1f0cf18",
-        "528f74a19b6774c944b12c393c8fe7c8a73ba8a375c72d9ecbf4440718116632",
+        "f4c27e150a5aa60f4c2de857deadae2b306b3aef7406340b54358e32bb57d8f1",
     ),
     (
         _LAYOUT_CHAIN_FAMILY,
         "60d6fead17d6eb88919c6af8cf4f769a197c639b5e3b79c60fa3d27bf473549c",
         "340596d515c10929a75260bc5713fbc2643702aaed0618645d6741f794f4131f",
-        "bd590d65687754555991c15a62ccb72458197ca10ca04a414194fec4499a1e46",
+        "0e34e2e2ee426330614a07046b2327a87cffe54c79fc88abd5f7d87045714718",
     ),
     (
         _TERNARY_FOLD_FAMILY,
         "c80be1d8967784fab599da5108c1c2ead4dbf1c032cbe8b0d981d743651fdb78",
         "3336c45d6b03c76bfac661cc6afb0952fab026cec34e646663f1bdd8289f2436",
-        "41c5700e68b3b0df01506840a0e45d4faffe684a95a32a81a7c4f526ab77e3c2",
+        "cb6be44f5e2ca4a7050cbdd08331aa693a04a10fd904fcca674dbcd8a27d55aa",
     ),
     (
         _NESTED_STATE_FAMILY,
         "d15c74926ada99e4421ef7192a2c262f236de9f163c7b838db45c7f0e3d78e56",
         "2f761656ece85b8d1bc94b42b953feace3f10be1287abe3ef39f19155dab7030",
-        "11a98647a09bd23639d7369cf50e0ca49d874446b3a2058555349d99f246d42a",
+        "26dbc50cc28a3ed335672a38bc8791c8039fa51ba4a0704c3813603f7c56ae2c",
+    ),
+    (
+        _COMPOSED_PIPELINE_FAMILY,
+        "14edb4d2e1f613cd3b8d2f8bf14f4ab77fc57ce87657ad42d82e5617f7cd4045",
+        "742c03832c2aba8dac579946c45dad30c34be83f7d7791be6c4b7ea77bccc201",
+        "56cd199f789d485798885d5c41cfd05a00fcd60a0e02e3d5e12582bbe0100d50",
     ),
 )
 
@@ -303,6 +316,17 @@ def _identity(
     )
 
 
+def _replay_identity(
+    *,
+    family: str = _ARITHMETIC_DAG_FAMILY,
+    seed: int = 0x1234,
+    nodes: int = 64,
+) -> _ChallengeIdentity:
+    return _GENERATOR_MODULE.ChallengeIdentity(
+        family, 1, seed, _REPLAY_PROFILE, nodes
+    )
+
+
 def _run(command: list[str], cwd: Path) -> sp.CompletedProcess[str]:
     return sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         command,
@@ -337,9 +361,9 @@ def test_same_identity_replays_byte_identically(
 
 
 def test_arithmetic_dag_v1_preserves_known_replay_vector() -> None:
-    """Keep published v1 arithmetic identities byte-compatible."""
+    """Pin v1 arithmetic bytes under the immutable replay profile."""
     generated = _GENERATOR_MODULE.generate(
-        _identity(family=_ARITHMETIC_DAG_FAMILY, seed=0x1234, nodes=64)
+        _replay_identity(family=_ARITHMETIC_DAG_FAMILY)
     )
     assert (
         hashlib.sha256(generated.source).hexdigest()
@@ -356,9 +380,9 @@ def test_arithmetic_dag_v1_preserves_known_replay_vector() -> None:
 
 
 def test_pointer_walk_v1_preserves_known_replay_vector() -> None:
-    """Keep published v1 pointer identities byte-compatible."""
+    """Pin v1 pointer bytes under the immutable replay profile."""
     generated = _GENERATOR_MODULE.generate(
-        _identity(family=_POINTER_WALK_FAMILY, seed=0x1234, nodes=64)
+        _replay_identity(family=_POINTER_WALK_FAMILY)
     )
     assert (
         hashlib.sha256(generated.source).hexdigest()
@@ -378,10 +402,10 @@ def test_pointer_walk_v1_preserves_known_replay_vector() -> None:
 def test_new_v1_families_preserve_known_replay_vectors(
     vector: tuple[str, str, str, str],
 ) -> None:
-    """Keep newly published v1 family identities byte-compatible."""
+    """Pin v1 family bytes under the immutable replay profile."""
     family, source_sha256, oracle_sha256, manifest_sha256 = vector
     generated = _GENERATOR_MODULE.generate(
-        _identity(family=family, seed=0x1234, nodes=64)
+        _replay_identity(family=family)
     )
     assert hashlib.sha256(generated.source).hexdigest() == source_sha256
     assert hashlib.sha256(generated.oracle).hexdigest() == oracle_sha256
@@ -526,6 +550,30 @@ def test_nested_state_emits_two_live_loops() -> None:
     assert source.count("masks[lane]") == 1
 
 
+def test_composed_pipeline_keeps_mixed_pressure_live() -> None:
+    """Composed challenges combine loop, memory, branch, and helper pressure."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_COMPOSED_PIPELINE_FAMILY, seed=0xC0DE, nodes=19)
+    )
+    source = generated.source.decode()
+    assert source.count("for (uint32_t") == 1
+    assert source.count("if ((mixed & UINT32_C(1))") == 1
+    assert source.count("cells[slot]") == _COMPOSED_PIPELINE_CELL_REFERENCES
+    assert (
+        source.count("malbolge_pipeline_mix(")
+        == _COMPOSED_PIPELINE_MIX_REFERENCES
+    )
+    assert source.count("tokens[index]") == (
+        _COMPOSED_PIPELINE_INDEX_REFERENCES
+    )
+    assert source.count("addends[index]") == (
+        _COMPOSED_PIPELINE_INDEX_REFERENCES
+    )
+    assert source.count("masks[index]") == (
+        _COMPOSED_PIPELINE_INDEX_REFERENCES
+    )
+
+
 def test_identity_dimensions_change_artifact_identity() -> None:
     """Seed and difficulty remain part of the exact generated identity."""
     baseline = _GENERATOR_MODULE.generate(_identity())
@@ -545,6 +593,7 @@ def test_identity_dimensions_change_artifact_identity() -> None:
         (_ARITHMETIC_DAG_FAMILY, "splitmix64-arithmetic-dag-v1"),
         (_BRANCH_MIX_FAMILY, "splitmix64-branch-mix-v1"),
         (_CALL_CHAIN_FAMILY, "splitmix64-call-chain-v1"),
+        (_COMPOSED_PIPELINE_FAMILY, "splitmix64-composed-pipeline-v1"),
         (_LINEAR_MIX_FAMILY, "splitmix64-linear-mix-v1"),
         (_MEMORY_WALK_FAMILY, "splitmix64-memory-walk-v1"),
         (_POINTER_WALK_FAMILY, "splitmix64-pointer-walk-v1"),
@@ -1175,6 +1224,9 @@ def _assert_native_oracle(
         (_CALL_CHAIN_FAMILY, 0, 1),
         (_CALL_CHAIN_FAMILY, 7, 64),
         (_CALL_CHAIN_FAMILY, 0x1234, 257),
+        (_COMPOSED_PIPELINE_FAMILY, 0, 1),
+        (_COMPOSED_PIPELINE_FAMILY, 7, 64),
+        (_COMPOSED_PIPELINE_FAMILY, 0x1234, 257),
         (_LINEAR_MIX_FAMILY, 0, 1),
         (_LINEAR_MIX_FAMILY, 7, 64),
         (_LINEAR_MIX_FAMILY, 0x1234, 257),

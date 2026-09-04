@@ -55,13 +55,16 @@ The implemented slices are `arithmetic-dag/v1`, `linear-mix/v1`,
 `branch-mix/v1`, `binary-tree/v1`, `memory-walk/v1`, `call-chain/v1`,
 `pointer-walk/v1`, `alias-walk/v1`, `stream-state/v1`, `sort-reduce/v1`,
 `graph-reduce/v1`, `grid-accumulate/v1`, `layout-chain/v1`,
-`ternary-fold/v1`, and
-`nested-state/v1`. Each binds family, version, seed,
+`ternary-fold/v1`, `nested-state/v1`, and `composed-pipeline/v1`. Each binds
+family, version, seed,
 canonical profile fingerprint, and node count into one replay identity.
 Generation emits deterministic `uint32_t` C source for the selected topology, a
 four-byte little-endian oracle, and a canonical manifest containing
-source/oracle
-SHA-256 digests. Every version-one family keeps each generated node on a live
+source/oracle SHA-256 digests.
+
+Hash-locked replay vectors use immutable `malbolge-2026.3` identity so
+advancement of the mutable current profile cannot rewrite retained manifests.
+Every version-one family keeps each generated node on a live
 dependency path to the observable result, so increasing `nodes` cannot grow only
 through dead C statements. Native warning-clean compilation is regression
 
@@ -118,6 +121,11 @@ runtime work performs four live state transitions per node while the Python
 
 oracle remains O(nodes). Normalized frontend evidence retains both loops and the
 three indexed inputs (`tokens`, `addends`, `masks`).
+`composed-pipeline/v1` adds heterogeneous whole-program composition pressure:
+one node-scaled loop combines state-selected local-memory reads/writes, a live
+branch, and two helper calls while every iteration feeds the next. Its Python
+oracle performs the same defined `uint32_t` transition with explicit wrapping,
+and native evidence checks 1, 64, and 257 nodes.
 
 The generated source is preflighted through the repository-owned C ABI and libc
 validators. Independent native evidence compiles selected generated sources with
@@ -137,29 +145,31 @@ host execution guest semantic authority.
 
 ## Results
 
-Fifteen deterministic families are implemented and replayable. Tests lock byte-
+Sixteen deterministic families are implemented and replayable. Tests lock byte-
 identical regeneration and v1 replay vectors for `arithmetic-dag`,
 `pointer-walk`, `stream-state`, `sort-reduce`, `graph-reduce`, `binary-tree`,
-`grid-accumulate`, `layout-chain`, `ternary-fold`, and `nested-state`, plus
-profile-fingerprint binding and difficulty growth for all fifteen topologies,
+`grid-accumulate`, `layout-chain`, `ternary-fold`, `nested-state`, and
+`composed-pipeline`, plus profile-fingerprint binding and difficulty growth for
+all sixteen topologies,
 invalid
 identity rejection, collision-safe no-replace publication (including a raced
 final-path collision), replay rejection for linked artifact leaves, current
 C-profile admission, and independent native agreement for
-representative node counts in all fifteen families. `nested-state/v1`
+representative node counts in all sixteen families. `nested-state/v1`
 additionally retains a 4,096-node pinned-Clang/native-oracle case, while
 `grid-accumulate/v1` retains a 257-node native case whose generated runtime work
 contains 66,049 live inner updates. Generation-only stress now replays
 `stream-state`, `sort-reduce`, `graph-reduce`, `binary-tree`,
-`grid-accumulate`, `ternary-fold`, and `nested-state` byte-identically at 16,384
-nodes while
+`grid-accumulate`, `ternary-fold`, `nested-state`, and `composed-pipeline`
+byte-identically at 16,384 nodes while
 retaining a four-byte
 oracle and exact manifest difficulty.
 
 This result does not satisfy the end-to-end acceptance criterion. No current
 backend evidence yet demonstrates a generated challenge compiled to and
 executed as a final `.malbolge` artifact; the layout/encoding backend required
-for that path is still pending. Broader workload families also remain open.
+for that path is still pending. Block-synthesis and Malbolge
+self-modification challenge coverage also remain open.
 
 ## Threats to Validity
 
@@ -169,8 +179,9 @@ memory, potentially aliasing pointer-pair, streaming state-machine,
 data-dependent sorting/fold, acyclic graph-reduction, hierarchical binary-tree
 reduction, quadratic grid
 accumulation, distinct-function
-layout-pressure, explicit ternary-fold, and nested-state control-flow
-topologies. The 4,096-node nested native case plus seven 16,384-node
+layout-pressure, explicit ternary-fold, nested-state control-flow, and
+heterogeneous composed-pipeline topologies. The 4,096-node nested native case
+plus eight 16,384-node
 deterministic generation/replay cases add larger stress evidence, but broader
 workload
 structure and additional native/executed large shapes remain open.
@@ -184,10 +195,10 @@ agreement risk; it does not prove downstream compiler correctness.
 
 Active. Retain hash-locked v1 replay vectors for `arithmetic-dag`,
 `pointer-walk`, `stream-state`, `sort-reduce`, `graph-reduce`, `binary-tree`,
-`grid-accumulate`, `layout-chain`, `ternary-fold`, and `nested-state`, alongside
-domain-separated
-`linear-mix/v1`, `branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, and
-`alias-walk/v1` as deterministic challenge substrates
+`grid-accumulate`, `layout-chain`, `ternary-fold`, `nested-state`, and
+`composed-pipeline`, alongside domain-separated `linear-mix/v1`,
+`branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, and `alias-walk/v1` as
+deterministic challenge substrates
 while expanding family coverage and waiting for an end-to-end generated
 Malbolge execution path before completing this planning
 objective.
