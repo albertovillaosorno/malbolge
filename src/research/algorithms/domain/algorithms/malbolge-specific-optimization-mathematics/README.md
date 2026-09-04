@@ -549,6 +549,11 @@ transpositions distinguish the unique order-eight class, with normalizer order
 101,939,408 free classes. Composition adds 4,287,068 residual and 4,287,180
 complete mass-14 classes, leaving 11,095,230 residual classes.
 
+The diagonal `S3` pair branch on two three-vertex orbits is constructive too.
+Its pair ranks are populated only at masses 6, 9, and 12 with counts `4,18,52`.
+Triple blocks `(1,1,3,3,6,6)` yield 136,412,898 free classes. Composition adds
+3,027,916 residual and 3,028,164 complete mass-14 classes, leaving 8,067,314.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
