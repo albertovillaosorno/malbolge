@@ -531,6 +531,11 @@ pair sequence is nonzero only at masses 3, 6, 9, and 12, with counts
 22,477,163 free classes. Composition still contributes 7,309,120 residual and
 7,314,264 complete mass-14 classes, leaving 26,967,086 residual classes.
 
+The `S4` pair branch on vertex orbits `(4,1,1)` is constructive as well. Its
+normalizer has order 48, giving 15 conjugates. Pair rank ends at 108 classes,
+and triple blocks `(4,4,6,6)` yield 33,733,000 free classes. Composition adds
+6,090,912 residual and 6,092,228 complete mass-14 classes, leaving 20,876,174.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
