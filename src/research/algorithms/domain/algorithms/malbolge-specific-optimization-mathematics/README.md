@@ -504,6 +504,17 @@ Normalizer-free already means exact-H through mass 14. Exact residual counts
 from masses 6 through 14 are `1,2,3,6,9,12,19,26,34`; repeated-six vertex
 prefixing gives 40 complete mass-14 classes.
 
+The transitive S4 order-24 stabilizer is constructive too. Its endpoint
+action has element-order profile `1:1, 2:9, 3:8, 4:6` and trivial center. The
+normalizer
+has order 48 and quotient order two. Its residual H-orbit spectrum is
+`1^2 3^2 4^2 12^3`, grouped into four quotient blocks with sizes `(2,2,3,2)`
+and weights `(1,3,12,4)`.
+
+Normalizer-free again means exact-H through mass 14. Exact residual counts from
+masses 4 through 14 are `1,2,3,6,10,14,21,30,41,56,74`; repeated-six vertex
+prefixing gives 94 complete mass-14 classes.
+
 The rooted-S5 trivial-stabilizer quotient is now constructive. Rooting endpoint
 five splits the 52 residual coordinates into two fixed scalars, five
 two-component vertex bundles, and ten four-component K5 edges. Sorting the five
