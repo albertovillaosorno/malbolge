@@ -572,6 +572,15 @@ order-six candidates. Pair ranks occur only at masses 6, 9, and 12 with counts
 `1,6,16`; triple blocks `(2,6,6,6)` yield 136,462,320 free classes. Composition
 adds 780,201 residual and 780,273 complete mass-14 classes, leaving 1,379,785.
 
+The populated transitive order-12 pair branch is constructive next. Among the
+two transitive order-12 subgroup classes, it is the self-normalizing class
+with exactly two six-cycles; the other class has no pair states through mass
+14. Pair ranks occur only at masses 6, 9, and 12 with counts `2,6,17`. Triple
+blocks `(12,6,2)` use the pattern-plus-color hard rank for the first block and
+a transported stabilizer chain for all 60 conjugates. This gives 68,202,693
+free triples, 739,735 residual classes, and 739,787 complete mass-14 classes,
+leaving 640,050 residual classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
