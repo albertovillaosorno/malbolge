@@ -125,7 +125,8 @@ exact 1,024-position projection and reports distinct constant-table addresses
 requested by each 32-lane CUDA warp for the low and middle lookup.
 This is deterministic serialization-pressure evidence from the CUDA programming
 model, not a hardware cache hit/miss measurement, and the current candidate
-search kernel remains tritwise.
+search kernel remains tritwise. Retained structural evidence is under
+`benchmarks/accelerator/evidence/2026-09-04-crazy-lookup-address-fanout/`.
 
 Run with:
 

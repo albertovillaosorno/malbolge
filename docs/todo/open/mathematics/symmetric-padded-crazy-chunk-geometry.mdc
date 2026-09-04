@@ -159,7 +159,10 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   For the exact 1,024-position projection, all 32 warps have 32 unique low
   addresses and one unique middle address. Projection therefore does not
   relieve the low-lookup
-  serialization pressure, while it makes the middle lookup uniform.
+  serialization pressure, while it makes the middle lookup uniform. The exact
+  per-warp counts are retained under
+  `benchmarks/accelerator/evidence/2026-09-04-crazy-lookup-address-fanout/`
+  from clean model commit `bf6cfbc3`.
 
   The current CUDA candidate-search kernel remains tritwise, so this fanout is a
   structural model of a prospective lookup search port rather than an observed

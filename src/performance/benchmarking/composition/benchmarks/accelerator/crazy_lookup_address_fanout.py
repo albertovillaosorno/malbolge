@@ -54,12 +54,15 @@ from optimizer.crazy_target import prepare_crazy_target_selection
 from benchmarks.accelerator.crazy_search_workload import ACCUMULATOR
 from benchmarks.accelerator.crazy_search_workload import CORPUS_SIZE
 from benchmarks.accelerator.crazy_search_workload import PREIMAGE_COUNT
-from benchmarks.accelerator.crazy_search_workload import WORKLOAD_ID
+from benchmarks.accelerator.crazy_search_workload import (
+    WORKLOAD_ID as CRAZY_SEARCH_WORKLOAD_ID,
+)
 from benchmarks.accelerator.crazy_search_workload import (
     full_domain_crazy_target_workload,
 )
 
 BENCHMARK_ID: Final = "cuda-crazy-lookup-address-fanout-v1"
+WORKLOAD_ID: Final = CRAZY_SEARCH_WORKLOAD_ID
 CRAZY_CHUNK_VALUES: Final = 243
 WARP_SIZE: Final = 32
 LOOKUP_CHUNKS: Final = ("low", "middle")
