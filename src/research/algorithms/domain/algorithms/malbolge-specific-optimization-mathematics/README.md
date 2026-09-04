@@ -396,6 +396,17 @@ nonnormalizing extension families. The dense residual interval has 378,494
 classes at mass 14, and the repeated-six vertex prefix gives 387,470 complete
 classes.
 
+The exact `S3-times-S2` stabilizer on endpoint orbits `(3,2,1)` is constructive
+as well. Its normalizer is H itself, so the normalizer quotient is trivial. The
+H-fixed residual coordinates have orbit spectrum `1^6 2^2 3^6 6^4`, grouped
+into four weighted blocks with sizes `(6,2,6,4)` and weights `(1,2,3,6)`.
+
+There are 216,384 H-fixed residual states at mass 14. A state has a strict
+stabilizer extension exactly when it is fixed by at least one minimal strict
+extension of H. Sparse deletion removes 7,952 such ranks, leaving 208,432 exact
+residual classes. The repeated-six vertex prefix gives 218,044 complete
+mass-14 classes.
+
 The rooted-S5 trivial-stabilizer quotient is now constructive. Rooting endpoint
 five splits the 52 residual coordinates into two fixed scalars, five
 two-component vertex bundles, and ten four-component K5 edges. Sorting the five
