@@ -594,6 +594,12 @@ pattern-plus-color rank plus transported stabilizer chains. This gives
 6,689,862 free triples, 208,704 residual classes, and 208,712 complete mass-14
 classes, leaving 152,830 residual classes.
 
+The cyclic order-three pair branch on `(3,3)` is constructive too. Its
+normalizer has order 36, giving 20 conjugates. Pair ranks occur only at masses
+9 and 12 with counts `2,16`; triple blocks `(1,1,3,3,3,3,3,3)` give
+272,936,070 free classes. Composition contributes 45,072 residual and complete
+mass-14 classes, leaving 107,758 residual classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
