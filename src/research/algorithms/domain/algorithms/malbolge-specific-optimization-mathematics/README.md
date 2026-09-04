@@ -514,6 +514,12 @@ ends at 542 classes, while triple blocks `(2,2,4,4,8)` give 101,963,816 free
 classes. Composition contributes 26,046,519 residual and 26,053,555 complete
 mass-14 classes, leaving 59,870,028 trivial-S6 residual classes.
 
+The elementary-abelian order-eight pair branch on `(4,2)` is constructive as
+well. Its seven nonidentity elements are involutions, giving 15 conjugates and
+normalizer order 48. Pair rank ends at 642 and five four-coordinate triple
+blocks yield 102,118,992 free classes. Composition contributes 17,877,258
+residual and 17,881,014 complete mass-14 classes, leaving 41,992,770.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
