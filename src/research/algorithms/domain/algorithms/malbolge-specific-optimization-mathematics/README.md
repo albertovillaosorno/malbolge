@@ -438,6 +438,16 @@ that are already non-free under the quotient action. Sparse deletion leaves
 24,094 exact residual classes, and the repeated-six vertex prefix gives 25,121
 complete classes.
 
+The exact all-double-transposition `V4-(2,2,2)` branch is constructive too. Its
+normalizer has order 48 and quotient order 12 with sixteen subgroups. The
+H-fixed residual coordinates have orbit spectrum `1^8 2^6 4^8`, with seven
+weighted quotient blocks of sizes `(2,6,3,3,3,3,2)` and weights
+`(1,2,1,1,4,4,4)`.
+
+Normalizer-free again means exact-H throughout residual masses 0 through 14.
+The mass-14 residual interval has 23,804 classes, and the repeated-six vertex
+prefix gives 23,938 complete classes.
+
 The rooted-S5 trivial-stabilizer quotient is now constructive. Rooting endpoint
 five splits the 52 residual coordinates into two fixed scalars, five
 two-component vertex bundles, and ten four-component K5 edges. Sorting the five

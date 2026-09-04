@@ -944,6 +944,16 @@ mechanism = "collapse-the-fifty-two-residual-labels-to-H-orbit-coordinates-with-
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_order8_411_stabilizer_ranking.py::test_order8_411_normalizer_geometry_is_exact", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_order8_411_stabilizer_ranking.py::test_order8_411_free_rank_matches_reviewed_counts", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_order8_411_stabilizer_ranking.py::test_order8_411_minimal_extensions_match_exact_exclusions", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_order8_411_stabilizer_ranking.py::test_order8_411_exact_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_order8_411_stabilizer_ranking.py::test_order8_411_exact_samples_have_stabilizer_eight", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_order8_411_stabilizer_ranking.py::test_order8_411_complete_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_stabilizer_spectrum.py::test_s6_mass_fourteen_exact_stabilizer_order_spectrum"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-full-v4-222-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-full-v4-222-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the exact all-double-transposition V4 stabilizer classes with endpoint orbit type (2,2,2) inside the top-level all-equal S6 sextuple residual stratum at residual and complete ambiguity mass 0 through 14, where H has normalizer order 48 and quotient order 12"
+mechanism = "collapse-the-fifty-two-residual-labels-to-H-orbit-coordinates-with-spectrum-eight-singletons-six-pairs-and-eight-quadruples-rank-the-seven-normalizer-invariant-blocks-by-a-stabilizer-chain-with-free-suffix-inversion-over-all-sixteen-quotient-subgroups-use-the-proved-absence-of-nonnormalizing-extension-types-to-identify-normalizer-free-with-exact-H-and-prefix-by-the-two-component-vertex-value-repeated-six-times"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_v4_222_stabilizer_ranking.py::test_v4_222_normalizer_geometry_is_exact", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_v4_222_stabilizer_ranking.py::test_v4_222_free_rank_matches_exact_counts", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_v4_222_stabilizer_ranking.py::test_v4_222_exact_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_v4_222_stabilizer_ranking.py::test_v4_222_exact_samples_have_stabilizer_four", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_v4_222_stabilizer_ranking.py::test_v4_222_complete_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_full_stabilizer_spectrum.py::test_s6_mass_fourteen_exact_stabilizer_order_spectrum"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-rooted-s5-trivial-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-rooted-s5-trivial-ranking"
