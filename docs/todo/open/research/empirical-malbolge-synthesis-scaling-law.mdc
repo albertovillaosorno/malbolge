@@ -38,7 +38,10 @@ budgets and fit empirical models instead of assuming a complexity class.
 ## Acceptance
 
 - Challenge families vary declared difficulty dimensions while preserving stable
-  semantic oracles and reproducible identities.
+  semantic oracles and reproducible identities. When the required backend/search
+  capabilities exist, the study extends the frozen source/oracle substrate with
+  self-modification footprint, layout coupling, target-state entropy, and
+  block-synthesis/catalogue-coverage axes needed by the measurement.
 - Blind/enumerative, structured deterministic, reusable-catalogue, stochastic or
   learned, and available accelerator-backed strategies are compared under
   equivalent budgets where applicable.

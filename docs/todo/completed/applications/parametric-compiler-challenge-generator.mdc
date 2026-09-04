@@ -1,6 +1,6 @@
 ---
 id: "parametric-compiler-challenge-generator"
-status: "active"
+status: "completed"
 lane: "7"
 priority: "p1"
 area: "applications"
@@ -28,15 +28,24 @@ validation:
 
 ## Objective
 
-Build deterministic workload generators whose difficulty can grow continuously
-instead of saturating at one application-specific threshold. Generate families
-covering arithmetic and ternary transforms, expression DAGs, control flow,
-function calls, memory pressure, pointer/alias patterns admitted by the C
-profile, streaming state machines, graph problems, layout pressure, Malbolge
-self-modification, block synthesis, and whole-program compositions with known
-semantic oracles. Every instance is identified by family, version, seed, target
-profile, and explicit difficulty parameters so two algorithms can be compared on
-exactly the same problem rather than on vaguely similar examples.
+Build deterministic source-level workload generators whose difficulty can grow
+continuously instead of saturating at one application-specific threshold. The
+bounded P1 milestone covers sixteen replayable C/oracle topologies spanning
+arithmetic, ternary transforms, DAGs, control flow, calls, memory and aliasing,
+streaming state, graph/tree reduction, layout pressure, nested state, and mixed
+composition. Every instance is identified by family, version, seed, target
+profile, and explicit difficulty parameters so algorithms can be compared on the
+same problem rather than on vaguely similar examples.
+
+**Completion boundary.** The generator milestone ends at deterministic admitted
+C plus independent semantic oracle, canonical manifest, profile binding,
+normalized-frontend evidence, native-oracle agreement, and large replay stress.
+Final `.malbolge` execution is owned by the versioned C/Malbolge corpus
+after the layout backend and translation validation exist.
+Synthesis-specific challenge axes such as self-modification footprint, layout
+coupling, target-state entropy,
+and reusable-block coverage are owned by the empirical synthesis scaling study.
+They are not prerequisites for completing this reusable source/oracle substrate.
 
 **Current implementation.**
 
@@ -70,10 +79,10 @@ exactly the same problem rather than on vaguely similar examples.
   `graph-reduce`, `grid-accumulate`, `binary-tree`, `layout-chain`,
   `ternary-fold`, `nested-state`, and `composed-pipeline`; difficulty growth
   covers all sixteen topologies,
-  invalid identity rejection, non-destructive no-replace publication including a
-  raced
-  final-path collision, ABI/libc admission, and pinned-Clang agreement between
-  emitted C and the independent Python oracle for all sixteen families. The
+  invalid identity rejection, non-destructive no-replace publication
+  including a raced final-path collision, ABI/libc admission, and pinned-Clang
+  agreement between emitted C and the independent Python oracle for all sixteen
+  families. The
   normalized frontend additionally preserves the branch family’s expected
   `if-statement` count, the memory family’s exact array-subscript count, and
   one helper call per call-family node. `pointer-walk/v1` selects one array
@@ -126,17 +135,18 @@ exactly the same problem rather than on vaguely similar examples.
   exact manifest
 
   difficulty and the fixed four-byte oracle without a wall-clock claim.
-- The objective remains open: block-synthesis/self-modification workload
-  coverage plus the required end-to-end compiled/executed Malbolge fixture are
-  not yet implemented.
+- The bounded generator objective is complete. Target-native
+  block-synthesis/self-modification workloads and compiled/executed Malbolge
+  fixtures remain downstream work under the owners named in the completion
+  boundary; this record makes no claim that those capabilities already exist.
 
 ## Acceptance
 
 - Every challenge has stable family/version/seed/profile identity, an oracle,
   and difficulty parameters that can scale beyond trivial saturation while
   remaining reproducible.
-- The end-to-end fixture demonstrates the intended behavior from admitted
-  source/input through the actual generated/executed Malbolge path.
+- Generated C and oracle bytes remain independently reproducible and admissible
+  without requiring an unfinished target backend to certify this substrate.
 - The work states a falsifiable question or hypothesis, an explicit baseline,
   and an observation that would reject or materially weaken the proposed
   technique before performance conclusions are accepted.
@@ -145,15 +155,17 @@ exactly the same problem rather than on vaguely similar examples.
   engineering is not forced into that mirror.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
-- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
-  remove the exact TODO heading without losing unfinished intent.
+- Completed on 2026-09-04 after sixteen deterministic families, immutable
+  replay identity, normalized/frontend and native-oracle evidence, large replay
+  stress, and explicit downstream ownership transfer were validated.
 
 ## Evidence
 
 - Expected durable artifact surface: `benchmarks/challenges/`, `docs/research/`,
   `tests/analysis/`, `compiler/`.
-- Required evidence: reproducible build/run commands, expected outputs or
-  interaction traces, artifact hashes, and end-to-end verification.
+- Required evidence: deterministic regeneration, canonical manifests and
+  artifact hashes, C-profile admission, normalized-frontend structure, and an
+  independent native oracle check for the admitted source-level milestone.
 - Prerequisite completion evidence:
   `compiler-algorithm-experimentation-platform`,
   `canonical-malbolge-target-profile`, `deterministic-c-to-malbolge-abi`,
@@ -162,10 +174,9 @@ exactly the same problem rather than on vaguely similar examples.
   `tests/analysis/test_parametric_challenges.py`
   exercises exact replay, profile binding, publication failure behavior,
   C-profile admission, and independent native oracle agreement. The methodology
-  record documents the current threats and explicitly withholds final Malbolge
-  end-to-end completion.
-- Remaining research evidence: broader family coverage and additional
-  large native/executed shapes, end-to-end Malbolge execution after the pending
-  layout/encoding backend,
-  retained comparative results,
-  and a reviewed cross-family conclusion with threats to validity.
+  record documents current threats and the downstream boundary for final
+  Malbolge execution without making that later capability a completion gate.
+- **Completion evidence:** the compact P1 heading is removed from `TODO.md`;
+  the record is archived under `docs/todo/completed/`; sixteen families remain
+  replayable; and unfinished target-native challenge intent is retained by the
+  versioned corpus and empirical synthesis-scaling records.

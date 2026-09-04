@@ -46,9 +46,12 @@ records define the starting evidence base.
 
 ## Method
 
-Use the parametric challenge generator to vary one or more difficulty dimensions
-while preserving stable semantic oracles. For each family and fixed resource
-budget, compare blind/enumerative search, structured deterministic search,
+Use the completed parametric source/oracle generator as the initial challenge
+substrate. As backend/search/linking capabilities become available, add measured
+self-modification footprint, layout coupling, target-state entropy, and
+block-synthesis/catalogue-coverage dimensions without rewriting the frozen v1
+source families. For each family and fixed resource budget, compare
+blind/enumerative search, structured deterministic search,
 canonicalization/pruning, verified block reuse, stochastic/guided search, and
 available accelerator-backed evaluators.
 

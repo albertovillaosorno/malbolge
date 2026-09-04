@@ -17,14 +17,6 @@ labels belong here.
 
 ## P1 — Semantic and language foundations
 
-### TODO - Parametric compiler challenge generator
-
-Build deterministic workload generators whose difficulty can grow continuously
-instead of saturating at one application-specific threshold.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/applications/parametric-compiler-challenge-generator.mdc](docs/todo/open/applications/parametric-compiler-challenge-generator.mdc)
-
 ### TODO - Required-profile diagnostics
 
 Emit deterministic diagnostics naming the required Malbolge profile/features,

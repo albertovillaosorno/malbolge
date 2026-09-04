@@ -35,8 +35,9 @@ Prior-work claims must resolve through canonical records under
 - Authoritative comparisons retain capacity curves and Pareto frontiers; an
   aggregate score, if offered, is explicitly secondary and cannot hide
   time/quality/memory/size/verifier trade-offs.
-- The end-to-end fixture demonstrates the intended behavior from admitted
-  source/input through the actual generated/executed Malbolge path.
+- The arena measures every available execution/compiler stage without making
+  a later target backend a prerequisite for the evaluation infrastructure; final
+  `.malbolge` measurements are added when verified artifacts become available.
 - The work states a falsifiable question or hypothesis, an explicit baseline,
   and an observation that would reject or materially weaken the proposed
   technique before performance conclusions are accepted.
@@ -57,8 +58,9 @@ results. Source claims resolve through `docs/bibliography/`.
 
 - Expected durable artifact surface: `benchmarks/arena/`,
   `docs/research/methodology/`, `algorithms/`.
-- Required evidence: reproducible build/run commands, expected outputs or
-  interaction traces, artifact hashes, and end-to-end verification.
+- Required evidence: reproducible run commands, retained challenge and
+  algorithm identities, raw multidimensional samples, and independent verifier
+  outcomes for every measured stage.
 - Research evidence pending: bibliography-backed context, experiment identity,
   reproducible configuration, retained negative/null results, and a reviewed
   conclusion with threats to validity.

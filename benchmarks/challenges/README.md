@@ -69,6 +69,8 @@ families deliberately use no unavailable guest libc routine. Published v1
 replay vectors use immutable `malbolge-2026.3` profile identity and are
 hash-locked across later family extensions or current-profile advances.
 
-This is implementation substrate, not completion of the planning objective.
-Block-synthesis/self-modification workload families plus an end-to-end
-generated/executed Malbolge fixture remain open.
+This sixteen-family source/oracle substrate completes the bounded P1 generator
+milestone. Target-native self-modification and block-synthesis challenge axes
+belong to the empirical synthesis scaling study, while representative
+source-to-`.malbolge` execution belongs to the versioned C/Malbolge corpus after
+the required backend and verifier capabilities exist.

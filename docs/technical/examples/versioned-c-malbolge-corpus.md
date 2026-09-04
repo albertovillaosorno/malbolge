@@ -41,8 +41,9 @@ Not implemented. This proposed contract does not claim executable support yet.
 - Every committed `.c`/`.malbolge` pair is an intentional documentation artifact
   with compiler/profile identity, reproducible command, expected behavior, and
   verification hash/evidence.
-- The end-to-end fixture demonstrates the intended behavior from admitted
-  source/input through the actual generated/executed Malbolge path.
+- At least one representative fixed identity from the completed parametric
+  challenge generator is compiled through the real layout backend, independently
+  verified, executed as final `.malbolge`, and retained as an end-to-end pair.
 
 ## Failure Behavior
 

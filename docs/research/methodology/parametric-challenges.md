@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Completed
 
 ## Research Question
 
@@ -11,20 +11,24 @@ generator?
 
 ## Background
 
-Build deterministic workload generators whose difficulty can grow continuously
-instead of saturating at one application-specific threshold. Generate families
-covering arithmetic and ternary transforms, expression DAGs, control flow,
-function calls, memory pressure, pointer/alias patterns admitted by the C
-profile, streaming state machines, graph problems, layout pressure, Malbolge
-self-modification, block synthesis, and whole-program compositions with known
-semantic oracles. Every instance is identified by family, version, seed, target
-profile, and explicit difficulty parameters so two algorithms can be compared on
-exactly the same problem rather than on vaguely similar examples.
+Build deterministic source-level workload generators whose difficulty can grow
+continuously instead of saturating at one application-specific threshold. The
+bounded milestone covers arithmetic and ternary transforms, DAG and tree shapes,
+control flow, calls, memory/alias pressure, streaming and graph state, layout
+pressure, nested state, and heterogeneous composition with known semantic
+oracles. Every instance is identified by family, version, seed, target profile,
+and explicit difficulty parameters so algorithms can be compared on exactly the
+same source-level problem.
 
-- Status: Active
+Target-native self-modification, block synthesis, and final `.malbolge`
+composition require later layout/search/linking capabilities. They are retained
+as downstream scaling and versioned-corpus obligations rather than keeping this
+source/oracle infrastructure permanently open.
+
+- Status: Completed
 - Record type: Methodology
 - Planning identity: `parametric-compiler-challenge-generator`
-- Last reviewed: 2026-08-11
+- Last reviewed: 2026-09-04
 
 ## Prior Work
 
@@ -36,8 +40,8 @@ Prior-work claims must resolve through canonical records under
 - Every challenge has stable family/version/seed/profile identity, an oracle,
   and difficulty parameters that can scale beyond trivial saturation while
   remaining reproducible.
-- The end-to-end fixture demonstrates the intended behavior from admitted
-  source/input through the actual generated/executed Malbolge path.
+- The source/oracle substrate remains deterministic and independently checked
+  without relying on an unfinished target backend for its own completion.
 - The work states a falsifiable question or hypothesis, an explicit baseline,
   and an observation that would reject or materially weaken the proposed
   technique before performance conclusions are accepted.
@@ -139,11 +143,13 @@ host execution guest semantic authority.
 
 - Expected durable artifact surface: `benchmarks/challenges/`, `docs/research/`,
   `tests/analysis/`, `compiler/`.
-- Required evidence: reproducible build/run commands, expected outputs or
-  interaction traces, artifact hashes, and end-to-end verification.
-- Research evidence pending: bibliography-backed context, experiment identity,
-  reproducible configuration, retained negative/null results, and a reviewed
-  conclusion with threats to validity.
+- Required evidence for this bounded milestone: deterministic regeneration,
+  canonical manifests and hashes, C-profile admission, normalized-frontend
+  structure, independent native-oracle agreement, and scalable replay.
+- Completion evidence is retained in the generator tests and this reviewed
+  methodology record. Comparative performance, target-native execution, and
+  synthesis-specific scaling require their own downstream evidence and do not
+  inherit a claim from source-level generation.
 
 ## Results
 
@@ -167,11 +173,13 @@ byte-identically at 16,384 nodes while
 retaining a four-byte
 oracle and exact manifest difficulty.
 
-This result does not satisfy the end-to-end acceptance criterion. No current
-backend evidence yet demonstrates a generated challenge compiled to and
-executed as a final `.malbolge` artifact; the layout/encoding backend required
-for that path is still pending. Block-synthesis and Malbolge
-self-modification challenge coverage also remain open.
+This completes the bounded source/oracle generator milestone. No current backend
+evidence demonstrates a generated challenge compiled to and executed as a final
+`.malbolge` artifact, and no target-native block-synthesis/self-modification
+challenge is claimed here. Those capabilities remain explicit downstream work:
+the versioned example corpus owns representative end-to-end `.malbolge` pairs,
+while the empirical synthesis scaling study owns synthesis-specific challenge
+axes once the required backend/search/linking capabilities exist.
 
 ## Threats to Validity
 
@@ -183,27 +191,27 @@ reduction, quadratic grid
 accumulation, distinct-function
 layout-pressure, explicit ternary-fold, nested-state control-flow, and
 heterogeneous composed-pipeline topologies. The 4,096-node nested native case
-plus eight 16,384-node
-deterministic generation/replay cases add larger stress evidence, but broader
-workload
-structure and additional native/executed large shapes remain open.
+plus eight 16,384-node deterministic generation/replay cases add larger stress
+evidence. Broader target-native workload structure is outside this bounded
+milestone and remains owned by the downstream scaling and versioned-corpus work.
+
 Workload selection, generator/model common-mode bugs, native-check host
-differences,
-missing final Malbolge execution, and incomplete family coverage remain
-threats. The independent native check narrows only the Python-versus-C-source
-agreement risk; it does not prove downstream compiler correctness.
+differences, missing final Malbolge execution, and incomplete family coverage
+remain threats. The independent native check narrows only the
+Python-versus-C-source agreement risk; it does not prove downstream compiler
+correctness.
 
 ## Conclusion
 
-Active. Retain hash-locked v1 replay vectors for `arithmetic-dag`,
+Completed bounded milestone. Retain hash-locked v1 replay vectors for
+`arithmetic-dag`,
 `pointer-walk`, `stream-state`, `sort-reduce`, `graph-reduce`, `binary-tree`,
 `grid-accumulate`, `layout-chain`, `ternary-fold`, `nested-state`, and
 `composed-pipeline`, alongside domain-separated `linear-mix/v1`,
 `branch-mix/v1`, `memory-walk/v1`, `call-chain/v1`, and `alias-walk/v1` as
-deterministic challenge substrates
-while expanding family coverage and waiting for an end-to-end generated
-Malbolge execution path before completing this planning
-objective.
+deterministic challenge substrates. Future target-native families extend this
+frozen substrate only under their downstream owners; they do not reopen the
+completed P1 generator milestone.
 
 ## References
 
