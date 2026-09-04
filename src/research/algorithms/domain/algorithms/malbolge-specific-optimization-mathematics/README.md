@@ -543,6 +543,12 @@ twelve-coordinate orbit and the eight-coordinate orbit finishes the stabilizer
 chain. This gives 16,945,480 free triples, 5,493,876 residual classes, and
 5,498,136 complete mass-14 classes, leaving 15,382,298 residual classes.
 
+The `D8` pair branch on `(4,1,1)` is constructive too. Its two endpoint
+transpositions distinguish the unique order-eight class, with normalizer order
+16. Pair rank ends at 434 classes and triple blocks `(2,2,4,4,4,4)` yield
+101,939,408 free classes. Composition adds 4,287,068 residual and 4,287,180
+complete mass-14 classes, leaving 11,095,230 residual classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
