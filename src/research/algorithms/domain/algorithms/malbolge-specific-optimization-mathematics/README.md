@@ -495,6 +495,15 @@ extensions remove five ranks, leaving five exact residual classes. Exact ranks
 first appear at masses 13 and 14 with counts `2,5`; the repeated-six vertex
 prefix therefore also gives five complete mass-14 classes.
 
+The transitive `A4-times-S2` order-24 stabilizer is constructive too. Its
+normalizer has order 48 and quotient order two. The H-fixed residual coordinates
+have orbit spectrum `1^2 3^2 6^2 8^1 12^2`, grouped into five quotient blocks
+with sizes `(2,2,1,2,2)` and weights `(1,3,8,12,6)`.
+
+Normalizer-free already means exact-H through mass 14. Exact residual counts
+from masses 6 through 14 are `1,2,3,6,9,12,19,26,34`; repeated-six vertex
+prefixing gives 40 complete mass-14 classes.
+
 The rooted-S5 trivial-stabilizer quotient is now constructive. Rooting endpoint
 five splits the 52 residual coordinates into two fixed scalars, five
 two-component vertex bundles, and ten four-component K5 edges. Sorting the five
