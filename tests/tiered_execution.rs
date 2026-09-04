@@ -7530,6 +7530,33 @@ fn direct_sequence_rejects_empty_discontinuous_and_profile_mixed_shapes()
 }
 
 #[test]
+fn direct_sequence_rejects_forged_profile_before_plan_publication()
+-> Result<(), String> {
+    let mut program = direct_initial_halt_program();
+    program.profile_requirement =
+        TargetProfileRequirement::from_descriptor(historical_profile());
+    let programs = [program];
+    let result = select_verified_direct_sequence(
+        &programs,
+        safe_rust_profiled_capability(),
+        HostOperatingSystem::Windows,
+        HostIsa::X86_64,
+    );
+    let Err(DirectSequenceError::Step { error, index: 0 }) = result else {
+        return Err(format!(
+            "forged profile requirement published a sequence plan: {result:?}"
+        ));
+    };
+    if *error == DirectSelectionError::ProfileRequirement {
+        Ok(())
+    } else {
+        Err(format!(
+            "forged sequence requirement changed admission error: {error}"
+        ))
+    }
+}
+
+#[test]
 fn direct_sequence_preserves_step_selection_errors() -> Result<(), String> {
     let programs = direct_normative_sequence_programs()?;
     let result = select_verified_direct_sequence(

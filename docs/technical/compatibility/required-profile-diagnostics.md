@@ -33,6 +33,7 @@ This document currently governs:
 - `src/runtime/virtual-machine/domain/execution_ir.rs`
 - `src/runtime/virtual-machine/domain/loader.rs`
 - `src/runtime/virtual-machine/domain/profile_machine.rs`
+- `src/runtime/tiered-execution/`
 - `src/interface/command-line/composition/main.rs`
 - `tests/test_target_profile.py`
 - `tests/cli_malbolge.rs`
@@ -335,6 +336,12 @@ that retained routing failure. A legitimate retry suffix cannot newly produce
 already published `VerifiedDirectSequencePlan`, and sequence publication
 preflights every immutable step against its selected profile capacity. A focused
 regression rejects a capacity-overflow step as `002` before plan publication.
+
+The same publication boundary protects process-local executable sequence and
+lease caches: their public load/lookup APIs accept only verified sequence-plan
+types, whose fields are private and whose constructors run canonical requirement
+admission plus combined profile-capacity/runtime preflight before publication.
+A forged requirement is therefore rejected before a cache-loadable plan exists.
 Other artifact families do not yet universally expose an equivalent program
 
 requirement. Raw and capsule `.malbolge` product invocation use canonical source
@@ -347,9 +354,9 @@ and host-parallel profile batches return that exact same typed rejection. The
 logical-task layer preserves it through sorted parallel execution, keeps later
 independent tasks runnable, and joins fail with the same profile error plus the
 
-exact rejected task identity. Durable-cache, AOT/JIT execution, and the
-remaining
-product/artifact paths do not yet universally invoke that boundary.
+exact rejected task identity. Durable cross-process cache, AOT/JIT execution,
+and the remaining product/artifact paths do not yet universally invoke that
+boundary.
 This contract therefore remains active rather than claiming repository-wide
 profile diagnostic completion.
 
@@ -384,6 +391,7 @@ profile diagnostic completion.
   profile batches, then remains attached to its exact logical task identity at
   host output join while later independent tasks still execute.
 - `tests/tiered_execution.rs` proves exact derived IR footprint, including
+  forged-requirement rejection before verified sequence-plan publication,
   `u32::MAX`, native-identity rejection of inconsistent capacity, `MBPF` v3
   footprint mismatch rejection, emitter propagation, direct-template precedence
   `002` then `001` then host/backend, the same precedence before verified direct

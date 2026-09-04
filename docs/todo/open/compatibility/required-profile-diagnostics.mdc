@@ -19,11 +19,13 @@ scope:
   - "src/runtime/virtual-machine/domain/profile.rs"
   - "src/runtime/virtual-machine/domain/profile_generated.rs"
   - "src/runtime/virtual-machine/domain/execution.rs"
+  - "src/runtime/tiered-execution/"
   - "src/automation/repository/composition/scripts/validate/target_profile.py"
   - "src/automation/repository/composition/scripts/validate/profile_requirements.py"
   - "tests/compatibility/"
   - "tests/test_target_profile.py"
   - "tests/vm/profile_requirements.rs"
+  - "tests/tiered_execution.rs"
 validation:
   # jig-ignore-next-line: exact verification command is indivisible
   - ".dependencies/python/3.14.6/Scripts/pytest-jig.cmd -c .jig/lang/python/pytest.ini tests/test_target_profile.py tests/compatibility/test_profile_requirements.py tests/compatibility/test_scalable_memory.py"
@@ -129,6 +131,13 @@ historical-profile constraint.
   and preserves `002`/`001` ahead of missing-compiler launch failure. Admitted
   x86-64 and AArch64 fixtures compile through pinned Clang and retain structural
   COFF admission.
+- Process-local native artifact caches retain exact profile requirement and
+  derived memory footprint in their keys. Executable sequence and lease caches
+  accept only `VerifiedDirectSequencePlan`/`CachedVerifiedDirectSequencePlan`
+  values whose private construction occurs after canonical requirement and
+  combined `002` then `001` preflight. A focused regression rejects a forged
+  requirement before any verified sequence plan can be published, so later
+  cache loading cannot become an alternate profile-admission path.
 - Native-retry planning preserves profile rejection as a hard failure and
   snapshots exact canonical profile text before the planner takes ownership of
   the suspension. Callers retain the stable retry step/index category while the
@@ -155,8 +164,9 @@ historical-profile constraint.
   that exact typed rejection equal. Logical-task orchestration preserves the
   same `002` plus rejected task identity through parallel execution/join while a
   later independent task still runs. Equivalent program-memory requirements for
-  other non-IR artifact families, durable-cache/AOT/JIT/runtime orchestration,
-  and remaining product invocation paths remain open, so repository-wide
+  other non-IR artifact families, durable cross-process cache/AOT/JIT runtime
+  orchestration, and remaining product invocation paths remain open, so
+  repository-wide
   completion is not claimed.
 
 ## Acceptance
