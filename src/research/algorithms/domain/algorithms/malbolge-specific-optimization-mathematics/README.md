@@ -525,6 +525,12 @@ involutions and normalizer order 16. Its pair rank ends at 1,208 classes, and
 triple blocks `(2,2,4,4,4,4)` yield 204,669,024 free classes. Composition adds
 7,716,564 residual and 7,716,836 complete mass-14 classes, leaving 34,276,206.
 
+The `S3×S3` pair branch on two three-vertex orbits is constructive too. Its
+pair sequence is nonzero only at masses 3, 6, 9, and 12, with counts
+`2,4,10,20`; pair mass 14 itself is empty. Triple blocks `(1,1,9,9)` yield
+22,477,163 free classes. Composition still contributes 7,309,120 residual and
+7,314,264 complete mass-14 classes, leaving 26,967,086 residual classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
