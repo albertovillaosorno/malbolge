@@ -1,0 +1,5 @@
+domain = "architecture"
+schema_version = 1
+
+[component.malbolge]
+depends_on = []

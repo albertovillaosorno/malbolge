@@ -217,6 +217,64 @@ pinned by the Python validation environment. No baseline source is fabricated
 merely to make a category non-empty. New material claims must add a canonical
 record before relying on an uncovered source class.
 
+### Retained Source Inventory
+
+The 48 other retained bibliography evidence documents reviewed by this ledger
+are listed explicitly so provenance reachability is deterministic and auditable.
+
+- `docs/bibliography/languages/c.md`
+- `docs/bibliography/languages/python.md`
+- `docs/bibliography/languages/rust.md`
+- `docs/bibliography/libraries/colorama.md`
+- `docs/bibliography/libraries/iniconfig.md`
+- `docs/bibliography/libraries/nodejs-wheel-binaries.md`
+- `docs/bibliography/libraries/packaging.md`
+- `docs/bibliography/libraries/pluggy.md`
+- `docs/bibliography/libraries/pygments.md`
+- `docs/bibliography/organizations-and-projects/andrew-cooke-malbolge.md`
+- `docs/bibliography/organizations-and-projects/github-linguist.md`
+- `docs/bibliography/organizations-and-projects/id-software-doom.md`
+<!-- jig-ignore-next-line: canonical source path is indivisible -->
+- `docs/bibliography/organizations-and-projects/internet-archive-wayback-machine.md`
+- `docs/bibliography/organizations-and-projects/nagoya-malbolge-project.md`
+- `docs/bibliography/organizations-and-projects/ninety-nine-bottles-of-beer.md`
+- `docs/bibliography/platforms-and-runtimes/aarch64.md`
+- `docs/bibliography/platforms-and-runtimes/accelerators/nvidia-cuda.md`
+- `docs/bibliography/platforms-and-runtimes/accelerators/pytorch.md`
+- `docs/bibliography/platforms-and-runtimes/compiler/clang-libtooling.md`
+- `docs/bibliography/platforms-and-runtimes/compiler/llvm-ir.md`
+- `docs/bibliography/platforms-and-runtimes/nodejs-24-16-0.md`
+- `docs/bibliography/platforms-and-runtimes/rocm.md`
+- `docs/bibliography/platforms-and-runtimes/rust-toolchain-1-97-1.md`
+- `docs/bibliography/platforms-and-runtimes/x86-64.md`
+- `docs/bibliography/provenance-and-methodology/disclaimer.md`
+<!-- jig-ignore-next-line: canonical source path is indivisible -->
+- `docs/bibliography/provenance-and-methodology/research/acm-artifact-evaluation.md`
+<!-- jig-ignore-next-line: canonical source path is indivisible -->
+- `docs/bibliography/provenance-and-methodology/research/acm-sigsoft-empirical-standards.md`
+- `docs/bibliography/publications/superoptimization/egg.md`
+- `docs/bibliography/publications/superoptimization/souper.md`
+- `docs/bibliography/publications/superoptimization/stoke.md`
+- `docs/bibliography/publications/verification/alive2.md`
+- `docs/bibliography/specifications-and-standards/citation-file-format.md`
+- `docs/bibliography/specifications-and-standards/commonmark.md`
+- `docs/bibliography/specifications-and-standards/json-schema-store.md`
+<!-- jig-ignore-next-line: canonical source path is indivisible -->
+- `docs/bibliography/specifications-and-standards/malbolge/ben-olmstead-2014-interview.md`
+- `docs/bibliography/specifications-and-standards/malbolge/malbolge-1998.md`
+- `docs/bibliography/specifications-and-standards/toml.md`
+- `docs/bibliography/tooling/basedpyright.md`
+- `docs/bibliography/tooling/clang.md`
+- `docs/bibliography/tooling/clang-tidy.md`
+- `docs/bibliography/tooling/cspell.md`
+- `docs/bibliography/tooling/git.md`
+- `docs/bibliography/tooling/latex.md`
+- `docs/bibliography/tooling/markdownlint-cli2.md`
+- `docs/bibliography/tooling/pytest.md`
+- `docs/bibliography/tooling/ruff.md`
+- `docs/bibliography/tooling/textmate-language-grammar.md`
+- `docs/bibliography/tooling/uv.md`
+
 ### Discarded Or Rejected Evidence Patterns
 
 The repository does not accept the following as sufficient evidence:

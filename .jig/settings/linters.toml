@@ -1,0 +1,74 @@
+domain = "linters"
+schema_version = 1
+
+[applicability.clang-format]
+enabled = false
+reason = "Repository-wide execution cannot exclude immutable historical C with the current Jig selector model; authored C is formatted explicitly with pinned LLVM 22.1.8."
+
+[applicability.clang-tidy]
+enabled = false
+reason = "Repository-wide execution would conflate immutable historical, host/native, and guest C; Malbolge guest compatibility is explicit tools/tidy validation until Jig supports path-scoped native targets."
+
+[applicability.clippy-config]
+enabled = true
+reason = ".jig/lang/rust/clippy.toml governs repository-authored Rust utilities."
+
+[applicability.clippy-lints]
+enabled = true
+reason = "Workspace Clippy lint levels govern every Rust package."
+
+[applicability.coverage-py]
+enabled = false
+reason = "Jig first-party coverage will be authoritative."
+
+[applicability.csharp-global]
+enabled = false
+reason = "The repository contains no C# source."
+
+[applicability.csharp-visualstudio]
+enabled = false
+reason = "The repository contains no C# source."
+
+[applicability.directory-build]
+enabled = false
+reason = "MSBuild policy is centralized at .jig/lang/csharp/Directory.Build.props; the legacy root projection is intentionally absent."
+
+[applicability.editorconfig]
+enabled = true
+reason = "EditorConfig governs repository-authored text surfaces."
+
+[applicability.msvc-cpp]
+enabled = false
+reason = "MSVC C++ policy is centralized at .jig/lang/cpp/msvc-cpp.editorconfig; the legacy root projection is intentionally absent."
+
+[applicability.pyright]
+enabled = false
+reason = "BasedPyright is executed by validation.pyright with the schema-21 configuration under .jig/lang/python."
+
+[applicability.pytest]
+enabled = false
+reason = "Pytest is executed by validation.pytest with the schema-21 configuration under .jig/lang/python."
+
+[applicability.ruff]
+enabled = false
+reason = "Ruff is executed by validation.ruff with the schema-21 configuration under .jig/lang/python."
+
+[applicability.rust-toolchain]
+enabled = true
+reason = "The repository pins Rust for authored utilities and future product code."
+
+[applicability.rustc-lints]
+enabled = true
+reason = "Workspace rustc lint levels govern every Rust package."
+
+[applicability.rustfmt]
+enabled = true
+reason = "rustfmt governs repository-authored Rust utilities."
+
+[applicability.typescript]
+enabled = false
+reason = "The repository contains no TypeScript source."
+
+[applicability.unreal]
+enabled = false
+reason = "The repository is not an Unreal Engine project."

@@ -74,12 +74,13 @@ and become inconsistent.
 records use `docs/bibliography/provenance-and-methodology/template.md` as the
 baseline shape.
 
-`docs/bibliography/provenance-and-methodology/repository/` owns claim-level
-verification ledgers. Those ledgers may cite Git commits as internal decision
-provenance, but external facts still resolve to primary or authoritative
-bibliography records.
+<!-- jig-ignore-next-line: canonical source path is indivisible -->
+The [repository source verification ledger](../provenance-and-methodology/repository/repository-source-verification.md)
+owns claim-level verification evidence. That ledger may cite Git commits as
+internal decision provenance, but external facts still resolve to primary or
+authoritative bibliography records.
 
-The repository baseline currently contains 47 source/provenance records. The
+The repository baseline currently contains 48 source/provenance records. The
 coverage ledger names the required first-pass classes and 44 canonical baseline
 records spanning historical Malbolge, languages, host architectures, compiler
 tooling, accelerators, superoptimization, verification, research methodology,

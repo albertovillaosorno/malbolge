@@ -1,0 +1,26 @@
+domain = "change"
+schema_version = 1
+
+[policy.architecture]
+mode = "all"
+selectors = []
+
+[policy.bugfix]
+mode = "all-except"
+selectors = ["basename:Cargo.toml", "exact:.jig/jig.toml", "exact:.jig/version/rust-toolchain.toml", "exact:AGENTS.md", "exact:Cargo.lock", "prefix:docs/technical/adr/"]
+
+[policy.dependency-admission]
+mode = "only"
+selectors = ["basename:Cargo.toml", "exact:Cargo.lock", "prefix:docs/bibliography/", "prefix:docs/technical/adr/"]
+
+[policy.documentation]
+mode = "only"
+selectors = ["extension:md", "extension:mdc"]
+
+[policy.implementation]
+mode = "all-except"
+selectors = ["basename:Cargo.toml", "exact:.jig/jig.toml", "exact:.jig/version/rust-toolchain.toml", "exact:AGENTS.md", "exact:Cargo.lock", "prefix:docs/technical/adr/"]
+
+[policy.test]
+mode = "only"
+selectors = ["directory:tests"]

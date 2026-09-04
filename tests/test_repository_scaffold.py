@@ -37,11 +37,16 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
+# jig-ignore-next-line: indivisible reviewed identifier
+import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed Git argv, never a shell command.
+
 ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = ROOT / "src"
+GRAPH_MIRROR_ROOT = ROOT / ".jig" / "graph" / "mirror"
 SOURCE_CATALOG = SRC_ROOT / "README.md"
-SOURCE_SIDECAR = SRC_ROOT / "README.md.yml"
+SOURCE_SIDECAR = GRAPH_MIRROR_ROOT / "src" / "README.md.yml"
 CARGO_MANIFEST = ROOT / "Cargo.toml"
+GIT = "git"
 FUNCTION_MANIFEST = "function.yml"
 MIN_COMPOSITION_PARTS = 4
 SOURCE_ROOT_NAME = "src"
@@ -106,6 +111,19 @@ def _composition_paths(text: str) -> tuple[str, ...]:
     )
 
 
+def _is_git_ignored(path: Path) -> bool:
+    relative = path.relative_to(ROOT).as_posix()
+    # jig-ignore-next-line: indivisible reviewed identifier
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed Git argv, no shell.
+        [GIT, "check-ignore", "--quiet", "--no-index", relative],
+        cwd=ROOT,
+        check=False,
+        shell=False,
+    )
+    assert completed.returncode in {0, 1}, relative
+    return completed.returncode == 0
+
+
 def test_source_root_matches_declared_responsibility_domains() -> None:
     """The thin source root contains only its catalog and governed domains."""
     assert SOURCE_CATALOG.is_file()
@@ -117,13 +135,15 @@ def test_source_root_matches_declared_responsibility_domains() -> None:
     source_files = {
         path.name for path in SRC_ROOT.iterdir() if path.is_file()
     }
-    assert source_files == {SOURCE_CATALOG.name, SOURCE_SIDECAR.name}
+    assert source_files == {SOURCE_CATALOG.name}
 
     catalog = SOURCE_CATALOG.read_text(encoding="utf-8")
     for domain in EXPECTED_DOMAINS:
         assert f"[`{domain}/`]({domain}/): governed semantic domain." in catalog
         assert (SRC_ROOT / domain / "README.md").is_file()
-        assert (SRC_ROOT / domain / "README.md.yml").is_file()
+        assert (
+            GRAPH_MIRROR_ROOT / "src" / domain / "README.md.yml"
+        ).is_file()
 
 
 def test_every_function_has_one_governed_manifest() -> None:
@@ -174,6 +194,10 @@ def test_source_tree_has_no_speculative_empty_directories() -> None:
     empty = tuple(
         path.relative_to(ROOT).as_posix()
         for path in SRC_ROOT.rglob("*")
-        if path.is_dir() and not any(path.iterdir())
+        if (
+            path.is_dir()
+            and not any(path.iterdir())
+            and not _is_git_ignored(path)
+        )
     )
     assert not empty

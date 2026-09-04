@@ -61,7 +61,7 @@ interoperability, verifier, and research ownership ambiguous.
 
 ## Evidence
 
-The implemented source catalog owns ten semantic domains and 15 governed
+The implemented source catalog owns eleven semantic domains and 19 governed
 functions. Every function has one `function.yml` manifest whose route is
 `src/<domain>/<function>/<kind>/<part>`. Cargo entrypoints resolve inside those
 functions rather than through root `src/lib.rs` or `src/main.rs` files.

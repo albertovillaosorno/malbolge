@@ -1,0 +1,18 @@
+domain = "todo"
+schema_version = 1
+acceptance_section = "Acceptance"
+completed_root = "docs/todo/completed/"
+lane_policy = "strict-dependency-order"
+open_root = "docs/todo/open/"
+record_extension = "mdc"
+record_root = "docs/todo/"
+require_acceptance_items = true
+require_validation_commands = true
+sections = ["Objective", "Acceptance", "Evidence"]
+task_document = "TODO.md"
+task_heading_level = 3
+task_heading_prefix = ""
+
+[ordered_dimension]
+field = "priority"
+order = ["p0", "p1", "p2", "p3", "p4", "p5"]

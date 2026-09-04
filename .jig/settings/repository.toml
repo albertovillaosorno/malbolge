@@ -1,0 +1,12 @@
+domain = "repository"
+schema_version = 1
+fixture_roots = []
+host_absolute_path_guard = false
+
+[layout]
+adjacent_component_repetition = "deny"
+test_source_mirroring = false
+
+[layout.structural_integrity]
+enabled = false
+forbidden_identity_segments = []

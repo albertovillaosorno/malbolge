@@ -1,0 +1,34 @@
+domain = "duplication"
+schema_version = 1
+default = "authored-production"
+exact_languages = []
+
+[override.benchmark_evidence]
+authority = "repository-benchmark-harness"
+kind = "generated"
+selectors = ["directory:evidence"]
+
+[override.benchmark_protocol_examples]
+authority = "repository-benchmark-protocol-fixtures"
+kind = "generated"
+selectors = ["prefix:benchmarks/research/protocol/examples/"]
+
+[override.generated_contract_projections]
+authority = "repository-contract-renderers"
+kind = "generated"
+selectors = ["exact:src/interoperability/profile-compatibility/contract/profile-fingerprints.json", "exact:src/interoperability/profile-compatibility/contract/scalable-memory-evidence.json", "exact:src/optimization/accelerator/adapter-outbound/accelerator/cuda/ticket_admission_profiles.json", "exact:src/optimization/accelerator/adapter-outbound/accelerator/cuda/toolchain-linux-x86_64.json", "exact:src/optimization/accelerator/adapter-outbound/accelerator/cuda/toolchain.json", "exact:src/research/algorithms/domain/algorithms/doom/quality/comparison/metrics.json", "exact:src/tooling/language-support/contract/grammar/syntaxes/malbolge.tmLanguage.json"]
+
+[override.generated_dictionary_projections]
+authority = "repository-cspell-dictionary-renderer"
+kind = "generated"
+selectors = ["exact:.jig/cspell/cspell.json", "exact:.jig/cspell/named-entities.txt", "exact:.jig/cspell/technical.txt"]
+
+[override.migration_references]
+authority = "canonical-jig-layout-migration"
+kind = "generated"
+selectors = ["exact:src/interface/command-line/contract/reference.md", "exact:src/interoperability/historical-malbolge/contract/reference.md", "exact:src/interoperability/profile-compatibility/contract/reference.md", "exact:src/optimization/accelerator/contract/reference.md", "exact:src/research/algorithms/contract/reference.md", "exact:src/specification/formal-model/contract/reference.md", "exact:src/tooling/decompiler/contract/reference.md", "exact:src/tooling/language-support/contract/reference.md", "exact:src/tooling/native-analysis/contract/reference.md"]
+
+[override.native_fixtures]
+authority = "independent-native-fixture-renderers"
+kind = "generated"
+selectors = ["prefix:tests/execution/fixtures/"]

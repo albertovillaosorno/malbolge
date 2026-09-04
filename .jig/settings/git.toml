@@ -1,0 +1,17 @@
+domain = "git"
+schema_version = 1
+required_hooks = ["commit-msg"]
+required_ignored_paths = ["JIG_SHIT.md"]
+binary_extensions = ["7z", "a", "dll", "dylib", "exe", "gif", "gz", "ico", "jpeg", "jpg", "lib", "pdf", "png", "so", "webp", "zip"]
+
+[linguist.cu]
+detectable = true
+language = "Cuda"
+
+[linguist.cuh]
+detectable = true
+language = "Cuda"
+
+[linguist.malbolge]
+detectable = true
+language = "Malbolge"

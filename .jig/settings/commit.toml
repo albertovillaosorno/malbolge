@@ -1,0 +1,13 @@
+domain = "commit"
+schema_version = 1
+allowed_scopes = ["adr", "ci", "compiler", "config", "docs", "foundation", "legal", "repo", "research", "runtime", "tests", "tooling"]
+allowed_trailers = ["BREAKING CHANGE"]
+allowed_types = ["build", "chore", "ci", "docs", "feat", "fix", "perf", "refactor", "release", "revert", "style", "test"]
+allow_merge_commits = false
+allow_revert_type = true
+body_line_max_length = 80
+body_min_length = 80
+history_baseline = "5544819492e1ec242183555f46ce07fd940724da"
+required_trailers = []
+require_scope = true
+subject_max_length = 72

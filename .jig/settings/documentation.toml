@@ -1,0 +1,109 @@
+domain = "documentation"
+schema_version = 1
+paragraph_sentence_limit = 4
+path_style = "lower-kebab"
+required_paths = ["docs/bibliography/README.md", "docs/bibliography/adr/README.md", "docs/legal/README.md", "docs/legal/adr/README.md", "docs/research/README.md", "docs/research/adr/README.md", "docs/technical/README.md", "docs/technical/adr/README.md"]
+roots = ["docs/bibliography/", "docs/legal/", "docs/research/", "docs/technical/"]
+
+[profile.bibliography-adr]
+decision_id = "required"
+decision_id_prefix = "jig.malbolge.bibliography"
+decision_id_section = "Decision ID"
+decision_id_style = "dotted-lower-kebab"
+kind = "adr"
+paths = ["docs/bibliography/adr/"]
+section_mode = "exact"
+sections = ["Status", "Decision ID", "Context", "Decision", "Advantages", "Disadvantages", "Consequences", "Rejected Alternatives", "Evidence"]
+
+[profile.bibliography-catalog]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/bibliography/README.md", "docs/bibliography/adr/README.md", "docs/bibliography/languages/README.md", "docs/bibliography/legal-and-regulatory/README.md", "docs/bibliography/libraries/README.md", "docs/bibliography/organizations-and-projects/README.md", "docs/bibliography/platforms-and-runtimes/README.md", "docs/bibliography/platforms-and-runtimes/accelerators/README.md", "docs/bibliography/platforms-and-runtimes/compiler/README.md", "docs/bibliography/provenance-and-methodology/README.md", "docs/bibliography/provenance-and-methodology/repository/README.md", "docs/bibliography/provenance-and-methodology/research/README.md", "docs/bibliography/publications/README.md", "docs/bibliography/publications/superoptimization/README.md", "docs/bibliography/publications/verification/README.md", "docs/bibliography/specifications-and-standards/README.md", "docs/bibliography/specifications-and-standards/malbolge/README.md", "docs/bibliography/tooling/README.md"]
+section_mode = "exact"
+sections = ["Purpose", "Owns", "Does Not Own", "Contents"]
+
+[profile.bibliography-record]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/bibliography/"]
+section_mode = "exact"
+sections = ["Status", "Subject", "Repository Use", "Provenance", "Identity And Version", "License Or Terms", "Evidence", "Sources"]
+
+[profile.legal-adr]
+decision_id = "required"
+decision_id_prefix = "jig.malbolge.legal"
+decision_id_section = "Decision ID"
+decision_id_style = "dotted-lower-kebab"
+kind = "adr"
+paths = ["docs/legal/adr/"]
+section_mode = "exact"
+sections = ["Status", "Decision ID", "Context", "Decision", "Advantages", "Disadvantages", "Consequences", "Rejected Alternatives", "Evidence"]
+
+[profile.legal-catalog]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/legal/README.md", "docs/legal/adr/README.md", "docs/legal/authorities/README.md", "docs/legal/interoperability/README.md", "docs/legal/licenses/README.md", "docs/legal/repository/README.md"]
+section_mode = "exact"
+sections = ["Purpose", "Owns", "Does Not Own", "Contents"]
+
+[profile.legal-record]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/legal/"]
+section_mode = "exact"
+sections = ["Status", "As-of Date", "Question Presented", "Verified Baseline", "Not Established", "Required Facts", "Authorities", "Analysis", "Conclusion Boundary", "Sources"]
+
+[profile.research-adr]
+decision_id = "required"
+decision_id_prefix = "jig.malbolge.research"
+decision_id_section = "Decision ID"
+decision_id_style = "dotted-lower-kebab"
+kind = "adr"
+paths = ["docs/research/adr/"]
+section_mode = "exact"
+sections = ["Status", "Decision ID", "Context", "Decision", "Advantages", "Disadvantages", "Consequences", "Rejected Alternatives", "Evidence"]
+
+[profile.research-catalog]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/research/README.md", "docs/research/adr/README.md", "docs/research/algorithms/README.md", "docs/research/algorithms/adaptive-accelerator-resource-budgeting/README.md", "docs/research/algorithms/compact-guest-bytecode-strategy/README.md", "docs/research/algorithms/malbolge-specific-optimization-mathematics/README.md", "docs/research/algorithms/pytorch-search-orchestration/README.md", "docs/research/algorithms/search-pruning-and-state-canonicalization/README.md", "docs/research/algorithms/self-modification-state-graph-optimizer/README.md", "docs/research/algorithms/stochastic-and-guided-search/README.md", "docs/research/algorithms/superoptimization-research-program/README.md", "docs/research/algorithms/template/README.md", "docs/research/methodology/README.md", "docs/research/papers/README.md", "docs/research/studies/README.md"]
+section_mode = "exact"
+sections = ["Purpose", "Owns", "Does Not Own", "Contents"]
+
+[profile.research-record]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/research/"]
+section_mode = "exact"
+sections = ["Status", "Research Question", "Background", "Prior Work", "Hypothesis", "Method", "Evidence", "Results", "Threats to Validity", "Conclusion", "References"]
+
+[profile.technical-adr]
+decision_id = "required"
+decision_id_prefix = "jig.malbolge.technical"
+decision_id_section = "Decision ID"
+decision_id_style = "dotted-lower-kebab"
+kind = "adr"
+paths = ["docs/technical/adr/"]
+section_mode = "exact"
+sections = ["Status", "Decision ID", "Context", "Decision", "Advantages", "Disadvantages", "Consequences", "Rejected Alternatives", "Evidence"]
+
+[profile.technical-catalog]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/technical/README.md", "docs/technical/adr/README.md", "docs/technical/architecture/README.md", "docs/technical/compatibility/README.md", "docs/technical/compiler/README.md", "docs/technical/compiler/c-profile/README.md", "docs/technical/compiler/self-hosting/README.md", "docs/technical/contracts/README.md", "docs/technical/examples/README.md", "docs/technical/integrations/README.md", "docs/technical/integrations/accelerators/README.md", "docs/technical/interoperability/README.md", "docs/technical/runtime/README.md", "docs/technical/runtime/execution/README.md", "docs/technical/runtime/vm/README.md", "docs/technical/specification/README.md", "docs/technical/specification/mathematics/README.md", "docs/technical/tooling/README.md", "docs/technical/verification/README.md"]
+section_mode = "exact"
+sections = ["Purpose", "Owns", "Does Not Own", "Contents"]
+
+[profile.technical-contract]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/technical/contracts/"]
+section_mode = "exact"
+sections = ["Status", "Intent", "Contract", "Evidence Boundary", "Diagnostics", "Examples", "Implementation", "References"]
+
+[profile.technical-general]
+decision_id = "none"
+kind = "markdown"
+paths = ["docs/technical/"]
+section_mode = "exact"
+sections = ["Status", "Purpose", "Scope", "Current Behavior", "Invariants", "Failure Behavior", "Verification", "References"]

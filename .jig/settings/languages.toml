@@ -1,0 +1,4 @@
+domain = "languages"
+schema_version = 1
+analyzed = ["rust"]
+present = ["c", "cpp", "cuda", "latex", "malbolge", "python", "rust"]

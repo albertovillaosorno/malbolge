@@ -1,0 +1,37 @@
+domain = "taxonomy"
+schema_version = 1
+required = true
+one_role_per_path = true
+overlapping_roles = "deny"
+spaces_in_paths = "deny"
+unknown_paths = "deny"
+
+[role.benchmark_evidence]
+paths = ["benchmarks/", "data/"]
+
+[role.cargo_configuration]
+paths = [".cargo/"]
+
+[role.documentation]
+paths = ["docs/README.md", "docs/bibliography/", "docs/legal/", "docs/research/", "docs/technical/"]
+
+[role.jig_configuration]
+paths = [".jig/"]
+
+[role.product]
+paths = ["src/"]
+
+[role.root_governance]
+paths = [".editorconfig", ".gitattributes", ".gitignore", "AGENTS.md", "CITATION.cff", "Cargo.lock", "Cargo.toml", "DOOM.md", "LICENSE-MIT", "README.md", "ROADMAP.md", "TODO.md", "malbolge.json"]
+
+[role.tests]
+paths = ["tests/"]
+
+[role.todo]
+paths = ["docs/todo/"]
+
+[role.tool_boundaries]
+paths = ["tools/"]
+
+[role.verification]
+paths = ["verifier/"]

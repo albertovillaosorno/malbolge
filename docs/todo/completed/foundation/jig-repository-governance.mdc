@@ -13,6 +13,7 @@ adr_paths:
 scope:
   - ".jig/jig.toml"
   - ".jig/roadmap.json"
+  - ".jig/settings/"
   - "AGENTS.md"
   - "docs/todo/"
   - "ROADMAP.md"
@@ -31,9 +32,9 @@ without weakening unrelated linter contracts.
 
 ## Acceptance
 
-- The Jig installation selected from `PATH` and `.jig/jig.toml` describe the
-  actual polyglot repository without fake language/tool requirements or
-  weakened reviewed lint policy.
+- The Jig installation selected from `PATH`, `.jig/jig.toml` bootstrap, and
+  `.jig/settings/` generation describe the actual polyglot repository without
+  fake language/tool requirements or weakened reviewed lint policy.
 - The authoritative rule/specification is deterministic, versionable, and does
   not depend on undocumented host behavior.
 - The declared scope contains no unresolved placeholder implementation or
@@ -45,18 +46,19 @@ without weakening unrelated linter contracts.
 
 - Jig 26.3.0 is resolved through the system `PATH`; repository-local launchers
   are not part of the validation boundary.
-- `.jig/jig.toml` schema 20 declares the repository-owned typed TODO workflow:
-  task
-  document, open/completed roots, record extension, exact sections, acceptance
-  evidence, validation commands, and strict dependency-lane ordering. It also
-  declares closed change-class path policy for architecture, implementation,
-  bugfix, tests, documentation, and dependency admission.
+- `.jig/jig.toml` schema 21 pins the modular schema-1 `.jig/settings/`
+  generation. Those settings declare the typed TODO workflow, lifecycle roots,
+  exact sections, acceptance evidence, validation commands, strict dependency
+  lanes, and closed change-class path policy.
+- `.jig/settings/repository.toml` explicitly disables source-mirrored tests
+  because root `tests/` is accepted repository-wide evidence.
 - Git governance additionally declares `JIG_SHIT.md` as a required
   local-only QA ledger. The tracked root `.gitignore` owns `/JIG_SHIT.md`, so
   agents may record Jig integration defects without accidentally promoting that
   scratch evidence into repository history.
 - The installed commit-message hook resolves `jig` through `PATH`, parses the
-  schema-20 configuration, and accepts new compliant commits fail-closed.
+  schema-21 modular configuration, and accepts new compliant commits
+  fail-closed.
 - `tests/test_governance_paths.py` rejects duplicated nested `.jig` path
   segments in authored text outside the validator-owned configuration tree.
 - `jig validate --root .` is the canonical command and invokes the installed,
@@ -66,9 +68,9 @@ without weakening unrelated linter contracts.
   208 linear unsigned commits while preserving every tree, identity, timestamp,
   and chronological position. The original tip remains under the Jig backup ref.
 - The repaired history has zero `JIG-COMMIT-*` diagnostics, and complete
-  schema-20 validation is the current repository closure gate.
+  schema-21 validation is the current repository closure gate.
 - Prerequisite completion evidence: `repository-responsibility-scaffold`.
 - **Completion:** Completed on 2026-08-06 after initial repository governance,
   typed TODO policy, repaired historical messages, governance-path tests, and
   full Jig validation passed with zero diagnostics. The integration was later
-  migrated to schema 20 and the system `PATH` authority.
+  migrated to schema 21, modular settings, and the system `PATH` authority.

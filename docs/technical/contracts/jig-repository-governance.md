@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted; schema 20 is adopted.
+Accepted; schema 21 with modular settings is adopted.
 
 ## Intent
 
@@ -21,15 +21,19 @@ trust boundary, or ownership rules stated by its governing decisions.
 
 ### Invariants
 
-- The standalone Jig identity and `.jig/jig.toml` describe the actual polyglot
-  repository without fake language/tool requirements or weakened reviewed lint
-  policy.
+- The standalone Jig identity, `.jig/jig.toml` bootstrap, and modular
+  `.jig/settings/` documents describe the actual polyglot repository without
+  fake language/tool requirements or weakened reviewed lint policy.
 - The authoritative rule/specification is deterministic, versionable, and does
   not depend on undocumented host behavior.
 
 ## Evidence Boundary
 
-- Jig 26.3.0 resolves from `PATH` and requires configuration schema 20.
+- Jig 26.3.0 resolves from `PATH`, uses configuration schema 21, and reads
+  repository policy from the schema-1 modular `.jig/settings/` generation.
+- `.jig/settings/repository.toml` explicitly disables source-mirrored test
+  layout because root `tests/` is accepted repository-wide evidence rather than
+  implementation owned by exactly one source function.
 - Malbolge declares its typed TODO document, lifecycle roots, record shape,
   acceptance requirements, validation-command requirement, strict dependency
   lanes, `p0` through `p5` priority order, and all six closed change-class path
@@ -64,8 +68,10 @@ selecting an implicit repository policy.
 
 ## Implementation
 
-The schema-20 `.jig/jig.toml` and PATH-delegating commit-message hook accept the
-declared TODO workflow. Jig repaired historical messages transactionally from
+The schema-21 `.jig/jig.toml` is a pinned bootstrap for the modular
+`.jig/settings/` generation, and the PATH-delegating commit-message hook accepts
+the declared TODO workflow. Jig repaired historical messages transactionally
+from
 `b7686ed1ba2e6369eac124046158fb65ac667747` to
 `b88e219e8a14dadfe2a4bd8255cb49f1d4ea87c8`; the original tip remains at
 `refs/jig/repair/backups/5f7e10afc710f9c47093d68f853d26657f8854aa`.

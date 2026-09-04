@@ -26,10 +26,12 @@ This contract governs:
 
 ### Source domains
 
-The root `src/` surface contains only its `README.md` catalog, its governed
-sidecar, and ten semantic domains:
+The root `src/` surface contains only its `README.md` catalog and eleven
+semantic domains. The catalog sidecar lives in the canonical Jig graph mirror
+at `.jig/graph/mirror/src/README.md.yml`.
 
 - `automation/`
+- `compiler/`
 - `examples/`
 - `interface/`
 - `interoperability/`
@@ -40,8 +42,9 @@ sidecar, and ten semantic domains:
 - `specification/`
 - `tooling/`
 
-Each domain owns a catalog and sidecar. Every directory immediately below a
-domain is a governed function with one `function.yml` manifest. Functions own
+Each domain owns a catalog whose sidecar lives under `.jig/graph/mirror/`.
+Every directory immediately below a domain is a governed function with one
+`function.yml` manifest. Functions own
 architecture kinds such as domain, application, ports, adapters, composition,
 contracts, and mathematics.
 
@@ -61,9 +64,10 @@ rather than a repository ownership model.
 ### Repository-wide surfaces
 
 `tests/`, `benchmarks/`, and `tools/` contain repository-wide composition and
-evidence that cannot be owned by one implementation function. Documentation is
-partitioned by its technical, research, legal, bibliography, and typed-planning
-authorities.
+evidence that cannot be owned by one implementation function. The modular Jig
+repository policy therefore sets `test_source_mirroring = false`. Documentation
+is partitioned by its technical, research, legal, bibliography, and
+typed-planning authorities.
 
 ### Implementation status
 
@@ -94,7 +98,8 @@ not acquire ownership merely because a build tool can discover it.
   function-manifest coverage, mixed-language evidence, Cargo composition, and
   forbidden or empty roots.
 - Jig validates every governed function, part, graph edge, sidecar, and language
-  manifest against `.jig/taxonomy.json` and `.jig/layout/definitions.json`.
+  manifest against `.jig/taxonomy.json`, `.jig/graph/mirror/`, and the modular
+  `.jig/settings/repository.toml` policy.
 - `jig validate --root .` is the repository-wide acceptance gate.
 
 ## References
