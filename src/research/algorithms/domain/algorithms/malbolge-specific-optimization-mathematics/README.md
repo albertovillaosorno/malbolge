@@ -566,6 +566,12 @@ counts, then strictly increasing scalar colors fill each equality block. This
 gives 1,101,650 free triple classes, 3,063,168 residual classes, and 3,071,896
 complete mass-14 classes, leaving 2,159,986 residual classes.
 
+The transitive `S3` pair branch on all six endpoints is constructive too. Its
+normalizer has order 36 and its three involutions distinguish it from cyclic
+order-six candidates. Pair ranks occur only at masses 6, 9, and 12 with counts
+`1,6,16`; triple blocks `(2,6,6,6)` yield 136,462,320 free classes. Composition
+adds 780,201 residual and 780,273 complete mass-14 classes, leaving 1,379,785.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
