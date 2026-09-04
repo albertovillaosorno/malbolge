@@ -23,8 +23,8 @@
 // - Merge-When:
 //   - Merge when another interpreter benchmark owns the same word operations.
 // - Summary:
-//   - Measures rotate/crazy table paths and the 14-trit native-versus-padded
-//   - crazy geometry.
+//   - Measures rotate/crazy table paths and N10-N14 scalar/native/padded crazy
+//     geometry.
 // - Description:
 //   - Emits raw samples so performance conclusions can retain dispersion data.
 // - Usage:
@@ -37,7 +37,7 @@
 //! Raw scalar-versus-table microbenchmarks for classic VM word operations.
 
 use std::hint::black_box;
-use std::io::{Result as IoResult, Write, stdout};
+use std::io::{Error as IoError, ErrorKind, Result as IoResult, Write, stdout};
 use std::time::Instant;
 
 use malbolge::{
@@ -51,11 +51,50 @@ const CRAZY_REPETITIONS: u16 = 16;
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
 const FNV_PRIME: u64 = 1_099_511_628_211;
 const PROFILE_CORPUS_SIZE: u32 = 59_049;
-const PROFILE_PADDED_TRITS: u8 = 15;
-// Coprime to 3^14, so the retained corpus prefix contains no duplicate words.
+// Coprime to every 3^N, so each N10-N14 corpus contains no duplicate words.
 const PROFILE_STRIDE: u32 = 104_729;
-const PROFILE_TRITS: u8 = 14;
-const PROFILE_WORDS: u32 = 4_782_969;
+const PROFILE_CRAZY_GEOMETRIES: [ProfileCrazyGeometry; 5] = [
+    ProfileCrazyGeometry {
+        benchmark_label: "profile-crazy-10",
+        native_label: "native-5+5",
+        padded_label: "padded-5+5",
+        padded_trits: 10,
+        semantic_modulus: 59_049,
+        semantic_trits: 10,
+    },
+    ProfileCrazyGeometry {
+        benchmark_label: "profile-crazy-11",
+        native_label: "native-5+5+1",
+        padded_label: "padded-5+5+5",
+        padded_trits: 15,
+        semantic_modulus: 177_147,
+        semantic_trits: 11,
+    },
+    ProfileCrazyGeometry {
+        benchmark_label: "profile-crazy-12",
+        native_label: "native-5+5+2",
+        padded_label: "padded-5+5+5",
+        padded_trits: 15,
+        semantic_modulus: 531_441,
+        semantic_trits: 12,
+    },
+    ProfileCrazyGeometry {
+        benchmark_label: "profile-crazy-13",
+        native_label: "native-5+5+3",
+        padded_label: "padded-5+5+5",
+        padded_trits: 15,
+        semantic_modulus: 1_594_323,
+        semantic_trits: 13,
+    },
+    ProfileCrazyGeometry {
+        benchmark_label: "profile-crazy-14",
+        native_label: "native-5+5+4",
+        padded_label: "padded-5+5+5",
+        padded_trits: 15,
+        semantic_modulus: 4_782_969,
+        semantic_trits: 14,
+    },
+];
 const IO_ROUNDTRIP: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/compatibility/specification/spec-io-roundtrip.malbolge",
@@ -64,6 +103,33 @@ const ROTATE_HIGH_TRIT_WEIGHT: u16 = 19_683;
 const ROTATE_REPETITIONS: u16 = 128;
 const SAMPLE_COUNT: u8 = 15;
 const TRIT_COUNT: u8 = 10;
+
+#[derive(Clone, Copy)]
+struct ProfileCrazyGeometry {
+    benchmark_label: &'static str,
+    native_label: &'static str,
+    padded_label: &'static str,
+    padded_trits: u8,
+    semantic_modulus: u32,
+    semantic_trits: u8,
+}
+
+#[derive(Clone, Copy)]
+enum ProfileCrazyImplementation {
+    Native,
+    Padded,
+    Scalar,
+}
+
+impl ProfileCrazyImplementation {
+    const fn label(self, geometry: ProfileCrazyGeometry) -> &'static str {
+        match self {
+            Self::Native => geometry.native_label,
+            Self::Padded => geometry.padded_label,
+            Self::Scalar => "scalar-tritwise",
+        }
+    }
+}
 
 fn batch_checksum(results: &[BatchResult]) -> u64 {
     let mut hash = FNV_OFFSET;
@@ -146,15 +212,31 @@ fn benchmark_crazy_scalar(words: &[Word]) -> u64 {
     checksum
 }
 
-fn benchmark_profile_crazy_native(words: &[u32]) -> u64 {
-    benchmark_profile_crazy(words, PROFILE_TRITS)
+fn benchmark_profile_crazy_scalar(
+    words: &[u32],
+    geometry: ProfileCrazyGeometry,
+) -> u64 {
+    let mut checksum = 0u64;
+    let mut repetition = 0u16;
+    while repetition < CRAZY_REPETITIONS {
+        for (&data, &accumulator) in words.iter().zip(words.iter().rev()) {
+            let value = profile_crazy_scalar(
+                black_box(data),
+                black_box(accumulator),
+                geometry.semantic_trits,
+            );
+            checksum = checksum.saturating_add(u64::from(value));
+        }
+        repetition = repetition.saturating_add(1);
+    }
+    checksum
 }
 
-fn benchmark_profile_crazy_padded(words: &[u32]) -> u64 {
-    benchmark_profile_crazy(words, PROFILE_PADDED_TRITS)
-}
-
-fn benchmark_profile_crazy(words: &[u32], physical_trits: u8) -> u64 {
+fn benchmark_profile_crazy_table(
+    words: &[u32],
+    geometry: ProfileCrazyGeometry,
+    physical_trits: u8,
+) -> u64 {
     let mut checksum = 0u64;
     let mut repetition = 0u16;
     while repetition < CRAZY_REPETITIONS {
@@ -164,12 +246,34 @@ fn benchmark_profile_crazy(words: &[u32], physical_trits: u8) -> u64 {
                 black_box(accumulator),
                 physical_trits,
             )
-            .rem_euclid(PROFILE_WORDS);
+            .rem_euclid(geometry.semantic_modulus);
             checksum = checksum.saturating_add(u64::from(value));
         }
         repetition = repetition.saturating_add(1);
     }
     checksum
+}
+
+fn benchmark_profile_crazy_implementation(
+    words: &[u32],
+    geometry: ProfileCrazyGeometry,
+    implementation: ProfileCrazyImplementation,
+) -> u64 {
+    match implementation {
+        ProfileCrazyImplementation::Scalar => {
+            benchmark_profile_crazy_scalar(words, geometry)
+        },
+        ProfileCrazyImplementation::Native => benchmark_profile_crazy_table(
+            words,
+            geometry,
+            geometry.semantic_trits,
+        ),
+        ProfileCrazyImplementation::Padded => benchmark_profile_crazy_table(
+            words,
+            geometry,
+            geometry.padded_trits,
+        ),
+    }
 }
 
 fn benchmark_rotate_optimized(words: &[Word]) -> u64 {
@@ -233,6 +337,25 @@ const fn crazy_trit_scalar(data: u16, accumulator: u16) -> u16 {
     }
 }
 
+fn profile_crazy_scalar(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {
+    let mut result = 0u32;
+    let mut place = 1u32;
+    let mut trit = 0u8;
+    while trit < trits {
+        let data_digit = u16::try_from(data.rem_euclid(3)).ok().unwrap_or(0);
+        let accumulator_digit =
+            u16::try_from(accumulator.rem_euclid(3)).ok().unwrap_or(0);
+        let output =
+            u32::from(crazy_trit_scalar(data_digit, accumulator_digit));
+        result = result.saturating_add(output.saturating_mul(place));
+        data = data.div_euclid(3);
+        accumulator = accumulator.div_euclid(3);
+        place = place.saturating_mul(3);
+        trit = trit.saturating_add(1);
+    }
+    result
+}
+
 /// Runs the fixed benchmark matrix and emits raw CSV samples.
 ///
 /// # Errors
@@ -240,7 +363,6 @@ const fn crazy_trit_scalar(data: u16, accumulator: u16) -> u16 {
 /// Returns an I/O error if writing benchmark samples to stdout fails.
 pub fn run() -> IoResult<()> {
     let words = classic_words();
-    let profile_words = profile_words();
     let mut output = stdout().lock();
     writeln!(
         output,
@@ -267,7 +389,7 @@ pub fn run() -> IoResult<()> {
     emit_samples(&mut output, "crazy", "table", || {
         benchmark_crazy_optimized(&words)
     })?;
-    emit_profile_crazy_samples(&mut output, &profile_words)?;
+    emit_profile_crazy_matrix(&mut output)?;
     emit_samples(&mut output, "rotate", "scalar", || {
         benchmark_rotate_scalar(&words)
     })?;
@@ -293,36 +415,65 @@ fn classic_words() -> Vec<Word> {
     words
 }
 
+fn emit_profile_crazy_matrix(output: &mut impl Write) -> IoResult<()> {
+    for geometry in PROFILE_CRAZY_GEOMETRIES {
+        let words = profile_words(geometry);
+        emit_profile_crazy_samples(output, &words, geometry)?;
+    }
+    Ok(())
+}
+
 fn emit_profile_crazy_samples(
     output: &mut impl Write,
     words: &[u32],
+    geometry: ProfileCrazyGeometry,
 ) -> IoResult<()> {
-    let native_warmup = black_box(benchmark_profile_crazy_native(words));
-    let padded_warmup = black_box(benchmark_profile_crazy_padded(words));
-    let _warmup_sink = black_box(native_warmup ^ padded_warmup);
+    let scalar = black_box(benchmark_profile_crazy_implementation(
+        words,
+        geometry,
+        ProfileCrazyImplementation::Scalar,
+    ));
+    let native = black_box(benchmark_profile_crazy_implementation(
+        words,
+        geometry,
+        ProfileCrazyImplementation::Native,
+    ));
+    let padded = black_box(benchmark_profile_crazy_implementation(
+        words,
+        geometry,
+        ProfileCrazyImplementation::Padded,
+    ));
+    if scalar != native || scalar != padded {
+        return Err(IoError::new(
+            ErrorKind::InvalidData,
+            "profile crazy benchmark implementations disagree",
+        ));
+    }
     let mut sample = 0u8;
     while sample < SAMPLE_COUNT {
-        if sample.is_multiple_of(2) {
-            emit_sample(
+        let order = match sample.rem_euclid(3) {
+            0 => [
+                ProfileCrazyImplementation::Scalar,
+                ProfileCrazyImplementation::Native,
+                ProfileCrazyImplementation::Padded,
+            ],
+            1 => [
+                ProfileCrazyImplementation::Native,
+                ProfileCrazyImplementation::Padded,
+                ProfileCrazyImplementation::Scalar,
+            ],
+            _ => [
+                ProfileCrazyImplementation::Padded,
+                ProfileCrazyImplementation::Scalar,
+                ProfileCrazyImplementation::Native,
+            ],
+        };
+        for implementation in order {
+            emit_profile_crazy_sample(
                 output,
-                ("profile-crazy-14", "native-5+5+4", sample),
-                || benchmark_profile_crazy_native(words),
-            )?;
-            emit_sample(
-                output,
-                ("profile-crazy-14", "padded-5+5+5", sample),
-                || benchmark_profile_crazy_padded(words),
-            )?;
-        } else {
-            emit_sample(
-                output,
-                ("profile-crazy-14", "padded-5+5+5", sample),
-                || benchmark_profile_crazy_padded(words),
-            )?;
-            emit_sample(
-                output,
-                ("profile-crazy-14", "native-5+5+4", sample),
-                || benchmark_profile_crazy_native(words),
+                words,
+                geometry,
+                (implementation, sample),
             )?;
         }
         sample = sample.saturating_add(1);
@@ -330,10 +481,36 @@ fn emit_profile_crazy_samples(
     Ok(())
 }
 
-fn profile_words() -> Vec<u32> {
+fn emit_profile_crazy_sample(
+    output: &mut impl Write,
+    words: &[u32],
+    geometry: ProfileCrazyGeometry,
+    identity: (ProfileCrazyImplementation, u8),
+) -> IoResult<()> {
+    let (implementation, sample) = identity;
+    emit_sample(
+        output,
+        (
+            geometry.benchmark_label,
+            implementation.label(geometry),
+            sample,
+        ),
+        || {
+            benchmark_profile_crazy_implementation(
+                words,
+                geometry,
+                implementation,
+            )
+        },
+    )
+}
+
+fn profile_words(geometry: ProfileCrazyGeometry) -> Vec<u32> {
     (0..PROFILE_CORPUS_SIZE)
         .map(|index| {
-            index.wrapping_mul(PROFILE_STRIDE).rem_euclid(PROFILE_WORDS)
+            index
+                .wrapping_mul(PROFILE_STRIDE)
+                .rem_euclid(geometry.semantic_modulus)
         })
         .collect()
 }

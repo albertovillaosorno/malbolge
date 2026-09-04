@@ -53,8 +53,18 @@ const TEST_XLAT1: &[u8; DECODE_TABLE_LEN] =
 .v%{gJh4G\\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha";
 const PROFILED_BOUNDARY_TRITS: u8 = 20;
 const PROFILED_BOUNDARY_WORDS: u32 = 3_486_784_401;
+const PROFILE_CRAZY_MATRIX: [ProfileCrazyMatrixEntry; 5] = [
+    (10, 59_049, 10),
+    (11, 177_147, 15),
+    (12, 531_441, 15),
+    (13, 1_594_323, 15),
+    (14, 4_782_969, 15),
+];
+const PROFILE_CRAZY_N15_TRITS: u8 = 15;
+const PROFILE_CRAZY_N15_WORDS: u32 = 14_348_907;
 const ROTATE_HIGH_TRIT_WEIGHT: u16 = 19_683;
 const TRIT_COUNT: u8 = 10;
+type ProfileCrazyMatrixEntry = (u8, u32, u8);
 
 fn crazy_scalar(data: Word, accumulator: Word) -> TestResult<Word> {
     let mut remaining_data = data.value();
@@ -336,6 +346,51 @@ fn public_profile_crazy_matches_independent_formula() -> TestResult {
                     "profile crazy equals independent word formula",
                 )?;
             }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn profile_crazy_padded_matrix_matches_independent_semantics() -> TestResult {
+    for (semantic_trits, modulus, padded_trits) in PROFILE_CRAZY_MATRIX {
+        let words = structured_profile_words(modulus);
+        for data in words {
+            for accumulator in words {
+                let expected =
+                    profile_crazy_scalar(data, accumulator, semantic_trits);
+                check_equal(
+                    &profile_crazy(data, accumulator, semantic_trits),
+                    &expected,
+                    "native profile crazy equals independent scalar semantics",
+                )?;
+                check_equal(
+                    &profile_crazy(data, accumulator, padded_trits)
+                        .rem_euclid(modulus),
+                    &expected,
+                    "padded profile crazy projects to independent semantics",
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn profile_crazy_n15_boundary_matches_scalar() -> TestResult {
+    // N15 is arithmetic evidence only; it does not admit a runtime profile.
+    let words = structured_profile_words(PROFILE_CRAZY_N15_WORDS);
+    for data in words {
+        for accumulator in words {
+            check_equal(
+                &profile_crazy(data, accumulator, PROFILE_CRAZY_N15_TRITS),
+                &profile_crazy_scalar(
+                    data,
+                    accumulator,
+                    PROFILE_CRAZY_N15_TRITS,
+                ),
+                "N15 three-full-chunk arithmetic equals scalar semantics",
+            )?;
         }
     }
     Ok(())
