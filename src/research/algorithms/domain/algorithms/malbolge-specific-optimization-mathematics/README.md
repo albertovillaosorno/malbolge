@@ -581,6 +581,12 @@ a transported stabilizer chain for all 60 conjugates. This gives 68,202,693
 free triples, 739,735 residual classes, and 739,787 complete mass-14 classes,
 leaving 640,050 residual classes.
 
+The `V4` pair branch on `(4,1,1)` is constructive too. Its three nonidentity
+elements are involutions; normalizer order 48 gives 15 conjugates. Pair rank
+ends at 258 classes, while triple blocks `(2,2,2,2,2,2,4,4)` give 204,620,208
+free classes. Composition contributes 278,516 residual and complete mass-14
+classes, leaving 361,534 residual classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has

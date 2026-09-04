@@ -1154,6 +1154,16 @@ mechanism = "target-Mobius-inversion-over-all-sixty-conjugates-of-the-self-norma
 evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_transitive_order12_ranking.py::test_pair_transitive_order12_counts_match_independent_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_transitive_order12_ranking.py::test_pair_transitive_order12_rank_exhausts_masses_three_through_six", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_transitive_order12_ranking.py::test_pair_transitive_order12_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_transitive_order12_ranking.py::test_pair_transitive_order12_triple_geometry_and_counts", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_transitive_order12_ranking.py::test_pair_transitive_order12_branch_rank_roundtrips_through_fourteen"]
 
 [[correspondence]]
+id = "optimization-crazy-profile-preimage-cube-sextuple-s6-pair-v4-411-ranking"
+tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
+label = "eq:optimization-crazy-sextuple-s6-pair-v4-411-ranking"
+# jig-ignore-next-line: canonical correspondence value is indivisible
+domain = "the pair-graph exact V4 endpoint-orbit-(4,1,1) branch of the top-level all-equal S6 residual domain through mass 14, selected by exact order four with three nonidentity involutions, including dense pair-graph rank, dense free-H triple rank, two fixed scalars, and the repeated-six vertex prefix"
+mechanism = "target-Mobius-inversion-over-all-fifteen-conjugates-of-the-Klein-four-endpoint-orbit-four-one-one-subgroup-during-canonical-K6-edge-color-block-ranking-then-process-eight-H-invariant-triple-blocks-of-sizes-two-two-two-two-two-two-four-four-with-subgroup-lattice-stabilizer-chain-and-Mobius-counted-trivial-stabilizer-suffixes-compose-with-two-fixed-scalars-and-prefix-the-two-component-vertex-value-repeated-six-times"
+# jig-ignore-next-line: indivisible reviewed identifiers
+evidence = ["tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_v4_411_ranking.py::test_pair_v4_411_counts_match_independent_sequence", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_v4_411_ranking.py::test_pair_v4_411_rank_exhausts_masses_three_through_eight", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_v4_411_ranking.py::test_pair_v4_411_rank_roundtrips_through_fourteen", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_v4_411_ranking.py::test_pair_v4_411_triple_geometry_and_counts", "tests/mathematics/test_crazy_preimage_cube_sextuple_s6_pair_v4_411_ranking.py::test_pair_v4_411_branch_rank_roundtrips_through_fourteen"]
+
+[[correspondence]]
 id = "optimization-crazy-profile-preimage-cube-sextuple-s6-distinct-vertex-ranking"
 tex = "src/specification/formal-model/math/algorithms/malbolge-specific-optimization-mathematics.tex"
 label = "eq:optimization-crazy-sextuple-s6-distinct-vertex-ranking"
