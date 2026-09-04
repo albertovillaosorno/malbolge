@@ -17,14 +17,6 @@ labels belong here.
 
 ## P1 — Semantic and language foundations
 
-### TODO - Required-profile diagnostics
-
-Emit deterministic diagnostics naming the required Malbolge profile/features,
-required memory or address capacity, and missing runtime capability.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/compatibility/required-profile-diagnostics.mdc](docs/todo/open/compatibility/required-profile-diagnostics.mdc)
-
 ### TODO - Superoptimization research program
 
 Ask which search strategies find smaller or faster verified Malbolge blocks

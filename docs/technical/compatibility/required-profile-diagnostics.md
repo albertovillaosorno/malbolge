@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Accepted implementation
 
 ## Purpose
 
@@ -354,11 +354,14 @@ and host-parallel profile batches return that exact same typed rejection. The
 logical-task layer preserves it through sorted parallel execution, keeps later
 independent tasks runnable, and joins fail with the same profile error plus the
 
-exact rejected task identity. Durable cross-process cache, AOT/JIT execution,
-and the remaining product/artifact paths do not yet universally invoke that
-boundary.
-This contract therefore remains active rather than claiming repository-wide
-profile diagnostic completion.
+exact rejected task identity. Every currently implemented boundary in this
+contract's declared scope now preserves deterministic profile admission.
+
+Future durable cross-process cache, AOT/JIT execution, and compiler-emission
+paths remain separate later milestones. They inherit this contract and must
+preserve its canonical requirement admission plus `MALBOLGE-PROFILE-002` before
+`MALBOLGE-PROFILE-001`; they do not keep this completed compatibility milestone
+open merely because those later components do not exist yet.
 
 ## Verification
 

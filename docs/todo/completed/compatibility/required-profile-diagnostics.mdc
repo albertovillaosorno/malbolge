@@ -1,6 +1,6 @@
 ---
 id: "required-profile-diagnostics"
-status: "active"
+status: "completed"
 lane: "7"
 priority: "p1"
 area: "compatibility"
@@ -164,10 +164,10 @@ historical-profile constraint.
   that exact typed rejection equal. Logical-task orchestration preserves the
   same `002` plus rejected task identity through parallel execution/join while a
   later independent task still runs. Equivalent program-memory requirements for
-  other non-IR artifact families, durable cross-process cache/AOT/JIT runtime
-  orchestration, and remaining product invocation paths remain open, so
-  repository-wide
-  completion is not claimed.
+  existing scoped product and artifact boundaries now preserve the same
+  deterministic profile admission. Future durable cross-process cache, AOT/JIT,
+  and compiler-emission boundaries remain owned by their later typed TODOs and
+  must reuse this completed diagnostic contract rather than reopen it.
 
 ## Acceptance
 

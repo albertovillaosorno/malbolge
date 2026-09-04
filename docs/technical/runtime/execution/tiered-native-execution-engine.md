@@ -1941,6 +1941,10 @@ fallback.
 
 - Interpreter, AOT, JIT, native cache, and deoptimization share one observable
   VM contract; disabling every native tier produces the same guest behavior.
+- Durable cache, AOT, and JIT admission must reuse the completed
+  required-profile diagnostic contract: canonical profile identity, then
+  `MALBOLGE-PROFILE-002`, then `MALBOLGE-PROFILE-001`, before artifact lookup,
+  compilation, native loading, or fallback selection.
 - Observable state, I/O, termination, and diagnostics match the declared
   semantic profile across positive, boundary, and adversarial fixtures.
 
