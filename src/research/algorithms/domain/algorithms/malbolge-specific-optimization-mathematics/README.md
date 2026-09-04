@@ -508,6 +508,12 @@ mass-14 classes.
 Pair-first residual coverage therefore rises to 83,922,092,294, leaving
 85,916,547 trivial-S6 residual classes.
 
+The next constructive pair branch is the `D8` class on vertex orbits `(4,2)`
+with exactly two endpoint transpositions and normalizer order 16. Its pair rank
+ends at 542 classes, while triple blocks `(2,2,4,4,8)` give 101,963,816 free
+classes. Composition contributes 26,046,519 residual and 26,053,555 complete
+mass-14 classes, leaving 59,870,028 trivial-S6 residual classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
