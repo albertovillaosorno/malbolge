@@ -17,15 +17,6 @@ labels belong here.
 
 ## P1 — Semantic and language foundations
 
-### TODO - Malbolge-specific optimization mathematics
-
-Derive algebraic decompositions, lookup-table factorizations, state reductions,
-canonical forms, and lower bounds that reduce synthesis search before brute
-force or stochastic optimization begins.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/mathematics/malbolge-specific-optimization-mathematics.mdc](docs/todo/open/mathematics/malbolge-specific-optimization-mathematics.mdc)
-
 ### TODO - Parametric compiler challenge generator
 
 Build deterministic workload generators whose difficulty can grow continuously
@@ -52,9 +43,8 @@ under fixed time and evaluation budgets.
 
 ### TODO - Symmetric padded crazy chunk geometry
 
-Test whether zero-padding 10-through-14-trit profile words to an internal
-15-trit, three-by-five-trit representation can make `crazy` evaluation faster
-without changing profile semantics.
+Test whether the canonical five-trit chunk model can make `crazy` evaluation
+faster without changing profile semantics at any semantic width `N>=10`.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/mathematics/symmetric-padded-crazy-chunk-geometry.mdc](docs/todo/open/mathematics/symmetric-padded-crazy-chunk-geometry.mdc)
@@ -389,10 +379,9 @@ evaluation, and verified block stitching.
 
 ### TODO - DOOM playable generated-code performance
 
-The normalized C tree and canonical `doom.c` baseline are ready and playable
-through native debug adapters. Finish C-to-Malbolge lowering, capability
-linking, VM execution, and optimization until the generated `doom.malbolge`
-itself is genuinely interactive and playable under the modern runtime.
+The source-level baseline is ready: the normalized single-player C tree and
+canonical `doom.c` are reproducible, validate cleanly, and are interactively
+playable through the native Windows/Linux debug boundary.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/applications/doom-playable-generated-code-performance.mdc](docs/todo/open/applications/doom-playable-generated-code-performance.mdc)
@@ -405,6 +394,15 @@ catalogue coverage.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/empirical-malbolge-synthesis-scaling-law.mdc](docs/todo/open/research/empirical-malbolge-synthesis-scaling-law.mdc)
+
+### TODO - High-arity synthesis symmetry pruning
+
+Extend exact tuple-quotient and stabilizer mathematics only when measured
+synthesis traces show symmetry-related residual branching is eroding pruning
+effectiveness.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/mathematics/high-arity-synthesis-symmetry-pruning.mdc](docs/todo/open/mathematics/high-arity-synthesis-symmetry-pruning.mdc)
 
 ### TODO - Malbolge compiler compiles C to Malbolge
 

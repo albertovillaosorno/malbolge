@@ -83,9 +83,10 @@ transfers, verification, and other separately measured costs.
 
 - Required mathematical evidence: exact profile-width memory ratios and a
   sufficient-condition theorem or certificate format for semantic narrowing.
-- The mathematical prerequisite is now satisfied by durable correspondences;
-  the broader `malbolge-specific-optimization-mathematics` TODO remains active
-  independently and no longer blocks this task.
+- The mathematical prerequisite is satisfied by durable correspondences; the
+  bounded `malbolge-specific-optimization-mathematics` milestone is now
+  completed
+  independently and remains reusable by downstream tasks.
 - Current mathematical base: correspondences
   `optimization-profile-width-projection-audit`,
   `optimization-profile-width-source-admission-monotonicity`,

@@ -1,0 +1,74 @@
+---
+id: "high-arity-synthesis-symmetry-pruning"
+status: "pending"
+lane: "15"
+priority: "p4"
+area: "mathematics"
+task: "TODO - High-arity synthesis symmetry pruning"
+contract: "docs/research/algorithms/malbolge-specific-optimization-mathematics/README.md"
+depends_on:
+  - "search-pruning-and-state-canonicalization"
+  - "empirical-malbolge-synthesis-scaling-law"
+  - "superoptimization-research-program"
+  - "documentation-readiness-and-implementation-gate"
+adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+scope:
+  - "src/specification/formal-model/math/algorithms/"
+  - "src/specification/formal-model/math/specification/"
+  - "docs/research/algorithms/"
+  - "algorithms/"
+  - "benchmarks/research/"
+  - "tests/mathematics/"
+  - "tests/optimizer/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - High-arity synthesis symmetry pruning
+
+## Objective
+
+Extend exact tuple-quotient and stabilizer mathematics only when measured
+synthesis traces show symmetry-related residual branching is eroding pruning
+effectiveness.
+
+## Acceptance
+
+- Entry requires retained scaling evidence that identifies a concrete search
+  depth, tuple arity, state family, or symmetry class where the surviving
+  branching factor grows materially because the existing exact quotient base is
+  insufficient.
+- The work reports raw candidate count, exact-pruned count, surviving count,
+  prune fraction, and effective branching factor before and after each promoted
+  reduction; an aggregate early-depth win cannot hide a late-depth collapse.
+- `S_7`, `S_8`, or a later symmetric group is derived only when the measured
+  failing family requires it. Completing every subgroup or conjugacy class for
+  a fixed arity is not an acceptance criterion by itself.
+- Algebraic quotienting may compose with safe dynamic pruning, reachability,
+  dominance, memoization, SAT/SMT, or other independently justified filters.
+  The objective is to preserve tractable effective branching, not to require
+  every rejected candidate to come from group theory.
+- Every promoted quotient, canonical form, or lower bound states its exact
+  domain and has executable correspondence evidence before search code may rely
+  on it.
+- Performance claims compare the same verified synthesis workload under equal
+  budgets and preserve raw evidence, including null or negative results.
+- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
+  remove the exact TODO heading without losing unfinished intent.
+
+## Evidence
+
+- Expected durable artifact surface: formal mathematics, research records,
+  retained scaling samples, and exact optimizer/mathematics tests.
+- Required evidence: the triggering prune-collapse trace, a preregistered
+  reduction hypothesis, executable mathematical correspondence, and a measured
+  before/after effective-branching comparison.
+- Prerequisite completion evidence: `search-pruning-and-state-canonicalization`,
+  `empirical-malbolge-synthesis-scaling-law`, and
+  `superoptimization-research-program`.
+- The completed `malbolge-specific-optimization-mathematics` milestone supplies
+  the initial 226 exact reductions, including checked arities through eight,
+  dense constructive work through `S_6`, and width-14 preimage/search bounds.
+  This TODO extends that base only where downstream measurements expose a real
+  symmetry-pruning deficit.

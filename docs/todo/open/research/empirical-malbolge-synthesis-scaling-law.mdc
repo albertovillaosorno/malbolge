@@ -46,6 +46,14 @@ budgets and fit empirical models instead of assuming a complexity class.
   are reported separately.
 - Results include capacity curves, marginal-cost measurements, uncertainty, and
   failed model fits; no preferred O-notation is chosen before evidence exists.
+- Scaling reports prune fraction and effective branching versus
+  depth/difficulty,
+  with per-rule contribution where measurable. The analysis must expose whether
+  pruning remains stable, degrades gradually, or collapses toward zero rather
+  than reporting only total candidates removed.
+- A measured symmetry-driven collapse records the exact triggering workload and
+  residual family needed by `high-arity-synthesis-symmetry-pruning`; the scaling
+  study itself does not require speculative completion of `S_7` or `S_8`.
 - The verifier remains the correctness authority regardless of search strategy.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.

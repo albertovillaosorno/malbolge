@@ -1,6 +1,6 @@
 ---
 id: "malbolge-specific-optimization-mathematics"
-status: "active"
+status: "completed"
 lane: "6"
 priority: "p1"
 area: "mathematics"
@@ -194,11 +194,29 @@ force or stochastic optimization begins.
 - Existing benchmark evidence retains 15 raw samples per scalar/table path with
   matching checksums. On the recorded host, crazy is 10.43x and rotate 1.50x
   faster by median for the admitted workload.
-- This result promotes only those reductions. Broader canonical forms,
-  synthesis lower bounds outside the proved finite binary-question models, and
-  search-space reductions remain open and
-  receive no inherited
-  correctness or performance claim.
+- This completed milestone promotes only those reductions. Later high-arity
+  symmetry work, empirical prune-retention measurement, and additional
+  synthesis lower bounds are transferred to their downstream TODOs and receive
+  no inherited correctness or performance claim.
+
+**Completion boundary.**
+
+This P1 phase is complete at 226 exact optimization reductions. The retained
+base includes the runtime-consumed table/factorization results, checked-width
+preimage/search laws through width 14, generic ordered and endpoint-unordered
+tuple quotients through arity eight, and constructive full-stabilizer work
+through `S_6`. Completion does not assert that combinatorial synthesis theory is
+finished.
+
+Unfinished intent is transferred deliberately rather than hidden. Executable
+pruning and canonicalization belong to
+`search-pruning-and-state-canonicalization`; empirical depth-by-depth scaling
+and effective branching belong to
+`empirical-malbolge-synthesis-scaling-law`; and
+new `S_7`/`S_8` or later stabilizer mathematics belongs to
+`high-arity-synthesis-symmetry-pruning` only after measurements expose a
+specific residual symmetry bottleneck. This keeps the proved base consumable
+without allowing downstream prune quality to decay silently.
 
 ## Acceptance
 
@@ -211,8 +229,9 @@ force or stochastic optimization begins.
   explicit domain assumptions and a traceable executable correspondence check.
 - The declared scope contains no unresolved placeholder implementation or
   undocumented workaround required for this objective to function.
-- Evidence is durable enough to move this TODO to `docs/todo/completed/` and
-  remove the exact TODO heading without losing unfinished intent.
+- Completed on 2026-09-04 after the 226-reduction bounded milestone, formal
+  scope split, correspondence closure, and downstream ownership transfer were
+  validated.
 
 ## Evidence
 
@@ -222,7 +241,7 @@ force or stochastic optimization begins.
   property-based, or machine-checked correspondence for the admitted domain.
 - Prerequisite completion evidence:
   `latex-mathematical-specification-framework`.
-- Current mathematical evidence includes one hundred eighty-seven labelled
+- Current mathematical evidence includes two hundred twenty six labelled
   optimization equations,
   executable correspondence, exact zero-padding projection and uniform
   three-lookup evidence for semantic widths 10 through 14, exact checked
@@ -322,4 +341,11 @@ force or stochastic optimization begins.
   nonnegative enumeration budget, the exact inverse minimum budget for every
   reachable-pair coverage target, and explicit bounded conclusions. Broader
   lower-bound/search mathematics outside the proved finite binary-question
-  models remains open.
+  models is outside this completed milestone and follows the measurement-
+  triggered downstream ownership recorded above.
+
+**Completion evidence.** The exact P1 TODO heading was removed from `TODO.md`;
+the record moved to `docs/todo/completed/`; 226 optimization equations remain
+registered with executable correspondence; and the unfinished prune-retention
+obligation is preserved by the P3/P4 downstream records rather than by an
+unbounded P1 mathematics barrel.

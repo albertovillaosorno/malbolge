@@ -1111,10 +1111,13 @@ classic/profile-width preimage-budget exceedance bounds, exact profile-width
 minimum coverage budgets, ordered/endpoint-unordered canonical-search budget
 laws, the candidate-local binary-verifier local/global lower bounds, and the
 binary-decision-tree information bounds as valid optimization building blocks.
-Continue the research for broader canonical forms, synthesis lower bounds
-outside the proved binary-question models, and search-space
-reductions; those remain unproved and receive no performance claim from this
-result.
+Close this bounded mathematics milestone here. Broader canonical forms and
+synthesis lower bounds receive no performance claim from this result and are no
+longer an unbounded P1 completion condition. P3 search pruning consumes the
+proved base and must report depth-sensitive prune retention; P4 scaling evidence
+measures effective branching; only a measured residual symmetry bottleneck
+activates `high-arity-synthesis-symmetry-pruning` for targeted `S_7`, `S_8`, or
+later work.
 
 ## References
 

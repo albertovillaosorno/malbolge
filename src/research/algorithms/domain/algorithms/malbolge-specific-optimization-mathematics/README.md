@@ -9,11 +9,21 @@ Implementations in Rust, C, CUDA, Python, or another justified language live
 together here because the algorithm, not the language, owns the research.
 Regenerable results belong in `out/` and remain Git ignored.
 
-The active first experiment studies exact CPU VM table/factorization reductions.
+The retained first experiment studies exact CPU VM table/factorization
+reductions.
 Its versioned configuration is `experiment.toml`; raw performance evidence lives
 under `benchmarks/interpreter/evidence/2026-07-26-windows-x86_64/`, while
 semantic acceptance is owned by
 `src/specification/formal-model/math/specification/correspondence.toml`.
+
+The P1 mathematics milestone is frozen at 226 exact reductions. Runtime-
+evaluation
+results and synthesis-space results remain distinct: only explicitly benchmarked
+runtime paths inherit speed claims, while quotient/count/rank/lower-bound
+results
+supply exact search structure. Future high-arity group work is measurement-
+triggered by `high-arity-synthesis-symmetry-pruning`; it is not required merely
+to make this bounded research milestone "complete".
 
 The profile-width crazy factorization is parametric for every semantic width
 `N>=10`. Let `P_N=5*ceil(N/5)`. Only the final partial five-trit chunk is

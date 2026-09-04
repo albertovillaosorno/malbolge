@@ -46,9 +46,18 @@
 
 \section{Scope}
 
-This document records algebraic reductions that are already consumed by the
-Malbolge runtime. A reduction is admitted only on its stated finite/profile
-domain and only while its correspondence evidence remains valid.
+This document records two distinct classes of exact optimization mathematics.
+First, runtime-evaluation reductions such as the admitted crazy and rotate table
+factorizations may be consumed directly by execution paths when their semantic
+and benchmark evidence permits that claim. Second, synthesis-space results
+include preimage bounds, canonical forms, symmetry quotients, constructive
+rank/unrank maps, covering bounds, and decision/search lower bounds used to
+reduce or characterize candidate search before verification.
+
+A reduction is admitted only on its stated finite/profile domain and only while
+its correspondence evidence remains valid. A synthesis-space reduction does not
+inherit a runtime-speed claim, and a runtime speedup does not imply a general
+synthesis scaling result.
 
 \section{Classic crazy chunk factorization}
 

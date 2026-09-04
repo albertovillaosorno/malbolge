@@ -145,6 +145,11 @@ The planning corpus intentionally records these decisions:
 
 - Synthesis scaling is an empirical research question. Do not assume the whole
   problem is exponential, linear, or amortized linear before measurements.
+- The bounded P1 Malbolge optimization-mathematics milestone is complete at
+  226 exact reductions. Consume that base in engineering; do not reopen it for
+  speculative higher-arity completion. Measure prune retention/effective
+  branching first, then use `high-arity-synthesis-symmetry-pruning` only for a
+  demonstrated residual symmetry bottleneck.
 - `tools/tidy` guarantees the admitted deterministic/lowerable C surface; it
   does not by itself prove compilation will be cheap. Guest validation is
   explicit/manual, with `doom/` as the sole recursive directory convenience;

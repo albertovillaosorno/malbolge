@@ -36,6 +36,14 @@ raw hardware scale.
 - Every pruning/dominance/canonicalization rule is justified by equivalence or
   admissibility evidence and has adversarial tests that would catch an unsound
   discarded state.
+- Pruning evidence reports raw candidates, rejected candidates, survivors, prune
+  fraction, and effective branching by search depth or declared difficulty. A
+  strong aggregate prune percentage cannot hide a collapse toward unpruned
+  branching in later layers.
+- The implementation may combine the completed exact mathematics base with safe
+  dynamic reachability, dominance, memoization, verifier-specific reasoning, or
+  other independently justified filters; no single source of pruning is assumed
+  sufficient at every depth.
 - A CPU/reference path remains sufficient for correctness, and accelerator
   failure/unavailability changes performance rather than semantic acceptance.
 - The work states a falsifiable question or hypothesis, an explicit baseline,
@@ -57,6 +65,10 @@ raw hardware scale.
   metadata, failure/fallback tests, and benchmark samples for claimed speedups.
 - Prerequisite completion evidence: `deterministic-cpu-optimizer`,
   `malbolge-specific-optimization-mathematics`.
+- The mathematics prerequisite is a completed bounded milestone with 226 exact
+  reductions. If retained traces show residual symmetry causing late-depth
+  branching growth, targeted higher-arity mathematics is escalated to
+  `high-arity-synthesis-symmetry-pruning` instead of reopening the P1 milestone.
 - Active exploratory evidence: exact pre-identity byte duplicate pruning retains
   stable first representatives and rejects every stronger equality shortcut. The
   duplicate-rich fixture maps eight inputs to five representatives, while the
