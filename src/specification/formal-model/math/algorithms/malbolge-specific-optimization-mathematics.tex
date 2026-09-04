@@ -1972,6 +1972,29 @@ Deleting their exact ranks gives dense exact rank/unrank; direct samples under
 the full $S_6$ action have stabilizer order four. Prefixing the repeated-six
 vertex pair gives one complete mass-fourteen interval of $30401$ classes.
 
+The next exact stabilizer has order eight and endpoint orbit sizes $(4,1,1)$.
+Its normalizer has order $16$, so the quotient has order two. The H-fixed
+residual coordinates have orbit spectrum $1^4 2^4 4^{10}$ and split into seven
+rank blocks with sizes
+\[
+  (4,2,4,2,2,2,2)
+\]
+and scalar weights $(1,2,4,2,4,4,4)$. Let $F_r^H$ count normalizer-free ranks
+and let $X_r^H$ contain the free ranks fixed by at least one minimal strict
+extension of H. Then
+\begin{equation}
+  \fitmath{%
+    (F_{14}^H,|X_{14}^H|,E_{14}^H)=(26160,2066,24094),
+    \qquad E_r^H=F_r^H-|X_r^H|.
+  }
+  \label{eq:optimization-crazy-sextuple-s6-full-order8-411-ranking}
+\end{equation}
+When enumerating H-fixed extension witnesses, assignments with no free quotient
+rank are discarded before the surviving ranks are deduplicated. This gives
+dense exact rank/unrank, and direct full-$S_6$ samples have stabilizer order
+eight through mass fourteen. Prefixing the repeated-six vertex pair gives one
+complete mass-fourteen interval of $25121$ classes.
+
 Rooting one endpoint leaves an $S_5$ action on the full fifty-two-label residual
 family. Its coordinates split into two fixed scalars, five two-component vertex
 bundles, and ten four-component $K_5$ edge values. Sorting the five bundles

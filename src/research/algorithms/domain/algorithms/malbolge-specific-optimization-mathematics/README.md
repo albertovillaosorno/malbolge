@@ -427,6 +427,17 @@ order-12 extensions form one normalizer orbit and account for exactly 393
 excluded ranks. Sparse deletion leaves 29,867 exact residual classes, and the
 repeated-six vertex prefix gives 30,401 complete classes.
 
+The exact order-eight `(4,1,1)` stabilizer branch is constructive too. Its
+normalizer has order 16 and quotient order 2. The H-fixed residual coordinates
+have orbit spectrum `1^4 2^4 4^10`, grouped into seven quotient blocks with
+sizes `(4,2,4,2,2,2,2)` and weights `(1,2,4,2,4,4,4)`.
+
+The normalizer-free mass-14 quotient has 26,160 classes. Minimal strict
+extensions remove 2,066 quotient ranks after first discarding H-fixed states
+that are already non-free under the quotient action. Sparse deletion leaves
+24,094 exact residual classes, and the repeated-six vertex prefix gives 25,121
+complete classes.
+
 The rooted-S5 trivial-stabilizer quotient is now constructive. Rooting endpoint
 five splits the 52 residual coordinates into two fixed scalars, five
 two-component vertex bundles, and ten four-component K5 edges. Sorting the five
