@@ -4419,7 +4419,10 @@ fn direct_selector_chooses_fast_path_or_verified_deopt_deterministically()
 #[test]
 fn direct_selector_prioritizes_program_capacity() -> Result<(), String> {
     let mut program = direct_initial_halt_program();
-    let overflow_address = current_profile().memory_words();
+    let overflow_address = u32::try_from(
+        program.profile_requirement.memory_words,
+    )
+    .map_err(|_overflow| String::from("fixture profile exceeds u32 address"))?;
     let effect = program
         .effects
         .first_mut()
@@ -4459,7 +4462,10 @@ fn direct_selector_prioritizes_program_capacity() -> Result<(), String> {
 fn direct_sequence_blocks_capacity_overflow_before_retry_authority()
 -> Result<(), String> {
     let mut program = direct_initial_halt_program();
-    let overflow_address = current_profile().memory_words();
+    let overflow_address = u32::try_from(
+        program.profile_requirement.memory_words,
+    )
+    .map_err(|_overflow| String::from("fixture profile exceeds u32 address"))?;
     let effect = program
         .effects
         .first_mut()
