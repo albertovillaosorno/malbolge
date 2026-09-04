@@ -587,6 +587,13 @@ ends at 258 classes, while triple blocks `(2,2,2,2,2,2,4,4)` give 204,620,208
 free classes. Composition contributes 278,516 residual and complete mass-14
 classes, leaving 361,534 residual classes.
 
+The point-stabilizer `S5` pair branch is constructive too. Its normalizer has
+order 120, giving six conjugates. Pair ranks occur only at masses 5 and 10
+with counts `2,5`; the two ten-coordinate triple blocks use the hard
+pattern-plus-color rank plus transported stabilizer chains. This gives
+6,689,862 free triples, 208,704 residual classes, and 208,712 complete mass-14
+classes, leaving 152,830 residual classes.
+
 The `(4,1,1)` stratum now factors again into four fixed scalars, four
 six-component vertex bundles, and six four-component K4-edge bundles, leaving
 second-layer stabilizers `1/S2/V4/S3/S4`. The all-distinct bundle case now has
