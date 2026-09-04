@@ -105,8 +105,11 @@ resident threads per SM.
 
 Adapter construction, NVRTC compilation, and resource/occupancy queries remain
 outside timing. The occupancy values describe theoretical launch capacity, not
-observed SM utilization. Retained cache measurements and the evidence-driven
-route selection decision remain separate obligations.
+observed SM utilization. Retained RTX 4060 geometry evidence is under
+<!-- jig-ignore-next-line: canonical evidence path is indivisible -->
+`benchmarks/accelerator/evidence/2026-09-04-profile-width-crazy-geometry-throughput-rtx4060/`.
+Cache measurements and the evidence-driven route selection decision remain
+separate obligations.
 
 Run with:
 

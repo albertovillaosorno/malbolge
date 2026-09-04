@@ -1,0 +1,4 @@
+captured_utc=2026-09-04T18:53:26Z
+kernel=Linux 7.1.10-200.fc44.x86_64 x86_64
+python=Python 3.14.7
+gpu=NVIDIA GeForce RTX 4060, 610.57.04, 8188 MiB

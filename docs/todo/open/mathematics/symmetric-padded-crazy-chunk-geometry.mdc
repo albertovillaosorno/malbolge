@@ -134,11 +134,22 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   device maximum of 1,536.
 
   This is theoretical launch occupancy from CUDA's calculator, not observed SM
-  utilization. These are correctness/resource observations, not retained
-  performance evidence.
+  utilization. These are correctness/resource observations, not semantic
+  authority.
 
-  Retained geometry performance, cache behavior, and the resulting
-  evidence-driven selection decision remain open.
+  Retained RTX 4060 evidence under
+  <!-- jig-ignore-next-line: canonical evidence path is indivisible -->
+`benchmarks/accelerator/evidence/2026-09-04-profile-width-crazy-geometry-throughput-rtx4060/`
+  preserves all 15 samples per region/geometry/width from clean commit
+  `ac62c4be`. Lookup resident medians improve over tritwise by 1.980x at N10 and
+  2.046x/2.153x/2.272x/2.332x at N11-N14. Native has the lowest resident and
+  end-to-end medians at N10; padded has the lowest resident median at N11-N14
+  and the lowest end-to-end median at N11-N14, with N11 nearly tied.
+
+  The hermetic CUDA bundle exposes no Nsight Compute, CUPTI, or NVPerf profiler,
+  so this record does not infer constant-cache traffic or hit rates from wall
+  time. Cache behavior and the resulting evidence-driven selection decision
+  remain open.
 - Required implementation evidence: differential equality against the trusted
   profile semantics before any performance result is considered.
 - Required benchmark matrix: widths 10, 11, 12, 13, and 14; representative
