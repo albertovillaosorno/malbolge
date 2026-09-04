@@ -164,9 +164,19 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   `benchmarks/accelerator/evidence/2026-09-04-crazy-lookup-address-fanout/`
   from clean model commit `bf6cfbc3`.
 
-  The current CUDA candidate-search kernel remains tritwise, so this fanout is a
-  structural model of a prospective lookup search port rather than an observed
-  cache counter from that kernel. The hermetic CUDA bundle exposes no Nsight
+  The current CUDA candidate-search kernel remains tritwise. A separate
+  benchmark-only `cuda-crazy-lookup-candidate-throughput-v1` harness now
+  compiles
+  tritwise and `5+5` lookup candidate kernels over the same ordinary 59,049 and
+  exact projected 1,024 candidate orders, validates every result against
+  trusted
+  CPU CRAZY outside timing, and alternates first-kernel order. Initial
+  dirty-tree
+  smoke timings are deliberately not retained; a clean-commit run remains open.
+
+  The fanout is therefore structural evidence for that benchmark route, not an
+  observed cache counter from the product kernel. The hermetic CUDA bundle
+  exposes no Nsight
   Compute, CUPTI, or NVPerf profiler; physical constant-cache traffic/hit rates
   and the resulting evidence-driven selection decision remain open.
 - Required implementation evidence: differential equality against the trusted

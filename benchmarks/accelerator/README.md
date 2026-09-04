@@ -135,6 +135,21 @@ Run with:
   -m benchmarks.accelerator.crazy_lookup_address_fanout
 ```
 
+`crazy_lookup_candidate_throughput.py` is the benchmark-only execution
+companion to the structural fanout diagnostic. It compiles separate tritwise and
+`5+5` lookup kernels, reuses the canonical 59,049 ordinary candidates and exact
+1,024-position projection, uploads each route once, and times only synchronous
+kernel launch. Every warmup and timed sample is downloaded and compared with the
+trusted CPU CRAZY result outside the timing interval. Sample order alternates
+which kernel runs first; the production candidate adapter remains unchanged.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.crazy_lookup_candidate_throughput
+```
+
 `profile_run_phase_profile.py` measures the same current-profile workload with
 adapter diagnostics split into validation/planning, host construction,
 allocation, upload, kernel+sync, download, full result decode, and release. It
