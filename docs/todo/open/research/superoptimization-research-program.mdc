@@ -133,8 +133,14 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   falls from 708,588 checks to 2,047 (99.71%). The source-pinned Windows/Python
   timing is negative: median strategy time rises from 2,298,684,800 ns to
   2,931,140,300 ns, about 1.28 times slower, with overlapping observed ranges.
-  This supports exact pruning but not a runtime-speedup claim. Larger
-  challenges,
-  independent hosts/implementations, additional technique plans, and a stronger
+  This supports exact pruning but not a runtime-speedup claim.
 
-  comparative conclusion remain pending.
+- An exact first-step prefix-decomposition comparison is now separately
+  preregistered
+  against the same frozen 8,836-candidate corpus. It makes independent verifier
+  calls the primary metric, requires exact candidate-index/quality-map equality,
+  and forbids result interpretation until a runner, protocol, and retained
+  provenance exist.
+
+- Larger challenges, independent hosts/implementations, additional technique
+  plans, and a stronger comparative conclusion remain pending.

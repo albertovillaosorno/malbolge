@@ -1,0 +1,76 @@
+schema_version = 1
+
+[plan]
+id = "classic-two-word-prefix-decomposition-v1"
+record_kind = "plan"
+status = "preregistered"
+method_class = "optimization"
+technique = "exact-first-step-prefix-decomposition-v1"
+baseline = "full-candidate-independent-verification-v1"
+
+[profile]
+id = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[question]
+text = """Can exact first-step prefix decomposition reduce independent verifier \
+calls while preserving the complete frozen candidate-quality map?"""
+
+[comparison]
+primary_metric = "independent-verifier-calls"
+secondary_metrics = [
+  "full-candidate-verifications",
+  "structurally-discharged-candidates",
+  "accepted-candidate-count",
+  "best-verified-quality",
+]
+candidate_evaluation_budget = 8836
+wall_clock_seconds = 60
+memory_mib = 512
+
+[challenge]
+id = "classic-verified-block-search-v1"
+candidate_count = 8836
+candidate_encoding = "lexicographic-two-graphical-bytes-v1"
+verifier = "classic-two-word-no-io-halt-v1"
+# jig-ignore-next-line: indivisible reviewed identifier
+workload_sha256 = "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
+
+[runner]
+id = "classic-two-word-prefix-decomposition-comparison-v1"
+baseline = "full-candidate-independent-verification-v1"
+technique = "exact-first-step-prefix-decomposition-v1"
+semantic_equivalence = "exact-candidate-index-quality-map-v1"
+status = "unregistered"
+
+[decomposition]
+prefix_words = 1
+suffix_words = 1
+graphical_values_per_word = 94
+requires_suffix_independence_proof_before_reuse = true
+requires_complete_candidate_coverage = true
+requires_independent_final_map_equality = true
+
+[rejection]
+conditions = [
+  "candidate-index quality map differs from full-verification baseline",
+  "independent verifier calls do not decrease on the frozen challenge",
+  "a reused prefix lacks exact proof that suffix cannot change its result",
+  "a candidate is skipped without structural discharge or full verification",
+]
+
+[measurement_gate]
+challenge_status = "registered"
+runner_status = "unregistered"
+protocol_status = "unregistered"
+retained_provenance_status = "unregistered"
+results_allowed = false
+reason = """runner and retained measurement protocol are not yet \
+registered"""
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/prefix-decomposition-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"

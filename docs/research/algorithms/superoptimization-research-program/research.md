@@ -174,6 +174,15 @@ five-pair timing protocol before measurement. Its retained-evidence regression
 recomputes 708,588-to-2,047 candidate work plus timing medians/ranges from raw
 CSV without rerunning the experiment.
 
+A fourth comparison is now preregistered but deliberately unmeasured.
+`classic-two-word-prefix-decomposition-v1` reuses the frozen 8,836-candidate
+challenge and independent verifier, compares full candidate verification with
+exact first-step prefix decomposition, and makes independent verifier calls its
+primary metric. Reuse is forbidden unless suffix independence is proved, and
+complete candidate-index/quality-map equality is a rejection boundary. Its
+measurement gate remains closed until runner, protocol, and retained provenance
+are registered.
+
 The broader study at `../../studies/superoptimization-program.md` remains the
 human synthesis record. This mirror now has three retained host-specific
 measured
