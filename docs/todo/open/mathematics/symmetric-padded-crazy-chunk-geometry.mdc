@@ -97,11 +97,13 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   and exact fixed three-lookup decomposition for widths 10 through 14.
 - Current CPU measurement harness: `interpreter_benchmark` sweeps N10 through
   N14 over one deterministic 59,049-pair corpus per width and emits independent
-  scalar, native `5+5+r`, and uniform padded samples. All three must preserve a
-  common checksum before timing begins, and sample order rotates across the
-  three implementations. N15 remains an arithmetic-only three-full-chunk test,
-  not a silently admitted runtime profile. Retained CPU measurements remain
-  open.
+  scalar, native `5+5+r`, and fixed-unrolled uniform padded samples. The padded
+  route performs exactly two full lookups at N10 and three at N11 through N14.
+  All three implementations must preserve a common checksum before timing, and
+  sample order rotates across them. N15 remains an arithmetic-only
+  three-full-chunk test, not a silently admitted runtime profile.
+
+  Retained CPU measurements and SIMD/vectorized variants remain open.
 - Existing CUDA width evidence measures the same 16,384 crazy-heavy VM steps at
   N10 through N14 on the tritwise kernel, including resident and end-to-end
   timing with full result validation. It is useful width-scaling evidence but

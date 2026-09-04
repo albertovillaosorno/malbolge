@@ -50,6 +50,8 @@ const BATCH_STEP_BUDGET: usize = 16;
 const CRAZY_REPETITIONS: u16 = 16;
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
 const FNV_PRIME: u64 = 1_099_511_628_211;
+const PROFILE_CHUNK_MODULUS: u32 = 243;
+const PROFILE_CHUNK_SQUARE: u32 = 59_049;
 const PROFILE_CORPUS_SIZE: u32 = 59_049;
 // Coprime to every 3^N, so each N10-N14 corpus contains no duplicate words.
 const PROFILE_STRIDE: u32 = 104_729;
@@ -212,6 +214,27 @@ fn benchmark_crazy_scalar(words: &[Word]) -> u64 {
     checksum
 }
 
+fn benchmark_profile_crazy_padded(
+    words: &[u32],
+    geometry: ProfileCrazyGeometry,
+) -> u64 {
+    let mut checksum = 0u64;
+    let mut repetition = 0u16;
+    while repetition < CRAZY_REPETITIONS {
+        for (&data, &accumulator) in words.iter().zip(words.iter().rev()) {
+            let value = profile_crazy_padded_unrolled(
+                black_box(data),
+                black_box(accumulator),
+                geometry.padded_trits,
+            )
+            .rem_euclid(geometry.semantic_modulus);
+            checksum = checksum.saturating_add(u64::from(value));
+        }
+        repetition = repetition.saturating_add(1);
+    }
+    checksum
+}
+
 fn benchmark_profile_crazy_scalar(
     words: &[u32],
     geometry: ProfileCrazyGeometry,
@@ -268,11 +291,9 @@ fn benchmark_profile_crazy_implementation(
             geometry,
             geometry.semantic_trits,
         ),
-        ProfileCrazyImplementation::Padded => benchmark_profile_crazy_table(
-            words,
-            geometry,
-            geometry.padded_trits,
-        ),
+        ProfileCrazyImplementation::Padded => {
+            benchmark_profile_crazy_padded(words, geometry)
+        },
     }
 }
 
@@ -335,6 +356,40 @@ const fn crazy_trit_scalar(data: u16, accumulator: u16) -> u16 {
     } else {
         0
     }
+}
+
+fn profile_crazy_padded_unrolled(
+    data: u32,
+    accumulator: u32,
+    padded_trits: u8,
+) -> u32 {
+    let low = profile_crazy(
+        data.rem_euclid(PROFILE_CHUNK_MODULUS),
+        accumulator.rem_euclid(PROFILE_CHUNK_MODULUS),
+        5,
+    );
+    let middle = profile_crazy(
+        data.div_euclid(PROFILE_CHUNK_MODULUS)
+            .rem_euclid(PROFILE_CHUNK_MODULUS),
+        accumulator
+            .div_euclid(PROFILE_CHUNK_MODULUS)
+            .rem_euclid(PROFILE_CHUNK_MODULUS),
+        5,
+    );
+    let two_chunks =
+        low.saturating_add(middle.saturating_mul(PROFILE_CHUNK_MODULUS));
+    if padded_trits == 10 {
+        return two_chunks;
+    }
+    let high = profile_crazy(
+        data.div_euclid(PROFILE_CHUNK_SQUARE)
+            .rem_euclid(PROFILE_CHUNK_MODULUS),
+        accumulator
+            .div_euclid(PROFILE_CHUNK_SQUARE)
+            .rem_euclid(PROFILE_CHUNK_MODULUS),
+        5,
+    );
+    two_chunks.saturating_add(high.saturating_mul(PROFILE_CHUNK_SQUARE))
 }
 
 fn profile_crazy_scalar(mut data: u32, mut accumulator: u32, trits: u8) -> u32 {
