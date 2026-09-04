@@ -484,6 +484,17 @@ Normalizer-free classes occur only at masses 10 through 14, with counts
 `1,2,3,4,5`, and every such class already has exact stabilizer H. The
 repeated-six vertex prefix therefore also gives five complete mass-14 classes.
 
+The second transitive order-12 stabilizer is constructive too. Unlike the
+self-normalizing class, it has no six-cycles; its normalizer has order 48 and
+quotient order four. The H-fixed residual coordinates have orbit spectrum
+`1^2 3^2 4^2 6^2 12^2`, grouped into five two-coordinate quotient blocks with
+weights `(1,3,12,4,6)`.
+
+At mass 14 the normalizer-free quotient has 10 classes. Minimal strict
+extensions remove five ranks, leaving five exact residual classes. Exact ranks
+first appear at masses 13 and 14 with counts `2,5`; the repeated-six vertex
+prefix therefore also gives five complete mass-14 classes.
+
 The rooted-S5 trivial-stabilizer quotient is now constructive. Rooting endpoint
 five splits the 52 residual coordinates into two fixed scalars, five
 two-component vertex bundles, and ten four-component K5 edges. Sorting the five
