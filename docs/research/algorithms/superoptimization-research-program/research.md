@@ -183,6 +183,12 @@ complete candidate-index/quality-map equality is a rejection boundary. Its
 measurement gate remains closed until runner, protocol, and retained provenance
 are registered.
 
+Independent structural evidence now proves one nontrivial basis:
+for the `Q` prefix, position-zero decode is halt and entry termination occurs
+before encryption, so all 94 suffixes differ only by ordinary two-word load
+admission. Exactly eight admitted suffixes reproduce quality one; every other
+prefix remains unproved and must retain full verification.
+
 The broader study at `../../studies/superoptimization-program.md` remains the
 human synthesis record. This mirror now has three retained host-specific
 measured

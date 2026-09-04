@@ -46,6 +46,10 @@ preregistered against the original frozen corpus. It requires exact proof of
 suffix independence before any prefix result reuse and keeps its result gate
 closed until runner, protocol, and retained provenance are registered.
 
+A low-level structural regression proves only the `Q` prefix so far: entry halts
+before encryption, and exactly eight load-admitted suffixes have quality one.
+Other prefixes remain full-verification cases until separately proved.
+
 The shared mechanisms live under
 `src/research/algorithms/composition/algorithms/superoptimization/`; domain
 policy remains here. Stable identities are `deterministic-enumeration-v1`,
