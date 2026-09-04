@@ -19,8 +19,10 @@ dependency of the compiler.
 
 ## Provenance
 
-The official NVIDIA guide is the primary source for the CUDA programming model,
-GPU execution concepts, memory hierarchy, and compilation/runtime interfaces.
+The official NVIDIA Programming Guide is the primary source for the CUDA
+programming model, GPU execution concepts, and memory hierarchy. The official
+CUDA Driver API is the primary source for low-level runtime interfaces used by
+the repository adapter.
 
 ## Identity And Version
 
@@ -43,6 +45,16 @@ terms into the repository MIT license.
   language-specific GPU programming interfaces.
 - CUDA exposes hierarchical execution and memory concepts relevant to batched
   candidate evaluation.
+- CUDA Driver API 13.3.1 defines `cuFuncGetAttribute` for querying one loaded
+  `CUfunction` and assigns `CU_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES = 1`,
+  `CU_FUNC_ATTRIBUTE_CONST_SIZE_BYTES = 2`,
+  `CU_FUNC_ATTRIBUTE_LOCAL_SIZE_BYTES = 3`, and
+  `CU_FUNC_ATTRIBUTE_NUM_REGS = 4`. Attribute zero is
+  `CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK`.
+- Those attributes report static shared bytes per block, user-allocated constant
+  bytes, local bytes per thread, registers per thread, and the function/device
+  maximum threads per block respectively. They are resource observations, not
+  semantic authority or occupancy measurements.
 
 ### Unresolved
 
@@ -53,5 +65,9 @@ scaling claim is accepted without repository measurements on identified devices.
 
 - <https://docs.nvidia.com/cuda/cuda-programming-guide/index.html> - accessed
   2026-07-26.
+- <https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html> - CUDA
+  Driver API 13.3.1 execution-control reference, accessed 2026-09-04.
+- <https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TYPES.html> - CUDA
+  Driver API 13.3.1 function-attribute enumeration, accessed 2026-09-04.
 - <https://developer.download.nvidia.com/compute/cuda/redist/> - accessed
   2026-08-05.

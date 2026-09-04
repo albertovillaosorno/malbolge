@@ -95,11 +95,13 @@ and complete-state oracle under a separate benchmark identity. It compares the
 resident tritwise baseline with native `5+5+r` and padded `5+5+5` lookup
 kernels. Each width keeps one CUDA context at a time, records 15 end-to-end and
 15 resident samples per route, and cyclically rotates which route block goes
-first by width. Rows also report source-declared constant bytes so the 59,049
-byte crazy lookup table is visible as resource pressure.
+first by width. Rows report both source-declared constant bytes and Driver API
+function attributes for constant/local/static-shared memory, registers per
+thread, and the function/device thread-block ceiling.
 
-Adapter construction and NVRTC compilation remain outside timing. Retained
-register/occupancy/cache measurements are a separate evidence obligation.
+Adapter construction, NVRTC compilation, and resource queries remain outside
+timing. Retained occupancy/cache measurements and the evidence-driven route
+selection decision remain separate obligations.
 
 Run with:
 

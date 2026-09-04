@@ -71,6 +71,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from accelerator.cuda.resident_kernel import ResidentCrazyGeometry
+    from accelerator.cuda.runtime import CudaKernelResources
     from accelerator.cuda.runtime import CudaOrderedDtoHStream
     from accelerator.profile_run import ProfileRunGeometry
     from accelerator.profile_run import ProfileRunRequest
@@ -1085,6 +1086,21 @@ class CudaProfileRunAdapter:
 
         """
         return self._capability
+
+    def kernel_resources(self) -> CudaKernelResources:
+        """Return Driver-reported resources for this compiled resident kernel.
+
+        Returns:
+            Resource observations for the exact loaded function.
+
+        Raises:
+            AcceleratorExecutionError: If the adapter is closed or CUDA fails.
+
+        """
+        if self._closed:
+            message = "CUDA profile-run adapter is closed"
+            raise AcceleratorExecutionError(message)
+        return self._runtime.kernel_resources.measure(self._kernel)
 
     def close(self) -> None:
         """Release module and CUDA context exactly once."""

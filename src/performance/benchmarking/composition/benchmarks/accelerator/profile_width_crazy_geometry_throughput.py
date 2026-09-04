@@ -53,6 +53,7 @@ from benchmarks.accelerator import profile_width_crazy_throughput as baseline
 if TYPE_CHECKING:
     from array import array
 
+    from accelerator.cuda.runtime import CudaKernelResources
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.profile_run import ProfileRunGeometry
     from accelerator.profile_run import ProfileRunRequest
@@ -86,6 +87,11 @@ class CrazyGeometryThroughputRow:
 
     crazy_geometry: str
     declared_constant_bytes: int
+    driver_constant_memory_bytes: int
+    driver_local_memory_bytes_per_thread: int
+    driver_max_threads_per_block: int
+    driver_registers_per_thread: int
+    driver_static_shared_memory_bytes: int
     end_to_end_median_ns: int
     end_to_end_pstdev_ns: float
     end_to_end_raw_ns: tuple[int, ...]
@@ -214,6 +220,7 @@ def _measure(
     adapter: CudaProfileRunAdapter,
     route: _RouteWorkload,
 ) -> CrazyGeometryThroughputRow:
+    resources = adapter.kernel_resources()
     for _ in range(WARMUP_COUNT):
         results = adapter.evaluate((route.width.request,))
         _validate(results, route)
@@ -224,7 +231,7 @@ def _measure(
     resident = [
         _resident_elapsed(adapter, route) for _ in range(SAMPLE_COUNT)
     ]
-    return _row(route, end_to_end, resident)
+    return _row(route, end_to_end, resident, resources=resources)
 
 
 def _evaluate_elapsed(
@@ -266,6 +273,8 @@ def _row(
     route: _RouteWorkload,
     end_to_end: list[int],
     resident: list[int],
+    *,
+    resources: CudaKernelResources,
 ) -> CrazyGeometryThroughputRow:
     end_median = int(median(end_to_end))
     resident_median = int(median(resident))
@@ -273,6 +282,13 @@ def _row(
     return CrazyGeometryThroughputRow(
         crazy_geometry=route.crazy_geometry.value,
         declared_constant_bytes=declared_constant_bytes(route.crazy_geometry),
+        driver_constant_memory_bytes=resources.constant_memory_bytes,
+        driver_local_memory_bytes_per_thread=(
+            resources.local_memory_bytes_per_thread
+        ),
+        driver_max_threads_per_block=resources.max_threads_per_block,
+        driver_registers_per_thread=resources.registers_per_thread,
+        driver_static_shared_memory_bytes=resources.static_shared_memory_bytes,
         end_to_end_median_ns=end_median,
         end_to_end_pstdev_ns=pstdev(end_to_end),
         end_to_end_raw_ns=tuple(end_to_end),

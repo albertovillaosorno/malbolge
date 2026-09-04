@@ -105,6 +105,13 @@ _WINDOWS_LOADER_KIND: Final = "windll"
 THREADS_PER_BLOCK: Final = 256
 CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 1
 CUDA_ATTRIBUTE_MULTIPROCESSOR_COUNT: Final = 16
+# NVIDIA CUDA Driver API 13.3.1 CUfunction_attribute values. Durable source:
+# docs/bibliography/platforms-and-runtimes/accelerators/nvidia-cuda.md
+CUDA_FUNCTION_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 0
+CUDA_FUNCTION_ATTRIBUTE_SHARED_SIZE_BYTES: Final = 1
+CUDA_FUNCTION_ATTRIBUTE_CONST_SIZE_BYTES: Final = 2
+CUDA_FUNCTION_ATTRIBUTE_LOCAL_SIZE_BYTES: Final = 3
+CUDA_FUNCTION_ATTRIBUTE_NUM_REGS: Final = 4
 CUDA_STREAM_DEFAULT: Final = 0
 CUDA_STREAM_NON_BLOCKING: Final = 1
 CUDA_ORDERED_DTOH_STREAM_ID: Final = "cuda-ordered-registered-dtoh-stream-v1"
@@ -129,6 +136,77 @@ type _NvmlLoader = Callable[[Path], _NvmlBindings | None]
 type _LibraryLoader = Callable[[str], ctypes.CDLL]
 type _DllDirectoryOpener = Callable[[Path], object]
 type HostWords = ctypes.Array[ctypes.c_uint32]
+
+
+@dataclass(frozen=True, slots=True)
+class CudaKernelResources:
+    """Driver-reported resources for one loaded CUDA function."""
+
+    constant_memory_bytes: int
+    local_memory_bytes_per_thread: int
+    max_threads_per_block: int
+    registers_per_thread: int
+    static_shared_memory_bytes: int
+
+
+@final
+class CudaKernelResourceProbe:
+    """Query Driver API resource attributes for loaded CUDA functions."""
+
+    def __init__(
+        self,
+        ensure_open: Callable[[], None],
+        attribute_fn: _CudaFn,
+    ) -> None:
+        """Bind one live context guard and `cuFuncGetAttribute` function."""
+        self._attribute_fn = attribute_fn
+        self._ensure_open = ensure_open
+
+    def measure(self, kernel: ctypes.c_void_p) -> CudaKernelResources:
+        """Query exact Driver API resources for one loaded function.
+
+        Returns:
+            Nonnegative resource observations for the selected device/function.
+
+        """
+        self._ensure_open()
+        return CudaKernelResources(
+            constant_memory_bytes=self._attribute(
+                kernel,
+                CUDA_FUNCTION_ATTRIBUTE_CONST_SIZE_BYTES,
+            ),
+            local_memory_bytes_per_thread=self._attribute(
+                kernel,
+                CUDA_FUNCTION_ATTRIBUTE_LOCAL_SIZE_BYTES,
+            ),
+            max_threads_per_block=self._attribute(
+                kernel,
+                CUDA_FUNCTION_ATTRIBUTE_MAX_THREADS_PER_BLOCK,
+            ),
+            registers_per_thread=self._attribute(
+                kernel,
+                CUDA_FUNCTION_ATTRIBUTE_NUM_REGS,
+            ),
+            static_shared_memory_bytes=self._attribute(
+                kernel,
+                CUDA_FUNCTION_ATTRIBUTE_SHARED_SIZE_BYTES,
+            ),
+        )
+
+    def _attribute(self, kernel: ctypes.c_void_p, attribute: int) -> int:
+        value = ctypes.c_int()
+        _check_execution(
+            self._attribute_fn(
+                ctypes.byref(value),
+                attribute,
+                kernel,
+            ),
+            "cuFuncGetAttribute",
+        )
+        if value.value < 0:
+            message = "CUDA function attribute returned a negative value"
+            raise AcceleratorExecutionError(message)
+        return value.value
 
 
 @dataclass(frozen=True, slots=True)
@@ -2174,6 +2252,7 @@ class CudaRuntime:
     )
     kernel_launches: CudaKernelLaunchFactory
     ordered_transfers: CudaOrderedDtoHStreamFactory
+    kernel_resources: CudaKernelResourceProbe
     resources: CudaResourceProbe
 
     _cu_ctx_create: _CudaFn
@@ -2184,6 +2263,7 @@ class CudaRuntime:
     _cu_event_elapsed_time: _CudaFn
     _cu_event_record: _CudaFn
     _cu_event_synchronize: _CudaFn
+    _cu_func_get_attribute: _CudaFn
     _cu_device_compute_capability: _CudaFn
     _cu_device_get: _CudaFn
     _cu_device_get_attribute: _CudaFn
@@ -2317,6 +2397,10 @@ class CudaRuntime:
                 host_memory=self.host_memory,
                 synchronize_fn=self._cu_stream_synchronize,
             )
+        )
+        self.kernel_resources = CudaKernelResourceProbe(
+            self._ensure_open,
+            self._cu_func_get_attribute,
         )
         self.resources = CudaResourceProbe(
             self._cu_mem_get_info,
@@ -2579,6 +2663,7 @@ class CudaRuntime:
             self._cu_module_load_data,
             self._cu_module_unload,
             self._cu_module_get_function,
+            self._cu_func_get_attribute,
             self._cu_launch_kernel,
         ) = module
         (
@@ -3196,6 +3281,13 @@ def _bind_driver_module(dll: ctypes.CDLL) -> tuple[_CudaFn, ...]:
         ctypes.c_char_p,
     ]
     raw_function.restype = ctypes.c_int
+    raw_attribute = dll.cuFuncGetAttribute
+    raw_attribute.argtypes = [
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_int,
+        ctypes.c_void_p,
+    ]
+    raw_attribute.restype = ctypes.c_int
     raw_launch = dll.cuLaunchKernel
     raw_launch.argtypes = [
         ctypes.c_void_p,
@@ -3213,7 +3305,13 @@ def _bind_driver_module(dll: ctypes.CDLL) -> tuple[_CudaFn, ...]:
     raw_launch.restype = ctypes.c_int
     return tuple(
         cast("_CudaFn", raw)
-        for raw in (raw_load, raw_unload, raw_function, raw_launch)
+        for raw in (
+            raw_load,
+            raw_unload,
+            raw_function,
+            raw_attribute,
+            raw_launch,
+        )
     )
 
 

@@ -118,12 +118,20 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   `cuda-profile-width-crazy-geometry-throughput-v1` harness reuses the frozen
   N10-N14 workload and complete-state oracle, emits 15 end-to-end plus 15
   resident samples per geometry/width, rotates the first route block by width,
-  and reports source-declared constant bytes. A full live development smoke on
-  the RTX 4060 completed all 15 geometry/width rows; its timing output was
-  deleted rather than promoted as evidence.
+  and reports source-declared constant bytes plus Driver API function-resource
+  attributes. The reviewed `cuFuncGetAttribute` boundary reports constant,
+  local, and static-shared bytes, registers per thread, and the maximum threads
+  per block for the exact loaded kernel.
 
-  Retained geometry performance, register/occupancy/cache behavior, and the
-  resulting evidence-driven selection decision remain open.
+  Live RTX 4060 development checks at N10/N14 report 188 constant bytes for the
+  tritwise path and 59,237 for both lookup paths, exactly matching the generated
+  source declarations; static-shared and local bytes are zero. Registers per
+  thread range from 35 through 38 across those six loaded functions, with a
+  1,024-thread function/device ceiling. These are correctness/resource
+  observations, not retained performance evidence.
+
+  Retained geometry performance, occupancy/cache behavior, and the resulting
+  evidence-driven selection decision remain open.
 - Required implementation evidence: differential equality against the trusted
   profile semantics before any performance result is considered.
 - Required benchmark matrix: widths 10, 11, 12, 13, and 14; representative
