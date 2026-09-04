@@ -416,6 +416,17 @@ Normalizer-free already means exact-H through residual mass 14. The dense
 residual interval has 44,590 mass-14 classes, and the repeated-six vertex prefix
 gives 45,258 complete classes.
 
+The larger exact `V4-(4,2)` stabilizer branch is constructive too. Its
+normalizer has order 16 and quotient order 4 with five subgroups. The H-fixed
+residual coordinates have orbit spectrum `1^4 2^8 4^8`; seven quotient blocks
+expand to sizes `(4,2,2,2,2,2,2,2,2)` with weights
+`(1,2,4,2,2,2,4,4,4)`.
+
+The normalizer-free mass-14 quotient has 30,260 classes. Four transitive
+order-12 extensions form one normalizer orbit and account for exactly 393
+excluded ranks. Sparse deletion leaves 29,867 exact residual classes, and the
+repeated-six vertex prefix gives 30,401 complete classes.
+
 The rooted-S5 trivial-stabilizer quotient is now constructive. Rooting endpoint
 five splits the 52 residual coordinates into two fixed scalars, five
 two-component vertex bundles, and ten four-component K5 edges. Sorting the five
