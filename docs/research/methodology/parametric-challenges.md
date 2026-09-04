@@ -121,11 +121,13 @@ runtime work performs four live state transitions per node while the Python
 
 oracle remains O(nodes). Normalized frontend evidence retains both loops and the
 three indexed inputs (`tokens`, `addends`, `masks`).
+
 `composed-pipeline/v1` adds heterogeneous whole-program composition pressure:
 one node-scaled loop combines state-selected local-memory reads/writes, a live
 branch, and two helper calls while every iteration feeds the next. Its Python
 oracle performs the same defined `uint32_t` transition with explicit wrapping,
-and native evidence checks 1, 64, and 257 nodes.
+and native evidence checks 1, 64, and 257 nodes. Normalized frontend evidence
+retains one loop, one branch, nine live subscripts, and three calls.
 
 The generated source is preflighted through the repository-owned C ABI and libc
 validators. Independent native evidence compiles selected generated sources with

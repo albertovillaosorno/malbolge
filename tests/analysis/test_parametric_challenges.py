@@ -121,6 +121,10 @@ _NESTED_STATE_FAMILY = "nested-state"
 _COMPOSED_PIPELINE_CELL_REFERENCES = 3
 _COMPOSED_PIPELINE_MIX_REFERENCES = 3
 _COMPOSED_PIPELINE_INDEX_REFERENCES = 2
+_COMPOSED_PIPELINE_FRONTEND_LOOPS = 1
+_COMPOSED_PIPELINE_FRONTEND_BRANCHES = 1
+_COMPOSED_PIPELINE_FRONTEND_SUBSCRIPTS = 9
+_COMPOSED_PIPELINE_FRONTEND_CALLS = 3
 _REPLAY_PROFILE = "malbolge-2026.3"
 
 
@@ -661,6 +665,54 @@ def test_generated_source_is_admitted_by_current_c_profile(
     _ = source.write_bytes(generated.source)
     assert c_abi_source.analyze_source(source) == ()
     assert c_libc_source.analyze_source(source) == ()
+
+
+@pytest.mark.skipif(
+    not _normalized_frontend_available(),
+    reason="reviewed platform-native normalized C frontend is unavailable",
+)
+def test_composed_pipeline_is_admitted_by_normalized_frontend(
+    tmp_path: Path,
+) -> None:
+    """Keep mixed loop, branch, memory, and calls after normalization."""
+    generated = _GENERATOR_MODULE.generate(
+        _identity(family=_COMPOSED_PIPELINE_FAMILY, seed=47, nodes=23)
+    )
+    source = tmp_path / "composed.c"
+    _ = source.write_bytes(generated.source)
+    if not c_frontend_build.EXECUTABLE.is_file():
+        c_frontend_build.build()
+    completed = _run(
+        [
+            str(c_frontend_build.EXECUTABLE),
+            "--source-id",
+            "benchmarks/challenges/composed-probe.c",
+            "--resource-dir",
+            str(_FRONTEND_RESOURCE_DIR),
+            "--guest-include",
+            str(_GUEST_INCLUDE),
+            str(source),
+        ],
+        _ROOT,
+    )
+    assert completed.returncode == 0, completed.stderr
+    artifact = cast("dict[str, object]", json.loads(completed.stdout))
+    normalized = cast("list[dict[str, object]]", artifact["nodes"])
+    counts = {
+        kind: sum(node.get("kind") == kind for node in normalized)
+        for kind in (
+            _FOR_STATEMENT_KIND,
+            _IF_STATEMENT_KIND,
+            _ARRAY_SUBSCRIPT_KIND,
+            _CALL_EXPRESSION_KIND,
+        )
+    }
+    assert counts == {
+        _FOR_STATEMENT_KIND: _COMPOSED_PIPELINE_FRONTEND_LOOPS,
+        _IF_STATEMENT_KIND: _COMPOSED_PIPELINE_FRONTEND_BRANCHES,
+        _ARRAY_SUBSCRIPT_KIND: _COMPOSED_PIPELINE_FRONTEND_SUBSCRIPTS,
+        _CALL_EXPRESSION_KIND: _COMPOSED_PIPELINE_FRONTEND_CALLS,
+    }
 
 
 @pytest.mark.skipif(

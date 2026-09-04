@@ -116,7 +116,9 @@ exactly the same problem rather than on vaguely similar examples.
   generator/oracle construction remains linear in `nodes`. Normalized frontend
   evidence retains exactly two loops and three indexed reads; pinned Clang also
   matches the independent oracle at 4,096 nodes. `composed-pipeline/v1` has a
-  hash-locked v1 replay vector plus native agreement at 1, 64, and 257 nodes.
+  hash-locked v1 replay vector plus native agreement at 1, 64, and 257 nodes;
+  normalized evidence retains one loop, one branch, nine live subscripts, and
+  three calls.
   Generation-only stress replays `stream-state`, `sort-reduce`, `graph-reduce`,
   `binary-tree`, `grid-accumulate`, `ternary-fold`, `nested-state`, and
   `composed-pipeline` byte-identically at
