@@ -385,6 +385,17 @@ there are no nonnormalizing extension families. The mass-14 residual interval
 has 1,156,668 classes, and the repeated-six vertex prefix gives 1,168,542
 complete classes.
 
+The independent three-swap `C2^3` stabilizer is constructive as well. For
+`H=< (01),(23),(45) >`, the normalizer has order 48 and quotient `S3` of order
+6. The H-fixed residual coordinates have orbit spectrum `1^8 2^6 4^6 8^1`
+and split into seven weighted rank blocks with sizes `(2,1,6,3,3,3,3)` and
+weights `(1,8,2,1,1,4,4)`.
+
+Normalizer-free already means exact-H through residual mass 14; there are no
+nonnormalizing extension families. The dense residual interval has 378,494
+classes at mass 14, and the repeated-six vertex prefix gives 387,470 complete
+classes.
+
 The rooted-S5 trivial-stabilizer quotient is now constructive. Rooting endpoint
 five splits the 52 residual coordinates into two fixed scalars, five
 two-component vertex bundles, and ten four-component K5 edges. Sorting the five
