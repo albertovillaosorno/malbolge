@@ -475,6 +475,15 @@ There are 660 H-fixed residual states at mass 14. Minimal strict extensions
 remove 267 ranks, leaving 393 exact residual classes. The repeated-six vertex
 prefix gives 445 complete mass-14 classes.
 
+The transitive order-60 stabilizer is constructive too. Its normalizer has
+order 120 and quotient order two. The H-fixed residual coordinates have orbit
+spectrum `1^2 10^2 15^2`; the quotient rank uses three blocks with sizes
+`(2,2,2)` and weights `(1,15,10)`.
+
+Normalizer-free classes occur only at masses 10 through 14, with counts
+`1,2,3,4,5`, and every such class already has exact stabilizer H. The
+repeated-six vertex prefix therefore also gives five complete mass-14 classes.
+
 The rooted-S5 trivial-stabilizer quotient is now constructive. Rooting endpoint
 five splits the 52 residual coordinates into two fixed scalars, five
 two-component vertex bundles, and ten four-component K5 edges. Sorting the five
