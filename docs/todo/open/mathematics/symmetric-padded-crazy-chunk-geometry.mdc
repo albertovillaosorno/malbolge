@@ -121,16 +121,23 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   and reports source-declared constant bytes plus Driver API function-resource
   attributes. The reviewed `cuFuncGetAttribute` boundary reports constant,
   local, and static-shared bytes, registers per thread, and the maximum threads
-  per block for the exact loaded kernel.
+  per block for the exact loaded kernel. The same probe queries CUDA's maximum
+  active blocks per multiprocessor for the actual 256-thread, zero-dynamic-
+  shared launch and records the device maximum resident threads per SM.
 
   Live RTX 4060 development checks at N10/N14 report 188 constant bytes for the
   tritwise path and 59,237 for both lookup paths, exactly matching the generated
   source declarations; static-shared and local bytes are zero. Registers per
   thread range from 35 through 38 across those six loaded functions, with a
-  1,024-thread function/device ceiling. These are correctness/resource
-  observations, not retained performance evidence.
+  1,024-thread function/device block ceiling. All six N10/N14 functions admit
+  six active 256-thread blocks per SM, or 1,536 resident threads against the
+  device maximum of 1,536.
 
-  Retained geometry performance, occupancy/cache behavior, and the resulting
+  This is theoretical launch occupancy from CUDA's calculator, not observed SM
+  utilization. These are correctness/resource observations, not retained
+  performance evidence.
+
+  Retained geometry performance, cache behavior, and the resulting
   evidence-driven selection decision remain open.
 - Required implementation evidence: differential equality against the trusted
   profile semantics before any performance result is considered.

@@ -99,9 +99,14 @@ first by width. Rows report both source-declared constant bytes and Driver API
 function attributes for constant/local/static-shared memory, registers per
 thread, and the function/device thread-block ceiling.
 
-Adapter construction, NVRTC compilation, and resource queries remain outside
-timing. Retained occupancy/cache measurements and the evidence-driven route
-selection decision remain separate obligations.
+It also records the CUDA occupancy calculator's maximum active blocks per SM for
+the actual 256-thread, zero-dynamic-shared launch and the device maximum
+resident threads per SM.
+
+Adapter construction, NVRTC compilation, and resource/occupancy queries remain
+outside timing. The occupancy values describe theoretical launch capacity, not
+observed SM utilization. Retained cache measurements and the evidence-driven
+route selection decision remain separate obligations.
 
 Run with:
 

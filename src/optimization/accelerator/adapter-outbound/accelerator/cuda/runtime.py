@@ -105,6 +105,7 @@ _WINDOWS_LOADER_KIND: Final = "windll"
 THREADS_PER_BLOCK: Final = 256
 CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 1
 CUDA_ATTRIBUTE_MULTIPROCESSOR_COUNT: Final = 16
+CUDA_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR: Final = 39
 # NVIDIA CUDA Driver API 13.3.1 CUfunction_attribute values. Durable source:
 # docs/bibliography/platforms-and-runtimes/accelerators/nvidia-cuda.md
 CUDA_FUNCTION_ATTRIBUTE_MAX_THREADS_PER_BLOCK: Final = 0
@@ -142,8 +143,11 @@ type HostWords = ctypes.Array[ctypes.c_uint32]
 class CudaKernelResources:
     """Driver-reported resources for one loaded CUDA function."""
 
+    active_blocks_per_multiprocessor_at_launch: int
     constant_memory_bytes: int
+    launch_threads_per_block: int
     local_memory_bytes_per_thread: int
+    max_threads_per_multiprocessor: int
     max_threads_per_block: int
     registers_per_thread: int
     static_shared_memory_bytes: int
@@ -157,10 +161,15 @@ class CudaKernelResourceProbe:
         self,
         ensure_open: Callable[[], None],
         attribute_fn: _CudaFn,
+        *,
+        occupancy_fn: _CudaFn,
+        max_threads_per_multiprocessor: int,
     ) -> None:
-        """Bind one live context guard and `cuFuncGetAttribute` function."""
+        """Bind exact function-resource and launch-occupancy observations."""
         self._attribute_fn = attribute_fn
         self._ensure_open = ensure_open
+        self._max_threads_per_multiprocessor = max_threads_per_multiprocessor
+        self._occupancy_fn = occupancy_fn
 
     def measure(self, kernel: ctypes.c_void_p) -> CudaKernelResources:
         """Query exact Driver API resources for one loaded function.
@@ -170,14 +179,20 @@ class CudaKernelResourceProbe:
 
         """
         self._ensure_open()
+        active_blocks = self._active_blocks(kernel)
         return CudaKernelResources(
+            active_blocks_per_multiprocessor_at_launch=active_blocks,
             constant_memory_bytes=self._attribute(
                 kernel,
                 CUDA_FUNCTION_ATTRIBUTE_CONST_SIZE_BYTES,
             ),
+            launch_threads_per_block=THREADS_PER_BLOCK,
             local_memory_bytes_per_thread=self._attribute(
                 kernel,
                 CUDA_FUNCTION_ATTRIBUTE_LOCAL_SIZE_BYTES,
+            ),
+            max_threads_per_multiprocessor=(
+                self._max_threads_per_multiprocessor
             ),
             max_threads_per_block=self._attribute(
                 kernel,
@@ -192,6 +207,22 @@ class CudaKernelResourceProbe:
                 CUDA_FUNCTION_ATTRIBUTE_SHARED_SIZE_BYTES,
             ),
         )
+
+    def _active_blocks(self, kernel: ctypes.c_void_p) -> int:
+        active_blocks = ctypes.c_int()
+        _check_execution(
+            self._occupancy_fn(
+                ctypes.byref(active_blocks),
+                kernel,
+                THREADS_PER_BLOCK,
+                0,
+            ),
+            "cuOccupancyMaxActiveBlocksPerMultiprocessor",
+        )
+        if active_blocks.value < 0:
+            message = "CUDA occupancy query returned a negative block count"
+            raise AcceleratorExecutionError(message)
+        return active_blocks.value
 
     def _attribute(self, kernel: ctypes.c_void_p, attribute: int) -> int:
         value = ctypes.c_int()
@@ -304,6 +335,7 @@ class CudaDeviceInfo:
 
     arch: str
     max_threads_per_block: int
+    max_threads_per_multiprocessor: int
     multiprocessor_count: int
     name: str
 
@@ -2281,6 +2313,7 @@ class CudaRuntime:
     _cu_memcpy_htod: _CudaFn
     _cu_module_get_function: _CudaFn
     _cu_module_load_data: _CudaFn
+    _cu_occupancy_max_active_blocks_per_multiprocessor: _CudaFn
     _cu_module_unload: _CudaFn
     _cu_stream_create: _CudaFn
     _cu_stream_destroy: _CudaFn
@@ -2401,6 +2434,12 @@ class CudaRuntime:
         self.kernel_resources = CudaKernelResourceProbe(
             self._ensure_open,
             self._cu_func_get_attribute,
+            occupancy_fn=(
+                self._cu_occupancy_max_active_blocks_per_multiprocessor
+            ),
+            max_threads_per_multiprocessor=(
+                self.device_info.max_threads_per_multiprocessor
+            ),
         )
         self.resources = CudaResourceProbe(
             self._cu_mem_get_info,
@@ -2664,6 +2703,7 @@ class CudaRuntime:
             self._cu_module_unload,
             self._cu_module_get_function,
             self._cu_func_get_attribute,
+            self._cu_occupancy_max_active_blocks_per_multiprocessor,
             self._cu_launch_kernel,
         ) = module
         (
@@ -2739,6 +2779,10 @@ class CudaRuntime:
             arch=f"sm_{major.value}{minor.value}",
             max_threads_per_block=self._read_device_attribute(
                 device, CUDA_ATTRIBUTE_MAX_THREADS_PER_BLOCK
+            ),
+            max_threads_per_multiprocessor=self._read_device_attribute(
+                device,
+                CUDA_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR,
             ),
             multiprocessor_count=self._read_device_attribute(
                 device, CUDA_ATTRIBUTE_MULTIPROCESSOR_COUNT
@@ -3288,6 +3332,14 @@ def _bind_driver_module(dll: ctypes.CDLL) -> tuple[_CudaFn, ...]:
         ctypes.c_void_p,
     ]
     raw_attribute.restype = ctypes.c_int
+    raw_occupancy = dll.cuOccupancyMaxActiveBlocksPerMultiprocessor
+    raw_occupancy.argtypes = [
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.c_void_p,
+        ctypes.c_int,
+        ctypes.c_size_t,
+    ]
+    raw_occupancy.restype = ctypes.c_int
     raw_launch = dll.cuLaunchKernel
     raw_launch.argtypes = [
         ctypes.c_void_p,
@@ -3310,6 +3362,7 @@ def _bind_driver_module(dll: ctypes.CDLL) -> tuple[_CudaFn, ...]:
             raw_unload,
             raw_function,
             raw_attribute,
+            raw_occupancy,
             raw_launch,
         )
     )

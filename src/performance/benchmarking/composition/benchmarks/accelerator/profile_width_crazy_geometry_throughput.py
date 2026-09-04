@@ -87,8 +87,11 @@ class CrazyGeometryThroughputRow:
 
     crazy_geometry: str
     declared_constant_bytes: int
+    driver_active_blocks_per_multiprocessor_at_launch: int
     driver_constant_memory_bytes: int
+    driver_launch_threads_per_block: int
     driver_local_memory_bytes_per_thread: int
+    driver_max_threads_per_multiprocessor: int
     driver_max_threads_per_block: int
     driver_registers_per_thread: int
     driver_static_shared_memory_bytes: int
@@ -282,11 +285,18 @@ def _row(
     return CrazyGeometryThroughputRow(
         crazy_geometry=route.crazy_geometry.value,
         declared_constant_bytes=declared_constant_bytes(route.crazy_geometry),
+        driver_active_blocks_per_multiprocessor_at_launch=(
+            resources.active_blocks_per_multiprocessor_at_launch
+        ),
         driver_constant_memory_bytes=resources.constant_memory_bytes,
+        driver_launch_threads_per_block=resources.launch_threads_per_block,
         driver_local_memory_bytes_per_thread=(
             resources.local_memory_bytes_per_thread
         ),
         driver_max_threads_per_block=resources.max_threads_per_block,
+        driver_max_threads_per_multiprocessor=(
+            resources.max_threads_per_multiprocessor
+        ),
         driver_registers_per_thread=resources.registers_per_thread,
         driver_static_shared_memory_bytes=resources.static_shared_memory_bytes,
         end_to_end_median_ns=end_median,

@@ -54,7 +54,16 @@ terms into the repository MIT license.
 - Those attributes report static shared bytes per block, user-allocated constant
   bytes, local bytes per thread, registers per thread, and the function/device
   maximum threads per block respectively. They are resource observations, not
-  semantic authority or occupancy measurements.
+  semantic authority.
+- `CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR = 39` reports the maximum
+  resident threads per multiprocessor.
+- The Driver API function
+  `cuOccupancyMaxActiveBlocksPerMultiprocessor` returns the maximum active
+  blocks per multiprocessor for a specific function, intended block size, and
+  dynamic
+  shared-memory size. The repository uses the actual 256-thread launch and zero
+  dynamic shared bytes, so the result is theoretical launch capacity rather than
+  observed runtime utilization.
 
 ### Unresolved
 
