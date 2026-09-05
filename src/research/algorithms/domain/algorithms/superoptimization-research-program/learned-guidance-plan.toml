@@ -48,6 +48,12 @@ laplace_denominator_addend = 2
 integer_scale = 1000000
 candidate_score = "sum-four-token-integer-weights-descending-v1"
 tie_break = "ascending-holdout-ordinal"
+# jig-ignore-next-line: indivisible reviewed model identity
+fitted_weight_sha256 = "adbf7785cfeac63850898ae8c60e0b050566e8bf67e6274a2137d7e0d969e50b"
+# jig-ignore-next-line: indivisible reviewed schedule identity
+static_order_sha256 = "6e268cc463aef9a5bca8f1e9b936c7d13e822c293053115daedc34a5716981ea"
+# jig-ignore-next-line: indivisible reviewed schedule identity
+learned_order_sha256 = "4749cfdc8dddf3382d877c0c1fde60da922f84d1aea50720bda38eaac0868c03"
 uses_holdout_outcome = false
 uses_dynamic_transition = false
 uses_candidate_quality_as_feature = false

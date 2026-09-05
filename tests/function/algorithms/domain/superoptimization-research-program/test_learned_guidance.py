@@ -48,6 +48,11 @@ _SYNTHETIC_HIT = 7
 _SYNTHETIC_QUALITY = 2
 _SOURCE_WORDS = 4
 _QUALITY_ERROR = "verifier quality is malformed"
+_MODEL_SHA = "adbf7785cfeac63850898ae8c60e0b050566e8bf67e6274a2137d7e0d969e50b"
+_STATIC_SHA = "6e268cc463aef9a5bca8f1e9b936c7d13e822c293053115daedc34a5716981ea"
+_LEARNED_SHA = (
+    "4749cfdc8dddf3382d877c0c1fde60da922f84d1aea50720bda38eaac0868c03"
+)
 
 
 def test_holdout_mapping_matches_preregistered_hashes(
@@ -71,6 +76,10 @@ def test_model_fit_uses_registered_training_only() -> None:
     assert model.training_candidate_count > _BUDGET
     assert model.token_weights
     assert all(weight >= 0 for _, weight in model.token_weights)
+    weight_payload = "".join(
+        f"{token}:{weight}\n" for token, weight in model.token_weights
+    ).encode("ascii")
+    assert sha256(weight_payload).hexdigest() == _MODEL_SHA
 
 
 def test_static_and_learned_orders_are_unique_fixed_budget() -> None:
@@ -82,6 +91,14 @@ def test_static_and_learned_orders_are_unique_fixed_budget() -> None:
     assert len(learned) == _BUDGET == len(set(learned))
     assert static == guidance.static_order()
     assert learned == guidance.learned_order(model)
+    static_payload = "".join(
+        f"{candidate}\n" for candidate in static
+    ).encode("ascii")
+    learned_payload = "".join(
+        f"{candidate}\n" for candidate in learned
+    ).encode("ascii")
+    assert sha256(static_payload).hexdigest() == _STATIC_SHA
+    assert sha256(learned_payload).hexdigest() == _LEARNED_SHA
 
 
 class _Clock:
