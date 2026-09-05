@@ -155,6 +155,26 @@ Run with:
   -m benchmarks.accelerator.crazy_lookup_candidate_throughput
 ```
 
+`crazy_lookup_candidate_event_timeline.py` is a separate device-timing
+companion. It reuses the exact same two benchmark-only kernels and candidate
+orders, but surrounds each serial kernel with CUDA events on a fresh isolated
+nonblocking stream. Event-origin setup, stream creation/destruction, result
+download, and trusted CPU validation are outside the reported event duration.
+
+The event interval is not a substitute for the wall-time benchmark: it uses an
+isolated stream rather than the default synchronous launch path and can include
+GPU scheduling delay between its start/end markers. A live development smoke on
+RTX 4060 kept ordinary tritwise clearly below lookup at the median, while the
+projected route still produced multi-millisecond event outliers around
+microsecond-scale medians. Those dirty-tree timings are not retained.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.crazy_lookup_candidate_event_timeline
+```
+
 `profile_run_phase_profile.py` measures the same current-profile workload with
 adapter diagnostics split into validation/planning, host construction,
 allocation, upload, kernel+sync, download, full result decode, and release. It

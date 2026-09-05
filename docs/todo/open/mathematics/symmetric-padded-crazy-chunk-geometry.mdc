@@ -181,6 +181,18 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   5/15 projected pairs, with large projected outliers. This mixed run therefore
   does not justify changing the product candidate kernel or route selection.
 
+  A separate `cuda-crazy-lookup-candidate-event-timeline-v1` diagnostic reuses
+  those exact benchmark kernels and candidate orders with CUDA start/end events
+  on fresh isolated nonblocking streams. Stream creation/destruction, result
+  download, and trusted CPU validation remain outside the event duration. The
+  protocol is intentionally distinct from default-stream wall timing: CUDA
+  event intervals can still include GPU scheduling delay between their markers.
+
+  An initial dirty-tree smoke kept ordinary tritwise below lookup at the median
+  but left the projected route with multi-millisecond outliers around
+  microsecond-scale medians. Those timings are not retained; a clean-commit run
+  remains required before any device-duration conclusion is durable.
+
   The fanout is therefore structural evidence for that benchmark route, not an
   observed cache counter from the product kernel. The hermetic CUDA bundle
   exposes no Nsight
