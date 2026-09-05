@@ -35,7 +35,13 @@
 
 from __future__ import annotations
 
+from itertools import chain
+from itertools import islice
 from typing import Final
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 from verifier import emitted_malbolge_classic as classic
 
@@ -118,6 +124,66 @@ def initial_decode_score(candidate_index: int) -> int:
     return score
 
 
+def _score_zero_indices(halt_first: int) -> range:
+    width = _GRAPHICAL_VALUES
+    first_base = halt_first * width * width
+    return range(first_base, first_base + (width * width))
+
+
+def _score_one_indices(halt_first: int, halt_second: int) -> Iterator[int]:
+    width = _GRAPHICAL_VALUES
+    return (
+        ((first * width) + halt_second) * width + third
+        for first in range(width)
+        if first != halt_first
+        for third in range(width)
+    )
+
+
+def _score_two_indices(
+    halt_first: int,
+    halt_second: int,
+    halt_third: int,
+) -> Iterator[int]:
+    width = _GRAPHICAL_VALUES
+    return (
+        ((first * width) + second) * width + halt_third
+        for first in range(width)
+        if first != halt_first
+        for second in range(width)
+        if second != halt_second
+    )
+
+
+def _score_three_indices(
+    halt_first: int,
+    halt_second: int,
+    halt_third: int,
+) -> Iterator[int]:
+    width = _GRAPHICAL_VALUES
+    return (
+        ((first * width) + second) * width + third
+        for first in range(width)
+        if first != halt_first
+        for second in range(width)
+        if second != halt_second
+        for third in range(width)
+        if third != halt_third
+    )
+
+
+def _bucketed_indices() -> Iterator[int]:
+    halt_first, halt_second, halt_third = (
+        value - _GRAPHICAL_START for value in _HALT_SOURCE_BYTES
+    )
+    return chain(
+        _score_zero_indices(halt_first),
+        _score_one_indices(halt_first, halt_second),
+        _score_two_indices(halt_first, halt_second, halt_third),
+        _score_three_indices(halt_first, halt_second, halt_third),
+    )
+
+
 def heuristic_order(
     candidate_count: int,
     evaluation_budget: int,
@@ -138,5 +204,4 @@ def heuristic_order(
         message = "candidate count differs from the preregistered holdout"
         raise InvalidInitialDecodeHeuristicRequestError(message)
     selected_count = min(count, budget)
-    ordered = sorted(range(count), key=initial_decode_score)
-    return tuple(ordered[:selected_count])
+    return tuple(islice(_bucketed_indices(), selected_count))

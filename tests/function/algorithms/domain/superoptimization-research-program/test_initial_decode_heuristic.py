@@ -112,6 +112,13 @@ def test_heuristic_order_is_exact_score_then_index_prefix() -> None:
     order = heuristic.heuristic_order(_CANDIDATES, _BUDGET)
     assert len(order) == _BUDGET
     assert len(set(order)) == _BUDGET
+    expected = tuple(
+        sorted(
+            range(_CANDIDATES),
+            key=heuristic.initial_decode_score,
+        )[:_BUDGET]
+    )
+    assert order == expected
     keys = tuple(
         (heuristic.initial_decode_score(index), index) for index in order
     )
