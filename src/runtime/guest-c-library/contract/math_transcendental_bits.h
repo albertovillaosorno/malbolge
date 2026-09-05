@@ -23,7 +23,7 @@
 // - Summary:
 //   - Resolves only exact transcendental edge cases before numerical kernels.
 // - Description:
-//   - Canonicalizes NaNs and resolves proved small-angle/special-case results.
+//   - Resolves proved small-angle, small-ratio, and special-case results.
 // - Usage:
 //   - Internal guest-libc substrate; public sin/cos/atan2 remain gated.
 // - Defaults:

@@ -208,13 +208,21 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   complete `atan2` zero/infinity matrix, and conservative small-angle
   `sin`/`cos`. The `sin` interval is `|x| <= 2^-26`; the stricter `cos` interval
   is `|x| <= 2^-27`. Exact rational checks prove the Taylor error lies strictly
-  inside the nearest-even binary64 midpoint, so `sin(x)` rounds to
-  `x` and `cos(x)` to one without host floating arithmetic. The `atan2` matrix
-  uses reviewed raw binary64 `pi/4`, `pi/2`, `3*pi/4`, and `pi` constants and
-  resolves finite equal-magnitude pairs by quadrant at any exponent.
+  inside the nearest-even binary64 midpoint, so `sin(x)` rounds to `x` and
+  `cos(x)` to one without host floating arithmetic.
 
-  Everything else remains `kernel-required`; the tracked no-libm harness and
-  proof test do not promote public availability.
+  The `atan2` matrix uses reviewed raw binary64 `pi/4`, `pi/2`, `3*pi/4`, and
+  `pi` constants and resolves finite equal-magnitude pairs by quadrant at any
+  exponent. A second exact `atan2` subset covers right-half-plane ratios
+  `r <= 2^-27` only when the rational `|y/x|` is exactly representable in
+  binary64.
+
+  The alternating-series bound `r - atan(r) < r^3 / 3` then fits inside the
+  lower rounding midpoint, so the signed ratio bits are the correctly rounded
+  result. A 512-pair `Fraction` differential locks exact-versus-nondyadic
+  admission plus threshold and sign behavior. Everything else remains
+  `kernel-required`; the tracked no-libm harness and proof tests do not promote
+  public availability.
 - Implemented exact `atan2` finite-ratio normalization:
   finite nonzero inputs become two normalized 53-bit significands plus a signed
   power-of-two exponent, with the smaller magnitude always in the numerator.

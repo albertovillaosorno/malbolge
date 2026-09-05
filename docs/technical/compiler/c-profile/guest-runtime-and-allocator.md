@@ -289,7 +289,16 @@ binary64 one for `cos` in that conservative interval. It also owns the complete
 publication.
 
 Finite nonzero pairs with equal magnitudes also resolve directly to `pi/4` or
-`3*pi/4` by quadrant, independent of their exponent.
+`3*pi/4` by quadrant, independent of their exponent. In the right half-plane,
+a second conservative identity handles exact binary64 ratios
+`r = |y/x| <= 2^-27`. The alternating-series bound
+`0 <= r - atan(r) < r^3 / 3` stays inside the lower binary64 midpoint, so the
+correctly rounded result is exactly `r` with the sign of `y`.
+
+That identity is admitted only when the exact rational ratio is itself a
+binary64 value. Non-dyadic ratios, `r > 2^-27`, swapped magnitudes, and negative
+`x` remain unresolved rather than borrowing the rounded quotient as an
+approximation.
 
 Every ordinary finite case outside those proofs still reports
 `kernel-required`. For finite nonzero `atan2(y, x)` inputs, a second exact stage

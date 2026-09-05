@@ -21,9 +21,9 @@
 // - Merge-When:
 //   - Correctly-rounded transcendental routines consume this exact front end.
 // - Summary:
-//   - Classifies exact transcendental edge cases with integer bit operations.
+//   - Resolves proved transcendental cases with integer bit operations only.
 // - Description:
-//   - Resolves proved edges and prepares exact finite atan2 ratio geometry.
+//   - Adds proved small-ratio atan identities before exact kernel geometry.
 // - Usage:
 //   - Internal only while public transcendental routines remain unavailable.
 // - Defaults:
@@ -43,6 +43,7 @@
 #define BINARY64_ONE UINT64_C(0x3ff0000000000000)
 #define BINARY64_SIN_SMALL_ANGLE_MAX UINT64_C(0x3e50000000000000)
 #define BINARY64_COS_SMALL_ANGLE_MAX UINT64_C(0x3e40000000000000)
+#define BINARY64_ATAN_IDENTITY_MAX UINT64_C(0x3e40000000000000)
 #define BINARY64_PI_OVER_FOUR UINT64_C(0x3fe921fb54442d18)
 #define BINARY64_PI_OVER_TWO UINT64_C(0x3ff921fb54442d18)
 #define BINARY64_PI UINT64_C(0x400921fb54442d18)
@@ -130,6 +131,9 @@ static NormalizedMagnitude normalize_magnitude(uint64_t magnitude) {
   return normalized;
 }
 
+static MalbolgeGuestMathSpecialResult small_ratio_atan2_special(
+    uint64_t y_bits, uint64_t x_bits);
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
     uint64_t y_bits, uint64_t x_bits) {
   const int y_infinite = is_infinity(y_bits);
@@ -170,7 +174,7 @@ MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
             : BINARY64_THREE_PI_OVER_FOUR;
     return resolved(with_sign(magnitude, y_bits));
   }
-  return kernel_required();
+  return small_ratio_atan2_special(y_bits, x_bits);
 }
 
 int malbolge_guest_math_atan2_kernel_input(
@@ -232,7 +236,7 @@ static uint32_t ratio_fraction_bit(uint64_t denominator, uint64_t *remainder) {
 }
 
 static uint64_t rounded_normal_ratio(uint64_t denominator, uint64_t remainder,
-                                     int32_t *exponent) {
+                                     int32_t *exponent, uint32_t *exact) {
   uint64_t significand = BINARY64_HIDDEN_BIT;
   uint32_t remaining = BINARY64_EXPONENT_SHIFT;
   uint32_t guard = UINT32_C(0);
@@ -242,6 +246,7 @@ static uint64_t rounded_normal_ratio(uint64_t denominator, uint64_t remainder,
     significand |= (uint64_t)ratio_fraction_bit(denominator, &remainder)
                    << remaining;
   }
+  *exact = remainder == UINT64_C(0) ? UINT32_C(1) : UINT32_C(0);
   guard = ratio_fraction_bit(denominator, &remainder);
   if (guard != UINT32_C(0) &&
       (remainder != UINT64_C(0) ||
@@ -256,17 +261,19 @@ static uint64_t rounded_normal_ratio(uint64_t denominator, uint64_t remainder,
 }
 
 static uint64_t rounded_subnormal_ratio(uint64_t denominator,
-                                        uint64_t remainder,
-                                        int32_t exponent) {
+                                        uint64_t remainder, int32_t exponent,
+                                        uint32_t *exact) {
   const int32_t scale = exponent + INT32_C(1074);
   uint64_t units = UINT64_C(0);
   uint32_t remaining = UINT32_C(0);
   uint32_t guard = UINT32_C(0);
 
   if (scale <= INT32_C(-2)) {
+    *exact = UINT32_C(0);
     return UINT64_C(0);
   }
   if (scale == INT32_C(-1)) {
+    *exact = UINT32_C(0);
     return remainder == UINT64_C(0) ? UINT64_C(0) : UINT64_C(1);
   }
   units = UINT64_C(1) << (uint32_t)scale;
@@ -275,6 +282,7 @@ static uint64_t rounded_subnormal_ratio(uint64_t denominator,
     --remaining;
     units |= (uint64_t)ratio_fraction_bit(denominator, &remainder) << remaining;
   }
+  *exact = remainder == UINT64_C(0) ? UINT32_C(1) : UINT32_C(0);
   guard = ratio_fraction_bit(denominator, &remainder);
   if (guard != UINT32_C(0) &&
       (remainder != UINT64_C(0) || (units & UINT64_C(1)) != UINT64_C(0))) {
@@ -283,15 +291,16 @@ static uint64_t rounded_subnormal_ratio(uint64_t denominator,
   return units;
 }
 
-int malbolge_guest_math_ratio_nearest_binary64(
-    const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits) {
+static int ratio_nearest_binary64_internal(
+    const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits,
+    uint32_t *exact) {
   uint64_t numerator = UINT64_C(0);
   uint64_t denominator = UINT64_C(0);
   uint64_t remainder = UINT64_C(0);
   uint64_t significand = UINT64_C(0);
   int32_t exponent = INT32_C(0);
 
-  if (output_bits == NULL || !valid_ratio_input(input)) {
+  if (output_bits == NULL || exact == NULL || !valid_ratio_input(input)) {
     return 0;
   }
   numerator = input->numerator_significand;
@@ -305,12 +314,36 @@ int malbolge_guest_math_ratio_nearest_binary64(
     --exponent;
   }
   if (exponent < INT32_C(-1022)) {
-    *output_bits = rounded_subnormal_ratio(denominator, remainder, exponent);
+    *output_bits =
+        rounded_subnormal_ratio(denominator, remainder, exponent, exact);
     return 1;
   }
-  significand = rounded_normal_ratio(denominator, remainder, &exponent);
+  significand =
+      rounded_normal_ratio(denominator, remainder, &exponent, exact);
   *output_bits = ((uint64_t)(exponent + BINARY64_EXPONENT_BIAS)
                   << BINARY64_EXPONENT_SHIFT) |
                  (significand - BINARY64_HIDDEN_BIT);
   return 1;
+}
+
+int malbolge_guest_math_ratio_nearest_binary64(
+    const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits) {
+  uint32_t exact = UINT32_C(0);
+  return ratio_nearest_binary64_internal(input, output_bits, &exact);
+}
+
+static MalbolgeGuestMathSpecialResult small_ratio_atan2_special(
+    uint64_t y_bits, uint64_t x_bits) {
+  MalbolgeGuestMathAtan2KernelInput input;
+  uint64_t ratio_bits = UINT64_C(0);
+  uint32_t exact = UINT32_C(0);
+
+  if ((x_bits & BINARY64_SIGN) != UINT64_C(0) ||
+      !malbolge_guest_math_atan2_kernel_input(y_bits, x_bits, &input) ||
+      input.swapped != UINT32_C(0) ||
+      !ratio_nearest_binary64_internal(&input, &ratio_bits, &exact) ||
+      exact == UINT32_C(0) || ratio_bits > BINARY64_ATAN_IDENTITY_MAX) {
+    return kernel_required();
+  }
+  return resolved(with_sign(ratio_bits, y_bits));
 }

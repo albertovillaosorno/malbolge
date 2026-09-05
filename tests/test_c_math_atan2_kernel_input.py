@@ -54,6 +54,12 @@ VECTOR_COUNT = 512
 LCG_MULTIPLIER = 6364136223846793005
 LCG_INCREMENT = 1442695040888963407
 LCG_SEED = 0x4154414E325F5631
+SMALL_RATIO_LCG_SEED = 0x4154414E325F5352
+SMALL_RATIO_VECTOR_COUNT = 512
+ATAN_IDENTITY_MAX_BITS = 0x3E40000000000000
+ATAN_IDENTITY_MAX = Fraction(1, 1 << 27)
+ONE_BITS = 0x3FF0000000000000
+THREE_BITS = 0x4008000000000000
 EDGE_PAIRS = (
     (0x0000000000000001, 0x3FF0000000000000),
     (0x000FFFFFFFFFFFFF, 0x0010000000000000),
@@ -194,6 +200,71 @@ def _nearest_binary64_bits(value: Fraction) -> int:
     return ((exponent + 1023) << 52) | (significand - HIDDEN_BIT)
 
 
+def _small_ratio_pairs() -> tuple[tuple[int, int], ...]:
+    state = SMALL_RATIO_LCG_SEED
+    pairs = [
+        (ATAN_IDENTITY_MAX_BITS, ONE_BITS),
+        (SIGN_BIT | ATAN_IDENTITY_MAX_BITS, ONE_BITS),
+        (ATAN_IDENTITY_MAX_BITS + 1, ONE_BITS),
+        (1, ONE_BITS),
+        (ONE_BITS, 0x41A0000000000000),
+    ]
+    while len(pairs) < SMALL_RATIO_VECTOR_COUNT:
+        state = (state * LCG_MULTIPLIER + LCG_INCREMENT) & ALL_BITS
+        magnitude = 1 + state % ATAN_IDENTITY_MAX_BITS
+        y_bits = magnitude | (SIGN_BIT if state & 1 else 0)
+        x_bits = ONE_BITS if state & 2 else THREE_BITS
+        pairs.append((y_bits, x_bits))
+    return tuple(pairs)
+
+
+def _expected_small_ratio_special(y_bits: int, x_bits: int) -> tuple[int, int]:
+    ratio = _raw_fraction(y_bits) / _raw_fraction(x_bits)
+    rounded = _nearest_binary64_bits(ratio)
+    exactly_binary64 = _raw_fraction(rounded) == ratio
+    if exactly_binary64 and ratio <= ATAN_IDENTITY_MAX:
+        return 1, rounded | (y_bits & SIGN_BIT)
+    return 2, 0
+
+
+def _small_ratio_row(y_bits: int, x_bits: int) -> str:
+    status, bits = _expected_small_ratio_special(y_bits, x_bits)
+    return (
+        "  {"
+        f"UINT64_C(0x{y_bits:016x}), UINT64_C(0x{x_bits:016x}), "
+        f"UINT32_C({status}), UINT64_C(0x{bits:016x})"
+        "}"
+    )
+
+
+def _small_ratio_harness_source() -> str:
+    rows = ",\n".join(starmap(_small_ratio_row, _small_ratio_pairs()))
+    return f"""#include \"math_transcendental_bits.h\"
+#include <stdint.h>
+typedef struct Vector {{
+  uint64_t y_bits, x_bits;
+  uint32_t status;
+  uint64_t bits;
+}} Vector;
+static const Vector vectors[] = {{
+{rows}
+}};
+int main(void) {{
+  uint32_t i = 0;
+  while (i < (uint32_t)(sizeof(vectors) / sizeof(vectors[0]))) {{
+    const Vector *v = &vectors[i];
+    const MalbolgeGuestMathSpecialResult result =
+        malbolge_guest_math_atan2_special(v->y_bits, v->x_bits);
+    if ((uint32_t)result.status != v->status || result.bits != v->bits) {{
+      return 20;
+    }}
+    ++i;
+  }}
+  return 0;
+}}
+"""
+
+
 def _row(y_bits: int, x_bits: int) -> str:
     numerator, denominator, delta, swapped, y_negative, x_negative = _expected(
         y_bits, x_bits
@@ -256,6 +327,36 @@ def test_atan2_kernel_input_matches_exact_fraction_geometry(
     harness = tmp_path / "atan2-kernel-input.c"
     executable = tmp_path / "atan2-kernel-input"
     _ = harness.write_text(_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan2_small_ratio_classifier_matches_exact_fraction_gate(
+    tmp_path: Path,
+) -> None:
+    """Resolve only exact binary64 ratios inside the proved atan interval."""
+    harness = tmp_path / "atan2-small-ratio.c"
+    executable = tmp_path / "atan2-small-ratio"
+    _ = harness.write_text(_small_ratio_harness_source(), encoding="utf-8")
     compiled = _run(
         [
             str(CLANG),
