@@ -160,6 +160,13 @@ MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
     }
     return resolved(with_sign(BINARY64_PI, y_bits));
   }
+  if ((y_bits & ~BINARY64_SIGN) == (x_bits & ~BINARY64_SIGN)) {
+    const uint64_t magnitude =
+        (x_bits & BINARY64_SIGN) == UINT64_C(0)
+            ? BINARY64_PI_OVER_FOUR
+            : BINARY64_THREE_PI_OVER_FOUR;
+    return resolved(with_sign(magnitude, y_bits));
+  }
   return kernel_required();
 }
 

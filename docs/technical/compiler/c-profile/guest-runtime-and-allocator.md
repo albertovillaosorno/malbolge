@@ -285,6 +285,9 @@ binary64 one for `cos` in that conservative interval. It also owns the complete
 `pi/4`, `pi/2`, `3*pi/4`, and `pi`, with sign taken from `y` and canonical NaN
 publication.
 
+Finite nonzero pairs with equal magnitudes also resolve directly to `pi/4` or
+`3*pi/4` by quadrant, independent of their exponent.
+
 Every ordinary finite case outside those proofs still reports
 `kernel-required`. For finite nonzero `atan2(y, x)` inputs, a second exact stage
 orders the magnitudes and normalizes both operands to 53-bit integer
