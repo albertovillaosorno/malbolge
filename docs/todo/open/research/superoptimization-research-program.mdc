@@ -165,8 +165,9 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   The comparison keeps a 50,000-evaluation shared budget and a static heuristic
   that may see only
   initial positional decode; dynamic transitions, verifier outcomes, accepted-
-  set knowledge, and training data remain forbidden schedule inputs. Results
-  stay gated until schedule, runner, protocol, and provenance are registered.
+  set knowledge, and training data remain forbidden schedule inputs. The static
+  score-then-index schedule is now registered. Results stay gated until runner,
+  protocol, and provenance are registered.
 
 Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.

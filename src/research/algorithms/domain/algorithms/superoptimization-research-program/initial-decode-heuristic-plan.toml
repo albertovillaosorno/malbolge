@@ -79,7 +79,7 @@ conditions = [
 
 [measurement_gate]
 challenge_status = "registered"
-schedule_status = "unregistered"
+schedule_status = "registered"
 runner_status = "unregistered"
 protocol_status = "unregistered"
 retained_provenance_status = "unregistered"
