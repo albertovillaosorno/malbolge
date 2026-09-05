@@ -34,15 +34,6 @@ Separate optimization/search strategy from accelerator hardware.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/accelerator/configurable-accelerator-algorithm-adapters.mdc](docs/todo/open/accelerator/configurable-accelerator-algorithm-adapters.mdc)
 
-### TODO - CUDA exact VM adapter
-
-Implement the first GPU adapter with exact discrete Malbolge semantics and
-massively parallel independent VM execution for candidate evaluation and test
-batches.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/cuda-exact-vm-adapter.mdc](docs/todo/open/accelerator/cuda-exact-vm-adapter.mdc)
-
 ### TODO - Guest runtime and allocator
 
 Implement startup, calling convention, frames, allocation, streams, integer

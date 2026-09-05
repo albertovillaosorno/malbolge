@@ -1888,9 +1888,16 @@ records 11.601x CUDA prepared and 1.270x one-shot ticket improvements
 over CUDA ordinary, both with 15/15 paired wins; prepared remains 9.137x faster
 than the ticket. No cross-device, compiler, synthesis, kernel-overlap, or
 independent-stream claim is made.
-  Broader live-hardware evidence, synthesis/search
-  strategies, resident search designs, and ROCm work remain before this TODO can
-  complete.
+
+Broader live-hardware evidence, synthesis/search strategies, resident search
+  designs, and ROCm remain follow-on work rather than completion requirements of
+this bounded exact-CUDA VM adapter milestone. Strategy breadth belongs to
+`configurable-accelerator-algorithm-adapters`; adaptive capacity policy belongs
+to `adaptive-accelerator-resource-budgeting`; ROCm has its own reserved adapter
+TODO.
+
+Additional devices or workload profiles require new retained evidence before
+any broader performance claim.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `batch-vm-execution`.
 ## References
