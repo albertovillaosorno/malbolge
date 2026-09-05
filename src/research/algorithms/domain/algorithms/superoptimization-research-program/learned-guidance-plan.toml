@@ -108,13 +108,13 @@ conditions = [
 plan_status = "registered"
 training_status = "registered"
 holdout_status = "uncharacterized"
-model_status = "unregistered"
-baseline_status = "unregistered"
-runner_status = "unregistered"
+model_status = "registered"
+baseline_status = "registered"
+runner_status = "registered"
 protocol_status = "registered"
 retained_provenance_status = "unregistered"
 results_allowed = false
-reason = "holdout execution remains forbidden until model baseline and runner are committed"
+reason = "holdout outcomes and source-pinned provenance remain unregistered"
 
 [provenance]
 # jig-ignore-next-line: canonical path is indivisible

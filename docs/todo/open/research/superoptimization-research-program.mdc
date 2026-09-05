@@ -182,9 +182,10 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
 
   The comparison baseline is the best registered static initial-decode
   ordering. Both use a 50,000-evaluation stop-on-first bound, and learned
-  end-to-end timing includes training from scratch. Results remain gated until
-  the model, baseline, runner, holdout verifier, and source-pinned provenance
-  are registered.
+  end-to-end timing includes training from scratch. The frozen holdout mapping,
+  four-step verifier implementation, training-only model, static baseline, and
+  fail-closed runner are now registered without executing holdout outcomes.
+  Results remain gated on holdout characterization and source-pinned provenance.
 
 Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.
