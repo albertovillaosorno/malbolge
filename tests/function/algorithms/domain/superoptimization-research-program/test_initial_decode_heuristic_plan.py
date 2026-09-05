@@ -54,6 +54,7 @@ _SCORE = "earliest-position-decoding-to-halt-else-three-v1"
 _BASELINE = "deterministic-enumeration-v1"
 _HEURISTIC = "initial-decode-halt-proximity-order-v1"
 _PREREGISTERED = "preregistered"
+_REGISTERED = "registered"
 _UNREGISTERED = "unregistered"
 
 
@@ -73,7 +74,7 @@ def test_heuristic_plan_freezes_holdout_identity_before_execution() -> None:
     assert plan["status"] == _PREREGISTERED
     assert challenge["id"] == _CHALLENGE_ID
     assert challenge["candidate_count"] == _CANDIDATES
-    assert challenge["status"] == _PREREGISTERED
+    assert challenge["status"] == _REGISTERED
     assert challenge["workload_sha256"] == _WORKLOAD_SHA256
 
 
@@ -102,7 +103,7 @@ def test_heuristic_plan_results_gate_is_closed_before_holdout_execution(
 ) -> None:
     """Preregistration alone cannot become holdout search evidence."""
     gate = _table("measurement_gate")
-    assert gate["challenge_status"] == _PREREGISTERED
+    assert gate["challenge_status"] == _REGISTERED
     assert gate["schedule_status"] == _UNREGISTERED
     assert gate["runner_status"] == _UNREGISTERED
     assert gate["protocol_status"] == _UNREGISTERED

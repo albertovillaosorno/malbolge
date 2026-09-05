@@ -37,7 +37,13 @@ quality = "semantic-transitions-to-halt-v1"
 verifier = "classic-three-word-no-io-halt-v1"
 # jig-ignore-next-line: indivisible reviewed workload identity
 workload_sha256 = "03276bbed2b81d90553fa9ddca6046602108f992c48520554651638c626409d4"
-status = "preregistered"
+status = "registered"
+accepted_candidate_count = 86
+quality_one_count = 64
+quality_two_count = 16
+quality_three_count = 6
+# jig-ignore-next-line: indivisible reviewed semantic identity
+accepted_set_sha256 = "35d107f544fbd71b0008d1414fa4c73677e9d3d15c32e6494a09bd89e2667342"
 
 [comparison]
 primary_metric = "first-verified-evaluation"
@@ -72,7 +78,7 @@ conditions = [
 ]
 
 [measurement_gate]
-challenge_status = "preregistered"
+challenge_status = "registered"
 schedule_status = "unregistered"
 runner_status = "unregistered"
 protocol_status = "unregistered"
