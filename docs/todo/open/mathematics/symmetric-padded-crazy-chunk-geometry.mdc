@@ -126,8 +126,21 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   runtime-gated, and returns 77 on unsupported hosts rather than changing
   product requirements. Its regression test uses pinned Clang 22.1.8 and
   requires actual `vpgatherdd`, YMM, vector multiply, and vector-add codegen.
-  Initial dirty-tree timings are intentionally not retained; a clean-commit
-  run is required before any SIMD performance conclusion is recorded.
+
+  Initial dirty-tree timings are intentionally not retained. A clean secondary
+  Linux run from source commit `e09d51d1` is retained under
+  `benchmarks/cpu/evidence/2026-09-04-profile-crazy-avx2-linux-x86_64/`.
+  It preserves 225 raw samples and pinned-Clang codegen evidence.
+
+  AVX2 beats scalar padded by median at every width on this host: 1.331x at
+  N10, 1.614x at N11, 1.557x at N12, 1.635x at N13, and 1.641x at N14. It wins
+  15/15, 15/15, 14/15, 15/15, and 14/15 paired samples, respectively. Thus
+  genuine vectorization is beneficial for this padded CPU microkernel on the
+  secondary Linux host.
+
+  The timing uses C23 `timespec_get(TIME_UTC)`, not cycle counters, and this
+  result has no product-selection authority. Primary Windows CPU/SIMD evidence
+  remains open.
 - Existing CUDA width evidence measures the same 16,384 crazy-heavy VM steps at
   N10 through N14 on the tritwise kernel, including resident and end-to-end
   timing with full result validation. The resident renderer now also exposes
