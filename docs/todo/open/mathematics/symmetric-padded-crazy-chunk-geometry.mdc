@@ -112,8 +112,22 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   uniform padded `5+5+5` also beats scalar but remains slower than native.
 
   This Linux evidence is explicitly secondary and has no selection authority.
-  Primary Windows measurements and a genuine SIMD/vectorized variant remain
-  open.
+  Primary Windows measurements remain open.
+
+  A separate benchmark-only `cpu-profile-crazy-avx2-v1` C implementation now
+  exercises the same wrapping-u32 59,049-pair corpus at N10-N14. It compares
+  scalar tritwise, scalar uniform padded lookup, and eight-lane AVX2 uniform
+  padded lookup with 16 complete corpus repetitions per sample and 15 samples
+  per route. Sample order rotates across the three implementations.
+
+  Before timing, every AVX2 and scalar-padded output is compared with the
+  independent scalar-tritwise result and each repeated checksum must equal the
+  existing Rust benchmark checksum. The AVX2 function is benchmark-only,
+  runtime-gated, and returns 77 on unsupported hosts rather than changing
+  product requirements. Its regression test uses pinned Clang 22.1.8 and
+  requires actual `vpgatherdd`, YMM, vector multiply, and vector-add codegen.
+  Initial dirty-tree timings are intentionally not retained; a clean-commit
+  run is required before any SIMD performance conclusion is recorded.
 - Existing CUDA width evidence measures the same 16,384 crazy-heavy VM steps at
   N10 through N14 on the tritwise kernel, including resident and end-to-end
   timing with full result validation. The resident renderer now also exposes
