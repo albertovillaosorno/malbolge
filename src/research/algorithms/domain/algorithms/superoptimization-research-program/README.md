@@ -42,12 +42,16 @@ independent preimage-set equality. Candidate work falls from 708,588 checks to
 
 ranges overlap. The run supports exact pruning but not a runtime-speedup claim.
 
-A fourth comparison, `classic-two-word-prefix-decomposition-v1`, is now
-preregistered against the original frozen corpus. Its registered fail-closed
-runner reuses only separately proved prefix classes, fully verifies every other
-candidate, and requires complete candidate-index/quality-map equality with the
-baseline. The five-pair retain-all protocol is now registered, while the
-result gate remains closed until source-pinned provenance is retained.
+A fourth comparison, `classic-two-word-prefix-decomposition-v1`, now has a
+retained five-pair Linux measurement from source commit `ed6825af`. Its
+fail-closed runner reuses only separately proved prefix classes, fully verifies
+every other candidate, and preserves the complete candidate-quality map.
+
+The sole proved `Q` row removes 94 independent verifier calls: 8,836 fall to
+8,742, a 1.064% reduction. Host timing is effectively null: baseline median is
+831,921,051 ns versus 835,180,632 ns decomposed, and decomposition wins only two
+of five pairs. This supports the small exact work reduction, not a runtime
+speedup claim.
 
 A low-level structural regression proves only the `Q` prefix so far: entry halts
 before encryption, and exactly eight load-admitted suffixes have quality one.

@@ -1,0 +1,73 @@
+schema_version = 1
+
+[experiment]
+id = "superoptimization-research-program"
+record_kind = "run"
+seed = 0
+method_class = "optimization"
+
+[challenge]
+family = "classic-verified-block-search-v1"
+difficulty = 8836
+target_profile = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[budget]
+seconds = 60
+candidate_evaluations = 8836
+memory_mib = 512
+
+[verification]
+required = true
+oracle = "classic-two-word-no-io-halt-v1"
+baseline = "full-candidate-independent-verification-v1"
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/prefix-decomposition-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"
+
+[measurement]
+id = "prefix-decomposition-five-paired-protocol-v1"
+repetitions = 5
+warmup_iterations = 0
+ordering = "fixed-full-verification-then-decomposed"
+outlier_policy = "retain-all"
+center = "median"
+dispersion = "observed-range"
+uncertainty = "observed-range"
+clock = "time-perf-counter-ns"
+timing_scope = "strategy-run-only"
+per_strategy_wall_clock_seconds = 60
+
+[run]
+commit = "ed6825af65aa0fb43ffc3c6dac913fda00b07a52"
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
+host = "Fedora Linux 7.1.10-200.fc44.x86_64; Intel Xeon E5-2690 v3"
+accelerator = "none"
+toolchain = "Python 3.14.7"
+outcome = "success"
+# jig-ignore-next-line: canonical evidence path is indivisible
+raw_output = "benchmarks/research/evidence/2026-09-04-classic-prefix-decomposition-linux/raw.csv"
+
+[prefix_decomposition_measurement]
+format_id = "prefix-decomposition-five-paired-measurement-v1"
+comparison_id = "classic-two-word-prefix-decomposition-v1"
+runner_id = "classic-two-word-prefix-decomposition-comparison-v1"
+challenge_id = "classic-verified-block-search-v1"
+repetitions = 5
+candidate_count = 8836
+baseline_strategy = "full-candidate-independent-verification-v1"
+decomposed_strategy = "exact-first-step-prefix-decomposition-v1"
+baseline_verifier_calls = 8836
+decomposed_verifier_calls = 8742
+structurally_discharged_candidates = 94
+accepted_candidate_count = 10
+best_verified_quality = 1
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
+# jig-ignore-next-line: indivisible reviewed semantic identity
+quality_map_sha256 = "33d23f934b0541140e51716f6f814d42697773f64788c9f778238c8dc7b64335"

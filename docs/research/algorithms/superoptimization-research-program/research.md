@@ -174,17 +174,17 @@ five-pair timing protocol before measurement. Its retained-evidence regression
 recomputes 708,588-to-2,047 candidate work plus timing medians/ranges from raw
 CSV without rerunning the experiment.
 
-A fourth comparison is now preregistered but deliberately unmeasured.
+A fourth comparison is now preregistered and retained.
 `classic-two-word-prefix-decomposition-v1` reuses the frozen 8,836-candidate
-challenge and independent verifier, compares full candidate verification with
-exact first-step prefix decomposition, and makes independent verifier calls its
-primary metric. Its registered runner reuses only separately proved prefix
-classes, fully verifies every other candidate, and rejects complete
-candidate-index/quality-map drift.
+challenge and independent verifier. Its fail-closed runner structurally reuses
+only the separately proved `Q` prefix and fully verifies every other candidate.
+Complete candidate-index/quality-map equality holds in all five retained pairs.
 
-A five-pair baseline-then-decomposed retain-all protocol is now registered with
-an injected monotonic clock. The measurement gate remains closed until
-source-pinned provenance is retained.
+The exact work result is positive but small: verifier calls fall from 8,836 to
+8,742, discharging 94 candidates (1.064%). The source-pinned Fedora/Python run
+is effectively timing-neutral: median strategy time is 831,921,051 ns baseline
+versus 835,180,632 ns decomposed, with decomposition winning two of five pairs.
+This supports exact work reduction but not a runtime-speedup claim.
 
 Independent structural evidence now proves one nontrivial basis:
 for the `Q` prefix, position-zero decode is halt and entry termination occurs

@@ -96,7 +96,7 @@ def test_prefix_decomposition_plan_locks_frozen_challenge_identity() -> None:
     assert plan == {
         "id": _PLAN_ID,
         "record_kind": "plan",
-        "status": "preregistered",
+        "status": "measured",
         "method_class": "optimization",
         "technique": _TECHNIQUE,
         "baseline": _BASELINE,
@@ -166,5 +166,5 @@ def test_prefix_decomposition_measurement_gate_stays_closed() -> None:
     assert gate["challenge_status"] == _REGISTERED
     assert gate["runner_status"] == _REGISTERED
     assert gate["protocol_status"] == _REGISTERED
-    assert gate["retained_provenance_status"] == _UNREGISTERED
-    assert gate["results_allowed"] is False
+    assert gate["retained_provenance_status"] == _REGISTERED
+    assert gate["results_allowed"] is True

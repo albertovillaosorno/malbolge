@@ -3,7 +3,7 @@ schema_version = 1
 [plan]
 id = "classic-two-word-prefix-decomposition-v1"
 record_kind = "plan"
-status = "preregistered"
+status = "measured"
 method_class = "optimization"
 technique = "exact-first-step-prefix-decomposition-v1"
 baseline = "full-candidate-independent-verification-v1"
@@ -77,9 +77,9 @@ per_strategy_wall_clock_seconds = 60
 challenge_status = "registered"
 runner_status = "registered"
 protocol_status = "registered"
-retained_provenance_status = "unregistered"
-results_allowed = false
-reason = "retained source-pinned provenance is not yet registered"
+retained_provenance_status = "registered"
+results_allowed = true
+reason = "retained source-pinned run provenance is registered"
 
 [provenance]
 # jig-ignore-next-line: canonical path is indivisible

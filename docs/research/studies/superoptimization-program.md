@@ -141,12 +141,15 @@ from
 
 ranges. This supports exact pruning but not a runtime-speedup claim.
 
-Exact first-step prefix decomposition is now preregistered over the original
-frozen two-word challenge. Its registered runner may reuse a prefix result only
-after proving suffix independence, fully verifies every unproved prefix, and
-must preserve the complete candidate-index/quality map. A five-pair
-baseline-then-decomposed retain-all protocol is registered before real timing;
-interpreted results remain forbidden until source-pinned provenance exists.
+Exact first-step prefix decomposition is now preregistered and retained over
+the original frozen two-word challenge. Its fail-closed runner reuses only the
+proved `Q` row, reducing independent verifier calls from 8,836 to 8,742 while
+preserving the complete candidate-quality map.
+
+The five-pair Fedora/Python timing result is effectively null: median time is
+831,921,051 ns baseline versus 835,180,632 ns decomposed, with only two paired
+wins. The result supports the exact 94-call reduction, not broader prefix reuse
+or a runtime-speedup claim.
 
 New synthesis, equality-saturation, learned, or accelerator-guided strategies
 must add their own equally identified comparisons rather than

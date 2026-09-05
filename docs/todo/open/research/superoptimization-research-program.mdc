@@ -136,12 +136,13 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   This supports exact pruning but not a runtime-speedup claim.
 
 - An exact first-step prefix-decomposition comparison is now separately
-  preregistered against the same frozen 8,836-candidate corpus. Its registered
-  runner reuses only separately proved prefix classes, fully verifies every
-  other candidate, and requires exact candidate-index/quality-map equality.
-  A five-pair retain-all measurement protocol is now registered before any
-  real-clock run. Result interpretation remains forbidden until source-pinned
-  provenance exists.
+  preregistered and retained over the same frozen 8,836-candidate corpus. Its
+  fail-closed runner reuses only the separately proved `Q` row, reducing exact
+  independent verifier calls from 8,836 to 8,742 (1.064%) while preserving the
+  complete candidate-quality map. The source-pinned Fedora/Python five-pair
+  timing is effectively null: 831,921,051 ns baseline median versus 835,180,632
+  ns decomposed, with only two of five paired wins. This supports exact work
+  reduction but not a runtime-speedup claim or broader prefix reuse.
 
 - Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.

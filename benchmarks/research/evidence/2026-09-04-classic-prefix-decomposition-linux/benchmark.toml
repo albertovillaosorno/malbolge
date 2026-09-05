@@ -1,0 +1,68 @@
+schema_version = 1
+
+[study]
+id = "classic-prefix-decomposition-linux-2026-09-04"
+# jig-ignore-next-line: canonical evidence path is indivisible
+experiment_manifest = "benchmarks/research/evidence/2026-09-04-classic-prefix-decomposition-linux/experiment.toml"
+kind = "deterministic"
+question = """\
+Does exact proved-prefix decomposition reduce independent verifier calls while \
+preserving the complete frozen candidate-quality map, and what host timing \
+does the registered implementation exhibit?\
+"""
+hypothesis = """\
+Exact proved-prefix decomposition reduces independent verifier calls without \
+changing any candidate quality on the frozen two-word corpus.\
+"""
+baseline = "full-candidate-independent-verification-v1"
+rejection_observation = """\
+The candidate-quality map differs, verifier calls do not decrease, or the \
+source-pinned retained run cannot be replayed.\
+"""
+
+[workload]
+identity = "classic-verified-block-search-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 0
+repetitions = 5
+warmup_policy = "no warmup; all five fixed-order pairs are retained"
+ordering = "fixed"
+stopping_rule = """\
+full verification then decomposed; each arm has a 60-second bound\
+
+"""
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = [
+  "independent_verifier_calls",
+  "structurally_discharged_candidates",
+  "elapsed_nanoseconds",
+]
+tradeoff_policy = """\
+Treat exact verifier-work reduction and host timing as separate objectives; \
+complete quality-map equality is mandatory and timing cannot override it.\
+"""
+
+[resources]
+host = "Fedora Linux 7.1.10-200.fc44.x86_64; Intel Xeon E5-2690 v3"
+accelerator = "none"
+memory_mib = 512
+
+[raw]
+# jig-ignore-next-line: canonical evidence path is indivisible
+path = "benchmarks/research/evidence/2026-09-04-classic-prefix-decomposition-linux/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []
