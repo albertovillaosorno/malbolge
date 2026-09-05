@@ -47,8 +47,71 @@ static int fields_equal(const MalbolgeGuestMathAtan2KernelInput *value,
          value->y_negative == y_negative && value->x_negative == x_negative;
 }
 
+
+static int test_ratio_rounding(void) {
+  MalbolgeGuestMathAtan2KernelInput input = {
+      UINT64_C(0x0010000000000000), UINT64_C(0x0010000000000000),
+      INT32_C(0), UINT32_C(0), UINT32_C(0), UINT32_C(0)};
+  uint64_t bits = UINT64_C(0x55);
+
+  if (!malbolge_guest_math_ratio_nearest_binary64(&input, &bits) ||
+      bits != UINT64_C(0x3ff0000000000000)) {
+    return 1;
+  }
+  input.exponent_delta = INT32_C(-1);
+  if (!malbolge_guest_math_ratio_nearest_binary64(&input, &bits) ||
+      bits != UINT64_C(0x3fe0000000000000)) {
+    return 2;
+  }
+  input.exponent_delta = INT32_C(-1074);
+  if (!malbolge_guest_math_ratio_nearest_binary64(&input, &bits) ||
+      bits != UINT64_C(0x0000000000000001)) {
+    return 3;
+  }
+  input.numerator_significand = UINT64_C(0x001ffffffffffffe);
+  input.denominator_significand = UINT64_C(0x0010000000000000);
+  input.exponent_delta = INT32_C(-1);
+  if (!malbolge_guest_math_ratio_nearest_binary64(&input, &bits) ||
+      bits != UINT64_C(0x3feffffffffffffe)) {
+    return 4;
+  }
+  input.numerator_significand = UINT64_C(0x0010000000000000);
+  input.denominator_significand = UINT64_C(0x001fffffffffffff);
+  input.exponent_delta = INT32_C(-2097);
+  if (!malbolge_guest_math_ratio_nearest_binary64(&input, &bits) ||
+      bits != UINT64_C(0)) {
+    return 5;
+  }
+  bits = UINT64_C(0x55);
+  input.exponent_delta = INT32_C(1);
+  if (malbolge_guest_math_ratio_nearest_binary64(&input, &bits) ||
+      bits != UINT64_C(0x55)) {
+    return 6;
+  }
+  input.exponent_delta = INT32_C(-2098);
+  if (malbolge_guest_math_ratio_nearest_binary64(&input, &bits) ||
+      bits != UINT64_C(0x55)) {
+    return 7;
+  }
+  input.exponent_delta = INT32_C(0);
+  input.numerator_significand = UINT64_C(0x0010000000000001);
+  input.denominator_significand = UINT64_C(0x0010000000000000);
+  if (malbolge_guest_math_ratio_nearest_binary64(&input, &bits) ||
+      bits != UINT64_C(0x55) ||
+      malbolge_guest_math_ratio_nearest_binary64(NULL, &bits) ||
+      malbolge_guest_math_ratio_nearest_binary64(&input, NULL)) {
+    return 8;
+  }
+  return 0;
+}
+
 int main(void) {
   MalbolgeGuestMathAtan2KernelInput output;
+  const int rounding = test_ratio_rounding();
+
+  if (rounding != 0) {
+    return 20 + rounding;
+  }
 
   if (!malbolge_guest_math_atan2_kernel_input(
           UINT64_C(0x3ff0000000000000), UINT64_C(0x3ff0000000000000),

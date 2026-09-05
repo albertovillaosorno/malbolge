@@ -9,12 +9,12 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Exact special-case reduction for future sin, cos, and atan2 kernels.
+//   - Exact pre-kernel reduction for future sin, cos, and atan2 routines.
 // - Must-Not:
 //   - Approximate finite transcendental results or call host floating helpers.
 // - Allows:
 //   - Inputs: ABI-fixed raw binary64 words.
-//   - Outputs: exact result bits or a kernel-required classification.
+//   - Outputs: exact cases, normalized ratios, or exact rounded ratio bits.
 //   - Side effects: none.
 // - Split-When:
 //   - Range reduction or approximation gains an independently proved kernel.
@@ -23,7 +23,7 @@
 // - Summary:
 //   - Classifies exact transcendental edge cases with integer bit operations.
 // - Description:
-//   - Resolves canonical NaNs, infinities, and exact signed-zero identities.
+//   - Resolves proved edges and prepares exact finite atan2 ratio geometry.
 // - Usage:
 //   - Internal only while public transcendental routines remain unavailable.
 // - Defaults:
@@ -50,6 +50,7 @@
 #define BINARY64_EXPONENT_SHIFT UINT32_C(52)
 #define BINARY64_EXPONENT_BIAS INT32_C(1023)
 #define BINARY64_SUBNORMAL_EXPONENT INT32_C(-1074)
+#define BINARY64_RATIO_MIN_EXPONENT_DELTA INT32_C(-2097)
 
 static int is_nan(uint64_t bits) {
   return (bits & BINARY64_EXPONENT) == BINARY64_EXPONENT &&
@@ -84,8 +85,9 @@ MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits) {
   if (operation != MALBOLGE_GUEST_MATH_SIN &&
       operation != MALBOLGE_GUEST_MATH_COS) {
-    MalbolgeGuestMathSpecialResult invalid = {
-        MALBOLGE_GUEST_MATH_SPECIAL_INVALID, UINT64_C(0)};
+    MalbolgeGuestMathSpecialResult invalid;
+    invalid.status = MALBOLGE_GUEST_MATH_SPECIAL_INVALID;
+    invalid.bits = UINT64_C(0);
     return invalid;
   }
   if (is_nan(bits) || is_infinity(bits)) {
@@ -191,5 +193,114 @@ int malbolge_guest_math_atan2_kernel_input(
   staged.denominator_significand = denominator.significand;
   staged.exponent_delta = numerator.exponent - denominator.exponent;
   *output = staged;
+  return 1;
+}
+
+static int valid_ratio_input(const MalbolgeGuestMathAtan2KernelInput *input) {
+  const uint64_t significand_limit = BINARY64_HIDDEN_BIT << UINT32_C(1);
+
+  return input != NULL &&
+         input->numerator_significand >= BINARY64_HIDDEN_BIT &&
+         input->numerator_significand < significand_limit &&
+         input->denominator_significand >= BINARY64_HIDDEN_BIT &&
+         input->denominator_significand < significand_limit &&
+         input->exponent_delta >= BINARY64_RATIO_MIN_EXPONENT_DELTA &&
+         input->exponent_delta <= INT32_C(0) &&
+         (input->exponent_delta != INT32_C(0) ||
+          input->numerator_significand <= input->denominator_significand) &&
+         input->swapped <= UINT32_C(1) && input->y_negative <= UINT32_C(1) &&
+         input->x_negative <= UINT32_C(1);
+}
+
+static uint32_t ratio_fraction_bit(uint64_t denominator, uint64_t *remainder) {
+  *remainder <<= UINT32_C(1);
+  if (*remainder >= denominator) {
+    *remainder -= denominator;
+    return UINT32_C(1);
+  }
+  return UINT32_C(0);
+}
+
+static uint64_t rounded_normal_ratio(uint64_t denominator, uint64_t remainder,
+                                     int32_t *exponent) {
+  uint64_t significand = BINARY64_HIDDEN_BIT;
+  uint32_t remaining = BINARY64_EXPONENT_SHIFT;
+  uint32_t guard = UINT32_C(0);
+
+  while (remaining != UINT32_C(0)) {
+    --remaining;
+    significand |= (uint64_t)ratio_fraction_bit(denominator, &remainder)
+                   << remaining;
+  }
+  guard = ratio_fraction_bit(denominator, &remainder);
+  if (guard != UINT32_C(0) &&
+      (remainder != UINT64_C(0) ||
+       (significand & UINT64_C(1)) != UINT64_C(0))) {
+    ++significand;
+  }
+  if (significand == (BINARY64_HIDDEN_BIT << UINT32_C(1))) {
+    significand = BINARY64_HIDDEN_BIT;
+    ++(*exponent);
+  }
+  return significand;
+}
+
+static uint64_t rounded_subnormal_ratio(uint64_t denominator,
+                                        uint64_t remainder,
+                                        int32_t exponent) {
+  const int32_t scale = exponent + INT32_C(1074);
+  uint64_t units = UINT64_C(0);
+  uint32_t remaining = UINT32_C(0);
+  uint32_t guard = UINT32_C(0);
+
+  if (scale <= INT32_C(-2)) {
+    return UINT64_C(0);
+  }
+  if (scale == INT32_C(-1)) {
+    return remainder == UINT64_C(0) ? UINT64_C(0) : UINT64_C(1);
+  }
+  units = UINT64_C(1) << (uint32_t)scale;
+  remaining = (uint32_t)scale;
+  while (remaining != UINT32_C(0)) {
+    --remaining;
+    units |= (uint64_t)ratio_fraction_bit(denominator, &remainder) << remaining;
+  }
+  guard = ratio_fraction_bit(denominator, &remainder);
+  if (guard != UINT32_C(0) &&
+      (remainder != UINT64_C(0) || (units & UINT64_C(1)) != UINT64_C(0))) {
+    ++units;
+  }
+  return units;
+}
+
+int malbolge_guest_math_ratio_nearest_binary64(
+    const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits) {
+  uint64_t numerator = UINT64_C(0);
+  uint64_t denominator = UINT64_C(0);
+  uint64_t remainder = UINT64_C(0);
+  uint64_t significand = UINT64_C(0);
+  int32_t exponent = INT32_C(0);
+
+  if (output_bits == NULL || !valid_ratio_input(input)) {
+    return 0;
+  }
+  numerator = input->numerator_significand;
+  denominator = input->denominator_significand;
+  exponent = input->exponent_delta;
+  if (numerator >= denominator) {
+    remainder = numerator - denominator;
+  } else {
+    numerator <<= UINT32_C(1);
+    remainder = numerator - denominator;
+    --exponent;
+  }
+  if (exponent < INT32_C(-1022)) {
+    *output_bits = rounded_subnormal_ratio(denominator, remainder, exponent);
+    return 1;
+  }
+  significand = rounded_normal_ratio(denominator, remainder, &exponent);
+  *output_bits = ((uint64_t)(exponent + BINARY64_EXPONENT_BIAS)
+                  << BINARY64_EXPONENT_SHIFT) |
+                 (significand - BINARY64_HIDDEN_BIT);
   return 1;
 }

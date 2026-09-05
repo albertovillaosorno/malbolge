@@ -294,7 +294,11 @@ whether `|y| > |x|`, and both original signs. The full binary64 exponent span is
 representable (`exponent_delta` reaches `-2097` for minimum-subnormal versus
 maximum-finite input), and rejected special inputs do not mutate caller output.
 
-No floating division occurs in this stage.
+No floating division occurs in this stage. A bit-at-a-time integer long-division
+step can additionally round that exact ratio to binary64 nearest-ties-even,
+including zero, subnormal, minimum-normal carry, and ordinary normal results.
+Its remainder never exceeds 54 bits, so the implementation needs neither
+`__int128` nor integer division/remainder operators.
 
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full

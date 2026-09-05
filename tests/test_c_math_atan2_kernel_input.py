@@ -48,6 +48,7 @@ FRACTION_MASK = (1 << 52) - 1
 HIDDEN_BIT = 1 << 52
 SIGNIFICAND_BITS = 53
 EXPONENT_MASK = 0x7FF
+MIN_NORMAL_EXPONENT = -1022
 ALL_BITS = (1 << 64) - 1
 VECTOR_COUNT = 512
 LCG_MULTIPLIER = 6364136223846793005
@@ -157,16 +158,56 @@ def _expected(y_bits: int, x_bits: int) -> tuple[int, int, int, int, int, int]:
     return result
 
 
+def _floor_log2(value: Fraction) -> int:
+    exponent = value.numerator.bit_length() - value.denominator.bit_length()
+    if exponent >= 0:
+        power = Fraction(1 << exponent, 1)
+    else:
+        power = Fraction(1, 1 << -exponent)
+    return exponent - 1 if value < power else exponent
+
+
+def _round_quotient(numerator: int, denominator: int) -> int:
+    quotient, remainder = divmod(numerator, denominator)
+    doubled = remainder * 2
+    if doubled > denominator or (doubled == denominator and quotient & 1):
+        quotient += 1
+    return quotient
+
+
+def _nearest_binary64_bits(value: Fraction) -> int:
+    exponent = _floor_log2(value)
+    if exponent < MIN_NORMAL_EXPONENT:
+        return _round_quotient(value.numerator << 1074, value.denominator)
+    shift = 52 - exponent
+    if shift >= 0:
+        significand = _round_quotient(
+            value.numerator << shift, value.denominator
+        )
+    else:
+        significand = _round_quotient(
+            value.numerator, value.denominator << -shift
+        )
+    if significand == 1 << 53:
+        significand >>= 1
+        exponent += 1
+    return ((exponent + 1023) << 52) | (significand - HIDDEN_BIT)
+
+
 def _row(y_bits: int, x_bits: int) -> str:
     numerator, denominator, delta, swapped, y_negative, x_negative = _expected(
         y_bits, x_bits
     )
+    ratio = min(_raw_fraction(y_bits), _raw_fraction(x_bits)) / max(
+        _raw_fraction(y_bits), _raw_fraction(x_bits)
+    )
+    rounded = _nearest_binary64_bits(ratio)
     return (
         "  {"
         f"UINT64_C(0x{y_bits:016x}), UINT64_C(0x{x_bits:016x}), "
         f"UINT64_C(0x{numerator:016x}), UINT64_C(0x{denominator:016x}), "
         f"INT32_C({delta}), UINT32_C({swapped}), UINT32_C({y_negative}), "
-        f"UINT32_C({x_negative})"
+        f"UINT32_C({x_negative}), UINT64_C(0x{rounded:016x})"
         "}"
     )
 
@@ -179,6 +220,7 @@ typedef struct Vector {{
   uint64_t y_bits, x_bits, numerator, denominator;
   int32_t delta;
   uint32_t swapped, y_negative, x_negative;
+  uint64_t rounded;
 }} Vector;
 static const Vector vectors[] = {{
 {rows}
@@ -187,6 +229,7 @@ int main(void) {{
   uint32_t i = 0;
   while (i < (uint32_t)(sizeof(vectors) / sizeof(vectors[0]))) {{
     MalbolgeGuestMathAtan2KernelInput result;
+    uint64_t rounded = UINT64_C(0);
     const Vector *v = &vectors[i];
     if (!malbolge_guest_math_atan2_kernel_input(
             v->y_bits, v->x_bits, &result) ||
@@ -194,7 +237,9 @@ int main(void) {{
         result.denominator_significand != v->denominator ||
         result.exponent_delta != v->delta || result.swapped != v->swapped ||
         result.y_negative != v->y_negative ||
-        result.x_negative != v->x_negative) {{
+        result.x_negative != v->x_negative ||
+        !malbolge_guest_math_ratio_nearest_binary64(&result, &rounded) ||
+        rounded != v->rounded) {{
       return 10;
     }}
     ++i;
@@ -207,7 +252,7 @@ int main(void) {{
 def test_atan2_kernel_input_matches_exact_fraction_geometry(
     tmp_path: Path,
 ) -> None:
-    """Match 519 finite pairs without host floating arithmetic or atan2."""
+    """Match 519 exact ratios and nearest-even binary64 quotient bits."""
     harness = tmp_path / "atan2-kernel-input.c"
     executable = tmp_path / "atan2-kernel-input"
     _ = harness.write_text(_harness_source(), encoding="utf-8")

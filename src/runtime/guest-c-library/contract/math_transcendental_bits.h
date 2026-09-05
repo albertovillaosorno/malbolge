@@ -14,7 +14,7 @@
 //   - Approximate finite transcendental values or change libc availability.
 // - Allows:
 //   - Inputs: raw binary64 words and one admitted unary operation identity.
-//   - Outputs: exact results or normalized finite atan2 kernel geometry.
+//   - Outputs: exact results, normalized atan2 geometry, or rounded ratio bits.
 //   - Side effects: none.
 // - Split-When:
 //   - Range reduction or approximation kernels gain independent proof policy.
@@ -70,5 +70,7 @@ MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
 int malbolge_guest_math_atan2_kernel_input(
     uint64_t y_bits, uint64_t x_bits,
     MalbolgeGuestMathAtan2KernelInput *output);
+int malbolge_guest_math_ratio_nearest_binary64(
+    const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits);
 
 #endif

@@ -223,6 +223,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   the same exact ratio. Rejected zero, infinity, NaN, and null-output cases are
   nonmutating.
 
+  The same geometry can now be rounded exactly to a nearest-even binary64 ratio
+  using bit-at-a-time integer long division. The implementation covers normal,
+  subnormal, underflow-to-zero, and carry boundaries without `/`, `%`,
+  `__int128`, FPU arithmetic, or callable helper symbols at native `-O0`.
+  The 519-pair `Fraction` differential also locks these rounded raw bits.
+
   Correctly-rounded range reduction and numerical kernels remain the lane-8
   blocker.
 - Resolved integer/scheduling boundary: version one introduces no separate
