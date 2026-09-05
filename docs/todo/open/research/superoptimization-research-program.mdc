@@ -149,7 +149,8 @@ preregistered over two complete replays of the frozen 8,836-candidate
 corpus. It compares per-request independent verification with exact
 candidate-index result reuse. Its registered fail-closed runner verifies each
 unique candidate exactly once in the reuse arm and requires complete request-map
-equality; results remain gated on measurement protocol and provenance.
+equality. A five-pair retain-all timing protocol is now registered before any
+real-clock run; results remain gated on source-pinned provenance.
 
 Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.
