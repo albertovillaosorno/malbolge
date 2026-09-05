@@ -1,0 +1,65 @@
+schema_version = 1
+
+[plan]
+id = "classic-three-word-initial-decode-first-hit-runtime-v1"
+record_kind = "plan"
+status = "preregistered-follow-up"
+method_class = "optimization"
+technique = "bucketed-initial-decode-first-hit-v1"
+baseline = "deterministic-enumeration-first-hit-v1"
+
+[question]
+text = """After the retained holdout result showed a better first-hit order but \
+negative full-budget timing, does the exact bucketed heuristic reduce elapsed \
+time to the first independently verified candidate when search stops on hit?"""
+
+[hypothesis]
+text = """The exact bucketed realization plus stop-on-first execution reaches a \
+verified candidate in less elapsed time than natural enumeration under the same \
+50,000-evaluation ceiling."""
+material_weakening = """\
+The heuristic does not hit at the retained evaluation 475, does not beat baseline \
+elapsed time, changes verifier quality, or exceeds the common evaluation ceiling.\
+"""
+
+[challenge]
+id = "classic-three-word-verified-block-search-v1"
+candidate_count = 830584
+evaluation_budget = 50000
+verifier = "classic-three-word-no-io-halt-v1"
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "03276bbed2b81d90553fa9ddca6046602108f992c48520554651638c626409d4"
+
+[prior_evidence]
+# jig-ignore-next-line: canonical evidence path is indivisible
+path = "benchmarks/research/evidence/2026-09-04-classic-three-word-initial-decode-heuristic-linux"
+known_heuristic_first_evaluation = 475
+known_heuristic_first_candidate = 424602
+known_heuristic_first_quality = 1
+known_baseline_hit_within_budget = false
+note = "follow-up implementation timing; not an independent holdout confirmation"
+
+[execution]
+baseline_order = "deterministic-enumeration-v1"
+heuristic_order = "initial-decode-halt-proximity-order-v1"
+stopping_rule = "first-verified-candidate-or-50000-evaluations"
+schedule_construction_inside_timing = true
+
+[measurement]
+id = "initial-decode-first-hit-five-paired-protocol-v1"
+repetitions = 5
+warmup_iterations = 0
+ordering = "fixed-enumeration-then-heuristic"
+outlier_policy = "retain-all"
+center = "median"
+dispersion = "observed-range"
+uncertainty = "observed-range"
+clock = "time-perf-counter-ns"
+per_strategy_wall_clock_seconds = 60
+
+[measurement_gate]
+runner_status = "registered"
+protocol_status = "registered"
+retained_provenance_status = "unregistered"
+results_allowed = false
+reason = "real first-hit timing remains unobserved"
