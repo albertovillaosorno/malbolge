@@ -180,8 +180,11 @@ challenge and independent verifier, compares full candidate verification with
 exact first-step prefix decomposition, and makes independent verifier calls its
 primary metric. Its registered runner reuses only separately proved prefix
 classes, fully verifies every other candidate, and rejects complete
-candidate-index/quality-map drift. The measurement gate remains closed until a
-retained protocol and provenance are registered.
+candidate-index/quality-map drift.
+
+A five-pair baseline-then-decomposed retain-all protocol is now registered with
+an injected monotonic clock. The measurement gate remains closed until
+source-pinned provenance is retained.
 
 Independent structural evidence now proves one nontrivial basis:
 for the `Q` prefix, position-zero decode is halt and entry termination occurs

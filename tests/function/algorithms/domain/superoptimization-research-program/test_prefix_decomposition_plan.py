@@ -28,7 +28,7 @@
 # - Usage:
 #   - Collected by the research-algorithm Python test surface.
 # - Defaults:
-#   - Results stay forbidden until protocol and provenance register.
+#   - Results stay forbidden until retained provenance registers.
 #
 
 """Preregistration checks for exact classic prefix decomposition."""
@@ -57,6 +57,11 @@ _CANDIDATE_COUNT = 8_836
 _PRIMARY_METRIC = "independent-verifier-calls"
 _WALL_CLOCK_SECONDS = 60
 _MEMORY_MIB = 512
+_PROTOCOL_ID = "prefix-decomposition-five-paired-protocol-v1"
+_REPETITIONS = 5
+_ORDERING = "fixed-full-verification-then-decomposed"
+_OUTLIER_POLICY = "retain-all"
+_CLOCK = "time-perf-counter-ns"
 _WORKLOAD_SHA256 = (
     "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
 )
@@ -140,12 +145,26 @@ def test_prefix_decomposition_requires_proof_before_reuse() -> None:
     assert _PROOF_REJECTION in conditions
 
 
+def test_prefix_decomposition_protocol_is_registered_before_measurement(
+) -> None:
+    """Freeze paired retention and timing mechanics before real-clock runs."""
+    measurement = cast("dict[str, object]", _document()["measurement"])
+
+    assert measurement["id"] == _PROTOCOL_ID
+    assert measurement["repetitions"] == _REPETITIONS
+    assert measurement["warmup_iterations"] == 0
+    assert measurement["ordering"] == _ORDERING
+    assert measurement["outlier_policy"] == _OUTLIER_POLICY
+    assert measurement["clock"] == _CLOCK
+    assert measurement["per_strategy_wall_clock_seconds"] == _WALL_CLOCK_SECONDS
+
+
 def test_prefix_decomposition_measurement_gate_stays_closed() -> None:
-    """Preregistration alone cannot become comparative result evidence."""
+    """Registered mechanics alone cannot become result evidence."""
     gate = cast("dict[str, object]", _document()["measurement_gate"])
 
     assert gate["challenge_status"] == _REGISTERED
     assert gate["runner_status"] == _REGISTERED
-    assert gate["protocol_status"] == _UNREGISTERED
+    assert gate["protocol_status"] == _REGISTERED
     assert gate["retained_provenance_status"] == _UNREGISTERED
     assert gate["results_allowed"] is False

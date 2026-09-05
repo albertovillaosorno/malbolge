@@ -139,8 +139,9 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   preregistered against the same frozen 8,836-candidate corpus. Its registered
   runner reuses only separately proved prefix classes, fully verifies every
   other candidate, and requires exact candidate-index/quality-map equality.
-  Result interpretation remains forbidden until a retained protocol and
-  provenance exist.
+  A five-pair retain-all measurement protocol is now registered before any
+  real-clock run. Result interpretation remains forbidden until source-pinned
+  provenance exists.
 
 - Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.

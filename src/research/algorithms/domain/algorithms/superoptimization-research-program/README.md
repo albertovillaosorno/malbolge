@@ -46,8 +46,8 @@ A fourth comparison, `classic-two-word-prefix-decomposition-v1`, is now
 preregistered against the original frozen corpus. Its registered fail-closed
 runner reuses only separately proved prefix classes, fully verifies every other
 candidate, and requires complete candidate-index/quality-map equality with the
-baseline. The result gate remains closed until a retained protocol and
-provenance are registered.
+baseline. The five-pair retain-all protocol is now registered, while the
+result gate remains closed until source-pinned provenance is retained.
 
 A low-level structural regression proves only the `Q` prefix so far: entry halts
 before encryption, and exactly eight load-admitted suffixes have quality one.

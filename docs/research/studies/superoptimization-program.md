@@ -144,8 +144,9 @@ ranges. This supports exact pruning but not a runtime-speedup claim.
 Exact first-step prefix decomposition is now preregistered over the original
 frozen two-word challenge. Its registered runner may reuse a prefix result only
 after proving suffix independence, fully verifies every unproved prefix, and
-must preserve the complete candidate-index/quality map. Interpreted results
-remain forbidden until a retained protocol and provenance exist.
+must preserve the complete candidate-index/quality map. A five-pair
+baseline-then-decomposed retain-all protocol is registered before real timing;
+interpreted results remain forbidden until source-pinned provenance exists.
 
 New synthesis, equality-saturation, learned, or accelerator-guided strategies
 must add their own equally identified comparisons rather than
