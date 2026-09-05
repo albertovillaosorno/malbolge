@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Completed bounded adapter milestone
 
 ## Purpose
 
@@ -535,9 +535,9 @@ records 16.425x CPU prepared, 11.601x CUDA prepared, and 1.270x CUDA
 ticket improvements over same-run ordinary routes, all with 15/15 paired wins;
 CUDA prepared remains 9.137x faster than the ticket. Resident or fused
 evaluation-selection remains a later option only if exact equivalence stays
-explicit. Synthesis and guided strategies,
-ROCm search implementations, richer
-orchestration, and broader representative benchmark evidence remain open.
+explicit. Synthesis and guided strategies, ROCm search implementations, richer
+orchestration, and broader representative benchmark evidence remain follow-on
+work rather than requirements of this bounded adapter milestone.
 
 ## Invariants
 

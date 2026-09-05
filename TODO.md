@@ -19,13 +19,6 @@ labels belong here.
 
 ## P2 — Compiler, runtime, and accelerator core
 
-### TODO - Configurable accelerator algorithm adapters
-
-Separate optimization/search strategy from accelerator hardware.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/configurable-accelerator-algorithm-adapters.mdc](docs/todo/open/accelerator/configurable-accelerator-algorithm-adapters.mdc)
-
 ### TODO - Guest runtime and allocator
 
 Implement startup, calling convention, frames, allocation, streams, integer

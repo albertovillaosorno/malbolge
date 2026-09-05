@@ -1,6 +1,6 @@
 ---
 id: "configurable-accelerator-algorithm-adapters"
-status: "active"
+status: "completed"
 lane: "8"
 priority: "p2"
 area: "accelerator"
@@ -46,6 +46,12 @@ by-side comparison without recompiling or modifying compiler semantics.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- **Completion:** Completed on 2026-09-05 as the bounded configurable-
+  adapter milestone. Algorithm and backend identity are independently selected,
+  unsupported pairs fail explicitly, configured versus actual execution remains
+  observable across fallback, and CPU reference admission remains mandatory.
+  New strategy families, ROCm execution, richer orchestration, and broader
+  benchmark coverage remain follow-on work rather than reopening this contract.
 
 ## Evidence
 
@@ -489,8 +495,8 @@ CPU
 admission. Retained same-run evidence records 16.425x CPU prepared, 11.601x CUDA
 prepared, and 1.270x one-shot CUDA-ticket improvements over ordinary routes.
   Synthesis/guided strategies, ROCm search implementations, richer
-  orchestration,
-  additional algorithm families, and broader representative benchmarks remain
-  open.
+  orchestration, additional algorithm families, and broader representative
+  benchmarks remain follow-on work rather than requirements of this bounded
+  adapter milestone.
 - Prerequisite completion evidence: `replaceable-accelerator-boundary`,
   `algorithm-research-mirror-and-local-output-contract`.
