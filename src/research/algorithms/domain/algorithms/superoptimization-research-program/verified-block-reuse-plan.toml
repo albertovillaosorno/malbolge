@@ -1,0 +1,79 @@
+schema_version = 1
+
+[plan]
+id = "classic-two-pass-verified-block-reuse-v1"
+record_kind = "plan"
+status = "preregistered"
+method_class = "optimization"
+technique = "exact-candidate-verified-result-reuse-v1"
+baseline = "per-request-independent-verification-v1"
+
+[profile]
+id = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[question]
+text = """Can exact verified-result reuse reduce independent verifier calls across \
+an identical repeated search batch while preserving every request quality?"""
+
+[comparison]
+primary_metric = "independent-verifier-calls"
+secondary_metrics = [
+  "request-count",
+  "unique-candidate-count",
+  "accepted-request-count",
+  "best-verified-quality",
+]
+request_count = 17672
+unique_candidate_count = 8836
+wall_clock_seconds = 60
+memory_mib = 512
+
+[challenge]
+id = "classic-two-pass-verified-block-reuse-v1"
+base_challenge = "classic-verified-block-search-v1"
+base_candidate_count = 8836
+passes = 2
+request_encoding = "two-complete-lexicographic-passes-v1"
+verifier = "classic-two-word-no-io-halt-v1"
+# jig-ignore-next-line: indivisible reviewed identifier
+base_workload_sha256 = "eb739238b375fde435e3948896f385e6be9ab5002078b242c2826153ce1810fc"
+# jig-ignore-next-line: indivisible reviewed identifier
+workload_sha256 = "d86f190a512b64724b9546c72f2ee56973292e6ef5707378f8c9a9ba2050bbc7"
+
+[runner]
+id = "classic-two-pass-verified-block-reuse-comparison-v1"
+baseline = "per-request-independent-verification-v1"
+technique = "exact-candidate-verified-result-reuse-v1"
+semantic_equivalence = "exact-request-index-quality-map-v1"
+status = "unregistered"
+
+[reuse]
+key = "exact-frozen-candidate-index-v1"
+requires_exact_candidate_identity = true
+requires_complete_request_coverage = true
+requires_independent_final_map_equality = true
+reuse_scope = "within-one-two-pass-comparison-run"
+
+[rejection]
+conditions = [
+  "request-index quality map differs from per-request baseline",
+  "a cached result is reused for a different candidate index",
+  "independent verifier calls do not decrease on the repeated workload",
+  "a request is skipped without verification or exact cached identity",
+]
+
+[measurement_gate]
+challenge_status = "registered"
+runner_status = "unregistered"
+protocol_status = "unregistered"
+retained_provenance_status = "unregistered"
+results_allowed = false
+reason = "runner and retained measurement protocol are not yet registered"
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/verified-block-reuse-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"

@@ -144,5 +144,11 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   ns decomposed, with only two of five paired wins. This supports exact work
   reduction but not a runtime-speedup claim or broader prefix reuse.
 
-- Larger challenges, independent hosts/implementations, additional technique
+- A fifth comparison, `classic-two-pass-verified-block-reuse-v1`, is now
+preregistered over two complete replays of the frozen 8,836-candidate
+corpus. It compares per-request independent verification with exact
+candidate-index result reuse and keeps results gated until its runner and
+measurement protocol are registered.
+
+Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.
