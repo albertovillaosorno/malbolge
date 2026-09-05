@@ -1,0 +1,11 @@
+repetition,strategy_id,evaluations,candidate,quality,elapsed_nanoseconds
+0,deterministic-enumeration-first-hit-v1,50000,,,215270513
+0,bucketed-initial-decode-first-hit-v1,475,424602,1,13631979
+1,deterministic-enumeration-first-hit-v1,50000,,,206582814
+1,bucketed-initial-decode-first-hit-v1,475,424602,1,13146086
+2,deterministic-enumeration-first-hit-v1,50000,,,210269438
+2,bucketed-initial-decode-first-hit-v1,475,424602,1,14932775
+3,deterministic-enumeration-first-hit-v1,50000,,,253086582
+3,bucketed-initial-decode-first-hit-v1,475,424602,1,12635046
+4,deterministic-enumeration-first-hit-v1,50000,,,212739774
+4,bucketed-initial-decode-first-hit-v1,475,424602,1,12877325

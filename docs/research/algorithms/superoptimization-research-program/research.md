@@ -283,3 +283,12 @@ Neither technique is promoted as a runtime optimization on this evidence alone.
   Boundary](../../../technical/adr/verification-trust-boundary.md)
 - [Research Evidence And Algorithm
   Mirror](../../adr/research-evidence-and-algorithm-mirror.md)
+
+A preregistered stop-on-first follow-up preserves the exact bucketed heuristic
+order while changing only the stopping policy. On the same known three-word
+workload, natural enumeration exhausts 50,000 evaluations with no hit, while
+the heuristic reproduces candidate 424,602 at evaluation 475 with quality one.
+Median elapsed time is 212,739,774 ns baseline versus 13,146,086 ns heuristic,
+a 16.183x baseline/heuristic ratio with five of five heuristic wins. This is a
+post-holdout implementation result and does not erase the earlier negative
+full-budget timing.

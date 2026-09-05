@@ -60,6 +60,6 @@ per_strategy_wall_clock_seconds = 60
 [measurement_gate]
 runner_status = "registered"
 protocol_status = "registered"
-retained_provenance_status = "unregistered"
-results_allowed = false
-reason = "real first-hit timing remains unobserved"
+retained_provenance_status = "registered"
+results_allowed = true
+reason = "source-pinned first-hit follow-up evidence is registered"

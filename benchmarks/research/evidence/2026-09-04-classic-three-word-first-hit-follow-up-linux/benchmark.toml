@@ -1,0 +1,48 @@
+schema_version = 1
+
+[study]
+id = "classic-three-word-first-hit-follow-up-linux-2026-09-04"
+# jig-ignore-next-line: canonical evidence path is indivisible
+experiment_manifest = "benchmarks/research/evidence/2026-09-04-classic-three-word-first-hit-follow-up-linux/experiment.toml"
+kind = "deterministic"
+question = """Does the exact bucketed heuristic reduce elapsed time to first independently verified candidate versus natural enumeration when both stop on first hit or the common 50000-evaluation ceiling?"""
+hypothesis = """Bucketed initial-decode ordering plus stop-on-first execution reaches a verified candidate in less elapsed time than natural enumeration on the known holdout."""
+baseline = "deterministic-enumeration-first-hit-v1"
+rejection_observation = """The heuristic does not reproduce the retained first hit, does not beat baseline elapsed time, or changes verifier quality."""
+
+[workload]
+identity = "classic-three-word-verified-block-search-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 0
+repetitions = 5
+warmup_policy = "no warmup; all five fixed-order pairs are retained"
+ordering = "fixed"
+stopping_rule = "first verified candidate or 50000 evaluations"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = ["evaluations", "elapsed_nanoseconds", "quality"]
+tradeoff_policy = """Treat this as a post-holdout implementation follow-up. Preserve the earlier full-budget negative timing and include schedule construction in elapsed time."""
+
+[resources]
+host = "Fedora Linux 7.1.10-200.fc44.x86_64; Intel Xeon E5-2690 v3"
+accelerator = "none"
+memory_mib = 512
+
+[raw]
+# jig-ignore-next-line: canonical evidence path is indivisible
+path = "benchmarks/research/evidence/2026-09-04-classic-three-word-first-hit-follow-up-linux/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

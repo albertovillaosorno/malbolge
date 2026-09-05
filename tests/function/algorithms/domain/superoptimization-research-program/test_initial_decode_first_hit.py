@@ -45,7 +45,7 @@ _ELAPSED = 10
 _REPETITIONS = 5
 _ORDERING = "fixed-enumeration-then-heuristic"
 _OUTLIERS = "retain-all"
-_UNREGISTERED = "unregistered"
+_REGISTERED = "registered"
 _ROOT = Path(__file__).resolve().parents[5]
 _PLAN = _ROOT / (
     "src/research/algorithms/domain/algorithms/"
@@ -91,5 +91,5 @@ def test_first_hit_plan_freezes_real_measurement_gate() -> None:
     assert measurement["warmup_iterations"] == 0
     assert measurement["ordering"] == _ORDERING
     assert measurement["outlier_policy"] == _OUTLIERS
-    assert gate["retained_provenance_status"] == _UNREGISTERED
-    assert gate["results_allowed"] is False
+    assert gate["retained_provenance_status"] == _REGISTERED
+    assert gate["results_allowed"] is True

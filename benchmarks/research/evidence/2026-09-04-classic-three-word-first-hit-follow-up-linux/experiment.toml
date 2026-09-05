@@ -1,0 +1,52 @@
+schema_version = 1
+
+[experiment]
+id = "superoptimization-research-program"
+record_kind = "run"
+seed = 0
+method_class = "optimization"
+
+[challenge]
+family = "classic-three-word-verified-block-search-v1"
+difficulty = 830584
+target_profile = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[budget]
+seconds = 60
+candidate_evaluations = 50000
+memory_mib = 512
+
+[verification]
+required = true
+oracle = "classic-three-word-no-io-halt-v1"
+baseline = "deterministic-enumeration-first-hit-v1"
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/initial-decode-first-hit-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"
+
+[run]
+commit = "a80ee1cf674fd62ef1bd8b45985f550014ce6af1"
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "03276bbed2b81d90553fa9ddca6046602108f992c48520554651638c626409d4"
+host = "Fedora Linux 7.1.10-200.fc44.x86_64; Intel Xeon E5-2690 v3"
+accelerator = "none"
+toolchain = "Python 3.14.7"
+outcome = "success"
+# jig-ignore-next-line: canonical evidence path is indivisible
+raw_output = "benchmarks/research/evidence/2026-09-04-classic-three-word-first-hit-follow-up-linux/raw.csv"
+
+[first_hit_follow_up]
+plan_id = "classic-three-word-initial-decode-first-hit-runtime-v1"
+repetitions = 5
+evaluation_ceiling = 50000
+baseline_strategy = "deterministic-enumeration-first-hit-v1"
+heuristic_strategy = "bucketed-initial-decode-first-hit-v1"
+baseline_hit_within_budget = false
+heuristic_evaluations = 475
+heuristic_candidate = 424602
+heuristic_quality = 1
