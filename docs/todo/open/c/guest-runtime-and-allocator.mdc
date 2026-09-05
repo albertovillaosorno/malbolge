@@ -221,12 +221,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   lower rounding midpoint for exact binary64 ratios. For non-dyadic normal
   ratios below the threshold, the same bound is `< 1/6 ulp`; the exact quotient
   remainder admits only values below one-half ulp or at least two-thirds ulp.
-  This resolves 510/512 deterministic `Fraction` vectors while preserving two
-  ambiguous cases as `kernel-required`.
 
-  Subnormal non-dyadic ratios and all other unproved geometry remain
-  `kernel-required`; the tracked no-libm harness and proof tests do not promote
-  public availability.
+  Subnormal ratios need no normal-binade margin gate: the maximum `atan` error
+  is below `2^-1993` subnormal ulp, versus more than `2^-54` ulp minimum
+  separation for a non-midpoint 53-bit rational. Exact midpoint ties resolve
+  downward because `atan(r) < r`. The tracked `3 * 2^-1075` case proves the
+  tie-even quotient can differ from the correctly rounded `atan` result.
+
+  With subnormal closure, the deterministic `Fraction` corpus resolves 511/512
+  vectors and leaves one normal ambiguous/out-of-bound case fail closed. The
+  no-libm harness and proof tests still do not promote public availability.
 - Implemented exact `atan2` finite-ratio normalization:
   finite nonzero inputs become two normalized 53-bit significands plus a signed
   power-of-two exponent, with the smaller magnitude always in the numerator.

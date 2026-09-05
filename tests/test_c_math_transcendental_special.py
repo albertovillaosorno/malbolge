@@ -46,6 +46,9 @@ SIN_TOWARD_ZERO_MIDPOINT = SIN_SMALL_ANGLE / (1 << 54)
 COS_ONE_MIDPOINT = Fraction(1, 1 << 54)
 ATAN_TOWARD_ZERO_MIDPOINT = ATAN_IDENTITY_MAX / (1 << 54)
 ATAN_TOP_OPEN_BINADE_ULP = Fraction(1, 1 << 80)
+MIN_NORMAL_MAGNITUDE = Fraction(1, 1 << 1022)
+SUBNORMAL_ULP = Fraction(1, 1 << 1074)
+MIN_RATIONAL_MIDPOINT_SEPARATION = Fraction(1, 1 << 54)
 MAX_SUBNORMAL_MAGNITUDE = Fraction((1 << 52) - 1, 1 << 1074)
 SUBNORMAL_MIDPOINT = Fraction(1, 1 << 1075)
 EXPECTED_CONSTANTS = {
@@ -74,6 +77,8 @@ def test_small_angle_taylor_bounds_fit_binary64_midpoints() -> None:
     )
     assert MAX_SUBNORMAL_MAGNITUDE**3 / 6 < SUBNORMAL_MIDPOINT
     assert MAX_SUBNORMAL_MAGNITUDE**3 / 3 < SUBNORMAL_MIDPOINT
+    subnormal_error_ulps = (MIN_NORMAL_MAGNITUDE**3 / 3) / SUBNORMAL_ULP
+    assert subnormal_error_ulps < MIN_RATIONAL_MIDPOINT_SEPARATION
 
 
 def test_transcendental_classifier_constants_are_locked() -> None:

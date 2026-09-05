@@ -369,18 +369,64 @@ static int normal_ratio_rounding_margin_safe(
          (remainder * UINT64_C(3)) >= (denominator << UINT32_C(1));
 }
 
+static int subnormal_atan_result(
+    const MalbolgeGuestMathAtan2KernelInput *input, uint64_t ratio_bits,
+    uint64_t *atan_bits) {
+  uint64_t numerator = input->numerator_significand;
+  const uint64_t denominator = input->denominator_significand;
+  uint64_t remainder = UINT64_C(0);
+  uint64_t units = UINT64_C(0);
+  int32_t exponent = input->exponent_delta;
+  int32_t scale = INT32_C(0);
+  uint32_t remaining = UINT32_C(0);
+
+  if (numerator >= denominator) {
+    remainder = numerator - denominator;
+  } else {
+    numerator <<= UINT32_C(1);
+    remainder = numerator - denominator;
+    --exponent;
+  }
+  if (exponent >= INT32_C(-1022)) {
+    return 0;
+  }
+  scale = exponent + INT32_C(1074);
+  if (scale <= INT32_C(-2)) {
+    *atan_bits = UINT64_C(0);
+    return 1;
+  }
+  if (scale == INT32_C(-1)) {
+    *atan_bits = remainder == UINT64_C(0) ? UINT64_C(0) : UINT64_C(1);
+    return 1;
+  }
+  units = UINT64_C(1) << (uint32_t)scale;
+  remaining = (uint32_t)scale;
+  while (remaining != UINT32_C(0)) {
+    --remaining;
+    units |= (uint64_t)ratio_fraction_bit(denominator, &remainder) << remaining;
+  }
+  *atan_bits = (remainder << UINT32_C(1)) == denominator ? units : ratio_bits;
+  return 1;
+}
+
 static MalbolgeGuestMathSpecialResult small_ratio_atan2_special(
     uint64_t y_bits, uint64_t x_bits) {
   MalbolgeGuestMathAtan2KernelInput input;
   uint64_t ratio_bits = UINT64_C(0);
+  uint64_t atan_bits = UINT64_C(0);
   uint32_t exact = UINT32_C(0);
 
   if ((x_bits & BINARY64_SIGN) != UINT64_C(0) ||
       !malbolge_guest_math_atan2_kernel_input(y_bits, x_bits, &input) ||
       input.swapped != UINT32_C(0) || !ratio_at_most_atan_identity(&input) ||
       !ratio_nearest_binary64_internal(&input, &ratio_bits, &exact) ||
-      ratio_bits > BINARY64_ATAN_IDENTITY_MAX ||
-      (exact == UINT32_C(0) && !normal_ratio_rounding_margin_safe(&input))) {
+      ratio_bits > BINARY64_ATAN_IDENTITY_MAX) {
+    return kernel_required();
+  }
+  if (subnormal_atan_result(&input, ratio_bits, &atan_bits)) {
+    return resolved(with_sign(atan_bits, y_bits));
+  }
+  if (exact == UINT32_C(0) && !normal_ratio_rounding_margin_safe(&input)) {
     return kernel_required();
   }
   return resolved(with_sign(ratio_bits, y_bits));

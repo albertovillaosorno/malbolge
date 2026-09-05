@@ -57,8 +57,8 @@ LCG_INCREMENT = 1442695040888963407
 LCG_SEED = 0x4154414E325F5631
 SMALL_RATIO_LCG_SEED = 0x4154414E325F5352
 SMALL_RATIO_VECTOR_COUNT = 512
-EXPECTED_SMALL_RATIO_RESOLVED = 510
-EXPECTED_SMALL_RATIO_UNRESOLVED = 2
+EXPECTED_SMALL_RATIO_RESOLVED = 511
+EXPECTED_SMALL_RATIO_UNRESOLVED = 1
 RESOLVED_STATUS = 1
 KERNEL_REQUIRED_STATUS = 2
 ATAN_IDENTITY_MAX_BITS = 0x3E40000000000000
@@ -233,14 +233,29 @@ def _small_ratio_rounding_margin_safe(ratio: Fraction) -> bool:
     return fraction < Fraction(1, 2) or fraction >= Fraction(2, 3)
 
 
+def _subnormal_atan_bits(ratio: Fraction, rounded: int) -> int | None:
+    if _floor_log2(ratio) >= MIN_NORMAL_EXPONENT:
+        return None
+    scaled = ratio * (1 << 1074)
+    lower = scaled.numerator // scaled.denominator
+    fraction = scaled - lower
+    return lower if fraction == Fraction(1, 2) else rounded
+
+
 def _expected_small_ratio_special(y_bits: int, x_bits: int) -> tuple[int, int]:
     ratio = _raw_fraction(y_bits) / _raw_fraction(x_bits)
     rounded = _nearest_binary64_bits(ratio)
-    exactly_binary64 = _raw_fraction(rounded) == ratio
-    safe = exactly_binary64 or _small_ratio_rounding_margin_safe(ratio)
-    if ratio <= ATAN_IDENTITY_MAX and safe:
-        return RESOLVED_STATUS, rounded | (y_bits & SIGN_BIT)
-    return KERNEL_REQUIRED_STATUS, 0
+    result = (KERNEL_REQUIRED_STATUS, 0)
+    if ratio <= ATAN_IDENTITY_MAX:
+        subnormal = _subnormal_atan_bits(ratio, rounded)
+        if subnormal is not None:
+            result = (RESOLVED_STATUS, subnormal | (y_bits & SIGN_BIT))
+        else:
+            exactly_binary64 = _raw_fraction(rounded) == ratio
+            safe = exactly_binary64 or _small_ratio_rounding_margin_safe(ratio)
+            if safe:
+                result = (RESOLVED_STATUS, rounded | (y_bits & SIGN_BIT))
+    return result
 
 
 def _small_ratio_row(y_bits: int, x_bits: int) -> str:
@@ -397,7 +412,7 @@ def test_atan2_small_ratio_classifier_matches_exact_fraction_gate(
 
 
 def test_small_ratio_policy_keeps_ambiguous_rounding_fail_closed() -> None:
-    """Keep the bounded margin policy at 510 resolved and two unresolved."""
+    """Keep subnormal closure and the normal margin policy fail closed."""
     statuses = [
         _expected_small_ratio_special(y_bits, x_bits)[0]
         for y_bits, x_bits in _small_ratio_pairs()

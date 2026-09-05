@@ -303,9 +303,17 @@ bounded `atan` error cannot cross the lower rounding midpoint. The rule uses
 only the 53-bit denominator and remainder; it does not treat the rounded ratio
 as an accuracy oracle.
 
-Subnormal non-dyadic ratios, the narrow ambiguous remainder interval,
-`r > 2^-27`, swapped magnitudes, and negative `x` remain unresolved. This keeps
-failure closed while range-reduction and numerical-kernel evidence is absent.
+Subnormal ratios are fully decidable under the same bound. Their worst-case
+`atan` error is below `2^-1993` subnormal ulp, while a non-midpoint rational
+with
+a 53-bit denominator is separated from the nearest midpoint by more than
+`2^-54` ulp. Exact midpoint ratios are directional: because `atan(r) < r`, the
+lower binary64 neighbor is selected even when rounding the ratio itself would
+choose the even upper neighbor.
+
+The narrow ambiguous normal-remainder interval, `r > 2^-27`, swapped
+magnitudes, and negative `x` remain unresolved. This keeps failure closed while
+range-reduction and numerical-kernel evidence is absent.
 
 Every ordinary finite case outside those proofs still reports
 `kernel-required`. For finite nonzero `atan2(y, x)` inputs, a second exact stage
