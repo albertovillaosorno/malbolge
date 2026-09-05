@@ -35,4 +35,6 @@ selected-profile input/output. Formatting remains unavailable.
 Transcendental math is also still unavailable, but an internal raw-bit front
 end now resolves
 proved small-angle `sin`/`cos` results plus the complete `atan2` zero/infinity
-matrix before future range-reduction and numerical kernels.
+matrix. Finite nonzero `atan2` inputs are also reduced exactly to a normalized
+rational in `[0, 1]` with explicit swap and sign geometry before any future
+numerical kernel.

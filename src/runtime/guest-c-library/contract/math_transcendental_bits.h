@@ -14,7 +14,7 @@
 //   - Approximate finite transcendental values or change libc availability.
 // - Allows:
 //   - Inputs: raw binary64 words and one admitted unary operation identity.
-//   - Outputs: exact resolved bits or an explicit kernel-required result.
+//   - Outputs: exact results or normalized finite atan2 kernel geometry.
 //   - Side effects: none.
 // - Split-When:
 //   - Range reduction or approximation kernels gain independent proof policy.
@@ -28,6 +28,7 @@
 //   - Internal guest-libc substrate; public sin/cos/atan2 remain gated.
 // - Defaults:
 //   - Finite values outside proved exact cases report kernel-required.
+//   - Rejected atan2 kernel inputs never mutate caller-owned output geometry.
 //
 
 //! Internal exact edge-case classifier for future transcendental kernels.
@@ -53,9 +54,21 @@ typedef struct MalbolgeGuestMathSpecialResult {
   uint64_t bits;
 } MalbolgeGuestMathSpecialResult;
 
+typedef struct MalbolgeGuestMathAtan2KernelInput {
+  uint64_t numerator_significand;
+  uint64_t denominator_significand;
+  int32_t exponent_delta;
+  uint32_t swapped;
+  uint32_t y_negative;
+  uint32_t x_negative;
+} MalbolgeGuestMathAtan2KernelInput;
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
     uint64_t y_bits, uint64_t x_bits);
+int malbolge_guest_math_atan2_kernel_input(
+    uint64_t y_bits, uint64_t x_bits,
+    MalbolgeGuestMathAtan2KernelInput *output);
 
 #endif

@@ -61,6 +61,9 @@ MATH_INTERNAL = LIBC_ROOT / "contract"
 MATH_TRANS_HARNESS = (
     ROOT / "tests/runtime/guest_math_transcendental_special_conformance.c"
 )
+MATH_ATAN2_INPUT_HARNESS = (
+    ROOT / "tests/runtime/guest_math_atan2_kernel_input_conformance.c"
+)
 ACCEPTED = ROOT / "tests/tidy/libc/accepted/libc_memory_string.c"
 ACCEPTED_MATH = ROOT / "tests/tidy/libc/accepted/libc_math_exact.c"
 ACCEPTED_SQRT = ROOT / "tests/tidy/libc/accepted/libc_math_sqrt.c"
@@ -312,6 +315,29 @@ def test_transcendental_special_cases_execute_without_libm(
     )
     assert compiled.returncode == 0, compiled.stderr
 
+    completed = _run([str(executable)], ROOT)
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_atan2_kernel_input_normalizes_without_floating_division(
+    tmp_path: Path,
+) -> None:
+    """Normalize finite atan2 ratios without exposing the public routine."""
+    _require_clang()
+    executable = tmp_path / "atan2-kernel-input"
+    compiled = _run(
+        [
+            str(CLANG),
+            *STRICT_C,
+            f"-I{MATH_INTERNAL}",
+            str(MATH_TRANS_SPECIAL),
+            str(MATH_ATAN2_INPUT_HARNESS),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stderr
     completed = _run([str(executable)], ROOT)
     assert completed.returncode == 0, completed.stderr
 
