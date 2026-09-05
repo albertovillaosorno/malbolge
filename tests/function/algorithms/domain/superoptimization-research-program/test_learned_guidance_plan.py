@@ -119,5 +119,5 @@ def test_results_gate_is_closed_before_holdout_execution() -> None:
     assert gate["holdout_status"] == _REGISTERED
     assert gate["model_status"] == _REGISTERED
     assert gate["runner_status"] == _REGISTERED
-    assert gate["retained_provenance_status"] == _UNREGISTERED
-    assert gate["results_allowed"] is False
+    assert gate["retained_provenance_status"] == _REGISTERED
+    assert gate["results_allowed"] is True

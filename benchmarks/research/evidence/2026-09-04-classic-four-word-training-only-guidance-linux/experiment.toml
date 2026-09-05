@@ -1,0 +1,54 @@
+schema_version = 1
+
+[experiment]
+id = "superoptimization-research-program"
+record_kind = "run"
+seed = 0
+method_class = "optimization"
+
+[challenge]
+family = "classic-four-word-learned-guidance-holdout-v1"
+difficulty = 100000
+target_profile = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[budget]
+seconds = 60
+candidate_evaluations = 50000
+memory_mib = 512
+
+[verification]
+required = true
+oracle = "classic-four-word-no-io-halt-v1"
+baseline = "four-word-static-initial-decode-order-v1"
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/learned-guidance-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"
+
+[run]
+commit = "2d0889ee2eff688d19d8174ffc29f8a230f76caf"
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "54edc48898f06d1652150e5defb80ffce9e98a386cf5d07615c8182cdde33fcc"
+host = "Fedora Linux 7.1.10-200.fc44.x86_64; Intel Xeon E5-2690 v3"
+accelerator = "none"
+toolchain = "Python 3.14.7"
+outcome = "no-solution"
+# jig-ignore-next-line: canonical evidence path is indivisible
+raw_output = "benchmarks/research/evidence/2026-09-04-classic-four-word-training-only-guidance-linux/raw.csv"
+
+[learned_guidance]
+plan_id = "classic-four-word-training-only-guidance-v1"
+model_id = "laplace-pooled-initial-decode-guidance-v1"
+training_challenge = "classic-three-word-verified-block-search-v1"
+holdout_challenge = "classic-four-word-learned-guidance-holdout-v1"
+repetitions = 5
+evaluation_ceiling = 50000
+holdout_accepted_candidate_count = 0
+static_strategy = "four-word-static-initial-decode-order-v1"
+learned_strategy = "laplace-pooled-initial-decode-guidance-order-v1"
+static_hit_within_budget = false
+learned_hit_within_budget = false

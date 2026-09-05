@@ -212,12 +212,30 @@ feature's search-order hypothesis. It does not support the current materialized
 sort as a runtime optimization: median full-strategy time is 2,948,297,136 ns
 versus 215,984,447 ns baseline because schedule construction is included.
 
+A seventh comparison preregisters training-only learned guidance before any
+four-word holdout outcome. The model fits pooled initial-decode token acceptance
+rates from the complete three-word training corpus, and both static and learned
+50,000-candidate order prefixes are content-pinned before holdout verification.
+The selected 100,000-candidate four-word holdout then yields zero accepted
+candidates, so first-hit ranking is not measurable on this exact challenge.
+
+The five retained Fedora/Python pairs therefore end in `no-solution` for both
+arms after 50,000 verifier evaluations. Static median end-to-end time is
+407,894,273 ns. Learned median training time is 6,259,721,192 ns. Median
+schedule-plus-search time is 2,092,124,024 ns, and median end-to-end time is
+8,303,844,694 ns, about 20.358 times static with zero paired timing wins.
+
+This null result neither supports learned guidance nor rejects the whole
+technique family. It does reject promotion of this Python implementation and
+this exact holdout as evidence for a first-hit ranking advantage. A later
+learned-guidance challenge requires a new preregistered identity.
+
 The broader study at `../../studies/superoptimization-program.md` remains the
-human synthesis record. This mirror now has three retained host-specific
-measured
-comparisons plus the eight-seed work-count replication. Larger challenge
-families, additional techniques, independent-host replication, independent
-implementations, and stronger statistical power remain pending.
+human synthesis record. This mirror now retains host-specific positive,
+negative, null, and
+no-solution comparisons plus the eight-seed work-count replication. Larger
+challenge families, independent-host replication, independent implementations,
+and stronger statistical power remain pending.
 
 ## Results
 

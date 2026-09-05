@@ -190,7 +190,18 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   all 100,000 holdout members. A separately checked excluded extension, `Q&%$`,
   verifies at quality one, so the null is attributed to this frozen selection
   rather than a verifier that cannot accept. The holdout is not redesigned
-  post-hoc. Comparative timing remains gated on source-pinned provenance.
+  post-hoc.
+
+  The source-pinned five-pair comparison retains `no-solution` for both arms:
+  both exhaust 50,000 evaluations in every repetition. Static end-to-end median
+  time is 407,894,273 ns. Learned training median is 6,259,721,192 ns,
+  schedule-plus-search median is 2,092,124,024 ns, and end-to-end median is
+  8,303,844,694 ns, about 20.358 times static with zero learned paired wins.
+
+  The primary ranking hypothesis is inconclusive because this exact holdout has
+  no accepted candidate. The current Python fit and materialized learned order
+  are not a runtime optimization. Any replacement holdout must receive a new
+  identity and preregistration rather than deleting this null result.
 
 Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.

@@ -172,6 +172,22 @@ constructing the schedule:
 median heuristic time is about 13.651 times baseline. This motivates a later
 bucketed or lazy implementation study without revising the observed result.
 
+A seventh comparison preregisters training-only guidance before observing a
+new four-word holdout. The model is fitted only from the complete characterized
+three-word corpus, while model and order digests are fixed before holdout
+verification. The selected 100,000-candidate holdout contains zero accepted
+candidates, and that no-solution characterization is retained rather than
+redesigned post-hoc.
+
+Both static and learned arms therefore exhaust 50,000 evaluations in every
+retained pair. Static median end-to-end time is 407,894,273 ns. Learned median
+training time is 6,259,721,192 ns and median end-to-end time is
+8,303,844,694 ns, about 20.358 times static with zero learned paired
+timing wins.
+
+This weakens the current implementation but leaves learned ranking inconclusive
+on a holdout with no solution.
+
 New synthesis, equality-saturation, learned, or accelerator-guided strategies
 must add their own equally identified comparisons rather than
 inheriting a result from either pilot. Source claims resolve through
@@ -232,8 +248,13 @@ hit rates or novel compiler workloads.
 
 ## Threats to Validity
 
-The record remains active. The seed replication narrows seed-selection risk but
-still covers only eight deterministic schedules over one tiny two-word challenge
+The record remains active. The learned-guidance holdout adds a
+challenge-selection
+risk: excluding training-positive prefixes produced a valid but solution-free
+sample, so it cannot estimate first-hit ranking quality.
+
+The seed replication narrows seed-selection risk but still covers only eight
+deterministic schedules over one tiny two-word challenge
 on one Windows host with Python verifier overhead. The history result adds one
 synthetic finite corpora, fixed baseline-first ordering, and the same broad
 host/Python implementation limitation. Larger challenges, independent hosts,

@@ -1,0 +1,54 @@
+schema_version = 1
+
+[study]
+id = "classic-four-word-training-only-guidance-linux-2026-09-04"
+# jig-ignore-next-line: canonical evidence path is indivisible
+experiment_manifest = "benchmarks/research/evidence/2026-09-04-classic-four-word-training-only-guidance-linux/experiment.toml"
+kind = "deterministic"
+question = """Does training-only pooled initial-decode guidance improve first-hit verifier work on the preregistered four-word holdout relative to the best registered static initial-decode order?"""
+hypothesis = """Training-only guidance lowers held-out verifier evaluations to first accepted candidate without weakening independent verification."""
+baseline = "four-word-static-initial-decode-order-v1"
+rejection_observation = """The learned arm is null or worse in held-out first-hit work, holdout leakage appears, verifier quality differs by schedule, or end-to-end learned overhead dominates."""
+
+[workload]
+identity = "classic-four-word-learned-guidance-holdout-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 0
+repetitions = 5
+warmup_policy = "no warmup; all five fixed-order pairs are retained"
+ordering = "fixed"
+stopping_rule = "first verified candidate or 50000 evaluations"
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = [
+  "evaluations",
+  "training_nanoseconds",
+  "schedule_and_search_nanoseconds",
+  "end_to_end_nanoseconds",
+  "outcome",
+]
+tradeoff_policy = """First-hit work is primary. If the frozen holdout has no verified solution, retain that null outcome and interpret only implementation overhead; do not redesign the holdout post-hoc."""
+
+[resources]
+host = "Fedora Linux 7.1.10-200.fc44.x86_64; Intel Xeon E5-2690 v3"
+accelerator = "none"
+memory_mib = 512
+
+[raw]
+# jig-ignore-next-line: canonical evidence path is indivisible
+path = "benchmarks/research/evidence/2026-09-04-classic-four-word-training-only-guidance-linux/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

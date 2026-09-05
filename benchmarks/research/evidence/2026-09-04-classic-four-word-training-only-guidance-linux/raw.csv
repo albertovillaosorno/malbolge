@@ -1,0 +1,11 @@
+repetition,strategy_id,evaluations,candidate,quality,outcome,training_nanoseconds,schedule_and_search_nanoseconds,end_to_end_nanoseconds
+0,four-word-static-initial-decode-order-v1,50000,,,no-solution,0,461588241,461588241
+0,laplace-pooled-initial-decode-guidance-order-v1,50000,,,no-solution,7483139893,2240697649,9723837542
+1,four-word-static-initial-decode-order-v1,50000,,,no-solution,0,436968665,436968665
+1,laplace-pooled-initial-decode-guidance-order-v1,50000,,,no-solution,6352303338,2238764867,8591068205
+2,four-word-static-initial-decode-order-v1,50000,,,no-solution,0,407894273,407894273
+2,laplace-pooled-initial-decode-guidance-order-v1,50000,,,no-solution,6259721192,2044123502,8303844694
+3,four-word-static-initial-decode-order-v1,50000,,,no-solution,0,400226527,400226527
+3,laplace-pooled-initial-decode-guidance-order-v1,50000,,,no-solution,6129869606,2054203024,8184072630
+4,four-word-static-initial-decode-order-v1,50000,,,no-solution,0,404616736,404616736
+4,laplace-pooled-initial-decode-guidance-order-v1,50000,,,no-solution,6045943284,2092124024,8138067308

@@ -123,9 +123,9 @@ model_status = "registered"
 baseline_status = "registered"
 runner_status = "registered"
 protocol_status = "registered"
-retained_provenance_status = "unregistered"
-results_allowed = false
-reason = "comparative source-pinned provenance remains unregistered"
+retained_provenance_status = "registered"
+results_allowed = true
+reason = "retained no-solution comparison is source-pinned"
 
 [provenance]
 # jig-ignore-next-line: canonical path is indivisible

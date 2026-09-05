@@ -76,6 +76,22 @@ materializing and sorting the 830,584-candidate schedule. The feature is
 retained
 as a search signal; the current sorting implementation is not a runtime win.
 
+A seventh comparison, `classic-four-word-training-only-guidance-v1`, freezes
+its complete three-word training corpus, pooled initial-decode model, and both
+50,000-candidate order prefixes before executing a new four-word holdout. The
+100,000-candidate holdout excludes exact training-positive three-byte prefixes
+and then retains a valid null characterization: it contains zero accepted
+candidates. A known excluded extension, `Q&%$`, still verifies at quality one,
+so the null is not explained by a verifier that cannot accept.
+
+The retained five-pair run records `no-solution` for both static and learned
+orders at the common 50,000-evaluation ceiling. Static end-to-end median time is
+407,894,273 ns, while learned end-to-end median time is 8,303,844,694 ns;
+training alone has median 6,259,721,192 ns. The primary first-hit hypothesis is
+therefore inconclusive on this holdout, and the current Python learned path is
+not a runtime optimization. A later learned challenge must receive a new
+identity rather than replacing this negative evidence.
+
 A low-level structural regression proves only the `Q` prefix so far: entry halts
 before encryption, and exactly eight load-admitted suffixes have quality one.
 The runner therefore treats only that 94-suffix row structurally; every other
