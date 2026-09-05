@@ -19,14 +19,6 @@ labels belong here.
 
 ## P2 — Compiler, runtime, and accelerator core
 
-### TODO - Adaptive accelerator resource budgeting
-
-Discover available memory and compute resources at runtime and choose batch
-size, state layout, caches, and search breadth accordingly.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/accelerator/adaptive-accelerator-resource-budgeting.mdc](docs/todo/open/accelerator/adaptive-accelerator-resource-budgeting.mdc)
-
 ### TODO - Configurable accelerator algorithm adapters
 
 Separate optimization/search strategy from accelerator hardware.

@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Completed bounded milestone
 
 ## Research Question
 
@@ -19,9 +19,9 @@ larger devices must increase available work rather than
 hitting a fixed artificial VRAM ceiling. The 128 MiB and 80 GiB values are only
 example probe points, not supported-range endpoints.
 
-- Status: Active
+- Status: Completed bounded milestone
 - Research ID: `adaptive-accelerator-resource-budgeting`
-- Last reviewed: 2026-07-30
+- Last reviewed: 2026-09-05
 
 ## Prior Work
 
@@ -1149,7 +1149,7 @@ signature algorithms, native async file-secret I/O, native async HTTPS
 public-key transports, external secret-store providers, hosted-service
 integrations,
 certificates, PKI/trust distribution, and automatic adaptive queue/resource
-feedback remain open.
+feedback remain follow-on work rather than requirements of this milestone.
 
 ## Threats to Validity
 
@@ -1180,7 +1180,13 @@ to 0.23 ms at batch 32 and complete throughput reaches about 93.68 VMs/s. The
 remaining measured complete-run host boundary is snapshot construction/download
 and final `array('I')` materialization. None of these values is a CPU-relative
 or
-cross-device speedup claim; broader hardware evidence remains open.
+cross-device speedup claim; broader hardware evidence remains follow-on work.
+
+The bounded milestone is complete. The measured-memory planner remains the
+accepted allocation guard, while algorithm lifecycle state stays experimental
+and no benchmark result grants semantic or automatic policy authority. New
+hardware, feedback controllers, or hosted-provider integrations require their
+own retained evidence and do not reopen this completed budgeting milestone.
 
 ## References
 
