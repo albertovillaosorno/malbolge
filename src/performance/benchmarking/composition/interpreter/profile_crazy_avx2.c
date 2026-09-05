@@ -9,12 +9,12 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Benchmark-only AVX2 evidence for N10-N14 padded CRAZY chunk evaluation.
+//   - Benchmark-only AVX2 evidence for N10-N15 padded CRAZY chunk evaluation.
 // - Must-Not:
 //   - Define VM semantics, change product selection, or require AVX2 at
 //     runtime.
 // - Allows:
-//   - Inputs: the frozen 59,049-pair profile CRAZY corpus and five widths.
+//   - Inputs: the frozen 59,049-pair CRAZY corpus and six arithmetic widths.
 //   - Outputs: exact validation plus raw scalar/SIMD timing samples on stdout.
 //   - Side effects: benchmark-process CPU time and stdout/stderr only.
 // - Split-When:
@@ -54,24 +54,27 @@
 #define MALBOLGE_AVX2_TARGET
 #endif
 
-#define BENCHMARK_ID "cpu-profile-crazy-avx2-v1"
+#define BENCHMARK_ID "cpu-profile-crazy-avx2-v2"
 #define CHUNK_VALUES UINT32_C(243)
 #define CHUNK_TABLE_ENTRIES UINT32_C(59049)
+#define THREE_CHUNK_VALUES UINT32_C(14348907)
 #define CORPUS_SIZE UINT32_C(59049)
 #define CORPUS_STRIDE UINT32_C(104729)
 #define REPETITIONS UINT32_C(16)
 #define SAMPLE_COUNT UINT32_C(15)
 #define SIMD_LANES UINT32_C(8)
-#define WIDTH_COUNT 5U
+#define WIDTH_COUNT 6U
 
-static const uint8_t WIDTHS[WIDTH_COUNT] = {10U, 11U, 12U, 13U, 14U};
+/* N15 is an arithmetic boundary only; it does not admit a runtime profile. */
+static const uint8_t WIDTHS[WIDTH_COUNT] = {10U, 11U, 12U, 13U, 14U, 15U};
 static const uint32_t MODULI[WIDTH_COUNT] = {
     UINT32_C(59049), UINT32_C(177147), UINT32_C(531441),
-    UINT32_C(1594323), UINT32_C(4782969),
+    UINT32_C(1594323), UINT32_C(4782969), UINT32_C(14348907),
 };
 static const uint64_t EXPECTED_CHECKSUMS[WIDTH_COUNT] = {
     UINT64_C(27683170464), UINT64_C(69793138128), UINT64_C(255944874432),
     UINT64_C(590667673872), UINT64_C(1594938108864),
+    UINT64_C(4726060935024),
 };
 
 static uint32_t chunk_table[CHUNK_TABLE_ENTRIES];
@@ -142,6 +145,9 @@ static uint32_t padded_lookup(
         (((data / CHUNK_TABLE_ENTRIES) % CHUNK_VALUES) * CHUNK_VALUES)
         + ((accumulator / CHUNK_TABLE_ENTRIES) % CHUNK_VALUES);
     result += chunk_table[high_index] * CHUNK_TABLE_ENTRIES;
+    if (semantic_modulus == THREE_CHUNK_VALUES) {
+        return result;
+    }
     return result % semantic_modulus;
 }
 
@@ -187,6 +193,7 @@ static void avx2_padded_batch(uint32_t semantic_modulus)
     const __m256i chunk_multiplier = _mm256_set1_epi32((int)CHUNK_VALUES);
     const __m256i high_multiplier = _mm256_set1_epi32((int)CHUNK_TABLE_ENTRIES);
     const bool two_chunks = semantic_modulus == CHUNK_TABLE_ENTRIES;
+    const bool needs_projection = semantic_modulus != THREE_CHUNK_VALUES;
     uint32_t index = 0U;
     while ((index + SIMD_LANES) <= CORPUS_SIZE) {
         int32_t low_indices[SIMD_LANES];
@@ -229,7 +236,7 @@ static void avx2_padded_batch(uint32_t semantic_modulus)
                 combined, _mm256_mullo_epi32(high, high_multiplier));
         }
         _mm256_storeu_si256((__m256i *)&avx2_output[index], combined);
-        if (!two_chunks) {
+        if (!two_chunks && needs_projection) {
             lane = 0U;
             while (lane < SIMD_LANES) {
                 avx2_output[index + lane] %= semantic_modulus;
@@ -324,9 +331,15 @@ static const char *route_name(Route route, uint8_t trits)
     case ROUTE_SCALAR_TRITWISE:
         return "scalar-tritwise";
     case ROUTE_SCALAR_PADDED:
-        return trits == 10U ? "scalar-padded-5+5" : "scalar-padded-5+5+5";
+        if (trits == 10U) {
+            return "scalar-padded-5+5";
+        }
+        return trits == 15U ? "scalar-full-5+5+5" : "scalar-padded-5+5+5";
     case ROUTE_AVX2_PADDED:
-        return trits == 10U ? "avx2-padded-5+5" : "avx2-padded-5+5+5";
+        if (trits == 10U) {
+            return "avx2-padded-5+5";
+        }
+        return trits == 15U ? "avx2-full-5+5+5" : "avx2-padded-5+5+5";
     }
     return "invalid";
 }

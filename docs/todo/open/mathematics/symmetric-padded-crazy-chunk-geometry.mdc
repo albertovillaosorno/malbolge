@@ -141,6 +141,13 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   The timing uses C23 `timespec_get(TIME_UTC)`, not cycle counters, and this
   result has no product-selection authority. Primary Windows CPU/SIMD evidence
   remains open.
+
+  A versioned `cpu-profile-crazy-avx2-v2` benchmark extends only the arithmetic
+  matrix to N15 without changing runtime profile admission. N15 uses the same
+  59,049-pair wrapping-u32 corpus, three complete five-trit lookups, no semantic
+  projection, and independent scalar-tritwise validation before timing. Its
+  repeated checksum is 4,726,060,935,024. The v1 N10-N14 identity and retained
+  evidence remain immutable; v2 requires separate retained provenance.
 - Existing CUDA width evidence measures the same 16,384 crazy-heavy VM steps at
   N10 through N14 on the tritwise kernel, including resident and end-to-end
   timing with full result validation. The resident renderer now also exposes

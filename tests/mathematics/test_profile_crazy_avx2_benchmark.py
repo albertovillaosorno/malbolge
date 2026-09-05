@@ -21,7 +21,7 @@
 # - Merge-When:
 #   - Merge when one test owns the same SIMD benchmark protocol and codegen.
 # - Summary:
-#   - Proves the N10-N14 AVX2 benchmark is real SIMD and exact on capable hosts.
+#   - Proves the N10-N15 AVX2 benchmark is real SIMD and exact on capable hosts.
 # - Description:
 #   - Requires gather/YMM codegen and all-output equality against scalar CRAZY.
 # - Usage:
@@ -52,7 +52,7 @@ SOURCE = (
     / "profile_crazy_avx2.c"
 )
 X86_MACHINES = frozenset({"amd64", "i386", "i686", "x86", "x86_64"})
-EXPECTED_BENCHMARK_ID = "cpu-profile-crazy-avx2-v1"
+EXPECTED_BENCHMARK_ID = "cpu-profile-crazy-avx2-v2"
 EXPECTED_VALIDATION = "validation,ok\n"
 AVX2_UNAVAILABLE = 77
 SOURCE_MARKERS: Final = (
@@ -61,6 +61,9 @@ SOURCE_MARKERS: Final = (
     "#define REPETITIONS UINT32_C(16)",
     "#define SAMPLE_COUNT UINT32_C(15)",
     "#define SIMD_LANES UINT32_C(8)",
+    "#define WIDTH_COUNT 6U",
+    "UINT32_C(14348907)",
+    "UINT64_C(4726060935024)",
     '__attribute__((target("avx2")))',
 )
 GATHER_INSTRUCTION: Final = "vpgatherdd"
