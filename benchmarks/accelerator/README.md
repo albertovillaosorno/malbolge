@@ -140,8 +140,13 @@ companion to the structural fanout diagnostic. It compiles separate tritwise and
 `5+5` lookup kernels, reuses the canonical 59,049 ordinary candidates and exact
 1,024-position projection, uploads each route once, and times only synchronous
 kernel launch. Every warmup and timed sample is downloaded and compared with the
-trusted CPU CRAZY result outside the timing interval. Sample order alternates
-which kernel runs first; the production candidate adapter remains unchanged.
+trusted CPU CRAZY result outside the timing interval.
+
+Sample order alternates which kernel runs first; the production candidate
+adapter remains unchanged. Retained RTX 4060 evidence is under
+<!-- jig-ignore-next-line: canonical evidence path is indivisible -->
+`benchmarks/accelerator/evidence/2026-09-04-crazy-lookup-candidate-throughput-rtx4060/`.
+The retained result is mixed and does not support lookup promotion.
 
 Run with:
 

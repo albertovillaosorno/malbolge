@@ -1,0 +1,112 @@
+{
+  "benchmark_id": "cuda-crazy-lookup-candidate-throughput-v1",
+  "device": {
+    "arch": "sm_89",
+    "name": "NVIDIA GeForce RTX 4060"
+  },
+  "geometries": [
+    "tritwise",
+    "lookup-5+5"
+  ],
+  "rows": [
+    {
+      "candidate_count": 59049,
+      "geometry": "tritwise",
+      "median_ns": 164655,
+      "pstdev_ns": 14181.43848118221,
+      "raw_ns": [
+        151882,
+        179479,
+        157452,
+        178387,
+        164655,
+        183507,
+        170644,
+        150889,
+        171046,
+        152277,
+        140806,
+        181455,
+        152502,
+        176167,
+        142173
+      ],
+      "route_id": "ordinary-full-domain"
+    },
+    {
+      "candidate_count": 59049,
+      "geometry": "lookup-5+5",
+      "median_ns": 172067,
+      "pstdev_ns": 21062.71962560074,
+      "raw_ns": [
+        189470,
+        172067,
+        179718,
+        167001,
+        194025,
+        171154,
+        193360,
+        171689,
+        169663,
+        127894,
+        188403,
+        141102,
+        212542,
+        156275,
+        192014
+      ],
+      "route_id": "ordinary-full-domain"
+    },
+    {
+      "candidate_count": 1024,
+      "geometry": "tritwise",
+      "median_ns": 45027,
+      "pstdev_ns": 20266.914103094783,
+      "raw_ns": [
+        45027,
+        46697,
+        43988,
+        40535,
+        48392,
+        109965,
+        46654,
+        42657,
+        39541,
+        46532,
+        45061,
+        41745,
+        95213,
+        44013,
+        40546
+      ],
+      "route_id": "prepared-exact-projection"
+    },
+    {
+      "candidate_count": 1024,
+      "geometry": "lookup-5+5",
+      "median_ns": 43360,
+      "pstdev_ns": 21906.469997697026,
+      "raw_ns": [
+        45757,
+        42013,
+        40913,
+        43360,
+        40833,
+        43119,
+        48952,
+        40335,
+        40200,
+        46737,
+        47674,
+        43581,
+        116060,
+        97550,
+        43159
+      ],
+      "route_id": "prepared-exact-projection"
+    }
+  ],
+  "sample_count": 15,
+  "warmup_count": 1,
+  "workload_id": "classic-crazy-target-full-domain-multiposition-v1"
+}
