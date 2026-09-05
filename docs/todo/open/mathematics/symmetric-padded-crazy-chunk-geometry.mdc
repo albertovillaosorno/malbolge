@@ -235,6 +235,12 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   bytes for N10-N14; every width rejects with one byte less usable memory and
   admits exactly one VM at the boundary.
 
+  The clean hardware-free matrix is retained under
+  <!-- jig-ignore-next-line: canonical evidence path is indivisible -->
+`benchmarks/accelerator/evidence/2026-09-04-profile-width-crazy-geometry-failure-policy/`
+  from source commit `fc963856`; its integrity test recomputes every one-byte
+  rejection/admission relation from the tracked JSON.
+
   Direct CUDA resource rejection remains fail closed before allocation. Product
   optional-backend failure is a separate performance fallback: a new VM
   regression sends N10-N14 admitted geometries through an unavailable profile

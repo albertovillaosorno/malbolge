@@ -1,0 +1,76 @@
+{
+  "benchmark_id": "cuda-profile-width-crazy-geometry-failure-policy-v1",
+  "failure_policy": "planner-fail-closed-before-allocation",
+  "product_fallback_policy": "optional-backend-unavailable-safe-rust",
+  "rows": [
+    {
+      "admitted_free_memory_bytes": 8690412,
+      "admitted_usable_memory_bytes": 301804,
+      "failing_free_memory_bytes": 8690411,
+      "failing_usable_memory_bytes": 301803,
+      "failure_message": "resident item 0 requires 301804 bytes but only 301803 bytes are budgeted",
+      "planner_fixed_chunk_bytes": 8,
+      "planner_item_bytes_per_vm": 301796,
+      "required_chunk_bytes": 301804,
+      "reserve_bytes": 8388608,
+      "word_trits": 10
+    },
+    {
+      "admitted_free_memory_bytes": 9162804,
+      "admitted_usable_memory_bytes": 774196,
+      "failing_free_memory_bytes": 9162803,
+      "failing_usable_memory_bytes": 774195,
+      "failure_message": "resident item 0 requires 774196 bytes but only 774195 bytes are budgeted",
+      "planner_fixed_chunk_bytes": 8,
+      "planner_item_bytes_per_vm": 774188,
+      "required_chunk_bytes": 774196,
+      "reserve_bytes": 8388608,
+      "word_trits": 11
+    },
+    {
+      "admitted_free_memory_bytes": 10579980,
+      "admitted_usable_memory_bytes": 2191372,
+      "failing_free_memory_bytes": 10579979,
+      "failing_usable_memory_bytes": 2191371,
+      "failure_message": "resident item 0 requires 2191372 bytes but only 2191371 bytes are budgeted",
+      "planner_fixed_chunk_bytes": 8,
+      "planner_item_bytes_per_vm": 2191364,
+      "required_chunk_bytes": 2191372,
+      "reserve_bytes": 8388608,
+      "word_trits": 12
+    },
+    {
+      "admitted_free_memory_bytes": 14831508,
+      "admitted_usable_memory_bytes": 6442900,
+      "failing_free_memory_bytes": 14831507,
+      "failing_usable_memory_bytes": 6442899,
+      "failure_message": "resident item 0 requires 6442900 bytes but only 6442899 bytes are budgeted",
+      "planner_fixed_chunk_bytes": 8,
+      "planner_item_bytes_per_vm": 6442892,
+      "required_chunk_bytes": 6442900,
+      "reserve_bytes": 8388608,
+      "word_trits": 13
+    },
+    {
+      "admitted_free_memory_bytes": 27586092,
+      "admitted_usable_memory_bytes": 19197484,
+      "failing_free_memory_bytes": 27586091,
+      "failing_usable_memory_bytes": 19197483,
+      "failure_message": "resident item 0 requires 19197484 bytes but only 19197483 bytes are budgeted",
+      "planner_fixed_chunk_bytes": 8,
+      "planner_item_bytes_per_vm": 19197476,
+      "required_chunk_bytes": 19197484,
+      "reserve_bytes": 8388608,
+      "word_trits": 14
+    }
+  ],
+  "synthetic_total_memory_bytes": 134217728,
+  "widths": [
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "workload_id": "profile-16384-crazy-disjoint-data-v1"
+}

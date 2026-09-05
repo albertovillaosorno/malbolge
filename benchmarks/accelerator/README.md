@@ -218,6 +218,10 @@ already admitted request through safe Rust; the VM integration suite checks
 exact N10-N14
 checkpoint equality and records every item as `SafeRustFallback`.
 
+Retained hardware-free evidence from clean commit `fc963856` is under
+<!-- jig-ignore-next-line: canonical evidence path is indivisible -->
+`benchmarks/accelerator/evidence/2026-09-04-profile-width-crazy-geometry-failure-policy/`.
+
 Run the deterministic matrix with:
 
 ```powershell
