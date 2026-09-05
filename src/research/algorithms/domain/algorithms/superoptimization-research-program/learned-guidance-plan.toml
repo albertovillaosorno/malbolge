@@ -1,0 +1,123 @@
+schema_version = 1
+
+[plan]
+id = "classic-four-word-training-only-guidance-v1"
+record_kind = "plan"
+status = "preregistered"
+method_class = "optimization"
+technique = "laplace-pooled-initial-decode-guidance-v1"
+baseline = "four-word-static-initial-decode-order-v1"
+
+[profile]
+id = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[question]
+text = """Can guidance trained only on the already characterized three-word \
+corpus improve first-hit verifier work on a new four-word holdout relative to \
+the best registered non-learned static ordering?"""
+
+[hypothesis]
+text = """A pooled initial-decode acceptance-rate model trained only on \
+three-word outcomes lowers held-out verifier evaluations to first accepted \
+four-word candidate without changing verifier authority."""
+material_weakening = """\
+Held-out first-hit work is null or worse than the static baseline, leakage is \
+detected, or end-to-end learned time including training is dominated by model \
+fit and scheduling cost.\
+"""
+
+[training]
+challenge_id = "classic-three-word-verified-block-search-v1"
+candidate_count = 830584
+label = "verified-quality-is-not-none-v1"
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "03276bbed2b81d90553fa9ddca6046602108f992c48520554651638c626409d4"
+# jig-ignore-next-line: indivisible reviewed semantic identity
+accepted_set_sha256 = "35d107f544fbd71b0008d1414fa4c73677e9d3d15c32e6494a09bd89e2667342"
+accepted_candidate_count = 86
+status = "registered"
+
+[model]
+id = "laplace-pooled-initial-decode-guidance-v1"
+feature = "pooled-initial-positional-decode-token-v1"
+invalid_token = -1
+laplace_numerator_addend = 1
+laplace_denominator_addend = 2
+integer_scale = 1000000
+candidate_score = "sum-four-token-integer-weights-descending-v1"
+tie_break = "ascending-holdout-ordinal"
+uses_holdout_outcome = false
+uses_dynamic_transition = false
+uses_candidate_quality_as_feature = false
+
+[holdout]
+challenge_id = "classic-four-word-learned-guidance-holdout-v1"
+full_candidate_count = 78074896
+candidate_count = 100000
+candidate_encoding = "affine-four-graphical-bytes-excluding-training-positive-prefix-v1"
+source_words = 4
+objective = "halt-without-prior-input-or-output-within-four-transitions"
+quality = "semantic-transitions-to-halt-v1"
+verifier = "classic-four-word-no-io-halt-v1"
+selection_offset = 0
+selection_stride = 104729
+# jig-ignore-next-line: indivisible reviewed holdout identity
+selected_index_sha256 = "28f8e60161e71c364702a2fd3618c333e82aff17df737a9c8709ea97080a99d4"
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "54edc48898f06d1652150e5defb80ffce9e98a386cf5d07615c8182cdde33fcc"
+status = "uncharacterized"
+
+[comparison]
+primary_metric = "first-verified-evaluation"
+secondary_metrics = [
+  "first-verified-quality",
+  "training-nanoseconds",
+  "schedule-and-search-nanoseconds",
+  "end-to-end-nanoseconds",
+]
+evaluation_budget = 50000
+per_strategy_wall_clock_seconds = 60
+memory_mib = 512
+stopping_rule = "first-verified-or-evaluation-budget-v1"
+baseline_order = "four-word-static-initial-decode-order-v1"
+learned_order = "laplace-pooled-initial-decode-guidance-order-v1"
+
+[measurement]
+repetitions = 5
+warmup_iterations = 0
+ordering = "fixed-static-baseline-then-learned"
+outlier_policy = "retain-all"
+center = "median"
+dispersion = "observed-range"
+uncertainty = "observed-range"
+clock = "time-perf-counter-ns"
+training_policy = "fit-from-scratch-inside-each-learned-repetition"
+
+[rejection]
+conditions = [
+  "learned first verified evaluation is not lower than static baseline",
+  "learned arm has no verified hit when baseline has one within budget",
+  "holdout outcome influences training features weights or selection",
+  "same holdout candidate receives different verifier quality by schedule",
+  "end-to-end learned cost is dominated by training or scheduling overhead",
+]
+
+[measurement_gate]
+plan_status = "registered"
+training_status = "registered"
+holdout_status = "uncharacterized"
+model_status = "unregistered"
+baseline_status = "unregistered"
+runner_status = "unregistered"
+protocol_status = "registered"
+retained_provenance_status = "unregistered"
+results_allowed = false
+reason = "holdout execution remains forbidden until model baseline and runner are committed"
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/learned-guidance-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"

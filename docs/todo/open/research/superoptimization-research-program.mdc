@@ -172,6 +172,20 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   static feature as a search signal, not the materialized full-corpus sort as a
   runtime optimization.
 
+- A training-only learned-guidance comparison is now preregistered before any
+  four-word holdout verifier execution. Training is restricted to the already
+  characterized complete three-word corpus. The new holdout is a deterministic
+  100,000-candidate affine sample of the 94^4 four-byte space with exact
+  training-positive three-byte prefixes excluded; its selected-index and
+  workload hashes are frozen before outcomes. The learner uses only pooled
+  initial-decode token acceptance rates from training.
+
+  The comparison baseline is the best registered static initial-decode
+  ordering. Both use a 50,000-evaluation stop-on-first bound, and learned
+  end-to-end timing includes training from scratch. Results remain gated until
+  the model, baseline, runner, holdout verifier, and source-pinned provenance
+  are registered.
+
 Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.
 
