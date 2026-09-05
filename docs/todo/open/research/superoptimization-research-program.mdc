@@ -156,5 +156,15 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   a 1.900x ratio, with reuse winning all five pairs. This does not estimate
   production cache-hit rate, invalidation cost, or benefit on novel workloads.
 
+- A three-word holdout heuristic comparison is now preregistered before any
+  holdout verifier execution or accepted-set characterization. It freezes all
+  830,584 graphical three-byte candidates, a 50,000-evaluation shared budget,
+  natural enumeration, and a static heuristic that sees only initial positional
+  decode: candidates are bucketed by the earliest initial position decoding to
+  halt, then by candidate index. Dynamic transitions, verifier outcomes,
+  accepted-set knowledge, and training data are forbidden inputs. Results remain
+  gated until challenge, schedule, runner, protocol, and provenance are
+  separately registered.
+
 Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.

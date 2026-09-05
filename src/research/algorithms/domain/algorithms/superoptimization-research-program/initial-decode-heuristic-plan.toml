@@ -1,0 +1,87 @@
+schema_version = 1
+
+[plan]
+id = "classic-three-word-initial-halt-heuristic-v1"
+record_kind = "plan"
+status = "preregistered"
+method_class = "optimization"
+technique = "initial-decode-halt-proximity-order-v1"
+baseline = "deterministic-enumeration-v1"
+
+[profile]
+id = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[question]
+text = """Can a verifier-independent initial positional-decode heuristic reduce \
+evaluations to the first independently verified three-word halt versus natural \
+enumeration on a previously uncharacterized holdout corpus?"""
+
+[hypothesis]
+text = """Ranking candidates by the earliest initial source position that \
+positionally decodes to halt lowers first-verified evaluation count without \
+changing verifier acceptance or quality."""
+material_weakening = """\
+The heuristic has no verified hit within the shared budget, reaches its first \
+verified candidate no earlier than enumeration, or changes any verifier result.\
+"""
+
+[challenge]
+id = "classic-three-word-verified-block-search-v1"
+candidate_count = 830584
+candidate_encoding = "lexicographic-three-graphical-bytes-v1"
+source_words = 3
+objective = "halt-without-prior-input-or-output-within-three-transitions"
+quality = "semantic-transitions-to-halt-v1"
+verifier = "classic-three-word-no-io-halt-v1"
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "03276bbed2b81d90553fa9ddca6046602108f992c48520554651638c626409d4"
+status = "preregistered"
+
+[comparison]
+primary_metric = "first-verified-evaluation"
+secondary_metrics = [
+  "verified-candidate-count",
+  "best-verified-quality",
+  "elapsed-nanoseconds",
+]
+evaluation_budget = 50000
+wall_clock_seconds = 60
+memory_mib = 512
+baseline_order = "deterministic-enumeration-v1"
+heuristic_order = "initial-decode-halt-proximity-order-v1"
+
+[heuristic]
+feature = "initial-positional-decode-only-v1"
+score = "earliest-position-decoding-to-halt-else-three-v1"
+score_domain = [0, 1, 2, 3]
+tie_break = "ascending-candidate-index"
+uses_dynamic_transition = false
+uses_verifier_outcome = false
+uses_accepted_set = false
+uses_training_data = false
+
+[rejection]
+conditions = [
+  "heuristic first verified evaluation is not lower than enumeration",
+  "heuristic has no verified hit when enumeration has one within the budget",
+  "verifier acceptance or quality differs for the same candidate",
+  "schedule uses dynamic transition or verifier-result information",
+  "challenge is characterized before this preregistration commit",
+]
+
+[measurement_gate]
+challenge_status = "preregistered"
+schedule_status = "unregistered"
+runner_status = "unregistered"
+protocol_status = "unregistered"
+retained_provenance_status = "unregistered"
+results_allowed = false
+reason = "holdout challenge, schedule, runner, protocol, and provenance remain gated"
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/initial-decode-heuristic-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"
