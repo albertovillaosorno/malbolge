@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Completed bounded milestone
 
 ## Research Question
 
@@ -20,10 +20,10 @@ evaluation, and prior Malbolge code generation techniques. Maintain a source-
 backed bibliography and convert useful results into explicit compiler
 hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
 
-- Status: Active
+- Status: Completed bounded milestone
 - Record type: Study
 - Planning identity: `superoptimization-research-program`
-- Last reviewed: 2026-08-12
+- Last reviewed: 2026-09-04
 
 ## Prior Work
 

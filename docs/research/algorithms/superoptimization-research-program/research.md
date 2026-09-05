@@ -2,7 +2,7 @@
 
 ## Status
 
-Active
+Completed bounded milestone
 
 ## Research Question
 
@@ -19,9 +19,9 @@ preregisters only the first comparison so its inputs and stopping rules exist
 before measurements. It does not promote stochastic search or claim that the
 pilot challenge generalizes to other Malbolge workloads.
 
-- Status: Active
+- Status: Completed bounded milestone
 - Research ID: `superoptimization-research-program`
-- Last reviewed: 2026-08-12
+- Last reviewed: 2026-09-04
 
 ## Prior Work
 

@@ -1,6 +1,6 @@
 ---
 id: "superoptimization-research-program"
-status: "active"
+status: "completed"
 lane: "5"
 priority: "p1"
 area: "research"
@@ -214,3 +214,13 @@ Median elapsed time is 212,739,774 ns baseline versus 13,146,086 ns heuristic,
 a 16.183x baseline/heuristic ratio with five of five heuristic wins. This is a
 post-holdout implementation result and does not erase the earlier negative
 full-budget timing.
+
+- **Completion:** Completed on 2026-09-04 after decomposition, exact verified
+  block reuse, state canonicalization, exact pruning, static heuristic search,
+  and training-only learned guidance all had retained verifier-gated
+  comparisons.
+  The machine-readable comparative conclusion preserves positive, negative,
+  null, and no-solution outcomes and grants no product promotion. The larger
+  four-word holdout records the scaling/solvability limitation without post-hoc
+  redesign; future production-artifact, cross-host, equality-saturation, and
+  learned-guidance studies require new research identities.

@@ -17,14 +17,6 @@ labels belong here.
 
 ## P1 — Semantic and language foundations
 
-### TODO - Superoptimization research program
-
-Ask which search strategies find smaller or faster verified Malbolge blocks
-under fixed time and evaluation budgets.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/research/superoptimization-research-program.mdc](docs/todo/open/research/superoptimization-research-program.mdc)
-
 ### TODO - Symmetric padded crazy chunk geometry
 
 Test whether the canonical five-trit chunk model can make `crazy` evaluation
