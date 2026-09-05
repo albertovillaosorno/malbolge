@@ -218,8 +218,14 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   free-memory snapshot and can therefore differ slightly across routes. The
   smoke admitted roughly 16.5k/6.4k/2.3k/775/261 VMs in the first N10-N14
   chunks, respectively, without allocating the 100,000-request planning batch.
-  Those dirty-tree capacity values are not retained; a clean-commit resource run
-  remains open.
+  A clean RTX 4060 matrix under
+  <!-- jig-ignore-next-line: canonical evidence path is indivisible -->
+`benchmarks/accelerator/evidence/2026-09-04-profile-width-crazy-geometry-resources-rtx4060/`
+  retains all 15 rows from commit `f325d3ee`. Its first chunks are
+  16,360/16,360/16,360 at N10, 6,396/6,400/6,406 at N11,
+  2,263/2,257/2,265 at N12, 769/769/769 at N13, and 258/257/257 at N14 in
+  tritwise/native/padded order. Each row keeps the measured free-memory snapshot
+  that explains small route-to-route capacity differences.
 
   The fanout is therefore structural evidence for that benchmark route, not an
   observed cache counter from the product kernel. The hermetic CUDA bundle

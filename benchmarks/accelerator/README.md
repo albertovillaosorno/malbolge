@@ -194,7 +194,10 @@ The arithmetic geometry changes kernel code and constant data only; it must not
 change the per-VM buffer footprint. Live planner capacity can still differ by a
 few items across routes because each separately loaded module observes its own
 current free-memory snapshot. This diagnostic records that variation rather than
-claiming identical capacity from nonidentical resource snapshots.
+claiming identical capacity from nonidentical resource snapshots. Retained RTX
+4060 evidence is under
+<!-- jig-ignore-next-line: canonical evidence path is indivisible -->
+`benchmarks/accelerator/evidence/2026-09-04-profile-width-crazy-geometry-resources-rtx4060/`.
 
 Run with:
 
