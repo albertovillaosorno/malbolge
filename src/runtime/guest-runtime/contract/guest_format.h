@@ -73,6 +73,9 @@ malbolge_guest_format_signed_decimal(MalbolgeGuestFormatSink *sink,
                                      int64_t value,
                                      const MalbolgeGuestIntegerFormat *format);
 MalbolgeGuestRuntimeStatus
+malbolge_guest_format_bytes(MalbolgeGuestFormatSink *sink, const char *value,
+                            uint32_t length, uint32_t width, uint32_t flags);
+MalbolgeGuestRuntimeStatus
 malbolge_guest_format_string(MalbolgeGuestFormatSink *sink, const char *value,
                              uint32_t width, uint32_t precision,
                              uint32_t flags);

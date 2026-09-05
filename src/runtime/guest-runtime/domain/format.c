@@ -425,6 +425,16 @@ emit_padded_bytes(MalbolgeGuestFormatSink *sink, const char *value,
 }
 
 MalbolgeGuestRuntimeStatus
+malbolge_guest_format_bytes(MalbolgeGuestFormatSink *sink, const char *value,
+                            uint32_t length, uint32_t width, uint32_t flags) {
+  if ((value == NULL && length != UINT32_C(0)) ||
+      (flags & ~MALBOLGE_GUEST_FORMAT_LEFT) != UINT32_C(0)) {
+    return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+  }
+  return emit_padded_bytes(sink, value, length, width, flags);
+}
+
+MalbolgeGuestRuntimeStatus
 malbolge_guest_format_string(MalbolgeGuestFormatSink *sink, const char *value,
                              uint32_t width, uint32_t precision,
                              uint32_t flags) {
@@ -443,7 +453,7 @@ malbolge_guest_format_string(MalbolgeGuestFormatSink *sink, const char *value,
     }
     ++length;
   }
-  return emit_padded_bytes(sink, value, length, width, flags);
+  return malbolge_guest_format_bytes(sink, value, length, width, flags);
 }
 
 MalbolgeGuestRuntimeStatus

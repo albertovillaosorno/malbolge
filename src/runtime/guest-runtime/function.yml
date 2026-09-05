@@ -123,6 +123,17 @@ parts:
     language: c
     responsibility: >-
       Execute promotion-aware integer, character, pointer, and percent output.
+  - id: part-0018
+    path: contract/guest_format_memory.h
+    kind: contract
+    language: c
+    responsibility: Define bounded guest-object formatting memory semantics.
+  - id: part-0019
+    path: domain/format_memory.c
+    kind: domain
+    language: c
+    responsibility: >-
+      Execute narrow string reads and count stores in guest memory.
 projects: []
 tests: []
 graph:

@@ -88,7 +88,12 @@
     "format_parser_dynamic_fields": "width-and-precision-asterisk-preserved",
     "format_parser_specific_width": "wN-and-wfN-positive-u32-no-leading-zero",
     "format_parser_semantic_validation": "c23-directive-admission-implemented",
-    "format_specific_width_supported_bits": [8, 16, 32, 64],
+    "format_specific_width_supported_bits": [
+      8,
+      16,
+      32,
+      64
+    ],
     "variadic_decoder": "canonical-promoted-block-cursor-implemented",
     "variadic_cursor_address": "decoded-object-pointer-zero-based-offset",
     "variadic_cursor_maximum_byte_offset": 4294967294,
@@ -114,6 +119,12 @@
       "snprintf",
       "vsnprintf"
     ],
-    "public_routines_available": false
+    "public_routines_available": false,
+    "guest_memory_view": "caller-proven-live-object-bounded-v1",
+    "guest_memory_maximum_byte_offset": 4294967294,
+    "memory_conversion_execution": "narrow-s-and-integer-n-implemented",
+    "memory_count_encoding": "little-endian-signed-abi-width",
+    "wide_string_execution": "not-implemented",
+    "guest_memory_pointer_encoding": "logical-byte-offset-plus-one"
   }
 }

@@ -130,22 +130,36 @@ relationships and limits guest `wN`/`wfN` support to 8, 16, 32, and 64 bits.
 
 The canonical promoted-block vararg cursor and transactional argument resolver
 consume dynamic width/precision plus the main promoted value without partial
-cursor advancement. A scalar executor now completes `d/i/u/o/x/X/b/B/c/p/%`
+cursor advancement. A scalar executor completes `d/i/u/o/x/X/b/B/c/p/%`
 through the typed kernel, including post-promotion `hh`/`h`/`wN` narrowing by
 explicit bits. C permits `%p` output to be implementation-defined, so the guest
 contract fixes null as `0` and non-null object pointers as lowercase `0x` plus
-the canonical 32-bit guest pointer encoding. No host address is exposed. `%lc`
-fails closed because version one defines `wchar_t` but has no `wint_t`
+the canonical 32-bit guest pointer encoding. No host address is exposed.
 
-authority. `%s` and `%n` remain separate because they require guest-memory
-dereference/write policy.
+`%lc` fails closed because version one defines `wchar_t` but has no `wint_t`
+authority.
+
+`guest_format_memory.h` and `format_memory.c` add the separate guest-memory
+execution boundary required by narrow `%s` and integer `%n`. One caller-proven
+live object supplies backing bytes, an extent, and its encoded object-pointer
+base. Every supplied pointer is decoded by the ABI's logical-byte-offset-plus-
+one rule and must remain inside that object. Count stores additionally require
+the destination type's natural alignment and complete byte extent.
+
+Narrow `%s` scans only within the proven object and may stop at precision before
+a null byte. Without that precision stop, a missing in-object terminator fails
+before sink publication. `%n` first proves the current would-have-written count
+fits the signed destination selected by the admitted integer length modifier.
+It then writes canonical little-endian bytes without changing the sink count.
+
+Invalid, null, one-past, misaligned, or overflowing accesses leave the owned
+state unchanged. Wide `%ls` remains fail-closed and no host pointer is exposed.
 
 The C23 `snprintf`/`vsnprintf` contract still requires full formatted-output
 semantics, including the same would-have-written result under truncation. These
 formatting layers are implementation substrate only; public routines remain
 contracted-unavailable until compiler lowering bridges source `va_list` state
-into the canonical promoted-block cursor, `%s`/`%n` guest-memory execution is
-defined, and floating formatting is complete.
+into the canonical promoted-block cursor and floating formatting is complete.
 
 Independent C vectors lock decimal/hex/octal/binary integer output,
 INT64_MIN, alternate prefixes, precision-versus-zero padding, left/right width,
@@ -153,14 +167,19 @@ string precision, character fields, truncation, null-capacity behavior,
 count-overflow rejection, and corrupted-sink rejection. Parser vectors cover
 literal/conversion streaming, `%b`/`%B`, dynamic fields, classic and specific-
 width modifiers, decimal-overflow rejection, malformed directives, and error
-non-publication. Vararg/resolution vectors cover natural guest alignment,
-32/64/128-bit promoted values, negative dynamic fields, rollback on late
-failure, promotion-aware scalar narrowing, and exact guest-pointer `%p` text.
-Windows i686/x64/ARM64 syntax
-checks, native execution, and wasm32 symbol inspection keep the formatting
-layers independent of host formatting. The typed vectors also pass pinned
+non-publication.
 
-ASan/UBSan and path-sensitive Clang analysis.
+Vararg/resolution vectors cover natural guest alignment, 32/64/128-bit promoted
+values, negative dynamic fields, rollback on late failure, promotion-aware
+scalar narrowing, and exact guest-pointer `%p` text. Guest-memory vectors cover
+bounded precision without a terminator, required termination, logical-pointer
+range, `%n` width/alignment, little-endian stores, count representability, and
+rejection atomicity.
+
+Windows i686/x64/ARM64 syntax checks, native execution, and wasm32 symbol
+inspection keep the formatting layers independent of host formatting. The typed
+vectors also pass pinned ASan/UBSan and path-sensitive Clang analysis where
+those host assets are available.
 
 ### Exact binary64 math
 

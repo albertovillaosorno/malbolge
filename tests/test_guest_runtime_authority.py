@@ -90,6 +90,11 @@ FORMAT_WIDE_CHARACTER = "wint-t-not-defined-v1-fail-closed"
 FORMAT_POINTER_EXECUTION = "p-object-pointer-encoding-hex-implemented"
 FORMAT_POINTER_NULL = "0"
 FORMAT_POINTER_NONNULL = "0x-lowercase-guest-encoding"
+FORMAT_MEMORY_VIEW = "caller-proven-live-object-bounded-v1"
+FORMAT_MEMORY_POINTER_ENCODING = "logical-byte-offset-plus-one"
+FORMAT_MEMORY_MAX_OFFSET = 0xFFFFFFFE
+FORMAT_MEMORY_EXECUTION = "narrow-s-and-integer-n-implemented"
+FORMAT_MEMORY_COUNT_ENCODING = "little-endian-signed-abi-width"
 FORMAT_NOT_IMPLEMENTED = "not-implemented"
 FORMAT_BASES = [2, 8, 10, 16]
 FORMAT_PUBLIC_ROUTINES = ["snprintf", "vsnprintf"]
@@ -231,18 +236,7 @@ def test_runtime_contract_is_closed_and_matches_c_projection() -> None:
     assert heap_offsets() == expected_offsets
 
 
-def _assert_pointer_formatting(formatting: dict[str, object]) -> None:
-    assert formatting["pointer_null_format"] == FORMAT_POINTER_NULL
-    assert formatting["pointer_nonnull_format"] == FORMAT_POINTER_NONNULL
-
-
-def test_formatting_kernel_stays_private_and_gated() -> None:
-    """Keep typed formatting progress below the complete public C contract."""
-    contract = load_object(RUNTIME_CONTRACT)
-    formatting = cast("dict[str, object]", contract["formatting_kernel"])
-    assert formatting["visibility"] == FORMAT_KERNEL_VISIBILITY
-    assert formatting["integer_bases"] == FORMAT_BASES
-    assert formatting["precision"] == FORMAT_PRECISION_POLICY
+def _assert_parser_formatting(formatting: dict[str, object]) -> None:
     assert formatting["format_parser"] == FORMAT_PARSER
     assert formatting["format_parser_binary"] == FORMAT_PARSER_BINARY
     assert (
@@ -261,6 +255,9 @@ def test_formatting_kernel_stays_private_and_gated() -> None:
         formatting["format_specific_width_supported_bits"]
         == FORMAT_SPECIFIC_WIDTH_BITS
     )
+
+
+def _assert_variadic_formatting(formatting: dict[str, object]) -> None:
     assert formatting["variadic_decoder"] == FORMAT_VARIADIC_DECODER
     assert formatting["variadic_cursor_address"] == FORMAT_VARIADIC_ADDRESS
     assert (
@@ -272,12 +269,44 @@ def test_formatting_kernel_stays_private_and_gated() -> None:
     assert (
         formatting["format_argument_resolution"] == FORMAT_ARGUMENT_RESOLUTION
     )
-    assert formatting["scalar_conversion_execution"] == FORMAT_SCALAR_EXECUTION
-    assert formatting["wide_character_argument"] == FORMAT_WIDE_CHARACTER
+
+
+def _assert_pointer_formatting(formatting: dict[str, object]) -> None:
     assert (
         formatting["pointer_conversion_execution"] == FORMAT_POINTER_EXECUTION
     )
+    assert formatting["pointer_null_format"] == FORMAT_POINTER_NULL
+    assert formatting["pointer_nonnull_format"] == FORMAT_POINTER_NONNULL
+
+
+def _assert_guest_memory_formatting(formatting: dict[str, object]) -> None:
+    assert formatting["guest_memory_view"] == FORMAT_MEMORY_VIEW
+    assert (
+        formatting["guest_memory_pointer_encoding"]
+        == FORMAT_MEMORY_POINTER_ENCODING
+    )
+    assert (
+        formatting["guest_memory_maximum_byte_offset"]
+        == FORMAT_MEMORY_MAX_OFFSET
+    )
+    assert formatting["memory_conversion_execution"] == FORMAT_MEMORY_EXECUTION
+    assert formatting["memory_count_encoding"] == FORMAT_MEMORY_COUNT_ENCODING
+    assert formatting["wide_string_execution"] == FORMAT_NOT_IMPLEMENTED
+
+
+def test_formatting_kernel_stays_private_and_gated() -> None:
+    """Keep typed formatting progress below the complete public C contract."""
+    contract = load_object(RUNTIME_CONTRACT)
+    formatting = cast("dict[str, object]", contract["formatting_kernel"])
+    assert formatting["visibility"] == FORMAT_KERNEL_VISIBILITY
+    assert formatting["integer_bases"] == FORMAT_BASES
+    assert formatting["precision"] == FORMAT_PRECISION_POLICY
+    _assert_parser_formatting(formatting)
+    _assert_variadic_formatting(formatting)
+    assert formatting["scalar_conversion_execution"] == FORMAT_SCALAR_EXECUTION
+    assert formatting["wide_character_argument"] == FORMAT_WIDE_CHARACTER
     _assert_pointer_formatting(formatting)
+    _assert_guest_memory_formatting(formatting)
     assert formatting["floating_formatting"] == FORMAT_NOT_IMPLEMENTED
     assert formatting["public_routines"] == FORMAT_PUBLIC_ROUTINES
     assert formatting["public_routines_available"] is False
