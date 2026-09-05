@@ -57,15 +57,22 @@ int main(void) {
     return 1;
   }
   if (!expect(malbolge_guest_math_unary_special(
-                  MALBOLGE_GUEST_MATH_SIN, UINT64_C(0x3e40000000000000)),
+                  MALBOLGE_GUEST_MATH_SIN, UINT64_C(0x3e50000000000000)),
               MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
-              UINT64_C(0x3e40000000000000)) ||
+              UINT64_C(0x3e50000000000000)) ||
+      !expect(malbolge_guest_math_unary_special(
+                  MALBOLGE_GUEST_MATH_SIN, UINT64_C(0xbe50000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0xbe50000000000000)) ||
       !expect(malbolge_guest_math_unary_special(
                   MALBOLGE_GUEST_MATH_COS, UINT64_C(0xbe40000000000000)),
               MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
               UINT64_C(0x3ff0000000000000)) ||
       !expect(malbolge_guest_math_unary_special(
-                  MALBOLGE_GUEST_MATH_SIN, UINT64_C(0x3e40000000000001)),
+                  MALBOLGE_GUEST_MATH_SIN, UINT64_C(0x3e50000000000001)),
+              MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED, UINT64_C(0)) ||
+      !expect(malbolge_guest_math_unary_special(
+                  MALBOLGE_GUEST_MATH_COS, UINT64_C(0x3e40000000000001)),
               MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED, UINT64_C(0))) {
     return 2;
   }

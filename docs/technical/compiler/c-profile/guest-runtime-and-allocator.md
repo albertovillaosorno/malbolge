@@ -276,8 +276,11 @@ compiler helper beyond the same target float/stack markers already allowed for
 ordinary guest math.
 
 The internal transcendental front end resolves only cases whose rounded result
-is proved without a numerical kernel. For `|x| <= 2^-27`, the Taylor bounds
-`|x - sin(x)| < |x|^3 / 6` and `0 <= 1 - cos(x) <= |x|^2 / 2` fit strictly
+is proved without a numerical kernel. The `sin` interval is `|x| <= 2^-26`,
+while the stricter `cos` interval is `|x| <= 2^-27`.
+
+The Taylor bounds `|x - sin(x)| < |x|^3 / 6` and
+`0 <= 1 - cos(x) <= |x|^2 / 2` fit strictly
 inside the relevant binary64 nearest-even midpoints, including the subnormal
 spacing case. The front end therefore returns the input bits for `sin` and
 binary64 one for `cos` in that conservative interval. It also owns the complete

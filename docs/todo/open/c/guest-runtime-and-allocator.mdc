@@ -206,8 +206,9 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
 - Implemented transcendental edge-preclassification evidence:
   an internal raw-bit boundary resolves canonical NaN/infinity behavior, the
   complete `atan2` zero/infinity matrix, and conservative small-angle
-  `sin`/`cos`. For `|x| <= 2^-27`, exact rational checks prove the Taylor error
-  lies strictly inside the nearest-even binary64 midpoint, so `sin(x)` rounds to
+  `sin`/`cos`. The `sin` interval is `|x| <= 2^-26`; the stricter `cos` interval
+  is `|x| <= 2^-27`. Exact rational checks prove the Taylor error lies strictly
+  inside the nearest-even binary64 midpoint, so `sin(x)` rounds to
   `x` and `cos(x)` to one without host floating arithmetic. The `atan2` matrix
   uses reviewed raw binary64 `pi/4`, `pi/2`, `3*pi/4`, and `pi` constants and
   resolves finite equal-magnitude pairs by quadrant at any exponent.

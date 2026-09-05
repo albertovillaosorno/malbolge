@@ -41,7 +41,8 @@
 #define BINARY64_FRACTION UINT64_C(0x000fffffffffffff)
 #define BINARY64_CANONICAL_NAN UINT64_C(0x7ff8000000000000)
 #define BINARY64_ONE UINT64_C(0x3ff0000000000000)
-#define BINARY64_SMALL_ANGLE_MAX UINT64_C(0x3e40000000000000)
+#define BINARY64_SIN_SMALL_ANGLE_MAX UINT64_C(0x3e50000000000000)
+#define BINARY64_COS_SMALL_ANGLE_MAX UINT64_C(0x3e40000000000000)
 #define BINARY64_PI_OVER_FOUR UINT64_C(0x3fe921fb54442d18)
 #define BINARY64_PI_OVER_TWO UINT64_C(0x3ff921fb54442d18)
 #define BINARY64_PI UINT64_C(0x400921fb54442d18)
@@ -93,10 +94,12 @@ MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
   if (is_nan(bits) || is_infinity(bits)) {
     return resolved(BINARY64_CANONICAL_NAN);
   }
-  if ((bits & ~BINARY64_SIGN) <= BINARY64_SMALL_ANGLE_MAX) {
-    if (operation == MALBOLGE_GUEST_MATH_SIN) {
-      return resolved(bits);
-    }
+  if (operation == MALBOLGE_GUEST_MATH_SIN &&
+      (bits & ~BINARY64_SIGN) <= BINARY64_SIN_SMALL_ANGLE_MAX) {
+    return resolved(bits);
+  }
+  if (operation == MALBOLGE_GUEST_MATH_COS &&
+      (bits & ~BINARY64_SIGN) <= BINARY64_COS_SMALL_ANGLE_MAX) {
     return resolved(BINARY64_ONE);
   }
   return kernel_required();

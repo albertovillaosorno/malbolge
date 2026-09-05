@@ -21,7 +21,7 @@
 # - Merge-When:
 #   - Complete transcendental proof evidence subsumes these exact edge checks.
 # - Summary:
-#   - Proves the binary64 2^-27 sin/cos exact-result preclassification margin.
+#   - Proves conservative binary64 sin/cos exact-result preclassification.
 # - Description:
 #   - Uses rational Taylor bounds and binary64 midpoint spacing only.
 # - Usage:
@@ -37,14 +37,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src/runtime/guest-c-library/domain/math_transcendental_bits.c"
-SMALL_ANGLE_MAX_BITS = 0x3E40000000000000
-SMALL_ANGLE = Fraction(1, 1 << 27)
-SIN_TOWARD_ZERO_MIDPOINT = SMALL_ANGLE / (1 << 54)
+SIN_SMALL_ANGLE_MAX_BITS = 0x3E50000000000000
+COS_SMALL_ANGLE_MAX_BITS = 0x3E40000000000000
+SIN_SMALL_ANGLE = Fraction(1, 1 << 26)
+COS_SMALL_ANGLE = Fraction(1, 1 << 27)
+SIN_TOWARD_ZERO_MIDPOINT = SIN_SMALL_ANGLE / (1 << 54)
 COS_ONE_MIDPOINT = Fraction(1, 1 << 54)
 MAX_SUBNORMAL_MAGNITUDE = Fraction((1 << 52) - 1, 1 << 1074)
 SUBNORMAL_MIDPOINT = Fraction(1, 1 << 1075)
 EXPECTED_CONSTANTS = {
-    "BINARY64_SMALL_ANGLE_MAX": SMALL_ANGLE_MAX_BITS,
+    "BINARY64_SIN_SMALL_ANGLE_MAX": SIN_SMALL_ANGLE_MAX_BITS,
+    "BINARY64_COS_SMALL_ANGLE_MAX": COS_SMALL_ANGLE_MAX_BITS,
     "BINARY64_PI_OVER_FOUR": 0x3FE921FB54442D18,
     "BINARY64_PI_OVER_TWO": 0x3FF921FB54442D18,
     "BINARY64_PI": 0x400921FB54442D18,
@@ -54,8 +57,8 @@ EXPECTED_CONSTANTS = {
 
 def test_small_angle_taylor_bounds_fit_binary64_midpoints() -> None:
     """Keep the conservative sin/cos exact-result threshold formally inside."""
-    sin_error_upper = SMALL_ANGLE**3 / 6
-    cos_error_upper = SMALL_ANGLE**2 / 2
+    sin_error_upper = SIN_SMALL_ANGLE**3 / 6
+    cos_error_upper = COS_SMALL_ANGLE**2 / 2
 
     assert sin_error_upper < SIN_TOWARD_ZERO_MIDPOINT
     assert cos_error_upper < COS_ONE_MIDPOINT
