@@ -49,6 +49,7 @@ HIDDEN_BIT = 1 << 52
 SIGNIFICAND_BITS = 53
 EXPONENT_MASK = 0x7FF
 MIN_NORMAL_EXPONENT = -1022
+ATAN_MARGIN_MAX_EXPONENT = -28
 ALL_BITS = (1 << 64) - 1
 VECTOR_COUNT = 512
 LCG_MULTIPLIER = 6364136223846793005
@@ -56,6 +57,10 @@ LCG_INCREMENT = 1442695040888963407
 LCG_SEED = 0x4154414E325F5631
 SMALL_RATIO_LCG_SEED = 0x4154414E325F5352
 SMALL_RATIO_VECTOR_COUNT = 512
+EXPECTED_SMALL_RATIO_RESOLVED = 510
+EXPECTED_SMALL_RATIO_UNRESOLVED = 2
+RESOLVED_STATUS = 1
+KERNEL_REQUIRED_STATUS = 2
 ATAN_IDENTITY_MAX_BITS = 0x3E40000000000000
 ATAN_IDENTITY_MAX = Fraction(1, 1 << 27)
 ONE_BITS = 0x3FF0000000000000
@@ -218,13 +223,24 @@ def _small_ratio_pairs() -> tuple[tuple[int, int], ...]:
     return tuple(pairs)
 
 
+def _small_ratio_rounding_margin_safe(ratio: Fraction) -> bool:
+    exponent = _floor_log2(ratio)
+    if exponent < MIN_NORMAL_EXPONENT or exponent > ATAN_MARGIN_MAX_EXPONENT:
+        return False
+    ulp = Fraction(1, 1 << (52 - exponent))
+    scaled = ratio / ulp
+    fraction = scaled - (scaled.numerator // scaled.denominator)
+    return fraction < Fraction(1, 2) or fraction >= Fraction(2, 3)
+
+
 def _expected_small_ratio_special(y_bits: int, x_bits: int) -> tuple[int, int]:
     ratio = _raw_fraction(y_bits) / _raw_fraction(x_bits)
     rounded = _nearest_binary64_bits(ratio)
     exactly_binary64 = _raw_fraction(rounded) == ratio
-    if exactly_binary64 and ratio <= ATAN_IDENTITY_MAX:
-        return 1, rounded | (y_bits & SIGN_BIT)
-    return 2, 0
+    safe = exactly_binary64 or _small_ratio_rounding_margin_safe(ratio)
+    if ratio <= ATAN_IDENTITY_MAX and safe:
+        return RESOLVED_STATUS, rounded | (y_bits & SIGN_BIT)
+    return KERNEL_REQUIRED_STATUS, 0
 
 
 def _small_ratio_row(y_bits: int, x_bits: int) -> str:
@@ -378,3 +394,16 @@ def test_atan2_small_ratio_classifier_matches_exact_fraction_gate(
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     executed = _run([str(executable)], tmp_path)
     assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_small_ratio_policy_keeps_ambiguous_rounding_fail_closed() -> None:
+    """Keep the bounded margin policy at 510 resolved and two unresolved."""
+    statuses = [
+        _expected_small_ratio_special(y_bits, x_bits)[0]
+        for y_bits, x_bits in _small_ratio_pairs()
+    ]
+    assert statuses.count(RESOLVED_STATUS) == EXPECTED_SMALL_RATIO_RESOLVED
+    assert (
+        statuses.count(KERNEL_REQUIRED_STATUS)
+        == EXPECTED_SMALL_RATIO_UNRESOLVED
+    )

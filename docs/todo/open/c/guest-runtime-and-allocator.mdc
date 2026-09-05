@@ -218,9 +218,13 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   binary64.
 
   The alternating-series bound `r - atan(r) < r^3 / 3` then fits inside the
-  lower rounding midpoint, so the signed ratio bits are the correctly rounded
-  result. A 512-pair `Fraction` differential locks exact-versus-nondyadic
-  admission plus threshold and sign behavior. Everything else remains
+  lower rounding midpoint for exact binary64 ratios. For non-dyadic normal
+  ratios below the threshold, the same bound is `< 1/6 ulp`; the exact quotient
+  remainder admits only values below one-half ulp or at least two-thirds ulp.
+  This resolves 510/512 deterministic `Fraction` vectors while preserving two
+  ambiguous cases as `kernel-required`.
+
+  Subnormal non-dyadic ratios and all other unproved geometry remain
   `kernel-required`; the tracked no-libm harness and proof tests do not promote
   public availability.
 - Implemented exact `atan2` finite-ratio normalization:

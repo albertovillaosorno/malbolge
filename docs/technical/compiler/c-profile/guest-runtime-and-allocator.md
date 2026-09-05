@@ -295,10 +295,17 @@ a second conservative identity handles exact binary64 ratios
 `0 <= r - atan(r) < r^3 / 3` stays inside the lower binary64 midpoint, so the
 correctly rounded result is exactly `r` with the sign of `y`.
 
-That identity is admitted only when the exact rational ratio is itself a
-binary64 value. Non-dyadic ratios, `r > 2^-27`, swapped magnitudes, and negative
-`x` remain unresolved rather than borrowing the rounded quotient as an
-approximation.
+Exact binary64 ratios are admitted directly. For non-dyadic normal ratios
+strictly below `2^-27`, the open top binade gives
+`r^3 / 3 < ulp / 6`. The exact quotient remainder is therefore also admitted
+when it lies below one-half ulp or at least two-thirds ulp: subtracting the
+bounded `atan` error cannot cross the lower rounding midpoint. The rule uses
+only the 53-bit denominator and remainder; it does not treat the rounded ratio
+as an accuracy oracle.
+
+Subnormal non-dyadic ratios, the narrow ambiguous remainder interval,
+`r > 2^-27`, swapped magnitudes, and negative `x` remain unresolved. This keeps
+failure closed while range-reduction and numerical-kernel evidence is absent.
 
 Every ordinary finite case outside those proofs still reports
 `kernel-required`. For finite nonzero `atan2(y, x)` inputs, a second exact stage

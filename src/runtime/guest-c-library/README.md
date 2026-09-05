@@ -35,8 +35,9 @@ selected-profile input/output. Formatting remains unavailable.
 Transcendental math is also still unavailable, but an internal raw-bit front
 end now resolves
 proved small-angle `sin`/`cos` results plus the complete `atan2` zero/infinity
-matrix. Exact right-half-plane binary64 ratios through `2^-27` also resolve to
-their signed ratio bits under a proved `atan` alternating-series bound. Other
+matrix. Right-half-plane ratios through `2^-27` also resolve when exact
+binary64 representation or an exact quotient-remainder margin proves the
+`atan` alternating-series error cannot cross a rounding midpoint. Other
 finite nonzero `atan2` inputs are reduced exactly to a normalized rational in
 `[0, 1]` with explicit swap and sign geometry. A self-contained
 integer long-division helper rounds that rational to nearest-even binary64 when

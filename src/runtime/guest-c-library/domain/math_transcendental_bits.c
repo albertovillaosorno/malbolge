@@ -332,6 +332,43 @@ int malbolge_guest_math_ratio_nearest_binary64(
   return ratio_nearest_binary64_internal(input, output_bits, &exact);
 }
 
+static int ratio_at_most_atan_identity(
+    const MalbolgeGuestMathAtan2KernelInput *input) {
+  if (input->exponent_delta < INT32_C(-27)) {
+    return 1;
+  }
+  if (input->exponent_delta > INT32_C(-27)) {
+    return 0;
+  }
+  return input->numerator_significand <= input->denominator_significand;
+}
+
+static int normal_ratio_rounding_margin_safe(
+    const MalbolgeGuestMathAtan2KernelInput *input) {
+  uint64_t numerator = input->numerator_significand;
+  const uint64_t denominator = input->denominator_significand;
+  uint64_t remainder = UINT64_C(0);
+  int32_t exponent = input->exponent_delta;
+  uint32_t remaining = BINARY64_EXPONENT_SHIFT;
+
+  if (numerator >= denominator) {
+    remainder = numerator - denominator;
+  } else {
+    numerator <<= UINT32_C(1);
+    remainder = numerator - denominator;
+    --exponent;
+  }
+  if (exponent < INT32_C(-1022) || exponent > INT32_C(-28)) {
+    return 0;
+  }
+  while (remaining != UINT32_C(0)) {
+    --remaining;
+    (void)ratio_fraction_bit(denominator, &remainder);
+  }
+  return (remainder << UINT32_C(1)) < denominator ||
+         (remainder * UINT64_C(3)) >= (denominator << UINT32_C(1));
+}
+
 static MalbolgeGuestMathSpecialResult small_ratio_atan2_special(
     uint64_t y_bits, uint64_t x_bits) {
   MalbolgeGuestMathAtan2KernelInput input;
@@ -340,9 +377,10 @@ static MalbolgeGuestMathSpecialResult small_ratio_atan2_special(
 
   if ((x_bits & BINARY64_SIGN) != UINT64_C(0) ||
       !malbolge_guest_math_atan2_kernel_input(y_bits, x_bits, &input) ||
-      input.swapped != UINT32_C(0) ||
+      input.swapped != UINT32_C(0) || !ratio_at_most_atan_identity(&input) ||
       !ratio_nearest_binary64_internal(&input, &ratio_bits, &exact) ||
-      exact == UINT32_C(0) || ratio_bits > BINARY64_ATAN_IDENTITY_MAX) {
+      ratio_bits > BINARY64_ATAN_IDENTITY_MAX ||
+      (exact == UINT32_C(0) && !normal_ratio_rounding_margin_safe(&input))) {
     return kernel_required();
   }
   return resolved(with_sign(ratio_bits, y_bits));

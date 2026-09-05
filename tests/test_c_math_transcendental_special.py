@@ -45,6 +45,7 @@ ATAN_IDENTITY_MAX = Fraction(1, 1 << 27)
 SIN_TOWARD_ZERO_MIDPOINT = SIN_SMALL_ANGLE / (1 << 54)
 COS_ONE_MIDPOINT = Fraction(1, 1 << 54)
 ATAN_TOWARD_ZERO_MIDPOINT = ATAN_IDENTITY_MAX / (1 << 54)
+ATAN_TOP_OPEN_BINADE_ULP = Fraction(1, 1 << 80)
 MAX_SUBNORMAL_MAGNITUDE = Fraction((1 << 52) - 1, 1 << 1074)
 SUBNORMAL_MIDPOINT = Fraction(1, 1 << 1075)
 EXPECTED_CONSTANTS = {
@@ -66,6 +67,11 @@ def test_small_angle_taylor_bounds_fit_binary64_midpoints() -> None:
     assert sin_error_upper < SIN_TOWARD_ZERO_MIDPOINT
     assert cos_error_upper < COS_ONE_MIDPOINT
     assert ATAN_IDENTITY_MAX**3 / 3 < ATAN_TOWARD_ZERO_MIDPOINT
+    scaled_error = 2 * ATAN_IDENTITY_MAX**3
+    assert (scaled_error.numerator, scaled_error.denominator) == (
+        ATAN_TOP_OPEN_BINADE_ULP.numerator,
+        ATAN_TOP_OPEN_BINADE_ULP.denominator,
+    )
     assert MAX_SUBNORMAL_MAGNITUDE**3 / 6 < SUBNORMAL_MIDPOINT
     assert MAX_SUBNORMAL_MAGNITUDE**3 / 3 < SUBNORMAL_MIDPOINT
 
