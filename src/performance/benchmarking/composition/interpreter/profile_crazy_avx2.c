@@ -186,6 +186,7 @@ static void avx2_padded_batch(uint32_t semantic_modulus)
 {
     const __m256i chunk_multiplier = _mm256_set1_epi32((int)CHUNK_VALUES);
     const __m256i high_multiplier = _mm256_set1_epi32((int)CHUNK_TABLE_ENTRIES);
+    const bool two_chunks = semantic_modulus == CHUNK_TABLE_ENTRIES;
     uint32_t index = 0U;
     while ((index + SIMD_LANES) <= CORPUS_SIZE) {
         int32_t low_indices[SIMD_LANES];
@@ -201,9 +202,12 @@ static void avx2_padded_batch(uint32_t semantic_modulus)
             middle_indices[lane] = (int32_t)(
                 (((data / CHUNK_VALUES) % CHUNK_VALUES) * CHUNK_VALUES)
                 + ((accumulator / CHUNK_VALUES) % CHUNK_VALUES));
-            high_indices[lane] = (int32_t)(
-                (((data / CHUNK_TABLE_ENTRIES) % CHUNK_VALUES) * CHUNK_VALUES)
-                + ((accumulator / CHUNK_TABLE_ENTRIES) % CHUNK_VALUES));
+            if (!two_chunks) {
+                high_indices[lane] = (int32_t)(
+                    (((data / CHUNK_TABLE_ENTRIES) % CHUNK_VALUES)
+                        * CHUNK_VALUES)
+                    + ((accumulator / CHUNK_TABLE_ENTRIES) % CHUNK_VALUES));
+            }
             lane++;
         }
         const __m256i low_index =
@@ -216,7 +220,7 @@ static void avx2_padded_batch(uint32_t semantic_modulus)
             (const int *)chunk_table, middle_index, (int)sizeof(uint32_t));
         __m256i combined = _mm256_add_epi32(
             low, _mm256_mullo_epi32(middle, chunk_multiplier));
-        if (semantic_modulus != CHUNK_TABLE_ENTRIES) {
+        if (!two_chunks) {
             const __m256i high_index =
                 _mm256_loadu_si256((const __m256i *)high_indices);
             const __m256i high = _mm256_i32gather_epi32(
@@ -225,10 +229,12 @@ static void avx2_padded_batch(uint32_t semantic_modulus)
                 combined, _mm256_mullo_epi32(high, high_multiplier));
         }
         _mm256_storeu_si256((__m256i *)&avx2_output[index], combined);
-        lane = 0U;
-        while (lane < SIMD_LANES) {
-            avx2_output[index + lane] %= semantic_modulus;
-            lane++;
+        if (!two_chunks) {
+            lane = 0U;
+            while (lane < SIMD_LANES) {
+                avx2_output[index + lane] %= semantic_modulus;
+                lane++;
+            }
         }
         index += SIMD_LANES;
     }
