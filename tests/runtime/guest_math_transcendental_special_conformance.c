@@ -57,48 +57,94 @@ int main(void) {
     return 1;
   }
   if (!expect(malbolge_guest_math_unary_special(
+                  MALBOLGE_GUEST_MATH_SIN, UINT64_C(0x3e40000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0x3e40000000000000)) ||
+      !expect(malbolge_guest_math_unary_special(
+                  MALBOLGE_GUEST_MATH_COS, UINT64_C(0xbe40000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0x3ff0000000000000)) ||
+      !expect(malbolge_guest_math_unary_special(
+                  MALBOLGE_GUEST_MATH_SIN, UINT64_C(0x3e40000000000001)),
+              MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED, UINT64_C(0))) {
+    return 2;
+  }
+  if (!expect(malbolge_guest_math_unary_special(
                   MALBOLGE_GUEST_MATH_SIN, UINT64_C(0x7ff0000000000000)),
               MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
               UINT64_C(0x7ff8000000000000)) ||
       !expect(malbolge_guest_math_unary_special(
                   MALBOLGE_GUEST_MATH_COS, UINT64_C(0xfff8000000000001)),
               MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
-              UINT64_C(0x7ff8000000000000))) {
-    return 2;
-  }
-  if (!expect(malbolge_guest_math_unary_special(
-                  MALBOLGE_GUEST_MATH_SIN, UINT64_C(0x3ff0000000000000)),
-              MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED, UINT64_C(0)) ||
+              UINT64_C(0x7ff8000000000000)) ||
       !expect(malbolge_guest_math_unary_special(
-                  (MalbolgeGuestMathUnaryOperation)UINT32_C(99),
-                  UINT64_C(0)),
+                  (MalbolgeGuestMathUnaryOperation)UINT32_C(99), UINT64_C(0)),
               MALBOLGE_GUEST_MATH_SPECIAL_INVALID, UINT64_C(0))) {
     return 3;
   }
   if (!expect(malbolge_guest_math_atan2_special(
-                  UINT64_C(0x8000000000000000), UINT64_C(0)),
-              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
-              UINT64_C(0x8000000000000000)) ||
+                  UINT64_C(0), UINT64_C(0x3ff0000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED, UINT64_C(0)) ||
       !expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0x8000000000000000),
+                  UINT64_C(0xbff0000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0xc00921fb54442d18)) ||
+      !expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0), UINT64_C(0x8000000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0x400921fb54442d18))) {
+    return 4;
+  }
+  if (!expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0x3ff0000000000000), UINT64_C(0)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0x3ff921fb54442d18)) ||
+      !expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0xbff0000000000000),
+                  UINT64_C(0x8000000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0xbff921fb54442d18))) {
+    return 5;
+  }
+  if (!expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0x7ff0000000000000),
+                  UINT64_C(0x7ff0000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0x3fe921fb54442d18)) ||
+      !expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0xfff0000000000000),
+                  UINT64_C(0xfff0000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0xc002d97c7f3321d2)) ||
+      !expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0x7ff0000000000000),
+                  UINT64_C(0xbff0000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0x3ff921fb54442d18))) {
+    return 6;
+  }
+  if (!expect(malbolge_guest_math_atan2_special(
                   UINT64_C(0x3ff0000000000000),
                   UINT64_C(0x7ff0000000000000)),
               MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED, UINT64_C(0)) ||
       !expect(malbolge_guest_math_atan2_special(
                   UINT64_C(0xbff0000000000000),
-                  UINT64_C(0x7ff0000000000000)),
+                  UINT64_C(0xfff0000000000000)),
               MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
-              UINT64_C(0x8000000000000000))) {
-    return 4;
+              UINT64_C(0xc00921fb54442d18)) ||
+      !expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0x3ff0000000000000),
+                  UINT64_C(0x3ff0000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED, UINT64_C(0))) {
+    return 7;
   }
   if (!expect(malbolge_guest_math_atan2_special(
-                  UINT64_C(0), UINT64_C(0x8000000000000000)),
-              MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED, UINT64_C(0)) ||
-      !expect(malbolge_guest_math_atan2_special(
                   UINT64_C(0x7ff8000000000001),
                   UINT64_C(0x3ff0000000000000)),
               MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
               UINT64_C(0x7ff8000000000000))) {
-    return 5;
+    return 8;
   }
   return 0;
 }

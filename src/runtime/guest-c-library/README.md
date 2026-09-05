@@ -30,5 +30,9 @@ but remain unavailable in the canonical libc authority until compiler-generated
 startup proves the heap bind before user code. `getchar`/`putchar` wrappers are
 also implemented over stable declaration-only byte intrinsics, but remain
 unavailable until downstream lowering proves those intrinsic identities execute
-selected-profile input/output. Formatting and transcendental math remain
-unavailable.
+selected-profile input/output. Formatting remains unavailable.
+
+Transcendental math is also still unavailable, but an internal raw-bit front
+end now resolves
+proved small-angle `sin`/`cos` results plus the complete `atan2` zero/infinity
+matrix before future range-reduction and numerical kernels.

@@ -23,11 +23,11 @@
 // - Summary:
 //   - Resolves only exact transcendental edge cases before numerical kernels.
 // - Description:
-//   - Canonicalizes NaNs and handles exact zero/infinity outcomes by raw bits.
+//   - Canonicalizes NaNs and resolves proved small-angle/special-case results.
 // - Usage:
 //   - Internal guest-libc substrate; public sin/cos/atan2 remain gated.
 // - Defaults:
-//   - Every unresolved finite case reports kernel-required without an estimate.
+//   - Finite values outside proved exact cases report kernel-required.
 //
 
 //! Internal exact edge-case classifier for future transcendental kernels.

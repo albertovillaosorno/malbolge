@@ -204,12 +204,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   `isqrt` differential, no-CRT execution, and cross-ABI symbol checks prove its
   result bits and lack of host/compiler helper fallback.
 - Implemented transcendental edge-preclassification evidence:
-  an internal raw-bit boundary resolves only exact `sin`/`cos` zero semantics,
-  canonical NaN/infinity handling, and exact zero-result `atan2` cases. Every
-  other finite case returns `kernel-required` without an approximation. A
-  tracked no-libm harness executes these cases while `sin`, `cos`, and `atan2`
-  remain contracted-unavailable. Their correctly-rounded range reduction and
-  numerical kernels are still unproven and remain the lane-8 blocker.
+  an internal raw-bit boundary resolves canonical NaN/infinity behavior, the
+  complete `atan2` zero/infinity matrix, and conservative small-angle
+  `sin`/`cos`. For `|x| <= 2^-27`, exact rational checks prove the Taylor error
+  lies strictly inside the nearest-even binary64 midpoint, so `sin(x)` rounds to
+  `x` and `cos(x)` to one without host floating arithmetic. The `atan2` matrix
+  uses reviewed raw binary64 `pi/4`, `pi/2`, `3*pi/4`, and `pi` constants.
+
+  Everything else remains `kernel-required`; the tracked no-libm harness and
+  proof test do not promote public availability. Correctly-rounded range
+  reduction and numerical kernels remain the lane-8 blocker.
 - Resolved integer/scheduling boundary: version one introduces no separate
   guest helper ABI for ordinary integer arithmetic or scheduling. Integer
   operations are explicit typed-IR semantics consumed by lane 9; the selected

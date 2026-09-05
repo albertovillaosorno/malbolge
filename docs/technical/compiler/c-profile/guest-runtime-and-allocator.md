@@ -273,9 +273,22 @@ A separate 532-pattern differential derives expected `sqrt` bits with Python
 arbitrary-precision `isqrt`, including subnormal and exponent-boundary cases.
 Cross-ABI object inspection proves the implementation adds no callable host or
 compiler helper beyond the same target float/stack markers already allowed for
-ordinary guest math. `sin`, `cos`, and `atan2` remain unavailable until their
-correctly-rounded guest algorithms satisfy the stronger transcendental
-contracts.
+ordinary guest math.
+
+The internal transcendental front end resolves only cases whose rounded result
+is proved without a numerical kernel. For `|x| <= 2^-27`, the Taylor bounds
+`|x - sin(x)| < |x|^3 / 6` and `0 <= 1 - cos(x) <= |x|^2 / 2` fit strictly
+inside the relevant binary64 nearest-even midpoints, including the subnormal
+spacing case. The front end therefore returns the input bits for `sin` and
+binary64 one for `cos` in that conservative interval. It also owns the complete
+`atan2` zero/infinity matrix using reviewed nearest-even binary64 constants for
+`pi/4`, `pi/2`, `3*pi/4`, and `pi`, with sign taken from `y` and canonical NaN
+publication.
+
+Every ordinary finite case outside those proofs still reports
+`kernel-required`. `sin`, `cos`, and `atan2` remain source-unavailable until
+range reduction, numerical approximation, and final correct-rounding evidence
+close the full binary64 domain.
 
 Version one needs no separate guest scheduler or ordinary-integer-helper API:
 integer operations are explicit typed-IR semantics for lane-9 lowering, and the
