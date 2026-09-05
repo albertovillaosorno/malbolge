@@ -146,8 +146,18 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   matrix to N15 without changing runtime profile admission. N15 uses the same
   59,049-pair wrapping-u32 corpus, three complete five-trit lookups, no semantic
   projection, and independent scalar-tritwise validation before timing. Its
-  repeated checksum is 4,726,060,935,024. The v1 N10-N14 identity and retained
-  evidence remain immutable; v2 requires separate retained provenance.
+  repeated checksum is 4,726,060,935,024. The v1 N10-N14 identity and evidence
+  remain immutable.
+
+  A clean v2 secondary Linux run from source commit `76104c08` is retained under
+  `benchmarks/cpu/evidence/2026-09-04-profile-crazy-avx2-v2-linux-x86_64/`.
+  It preserves 270 raw samples. AVX2 beats the corresponding scalar lookup by
+  median at every N10-N15 width and wins all 15 paired samples at each width.
+  At N15 the scalar full-three-chunk median is 11,547,865 ns versus 5,756,478 ns
+  AVX2, a 2.006x ratio.
+
+  This is arithmetic-only evidence and does not admit N15 as a runtime profile
+  or gain product-selection authority.
 - Existing CUDA width evidence measures the same 16,384 crazy-heavy VM steps at
   N10 through N14 on the tritwise kernel, including resident and end-to-end
   timing with full result validation. The resident renderer now also exposes

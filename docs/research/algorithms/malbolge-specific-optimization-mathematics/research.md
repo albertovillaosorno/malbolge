@@ -1024,7 +1024,17 @@ recorded
 host/workload, crazy improved from a 77,456,700 ns scalar median to 7,423,600 ns
 (10.43x), and rotate improved from 15,260,300 ns to 10,141,700 ns (1.50x).
 These timing results support H1 only for the admitted CPU table-factorization
-slice. The self-encryption/rotate-history and exact rotate-period reductions,
+slice.
+
+A separate secondary-host `cpu-profile-crazy-avx2-v2` record now extends the
+arithmetic CRAZY matrix through N15 while keeping runtime profile admission
+unchanged. Its clean N15 boundary uses three complete five-trit chunks and no
+semantic projection; scalar lookup is 11,547,865 ns median versus 5,756,478 ns
+for eight-lane AVX2, with AVX2 winning all 15 paired samples. This supports SIMD
+benefit for that arithmetic microkernel on the recorded Linux host, not product
+route selection or N15 profile admission.
+
+The self-encryption/rotate-history and exact rotate-period reductions,
 crazy preimage count, constructive preimage ranking, exact Gray traversal,
 exact Gray edit optimality, exact preimage-cube neighborhood graph, exact
 coordinate-permutation cube quotient, exact ordered cube-word pair quotient,

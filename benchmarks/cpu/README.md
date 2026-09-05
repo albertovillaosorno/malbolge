@@ -15,5 +15,5 @@ intentionally retained.
 The CRAZY AVX2 study keeps benchmark identities immutable. Version 1 covers the
 retained N10-N14 secondary-host matrix. Version 2 extends the arithmetic-only
 matrix through N15 so the zero-padding-free three-full-chunk boundary can be
-measured without admitting N15 as a runtime profile. Version-2 measurements
-require their own clean source pin and retained evidence directory.
+measured without admitting N15 as a runtime profile. The retained v2
+secondary-host run has its own clean source pin and evidence directory.
