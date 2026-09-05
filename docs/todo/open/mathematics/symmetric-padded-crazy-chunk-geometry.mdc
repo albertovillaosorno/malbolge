@@ -190,8 +190,19 @@ three-full-chunk instance of the same model, not a separate mathematical case.
 
   An initial dirty-tree smoke kept ordinary tritwise below lookup at the median
   but left the projected route with multi-millisecond outliers around
-  microsecond-scale medians. Those timings are not retained; a clean-commit run
-  remains required before any device-duration conclusion is durable.
+  microsecond-scale medians. A clean RTX 4060 run under
+  <!-- jig-ignore-next-line: canonical evidence path is indivisible -->
+`benchmarks/accelerator/evidence/2026-09-04-crazy-lookup-candidate-event-timeline-rtx4060/`
+  retains all 15 samples per route/geometry from clean commit `7d1ac941`.
+  Ordinary tritwise is 5.408 us median versus 16.384 us lookup, with lookup
+  winning 0/15 paired samples. Projected tritwise is 22.528 us median versus
+  23.392 us lookup, with lookup winning 2/15 pairs; tritwise event durations
+  still show a 3-34 us spread, so the event record is not interpreted as pure
+  instruction latency.
+
+  The retained wall-time and event views therefore agree that lookup should not
+  replace the tritwise product candidate evaluator. That conclusion is scoped to
+  candidate evaluation and does not select the resident VM geometry.
 
   The fanout is therefore structural evidence for that benchmark route, not an
   observed cache counter from the product kernel. The hermetic CUDA bundle

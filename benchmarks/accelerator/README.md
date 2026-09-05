@@ -168,6 +168,13 @@ RTX 4060 kept ordinary tritwise clearly below lookup at the median, while the
 projected route still produced multi-millisecond event outliers around
 microsecond-scale medians. Those dirty-tree timings are not retained.
 
+A clean RTX 4060 run is retained under
+<!-- jig-ignore-next-line: canonical evidence path is indivisible -->
+`benchmarks/accelerator/evidence/2026-09-04-crazy-lookup-candidate-event-timeline-rtx4060/`.
+Its ordinary event median rejects lookup by about 3.03x, and lookup wins none of
+15 paired ordinary samples. The projected route also favors tritwise by median
+and 13/15 paired samples, while retaining visible event-duration variability.
+
 Run with:
 
 ```powershell
