@@ -65,6 +65,17 @@ baseline/reuse ratio, and reuse wins all five paired repetitions. The workload
 has deliberate 100% second-pass repetition, so this supports exact reuse under
 that condition rather than a production cache-hit-rate or invalidation claim.
 
+A sixth comparison, `classic-three-word-initial-halt-heuristic-v1`, now has a
+retained Linux holdout measurement. Under the fixed 50,000-evaluation budget,
+natural enumeration finds no verified candidate, while the preregistered static
+initial-decode order first verifies at evaluation 475 and includes all 86
+accepted three-word candidates with best quality one. The ordering result is
+positive, but full strategy timing is negative: median elapsed time rises from
+215,984,447 ns to 2,948,297,136 ns because the registered scope includes
+materializing and sorting the 830,584-candidate schedule. The feature is
+retained
+as a search signal; the current sorting implementation is not a runtime win.
+
 A low-level structural regression proves only the `Q` prefix so far: entry halts
 before encryption, and exactly eight load-admitted suffixes have quality one.
 The runner therefore treats only that 94-suffix row structurally; every other

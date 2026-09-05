@@ -1,0 +1,72 @@
+schema_version = 1
+
+[study]
+id = "classic-three-word-initial-decode-heuristic-linux-2026-09-04"
+# jig-ignore-next-line: canonical evidence path is indivisible
+experiment_manifest = "benchmarks/research/evidence/2026-09-04-classic-three-word-initial-decode-heuristic-linux/experiment.toml"
+kind = "deterministic"
+question = """\
+Does a verifier-independent initial positional-decode heuristic reduce \
+evaluations to the first independently verified three-word halt versus natural \
+enumeration on a preregistered holdout?\
+"""
+hypothesis = """\
+Ranking candidates by the earliest initial source position that positionally \
+decodes to halt lowers first-verified evaluation count without changing verifier \
+acceptance or quality.\
+"""
+baseline = "deterministic-enumeration-v1"
+rejection_observation = """\
+The heuristic has no verified hit within the shared budget, reaches its first \
+verified candidate no earlier than enumeration, or the source-pinned run cannot \
+be replayed.\
+"""
+
+[workload]
+identity = "classic-three-word-verified-block-search-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 0
+repetitions = 5
+warmup_policy = "no warmup; all five fixed-order pairs are retained"
+ordering = "fixed"
+stopping_rule = """\
+natural enumeration then static heuristic; exactly 50000 evaluations per arm \
+and a 60-second per-strategy wall bound\
+"""
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = [
+  "first_verified_evaluation",
+  "verified_candidate_count",
+  "best_verified_quality",
+  "elapsed_nanoseconds",
+]
+tradeoff_policy = """\
+Treat first-hit search work as primary and full strategy elapsed time as a \
+separate objective. Schedule construction remains inside timing, so a better \
+search order cannot be reported as a runtime win when materialization dominates.\
+"""
+
+[resources]
+host = "Fedora Linux 7.1.10-200.fc44.x86_64; Intel Xeon E5-2690 v3"
+accelerator = "none"
+memory_mib = 512
+
+[raw]
+# jig-ignore-next-line: canonical evidence path is indivisible
+path = "benchmarks/research/evidence/2026-09-04-classic-three-word-initial-decode-heuristic-linux/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

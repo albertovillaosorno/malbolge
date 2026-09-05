@@ -55,7 +55,6 @@ _BASELINE = "deterministic-enumeration-v1"
 _HEURISTIC = "initial-decode-halt-proximity-order-v1"
 _PREREGISTERED = "preregistered"
 _REGISTERED = "registered"
-_UNREGISTERED = "unregistered"
 
 
 def _document() -> dict[str, object]:
@@ -99,13 +98,13 @@ def test_heuristic_feature_cannot_consume_verifier_or_dynamic_state() -> None:
     assert heuristic["uses_training_data"] is False
 
 
-def test_heuristic_plan_results_gate_is_closed_before_holdout_execution(
+def test_heuristic_plan_results_gate_opens_only_after_retained_provenance(
 ) -> None:
-    """Preregistration alone cannot become holdout search evidence."""
+    """Results become admissible only with registered retained provenance."""
     gate = _table("measurement_gate")
     assert gate["challenge_status"] == _REGISTERED
     assert gate["schedule_status"] == _REGISTERED
     assert gate["runner_status"] == _REGISTERED
     assert gate["protocol_status"] == _REGISTERED
-    assert gate["retained_provenance_status"] == _UNREGISTERED
-    assert gate["results_allowed"] is False
+    assert gate["retained_provenance_status"] == _REGISTERED
+    assert gate["results_allowed"] is True

@@ -1,0 +1,11 @@
+repetition,schedule_id,evaluations,verified_candidate_count,first_verified_evaluation,first_verified_candidate,best_verified_candidate,best_verified_quality,elapsed_nanoseconds
+0,deterministic-enumeration-v1,50000,0,,,,,209487992
+0,initial-decode-halt-proximity-order-v1,50000,86,475,424602,424602,1,2763390294
+1,deterministic-enumeration-v1,50000,0,,,,,217383592
+1,initial-decode-halt-proximity-order-v1,50000,86,475,424602,424602,1,3163653262
+2,deterministic-enumeration-v1,50000,0,,,,,212630973
+2,initial-decode-halt-proximity-order-v1,50000,86,475,424602,424602,1,2906474382
+3,deterministic-enumeration-v1,50000,0,,,,,233148571
+3,initial-decode-halt-proximity-order-v1,50000,86,475,424602,424602,1,3298160067
+4,deterministic-enumeration-v1,50000,0,,,,,215984447
+4,initial-decode-halt-proximity-order-v1,50000,86,475,424602,424602,1,2948297136

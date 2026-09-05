@@ -1,0 +1,75 @@
+schema_version = 1
+
+[experiment]
+id = "superoptimization-research-program"
+record_kind = "run"
+seed = 0
+method_class = "optimization"
+
+[challenge]
+family = "classic-three-word-verified-block-search-v1"
+difficulty = 830584
+target_profile = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[budget]
+seconds = 60
+candidate_evaluations = 50000
+memory_mib = 512
+
+[verification]
+required = true
+oracle = "classic-three-word-no-io-halt-v1"
+baseline = "deterministic-enumeration-v1"
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/initial-decode-heuristic-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"
+
+[measurement]
+id = "initial-decode-heuristic-five-paired-protocol-v1"
+repetitions = 5
+warmup_iterations = 0
+ordering = "fixed-enumeration-then-heuristic"
+outlier_policy = "retain-all"
+center = "median"
+dispersion = "observed-range"
+uncertainty = "observed-range"
+clock = "time-perf-counter-ns"
+timing_scope = "schedule-construction-plus-full-budget-verification"
+per_strategy_wall_clock_seconds = 60
+
+[run]
+commit = "b399fff7bd1904d60dde274f940b5d2c68906824"
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "03276bbed2b81d90553fa9ddca6046602108f992c48520554651638c626409d4"
+host = "Fedora Linux 7.1.10-200.fc44.x86_64; Intel Xeon E5-2690 v3"
+accelerator = "none"
+toolchain = "Python 3.14.7"
+outcome = "success"
+# jig-ignore-next-line: canonical evidence path is indivisible
+raw_output = "benchmarks/research/evidence/2026-09-04-classic-three-word-initial-decode-heuristic-linux/raw.csv"
+
+[initial_decode_heuristic_measurement]
+format_id = "initial-decode-heuristic-five-paired-measurement-v1"
+comparison_id = "classic-three-word-initial-halt-heuristic-v1"
+runner_id = "classic-three-word-initial-halt-heuristic-comparison-v1"
+challenge_id = "classic-three-word-verified-block-search-v1"
+candidate_count = 830584
+evaluation_budget = 50000
+repetitions = 5
+baseline_schedule = "deterministic-enumeration-v1"
+heuristic_schedule = "initial-decode-halt-proximity-order-v1"
+baseline_verified_candidate_count = 0
+heuristic_verified_candidate_count = 86
+heuristic_first_verified_evaluation = 475
+heuristic_first_verified_candidate = 424602
+heuristic_best_verified_quality = 1
+accepted_candidate_count = 86
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "03276bbed2b81d90553fa9ddca6046602108f992c48520554651638c626409d4"
+# jig-ignore-next-line: indivisible reviewed semantic identity
+accepted_set_sha256 = "35d107f544fbd71b0008d1414fa4c73677e9d3d15c32e6494a09bd89e2667342"

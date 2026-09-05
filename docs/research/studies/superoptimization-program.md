@@ -161,6 +161,17 @@ This is a positive repeated-workload result, not an estimate of production cache
 hit rate. The second pass is identical by construction, and the comparison does
 not measure invalidation, persistence, lookup eviction, or novel-workload reuse.
 
+A sixth comparison evaluates a static initial positional-decode heuristic on a
+preregistered complete three-word holdout. Natural enumeration finds no verified
+candidate in 50,000 evaluations, while the heuristic first verifies at 475 and
+contains all 86 accepted holdout candidates within the same budget. The primary
+search-order hypothesis is supported on this holdout.
+
+Full strategy timing is negative because the preregistered scope includes
+constructing the schedule:
+median heuristic time is about 13.651 times baseline. This motivates a later
+bucketed or lazy implementation study without revising the observed result.
+
 New synthesis, equality-saturation, learned, or accelerator-guided strategies
 must add their own equally identified comparisons rather than
 inheriting a result from either pilot. Source claims resolve through

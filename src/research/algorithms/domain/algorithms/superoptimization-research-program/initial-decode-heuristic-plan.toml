@@ -95,9 +95,9 @@ challenge_status = "registered"
 schedule_status = "registered"
 runner_status = "registered"
 protocol_status = "registered"
-retained_provenance_status = "unregistered"
-results_allowed = false
-reason = "source-pinned retained provenance remains gated"
+retained_provenance_status = "registered"
+results_allowed = true
+reason = "source-pinned retained holdout evidence is registered"
 
 [provenance]
 # jig-ignore-next-line: canonical path is indivisible

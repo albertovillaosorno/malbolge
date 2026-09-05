@@ -204,6 +204,14 @@ before encryption, so all 94 suffixes differ only by ordinary two-word load
 admission. Exactly eight admitted suffixes reproduce quality one; every other
 prefix remains unproved and must retain full verification.
 
+A sixth preregistered comparison uses a previously uncharacterized complete
+three-word holdout. Natural enumeration has no verified hit in its first 50,000
+candidates; the static initial-decode heuristic first hits at evaluation 475 and
+its budget prefix contains all 86 accepted candidates. This supports the
+feature's search-order hypothesis. It does not support the current materialized
+sort as a runtime optimization: median full-strategy time is 2,948,297,136 ns
+versus 215,984,447 ns baseline because schedule construction is included.
+
 The broader study at `../../studies/superoptimization-program.md` remains the
 human synthesis record. This mirror now has three retained host-specific
 measured

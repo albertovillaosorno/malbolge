@@ -162,14 +162,15 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   candidates: 64 quality-one, 16 quality-two, and 6 quality-three halts. The
   accepted-set SHA-256 is retained after preregistration.
 
-  The comparison keeps a 50,000-evaluation shared budget and a static heuristic
-  that may see only
-  initial positional decode; dynamic transitions, verifier outcomes, accepted-
-  set knowledge, and training data remain forbidden schedule inputs. The static
-  score-then-index schedule and equal-budget verifier-gated runner are now
-  registered. A five-pair retain-all timing protocol includes schedule
-  construction inside each timed strategy call. Results stay gated until
-  source-pinned provenance is registered.
+  The retained 50,000-evaluation comparison supports the primary search-order
+  hypothesis: natural enumeration finds no verified candidate in all five
+  repetitions, while the static heuristic first verifies candidate 424,602 at
+  evaluation 475 and its prefix contains all 86 accepted holdout candidates.
+  Full strategy timing moves oppositely because schedule construction is in the
+  preregistered timing scope: median baseline time is 215,984,447 ns versus
+  2,948,297,136 ns heuristic, about 13.651 times slower. This supports the
+  static feature as a search signal, not the materialized full-corpus sort as a
+  runtime optimization.
 
 Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.
