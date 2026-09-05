@@ -87,7 +87,7 @@ def test_learned_plan_freezes_training_without_holdout_labels() -> None:
     assert holdout["selection_stride"] == _STRIDE
     assert holdout["selected_index_sha256"] == _SELECTED_SHA
     assert holdout["workload_sha256"] == _HOLDOUT_SHA
-    assert holdout["status"] == _UNCHARACTERIZED
+    assert holdout["status"] == _REGISTERED
 
 
 def test_model_is_training_only_and_integer_deterministic() -> None:
@@ -116,7 +116,7 @@ def test_results_gate_is_closed_before_holdout_execution() -> None:
     gate = _table("measurement_gate")
     assert gate["plan_status"] == _REGISTERED
     assert gate["training_status"] == _REGISTERED
-    assert gate["holdout_status"] == _UNCHARACTERIZED
+    assert gate["holdout_status"] == _REGISTERED
     assert gate["model_status"] == _REGISTERED
     assert gate["runner_status"] == _REGISTERED
     assert gate["retained_provenance_status"] == _UNREGISTERED

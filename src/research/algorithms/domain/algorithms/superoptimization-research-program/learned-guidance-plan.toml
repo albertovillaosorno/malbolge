@@ -73,7 +73,12 @@ selection_stride = 104729
 selected_index_sha256 = "28f8e60161e71c364702a2fd3618c333e82aff17df737a9c8709ea97080a99d4"
 # jig-ignore-next-line: indivisible reviewed workload identity
 workload_sha256 = "54edc48898f06d1652150e5defb80ffce9e98a386cf5d07615c8182cdde33fcc"
-status = "uncharacterized"
+status = "registered"
+accepted_candidate_count = 0
+quality_counts = []
+# jig-ignore-next-line: indivisible reviewed semantic identity
+accepted_set_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+characterization_source_commit = "4cd77739c3bbee222487ab54a34b421bef4881ee"
 
 [comparison]
 primary_metric = "first-verified-evaluation"
@@ -113,14 +118,14 @@ conditions = [
 [measurement_gate]
 plan_status = "registered"
 training_status = "registered"
-holdout_status = "uncharacterized"
+holdout_status = "registered"
 model_status = "registered"
 baseline_status = "registered"
 runner_status = "registered"
 protocol_status = "registered"
 retained_provenance_status = "unregistered"
 results_allowed = false
-reason = "holdout outcomes and source-pinned provenance remain unregistered"
+reason = "comparative source-pinned provenance remains unregistered"
 
 [provenance]
 # jig-ignore-next-line: canonical path is indivisible

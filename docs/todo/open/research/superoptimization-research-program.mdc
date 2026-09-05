@@ -185,7 +185,12 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   end-to-end timing includes training from scratch. The frozen holdout mapping,
   four-step verifier implementation, training-only model, static baseline, and
   fail-closed runner are now registered without executing holdout outcomes.
-  Results remain gated on holdout characterization and source-pinned provenance.
+
+  The first post-registration characterization found zero accepted candidates in
+  all 100,000 holdout members. A separately checked excluded extension, `Q&%$`,
+  verifies at quality one, so the null is attributed to this frozen selection
+  rather than a verifier that cannot accept. The holdout is not redesigned
+  post-hoc. Comparative timing remains gated on source-pinned provenance.
 
 Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.
