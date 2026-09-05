@@ -128,3 +128,14 @@ Median elapsed time is 212,739,774 ns baseline versus 13,146,086 ns heuristic,
 a 16.183x baseline/heuristic ratio with five of five heuristic wins. This is a
 post-holdout implementation result and does not erase the earlier negative
 full-budget timing.
+
+## Bounded comparative conclusion
+
+The acceptance-required comparison matrix is complete and machine-readable in
+`comparative-conclusion.toml`. Decomposition, verified-result reuse,
+canonicalization, exact pruning, static heuristic search, and training-only
+learned guidance all resolve to retained source-pinned evidence. Results are
+mixed by design: exact work reductions do not consistently become host-time
+wins, the positive reuse result assumes complete second-pass repetition, the
+static heuristic has a positive first-hit signal, and the learned four-word
+holdout is a retained no-solution result. No row grants product authority.

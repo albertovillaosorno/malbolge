@@ -189,9 +189,57 @@ This weakens the current implementation but leaves learned ranking inconclusive
 on a holdout with no solution.
 
 New synthesis, equality-saturation, learned, or accelerator-guided strategies
-must add their own equally identified comparisons rather than
-inheriting a result from either pilot. Source claims resolve through
+must add their own equally identified comparisons rather than inheriting a
+result from an earlier challenge. Source claims resolve through
 `docs/bibliography/`.
+
+### Comparative conclusion
+
+The bounded milestone now covers every acceptance-required technique against an
+independent verifier-gated raw-search baseline. Its machine-readable authority
+is `src/research/algorithms/domain/algorithms/`
+`superoptimization-research-program/comparative-conclusion.toml`. Retained
+source-pinned evidence remains authoritative for each numeric result.
+
+- **Decomposition:** exact `Q`-prefix reuse removes 94 of 8,836 verifier calls
+  (1.064%), while median timing is effectively tied. Preserve the exact proof,
+  not a speed claim.
+- **Verified block reuse:** exact reuse halves verifier calls on the two-pass
+  workload and improves median time by 1.900x. This is conditional on complete
+  second-pass repetition; production hit rate remains unknown.
+- **State canonicalization:** exact residue identity removes 35.04% of unique
+  states and verifier calls but is about 2.54x slower. The structural reduction
+  is retained without a runtime-win claim.
+- **Exact pruning:** exact preimage projection removes 99.71% of candidate
+  checks but is about 1.28x slower. The search-math reduction is retained while
+  current preparation overhead remains negative.
+- **Heuristic search:** static decode ordering hits at evaluation 475 where
+  natural order has no hit by 50,000. Full-budget timing is negative, while the
+  known-holdout bucketed stop-first follow-up is 16.183x faster. The feature is
+  useful for first-hit ordering, but timing depends on realization and stopping.
+- **Learned guidance:** the preregistered four-word holdout has no solution, so
+  first-hit ranking is unmeasurable. Learned end-to-end median is about 20.358x
+  slower; the current model and holdout provide no ranking advantage.
+
+The stochastic pilot is additional context rather than one of the six required
+technique rows. Its eight-seed replication is mixed: four seeds beat natural
+first-hit work and four lose, with seeded median 723 evaluations versus natural
+706. It therefore does not justify a general stochastic-search preference.
+
+Across the retained comparisons, reducing candidate or verifier work is not by
+itself evidence of lower elapsed time. Preserve exact pruning, canonicalization,
+and decomposition identities while measuring implementation overhead
+separately. Exact reuse is attractive only when repeated identity is present,
+and non-authoritative heuristic ordering is attractive when the stopping
+objective values early verified hits. No retained result grants product
+promotion.
+
+The four-word learned-guidance holdout is also the larger challenge-family check
+for this bounded milestone. Its no-solution outcome materially changes what can
+be measured: first-hit ranking loses power entirely. This exposes challenge
+solvability as a scaling concern rather than permitting a favorable schedule to
+be selected post-hoc. Future larger or learned studies therefore require new
+preregistered identities instead of revising this retained null challenge.
 
 ## Evidence
 
@@ -214,8 +262,10 @@ inheriting a result from either pilot. Source claims resolve through
   exact semantic digest, structural state counts, and negative host timing.
   The crazy-preimage study now also retains its preregistered five-pair run,
   exact set digest, structural candidate counts, and negative host timing.
-  Larger challenges, additional technique plans, independent-host replication,
-  and a stronger comparative conclusion remain pending.
+
+  The bounded comparison matrix is complete. Independent-host replication,
+  production-representative synthesis artifacts, and later algorithm families
+  remain future research rather than requirements of this milestone.
 
 ## Results
 
@@ -223,9 +273,11 @@ The first seed-zero classic pilot supports its first-hit objective only: 250
 seeded evaluations to first verification versus 706 for deterministic
 enumeration, with equal best quality. The preregistered eight-seed replication
 materially weakens that result: seeded first-hit work beats 706 for four seeds
-and loses for four, while its median is 723 evaluations. Host timing from the
-first pilot remains host-specific, and replication timing is not an objective.
-No product implementation or general technique-superiority claim is made.
+and loses for four, while its median is 723 evaluations.
+
+Host timing from the first pilot remains host-specific, and replication timing
+is not an objective. No product implementation or general technique-superiority
+claim is made.
 
 The history-residue comparison supports its structural objective on the frozen
 10,000-observation corpus: exact residue state removes 3,504 unique states and
@@ -262,19 +314,20 @@ and independent implementations remain necessary for external validity.
 
 ## Conclusion
 
-Open. No technique is promoted to product architecture until the declared
-evidence supports it.
+The bounded research milestone is complete. All six required technique families
+have retained verifier-gated comparisons, including positive, negative, null,
+and no-solution outcomes, and the larger four-word challenge documents how
+increased difficulty can erase the first-hit signal entirely. The evidence does
+not support a general winner or any product promotion.
+
+Future superoptimization work should start from new preregistered challenge or
+replication identities. In particular, production-representative compiler
+artifacts, cross-host replication, equality-saturation experiments where a pure
+pre-layout relation is defensible, and a solvable learned-guidance holdout
+remain
+valid follow-on research without keeping this bounded comparison milestone open.
 
 ## References
 
 - [Research Evidence And Algorithm
   Mirror](../adr/research-evidence-and-algorithm-mirror.md)
-
-A preregistered stop-on-first follow-up preserves the exact bucketed heuristic
-order while changing only the stopping policy. On the same known three-word
-workload, natural enumeration exhausts 50,000 evaluations with no hit, while
-the heuristic reproduces candidate 424,602 at evaluation 475 with quality one.
-Median elapsed time is 212,739,774 ns baseline versus 13,146,086 ns heuristic,
-a 16.183x baseline/heuristic ratio with five of five heuristic wins. This is a
-post-holdout implementation result and does not erase the earlier negative
-full-budget timing.

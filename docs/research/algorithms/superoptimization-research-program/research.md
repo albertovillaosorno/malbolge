@@ -230,12 +230,11 @@ technique family. It does reject promotion of this Python implementation and
 this exact holdout as evidence for a first-hit ranking advantage. A later
 learned-guidance challenge requires a new preregistered identity.
 
-The broader study at `../../studies/superoptimization-program.md` remains the
-human synthesis record. This mirror now retains host-specific positive,
-negative, null, and
-no-solution comparisons plus the eight-seed work-count replication. Larger
-challenge families, independent-host replication, independent implementations,
-and stronger statistical power remain pending.
+The broader study at `../../studies/superoptimization-program.md` is the human
+synthesis record. This mirror retains host-specific positive, negative, null,
+and no-solution comparisons plus the eight-seed work-count replication. The
+bounded technique matrix is complete; independent-host replication, production
+artifacts, and later algorithm families remain follow-on research.
 
 ## Results
 
@@ -281,18 +280,20 @@ families.
 
 ## Conclusion
 
-For this frozen seed-zero corpus, H1 is supported only on the first-hit
-objective: seeded proposal order requires 250 evaluations versus 706 for
-enumeration and also had a lower first-hit median on this host. Best quality
-ties
-and full-corpus timing is effectively inconclusive. This is retained pilot
-evidence, not sufficient basis to promote stochastic search to product
-architecture or generalize beyond the recorded challenge/seed/host. The
-history-residue study separately supports exact state/verifier reduction but
-shows a clear timing loss in this Python implementation. The crazy-preimage run
+The bounded comparison program is complete without identifying a universal
+winner. Seeded proposals are mixed across the preregistered seed set;
+canonicalization, exact pruning, and prefix decomposition reduce exact work but
+do not improve their retained Python timings. Exact verified-result reuse is
+positive only on a deliberately repeated workload. Static initial-decode
+ordering improves first-hit work on the three-word holdout, while learned
+guidance is ranking-inconclusive on its solution-free four-word holdout and is
+substantially slower end-to-end.
 
-likewise supports exact candidate pruning while showing a slower median here.
-Neither technique is promoted as a runtime optimization on this evidence alone.
+These mixed outcomes are the intended result of the research boundary: search
+schedules remain non-authoritative and every accepted candidate still requires
+independent verification. No technique is promoted to product architecture by
+this milestone. Later replication, production-artifact, equality-saturation, or
+learned-guidance studies require new experiment identities.
 
 ## References
 
