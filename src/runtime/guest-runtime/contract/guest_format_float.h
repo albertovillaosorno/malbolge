@@ -21,16 +21,16 @@
 // - Merge-When:
 //   - Complete formatter execution owns this exact floating conversion policy.
 // - Summary:
-//   - Executes C23 %a/%A for malbolge-c32-v1 binary64 without host FPU use.
+//   - Executes C23 %a/%A for ABI binary64/binary128 without host FPU use.
 // - Description:
 //   - Uses normalized bit geometry and ABI-fixed nearest-ties-even rounding.
 // - Usage:
 //   - Called after parser admission and atomic promoted-argument resolution.
 // - Defaults:
-//   - Long-double and decimal floating conversions remain fail-closed.
+//   - Decimal floating conversions remain fail-closed.
 //
 
-//! Deterministic binary64 hexadecimal formatting below public snprintf.
+//! Deterministic binary hexadecimal formatting below public snprintf.
 
 #ifndef MALBOLGE_GUEST_FORMAT_FLOAT_H
 #define MALBOLGE_GUEST_FORMAT_FLOAT_H

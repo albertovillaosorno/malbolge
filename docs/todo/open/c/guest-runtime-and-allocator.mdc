@@ -138,15 +138,15 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   precision. Representable `%n` counts are stored in canonical little-endian
   ABI widths. Null, out-of-object, unterminated, misaligned, and count-overflow
   cases fail without sink or guest-object mutation; `%ls` remains fail-closed.
-- Implemented binary64 hexadecimal-formatting evidence:
-  `guest_format_float.h`/`format_float.c` execute `%a`/`%A` from raw F64 bits
-  without host floating arithmetic. Nonzero finite values use the documented
-  normalized-leading-one style, including subnormals down to exponent `-1074`.
-  Missing precision trims only exact trailing hex zeros; explicit precision
-  rounds discarded bits nearest-ties-even and can append virtual zero digits
-  without work proportional to discarded sink output. Vectors lock `#`, sign,
-  zero/left padding, signed zero, infinity/NaN spelling, rounding ties,
-  truncation, and fail-closed `%La`/unresolved fields.
+- Implemented hexadecimal-formatting evidence:
+  `guest_format_float.h`/`format_float.c` execute binary64 `%a`/`%A` and
+  binary128 `%La`/`%LA` from raw promoted bits without host floating arithmetic
+  or `__int128`. Nonzero values use normalized-leading-one style, including
+  subnormals through exponents `-1074` and `-16494`. Missing precision trims
+  exact trailing hex zeros; smaller precision rounds nibbles nearest-ties-even
+  and larger precision appends virtual zeros without proportional discarded
+  output work. Vectors lock extremes, special values, padding, ties, truncation,
+  and fail-closed decimal/unresolved fields.
 - Implemented exact-math evidence: `fabs`, `floor`, `ceil`, and `trunc` are
   ordinary guest C over ABI-fixed binary64 representation, preserve signed-zero
   and infinity semantics, map every NaN to the canonical quiet payload-zero NaN,
@@ -168,8 +168,8 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   effects are lane-9 realization work. This lane supplies their stable binder,
   wrapper, frame, and intrinsic identities unchanged and does not make itself
   depend on its downstream consumer merely to flip source availability.
-- Remaining lane-8 algorithm work: decimal and binary128 floating formatting
-  plus correctly-rounded `sin`, `cos`, and `atan2`. Source `va_list` bridging
+- Remaining lane-8 algorithm work: decimal floating formatting plus
+  correctly-rounded `sin`, `cos`, and `atan2`. Source `va_list` bridging
   remains downstream
   compiler-lowering integration work over the implemented canonical cursor.
   Wide `%ls` remains unavailable because version one has no completed wide-

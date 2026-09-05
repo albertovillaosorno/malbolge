@@ -67,6 +67,16 @@ static int build_resolved(const char *format, uint64_t bits,
   return 1;
 }
 
+static int build_resolved128(
+    const char *format, uint64_t low, uint64_t high,
+    MalbolgeGuestResolvedFormatArgument *resolved) {
+  if (!build_resolved(format, low, resolved)) {
+    return 0;
+  }
+  resolved->argument.high = high;
+  return 1;
+}
+
 static int expect_text(const char *format, uint64_t bits, const char *expected,
                        uint32_t required) {
   char output[96];
@@ -74,6 +84,25 @@ static int expect_text(const char *format, uint64_t bits, const char *expected,
   MalbolgeGuestResolvedFormatArgument resolved;
 
   if (!build_resolved(format, bits, &resolved) ||
+      malbolge_guest_format_sink_init(&sink, output,
+                                      (uint32_t)sizeof(output)) !=
+          MALBOLGE_GUEST_RUNTIME_VALID ||
+      malbolge_guest_format_execute_hex_float(&sink, &resolved) !=
+          MALBOLGE_GUEST_RUNTIME_VALID ||
+      malbolge_guest_format_finish(&sink) != MALBOLGE_GUEST_RUNTIME_VALID ||
+      sink.required != required || !same_text(output, expected)) {
+    return 0;
+  }
+  return 1;
+}
+
+static int expect_text128(const char *format, uint64_t low, uint64_t high,
+                          const char *expected, uint32_t required) {
+  char output[128];
+  MalbolgeGuestFormatSink sink;
+  MalbolgeGuestResolvedFormatArgument resolved;
+
+  if (!build_resolved128(format, low, high, &resolved) ||
       malbolge_guest_format_sink_init(&sink, output,
                                       (uint32_t)sizeof(output)) !=
           MALBOLGE_GUEST_RUNTIME_VALID ||
@@ -193,6 +222,61 @@ static int test_sign_width_and_special(void) {
   return 0;
 }
 
+static int test_binary128(void) {
+  if (!expect_text128("%La", UINT64_C(0), UINT64_C(0x3fff000000000000),
+                      "0x1p+0", UINT32_C(6))) {
+    return 1;
+  }
+  if (!expect_text128("%La", UINT64_C(0), UINT64_C(0x3fff800000000000),
+                      "0x1.8p+0", UINT32_C(8))) {
+    return 2;
+  }
+  if (!expect_text128("%LA", UINT64_MAX, UINT64_C(0x7ffeffffffffffff),
+                      "0X1.FFFFFFFFFFFFFFFFFFFFFFFFFFFFP+16383",
+                      UINT32_C(39))) {
+    return 3;
+  }
+  if (!expect_text128("%La", UINT64_C(1), UINT64_C(0), "0x1p-16494",
+                      UINT32_C(10))) {
+    return 4;
+  }
+  if (!expect_text128("%La", UINT64_MAX, UINT64_C(0x0000ffffffffffff),
+                      "0x1.fffffffffffffffffffffffffffep-16383",
+                      UINT32_C(39))) {
+    return 5;
+  }
+  if (!expect_text128("%La", UINT64_C(0), UINT64_C(0x8000000000000000),
+                      "-0x0p+0", UINT32_C(7))) {
+    return 6;
+  }
+  if (!expect_text128("%.1La", UINT64_C(0), UINT64_C(0x3fff880000000000),
+                      "0x1.8p+0", UINT32_C(8)) ||
+      !expect_text128("%.1La", UINT64_C(0), UINT64_C(0x3fff980000000000),
+                      "0x1.ap+0", UINT32_C(8))) {
+    return 7;
+  }
+  if (!expect_text128("%.0La", UINT64_MAX, UINT64_C(0x7ffeffffffffffff),
+                      "0x2p+16383", UINT32_C(10))) {
+    return 8;
+  }
+  if (!expect_text128("%#.0LA", UINT64_C(0), UINT64_C(0x3fff000000000000),
+                      "0X1.P+0", UINT32_C(7))) {
+    return 9;
+  }
+  if (!expect_text128("%.30La", UINT64_C(0), UINT64_C(0x3fff800000000000),
+                      "0x1.800000000000000000000000000000p+0",
+                      UINT32_C(37))) {
+    return 10;
+  }
+  if (!expect_text128("%LA", UINT64_C(0), UINT64_C(0x7fff000000000000),
+                      "INF", UINT32_C(3)) ||
+      !expect_text128("%La", UINT64_C(1), UINT64_C(0x7fff800000000000),
+                      "nan", UINT32_C(3))) {
+    return 11;
+  }
+  return 0;
+}
+
 static int test_truncation_and_failures(void) {
   char output[6];
   MalbolgeGuestFormatSink sink;
@@ -224,7 +308,7 @@ static int test_truncation_and_failures(void) {
       sink.required != UINT32_C(2) || !same_text(output, "se")) {
     return 3;
   }
-  if (!build_resolved("%La", UINT64_C(0), &resolved)) {
+  if (!build_resolved("%Lf", UINT64_C(0), &resolved)) {
     return 4;
   }
   resolved.argument.high = UINT64_C(0x3fff000000000000);
@@ -253,6 +337,7 @@ int main(void) {
   const int rounding = test_precision_rounding();
   const int subnormal = test_subnormal_and_zero();
   const int flags = test_sign_width_and_special();
+  const int binary128 = test_binary128();
   const int failures = test_truncation_and_failures();
 
   if (exact != 0) {
@@ -267,5 +352,8 @@ int main(void) {
   if (flags != 0) {
     return 40 + flags;
   }
-  return failures == 0 ? 0 : 50 + failures;
+  if (binary128 != 0) {
+    return 50 + binary128;
+  }
+  return failures == 0 ? 0 : 70 + failures;
 }

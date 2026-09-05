@@ -1002,7 +1002,7 @@ def test_guest_memory_format_execution(tmp_path: Path) -> None:
     reason="pinned native hexadecimal-float harness uses Windows Clang",
 )
 def test_guest_hexadecimal_float_format_execution(tmp_path: Path) -> None:
-    """Lock integer-only binary64 a/A conversion and dependency boundaries."""
+    """Lock integer-only binary a/A conversion and dependency boundaries."""
     sources = (FORMAT_SOURCE, FORMAT_PARSE_SOURCE, FORMAT_FLOAT_SOURCE)
     for target in WINDOWS_ABI_TARGETS:
         compiled = run_command(

@@ -144,7 +144,7 @@ parts:
     kind: domain
     language: c
     responsibility: >-
-      Execute binary64 hexadecimal formatting without host floating authority.
+      Execute binary64/binary128 hex formatting without host float authority.
 projects: []
 tests: []
 graph:

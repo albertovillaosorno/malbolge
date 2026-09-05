@@ -95,10 +95,11 @@ FORMAT_MEMORY_POINTER_ENCODING = "logical-byte-offset-plus-one"
 FORMAT_MEMORY_MAX_OFFSET = 0xFFFFFFFE
 FORMAT_MEMORY_EXECUTION = "narrow-s-and-integer-n-implemented"
 FORMAT_MEMORY_COUNT_ENCODING = "little-endian-signed-abi-width"
-FORMAT_FLOATING = "binary64-a-A-implemented-decimal-f128-open"
+FORMAT_FLOATING = "binary64-binary128-a-A-implemented-decimal-open"
 FORMAT_FLOAT_HEX_ROUNDING = "nearest-ties-even"
 FORMAT_FLOAT_HEX_STYLE = "normalized-leading-one"
 FORMAT_FLOAT_HEX_DEFAULT = "minimal-exact-trailing-zero-trim"
+FORMAT_FLOAT_BINARY128 = "a-A-implemented"
 FORMAT_NOT_IMPLEMENTED = "not-implemented"
 FORMAT_BASES = [2, 8, 10, 16]
 FORMAT_PUBLIC_ROUTINES = ["snprintf", "vsnprintf"]
@@ -307,7 +308,7 @@ def _assert_float_formatting(formatting: dict[str, object]) -> None:
         == FORMAT_FLOAT_HEX_DEFAULT
     )
     assert formatting["floating_decimal_execution"] == FORMAT_NOT_IMPLEMENTED
-    assert formatting["floating_binary128_execution"] == FORMAT_NOT_IMPLEMENTED
+    assert formatting["floating_binary128_execution"] == FORMAT_FLOAT_BINARY128
 
 
 def test_formatting_kernel_stays_private_and_gated() -> None:
