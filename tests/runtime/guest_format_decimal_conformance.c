@@ -9,20 +9,20 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Independent vectors for deterministic binary64 %e/%E execution.
+//   - Independent vectors for deterministic binary64 decimal execution.
 // - Must-Not:
 //   - Use host printf or native floating arithmetic as an expected-value
 //     oracle.
 // - Allows:
 //   - Inputs: explicit binary64 bits and parser-produced directives.
-//   - Outputs: zero only when scientific spelling/count/rejection matches.
+//   - Outputs: zero only when decimal spelling/count/rejection semantics match.
 //   - Side effects: test-local sinks and resolved argument records only.
 // - Split-When:
-//   - Fixed/general or binary128 decimal formatting gains separate vectors.
+//   - Binary128 decimal formatting gains separate conformance vectors.
 // - Merge-When:
 //   - Complete decimal-format conformance owns all decimal styles together.
 // - Summary:
-//   - Locks scientific decimal rounding, exponent, flags, and atomic failures.
+//   - Locks e/f/g decimal rounding, style selection, flags, and failures.
 // - Description:
 //   - Includes exact ties, subnormal/maximum edges, and virtual precision.
 // - Usage:
@@ -31,7 +31,7 @@
 //   - Expected strings are explicit guest-contract vectors, not host output.
 //
 
-//! Binary64 scientific decimal formatting vectors over raw guest bits.
+//! Binary64 decimal formatting vectors over raw guest bits.
 
 #include "guest_format_float.h"
 
@@ -193,6 +193,55 @@ static int test_fixed(void) {
   return 0;
 }
 
+static int test_general(void) {
+  if (!expect_text("%g", UINT64_C(0x3ff0000000000000), "1",
+                   UINT32_C(1)) ||
+      !expect_text("%#g", UINT64_C(0x3ff0000000000000), "1.00000",
+                   UINT32_C(7)) ||
+      !expect_text("%#.4g", UINT64_C(0x3ff3ae147ae147ae), "1.230",
+                   UINT32_C(5))) {
+    return 1;
+  }
+  if (!expect_text("%.3g", UINT64_C(0x3f1a36e2eb1c432d), "0.0001",
+                   UINT32_C(6)) ||
+      !expect_text("%.3g", UINT64_C(0x3ee4f8b588e368f1), "1e-05",
+                   UINT32_C(5)) ||
+      !expect_text("%.3G", UINT64_C(0x3ee4f8b588e368f1), "1E-05",
+                   UINT32_C(5))) {
+    return 2;
+  }
+  if (!expect_text("%g", UINT64_C(0x40f86a0000000000), "100000",
+                   UINT32_C(6)) ||
+      !expect_text("%g", UINT64_C(0x412e848000000000), "1e+06",
+                   UINT32_C(5)) ||
+      !expect_text("%.4g", UINT64_C(0x40c387c000000000), "1e+04",
+                   UINT32_C(5))) {
+    return 3;
+  }
+  if (!expect_text("%.0g", UINT64_C(0x402899999999999a), "1e+01",
+                   UINT32_C(5)) ||
+      !expect_text("%.6g", UINT64_C(0x3ff3ae147ae147ae), "1.23",
+                   UINT32_C(4)) ||
+      !expect_text("%010.3g", UINT64_C(0x402899999999999a), "00000012.3",
+                   UINT32_C(10))) {
+    return 4;
+  }
+  if (!expect_text("%.3g", UINT64_C(0x3f202e7ef70994dd), "0.000123",
+                   UINT32_C(8)) ||
+      !expect_text("%.3g", UINT64_C(0x3ee9e3abe16fc70d), "1.23e-05",
+                   UINT32_C(8)) ||
+      !expect_text("%g", UINT64_C(0), "0", UINT32_C(1))) {
+    return 5;
+  }
+  if (!expect_text("%G", UINT64_C(0x7ff0000000000000), "INF",
+                   UINT32_C(3)) ||
+      !expect_text("%+G", UINT64_C(0x7ff8000000000001), "+NAN",
+                   UINT32_C(4))) {
+    return 6;
+  }
+  return 0;
+}
+
 static int test_fail_closed(void) {
   char output[8] = "stable";
   MalbolgeGuestFormatSink sink;
@@ -216,8 +265,11 @@ static int test_fail_closed(void) {
       sink.required != UINT32_C(2) || !same_text(output, "st")) {
     return 3;
   }
-  if (!build_resolved("%g", UINT64_C(0x3ff0000000000000), &resolved) ||
-      malbolge_guest_format_execute_decimal_float(&sink, &resolved) !=
+  if (!build_resolved("%Lg", UINT64_C(0), &resolved)) {
+    return 4;
+  }
+  resolved.argument.high = UINT64_C(0x3fff000000000000);
+  if (malbolge_guest_format_execute_decimal_float(&sink, &resolved) !=
           MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT ||
       sink.required != UINT32_C(2)) {
     return 4;
@@ -243,6 +295,7 @@ int main(void) {
   const int rounding = test_rounding();
   const int flags = test_flags_special_and_truncation();
   const int fixed = test_fixed();
+  const int general = test_general();
   const int failures = test_fail_closed();
 
   if (basic != 0) {
@@ -257,5 +310,8 @@ int main(void) {
   if (fixed != 0) {
     return 40 + fixed;
   }
-  return failures == 0 ? 0 : 50 + failures;
+  if (general != 0) {
+    return 50 + general;
+  }
+  return failures == 0 ? 0 : 60 + failures;
 }

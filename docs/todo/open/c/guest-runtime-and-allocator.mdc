@@ -128,8 +128,8 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   Cross-ABI checks show no callable host formatting dependency.
 - Public formatting remains gated: `snprintf`/`vsnprintf` remain unavailable
   because compiler lowering has not yet bridged source `va_list` state into the
-  canonical cursor and general plus binary128 decimal formatting remain
-  intentionally incomplete.
+  canonical cursor and binary128 decimal formatting remain intentionally
+  incomplete.
 - Implemented guest-memory formatting evidence:
   `guest_format_memory.h`/`format_memory.c` execute narrow `%s` and integer `%n`
   over one caller-proven live guest object. The boundary decodes the ABI's
@@ -162,7 +162,7 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   unsupported-input rejection. A deterministic 512-pattern independent Python
   exact-decimal differential covers precision 0 through 20 across finite raw
   bit patterns; manual vectors lock ties, exponent carry, subnormal/maximum
-  edges, truncation, flags, and `%Le`/`%g` rejection.
+  edges, truncation, flags, and `%Le` rejection.
 - Implemented binary64 fixed-decimal evidence:
   the same decimal boundary executes `%f`/`%F` by exact integer scaling and
   nearest-ties-even quantization before fixed-point placement. A deterministic
@@ -170,6 +170,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   with outputs through 318 bytes. Manual vectors lock default precision, exact
   ties, carry into a new integer digit, signed zero, subnormal-to-zero rounding,
   alternate decimal point, width/zero/left padding, and special values.
+- Implemented binary64 general-decimal evidence:
+  `%g`/`%G` rounds to significant digits before using the rounded exponent for
+  fixed-versus-scientific selection. Precision zero becomes one; trailing
+  fractional zeroes are removed unless `#` preserves them, while integer
+  magnitude zeroes remain. A deterministic 512-pattern independent Python
+  integer-decimal differential covers precision 0 through 15. Manual vectors
+  lock the `-4/-5` and exponent-versus-precision thresholds, style-changing
+  carry, uppercase spelling, alternate form, zero/sign padding, and zero.
 - Implemented exact-math evidence: `fabs`, `floor`, `ceil`, and `trunc` are
   ordinary guest C over ABI-fixed binary64 representation, preserve signed-zero
   and infinity semantics, map every NaN to the canonical quiet payload-zero NaN,
@@ -191,8 +199,8 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   effects are lane-9 realization work. This lane supplies their stable binder,
   wrapper, frame, and intrinsic identities unchanged and does not make itself
   depend on its downstream consumer merely to flip source availability.
-- Remaining lane-8 algorithm work: binary64 general decimal formatting,
-  decimal binary128, and correctly-rounded `sin`, `cos`, and `atan2`. Source
+- Remaining lane-8 algorithm work: decimal binary128 formatting and
+  correctly-rounded `sin`, `cos`, and `atan2`. Source
   `va_list` bridging
   remains downstream
   compiler-lowering integration work over the implemented canonical cursor.

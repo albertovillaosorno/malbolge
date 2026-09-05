@@ -121,7 +121,7 @@
     "floating_decimal_binary64_exact": "digits-times-power10-implemented",
     "floating_decimal_binary64_max_exact_digits": 767,
     "floating_decimal_binary64_scratch": "base-10000-u32-only-bounded",
-    "floating_decimal_execution": "binary64-e-E-f-F-implemented-g-G-f128-open",
+    "floating_decimal_execution": "binary64-e-E-f-F-g-G-implemented-f128-open",
     "floating_decimal_rounding": "nearest-ties-even",
     "floating_scientific_default_precision": 6,
     "floating_scientific_exponent_minimum_digits": 2,

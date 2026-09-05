@@ -199,12 +199,19 @@ extends beyond the exact value use virtual trailing zeroes; values that round to
 zero, cross an integer power of ten, or have no retained pre-rounding digit are
 handled explicitly without host arithmetic.
 
+General binary64 `%g`/`%G` rounds to the requested significant-digit precision
+before selecting the C general style. Precision zero becomes one significant
+digit. A rounded exponent below `-4` or greater than or equal to the precision
+selects scientific notation; otherwise fixed notation is used. Unless `#` is
+present, trailing fractional zeroes and a now-unused decimal point are removed
+without removing zeroes required by the integer magnitude.
+
 The C23 `snprintf`/`vsnprintf` contract still requires full formatted-output
 semantics, including the same would-have-written result under truncation. These
 formatting layers are implementation substrate only; public routines remain
 contracted-unavailable until compiler lowering bridges source `va_list` state
-into the canonical promoted-block cursor and general plus binary128 decimal
-floating formatting are complete.
+into the canonical promoted-block cursor and binary128 decimal floating
+formatting is complete.
 
 Independent C vectors lock decimal/hex/octal/binary integer output,
 INT64_MIN, alternate prefixes, precision-versus-zero padding, left/right width,
@@ -269,9 +276,8 @@ selected target profile is sequential with no guest thread surface. Allocation
 startup binding and byte-I/O intrinsic realization are likewise lane-9 target
 work over the stable identities defined here. The canonical promoted-block
 varargs cursor is now implemented; source `va_list` bridging remains lane-9
-compiler-lowering work. Remaining lane-8 algorithm work is binary64 general
-decimal formatting, decimal binary128, and correctly-rounded `sin`, `cos`, and
-`atan2`.
+compiler-lowering work. Remaining lane-8 algorithm work is decimal binary128
+formatting and correctly-rounded `sin`, `cos`, and `atan2`.
 
 ## Invariants
 

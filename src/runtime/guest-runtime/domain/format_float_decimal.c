@@ -9,19 +9,19 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Deterministic binary64 %e/%E decimal conversion and bounded publication.
+//   - Deterministic binary64 decimal conversion and bounded publication.
 // - Must-Not:
 //   - Use host floating arithmetic, formatting, locale, allocation, or va_list.
 // - Allows:
 //   - Inputs: resolved F64 bits plus literal/omitted width and precision.
-//   - Outputs: C scientific decimal spelling with exact sink accounting.
+//   - Outputs: C scientific, fixed, or general decimal text and exact count.
 //   - Side effects: bounded sink bytes only after complete geometry admission.
 // - Split-When:
-//   - Fixed/general or binary128 decimal spelling gains independent policy.
+//   - Binary128 decimal spelling gains independent conversion arithmetic.
 // - Merge-When:
 //   - One decimal formatter owns scientific/fixed/general execution together.
 // - Summary:
-//   - Rounds exact binary64 decimal digits to C %e/%E nearest ties to even.
+//   - Rounds exact binary64 decimal digits nearest ties to even for e/f/g.
 // - Description:
 //   - Large precision becomes virtual trailing zeroes after exact digits end.
 // - Usage:
@@ -30,8 +30,7 @@
 //   - Omitted precision is six digits after the decimal point.
 //
 
-//! Exact-decimal binary64 scientific formatting without host floating
-//! authority.
+//! Exact-decimal binary64 formatting without host floating authority.
 
 #include "guest_decimal_exact.h"
 #include "guest_format_float.h"
@@ -83,7 +82,11 @@ static int resolved_decimal(
        resolved->directive.conversion !=
            MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_FIXED &&
        resolved->directive.conversion !=
-           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_FIXED_UPPER) ||
+           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_FIXED_UPPER &&
+       resolved->directive.conversion !=
+           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_GENERAL &&
+       resolved->directive.conversion !=
+           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_GENERAL_UPPER) ||
       malbolge_guest_format_argument_kind(&resolved->directive, &kind) !=
           MALBOLGE_GUEST_RUNTIME_VALID) {
     return 0;
@@ -109,6 +112,12 @@ static uint32_t effective_precision(
   return directive->precision_kind == MALBOLGE_GUEST_FORMAT_FIELD_OMITTED
              ? DEFAULT_PRECISION
              : directive->precision;
+}
+
+static uint32_t general_precision(
+    const MalbolgeGuestFormatDirective *directive) {
+  const uint32_t precision = effective_precision(directive);
+  return precision == UINT32_C(0) ? UINT32_C(1) : precision;
 }
 
 static int exact_rounds_up(const MalbolgeGuestDecimalExact *exact,
@@ -431,6 +440,86 @@ static void emit_fixed(DecimalWriter *writer, const RoundedDecimal *scaled,
   }
 }
 
+static uint32_t general_significant_digits(
+    const RoundedDecimal *rounded, uint32_t precision, int alternate) {
+  uint32_t count = precision;
+
+  if (alternate != 0) {
+    return count;
+  }
+  if (count > rounded->stored_digits) {
+    count = rounded->stored_digits;
+  }
+  while (count > UINT32_C(1) && rounded->digits[count - UINT32_C(1)] == '0') {
+    --count;
+  }
+  return count;
+}
+
+static int general_scientific(int32_t exponent, uint32_t precision) {
+  if (exponent < INT32_C(-4)) {
+    return 1;
+  }
+  return precision <= (uint32_t)INT32_MAX && exponent >= (int32_t)precision;
+}
+
+static int general_fixed_geometry(char sign, int32_t exponent,
+                                  uint32_t significant_digits, int alternate,
+                                  uint32_t *fraction_digits, uint32_t *core) {
+  uint32_t integer_digits = UINT32_C(1);
+  uint32_t fraction = UINT32_C(0);
+  uint32_t total = sign == '\0' ? UINT32_C(0) : UINT32_C(1);
+  int point = alternate;
+
+  if (exponent >= INT32_C(0)) {
+    integer_digits = (uint32_t)exponent + UINT32_C(1);
+    fraction = significant_digits > integer_digits
+                   ? significant_digits - integer_digits
+                   : UINT32_C(0);
+  } else {
+    const uint32_t leading_zeroes = (uint32_t)(-exponent - INT32_C(1));
+    if (!checked_add(leading_zeroes, significant_digits, &fraction)) {
+      return 0;
+    }
+  }
+  if (fraction != UINT32_C(0)) {
+    point = 1;
+  }
+  if (!checked_add(total, integer_digits, &total) ||
+      !checked_add(total, point != 0 ? UINT32_C(1) : UINT32_C(0), &total) ||
+      !checked_add(total, fraction, &total)) {
+    return 0;
+  }
+  *fraction_digits = fraction;
+  *core = total;
+  return 1;
+}
+
+static void emit_general_fixed(DecimalWriter *writer,
+                               const RoundedDecimal *rounded,
+                               uint32_t significant_digits,
+                               uint32_t fraction_digits, int point) {
+  const int32_t exponent = rounded->exponent;
+
+  if (exponent >= INT32_C(0)) {
+    const uint32_t integer_digits = (uint32_t)exponent + UINT32_C(1);
+    emit_scaled_range(writer, rounded, UINT32_C(0), integer_digits);
+    if (point != 0) {
+      writer_character(writer, '.');
+    }
+    if (fraction_digits != UINT32_C(0)) {
+      emit_scaled_range(writer, rounded, integer_digits, fraction_digits);
+    }
+    return;
+  }
+  writer_character(writer, '0');
+  if (point != 0) {
+    writer_character(writer, '.');
+  }
+  writer_repeat(writer, '0', (uint32_t)(-exponent - INT32_C(1)));
+  emit_scaled_range(writer, rounded, UINT32_C(0), significant_digits);
+}
+
 static MalbolgeGuestRuntimeStatus emit_special(
     MalbolgeGuestFormatSink *sink,
     const MalbolgeGuestResolvedFormatArgument *resolved, char sign,
@@ -488,7 +577,9 @@ MalbolgeGuestRuntimeStatus malbolge_guest_format_execute_decimal_float(
       (resolved->directive.conversion ==
            MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_EXP_UPPER ||
        resolved->directive.conversion ==
-           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_FIXED_UPPER);
+           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_FIXED_UPPER ||
+       resolved->directive.conversion ==
+           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_GENERAL_UPPER);
   const int left =
       resolved != NULL &&
       (resolved->directive.flags & MALBOLGE_GUEST_FORMAT_LEFT) != UINT32_C(0);
@@ -508,6 +599,64 @@ MalbolgeGuestRuntimeStatus malbolge_guest_format_execute_decimal_float(
   if (malbolge_guest_decimal_from_binary64(bits, &exact) !=
       MALBOLGE_GUEST_RUNTIME_VALID) {
     return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+  }
+  if (resolved->directive.conversion ==
+          MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_GENERAL ||
+      resolved->directive.conversion ==
+          MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_GENERAL_UPPER) {
+    uint32_t significant = UINT32_C(0);
+    uint32_t fraction = UINT32_C(0);
+    const int alternate =
+        (resolved->directive.flags & MALBOLGE_GUEST_FORMAT_ALTERNATE) !=
+        UINT32_C(0);
+    int scientific = 0;
+
+    precision = general_precision(&resolved->directive);
+    if (precision == UINT32_MAX || !round_exact(&exact, precision, &rounded)) {
+      return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+    }
+    scientific = general_scientific(rounded.exponent, precision);
+    significant = general_significant_digits(&rounded, precision, alternate);
+    if (scientific != 0) {
+      fraction = significant - UINT32_C(1);
+      point = alternate != 0 || fraction != UINT32_C(0);
+      if (!finite_core_length(sign, fraction, point, rounded.exponent, &core)) {
+        return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+      }
+    } else if (!general_fixed_geometry(sign, rounded.exponent, significant,
+                                       alternate, &fraction, &core)) {
+      return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+    } else {
+      point = alternate != 0 || fraction != UINT32_C(0);
+    }
+    width = field_width(&resolved->directive);
+    total = width > core ? width : core;
+    padding = total - core;
+    zero =
+        left == 0 &&
+        (resolved->directive.flags & MALBOLGE_GUEST_FORMAT_ZERO) != UINT32_C(0);
+    if (!writer_init(&writer, sink, total)) {
+      return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+    }
+    if (left == 0 && zero == 0) {
+      writer_repeat(&writer, ' ', padding);
+    }
+    if (sign != '\0') {
+      writer_character(&writer, sign);
+    }
+    if (zero != 0) {
+      writer_repeat(&writer, '0', padding);
+    }
+    if (scientific != 0) {
+      emit_rounded(&writer, &rounded, fraction, point, uppercase);
+    } else {
+      emit_general_fixed(&writer, &rounded, significant, fraction, point);
+    }
+    if (left != 0) {
+      writer_repeat(&writer, ' ', padding);
+    }
+    sink->required += total;
+    return MALBOLGE_GUEST_RUNTIME_VALID;
   }
   if (resolved->directive.conversion ==
           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_FIXED ||
