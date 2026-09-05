@@ -1,6 +1,6 @@
 ---
 id: "symmetric-padded-crazy-chunk-geometry"
-status: "active"
+status: "completed"
 lane: "7"
 priority: "p1"
 area: "mathematics"
@@ -112,7 +112,8 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   uniform padded `5+5+5` also beats scalar but remains slower than native.
 
   This Linux evidence is explicitly secondary and has no selection authority.
-  Primary Windows measurements remain open.
+  Primary Windows measurements remain follow-on evidence for any future
+  promotion decision and are not required to preserve the no-promotion result.
 
   A separate benchmark-only `cpu-profile-crazy-avx2-v1` C implementation now
   exercises the same wrapping-u32 59,049-pair corpus at N10-N14. It compares
@@ -139,8 +140,8 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   secondary Linux host.
 
   The timing uses C23 `timespec_get(TIME_UTC)`, not cycle counters, and this
-  result has no product-selection authority. Primary Windows CPU/SIMD evidence
-  remains open.
+  result has no product-selection authority. Primary Windows CPU/SIMD remains
+  follow-on evidence for any future geometry-promotion decision.
 
   A versioned `cpu-profile-crazy-avx2-v2` benchmark extends only the arithmetic
   matrix to N15 without changing runtime profile admission. N15 uses the same
@@ -331,3 +332,16 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   Scaling work belongs to `search-pruning-and-state-canonicalization` and
   `empirical-malbolge-synthesis-scaling-law`; this TODO may provide measured
   cost inputs but inherits neither semantic-width nor pruning claims.
+
+- **Completion:** Completed on 2026-09-04 as a bounded no-promotion result.
+  Exact
+  padding mathematics, N10-N15 arithmetic correspondence, CPU/SIMD evidence,
+  CUDA resident timing/resources/occupancy/fanout/transfer accounting,
+  candidate-kernel rejection evidence, and failure/fallback behavior are all
+  retained. `cuda-resident-crazy-geometry-selection-v1` deterministically keeps
+  N10-N14 resident and candidate product paths `tritwise`; positive lookup
+  measurements remain research evidence only. Physical CUDA cache counters and
+  primary Windows performance runs are follow-on promotion evidence owned
+  with
+  the downstream accelerator TODOs, not prerequisites for this no-promotion
+  milestone.

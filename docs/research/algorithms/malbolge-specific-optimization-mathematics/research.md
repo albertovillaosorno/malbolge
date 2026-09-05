@@ -1034,6 +1034,16 @@ for eight-lane AVX2, with AVX2 winning all 15 paired samples. This supports SIMD
 benefit for that arithmetic microkernel on the recorded Linux host, not product
 route selection or N15 profile admission.
 
+
+The bounded geometry experiment now has an explicit no-promotion decision,
+`cuda-resident-crazy-geometry-selection-v1`. Despite positive retained RTX 4060
+resident lookup timing and positive secondary-host AVX2 results, product N10-N14
+resident CRAZY and candidate evaluation remain `tritwise`. Candidate lookup
+measurements are mixed-to-negative, physical constant-cache counters are not
+available in the hermetic CUDA bundle, and primary Windows CPU/SIMD evidence is
+not retained. Future promotion therefore requires new retained evidence and a
+new decision identity; runtime code does not read benchmark evidence.
+
 The self-encryption/rotate-history and exact rotate-period reductions,
 crazy preimage count, constructive preimage ranking, exact Gray traversal,
 exact Gray edit optimality, exact preimage-cube neighborhood graph, exact

@@ -17,14 +17,6 @@ labels belong here.
 
 ## P1 — Semantic and language foundations
 
-### TODO - Symmetric padded crazy chunk geometry
-
-Test whether the canonical five-trit chunk model can make `crazy` evaluation
-faster without changing profile semantics at any semantic width `N>=10`.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/mathematics/symmetric-padded-crazy-chunk-geometry.mdc](docs/todo/open/mathematics/symmetric-padded-crazy-chunk-geometry.mdc)
-
 ## P2 — Compiler, runtime, and accelerator core
 
 ### TODO - Adaptive accelerator resource budgeting
