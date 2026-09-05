@@ -155,11 +155,30 @@ It then writes canonical little-endian bytes without changing the sink count.
 Invalid, null, one-past, misaligned, or overflowing accesses leave the owned
 state unchanged. Wide `%ls` remains fail-closed and no host pointer is exposed.
 
+`guest_format_float.h` and `format_float.c` now own the first floating execution
+slice: binary64 `%a`/`%A`. The implementation consumes the resolved raw 64-bit
+argument representation directly and performs no floating arithmetic. Every
+nonzero finite value is normalized to a leading hexadecimal `1`, including
+subnormals whose exponent can therefore extend through `-1074`; this is the
+version-one implementation choice allowed by the C hexadecimal-float spelling.
+
+Missing precision emits the minimum trailing-zero-trimmed hexadecimal fraction
+needed for the exact binary64 value. Explicit precision below 13 hexadecimal
+fraction digits rounds discarded representation bits with the ABI-fixed
+nearest-ties-even rule; precision above 13 appends exact zero digits without
+iterating over bytes that cannot fit the sink.
+
+`#` forces the point, `0` pads after sign/base for finite values, and special
+values use deterministic `inf`/`nan` or `INF`/`NAN` spelling. Negative zero and
+the sign bit of NaNs are preserved textually. Length `l` has the C-defined no-op
+meaning for binary64; `L`/binary128 remains fail-closed.
+
 The C23 `snprintf`/`vsnprintf` contract still requires full formatted-output
 semantics, including the same would-have-written result under truncation. These
 formatting layers are implementation substrate only; public routines remain
 contracted-unavailable until compiler lowering bridges source `va_list` state
-into the canonical promoted-block cursor and floating formatting is complete.
+into the canonical promoted-block cursor and decimal plus binary128 floating
+formatting are complete.
 
 Independent C vectors lock decimal/hex/octal/binary integer output,
 INT64_MIN, alternate prefixes, precision-versus-zero padding, left/right width,
@@ -174,7 +193,10 @@ values, negative dynamic fields, rollback on late failure, promotion-aware
 scalar narrowing, and exact guest-pointer `%p` text. Guest-memory vectors cover
 bounded precision without a terminator, required termination, logical-pointer
 range, `%n` width/alignment, little-endian stores, count representability, and
-rejection atomicity.
+rejection atomicity. Hexadecimal-floating vectors cover exact/default precision,
+`#`, sign/zero/left padding, normalized subnormals, signed zero, infinity/NaN,
+explicit precision above 13 digits, ties-to-even, truncation, and fail-closed
+binary128/dynamic-field inputs.
 
 Windows i686/x64/ARM64 syntax checks, native execution, and wasm32 symbol
 inspection keep the formatting layers independent of host formatting. The typed
@@ -221,8 +243,8 @@ selected target profile is sequential with no guest thread surface. Allocation
 startup binding and byte-I/O intrinsic realization are likewise lane-9 target
 work over the stable identities defined here. The canonical promoted-block
 varargs cursor is now implemented; source `va_list` bridging remains lane-9
-compiler-lowering work. Remaining lane-8 algorithm work is floating
-formatting and correctly-rounded `sin`, `cos`, and `atan2`.
+compiler-lowering work. Remaining lane-8 algorithm work is decimal/binary128
+floating formatting and correctly-rounded `sin`, `cos`, and `atan2`.
 
 ## Invariants
 

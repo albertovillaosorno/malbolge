@@ -114,7 +114,12 @@
     "pointer_conversion_execution": "p-object-pointer-encoding-hex-implemented",
     "pointer_null_format": "0",
     "pointer_nonnull_format": "0x-lowercase-guest-encoding",
-    "floating_formatting": "not-implemented",
+    "floating_formatting": "binary64-a-A-implemented-decimal-f128-open",
+    "floating_hex_rounding": "nearest-ties-even",
+    "floating_hex_nonzero_style": "normalized-leading-one",
+    "floating_hex_default_precision": "minimal-exact-trailing-zero-trim",
+    "floating_decimal_execution": "not-implemented",
+    "floating_binary128_execution": "not-implemented",
     "public_routines": [
       "snprintf",
       "vsnprintf"

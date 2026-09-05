@@ -134,6 +134,17 @@ parts:
     language: c
     responsibility: >-
       Execute narrow string reads and count stores in guest memory.
+  - id: part-0020
+    path: contract/guest_format_float.h
+    kind: contract
+    language: c
+    responsibility: Define deterministic binary floating formatting semantics.
+  - id: part-0021
+    path: domain/format_float.c
+    kind: domain
+    language: c
+    responsibility: >-
+      Execute binary64 hexadecimal formatting without host floating authority.
 projects: []
 tests: []
 graph:

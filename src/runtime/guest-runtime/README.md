@@ -33,5 +33,8 @@ guest pointer encoding rather than a host address. A caller-proven live-object
 memory view executes narrow `%s` reads and integer `%n` stores through the same
 32-bit logical pointer encoding without exposing host pointer identity.
 
-Source `va_list` bridging remains compiler-lowering work. Wide-string and
-floating formatting plus correctly-rounded transcendental math remain open.
+A separate integer-only floating boundary now executes binary64 `%a`/`%A`
+with normalized exact hexadecimal geometry and nearest-ties-even rounding.
+Source `va_list` bridging remains compiler-lowering work. Decimal floating,
+binary128 formatting, wide-string formatting, and correctly-rounded
+transcendental math remain open.
