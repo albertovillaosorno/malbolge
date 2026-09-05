@@ -206,6 +206,26 @@ Run with:
   -m benchmarks.accelerator.profile_width_crazy_geometry_resources
 ```
 
+`profile_width_crazy_geometry_failure_policy.py` is the hardware-free failure
+companion. It uses the same CUDA profile footprint authority and the shared
+resource planner to place each N10-N14 one-VM chunk exactly one byte below, then
+exactly at, its admissible memory boundary. It never creates a CUDA context or
+allocates the planned device state.
+
+The direct CUDA policy remains fail closed when planning rejects a state. At the
+product batch port, optional backend unavailability instead executes the
+already admitted request through safe Rust; the VM integration suite checks
+exact N10-N14
+checkpoint equality and records every item as `SafeRustFallback`.
+
+Run the deterministic matrix with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m `
+  benchmarks.accelerator.profile_width_crazy_geometry_failure_policy
+```
+
 `profile_run_phase_profile.py` measures the same current-profile workload with
 adapter diagnostics split into validation/planning, host construction,
 allocation, upload, kernel+sync, download, full result decode, and release. It

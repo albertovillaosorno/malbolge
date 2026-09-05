@@ -590,6 +590,49 @@ fn profile_backend_request_exposes_every_admitted_resident_geometry()
 }
 
 #[test]
+fn unavailable_profile_backend_preserves_each_crazy_geometry_in_safe_rust()
+-> TestResult {
+    let checked = [10u8, 11, 12, 13, 14];
+    let mut requests = Vec::with_capacity(checked.len());
+    for word_trits in checked {
+        let verified = normalize_result(verify_initial_halt_profile_width(
+            current_profile(),
+            b"QP",
+            word_trits,
+        ))?;
+        let machine = normalize_result(ProfileMachine::from_verified_source(
+            &verified,
+            Vec::new(),
+        ))?;
+        requests.push(ProfileBatchRequest::from_machine(machine, 0));
+    }
+    let expected = profile_snapshots(&execute_profile_batch(requests.clone()));
+    let mut unavailable = UnavailableBackend;
+    let (observed_items, report) =
+        execute_profile_batch_with_backend_report(requests, &mut unavailable);
+    let observed = profile_snapshots(&observed_items);
+    check_equal(&observed, &expected, "CRAZY geometry safe-Rust fallback")?;
+    check_equal(
+        &report.backend_count(),
+        &0usize,
+        "CRAZY geometry unavailable backend count",
+    )?;
+    check_equal(
+        &report.fallback_count(),
+        &checked.len(),
+        "CRAZY geometry fallback count",
+    )?;
+    let expected_origins =
+        vec![BatchExecutionOrigin::SafeRustFallback; checked.len()];
+    check_equal(
+        &report.origins(),
+        &expected_origins.as_slice(),
+        "CRAZY geometry fallback origins",
+    )?;
+    Ok(())
+}
+
+#[test]
 fn profile_backend_rejects_same_profile_with_different_geometry() -> TestResult
 {
     let verified = normalize_result(

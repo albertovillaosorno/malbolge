@@ -227,6 +227,22 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   tritwise/native/padded order. Each row keeps the measured free-memory snapshot
   that explains small route-to-route capacity differences.
 
+  Failure behavior is now separated from fallback behavior instead of being
+  inferred from a successful live run. The hardware-free
+  `cuda-profile-width-crazy-geometry-failure-policy-v1` matrix uses the same
+  per-item footprint authority and resource planner as the CUDA adapter. Exact
+  required one-VM chunks are 301,804/774,196/2,191,372/6,442,900/19,197,484
+  bytes for N10-N14; every width rejects with one byte less usable memory and
+  admits exactly one VM at the boundary.
+
+  Direct CUDA resource rejection remains fail closed before allocation. Product
+  optional-backend failure is a separate performance fallback: a new VM
+  regression sends N10-N14 admitted geometries through an unavailable profile
+  backend, proves complete checkpoint equality with sequential safe Rust, and
+  requires five `SafeRustFallback` origins with zero backend completions. This
+  closes the resource failure/fallback reporting item without changing product
+  geometry selection or treating fallback execution as CUDA evidence.
+
   The fanout is therefore structural evidence for that benchmark route, not an
   observed cache counter from the product kernel. The hermetic CUDA bundle
   exposes no Nsight
