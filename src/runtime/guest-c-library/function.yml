@@ -88,6 +88,16 @@ parts:
     kind: domain
     language: c
     responsibility: Implement correctly rounded deterministic binary64 sqrt.
+  - id: part-0011
+    path: contract/math_transcendental_bits.h
+    kind: contract
+    language: c
+    responsibility: Declare exact internal transcendental edge classification.
+  - id: part-0012
+    path: domain/math_transcendental_bits.c
+    kind: domain
+    language: c
+    responsibility: Classify exact transcendental edge cases before kernels.
 projects: []
 tests: []
 graph:

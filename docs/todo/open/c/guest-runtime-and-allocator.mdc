@@ -202,9 +202,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   uses a representation-only restoring integer algorithm with ABI-fixed
   nearest-ties-even rounding; a separate 532-pattern arbitrary-precision
   `isqrt` differential, no-CRT execution, and cross-ABI symbol checks prove its
-  result bits and lack of host/compiler helper fallback. `sin`, `cos`, and
-  `atan2` remain unavailable because their correctly-rounded transcendental
-  algorithms are not yet proven.
+  result bits and lack of host/compiler helper fallback.
+- Implemented transcendental edge-preclassification evidence:
+  an internal raw-bit boundary resolves only exact `sin`/`cos` zero semantics,
+  canonical NaN/infinity handling, and exact zero-result `atan2` cases. Every
+  other finite case returns `kernel-required` without an approximation. A
+  tracked no-libm harness executes these cases while `sin`, `cos`, and `atan2`
+  remain contracted-unavailable. Their correctly-rounded range reduction and
+  numerical kernels are still unproven and remain the lane-8 blocker.
 - Resolved integer/scheduling boundary: version one introduces no separate
   guest helper ABI for ordinary integer arithmetic or scheduling. Integer
   operations are explicit typed-IR semantics consumed by lane 9; the selected

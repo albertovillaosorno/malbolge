@@ -56,6 +56,11 @@ MEMORY = LIBC_ROOT / "domain/memory.c"
 STRING = LIBC_ROOT / "domain/string.c"
 MATH_EXACT = LIBC_ROOT / "domain/math_exact.c"
 MATH_SQRT = LIBC_ROOT / "domain/math_sqrt.c"
+MATH_TRANS_SPECIAL = LIBC_ROOT / "domain/math_transcendental_bits.c"
+MATH_INTERNAL = LIBC_ROOT / "contract"
+MATH_TRANS_HARNESS = (
+    ROOT / "tests/runtime/guest_math_transcendental_special_conformance.c"
+)
 ACCEPTED = ROOT / "tests/tidy/libc/accepted/libc_memory_string.c"
 ACCEPTED_MATH = ROOT / "tests/tidy/libc/accepted/libc_math_exact.c"
 ACCEPTED_SQRT = ROOT / "tests/tidy/libc/accepted/libc_math_sqrt.c"
@@ -268,6 +273,7 @@ def test_executable_guest_libc_compiles_for_frontend_target() -> None:
         STRING,
         MATH_EXACT,
         MATH_SQRT,
+        MATH_TRANS_SPECIAL,
         ACCEPTED,
         ACCEPTED_MATH,
         ACCEPTED_SQRT,
@@ -284,6 +290,30 @@ def test_executable_guest_libc_compiles_for_frontend_target() -> None:
             ROOT,
         )
         assert completed.returncode == 0, completed.stderr
+
+
+def test_transcendental_special_cases_execute_without_libm(
+    tmp_path: Path,
+) -> None:
+    """Resolve exact raw-bit edge cases without exposing transcendental libc."""
+    _require_clang()
+    executable = tmp_path / "transcendental-special"
+    compiled = _run(
+        [
+            str(CLANG),
+            *STRICT_C,
+            f"-I{MATH_INTERNAL}",
+            str(MATH_TRANS_SPECIAL),
+            str(MATH_TRANS_HARNESS),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stderr
+
+    completed = _run([str(executable)], ROOT)
+    assert completed.returncode == 0, completed.stderr
 
 
 @pytest.mark.parametrize(("fixture", "code", "routine"), SOURCE_REJECTIONS)
