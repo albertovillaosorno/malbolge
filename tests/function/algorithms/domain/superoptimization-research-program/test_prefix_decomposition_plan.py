@@ -11,24 +11,24 @@
 # - Owns:
 #   - Preregistration evidence for exact classic prefix decomposition.
 # - Must-Not:
-#   - Claim measurements, implement the runner, or weaken final verification.
+#   - Claim measurements, reopen the results gate, or weaken final verification.
 # - Allows:
 #   - Inputs: tracked plan and the frozen classic superoptimization challenge.
 #   - Outputs: exact identity, bounds, applicability, and closed-gate
 #     assertions.
 #   - Side effects: repository-local reads only.
 # - Split-When:
-#   - Runner or retained measurement evidence gains an independent lifecycle.
+#   - Retained measurement evidence gains an independent lifecycle.
 # - Merge-When:
 #   - Shared preregistration tests own this exact record shape.
 # - Summary:
-#   - Lock prefix decomposition before implementation or measurement.
+#   - Lock prefix decomposition and registered runner before measurement.
 # - Description:
 #   - Requires exact suffix-independence proof before any prefix result reuse.
 # - Usage:
 #   - Collected by the research-algorithm Python test surface.
 # - Defaults:
-#   - Results stay forbidden until runner, protocol, and provenance register.
+#   - Results stay forbidden until protocol and provenance register.
 #
 
 """Preregistration checks for exact classic prefix decomposition."""
@@ -118,7 +118,7 @@ def test_prefix_decomposition_plan_fixes_equal_bounds_and_equivalence() -> None:
     assert runner["baseline"] == _BASELINE
     assert runner["technique"] == _TECHNIQUE
     assert runner["semantic_equivalence"] == _EQUIVALENCE_ID
-    assert runner["status"] == _UNREGISTERED
+    assert runner["status"] == _REGISTERED
 
 
 def test_prefix_decomposition_requires_proof_before_reuse() -> None:
@@ -145,7 +145,7 @@ def test_prefix_decomposition_measurement_gate_stays_closed() -> None:
     gate = cast("dict[str, object]", _document()["measurement_gate"])
 
     assert gate["challenge_status"] == _REGISTERED
-    assert gate["runner_status"] == _UNREGISTERED
+    assert gate["runner_status"] == _REGISTERED
     assert gate["protocol_status"] == _UNREGISTERED
     assert gate["retained_provenance_status"] == _UNREGISTERED
     assert gate["results_allowed"] is False

@@ -41,14 +41,18 @@ independent preimage-set equality. Candidate work falls from 708,588 checks to
 2,298,684,800 ns to 2,931,140,300 ns, about 1.28 times slower. Observed timing
 
 ranges overlap. The run supports exact pruning but not a runtime-speedup claim.
+
 A fourth comparison, `classic-two-word-prefix-decomposition-v1`, is now
-preregistered against the original frozen corpus. It requires exact proof of
-suffix independence before any prefix result reuse and keeps its result gate
-closed until runner, protocol, and retained provenance are registered.
+preregistered against the original frozen corpus. Its registered fail-closed
+runner reuses only separately proved prefix classes, fully verifies every other
+candidate, and requires complete candidate-index/quality-map equality with the
+baseline. The result gate remains closed until a retained protocol and
+provenance are registered.
 
 A low-level structural regression proves only the `Q` prefix so far: entry halts
 before encryption, and exactly eight load-admitted suffixes have quality one.
-Other prefixes remain full-verification cases until separately proved.
+The runner therefore treats only that 94-suffix row structurally; every other
+prefix remains a full-verification case until separately proved.
 
 The shared mechanisms live under
 `src/research/algorithms/composition/algorithms/superoptimization/`; domain

@@ -42,7 +42,7 @@ id = "classic-two-word-prefix-decomposition-comparison-v1"
 baseline = "full-candidate-independent-verification-v1"
 technique = "exact-first-step-prefix-decomposition-v1"
 semantic_equivalence = "exact-candidate-index-quality-map-v1"
-status = "unregistered"
+status = "registered"
 
 [decomposition]
 prefix_words = 1
@@ -62,11 +62,11 @@ conditions = [
 
 [measurement_gate]
 challenge_status = "registered"
-runner_status = "unregistered"
+runner_status = "registered"
 protocol_status = "unregistered"
 retained_provenance_status = "unregistered"
 results_allowed = false
-reason = """runner and retained measurement protocol are not yet \
+reason = """retained measurement protocol and provenance are not yet \
 registered"""
 
 [provenance]

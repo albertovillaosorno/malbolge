@@ -178,10 +178,10 @@ A fourth comparison is now preregistered but deliberately unmeasured.
 `classic-two-word-prefix-decomposition-v1` reuses the frozen 8,836-candidate
 challenge and independent verifier, compares full candidate verification with
 exact first-step prefix decomposition, and makes independent verifier calls its
-primary metric. Reuse is forbidden unless suffix independence is proved, and
-complete candidate-index/quality-map equality is a rejection boundary. Its
-measurement gate remains closed until runner, protocol, and retained provenance
-are registered.
+primary metric. Its registered runner reuses only separately proved prefix
+classes, fully verifies every other candidate, and rejects complete
+candidate-index/quality-map drift. The measurement gate remains closed until a
+retained protocol and provenance are registered.
 
 Independent structural evidence now proves one nontrivial basis:
 for the `Q` prefix, position-zero decode is halt and entry termination occurs

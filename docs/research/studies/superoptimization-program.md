@@ -139,11 +139,13 @@ source-pinned five-pair Windows/Python timing is negative: median time rises
 from
 2,298,684,800 ns to 2,931,140,300 ns, about 1.28 times slower, with overlapping
 
-ranges. This supports exact pruning but not a runtime-speedup claim. Exact
-first-step prefix decomposition is now preregistered over the original frozen
-two-word challenge. It may reuse a prefix result only after proving suffix
-independence, must preserve the complete candidate-index/quality map, and cannot
-produce interpreted results until its runner and retained protocol exist.
+ranges. This supports exact pruning but not a runtime-speedup claim.
+
+Exact first-step prefix decomposition is now preregistered over the original
+frozen two-word challenge. Its registered runner may reuse a prefix result only
+after proving suffix independence, fully verifies every unproved prefix, and
+must preserve the complete candidate-index/quality map. Interpreted results
+remain forbidden until a retained protocol and provenance exist.
 
 New synthesis, equality-saturation, learned, or accelerator-guided strategies
 must add their own equally identified comparisons rather than

@@ -136,10 +136,10 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   This supports exact pruning but not a runtime-speedup claim.
 
 - An exact first-step prefix-decomposition comparison is now separately
-  preregistered
-  against the same frozen 8,836-candidate corpus. It makes independent verifier
-  calls the primary metric, requires exact candidate-index/quality-map equality,
-  and forbids result interpretation until a runner, protocol, and retained
+  preregistered against the same frozen 8,836-candidate corpus. Its registered
+  runner reuses only separately proved prefix classes, fully verifies every
+  other candidate, and requires exact candidate-index/quality-map equality.
+  Result interpretation remains forbidden until a retained protocol and
   provenance exist.
 
 - Larger challenges, independent hosts/implementations, additional technique
