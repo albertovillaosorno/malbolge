@@ -173,6 +173,14 @@ values use deterministic `inf`/`nan` or `INF`/`NAN` spelling. Negative zero and
 the sign bit of NaNs are preserved textually. Length `l` has the C-defined no-op
 meaning for binary64; `L` selects the binary128 path.
 
+`guest_decimal_exact.h` and `format_decimal_exact.c` provide the bounded exact
+source for decimal binary64 formatting. A finite magnitude is represented as a
+canonical nonzero decimal digit sequence times `10^decimal_shift`; removable
+trailing zeroes move into the shift. The worst binary64 exact numerator needs
+767 decimal digits, so the implementation uses a fixed 768-byte digit result and
+192 base-10000 limbs. Power-of-two and power-of-five scaling uses only 32-bit
+multiply/carry operations, avoiding 64-bit division and host floating helpers.
+
 The C23 `snprintf`/`vsnprintf` contract still requires full formatted-output
 semantics, including the same would-have-written result under truncation. These
 formatting layers are implementation substrate only; public routines remain

@@ -145,6 +145,17 @@ parts:
     language: c
     responsibility: >-
       Execute binary64/binary128 hex formatting without host float authority.
+  - id: part-0022
+    path: contract/guest_decimal_exact.h
+    kind: contract
+    language: c
+    responsibility: Define bounded exact binary64 decimal magnitude semantics.
+  - id: part-0023
+    path: domain/format_decimal_exact.c
+    kind: domain
+    language: c
+    responsibility: >-
+      Convert finite binary64 bits to exact decimal digits without host floats.
 projects: []
 tests: []
 graph:

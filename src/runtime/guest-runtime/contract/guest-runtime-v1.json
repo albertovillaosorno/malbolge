@@ -118,6 +118,9 @@
     "floating_hex_rounding": "nearest-ties-even",
     "floating_hex_nonzero_style": "normalized-leading-one",
     "floating_hex_default_precision": "minimal-exact-trailing-zero-trim",
+    "floating_decimal_binary64_exact": "digits-times-power10-implemented",
+    "floating_decimal_binary64_max_exact_digits": 767,
+    "floating_decimal_binary64_scratch": "base-10000-u32-only-bounded",
     "floating_decimal_execution": "not-implemented",
     "floating_binary128_execution": "a-A-implemented",
     "public_routines": [

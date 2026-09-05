@@ -35,6 +35,10 @@ memory view executes narrow `%s` reads and integer `%n` stores through the same
 
 A separate integer-only floating boundary executes binary64 and binary128
 `%a`/`%A` with normalized exact hexadecimal geometry and nearest-ties-even
-rounding. Source `va_list` bridging remains compiler-lowering work. Decimal
-floating, wide-string formatting, and correctly-rounded transcendental math
-remain open.
+rounding. Binary64 decimal work now also has a bounded exact magnitude
+substrate:
+finite bits become canonical decimal digits times a signed power of ten using
+only 32-bit base-10000 limbs. Decimal spelling remains gated.
+
+Source `va_list` bridging remains compiler-lowering work. Decimal floating,
+wide-string formatting, and correctly-rounded transcendental math remain open.
