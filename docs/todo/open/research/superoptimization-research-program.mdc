@@ -166,8 +166,9 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   that may see only
   initial positional decode; dynamic transitions, verifier outcomes, accepted-
   set knowledge, and training data remain forbidden schedule inputs. The static
-  score-then-index schedule is now registered. Results stay gated until runner,
-  protocol, and provenance are registered.
+  score-then-index schedule and equal-budget verifier-gated runner are now
+  registered. Results stay gated until timing protocol and provenance are
+  registered.
 
 Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.

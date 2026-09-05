@@ -105,7 +105,7 @@ def test_heuristic_plan_results_gate_is_closed_before_holdout_execution(
     gate = _table("measurement_gate")
     assert gate["challenge_status"] == _REGISTERED
     assert gate["schedule_status"] == _REGISTERED
-    assert gate["runner_status"] == _UNREGISTERED
+    assert gate["runner_status"] == _REGISTERED
     assert gate["protocol_status"] == _UNREGISTERED
     assert gate["retained_provenance_status"] == _UNREGISTERED
     assert gate["results_allowed"] is False
