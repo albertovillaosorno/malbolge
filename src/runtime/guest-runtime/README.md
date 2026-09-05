@@ -38,9 +38,11 @@ A separate integer-only floating boundary executes binary64 and binary128
 rounding. Binary64 decimal work now also has a bounded exact magnitude
 substrate:
 finite bits become canonical decimal digits times a signed power of ten using
-only 32-bit base-10000 limbs. Binary64 `%e`/`%E` now consumes that
-representation
-with decimal nearest-ties-even rounding and bounded scientific layout.
+only 32-bit base-10000 limbs. Binary64 `%e`/`%E` consumes that
+representation with decimal nearest-ties-even rounding and bounded scientific
+layout. Binary128 now has a
+separately bounded exact-decimal source as well: at most 11,563 exact digits
+using 2,891 base-10000 limbs, without inflating the binary64 scratch geometry.
 
 Binary64 `%f`/`%F` uses the same exact decimal source, rounding the scaled
 integer nearest-ties-even before placing the fixed decimal point. `%g`/`%G`

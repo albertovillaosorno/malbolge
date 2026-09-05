@@ -9,11 +9,11 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Independent exact-decimal vectors for finite binary64 raw bit patterns.
+//   - Independent exact-decimal vectors for finite binary64/binary128 bits.
 // - Must-Not:
 //   - Use native floating conversion or host decimal formatting as an oracle.
 // - Allows:
-//   - Inputs: fixed raw binary64 representations.
+//   - Inputs: fixed raw binary64 and binary128 representations.
 //   - Outputs: zero only when exact canonical digits and shift match vectors.
 //   - Side effects: test-local result storage only.
 // - Split-When:
@@ -21,7 +21,7 @@
 // - Merge-When:
 //   - Complete decimal-format tests own this decomposition evidence directly.
 // - Summary:
-//   - Locks zero, integers, fractions, subnormal edges, and maximum finite.
+//   - Locks zero, fractions, subnormal/normal edges, and maximum finite values.
 // - Description:
 //   - Expected digits are exact integer arithmetic facts, not libc output.
 // - Usage:
@@ -30,7 +30,7 @@
 //   - Either sign bit has the same magnitude representation.
 //
 
-//! Exact finite binary64-to-decimal decomposition vectors.
+//! Exact finite binary64/binary128-to-decimal decomposition vectors.
 
 #include "guest_decimal_exact.h"
 
@@ -58,8 +58,123 @@ static int check(uint64_t bits, const char *digits, int32_t shift) {
          value.decimal_shift == shift && same_digits(&value, digits);
 }
 
+
+static int same_prefix128(const MalbolgeGuestDecimalExact128 *value,
+                          const char *expected) {
+  uint32_t index = UINT32_C(0);
+
+  while (expected[index] != '\0') {
+    if (index >= value->digit_count ||
+        value->digits[index] != expected[index]) {
+      return 0;
+    }
+    ++index;
+  }
+  return 1;
+}
+
+static int same_suffix128(const MalbolgeGuestDecimalExact128 *value,
+                          const char *expected) {
+  uint32_t count = UINT32_C(0);
+  uint32_t index = UINT32_C(0);
+
+  while (expected[count] != '\0') {
+    ++count;
+  }
+  if (count > value->digit_count) {
+    return 0;
+  }
+  index = value->digit_count - count;
+  count = UINT32_C(0);
+  while (expected[count] != '\0') {
+    if (value->digits[index + count] != expected[count]) {
+      return 0;
+    }
+    ++count;
+  }
+  return 1;
+}
+
+static int check128(uint64_t low, uint64_t high, const char *digits,
+                    int32_t shift) {
+  MalbolgeGuestDecimalExact128 value;
+  uint32_t index = UINT32_C(0);
+
+  if (malbolge_guest_decimal_from_binary128(low, high, &value) !=
+          MALBOLGE_GUEST_RUNTIME_VALID ||
+      value.decimal_shift != shift) {
+    return 0;
+  }
+  while (index < value.digit_count && digits[index] != '\0') {
+    if (value.digits[index] != digits[index]) {
+      return 0;
+    }
+    ++index;
+  }
+  return index == value.digit_count && digits[index] == '\0';
+}
+
+static int test_binary128(void) {
+  MalbolgeGuestDecimalExact128 value;
+
+  if (!check128(UINT64_C(0), UINT64_C(0), "0", INT32_C(0)) ||
+      !check128(UINT64_C(0), UINT64_C(0x8000000000000000), "0", INT32_C(0)) ||
+      !check128(UINT64_C(0), UINT64_C(0x3fff000000000000), "1", INT32_C(0)) ||
+      !check128(UINT64_C(0), UINT64_C(0x3fff800000000000), "15",
+                INT32_C(-1)) ||
+      !check128(UINT64_C(0), UINT64_C(0x4002400000000000), "1", INT32_C(1))) {
+    return 1;
+  }
+  if (malbolge_guest_decimal_from_binary128(UINT64_C(1), UINT64_C(0), &value) !=
+          MALBOLGE_GUEST_RUNTIME_VALID ||
+      value.digit_count != UINT32_C(11529) ||
+      value.decimal_shift != INT32_C(-16494) ||
+      !same_prefix128(&value,
+                      "647517511943802511092443895822764655249956933803") ||
+      !same_suffix128(&value,
+                      "243575463379929857410388649441301822662353515625")) {
+    return 2;
+  }
+  if (malbolge_guest_decimal_from_binary128(
+          UINT64_MAX, UINT64_C(0x0001ffffffffffff), &value) !=
+          MALBOLGE_GUEST_RUNTIME_VALID ||
+      value.digit_count != UINT32_C(11563) ||
+      value.decimal_shift != INT32_C(-16494) ||
+      !same_prefix128(
+          &value,
+          "6724206286224187012525355634643504557678646745890431387773758636") ||
+      !same_suffix128(
+          &value,
+          "6943825085925512756424536620070142589611350558698177337646484375")) {
+    return 3;
+  }
+  if (malbolge_guest_decimal_from_binary128(
+          UINT64_MAX, UINT64_C(0x7ffeffffffffffff), &value) !=
+          MALBOLGE_GUEST_RUNTIME_VALID ||
+      value.digit_count != UINT32_C(4933) ||
+      value.decimal_shift != INT32_C(0) ||
+      !same_prefix128(&value,
+                      "118973149535723176508575932662800701619646905264") ||
+      !same_suffix128(&value,
+                      "341763535189105548847634608972381760403137363968")) {
+    return 4;
+  }
+  if (malbolge_guest_decimal_from_binary128(
+          UINT64_C(0), UINT64_C(0x7fff000000000000), &value) !=
+          MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT ||
+      malbolge_guest_decimal_from_binary128(
+          UINT64_C(1), UINT64_C(0x7fff800000000000), &value) !=
+          MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT ||
+      malbolge_guest_decimal_from_binary128(UINT64_C(0), UINT64_C(0), NULL) !=
+          MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT) {
+    return 5;
+  }
+  return 0;
+}
+
 int main(void) {
   MalbolgeGuestDecimalExact value;
+  const int binary128 = test_binary128();
 
   if (!check(UINT64_C(0), "0", INT32_C(0)) ||
       !check(UINT64_C(0x8000000000000000), "0", INT32_C(0))) {
@@ -111,6 +226,9 @@ int main(void) {
       malbolge_guest_decimal_from_binary64(UINT64_C(0), NULL) !=
           MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT) {
     return 6;
+  }
+  if (binary128 != 0) {
+    return 10 + binary128;
   }
   return 0;
 }

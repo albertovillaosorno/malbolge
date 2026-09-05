@@ -173,13 +173,20 @@ values use deterministic `inf`/`nan` or `INF`/`NAN` spelling. Negative zero and
 the sign bit of NaNs are preserved textually. Length `l` has the C-defined no-op
 meaning for binary64; `L` selects the binary128 path.
 
-`guest_decimal_exact.h` and `format_decimal_exact.c` provide the bounded exact
-source for decimal binary64 formatting. A finite magnitude is represented as a
-canonical nonzero decimal digit sequence times `10^decimal_shift`; removable
-trailing zeroes move into the shift. The worst binary64 exact numerator needs
-767 decimal digits, so the implementation uses a fixed 768-byte digit result and
-192 base-10000 limbs. Power-of-two and power-of-five scaling uses only 32-bit
-multiply/carry operations, avoiding 64-bit division and host floating helpers.
+`guest_decimal_exact.h` and `format_decimal_exact.c` provide bounded exact
+sources for decimal binary64 and binary128 formatting. A finite magnitude is
+represented as a canonical nonzero decimal digit sequence times
+`10^decimal_shift`; removable trailing zeroes move into the shift. Binary64
+retains its fixed 768-byte result and 192 base-10000 limbs.
+
+Binary128 uses a separate 11,564-byte result and 2,891-limb scratch: the true
+worst case is the minimum-normal exponent with the maximum 113-bit significand,
+whose exact numerator has 11,563 decimal digits at shift `-16494`. Shared
+multiplication operates through an explicit-capacity limb view, so the larger
+binary128 bound does not inflate binary64 scratch. Power-of-two and
+power-of-five scaling uses only 32-bit multiply/carry operations, avoiding
+64-bit division and host
+floating helpers.
 
 `format_float_decimal.c` consumes the exact binary64 representation for
 scientific `%e`/`%E`. Omitted precision means six digits after the decimal

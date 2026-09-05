@@ -9,15 +9,16 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Exact finite-binary64 to canonical decimal magnitude conversion.
+//   - Exact finite binary64/binary128 to canonical decimal magnitude
+//     conversion.
 // - Must-Not:
 //   - Use floating arithmetic, allocation, host formatting, or 64-bit division.
 // - Allows:
-//   - Inputs: raw binary64 bits.
+//   - Inputs: raw binary64 bits or low/high binary128 words.
 //   - Outputs: exact significant decimal digits and a base-ten shift.
 //   - Side effects: result publication only after bounded conversion succeeds.
 // - Split-When:
-//   - Binary128 needs its separately sized exact-decimal scratch policy.
+//   - Another floating format needs separately bounded exact-decimal geometry.
 // - Merge-When:
 //   - Decimal formatter owns the same bounded integer representation directly.
 // - Summary:
@@ -31,7 +32,7 @@
 //   - Trailing decimal zeroes move into the shift without changing exact value.
 //
 
-//! Exact binary64 decimal decomposition with no host floating authority.
+//! Exact binary floating decimal decomposition with no host floating authority.
 
 #include "guest_decimal_exact.h"
 
@@ -47,26 +48,32 @@
 #define B64_SUBNORMAL_POWER INT32_C(-1074)
 #define B64_EXPONENT_ALL_ONES UINT32_C(0x7ff)
 
+#define B128_SIGN UINT64_C(0x8000000000000000)
+#define B128_EXPONENT UINT64_C(0x7fff000000000000)
+#define B128_FRACTION_HIGH UINT64_C(0x0000ffffffffffff)
+#define B128_HIDDEN_HIGH UINT64_C(0x0001000000000000)
+#define B128_EXPONENT_SHIFT UINT32_C(48)
+#define B128_EXPONENT_BIAS INT32_C(16383)
+#define B128_SUBNORMAL_POWER INT32_C(-16494)
+#define B128_EXPONENT_ALL_ONES UINT32_C(0x7fff)
+
 #define BIG_BASE UINT32_C(10000)
-#define BIG_LIMBS UINT32_C(192)
+#define B64_BIG_LIMBS UINT32_C(192)
+#define B128_BIG_LIMBS UINT32_C(2891)
 #define POW2_CHUNK UINT32_C(262144)
 #define POW2_CHUNK_BITS UINT32_C(18)
 #define POW5_CHUNK UINT32_C(3125)
 #define POW5_CHUNK_BITS UINT32_C(5)
 
 typedef struct DecimalBigNat {
-  uint32_t limbs[192];
+  uint32_t *limbs;
+  uint32_t capacity;
   uint32_t count;
 } DecimalBigNat;
 
 static void big_zero(DecimalBigNat *value) {
-  uint32_t index = UINT32_C(0);
-
   value->count = UINT32_C(1);
-  while (index < BIG_LIMBS) {
-    value->limbs[index] = UINT32_C(0);
-    ++index;
-  }
+  value->limbs[0] = UINT32_C(0);
 }
 
 static int big_multiply(DecimalBigNat *value, uint32_t factor) {
@@ -80,7 +87,7 @@ static int big_multiply(DecimalBigNat *value, uint32_t factor) {
     ++index;
   }
   while (carry != UINT32_C(0)) {
-    if (value->count == BIG_LIMBS) {
+    if (value->count == value->capacity) {
       return 0;
     }
     value->limbs[value->count] = carry % BIG_BASE;
@@ -101,7 +108,7 @@ static int big_add_bit(DecimalBigNat *value, uint32_t bit) {
     ++index;
   }
   if (carry != UINT32_C(0)) {
-    if (value->count == BIG_LIMBS) {
+    if (value->count == value->capacity) {
       return 0;
     }
     value->limbs[value->count] = carry;
@@ -110,10 +117,9 @@ static int big_add_bit(DecimalBigNat *value, uint32_t bit) {
   return 1;
 }
 
-static int big_from_u64_bits(DecimalBigNat *value, uint64_t input) {
+static int big_append_u64_bits(DecimalBigNat *value, uint64_t input) {
   uint32_t bit = UINT32_C(64);
 
-  big_zero(value);
   while (bit != UINT32_C(0)) {
     --bit;
     if (!big_multiply(value, UINT32_C(2)) ||
@@ -122,6 +128,17 @@ static int big_from_u64_bits(DecimalBigNat *value, uint64_t input) {
     }
   }
   return 1;
+}
+
+static int big_from_u64_bits(DecimalBigNat *value, uint64_t input) {
+  big_zero(value);
+  return big_append_u64_bits(value, input);
+}
+
+static int big_from_u128_bits(DecimalBigNat *value, uint64_t low,
+                              uint64_t high) {
+  big_zero(value);
+  return big_append_u64_bits(value, high) && big_append_u64_bits(value, low);
 }
 
 static int big_multiply_power(DecimalBigNat *value, uint32_t factor,
@@ -185,9 +202,9 @@ static uint32_t emit_top_limb(char *digits, uint32_t value) {
   return count;
 }
 
-static int big_to_decimal(const DecimalBigNat *value,
-                          MalbolgeGuestDecimalExact *result,
-                          int32_t initial_shift) {
+static int big_to_decimal(const DecimalBigNat *value, char *digits,
+                          uint32_t digit_capacity, uint32_t *digit_count,
+                          int32_t *decimal_shift, int32_t initial_shift) {
   uint32_t limb = value->count;
   uint32_t output = UINT32_C(0);
 
@@ -195,21 +212,21 @@ static int big_to_decimal(const DecimalBigNat *value,
     return 0;
   }
   --limb;
-  output = emit_top_limb(result->digits, value->limbs[limb]);
+  output = emit_top_limb(digits, value->limbs[limb]);
   while (limb != UINT32_C(0)) {
     --limb;
-    if (output > MALBOLGE_GUEST_DECIMAL_BINARY64_DIGITS - UINT32_C(4)) {
+    if (output > digit_capacity - UINT32_C(4)) {
       return 0;
     }
-    emit_padded_limb(result->digits, output, value->limbs[limb]);
+    emit_padded_limb(digits, output, value->limbs[limb]);
     output += UINT32_C(4);
   }
-  while (output > UINT32_C(1) && result->digits[output - UINT32_C(1)] == '0') {
+  while (output > UINT32_C(1) && digits[output - UINT32_C(1)] == '0') {
     --output;
     ++initial_shift;
   }
-  result->digit_count = output;
-  result->decimal_shift = initial_shift;
+  *digit_count = output;
+  *decimal_shift = initial_shift;
   return 1;
 }
 
@@ -219,7 +236,8 @@ MalbolgeGuestRuntimeStatus malbolge_guest_decimal_from_binary64(
   const uint32_t raw_exponent =
       (uint32_t)((bits & B64_EXPONENT) >> B64_EXPONENT_SHIFT);
   uint64_t significand = bits & B64_FRACTION;
-  DecimalBigNat value;
+  uint32_t limbs[192];
+  DecimalBigNat value = {limbs, B64_BIG_LIMBS, UINT32_C(0)};
   int32_t binary_power = INT32_C(0);
   int32_t decimal_shift = INT32_C(0);
 
@@ -254,7 +272,62 @@ MalbolgeGuestRuntimeStatus malbolge_guest_decimal_from_binary64(
     }
     decimal_shift = binary_power;
   }
-  if (!big_to_decimal(&value, result, decimal_shift)) {
+  if (!big_to_decimal(&value, result->digits,
+                      MALBOLGE_GUEST_DECIMAL_BINARY64_DIGITS,
+                      &result->digit_count, &result->decimal_shift,
+                      decimal_shift)) {
+    return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+  }
+  return MALBOLGE_GUEST_RUNTIME_VALID;
+}
+
+MalbolgeGuestRuntimeStatus malbolge_guest_decimal_from_binary128(
+    uint64_t low, uint64_t high, MalbolgeGuestDecimalExact128 *result) {
+  const uint64_t magnitude_high = high & ~B128_SIGN;
+  const uint32_t raw_exponent =
+      (uint32_t)((high & B128_EXPONENT) >> B128_EXPONENT_SHIFT);
+  uint64_t significand_high = high & B128_FRACTION_HIGH;
+  uint32_t limbs[2891];
+  DecimalBigNat value = {limbs, B128_BIG_LIMBS, UINT32_C(0)};
+  int32_t binary_power = INT32_C(0);
+  int32_t decimal_shift = INT32_C(0);
+
+  if (result == NULL || raw_exponent == B128_EXPONENT_ALL_ONES) {
+    return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+  }
+  if (magnitude_high == UINT64_C(0) && low == UINT64_C(0)) {
+    result->digits[0] = '0';
+    result->digit_count = UINT32_C(1);
+    result->decimal_shift = INT32_C(0);
+    return MALBOLGE_GUEST_RUNTIME_VALID;
+  }
+  if (raw_exponent == UINT32_C(0)) {
+    binary_power = B128_SUBNORMAL_POWER;
+  } else {
+    significand_high |= B128_HIDDEN_HIGH;
+    binary_power =
+        (int32_t)raw_exponent - B128_EXPONENT_BIAS - INT32_C(112);
+  }
+  if (!big_from_u128_bits(&value, low, significand_high)) {
+    return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+  }
+  if (binary_power >= INT32_C(0)) {
+    if (!big_multiply_power(&value, POW2_CHUNK, POW2_CHUNK_BITS,
+                            (uint32_t)binary_power)) {
+      return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+    }
+  } else {
+    const uint32_t denominator_power = (uint32_t)(-binary_power);
+    if (!big_multiply_power(&value, POW5_CHUNK, POW5_CHUNK_BITS,
+                            denominator_power)) {
+      return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+    }
+    decimal_shift = binary_power;
+  }
+  if (!big_to_decimal(&value, result->digits,
+                      MALBOLGE_GUEST_DECIMAL_BINARY128_DIGITS,
+                      &result->digit_count, &result->decimal_shift,
+                      decimal_shift)) {
     return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
   }
   return MALBOLGE_GUEST_RUNTIME_VALID;

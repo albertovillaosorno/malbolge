@@ -1083,10 +1083,13 @@ def test_guest_hexadecimal_float_format_execution(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(
     os.name != WINDOWS_OS_NAME,
-    reason="pinned native exact-decimal harness uses Windows Clang",
+    reason="pinned native binary exact-decimal harness uses Windows Clang",
 )
-def test_guest_binary64_exact_decimal_conversion(tmp_path: Path) -> None:
-    """Lock exact finite binary64 decimal magnitude and dependencies."""
+def test_guest_binary_exact_decimal_conversion(tmp_path: Path) -> None:
+    """Lock exact finite binary64/binary128 decimal magnitude.
+
+    Keep the exact conversion independent of host runtime dependencies.
+    """
     for target in WINDOWS_ABI_TARGETS:
         compiled = run_command(
             (

@@ -147,14 +147,21 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   and larger precision appends virtual zeros without proportional discarded
   output work. Vectors lock extremes, special values, padding, ties, truncation,
   and fail-closed decimal/unresolved fields.
-- Implemented binary64 exact-decimal substrate evidence:
+- Implemented binary exact-decimal substrate evidence:
   `guest_decimal_exact.h`/`format_decimal_exact.c` convert every finite raw F64
-  magnitude into canonical decimal digits times a signed power of ten. The
-  worst exact numerator is bounded at 767 digits; fixed base-10000 scratch uses
-  only 32-bit multiply/carry operations. Manual extremes plus a deterministic
-  256-pattern Python big-integer differential prove exact digits and shift.
-  Scientific `%e`/`%E` now consumes this substrate; fixed/general styles remain
-  gated above it.
+  or F128 magnitude into canonical decimal digits times a signed power of ten.
+  Binary64 remains bounded at 767 exact digits with 192 base-10000 limbs.
+  Binary128 is independently bounded at 11,563 exact digits and 2,891 limbs;
+  the bound covers the minimum-normal exponent with maximum significand, not
+  merely the smaller minimum-subnormal numerator.
+
+  The shared arithmetic uses only 32-bit multiply/carry operations while
+  preserving separate scratch sizes. Manual extremes plus independent Python
+  big-integer differentials prove digits and shifts, including a 128-pattern
+  F128 run spanning zero,
+  subnormal, minimum-normal, ordinary, and maximum-finite exponent regions.
+  Binary64 `%e/%E/%f/%F/%g/%G` consumes the smaller substrate; binary128 decimal
+  spelling remains gated above the new exact source.
 - Implemented binary64 scientific-decimal evidence:
   `format_float_decimal.c` executes `%e`/`%E` with default precision six,
   decimal nearest-ties-even rounding, signed exponents with at least two digits,
