@@ -56,6 +56,7 @@ class _SearchConfig:
     order: tuple[int, ...]
     strategy_id: str
     start_nanoseconds: int
+    phase_start_nanoseconds: int
     training_nanoseconds: int
 
 
@@ -68,7 +69,7 @@ class FirstHitRun:
     candidate: int | None
     quality: int | None
     training_nanoseconds: int
-    search_nanoseconds: int
+    schedule_and_search_nanoseconds: int
     end_to_end_nanoseconds: int
 
 
@@ -104,10 +105,6 @@ def _search(
     clock_ns: MonotonicClock,
 ) -> FirstHitRun:
     _require_order(config.order)
-    search_start = _clock(clock_ns)
-    if search_start < config.start_nanoseconds:
-        message = "learned-guidance clock moved backwards"
-        raise LearnedGuidanceComparisonError(message)
     candidate_hit: int | None = None
     quality_hit: int | None = None
     evaluations = 0
@@ -119,7 +116,7 @@ def _search(
             quality_hit = quality
             break
     end = _clock(clock_ns)
-    if end < search_start:
+    if end < config.phase_start_nanoseconds:
         message = "learned-guidance clock moved backwards"
         raise LearnedGuidanceComparisonError(message)
     return FirstHitRun(
@@ -128,7 +125,7 @@ def _search(
         candidate_hit,
         quality_hit,
         config.training_nanoseconds,
-        end - search_start,
+        end - config.phase_start_nanoseconds,
         end - config.start_nanoseconds,
     )
 
@@ -144,9 +141,11 @@ def run_static(
 
     """
     start = _clock(clock_ns)
+    order = guidance.static_order()
     config = _SearchConfig(
-        guidance.static_order(),
+        order,
         guidance.STATIC_ORDER_ID,
+        start,
         start,
         0,
     )
@@ -172,10 +171,12 @@ def run_learned(
     if fit_end < start:
         message = "learned-guidance clock moved backwards"
         raise LearnedGuidanceComparisonError(message)
+    order = guidance.learned_order(model)
     config = _SearchConfig(
-        guidance.learned_order(model),
+        order,
         guidance.LEARNED_ORDER_ID,
         start,
+        fit_end,
         fit_end - start,
     )
     return _search(config, verifier, clock_ns)

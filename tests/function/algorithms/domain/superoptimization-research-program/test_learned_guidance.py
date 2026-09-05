@@ -134,6 +134,14 @@ def test_runner_acceptance_comes_only_from_injected_verifier(
     assert baseline.evaluations == _SYNTHETIC_HIT + 1
     assert learned.evaluations == 1
     assert baseline.quality == learned.quality == _SYNTHETIC_QUALITY
+    assert baseline.schedule_and_search_nanoseconds == (
+        baseline.end_to_end_nanoseconds
+    )
+    assert learned.training_nanoseconds > 0
+    assert learned.schedule_and_search_nanoseconds > 0
+    assert learned.end_to_end_nanoseconds == (
+        learned.training_nanoseconds + learned.schedule_and_search_nanoseconds
+    )
 
 
 @pytest.mark.parametrize("bad", [-1, 0, 5, True, "1"])
