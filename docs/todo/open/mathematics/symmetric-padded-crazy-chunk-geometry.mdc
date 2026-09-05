@@ -103,7 +103,17 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   sample order rotates across them. N15 remains an arithmetic-only
   three-full-chunk test, not a silently admitted runtime profile.
 
-  Retained CPU measurements and SIMD/vectorized variants remain open.
+  A clean secondary-host Linux CPU run is now retained under
+  <!-- jig-ignore-next-line: canonical evidence path is indivisible -->
+`benchmarks/interpreter/evidence/2026-09-04-profile-crazy-geometry-linux-x86_64/`
+  from source commit `fe06b1ee`. It preserves 225 raw samples: 15 samples for
+  scalar/native/padded at each N10-N14 width, with common checksums per width.
+  Native `5+5+r` has the lowest median at all five widths on this Xeon host;
+  uniform padded `5+5+5` also beats scalar but remains slower than native.
+
+  This Linux evidence is explicitly secondary and has no selection authority.
+  Primary Windows measurements and a genuine SIMD/vectorized variant remain
+  open.
 - Existing CUDA width evidence measures the same 16,384 crazy-heavy VM steps at
   N10 through N14 on the tritwise kernel, including resident and end-to-end
   timing with full result validation. The resident renderer now also exposes

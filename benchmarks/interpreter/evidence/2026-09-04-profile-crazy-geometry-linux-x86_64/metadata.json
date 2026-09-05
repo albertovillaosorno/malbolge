@@ -1,0 +1,183 @@
+{
+  "benchmark_scope": "profile-crazy-geometry-n10-n14",
+  "command": ".dependencies/rust/1.97.1/bin/cargo run --release --bin interpreter_benchmark",
+  "corpus_pairs_per_width": 59049,
+  "cpu": "Intel(R) Xeon(R) CPU E5-2690 v3 @ 2.60GHz",
+  "crazy_repetitions_per_sample": 16,
+  "host_class": "secondary-linux-x86_64",
+  "logical_processors": 24,
+  "os": "Fedora Linux; kernel 7.1.10-200.fc44.x86_64",
+  "physical_cores": 12,
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14); LLVM 22.1.6; x86_64-unknown-linux-gnu",
+  "sample_count_per_implementation": 15,
+  "selection_authority": false,
+  "simd_variant_present": false,
+  "source_commit": "fe06b1eead6adbb2b281fa7c5bf7cac566385083",
+  "summary": [
+    {
+      "benchmark": "profile-crazy-10",
+      "checksum": 27683170464,
+      "implementation": "native-5+5",
+      "max_ns": 70332170,
+      "mean_ns": 68797157.66666667,
+      "median_ns": 68638975,
+      "min_ns": 68113900,
+      "pstdev_ns": 597641.4142040545,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-10",
+      "checksum": 27683170464,
+      "implementation": "padded-5+5",
+      "max_ns": 88304190,
+      "mean_ns": 83543009.2,
+      "median_ns": 82851139,
+      "min_ns": 82098970,
+      "pstdev_ns": 1849045.1506494624,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-10",
+      "checksum": 27683170464,
+      "implementation": "scalar-tritwise",
+      "max_ns": 138984415,
+      "mean_ns": 128409876.93333334,
+      "median_ns": 127513279,
+      "min_ns": 122118083,
+      "pstdev_ns": 3649073.644621741,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-11",
+      "checksum": 69793138128,
+      "implementation": "native-5+5+1",
+      "max_ns": 101910256,
+      "mean_ns": 94348205.73333333,
+      "median_ns": 92840228,
+      "min_ns": 91194072,
+      "pstdev_ns": 3226804.110545241,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-11",
+      "checksum": 69793138128,
+      "implementation": "padded-5+5+5",
+      "max_ns": 134412861,
+      "mean_ns": 126876858.46666667,
+      "median_ns": 124393578,
+      "min_ns": 123654009,
+      "pstdev_ns": 3528149.2832863494,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-11",
+      "checksum": 69793138128,
+      "implementation": "scalar-tritwise",
+      "max_ns": 148970679,
+      "mean_ns": 142046165.2,
+      "median_ns": 140311051,
+      "min_ns": 138808584,
+      "pstdev_ns": 3194402.6023288756,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-12",
+      "checksum": 255944874432,
+      "implementation": "native-5+5+2",
+      "max_ns": 95237307,
+      "mean_ns": 92983588.33333333,
+      "median_ns": 92488900,
+      "min_ns": 92256948,
+      "pstdev_ns": 942129.972632486,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-12",
+      "checksum": 255944874432,
+      "implementation": "padded-5+5+5",
+      "max_ns": 144370216,
+      "mean_ns": 125410719.66666667,
+      "median_ns": 123592919,
+      "min_ns": 122736384,
+      "pstdev_ns": 5296249.7213165425,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-12",
+      "checksum": 255944874432,
+      "implementation": "scalar-tritwise",
+      "max_ns": 153330548,
+      "mean_ns": 150949973.2,
+      "median_ns": 150706130,
+      "min_ns": 148132539,
+      "pstdev_ns": 1309145.8320821864,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-13",
+      "checksum": 590667673872,
+      "implementation": "native-5+5+3",
+      "max_ns": 100029117,
+      "mean_ns": 94759037.06666666,
+      "median_ns": 94132729,
+      "min_ns": 93790844,
+      "pstdev_ns": 1594566.1749716322,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-13",
+      "checksum": 590667673872,
+      "implementation": "padded-5+5+5",
+      "max_ns": 128950226,
+      "mean_ns": 124073101.73333333,
+      "median_ns": 123403223,
+      "min_ns": 122899557,
+      "pstdev_ns": 1512224.5200445366,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-13",
+      "checksum": 590667673872,
+      "implementation": "scalar-tritwise",
+      "max_ns": 170745228,
+      "mean_ns": 163452229.6,
+      "median_ns": 162991674,
+      "min_ns": 161328207,
+      "pstdev_ns": 2199290.744574617,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-14",
+      "checksum": 1594938108864,
+      "implementation": "native-5+5+4",
+      "max_ns": 120680089,
+      "mean_ns": 98816821.0,
+      "median_ns": 97199554,
+      "min_ns": 95138238,
+      "pstdev_ns": 6294357.3681315025,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-14",
+      "checksum": 1594938108864,
+      "implementation": "padded-5+5+5",
+      "max_ns": 173290035,
+      "mean_ns": 130340968.86666666,
+      "median_ns": 123557926,
+      "min_ns": 122189286,
+      "pstdev_ns": 14877476.458053146,
+      "samples": 15
+    },
+    {
+      "benchmark": "profile-crazy-14",
+      "checksum": 1594938108864,
+      "implementation": "scalar-tritwise",
+      "max_ns": 191097991,
+      "mean_ns": 177624563.73333332,
+      "median_ns": 174351208,
+      "min_ns": 173097082,
+      "pstdev_ns": 5871062.666525399,
+      "samples": 15
+    }
+  ]
+}
