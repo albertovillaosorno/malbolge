@@ -305,9 +305,16 @@ three-full-chunk instance of the same model, not a separate mathematical case.
 
   The fanout is therefore structural evidence for that benchmark route, not an
   observed cache counter from the product kernel. The hermetic CUDA bundle
-  exposes no Nsight
-  Compute, CUPTI, or NVPerf profiler; physical constant-cache traffic/hit rates
-  and the resulting evidence-driven selection decision remain open.
+  exposes no Nsight Compute, CUPTI, or NVPerf profiler, so physical
+  constant-cache traffic/hit rates remain unmeasured.
+
+  The versioned `cuda-resident-crazy-geometry-selection-v1` decision therefore
+  makes the current evidence-driven result explicit: N10-N14 product resident
+  geometry remains `tritwise`, as does the candidate evaluator. Positive RTX
+  4060 resident lookup timing is retained without promotion because primary
+  Windows CPU/SIMD and physical cache-counter evidence are absent. Future
+  promotion requires new retained evidence and a new decision identity; resource
+  and backend policy remain owned by the downstream accelerator TODOs.
 - Required implementation evidence: differential equality against the trusted
   profile semantics before any performance result is considered.
 - Required benchmark matrix: widths 10, 11, 12, 13, and 14; representative

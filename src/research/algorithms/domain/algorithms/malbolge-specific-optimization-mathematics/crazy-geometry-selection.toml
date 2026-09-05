@@ -1,0 +1,53 @@
+schema_version = 1
+
+[decision]
+id = "cuda-resident-crazy-geometry-selection-v1"
+status = "no-promotion"
+scope = "resident-current-profile-crazy-arithmetic-n10-through-n14"
+product_selection = "tritwise"
+candidate_evaluator_selection = "tritwise"
+native_promoted = false
+padded_promoted = false
+runtime_reads_benchmark_evidence = false
+reason = "Retained lookup timing gains do not satisfy the cross-platform and physical-cache evidence needed to replace the exact tritwise product default."
+
+[widths]
+supported = [10, 11, 12, 13, 14]
+selection = ["tritwise", "tritwise", "tritwise", "tritwise", "tritwise"]
+
+[evidence]
+resident_throughput = "benchmarks/accelerator/evidence/2026-09-04-profile-width-crazy-geometry-throughput-rtx4060"
+resident_resources = "benchmarks/accelerator/evidence/2026-09-04-profile-width-crazy-geometry-resources-rtx4060"
+address_fanout = "benchmarks/accelerator/evidence/2026-09-04-crazy-lookup-address-fanout"
+candidate_wall_time = "benchmarks/accelerator/evidence/2026-09-04-crazy-lookup-candidate-throughput-rtx4060"
+candidate_event_time = "benchmarks/accelerator/evidence/2026-09-04-crazy-lookup-candidate-event-timeline-rtx4060"
+failure_policy = "benchmarks/accelerator/evidence/2026-09-04-profile-width-crazy-geometry-failure-policy"
+secondary_cpu = "benchmarks/interpreter/evidence/2026-09-04-profile-crazy-geometry-linux-x86_64"
+secondary_simd = "benchmarks/cpu/evidence/2026-09-04-profile-crazy-avx2-v2-linux-x86_64"
+
+[observations]
+resident_lookup_timing = "positive-on-retained-rtx4060"
+candidate_lookup_timing = "mixed-to-negative"
+resource_footprint = "semantic-state-footprint-route-invariant"
+failure_fallback = "measured-and-fail-closed"
+constant_memory_fanout = "structural-only-not-physical-cache-counters"
+secondary_cpu_native = "beats-padded-and-scalar-n10-through-n14"
+secondary_simd_padded = "beats-scalar-padded-n10-through-n15"
+
+[missing_promotion_evidence]
+primary_windows_cpu_simd = true
+physical_constant_cache_counters = true
+nsight_compute_available = false
+cupti_available = false
+nvperf_available = false
+
+[future_ownership]
+resource_policy = "adaptive-accelerator-resource-budgeting"
+algorithm_backend_selection = "configurable-accelerator-algorithm-adapters"
+cuda_execution = "cuda-exact-vm-adapter"
+
+[policy]
+promotion_requires_new_retained_evidence = true
+future_promotion_requires_new_decision_identity = true
+semantic_authority = "cpu-reference"
+accelerator_unavailability_changes_acceptance = false
