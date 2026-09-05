@@ -156,6 +156,12 @@ parts:
     language: c
     responsibility: >-
       Convert finite binary64 bits to exact decimal digits without host floats.
+  - id: part-0024
+    path: domain/format_float_decimal.c
+    kind: domain
+    language: c
+    responsibility: >-
+      Execute binary64 scientific decimal formatting without host float use.
 projects: []
 tests: []
 graph:

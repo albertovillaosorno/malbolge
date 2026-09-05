@@ -38,7 +38,10 @@ A separate integer-only floating boundary executes binary64 and binary128
 rounding. Binary64 decimal work now also has a bounded exact magnitude
 substrate:
 finite bits become canonical decimal digits times a signed power of ten using
-only 32-bit base-10000 limbs. Decimal spelling remains gated.
+only 32-bit base-10000 limbs. Binary64 `%e`/`%E` now consumes that
+representation
+with decimal nearest-ties-even rounding and bounded scientific layout.
 
-Source `va_list` bridging remains compiler-lowering work. Decimal floating,
-wide-string formatting, and correctly-rounded transcendental math remain open.
+Source `va_list` bridging remains compiler-lowering work. Binary64 `%f`/`%g`,
+decimal binary128, wide-string formatting, and correctly-rounded
+transcendental math remain open.

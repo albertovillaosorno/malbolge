@@ -40,5 +40,8 @@
 MalbolgeGuestRuntimeStatus malbolge_guest_format_execute_hex_float(
     MalbolgeGuestFormatSink *sink,
     const MalbolgeGuestResolvedFormatArgument *resolved);
+MalbolgeGuestRuntimeStatus malbolge_guest_format_execute_decimal_float(
+    MalbolgeGuestFormatSink *sink,
+    const MalbolgeGuestResolvedFormatArgument *resolved);
 
 #endif

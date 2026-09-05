@@ -128,8 +128,8 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   Cross-ABI checks show no callable host formatting dependency.
 - Public formatting remains gated: `snprintf`/`vsnprintf` remain unavailable
   because compiler lowering has not yet bridged source `va_list` state into the
-  canonical cursor and floating conversion execution is intentionally not
-  implemented yet.
+  canonical cursor and fixed/general plus binary128 decimal formatting remain
+  intentionally incomplete.
 - Implemented guest-memory formatting evidence:
   `guest_format_memory.h`/`format_memory.c` execute narrow `%s` and integer `%n`
   over one caller-proven live guest object. The boundary decodes the ABI's
@@ -153,7 +153,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   worst exact numerator is bounded at 767 digits; fixed base-10000 scratch uses
   only 32-bit multiply/carry operations. Manual extremes plus a deterministic
   256-pattern Python big-integer differential prove exact digits and shift.
-  Decimal `%e/%f/%g` spelling remains gated above this reusable substrate.
+  Scientific `%e`/`%E` now consumes this substrate; fixed/general styles remain
+  gated above it.
+- Implemented binary64 scientific-decimal evidence:
+  `format_float_decimal.c` executes `%e`/`%E` with default precision six,
+  decimal nearest-ties-even rounding, signed exponents with at least two digits,
+  bounded zero/space padding, special-value spelling, and atomic overflow or
+  unsupported-input rejection. A deterministic 512-pattern independent Python
+  exact-decimal differential covers precision 0 through 20 across finite raw
+  bit patterns; manual vectors lock ties, exponent carry, subnormal/maximum
+  edges, truncation, flags, and `%Le`/`%f` rejection.
 - Implemented exact-math evidence: `fabs`, `floor`, `ceil`, and `trunc` are
   ordinary guest C over ABI-fixed binary64 representation, preserve signed-zero
   and infinity semantics, map every NaN to the canonical quiet payload-zero NaN,
@@ -175,8 +184,9 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   effects are lane-9 realization work. This lane supplies their stable binder,
   wrapper, frame, and intrinsic identities unchanged and does not make itself
   depend on its downstream consumer merely to flip source availability.
-- Remaining lane-8 algorithm work: decimal floating formatting plus
-  correctly-rounded `sin`, `cos`, and `atan2`. Source `va_list` bridging
+- Remaining lane-8 algorithm work: binary64 fixed/general decimal formatting,
+  decimal binary128, and correctly-rounded `sin`, `cos`, and `atan2`. Source
+  `va_list` bridging
   remains downstream
   compiler-lowering integration work over the implemented canonical cursor.
   Wide `%ls` remains unavailable because version one has no completed wide-

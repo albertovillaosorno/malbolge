@@ -61,6 +61,7 @@ FORMAT_SCALAR_SOURCE = RUNTIME_ROOT / "domain/format_scalar.c"
 FORMAT_MEMORY_SOURCE = RUNTIME_ROOT / "domain/format_memory.c"
 FORMAT_FLOAT_SOURCE = RUNTIME_ROOT / "domain/format_float.c"
 DECIMAL_EXACT_SOURCE = RUNTIME_ROOT / "domain/format_decimal_exact.c"
+FORMAT_DECIMAL_SOURCE = RUNTIME_ROOT / "domain/format_float_decimal.c"
 HARNESS = ROOT / "tests/runtime/guest_runtime_conformance.c"
 FORMAT_HARNESS = ROOT / "tests/runtime/guest_format_conformance.c"
 FORMAT_PARSE_HARNESS = ROOT / "tests/runtime/guest_format_parse_conformance.c"
@@ -70,6 +71,9 @@ FORMAT_SCALAR_HARNESS = ROOT / "tests/runtime/guest_format_scalar_conformance.c"
 FORMAT_MEMORY_HARNESS = ROOT / "tests/runtime/guest_format_memory_conformance.c"
 FORMAT_FLOAT_HARNESS = ROOT / "tests/runtime/guest_format_float_conformance.c"
 DECIMAL_EXACT_HARNESS = ROOT / "tests/runtime/guest_decimal_exact_conformance.c"
+FORMAT_DECIMAL_HARNESS = (
+    ROOT / "tests/runtime/guest_format_decimal_conformance.c"
+)
 GUEST_LIBC_ROOT = ROOT / "src/runtime/guest-c-library"
 GUEST_LIBC_INCLUDE = GUEST_LIBC_ROOT / "contract/include"
 ALLOCATION_WRAPPERS = GUEST_LIBC_ROOT / "domain/allocation.c"
@@ -118,6 +122,7 @@ RUNTIME_SOURCES = (
     FORMAT_MEMORY_SOURCE,
     FORMAT_FLOAT_SOURCE,
     DECIMAL_EXACT_SOURCE,
+    FORMAT_DECIMAL_SOURCE,
 )
 SOURCES = (*RUNTIME_SOURCES, HARNESS)
 EMPTY_SYMBOLS: frozenset[str] = frozenset()
@@ -155,6 +160,10 @@ EXPECTED_RUNTIME_UNDEFINED: dict[Path, frozenset[str]] = {
         "malbolge_guest_format_argument_kind",
     }),
     DECIMAL_EXACT_SOURCE: EMPTY_SYMBOLS,
+    FORMAT_DECIMAL_SOURCE: frozenset({
+        "malbolge_guest_decimal_from_binary64",
+        "malbolge_guest_format_argument_kind",
+    }),
 }
 WASM_STACK_UNDEFINED = frozenset({"_stack_pointer"})
 EXPECTED_WRAPPER_UNDEFINED = frozenset({
@@ -1129,6 +1138,83 @@ def test_guest_binary64_exact_decimal_conversion(tmp_path: Path) -> None:
             f"-I{INCLUDE}",
             str(DECIMAL_EXACT_SOURCE),
             str(DECIMAL_EXACT_HARNESS),
+            "-o",
+            str(executable),
+        ),
+        ROOT,
+    )
+    assert linked.returncode == 0, linked.stdout + linked.stderr
+    executed = run_command((str(executable),), tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+@pytest.mark.skipif(
+    os.name != WINDOWS_OS_NAME,
+    reason="pinned native scientific-decimal harness uses Windows Clang",
+)
+def test_guest_binary64_scientific_decimal_formatting(tmp_path: Path) -> None:
+    """Lock binary64 e/E decimal spelling and dependency boundaries."""
+    sources = (
+        FORMAT_SOURCE,
+        FORMAT_PARSE_SOURCE,
+        DECIMAL_EXACT_SOURCE,
+        FORMAT_DECIMAL_SOURCE,
+    )
+    for target in WINDOWS_ABI_TARGETS:
+        compiled = run_command(
+            (
+                str(CLANG),
+                f"--target={target}",
+                "-std=c23",
+                "-ffreestanding",
+                "-fno-builtin",
+                *STRICT_WARNINGS,
+                f"-I{INCLUDE}",
+                "-fsyntax-only",
+                *(str(source) for source in sources),
+                str(FORMAT_DECIMAL_HARNESS),
+            ),
+            ROOT,
+        )
+        assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+
+    wasm_object = tmp_path / "format-decimal-wasm.o"
+    wasm_compiled = run_command(
+        (
+            str(CLANG),
+            "--target=wasm32-unknown-unknown",
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            *STRICT_WARNINGS,
+            f"-I{INCLUDE}",
+            "-c",
+            str(FORMAT_DECIMAL_SOURCE),
+            "-o",
+            str(wasm_object),
+        ),
+        ROOT,
+    )
+    assert wasm_compiled.returncode == 0, (
+        wasm_compiled.stdout + wasm_compiled.stderr
+    )
+    assert undefined_symbols(wasm_object) == frozenset({
+        "_stack_pointer",
+        "malbolge_guest_decimal_from_binary64",
+        "malbolge_guest_format_argument_kind",
+    })
+
+    executable = tmp_path / "guest-format-decimal.exe"
+    linked = run_command(
+        (
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            *STRICT_WARNINGS,
+            f"-I{INCLUDE}",
+            *(str(source) for source in sources),
+            str(FORMAT_DECIMAL_HARNESS),
             "-o",
             str(executable),
         ),

@@ -103,6 +103,10 @@ FORMAT_FLOAT_BINARY128 = "a-A-implemented"
 FORMAT_DECIMAL_EXACT = "digits-times-power10-implemented"
 FORMAT_DECIMAL_MAX_DIGITS = 767
 FORMAT_DECIMAL_SCRATCH = "base-10000-u32-only-bounded"
+FORMAT_DECIMAL_EXECUTION = "binary64-e-E-implemented-f-g-f128-open"
+FORMAT_DECIMAL_ROUNDING = "nearest-ties-even"
+FORMAT_SCIENTIFIC_DEFAULT_PRECISION = 6
+FORMAT_SCIENTIFIC_EXPONENT_DIGITS = 2
 FORMAT_NOT_IMPLEMENTED = "not-implemented"
 FORMAT_BASES = [2, 8, 10, 16]
 FORMAT_PUBLIC_ROUTINES = ["snprintf", "vsnprintf"]
@@ -318,7 +322,16 @@ def _assert_float_formatting(formatting: dict[str, object]) -> None:
     assert formatting["floating_decimal_binary64_scratch"] == (
         FORMAT_DECIMAL_SCRATCH
     )
-    assert formatting["floating_decimal_execution"] == FORMAT_NOT_IMPLEMENTED
+    assert formatting["floating_decimal_execution"] == FORMAT_DECIMAL_EXECUTION
+    assert formatting["floating_decimal_rounding"] == FORMAT_DECIMAL_ROUNDING
+    assert (
+        formatting["floating_scientific_default_precision"]
+        == FORMAT_SCIENTIFIC_DEFAULT_PRECISION
+    )
+    assert (
+        formatting["floating_scientific_exponent_minimum_digits"]
+        == FORMAT_SCIENTIFIC_EXPONENT_DIGITS
+    )
     assert formatting["floating_binary128_execution"] == FORMAT_FLOAT_BINARY128
 
 
