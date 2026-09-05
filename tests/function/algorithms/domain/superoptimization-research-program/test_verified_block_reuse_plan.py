@@ -120,14 +120,14 @@ def test_reuse_plan_registers_only_the_comparison_identity() -> None:
     assert plan["baseline"] == _BASELINE
     assert runner["id"] == _RUNNER_ID
     assert runner["semantic_equivalence"] == _EQUIVALENCE
-    assert runner["status"] == _UNREGISTERED
+    assert runner["status"] == _REGISTERED
 
 
 def test_reuse_plan_measurement_gate_stays_closed() -> None:
     """Preregistration alone cannot become comparative result evidence."""
     gate = cast("dict[str, object]", _document()["measurement_gate"])
     assert gate["challenge_status"] == _REGISTERED
-    assert gate["runner_status"] == _UNREGISTERED
+    assert gate["runner_status"] == _REGISTERED
     assert gate["protocol_status"] == _UNREGISTERED
     assert gate["retained_provenance_status"] == _UNREGISTERED
     assert gate["results_allowed"] is False
