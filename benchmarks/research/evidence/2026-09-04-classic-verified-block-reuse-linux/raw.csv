@@ -1,0 +1,11 @@
+repetition,strategy_id,request_count,unique_candidate_count,independent_verifier_calls,reused_request_count,accepted_request_count,best_verified_quality,quality_map_sha256,elapsed_nanoseconds
+0,per-request-independent-verification-v1,17672,8836,17672,0,20,1,9dfe349bf961baf7c0f507fcff549198a3dffe687b1ea23714769e9105f36fdd,1733219224
+0,exact-candidate-verified-result-reuse-v1,17672,8836,8836,8836,20,1,9dfe349bf961baf7c0f507fcff549198a3dffe687b1ea23714769e9105f36fdd,866041992
+1,per-request-independent-verification-v1,17672,8836,17672,0,20,1,9dfe349bf961baf7c0f507fcff549198a3dffe687b1ea23714769e9105f36fdd,1617672749
+1,exact-candidate-verified-result-reuse-v1,17672,8836,8836,8836,20,1,9dfe349bf961baf7c0f507fcff549198a3dffe687b1ea23714769e9105f36fdd,824892050
+2,per-request-independent-verification-v1,17672,8836,17672,0,20,1,9dfe349bf961baf7c0f507fcff549198a3dffe687b1ea23714769e9105f36fdd,1613515152
+2,exact-candidate-verified-result-reuse-v1,17672,8836,8836,8836,20,1,9dfe349bf961baf7c0f507fcff549198a3dffe687b1ea23714769e9105f36fdd,855821551
+3,per-request-independent-verification-v1,17672,8836,17672,0,20,1,9dfe349bf961baf7c0f507fcff549198a3dffe687b1ea23714769e9105f36fdd,1611357982
+3,exact-candidate-verified-result-reuse-v1,17672,8836,8836,8836,20,1,9dfe349bf961baf7c0f507fcff549198a3dffe687b1ea23714769e9105f36fdd,826211203
+4,per-request-independent-verification-v1,17672,8836,17672,0,20,1,9dfe349bf961baf7c0f507fcff549198a3dffe687b1ea23714769e9105f36fdd,1702074587
+4,exact-candidate-verified-result-reuse-v1,17672,8836,8836,8836,20,1,9dfe349bf961baf7c0f507fcff549198a3dffe687b1ea23714769e9105f36fdd,851323429

@@ -1,0 +1,68 @@
+schema_version = 1
+
+[study]
+id = "classic-verified-block-reuse-linux-2026-09-04"
+# jig-ignore-next-line: canonical evidence path is indivisible
+experiment_manifest = "benchmarks/research/evidence/2026-09-04-classic-verified-block-reuse-linux/experiment.toml"
+kind = "deterministic"
+question = """\
+Does exact verified-result reuse reduce independent verifier work and elapsed \
+time across two identical complete corpus passes while preserving every request \
+quality?\
+"""
+hypothesis = """\
+Exact candidate-index result reuse halves independent verifier calls on the \
+repeated workload without changing any request quality.\
+"""
+baseline = "per-request-independent-verification-v1"
+rejection_observation = """\
+The request-quality map differs, verifier calls do not decrease, or source-pinned \
+retained evidence cannot be replayed.\
+"""
+
+[workload]
+identity = "classic-two-pass-verified-block-reuse-v1"
+equivalent = true
+
+[measurement]
+warmup_iterations = 0
+repetitions = 5
+warmup_policy = "no warmup; all five fixed-order pairs are retained"
+ordering = "fixed"
+stopping_rule = """\
+per-request baseline then exact reuse; each arm has a 60-second bound\
+"""
+outlier_policy = "retain-all"
+outlier_rule = "none"
+
+[statistics]
+center = "median"
+dispersion = "min-max"
+uncertainty = "observed-range"
+
+[objectives]
+metrics = [
+  "independent_verifier_calls",
+  "reused_request_count",
+  "elapsed_nanoseconds",
+]
+tradeoff_policy = """\
+Require complete request-quality-map equality; treat verifier-work reduction and \
+host timing as separate observations, and do not infer a production cache-hit \
+rate from the deliberately repeated workload.\
+"""
+
+[resources]
+host = "Fedora Linux 7.1.10-200.fc44.x86_64; Intel Xeon E5-2690 v3"
+accelerator = "none"
+memory_mib = 512
+
+[raw]
+# jig-ignore-next-line: canonical evidence path is indivisible
+path = "benchmarks/research/evidence/2026-09-04-classic-verified-block-reuse-linux/raw.csv"
+retained = true
+
+[stochastic]
+trial_count = 0
+failed_trials = 0
+seeds = []

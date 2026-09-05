@@ -186,6 +186,18 @@ is effectively timing-neutral: median strategy time is 831,921,051 ns baseline
 versus 835,180,632 ns decomposed, with decomposition winning two of five pairs.
 This supports exact work reduction but not a runtime-speedup claim.
 
+A fifth comparison now retains exact verified-result reuse over two identical
+complete passes of the frozen corpus. Per-request verification makes 17,672
+independent verifier calls; exact candidate-index reuse makes 8,836 and reuses
+8,836 requests while preserving one complete request-quality-map digest.
+
+The five-pair Fedora/Python timing result is positive for this deliberately
+repeated workload: baseline median strategy time is 1,617,672,749 ns versus
+851,323,429 ns reuse, with reuse winning all five pairs. The workload fixes a
+100% second-pass hit rate by construction, so the result does not estimate
+production hit rate, reuse distance, persistent-cache invalidation, or benefit
+on novel synthesis work.
+
 Independent structural evidence now proves one nontrivial basis:
 for the `Q` prefix, position-zero decode is halt and entry termination occurs
 before encryption, so all 94 suffixes differ only by ordinary two-word load

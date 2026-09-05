@@ -123,11 +123,11 @@ def test_reuse_plan_registers_only_the_comparison_identity() -> None:
     assert runner["status"] == _REGISTERED
 
 
-def test_reuse_plan_measurement_gate_stays_closed() -> None:
-    """Timing protocol alone cannot become comparative result evidence."""
+def test_reuse_plan_measurement_gate_opens_after_retained_provenance() -> None:
+    """Source-pinned retained provenance opens comparative interpretation."""
     gate = cast("dict[str, object]", _document()["measurement_gate"])
     assert gate["challenge_status"] == _REGISTERED
     assert gate["runner_status"] == _REGISTERED
     assert gate["protocol_status"] == _REGISTERED
-    assert gate["retained_provenance_status"] == _UNREGISTERED
-    assert gate["results_allowed"] is False
+    assert gate["retained_provenance_status"] == _REGISTERED
+    assert gate["results_allowed"] is True

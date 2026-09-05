@@ -145,12 +145,16 @@ hypotheses, benchmarks, and mathematical `.tex` work rather than folklore.
   reduction but not a runtime-speedup claim or broader prefix reuse.
 
 - A fifth comparison, `classic-two-pass-verified-block-reuse-v1`, is now
-preregistered over two complete replays of the frozen 8,836-candidate
-corpus. It compares per-request independent verification with exact
-candidate-index result reuse. Its registered fail-closed runner verifies each
-unique candidate exactly once in the reuse arm and requires complete request-map
-equality. A five-pair retain-all timing protocol is now registered before any
-real-clock run; results remain gated on source-pinned provenance.
+  preregistered and retained over two complete replays of the frozen
+  8,836-candidate corpus. Exact candidate-index reuse halves independent
+  verifier
+  calls from 17,672 to 8,836 while preserving the complete request-quality map.
+  The source-pinned Fedora/Python five-pair timing is positive on this
+  deliberately
+  repeated workload: baseline median 1,617,672,749 ns versus 851,323,429 ns
+  reuse,
+  a 1.900x ratio, with reuse winning all five pairs. This does not estimate
+  production cache-hit rate, invalidation cost, or benefit on novel workloads.
 
 Larger challenges, independent hosts/implementations, additional technique
   plans, and a stronger comparative conclusion remain pending.

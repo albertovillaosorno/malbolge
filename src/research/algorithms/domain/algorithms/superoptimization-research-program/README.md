@@ -53,6 +53,18 @@ The sole proved `Q` row removes 94 independent verifier calls: 8,836 fall to
 of five pairs. This supports the small exact work reduction, not a runtime
 speedup claim.
 
+A fifth comparison, `classic-two-pass-verified-block-reuse-v1`, now has a
+retained five-pair Linux measurement from source commit `f42579b9`. The baseline
+verifies 17,672 requests across two complete corpus passes; exact
+candidate-index
+reuse verifies 8,836 unique candidates once and reuses all 8,836 second-pass
+requests while preserving the complete request-quality map.
+
+Median strategy time falls from 1,617,672,749 ns to 851,323,429 ns, a 1.900x
+baseline/reuse ratio, and reuse wins all five paired repetitions. The workload
+has deliberate 100% second-pass repetition, so this supports exact reuse under
+that condition rather than a production cache-hit-rate or invalidation claim.
+
 A low-level structural regression proves only the `Q` prefix so far: entry halts
 before encryption, and exactly eight load-admitted suffixes have quality one.
 The runner therefore treats only that 94-suffix row structurally; every other

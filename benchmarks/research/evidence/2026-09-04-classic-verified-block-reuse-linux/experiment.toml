@@ -1,0 +1,73 @@
+schema_version = 1
+
+[experiment]
+id = "superoptimization-research-program"
+record_kind = "run"
+seed = 0
+method_class = "optimization"
+
+[challenge]
+family = "classic-two-pass-verified-block-reuse-v1"
+difficulty = 17672
+target_profile = "malbolge-1998"
+# jig-ignore-next-line: indivisible reviewed identifier
+target_profile_fingerprint = "malbolge-profile-v1:sha256:8b8689e5e3daef745d58681efe78106070736abb2ffa0895511fac5150b5b73e"
+
+[budget]
+seconds = 60
+candidate_evaluations = 17672
+memory_mib = 512
+
+[verification]
+required = true
+oracle = "classic-two-word-no-io-halt-v1"
+baseline = "per-request-independent-verification-v1"
+
+[provenance]
+# jig-ignore-next-line: canonical path is indivisible
+configuration = "src/research/algorithms/domain/algorithms/superoptimization-research-program/verified-block-reuse-plan.toml"
+implementation = "algorithms/superoptimization-research-program/"
+output = "algorithms/superoptimization-research-program/out/"
+
+[measurement]
+id = "verified-block-reuse-five-paired-protocol-v1"
+repetitions = 5
+warmup_iterations = 0
+ordering = "fixed-per-request-then-exact-reuse"
+outlier_policy = "retain-all"
+center = "median"
+dispersion = "observed-range"
+uncertainty = "observed-range"
+clock = "time-perf-counter-ns"
+timing_scope = "strategy-run-only"
+per_strategy_wall_clock_seconds = 60
+
+[run]
+commit = "f42579b927b79d62d3763d4ee714ed22961d80b2"
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "d86f190a512b64724b9546c72f2ee56973292e6ef5707378f8c9a9ba2050bbc7"
+host = "Fedora Linux 7.1.10-200.fc44.x86_64; Intel Xeon E5-2690 v3"
+accelerator = "none"
+toolchain = "Python 3.14.7"
+outcome = "success"
+# jig-ignore-next-line: canonical evidence path is indivisible
+raw_output = "benchmarks/research/evidence/2026-09-04-classic-verified-block-reuse-linux/raw.csv"
+
+[verified_block_reuse_measurement]
+format_id = "verified-block-reuse-five-paired-measurement-v1"
+comparison_id = "classic-two-pass-verified-block-reuse-v1"
+runner_id = "classic-two-pass-verified-block-reuse-comparison-v1"
+request_count = 17672
+unique_candidate_count = 8836
+repetitions = 5
+baseline_strategy = "per-request-independent-verification-v1"
+reuse_strategy = "exact-candidate-verified-result-reuse-v1"
+baseline_verifier_calls = 17672
+reuse_verifier_calls = 8836
+reused_request_count = 8836
+accepted_request_count = 20
+best_verified_quality = 1
+# jig-ignore-next-line: indivisible reviewed workload identity
+workload_sha256 = "d86f190a512b64724b9546c72f2ee56973292e6ef5707378f8c9a9ba2050bbc7"
+# jig-ignore-next-line: indivisible reviewed semantic identity
+quality_map_sha256 = "9dfe349bf961baf7c0f507fcff549198a3dffe687b1ea23714769e9105f36fdd"

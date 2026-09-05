@@ -151,6 +151,16 @@ The five-pair Fedora/Python timing result is effectively null: median time is
 wins. The result supports the exact 94-call reduction, not broader prefix reuse
 or a runtime-speedup claim.
 
+Exact verified-result reuse now has a separately preregistered retained
+comparison over two complete passes of the same 8,836-candidate corpus. The
+baseline makes 17,672 verifier calls; reuse makes 8,836 while preserving every
+request quality. Median Fedora/Python strategy time falls from 1,617,672,749 ns
+to 851,323,429 ns, and reuse wins all five paired repetitions.
+
+This is a positive repeated-workload result, not an estimate of production cache
+hit rate. The second pass is identical by construction, and the comparison does
+not measure invalidation, persistence, lookup eviction, or novel-workload reuse.
+
 New synthesis, equality-saturation, learned, or accelerator-guided strategies
 must add their own equally identified comparisons rather than
 inheriting a result from either pilot. Source claims resolve through
@@ -202,6 +212,12 @@ corpus: projected evaluation removes 706,541 candidate checks without semantic
 drift. Its exact-arm median is about 1.28 times the full-domain median on this
 host, with overlapping observed ranges, so the current implementation is not
 promoted as a runtime optimization either.
+
+The verified-block-reuse comparison supports exact repeated-work reuse on its
+frozen two-pass corpus: independent verifier calls fall by 50%, and median host
+time improves by 1.900x with five of five paired wins. Because the second pass
+is deliberately identical, this result is not generalized to production cache
+hit rates or novel compiler workloads.
 
 ## Threats to Validity
 
