@@ -161,6 +161,7 @@ EXPECTED_RUNTIME_UNDEFINED: dict[Path, frozenset[str]] = {
     }),
     DECIMAL_EXACT_SOURCE: EMPTY_SYMBOLS,
     FORMAT_DECIMAL_SOURCE: frozenset({
+        "malbolge_guest_decimal_from_binary128",
         "malbolge_guest_decimal_from_binary64",
         "malbolge_guest_format_argument_kind",
     }),
@@ -1153,10 +1154,10 @@ def test_guest_binary_exact_decimal_conversion(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(
     os.name != WINDOWS_OS_NAME,
-    reason="pinned native scientific-decimal harness uses Windows Clang",
+    reason="pinned native decimal-format harness uses Windows Clang",
 )
-def test_guest_binary64_scientific_decimal_formatting(tmp_path: Path) -> None:
-    """Lock binary64 e/E decimal spelling and dependency boundaries."""
+def test_guest_binary_decimal_formatting(tmp_path: Path) -> None:
+    """Lock binary64/binary128 e/f/g spelling and dependencies."""
     sources = (
         FORMAT_SOURCE,
         FORMAT_PARSE_SOURCE,

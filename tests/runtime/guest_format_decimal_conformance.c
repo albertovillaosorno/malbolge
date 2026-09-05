@@ -9,16 +9,16 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Independent vectors for deterministic binary64 decimal execution.
+//   - Independent vectors for deterministic binary64/binary128 decimals.
 // - Must-Not:
 //   - Use host printf or native floating arithmetic as an expected-value
 //     oracle.
 // - Allows:
-//   - Inputs: explicit binary64 bits and parser-produced directives.
+//   - Inputs: explicit binary64/binary128 bits and parser-produced directives.
 //   - Outputs: zero only when decimal spelling/count/rejection semantics match.
 //   - Side effects: test-local sinks and resolved argument records only.
 // - Split-When:
-//   - Binary128 decimal formatting gains separate conformance vectors.
+//   - Another floating format gains separate conformance vectors.
 // - Merge-When:
 //   - Complete decimal-format conformance owns all decimal styles together.
 // - Summary:
@@ -31,7 +31,7 @@
 //   - Expected strings are explicit guest-contract vectors, not host output.
 //
 
-//! Binary64 decimal formatting vectors over raw guest bits.
+//! Binary64/binary128 decimal formatting vectors over raw guest bits.
 
 #include "guest_format_float.h"
 
@@ -64,6 +64,32 @@ static int build_resolved(const char *format, uint64_t bits,
   resolved->argument.low = bits;
   resolved->argument.high = UINT64_C(0);
   return 1;
+}
+
+static int build_resolved128(
+    const char *format, uint64_t low, uint64_t high,
+    MalbolgeGuestResolvedFormatArgument *resolved) {
+  if (!build_resolved(format, low, resolved)) {
+    return 0;
+  }
+  resolved->argument.high = high;
+  return 1;
+}
+
+static int expect_text128(const char *format, uint64_t low, uint64_t high,
+                          const char *expected, uint32_t required) {
+  char output[128];
+  MalbolgeGuestFormatSink sink;
+  MalbolgeGuestResolvedFormatArgument resolved;
+
+  return build_resolved128(format, low, high, &resolved) &&
+         malbolge_guest_format_sink_init(&sink, output,
+                                         (uint32_t)sizeof(output)) ==
+             MALBOLGE_GUEST_RUNTIME_VALID &&
+         malbolge_guest_format_execute_decimal_float(&sink, &resolved) ==
+             MALBOLGE_GUEST_RUNTIME_VALID &&
+         malbolge_guest_format_finish(&sink) == MALBOLGE_GUEST_RUNTIME_VALID &&
+         sink.required == required && same_text(output, expected);
 }
 
 static int expect_text(const char *format, uint64_t bits, const char *expected,
@@ -242,6 +268,42 @@ static int test_general(void) {
   return 0;
 }
 
+static int test_binary128(void) {
+  if (!expect_text128("%Le", UINT64_C(0), UINT64_C(0x3fff000000000000),
+                      "1.000000e+00", UINT32_C(12)) ||
+      !expect_text128("%Lf", UINT64_C(0), UINT64_C(0x3fff800000000000),
+                      "1.500000", UINT32_C(8)) ||
+      !expect_text128("%Lg", UINT64_C(0), UINT64_C(0x3fff800000000000),
+                      "1.5", UINT32_C(3)) ||
+      !expect_text128("%#Lg", UINT64_C(0), UINT64_C(0x3fff000000000000),
+                      "1.00000", UINT32_C(7))) {
+    return 1;
+  }
+  if (!expect_text128("%Le", UINT64_C(1), UINT64_C(0),
+                      "6.475175e-4966", UINT32_C(14)) ||
+      !expect_text128("%LG", UINT64_MAX, UINT64_C(0x7ffeffffffffffff),
+                      "1.18973E+4932", UINT32_C(13))) {
+    return 2;
+  }
+  if (!expect_text128("%Le", UINT64_C(0), UINT64_C(0x8000000000000000),
+                      "-0.000000e+00", UINT32_C(13)) ||
+      !expect_text128("%LE", UINT64_C(0), UINT64_C(0x7fff000000000000),
+                      "INF", UINT32_C(3)) ||
+      !expect_text128("%+LG", UINT64_C(1), UINT64_C(0x7fff800000000000),
+                      "+NAN", UINT32_C(4))) {
+    return 3;
+  }
+  if (!expect_text128("%+015.2Le", UINT64_C(0),
+                      UINT64_C(0x3fff800000000000), "+0000001.50e+00",
+                      UINT32_C(15)) ||
+      !expect_text128("%-12.2Lf", UINT64_C(0),
+                      UINT64_C(0x3fff800000000000), "1.50        ",
+                      UINT32_C(12))) {
+    return 4;
+  }
+  return 0;
+}
+
 static int test_fail_closed(void) {
   char output[8] = "stable";
   MalbolgeGuestFormatSink sink;
@@ -256,29 +318,28 @@ static int test_fail_closed(void) {
   output[0] = 's';
   output[1] = 't';
   output[2] = '\0';
-  if (!build_resolved("%Le", UINT64_C(0), &resolved)) {
+  if (!build_resolved128("%Le", UINT64_C(0),
+                         UINT64_C(0x3fff000000000000), &resolved)) {
     return 2;
   }
-  resolved.argument.high = UINT64_C(0x3fff000000000000);
+  resolved.argument_kind = MALBOLGE_GUEST_VARARG_F64;
   if (malbolge_guest_format_execute_decimal_float(&sink, &resolved) !=
           MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT ||
       sink.required != UINT32_C(2) || !same_text(output, "st")) {
     return 3;
-  }
-  if (!build_resolved("%Lg", UINT64_C(0), &resolved)) {
-    return 4;
-  }
-  resolved.argument.high = UINT64_C(0x3fff000000000000);
-  if (malbolge_guest_format_execute_decimal_float(&sink, &resolved) !=
-          MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT ||
-      sink.required != UINT32_C(2)) {
-    return 4;
   }
   if (!build_resolved("%.4294967295e", UINT64_C(0x3ff0000000000000),
                       &resolved) ||
       malbolge_guest_format_execute_decimal_float(&sink, &resolved) !=
           MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT ||
       sink.required != UINT32_C(2)) {
+    return 4;
+  }
+  if (!build_resolved("%.2147483647f", UINT64_C(0x4024000000000000),
+                      &resolved) ||
+      malbolge_guest_format_execute_decimal_float(&sink, &resolved) !=
+          MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT ||
+      sink.required != UINT32_C(2) || !same_text(output, "st")) {
     return 5;
   }
   if (!build_resolved("%*e", UINT64_C(0x3ff0000000000000), &resolved) ||
@@ -296,6 +357,7 @@ int main(void) {
   const int flags = test_flags_special_and_truncation();
   const int fixed = test_fixed();
   const int general = test_general();
+  const int binary128 = test_binary128();
   const int failures = test_fail_closed();
 
   if (basic != 0) {
@@ -313,5 +375,8 @@ int main(void) {
   if (general != 0) {
     return 50 + general;
   }
-  return failures == 0 ? 0 : 60 + failures;
+  if (binary128 != 0) {
+    return 60 + binary128;
+  }
+  return failures == 0 ? 0 : 70 + failures;
 }

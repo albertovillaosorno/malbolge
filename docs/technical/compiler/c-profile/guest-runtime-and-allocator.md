@@ -188,8 +188,8 @@ power-of-five scaling uses only 32-bit multiply/carry operations, avoiding
 64-bit division and host
 floating helpers.
 
-`format_float_decimal.c` consumes the exact binary64 representation for
-scientific `%e`/`%E`. Omitted precision means six digits after the decimal
+`format_float_decimal.c` consumes either exact representation for scientific
+`%e`/`%E`. Omitted precision means six digits after the decimal
 point; explicit precision is rounded decimal nearest-ties-even, and carry may
 advance the scientific exponent. The exponent always has a sign and at least
 two digits.
@@ -199,14 +199,14 @@ values ignore zero padding just like the hexadecimal path. Precision beyond the
 exact digit sequence becomes virtual zeroes, so truncation work is bounded by
 the actual sink rather than requested discarded output.
 
-Fixed binary64 `%f`/`%F` uses the same exact source. It rounds
+Fixed `%f`/`%F` uses the selected binary64 or binary128 source. It rounds
 `value * 10^precision` to an integer with decimal nearest-ties-even and then
 places exactly `precision` fractional digits. Cases whose requested precision
 extends beyond the exact value use virtual trailing zeroes; values that round to
 zero, cross an integer power of ten, or have no retained pre-rounding digit are
 handled explicitly without host arithmetic.
 
-General binary64 `%g`/`%G` rounds to the requested significant-digit precision
+General `%g`/`%G` rounds to the requested significant-digit precision
 before selecting the C general style. Precision zero becomes one significant
 digit. A rounded exponent below `-4` or greater than or equal to the precision
 selects scientific notation; otherwise fixed notation is used. Unless `#` is
@@ -216,9 +216,9 @@ without removing zeroes required by the integer magnitude.
 The C23 `snprintf`/`vsnprintf` contract still requires full formatted-output
 semantics, including the same would-have-written result under truncation. These
 formatting layers are implementation substrate only; public routines remain
-contracted-unavailable until compiler lowering bridges source `va_list` state
-into the canonical promoted-block cursor and binary128 decimal floating
-formatting is complete.
+contracted-unavailable while compiler lowering has not bridged source `va_list`
+state into the canonical promoted-block cursor and wide `%ls` remains without a
+completed execution policy.
 
 Independent C vectors lock decimal/hex/octal/binary integer output,
 INT64_MIN, alternate prefixes, precision-versus-zero padding, left/right width,
@@ -283,8 +283,8 @@ selected target profile is sequential with no guest thread surface. Allocation
 startup binding and byte-I/O intrinsic realization are likewise lane-9 target
 work over the stable identities defined here. The canonical promoted-block
 varargs cursor is now implemented; source `va_list` bridging remains lane-9
-compiler-lowering work. Remaining lane-8 algorithm work is decimal binary128
-formatting and correctly-rounded `sin`, `cos`, and `atan2`.
+compiler-lowering work. Remaining lane-8 algorithm work is correctly-rounded
+`sin`, `cos`, and `atan2`.
 
 ## Invariants
 
