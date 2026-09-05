@@ -3,7 +3,7 @@ schema_version = 1
 [plan]
 id = "classic-three-word-initial-decode-first-hit-runtime-v1"
 record_kind = "plan"
-status = "preregistered-follow-up"
+status = "measured-follow-up"
 method_class = "optimization"
 technique = "bucketed-initial-decode-first-hit-v1"
 baseline = "deterministic-enumeration-first-hit-v1"

@@ -62,7 +62,7 @@ _EQUIVALENCE = "exact-request-index-quality-map-v1"
 _REUSE_KEY = "exact-frozen-candidate-index-v1"
 _REGISTERED = "registered"
 _UNREGISTERED = "unregistered"
-_PREREGISTERED = "preregistered"
+_MEASURED = "measured"
 
 
 def _document() -> dict[str, object]:
@@ -115,7 +115,7 @@ def test_reuse_plan_registers_only_the_comparison_identity() -> None:
     plan = cast("dict[str, object]", document["plan"])
     runner = cast("dict[str, object]", document["runner"])
     assert plan["id"] == _PLAN_ID
-    assert plan["status"] == _PREREGISTERED
+    assert plan["status"] == _MEASURED
     assert plan["technique"] == _TECHNIQUE
     assert plan["baseline"] == _BASELINE
     assert runner["id"] == _RUNNER_ID

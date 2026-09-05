@@ -3,7 +3,7 @@ schema_version = 1
 [plan]
 id = "classic-three-word-initial-halt-heuristic-v1"
 record_kind = "plan"
-status = "preregistered"
+status = "measured"
 method_class = "optimization"
 technique = "initial-decode-halt-proximity-order-v1"
 baseline = "deterministic-enumeration-v1"

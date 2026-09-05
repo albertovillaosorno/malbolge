@@ -1,0 +1,62 @@
+schema_version = 1
+
+[conclusion]
+id = "superoptimization-comparative-conclusion-v1"
+status = "complete"
+baseline = "independent-verifier-gated-raw-search"
+product_promotion = "none"
+reason = "No retained comparison supports general production promotion across challenge families."
+
+[[techniques]]
+id = "decomposition"
+comparison_id = "classic-two-word-prefix-decomposition-v1"
+evidence = "benchmarks/research/evidence/2026-09-04-classic-prefix-decomposition-linux"
+work_outcome = "positive-small"
+timing_outcome = "null"
+decision = "retain-research-only"
+summary = "Exact Q-prefix reuse removes 94 of 8836 verifier calls; median timing is effectively tied."
+
+[[techniques]]
+id = "verified-block-reuse"
+comparison_id = "classic-two-pass-verified-block-reuse-v1"
+evidence = "benchmarks/research/evidence/2026-09-04-classic-verified-block-reuse-linux"
+work_outcome = "positive-conditional"
+timing_outcome = "positive-conditional"
+decision = "retain-research-only"
+summary = "Exact reuse halves verifier calls and improves median time 1.900x on a constructed 100-percent-repeat second pass."
+
+[[techniques]]
+id = "canonicalization"
+comparison_id = "classic-history-residue-canonicalization-v1"
+evidence = "benchmarks/research/evidence/2026-08-12-history-residue-canonicalization-windows"
+work_outcome = "positive"
+timing_outcome = "negative"
+decision = "retain-research-only"
+summary = "Exact residue identity removes 35.04 percent of unique states and verifier calls but is about 2.54x slower."
+
+[[techniques]]
+id = "exact-pruning"
+comparison_id = "classic-crazy-exact-preimage-pruning-v1"
+evidence = "benchmarks/research/evidence/2026-08-12-crazy-preimage-pruning-windows"
+work_outcome = "positive"
+timing_outcome = "negative"
+decision = "retain-research-only"
+summary = "Exact preimage projection removes 99.71 percent of candidate checks but is about 1.28x slower."
+
+[[techniques]]
+id = "heuristic-search"
+comparison_id = "classic-three-word-initial-halt-heuristic-v1"
+evidence = "benchmarks/research/evidence/2026-09-04-classic-three-word-initial-decode-heuristic-linux"
+work_outcome = "positive-holdout"
+timing_outcome = "mixed"
+decision = "retain-research-only"
+summary = "Static decode ordering finds the first holdout solution at evaluation 475 where natural order has no hit by 50000; full-budget timing is negative and a known-holdout stop-first follow-up is positive."
+
+[[techniques]]
+id = "learned-guidance"
+comparison_id = "classic-four-word-training-only-guidance-v1"
+evidence = "benchmarks/research/evidence/2026-09-04-classic-four-word-training-only-guidance-linux"
+work_outcome = "inconclusive-no-solution"
+timing_outcome = "negative"
+decision = "retain-research-only"
+summary = "The preregistered larger holdout has no solutions, so ranking is inconclusive; learned end-to-end median is about 20.358x slower."

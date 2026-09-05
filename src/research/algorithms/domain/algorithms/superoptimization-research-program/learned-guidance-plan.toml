@@ -3,7 +3,7 @@ schema_version = 1
 [plan]
 id = "classic-four-word-training-only-guidance-v1"
 record_kind = "plan"
-status = "preregistered"
+status = "measured"
 method_class = "optimization"
 technique = "laplace-pooled-initial-decode-guidance-v1"
 baseline = "four-word-static-initial-decode-order-v1"

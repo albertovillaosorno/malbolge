@@ -45,6 +45,7 @@ _ELAPSED = 10
 _REPETITIONS = 5
 _ORDERING = "fixed-enumeration-then-heuristic"
 _OUTLIERS = "retain-all"
+_MEASURED_FOLLOW_UP = "measured-follow-up"
 _REGISTERED = "registered"
 _ROOT = Path(__file__).resolve().parents[5]
 _PLAN = _ROOT / (

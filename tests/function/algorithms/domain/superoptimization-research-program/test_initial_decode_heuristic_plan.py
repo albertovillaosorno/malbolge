@@ -53,7 +53,7 @@ _FEATURE = "initial-positional-decode-only-v1"
 _SCORE = "earliest-position-decoding-to-halt-else-three-v1"
 _BASELINE = "deterministic-enumeration-v1"
 _HEURISTIC = "initial-decode-halt-proximity-order-v1"
-_PREREGISTERED = "preregistered"
+_MEASURED = "measured"
 _REGISTERED = "registered"
 
 
@@ -70,7 +70,7 @@ def test_heuristic_plan_freezes_holdout_identity_before_execution() -> None:
     plan = _table("plan")
     challenge = _table("challenge")
     assert plan["id"] == _PLAN_ID
-    assert plan["status"] == _PREREGISTERED
+    assert plan["status"] == _MEASURED
     assert challenge["id"] == _CHALLENGE_ID
     assert challenge["candidate_count"] == _CANDIDATES
     assert challenge["status"] == _REGISTERED

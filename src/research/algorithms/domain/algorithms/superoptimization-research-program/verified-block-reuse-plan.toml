@@ -3,7 +3,7 @@ schema_version = 1
 [plan]
 id = "classic-two-pass-verified-block-reuse-v1"
 record_kind = "plan"
-status = "preregistered"
+status = "measured"
 method_class = "optimization"
 technique = "exact-candidate-verified-result-reuse-v1"
 baseline = "per-request-independent-verification-v1"

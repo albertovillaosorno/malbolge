@@ -52,6 +52,7 @@ _BUDGET = 50_000
 _STRIDE = 104_729
 _SCALE = 1_000_000
 _REGISTERED = "registered"
+_MEASURED = "measured"
 _UNREGISTERED = "unregistered"
 _UNCHARACTERIZED = "uncharacterized"
 _PRIMARY = "first-verified-evaluation"
@@ -76,6 +77,7 @@ def _table(name: str) -> dict[str, object]:
 def test_learned_plan_freezes_training_without_holdout_labels() -> None:
     """Training is old evidence; four-word holdout remains uncharacterized."""
     assert _table("plan")["id"] == _PLAN_ID
+    assert _table("plan")["status"] == _MEASURED
     training = _table("training")
     holdout = _table("holdout")
     assert training["challenge_id"] == _TRAINING_ID
