@@ -109,6 +109,20 @@ type HostWords = ctypes.Array[ctypes.c_uint32]
 
 
 @dataclass(frozen=True, slots=True)
+class CudaProfileResidentFootprint:
+    """Exact one-request CUDA resident allocation and upload accounting."""
+
+    device_allocated_bytes: int
+    initial_host_to_device_bytes: int
+    input_buffer_bytes: int
+    memory_bytes: int
+    output_buffer_bytes: int
+    planner_fixed_chunk_bytes: int
+    planner_item_bytes: int
+    state_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
 class ProfileRunPhaseProfile:
     """Diagnostic wall-clock phase totals for one profiled evaluation."""
 
@@ -122,6 +136,23 @@ class ProfileRunPhaseProfile:
     total_ns: int
     upload_ns: int
     validation_plan_ns: int
+
+
+def cuda_profile_resident_footprint(
+    geometry: ProfileRunGeometry,
+    request: ProfileRunRequest,
+    *,
+    max_runs: int = 1,
+) -> CudaProfileResidentFootprint:
+    """Return exact one-request CUDA resident allocation and upload accounting.
+
+    Returns:
+        CUDA buffer bytes plus the planner's per-item and per-chunk budget.
+
+    """
+    admitted = geometry.validated()
+    validated = validate_profile_run_requests(admitted, (request,))[0]
+    return _resident_footprint(admitted, validated, max_runs=max_runs)
 
 
 def profile_snapshot_workspace_id() -> str:
@@ -1980,6 +2011,40 @@ def _session_output_capacity(
         )
         raise InvalidPrimitiveBatchError(message)
     return output_capacity
+
+
+def _resident_footprint(
+    geometry: ProfileRunGeometry,
+    request: ProfileRunRequest,
+    *,
+    max_runs: int,
+) -> CudaProfileResidentFootprint:
+    output_capacity = _session_output_capacity(request, max_runs=max_runs)
+    state_bytes = STATE_WORDS * _DEVICE_WORD_BYTES
+    memory_bytes = geometry.memory_words * _DEVICE_WORD_BYTES
+    input_buffer_bytes = max(1, len(request.input_bytes)) * _DEVICE_WORD_BYTES
+    output_buffer_bytes = max(1, output_capacity) * _DEVICE_WORD_BYTES
+    allocated = (
+        state_bytes
+        + memory_bytes
+        + input_buffer_bytes
+        + output_buffer_bytes
+    )
+    planner_item_bytes = _resident_item_bytes(
+        geometry,
+        request,
+        output_budget_multiplier=max_runs,
+    )
+    return CudaProfileResidentFootprint(
+        device_allocated_bytes=allocated,
+        initial_host_to_device_bytes=allocated,
+        input_buffer_bytes=input_buffer_bytes,
+        memory_bytes=memory_bytes,
+        output_buffer_bytes=output_buffer_bytes,
+        planner_fixed_chunk_bytes=_FIXED_CHUNK_BYTES,
+        planner_item_bytes=planner_item_bytes,
+        state_bytes=state_bytes,
+    )
 
 
 def _resident_item_bytes(

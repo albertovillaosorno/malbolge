@@ -204,6 +204,23 @@ three-full-chunk instance of the same model, not a separate mathematical case.
   replace the tritwise product candidate evaluator. That conclusion is scoped to
   candidate evaluation and does not select the resident VM geometry.
 
+  A separate `cuda-profile-width-crazy-geometry-resources-v1` diagnostic now
+  exposes exact one-request CUDA allocation and initial H-to-D byte accounting,
+  plus a 100,000-request live resource plan for each N10-N14 geometry. The
+  footprint includes state, full resident memory, the minimum input buffer, and
+  output capacity, while planner item bytes and fixed chunk overhead remain
+  separately visible. A live development smoke reports route-independent
+  footprint at every width: 301,800 bytes at N10, 774,192 at N11, 2,191,368 at
+  N12, 6,442,896 at N13, and 19,197,480 at N14. Initial H-to-D bytes per single
+  VM equal those allocation totals for this zero-input workload.
+
+  Live first-chunk capacity is intentionally tied to each module's measured
+  free-memory snapshot and can therefore differ slightly across routes. The
+  smoke admitted roughly 16.5k/6.4k/2.3k/775/261 VMs in the first N10-N14
+  chunks, respectively, without allocating the 100,000-request planning batch.
+  Those dirty-tree capacity values are not retained; a clean-commit resource run
+  remains open.
+
   The fanout is therefore structural evidence for that benchmark route, not an
   observed cache counter from the product kernel. The hermetic CUDA bundle
   exposes no Nsight

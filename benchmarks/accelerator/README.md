@@ -182,6 +182,27 @@ Run with:
   -m benchmarks.accelerator.crazy_lookup_candidate_event_timeline
 ```
 
+`profile_width_crazy_geometry_resources.py` is the resource companion to the
+retained N10-N14 geometry throughput matrix. It reports the exact one-request
+CUDA allocation and initial H-to-D byte volume for state, memory, input, and
+output buffers, separately from the planner's per-item and fixed-per-chunk
+budget. It also plans 100,000 repeated requests against each live module/device
+snapshot without allocating that planned batch, exposing first admitted chunk,
+chunk count, reserve, usable memory, and measured free memory.
+
+The arithmetic geometry changes kernel code and constant data only; it must not
+change the per-VM buffer footprint. Live planner capacity can still differ by a
+few items across routes because each separately loaded module observes its own
+current free-memory snapshot. This diagnostic records that variation rather than
+claiming identical capacity from nonidentical resource snapshots.
+
+Run with:
+
+```powershell
+.dependencies/python/3.14.6/Scripts/python-jig.cmd `
+  -m benchmarks.accelerator.profile_width_crazy_geometry_resources
+```
+
 `profile_run_phase_profile.py` measures the same current-profile workload with
 adapter diagnostics split into validation/planning, host construction,
 allocation, upload, kernel+sync, download, full result decode, and release. It
