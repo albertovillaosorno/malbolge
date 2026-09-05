@@ -42,6 +42,8 @@ only 32-bit base-10000 limbs. Binary64 `%e`/`%E` now consumes that
 representation
 with decimal nearest-ties-even rounding and bounded scientific layout.
 
-Source `va_list` bridging remains compiler-lowering work. Binary64 `%f`/`%g`,
-decimal binary128, wide-string formatting, and correctly-rounded
-transcendental math remain open.
+Binary64 `%f`/`%F` now uses the same exact decimal source, rounding the scaled
+integer nearest-ties-even before placing the fixed decimal point. Source
+`va_list` bridging remains compiler-lowering work. Binary64 `%g`/`%G`, decimal
+binary128, wide-string formatting, and correctly-rounded transcendental math
+remain open.

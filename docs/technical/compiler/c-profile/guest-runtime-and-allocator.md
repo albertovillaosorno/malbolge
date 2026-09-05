@@ -192,12 +192,19 @@ values ignore zero padding just like the hexadecimal path. Precision beyond the
 exact digit sequence becomes virtual zeroes, so truncation work is bounded by
 the actual sink rather than requested discarded output.
 
+Fixed binary64 `%f`/`%F` uses the same exact source. It rounds
+`value * 10^precision` to an integer with decimal nearest-ties-even and then
+places exactly `precision` fractional digits. Cases whose requested precision
+extends beyond the exact value use virtual trailing zeroes; values that round to
+zero, cross an integer power of ten, or have no retained pre-rounding digit are
+handled explicitly without host arithmetic.
+
 The C23 `snprintf`/`vsnprintf` contract still requires full formatted-output
 semantics, including the same would-have-written result under truncation. These
 formatting layers are implementation substrate only; public routines remain
 contracted-unavailable until compiler lowering bridges source `va_list` state
-into the canonical promoted-block cursor and fixed/general plus binary128
-decimal floating formatting are complete.
+into the canonical promoted-block cursor and general plus binary128 decimal
+floating formatting are complete.
 
 Independent C vectors lock decimal/hex/octal/binary integer output,
 INT64_MIN, alternate prefixes, precision-versus-zero padding, left/right width,
@@ -262,9 +269,9 @@ selected target profile is sequential with no guest thread surface. Allocation
 startup binding and byte-I/O intrinsic realization are likewise lane-9 target
 work over the stable identities defined here. The canonical promoted-block
 varargs cursor is now implemented; source `va_list` bridging remains lane-9
-compiler-lowering work. Remaining lane-8 algorithm work is binary64 fixed and
-general decimal formatting, decimal binary128, and correctly-rounded `sin`,
-`cos`, and `atan2`.
+compiler-lowering work. Remaining lane-8 algorithm work is binary64 general
+decimal formatting, decimal binary128, and correctly-rounded `sin`, `cos`, and
+`atan2`.
 
 ## Invariants
 

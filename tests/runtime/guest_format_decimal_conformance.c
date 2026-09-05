@@ -154,6 +154,45 @@ static int test_flags_special_and_truncation(void) {
   return 0;
 }
 
+static int test_fixed(void) {
+  if (!expect_text("%f", UINT64_C(0x3ff0000000000000), "1.000000",
+                   UINT32_C(8)) ||
+      !expect_text("%.0f", UINT64_C(0x4004000000000000), "2",
+                   UINT32_C(1)) ||
+      !expect_text("%.0f", UINT64_C(0x400c000000000000), "4",
+                   UINT32_C(1)) ||
+      !expect_text("%.0f", UINT64_C(0x4023000000000000), "10",
+                   UINT32_C(2))) {
+    return 1;
+  }
+  if (!expect_text("%.1f", UINT64_C(0x3ff4000000000000), "1.2",
+                   UINT32_C(3)) ||
+      !expect_text("%.1F", UINT64_C(0x3ffc000000000000), "1.8",
+                   UINT32_C(3)) ||
+      !expect_text("%f", UINT64_C(0x3fb999999999999a), "0.100000",
+                   UINT32_C(8))) {
+    return 2;
+  }
+  if (!expect_text("%f", UINT64_C(1), "0.000000", UINT32_C(8)) ||
+      !expect_text("%f", UINT64_C(0x8000000000000000), "-0.000000",
+                   UINT32_C(9)) ||
+      !expect_text("%#.0F", UINT64_C(0x3ff0000000000000), "1.",
+                   UINT32_C(2))) {
+    return 3;
+  }
+  if (!expect_text("%+015.2f", UINT64_C(0x3ff8000000000000),
+                   "+00000000001.50", UINT32_C(15)) ||
+      !expect_text("%-12.2f", UINT64_C(0x3ff8000000000000),
+                   "1.50        ", UINT32_C(12))) {
+    return 4;
+  }
+  if (!expect_text("%020F", UINT64_C(0x7ff0000000000000),
+                   "                 INF", UINT32_C(20))) {
+    return 5;
+  }
+  return 0;
+}
+
 static int test_fail_closed(void) {
   char output[8] = "stable";
   MalbolgeGuestFormatSink sink;
@@ -177,7 +216,7 @@ static int test_fail_closed(void) {
       sink.required != UINT32_C(2) || !same_text(output, "st")) {
     return 3;
   }
-  if (!build_resolved("%f", UINT64_C(0x3ff0000000000000), &resolved) ||
+  if (!build_resolved("%g", UINT64_C(0x3ff0000000000000), &resolved) ||
       malbolge_guest_format_execute_decimal_float(&sink, &resolved) !=
           MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT ||
       sink.required != UINT32_C(2)) {
@@ -203,6 +242,7 @@ int main(void) {
   const int basic = test_basic_and_edges();
   const int rounding = test_rounding();
   const int flags = test_flags_special_and_truncation();
+  const int fixed = test_fixed();
   const int failures = test_fail_closed();
 
   if (basic != 0) {
@@ -214,5 +254,8 @@ int main(void) {
   if (flags != 0) {
     return 30 + flags;
   }
-  return failures == 0 ? 0 : 40 + failures;
+  if (fixed != 0) {
+    return 40 + fixed;
+  }
+  return failures == 0 ? 0 : 50 + failures;
 }

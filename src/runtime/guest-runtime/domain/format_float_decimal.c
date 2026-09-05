@@ -67,7 +67,7 @@ static int checked_add(uint32_t left, uint32_t right, uint32_t *result) {
   return 1;
 }
 
-static int resolved_scientific(
+static int resolved_decimal(
     const MalbolgeGuestResolvedFormatArgument *resolved) {
   uint32_t kind = MALBOLGE_GUEST_VARARG_NONE;
 
@@ -79,7 +79,11 @@ static int resolved_scientific(
       (resolved->directive.conversion !=
            MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_EXP &&
        resolved->directive.conversion !=
-           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_EXP_UPPER) ||
+           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_EXP_UPPER &&
+       resolved->directive.conversion !=
+           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_FIXED &&
+       resolved->directive.conversion !=
+           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_FIXED_UPPER) ||
       malbolge_guest_format_argument_kind(&resolved->directive, &kind) !=
           MALBOLGE_GUEST_RUNTIME_VALID) {
     return 0;
@@ -283,6 +287,150 @@ static void emit_rounded(DecimalWriter *writer, const RoundedDecimal *rounded,
   emit_exponent(writer, rounded->exponent, uppercase);
 }
 
+static int half_without_retained_rounds_up(
+    const MalbolgeGuestDecimalExact *exact) {
+  uint32_t index = UINT32_C(1);
+
+  if (exact->digits[0] > '5') {
+    return 1;
+  }
+  if (exact->digits[0] < '5') {
+    return 0;
+  }
+  while (index < exact->digit_count) {
+    if (exact->digits[index] != '0') {
+      return 1;
+    }
+    ++index;
+  }
+  return 0;
+}
+
+static void trim_scaled_zeros(RoundedDecimal *scaled) {
+  while (scaled->stored_digits > UINT32_C(1) &&
+         scaled->digits[scaled->stored_digits - UINT32_C(1)] == '0') {
+    --scaled->stored_digits;
+    ++scaled->zero_digits;
+  }
+}
+
+static int quantize_fixed(const MalbolgeGuestDecimalExact *exact,
+                          uint32_t precision, RoundedDecimal *scaled) {
+  const int32_t decimal_power = exact->decimal_shift + (int32_t)precision;
+  uint32_t keep = UINT32_C(0);
+  uint32_t index = UINT32_C(0);
+
+  scaled->exponent = INT32_C(0);
+  scaled->zero_digits = UINT32_C(0);
+  if (decimal_power >= INT32_C(0)) {
+    scaled->stored_digits = exact->digit_count;
+    scaled->zero_digits = (uint32_t)decimal_power;
+    while (index < exact->digit_count) {
+      scaled->digits[index] = exact->digits[index];
+      ++index;
+    }
+    trim_scaled_zeros(scaled);
+    return 1;
+  }
+  {
+    const uint32_t cut = (uint32_t)(-decimal_power);
+    if (cut > exact->digit_count) {
+      scaled->digits[0] = '0';
+      scaled->stored_digits = UINT32_C(1);
+      return 1;
+    }
+    if (cut == exact->digit_count) {
+      scaled->digits[0] = half_without_retained_rounds_up(exact) ? '1' : '0';
+      scaled->stored_digits = UINT32_C(1);
+      return 1;
+    }
+    keep = exact->digit_count - cut;
+  }
+  scaled->stored_digits = keep;
+  while (index < keep) {
+    scaled->digits[index] = exact->digits[index];
+    ++index;
+  }
+  if (exact_rounds_up(exact, keep)) {
+    index = keep;
+    while (index != UINT32_C(0)) {
+      --index;
+      if (scaled->digits[index] != '9') {
+        ++scaled->digits[index];
+        trim_scaled_zeros(scaled);
+        return 1;
+      }
+      scaled->digits[index] = '0';
+    }
+    scaled->digits[0] = '1';
+    scaled->stored_digits = UINT32_C(1);
+    scaled->zero_digits = keep;
+    return 1;
+  }
+  trim_scaled_zeros(scaled);
+  return 1;
+}
+
+static uint32_t scaled_length(const RoundedDecimal *scaled) {
+  return scaled->stored_digits + scaled->zero_digits;
+}
+
+static int fixed_core_length(char sign, const RoundedDecimal *scaled,
+                             uint32_t precision, int point, uint32_t *core) {
+  const uint32_t digits = scaled_length(scaled);
+  const uint32_t integer_digits =
+      digits > precision ? digits - precision : UINT32_C(1);
+  uint32_t total = sign == '\0' ? UINT32_C(0) : UINT32_C(1);
+
+  if (!checked_add(total, integer_digits, &total) ||
+      !checked_add(total, point != 0 ? UINT32_C(1) : UINT32_C(0), &total) ||
+      !checked_add(total, precision, &total)) {
+    return 0;
+  }
+  *core = total;
+  return 1;
+}
+
+static void emit_scaled_range(DecimalWriter *writer,
+                              const RoundedDecimal *scaled, uint32_t start,
+                              uint32_t count) {
+  uint32_t index = start;
+  uint32_t end = start + count;
+
+  while (index < end && index < scaled->stored_digits) {
+    writer_character(writer, scaled->digits[index]);
+    ++index;
+  }
+  if (index < end) {
+    writer_repeat(writer, '0', end - index);
+  }
+}
+
+static void emit_fixed(DecimalWriter *writer, const RoundedDecimal *scaled,
+                       uint32_t precision, int point) {
+  const uint32_t digits = scaled_length(scaled);
+  uint32_t integer_digits = UINT32_C(0);
+
+  if (digits > precision) {
+    integer_digits = digits - precision;
+    emit_scaled_range(writer, scaled, UINT32_C(0), integer_digits);
+  } else {
+    writer_character(writer, '0');
+  }
+  if (point != 0) {
+    writer_character(writer, '.');
+  }
+  if (precision == UINT32_C(0)) {
+    return;
+  }
+  if (digits < precision) {
+    writer_repeat(writer, '0', precision - digits);
+    emit_scaled_range(writer, scaled, UINT32_C(0), digits);
+  } else {
+    emit_scaled_range(writer, scaled, integer_digits, precision);
+  }
+}
+
 static MalbolgeGuestRuntimeStatus emit_special(
     MalbolgeGuestFormatSink *sink,
     const MalbolgeGuestResolvedFormatArgument *resolved, char sign,
@@ -336,15 +484,18 @@ MalbolgeGuestRuntimeStatus malbolge_guest_format_execute_decimal_float(
                         ? sign_character(bits, resolved->directive.flags)
                         : '\0';
   const int uppercase =
-      resolved != NULL && resolved->directive.conversion ==
-                              MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_EXP_UPPER;
+      resolved != NULL &&
+      (resolved->directive.conversion ==
+           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_EXP_UPPER ||
+       resolved->directive.conversion ==
+           MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_FIXED_UPPER);
   const int left =
       resolved != NULL &&
       (resolved->directive.flags & MALBOLGE_GUEST_FORMAT_LEFT) != UINT32_C(0);
   int zero = 0;
   int point = 0;
 
-  if (sink == NULL || !resolved_scientific(resolved)) {
+  if (sink == NULL || !resolved_decimal(resolved)) {
     return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
   }
   if (raw_exponent == B64_EXPONENT_ALL_ONES) {
@@ -354,10 +505,51 @@ MalbolgeGuestRuntimeStatus malbolge_guest_format_execute_decimal_float(
   if (precision == UINT32_MAX) {
     return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
   }
-  target = precision + UINT32_C(1);
   if (malbolge_guest_decimal_from_binary64(bits, &exact) !=
-          MALBOLGE_GUEST_RUNTIME_VALID ||
-      !round_exact(&exact, target, &rounded)) {
+      MALBOLGE_GUEST_RUNTIME_VALID) {
+    return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+  }
+  if (resolved->directive.conversion ==
+          MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_FIXED ||
+      resolved->directive.conversion ==
+          MALBOLGE_GUEST_FORMAT_CONVERSION_FLOAT_FIXED_UPPER) {
+    if (precision > (uint32_t)INT32_MAX ||
+        !quantize_fixed(&exact, precision, &rounded)) {
+      return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+    }
+    point = precision != UINT32_C(0) ||
+            (resolved->directive.flags & MALBOLGE_GUEST_FORMAT_ALTERNATE) !=
+                UINT32_C(0);
+    if (!fixed_core_length(sign, &rounded, precision, point, &core)) {
+      return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+    }
+    width = field_width(&resolved->directive);
+    total = width > core ? width : core;
+    padding = total - core;
+    zero =
+        left == 0 &&
+        (resolved->directive.flags & MALBOLGE_GUEST_FORMAT_ZERO) != UINT32_C(0);
+    if (!writer_init(&writer, sink, total)) {
+      return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
+    }
+    if (left == 0 && zero == 0) {
+      writer_repeat(&writer, ' ', padding);
+    }
+    if (sign != '\0') {
+      writer_character(&writer, sign);
+    }
+    if (zero != 0) {
+      writer_repeat(&writer, '0', padding);
+    }
+    emit_fixed(&writer, &rounded, precision, point);
+    if (left != 0) {
+      writer_repeat(&writer, ' ', padding);
+    }
+    sink->required += total;
+    return MALBOLGE_GUEST_RUNTIME_VALID;
+  }
+  target = precision + UINT32_C(1);
+  if (!round_exact(&exact, target, &rounded)) {
     return MALBOLGE_GUEST_RUNTIME_INVALID_ARGUMENT;
   }
   point = precision != UINT32_C(0) ||
