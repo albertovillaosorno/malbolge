@@ -59,6 +59,9 @@ adds the proved `2^-128` truncation bound; very small inputs use the direct
 `x-x^3/3 < atan(x) < x` enclosure instead.
 
 The final finite-nonzero atan2 handoff composes that residual interval with the
-certified quarter-pi base into one Q32.192 magnitude plus sign. A separate
-integer long-division helper rounds the original rational to nearest-even
-binary64 when a later kernel needs a bounded floating representation.
+certified quarter-pi base into one Q32.192 magnitude plus sign. A nearest-even
+endpoint gate publishes an internal binary64 result only when both certified
+bounds round to identical bits; ambiguous intervals remain fail closed for a
+wider fallback. A separate integer long-division helper rounds the original
+rational to nearest-even binary64 when a later kernel needs a bounded floating
+representation.

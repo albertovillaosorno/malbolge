@@ -943,6 +943,108 @@ int malbolge_guest_math_atan2_interval(
   return 1;
 }
 
+static uint32_t fixed_192_bit(const MalbolgeGuestMathFixed192 *value,
+                              uint32_t position) {
+  return (value->limbs[position / UINT32_C(32)] >>
+          (position % UINT32_C(32))) &
+         UINT32_C(1);
+}
+
+static int32_t fixed_192_high_bit(const MalbolgeGuestMathFixed192 *value) {
+  uint32_t position = FIXED_192_LIMB_COUNT * UINT32_C(32);
+  while (position != UINT32_C(0)) {
+    --position;
+    if (fixed_192_bit(value, position) != UINT32_C(0)) {
+      return (int32_t)position;
+    }
+  }
+  return INT32_C(-1);
+}
+
+static uint32_t fixed_192_any_below(const MalbolgeGuestMathFixed192 *value,
+                                    uint32_t limit) {
+  uint32_t position = UINT32_C(0);
+  while (position < limit) {
+    if (fixed_192_bit(value, position) != UINT32_C(0)) {
+      return UINT32_C(1);
+    }
+    ++position;
+  }
+  return UINT32_C(0);
+}
+
+static uint64_t fixed_192_nearest_binary64(
+    const MalbolgeGuestMathFixed192 *value) {
+  int32_t high = fixed_192_high_bit(value);
+  uint64_t significand = UINT64_C(0);
+  uint32_t offset = UINT32_C(0);
+  int32_t guard_position = INT32_C(-1);
+  uint32_t guard = UINT32_C(0);
+  uint32_t sticky = UINT32_C(0);
+  uint64_t raw_exponent = UINT64_C(0);
+
+  if (high < INT32_C(0)) {
+    return UINT64_C(0);
+  }
+  while (offset < UINT32_C(53)) {
+    significand <<= UINT32_C(1);
+    if (high >= (int32_t)offset) {
+      significand |= fixed_192_bit(value, (uint32_t)(high - (int32_t)offset));
+    }
+    ++offset;
+  }
+  guard_position = high - INT32_C(53);
+  if (guard_position >= INT32_C(0)) {
+    guard = fixed_192_bit(value, (uint32_t)guard_position);
+    sticky = fixed_192_any_below(value, (uint32_t)guard_position);
+  }
+  if (guard != UINT32_C(0) &&
+      (sticky != UINT32_C(0) || (significand & UINT64_C(1)) != UINT64_C(0))) {
+    ++significand;
+  }
+  if (significand == (UINT64_C(1) << UINT32_C(53))) {
+    significand >>= UINT32_C(1);
+    ++high;
+  }
+  raw_exponent = (uint64_t)(high - FIXED_192_FRACTION_BITS +
+                            BINARY64_EXPONENT_BIAS);
+  return (raw_exponent << BINARY64_EXPONENT_SHIFT) |
+         (significand & BINARY64_FRACTION);
+}
+
+int malbolge_guest_math_fixed192_unique_binary64(
+    const MalbolgeGuestMathFixed192Interval *input, uint64_t *output_bits) {
+  uint64_t lower_bits = UINT64_C(0);
+  uint64_t upper_bits = UINT64_C(0);
+  if (input == NULL || output_bits == NULL ||
+      compare_fixed_192(&input->lower, &input->upper) > 0) {
+    return 0;
+  }
+  lower_bits = fixed_192_nearest_binary64(&input->lower);
+  upper_bits = fixed_192_nearest_binary64(&input->upper);
+  if (lower_bits != upper_bits) {
+    return 0;
+  }
+  *output_bits = lower_bits;
+  return 1;
+}
+
+int malbolge_guest_math_atan2_unique_binary64(
+    uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits) {
+  MalbolgeGuestMathAtan2Interval interval;
+  uint64_t magnitude_bits = UINT64_C(0);
+  if (output_bits == NULL ||
+      !malbolge_guest_math_atan2_interval(y_bits, x_bits, &interval) ||
+      !malbolge_guest_math_fixed192_unique_binary64(&interval.magnitude,
+                                                    &magnitude_bits)) {
+    return 0;
+  }
+  *output_bits = magnitude_bits |
+                 (interval.negative != UINT32_C(0) ? BINARY64_SIGN
+                                                    : UINT64_C(0));
+  return 1;
+}
+
 int malbolge_guest_math_ratio_nearest_binary64(
     const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits) {
   uint32_t exact = UINT32_C(0);

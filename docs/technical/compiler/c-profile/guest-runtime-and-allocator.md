@@ -439,6 +439,20 @@ bounds. The composed C magnitude encloses that authority for all sampled
 quadrants and exponent geometries, while fixed C vectors pin all four equal-
 magnitude quadrants and rejected-input nonmutation.
 
+A nearest-even binary64 gate now rounds the two Q32.192 endpoints independently
+and publishes only when both land on the same bit pattern. Endpoint rounding is
+integer-only: it finds the leading fixed-point bit, extracts 53 significand
+bits,
+and applies guard/sticky ties-to-even. Because every nonzero Q32.192 value is at
+least `2^-192`, this path needs only normal binary64 encoding; intervals that
+include zero and one fixed-point unit naturally disagree and stay unresolved.
+
+Against the same exact 64-pair Machin-plus-Fraction authority, all 64 true
+principal-angle intervals round uniquely, while the current Q32.192 enclosure
+certifies 48. Those 48 agree bit-for-bit and the other 16 reject without
+mutation. The gap is therefore an explicit precision/fallback obligation rather
+than evidence that public atan2 is complete.
+
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full
 binary64 domain.

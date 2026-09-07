@@ -664,6 +664,45 @@ int main(void) {{
 """
 
 
+def _unique_rounding_row(y_bits: int, x_bits: int) -> str:
+    lower, upper, negative = _atan2_exact_interval(y_bits, x_bits)
+    lower_bits = _nearest_binary64_bits(lower)
+    upper_bits = _nearest_binary64_bits(upper)
+    assert lower_bits == upper_bits
+    expected = lower_bits | (SIGN_BIT if negative else 0)
+    return (
+        f"  {{UINT64_C(0x{y_bits:016x}), UINT64_C(0x{x_bits:016x}), "
+        f"UINT64_C(0x{expected:016x})}}"
+    )
+
+
+def _unique_rounding_harness_source() -> str:
+    rows = ",\n".join(starmap(_unique_rounding_row, _atan_interval_pairs()))
+    return f"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+typedef struct Vector {{ uint64_t y_bits, x_bits, expected_bits; }} Vector;
+static const Vector vectors[] = {{
+{rows}
+}};
+int main(void) {{
+  uint32_t i = 0, resolved = 0;
+  while (i < (uint32_t)(sizeof(vectors) / sizeof(vectors[0]))) {{
+    uint64_t bits = UINT64_C(0xdeadbeefdeadbeef);
+    const Vector *v = &vectors[i];
+    if (malbolge_guest_math_atan2_unique_binary64(
+            v->y_bits, v->x_bits, &bits)) {{
+      if (bits != v->expected_bits) return 80;
+      ++resolved;
+    }} else if (bits != UINT64_C(0xdeadbeefdeadbeef)) {{
+      return 81;
+    }}
+    ++i;
+  }}
+  return resolved == UINT32_C(48) ? 0 : 82;
+}}
+"""
+
+
 def _small_ratio_pairs() -> tuple[tuple[int, int], ...]:
     state = SMALL_RATIO_LCG_SEED
     pairs = [
@@ -1070,6 +1109,36 @@ def test_atan2_q192_interval_encloses_symbolic_plan(
     harness = tmp_path / "atan2-q192-interval.c"
     executable = tmp_path / "atan2-q192-interval"
     _ = harness.write_text(_atan2_interval_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan2_unique_rounding_is_sound_and_conservative(
+    tmp_path: Path,
+) -> None:
+    """Resolve 48 of 64 Q192 intervals without authority disagreement."""
+    harness = tmp_path / "atan2-unique-rounding.c"
+    executable = tmp_path / "atan2-unique-rounding"
+    _ = harness.write_text(_unique_rounding_harness_source(), encoding="utf-8")
     compiled = _run(
         [
             str(CLANG),

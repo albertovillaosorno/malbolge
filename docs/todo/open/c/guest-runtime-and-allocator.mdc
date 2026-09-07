@@ -296,12 +296,17 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   `x-x^3/3 < atan(x) < x` to avoid artificial dependency widening.
 
   The finite-nonzero atan2 path now composes `k*pi/4` and residual atan
-  intervals
-  into one Q32.192 principal-angle magnitude plus explicit sign. A second
-  64-pair Machin-plus-Fraction oracle independently checks the composed
+  intervals into one Q32.192 principal-angle magnitude plus explicit sign. A
+  second 64-pair Machin-plus-Fraction oracle independently checks the composed
   enclosure, and fixed C vectors cover all equal-magnitude quadrants plus
-  rejected-input nonmutation. Final binary64 unique-rounding detection and any
-  wider fallback remain unimplemented, so public `atan2` stays unavailable.
+  rejected-input nonmutation.
+
+  Binary64 unique-rounding detection is now implemented over that interval.
+  Both Q32.192 endpoints are rounded independently by integer guard/sticky
+  nearest-even logic, and publication occurs only when the bits agree. The
+  64-pair authority has 64 mathematically unique results; Q32.192 certifies
+  48/64 bit-for-bit and rejects 16/64 conservatively. Wider interval precision
+  or a hard-to-round fallback remains required before public `atan2` can open.
 
   Correctly-rounded numerical kernels and final rounding remain the lane-8
   blocker.

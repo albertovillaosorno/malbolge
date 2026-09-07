@@ -158,6 +158,10 @@ int malbolge_guest_math_atan_residual_interval(
     MalbolgeGuestMathFixed192Interval *output);
 int malbolge_guest_math_atan2_interval(
     uint64_t y_bits, uint64_t x_bits, MalbolgeGuestMathAtan2Interval *output);
+int malbolge_guest_math_fixed192_unique_binary64(
+    const MalbolgeGuestMathFixed192Interval *input, uint64_t *output_bits);
+int malbolge_guest_math_atan2_unique_binary64(
+    uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(
     const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits);
 
