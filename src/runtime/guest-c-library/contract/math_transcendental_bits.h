@@ -9,12 +9,13 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Exact raw-binary64 preclassification for transcendental guest math.
+//   - Exact raw-binary64 preclassification and rational atan reduction.
 // - Must-Not:
 //   - Approximate finite transcendental values or change libc availability.
 // - Allows:
 //   - Inputs: raw binary64 words and one admitted unary operation identity.
-//   - Outputs: exact results, symbolic atan2 reconstruction, or ratio bits.
+//   - Outputs: exact results, symbolic reconstruction, or exact rational
+//     ratios.
 //   - Side effects: none.
 // - Split-When:
 //   - Range reduction or approximation kernels gain independent proof policy.
@@ -23,7 +24,7 @@
 // - Summary:
 //   - Resolves only exact transcendental edge cases before numerical kernels.
 // - Description:
-//   - Resolves proved small-angle, small-ratio, and special-case results.
+//   - Resolves proved cases and reduces atan residuals without approximation.
 // - Usage:
 //   - Internal guest-libc substrate; public sin/cos/atan2 remain gated.
 // - Defaults:
@@ -81,6 +82,23 @@ typedef struct MalbolgeGuestMathAtan2Reconstruction {
   uint32_t negative;
 } MalbolgeGuestMathAtan2Reconstruction;
 
+typedef struct MalbolgeGuestMathExactRatio {
+  uint64_t numerator;
+  uint64_t denominator;
+  int32_t exponent_delta;
+} MalbolgeGuestMathExactRatio;
+
+typedef enum MalbolgeGuestMathAtanBase {
+  MALBOLGE_GUEST_MATH_ATAN_BASE_ZERO = 0,
+  MALBOLGE_GUEST_MATH_ATAN_BASE_QUARTER_PI = 1,
+} MalbolgeGuestMathAtanBase;
+
+typedef struct MalbolgeGuestMathAtanKernelReduction {
+  MalbolgeGuestMathExactRatio residual;
+  MalbolgeGuestMathAtanBase base;
+  MalbolgeGuestMathAtan2RatioOperation ratio_operation;
+} MalbolgeGuestMathAtanKernelReduction;
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
@@ -91,6 +109,9 @@ int malbolge_guest_math_atan2_kernel_input(
 int malbolge_guest_math_atan2_reconstruction(
     uint64_t y_bits, uint64_t x_bits,
     MalbolgeGuestMathAtan2Reconstruction *output);
+int malbolge_guest_math_atan_kernel_reduction(
+    const MalbolgeGuestMathAtan2KernelInput *input,
+    MalbolgeGuestMathAtanKernelReduction *output);
 int malbolge_guest_math_ratio_nearest_binary64(
     const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits);
 

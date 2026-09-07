@@ -254,7 +254,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   same 519-pair differential locks all four quadrant formulas, and fixed C
   vectors prove rejected special inputs do not mutate caller output.
 
-  Correctly-rounded range reduction and numerical kernels remain the lane-8
+  The remaining `atan` ratio is now reduced exactly below `169/408`. Ratios on
+  the upper branch use `pi/4 - atan((1-r)/(1+r))`; the cutoff maps to `239/577`,
+  which is strictly smaller because `239 * 408 = 97512` while
+  `169 * 577 = 97513`. The 519-pair `Fraction` differential locks the residual
+  rational and symbolic operation, and `-O0` still has no callable helper
+  symbols.
+
+  Correctly-rounded numerical kernels and final rounding remain the lane-8
   blocker.
 - Resolved integer/scheduling boundary: version one introduces no separate
   guest helper ABI for ordinary integer arithmetic or scheduling. Integer

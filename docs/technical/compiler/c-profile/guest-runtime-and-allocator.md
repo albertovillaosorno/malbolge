@@ -340,6 +340,20 @@ not become range-reduction authority. A deterministic 519-pair differential
 locks all four quadrant formulas, while fixed C vectors prove special-input
 rejection leaves caller-owned reconstruction state untouched.
 
+The ordinary `atan(r)` kernel input now has one additional exact rational
+reduction. Ratios below `169/408` remain unchanged; ratios at or above that cut
+use `atan(r) = pi/4 - atan((1-r)/(1+r))`. The cut is the last simple Pell
+convergent that keeps the required 53-bit cross-products inside `uint64_t`.
+At the cut the transformed residual is `239/577`, and
+`239 * 408 = 97512 < 97513 = 169 * 577`, so both branches leave a residual
+strictly below `169/408` without floating arithmetic or rounded pi constants.
+
+The 519-pair exact-rational differential checks the emitted numerator,
+denominator, exponent, symbolic base, and add/subtract operation against Python
+`Fraction`. Native `-O0` object inspection continues to show no callable helper
+symbols, while strict Windows i686/x64/ARM64 and wasm32 compilation lock the
+freestanding geometry.
+
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full
 binary64 domain.

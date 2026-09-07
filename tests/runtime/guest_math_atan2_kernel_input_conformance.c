@@ -111,6 +111,64 @@ static int test_reconstruction(void) {
   return 0;
 }
 
+static int reduction_equal(
+    const MalbolgeGuestMathAtanKernelReduction *value, uint64_t numerator,
+    uint64_t denominator, int32_t exponent_delta,
+    MalbolgeGuestMathAtanBase base,
+    MalbolgeGuestMathAtan2RatioOperation operation) {
+  return value->residual.numerator == numerator &&
+         value->residual.denominator == denominator &&
+         value->residual.exponent_delta == exponent_delta &&
+         value->base == base && value->ratio_operation == operation;
+}
+
+static int test_atan_reduction(void) {
+  MalbolgeGuestMathAtan2KernelInput input = {
+      UINT64_C(0x0010000000000000), UINT64_C(0x0010000000000000),
+      INT32_C(-2), UINT32_C(0), UINT32_C(0), UINT32_C(0)};
+  MalbolgeGuestMathAtanKernelReduction output;
+
+  if (!malbolge_guest_math_atan_kernel_reduction(&input, &output) ||
+      !reduction_equal(&output, UINT64_C(0x0010000000000000),
+                       UINT64_C(0x0010000000000000), INT32_C(-2),
+                       MALBOLGE_GUEST_MATH_ATAN_BASE_ZERO,
+                       MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD)) {
+    return 1;
+  }
+  input.exponent_delta = INT32_C(0);
+  if (!malbolge_guest_math_atan_kernel_reduction(&input, &output) ||
+      !reduction_equal(&output, UINT64_C(0),
+                       UINT64_C(0x0020000000000000), INT32_C(0),
+                       MALBOLGE_GUEST_MATH_ATAN_BASE_QUARTER_PI,
+                       MALBOLGE_GUEST_MATH_ATAN2_RATIO_SUBTRACT)) {
+    return 2;
+  }
+  input.numerator_significand = UINT64_C(0x0016000000000000);
+  input.denominator_significand = UINT64_C(0x0010000000000000);
+  input.exponent_delta = INT32_C(-1);
+  if (!malbolge_guest_math_atan_kernel_reduction(&input, &output) ||
+      !reduction_equal(&output, UINT64_C(0x000a000000000000),
+                       UINT64_C(0x0036000000000000), INT32_C(0),
+                       MALBOLGE_GUEST_MATH_ATAN_BASE_QUARTER_PI,
+                       MALBOLGE_GUEST_MATH_ATAN2_RATIO_SUBTRACT)) {
+    return 3;
+  }
+
+  output.residual.numerator = UINT64_C(0x55);
+  output.base = MALBOLGE_GUEST_MATH_ATAN_BASE_QUARTER_PI;
+  input.numerator_significand = UINT64_C(0x0010000000000001);
+  input.denominator_significand = UINT64_C(0x0010000000000000);
+  input.exponent_delta = INT32_C(0);
+  if (malbolge_guest_math_atan_kernel_reduction(&input, &output) ||
+      output.residual.numerator != UINT64_C(0x55) ||
+      output.base != MALBOLGE_GUEST_MATH_ATAN_BASE_QUARTER_PI ||
+      malbolge_guest_math_atan_kernel_reduction(NULL, &output) ||
+      malbolge_guest_math_atan_kernel_reduction(&input, NULL)) {
+    return 4;
+  }
+  return 0;
+}
+
 static int test_ratio_rounding(void) {
   MalbolgeGuestMathAtan2KernelInput input = {
       UINT64_C(0x0010000000000000), UINT64_C(0x0010000000000000),
@@ -171,10 +229,14 @@ static int test_ratio_rounding(void) {
 int main(void) {
   MalbolgeGuestMathAtan2KernelInput output;
   const int reconstruction = test_reconstruction();
+  const int reduction = test_atan_reduction();
   const int rounding = test_ratio_rounding();
 
   if (reconstruction != 0) {
     return 10 + reconstruction;
+  }
+  if (reduction != 0) {
+    return 15 + reduction;
   }
   if (rounding != 0) {
     return 20 + rounding;

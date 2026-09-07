@@ -66,6 +66,13 @@ ATAN2_BASE_HALF_PI = 1
 ATAN2_BASE_PI = 2
 ATAN2_RATIO_ADD = 1
 ATAN2_RATIO_SUBTRACT = 2
+ATAN_BASE_ZERO = 0
+ATAN_BASE_QUARTER_PI = 1
+ATAN_QUARTER_CUT = Fraction(169, 408)
+ATAN_QUARTER_TRANSFORMED_CUT = Fraction(239, 577)
+ATAN_QUARTER_MAX_SHIFT = 2
+ATAN_QUARTER_LOWER_PRODUCT = 239 * 408
+ATAN_QUARTER_UPPER_PRODUCT = 169 * 577
 ATAN_IDENTITY_MAX_BITS = 0x3E4C000000000000
 ATAN_IDENTITY_MAX = Fraction(7, 1 << 29)
 ONE_BITS = 0x3FF0000000000000
@@ -208,6 +215,85 @@ def _nearest_binary64_bits(value: Fraction) -> int:
         significand >>= 1
         exponent += 1
     return ((exponent + 1023) << 52) | (significand - HIDDEN_BIT)
+
+
+def _expected_atan_reduction(
+    y_bits: int, x_bits: int
+) -> tuple[int, int, int, int, int]:
+    geometry = _expected(y_bits, x_bits)
+    ratio = _geometry_ratio(geometry)
+    if ratio < ATAN_QUARTER_CUT:
+        return (
+            geometry[0],
+            geometry[1],
+            geometry[2],
+            ATAN_BASE_ZERO,
+            ATAN2_RATIO_ADD,
+        )
+    shift = -geometry[2]
+    assert 0 <= shift <= ATAN_QUARTER_MAX_SHIFT
+    denominator = geometry[1] << shift
+    result = (
+        denominator - geometry[0],
+        denominator + geometry[0],
+        0,
+        ATAN_BASE_QUARTER_PI,
+        ATAN2_RATIO_SUBTRACT,
+    )
+    residual = Fraction(result[0], result[1])
+    transformed = (1 - ratio) / (1 + ratio)
+    assert (residual.numerator, residual.denominator) == (
+        transformed.numerator,
+        transformed.denominator,
+    )
+    assert residual <= ATAN_QUARTER_TRANSFORMED_CUT < ATAN_QUARTER_CUT
+    return result
+
+
+def _atan_reduction_row(y_bits: int, x_bits: int) -> str:
+    expected = _expected_atan_reduction(y_bits, x_bits)
+    return (
+        "  {"
+        f"UINT64_C(0x{y_bits:016x}), UINT64_C(0x{x_bits:016x}), "
+        f"UINT64_C(0x{expected[0]:016x}), UINT64_C(0x{expected[1]:016x}), "
+        f"INT32_C({expected[2]}), UINT32_C({expected[3]}), "
+        f"UINT32_C({expected[4]})"
+        "}"
+    )
+
+
+def _atan_reduction_harness_source() -> str:
+    rows = ",\n".join(starmap(_atan_reduction_row, _deterministic_pairs()))
+    return f"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+typedef struct Vector {{
+  uint64_t y_bits, x_bits, numerator, denominator;
+  int32_t exponent_delta;
+  uint32_t base, operation;
+}} Vector;
+static const Vector vectors[] = {{
+{rows}
+}};
+int main(void) {{
+  uint32_t i = 0;
+  while (i < (uint32_t)(sizeof(vectors) / sizeof(vectors[0]))) {{
+    MalbolgeGuestMathAtan2KernelInput input;
+    MalbolgeGuestMathAtanKernelReduction reduction;
+    const Vector *v = &vectors[i];
+    if (!malbolge_guest_math_atan2_kernel_input(v->y_bits, v->x_bits, &input) ||
+        !malbolge_guest_math_atan_kernel_reduction(&input, &reduction) ||
+        reduction.residual.numerator != v->numerator ||
+        reduction.residual.denominator != v->denominator ||
+        reduction.residual.exponent_delta != v->exponent_delta ||
+        (uint32_t)reduction.base != v->base ||
+        (uint32_t)reduction.ratio_operation != v->operation) {{
+      return 30;
+    }}
+    ++i;
+  }}
+  return 0;
+}}
+"""
 
 
 def _small_ratio_pairs() -> tuple[tuple[int, int], ...]:
@@ -425,6 +511,47 @@ def test_atan2_kernel_input_matches_exact_fraction_geometry(
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     executed = _run([str(executable)], tmp_path)
     assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan_kernel_reduction_matches_exact_fraction_identity(
+    tmp_path: Path,
+) -> None:
+    """Reduce 519 exact atan ratios to a residual below the Pell cutoff."""
+    harness = tmp_path / "atan-kernel-reduction.c"
+    executable = tmp_path / "atan-kernel-reduction"
+    _ = harness.write_text(_atan_reduction_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan_quarter_cut_is_strictly_self_reducing() -> None:
+    """Prove the 169/408 cut maps its upper branch below the same cut."""
+    transformed = (1 - ATAN_QUARTER_CUT) / (1 + ATAN_QUARTER_CUT)
+    assert (
+        ATAN_QUARTER_TRANSFORMED_CUT.numerator,
+        ATAN_QUARTER_TRANSFORMED_CUT.denominator,
+    ) == (transformed.numerator, transformed.denominator)
+    assert ATAN_QUARTER_TRANSFORMED_CUT < ATAN_QUARTER_CUT
+    assert ATAN_QUARTER_UPPER_PRODUCT == ATAN_QUARTER_LOWER_PRODUCT + 1
 
 
 def test_atan2_small_ratio_classifier_matches_exact_fraction_gate(

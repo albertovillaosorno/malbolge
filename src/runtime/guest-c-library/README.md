@@ -43,6 +43,9 @@ The entire subnormal ratio range is also resolved, with exact midpoints forced
 to the lower neighbor by `atan(r) < r`. Other finite nonzero `atan2` inputs are
 reduced exactly to a normalized rational in `[0, 1]` with explicit swap and sign
 geometry. A symbolic reconstruction plan then selects base `0`, `pi/2`, or
-`pi` plus add/subtract `atan(r)` without using rounded pi bits as authority. A
-self-contained integer long-division helper rounds the rational to nearest-even
-binary64 when a later kernel needs a bounded floating representation.
+`pi` plus add/subtract `atan(r)` without using rounded pi bits as authority.
+
+The atan ratio itself is reduced exactly below `169/408` using a symbolic
+`pi/4` branch and `(1-r)/(1+r)` when needed. A self-contained integer
+long-division helper rounds the original rational to nearest-even binary64 when
+a later kernel needs a bounded floating representation.

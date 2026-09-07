@@ -53,6 +53,8 @@
 #define BINARY64_EXPONENT_BIAS INT32_C(1023)
 #define BINARY64_SUBNORMAL_EXPONENT INT32_C(-1074)
 #define BINARY64_RATIO_MIN_EXPONENT_DELTA INT32_C(-2097)
+#define ATAN_QUARTER_REDUCTION_NUMERATOR UINT64_C(169)
+#define ATAN_QUARTER_REDUCTION_DENOMINATOR UINT64_C(408)
 
 static int is_nan(uint64_t bits) {
   return (bits & BINARY64_EXPONENT) == BINARY64_EXPONENT &&
@@ -362,6 +364,55 @@ int malbolge_guest_math_atan2_reconstruction(
   output->base = base;
   output->ratio_operation = ratio_operation;
   output->negative = ratio.y_negative;
+  return 1;
+}
+
+static int ratio_at_least_atan_quarter_cut(
+    const MalbolgeGuestMathAtan2KernelInput *input) {
+  uint64_t scaled_denominator = input->denominator_significand;
+  uint32_t shift = UINT32_C(0);
+
+  if (input->exponent_delta < INT32_C(-2)) {
+    return 0;
+  }
+  shift = (uint32_t)(-input->exponent_delta);
+  scaled_denominator <<= shift;
+  return input->numerator_significand * ATAN_QUARTER_REDUCTION_DENOMINATOR >=
+         scaled_denominator * ATAN_QUARTER_REDUCTION_NUMERATOR;
+}
+
+int malbolge_guest_math_atan_kernel_reduction(
+    const MalbolgeGuestMathAtan2KernelInput *input,
+    MalbolgeGuestMathAtanKernelReduction *output) {
+  MalbolgeGuestMathExactRatio residual;
+  MalbolgeGuestMathAtanBase base;
+  MalbolgeGuestMathAtan2RatioOperation ratio_operation;
+  uint64_t scaled_denominator = UINT64_C(0);
+  uint32_t shift = UINT32_C(0);
+
+  if (output == NULL || !valid_ratio_input(input)) {
+    return 0;
+  }
+  if (!ratio_at_least_atan_quarter_cut(input)) {
+    residual.numerator = input->numerator_significand;
+    residual.denominator = input->denominator_significand;
+    residual.exponent_delta = input->exponent_delta;
+    base = MALBOLGE_GUEST_MATH_ATAN_BASE_ZERO;
+    ratio_operation = MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD;
+  } else {
+    shift = (uint32_t)(-input->exponent_delta);
+    scaled_denominator = input->denominator_significand << shift;
+    residual.numerator = scaled_denominator - input->numerator_significand;
+    residual.denominator = scaled_denominator + input->numerator_significand;
+    residual.exponent_delta = INT32_C(0);
+    base = MALBOLGE_GUEST_MATH_ATAN_BASE_QUARTER_PI;
+    ratio_operation = MALBOLGE_GUEST_MATH_ATAN2_RATIO_SUBTRACT;
+  }
+  output->residual.numerator = residual.numerator;
+  output->residual.denominator = residual.denominator;
+  output->residual.exponent_delta = residual.exponent_delta;
+  output->base = base;
+  output->ratio_operation = ratio_operation;
   return 1;
 }
 
