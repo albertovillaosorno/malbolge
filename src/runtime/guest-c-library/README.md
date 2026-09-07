@@ -46,6 +46,8 @@ geometry. A symbolic reconstruction plan then selects base `0`, `pi/2`, or
 `pi` plus add/subtract `atan(r)` without using rounded pi bits as authority.
 
 The atan ratio itself is reduced exactly below `169/408` using a symbolic
-`pi/4` branch and `(1-r)/(1+r)` when needed. A self-contained integer
+`pi/4` branch and `(1-r)/(1+r)` when needed. The final `atan2` kernel plan
+therefore has the uniform form `k*pi/4 +/- atan(residual)` with `k` in `0..4`,
+an explicit sign, and the same exact residual bound. A self-contained integer
 long-division helper rounds the original rational to nearest-even binary64 when
 a later kernel needs a bounded floating representation.

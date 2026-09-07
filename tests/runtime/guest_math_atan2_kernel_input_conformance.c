@@ -169,6 +169,87 @@ static int test_atan_reduction(void) {
   return 0;
 }
 
+static int plan_equal(const MalbolgeGuestMathAtan2KernelPlan *value,
+                      uint64_t numerator, uint64_t denominator,
+                      int32_t exponent_delta,
+                      MalbolgeGuestMathAtan2QuarterPiBase quarter_pi_base,
+                      MalbolgeGuestMathAtan2RatioOperation operation,
+                      uint32_t negative) {
+  return value->residual.numerator == numerator &&
+         value->residual.denominator == denominator &&
+         value->residual.exponent_delta == exponent_delta &&
+         value->quarter_pi_base == quarter_pi_base &&
+         value->ratio_operation == operation && value->negative == negative;
+}
+
+static int test_kernel_plan(void) {
+  MalbolgeGuestMathAtan2KernelPlan output;
+  const uint64_t one_third_numerator = UINT64_C(0x0010000000000000);
+  const uint64_t one_third_denominator = UINT64_C(0x0030000000000000);
+
+  if (!malbolge_guest_math_atan2_kernel_plan(
+          UINT64_C(0x3ff0000000000000), UINT64_C(0x4000000000000000),
+          &output) ||
+      !plan_equal(&output, one_third_numerator, one_third_denominator,
+                  INT32_C(0), MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_ONE,
+                  MALBOLGE_GUEST_MATH_ATAN2_RATIO_SUBTRACT, UINT32_C(0))) {
+    return 1;
+  }
+  if (!malbolge_guest_math_atan2_kernel_plan(
+          UINT64_C(0x4000000000000000), UINT64_C(0x3ff0000000000000),
+          &output) ||
+      !plan_equal(&output, one_third_numerator, one_third_denominator,
+                  INT32_C(0), MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_ONE,
+                  MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD, UINT32_C(0))) {
+    return 2;
+  }
+  if (!malbolge_guest_math_atan2_kernel_plan(
+          UINT64_C(0x3ff0000000000000), UINT64_C(0xc000000000000000),
+          &output) ||
+      !plan_equal(&output, one_third_numerator, one_third_denominator,
+                  INT32_C(0), MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_THREE,
+                  MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD, UINT32_C(0))) {
+    return 3;
+  }
+  if (!malbolge_guest_math_atan2_kernel_plan(
+          UINT64_C(0xc000000000000000), UINT64_C(0xbff0000000000000),
+          &output) ||
+      !plan_equal(&output, one_third_numerator, one_third_denominator,
+                  INT32_C(0), MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_THREE,
+                  MALBOLGE_GUEST_MATH_ATAN2_RATIO_SUBTRACT, UINT32_C(1))) {
+    return 4;
+  }
+  if (!malbolge_guest_math_atan2_kernel_plan(
+          UINT64_C(0x3ff0000000000000), UINT64_C(0x4010000000000000),
+          &output) ||
+      !plan_equal(&output, UINT64_C(0x0010000000000000),
+                  UINT64_C(0x0010000000000000), INT32_C(-2),
+                  MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_ZERO,
+                  MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD, UINT32_C(0))) {
+    return 5;
+  }
+
+  output.residual.numerator = UINT64_C(0x55);
+  output.residual.denominator = UINT64_C(0xaa);
+  output.residual.exponent_delta = INT32_C(7);
+  output.quarter_pi_base = MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_FOUR;
+  output.ratio_operation = MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD;
+  output.negative = UINT32_C(9);
+  if (malbolge_guest_math_atan2_kernel_plan(
+          UINT64_C(0), UINT64_C(0x3ff0000000000000), &output) ||
+      output.residual.numerator != UINT64_C(0x55) ||
+      output.residual.denominator != UINT64_C(0xaa) ||
+      output.residual.exponent_delta != INT32_C(7) ||
+      output.quarter_pi_base != MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_FOUR ||
+      output.ratio_operation != MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD ||
+      output.negative != UINT32_C(9) ||
+      malbolge_guest_math_atan2_kernel_plan(
+          UINT64_C(0x3ff0000000000000), UINT64_C(0x3ff0000000000000), NULL)) {
+    return 6;
+  }
+  return 0;
+}
+
 static int test_ratio_rounding(void) {
   MalbolgeGuestMathAtan2KernelInput input = {
       UINT64_C(0x0010000000000000), UINT64_C(0x0010000000000000),
@@ -230,6 +311,7 @@ int main(void) {
   MalbolgeGuestMathAtan2KernelInput output;
   const int reconstruction = test_reconstruction();
   const int reduction = test_atan_reduction();
+  const int plan = test_kernel_plan();
   const int rounding = test_ratio_rounding();
 
   if (reconstruction != 0) {
@@ -237,6 +319,9 @@ int main(void) {
   }
   if (reduction != 0) {
     return 15 + reduction;
+  }
+  if (plan != 0) {
+    return 30 + plan;
   }
   if (rounding != 0) {
     return 20 + rounding;

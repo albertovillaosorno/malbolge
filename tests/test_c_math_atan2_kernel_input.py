@@ -64,6 +64,11 @@ KERNEL_REQUIRED_STATUS = 2
 ATAN2_BASE_ZERO = 0
 ATAN2_BASE_HALF_PI = 1
 ATAN2_BASE_PI = 2
+ATAN2_QUARTER_BASE_ZERO = 0
+ATAN2_QUARTER_BASE_ONE = 1
+ATAN2_QUARTER_BASE_TWO = 2
+ATAN2_QUARTER_BASE_THREE = 3
+ATAN2_QUARTER_BASE_FOUR = 4
 ATAN2_RATIO_ADD = 1
 ATAN2_RATIO_SUBTRACT = 2
 ATAN_BASE_ZERO = 0
@@ -288,6 +293,86 @@ int main(void) {{
         (uint32_t)reduction.base != v->base ||
         (uint32_t)reduction.ratio_operation != v->operation) {{
       return 30;
+    }}
+    ++i;
+  }}
+  return 0;
+}}
+"""
+
+
+def _base_quarters(base: int) -> int:
+    if base == ATAN2_BASE_HALF_PI:
+        return ATAN2_QUARTER_BASE_TWO
+    if base == ATAN2_BASE_PI:
+        return ATAN2_QUARTER_BASE_FOUR
+    return ATAN2_QUARTER_BASE_ZERO
+
+
+def _expected_atan2_kernel_plan(
+    y_bits: int, x_bits: int
+) -> tuple[int, int, int, int, int, int]:
+    geometry = _expected(y_bits, x_bits)
+    base, operation, negative = _reconstruction_fields(
+        geometry[3], geometry[4], geometry[5]
+    )
+    reduction = _expected_atan_reduction(y_bits, x_bits)
+    quarters = _base_quarters(base)
+    if reduction[3] == ATAN_BASE_QUARTER_PI:
+        if operation == ATAN2_RATIO_ADD:
+            quarters += 1
+            operation = ATAN2_RATIO_SUBTRACT
+        else:
+            quarters -= 1
+            operation = ATAN2_RATIO_ADD
+    assert ATAN2_QUARTER_BASE_ZERO <= quarters <= ATAN2_QUARTER_BASE_FOUR
+    return (
+        reduction[0],
+        reduction[1],
+        reduction[2],
+        quarters,
+        operation,
+        negative,
+    )
+
+
+def _atan2_plan_row(y_bits: int, x_bits: int) -> str:
+    expected = _expected_atan2_kernel_plan(y_bits, x_bits)
+    return (
+        "  {"
+        f"UINT64_C(0x{y_bits:016x}), UINT64_C(0x{x_bits:016x}), "
+        f"UINT64_C(0x{expected[0]:016x}), UINT64_C(0x{expected[1]:016x}), "
+        f"INT32_C({expected[2]}), UINT32_C({expected[3]}), "
+        f"UINT32_C({expected[4]}), UINT32_C({expected[5]})"
+        "}"
+    )
+
+
+def _atan2_plan_harness_source() -> str:
+    rows = ",\n".join(starmap(_atan2_plan_row, _deterministic_pairs()))
+    return f"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+typedef struct Vector {{
+  uint64_t y_bits, x_bits, numerator, denominator;
+  int32_t exponent_delta;
+  uint32_t quarter_pi_base, operation, negative;
+}} Vector;
+static const Vector vectors[] = {{
+{rows}
+}};
+int main(void) {{
+  uint32_t i = 0;
+  while (i < (uint32_t)(sizeof(vectors) / sizeof(vectors[0]))) {{
+    MalbolgeGuestMathAtan2KernelPlan plan;
+    const Vector *v = &vectors[i];
+    if (!malbolge_guest_math_atan2_kernel_plan(v->y_bits, v->x_bits, &plan) ||
+        plan.residual.numerator != v->numerator ||
+        plan.residual.denominator != v->denominator ||
+        plan.residual.exponent_delta != v->exponent_delta ||
+        (uint32_t)plan.quarter_pi_base != v->quarter_pi_base ||
+        (uint32_t)plan.ratio_operation != v->operation ||
+        plan.negative != v->negative) {{
+      return 40;
     }}
     ++i;
   }}
@@ -552,6 +637,36 @@ def test_atan_quarter_cut_is_strictly_self_reducing() -> None:
     ) == (transformed.numerator, transformed.denominator)
     assert ATAN_QUARTER_TRANSFORMED_CUT < ATAN_QUARTER_CUT
     assert ATAN_QUARTER_UPPER_PRODUCT == ATAN_QUARTER_LOWER_PRODUCT + 1
+
+
+def test_atan2_kernel_plan_composes_quadrant_and_atan_reduction(
+    tmp_path: Path,
+) -> None:
+    """Compose 519 atan2 pairs into one bounded residual kernel plan."""
+    harness = tmp_path / "atan2-kernel-plan.c"
+    executable = tmp_path / "atan2-kernel-plan"
+    _ = harness.write_text(_atan2_plan_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
 
 
 def test_atan2_small_ratio_classifier_matches_exact_fraction_gate(

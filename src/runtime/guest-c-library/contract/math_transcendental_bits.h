@@ -99,6 +99,21 @@ typedef struct MalbolgeGuestMathAtanKernelReduction {
   MalbolgeGuestMathAtan2RatioOperation ratio_operation;
 } MalbolgeGuestMathAtanKernelReduction;
 
+typedef enum MalbolgeGuestMathAtan2QuarterPiBase {
+  MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_ZERO = 0,
+  MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_ONE = 1,
+  MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_TWO = 2,
+  MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_THREE = 3,
+  MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_FOUR = 4,
+} MalbolgeGuestMathAtan2QuarterPiBase;
+
+typedef struct MalbolgeGuestMathAtan2KernelPlan {
+  MalbolgeGuestMathExactRatio residual;
+  MalbolgeGuestMathAtan2QuarterPiBase quarter_pi_base;
+  MalbolgeGuestMathAtan2RatioOperation ratio_operation;
+  uint32_t negative;
+} MalbolgeGuestMathAtan2KernelPlan;
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
@@ -112,6 +127,8 @@ int malbolge_guest_math_atan2_reconstruction(
 int malbolge_guest_math_atan_kernel_reduction(
     const MalbolgeGuestMathAtan2KernelInput *input,
     MalbolgeGuestMathAtanKernelReduction *output);
+int malbolge_guest_math_atan2_kernel_plan(
+    uint64_t y_bits, uint64_t x_bits, MalbolgeGuestMathAtan2KernelPlan *output);
 int malbolge_guest_math_ratio_nearest_binary64(
     const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits);
 

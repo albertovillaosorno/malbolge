@@ -354,6 +354,21 @@ denominator, exponent, symbolic base, and add/subtract operation against Python
 symbols, while strict Windows i686/x64/ARM64 and wasm32 compilation lock the
 freestanding geometry.
 
+The `atan2` kernel handoff now composes quadrant reconstruction with that atan
+reduction. Every finite nonzero pair becomes one symbolic expression
+`k*pi/4 +/- atan(residual)`, where `k` is an integer from zero through four, the
+residual is exact and below `169/408`, and the final sign is explicit. For
+`r=1/2`, the four quadrant representatives reduce respectively to
+`pi/4-atan(1/3)`, `pi/4+atan(1/3)`, `3*pi/4+atan(1/3)`, and
+`3*pi/4-atan(1/3)` before sign application.
+
+The same deterministic 519-pair differential independently composes the
+quarter-pi coefficient and residual operation. Fixed C vectors lock all four
+quadrants, the direct `r=1/4` branch, and complete output nonmutation for
+rejected
+special inputs. Clang path analysis is clean after the alignment shift is
+expressed only as the literal-safe cases zero, one, or two.
+
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full
 binary64 domain.

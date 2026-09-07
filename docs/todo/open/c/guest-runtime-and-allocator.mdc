@@ -261,6 +261,13 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   rational and symbolic operation, and `-O0` still has no callable helper
   symbols.
 
+  The final finite-nonzero `atan2` kernel plan composes quadrant and atan
+  reduction as `k*pi/4 +/- atan(residual)`, with `k` in `0..4`, explicit result
+  sign, and the same exact residual bound. The 519-pair differential locks the
+  composed coefficient/operation, while fixed C vectors cover all quadrants,
+  direct and transformed branches, and rejected-input nonmutation. Path analysis
+  is clean with alignment shifts constrained syntactically to zero, one, or two.
+
   Correctly-rounded numerical kernels and final rounding remain the lane-8
   blocker.
 - Resolved integer/scheduling boundary: version one introduces no separate

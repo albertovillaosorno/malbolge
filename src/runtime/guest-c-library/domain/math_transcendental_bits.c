@@ -372,10 +372,13 @@ static int ratio_at_least_atan_quarter_cut(
   uint64_t scaled_denominator = input->denominator_significand;
   uint32_t shift = UINT32_C(0);
 
-  if (input->exponent_delta < INT32_C(-2)) {
+  if (input->exponent_delta == INT32_C(-1)) {
+    shift = UINT32_C(1);
+  } else if (input->exponent_delta == INT32_C(-2)) {
+    shift = UINT32_C(2);
+  } else if (input->exponent_delta != INT32_C(0)) {
     return 0;
   }
-  shift = (uint32_t)(-input->exponent_delta);
   scaled_denominator <<= shift;
   return input->numerator_significand * ATAN_QUARTER_REDUCTION_DENOMINATOR >=
          scaled_denominator * ATAN_QUARTER_REDUCTION_NUMERATOR;
@@ -400,7 +403,13 @@ int malbolge_guest_math_atan_kernel_reduction(
     base = MALBOLGE_GUEST_MATH_ATAN_BASE_ZERO;
     ratio_operation = MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD;
   } else {
-    shift = (uint32_t)(-input->exponent_delta);
+    if (input->exponent_delta == INT32_C(-1)) {
+      shift = UINT32_C(1);
+    } else if (input->exponent_delta == INT32_C(-2)) {
+      shift = UINT32_C(2);
+    } else if (input->exponent_delta != INT32_C(0)) {
+      return 0;
+    }
     scaled_denominator = input->denominator_significand << shift;
     residual.numerator = scaled_denominator - input->numerator_significand;
     residual.denominator = scaled_denominator + input->numerator_significand;
@@ -413,6 +422,52 @@ int malbolge_guest_math_atan_kernel_reduction(
   output->residual.exponent_delta = residual.exponent_delta;
   output->base = base;
   output->ratio_operation = ratio_operation;
+  return 1;
+}
+
+static uint32_t reconstruction_base_quarters(MalbolgeGuestMathAtan2Base base) {
+  if (base == MALBOLGE_GUEST_MATH_ATAN2_BASE_HALF_PI) {
+    return UINT32_C(2);
+  }
+  if (base == MALBOLGE_GUEST_MATH_ATAN2_BASE_PI) {
+    return UINT32_C(4);
+  }
+  return UINT32_C(0);
+}
+
+int malbolge_guest_math_atan2_kernel_plan(
+    uint64_t y_bits, uint64_t x_bits,
+    MalbolgeGuestMathAtan2KernelPlan *output) {
+  MalbolgeGuestMathAtan2Reconstruction reconstruction;
+  MalbolgeGuestMathAtanKernelReduction reduction;
+  uint32_t quarters = UINT32_C(0);
+  MalbolgeGuestMathAtan2RatioOperation operation;
+
+  if (output == NULL ||
+      !malbolge_guest_math_atan2_reconstruction(y_bits, x_bits,
+                                                &reconstruction) ||
+      !malbolge_guest_math_atan_kernel_reduction(&reconstruction.ratio,
+                                                 &reduction)) {
+    return 0;
+  }
+  quarters = reconstruction_base_quarters(reconstruction.base);
+  operation = reconstruction.ratio_operation;
+  if (reduction.base == MALBOLGE_GUEST_MATH_ATAN_BASE_QUARTER_PI) {
+    if (operation == MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD) {
+      ++quarters;
+      operation = MALBOLGE_GUEST_MATH_ATAN2_RATIO_SUBTRACT;
+    } else {
+      --quarters;
+      operation = MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD;
+    }
+  }
+
+  output->residual.numerator = reduction.residual.numerator;
+  output->residual.denominator = reduction.residual.denominator;
+  output->residual.exponent_delta = reduction.residual.exponent_delta;
+  output->quarter_pi_base = (MalbolgeGuestMathAtan2QuarterPiBase)quarters;
+  output->ratio_operation = operation;
+  output->negative = reconstruction.negative;
   return 1;
 }
 
