@@ -57,6 +57,7 @@ LCG_INCREMENT = 1442695040888963407
 LCG_SEED = 0x4154414E325F5631
 SMALL_RATIO_LCG_SEED = 0x4154414E325F5352
 SMALL_RATIO_VECTOR_COUNT = 512
+ATAN_INTERVAL_SAMPLE_STRIDE = 9
 EXPECTED_SMALL_RATIO_RESOLVED = 511
 EXPECTED_SMALL_RATIO_UNRESOLVED = 1
 RESOLVED_STATUS = 1
@@ -81,6 +82,10 @@ ATAN_QUARTER_UPPER_PRODUCT = 169 * 577
 ATAN_SERIES_TARGET_BITS = 128
 ATAN_SERIES_TERMS = 48
 ATAN_SERIES_PREVIOUS_TERMS = ATAN_SERIES_TERMS - 1
+ATAN_INTERVAL_EVALUATION_BITS = 160
+ATAN_CUT_UPPER_FIXED = int(
+    "6a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0b", 16
+)
 FIXED_INTERVAL_BITS = 192
 PI_MACHIN_FIFTH_TERMS = 42
 PI_MACHIN_239_TERMS = 12
@@ -465,6 +470,107 @@ int main(void) {{
 """
 
 
+def _atan_exact_series_interval(value: Fraction) -> tuple[Fraction, Fraction]:
+    total = Fraction(0)
+    power = value
+    square = value * value
+    for index in range(ATAN_SERIES_TERMS):
+        term = power / ((2 * index) + 1)
+        total = total + term if index % 2 == 0 else total - term
+        power *= square
+    return total, total + (power / ((2 * ATAN_SERIES_TERMS) + 1))
+
+
+def _integer_bounds(value: Fraction) -> tuple[int, int]:
+    scaled = value * (1 << FIXED_INTERVAL_BITS)
+    floor, remainder = divmod(scaled.numerator, scaled.denominator)
+    return floor, floor if remainder == 0 else floor + 1
+
+
+def _atan_interval_pairs() -> tuple[tuple[int, int], ...]:
+    pairs = _deterministic_pairs()
+    edge_count = len(EDGE_PAIRS)
+    return pairs[:edge_count] + pairs[edge_count::ATAN_INTERVAL_SAMPLE_STRIDE]
+
+
+def _atan_interval_limits(
+    y_bits: int, x_bits: int
+) -> tuple[int, int, int, int]:
+    plan = _expected_atan2_kernel_plan(y_bits, x_bits)
+    residual = _exact_ratio_fraction(plan[0], plan[1], plan[2])
+    exact_lower, exact_upper = _atan_exact_series_interval(residual)
+    lower_floor = _integer_bounds(exact_lower)[0]
+    upper_ceil = _integer_bounds(exact_upper)[1]
+    slack = 1 << (FIXED_INTERVAL_BITS - ATAN_INTERVAL_EVALUATION_BITS)
+    return (
+        max(0, lower_floor - slack),
+        lower_floor,
+        upper_ceil,
+        upper_ceil
+        + (1 << (FIXED_INTERVAL_BITS - ATAN_SERIES_TARGET_BITS))
+        + slack,
+    )
+
+
+def _fixed_array_literal(value: int) -> str:
+    limbs = _fixed_192_limbs(value)
+    encoded = ", ".join(f"UINT32_C(0x{limb:08x})" for limb in limbs)
+    return "{" + encoded + "}"
+
+
+def _atan_interval_row(y_bits: int, x_bits: int) -> str:
+    limits = _atan_interval_limits(y_bits, x_bits)
+    encoded = [_fixed_array_literal(value) for value in limits]
+    return (
+        f"  {{UINT64_C(0x{y_bits:016x}), UINT64_C(0x{x_bits:016x}), "
+        + ", ".join(encoded)
+        + "}"
+    )
+
+
+def _atan_interval_harness_source() -> str:
+    rows = ",\n".join(starmap(_atan_interval_row, _atan_interval_pairs()))
+    return f"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+typedef struct Vector {{
+  uint64_t y_bits, x_bits;
+  uint32_t lower_min[7], lower_floor[7], upper_ceil[7], upper_max[7];
+}} Vector;
+static const Vector vectors[] = {{
+{rows}
+}};
+static int compare_fixed(const MalbolgeGuestMathFixed192 *value,
+                         const uint32_t expected[7]) {{
+  uint32_t index = MALBOLGE_GUEST_MATH_FIXED_192_LIMBS;
+  while (index != 0) {{
+    --index;
+    if (value->limbs[index] < expected[index]) return -1;
+    if (value->limbs[index] > expected[index]) return 1;
+  }}
+  return 0;
+}}
+int main(void) {{
+  uint32_t i = 0;
+  while (i < (uint32_t)(sizeof(vectors) / sizeof(vectors[0]))) {{
+    MalbolgeGuestMathAtan2KernelPlan plan;
+    MalbolgeGuestMathFixed192Interval interval;
+    const Vector *v = &vectors[i];
+    if (!malbolge_guest_math_atan2_kernel_plan(v->y_bits, v->x_bits, &plan) ||
+        !malbolge_guest_math_atan_residual_interval(
+            &plan.residual, &interval) ||
+        compare_fixed(&interval.lower, v->lower_min) < 0 ||
+        compare_fixed(&interval.lower, v->lower_floor) > 0 ||
+        compare_fixed(&interval.upper, v->upper_ceil) < 0 ||
+        compare_fixed(&interval.upper, v->upper_max) > 0) {{
+      return 60;
+    }}
+    ++i;
+  }}
+  return 0;
+}}
+"""
+
+
 def _small_ratio_pairs() -> tuple[tuple[int, int], ...]:
     state = SMALL_RATIO_LCG_SEED
     pairs = [
@@ -765,8 +871,12 @@ def test_atan_series_48_terms_is_minimal_for_128_bit_truncation() -> None:
     target = Fraction(1, 1 << ATAN_SERIES_TARGET_BITS)
     previous = _atan_series_remainder_bound(ATAN_SERIES_PREVIOUS_TERMS)
     admitted = _atan_series_remainder_bound(ATAN_SERIES_TERMS)
+    fixed_cut = Fraction(ATAN_CUT_UPPER_FIXED, 1 << FIXED_INTERVAL_BITS)
+    fixed_remainder = fixed_cut ** ((2 * ATAN_SERIES_TERMS) + 1)
+    fixed_remainder /= (2 * ATAN_SERIES_TERMS) + 1
     assert previous > target
     assert admitted < target
+    assert fixed_remainder < target
 
 
 def test_atan2_kernel_plan_composes_quadrant_and_atan_reduction(
@@ -806,6 +916,36 @@ def test_atan_residual_q192_interval_matches_fraction_floor_ceil(
     harness = tmp_path / "atan-residual-fixed.c"
     executable = tmp_path / "atan-residual-fixed"
     _ = harness.write_text(_fixed_ratio_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan_q192_interval_encloses_exact_rational_series(
+    tmp_path: Path,
+) -> None:
+    """Enclose exact 48-term rational intervals over a stratified corpus."""
+    harness = tmp_path / "atan-q192-interval.c"
+    executable = tmp_path / "atan-q192-interval"
+    _ = harness.write_text(_atan_interval_harness_source(), encoding="utf-8")
     compiled = _run(
         [
             str(CLANG),

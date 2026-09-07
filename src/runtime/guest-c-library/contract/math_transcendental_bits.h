@@ -9,22 +9,22 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Exact preclassification, rational atan reduction, and pi intervals.
+//   - Exact reduction and certified fixed-point transcendental intervals.
 // - Must-Not:
-//   - Approximate finite transcendental values or change libc availability.
+//   - Publish unproved finite transcendental rounding or change availability.
 // - Allows:
 //   - Inputs: raw binary64 words and one admitted unary operation identity.
-//   - Outputs: exact results, symbolic reconstruction, ratios, or fixed
-//     intervals.
+//   - Outputs: exact results, symbolic reconstruction, ratios, or certified
+//     fixed-point intervals.
 //   - Side effects: none.
 // - Split-When:
-//   - Range reduction or approximation kernels gain independent proof policy.
+//   - Public rounding or wider-precision fallback gains independent policy.
 // - Merge-When:
 //   - Complete correctly-rounded transcendental implementations own this step.
 // - Summary:
 //   - Resolves only exact transcendental edge cases before numerical kernels.
 // - Description:
-//   - Resolves proved cases and reduces atan residuals without approximation.
+//   - Resolves proved cases and encloses reduced atan values in fixed point.
 // - Usage:
 //   - Internal guest-libc substrate; public sin/cos/atan2 remain gated.
 // - Defaults:
@@ -146,6 +146,9 @@ int malbolge_guest_math_atan2_base_interval(
     MalbolgeGuestMathAtan2QuarterPiBase base,
     MalbolgeGuestMathFixed192Interval *output);
 int malbolge_guest_math_exact_ratio_interval(
+    const MalbolgeGuestMathExactRatio *input,
+    MalbolgeGuestMathFixed192Interval *output);
+int malbolge_guest_math_atan_residual_interval(
     const MalbolgeGuestMathExactRatio *input,
     MalbolgeGuestMathFixed192Interval *output);
 int malbolge_guest_math_ratio_nearest_binary64(

@@ -402,6 +402,30 @@ bounded exponent-zero transformed fraction. A 519-pair `Fraction` differential
 checks exact floor/ceiling integers for the full atan2 kernel-plan corpus.
 Invalid geometry and null outputs reject without publication.
 
+The first numerical atan kernel now evaluates 48 alternating-series terms in
+that Q32.192 domain with directed interval arithmetic. Fixed-point products use
+7-by-7 32-bit limbs and floor the discarded 192 fractional bits; upper products
+round upward when any discarded bit is nonzero. Division by the odd
+coefficients `3..95` is bit-at-a-time and similarly floors the lower endpoint
+and ceilings the upper endpoint. Interval addition and subtraction preserve the
+usual monotone bounds.
+
+The series accepts only residual intervals no larger than the Q32.192 ceiling
+of `169/408`. Exact rational evidence proves the first omitted term at even that
+slightly larger fixed-point endpoint is below `2^-128`; the evaluator therefore
+widens its upper result by that amount after 48 terms. A 64-pair stratified
+`Fraction` corpus checks the C lower endpoint is below the exact rational
+partial
+and the upper endpoint is above the partial plus its next term. The earlier
+519-pair differential continues to cover exact residual projection itself.
+
+Very small inputs use a separate monotone enclosure instead of repeatedly
+rounding terms smaller than one fixed-point unit. When the Q32.192 upper input
+is below `2^-64`, `x^3/3 < 2^-192`, so `atan(x)` is enclosed by one unit below
+the input lower endpoint and the input upper endpoint. If the lower endpoint is
+zero, positivity gives the tighter direct enclosure `[0, upper]`. This avoids
+artificial interval dependency without relaxing the proof.
+
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full
 binary64 domain.
