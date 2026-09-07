@@ -276,14 +276,17 @@ compiler helper beyond the same target float/stack markers already allowed for
 ordinary guest math.
 
 The internal transcendental front end resolves only cases whose rounded result
-is proved without a numerical kernel. The `sin` interval is `|x| <= 2^-26`,
-while the stricter `cos` interval is `|x| <= 2^-27`.
+is proved without a numerical kernel. The `sin` interval is
+`|x| <= 23 * 2^-30`; the stricter `cos` interval is
+`|x| <= 181 * 2^-34`.
 
 The Taylor bounds `|x - sin(x)| < |x|^3 / 6` and
-`0 <= 1 - cos(x) <= |x|^2 / 2` fit strictly
-inside the relevant binary64 nearest-even midpoints, including the subnormal
-spacing case. The front end therefore returns the input bits for `sin` and
-binary64 one for `cos` in that conservative interval. It also owns the complete
+`0 <= 1 - cos(x) <= |x|^2 / 2` fit strictly inside the relevant binary64
+nearest-even midpoints, including the subnormal spacing case. At the new
+boundaries those error-to-midpoint ratios are exactly `12167/12288` for `sin`
+and `32761/32768` for `cos`. The front end therefore returns the input bits for
+`sin` and binary64 one for `cos` in those proved intervals. It also owns the
+complete
 `atan2` zero/infinity matrix using reviewed nearest-even binary64 constants for
 `pi/4`, `pi/2`, `3*pi/4`, and `pi`, with sign taken from `y` and canonical NaN
 publication.

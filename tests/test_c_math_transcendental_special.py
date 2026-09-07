@@ -37,12 +37,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src/runtime/guest-c-library/domain/math_transcendental_bits.c"
-SIN_SMALL_ANGLE_MAX_BITS = 0x3E50000000000000
-COS_SMALL_ANGLE_MAX_BITS = 0x3E40000000000000
-SIN_SMALL_ANGLE = Fraction(1, 1 << 26)
-COS_SMALL_ANGLE = Fraction(1, 1 << 27)
+SIN_SMALL_ANGLE_MAX_BITS = 0x3E57000000000000
+COS_SMALL_ANGLE_MAX_BITS = 0x3E46A00000000000
+SIN_SMALL_ANGLE = Fraction(23, 1 << 30)
+COS_SMALL_ANGLE = Fraction(181, 1 << 34)
 ATAN_IDENTITY_MAX = Fraction(7, 1 << 29)
-SIN_TOWARD_ZERO_MIDPOINT = SIN_SMALL_ANGLE / (1 << 54)
+SIN_TOWARD_ZERO_MIDPOINT = Fraction(1, 1 << 79)
 COS_ONE_MIDPOINT = Fraction(1, 1 << 54)
 ATAN_TOP_BINADE_ULP = Fraction(1, 1 << 79)
 ATAN_TOP_BINADE_ERROR_ULPS = Fraction(343, 768)
@@ -69,7 +69,9 @@ def test_small_angle_taylor_bounds_fit_binary64_midpoints() -> None:
     cos_error_upper = COS_SMALL_ANGLE**2 / 2
 
     assert sin_error_upper < SIN_TOWARD_ZERO_MIDPOINT
+    assert sin_error_upper / SIN_TOWARD_ZERO_MIDPOINT == Fraction(12167, 12288)
     assert cos_error_upper < COS_ONE_MIDPOINT
+    assert cos_error_upper / COS_ONE_MIDPOINT == Fraction(32761, 32768)
     atan_error_ulps = (ATAN_IDENTITY_MAX**3 / 3) / ATAN_TOP_BINADE_ULP
     assert atan_error_ulps == ATAN_TOP_BINADE_ERROR_ULPS
     assert atan_error_ulps < Fraction(1, 2)
