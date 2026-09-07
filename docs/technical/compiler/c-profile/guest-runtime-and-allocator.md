@@ -333,6 +333,13 @@ including zero, subnormal, minimum-normal carry, and ordinary normal results.
 Its remainder never exceeds 54 bits, so the implementation needs neither
 `__int128` nor integer division/remainder operators.
 
+A separate reconstruction stage maps the exact ratio geometry to one symbolic
+base (`0`, `pi/2`, or `pi`), one add/subtract operation for `atan(r)`, and the
+final result sign. The base remains symbolic so rounded binary64 pi constants do
+not become range-reduction authority. A deterministic 519-pair differential
+locks all four quadrant formulas, while fixed C vectors prove special-input
+rejection leaves caller-owned reconstruction state untouched.
+
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full
 binary64 domain.

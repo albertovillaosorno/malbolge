@@ -14,7 +14,7 @@
 //   - Approximate finite transcendental values or change libc availability.
 // - Allows:
 //   - Inputs: raw binary64 words and one admitted unary operation identity.
-//   - Outputs: exact results, normalized atan2 geometry, or rounded ratio bits.
+//   - Outputs: exact results, symbolic atan2 reconstruction, or ratio bits.
 //   - Side effects: none.
 // - Split-When:
 //   - Range reduction or approximation kernels gain independent proof policy.
@@ -63,6 +63,24 @@ typedef struct MalbolgeGuestMathAtan2KernelInput {
   uint32_t x_negative;
 } MalbolgeGuestMathAtan2KernelInput;
 
+typedef enum MalbolgeGuestMathAtan2Base {
+  MALBOLGE_GUEST_MATH_ATAN2_BASE_ZERO = 0,
+  MALBOLGE_GUEST_MATH_ATAN2_BASE_HALF_PI = 1,
+  MALBOLGE_GUEST_MATH_ATAN2_BASE_PI = 2,
+} MalbolgeGuestMathAtan2Base;
+
+typedef enum MalbolgeGuestMathAtan2RatioOperation {
+  MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD = 1,
+  MALBOLGE_GUEST_MATH_ATAN2_RATIO_SUBTRACT = 2,
+} MalbolgeGuestMathAtan2RatioOperation;
+
+typedef struct MalbolgeGuestMathAtan2Reconstruction {
+  MalbolgeGuestMathAtan2KernelInput ratio;
+  MalbolgeGuestMathAtan2Base base;
+  MalbolgeGuestMathAtan2RatioOperation ratio_operation;
+  uint32_t negative;
+} MalbolgeGuestMathAtan2Reconstruction;
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
@@ -70,6 +88,9 @@ MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
 int malbolge_guest_math_atan2_kernel_input(
     uint64_t y_bits, uint64_t x_bits,
     MalbolgeGuestMathAtan2KernelInput *output);
+int malbolge_guest_math_atan2_reconstruction(
+    uint64_t y_bits, uint64_t x_bits,
+    MalbolgeGuestMathAtan2Reconstruction *output);
 int malbolge_guest_math_ratio_nearest_binary64(
     const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits);
 

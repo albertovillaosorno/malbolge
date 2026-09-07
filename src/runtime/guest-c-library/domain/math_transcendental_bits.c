@@ -326,6 +326,45 @@ static int ratio_nearest_binary64_internal(
   return 1;
 }
 
+int malbolge_guest_math_atan2_reconstruction(
+    uint64_t y_bits, uint64_t x_bits,
+    MalbolgeGuestMathAtan2Reconstruction *output) {
+  MalbolgeGuestMathAtan2KernelInput ratio;
+  MalbolgeGuestMathAtan2Base base;
+  MalbolgeGuestMathAtan2RatioOperation ratio_operation;
+
+  if (output == NULL ||
+      !malbolge_guest_math_atan2_kernel_input(y_bits, x_bits, &ratio)) {
+    return 0;
+  }
+  if (ratio.x_negative == UINT32_C(0)) {
+    if (ratio.swapped == UINT32_C(0)) {
+      base = MALBOLGE_GUEST_MATH_ATAN2_BASE_ZERO;
+      ratio_operation = MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD;
+    } else {
+      base = MALBOLGE_GUEST_MATH_ATAN2_BASE_HALF_PI;
+      ratio_operation = MALBOLGE_GUEST_MATH_ATAN2_RATIO_SUBTRACT;
+    }
+  } else if (ratio.swapped == UINT32_C(0)) {
+    base = MALBOLGE_GUEST_MATH_ATAN2_BASE_PI;
+    ratio_operation = MALBOLGE_GUEST_MATH_ATAN2_RATIO_SUBTRACT;
+  } else {
+    base = MALBOLGE_GUEST_MATH_ATAN2_BASE_HALF_PI;
+    ratio_operation = MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD;
+  }
+
+  output->ratio.numerator_significand = ratio.numerator_significand;
+  output->ratio.denominator_significand = ratio.denominator_significand;
+  output->ratio.exponent_delta = ratio.exponent_delta;
+  output->ratio.swapped = ratio.swapped;
+  output->ratio.y_negative = ratio.y_negative;
+  output->ratio.x_negative = ratio.x_negative;
+  output->base = base;
+  output->ratio_operation = ratio_operation;
+  output->negative = ratio.y_negative;
+  return 1;
+}
+
 int malbolge_guest_math_ratio_nearest_binary64(
     const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits) {
   uint32_t exact = UINT32_C(0);

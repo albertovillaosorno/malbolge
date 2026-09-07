@@ -61,6 +61,11 @@ EXPECTED_SMALL_RATIO_RESOLVED = 511
 EXPECTED_SMALL_RATIO_UNRESOLVED = 1
 RESOLVED_STATUS = 1
 KERNEL_REQUIRED_STATUS = 2
+ATAN2_BASE_ZERO = 0
+ATAN2_BASE_HALF_PI = 1
+ATAN2_BASE_PI = 2
+ATAN2_RATIO_ADD = 1
+ATAN2_RATIO_SUBTRACT = 2
 ATAN_IDENTITY_MAX_BITS = 0x3E4C000000000000
 ATAN_IDENTITY_MAX = Fraction(7, 1 << 29)
 ONE_BITS = 0x3FF0000000000000
@@ -303,9 +308,28 @@ int main(void) {{
 """
 
 
+def _reconstruction_fields(
+    swapped: int, y_negative: int, x_negative: int
+) -> tuple[int, int, int]:
+    if x_negative == 0:
+        base, operation = (
+            (ATAN2_BASE_ZERO, ATAN2_RATIO_ADD)
+            if swapped == 0
+            else (ATAN2_BASE_HALF_PI, ATAN2_RATIO_SUBTRACT)
+        )
+    else:
+        base, operation = (
+            (ATAN2_BASE_PI, ATAN2_RATIO_SUBTRACT)
+            if swapped == 0
+            else (ATAN2_BASE_HALF_PI, ATAN2_RATIO_ADD)
+        )
+    return base, operation, y_negative
+
+
 def _row(y_bits: int, x_bits: int) -> str:
-    numerator, denominator, delta, swapped, y_negative, x_negative = _expected(
-        y_bits, x_bits
+    geometry = _expected(y_bits, x_bits)
+    base, ratio_operation, negative = _reconstruction_fields(
+        geometry[3], geometry[4], geometry[5]
     )
     ratio = min(_raw_fraction(y_bits), _raw_fraction(x_bits)) / max(
         _raw_fraction(y_bits), _raw_fraction(x_bits)
@@ -314,9 +338,11 @@ def _row(y_bits: int, x_bits: int) -> str:
     return (
         "  {"
         f"UINT64_C(0x{y_bits:016x}), UINT64_C(0x{x_bits:016x}), "
-        f"UINT64_C(0x{numerator:016x}), UINT64_C(0x{denominator:016x}), "
-        f"INT32_C({delta}), UINT32_C({swapped}), UINT32_C({y_negative}), "
-        f"UINT32_C({x_negative}), UINT64_C(0x{rounded:016x})"
+        f"UINT64_C(0x{geometry[0]:016x}), UINT64_C(0x{geometry[1]:016x}), "
+        f"INT32_C({geometry[2]}), UINT32_C({geometry[3]}), "
+        f"UINT32_C({geometry[4]}), UINT32_C({geometry[5]}), "
+        f"UINT64_C(0x{rounded:016x}), UINT32_C({base}), "
+        f"UINT32_C({ratio_operation}), UINT32_C({negative})"
         "}"
     )
 
@@ -330,6 +356,7 @@ typedef struct Vector {{
   int32_t delta;
   uint32_t swapped, y_negative, x_negative;
   uint64_t rounded;
+  uint32_t base, ratio_operation, negative;
 }} Vector;
 static const Vector vectors[] = {{
 {rows}
@@ -338,6 +365,7 @@ int main(void) {{
   uint32_t i = 0;
   while (i < (uint32_t)(sizeof(vectors) / sizeof(vectors[0]))) {{
     MalbolgeGuestMathAtan2KernelInput result;
+    MalbolgeGuestMathAtan2Reconstruction reconstruction;
     uint64_t rounded = UINT64_C(0);
     const Vector *v = &vectors[i];
     if (!malbolge_guest_math_atan2_kernel_input(
@@ -348,7 +376,18 @@ int main(void) {{
         result.y_negative != v->y_negative ||
         result.x_negative != v->x_negative ||
         !malbolge_guest_math_ratio_nearest_binary64(&result, &rounded) ||
-        rounded != v->rounded) {{
+        rounded != v->rounded ||
+        !malbolge_guest_math_atan2_reconstruction(
+            v->y_bits, v->x_bits, &reconstruction) ||
+        reconstruction.ratio.numerator_significand != v->numerator ||
+        reconstruction.ratio.denominator_significand != v->denominator ||
+        reconstruction.ratio.exponent_delta != v->delta ||
+        reconstruction.ratio.swapped != v->swapped ||
+        reconstruction.ratio.y_negative != v->y_negative ||
+        reconstruction.ratio.x_negative != v->x_negative ||
+        (uint32_t)reconstruction.base != v->base ||
+        (uint32_t)reconstruction.ratio_operation != v->ratio_operation ||
+        reconstruction.negative != v->negative) {{
       return 10;
     }}
     ++i;
