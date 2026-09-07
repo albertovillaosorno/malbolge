@@ -49,7 +49,10 @@ The atan ratio itself is reduced exactly below `169/408` using a symbolic
 `pi/4` branch and `(1-r)/(1+r)` when needed. The final `atan2` kernel plan
 therefore has the uniform form `k*pi/4 +/- atan(residual)` with `k` in `0..4`,
 an explicit sign, and the same exact residual bound. A Machin-series proof also
-certifies `pi/4` inside one Q32.192 fixed-point cell; the C boundary derives all
-five symbolic bases using 32-bit limb addition only. A self-contained integer
+certifies `pi/4` inside one Q32.192 fixed-point cell.
+
+The C boundary derives all five symbolic bases using 32-bit limb addition only.
+Reduced atan residuals enter the same Q32.192 space through directed binary long
+division, yielding exact or adjacent floor/ceiling endpoints. A separate integer
 long-division helper rounds the original rational to nearest-even binary64 when
 a later kernel needs a bounded floating representation.

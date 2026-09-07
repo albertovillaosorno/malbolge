@@ -145,6 +145,9 @@ int malbolge_guest_math_quarter_pi_interval(
 int malbolge_guest_math_atan2_base_interval(
     MalbolgeGuestMathAtan2QuarterPiBase base,
     MalbolgeGuestMathFixed192Interval *output);
+int malbolge_guest_math_exact_ratio_interval(
+    const MalbolgeGuestMathExactRatio *input,
+    MalbolgeGuestMathFixed192Interval *output);
 int malbolge_guest_math_ratio_nearest_binary64(
     const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits);
 

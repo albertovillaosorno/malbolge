@@ -56,6 +56,8 @@
 #define ATAN_QUARTER_REDUCTION_NUMERATOR UINT64_C(169)
 #define ATAN_QUARTER_REDUCTION_DENOMINATOR UINT64_C(408)
 #define FIXED_192_LIMB_COUNT UINT32_C(7)
+#define FIXED_192_FRACTION_BITS INT32_C(192)
+#define EXACT_RATIO_COMPONENT_LIMIT UINT64_C(0x0100000000000000)
 
 static int is_nan(uint64_t bits) {
   return (bits & BINARY64_EXPONENT) == BINARY64_EXPONENT &&
@@ -542,6 +544,110 @@ int malbolge_guest_math_atan2_base_interval(
   }
   copy_fixed_192(&output->lower, staged.lower.limbs);
   copy_fixed_192(&output->upper, staged.upper.limbs);
+  return 1;
+}
+
+static void increment_fixed_192(MalbolgeGuestMathFixed192 *value) {
+  uint32_t index = UINT32_C(0);
+  uint32_t carry = UINT32_C(1);
+  while (index < FIXED_192_LIMB_COUNT && carry != UINT32_C(0)) {
+    const uint32_t previous = value->limbs[index];
+    value->limbs[index] = previous + UINT32_C(1);
+    carry = value->limbs[index] == UINT32_C(0) ? UINT32_C(1) : UINT32_C(0);
+    ++index;
+  }
+}
+
+static void shift_fixed_192_bit(MalbolgeGuestMathFixed192 *value,
+                                uint32_t bit) {
+  uint32_t index = UINT32_C(0);
+  uint32_t carry = bit;
+  while (index < FIXED_192_LIMB_COUNT) {
+    const uint32_t next = value->limbs[index] >> UINT32_C(31);
+    value->limbs[index] = (value->limbs[index] << UINT32_C(1)) | carry;
+    carry = next;
+    ++index;
+  }
+}
+
+static uint32_t divide_stream_bit(uint64_t denominator, uint64_t *remainder,
+                                  uint32_t bit) {
+  *remainder = (*remainder << UINT32_C(1)) | (uint64_t)bit;
+  if (*remainder >= denominator) {
+    *remainder -= denominator;
+    return UINT32_C(1);
+  }
+  return UINT32_C(0);
+}
+
+static int valid_fixed_residual(const MalbolgeGuestMathExactRatio *input) {
+  if (input == NULL || input->denominator == UINT64_C(0) ||
+      input->denominator >= EXACT_RATIO_COMPONENT_LIMIT ||
+      input->numerator >= EXACT_RATIO_COMPONENT_LIMIT ||
+      input->exponent_delta > INT32_C(0) ||
+      input->exponent_delta < BINARY64_RATIO_MIN_EXPONENT_DELTA) {
+    return 0;
+  }
+  if (input->numerator == UINT64_C(0)) {
+    return 1;
+  }
+  if (input->exponent_delta == INT32_C(0)) {
+    return input->numerator < input->denominator;
+  }
+  return input->numerator >= BINARY64_HIDDEN_BIT &&
+         input->numerator < (BINARY64_HIDDEN_BIT << UINT32_C(1)) &&
+         input->denominator >= BINARY64_HIDDEN_BIT &&
+         input->denominator < (BINARY64_HIDDEN_BIT << UINT32_C(1));
+}
+
+int malbolge_guest_math_exact_ratio_interval(
+    const MalbolgeGuestMathExactRatio *input,
+    MalbolgeGuestMathFixed192Interval *output) {
+  MalbolgeGuestMathFixed192 lower;
+  MalbolgeGuestMathFixed192 upper;
+  uint64_t remainder = UINT64_C(0);
+  int32_t shift = INT32_C(0);
+  uint32_t bit_index = UINT32_C(64);
+  uint32_t trailing = UINT32_C(0);
+
+  if (output == NULL || !valid_fixed_residual(input)) {
+    return 0;
+  }
+  zero_fixed_192(&lower);
+  zero_fixed_192(&upper);
+  if (input->numerator == UINT64_C(0)) {
+    copy_fixed_192(&output->lower, lower.limbs);
+    copy_fixed_192(&output->upper, upper.limbs);
+    return 1;
+  }
+  shift = input->exponent_delta + FIXED_192_FRACTION_BITS;
+  if (shift < INT32_C(0)) {
+    increment_fixed_192(&upper);
+    copy_fixed_192(&output->lower, lower.limbs);
+    copy_fixed_192(&output->upper, upper.limbs);
+    return 1;
+  }
+  while (bit_index != UINT32_C(0)) {
+    uint32_t quotient_bit = UINT32_C(0);
+    --bit_index;
+    quotient_bit = divide_stream_bit(
+        input->denominator, &remainder,
+        (uint32_t)((input->numerator >> bit_index) & UINT64_C(1)));
+    shift_fixed_192_bit(&lower, quotient_bit);
+  }
+  trailing = (uint32_t)shift;
+  while (trailing != UINT32_C(0)) {
+    const uint32_t quotient_bit =
+        divide_stream_bit(input->denominator, &remainder, UINT32_C(0));
+    shift_fixed_192_bit(&lower, quotient_bit);
+    --trailing;
+  }
+  copy_fixed_192(&upper, lower.limbs);
+  if (remainder != UINT64_C(0)) {
+    increment_fixed_192(&upper);
+  }
+  copy_fixed_192(&output->lower, lower.limbs);
+  copy_fixed_192(&output->upper, upper.limbs);
   return 1;
 }
 

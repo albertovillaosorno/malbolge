@@ -391,6 +391,80 @@ int main(void) {{
 """
 
 
+def _exact_ratio_fraction(
+    numerator: int, denominator: int, exponent: int
+) -> Fraction:
+    value = Fraction(numerator, denominator)
+    if exponent >= 0:
+        return value * (1 << exponent)
+    return value / (1 << -exponent)
+
+
+def _fixed_192_interval(value: Fraction) -> tuple[int, int]:
+    scaled = value * (1 << FIXED_INTERVAL_BITS)
+    lower, remainder = divmod(scaled.numerator, scaled.denominator)
+    return lower, lower if remainder == 0 else lower + 1
+
+
+def _fixed_192_limbs(value: int) -> tuple[int, ...]:
+    return tuple((value >> (32 * index)) & 0xFFFFFFFF for index in range(7))
+
+
+def _fixed_ratio_row(y_bits: int, x_bits: int) -> str:
+    plan = _expected_atan2_kernel_plan(y_bits, x_bits)
+    residual = _exact_ratio_fraction(plan[0], plan[1], plan[2])
+    lower, upper = _fixed_192_interval(residual)
+    lower_limbs = ", ".join(
+        f"UINT32_C(0x{limb:08x})" for limb in _fixed_192_limbs(lower)
+    )
+    upper_limbs = ", ".join(
+        f"UINT32_C(0x{limb:08x})" for limb in _fixed_192_limbs(upper)
+    )
+    return (
+        f"  {{UINT64_C(0x{y_bits:016x}), UINT64_C(0x{x_bits:016x}), "
+        f"{{{lower_limbs}}}, {{{upper_limbs}}}}}"
+    )
+
+
+def _fixed_ratio_harness_source() -> str:
+    rows = ",\n".join(starmap(_fixed_ratio_row, _deterministic_pairs()))
+    return f"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+typedef struct Vector {{
+  uint64_t y_bits, x_bits;
+  uint32_t lower[7], upper[7];
+}} Vector;
+static const Vector vectors[] = {{
+{rows}
+}};
+static int equal_fixed(const MalbolgeGuestMathFixed192 *value,
+                       const uint32_t expected[7]) {{
+  uint32_t index = 0;
+  while (index < MALBOLGE_GUEST_MATH_FIXED_192_LIMBS) {{
+    if (value->limbs[index] != expected[index]) return 0;
+    ++index;
+  }}
+  return 1;
+}}
+int main(void) {{
+  uint32_t i = 0;
+  while (i < (uint32_t)(sizeof(vectors) / sizeof(vectors[0]))) {{
+    MalbolgeGuestMathAtan2KernelPlan plan;
+    MalbolgeGuestMathFixed192Interval interval;
+    const Vector *v = &vectors[i];
+    if (!malbolge_guest_math_atan2_kernel_plan(v->y_bits, v->x_bits, &plan) ||
+        !malbolge_guest_math_exact_ratio_interval(&plan.residual, &interval) ||
+        !equal_fixed(&interval.lower, v->lower) ||
+        !equal_fixed(&interval.upper, v->upper)) {{
+      return 50;
+    }}
+    ++i;
+  }}
+  return 0;
+}}
+"""
+
+
 def _small_ratio_pairs() -> tuple[tuple[int, int], ...]:
     state = SMALL_RATIO_LCG_SEED
     pairs = [
@@ -702,6 +776,36 @@ def test_atan2_kernel_plan_composes_quadrant_and_atan_reduction(
     harness = tmp_path / "atan2-kernel-plan.c"
     executable = tmp_path / "atan2-kernel-plan"
     _ = harness.write_text(_atan2_plan_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan_residual_q192_interval_matches_fraction_floor_ceil(
+    tmp_path: Path,
+) -> None:
+    """Enclose all 519 reduced residuals by directed binary long division."""
+    harness = tmp_path / "atan-residual-fixed.c"
+    executable = tmp_path / "atan-residual-fixed"
+    _ = harness.write_text(_fixed_ratio_harness_source(), encoding="utf-8")
     compiled = _run(
         [
             str(CLANG),

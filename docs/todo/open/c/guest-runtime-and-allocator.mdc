@@ -281,6 +281,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   using 32-bit limb addition only; invalid IDs are nonmutating and no rounded
   binary64 pi constant becomes numerical authority.
 
+  The reduced atan residual now enters that same Q32.192 domain through binary
+  long division. Exact fixed-point values have zero-width intervals; all other
+  represented values use adjacent floor/ceiling endpoints, and values below one
+  fixed unit use `[0, 2^-192]`. A 519-pair `Fraction` differential locks the
+  exact endpoints without `/`, `%`, FPU arithmetic, or `__int128`.
+
   Correctly-rounded numerical kernels and final rounding remain the lane-8
   blocker.
 - Resolved integer/scheduling boundary: version one introduces no separate

@@ -390,6 +390,18 @@ Q32.192 interval whose width is exactly `k` fixed-point units; invalid base IDs
 and null outputs reject without mutation. No host floating arithmetic, libm, or
 rounded pi value participates in the proof.
 
+The exact residual is now projected into the same Q32.192 domain by streaming
+binary long division. Residuals representable at that scale produce identical
+lower and upper endpoints; every other nonzero residual produces adjacent floor
+and ceiling endpoints. Ratios smaller than one fixed-point unit become
+`[0, 2^-192]`, preserving enclosure without inventing a rounded input value.
+
+The converter accepts only the two geometries emitted by the exact reduction:
+normalized 53-bit significands with a negative power-of-two exponent, or the
+bounded exponent-zero transformed fraction. A 519-pair `Fraction` differential
+checks exact floor/ceiling integers for the full atan2 kernel-plan corpus.
+Invalid geometry and null outputs reject without publication.
+
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full
 binary64 domain.

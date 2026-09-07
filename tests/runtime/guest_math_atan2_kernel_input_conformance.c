@@ -314,6 +314,66 @@ static int test_pi_intervals(void) {
   return 0;
 }
 
+static int test_ratio_fixed_interval(void) {
+  MalbolgeGuestMathExactRatio input = {
+      UINT64_C(0x0010000000000000), UINT64_C(0x0010000000000000),
+      INT32_C(-2)};
+  MalbolgeGuestMathFixed192Interval output;
+  uint32_t quarter[7] = {UINT32_C(0)};
+  uint32_t third_lower[7] = {
+      UINT32_C(0x55555555), UINT32_C(0x55555555), UINT32_C(0x55555555),
+      UINT32_C(0x55555555), UINT32_C(0x55555555), UINT32_C(0x55555555),
+      UINT32_C(0)};
+  uint32_t third_upper[7] = {
+      UINT32_C(0x55555556), UINT32_C(0x55555555), UINT32_C(0x55555555),
+      UINT32_C(0x55555555), UINT32_C(0x55555555), UINT32_C(0x55555555),
+      UINT32_C(0)};
+  uint32_t tiny_upper[7] = {UINT32_C(1)};
+  uint32_t zero[7] = {UINT32_C(0)};
+
+  quarter[5] = UINT32_C(0x40000000);
+  if (!malbolge_guest_math_exact_ratio_interval(&input, &output) ||
+      !fixed_192_equal(&output.lower, quarter) ||
+      !fixed_192_equal(&output.upper, quarter)) {
+    return 1;
+  }
+  input.denominator = UINT64_C(0x0030000000000000);
+  input.exponent_delta = INT32_C(0);
+  if (!malbolge_guest_math_exact_ratio_interval(&input, &output) ||
+      !fixed_192_equal(&output.lower, third_lower) ||
+      !fixed_192_equal(&output.upper, third_upper)) {
+    return 2;
+  }
+  input.denominator = UINT64_C(0x0010000000000000);
+  input.exponent_delta = INT32_C(-2097);
+  if (!malbolge_guest_math_exact_ratio_interval(&input, &output) ||
+      !fixed_192_equal(&output.lower, zero) ||
+      !fixed_192_equal(&output.upper, tiny_upper)) {
+    return 3;
+  }
+  input.numerator = UINT64_C(0);
+  input.exponent_delta = INT32_C(0);
+  if (!malbolge_guest_math_exact_ratio_interval(&input, &output) ||
+      !fixed_192_equal(&output.lower, zero) ||
+      !fixed_192_equal(&output.upper, zero)) {
+    return 4;
+  }
+
+  output.lower.limbs[0] = UINT32_C(0x55);
+  output.upper.limbs[0] = UINT32_C(0xaa);
+  input.numerator = UINT64_C(0x0010000000000001);
+  input.denominator = UINT64_C(0x0010000000000000);
+  input.exponent_delta = INT32_C(0);
+  if (malbolge_guest_math_exact_ratio_interval(&input, &output) ||
+      output.lower.limbs[0] != UINT32_C(0x55) ||
+      output.upper.limbs[0] != UINT32_C(0xaa) ||
+      malbolge_guest_math_exact_ratio_interval(NULL, &output) ||
+      malbolge_guest_math_exact_ratio_interval(&input, NULL)) {
+    return 5;
+  }
+  return 0;
+}
+
 static int test_ratio_rounding(void) {
   MalbolgeGuestMathAtan2KernelInput input = {
       UINT64_C(0x0010000000000000), UINT64_C(0x0010000000000000),
@@ -377,6 +437,7 @@ int main(void) {
   const int reduction = test_atan_reduction();
   const int plan = test_kernel_plan();
   const int pi_intervals = test_pi_intervals();
+  const int ratio_interval = test_ratio_fixed_interval();
   const int rounding = test_ratio_rounding();
 
   if (reconstruction != 0) {
@@ -390,6 +451,9 @@ int main(void) {
   }
   if (pi_intervals != 0) {
     return 40 + pi_intervals;
+  }
+  if (ratio_interval != 0) {
+    return 50 + ratio_interval;
   }
   if (rounding != 0) {
     return 20 + rounding;
