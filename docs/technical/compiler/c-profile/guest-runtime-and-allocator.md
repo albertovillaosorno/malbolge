@@ -426,6 +426,19 @@ the input lower endpoint and the input upper endpoint. If the lower endpoint is
 zero, positivity gives the tighter direct enclosure `[0, upper]`. This avoids
 artificial interval dependency without relaxing the proof.
 
+The finite-nonzero atan2 handoff now composes the certified base and residual
+intervals directly. Add branches use endpoint-wise addition; subtract branches
+use `[base.lower-residual.upper, base.upper-residual.lower]`. The result remains
+an unsigned principal-angle magnitude plus the already-derived sign, so no
+signed fixed-point overflow is introduced. Publication is atomic on invalid or
+special inputs.
+
+A second 64-pair stratified oracle constructs the expected principal-angle
+interval from the exact Machin bounds and the exact 48-term atan rational
+bounds. The composed C magnitude encloses that authority for all sampled
+quadrants and exponent geometries, while fixed C vectors pin all four equal-
+magnitude quadrants and rejected-input nonmutation.
+
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full
 binary64 domain.

@@ -56,6 +56,9 @@ Reduced atan residuals enter the same Q32.192 space through directed binary long
 division, yielding exact or adjacent floor/ceiling endpoints. A 48-term
 alternating-series evaluator then propagates directed fixed-point intervals and
 adds the proved `2^-128` truncation bound; very small inputs use the direct
-`x-x^3/3 < atan(x) < x` enclosure instead. A separate integer long-division
-helper rounds the original rational to nearest-even binary64 when a later kernel
-needs a bounded floating representation.
+`x-x^3/3 < atan(x) < x` enclosure instead.
+
+The final finite-nonzero atan2 handoff composes that residual interval with the
+certified quarter-pi base into one Q32.192 magnitude plus sign. A separate
+integer long-division helper rounds the original rational to nearest-even
+binary64 when a later kernel needs a bounded floating representation.

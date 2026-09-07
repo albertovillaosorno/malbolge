@@ -917,6 +917,32 @@ int malbolge_guest_math_atan_residual_interval(
   return 1;
 }
 
+int malbolge_guest_math_atan2_interval(
+    uint64_t y_bits, uint64_t x_bits, MalbolgeGuestMathAtan2Interval *output) {
+  MalbolgeGuestMathAtan2KernelPlan plan;
+  MalbolgeGuestMathFixed192Interval base;
+  MalbolgeGuestMathFixed192Interval residual;
+  MalbolgeGuestMathFixed192Interval staged;
+
+  if (output == NULL ||
+      !malbolge_guest_math_atan2_kernel_plan(y_bits, x_bits, &plan) ||
+      !malbolge_guest_math_atan2_base_interval(plan.quarter_pi_base, &base) ||
+      !malbolge_guest_math_atan_residual_interval(&plan.residual, &residual)) {
+    return 0;
+  }
+  copy_fixed_192(&staged.lower, base.lower.limbs);
+  copy_fixed_192(&staged.upper, base.upper.limbs);
+  if (plan.ratio_operation == MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD) {
+    add_interval_192(&staged, &residual);
+  } else if (!subtract_interval_192(&staged, &residual)) {
+    return 0;
+  }
+  copy_fixed_192(&output->magnitude.lower, staged.lower.limbs);
+  copy_fixed_192(&output->magnitude.upper, staged.upper.limbs);
+  output->negative = plan.negative;
+  return 1;
+}
+
 int malbolge_guest_math_ratio_nearest_binary64(
     const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits) {
   uint32_t exact = UINT32_C(0);

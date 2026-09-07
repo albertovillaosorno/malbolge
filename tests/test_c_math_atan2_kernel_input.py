@@ -9,7 +9,7 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Differential evidence for exact finite atan2 ratio normalization.
+#   - Differential evidence for exact atan2 reduction and fixed-point intervals.
 # - Must-Not:
 #   - Use host atan2, floating division, or approximate expected values.
 # - Allows:
@@ -17,17 +17,18 @@
 #   - Outputs: native C agreement with exact Fraction-derived kernel geometry.
 #   - Side effects: temporary C harness compilation and execution only.
 # - Split-When:
-#   - Numerical atan approximation requires independent accuracy evidence.
+#   - Public rounding or wider-precision fallback needs independent evidence.
 # - Merge-When:
 #   - Complete atan2 differential evidence subsumes exact input reduction.
 # - Summary:
-#   - Cross-checks finite atan2 kernel inputs over broad binary64 geometry.
+#   - Cross-checks atan2 geometry and interval enclosure over binary64 inputs.
 # - Description:
-#   - Expected ratios are reconstructed exactly as rational powers of two.
+#   - Expected geometry and interval bounds are reconstructed with Fraction.
 # - Usage:
 #   - Collected with repository-pinned native Clang on supported hosts.
 # - Defaults:
-#   - Public atan2 remains unavailable; this proves only kernel-input geometry.
+#   - Public atan2 remains unavailable; interval enclosure does not finalize
+#     rounding.
 #
 
 """Differential exact-ratio evidence for future binary64 atan2 kernels."""
@@ -35,6 +36,7 @@
 from __future__ import annotations
 
 from fractions import Fraction
+from functools import cache
 from itertools import starmap
 from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
@@ -470,6 +472,7 @@ int main(void) {{
 """
 
 
+@cache
 def _atan_exact_series_interval(value: Fraction) -> tuple[Fraction, Fraction]:
     total = Fraction(0)
     power = value
@@ -563,6 +566,96 @@ int main(void) {{
         compare_fixed(&interval.upper, v->upper_ceil) < 0 ||
         compare_fixed(&interval.upper, v->upper_max) > 0) {{
       return 60;
+    }}
+    ++i;
+  }}
+  return 0;
+}}
+"""
+
+
+def _atan2_exact_interval(
+    y_bits: int, x_bits: int
+) -> tuple[Fraction, Fraction, int]:
+    plan = _expected_atan2_kernel_plan(y_bits, x_bits)
+    quarter_lower, quarter_upper = _quarter_pi_machin_interval()
+    atan_lower, atan_upper = _atan_exact_series_interval(
+        _exact_ratio_fraction(plan[0], plan[1], plan[2])
+    )
+    base_lower = plan[3] * quarter_lower
+    base_upper = plan[3] * quarter_upper
+    if plan[4] == ATAN2_RATIO_ADD:
+        return base_lower + atan_lower, base_upper + atan_upper, plan[5]
+    return base_lower - atan_upper, base_upper - atan_lower, plan[5]
+
+
+def _atan2_interval_limits(
+    y_bits: int, x_bits: int
+) -> tuple[int, int, int, int, int]:
+    exact_lower, exact_upper, negative = _atan2_exact_interval(y_bits, x_bits)
+    lower_floor = _integer_bounds(exact_lower)[0]
+    upper_ceil = _integer_bounds(exact_upper)[1]
+    evaluation_slack = 1 << (
+        FIXED_INTERVAL_BITS - ATAN_INTERVAL_EVALUATION_BITS
+    )
+    total_slack = (
+        (1 << (FIXED_INTERVAL_BITS - ATAN_SERIES_TARGET_BITS))
+        + evaluation_slack
+        + ATAN2_QUARTER_BASE_FOUR
+    )
+    return (
+        max(0, lower_floor - total_slack),
+        lower_floor,
+        upper_ceil,
+        upper_ceil + total_slack,
+        negative,
+    )
+
+
+def _atan2_interval_row(y_bits: int, x_bits: int) -> str:
+    limits = _atan2_interval_limits(y_bits, x_bits)
+    encoded = [_fixed_array_literal(value) for value in limits[:4]]
+    return (
+        f"  {{UINT64_C(0x{y_bits:016x}), UINT64_C(0x{x_bits:016x}), "
+        + ", ".join(encoded)
+        + f", UINT32_C({limits[4]})}}"
+    )
+
+
+def _atan2_interval_harness_source() -> str:
+    rows = ",\n".join(starmap(_atan2_interval_row, _atan_interval_pairs()))
+    return f"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+typedef struct Vector {{
+  uint64_t y_bits, x_bits;
+  uint32_t lower_min[7], lower_floor[7], upper_ceil[7], upper_max[7];
+  uint32_t negative;
+}} Vector;
+static const Vector vectors[] = {{
+{rows}
+}};
+static int compare_fixed(const MalbolgeGuestMathFixed192 *value,
+                         const uint32_t expected[7]) {{
+  uint32_t index = MALBOLGE_GUEST_MATH_FIXED_192_LIMBS;
+  while (index != 0) {{
+    --index;
+    if (value->limbs[index] < expected[index]) return -1;
+    if (value->limbs[index] > expected[index]) return 1;
+  }}
+  return 0;
+}}
+int main(void) {{
+  uint32_t i = 0;
+  while (i < (uint32_t)(sizeof(vectors) / sizeof(vectors[0]))) {{
+    MalbolgeGuestMathAtan2Interval interval;
+    const Vector *v = &vectors[i];
+    if (!malbolge_guest_math_atan2_interval(v->y_bits, v->x_bits, &interval) ||
+        compare_fixed(&interval.magnitude.lower, v->lower_min) < 0 ||
+        compare_fixed(&interval.magnitude.lower, v->lower_floor) > 0 ||
+        compare_fixed(&interval.magnitude.upper, v->upper_ceil) < 0 ||
+        compare_fixed(&interval.magnitude.upper, v->upper_max) > 0 ||
+        interval.negative != v->negative) {{
+      return 70;
     }}
     ++i;
   }}
@@ -845,6 +938,7 @@ def _alternating_atan_interval(
     return total - remainder, total
 
 
+@cache
 def _quarter_pi_machin_interval() -> tuple[Fraction, Fraction]:
     fifth = _alternating_atan_interval(Fraction(1, 5), PI_MACHIN_FIFTH_TERMS)
     one_239 = _alternating_atan_interval(Fraction(1, 239), PI_MACHIN_239_TERMS)
@@ -946,6 +1040,36 @@ def test_atan_q192_interval_encloses_exact_rational_series(
     harness = tmp_path / "atan-q192-interval.c"
     executable = tmp_path / "atan-q192-interval"
     _ = harness.write_text(_atan_interval_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan2_q192_interval_encloses_symbolic_plan(
+    tmp_path: Path,
+) -> None:
+    """Enclose composed quarter-pi and atan intervals over 64 finite pairs."""
+    harness = tmp_path / "atan2-q192-interval.c"
+    executable = tmp_path / "atan2-q192-interval"
+    _ = harness.write_text(_atan2_interval_harness_source(), encoding="utf-8")
     compiled = _run(
         [
             str(CLANG),

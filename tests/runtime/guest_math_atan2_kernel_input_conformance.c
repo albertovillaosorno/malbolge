@@ -439,6 +439,65 @@ static int test_atan_residual_interval(void) {
   return 0;
 }
 
+static int test_atan2_interval(void) {
+  MalbolgeGuestMathAtan2Interval output;
+  MalbolgeGuestMathFixed192Interval expected;
+
+  if (!malbolge_guest_math_atan2_base_interval(
+          MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_ONE, &expected) ||
+      !malbolge_guest_math_atan2_interval(
+          UINT64_C(0x3ff0000000000000), UINT64_C(0x3ff0000000000000),
+          &output) ||
+      !fixed_192_equal(&output.magnitude.lower, expected.lower.limbs) ||
+      !fixed_192_equal(&output.magnitude.upper, expected.upper.limbs) ||
+      output.negative != UINT32_C(0)) {
+    return 1;
+  }
+  if (!malbolge_guest_math_atan2_interval(
+          UINT64_C(0xbff0000000000000), UINT64_C(0x3ff0000000000000),
+          &output) ||
+      !fixed_192_equal(&output.magnitude.lower, expected.lower.limbs) ||
+      !fixed_192_equal(&output.magnitude.upper, expected.upper.limbs) ||
+      output.negative != UINT32_C(1)) {
+    return 2;
+  }
+  if (!malbolge_guest_math_atan2_base_interval(
+          MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_THREE, &expected) ||
+      !malbolge_guest_math_atan2_interval(
+          UINT64_C(0x3ff0000000000000), UINT64_C(0xbff0000000000000),
+          &output) ||
+      !fixed_192_equal(&output.magnitude.lower, expected.lower.limbs) ||
+      !fixed_192_equal(&output.magnitude.upper, expected.upper.limbs) ||
+      output.negative != UINT32_C(0)) {
+    return 3;
+  }
+  if (!malbolge_guest_math_atan2_interval(
+          UINT64_C(0xbff0000000000000), UINT64_C(0xbff0000000000000),
+          &output) ||
+      !fixed_192_equal(&output.magnitude.lower, expected.lower.limbs) ||
+      !fixed_192_equal(&output.magnitude.upper, expected.upper.limbs) ||
+      output.negative != UINT32_C(1)) {
+    return 4;
+  }
+
+  fill_fixed_192(&output.magnitude.lower, UINT32_C(0x55555555));
+  fill_fixed_192(&output.magnitude.upper, UINT32_C(0xaaaaaaaa));
+  output.negative = UINT32_C(7);
+  if (malbolge_guest_math_atan2_interval(
+          UINT64_C(0), UINT64_C(0x3ff0000000000000), &output) ||
+      output.magnitude.lower.limbs[0] != UINT32_C(0x55555555) ||
+      output.magnitude.lower.limbs[6] != UINT32_C(0x55555555) ||
+      output.magnitude.upper.limbs[0] != UINT32_C(0xaaaaaaaa) ||
+      output.magnitude.upper.limbs[6] != UINT32_C(0xaaaaaaaa) ||
+      output.negative != UINT32_C(7) ||
+      malbolge_guest_math_atan2_interval(
+          UINT64_C(0x3ff0000000000000), UINT64_C(0x3ff0000000000000),
+          NULL)) {
+    return 5;
+  }
+  return 0;
+}
+
 static int test_ratio_rounding(void) {
   MalbolgeGuestMathAtan2KernelInput input = {
       UINT64_C(0x0010000000000000), UINT64_C(0x0010000000000000),
@@ -504,6 +563,7 @@ int main(void) {
   const int pi_intervals = test_pi_intervals();
   const int ratio_interval = test_ratio_fixed_interval();
   const int atan_interval = test_atan_residual_interval();
+  const int atan2_interval = test_atan2_interval();
   const int rounding = test_ratio_rounding();
 
   if (reconstruction != 0) {
@@ -523,6 +583,9 @@ int main(void) {
   }
   if (atan_interval != 0) {
     return 60 + atan_interval;
+  }
+  if (atan2_interval != 0) {
+    return 70 + atan2_interval;
   }
   if (rounding != 0) {
     return 20 + rounding;

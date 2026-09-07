@@ -125,6 +125,11 @@ typedef struct MalbolgeGuestMathFixed192Interval {
   MalbolgeGuestMathFixed192 upper;
 } MalbolgeGuestMathFixed192Interval;
 
+typedef struct MalbolgeGuestMathAtan2Interval {
+  MalbolgeGuestMathFixed192Interval magnitude;
+  uint32_t negative;
+} MalbolgeGuestMathAtan2Interval;
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
@@ -151,6 +156,8 @@ int malbolge_guest_math_exact_ratio_interval(
 int malbolge_guest_math_atan_residual_interval(
     const MalbolgeGuestMathExactRatio *input,
     MalbolgeGuestMathFixed192Interval *output);
+int malbolge_guest_math_atan2_interval(
+    uint64_t y_bits, uint64_t x_bits, MalbolgeGuestMathAtan2Interval *output);
 int malbolge_guest_math_ratio_nearest_binary64(
     const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits);
 

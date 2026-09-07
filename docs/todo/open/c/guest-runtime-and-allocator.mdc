@@ -295,6 +295,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   and next term independently. Inputs below `2^-64` use the direct bound
   `x-x^3/3 < atan(x) < x` to avoid artificial dependency widening.
 
+  The finite-nonzero atan2 path now composes `k*pi/4` and residual atan
+  intervals
+  into one Q32.192 principal-angle magnitude plus explicit sign. A second
+  64-pair Machin-plus-Fraction oracle independently checks the composed
+  enclosure, and fixed C vectors cover all equal-magnitude quadrants plus
+  rejected-input nonmutation. Final binary64 unique-rounding detection and any
+  wider fallback remain unimplemented, so public `atan2` stays unavailable.
+
   Correctly-rounded numerical kernels and final rounding remain the lane-8
   blocker.
 - Resolved integer/scheduling boundary: version one introduces no separate
