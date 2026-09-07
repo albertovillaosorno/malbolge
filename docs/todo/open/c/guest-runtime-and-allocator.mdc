@@ -213,14 +213,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
 
   The `atan2` matrix uses reviewed raw binary64 `pi/4`, `pi/2`, `3*pi/4`, and
   `pi` constants and resolves finite equal-magnitude pairs by quadrant at any
-  exponent. A second exact `atan2` subset covers right-half-plane ratios
-  `r <= 2^-27` only when the rational `|y/x|` is exactly representable in
-  binary64.
+  exponent. A second exact `atan2` subset covers right-half-plane ratios through
+  `7 * 2^-29`, extending the earlier `2^-27` boundary by 75 percent.
 
-  The alternating-series bound `r - atan(r) < r^3 / 3` then fits inside the
-  lower rounding midpoint for exact binary64 ratios. For non-dyadic normal
-  ratios below the threshold, the same bound is `< 1/6 ulp`; the exact quotient
-  remainder admits only values below one-half ulp or at least two-thirds ulp.
+  The alternating-series bound `r - atan(r) < r^3 / 3` is at most
+  `343/768 ulp` in the new top binade. Exact binary64 ratios are therefore
+  stable, while non-dyadic values require either a lower-rounded quotient or an
+  exact fractional remainder of at least `727/768 ulp`. Lower binades retain
+  the two-thirds margin because their error remains below one-sixth ulp.
 
   Subnormal ratios need no normal-binade margin gate: the maximum `atan` error
   is below `2^-1993` subnormal ulp, versus more than `2^-54` ulp minimum

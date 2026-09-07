@@ -43,7 +43,7 @@
 #define BINARY64_ONE UINT64_C(0x3ff0000000000000)
 #define BINARY64_SIN_SMALL_ANGLE_MAX UINT64_C(0x3e50000000000000)
 #define BINARY64_COS_SMALL_ANGLE_MAX UINT64_C(0x3e40000000000000)
-#define BINARY64_ATAN_IDENTITY_MAX UINT64_C(0x3e40000000000000)
+#define BINARY64_ATAN_IDENTITY_MAX UINT64_C(0x3e4c000000000000)
 #define BINARY64_PI_OVER_FOUR UINT64_C(0x3fe921fb54442d18)
 #define BINARY64_PI_OVER_TWO UINT64_C(0x3ff921fb54442d18)
 #define BINARY64_PI UINT64_C(0x400921fb54442d18)
@@ -337,10 +337,15 @@ static int ratio_at_most_atan_identity(
   if (input->exponent_delta < INT32_C(-27)) {
     return 1;
   }
-  if (input->exponent_delta > INT32_C(-27)) {
-    return 0;
+  if (input->exponent_delta == INT32_C(-27)) {
+    return input->numerator_significand * UINT64_C(4) <=
+           input->denominator_significand * UINT64_C(7);
   }
-  return input->numerator_significand <= input->denominator_significand;
+  if (input->exponent_delta == INT32_C(-26)) {
+    return input->numerator_significand * UINT64_C(8) <=
+           input->denominator_significand * UINT64_C(7);
+  }
+  return 0;
 }
 
 static int normal_ratio_rounding_margin_safe(
@@ -358,15 +363,20 @@ static int normal_ratio_rounding_margin_safe(
     remainder = numerator - denominator;
     --exponent;
   }
-  if (exponent < INT32_C(-1022) || exponent > INT32_C(-28)) {
+  if (exponent < INT32_C(-1022) || exponent > INT32_C(-27)) {
     return 0;
   }
   while (remaining != UINT32_C(0)) {
     --remaining;
     (void)ratio_fraction_bit(denominator, &remainder);
   }
-  return (remainder << UINT32_C(1)) < denominator ||
-         (remainder * UINT64_C(3)) >= (denominator << UINT32_C(1));
+  if ((remainder << UINT32_C(1)) < denominator) {
+    return 1;
+  }
+  if (exponent == INT32_C(-27)) {
+    return remainder * UINT64_C(768) >= denominator * UINT64_C(727);
+  }
+  return remainder * UINT64_C(3) >= denominator * UINT64_C(2);
 }
 
 static int subnormal_atan_result(

@@ -290,18 +290,18 @@ publication.
 
 Finite nonzero pairs with equal magnitudes also resolve directly to `pi/4` or
 `3*pi/4` by quadrant, independent of their exponent. In the right half-plane,
-a second conservative identity handles exact binary64 ratios
-`r = |y/x| <= 2^-27`. The alternating-series bound
-`0 <= r - atan(r) < r^3 / 3` stays inside the lower binary64 midpoint, so the
-correctly rounded result is exactly `r` with the sign of `y`.
+a second conservative identity handles small ratios.
+The admitted limit is `r = |y/x| <= 7 * 2^-29`, which is 1.75 times the
+earlier `2^-27` boundary. The alternating-series bound
+`0 <= r - atan(r) < r^3 / 3` remains below one-half ulp for exact binary64
+ratios throughout that interval.
 
-Exact binary64 ratios are admitted directly. For non-dyadic normal ratios
-strictly below `2^-27`, the open top binade gives
-`r^3 / 3 < ulp / 6`. The exact quotient remainder is therefore also admitted
-when it lies below one-half ulp or at least two-thirds ulp: subtracting the
-bounded `atan` error cannot cross the lower rounding midpoint. The rule uses
-only the 53-bit denominator and remainder; it does not treat the rounded ratio
-as an accuracy oracle.
+For non-dyadic normal ratios in the new top binade, the maximum error is
+`343/768 ulp`. A quotient below the midpoint is always safe; an upper-rounded
+quotient is admitted only when its exact fractional remainder is at least
+`727/768 ulp`. Lower binades retain the looser two-thirds threshold because
+their error is below one-sixth ulp. The rule uses only the 53-bit denominator
+and remainder, never the rounded ratio as an accuracy oracle.
 
 Subnormal ratios are fully decidable under the same bound. Their worst-case
 `atan` error is below `2^-1993` subnormal ulp, while a non-midpoint rational

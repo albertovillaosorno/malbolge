@@ -176,15 +176,15 @@ int main(void) {
     return 9;
   }
   if (!expect(malbolge_guest_math_atan2_special(
-                  UINT64_C(0x3e40000000000000),
+                  UINT64_C(0x3e4c000000000000),
                   UINT64_C(0x3ff0000000000000)),
               MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
-              UINT64_C(0x3e40000000000000)) ||
+              UINT64_C(0x3e4c000000000000)) ||
       !expect(malbolge_guest_math_atan2_special(
-                  UINT64_C(0xbe40000000000000),
+                  UINT64_C(0xbe4c000000000000),
                   UINT64_C(0x3ff0000000000000)),
               MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
-              UINT64_C(0xbe40000000000000)) ||
+              UINT64_C(0xbe4c000000000000)) ||
       !expect(malbolge_guest_math_atan2_special(
                   UINT64_C(0x0000000000000001),
                   UINT64_C(0x3ff0000000000000)),
@@ -193,11 +193,11 @@ int main(void) {
     return 10;
   }
   if (!expect(malbolge_guest_math_atan2_special(
-                  UINT64_C(0x3e40000000000001),
+                  UINT64_C(0x3e4c000000000001),
                   UINT64_C(0x3ff0000000000000)),
               MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED, UINT64_C(0)) ||
       !expect(malbolge_guest_math_atan2_special(
-                  UINT64_C(0x3e40000000000000),
+                  UINT64_C(0x3e4c000000000000),
                   UINT64_C(0xbff0000000000000)),
               MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED, UINT64_C(0))) {
     return 11;
@@ -225,6 +225,17 @@ int main(void) {
               MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
               UINT64_C(0x8000000000000001))) {
     return 13;
+  }
+  if (!expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0x3e64ffffffffd8f2),
+                  UINT64_C(0x4008000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0x3e4bffffffffcbed)) ||
+      !expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0x3e64fffffffcf2c1),
+                  UINT64_C(0x4008000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED, UINT64_C(0))) {
+    return 14;
   }
   return 0;
 }

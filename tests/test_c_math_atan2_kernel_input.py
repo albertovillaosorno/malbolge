@@ -49,7 +49,7 @@ HIDDEN_BIT = 1 << 52
 SIGNIFICAND_BITS = 53
 EXPONENT_MASK = 0x7FF
 MIN_NORMAL_EXPONENT = -1022
-ATAN_MARGIN_MAX_EXPONENT = -28
+ATAN_MARGIN_MAX_EXPONENT = -27
 ALL_BITS = (1 << 64) - 1
 VECTOR_COUNT = 512
 LCG_MULTIPLIER = 6364136223846793005
@@ -61,8 +61,8 @@ EXPECTED_SMALL_RATIO_RESOLVED = 511
 EXPECTED_SMALL_RATIO_UNRESOLVED = 1
 RESOLVED_STATUS = 1
 KERNEL_REQUIRED_STATUS = 2
-ATAN_IDENTITY_MAX_BITS = 0x3E40000000000000
-ATAN_IDENTITY_MAX = Fraction(1, 1 << 27)
+ATAN_IDENTITY_MAX_BITS = 0x3E4C000000000000
+ATAN_IDENTITY_MAX = Fraction(7, 1 << 29)
 ONE_BITS = 0x3FF0000000000000
 THREE_BITS = 0x4008000000000000
 EDGE_PAIRS = (
@@ -230,7 +230,14 @@ def _small_ratio_rounding_margin_safe(ratio: Fraction) -> bool:
     ulp = Fraction(1, 1 << (52 - exponent))
     scaled = ratio / ulp
     fraction = scaled - (scaled.numerator // scaled.denominator)
-    return fraction < Fraction(1, 2) or fraction >= Fraction(2, 3)
+    if fraction < Fraction(1, 2):
+        return True
+    threshold = (
+        Fraction(727, 768)
+        if exponent == ATAN_MARGIN_MAX_EXPONENT
+        else Fraction(2, 3)
+    )
+    return fraction >= threshold
 
 
 def _subnormal_atan_bits(ratio: Fraction, rounded: int) -> int | None:
