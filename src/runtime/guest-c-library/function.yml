@@ -92,12 +92,12 @@ parts:
     path: contract/math_transcendental_bits.h
     kind: contract
     language: c
-    responsibility: Declare exact transcendental classification and reduction.
+    responsibility: Declare exact transcendental reduction and fixed intervals.
   - id: part-0012
     path: domain/math_transcendental_bits.c
     kind: domain
     language: c
-    responsibility: Classify and reduce exact transcendental kernel inputs.
+    responsibility: Reduce transcendental inputs and certify fixed intervals.
 projects: []
 tests: []
 graph:

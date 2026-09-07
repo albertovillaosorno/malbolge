@@ -376,6 +376,20 @@ bound. This is only a truncation result: arithmetic-evaluation error, symbolic
 pi reconstruction error, and hard-to-round detection still require independent
 interval evidence before any public result can be admitted.
 
+A separate Q32.192 interval now gives the symbolic pi reconstruction numerical
+authority without treating a binary64 constant as exact. The Machin identity
+`pi/4 = 4*atan(1/5) - atan(1/239)` is bounded with exact rational alternating
+series: 42 terms for `atan(1/5)` and 12 for `atan(1/239)` leave a combined
+interval narrower than `2^-200`. That proof places `pi/4 * 2^192` strictly
+between the adjacent integers ending in hexadecimal `...8a67cc74` and
+`...8a67cc75`.
+
+The C boundary publishes those adjacent endpoints and forms `k*pi/4`, for
+`k=0..4`, by fixed-width 32-bit limb addition only. The result is an enclosing
+Q32.192 interval whose width is exactly `k` fixed-point units; invalid base IDs
+and null outputs reject without mutation. No host floating arithmetic, libm, or
+rounded pi value participates in the proof.
+
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full
 binary64 domain.

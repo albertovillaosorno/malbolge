@@ -271,8 +271,15 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   Exact rational analysis of a prospective alternating-series kernel proves 48
   included terms bound truncation below `2^-128` across the full residual
   envelope, while 47 terms do not. This does not close the kernel: evaluation
-  error, pi reconstruction intervals, and hard-to-round fallback remain separate
-  proof obligations before final binary64 publication.
+  error and hard-to-round fallback remain separate proof obligations before
+  final binary64 publication.
+
+  Pi reconstruction now has a certified Q32.192 interval. Exact rational Machin
+  bounds using 42 `atan(1/5)` terms and 12 `atan(1/239)` terms place `pi/4`
+  strictly inside one `2^-192` fixed-point cell, with proof width below
+  `2^-200`. The C boundary publishes that cell and derives `k*pi/4`, `k=0..4`,
+  using 32-bit limb addition only; invalid IDs are nonmutating and no rounded
+  binary64 pi constant becomes numerical authority.
 
   Correctly-rounded numerical kernels and final rounding remain the lane-8
   blocker.

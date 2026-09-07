@@ -81,6 +81,13 @@ ATAN_QUARTER_UPPER_PRODUCT = 169 * 577
 ATAN_SERIES_TARGET_BITS = 128
 ATAN_SERIES_TERMS = 48
 ATAN_SERIES_PREVIOUS_TERMS = ATAN_SERIES_TERMS - 1
+FIXED_INTERVAL_BITS = 192
+PI_MACHIN_FIFTH_TERMS = 42
+PI_MACHIN_239_TERMS = 12
+QUARTER_PI_LOWER_FIXED = int(
+    "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74", 16
+)
+QUARTER_PI_UPPER_FIXED = QUARTER_PI_LOWER_FIXED + 1
 ATAN_IDENTITY_MAX_BITS = 0x3E4C000000000000
 ATAN_IDENTITY_MAX = Fraction(7, 1 << 29)
 ONE_BITS = 0x3FF0000000000000
@@ -642,9 +649,41 @@ def test_atan_quarter_cut_is_strictly_self_reducing() -> None:
     assert ATAN_QUARTER_UPPER_PRODUCT == ATAN_QUARTER_LOWER_PRODUCT + 1
 
 
+def _alternating_atan_interval(
+    value: Fraction, terms: int
+) -> tuple[Fraction, Fraction]:
+    total = Fraction(0)
+    square = value * value
+    power = value
+    for index in range(terms):
+        term = power / ((2 * index) + 1)
+        total = total + term if index % 2 == 0 else total - term
+        power *= square
+    remainder = power / ((2 * terms) + 1)
+    if terms % 2 == 0:
+        return total, total + remainder
+    return total - remainder, total
+
+
+def _quarter_pi_machin_interval() -> tuple[Fraction, Fraction]:
+    fifth = _alternating_atan_interval(Fraction(1, 5), PI_MACHIN_FIFTH_TERMS)
+    one_239 = _alternating_atan_interval(Fraction(1, 239), PI_MACHIN_239_TERMS)
+    return (4 * fifth[0]) - one_239[1], (4 * fifth[1]) - one_239[0]
+
+
 def _atan_series_remainder_bound(terms: int) -> Fraction:
     first_omitted_power = (2 * terms) + 1
     return ATAN_QUARTER_CUT**first_omitted_power / first_omitted_power
+
+
+def test_quarter_pi_fixed_interval_is_certified_by_machin_identity() -> None:
+    """Enclose pi/4 in one exact Q0.192 cell using rational series bounds."""
+    lower, upper = _quarter_pi_machin_interval()
+    scale = 1 << FIXED_INTERVAL_BITS
+    encoded_lower = Fraction(QUARTER_PI_LOWER_FIXED, scale)
+    encoded_upper = Fraction(QUARTER_PI_UPPER_FIXED, scale)
+    assert encoded_lower < lower < upper < encoded_upper
+    assert upper - lower < Fraction(1, 1 << (FIXED_INTERVAL_BITS + 8))
 
 
 def test_atan_series_48_terms_is_minimal_for_128_bit_truncation() -> None:

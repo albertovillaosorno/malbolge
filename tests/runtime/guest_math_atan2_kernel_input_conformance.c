@@ -250,6 +250,70 @@ static int test_kernel_plan(void) {
   return 0;
 }
 
+static int fixed_192_equal(const MalbolgeGuestMathFixed192 *value,
+                           const uint32_t expected[7]) {
+  uint32_t index = UINT32_C(0);
+  while (index < MALBOLGE_GUEST_MATH_FIXED_192_LIMBS) {
+    if (value->limbs[index] != expected[index]) {
+      return 0;
+    }
+    ++index;
+  }
+  return 1;
+}
+
+static int test_pi_intervals(void) {
+  static const uint32_t quarter_lower[7] = {
+      UINT32_C(0x8a67cc74), UINT32_C(0x29024e08), UINT32_C(0x80dc1cd1),
+      UINT32_C(0xc4c6628b), UINT32_C(0x2168c234), UINT32_C(0xc90fdaa2),
+      UINT32_C(0)};
+  static const uint32_t quarter_upper[7] = {
+      UINT32_C(0x8a67cc75), UINT32_C(0x29024e08), UINT32_C(0x80dc1cd1),
+      UINT32_C(0xc4c6628b), UINT32_C(0x2168c234), UINT32_C(0xc90fdaa2),
+      UINT32_C(0)};
+  static const uint32_t pi_lower[7] = {
+      UINT32_C(0x299f31d0), UINT32_C(0xa4093822), UINT32_C(0x03707344),
+      UINT32_C(0x13198a2e), UINT32_C(0x85a308d3), UINT32_C(0x243f6a88),
+      UINT32_C(0x00000003)};
+  static const uint32_t pi_upper[7] = {
+      UINT32_C(0x299f31d4), UINT32_C(0xa4093822), UINT32_C(0x03707344),
+      UINT32_C(0x13198a2e), UINT32_C(0x85a308d3), UINT32_C(0x243f6a88),
+      UINT32_C(0x00000003)};
+  static const uint32_t zero[7] = {UINT32_C(0)};
+  MalbolgeGuestMathFixed192Interval output;
+
+  if (!malbolge_guest_math_quarter_pi_interval(&output) ||
+      !fixed_192_equal(&output.lower, quarter_lower) ||
+      !fixed_192_equal(&output.upper, quarter_upper)) {
+    return 1;
+  }
+  if (!malbolge_guest_math_atan2_base_interval(
+          MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_ZERO, &output) ||
+      !fixed_192_equal(&output.lower, zero) ||
+      !fixed_192_equal(&output.upper, zero)) {
+    return 2;
+  }
+  if (!malbolge_guest_math_atan2_base_interval(
+          MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_FOUR, &output) ||
+      !fixed_192_equal(&output.lower, pi_lower) ||
+      !fixed_192_equal(&output.upper, pi_upper)) {
+    return 3;
+  }
+
+  output.lower.limbs[0] = UINT32_C(0x55);
+  output.upper.limbs[0] = UINT32_C(0xaa);
+  if (malbolge_guest_math_atan2_base_interval(
+          (MalbolgeGuestMathAtan2QuarterPiBase)UINT32_C(5), &output) ||
+      output.lower.limbs[0] != UINT32_C(0x55) ||
+      output.upper.limbs[0] != UINT32_C(0xaa) ||
+      malbolge_guest_math_quarter_pi_interval(NULL) ||
+      malbolge_guest_math_atan2_base_interval(
+          MALBOLGE_GUEST_MATH_ATAN2_QUARTER_BASE_ONE, NULL)) {
+    return 4;
+  }
+  return 0;
+}
+
 static int test_ratio_rounding(void) {
   MalbolgeGuestMathAtan2KernelInput input = {
       UINT64_C(0x0010000000000000), UINT64_C(0x0010000000000000),
@@ -312,6 +376,7 @@ int main(void) {
   const int reconstruction = test_reconstruction();
   const int reduction = test_atan_reduction();
   const int plan = test_kernel_plan();
+  const int pi_intervals = test_pi_intervals();
   const int rounding = test_ratio_rounding();
 
   if (reconstruction != 0) {
@@ -322,6 +387,9 @@ int main(void) {
   }
   if (plan != 0) {
     return 30 + plan;
+  }
+  if (pi_intervals != 0) {
+    return 40 + pi_intervals;
   }
   if (rounding != 0) {
     return 20 + rounding;

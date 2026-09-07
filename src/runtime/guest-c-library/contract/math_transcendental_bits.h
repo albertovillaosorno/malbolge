@@ -9,13 +9,13 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Exact raw-binary64 preclassification and rational atan reduction.
+//   - Exact preclassification, rational atan reduction, and pi intervals.
 // - Must-Not:
 //   - Approximate finite transcendental values or change libc availability.
 // - Allows:
 //   - Inputs: raw binary64 words and one admitted unary operation identity.
-//   - Outputs: exact results, symbolic reconstruction, or exact rational
-//     ratios.
+//   - Outputs: exact results, symbolic reconstruction, ratios, or fixed
+//     intervals.
 //   - Side effects: none.
 // - Split-When:
 //   - Range reduction or approximation kernels gain independent proof policy.
@@ -114,6 +114,17 @@ typedef struct MalbolgeGuestMathAtan2KernelPlan {
   uint32_t negative;
 } MalbolgeGuestMathAtan2KernelPlan;
 
+#define MALBOLGE_GUEST_MATH_FIXED_192_LIMBS UINT32_C(7)
+
+typedef struct MalbolgeGuestMathFixed192 {
+  uint32_t limbs[MALBOLGE_GUEST_MATH_FIXED_192_LIMBS];
+} MalbolgeGuestMathFixed192;
+
+typedef struct MalbolgeGuestMathFixed192Interval {
+  MalbolgeGuestMathFixed192 lower;
+  MalbolgeGuestMathFixed192 upper;
+} MalbolgeGuestMathFixed192Interval;
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
@@ -129,6 +140,11 @@ int malbolge_guest_math_atan_kernel_reduction(
     MalbolgeGuestMathAtanKernelReduction *output);
 int malbolge_guest_math_atan2_kernel_plan(
     uint64_t y_bits, uint64_t x_bits, MalbolgeGuestMathAtan2KernelPlan *output);
+int malbolge_guest_math_quarter_pi_interval(
+    MalbolgeGuestMathFixed192Interval *output);
+int malbolge_guest_math_atan2_base_interval(
+    MalbolgeGuestMathAtan2QuarterPiBase base,
+    MalbolgeGuestMathFixed192Interval *output);
 int malbolge_guest_math_ratio_nearest_binary64(
     const MalbolgeGuestMathAtan2KernelInput *input, uint64_t *output_bits);
 

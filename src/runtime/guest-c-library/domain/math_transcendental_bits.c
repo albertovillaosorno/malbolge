@@ -55,6 +55,7 @@
 #define BINARY64_RATIO_MIN_EXPONENT_DELTA INT32_C(-2097)
 #define ATAN_QUARTER_REDUCTION_NUMERATOR UINT64_C(169)
 #define ATAN_QUARTER_REDUCTION_DENOMINATOR UINT64_C(408)
+#define FIXED_192_LIMB_COUNT UINT32_C(7)
 
 static int is_nan(uint64_t bits) {
   return (bits & BINARY64_EXPONENT) == BINARY64_EXPONENT &&
@@ -468,6 +469,79 @@ int malbolge_guest_math_atan2_kernel_plan(
   output->quarter_pi_base = (MalbolgeGuestMathAtan2QuarterPiBase)quarters;
   output->ratio_operation = operation;
   output->negative = reconstruction.negative;
+  return 1;
+}
+
+static const uint32_t QUARTER_PI_LOWER_192[7] = {
+    UINT32_C(0x8a67cc74), UINT32_C(0x29024e08), UINT32_C(0x80dc1cd1),
+    UINT32_C(0xc4c6628b), UINT32_C(0x2168c234), UINT32_C(0xc90fdaa2),
+    UINT32_C(0)};
+static const uint32_t QUARTER_PI_UPPER_192[7] = {
+    UINT32_C(0x8a67cc75), UINT32_C(0x29024e08), UINT32_C(0x80dc1cd1),
+    UINT32_C(0xc4c6628b), UINT32_C(0x2168c234), UINT32_C(0xc90fdaa2),
+    UINT32_C(0)};
+
+static void copy_fixed_192(MalbolgeGuestMathFixed192 *output,
+                           const uint32_t source[7]) {
+  uint32_t index = UINT32_C(0);
+  while (index < FIXED_192_LIMB_COUNT) {
+    output->limbs[index] = source[index];
+    ++index;
+  }
+}
+
+static void zero_fixed_192(MalbolgeGuestMathFixed192 *value) {
+  uint32_t index = UINT32_C(0);
+  while (index < FIXED_192_LIMB_COUNT) {
+    value->limbs[index] = UINT32_C(0);
+    ++index;
+  }
+}
+
+static void add_fixed_192(MalbolgeGuestMathFixed192 *value,
+                          const MalbolgeGuestMathFixed192 *addend) {
+  uint32_t index = UINT32_C(0);
+  uint32_t carry = UINT32_C(0);
+
+  while (index < FIXED_192_LIMB_COUNT) {
+    const uint64_t sum = (uint64_t)value->limbs[index] +
+                         (uint64_t)addend->limbs[index] + (uint64_t)carry;
+    value->limbs[index] = (uint32_t)sum;
+    carry = (uint32_t)(sum >> UINT32_C(32));
+    ++index;
+  }
+}
+
+int malbolge_guest_math_quarter_pi_interval(
+    MalbolgeGuestMathFixed192Interval *output) {
+  if (output == NULL) {
+    return 0;
+  }
+  copy_fixed_192(&output->lower, QUARTER_PI_LOWER_192);
+  copy_fixed_192(&output->upper, QUARTER_PI_UPPER_192);
+  return 1;
+}
+
+int malbolge_guest_math_atan2_base_interval(
+    MalbolgeGuestMathAtan2QuarterPiBase base,
+    MalbolgeGuestMathFixed192Interval *output) {
+  MalbolgeGuestMathFixed192Interval quarter;
+  MalbolgeGuestMathFixed192Interval staged;
+  uint32_t remaining = (uint32_t)base;
+
+  if (output == NULL || remaining > UINT32_C(4) ||
+      !malbolge_guest_math_quarter_pi_interval(&quarter)) {
+    return 0;
+  }
+  zero_fixed_192(&staged.lower);
+  zero_fixed_192(&staged.upper);
+  while (remaining != UINT32_C(0)) {
+    add_fixed_192(&staged.lower, &quarter.lower);
+    add_fixed_192(&staged.upper, &quarter.upper);
+    --remaining;
+  }
+  copy_fixed_192(&output->lower, staged.lower.limbs);
+  copy_fixed_192(&output->upper, staged.upper.limbs);
   return 1;
 }
 
