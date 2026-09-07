@@ -365,9 +365,16 @@ residual is exact and below `169/408`, and the final sign is explicit. For
 The same deterministic 519-pair differential independently composes the
 quarter-pi coefficient and residual operation. Fixed C vectors lock all four
 quadrants, the direct `r=1/4` branch, and complete output nonmutation for
-rejected
-special inputs. Clang path analysis is clean after the alignment shift is
-expressed only as the literal-safe cases zero, one, or two.
+rejected special inputs. Clang path analysis is clean after the alignment shift
+is expressed only as the literal-safe cases zero, one, or two.
+
+For a prospective alternating-series kernel on the bounded residual, exact
+rational analysis now fixes one useful truncation budget. With 48 included
+terms, the first omitted term has power 97 and bounds truncation strictly below
+`2^-128` over the full `169/408` envelope; 47 terms do not meet that uniform
+bound. This is only a truncation result: arithmetic-evaluation error, symbolic
+pi reconstruction error, and hard-to-round detection still require independent
+interval evidence before any public result can be admitted.
 
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full

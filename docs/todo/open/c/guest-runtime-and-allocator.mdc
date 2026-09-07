@@ -268,6 +268,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   direct and transformed branches, and rejected-input nonmutation. Path analysis
   is clean with alignment shifts constrained syntactically to zero, one, or two.
 
+  Exact rational analysis of a prospective alternating-series kernel proves 48
+  included terms bound truncation below `2^-128` across the full residual
+  envelope, while 47 terms do not. This does not close the kernel: evaluation
+  error, pi reconstruction intervals, and hard-to-round fallback remain separate
+  proof obligations before final binary64 publication.
+
   Correctly-rounded numerical kernels and final rounding remain the lane-8
   blocker.
 - Resolved integer/scheduling boundary: version one introduces no separate

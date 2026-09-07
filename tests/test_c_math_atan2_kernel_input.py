@@ -78,6 +78,9 @@ ATAN_QUARTER_TRANSFORMED_CUT = Fraction(239, 577)
 ATAN_QUARTER_MAX_SHIFT = 2
 ATAN_QUARTER_LOWER_PRODUCT = 239 * 408
 ATAN_QUARTER_UPPER_PRODUCT = 169 * 577
+ATAN_SERIES_TARGET_BITS = 128
+ATAN_SERIES_TERMS = 48
+ATAN_SERIES_PREVIOUS_TERMS = ATAN_SERIES_TERMS - 1
 ATAN_IDENTITY_MAX_BITS = 0x3E4C000000000000
 ATAN_IDENTITY_MAX = Fraction(7, 1 << 29)
 ONE_BITS = 0x3FF0000000000000
@@ -637,6 +640,20 @@ def test_atan_quarter_cut_is_strictly_self_reducing() -> None:
     ) == (transformed.numerator, transformed.denominator)
     assert ATAN_QUARTER_TRANSFORMED_CUT < ATAN_QUARTER_CUT
     assert ATAN_QUARTER_UPPER_PRODUCT == ATAN_QUARTER_LOWER_PRODUCT + 1
+
+
+def _atan_series_remainder_bound(terms: int) -> Fraction:
+    first_omitted_power = (2 * terms) + 1
+    return ATAN_QUARTER_CUT**first_omitted_power / first_omitted_power
+
+
+def test_atan_series_48_terms_is_minimal_for_128_bit_truncation() -> None:
+    """Bound truncation only; evaluation and hard rounding remain unresolved."""
+    target = Fraction(1, 1 << ATAN_SERIES_TARGET_BITS)
+    previous = _atan_series_remainder_bound(ATAN_SERIES_PREVIOUS_TERMS)
+    admitted = _atan_series_remainder_bound(ATAN_SERIES_TERMS)
+    assert previous > target
+    assert admitted < target
 
 
 def test_atan2_kernel_plan_composes_quadrant_and_atan_reduction(
