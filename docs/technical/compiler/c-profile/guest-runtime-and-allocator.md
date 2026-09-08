@@ -463,6 +463,11 @@ per exponent. The runtime therefore admits `e<=-54` immediately instead of
 executing 52 fractional long-division steps.
 
 For `-53<=e<=-28`, denominator divisibility can prove the same result early.
+At `e=-28`, the scaled remainder rule has exact threshold `2/3` of the rounding
+cell. Two fixed non-dyadic vectors straddle that boundary within `1/40000` ulp;
+Q1152 confirms both final result bits while the lower vector remains fail closed
+and the upper vector resolves early.
+
 If `D` has at least `2e+108` trailing zero bits, then the nonzero midpoint gap
 is at least `2^(2e+108)/(2D)` ulp, which exceeds the cubic error using
 `D<2^53`.

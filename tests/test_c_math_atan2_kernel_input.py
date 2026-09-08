@@ -53,6 +53,7 @@ EXPONENT_MASK = 0x7FF
 MIN_NORMAL_EXPONENT = -1022
 ATAN_MARGIN_MAX_EXPONENT = -27
 ATAN_TOP_MARGIN_THRESHOLD = Fraction(727, 768)
+ATAN_SCALED_MARGIN_THRESHOLD = Fraction(2, 3)
 ALL_BITS = (1 << 64) - 1
 VECTOR_COUNT = 512
 LCG_MULTIPLIER = 6364136223846793005
@@ -107,6 +108,10 @@ THREE_BITS = 0x4008000000000000
 ATAN_TOP_MARGIN_PAIRS = (
     (0x3E4DA8FC2D9C711E, 0x3FFB9F8AF4448B26),
     (0x3E4DA8FC2D97A47C, 0x3FFB9F8AF4448B26),
+)
+ATAN_SCALED_MARGIN_PAIRS = (
+    (0x3E39B3D6292B29EF, 0x3FF8805F49619E6E),
+    (0x3E34AB4E736E3956, 0x3FF3C38BCBCE8B80),
 )
 EDGE_PAIRS = (
     (0x0000000000000001, 0x3FF0000000000000),
@@ -936,15 +941,15 @@ def _small_ratio_row(y_bits: int, x_bits: int) -> str:
     )
 
 
-def _top_margin_fraction(ratio: Fraction) -> Fraction:
+def _margin_fraction(ratio: Fraction, expected_exponent: int) -> Fraction:
     exponent = _floor_log2(ratio)
-    assert exponent == ATAN_MARGIN_MAX_EXPONENT
+    assert exponent == expected_exponent
     ulp = Fraction(1, 1 << (52 - exponent))
     scaled = ratio / ulp
     return scaled - (scaled.numerator // scaled.denominator)
 
 
-def _top_margin_row(y_bits: int, x_bits: int) -> str:
+def _margin_row(y_bits: int, x_bits: int) -> str:
     status, special_bits = _expected_small_ratio_special(y_bits, x_bits)
     lower, upper, negative = _atan2_integer_oracle_interval(y_bits, x_bits)
     scale = 1 << ATAN2_INTEGER_ORACLE_BITS
@@ -961,8 +966,8 @@ def _top_margin_row(y_bits: int, x_bits: int) -> str:
     )
 
 
-def _top_margin_harness_source() -> str:
-    rows = ",\n".join(starmap(_top_margin_row, ATAN_TOP_MARGIN_PAIRS))
+def _margin_harness_source(pairs: tuple[tuple[int, int], ...]) -> str:
+    rows = ",\n".join(starmap(_margin_row, pairs))
     return f"""#include \"math_transcendental_bits.h\"
 #include <stdint.h>
 typedef struct Vector {{
@@ -1472,8 +1477,8 @@ def test_atan2_top_binade_margin_threshold_matches_q1152_oracle(
     above_ratio = _raw_fraction(ATAN_TOP_MARGIN_PAIRS[1][0]) / _raw_fraction(
         ATAN_TOP_MARGIN_PAIRS[1][1]
     )
-    below = _top_margin_fraction(below_ratio)
-    above = _top_margin_fraction(above_ratio)
+    below = _margin_fraction(below_ratio, ATAN_MARGIN_MAX_EXPONENT)
+    above = _margin_fraction(above_ratio, ATAN_MARGIN_MAX_EXPONENT)
     assert 0 < ATAN_TOP_MARGIN_THRESHOLD - below < Fraction(1, 100_000)
     assert 0 < above - ATAN_TOP_MARGIN_THRESHOLD < Fraction(1, 100_000)
     assert not _small_ratio_rounding_margin_safe(below_ratio)
@@ -1481,7 +1486,54 @@ def test_atan2_top_binade_margin_threshold_matches_q1152_oracle(
 
     harness = tmp_path / "atan2-top-margin.c"
     executable = tmp_path / "atan2-top-margin"
-    _ = harness.write_text(_top_margin_harness_source(), encoding="utf-8")
+    _ = harness.write_text(
+        _margin_harness_source(ATAN_TOP_MARGIN_PAIRS), encoding="utf-8"
+    )
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan2_scaled_margin_threshold_matches_q1152_oracle(
+    tmp_path: Path,
+) -> None:
+    """Straddle the e=-28 dynamic-margin threshold with certified vectors."""
+    below_ratio = _raw_fraction(ATAN_SCALED_MARGIN_PAIRS[0][0]) / _raw_fraction(
+        ATAN_SCALED_MARGIN_PAIRS[0][1]
+    )
+    above_ratio = _raw_fraction(ATAN_SCALED_MARGIN_PAIRS[1][0]) / _raw_fraction(
+        ATAN_SCALED_MARGIN_PAIRS[1][1]
+    )
+    below = _margin_fraction(below_ratio, ATAN_MARGIN_MAX_EXPONENT - 1)
+    above = _margin_fraction(above_ratio, ATAN_MARGIN_MAX_EXPONENT - 1)
+    assert 0 < ATAN_SCALED_MARGIN_THRESHOLD - below < Fraction(1, 40_000)
+    assert 0 < above - ATAN_SCALED_MARGIN_THRESHOLD < Fraction(1, 40_000)
+    assert not _small_ratio_rounding_margin_safe(below_ratio)
+    assert _small_ratio_rounding_margin_safe(above_ratio)
+
+    harness = tmp_path / "atan2-scaled-margin.c"
+    executable = tmp_path / "atan2-scaled-margin"
+    _ = harness.write_text(
+        _margin_harness_source(ATAN_SCALED_MARGIN_PAIRS), encoding="utf-8"
+    )
     compiled = _run(
         [
             str(CLANG),
