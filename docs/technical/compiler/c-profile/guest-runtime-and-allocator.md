@@ -448,10 +448,12 @@ least `2^-192`, this path needs only normal binary64 encoding; intervals that
 include zero and one fixed-point unit naturally disagree and stay unresolved.
 
 Against the same exact 64-pair Machin-plus-Fraction authority, all 64 true
-principal-angle intervals round uniquely, while the current Q32.192 enclosure
-certifies 48. Those 48 agree bit-for-bit and the other 16 reject without
-mutation. The gap is therefore an explicit precision/fallback obligation rather
-than evidence that public atan2 is complete.
+principal-angle intervals round uniquely. The Q32.192 enclosure by itself
+certifies 48; the other 16 are tiny right-half-plane ratios already resolved by
+the exact/small-ratio preclassifier. The combined internal handoff now checks
+that authority first and certifies all 64 bit-for-bit. Q32.192 ambiguity still
+fails closed whenever no prior exact proof applies, so this composition does not
+remove the wider-precision obligation for the full binary64 domain.
 
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full

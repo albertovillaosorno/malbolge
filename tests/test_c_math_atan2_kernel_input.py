@@ -698,7 +698,7 @@ int main(void) {{
     }}
     ++i;
   }}
-  return resolved == UINT32_C(48) ? 0 : 82;
+  return resolved == UINT32_C(64) ? 0 : 82;
 }}
 """
 
@@ -1135,7 +1135,7 @@ def test_atan2_q192_interval_encloses_symbolic_plan(
 def test_atan2_unique_rounding_is_sound_and_conservative(
     tmp_path: Path,
 ) -> None:
-    """Resolve 48 of 64 Q192 intervals without authority disagreement."""
+    """Resolve all 64 cases by composing exact and Q192 authorities."""
     harness = tmp_path / "atan2-unique-rounding.c"
     executable = tmp_path / "atan2-unique-rounding"
     _ = harness.write_text(_unique_rounding_harness_source(), encoding="utf-8")

@@ -61,7 +61,12 @@ adds the proved `2^-128` truncation bound; very small inputs use the direct
 The final finite-nonzero atan2 handoff composes that residual interval with the
 certified quarter-pi base into one Q32.192 magnitude plus sign. A nearest-even
 endpoint gate publishes an internal binary64 result only when both certified
-bounds round to identical bits; ambiguous intervals remain fail closed for a
-wider fallback. A separate integer long-division helper rounds the original
-rational to nearest-even binary64 when a later kernel needs a bounded floating
-representation.
+bounds round to identical bits. That handoff now consults the proved
+exact/small-ratio preclassifier first, so values already decided by raw binary64
+identities do not fall through merely because Q32.192 cannot represent their
+tiny magnitude.
+
+The 64-pair authority is therefore 64/64 after composing both proof paths, while
+Q32.192 alone still certifies 48/64. A separate integer long-division helper
+rounds the original rational to nearest-even binary64 when a later kernel needs
+a bounded floating representation.

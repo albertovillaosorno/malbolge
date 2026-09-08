@@ -1032,9 +1032,18 @@ int malbolge_guest_math_fixed192_unique_binary64(
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits) {
   MalbolgeGuestMathAtan2Interval interval;
+  MalbolgeGuestMathSpecialResult special;
   uint64_t magnitude_bits = UINT64_C(0);
-  if (output_bits == NULL ||
-      !malbolge_guest_math_atan2_interval(y_bits, x_bits, &interval) ||
+
+  if (output_bits == NULL) {
+    return 0;
+  }
+  special = malbolge_guest_math_atan2_special(y_bits, x_bits);
+  if (special.status == MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED) {
+    *output_bits = special.bits;
+    return 1;
+  }
+  if (!malbolge_guest_math_atan2_interval(y_bits, x_bits, &interval) ||
       !malbolge_guest_math_fixed192_unique_binary64(&interval.magnitude,
                                                     &magnitude_bits)) {
     return 0;

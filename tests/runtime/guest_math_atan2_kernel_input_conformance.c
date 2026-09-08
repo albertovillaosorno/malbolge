@@ -552,9 +552,17 @@ static int test_unique_rounding(void) {
     return 6;
   }
   output = UINT64_C(0x1234);
-  if (malbolge_guest_math_atan2_unique_binary64(
+  if (!malbolge_guest_math_atan2_unique_binary64(
           UINT64_C(0), UINT64_C(0x3ff0000000000000), &output) ||
-      output != UINT64_C(0x1234) ||
+      output != UINT64_C(0) ||
+      !malbolge_guest_math_atan2_unique_binary64(
+          UINT64_C(0x7ff0000000000000), UINT64_C(0x3ff0000000000000),
+          &output) ||
+      output != UINT64_C(0x3ff921fb54442d18) ||
+      !malbolge_guest_math_atan2_unique_binary64(
+          UINT64_C(0x7ff8000000001234), UINT64_C(0x3ff0000000000000),
+          &output) ||
+      output != UINT64_C(0x7ff8000000000000) ||
       malbolge_guest_math_atan2_unique_binary64(
           UINT64_C(0x3ff0000000000000), UINT64_C(0x3ff0000000000000),
           NULL)) {
