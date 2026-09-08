@@ -130,6 +130,22 @@ typedef struct MalbolgeGuestMathAtan2Interval {
   uint32_t negative;
 } MalbolgeGuestMathAtan2Interval;
 
+#define MALBOLGE_GUEST_MATH_FIXED_224_LIMBS UINT32_C(8)
+
+typedef struct MalbolgeGuestMathFixed224 {
+  uint32_t limbs[MALBOLGE_GUEST_MATH_FIXED_224_LIMBS];
+} MalbolgeGuestMathFixed224;
+
+typedef struct MalbolgeGuestMathFixed224Interval {
+  MalbolgeGuestMathFixed224 lower;
+  MalbolgeGuestMathFixed224 upper;
+} MalbolgeGuestMathFixed224Interval;
+
+typedef struct MalbolgeGuestMathAtan2Interval224 {
+  MalbolgeGuestMathFixed224Interval magnitude;
+  uint32_t negative;
+} MalbolgeGuestMathAtan2Interval224;
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
@@ -158,8 +174,13 @@ int malbolge_guest_math_atan_residual_interval(
     MalbolgeGuestMathFixed192Interval *output);
 int malbolge_guest_math_atan2_interval(
     uint64_t y_bits, uint64_t x_bits, MalbolgeGuestMathAtan2Interval *output);
+int malbolge_guest_math_atan2_interval224(
+    uint64_t y_bits, uint64_t x_bits,
+    MalbolgeGuestMathAtan2Interval224 *output);
 int malbolge_guest_math_fixed192_unique_binary64(
     const MalbolgeGuestMathFixed192Interval *input, uint64_t *output_bits);
+int malbolge_guest_math_fixed224_unique_binary64(
+    const MalbolgeGuestMathFixed224Interval *input, uint64_t *output_bits);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(

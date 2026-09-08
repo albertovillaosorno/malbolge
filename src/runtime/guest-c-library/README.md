@@ -80,6 +80,14 @@ arithmetic, certifies both midpoint sides: the transformed set is entirely
 within `4e-20` ulp and the direct set within `2e-20` ulp, with each closest case
 below `2e-21` ulp.
 
+A Q32.224 integer fallback now runs only when Q32.192 cannot publish a unique
+binary64 result. It reuses the width-parametric limb core, evaluates 85 atan
+terms, and uses a one-cell quarter-pi enclosure derived from Machin 49/14.
+Independent `Fraction` evidence encloses and rounds all 16 retained positive
+continued-fraction hard cases. If Q32.224 is still ambiguous, the handoff
+remains
+fail closed; this finite second precision does not prove the full domain.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch
