@@ -55,9 +55,9 @@ certifies `pi/4` inside one Q32.192 fixed-point cell.
 
 The C boundary derives all five symbolic bases using 32-bit limb addition only.
 Reduced atan residuals enter the same Q32.192 space through directed binary long
-division, yielding exact or adjacent floor/ceiling endpoints. A 48-term
+division, yielding exact or adjacent floor/ceiling endpoints. A 60-term
 alternating-series evaluator then propagates directed fixed-point intervals and
-adds the proved `2^-128` truncation bound; very small inputs use the direct
+adds the proved `2^-160` truncation bound; very small inputs use the direct
 `x-x^3/3 < atan(x) < x` enclosure instead.
 
 The final finite-nonzero atan2 handoff composes that residual interval with the

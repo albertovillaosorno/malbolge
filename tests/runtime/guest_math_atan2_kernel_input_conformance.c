@@ -385,11 +385,11 @@ static void fill_fixed_192(MalbolgeGuestMathFixed192 *value,
 
 static int test_atan_residual_interval(void) {
   static const uint32_t quarter_lower[7] = {
-      UINT32_C(0xe22ce0b0), UINT32_C(0x6a9fea40), UINT32_C(0x7de885f9),
+      UINT32_C(0xe22ce0aa), UINT32_C(0x6a9fea40), UINT32_C(0x7de885f9),
       UINT32_C(0x5b71e7bd), UINT32_C(0x5901bac5), UINT32_C(0x3eb6ebf2),
       UINT32_C(0)};
   static const uint32_t quarter_upper[7] = {
-      UINT32_C(0xe22ce107), UINT32_C(0x6a9fea40), UINT32_C(0x7de885fa),
+      UINT32_C(0xe22ce10d), UINT32_C(0x6a9fea41), UINT32_C(0x7de885f9),
       UINT32_C(0x5b71e7bd), UINT32_C(0x5901bac5), UINT32_C(0x3eb6ebf2),
       UINT32_C(0)};
   static const uint32_t tiny_lower[7] = {UINT32_C(3)};

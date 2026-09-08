@@ -373,9 +373,9 @@ rejected special inputs. Clang path analysis is clean after the alignment shift
 is expressed only as the literal-safe cases zero, one, or two.
 
 For a prospective alternating-series kernel on the bounded residual, exact
-rational analysis now fixes one useful truncation budget. With 48 included
-terms, the first omitted term has power 97 and bounds truncation strictly below
-`2^-128` over the full `169/408` envelope; 47 terms do not meet that uniform
+rational analysis now fixes one useful truncation budget. With 60 included
+terms, the first omitted term has power 121 and bounds truncation strictly below
+`2^-160` over the full `169/408` envelope; 59 terms do not meet that uniform
 bound. This is only a truncation result: arithmetic-evaluation error, symbolic
 pi reconstruction error, and hard-to-round detection still require independent
 interval evidence before any public result can be admitted.
@@ -406,7 +406,7 @@ bounded exponent-zero transformed fraction. A 519-pair `Fraction` differential
 checks exact floor/ceiling integers for the full atan2 kernel-plan corpus.
 Invalid geometry and null outputs reject without publication.
 
-The first numerical atan kernel now evaluates 48 alternating-series terms in
+The first numerical atan kernel now evaluates 60 alternating-series terms in
 that Q32.192 domain with directed interval arithmetic. Fixed-point products use
 7-by-7 32-bit limbs and floor the discarded 192 fractional bits; upper products
 round upward when any discarded bit is nonzero. Division by the odd
@@ -416,8 +416,8 @@ usual monotone bounds.
 
 The series accepts only residual intervals no larger than the Q32.192 ceiling
 of `169/408`. Exact rational evidence proves the first omitted term at even that
-slightly larger fixed-point endpoint is below `2^-128`; the evaluator therefore
-widens its upper result by that amount after 48 terms. A 64-pair stratified
+slightly larger fixed-point endpoint is below `2^-160`; the evaluator therefore
+widens its upper result by that amount after 60 terms. A 64-pair stratified
 `Fraction` corpus checks the C lower endpoint is below the exact rational
 partial
 and the upper endpoint is above the partial plus its next term. The earlier
@@ -452,7 +452,7 @@ signed fixed-point overflow is introduced. Publication is atomic on invalid or
 special inputs.
 
 A second 64-pair stratified oracle constructs the expected principal-angle
-interval from the exact Machin bounds and the exact 48-term atan rational
+interval from the exact Machin bounds and the exact 60-term atan rational
 bounds. The composed C magnitude encloses that authority for all sampled
 quadrants and exponent geometries, while fixed C vectors pin all four equal-
 magnitude quadrants and rejected-input nonmutation.

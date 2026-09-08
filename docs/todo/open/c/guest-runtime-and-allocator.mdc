@@ -274,9 +274,9 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   direct and transformed branches, and rejected-input nonmutation. Path analysis
   is clean with alignment shifts constrained syntactically to zero, one, or two.
 
-  Exact rational analysis of a prospective alternating-series kernel proves 48
-  included terms bound truncation below `2^-128` across the full residual
-  envelope, while 47 terms do not. This does not close the kernel: evaluation
+  Exact rational analysis of the alternating-series kernel proves 60 included
+  terms bound truncation below `2^-160` across the full residual envelope,
+  while 59 terms do not. This does not close the kernel: evaluation
   error and hard-to-round fallback remain separate proof obligations before
   final binary64 publication.
 
@@ -293,10 +293,10 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   fixed unit use `[0, 2^-192]`. A 519-pair `Fraction` differential locks the
   exact endpoints without `/`, `%`, FPU arithmetic, or `__int128`.
 
-  A 48-term atan evaluator now propagates directed Q32.192 intervals through
+  A 60-term atan evaluator now propagates directed Q32.192 intervals through
   limb multiplication, bitwise division by odd coefficients, and alternating
   add/subtract steps. The truncation proof is checked at the Q32.192 ceiling of
-  the `169/408` cutoff and remains below `2^-128`, which is added to the upper
+  the `169/408` cutoff and remains below `2^-160`, which is added to the upper
   endpoint. A 64-pair stratified exact-rational oracle encloses the partial sum
   and next term independently. Inputs below `2^-64` use the direct bound
   `x-x^3/3 < atan(x) < x` to avoid artificial dependency widening.

@@ -81,8 +81,8 @@ ATAN_QUARTER_TRANSFORMED_CUT = Fraction(239, 577)
 ATAN_QUARTER_MAX_SHIFT = 2
 ATAN_QUARTER_LOWER_PRODUCT = 239 * 408
 ATAN_QUARTER_UPPER_PRODUCT = 169 * 577
-ATAN_SERIES_TARGET_BITS = 128
-ATAN_SERIES_TERMS = 48
+ATAN_SERIES_TARGET_BITS = 160
+ATAN_SERIES_TERMS = 60
 ATAN_SERIES_PREVIOUS_TERMS = ATAN_SERIES_TERMS - 1
 ATAN_INTERVAL_EVALUATION_BITS = 160
 ATAN_CUT_UPPER_FIXED = int(
@@ -1002,7 +1002,7 @@ def test_quarter_pi_fixed_interval_is_certified_by_machin_identity() -> None:
     assert upper - lower < Fraction(1, 1 << (FIXED_INTERVAL_BITS + 8))
 
 
-def test_atan_series_48_terms_is_minimal_for_128_bit_truncation() -> None:
+def test_atan_series_60_terms_is_minimal_for_160_bit_truncation() -> None:
     """Bound truncation only; evaluation and hard rounding remain unresolved."""
     target = Fraction(1, 1 << ATAN_SERIES_TARGET_BITS)
     previous = _atan_series_remainder_bound(ATAN_SERIES_PREVIOUS_TERMS)
@@ -1078,7 +1078,7 @@ def test_atan_residual_q192_interval_matches_fraction_floor_ceil(
 def test_atan_q192_interval_encloses_exact_rational_series(
     tmp_path: Path,
 ) -> None:
-    """Enclose exact 48-term rational intervals over a stratified corpus."""
+    """Enclose exact 60-term rational intervals over a stratified corpus."""
     harness = tmp_path / "atan-q192-interval.c"
     executable = tmp_path / "atan-q192-interval"
     _ = harness.write_text(_atan_interval_harness_source(), encoding="utf-8")

@@ -59,7 +59,7 @@
 #define FIXED_192_FRACTION_BITS INT32_C(192)
 #define EXACT_RATIO_COMPONENT_LIMIT UINT64_C(0x0100000000000000)
 #define FIXED_PRODUCT_LIMBS UINT32_C(14)
-#define ATAN_SERIES_TERMS UINT32_C(48)
+#define ATAN_SERIES_TERMS UINT32_C(60)
 
 static int is_nan(uint64_t bits) {
   return (bits & BINARY64_EXPONENT) == BINARY64_EXPONENT &&
@@ -910,7 +910,7 @@ int malbolge_guest_math_atan_residual_interval(
     ++index;
   }
   zero_fixed_192(&truncation);
-  truncation.limbs[2] = UINT32_C(1);
+  truncation.limbs[1] = UINT32_C(1);
   add_fixed_192(&sum.upper, &truncation);
   copy_fixed_192(&output->lower, sum.lower.limbs);
   copy_fixed_192(&output->upper, sum.upper.limbs);
