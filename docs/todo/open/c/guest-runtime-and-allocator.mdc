@@ -348,9 +348,10 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   this entire range.
 
   At `e=-28`, the dynamic remainder rule has exact threshold `2/3` of the
-  rounding cell. Two fixed non-dyadic vectors straddle it within `1/40000` ulp;
-  Q1152 confirms both final bits while the lower vector stays kernel-required
-  and the upper vector resolves early.
+  rounding cell. Two fixed non-dyadic vectors straddle it within `1/40000` ulp.
+  At `e=-29`, a second pair straddles the next exact threshold `13/24` within
+  `1/30000` ulp. Q1152 confirms all four final bits while each lower vector
+  stays kernel-required and each upper vector resolves early.
 
   For `-53<=e<=-28`, denominators with at least `2e+108` trailing zero bits also
   have enough midpoint separation to skip the quotient loop. The proof uses

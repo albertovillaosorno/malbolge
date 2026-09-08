@@ -464,9 +464,11 @@ executing 52 fractional long-division steps.
 
 For `-53<=e<=-28`, denominator divisibility can prove the same result early.
 At `e=-28`, the scaled remainder rule has exact threshold `2/3` of the rounding
-cell. Two fixed non-dyadic vectors straddle that boundary within `1/40000` ulp;
-Q1152 confirms both final result bits while the lower vector remains fail closed
-and the upper vector resolves early.
+cell. Two fixed non-dyadic vectors straddle that boundary within `1/40000` ulp.
+
+At `e=-29`, the next scaled threshold is `13/24`; a second pair straddles it
+within `1/30000` ulp. Q1152 confirms all four final result bits while each lower
+vector remains fail closed and each upper vector resolves early.
 
 If `D` has at least `2e+108` trailing zero bits, then the nonzero midpoint gap
 is at least `2^(2e+108)/(2D)` ulp, which exceeds the cubic error using

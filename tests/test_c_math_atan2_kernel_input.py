@@ -54,6 +54,7 @@ MIN_NORMAL_EXPONENT = -1022
 ATAN_MARGIN_MAX_EXPONENT = -27
 ATAN_TOP_MARGIN_THRESHOLD = Fraction(727, 768)
 ATAN_SCALED_MARGIN_THRESHOLD = Fraction(2, 3)
+ATAN_NEXT_SCALED_MARGIN_THRESHOLD = Fraction(13, 24)
 ALL_BITS = (1 << 64) - 1
 VECTOR_COUNT = 512
 LCG_MULTIPLIER = 6364136223846793005
@@ -112,6 +113,10 @@ ATAN_TOP_MARGIN_PAIRS = (
 ATAN_SCALED_MARGIN_PAIRS = (
     (0x3E39B3D6292B29EF, 0x3FF8805F49619E6E),
     (0x3E34AB4E736E3956, 0x3FF3C38BCBCE8B80),
+)
+ATAN_NEXT_SCALED_MARGIN_PAIRS = (
+    (0x3E2E85C8EE731BCC, 0x3FFA1886CDC41A91),
+    (0x3E259BEEF54963FE, 0x3FF422D3040472CB),
 )
 EDGE_PAIRS = (
     (0x0000000000000001, 0x3FF0000000000000),
@@ -1512,28 +1517,53 @@ def test_atan2_top_binade_margin_threshold_matches_q1152_oracle(
     assert executed.returncode == 0, executed.stdout + executed.stderr
 
 
-def test_atan2_scaled_margin_threshold_matches_q1152_oracle(
-    tmp_path: Path,
+def _assert_scaled_margin_case(
+    pairs: tuple[tuple[int, int], ...],
+    *,
+    exponent: int,
+    threshold: Fraction,
+    tolerance: Fraction,
 ) -> None:
-    """Straddle the e=-28 dynamic-margin threshold with certified vectors."""
-    below_ratio = _raw_fraction(ATAN_SCALED_MARGIN_PAIRS[0][0]) / _raw_fraction(
-        ATAN_SCALED_MARGIN_PAIRS[0][1]
-    )
-    above_ratio = _raw_fraction(ATAN_SCALED_MARGIN_PAIRS[1][0]) / _raw_fraction(
-        ATAN_SCALED_MARGIN_PAIRS[1][1]
-    )
-    below = _margin_fraction(below_ratio, ATAN_MARGIN_MAX_EXPONENT - 1)
-    above = _margin_fraction(above_ratio, ATAN_MARGIN_MAX_EXPONENT - 1)
-    assert 0 < ATAN_SCALED_MARGIN_THRESHOLD - below < Fraction(1, 40_000)
-    assert 0 < above - ATAN_SCALED_MARGIN_THRESHOLD < Fraction(1, 40_000)
+    below_ratio = _raw_fraction(pairs[0][0]) / _raw_fraction(pairs[0][1])
+    above_ratio = _raw_fraction(pairs[1][0]) / _raw_fraction(pairs[1][1])
+    below = _margin_fraction(below_ratio, exponent)
+    above = _margin_fraction(above_ratio, exponent)
+    assert 0 < threshold - below < tolerance
+    assert 0 < above - threshold < tolerance
     assert not _small_ratio_rounding_margin_safe(below_ratio)
     assert _small_ratio_rounding_margin_safe(above_ratio)
 
+
+def test_atan2_scaled_margin_threshold_matches_q1152_oracle(
+    tmp_path: Path,
+) -> None:
+    """Straddle the e=-28 and e=-29 dynamic-margin thresholds."""
+    cases = (
+        (
+            ATAN_SCALED_MARGIN_PAIRS,
+            ATAN_MARGIN_MAX_EXPONENT - 1,
+            ATAN_SCALED_MARGIN_THRESHOLD,
+            Fraction(1, 40_000),
+        ),
+        (
+            ATAN_NEXT_SCALED_MARGIN_PAIRS,
+            ATAN_MARGIN_MAX_EXPONENT - 2,
+            ATAN_NEXT_SCALED_MARGIN_THRESHOLD,
+            Fraction(1, 30_000),
+        ),
+    )
+    for pairs, exponent, threshold, tolerance in cases:
+        _assert_scaled_margin_case(
+            pairs,
+            exponent=exponent,
+            threshold=threshold,
+            tolerance=tolerance,
+        )
+
     harness = tmp_path / "atan2-scaled-margin.c"
     executable = tmp_path / "atan2-scaled-margin"
-    _ = harness.write_text(
-        _margin_harness_source(ATAN_SCALED_MARGIN_PAIRS), encoding="utf-8"
-    )
+    pairs = ATAN_SCALED_MARGIN_PAIRS + ATAN_NEXT_SCALED_MARGIN_PAIRS
+    _ = harness.write_text(_margin_harness_source(pairs), encoding="utf-8")
     compiled = _run(
         [
             str(CLANG),
