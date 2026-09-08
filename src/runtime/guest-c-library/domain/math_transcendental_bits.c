@@ -48,6 +48,7 @@
 #define BINARY64_PI_OVER_TWO UINT64_C(0x3ff921fb54442d18)
 #define BINARY64_PI UINT64_C(0x400921fb54442d18)
 #define BINARY64_THREE_PI_OVER_FOUR UINT64_C(0x4002d97c7f3321d2)
+#define BINARY64_FOUR UINT64_C(0x4010000000000000)
 #define BINARY64_HIDDEN_BIT UINT64_C(0x0010000000000000)
 #define BINARY64_EXPONENT_SHIFT UINT32_C(52)
 #define BINARY64_EXPONENT_BIAS INT32_C(1023)
@@ -84,6 +85,88 @@ static int is_zero(uint64_t bits) {
 
 static uint64_t with_sign(uint64_t magnitude, uint64_t source) {
   return magnitude | (source & BINARY64_SIGN);
+}
+
+static int positive_binary64_components(uint64_t bits, uint64_t *significand,
+                                        int32_t *power) {
+  const uint64_t raw_exponent =
+      (bits & BINARY64_EXPONENT) >> BINARY64_EXPONENT_SHIFT;
+  const uint64_t fraction = bits & BINARY64_FRACTION;
+  if (significand == NULL || power == NULL || (bits & BINARY64_SIGN) != 0 ||
+      raw_exponent == UINT64_C(0x7ff)) {
+    return 0;
+  }
+  if (raw_exponent == UINT64_C(0)) {
+    *significand = fraction;
+    *power = BINARY64_SUBNORMAL_EXPONENT;
+    return 1;
+  }
+  *significand = BINARY64_HIDDEN_BIT | fraction;
+  *power = (int32_t)raw_exponent - BINARY64_EXPONENT_BIAS - INT32_C(52);
+  return 1;
+}
+
+static void normalize_dyadic(MalbolgeGuestMathDyadic *value) {
+  while (value->denominator_shift != UINT32_C(0) &&
+         (value->numerator & UINT64_C(1)) == UINT64_C(0)) {
+    value->numerator >>= UINT32_C(1);
+    --value->denominator_shift;
+  }
+}
+
+static int positive_binary64_midpoint(uint64_t lower_bits, uint64_t upper_bits,
+                                      MalbolgeGuestMathDyadic *output) {
+  uint64_t lower_significand = UINT64_C(0);
+  uint64_t upper_significand = UINT64_C(0);
+  uint64_t lower_scaled = UINT64_C(0);
+  uint64_t upper_scaled = UINT64_C(0);
+  uint64_t sum = UINT64_C(0);
+  int32_t lower_power = INT32_C(0);
+  int32_t upper_power = INT32_C(0);
+  int32_t common_power = INT32_C(0);
+  int32_t midpoint_power = INT32_C(0);
+  uint32_t lower_shift = UINT32_C(0);
+  uint32_t upper_shift = UINT32_C(0);
+  MalbolgeGuestMathDyadic staged;
+
+  staged.numerator = UINT64_C(0);
+  staged.denominator_shift = UINT32_C(0);
+  staged.negative = UINT32_C(0);
+  if (output == NULL || lower_bits > upper_bits ||
+      !positive_binary64_components(lower_bits, &lower_significand,
+                                    &lower_power) ||
+      !positive_binary64_components(upper_bits, &upper_significand,
+                                    &upper_power)) {
+    return 0;
+  }
+  common_power = lower_power < upper_power ? lower_power : upper_power;
+  lower_shift = (uint32_t)(lower_power - common_power);
+  upper_shift = (uint32_t)(upper_power - common_power);
+  if (lower_shift >= UINT32_C(64) || upper_shift >= UINT32_C(64) ||
+      lower_significand > (UINT64_MAX >> lower_shift) ||
+      upper_significand > (UINT64_MAX >> upper_shift)) {
+    return 0;
+  }
+  lower_scaled = lower_significand << lower_shift;
+  upper_scaled = upper_significand << upper_shift;
+  if (lower_scaled > UINT64_MAX - upper_scaled) {
+    return 0;
+  }
+  sum = lower_scaled + upper_scaled;
+  midpoint_power = common_power - INT32_C(1);
+  if (midpoint_power >= INT32_C(0)) {
+    const uint32_t shift = (uint32_t)midpoint_power;
+    if (shift >= UINT32_C(64) || sum > (UINT64_MAX >> shift)) {
+      return 0;
+    }
+    staged.numerator = sum << shift;
+  } else {
+    staged.numerator = sum;
+    staged.denominator_shift = (uint32_t)(-midpoint_power);
+  }
+  normalize_dyadic(&staged);
+  *output = staged;
+  return 1;
 }
 
 static MalbolgeGuestMathSpecialResult resolved(uint64_t bits) {
@@ -1715,6 +1798,45 @@ int malbolge_guest_math_fixed256_unique_binary64(
   return fixed_limbs_unique_binary64(
       input->lower.limbs, input->upper.limbs, FIXED_256_LIMB_COUNT,
       FIXED_256_FRACTION_BITS, output_bits);
+}
+
+int malbolge_guest_math_atan2_cell_midpoints(
+    uint64_t output_bits, MalbolgeGuestMathAtan2CellMidpoints *output) {
+  const uint64_t magnitude = output_bits & ~BINARY64_SIGN;
+  MalbolgeGuestMathDyadic lower_positive;
+  MalbolgeGuestMathDyadic upper_positive;
+  MalbolgeGuestMathAtan2CellMidpoints staged;
+
+  if (output == NULL || magnitude >= BINARY64_FOUR) {
+    return 0;
+  }
+  if (magnitude == UINT64_C(0)) {
+    staged.lower.numerator = UINT64_C(1);
+    staged.lower.denominator_shift = UINT32_C(1075);
+    staged.lower.negative = UINT32_C(1);
+    staged.upper.numerator = UINT64_C(1);
+    staged.upper.denominator_shift = UINT32_C(1075);
+    staged.upper.negative = UINT32_C(0);
+    *output = staged;
+    return 1;
+  }
+  if (!positive_binary64_midpoint(magnitude - UINT64_C(1), magnitude,
+                                  &lower_positive) ||
+      !positive_binary64_midpoint(magnitude, magnitude + UINT64_C(1),
+                                  &upper_positive)) {
+    return 0;
+  }
+  if ((output_bits & BINARY64_SIGN) == UINT64_C(0)) {
+    staged.lower = lower_positive;
+    staged.upper = upper_positive;
+  } else {
+    staged.lower = upper_positive;
+    staged.lower.negative = UINT32_C(1);
+    staged.upper = lower_positive;
+    staged.upper.negative = UINT32_C(1);
+  }
+  *output = staged;
+  return 1;
 }
 
 int malbolge_guest_math_atan2_unique_binary64(

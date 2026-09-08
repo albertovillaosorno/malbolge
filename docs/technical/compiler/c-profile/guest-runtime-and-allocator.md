@@ -573,11 +573,18 @@ variants of the 16 retained hard ratios, four near-zero/near-`pi/2` edges, and
 Q32.192/Q32.224/Q32.256/Q1152 rounding oracle.
 
 The reference refines fail-closed through 4, 8, 12, 16, 24, 32, and 40 Taylor
-terms. Exactly 1018/13/2080/1053 cases certify first at 4/8/12/16 terms; none of
-the
-retained corpus needs a later step. This explicitly exercises precision growth
+terms. Exactly 1018/13/2080/1053 cases certify first at 4/8/12/16 terms; none
+of the retained corpus needs a later step. This explicitly exercises precision
+growth
 instead of validating only one preselected Taylor width.
 
+
+Candidate-cell construction is now guest-C-owned rather than test-only.
+`malbolge_guest_math_atan2_cell_midpoints` decodes each adjacent binary64 pair
+into exact signed dyadics with a 64-bit numerator and explicit denominator
+shift. Both signed zeros map to `[-2^-1075,+2^-1075]`; candidate magnitudes at
+four or above reject without mutating caller output. The 4,164-candidate test
+compares both C boundaries exactly against independent `Fraction` midpoints.
 
 The qualitative termination fact for an adaptive version now has durable
 external provenance in

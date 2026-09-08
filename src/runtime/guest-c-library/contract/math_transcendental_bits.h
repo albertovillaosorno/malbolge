@@ -162,6 +162,17 @@ typedef struct MalbolgeGuestMathAtan2Interval256 {
   uint32_t negative;
 } MalbolgeGuestMathAtan2Interval256;
 
+typedef struct MalbolgeGuestMathDyadic {
+  uint64_t numerator;
+  uint32_t denominator_shift;
+  uint32_t negative;
+} MalbolgeGuestMathDyadic;
+
+typedef struct MalbolgeGuestMathAtan2CellMidpoints {
+  MalbolgeGuestMathDyadic lower;
+  MalbolgeGuestMathDyadic upper;
+} MalbolgeGuestMathAtan2CellMidpoints;
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
@@ -202,6 +213,8 @@ int malbolge_guest_math_fixed224_unique_binary64(
     const MalbolgeGuestMathFixed224Interval *input, uint64_t *output_bits);
 int malbolge_guest_math_fixed256_unique_binary64(
     const MalbolgeGuestMathFixed256Interval *input, uint64_t *output_bits);
+int malbolge_guest_math_atan2_cell_midpoints(
+    uint64_t output_bits, MalbolgeGuestMathAtan2CellMidpoints *output);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(

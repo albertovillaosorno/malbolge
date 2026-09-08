@@ -60,6 +60,7 @@ ALL_BITS = (1 << 64) - 1
 ADAPTIVE_PAIR_COUNT = 4096
 LOWEST_BRANCH_RANK = 0
 HIGHEST_BRANCH_RANK = 3
+MIDPOINT_RECORD_FIELDS = 7
 
 BASE_HARD_PAIRS = (
     (0x3FEE19FA869EA9FC, 0x3FF197DD31B21770),
@@ -319,6 +320,11 @@ def _compare_angle_to_midpoint(
     )
 
 
+def _dyadic_fraction(numerator: int, shift: int, negative: int) -> Fraction:
+    value = Fraction(numerator, 1 << shift)
+    return -value if negative else value
+
+
 def _candidate_harness_source() -> str:
     rows = ",\n".join(
         f"  {{UINT64_C(0x{y:016x}), UINT64_C(0x{x:016x})}}"
@@ -336,11 +342,20 @@ int main(void) {{
   uint32_t index = UINT32_C(0);
   while (index < (uint32_t)(sizeof(pairs) / sizeof(pairs[0]))) {{
     uint64_t output = UINT64_C(0);
+    MalbolgeGuestMathAtan2CellMidpoints cell;
     if (!malbolge_guest_math_atan2_unique_binary64(
             pairs[index].y, pairs[index].x, &output)) {{
       return 93;
     }}
-    (void)printf("%016" PRIx64 "\\n", output);
+    if (!malbolge_guest_math_atan2_cell_midpoints(output, &cell)) {{
+      return 95;
+    }}
+    (void)printf(
+        "%016" PRIx64 " %" PRIu64 " %" PRIu32 " %" PRIu32
+        " %" PRIu64 " %" PRIu32 " %" PRIu32 "\\n",
+        output, cell.lower.numerator, cell.lower.denominator_shift,
+        cell.lower.negative, cell.upper.numerator,
+        cell.upper.denominator_shift, cell.upper.negative);
     ++index;
   }}
   return index == UINT32_C({len(CERTIFICATE_PAIRS)}) ? 0 : 94;
@@ -365,6 +380,94 @@ def _certify_rounding_cell(
             return terms
     message = "adaptive midpoint certificate did not separate"
     raise AssertionError(message)
+
+
+def _assert_midpoint_geometry(record: list[str], output_bits: int) -> None:
+    assert len(record) == MIDPOINT_RECORD_FIELDS
+    output = _binary64_fraction(output_bits)
+    lower_neighbor = _binary64_fraction(_next_down(output_bits))
+    upper_neighbor = _binary64_fraction(_next_up(output_bits))
+    lower_midpoint = (lower_neighbor + output) / 2
+    upper_midpoint = (output + upper_neighbor) / 2
+    lower_dyadic = _dyadic_fraction(*(int(part) for part in record[1:4]))
+    upper_dyadic = _dyadic_fraction(*(int(part) for part in record[4:7]))
+    assert lower_dyadic == lower_midpoint
+    assert upper_dyadic == upper_midpoint
+
+
+def _cell_contract_harness_source() -> str:
+    return r"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+static int sentinel(const MalbolgeGuestMathAtan2CellMidpoints *cell) {
+  return cell->lower.numerator == UINT64_C(0x11) &&
+         cell->lower.denominator_shift == UINT32_C(0x22) &&
+         cell->lower.negative == UINT32_C(0x33) &&
+         cell->upper.numerator == UINT64_C(0x44) &&
+         cell->upper.denominator_shift == UINT32_C(0x55) &&
+         cell->upper.negative == UINT32_C(0x66);
+}
+static void fill(MalbolgeGuestMathAtan2CellMidpoints *cell) {
+  cell->lower.numerator = UINT64_C(0x11);
+  cell->lower.denominator_shift = UINT32_C(0x22);
+  cell->lower.negative = UINT32_C(0x33);
+  cell->upper.numerator = UINT64_C(0x44);
+  cell->upper.denominator_shift = UINT32_C(0x55);
+  cell->upper.negative = UINT32_C(0x66);
+}
+int main(void) {
+  static const uint64_t rejected[] = {
+      UINT64_C(0x4010000000000000), UINT64_C(0xc010000000000000),
+      UINT64_C(0x7ff0000000000000), UINT64_C(0x7ff8000000000000)};
+  MalbolgeGuestMathAtan2CellMidpoints cell;
+  uint32_t index = UINT32_C(0);
+  if (!malbolge_guest_math_atan2_cell_midpoints(UINT64_C(0), &cell) ||
+      cell.lower.numerator != UINT64_C(1) ||
+      cell.lower.denominator_shift != UINT32_C(1075) ||
+      cell.lower.negative != UINT32_C(1) ||
+      cell.upper.numerator != UINT64_C(1) ||
+      cell.upper.denominator_shift != UINT32_C(1075) ||
+      cell.upper.negative != UINT32_C(0)) {
+    return 81;
+  }
+  while (index < (uint32_t)(sizeof(rejected) / sizeof(rejected[0]))) {
+    fill(&cell);
+    if (malbolge_guest_math_atan2_cell_midpoints(rejected[index], &cell) ||
+        !sentinel(&cell)) {
+      return 82;
+    }
+    ++index;
+  }
+  return malbolge_guest_math_atan2_cell_midpoints(UINT64_C(0), 0) ? 83 : 0;
+}
+"""
+
+
+def test_atan2_cell_midpoint_contract_rejects_without_mutation(
+    tmp_path: Path,
+) -> None:
+    """Lock zero geometry and fail-closed out-of-range nonpublication."""
+    harness = tmp_path / "atan2-midpoint-contract.c"
+    executable = tmp_path / "atan2-midpoint-contract"
+    _ = harness.write_text(_cell_contract_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
 
 
 def test_first_adaptive_step_enters_monotone_alternating_tail() -> None:
@@ -400,12 +503,13 @@ def test_atan2_candidate_cells_have_independent_midpoint_certificates(
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     executed = _run([str(executable)], tmp_path)
     assert executed.returncode == 0, executed.stdout + executed.stderr
-    outputs = tuple(int(line, 16) for line in executed.stdout.splitlines())
-    assert len(outputs) == len(CERTIFICATE_PAIRS)
-    rows = zip(CERTIFICATE_PAIRS, outputs, strict=True)
-    used_terms = tuple(
-        _certify_rounding_cell(y_bits, x_bits, output_bits)
-        for (y_bits, x_bits), output_bits in rows
-    )
-    assert len(used_terms) == len(CERTIFICATE_PAIRS)
+    records = tuple(line.split() for line in executed.stdout.splitlines())
+    assert len(records) == len(CERTIFICATE_PAIRS)
+    used_terms: list[int] = []
+    for (y_bits, x_bits), record in zip(
+        CERTIFICATE_PAIRS, records, strict=True
+    ):
+        output_bits = int(record[0], 16)
+        _assert_midpoint_geometry(record, output_bits)
+        used_terms.append(_certify_rounding_cell(y_bits, x_bits, output_bits))
     assert Counter(used_terms) == {4: 1018, 8: 13, 12: 2080, 16: 1053}

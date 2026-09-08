@@ -356,6 +356,13 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   directed adaptive comparison must eventually separate it from the rational
   binary64 input ratio.
 
+  Guest-C now owns candidate-cell construction as exact signed dyadics with a
+  64-bit numerator and power-of-two denominator. Both signed zeros map to
+  `[-2^-1075,+2^-1075]`, invalid magnitudes reject without publication, and
+  both boundaries match independent `Fraction` midpoints across all 4,164
+  retained candidates. The remaining storage problem is tangent refinement
+  state rather than midpoint representation.
+
   Guest-C unbounded refinement storage remains unresolved.
 
   Deterministic continued-fraction midpoint proposals now retain separate

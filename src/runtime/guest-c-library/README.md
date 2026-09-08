@@ -109,6 +109,13 @@ no retained case needs a later step. Lambert tangent irrationality supplies the
 qualitative non-equality needed for eventual exact separation, while guest-C
 unbounded refinement storage remains open.
 
+The C substrate also owns exact candidate-cell geometry before tangent
+refinement. `malbolge_guest_math_atan2_cell_midpoints` emits both boundaries as
+signed dyadics with a 64-bit numerator plus power-of-two denominator. Both
+signed zeros share `[-2^-1075,+2^-1075]`; candidate magnitudes at four or above
+reject without publication. Across the same 4,164 candidates, both C dyadics
+match independently constructed `Fraction` midpoints exactly.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch
