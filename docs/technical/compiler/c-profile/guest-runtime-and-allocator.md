@@ -536,6 +536,13 @@ ulp. Q1152 certifies every result and the Q32.192 handoff publishes those same
 bits. This remains bounded corpus evidence rather than an exhaustive full-domain
 proof.
 
+A separate deterministic continued-fraction proposal search targets binary64
+angle midpoints directly and yields eight representable non-small input ratios.
+The proposal arithmetic is not an oracle: Q1152 independently certifies both
+midpoint sides, places every retained case within `2e-18` ulp, and places the
+closest below `1e-19` ulp. Q32.192 still publishes the same certified bits for
+all eight.
+
 Q32.192 ambiguity still fails closed whenever no prior exact proof applies, so
 this composition does not remove the wider-precision obligation for the full
 binary64 domain.

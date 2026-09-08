@@ -131,6 +131,16 @@ ATAN_KERNEL_HARD_ROUNDING_PAIRS = (
     (0xEE13F55E37E8835E, 0xEE839BA582283388),
     (0xEE13F55E37E8835E, 0xEE839BA582284CD1),
 )
+ATAN_KERNEL_CF_HARD_ROUNDING_PAIRS = (
+    (0x3FEEBE54291BFACD, 0x3FFCF811024B6C66),
+    (0x3FECF2FD389E8A18, 0x3FFCDC82EB8CE567),
+    (0x3FE79DCF6C889A4E, 0x3FF7999AAC625353),
+    (0x3FEF1CA40F928AD1, 0x3FFE43506177244B),
+    (0x3FE3826746B31F83, 0x3FF378DA1E0A5884),
+    (0x3FEEA6EE777221C7, 0x3FF20EE663211446),
+    (0x3FEB6D10E734C774, 0x3FF636500443F5A1),
+    (0x3FEE36A761D44C7A, 0x3FFD8871625C3AF3),
+)
 EDGE_PAIRS = (
     (0x0000000000000001, 0x3FF0000000000000),
     (0x000FFFFFFFFFFFFF, 0x0010000000000000),
@@ -1537,6 +1547,53 @@ def test_atan2_kernel_hard_rounding_neighborhood_matches_q1152_oracle(
     executable = tmp_path / "atan2-hard-rounding"
     _ = harness.write_text(
         _margin_harness_source(ATAN_KERNEL_HARD_ROUNDING_PAIRS),
+        encoding="utf-8",
+    )
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan2_continued_fraction_hard_rounding_matches_q1152_oracle(
+    tmp_path: Path,
+) -> None:
+    """Retain continued-fraction proposals certified within 2e-18 ulp."""
+    margins: list[Fraction] = []
+    lower_sides: set[bool] = set()
+    for y_bits, x_bits in ATAN_KERNEL_CF_HARD_ROUNDING_PAIRS:
+        ratio = _raw_fraction(y_bits) / _raw_fraction(x_bits)
+        assert ratio > ATAN_IDENTITY_MAX
+        margin, lower_side = _integer_oracle_midpoint_margin_and_side(
+            y_bits, x_bits
+        )
+        margins.append(margin)
+        lower_sides.add(lower_side)
+    assert min(margins) < Fraction(1, 10**19)
+    assert max(margins) < Fraction(1, 5 * 10**17)
+    assert lower_sides == {False, True}
+
+    harness = tmp_path / "atan2-cf-hard-rounding.c"
+    executable = tmp_path / "atan2-cf-hard-rounding"
+    _ = harness.write_text(
+        _margin_harness_source(ATAN_KERNEL_CF_HARD_ROUNDING_PAIRS),
         encoding="utf-8",
     )
     compiled = _run(

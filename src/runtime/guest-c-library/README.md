@@ -73,7 +73,10 @@ The 64-pair exact-rational authority is therefore 64/64 after composing both
 proof paths, while Q32.192 alone still certifies 48/64. A separate Q1152
 integer-only oracle directly bounds every series term and certifies the runtime
 result bit-for-bit for all 519 deterministic kernel pairs; the 64 shared cases
-are cross-checked against the exact `Fraction` authority.
+are cross-checked against the exact `Fraction` authority. A deterministic
+continued-fraction proposal search also contributes eight non-small kernel
+ratios on both midpoint sides; Q1152, not the proposal arithmetic, certifies
+that all are within `2e-18` ulp and the closest is below `1e-19` ulp.
 
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
