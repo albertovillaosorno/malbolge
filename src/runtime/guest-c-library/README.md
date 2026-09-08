@@ -237,6 +237,20 @@ midpoints `+1`, `-1`, `+3.5`, and `-3.5` independently pin rank ordering
 and both
 principal-range wrap adjustments without a pi constant.
 
+A full-cell refinement attempt now packages the two boundary checks atomically.
+`malbolge_guest_math_atan2_refinement_attempt` accepts only finite non-special
+kernel work, reconstructs the candidate cell, and publishes `certified=1` only
+when the angle is strictly above the lower midpoint and strictly below the upper
+midpoint. Directed overlap or insufficient representable precision succeeds with
+`certified=0`, so callers can retry at greater precision. Invalid scratch,
+special inputs, or malformed candidates fail without changing the certification
+flag.
+
+All 64 signed hard cells certify at eight fractional limbs and 16 terms. A
+one-limb request and an adjacent wrong binary64 candidate both remain cleanly
+uncertified, while short scratch and the exact `y=x` special case are pinned as
+nonpublishing hard failures.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

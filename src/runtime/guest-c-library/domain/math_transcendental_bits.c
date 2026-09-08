@@ -1552,6 +1552,40 @@ int malbolge_guest_math_midpoint_compare(
   return 1;
 }
 
+int malbolge_guest_math_atan2_refinement_attempt(
+    uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
+    uint32_t fraction_limbs, uint32_t terms, uint32_t *certified,
+    uint32_t *scratch, uint32_t scratch_capacity) {
+  MalbolgeGuestMathAtan2KernelInput ratio;
+  MalbolgeGuestMathAtan2CellMidpoints cell;
+  const MalbolgeGuestMathSpecialResult special =
+      malbolge_guest_math_atan2_special(y_bits, x_bits);
+  int32_t lower_comparison = INT32_C(0);
+  int32_t upper_comparison = INT32_C(0);
+  uint32_t staged_certified = UINT32_C(0);
+
+  if (certified == NULL || scratch == NULL ||
+      special.status != MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED ||
+      !malbolge_guest_math_atan2_kernel_input(y_bits, x_bits, &ratio) ||
+      !malbolge_guest_math_atan2_cell_midpoints(candidate_bits, &cell) ||
+      !malbolge_guest_math_midpoint_compare(
+          &ratio, &cell.lower, fraction_limbs, terms, &lower_comparison,
+          scratch,
+          scratch_capacity) ||
+      !malbolge_guest_math_midpoint_compare(
+          &ratio, &cell.upper, fraction_limbs, terms, &upper_comparison,
+          scratch,
+          scratch_capacity)) {
+    return 0;
+  }
+  if (lower_comparison > INT32_C(0) &&
+      upper_comparison < INT32_C(0)) {
+    staged_certified = UINT32_C(1);
+  }
+  *certified = staged_certified;
+  return 1;
+}
+
 int malbolge_guest_math_fixed_interval_add(
     const uint32_t *left_lower, const uint32_t *left_upper,
     const uint32_t *right_lower, const uint32_t *right_upper,

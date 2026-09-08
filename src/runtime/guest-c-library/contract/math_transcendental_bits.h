@@ -305,6 +305,10 @@ int malbolge_guest_math_midpoint_compare(
     const MalbolgeGuestMathDyadic *midpoint, uint32_t fraction_limbs,
     uint32_t terms, int32_t *comparison, uint32_t *scratch,
     uint32_t scratch_capacity);
+int malbolge_guest_math_atan2_refinement_attempt(
+    uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
+    uint32_t fraction_limbs, uint32_t terms, uint32_t *certified,
+    uint32_t *scratch, uint32_t scratch_capacity);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(

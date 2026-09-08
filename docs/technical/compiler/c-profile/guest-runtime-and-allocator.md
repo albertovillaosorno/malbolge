@@ -710,6 +710,18 @@ synthetic dyadics at `±1` and `±3.5` separately pin ordinary rank ordering
 and the
 principal wrap adjustments without importing pi as authority.
 
+Cell certification now has an atomic retry surface.
+`malbolge_guest_math_atan2_refinement_attempt` owns candidate-cell construction
+and both signed midpoint comparisons. It distinguishes mathematical overlap from
+operational failure: unresolved directed bounds publish `certified=0`, whereas
+invalid scratch, special inputs, or malformed candidates return failure without
+mutating the caller's status. Only strict lower-positive plus upper-negative
+ordering publishes certification.
+
+The 64 signed hard cells certify at eight fractional limbs and 16 terms. Coarse
+one-limb precision and an adjacent wrong candidate are explicitly uncertified,
+which pins retry semantics independently from the current fixed-Q handoff.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

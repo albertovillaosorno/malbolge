@@ -441,10 +441,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   exact `±1`/`±3.5` dyadics pin ordinary rank order plus the `4`/`-1` wrap
   ranks.
 
-  The remaining midpoint blocker is adaptive scheduling rather than branch
-  geometry: choose caller-owned precision and Taylor depth, retry unresolved
-  boundaries with larger capacity, and stop only once both cell boundaries are
-  strictly separated.
+  Cell refinement now has an atomic retry surface. A candidate publishes
+  `certified=1` only after strict lower-positive and upper-negative midpoint
+  ordering; directed overlap or coarse precision publishes zero, while invalid
+  scratch/special inputs fail without mutating caller status. All 64 signed hard
+  cells certify at eight fractional limbs/16 terms, and an adjacent candidate is
+  correctly left uncertified.
+
+  The remaining midpoint blocker is adaptive scheduling: choose caller-owned
+  precision and Taylor depth, retry `certified=0` with larger capacity, and stop
+  only once both cell boundaries are strictly separated.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies
