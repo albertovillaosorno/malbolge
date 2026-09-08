@@ -183,6 +183,17 @@ fixtures exercise cross-zero intervals through 128 limbs and pin malformed
 inputs, short scratch, invalid sign selectors, and upper-only carry overflow as
 nonpublishing failures.
 
+Complete variable-width Taylor summation now composes the recurrence and signed
+interval layers. For exact/nonnegative `0 <= x < 4`, sine starts from `x` and
+cosine from one; each requested term is added with alternating sign, then one
+additional directed term supplies the first-omitted remainder interval.
+`terms >= 2` is required so the remaining tail is monotonically decreasing over
+this range. The implementation uses one caller-owned `10*N` workspace and
+publishes only after the complete enclosure succeeds.
+
+Independent `Fraction` authority covers 4/8/12/16 terms at `1/8`, `1`, `5/2`,
+and `4 - 2^-224` without host trigonometric functions.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

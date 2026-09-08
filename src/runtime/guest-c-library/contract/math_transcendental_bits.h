@@ -277,6 +277,18 @@ int malbolge_guest_math_fixed_signed_interval_add(
     uint32_t *output_lower_negative, uint32_t *output_upper,
     uint32_t *output_upper_negative, uint32_t *scratch,
     uint32_t scratch_capacity);
+int malbolge_guest_math_fixed_sin_taylor_interval(
+    const uint32_t *input_lower, const uint32_t *input_upper,
+    uint32_t limb_count, uint32_t fraction_limbs, uint32_t terms,
+    uint32_t *output_lower, uint32_t *output_lower_negative,
+    uint32_t *output_upper, uint32_t *output_upper_negative,
+    uint32_t *scratch, uint32_t scratch_capacity);
+int malbolge_guest_math_fixed_cos_taylor_interval(
+    const uint32_t *input_lower, const uint32_t *input_upper,
+    uint32_t limb_count, uint32_t fraction_limbs, uint32_t terms,
+    uint32_t *output_lower, uint32_t *output_lower_negative,
+    uint32_t *output_upper, uint32_t *output_upper_negative,
+    uint32_t *scratch, uint32_t scratch_capacity);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(

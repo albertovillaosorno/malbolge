@@ -662,6 +662,17 @@ operation succeeds. Cross-zero fixtures cover 4/8/16/128 limbs and pin malformed
 ordering, short scratch, invalid signs, and an upper-only carry overflow as
 atomic rejection.
 
+Full directed sine/cosine Taylor summation now executes over the variable-width
+core. On nonnegative `x<4`, each recurrence term is accumulated as a signed
+interval; one extra term becomes `[0,+t]` or `[-t,0]` according to parity and
+therefore encloses the alternating tail. At least two retained terms are
+required, after which the omitted-tail magnitudes decrease for both series on
+this domain. One caller-owned `10*N` workspace holds square, term, sum, and the
+reused operation scratch.
+
+Exact `Fraction` authority checks 4/8/12/16 terms at four dyadics through
+`4-2^-224`, with no host sin/cos or pi authority.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

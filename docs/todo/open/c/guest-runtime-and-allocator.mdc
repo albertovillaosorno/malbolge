@@ -411,9 +411,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   sign publishes until both succeed. Cross-zero 4/8/16/128-limb evidence pins
   malformed input, short scratch, invalid signs, and upper-only carry overflow.
 
-  Complete Taylor summation can now compose term recurrence with signed interval
-  accumulation. The remaining blocker is alternating sine/cosine orchestration
-  and its first-omitted-term enclosure at caller-selected precision.
+  Complete variable-width sine/cosine Taylor summation is now executable for
+  exact/nonnegative `x<4`. Requested terms accumulate through signed intervals,
+  then one extra directed term supplies the first-omitted alternating remainder.
+  The series uses caller-owned `10*N` scratch, requires at least two terms, and
+  has independent `Fraction` authority for 4/8/12/16 terms at four dyadics up to
+  `4-2^-224` without host trig or pi authority.
+
+  The next blocker is tangent-midpoint comparison. It should compare the exact
+  binary64 ratio against the signed sin/cos enclosures by directed cross
+  products, avoiding a new fixed/fixed division surface.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

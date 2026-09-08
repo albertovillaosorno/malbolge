@@ -995,6 +995,183 @@ int malbolge_guest_math_fixed_signed_interval_add(
   return 1;
 }
 
+static int fixed_limbs_below_small_integer(
+    const uint32_t *value, uint32_t limb_count, uint32_t fraction_limbs,
+    uint32_t limit) {
+  uint32_t index = fraction_limbs + UINT32_C(1);
+  if (fraction_limbs >= limb_count) {
+    return 0;
+  }
+  while (index < limb_count) {
+    if (value[index] != UINT32_C(0)) {
+      return 0;
+    }
+    ++index;
+  }
+  return value[fraction_limbs] < limit;
+}
+
+static int taylor_recurrence_divisor(uint32_t term_index, uint32_t cosine,
+                                     uint32_t *divisor) {
+  uint64_t left = UINT64_C(0);
+  uint64_t right = UINT64_C(0);
+  uint64_t product = UINT64_C(0);
+  if (term_index == UINT32_C(0) || cosine > UINT32_C(1) || divisor == NULL) {
+    return 0;
+  }
+  if (cosine != UINT32_C(0)) {
+    left = (uint64_t)term_index * UINT64_C(2) - UINT64_C(1);
+    right = (uint64_t)term_index * UINT64_C(2);
+  } else {
+    left = (uint64_t)term_index * UINT64_C(2);
+    right = left + UINT64_C(1);
+  }
+  if (left > UINT32_MAX || right > UINT32_MAX ||
+      left > (uint64_t)UINT32_MAX / right) {
+    return 0;
+  }
+  product = left * right;
+  *divisor = (uint32_t)product;
+  return 1;
+}
+
+static int fixed_taylor_series_interval(
+    const uint32_t *input_lower, const uint32_t *input_upper,
+    uint32_t limb_count, uint32_t fraction_limbs, uint32_t terms,
+    uint32_t cosine, uint32_t *output_lower, uint32_t *output_lower_negative,
+    uint32_t *output_upper, uint32_t *output_upper_negative,
+    uint32_t *scratch, uint32_t scratch_capacity) {
+  uint32_t index = UINT32_C(0);
+  uint32_t divisor = UINT32_C(0);
+  uint32_t sum_lower_negative = UINT32_C(0);
+  uint32_t sum_upper_negative = UINT32_C(0);
+  uint32_t *square_lower = scratch;
+  uint32_t *square_upper = NULL;
+  uint32_t *term_lower = NULL;
+  uint32_t *term_upper = NULL;
+  uint32_t *sum_lower = NULL;
+  uint32_t *sum_upper = NULL;
+  uint32_t *operation = NULL;
+
+  if (input_lower == NULL || input_upper == NULL || output_lower == NULL ||
+      output_lower_negative == NULL || output_upper == NULL ||
+      output_upper_negative == NULL || scratch == NULL ||
+      limb_count == UINT32_C(0) || limb_count > UINT32_MAX / UINT32_C(10) ||
+      fraction_limbs >= limb_count || terms < UINT32_C(2) ||
+      cosine > UINT32_C(1) || scratch_capacity < limb_count * UINT32_C(10) ||
+      compare_fixed_limbs(input_lower, input_upper, limb_count) > 0 ||
+      !fixed_limbs_below_small_integer(input_upper, limb_count, fraction_limbs,
+                                       UINT32_C(4))) {
+    return 0;
+  }
+  square_upper = square_lower + limb_count;
+  term_lower = square_upper + limb_count;
+  term_upper = term_lower + limb_count;
+  sum_lower = term_upper + limb_count;
+  sum_upper = sum_lower + limb_count;
+  operation = sum_upper + limb_count;
+
+  if (!malbolge_guest_math_fixed_interval_multiply(
+          input_lower, input_upper, input_lower, input_upper, limb_count,
+          fraction_limbs, square_lower, square_upper, operation,
+          limb_count * UINT32_C(4))) {
+    return 0;
+  }
+  if (cosine != UINT32_C(0)) {
+    zero_fixed_limbs(term_lower, limb_count);
+    zero_fixed_limbs(term_upper, limb_count);
+    term_lower[fraction_limbs] = UINT32_C(1);
+    term_upper[fraction_limbs] = UINT32_C(1);
+  } else {
+    copy_fixed_limbs(term_lower, input_lower, limb_count);
+    copy_fixed_limbs(term_upper, input_upper, limb_count);
+  }
+  copy_fixed_limbs(sum_lower, term_lower, limb_count);
+  copy_fixed_limbs(sum_upper, term_upper, limb_count);
+
+  index = UINT32_C(1);
+  while (index < terms) {
+    const uint32_t negative = index & UINT32_C(1);
+    const uint32_t *add_lower = term_lower;
+    const uint32_t *add_upper = term_upper;
+    uint32_t add_lower_negative = negative;
+    uint32_t add_upper_negative = negative;
+    if (!taylor_recurrence_divisor(index, cosine, &divisor) ||
+        !malbolge_guest_math_fixed_taylor_term_interval(
+            term_lower, term_upper, square_lower, square_upper, limb_count,
+            fraction_limbs, divisor, term_lower, term_upper, operation,
+            limb_count * UINT32_C(4))) {
+      return 0;
+    }
+    if (negative != UINT32_C(0)) {
+      add_lower = term_upper;
+      add_upper = term_lower;
+    }
+    if (!malbolge_guest_math_fixed_signed_interval_add(
+            sum_lower, sum_lower_negative, sum_upper, sum_upper_negative,
+            add_lower, add_lower_negative, add_upper, add_upper_negative,
+            limb_count, sum_lower, &sum_lower_negative, sum_upper,
+            &sum_upper_negative, operation, limb_count * UINT32_C(2))) {
+      return 0;
+    }
+    ++index;
+  }
+
+  if (!taylor_recurrence_divisor(terms, cosine, &divisor) ||
+      !malbolge_guest_math_fixed_taylor_term_interval(
+          term_lower, term_upper, square_lower, square_upper, limb_count,
+          fraction_limbs, divisor, term_lower, term_upper, operation,
+          limb_count * UINT32_C(4))) {
+    return 0;
+  }
+  zero_fixed_limbs(square_lower, limb_count);
+  if ((terms & UINT32_C(1)) != UINT32_C(0)) {
+    if (!malbolge_guest_math_fixed_signed_interval_add(
+            sum_lower, sum_lower_negative, sum_upper, sum_upper_negative,
+            term_upper, UINT32_C(1), square_lower, UINT32_C(0), limb_count,
+            sum_lower, &sum_lower_negative, sum_upper, &sum_upper_negative,
+            operation, limb_count * UINT32_C(2))) {
+      return 0;
+    }
+  } else if (!malbolge_guest_math_fixed_signed_interval_add(
+                 sum_lower, sum_lower_negative, sum_upper, sum_upper_negative,
+                 square_lower, UINT32_C(0), term_upper, UINT32_C(0), limb_count,
+                 sum_lower, &sum_lower_negative, sum_upper,
+                 &sum_upper_negative, operation,
+                 limb_count * UINT32_C(2))) {
+    return 0;
+  }
+  copy_fixed_limbs(output_lower, sum_lower, limb_count);
+  copy_fixed_limbs(output_upper, sum_upper, limb_count);
+  *output_lower_negative = sum_lower_negative;
+  *output_upper_negative = sum_upper_negative;
+  return 1;
+}
+
+int malbolge_guest_math_fixed_sin_taylor_interval(
+    const uint32_t *input_lower, const uint32_t *input_upper,
+    uint32_t limb_count, uint32_t fraction_limbs, uint32_t terms,
+    uint32_t *output_lower, uint32_t *output_lower_negative,
+    uint32_t *output_upper, uint32_t *output_upper_negative,
+    uint32_t *scratch, uint32_t scratch_capacity) {
+  return fixed_taylor_series_interval(
+      input_lower, input_upper, limb_count, fraction_limbs, terms,
+      UINT32_C(0), output_lower, output_lower_negative, output_upper,
+      output_upper_negative, scratch, scratch_capacity);
+}
+
+int malbolge_guest_math_fixed_cos_taylor_interval(
+    const uint32_t *input_lower, const uint32_t *input_upper,
+    uint32_t limb_count, uint32_t fraction_limbs, uint32_t terms,
+    uint32_t *output_lower, uint32_t *output_lower_negative,
+    uint32_t *output_upper, uint32_t *output_upper_negative,
+    uint32_t *scratch, uint32_t scratch_capacity) {
+  return fixed_taylor_series_interval(
+      input_lower, input_upper, limb_count, fraction_limbs, terms,
+      UINT32_C(1), output_lower, output_lower_negative, output_upper,
+      output_upper_negative, scratch, scratch_capacity);
+}
+
 int malbolge_guest_math_fixed_interval_add(
     const uint32_t *left_lower, const uint32_t *left_upper,
     const uint32_t *right_lower, const uint32_t *right_upper,
