@@ -116,6 +116,13 @@ signed zeros share `[-2^-1075,+2^-1075]`; candidate magnitudes at four or above
 reject without publication. Across the same 4,164 candidates, both C dyadics
 match independently constructed `Fraction` midpoints exactly.
 
+A real adaptive fallback never needs the zero-cell shift: right-half-plane
+kernel-required
+ratios have normalized exponent at least `-53`, and the minimum non-dyadic
+excess `2^-106` dominates the cubic atan error `<2^-156/3`. Hence the true
+angle stays above `2^-53`, whose finest neighboring midpoint uses shift 107;
+left-half-plane angles are larger still.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

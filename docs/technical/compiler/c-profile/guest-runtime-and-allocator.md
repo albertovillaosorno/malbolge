@@ -586,6 +586,12 @@ shift. Both signed zeros map to `[-2^-1075,+2^-1075]`; candidate magnitudes at
 four or above reject without mutating caller output. The 4,164-candidate test
 compares both C boundaries exactly against independent `Fraction` midpoints.
 
+For the actual fallback path, midpoint denominator shift is globally at most
+107: `e<=-54` right-half-plane ratios resolve before the kernel, while at
+`e=-53` a non-dyadic ratio exceeds `2^-53` by at least `2^-106`; its cubic atan
+error is below `2^-156/3`, so the exact angle remains above `2^-53`. The lower
+rounding boundary there is the finest possible one, at denominator `2^107`.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

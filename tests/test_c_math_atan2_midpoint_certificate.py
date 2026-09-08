@@ -61,6 +61,8 @@ ADAPTIVE_PAIR_COUNT = 4096
 LOWEST_BRANCH_RANK = 0
 HIGHEST_BRANCH_RANK = 3
 MIDPOINT_RECORD_FIELDS = 7
+MIN_KERNEL_CANDIDATE_BITS = 0x3CA0000000000000
+MAX_FALLBACK_MIDPOINT_SHIFT = 107
 
 BASE_HARD_PAIRS = (
     (0x3FEE19FA869EA9FC, 0x3FF197DD31B21770),
@@ -440,6 +442,18 @@ int main(void) {
   return malbolge_guest_math_atan2_cell_midpoints(UINT64_C(0), 0) ? 83 : 0;
 }
 """
+
+
+def test_kernel_required_right_plane_has_bounded_midpoint_shift() -> None:
+    """Prove e=-53 non-dyadic inputs stay above the finest fallback cell."""
+    minimum_ratio = Fraction(1, 1 << 53)
+    minimum_non_dyadic_excess = Fraction(1, 1 << 106)
+    maximum_cubic_error = Fraction(1, 3 * (1 << 156))
+    assert minimum_non_dyadic_excess > maximum_cubic_error
+    assert _binary64_fraction(MIN_KERNEL_CANDIDATE_BITS) == minimum_ratio
+    lower_neighbor = _binary64_fraction(_next_down(MIN_KERNEL_CANDIDATE_BITS))
+    lower_midpoint = (lower_neighbor + minimum_ratio) / 2
+    assert lower_midpoint.denominator == 1 << MAX_FALLBACK_MIDPOINT_SHIFT
 
 
 def test_atan2_cell_midpoint_contract_rejects_without_mutation(

@@ -361,7 +361,10 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   `[-2^-1075,+2^-1075]`, invalid magnitudes reject without publication, and
   both boundaries match independent `Fraction` midpoints across all 4,164
   retained candidates. The remaining storage problem is tangent refinement
-  state rather than midpoint representation.
+  state rather than midpoint representation. The actual fallback has a global
+  midpoint denominator-shift bound of 107: right-half-plane `e<=-54` resolves
+  early, while the minimum `e=-53` non-dyadic excess `2^-106` is larger than
+  its `<2^-156/3` cubic atan error; left-half-plane angles are larger.
 
   Guest-C unbounded refinement storage remains unresolved.
 
