@@ -52,6 +52,7 @@ SIGNIFICAND_BITS = 53
 EXPONENT_MASK = 0x7FF
 MIN_NORMAL_EXPONENT = -1022
 ATAN_MARGIN_MAX_EXPONENT = -27
+ATAN_TOP_MARGIN_THRESHOLD = Fraction(727, 768)
 ALL_BITS = (1 << 64) - 1
 VECTOR_COUNT = 512
 LCG_MULTIPLIER = 6364136223846793005
@@ -103,6 +104,10 @@ ATAN_IDENTITY_MAX_BITS = 0x3E4C000000000000
 ATAN_IDENTITY_MAX = Fraction(7, 1 << 29)
 ONE_BITS = 0x3FF0000000000000
 THREE_BITS = 0x4008000000000000
+ATAN_TOP_MARGIN_PAIRS = (
+    (0x3E4DA8FC2D9C711E, 0x3FFB9F8AF4448B26),
+    (0x3E4DA8FC2D97A47C, 0x3FFB9F8AF4448B26),
+)
 EDGE_PAIRS = (
     (0x0000000000000001, 0x3FF0000000000000),
     (0x000FFFFFFFFFFFFF, 0x0010000000000000),
@@ -887,7 +892,7 @@ def _small_ratio_rounding_margin_safe(ratio: Fraction) -> bool:
             safe = True
         elif fraction > Fraction(1, 2):
             if exponent == ATAN_MARGIN_MAX_EXPONENT:
-                safe = fraction >= Fraction(727, 768)
+                safe = fraction >= ATAN_TOP_MARGIN_THRESHOLD
             else:
                 margin_shift = -((2 * exponent) + 55)
                 safe = fraction - Fraction(1, 2) >= Fraction(
@@ -929,6 +934,65 @@ def _small_ratio_row(y_bits: int, x_bits: int) -> str:
         f"UINT32_C({status}), UINT64_C(0x{bits:016x})"
         "}"
     )
+
+
+def _top_margin_fraction(ratio: Fraction) -> Fraction:
+    exponent = _floor_log2(ratio)
+    assert exponent == ATAN_MARGIN_MAX_EXPONENT
+    ulp = Fraction(1, 1 << (52 - exponent))
+    scaled = ratio / ulp
+    return scaled - (scaled.numerator // scaled.denominator)
+
+
+def _top_margin_row(y_bits: int, x_bits: int) -> str:
+    status, special_bits = _expected_small_ratio_special(y_bits, x_bits)
+    lower, upper, negative = _atan2_integer_oracle_interval(y_bits, x_bits)
+    scale = 1 << ATAN2_INTEGER_ORACLE_BITS
+    lower_bits = _nearest_binary64_bits(Fraction(lower, scale))
+    upper_bits = _nearest_binary64_bits(Fraction(upper, scale))
+    assert lower_bits == upper_bits
+    expected = lower_bits | (SIGN_BIT if negative else 0)
+    return (
+        "  {"
+        f"UINT64_C(0x{y_bits:016x}), UINT64_C(0x{x_bits:016x}), "
+        f"UINT32_C({status}), UINT64_C(0x{special_bits:016x}), "
+        f"UINT64_C(0x{expected:016x})"
+        "}"
+    )
+
+
+def _top_margin_harness_source() -> str:
+    rows = ",\n".join(starmap(_top_margin_row, ATAN_TOP_MARGIN_PAIRS))
+    return f"""#include \"math_transcendental_bits.h\"
+#include <stdint.h>
+typedef struct Vector {{
+  uint64_t y_bits, x_bits;
+  uint32_t special_status;
+  uint64_t special_bits, expected_bits;
+}} Vector;
+static const Vector vectors[] = {{
+{rows}
+}};
+int main(void) {{
+  uint32_t index = UINT32_C(0);
+  while (index < (uint32_t)(sizeof(vectors) / sizeof(vectors[0]))) {{
+    const Vector *v = &vectors[index];
+    const MalbolgeGuestMathSpecialResult special =
+        malbolge_guest_math_atan2_special(v->y_bits, v->x_bits);
+    uint64_t output_bits = UINT64_C(0xdeadbeefdeadbeef);
+    if ((uint32_t)special.status != v->special_status ||
+        (v->special_status == UINT32_C({RESOLVED_STATUS}) &&
+         special.bits != v->special_bits) ||
+        !malbolge_guest_math_atan2_unique_binary64(
+            v->y_bits, v->x_bits, &output_bits) ||
+        output_bits != v->expected_bits) {{
+      return 85;
+    }}
+    ++index;
+  }}
+  return 0;
+}}
+"""
 
 
 def _small_ratio_harness_source() -> str:
@@ -1379,6 +1443,49 @@ def test_atan2_unique_rounding_retains_fixed_seed_million_pair_coverage(
             str(CLANG),
             "-std=c23",
             "-O2",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan2_top_binade_margin_threshold_matches_q1152_oracle(
+    tmp_path: Path,
+) -> None:
+    """Straddle the e=-27 early-resolution threshold with certified vectors."""
+    below_ratio = _raw_fraction(ATAN_TOP_MARGIN_PAIRS[0][0]) / _raw_fraction(
+        ATAN_TOP_MARGIN_PAIRS[0][1]
+    )
+    above_ratio = _raw_fraction(ATAN_TOP_MARGIN_PAIRS[1][0]) / _raw_fraction(
+        ATAN_TOP_MARGIN_PAIRS[1][1]
+    )
+    below = _top_margin_fraction(below_ratio)
+    above = _top_margin_fraction(above_ratio)
+    assert 0 < ATAN_TOP_MARGIN_THRESHOLD - below < Fraction(1, 100_000)
+    assert 0 < above - ATAN_TOP_MARGIN_THRESHOLD < Fraction(1, 100_000)
+    assert not _small_ratio_rounding_margin_safe(below_ratio)
+    assert _small_ratio_rounding_margin_safe(above_ratio)
+
+    harness = tmp_path / "atan2-top-margin.c"
+    executable = tmp_path / "atan2-top-margin"
+    _ = harness.write_text(_top_margin_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
             "-ffreestanding",
             "-fno-builtin",
             "-Wall",

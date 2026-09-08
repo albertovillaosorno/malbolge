@@ -440,7 +440,12 @@ writing `gap = 2*remainder-denominator` turns the safety test into
 `3*gap >= ceil(2*denominator / 2^(-(2e+55)))`.
 
 All products stay within 64 bits; large right shifts collapse the threshold to
-one. Exact normal midpoint ratios are now proved unreachable for valid binary64
+one. Two fixed top-binade vectors straddle the `727/768` gate within `10^-5`
+ulp: the lower vector stays fail closed in the preclassifier and the upper
+vector resolves there, while the independent Q1152 oracle proves the final
+binary64 result for both.
+
+Exact normal midpoint ratios are now proved unreachable for valid binary64
 input geometry. If the normalized denominator has `t` trailing zero bits, then
 `t <= 52`; after 52 quotient bits the remainder is divisible by `2^t`, whereas
 an exact midpoint remainder `D/2` has only `t-1` trailing zero bits. Odd

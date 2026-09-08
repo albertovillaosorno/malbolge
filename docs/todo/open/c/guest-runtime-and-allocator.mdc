@@ -223,7 +223,10 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   fractional remainder of at least `727/768 ulp`.
 
   Lower normal binades now use their actual cubic error scale instead of the
-  former fixed two-thirds threshold. For normalized exponent `e <= -28`, the
+  former fixed two-thirds threshold. Two fixed `e=-27` vectors straddle the
+  `727/768` top-binade gate within `10^-5` ulp; Q1152 confirms both final result
+  bits while the lower case remains conservatively kernel-required and the
+  upper case resolves early. For normalized exponent `e <= -28`, the
   error is strictly below `2^(2e+55)/3` ulp. The integer gate checks the
   equivalent overflow-free inequality
   `3*gap >= ceil(2*denominator / 2^(-(2e+55)))`; below-midpoint values remain
