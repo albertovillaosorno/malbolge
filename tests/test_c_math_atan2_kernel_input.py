@@ -59,6 +59,9 @@ LCG_INCREMENT = 1442695040888963407
 LCG_SEED = 0x4154414E325F5631
 SMALL_RATIO_LCG_SEED = 0x4154414E325F5352
 SMALL_RATIO_VECTOR_COUNT = 512
+ATAN2_STRESS_SEED = 0x4154414E325F5631
+ATAN2_STRESS_PAIR_COUNT = 1_000_000
+ATAN2_STRESS_FINITE_COUNT = 999_006
 ATAN_INTERVAL_SAMPLE_STRIDE = 9
 EXPECTED_SMALL_RATIO_RESOLVED = 511
 EXPECTED_SMALL_RATIO_UNRESOLVED = 1
@@ -703,6 +706,44 @@ int main(void) {{
 """
 
 
+def _stress_harness_source() -> str:
+    return f"""#include \"math_transcendental_bits.h\"
+#include <stdint.h>
+#define SIGN UINT64_C(0x8000000000000000)
+#define EXPONENT UINT64_C(0x7ff0000000000000)
+static uint64_t next_word(uint64_t *state) {{
+  *state = *state * UINT64_C({LCG_MULTIPLIER}) + UINT64_C({LCG_INCREMENT});
+  return *state;
+}}
+static int finite_nonzero(uint64_t bits) {{
+  const uint64_t magnitude = bits & ~SIGN;
+  return magnitude != UINT64_C(0) && (magnitude & EXPONENT) != EXPONENT;
+}}
+int main(void) {{
+  uint64_t state = UINT64_C(0x{ATAN2_STRESS_SEED:016x});
+  uint32_t index = UINT32_C(0);
+  uint32_t finite = UINT32_C(0);
+  uint32_t resolved = UINT32_C(0);
+  while (index < UINT32_C({ATAN2_STRESS_PAIR_COUNT})) {{
+    const uint64_t y_bits = next_word(&state);
+    const uint64_t x_bits = next_word(&state);
+    uint64_t output_bits = UINT64_C(0);
+    if (finite_nonzero(y_bits) && finite_nonzero(x_bits)) {{
+      ++finite;
+      if (malbolge_guest_math_atan2_unique_binary64(
+              y_bits, x_bits, &output_bits)) {{
+        ++resolved;
+      }}
+    }}
+    ++index;
+  }}
+  return finite == UINT32_C({ATAN2_STRESS_FINITE_COUNT}) && resolved == finite
+             ? 0
+             : 90;
+}}
+"""
+
+
 def _small_ratio_pairs() -> tuple[tuple[int, int], ...]:
     state = SMALL_RATIO_LCG_SEED
     pairs = [
@@ -1146,6 +1187,37 @@ def test_atan2_unique_rounding_is_sound_and_conservative(
         [
             str(CLANG),
             "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan2_unique_rounding_retains_fixed_seed_million_pair_coverage(
+    tmp_path: Path,
+) -> None:
+    """Retain million-pair resolution coverage; exact oracles own soundness."""
+    harness = tmp_path / "atan2-million-pair-stress.c"
+    executable = tmp_path / "atan2-million-pair-stress"
+    _ = harness.write_text(_stress_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-O2",
             "-ffreestanding",
             "-fno-builtin",
             "-Wall",

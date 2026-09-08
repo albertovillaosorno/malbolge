@@ -447,8 +447,10 @@ The C midpoint branch remains fail closed as a defensive invariant check rather
 than an admitted runtime case. This closes the normal exact-midpoint obligation
 without choosing a neighbor for malformed geometry.
 
-A fixed-seed million-pair stress run sampled 999,097 finite raw-word pairs after
+A fixed-seed million-pair stress run sampled 999,006 finite raw-word pairs after
 this change and the combined exact-plus-Q32.192 handoff resolved every one. The
+same generator and finite count are now retained as a compiled C regression,
+while an independent Python counter reproduces the finite population. The
 measurement is diagnostic coverage, not exhaustive correct-rounding authority.
 
 The finite-nonzero atan2 handoff now composes the certified base and residual

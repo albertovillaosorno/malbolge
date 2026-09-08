@@ -317,11 +317,13 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   precision or a hard-to-round fallback remains required for unproved
   full-domain cases.
 
-  A fixed-seed 1,000,000-pair stress run over raw binary64 words produced
-  999,097 finite pairs and the combined handoff resolved all 999,097. Before the
-  exponent-scaled margin, the same failure mode appeared frequently at large
-  exponent deltas. This retained stress is coverage evidence only; an exhaustive
-  full-domain proof remains an open obligation.
+  A fixed-seed 1,000,000-pair stress run over raw binary64 words produces
+  999,006 finite pairs and the combined handoff resolves all 999,006. The exact
+  generator/count is now a compiled C regression, with the finite population
+  independently reproduced in Python. Before the exponent-scaled margin, the
+  same failure mode appeared frequently at large exponent deltas. This retained
+  stress is coverage evidence only; an exhaustive full-domain proof remains an
+  open obligation.
 
   Exact normal ratio midpoints are now excluded algebraically. A normalized
   binary64 denominator has at most 52 trailing zero bits. After 52 quotient
