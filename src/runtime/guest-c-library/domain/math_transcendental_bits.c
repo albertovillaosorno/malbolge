@@ -61,8 +61,8 @@
 #define FIXED_224_LIMB_COUNT UINT32_C(8)
 #define FIXED_224_FRACTION_BITS INT32_C(224)
 #define EXACT_RATIO_COMPONENT_LIMIT UINT64_C(0x0100000000000000)
-#define FIXED_MAX_LIMB_COUNT UINT32_C(8)
-#define FIXED_MAX_PRODUCT_LIMBS UINT32_C(16)
+#define FIXED_MAX_LIMB_COUNT UINT32_C(9)
+#define FIXED_MAX_PRODUCT_LIMBS UINT32_C(18)
 #define ATAN_SERIES_TERMS UINT32_C(60)
 #define ATAN_224_SERIES_TERMS UINT32_C(85)
 
@@ -772,7 +772,7 @@ static int subtract_fixed_192(MalbolgeGuestMathFixed192 *output,
 static void multiply_fixed_limbs_floor(
     const uint32_t *left, const uint32_t *right, uint32_t limb_count,
     uint32_t fraction_limbs, uint32_t *output, uint32_t *discarded) {
-  uint32_t product[16];
+  uint32_t product[FIXED_MAX_PRODUCT_LIMBS];
   const uint32_t product_limbs = limb_count * UINT32_C(2);
   uint32_t index = UINT32_C(0);
   uint32_t left_index = UINT32_C(0);
