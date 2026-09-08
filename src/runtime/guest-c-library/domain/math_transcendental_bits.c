@@ -1172,19 +1172,16 @@ int malbolge_guest_math_fixed_cos_taylor_interval(
       output_upper_negative, scratch, scratch_capacity);
 }
 
-static int multiply_limbs_u64_shift(
+static int multiply_limbs_u64(
     const uint32_t *input, uint32_t input_limbs, uint64_t factor,
-    uint32_t shift, uint32_t *output, uint32_t output_limbs) {
+    uint32_t *output, uint32_t output_limbs) {
   const uint32_t factor_parts[2] = {(uint32_t)factor,
                                     (uint32_t)(factor >> UINT32_C(32))};
-  const uint32_t word_shift = shift / UINT32_C(32);
-  const uint32_t bit_shift = shift % UINT32_C(32);
   uint32_t index = UINT32_C(0);
   uint32_t left_index = UINT32_C(0);
 
   if (input == NULL || output == NULL || input_limbs == UINT32_C(0) ||
-      factor == UINT64_C(0) || output_limbs < input_limbs ||
-      word_shift >= output_limbs) {
+      factor == UINT64_C(0) || output_limbs < input_limbs + UINT32_C(2)) {
     return 0;
   }
   zero_fixed_limbs(output, output_limbs);
@@ -1193,57 +1190,91 @@ static int multiply_limbs_u64_shift(
     uint64_t carry = UINT64_C(0);
     while (factor_index < UINT32_C(2)) {
       const uint32_t cell_index = left_index + factor_index;
-      uint64_t cell = UINT64_C(0);
-      if (cell_index >= output_limbs) {
-        if (factor_parts[factor_index] != UINT32_C(0) || carry != UINT64_C(0)) {
-          return 0;
-        }
-        ++factor_index;
-        continue;
-      }
-      cell = (uint64_t)input[left_index] * factor_parts[factor_index] +
-             (uint64_t)output[cell_index] + carry;
+      const uint64_t cell =
+          (uint64_t)input[left_index] * factor_parts[factor_index] +
+          (uint64_t)output[cell_index] + carry;
       output[cell_index] = (uint32_t)cell;
       carry = cell >> UINT32_C(32);
       ++factor_index;
     }
     index = left_index + UINT32_C(2);
     while (carry != UINT64_C(0)) {
-      uint64_t cell = UINT64_C(0);
-      if (index >= output_limbs) {
-        return 0;
-      }
-      cell = (uint64_t)output[index] + carry;
+      const uint64_t cell = (uint64_t)output[index] + carry;
       output[index] = (uint32_t)cell;
       carry = cell >> UINT32_C(32);
       ++index;
     }
     ++left_index;
   }
-  if (shift != UINT32_C(0)) {
-    index = output_limbs;
-    while (index != UINT32_C(0)) {
-      uint64_t shifted = UINT64_C(0);
-      uint32_t source_index = UINT32_C(0);
-      --index;
-      if (index < word_shift) {
-        output[index] = UINT32_C(0);
-        continue;
-      }
-      source_index = index - word_shift;
-      shifted = (uint64_t)output[source_index] << bit_shift;
-      if (bit_shift != UINT32_C(0) && source_index != UINT32_C(0)) {
-        shifted |= (uint64_t)output[source_index - UINT32_C(1)] >>
-                   (UINT32_C(32) - bit_shift);
-      }
-      if ((shifted >> UINT32_C(32)) != UINT64_C(0) &&
-          index + UINT32_C(1) >= output_limbs) {
-        return 0;
-      }
-      output[index] = (uint32_t)shifted;
+  return 1;
+}
+
+static uint64_t fixed_limbs_bit_length_wide(const uint32_t *value,
+                                            uint32_t limb_count) {
+  uint32_t index = limb_count;
+  while (index != UINT32_C(0)) {
+    uint32_t limb = UINT32_C(0);
+    uint32_t bits = UINT32_C(0);
+    --index;
+    limb = value[index];
+    if (limb == UINT32_C(0)) {
+      continue;
+    }
+    while (limb != UINT32_C(0)) {
+      ++bits;
+      limb >>= UINT32_C(1);
+    }
+    return (uint64_t)index * UINT64_C(32) + bits;
+  }
+  return UINT64_C(0);
+}
+
+static uint32_t shifted_fixed_limbs_bit(const uint32_t *value,
+                                        uint32_t limb_count, uint32_t shift,
+                                        uint64_t position) {
+  uint64_t source = UINT64_C(0);
+  if (position < shift) {
+    return UINT32_C(0);
+  }
+  source = position - shift;
+  if (source >= (uint64_t)limb_count * UINT64_C(32)) {
+    return UINT32_C(0);
+  }
+  return (value[(uint32_t)(source >> UINT32_C(5))] >>
+          (uint32_t)(source & UINT64_C(31))) &
+         UINT32_C(1);
+}
+
+static int compare_shifted_fixed_limbs(
+    const uint32_t *left, uint32_t left_limbs, uint32_t left_shift,
+    const uint32_t *right, uint32_t right_limbs, uint32_t right_shift) {
+  const uint64_t left_length =
+      fixed_limbs_bit_length_wide(left, left_limbs) + left_shift;
+  const uint64_t right_length =
+      fixed_limbs_bit_length_wide(right, right_limbs) + right_shift;
+  uint64_t position = left_length;
+
+  if (left_length < right_length) {
+    return -1;
+  }
+  if (left_length > right_length) {
+    return 1;
+  }
+  while (position != UINT64_C(0)) {
+    uint32_t left_bit = UINT32_C(0);
+    uint32_t right_bit = UINT32_C(0);
+    --position;
+    left_bit = shifted_fixed_limbs_bit(left, left_limbs, left_shift, position);
+    right_bit =
+        shifted_fixed_limbs_bit(right, right_limbs, right_shift, position);
+    if (left_bit < right_bit) {
+      return -1;
+    }
+    if (left_bit > right_bit) {
+      return 1;
     }
   }
-  return 1;
+  return 0;
 }
 
 static int positive_ratio_tangent_compare_internal(
@@ -1282,15 +1313,12 @@ static int positive_ratio_tangent_compare_internal(
     denominator = ratio->denominator_significand;
     exponent = ratio->exponent_delta;
   }
-  if (exponent < INT32_C(-53) || exponent > INT32_C(53)) {
-    return 0;
-  }
   if (exponent < INT32_C(0)) {
     denominator_shift = (uint32_t)(-exponent);
   } else {
     numerator_shift = (uint32_t)exponent;
   }
-  extended_limbs = limb_count + UINT32_C(4);
+  extended_limbs = limb_count + UINT32_C(2);
   if (scratch_capacity < extended_limbs * UINT32_C(2)) {
     return 0;
   }
@@ -1300,23 +1328,27 @@ static int positive_ratio_tangent_compare_internal(
       fixed_limbs_is_zero(cos_lower, limb_count)) {
     return 1;
   }
-  if (!multiply_limbs_u64_shift(cos_lower, limb_count, numerator,
-                                numerator_shift, left, extended_limbs) ||
-      !multiply_limbs_u64_shift(sin_upper, limb_count, denominator,
-                                denominator_shift, right, extended_limbs)) {
+  if (!multiply_limbs_u64(cos_lower, limb_count, numerator, left,
+                           extended_limbs) ||
+      !multiply_limbs_u64(sin_upper, limb_count, denominator, right,
+                           extended_limbs)) {
     return 0;
   }
-  if (compare_fixed_limbs(left, right, extended_limbs) > 0) {
+  if (compare_shifted_fixed_limbs(left, extended_limbs, numerator_shift,
+                                  right, extended_limbs,
+                                  denominator_shift) > 0) {
     *comparison = INT32_C(1);
     return 1;
   }
-  if (!multiply_limbs_u64_shift(cos_upper, limb_count, numerator,
-                                numerator_shift, left, extended_limbs) ||
-      !multiply_limbs_u64_shift(sin_lower, limb_count, denominator,
-                                denominator_shift, right, extended_limbs)) {
+  if (!multiply_limbs_u64(cos_upper, limb_count, numerator, left,
+                           extended_limbs) ||
+      !multiply_limbs_u64(sin_lower, limb_count, denominator, right,
+                           extended_limbs)) {
     return 0;
   }
-  if (compare_fixed_limbs(left, right, extended_limbs) < 0) {
+  if (compare_shifted_fixed_limbs(left, extended_limbs, numerator_shift,
+                                  right, extended_limbs,
+                                  denominator_shift) < 0) {
     *comparison = INT32_C(-1);
   }
   return 1;

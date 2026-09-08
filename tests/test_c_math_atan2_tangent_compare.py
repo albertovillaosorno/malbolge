@@ -26,7 +26,8 @@
 # - Summary:
 #   - Proves ratio/tangent ordering without fixed/fixed division.
 # - Description:
-#   - Exact u64 scalar products retain exponent shifts through plus/minus 53.
+#   - Exact u64 scalar products compare virtual shifts through the full
+#     binary64 ratio range.
 # - Usage:
 #   - Collected with repository-pinned native Clang on supported hosts.
 # - Defaults:
@@ -45,16 +46,18 @@ CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
 CONTRACT = ROOT / "src/runtime/guest-c-library/contract"
 SOURCE = ROOT / "src/runtime/guest-c-library/domain/math_transcendental_bits.c"
 LIMB_COUNT = 4
-EXTENDED_LIMBS = LIMB_COUNT + 4
+EXTENDED_LIMBS = LIMB_COUNT + 2
 SCRATCH_LIMBS = EXTENDED_LIMBS * 2
 
 CASES = (
+    (0x0000000000000001, 0x3FF0000000000000, -1),  # 2^-1074
     (0x3CA0000000000000, 0x3FF0000000000000, -1),  # 2^-53
     (0x3FD0000000000000, 0x3FF0000000000000, -1),  # 1/4
     (0x3FE0000000000000, 0x3FF0000000000000, 0),  # 1/2
     (0x3FF0000000000000, 0x3FF0000000000000, 1),  # 1
     (0x4000000000000000, 0x3FF0000000000000, 1),  # 2
     (0x3FF0000000000000, 0x3CA0000000000000, 1),  # 2^53
+    (0x3FF0000000000000, 0x0000000000000001, 1),  # 2^1074
 )
 
 
@@ -110,7 +113,7 @@ int main(void) {{
 def test_positive_ratio_tangent_cross_products_cover_shift_extremes(
     tmp_path: Path,
 ) -> None:
-    """Resolve all orderings through exponent shifts plus/minus 53."""
+    """Resolve all orderings through the full binary64 exponent span."""
     harness = tmp_path / "tangent-compare.c"
     executable = tmp_path / "tangent-compare"
     _ = harness.write_text(_harness_source(), encoding="utf-8")

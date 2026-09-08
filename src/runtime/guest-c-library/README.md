@@ -197,13 +197,17 @@ and `4 - 2^-224` without host trigonometric functions.
 Positive ratio/tangent comparison now avoids fixed/fixed division entirely.
 The kernel ratio is reconstructed as `|y/x|` even when its normalized input was
 swapped. Exact 53-bit significands multiply directed sin/cos endpoint integers,
-with the binary exponent moved to a left shift on the appropriate cross product.
-A `2*(N+4)` caller-owned scratch holds the two exact products; comparison
-returns `-1`, `0`, or `+1` only when the ratio lies below, overlaps, or lies
-above the tangent enclosure.
+with the binary exponent retained as a virtual left shift on the appropriate
+cross product.
 
-Algebraic fixtures cover ratios from `2^-53` through `2^53`, both swapped
-directions, and the unresolved equality case without host trig.
+Each 53-bit significand multiplies into `N+2` limbs. Bit-length and shifted-bit
+comparison handle exponent deltas without materializing zero limbs, so a
+`2*(N+2)` caller-owned scratch covers the entire finite binary64 ratio span,
+including subnormal extremes. Comparison returns `-1`, `0`, or `+1` only when
+the ratio lies below, overlaps, or lies above the tangent enclosure.
+
+Algebraic fixtures now cover ratios from `2^-1074` through `2^1074`, both
+swapped directions, and the unresolved equality case without host trig.
 
 Positive midpoint orchestration now connects the variable-width proof path end
 to end. `malbolge_guest_math_positive_midpoint_compare` requires an exact

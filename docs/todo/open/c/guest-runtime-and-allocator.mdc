@@ -420,10 +420,11 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
 
   Same-branch positive tangent comparison now uses exact cross products instead
   of fixed/fixed division. The 53-bit binary64 ratio coefficients multiply
-  directed sin/cos endpoints exactly, with `exponent_delta` transferred to a
-  shift on the matching side. `2*(N+4)` scratch supports ratios from `2^-53` to
-  `2^53`; synthetic evidence pins below/equal/above outcomes and both swapped
-  directions.
+  directed sin/cos endpoints exactly, with `exponent_delta` retained as a
+  virtual shift on the matching side. Unshifted products occupy `N+2` limbs;
+  shifted bit-length/bitstream comparison avoids materializing up to 1074 zero
+  bits. The same `2*(N+2)` scratch now covers ratios from `2^-1074` to `2^1074`,
+  with synthetic below/equal/above evidence in both swapped directions.
 
   Positive same-branch midpoint orchestration is now executable end to end.
   Exact dyadics materialize only when caller precision covers their denominator;
