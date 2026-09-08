@@ -511,9 +511,11 @@ A nearest-even binary64 gate now rounds the two Q32.192 endpoints independently
 and publishes only when both land on the same bit pattern. Endpoint rounding is
 integer-only: it finds the leading fixed-point bit, extracts 53 significand
 bits,
-and applies guard/sticky ties-to-even. Because every nonzero Q32.192 value is at
-least `2^-192`, this path needs only normal binary64 encoding; intervals that
-include zero and one fixed-point unit naturally disagree and stay unresolved.
+and applies guard/sticky ties-to-even. Tracked C conformance pins both even- and
+odd-lower midpoint ties plus the significand carry that rounds a midpoint to the
+next power of two. Because every nonzero Q32.192 value is at least `2^-192`,
+this path needs only normal binary64 encoding; intervals that include zero and
+one fixed-point unit naturally disagree and stay unresolved.
 
 Against the same exact 64-pair Machin-plus-Fraction authority, all 64 true
 principal-angle intervals round uniquely. The Q32.192 enclosure by itself

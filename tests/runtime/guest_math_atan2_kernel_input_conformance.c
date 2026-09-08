@@ -522,6 +522,30 @@ static int test_unique_rounding(void) {
       output != UINT64_C(0x55)) {
     return 3;
   }
+
+  fill_fixed_192(&interval.lower, UINT32_C(0));
+  fill_fixed_192(&interval.upper, UINT32_C(0));
+  interval.lower.limbs[6] = UINT32_C(1);
+  interval.upper.limbs[6] = UINT32_C(1);
+  interval.lower.limbs[4] = UINT32_C(0x00001800);
+  interval.upper.limbs[4] = UINT32_C(0x00001800);
+  if (!malbolge_guest_math_fixed192_unique_binary64(&interval, &output) ||
+      output != UINT64_C(0x3ff0000000000002)) {
+    return 8;
+  }
+
+  fill_fixed_192(&interval.lower, UINT32_C(0));
+  fill_fixed_192(&interval.upper, UINT32_C(0));
+  interval.lower.limbs[4] = UINT32_C(0xfffff800);
+  interval.upper.limbs[4] = UINT32_C(0xfffff800);
+  interval.lower.limbs[5] = UINT32_C(0xffffffff);
+  interval.upper.limbs[5] = UINT32_C(0xffffffff);
+  interval.lower.limbs[6] = UINT32_C(1);
+  interval.upper.limbs[6] = UINT32_C(1);
+  if (!malbolge_guest_math_fixed192_unique_binary64(&interval, &output) ||
+      output != UINT64_C(0x4000000000000000)) {
+    return 9;
+  }
   fill_fixed_192(&interval.lower, UINT32_C(0));
   fill_fixed_192(&interval.upper, UINT32_C(0));
   interval.lower.limbs[0] = UINT32_C(1);
