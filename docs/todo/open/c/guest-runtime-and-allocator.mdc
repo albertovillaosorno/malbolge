@@ -449,9 +449,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   cells certify at eight fractional limbs/16 terms, and an adjacent candidate is
   correctly left uncertified.
 
-  The remaining midpoint blocker is adaptive scheduling: choose caller-owned
-  precision and Taylor depth, retry `certified=0` with larger capacity, and stop
-  only once both cell boundaries are strictly separated.
+  Bounded scheduling evidence now covers all 4,164 retained pairs. It observes
+  997 pre-kernel resolutions and 3,167 kernel-required cells. At 16 terms,
+  Q64/Q96/Q128 certify 3,112/3,135/3,167; at Q128, 4/8/12/16 terms certify
+  21/26/2,107/3,167. These are coverage counts only, but they pin that both
+  precision and Taylor depth can independently require retry.
+
+  The remaining midpoint blocker is product adaptive scheduling: choose
+  caller-owned precision and Taylor depth, retry `certified=0` with larger
+  capacity, and stop only once both cell boundaries are strictly separated.
+  Q128/16 is not a full-domain bound.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

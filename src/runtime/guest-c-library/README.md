@@ -255,6 +255,18 @@ one-limb request and an adjacent wrong binary64 candidate both remain cleanly
 uncertified, while short scratch and the exact `y=x` special case are pinned as
 nonpublishing hard failures.
 
+A deterministic retry-distribution corpus now exercises the refinement attempt
+across signed hard cells, four edge pairs, and 4,096 finite-nonzero LCG pairs.
+Of 4,164 total pairs, 997 resolve before the kernel and 3,167 require kernel
+work. At 16 Taylor terms, Q64 certifies 3,112 kernel cells and Q96 certifies
+3,135; Q128 certifies all 3,167. Holding Q128 fixed, 4/8/12/16 terms certify
+21/26/2,107/3,167 respectively.
+
+These counts are scheduling evidence, not a precision or termination bound. They
+pin that both dimensions can independently cause retries and that a future
+policy must grow capacity as well as Taylor depth rather than assuming either
+one is sufficient alone.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

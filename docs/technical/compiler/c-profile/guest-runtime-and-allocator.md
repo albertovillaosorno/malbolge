@@ -722,6 +722,16 @@ The 64 signed hard cells certify at eight fractional limbs and 16 terms. Coarse
 one-limb precision and an adjacent wrong candidate are explicitly uncertified,
 which pins retry semantics independently from the current fixed-Q handoff.
 
+Bounded scheduler evidence now runs the atomic refinement attempt over 4,164
+pairs: signed hard cells, four edges, and 4,096 finite-nonzero LCG pairs. The
+population splits into 997 pre-kernel resolutions and 3,167 kernel-required
+cases. With 16 terms, Q64/Q96/Q128 certify 3,112/3,135/3,167 kernel cells. At
+Q128, 4/8/12/16 terms certify 21/26/2,107/3,167 cells.
+
+The distribution is intentionally coverage-only. It demonstrates independent
+precision and truncation retries but does not turn Q128/16 into a full-domain
+bound or discharge the unbounded refinement/termination obligation.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.
