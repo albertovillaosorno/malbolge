@@ -166,6 +166,14 @@ covers 4/8/16/128 limbs with the first sine/cosine recurrence divisors
 rejection. Full summation still needs signed endpoint accumulation because
 partial sine/cosine sums over the admitted `|midpoint|<4` range can cross zero.
 
+Signed-magnitude accumulation now handles the sign crossings needed by Taylor
+partials. `malbolge_guest_math_fixed_signed_add` adds equal-sign magnitudes,
+subtracts the smaller magnitude for opposite signs, and canonicalizes every zero
+result to positive zero. Carry overflow and invalid sign selectors reject before
+magnitude or sign publication. Integer authority exercises positive/negative
+sums, both subtraction directions, exact cancellation, and negative-zero input
+through 4/8/16/128 limbs.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

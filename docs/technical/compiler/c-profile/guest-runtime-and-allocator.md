@@ -644,6 +644,16 @@ This closes variable-width term generation but not full sine/cosine summation:
 partial alternating sums for `|midpoint|<4` can cross zero, so the next runtime
 primitive must carry signed endpoints rather than forcing unsigned underflow.
 
+Signed accumulation now removes the scalar sign-crossing blocker.
+`malbolge_guest_math_fixed_signed_add` keeps a one-bit sign separate from the
+variable-width magnitude. Equal signs use checked addition; opposite signs use
+magnitude comparison plus subtraction, and exact cancellation canonicalizes to
+positive zero. Overflow or invalid sign selectors reject before publishing
+magnitude or sign.
+
+Independent fixtures cover 4/8/16/128 limbs and both sign orders without
+introducing two's-complement width policy.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

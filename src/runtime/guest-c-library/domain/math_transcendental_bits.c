@@ -891,6 +891,43 @@ int malbolge_guest_math_fixed_subtract(
   return subtract_fixed_limbs(output, left, right, limb_count);
 }
 
+int malbolge_guest_math_fixed_signed_add(
+    const uint32_t *left, uint32_t left_negative, const uint32_t *right,
+    uint32_t right_negative, uint32_t limb_count, uint32_t *output,
+    uint32_t *output_negative) {
+  int comparison = 0;
+  uint32_t result_negative = UINT32_C(0);
+
+  if (left == NULL || right == NULL || output == NULL ||
+      output_negative == NULL || limb_count == UINT32_C(0) ||
+      left_negative > UINT32_C(1) || right_negative > UINT32_C(1)) {
+    return 0;
+  }
+  if (left_negative == right_negative) {
+    if (!add_fixed_limbs_checked(output, left, right, limb_count)) {
+      return 0;
+    }
+    result_negative = left_negative;
+  } else {
+    comparison = compare_fixed_limbs(left, right, limb_count);
+    if (comparison == 0) {
+      zero_fixed_limbs(output, limb_count);
+      result_negative = UINT32_C(0);
+    } else if (comparison > 0) {
+      (void)subtract_fixed_limbs(output, left, right, limb_count);
+      result_negative = left_negative;
+    } else {
+      (void)subtract_fixed_limbs(output, right, left, limb_count);
+      result_negative = right_negative;
+    }
+  }
+  if (fixed_limbs_is_zero(output, limb_count)) {
+    result_negative = UINT32_C(0);
+  }
+  *output_negative = result_negative;
+  return 1;
+}
+
 int malbolge_guest_math_fixed_interval_add(
     const uint32_t *left_lower, const uint32_t *left_upper,
     const uint32_t *right_lower, const uint32_t *right_upper,
