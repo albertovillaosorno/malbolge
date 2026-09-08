@@ -48,6 +48,7 @@ CONTRACT = ROOT / "src/runtime/guest-c-library/contract"
 SOURCE = ROOT / "src/runtime/guest-c-library/domain/math_transcendental_bits.c"
 SIGN_BIT = 1 << 63
 FRACTION_MASK = (1 << 52) - 1
+EXPONENT_MASK = 0x7FF
 HIDDEN_BIT = 1 << 52
 MIN_NORMAL_EXPONENT = -1022
 FIXED_BITS = 224
@@ -76,6 +77,11 @@ DIRECT_HARD_PAIRS = (
     (0x3FD88C55EA9394D5, 0x3FF6ABB1E310A1AC),
 )
 HARD_PAIRS = TRANSFORMED_HARD_PAIRS + DIRECT_HARD_PAIRS
+LCG_MULTIPLIER = 6364136223846793005
+LCG_INCREMENT = 1442695040888963407
+LCG_SEED = 0x4154414E325F5631
+ALL_BITS = (1 << 64) - 1
+REFINEMENT_PAIR_COUNT = 512
 
 
 def _run(command: list[str], cwd: Path) -> sp.CompletedProcess[str]:
@@ -92,9 +98,9 @@ def _run(command: list[str], cwd: Path) -> sp.CompletedProcess[str]:
 
 def _raw_fraction(bits: int) -> Fraction:
     magnitude = bits & ~SIGN_BIT
-    raw_exponent = (magnitude >> 52) & 0x7FF
+    raw_exponent = (magnitude >> 52) & EXPONENT_MASK
     fraction = magnitude & FRACTION_MASK
-    assert raw_exponent not in {0, 0x7FF}
+    assert raw_exponent not in {0, EXPONENT_MASK}
     significand = HIDDEN_BIT | fraction
     shift = raw_exponent - 1023 - 52
     if shift >= 0:
@@ -174,6 +180,72 @@ def _nearest_binary64_bits(value: Fraction) -> int:
         significand >>= 1
         exponent += 1
     return ((exponent + 1023) << 52) | (significand - HIDDEN_BIT)
+
+
+def _finite_nonzero(bits: int) -> bool:
+    magnitude = bits & ~SIGN_BIT
+    exponent = (magnitude >> 52) & EXPONENT_MASK
+    return magnitude != 0 and exponent != EXPONENT_MASK
+
+
+def _refinement_pairs() -> tuple[tuple[int, int], ...]:
+    state = LCG_SEED
+    pairs: list[tuple[int, int]] = []
+    while len(pairs) < REFINEMENT_PAIR_COUNT:
+        state = (state * LCG_MULTIPLIER + LCG_INCREMENT) & ALL_BITS
+        y_bits = state
+        state = (state * LCG_MULTIPLIER + LCG_INCREMENT) & ALL_BITS
+        x_bits = state
+        if _finite_nonzero(y_bits) and _finite_nonzero(x_bits):
+            pairs.append((y_bits, x_bits))
+    return tuple(pairs)
+
+
+def _refinement_harness_source() -> str:
+    rows = ",\n".join(
+        f"  {{UINT64_C(0x{y:016x}), UINT64_C(0x{x:016x})}}"
+        for y, x in _refinement_pairs()
+    )
+    return f"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+typedef struct Pair {{ uint64_t y, x; }} Pair;
+static const Pair pairs[] = {{
+{rows}
+}};
+static int compare_224_to_192_shifted(
+    const MalbolgeGuestMathFixed224 *wide,
+    const MalbolgeGuestMathFixed192 *narrow) {{
+  uint32_t index = UINT32_C(8);
+  while (index != UINT32_C(0)) {{
+    uint32_t rhs = UINT32_C(0);
+    --index;
+    if (index != UINT32_C(0)) rhs = narrow->limbs[index - UINT32_C(1)];
+    if (wide->limbs[index] < rhs) return -1;
+    if (wide->limbs[index] > rhs) return 1;
+  }}
+  return 0;
+}}
+int main(void) {{
+  uint32_t index = UINT32_C(0);
+  while (index < (uint32_t)(sizeof(pairs) / sizeof(pairs[0]))) {{
+    MalbolgeGuestMathAtan2Interval q192;
+    MalbolgeGuestMathAtan2Interval224 q224;
+    if (!malbolge_guest_math_atan2_interval(
+            pairs[index].y, pairs[index].x, &q192) ||
+        !malbolge_guest_math_atan2_interval224(
+            pairs[index].y, pairs[index].x, &q224) ||
+        q192.negative != q224.negative ||
+        compare_224_to_192_shifted(&q224.magnitude.lower,
+                                   &q192.magnitude.lower) < 0 ||
+        compare_224_to_192_shifted(&q224.magnitude.upper,
+                                   &q192.magnitude.upper) > 0) {{
+      return 88;
+    }}
+    ++index;
+  }}
+  return index == UINT32_C({REFINEMENT_PAIR_COUNT}) ? 0 : 89;
+}}
+"""
 
 
 def _scaled_bounds(lower: Fraction, upper: Fraction) -> tuple[int, int]:
@@ -285,6 +357,34 @@ def test_q224_interval_encloses_and_rounds_independent_hard_cases(
     harness = tmp_path / "atan2-q224.c"
     executable = tmp_path / "atan2-q224"
     _ = harness.write_text(_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_q224_refines_q192_over_deterministic_corpus(tmp_path: Path) -> None:
+    """Require the wider enclosure to be a Q32.192 subinterval."""
+    harness = tmp_path / "atan2-q224-refinement.c"
+    executable = tmp_path / "atan2-q224-refinement"
+    _ = harness.write_text(_refinement_harness_source(), encoding="utf-8")
     compiled = _run(
         [
             str(CLANG),
