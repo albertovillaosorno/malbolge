@@ -654,6 +654,14 @@ magnitude or sign.
 Independent fixtures cover 4/8/16/128 limbs and both sign orders without
 introducing two's-complement width policy.
 
+Signed interval accumulation now closes the alternating-sum representation
+boundary. Endpoints are ordered with sign-aware magnitude comparison, then the
+monotone lower/lower and upper/upper sums stage in caller-owned `2*N` scratch.
+Both staged endpoints and their signs are published only after the complete
+operation succeeds. Cross-zero fixtures cover 4/8/16/128 limbs and pin malformed
+ordering, short scratch, invalid signs, and an upper-only carry overflow as
+atomic rejection.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

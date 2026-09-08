@@ -891,6 +891,25 @@ int malbolge_guest_math_fixed_subtract(
   return subtract_fixed_limbs(output, left, right, limb_count);
 }
 
+static int compare_signed_fixed_limbs(
+    const uint32_t *left, uint32_t left_negative, const uint32_t *right,
+    uint32_t right_negative, uint32_t limb_count) {
+  const uint32_t left_is_zero =
+      fixed_limbs_is_zero(left, limb_count) ? UINT32_C(1) : UINT32_C(0);
+  const uint32_t right_is_zero =
+      fixed_limbs_is_zero(right, limb_count) ? UINT32_C(1) : UINT32_C(0);
+  const uint32_t left_sign =
+      left_is_zero != UINT32_C(0) ? UINT32_C(0) : left_negative;
+  const uint32_t right_sign =
+      right_is_zero != UINT32_C(0) ? UINT32_C(0) : right_negative;
+  const int magnitude = compare_fixed_limbs(left, right, limb_count);
+
+  if (left_sign != right_sign) {
+    return left_sign != UINT32_C(0) ? -1 : 1;
+  }
+  return left_sign != UINT32_C(0) ? -magnitude : magnitude;
+}
+
 int malbolge_guest_math_fixed_signed_add(
     const uint32_t *left, uint32_t left_negative, const uint32_t *right,
     uint32_t right_negative, uint32_t limb_count, uint32_t *output,
@@ -925,6 +944,54 @@ int malbolge_guest_math_fixed_signed_add(
     result_negative = UINT32_C(0);
   }
   *output_negative = result_negative;
+  return 1;
+}
+
+int malbolge_guest_math_fixed_signed_interval_add(
+    const uint32_t *left_lower, uint32_t left_lower_negative,
+    const uint32_t *left_upper, uint32_t left_upper_negative,
+    const uint32_t *right_lower, uint32_t right_lower_negative,
+    const uint32_t *right_upper, uint32_t right_upper_negative,
+    uint32_t limb_count, uint32_t *output_lower,
+    uint32_t *output_lower_negative, uint32_t *output_upper,
+    uint32_t *output_upper_negative, uint32_t *scratch,
+    uint32_t scratch_capacity) {
+  uint32_t lower_negative = UINT32_C(0);
+  uint32_t upper_negative = UINT32_C(0);
+  uint32_t *lower = scratch;
+  uint32_t *upper = NULL;
+
+  if (left_lower == NULL || left_upper == NULL || right_lower == NULL ||
+      right_upper == NULL || output_lower == NULL ||
+      output_lower_negative == NULL || output_upper == NULL ||
+      output_upper_negative == NULL || scratch == NULL ||
+      limb_count == UINT32_C(0) || limb_count > UINT32_MAX / UINT32_C(2) ||
+      left_lower_negative > UINT32_C(1) ||
+      left_upper_negative > UINT32_C(1) ||
+      right_lower_negative > UINT32_C(1) ||
+      right_upper_negative > UINT32_C(1) ||
+      scratch_capacity < limb_count * UINT32_C(2) ||
+      compare_signed_fixed_limbs(left_lower, left_lower_negative, left_upper,
+                                 left_upper_negative, limb_count) > 0 ||
+      compare_signed_fixed_limbs(right_lower, right_lower_negative, right_upper,
+                                 right_upper_negative, limb_count) > 0) {
+    return 0;
+  }
+  upper = lower + limb_count;
+  if (!malbolge_guest_math_fixed_signed_add(
+          left_lower, left_lower_negative, right_lower, right_lower_negative,
+          limb_count, lower, &lower_negative) ||
+      !malbolge_guest_math_fixed_signed_add(
+          left_upper, left_upper_negative, right_upper, right_upper_negative,
+          limb_count, upper, &upper_negative) ||
+      compare_signed_fixed_limbs(lower, lower_negative, upper, upper_negative,
+                                 limb_count) > 0) {
+    return 0;
+  }
+  copy_fixed_limbs(output_lower, lower, limb_count);
+  copy_fixed_limbs(output_upper, upper, limb_count);
+  *output_lower_negative = lower_negative;
+  *output_upper_negative = upper_negative;
   return 1;
 }
 

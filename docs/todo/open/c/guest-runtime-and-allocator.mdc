@@ -405,10 +405,15 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   canonicalizes to positive zero. Carry overflow and invalid sign selectors are
   nonpublishing; integer authority covers 4/8/16/128 limbs and both sign orders.
 
-  Full Taylor summation now needs the same rule lifted atomically across lower
-  and upper signed endpoints. The remaining blocker is signed interval
-  accumulation and then repeated sine/cosine orchestration, not term generation
-  or variable-width storage.
+  Signed interval accumulation now lifts that rule atomically across lower and
+  upper endpoints. Sign+magnitude ordering is numeric, lower/lower and
+  upper/upper sums stage in caller-owned `2*N` scratch, and neither endpoint nor
+  sign publishes until both succeed. Cross-zero 4/8/16/128-limb evidence pins
+  malformed input, short scratch, invalid signs, and upper-only carry overflow.
+
+  Complete Taylor summation can now compose term recurrence with signed interval
+  accumulation. The remaining blocker is alternating sine/cosine orchestration
+  and its first-omitted-term enclosure at caller-selected precision.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

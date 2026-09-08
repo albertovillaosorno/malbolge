@@ -174,6 +174,15 @@ magnitude or sign publication. Integer authority exercises positive/negative
 sums, both subtraction directions, exact cancellation, and negative-zero input
 through 4/8/16/128 limbs.
 
+Signed interval accumulation now stages both endpoints before publication.
+`malbolge_guest_math_fixed_signed_interval_add` orders sign+magnitude endpoints
+numerically, computes lower+lower and upper+upper into caller-owned `2*N`
+scratch, revalidates the staged result, and only then copies magnitudes and sign
+bits. Zero signs are canonicalized by the scalar signed primitive. Independent
+fixtures exercise cross-zero intervals through 128 limbs and pin malformed
+inputs, short scratch, invalid sign selectors, and upper-only carry overflow as
+nonpublishing failures.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch
