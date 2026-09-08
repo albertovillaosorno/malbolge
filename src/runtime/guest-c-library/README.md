@@ -74,9 +74,11 @@ proof paths, while Q32.192 alone still certifies 48/64. A separate Q1152
 integer-only oracle directly bounds every series term and certifies the runtime
 result bit-for-bit for all 519 deterministic kernel pairs; the 64 shared cases
 are cross-checked against the exact `Fraction` authority. A deterministic
-continued-fraction proposal search also contributes eight non-small kernel
-ratios on both midpoint sides; Q1152, not the proposal arithmetic, certifies
-that all are within `2e-18` ulp and the closest is below `1e-19` ulp.
+continued-fraction proposal search also contributes transformed-branch and
+direct-atan sets of eight non-small ratios each. Q1152, not the proposal
+arithmetic, certifies both midpoint sides: the transformed set is entirely
+within `4e-20` ulp and the direct set within `2e-20` ulp, with each closest case
+below `2e-21` ulp.
 
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full

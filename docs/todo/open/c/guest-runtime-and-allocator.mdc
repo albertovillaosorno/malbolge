@@ -332,10 +332,11 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   full-domain cases.
 
 
-  A second eight-vector set comes from a deterministic continued-fraction
-  midpoint proposal search. Q1152 independently certifies both sides, every
-  case within `2e-18` ulp and the closest below `1e-19` ulp; Q32.192 still
-  publishes all eight. The proposal search itself is not rounding authority.
+  Deterministic continued-fraction midpoint proposals now retain separate
+  eight-vector transformed and direct-atan sets. Q1152 independently certifies
+  both midpoint sides, all transformed cases within `4e-20` ulp, all direct
+  cases within `2e-20` ulp, and each closest case below `2e-21` ulp; Q32.192
+  publishes all sixteen. The proposal search itself is not rounding authority.
 
   A fixed-seed 1,000,000-pair stress run over raw binary64 words produces
   999,006 finite pairs and the combined handoff resolves all 999,006. The exact

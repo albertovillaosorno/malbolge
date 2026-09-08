@@ -132,14 +132,24 @@ ATAN_KERNEL_HARD_ROUNDING_PAIRS = (
     (0xEE13F55E37E8835E, 0xEE839BA582284CD1),
 )
 ATAN_KERNEL_CF_HARD_ROUNDING_PAIRS = (
-    (0x3FEEBE54291BFACD, 0x3FFCF811024B6C66),
-    (0x3FECF2FD389E8A18, 0x3FFCDC82EB8CE567),
-    (0x3FE79DCF6C889A4E, 0x3FF7999AAC625353),
-    (0x3FEF1CA40F928AD1, 0x3FFE43506177244B),
-    (0x3FE3826746B31F83, 0x3FF378DA1E0A5884),
-    (0x3FEEA6EE777221C7, 0x3FF20EE663211446),
-    (0x3FEB6D10E734C774, 0x3FF636500443F5A1),
-    (0x3FEE36A761D44C7A, 0x3FFD8871625C3AF3),
+    (0x3FEE19FA869EA9FC, 0x3FF197DD31B21770),
+    (0x3FE74E55173F69A0, 0x3FF6943B1C1EE532),
+    (0x3FEF179200C72129, 0x3FFBC1B4128CF396),
+    (0x3FE97B1DB9A2A48C, 0x3FF781CE6A6EE8EF),
+    (0x3FE9519856F5242F, 0x3FF06C408C434F0E),
+    (0x3FEF7590E09E2ADD, 0x3FF629E5895F91A7),
+    (0x3FE5139B1425C8A2, 0x3FF4FA0C073AF8F1),
+    (0x3FE549E587E6D4CD, 0x3FF11E3639F76651),
+)
+ATAN_KERNEL_DIRECT_HARD_ROUNDING_PAIRS = (
+    (0x3FD75B9A8D0A0447, 0x3FF069F1CC6166FC),
+    (0x3FDF65E15A3E11FD, 0x3FF31E45227A22DE),
+    (0x3FDEF69FB021F2DB, 0x3FF90CC971F74C07),
+    (0x3FDABB28E6EEF14A, 0x3FF544C4908DDACE),
+    (0x3FD94D130BF48845, 0x3FF2CCCC5A36B6E1),
+    (0x3FD667E2DB48932E, 0x3FF41B5A664E9573),
+    (0x3FDBA787A32EAF18, 0x3FF914A595604C36),
+    (0x3FD88C55EA9394D5, 0x3FF6ABB1E310A1AC),
 )
 EDGE_PAIRS = (
     (0x0000000000000001, 0x3FF0000000000000),
@@ -1523,13 +1533,12 @@ def test_atan2_integer_oracle_encloses_fraction_authority() -> None:
         assert integer_negative == exact_negative
 
 
-def test_atan2_kernel_hard_rounding_neighborhood_matches_q1152_oracle(
-    tmp_path: Path,
-) -> None:
-    """Retain eight non-small kernel cases close to both midpoint sides."""
+def _hard_rounding_margins(
+    pairs: tuple[tuple[int, int], ...],
+) -> tuple[list[Fraction], set[bool]]:
     margins: list[Fraction] = []
     lower_sides: set[bool] = set()
-    for y_bits, x_bits in ATAN_KERNEL_HARD_ROUNDING_PAIRS:
+    for y_bits, x_bits in pairs:
         ratio = min(_raw_fraction(y_bits), _raw_fraction(x_bits)) / max(
             _raw_fraction(y_bits), _raw_fraction(x_bits)
         )
@@ -1539,6 +1548,16 @@ def test_atan2_kernel_hard_rounding_neighborhood_matches_q1152_oracle(
         )
         margins.append(margin)
         lower_sides.add(lower_side)
+    return margins, lower_sides
+
+
+def test_atan2_kernel_hard_rounding_neighborhood_matches_q1152_oracle(
+    tmp_path: Path,
+) -> None:
+    """Retain eight non-small kernel cases close to both midpoint sides."""
+    margins, lower_sides = _hard_rounding_margins(
+        ATAN_KERNEL_HARD_ROUNDING_PAIRS
+    )
     assert min(margins) < Fraction(1, 60_000)
     assert max(margins) < Fraction(1, 5_000)
     assert lower_sides == {False, True}
@@ -1575,25 +1594,58 @@ def test_atan2_kernel_hard_rounding_neighborhood_matches_q1152_oracle(
 def test_atan2_continued_fraction_hard_rounding_matches_q1152_oracle(
     tmp_path: Path,
 ) -> None:
-    """Retain continued-fraction proposals certified within 2e-18 ulp."""
-    margins: list[Fraction] = []
-    lower_sides: set[bool] = set()
-    for y_bits, x_bits in ATAN_KERNEL_CF_HARD_ROUNDING_PAIRS:
-        ratio = _raw_fraction(y_bits) / _raw_fraction(x_bits)
-        assert ratio > ATAN_IDENTITY_MAX
-        margin, lower_side = _integer_oracle_midpoint_margin_and_side(
-            y_bits, x_bits
-        )
-        margins.append(margin)
-        lower_sides.add(lower_side)
-    assert min(margins) < Fraction(1, 10**19)
-    assert max(margins) < Fraction(1, 5 * 10**17)
+    """Retain transformed proposals certified near both midpoint sides."""
+    margins, lower_sides = _hard_rounding_margins(
+        ATAN_KERNEL_CF_HARD_ROUNDING_PAIRS
+    )
+    assert min(margins) < Fraction(1, 5 * 10**20)
+    assert max(margins) < Fraction(1, 25 * 10**18)
     assert lower_sides == {False, True}
 
     harness = tmp_path / "atan2-cf-hard-rounding.c"
     executable = tmp_path / "atan2-cf-hard-rounding"
     _ = harness.write_text(
         _margin_harness_source(ATAN_KERNEL_CF_HARD_ROUNDING_PAIRS),
+        encoding="utf-8",
+    )
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan2_direct_hard_rounding_matches_q1152_oracle(
+    tmp_path: Path,
+) -> None:
+    """Retain direct-atan proposals certified near both midpoint sides."""
+    margins, lower_sides = _hard_rounding_margins(
+        ATAN_KERNEL_DIRECT_HARD_ROUNDING_PAIRS
+    )
+    assert min(margins) < Fraction(1, 5 * 10**20)
+    assert max(margins) < Fraction(1, 5 * 10**19)
+    assert lower_sides == {False, True}
+
+    harness = tmp_path / "atan2-direct-hard-rounding.c"
+    executable = tmp_path / "atan2-direct-hard-rounding"
+    _ = harness.write_text(
+        _margin_harness_source(ATAN_KERNEL_DIRECT_HARD_ROUNDING_PAIRS),
         encoding="utf-8",
     )
     compiled = _run(
