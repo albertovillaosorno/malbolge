@@ -611,6 +611,19 @@ long-division with a 64-bit remainder, accepts every nonzero `u32` divisor, and
 supports `input == output`. Independent integer fixtures cover 4/8/16/128 limbs
 and `UINT32_MAX`; insufficient product scratch and divisor zero are nonmutating.
 
+Directed rounding no longer depends on the fixed Q192/Q224/Q256 structs.
+Checked variable-width add/subtract preflight carry/underflow before
+publication.
+Product floor/ceil share caller-owned `2*N` scratch; ceil adds one unit only
+when
+discarded low limbs are nonzero and rejects if that increment would overflow.
+Small division similarly exposes floor/ceil, with ceil selected by its exact
+remainder.
+
+Integer authority exercises 4/8/16/128 limbs and pins a product whose floor is
+the all-ones maximum but whose nonzero remainder makes ceil unrepresentable,
+requiring a nonmutating rejection.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

@@ -139,6 +139,16 @@ publication and every nonzero `u32` divisor. Exact Python-integer differentials
 cover 4, 8, 16, and 128 limbs, including `UINT32_MAX` division; short scratch,
 zero divisors, and overflowing products stay fail closed.
 
+Directed interval arithmetic now sits on the same variable-width core. Checked
+add/subtract reject carry or underflow before result publication. Product ceil
+uses the same caller-owned `2*N` scratch as floor and increments only when
+fractional product limbs were discarded; an increment beyond the configured
+width rejects atomically. Small division has matching floor/ceil entry points,
+and ceil increments exactly when the long-division remainder is nonzero.
+
+Independent integer evidence exercises these operations through 128 limbs,
+including in-place division and the ceil-only product-overflow edge.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

@@ -221,11 +221,24 @@ int malbolge_guest_math_dyadic_fixed_limb_count(
 int malbolge_guest_math_dyadic_write_fixed(
     const MalbolgeGuestMathDyadic *input, uint32_t fraction_bits,
     uint32_t *limbs, uint32_t limb_capacity);
+int malbolge_guest_math_fixed_add(
+    const uint32_t *left, const uint32_t *right, uint32_t limb_count,
+    uint32_t *output);
+int malbolge_guest_math_fixed_subtract(
+    const uint32_t *left, const uint32_t *right, uint32_t limb_count,
+    uint32_t *output);
 int malbolge_guest_math_fixed_multiply_floor(
     const uint32_t *left, const uint32_t *right, uint32_t limb_count,
     uint32_t fraction_limbs, uint32_t *output, uint32_t *scratch,
     uint32_t scratch_capacity, uint32_t *discarded);
 int malbolge_guest_math_fixed_divide_small_floor(
+    const uint32_t *input, uint32_t limb_count, uint32_t divisor,
+    uint32_t *output, uint32_t *remainder);
+int malbolge_guest_math_fixed_multiply_ceil(
+    const uint32_t *left, const uint32_t *right, uint32_t limb_count,
+    uint32_t fraction_limbs, uint32_t *output, uint32_t *scratch,
+    uint32_t scratch_capacity, uint32_t *discarded);
+int malbolge_guest_math_fixed_divide_small_ceil(
     const uint32_t *input, uint32_t limb_count, uint32_t divisor,
     uint32_t *output, uint32_t *remainder);
 int malbolge_guest_math_atan2_unique_binary64(

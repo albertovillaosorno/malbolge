@@ -488,3 +488,216 @@ def test_variable_fixed_arithmetic_fails_before_result_publication(
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     executed = _run([str(executable)], tmp_path)
     assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def _directed_harness_source() -> str:
+    blocks: list[str] = []
+    for case in _arithmetic_cases():
+        count = case.limb_count
+        blocks.append(
+            f"""  {{
+    uint32_t left[{count}] = {{{_c_limbs(case.left, count)}}};
+    uint32_t right[{count}] = {{{_c_limbs(case.right, count)}}};
+    uint32_t output[{count}];
+    uint32_t divide[{count}] = {{{_c_limbs(case.left, count)}}};
+    uint32_t scratch[{count * 2}];
+    uint32_t discarded = UINT32_C(0);
+    uint32_t remainder = UINT32_C(0);
+    uint32_t index = UINT32_C(0);
+    if (!malbolge_guest_math_fixed_add(
+            left, right, UINT32_C({count}), output)) {{
+      return 101;
+    }}
+    (void)printf("A {count}");
+    while (index < UINT32_C({count})) {{
+      (void)printf(" %08" PRIx32, output[index]);
+      ++index;
+    }}
+    (void)printf("\\n");
+    if (malbolge_guest_math_fixed_subtract(
+            left, right, UINT32_C({count}), output)) {{
+      (void)printf("S {count}");
+    }} else if (!malbolge_guest_math_fixed_subtract(
+                   right, left, UINT32_C({count}), output)) {{
+      return 102;
+    }} else {{
+      (void)printf("S {count}");
+    }}
+    index = UINT32_C(0);
+    while (index < UINT32_C({count})) {{
+      (void)printf(" %08" PRIx32, output[index]);
+      ++index;
+    }}
+    (void)printf("\\n");
+    if (!malbolge_guest_math_fixed_multiply_ceil(
+            left, right, UINT32_C({count}), UINT32_C({count - 1}), output,
+            scratch, UINT32_C({count * 2}), &discarded)) {{
+      return 103;
+    }}
+    (void)printf("C {count} %" PRIu32, discarded);
+    index = UINT32_C(0);
+    while (index < UINT32_C({count})) {{
+      (void)printf(" %08" PRIx32, output[index]);
+      ++index;
+    }}
+    (void)printf("\\n");
+    if (!malbolge_guest_math_fixed_divide_small_ceil(
+            divide, UINT32_C({count}), UINT32_C({case.divisor}), divide,
+            &remainder)) {{
+      return 104;
+    }}
+    (void)printf("Q {count} %" PRIu32, remainder);
+    index = UINT32_C(0);
+    while (index < UINT32_C({count})) {{
+      (void)printf(" %08" PRIx32, divide[index]);
+      ++index;
+    }}
+    (void)printf("\\n");
+  }}"""
+        )
+    body = "\n".join(blocks)
+    return f"""#include "math_transcendental_bits.h"
+#include <inttypes.h>
+#include <stdint.h>
+#include <stdio.h>
+
+int main(void) {{
+{body}
+  return 0;
+}}
+"""
+
+
+def _assert_directed_records(records: tuple[list[str], ...]) -> None:
+    assert len(records) == 4 * len(_arithmetic_cases())
+    for position, case in enumerate(_arithmetic_cases()):
+        add_row, sub_row, product_row, divide_row = records[
+            position * 4 : position * 4 + 4
+        ]
+        assert add_row[:2] == ["A", str(case.limb_count)]
+        assert _limbs_to_integer(add_row[2:]) == case.left + case.right
+        assert sub_row[:2] == ["S", str(case.limb_count)]
+        assert _limbs_to_integer(sub_row[2:]) == abs(case.left - case.right)
+        shift = 32 * (case.limb_count - 1)
+        product, product_remainder = divmod(case.left * case.right, 1 << shift)
+        product += int(product_remainder != 0)
+        assert product_row[:3] == [
+            "C",
+            str(case.limb_count),
+            str(int(product_remainder != 0)),
+        ]
+        assert _limbs_to_integer(product_row[3:]) == product
+        quotient, remainder = divmod(case.left, case.divisor)
+        quotient += int(remainder != 0)
+        assert divide_row[:3] == [
+            "Q",
+            str(case.limb_count),
+            str(remainder),
+        ]
+        assert _limbs_to_integer(divide_row[3:]) == quotient
+
+
+def test_directed_variable_fixed_arithmetic_matches_integer_authority(
+    tmp_path: Path,
+) -> None:
+    """Check add/subtract and directed ceilings through 128 limbs."""
+    harness = tmp_path / "variable-fixed-directed.c"
+    executable = tmp_path / "variable-fixed-directed"
+    _ = harness.write_text(_directed_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+    _assert_directed_records(
+        tuple(line.split() for line in executed.stdout.splitlines())
+    )
+
+
+def _directed_failure_harness_source() -> str:
+    return r"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+
+int main(void) {
+  uint32_t maximum[2] = {UINT32_MAX, UINT32_MAX};
+  uint32_t one[2] = {UINT32_C(1), UINT32_C(0)};
+  uint32_t ceil_left[2] = {UINT32_C(3), UINT32_C(0xfffffffe)};
+  uint32_t ceil_right[2] = {UINT32_C(2), UINT32_C(1)};
+  uint32_t output[2] = {UINT32_C(0x11111111), UINT32_C(0x22222222)};
+  uint32_t scratch[4] = {
+      UINT32_C(7), UINT32_C(7), UINT32_C(7), UINT32_C(7)};
+  uint32_t discarded = UINT32_C(0xabcdef01);
+  uint32_t remainder = UINT32_C(0x76543210);
+
+  if (malbolge_guest_math_fixed_add(
+          maximum, one, UINT32_C(2), output) ||
+      output[0] != UINT32_C(0x11111111) ||
+      output[1] != UINT32_C(0x22222222)) {
+    return 111;
+  }
+  if (malbolge_guest_math_fixed_subtract(
+          one, maximum, UINT32_C(2), output) ||
+      output[0] != UINT32_C(0x11111111) ||
+      output[1] != UINT32_C(0x22222222)) {
+    return 112;
+  }
+  if (malbolge_guest_math_fixed_multiply_ceil(
+          ceil_left, ceil_right, UINT32_C(2), UINT32_C(1), output, scratch,
+          UINT32_C(4), &discarded) ||
+      output[0] != UINT32_C(0x11111111) ||
+      output[1] != UINT32_C(0x22222222) ||
+      discarded != UINT32_C(0xabcdef01)) {
+    return 113;
+  }
+  if (malbolge_guest_math_fixed_divide_small_ceil(
+          one, UINT32_C(2), UINT32_C(0), output, &remainder) ||
+      output[0] != UINT32_C(0x11111111) ||
+      output[1] != UINT32_C(0x22222222) ||
+      remainder != UINT32_C(0x76543210)) {
+    return 114;
+  }
+  return 0;
+}
+"""
+
+
+def test_directed_variable_fixed_failures_do_not_publish(
+    tmp_path: Path,
+) -> None:
+    """Reject carry, underflow, ceil overflow, and zero division atomically."""
+    harness = tmp_path / "variable-fixed-directed-failure.c"
+    executable = tmp_path / "variable-fixed-directed-failure"
+    _ = harness.write_text(_directed_failure_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr

@@ -380,9 +380,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   covers 4/8/16/128 limbs, including `UINT32_MAX`, while short scratch and zero
   divisors fail nonmutating.
 
-  Guest-C unbounded refinement storage remains unresolved at directed interval
-  orchestration and repeated tangent/Taylor refinement; it no longer blocks
-  dyadic input, full-width product, or small division individually.
+  Directed variable-width arithmetic is now executable too. Checked add/subtract
+  reject carry or underflow before publication; product and small division each
+  expose floor/ceil forms. Product ceil uses the same caller-owned `2*N` scratch
+  and fails atomically if rounding upward would overflow, while division ceil is
+  selected by the exact remainder. Integer evidence covers 4/8/16/128 limbs and
+  includes the ceil-only product-overflow edge.
+
+  Guest-C unbounded refinement storage remains unresolved at tangent/Taylor
+  orchestration; it no longer blocks dyadic input or the individual directed
+  arithmetic primitives.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies
