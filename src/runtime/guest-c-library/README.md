@@ -78,6 +78,11 @@ are cross-checked against the exact `Fraction` authority.
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch
-remains fail closed. A separate integer long-division helper rounds the original
-rational to nearest-even binary64 when a later kernel needs a bounded floating
-representation.
+remains fail closed. For `e=-28..-53`, writing `D=2^t*d` with odd `d` gives a
+minimum non-midpoint separation of `1/(2d)` ulp.
+
+The runtime now compares that actual odd denominator against `3*2^(m-1)`,
+`m=-(2e+55)`, before long division; this strictly dominates the earlier bound
+that replaced `D` by `2^53`. A separate integer long-division helper rounds the
+original rational to nearest-even binary64 when a later kernel needs a bounded
+floating representation.

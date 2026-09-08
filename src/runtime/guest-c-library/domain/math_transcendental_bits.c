@@ -1098,18 +1098,26 @@ static uint64_t ceil_shift_right_u64(uint64_t value, uint32_t shift) {
 
 static int denominator_spacing_safe_without_division(
     uint64_t denominator, int32_t exponent) {
-  uint32_t required_trailing = UINT32_C(0);
-  uint64_t mask = UINT64_C(0);
+  uint64_t odd_denominator = denominator;
+  uint64_t maximum_odd_denominator = UINT64_C(0);
+  int32_t margin_shift = INT32_C(0);
 
+  if (denominator == UINT64_C(0)) {
+    return 0;
+  }
   if (exponent <= BINARY64_ATAN_UNCONDITIONAL_EXPONENT) {
     return 1;
   }
   if (exponent >= INT32_C(-27)) {
     return 0;
   }
-  required_trailing = (uint32_t)((INT32_C(2) * exponent) + INT32_C(108));
-  mask = (UINT64_C(1) << required_trailing) - UINT64_C(1);
-  return (denominator & mask) == UINT64_C(0);
+  while ((odd_denominator & UINT64_C(1)) == UINT64_C(0)) {
+    odd_denominator >>= UINT32_C(1);
+  }
+  margin_shift = -(INT32_C(2) * exponent + INT32_C(55));
+  maximum_odd_denominator =
+      UINT64_C(3) << (uint32_t)(margin_shift - INT32_C(1));
+  return odd_denominator <= maximum_odd_denominator;
 }
 
 static int normal_ratio_rounding_margin_safe(

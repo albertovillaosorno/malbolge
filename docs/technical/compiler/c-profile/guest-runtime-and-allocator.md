@@ -470,15 +470,23 @@ At `e=-29`, the next scaled threshold is `13/24`; a second pair straddles it
 within `1/30000` ulp. Q1152 confirms all four final result bits while each lower
 vector remains fail closed and each upper vector resolves early.
 
-If `D` has at least `2e+108` trailing zero bits, then the nonzero midpoint gap
-is at least `2^(2e+108)/(2D)` ulp, which exceeds the cubic error using
-`D<2^53`.
-The runtime checks that low-bit mask before long division; only the remaining
-geometries pay for exact quotient-remainder margin evaluation. A fixed-seed
-4,320-pair differential spans all 27 normal margin binades from `e=-27` through
-`e=-53`, with 160 independent 53-bit numerator/denominator geometries per
-binade. Exact `Fraction` expectations match the C preclassifier across both
-early-resolved and kernel-required cases.
+A tighter denominator-spacing proof now uses the actual normalized
+denominator.
+Write `D=2^t*d` with odd `d`. The post-52-bit remainder is divisible by `2^t`,
+so every non-midpoint is separated by at least `1/(2d)` ulp.
+
+For `m=-(2e+55)`, the cubic error is strictly below `2^-m/3` ulp, so the
+quotient loop is unnecessary whenever `d <= 3*2^(m-1)`.
+Equality is safe because the cubic error bound is strict.
+
+The runtime strips powers of two with shifts and compares the remaining odd
+factor directly; it still uses no `/`, `%`, floating arithmetic, or `__int128`.
+This exact-denominator criterion contains every case admitted by the older
+`D<2^53` trailing-zero bound and admits additional valid geometries. A
+fixed-seed 4,320-pair differential spans all 27 normal margin binades from
+`e=-27` through `e=-53`, with 160 independent 53-bit numerator/denominator
+geometries per binade. Exact `Fraction` expectations match the C preclassifier
+across both early-resolved and kernel-required cases.
 
 A fixed-seed million-pair stress run sampled 999,006 finite raw-word pairs after
 this change and the combined exact-plus-Q32.192 handoff resolved every one. The
