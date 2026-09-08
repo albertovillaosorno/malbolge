@@ -1669,73 +1669,52 @@ static uint64_t fixed_limbs_nearest_binary64(const uint32_t *value,
          (significand & BINARY64_FRACTION);
 }
 
-static uint64_t fixed_192_nearest_binary64(
-    const MalbolgeGuestMathFixed192 *value) {
-  return fixed_limbs_nearest_binary64(value->limbs, FIXED_192_LIMB_COUNT,
-                                      FIXED_192_FRACTION_BITS);
-}
-
-static uint64_t fixed_224_nearest_binary64(
-    const MalbolgeGuestMathFixed224 *value) {
-  return fixed_limbs_nearest_binary64(value->limbs, FIXED_224_LIMB_COUNT,
-                                      FIXED_224_FRACTION_BITS);
-}
-
-static uint64_t fixed_256_nearest_binary64(
-    const MalbolgeGuestMathFixed256 *value) {
-  return fixed_limbs_nearest_binary64(value->limbs, FIXED_256_LIMB_COUNT,
-                                      FIXED_256_FRACTION_BITS);
+static int fixed_limbs_unique_binary64(
+    const uint32_t *lower, const uint32_t *upper, uint32_t limb_count,
+    int32_t fraction_bits, uint64_t *output_bits) {
+  uint64_t lower_bits = UINT64_C(0);
+  uint64_t upper_bits = UINT64_C(0);
+  if (output_bits == NULL ||
+      compare_fixed_limbs(lower, upper, limb_count) > 0) {
+    return 0;
+  }
+  lower_bits = fixed_limbs_nearest_binary64(lower, limb_count, fraction_bits);
+  upper_bits = fixed_limbs_nearest_binary64(upper, limb_count, fraction_bits);
+  if (lower_bits != upper_bits) {
+    return 0;
+  }
+  *output_bits = lower_bits;
+  return 1;
 }
 
 int malbolge_guest_math_fixed192_unique_binary64(
     const MalbolgeGuestMathFixed192Interval *input, uint64_t *output_bits) {
-  uint64_t lower_bits = UINT64_C(0);
-  uint64_t upper_bits = UINT64_C(0);
-  if (input == NULL || output_bits == NULL ||
-      compare_fixed_192(&input->lower, &input->upper) > 0) {
+  if (input == NULL) {
     return 0;
   }
-  lower_bits = fixed_192_nearest_binary64(&input->lower);
-  upper_bits = fixed_192_nearest_binary64(&input->upper);
-  if (lower_bits != upper_bits) {
-    return 0;
-  }
-  *output_bits = lower_bits;
-  return 1;
+  return fixed_limbs_unique_binary64(
+      input->lower.limbs, input->upper.limbs, FIXED_192_LIMB_COUNT,
+      FIXED_192_FRACTION_BITS, output_bits);
 }
 
 int malbolge_guest_math_fixed224_unique_binary64(
     const MalbolgeGuestMathFixed224Interval *input, uint64_t *output_bits) {
-  uint64_t lower_bits = UINT64_C(0);
-  uint64_t upper_bits = UINT64_C(0);
-  if (input == NULL || output_bits == NULL ||
-      compare_fixed_224(&input->lower, &input->upper) > 0) {
+  if (input == NULL) {
     return 0;
   }
-  lower_bits = fixed_224_nearest_binary64(&input->lower);
-  upper_bits = fixed_224_nearest_binary64(&input->upper);
-  if (lower_bits != upper_bits) {
-    return 0;
-  }
-  *output_bits = lower_bits;
-  return 1;
+  return fixed_limbs_unique_binary64(
+      input->lower.limbs, input->upper.limbs, FIXED_224_LIMB_COUNT,
+      FIXED_224_FRACTION_BITS, output_bits);
 }
 
 int malbolge_guest_math_fixed256_unique_binary64(
     const MalbolgeGuestMathFixed256Interval *input, uint64_t *output_bits) {
-  uint64_t lower_bits = UINT64_C(0);
-  uint64_t upper_bits = UINT64_C(0);
-  if (input == NULL || output_bits == NULL ||
-      compare_fixed_256(&input->lower, &input->upper) > 0) {
+  if (input == NULL) {
     return 0;
   }
-  lower_bits = fixed_256_nearest_binary64(&input->lower);
-  upper_bits = fixed_256_nearest_binary64(&input->upper);
-  if (lower_bits != upper_bits) {
-    return 0;
-  }
-  *output_bits = lower_bits;
-  return 1;
+  return fixed_limbs_unique_binary64(
+      input->lower.limbs, input->upper.limbs, FIXED_256_LIMB_COUNT,
+      FIXED_256_FRACTION_BITS, output_bits);
 }
 
 int malbolge_guest_math_atan2_unique_binary64(
