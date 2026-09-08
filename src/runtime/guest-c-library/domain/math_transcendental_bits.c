@@ -60,11 +60,14 @@
 #define FIXED_192_FRACTION_BITS INT32_C(192)
 #define FIXED_224_LIMB_COUNT UINT32_C(8)
 #define FIXED_224_FRACTION_BITS INT32_C(224)
+#define FIXED_256_LIMB_COUNT UINT32_C(9)
+#define FIXED_256_FRACTION_BITS INT32_C(256)
 #define EXACT_RATIO_COMPONENT_LIMIT UINT64_C(0x0100000000000000)
 #define FIXED_MAX_LIMB_COUNT UINT32_C(9)
 #define FIXED_MAX_PRODUCT_LIMBS UINT32_C(18)
 #define ATAN_SERIES_TERMS UINT32_C(60)
 #define ATAN_224_SERIES_TERMS UINT32_C(85)
+#define ATAN_256_SERIES_TERMS UINT32_C(98)
 
 static int is_nan(uint64_t bits) {
   return (bits & BINARY64_EXPONENT) == BINARY64_EXPONENT &&
@@ -1298,6 +1301,290 @@ int malbolge_guest_math_atan2_interval224(
   return 1;
 }
 
+static const uint32_t QUARTER_PI_LOWER_256[9] = {
+    UINT32_C(0x3b139b22), UINT32_C(0x020bbea6), UINT32_C(0x8a67cc74),
+    UINT32_C(0x29024e08), UINT32_C(0x80dc1cd1), UINT32_C(0xc4c6628b),
+    UINT32_C(0x2168c234), UINT32_C(0xc90fdaa2), UINT32_C(0)};
+static const uint32_t QUARTER_PI_UPPER_256[9] = {
+    UINT32_C(0x3b139b23), UINT32_C(0x020bbea6), UINT32_C(0x8a67cc74),
+    UINT32_C(0x29024e08), UINT32_C(0x80dc1cd1), UINT32_C(0xc4c6628b),
+    UINT32_C(0x2168c234), UINT32_C(0xc90fdaa2), UINT32_C(0)};
+static const uint32_t ATAN_CUT_UPPER_256[9] = {
+    UINT32_C(0x0a0a0a0b), UINT32_C(0x0a0a0a0a), UINT32_C(0x0a0a0a0a),
+    UINT32_C(0x0a0a0a0a), UINT32_C(0x0a0a0a0a), UINT32_C(0x0a0a0a0a),
+    UINT32_C(0x0a0a0a0a), UINT32_C(0x6a0a0a0a), UINT32_C(0)};
+
+static void copy_fixed_256(MalbolgeGuestMathFixed256 *output,
+                           const uint32_t source[9]) {
+  copy_fixed_limbs(output->limbs, source, FIXED_256_LIMB_COUNT);
+}
+
+static void zero_fixed_256(MalbolgeGuestMathFixed256 *value) {
+  zero_fixed_limbs(value->limbs, FIXED_256_LIMB_COUNT);
+}
+
+static void increment_fixed_256(MalbolgeGuestMathFixed256 *value) {
+  increment_fixed_limbs(value->limbs, FIXED_256_LIMB_COUNT);
+}
+
+static void decrement_fixed_256(MalbolgeGuestMathFixed256 *value) {
+  decrement_fixed_limbs(value->limbs, FIXED_256_LIMB_COUNT);
+}
+
+static int compare_fixed_256(const MalbolgeGuestMathFixed256 *left,
+                             const MalbolgeGuestMathFixed256 *right) {
+  return compare_fixed_limbs(left->limbs, right->limbs,
+                             FIXED_256_LIMB_COUNT);
+}
+
+static int subtract_fixed_256(MalbolgeGuestMathFixed256 *output,
+                              const MalbolgeGuestMathFixed256 *left,
+                              const MalbolgeGuestMathFixed256 *right) {
+  return subtract_fixed_limbs(output->limbs, left->limbs, right->limbs,
+                              FIXED_256_LIMB_COUNT);
+}
+
+static int fixed_256_is_zero(const MalbolgeGuestMathFixed256 *value) {
+  return fixed_limbs_is_zero(value->limbs, FIXED_256_LIMB_COUNT);
+}
+
+static int fixed_256_below_two_neg64(
+    const MalbolgeGuestMathFixed256 *value) {
+  return value->limbs[6] == UINT32_C(0) &&
+         value->limbs[7] == UINT32_C(0) &&
+         value->limbs[8] == UINT32_C(0);
+}
+
+static int exact_ratio_interval_256(
+    const MalbolgeGuestMathExactRatio *input,
+    MalbolgeGuestMathFixed256Interval *output) {
+  MalbolgeGuestMathFixed256 lower;
+  MalbolgeGuestMathFixed256 upper;
+  uint64_t remainder = UINT64_C(0);
+  int32_t shift = INT32_C(0);
+  uint32_t bit_index = UINT32_C(64);
+  uint32_t trailing = UINT32_C(0);
+
+  if (output == NULL || !valid_fixed_residual(input)) {
+    return 0;
+  }
+  zero_fixed_256(&lower);
+  zero_fixed_256(&upper);
+  if (input->numerator == UINT64_C(0)) {
+    copy_fixed_256(&output->lower, lower.limbs);
+    copy_fixed_256(&output->upper, upper.limbs);
+    return 1;
+  }
+  shift = input->exponent_delta + FIXED_256_FRACTION_BITS;
+  if (shift < INT32_C(0)) {
+    increment_fixed_256(&upper);
+    copy_fixed_256(&output->lower, lower.limbs);
+    copy_fixed_256(&output->upper, upper.limbs);
+    return 1;
+  }
+  while (bit_index != UINT32_C(0)) {
+    uint32_t quotient_bit = UINT32_C(0);
+    --bit_index;
+    quotient_bit = divide_stream_bit(
+        input->denominator, &remainder,
+        (uint32_t)((input->numerator >> bit_index) & UINT64_C(1)));
+    shift_fixed_limbs_bit(lower.limbs, FIXED_256_LIMB_COUNT, quotient_bit);
+  }
+  trailing = (uint32_t)shift;
+  while (trailing != UINT32_C(0)) {
+    const uint32_t quotient_bit =
+        divide_stream_bit(input->denominator, &remainder, UINT32_C(0));
+    shift_fixed_limbs_bit(lower.limbs, FIXED_256_LIMB_COUNT, quotient_bit);
+    --trailing;
+  }
+  copy_fixed_256(&upper, lower.limbs);
+  if (remainder != UINT64_C(0)) {
+    increment_fixed_256(&upper);
+  }
+  copy_fixed_256(&output->lower, lower.limbs);
+  copy_fixed_256(&output->upper, upper.limbs);
+  return 1;
+}
+
+static void multiply_interval_256(
+    const MalbolgeGuestMathFixed256Interval *left,
+    const MalbolgeGuestMathFixed256Interval *right,
+    MalbolgeGuestMathFixed256Interval *output) {
+  uint32_t discarded = UINT32_C(0);
+  multiply_fixed_limbs_floor(left->lower.limbs, right->lower.limbs,
+                             FIXED_256_LIMB_COUNT, UINT32_C(8),
+                             output->lower.limbs, &discarded);
+  multiply_fixed_limbs_floor(left->upper.limbs, right->upper.limbs,
+                             FIXED_256_LIMB_COUNT, UINT32_C(8),
+                             output->upper.limbs, &discarded);
+  if (discarded != UINT32_C(0)) {
+    increment_fixed_256(&output->upper);
+  }
+}
+
+static void multiply_fixed_256_small(MalbolgeGuestMathFixed256 *value,
+                                     uint32_t factor) {
+  multiply_fixed_limbs_small(value->limbs, FIXED_256_LIMB_COUNT, factor);
+}
+
+static uint32_t divide_fixed_256_small_floor(
+    const MalbolgeGuestMathFixed256 *input, uint32_t divisor,
+    MalbolgeGuestMathFixed256 *output) {
+  return divide_fixed_limbs_small_floor(input->limbs, FIXED_256_LIMB_COUNT,
+                                        divisor, output->limbs);
+}
+
+static void divide_interval_256_small(MalbolgeGuestMathFixed256Interval *value,
+                                      uint32_t divisor) {
+  MalbolgeGuestMathFixed256 lower;
+  MalbolgeGuestMathFixed256 upper;
+  const uint32_t upper_remainder =
+      divide_fixed_256_small_floor(&value->upper, divisor, &upper);
+  (void)divide_fixed_256_small_floor(&value->lower, divisor, &lower);
+  if (upper_remainder != UINT32_C(0)) {
+    increment_fixed_256(&upper);
+  }
+  copy_fixed_256(&value->lower, lower.limbs);
+  copy_fixed_256(&value->upper, upper.limbs);
+}
+
+static int subtract_interval_256(
+    MalbolgeGuestMathFixed256Interval *value,
+    const MalbolgeGuestMathFixed256Interval *term) {
+  MalbolgeGuestMathFixed256 lower;
+  MalbolgeGuestMathFixed256 upper;
+  if (!subtract_fixed_256(&lower, &value->lower, &term->upper) ||
+      !subtract_fixed_256(&upper, &value->upper, &term->lower)) {
+    return 0;
+  }
+  copy_fixed_256(&value->lower, lower.limbs);
+  copy_fixed_256(&value->upper, upper.limbs);
+  return 1;
+}
+
+static void add_interval_256(MalbolgeGuestMathFixed256Interval *value,
+                             const MalbolgeGuestMathFixed256Interval *term) {
+  add_fixed_limbs(value->lower.limbs, term->lower.limbs,
+                  FIXED_256_LIMB_COUNT);
+  add_fixed_limbs(value->upper.limbs, term->upper.limbs,
+                  FIXED_256_LIMB_COUNT);
+}
+
+static int atan_residual_interval_256(
+    const MalbolgeGuestMathExactRatio *input,
+    MalbolgeGuestMathFixed256Interval *output) {
+  MalbolgeGuestMathFixed256Interval x;
+  MalbolgeGuestMathFixed256Interval square;
+  MalbolgeGuestMathFixed256Interval term;
+  MalbolgeGuestMathFixed256Interval sum;
+  MalbolgeGuestMathFixed256 cutoff;
+  MalbolgeGuestMathFixed256Interval truncation;
+  uint32_t index = UINT32_C(1);
+
+  if (output == NULL || !exact_ratio_interval_256(input, &x)) {
+    return 0;
+  }
+  copy_fixed_256(&cutoff, ATAN_CUT_UPPER_256);
+  if (compare_fixed_256(&x.upper, &cutoff) > 0) {
+    return 0;
+  }
+  if (fixed_256_is_zero(&x.lower)) {
+    copy_fixed_256(&output->lower, x.lower.limbs);
+    copy_fixed_256(&output->upper, x.upper.limbs);
+    return 1;
+  }
+  if (fixed_256_below_two_neg64(&x.upper)) {
+    MalbolgeGuestMathFixed256 lower;
+    copy_fixed_256(&lower, x.lower.limbs);
+    decrement_fixed_256(&lower);
+    copy_fixed_256(&output->lower, lower.limbs);
+    copy_fixed_256(&output->upper, x.upper.limbs);
+    return 1;
+  }
+  multiply_interval_256(&x, &x, &square);
+  copy_fixed_256(&term.lower, x.lower.limbs);
+  copy_fixed_256(&term.upper, x.upper.limbs);
+  copy_fixed_256(&sum.lower, x.lower.limbs);
+  copy_fixed_256(&sum.upper, x.upper.limbs);
+  while (index < ATAN_256_SERIES_TERMS) {
+    const uint32_t previous_denominator = (UINT32_C(2) * index) - UINT32_C(1);
+    const uint32_t denominator = (UINT32_C(2) * index) + UINT32_C(1);
+    MalbolgeGuestMathFixed256Interval next;
+    multiply_interval_256(&term, &square, &next);
+    multiply_fixed_256_small(&next.lower, previous_denominator);
+    multiply_fixed_256_small(&next.upper, previous_denominator);
+    divide_interval_256_small(&next, denominator);
+    copy_fixed_256(&term.lower, next.lower.limbs);
+    copy_fixed_256(&term.upper, next.upper.limbs);
+    if ((index & UINT32_C(1)) != UINT32_C(0)) {
+      if (!subtract_interval_256(&sum, &term)) {
+        return 0;
+      }
+    } else {
+      add_interval_256(&sum, &term);
+    }
+    ++index;
+  }
+  multiply_interval_256(&term, &square, &truncation);
+  multiply_fixed_256_small(&truncation.lower,
+                           (UINT32_C(2) * index) - UINT32_C(1));
+  multiply_fixed_256_small(&truncation.upper,
+                           (UINT32_C(2) * index) - UINT32_C(1));
+  divide_interval_256_small(&truncation,
+                            (UINT32_C(2) * index) + UINT32_C(1));
+  add_fixed_limbs(sum.upper.limbs, truncation.upper.limbs,
+                  FIXED_256_LIMB_COUNT);
+  copy_fixed_256(&output->lower, sum.lower.limbs);
+  copy_fixed_256(&output->upper, sum.upper.limbs);
+  return 1;
+}
+
+static int atan2_base_interval_256(
+    MalbolgeGuestMathAtan2QuarterPiBase base,
+    MalbolgeGuestMathFixed256Interval *output) {
+  uint32_t remaining = (uint32_t)base;
+  if (output == NULL || remaining > UINT32_C(4)) {
+    return 0;
+  }
+  zero_fixed_256(&output->lower);
+  zero_fixed_256(&output->upper);
+  while (remaining != UINT32_C(0)) {
+    add_fixed_limbs(output->lower.limbs, QUARTER_PI_LOWER_256,
+                    FIXED_256_LIMB_COUNT);
+    add_fixed_limbs(output->upper.limbs, QUARTER_PI_UPPER_256,
+                    FIXED_256_LIMB_COUNT);
+    --remaining;
+  }
+  return 1;
+}
+
+int malbolge_guest_math_atan2_interval256(
+    uint64_t y_bits, uint64_t x_bits,
+    MalbolgeGuestMathAtan2Interval256 *output) {
+  MalbolgeGuestMathAtan2KernelPlan plan;
+  MalbolgeGuestMathFixed256Interval base;
+  MalbolgeGuestMathFixed256Interval residual;
+  MalbolgeGuestMathFixed256Interval staged;
+
+  if (output == NULL ||
+      !malbolge_guest_math_atan2_kernel_plan(y_bits, x_bits, &plan) ||
+      !atan2_base_interval_256(plan.quarter_pi_base, &base) ||
+      !atan_residual_interval_256(&plan.residual, &residual)) {
+    return 0;
+  }
+  copy_fixed_256(&staged.lower, base.lower.limbs);
+  copy_fixed_256(&staged.upper, base.upper.limbs);
+  if (plan.ratio_operation == MALBOLGE_GUEST_MATH_ATAN2_RATIO_ADD) {
+    add_interval_256(&staged, &residual);
+  } else if (!subtract_interval_256(&staged, &residual)) {
+    return 0;
+  }
+  copy_fixed_256(&output->magnitude.lower, staged.lower.limbs);
+  copy_fixed_256(&output->magnitude.upper, staged.upper.limbs);
+  output->negative = plan.negative;
+  return 1;
+}
+
 static uint32_t fixed_limbs_bit(const uint32_t *value, uint32_t position) {
   return (value[position / UINT32_C(32)] >> (position % UINT32_C(32))) &
          UINT32_C(1);
@@ -1394,6 +1681,12 @@ static uint64_t fixed_224_nearest_binary64(
                                       FIXED_224_FRACTION_BITS);
 }
 
+static uint64_t fixed_256_nearest_binary64(
+    const MalbolgeGuestMathFixed256 *value) {
+  return fixed_limbs_nearest_binary64(value->limbs, FIXED_256_LIMB_COUNT,
+                                      FIXED_256_FRACTION_BITS);
+}
+
 int malbolge_guest_math_fixed192_unique_binary64(
     const MalbolgeGuestMathFixed192Interval *input, uint64_t *output_bits) {
   uint64_t lower_bits = UINT64_C(0);
@@ -1428,10 +1721,28 @@ int malbolge_guest_math_fixed224_unique_binary64(
   return 1;
 }
 
+int malbolge_guest_math_fixed256_unique_binary64(
+    const MalbolgeGuestMathFixed256Interval *input, uint64_t *output_bits) {
+  uint64_t lower_bits = UINT64_C(0);
+  uint64_t upper_bits = UINT64_C(0);
+  if (input == NULL || output_bits == NULL ||
+      compare_fixed_256(&input->lower, &input->upper) > 0) {
+    return 0;
+  }
+  lower_bits = fixed_256_nearest_binary64(&input->lower);
+  upper_bits = fixed_256_nearest_binary64(&input->upper);
+  if (lower_bits != upper_bits) {
+    return 0;
+  }
+  *output_bits = lower_bits;
+  return 1;
+}
+
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits) {
   MalbolgeGuestMathAtan2Interval interval;
   MalbolgeGuestMathAtan2Interval224 wide_interval;
+  MalbolgeGuestMathAtan2Interval256 wider_interval;
   MalbolgeGuestMathSpecialResult special;
   uint64_t magnitude_bits = UINT64_C(0);
 
@@ -1453,14 +1764,25 @@ int malbolge_guest_math_atan2_unique_binary64(
                                                       : UINT64_C(0));
     return 1;
   }
-  if (!malbolge_guest_math_atan2_interval224(y_bits, x_bits, &wide_interval) ||
-      !malbolge_guest_math_fixed224_unique_binary64(&wide_interval.magnitude,
+  if (!malbolge_guest_math_atan2_interval224(y_bits, x_bits, &wide_interval)) {
+    return 0;
+  }
+  if (malbolge_guest_math_fixed224_unique_binary64(&wide_interval.magnitude,
+                                                    &magnitude_bits)) {
+    *output_bits = magnitude_bits |
+                   (wide_interval.negative != UINT32_C(0) ? BINARY64_SIGN
+                                                           : UINT64_C(0));
+    return 1;
+  }
+  if (!malbolge_guest_math_atan2_interval256(y_bits, x_bits,
+                                             &wider_interval) ||
+      !malbolge_guest_math_fixed256_unique_binary64(&wider_interval.magnitude,
                                                     &magnitude_bits)) {
     return 0;
   }
   *output_bits = magnitude_bits |
-                 (wide_interval.negative != UINT32_C(0) ? BINARY64_SIGN
-                                                         : UINT64_C(0));
+                 (wider_interval.negative != UINT32_C(0) ? BINARY64_SIGN
+                                                          : UINT64_C(0));
   return 1;
 }
 

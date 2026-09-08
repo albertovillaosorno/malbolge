@@ -80,13 +80,20 @@ arithmetic, certifies both midpoint sides: the transformed set is entirely
 within `4e-20` ulp and the direct set within `2e-20` ulp, with each closest case
 below `2e-21` ulp.
 
-A Q32.224 integer fallback now runs only when Q32.192 cannot publish a unique
+A Q32.224 integer fallback runs only when Q32.192 cannot publish a unique
 binary64 result. It reuses the width-parametric limb core, evaluates 85 atan
 terms, and uses a one-cell quarter-pi enclosure derived from Machin 49/14.
 Independent `Fraction` evidence encloses and rounds all 16 retained positive
-continued-fraction hard cases. If Q32.224 is still ambiguous, the handoff
-remains
-fail closed; this finite second precision does not prove the full domain.
+continued-fraction hard cases.
+
+Q32.224 ambiguity now advances to Q32.256. The third stage uses nine limbs,
+98 atan terms, and a one-cell Machin 56/16 quarter-pi enclosure. At the directed
+Q32.256 ceiling of `169/408`, 97 terms leave more than one Q32.256 cell of
+truncation while 98 leave less than one.
+
+A separate authority file checks all 16 hard cases and 512 deterministic
+refinements from Q32.224. Q32.256 still fails closed on ambiguity, so the finite
+ladder does not prove the full domain.
 
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full

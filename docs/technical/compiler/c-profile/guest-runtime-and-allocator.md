@@ -544,18 +544,22 @@ midpoint sides, places the transformed set within `4e-20` ulp and the direct set
 within `2e-20` ulp, and places each closest case below `2e-21` ulp. Q32.192
 still publishes the same certified bits for all sixteen.
 
-The fixed-point limb primitives are now width-parametric through eight limbs,
-and the combined handoff has a Q32.224 second stage after Q32.192 ambiguity.
-That stage uses 85 atan terms and a Machin 49/14 quarter-pi enclosure. Its exact
-rational width is below `2^-232`, and its encoded bounds occupy one Q32.224
-cell. The 85-term truncation proof is evaluated at the directed Q32.224 ceiling
-of `169/408`, not merely at the exact rational cutoff.
+The fixed-point limb primitives are width-parametric through nine limbs. The
+combined handoff first retries Q32.192 ambiguity at Q32.224, using 85 atan terms
+and a Machin 49/14 quarter-pi enclosure whose exact rational width is below
+`2^-232` and whose encoded bounds occupy one Q32.224 cell. Its truncation proof
+is evaluated at the directed Q32.224 ceiling of `169/408`.
 
-Independent Q32.224 evidence does not consume the Q32.192 oracle. It decodes the
-16 retained positive hard pairs directly as exact binary64 rationals, applies
-`atan(r)` or `pi/4-atan((1-r)/(1+r))`, and checks C enclosure plus nearest-even
-bits. Q32.224 still fails closed on disagreement, so a quantitative termination
-proof or further adaptive precision remains required for the full domain.
+A third Q32.256 stage now follows Q32.224 ambiguity. It uses 98 atan terms and a
+Machin 56/16 quarter-pi enclosure whose exact width is below `2^-264` and whose
+encoded bounds again occupy one fixed-point cell. At `ceil-Q256(169/408)`, 97
+terms fail the one-cell truncation target while 98 terms satisfy it.
+
+Independent evidence files keep both wider stages separate from prior-precision
+oracles. Q32.256 encloses and rounds the 16 retained positive hard pairs and is
+a subinterval of Q32.224 over 512 deterministic finite pairs. Q32.256 still
+fails closed on disagreement, so a quantitative termination proof or further
+adaptive precision remains required for the full domain.
 
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full

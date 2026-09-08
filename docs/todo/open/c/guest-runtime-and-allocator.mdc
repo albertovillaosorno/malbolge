@@ -329,11 +329,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   midpoints. Every case is within `1/5000` ulp and the closest remains within
   `1/60000` ulp; Q32.192 publishes every Q1152-certified result.
 
-  A Q32.224 second stage now handles Q32.192 ambiguity with the shared
+  A Q32.224 second stage handles Q32.192 ambiguity with the shared
   width-parametric limb core, 85 atan terms, and Machin 49/14 quarter-pi bounds.
-  Independent exact-rational evidence encloses and rounds the 16 retained
-  positive direct/transformed hard cases. Q32.224 remains fail closed, so
-  adaptive termination or a global separation proof is still required.
+  Q32.224 ambiguity now advances to Q32.256 with nine limbs, 98 atan terms, and
+  Machin 56/16 bounds. Exact evidence proves that 97 terms miss but 98 terms
+  meet the Q32.256 truncation target at `ceil-Q256(169/408)`.
+
+  Independent Q32.256 evidence encloses and rounds the 16 retained positive
+  direct/transformed hard cases and proves `Q32.256` is a subinterval of
+  `Q32.224` over 512 deterministic finite pairs. Q32.256 remains fail closed,
+  so adaptive termination or a global separation proof is still required.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies
