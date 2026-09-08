@@ -863,7 +863,7 @@ int malbolge_guest_math_atan_residual_interval(
   MalbolgeGuestMathFixed192Interval term;
   MalbolgeGuestMathFixed192Interval sum;
   MalbolgeGuestMathFixed192 cutoff;
-  MalbolgeGuestMathFixed192 truncation;
+  MalbolgeGuestMathFixed192Interval truncation;
   uint32_t index = UINT32_C(1);
 
   if (output == NULL || !malbolge_guest_math_exact_ratio_interval(input, &x)) {
@@ -910,9 +910,13 @@ int malbolge_guest_math_atan_residual_interval(
     }
     ++index;
   }
-  zero_fixed_192(&truncation);
-  truncation.limbs[1] = UINT32_C(1);
-  add_fixed_192(&sum.upper, &truncation);
+  multiply_interval_192(&term, &square, &truncation);
+  multiply_fixed_small(&truncation.lower,
+                       (UINT32_C(2) * index) - UINT32_C(1));
+  multiply_fixed_small(&truncation.upper,
+                       (UINT32_C(2) * index) - UINT32_C(1));
+  divide_interval_small(&truncation, (UINT32_C(2) * index) + UINT32_C(1));
+  add_fixed_192(&sum.upper, &truncation.upper);
   copy_fixed_192(&output->lower, sum.lower.limbs);
   copy_fixed_192(&output->upper, sum.upper.limbs);
   return 1;

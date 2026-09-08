@@ -57,8 +57,9 @@ The C boundary derives all five symbolic bases using 32-bit limb addition only.
 Reduced atan residuals enter the same Q32.192 space through directed binary long
 division, yielding exact or adjacent floor/ceiling endpoints. A 60-term
 alternating-series evaluator then propagates directed fixed-point intervals and
-adds the proved `2^-160` truncation bound; very small inputs use the direct
-`x-x^3/3 < atan(x) < x` enclosure instead.
+computes the first omitted term `x^121/121` as a directed truncation bound. Its
+worst admitted value remains below the proved `2^-160` ceiling; very small
+inputs use the direct `x-x^3/3 < atan(x) < x` enclosure instead.
 
 The final finite-nonzero atan2 handoff composes that residual interval with the
 certified quarter-pi base into one Q32.192 magnitude plus sign. A nearest-even

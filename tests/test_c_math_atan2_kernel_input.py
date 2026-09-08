@@ -512,9 +512,7 @@ def _atan_interval_limits(
         max(0, lower_floor - slack),
         lower_floor,
         upper_ceil,
-        upper_ceil
-        + (1 << (FIXED_INTERVAL_BITS - ATAN_SERIES_TARGET_BITS))
-        + slack,
+        upper_ceil + slack,
     )
 
 
@@ -1044,7 +1042,7 @@ def test_quarter_pi_fixed_interval_is_certified_by_machin_identity() -> None:
 
 
 def test_atan_series_60_terms_is_minimal_for_160_bit_truncation() -> None:
-    """Bound truncation only; evaluation and hard rounding remain unresolved."""
+    """Bound the runtime next-term ceiling; hard rounding remains unresolved."""
     target = Fraction(1, 1 << ATAN_SERIES_TARGET_BITS)
     previous = _atan_series_remainder_bound(ATAN_SERIES_PREVIOUS_TERMS)
     admitted = _atan_series_remainder_bound(ATAN_SERIES_TERMS)

@@ -416,12 +416,15 @@ usual monotone bounds.
 
 The series accepts only residual intervals no larger than the Q32.192 ceiling
 of `169/408`. Exact rational evidence proves the first omitted term at even that
-slightly larger fixed-point endpoint is below `2^-160`; the evaluator therefore
-widens its upper result by that amount after 60 terms. A 64-pair stratified
-`Fraction` corpus checks the C lower endpoint is below the exact rational
-partial
-and the upper endpoint is above the partial plus its next term. The earlier
-519-pair differential continues to cover exact residual projection itself.
+slightly larger fixed-point endpoint is below `2^-160`. After 60 terms the
+evaluator now advances the same directed recurrence once more and adds only the
+upper endpoint of `x^121/121`, so smaller residuals no longer inherit the
+uniform worst-case widening.
+
+A 64-pair stratified `Fraction` corpus checks the C lower endpoint is below the
+exact rational partial and the upper endpoint is above the partial plus its next
+term. The earlier 519-pair differential continues to cover exact residual
+projection itself.
 
 Very small inputs use a separate monotone enclosure instead of repeatedly
 rounding terms smaller than one fixed-point unit. When the Q32.192 upper input

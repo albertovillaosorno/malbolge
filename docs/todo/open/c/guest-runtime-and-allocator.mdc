@@ -296,10 +296,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   A 60-term atan evaluator now propagates directed Q32.192 intervals through
   limb multiplication, bitwise division by odd coefficients, and alternating
   add/subtract steps. The truncation proof is checked at the Q32.192 ceiling of
-  the `169/408` cutoff and remains below `2^-160`, which is added to the upper
-  endpoint. A 64-pair stratified exact-rational oracle encloses the partial sum
-  and next term independently. Inputs below `2^-64` use the direct bound
-  `x-x^3/3 < atan(x) < x` to avoid artificial dependency widening.
+  the `169/408` cutoff and remains below `2^-160`; the runtime advances the
+  directed recurrence once more and adds the input-specific upper bound for
+  `x^121/121` instead of that uniform ceiling. A 64-pair stratified
+  exact-rational oracle encloses the partial sum and next term independently.
+  Inputs below `2^-64` use the direct bound `x-x^3/3 < atan(x) < x` to avoid
+  artificial dependency widening.
 
   The finite-nonzero atan2 path now composes `k*pi/4` and residual atan
   intervals into one Q32.192 principal-angle magnitude plus explicit sign. A
