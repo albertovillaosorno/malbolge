@@ -956,11 +956,19 @@ static uint32_t fixed_192_bit(const MalbolgeGuestMathFixed192 *value,
 }
 
 static int32_t fixed_192_high_bit(const MalbolgeGuestMathFixed192 *value) {
-  uint32_t position = FIXED_192_LIMB_COUNT * UINT32_C(32);
-  while (position != UINT32_C(0)) {
-    --position;
-    if (fixed_192_bit(value, position) != UINT32_C(0)) {
-      return (int32_t)position;
+  uint32_t limb_index = FIXED_192_LIMB_COUNT;
+  while (limb_index != UINT32_C(0)) {
+    uint32_t bit_index = UINT32_C(32);
+    --limb_index;
+    if (value->limbs[limb_index] == UINT32_C(0)) {
+      continue;
+    }
+    while (bit_index != UINT32_C(0)) {
+      --bit_index;
+      if (((value->limbs[limb_index] >> bit_index) & UINT32_C(1)) !=
+          UINT32_C(0)) {
+        return (int32_t)((limb_index * UINT32_C(32)) + bit_index);
+      }
     }
   }
   return INT32_C(-1);
@@ -968,12 +976,21 @@ static int32_t fixed_192_high_bit(const MalbolgeGuestMathFixed192 *value) {
 
 static uint32_t fixed_192_any_below(const MalbolgeGuestMathFixed192 *value,
                                     uint32_t limit) {
-  uint32_t position = UINT32_C(0);
-  while (position < limit) {
-    if (fixed_192_bit(value, position) != UINT32_C(0)) {
+  const uint32_t full_limbs = limit / UINT32_C(32);
+  const uint32_t partial_bits = limit % UINT32_C(32);
+  uint32_t limb_index = UINT32_C(0);
+
+  while (limb_index < full_limbs) {
+    if (value->limbs[limb_index] != UINT32_C(0)) {
       return UINT32_C(1);
     }
-    ++position;
+    ++limb_index;
+  }
+  if (partial_bits != UINT32_C(0)) {
+    const uint32_t mask = (UINT32_C(1) << partial_bits) - UINT32_C(1);
+    if ((value->limbs[full_limbs] & mask) != UINT32_C(0)) {
+      return UINT32_C(1);
+    }
   }
   return UINT32_C(0);
 }
