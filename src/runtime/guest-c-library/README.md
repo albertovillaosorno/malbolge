@@ -149,6 +149,14 @@ and ceil increments exactly when the long-division remainder is nonzero.
 Independent integer evidence exercises these operations through 128 limbs,
 including in-place division and the ceil-only product-overflow edge.
 
+A variable-width interval layer now composes those primitives without partial
+endpoint publication. Nonnegative interval add/subtract prevalidate both bounds;
+interval product stages floor(lower*lower) and ceil(upper*upper) in caller-owned
+`4*N` scratch before copying either result. Small interval division stages both
+bounds in `2*N` scratch. Every operation rejects inverted input intervals, and
+integer authority covers 4/8/16/128 limbs plus malformed, overflow, underflow,
+and undersized-scratch failures.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

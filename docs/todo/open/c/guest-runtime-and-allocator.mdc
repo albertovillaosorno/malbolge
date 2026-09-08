@@ -387,9 +387,17 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   selected by the exact remainder. Integer evidence covers 4/8/16/128 limbs and
   includes the ceil-only product-overflow edge.
 
-  Guest-C unbounded refinement storage remains unresolved at tangent/Taylor
-  orchestration; it no longer blocks dyadic input or the individual directed
-  arithmetic primitives.
+  Endpoint orchestration now has an atomic nonnegative interval layer too.
+  Add/subtract prevalidate both bounds; product stages floor/ceil in
+  caller-owned
+  `4*N` scratch, and small division stages both outputs in `2*N`. Inverted
+  intervals and any failing upper-bound operation reject without publishing the
+  lower endpoint. Integer authority covers 4/8/16/128 limbs and the upper-ceil
+  overflow edge.
+
+  Guest-C unbounded refinement storage remains unresolved at repeated
+  tangent/Taylor orchestration; it no longer blocks dyadic input or individual
+  directed/interval arithmetic operations.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

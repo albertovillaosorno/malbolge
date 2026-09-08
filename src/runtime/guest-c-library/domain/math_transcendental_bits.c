@@ -838,32 +838,40 @@ static int subtract_fixed_limbs(uint32_t *output, const uint32_t *left,
   return 1;
 }
 
-static int add_fixed_limbs_checked(uint32_t *output, const uint32_t *left,
-                                   const uint32_t *right,
-                                   uint32_t limb_count) {
+static int add_fixed_limbs_fits(const uint32_t *left, const uint32_t *right,
+                                uint32_t limb_count) {
   uint32_t index = UINT32_C(0);
   uint64_t carry = UINT64_C(0);
-
-  if (output == NULL || left == NULL || right == NULL ||
-      limb_count == UINT32_C(0)) {
-    return 0;
-  }
   while (index < limb_count) {
     const uint64_t sum = (uint64_t)left[index] + (uint64_t)right[index] + carry;
     carry = sum >> UINT32_C(32);
     ++index;
   }
-  if (carry != UINT64_C(0)) {
-    return 0;
-  }
-  index = UINT32_C(0);
-  carry = UINT64_C(0);
+  return carry == UINT64_C(0);
+}
+
+static void add_fixed_limbs_unchecked(uint32_t *output, const uint32_t *left,
+                                      const uint32_t *right,
+                                      uint32_t limb_count) {
+  uint32_t index = UINT32_C(0);
+  uint64_t carry = UINT64_C(0);
   while (index < limb_count) {
     const uint64_t sum = (uint64_t)left[index] + (uint64_t)right[index] + carry;
     output[index] = (uint32_t)sum;
     carry = sum >> UINT32_C(32);
     ++index;
   }
+}
+
+static int add_fixed_limbs_checked(uint32_t *output, const uint32_t *left,
+                                   const uint32_t *right,
+                                   uint32_t limb_count) {
+  if (output == NULL || left == NULL || right == NULL ||
+      limb_count == UINT32_C(0) ||
+      !add_fixed_limbs_fits(left, right, limb_count)) {
+    return 0;
+  }
+  add_fixed_limbs_unchecked(output, left, right, limb_count);
   return 1;
 }
 
@@ -881,6 +889,42 @@ int malbolge_guest_math_fixed_subtract(
     return 0;
   }
   return subtract_fixed_limbs(output, left, right, limb_count);
+}
+
+int malbolge_guest_math_fixed_interval_add(
+    const uint32_t *left_lower, const uint32_t *left_upper,
+    const uint32_t *right_lower, const uint32_t *right_upper,
+    uint32_t limb_count, uint32_t *output_lower, uint32_t *output_upper) {
+  if (left_lower == NULL || left_upper == NULL || right_lower == NULL ||
+      right_upper == NULL || output_lower == NULL || output_upper == NULL ||
+      limb_count == UINT32_C(0) ||
+      compare_fixed_limbs(left_lower, left_upper, limb_count) > 0 ||
+      compare_fixed_limbs(right_lower, right_upper, limb_count) > 0 ||
+      !add_fixed_limbs_fits(left_lower, right_lower, limb_count) ||
+      !add_fixed_limbs_fits(left_upper, right_upper, limb_count)) {
+    return 0;
+  }
+  add_fixed_limbs_unchecked(output_lower, left_lower, right_lower, limb_count);
+  add_fixed_limbs_unchecked(output_upper, left_upper, right_upper, limb_count);
+  return 1;
+}
+
+int malbolge_guest_math_fixed_interval_subtract(
+    const uint32_t *left_lower, const uint32_t *left_upper,
+    const uint32_t *right_lower, const uint32_t *right_upper,
+    uint32_t limb_count, uint32_t *output_lower, uint32_t *output_upper) {
+  if (left_lower == NULL || left_upper == NULL || right_lower == NULL ||
+      right_upper == NULL || output_lower == NULL || output_upper == NULL ||
+      limb_count == UINT32_C(0) ||
+      compare_fixed_limbs(left_lower, left_upper, limb_count) > 0 ||
+      compare_fixed_limbs(right_lower, right_upper, limb_count) > 0 ||
+      compare_fixed_limbs(left_lower, right_upper, limb_count) < 0 ||
+      compare_fixed_limbs(left_upper, right_lower, limb_count) < 0) {
+    return 0;
+  }
+  (void)subtract_fixed_limbs(output_lower, left_lower, right_upper, limb_count);
+  (void)subtract_fixed_limbs(output_upper, left_upper, right_lower, limb_count);
+  return 1;
 }
 
 static void decrement_fixed_192(MalbolgeGuestMathFixed192 *value) {
@@ -1003,6 +1047,43 @@ int malbolge_guest_math_fixed_multiply_ceil(
       scratch_capacity, UINT32_C(1), discarded);
 }
 
+int malbolge_guest_math_fixed_interval_multiply(
+    const uint32_t *left_lower, const uint32_t *left_upper,
+    const uint32_t *right_lower, const uint32_t *right_upper,
+    uint32_t limb_count, uint32_t fraction_limbs, uint32_t *output_lower,
+    uint32_t *output_upper, uint32_t *scratch, uint32_t scratch_capacity) {
+  uint32_t product_limbs = UINT32_C(0);
+  uint32_t discarded = UINT32_C(0);
+  uint32_t *lower = NULL;
+  uint32_t *upper = NULL;
+
+  if (left_lower == NULL || left_upper == NULL || right_lower == NULL ||
+      right_upper == NULL || output_lower == NULL || output_upper == NULL ||
+      scratch == NULL || limb_count == UINT32_C(0) ||
+      compare_fixed_limbs(left_lower, left_upper, limb_count) > 0 ||
+      compare_fixed_limbs(right_lower, right_upper, limb_count) > 0 ||
+      limb_count > UINT32_MAX / UINT32_C(4) || fraction_limbs > limb_count) {
+    return 0;
+  }
+  product_limbs = limb_count * UINT32_C(2);
+  if (scratch_capacity < limb_count * UINT32_C(4)) {
+    return 0;
+  }
+  lower = scratch + product_limbs;
+  upper = lower + limb_count;
+  if (!multiply_fixed_limbs_with_scratch(
+          left_lower, right_lower, limb_count, fraction_limbs, lower, scratch,
+          product_limbs, UINT32_C(0), &discarded) ||
+      !multiply_fixed_limbs_with_scratch(
+          left_upper, right_upper, limb_count, fraction_limbs, upper, scratch,
+          product_limbs, UINT32_C(1), &discarded)) {
+    return 0;
+  }
+  copy_fixed_limbs(output_lower, lower, limb_count);
+  copy_fixed_limbs(output_upper, upper, limb_count);
+  return 1;
+}
+
 static void multiply_fixed_limbs_floor(
     const uint32_t *left, const uint32_t *right, uint32_t limb_count,
     uint32_t fraction_limbs, uint32_t *output, uint32_t *discarded) {
@@ -1100,6 +1181,36 @@ int malbolge_guest_math_fixed_divide_small_ceil(
     increment_fixed_limbs(output, limb_count);
   }
   *remainder = staged_remainder;
+  return 1;
+}
+
+int malbolge_guest_math_fixed_interval_divide_small(
+    const uint32_t *input_lower, const uint32_t *input_upper,
+    uint32_t limb_count, uint32_t divisor, uint32_t *output_lower,
+    uint32_t *output_upper, uint32_t *scratch, uint32_t scratch_capacity) {
+  uint32_t lower_remainder = UINT32_C(0);
+  uint32_t upper_remainder = UINT32_C(0);
+  uint32_t *lower = scratch;
+  uint32_t *upper = NULL;
+
+  if (input_lower == NULL || input_upper == NULL || output_lower == NULL ||
+      output_upper == NULL || scratch == NULL || limb_count == UINT32_C(0) ||
+      compare_fixed_limbs(input_lower, input_upper, limb_count) > 0 ||
+      limb_count > UINT32_MAX / UINT32_C(2) || divisor == UINT32_C(0) ||
+      scratch_capacity < limb_count * UINT32_C(2)) {
+    return 0;
+  }
+  upper = lower + limb_count;
+  lower_remainder =
+      divide_fixed_limbs_small_floor(input_lower, limb_count, divisor, lower);
+  upper_remainder =
+      divide_fixed_limbs_small_floor(input_upper, limb_count, divisor, upper);
+  if (upper_remainder != UINT32_C(0)) {
+    increment_fixed_limbs(upper, limb_count);
+  }
+  (void)lower_remainder;
+  copy_fixed_limbs(output_lower, lower, limb_count);
+  copy_fixed_limbs(output_upper, upper, limb_count);
   return 1;
 }
 

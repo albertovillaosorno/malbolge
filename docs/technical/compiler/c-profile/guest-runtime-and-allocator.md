@@ -624,6 +624,16 @@ Integer authority exercises 4/8/16/128 limbs and pins a product whose floor is
 the all-ones maximum but whose nonzero remainder makes ceil unrepresentable,
 requiring a nonmutating rejection.
 
+A composed interval layer now makes publication atomic across both endpoints.
+For nonnegative intervals, add/subtract preflight both endpoint operations.
+Multiplication stages directed lower/upper results in caller-owned `4*N`
+scratch,
+while small division needs `2*N`; outputs are copied only after both bounds
+succeed. Malformed intervals are rejected before arithmetic.
+
+Independent integer evidence covers 4/8/16/128 limbs and pins upper-bound
+overflow after a valid lower product as a nonpublishing failure.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

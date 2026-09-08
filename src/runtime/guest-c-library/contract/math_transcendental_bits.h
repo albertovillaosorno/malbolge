@@ -241,6 +241,23 @@ int malbolge_guest_math_fixed_multiply_ceil(
 int malbolge_guest_math_fixed_divide_small_ceil(
     const uint32_t *input, uint32_t limb_count, uint32_t divisor,
     uint32_t *output, uint32_t *remainder);
+int malbolge_guest_math_fixed_interval_add(
+    const uint32_t *left_lower, const uint32_t *left_upper,
+    const uint32_t *right_lower, const uint32_t *right_upper,
+    uint32_t limb_count, uint32_t *output_lower, uint32_t *output_upper);
+int malbolge_guest_math_fixed_interval_subtract(
+    const uint32_t *left_lower, const uint32_t *left_upper,
+    const uint32_t *right_lower, const uint32_t *right_upper,
+    uint32_t limb_count, uint32_t *output_lower, uint32_t *output_upper);
+int malbolge_guest_math_fixed_interval_multiply(
+    const uint32_t *left_lower, const uint32_t *left_upper,
+    const uint32_t *right_lower, const uint32_t *right_upper,
+    uint32_t limb_count, uint32_t fraction_limbs, uint32_t *output_lower,
+    uint32_t *output_upper, uint32_t *scratch, uint32_t scratch_capacity);
+int malbolge_guest_math_fixed_interval_divide_small(
+    const uint32_t *input_lower, const uint32_t *input_upper,
+    uint32_t limb_count, uint32_t divisor, uint32_t *output_lower,
+    uint32_t *output_upper, uint32_t *scratch, uint32_t scratch_capacity);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(
