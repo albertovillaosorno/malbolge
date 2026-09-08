@@ -567,11 +567,15 @@ bounds their sine and cosine with 40 rational Taylor terms, proves the tangent
 branch from directed signs, and compares exact `y/x` only when the branch
 matches. Quadrant order handles boundaries that cross zero or a tangent pole.
 
-That midpoint certificate accepts all 64 signed quadrant variants of the 16
-retained hard ratios plus four near-zero/near-`pi/2` edges. It uses neither a pi
-constant nor any Q32.192/Q32.224/Q32.256/Q1152 rounding oracle. This establishes
-a distinct candidate-verification route, but its bounded corpus does not by
-itself prove adaptive termination for every binary64 pair.
+That midpoint certificate now accepts 580 finite pairs: all 64 signed quadrant
+variants of the 16 retained hard ratios, four near-zero/near-`pi/2` edges, and
+512 fixed-seed finite nonzero pairs. It uses neither a pi constant nor any
+Q32.192/Q32.224/Q32.256/Q1152 rounding oracle.
+
+The reference refines fail-closed through 4, 8, 12, 16, 24, 32, and 40 Taylor
+terms. Exactly 124/9/289/158 cases certify first at 4/8/12/16 terms; none of the
+retained corpus needs a later step. This explicitly exercises precision growth
+instead of validating only one preselected Taylor width.
 
 
 The qualitative termination fact for an adaptive version now has durable

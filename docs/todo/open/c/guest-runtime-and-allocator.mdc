@@ -341,13 +341,15 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   so adaptive termination or a global separation proof is still required.
 
 
-  An independent midpoint-cell authority now verifies 68 C candidates without
+  An independent midpoint-cell authority now verifies 580 C candidates without
   using atan, pi constants, or any fixed-point/Q1152 rounding oracle. It builds
-  exact dyadic cell boundaries, encloses sine/cosine with 40 rational Taylor
-  terms, uses quadrant order across pole crossings, and otherwise compares the
-  exact input `y/x` against the directed tangent interval. The corpus covers all
-  four quadrants of each retained hard ratio plus near-zero and near-`pi/2`
-  edges. Lambert tangent irrationality now has a canonical bibliography record:
+  exact dyadic cell boundaries, refines directed sine/cosine Taylor bounds
+  through 4/8/12/16/24/32/40 terms, uses quadrant order across pole crossings,
+  and otherwise compares exact `y/x` against the tangent interval. The corpus
+  adds 512 fixed-seed finite pairs to every hard-ratio quadrant and four edges;
+  first success is 124/9/289/158 cases at 4/8/12/16 terms.
+
+  Lambert tangent irrationality now has a canonical bibliography record:
   a nonzero rational midpoint cannot have rational tangent, so a correctly
   directed adaptive comparison must eventually separate it from the rational
   binary64 input ratio.

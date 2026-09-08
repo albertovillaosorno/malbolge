@@ -24,18 +24,19 @@
 # - Summary:
 #   - Certifies atan2 cells through tan(midpoint), not through atan evaluation.
 # - Description:
-#   - Directed rational sin/cos Taylor bounds compare y/x to tangent on the
-#     matching principal-angle branch; quadrant order handles pole crossings.
+#   - Directed rational sin/cos Taylor bounds refine from four through 40 terms.
+#     They compare y/x to tangent; quadrant order handles pole crossings.
 # - Usage:
 #   - Collected with repository-pinned native Clang on supported hosts.
 # - Defaults:
-#   - Forty Taylor terms leave ample headroom for the retained hard vectors.
+#   - Refinement starts at four Taylor terms and advances through 40 if needed.
 #
 
 """Independent dyadic-midpoint rounding certificates for guest atan2."""
 
 from __future__ import annotations
 
+from collections import Counter
 from fractions import Fraction
 from itertools import product
 from pathlib import Path
@@ -50,8 +51,15 @@ MAGNITUDE_MASK = SIGN_BIT - 1
 FRACTION_MASK = (1 << 52) - 1
 EXPONENT_MASK = 0x7FF
 HIDDEN_BIT = 1 << 52
-TAYLOR_TERMS = 40
+TAYLOR_TERM_STEPS = (4, 8, 12, 16, 24, 32, 40)
 MAX_MIDPOINT_MAGNITUDE = Fraction(4)
+LCG_MULTIPLIER = 6364136223846793005
+LCG_INCREMENT = 1442695040888963407
+LCG_SEED = 0x4D4944504F494E54
+ALL_BITS = (1 << 64) - 1
+ADAPTIVE_PAIR_COUNT = 512
+LOWEST_BRANCH_RANK = 0
+HIGHEST_BRANCH_RANK = 3
 
 BASE_HARD_PAIRS = (
     (0x3FEE19FA869EA9FC, 0x3FF197DD31B21770),
@@ -87,7 +95,26 @@ def _signed_hard_pairs() -> tuple[tuple[int, int], ...]:
     )
 
 
-CERTIFICATE_PAIRS = _signed_hard_pairs() + EDGE_PAIRS
+def _finite_nonzero(bits: int) -> bool:
+    magnitude = bits & MAGNITUDE_MASK
+    exponent = (magnitude >> 52) & EXPONENT_MASK
+    return magnitude != 0 and exponent != EXPONENT_MASK
+
+
+def _adaptive_pairs() -> tuple[tuple[int, int], ...]:
+    state = LCG_SEED
+    pairs: list[tuple[int, int]] = []
+    while len(pairs) < ADAPTIVE_PAIR_COUNT:
+        state = (state * LCG_MULTIPLIER + LCG_INCREMENT) & ALL_BITS
+        y_bits = state
+        state = (state * LCG_MULTIPLIER + LCG_INCREMENT) & ALL_BITS
+        x_bits = state
+        if _finite_nonzero(y_bits) and _finite_nonzero(x_bits):
+            pairs.append((y_bits, x_bits))
+    return tuple(pairs)
+
+
+CERTIFICATE_PAIRS = _signed_hard_pairs() + EDGE_PAIRS + _adaptive_pairs()
 
 
 def _run(command: list[str], cwd: Path) -> sp.CompletedProcess[str]:
@@ -133,73 +160,75 @@ def _next_down(bits: int) -> int:
     return bits + 1 if bits & SIGN_BIT else bits - 1
 
 
-def _sin_interval(value: Fraction) -> tuple[Fraction, Fraction]:
+def _sin_interval(
+    value: Fraction, terms: int
+) -> tuple[Fraction, Fraction]:
     negative = value < 0
     magnitude = abs(value)
     square = magnitude * magnitude
     term = magnitude
     total = term
-    for index in range(TAYLOR_TERMS - 1):
+    for index in range(terms - 1):
         term *= square
         term /= ((2 * index) + 2) * ((2 * index) + 3)
         total = total - term if (index + 1) & 1 else total + term
-    last = TAYLOR_TERMS - 1
+    last = terms - 1
     omitted = term * square / (((2 * last) + 2) * ((2 * last) + 3))
-    lower, upper = (total - omitted, total) if TAYLOR_TERMS & 1 else (
+    lower, upper = (total - omitted, total) if terms & 1 else (
         total,
         total + omitted,
     )
     return (-upper, -lower) if negative else (lower, upper)
 
 
-def _cos_interval(value: Fraction) -> tuple[Fraction, Fraction]:
+def _cos_interval(
+    value: Fraction, terms: int
+) -> tuple[Fraction, Fraction]:
     square = value * value
     term = Fraction(1)
     total = term
-    for index in range(TAYLOR_TERMS - 1):
+    for index in range(terms - 1):
         term *= square
         term /= ((2 * index) + 1) * ((2 * index) + 2)
         total = total - term if (index + 1) & 1 else total + term
-    last = TAYLOR_TERMS - 1
+    last = terms - 1
     omitted = term * square / (((2 * last) + 1) * ((2 * last) + 2))
-    return (total - omitted, total) if TAYLOR_TERMS & 1 else (
+    return (total - omitted, total) if terms & 1 else (
         total,
         total + omitted,
     )
 
 
 def _sincos_interval(
-    value: Fraction,
+    value: Fraction, terms: int
 ) -> tuple[Fraction, Fraction, Fraction, Fraction]:
     assert abs(value) < MAX_MIDPOINT_MAGNITUDE
-    sin_lower, sin_upper = _sin_interval(value)
-    cos_lower, cos_upper = _cos_interval(value)
+    sin_lower, sin_upper = _sin_interval(value, terms)
+    cos_lower, cos_upper = _cos_interval(value, terms)
     return sin_lower, sin_upper, cos_lower, cos_upper
 
 
 def _tangent_interval(
-    midpoint: Fraction,
-) -> tuple[Fraction, Fraction, tuple[Fraction, Fraction, Fraction, Fraction]]:
-    sin_lower, sin_upper, cos_lower, cos_upper = _sincos_interval(midpoint)
-    assert cos_lower > 0 or cos_upper < 0
+    midpoint: Fraction, terms: int
+) -> (
+    tuple[Fraction, Fraction, tuple[Fraction, Fraction, Fraction, Fraction]]
+    | None
+):
+    sin_lower, sin_upper, cos_lower, cos_upper = _sincos_interval(
+        midpoint, terms
+    )
+    sincos = (sin_lower, sin_upper, cos_lower, cos_upper)
     if cos_lower > 0:
-        return (
+        return sin_lower / cos_upper, sin_upper / cos_lower, sincos
+    if cos_upper < 0:
+        quotients = (
+            sin_lower / cos_lower,
             sin_lower / cos_upper,
             sin_upper / cos_lower,
-            (sin_lower, sin_upper, cos_lower, cos_upper),
+            sin_upper / cos_upper,
         )
-    quotients = (
-        sin_lower / cos_lower,
-        sin_lower / cos_upper,
-        sin_upper / cos_lower,
-        sin_upper / cos_upper,
-    )
-    return min(quotients), max(quotients), (
-        sin_lower,
-        sin_upper,
-        cos_lower,
-        cos_upper,
-    )
+        return min(quotients), max(quotients), sincos
+    return None
 
 
 def _proven_sign(lower: Fraction, upper: Fraction) -> int:
@@ -215,18 +244,9 @@ def _actual_branch_rank(y_bits: int, x_bits: int) -> int:
     return {(-1, -1): 0, (-1, 1): 1, (1, 1): 2, (1, -1): 3}[signs]
 
 
-def _boundary_branch_rank(
-    midpoint: Fraction,
-    sincos: tuple[Fraction, Fraction, Fraction, Fraction],
-) -> int:
-    sin_sign = _proven_sign(sincos[0], sincos[1])
-    cos_sign = _proven_sign(sincos[2], sincos[3])
-    assert sin_sign != 0
-    assert cos_sign != 0
-    if midpoint > 0 and sin_sign < 0 and cos_sign < 0:
-        return 4
-    if midpoint < 0 and sin_sign > 0 and cos_sign < 0:
-        return -1
+def _rank_sign_pair(sin_sign: int, cos_sign: int) -> int | None:
+    if sin_sign == 0 or cos_sign == 0:
+        return None
     return {
         (-1, -1): 0,
         (-1, 1): 1,
@@ -235,24 +255,68 @@ def _boundary_branch_rank(
     }[sin_sign, cos_sign]
 
 
-def _compare_angle_to_midpoint(
-    y_bits: int, x_bits: int, midpoint: Fraction
+def _boundary_branch_rank(
+    midpoint: Fraction,
+    sincos: tuple[Fraction, Fraction, Fraction, Fraction],
+) -> int | None:
+    sin_sign = _proven_sign(sincos[0], sincos[1])
+    cos_sign = _proven_sign(sincos[2], sincos[3])
+    rank = _rank_sign_pair(sin_sign, cos_sign)
+    if rank is None:
+        return None
+    if midpoint > 0 and rank == LOWEST_BRANCH_RANK:
+        rank = 4
+    elif midpoint < 0 and rank == HIGHEST_BRANCH_RANK:
+        rank = -1
+    return rank
+
+
+def _compare_ratio_to_tangent(
+    y_bits: int,
+    x_bits: int,
+    *,
+    bounds: tuple[Fraction, Fraction],
 ) -> int:
-    tan_lower, tan_upper, sincos = _tangent_interval(midpoint)
-    actual_rank = _actual_branch_rank(y_bits, x_bits)
-    boundary_rank = _boundary_branch_rank(midpoint, sincos)
+    ratio = _binary64_fraction(y_bits) / _binary64_fraction(x_bits)
     result = 0
-    if actual_rank < boundary_rank:
-        result = -1
-    elif actual_rank > boundary_rank:
+    if ratio > bounds[1]:
         result = 1
-    else:
-        ratio = _binary64_fraction(y_bits) / _binary64_fraction(x_bits)
-        if ratio > tan_upper:
-            result = 1
-        elif ratio < tan_lower:
-            result = -1
+    elif ratio < bounds[0]:
+        result = -1
     return result
+
+
+def _compare_rank_or_ratio(
+    y_bits: int,
+    x_bits: int,
+    tangent_bounds: tuple[Fraction, Fraction],
+    *,
+    boundary_rank: int,
+) -> int:
+    actual_rank = _actual_branch_rank(y_bits, x_bits)
+    if actual_rank < boundary_rank:
+        return -1
+    if actual_rank > boundary_rank:
+        return 1
+    return _compare_ratio_to_tangent(y_bits, x_bits, bounds=tangent_bounds)
+
+
+def _compare_angle_to_midpoint(
+    y_bits: int, x_bits: int, midpoint: Fraction, *, terms: int
+) -> int:
+    tangent = _tangent_interval(midpoint, terms)
+    if tangent is None:
+        return 0
+    tan_lower, tan_upper, sincos = tangent
+    boundary_rank = _boundary_branch_rank(midpoint, sincos)
+    if boundary_rank is None:
+        return 0
+    return _compare_rank_or_ratio(
+        y_bits,
+        x_bits,
+        (tan_lower, tan_upper),
+        boundary_rank=boundary_rank,
+    )
 
 
 def _candidate_harness_source() -> str:
@@ -284,24 +348,36 @@ int main(void) {{
 """
 
 
-def _certify_rounding_cell(y_bits: int, x_bits: int, output_bits: int) -> None:
+def _certify_rounding_cell(
+    y_bits: int, x_bits: int, output_bits: int
+) -> int:
     output = _binary64_fraction(output_bits)
     lower_midpoint = (_binary64_fraction(_next_down(output_bits)) + output) / 2
     upper_midpoint = (output + _binary64_fraction(_next_up(output_bits))) / 2
-    assert _compare_angle_to_midpoint(y_bits, x_bits, lower_midpoint) == 1
-    assert _compare_angle_to_midpoint(y_bits, x_bits, upper_midpoint) == -1
+    for terms in TAYLOR_TERM_STEPS:
+        lower_order = _compare_angle_to_midpoint(
+            y_bits, x_bits, lower_midpoint, terms=terms
+        )
+        upper_order = _compare_angle_to_midpoint(
+            y_bits, x_bits, upper_midpoint, terms=terms
+        )
+        if lower_order == 1 and upper_order == -1:
+            return terms
+    message = "adaptive midpoint certificate did not separate"
+    raise AssertionError(message)
 
 
-def test_forty_terms_enter_the_monotone_alternating_tail() -> None:
-    """Bound every omitted sin/cos term ratio for abs(midpoint) below four."""
-    assert Fraction(16, 82 * 83) < 1
-    assert Fraction(16, 81 * 82) < 1
+def test_first_adaptive_step_enters_monotone_alternating_tail() -> None:
+    """Prove the omitted tails decrease from the first adaptive step."""
+    first = TAYLOR_TERM_STEPS[0]
+    assert Fraction(16, (2 * first + 2) * (2 * first + 3)) < 1
+    assert Fraction(16, (2 * first + 1) * (2 * first + 2)) < 1
 
 
 def test_atan2_candidate_cells_have_independent_midpoint_certificates(
     tmp_path: Path,
 ) -> None:
-    """Certify 68 C candidates without an atan-based rounding oracle."""
+    """Certify 580 C candidates with adaptive rational midpoint bounds."""
     harness = tmp_path / "atan2-midpoint-candidates.c"
     executable = tmp_path / "atan2-midpoint-candidates"
     _ = harness.write_text(_candidate_harness_source(), encoding="utf-8")
@@ -327,5 +403,9 @@ def test_atan2_candidate_cells_have_independent_midpoint_certificates(
     outputs = tuple(int(line, 16) for line in executed.stdout.splitlines())
     assert len(outputs) == len(CERTIFICATE_PAIRS)
     rows = zip(CERTIFICATE_PAIRS, outputs, strict=True)
-    for (y_bits, x_bits), output_bits in rows:
+    used_terms = tuple(
         _certify_rounding_cell(y_bits, x_bits, output_bits)
+        for (y_bits, x_bits), output_bits in rows
+    )
+    assert len(used_terms) == len(CERTIFICATE_PAIRS)
+    assert Counter(used_terms) == {4: 124, 8: 9, 12: 289, 16: 158}
