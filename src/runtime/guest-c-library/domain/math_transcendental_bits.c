@@ -53,6 +53,7 @@
 #define BINARY64_EXPONENT_BIAS INT32_C(1023)
 #define BINARY64_SUBNORMAL_EXPONENT INT32_C(-1074)
 #define BINARY64_RATIO_MIN_EXPONENT_DELTA INT32_C(-2097)
+#define BINARY64_ATAN_UNCONDITIONAL_EXPONENT INT32_C(-54)
 #define ATAN_QUARTER_REDUCTION_NUMERATOR UINT64_C(169)
 #define ATAN_QUARTER_REDUCTION_DENOMINATOR UINT64_C(408)
 #define FIXED_192_LIMB_COUNT UINT32_C(7)
@@ -1112,6 +1113,9 @@ static int normal_ratio_rounding_margin_safe(
   }
   if (exponent < INT32_C(-1022) || exponent > INT32_C(-27)) {
     return 0;
+  }
+  if (exponent <= BINARY64_ATAN_UNCONDITIONAL_EXPONENT) {
+    return 1;
   }
   while (remaining != UINT32_C(0)) {
     --remaining;

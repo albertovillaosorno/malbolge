@@ -49,6 +49,7 @@ ATAN_TOP_BINADE_ERROR_ULPS = Fraction(343, 768)
 ATAN_TOP_UPPER_MARGIN = Fraction(727, 768)
 ATAN_DYNAMIC_MARGIN_MAX_EXPONENT = -28
 ATAN_DYNAMIC_MARGIN_MIN_EXPONENT = -54
+ATAN_UNCONDITIONAL_EXPONENT = -54
 MIN_NORMAL_MAGNITUDE = Fraction(1, 1 << 1022)
 SUBNORMAL_ULP = Fraction(1, 1 << 1074)
 MIN_RATIONAL_MIDPOINT_SEPARATION = Fraction(1, 1 << 54)
@@ -112,6 +113,16 @@ def test_normal_binary64_ratio_cannot_be_exact_midpoint() -> None:
             assert remainder % unit == 0
             assert (denominator // 2) % unit != 0
             assert remainder != denominator // 2
+
+
+def test_atan_lower_binades_are_unconditionally_midpoint_safe() -> None:
+    """Prove every valid non-midpoint ratio is safe at exponent -54 or less."""
+    exponent = ATAN_UNCONDITIONAL_EXPONENT
+    error_ulps = Fraction(1, 3 * (1 << -((2 * exponent) + 55)))
+    minimum_midpoint_gap = Fraction(1, 1 << 54)
+    assert error_ulps == Fraction(1, 3 * (1 << 53))
+    assert error_ulps < minimum_midpoint_gap
+    assert exponent == ATAN_DYNAMIC_MARGIN_MIN_EXPONENT
 
 
 def test_atan_normal_margin_scales_by_binade() -> None:

@@ -447,6 +447,13 @@ The C midpoint branch remains fail closed as a defensive invariant check rather
 than an admitted runtime case. This closes the normal exact-midpoint obligation
 without choosing a neighbor for malformed geometry.
 
+That exclusion also closes the lower normal binades without quotient-margin
+work. At normalized exponent `e=-54`, the cubic atan error is less than
+`1/(3*2^53)` ulp, while any non-midpoint ratio is separated from a midpoint by
+more than `2^-54` ulp; lower binades reduce the error by another factor of four
+per exponent. The runtime therefore admits `e<=-54` immediately instead of
+executing 52 fractional long-division steps.
+
 A fixed-seed million-pair stress run sampled 999,006 finite raw-word pairs after
 this change and the combined exact-plus-Q32.192 handoff resolved every one. The
 same generator and finite count are now retained as a compiled C regression,

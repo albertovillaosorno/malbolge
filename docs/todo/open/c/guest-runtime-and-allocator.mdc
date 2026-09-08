@@ -332,6 +332,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   remainder. The defensive C midpoint branch therefore remains fail closed but
   is unreachable for valid ratio geometry.
 
+  This also makes normalized exponent `e<=-54` unconditional: at `e=-54` the
+  cubic atan error is below `1/(3*2^53)` ulp, smaller than the minimum
+  non-midpoint separation `2^-54` ulp, and lower binades only improve the gap.
+  The runtime now returns safe before the 52-step quotient-remainder loop for
+  this entire range.
+
   Correctly-rounded numerical kernels and final rounding remain the lane-8
   blocker.
 - Resolved integer/scheduling boundary: version one introduces no separate
