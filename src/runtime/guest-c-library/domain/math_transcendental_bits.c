@@ -1214,6 +1214,40 @@ int malbolge_guest_math_fixed_interval_divide_small(
   return 1;
 }
 
+int malbolge_guest_math_fixed_taylor_term_interval(
+    const uint32_t *term_lower, const uint32_t *term_upper,
+    const uint32_t *square_lower, const uint32_t *square_upper,
+    uint32_t limb_count, uint32_t fraction_limbs, uint32_t divisor,
+    uint32_t *output_lower, uint32_t *output_upper, uint32_t *scratch,
+    uint32_t scratch_capacity) {
+  uint32_t product_limbs = UINT32_C(0);
+  uint32_t *lower = NULL;
+  uint32_t *upper = NULL;
+
+  if (term_lower == NULL || term_upper == NULL || square_lower == NULL ||
+      square_upper == NULL || output_lower == NULL || output_upper == NULL ||
+      scratch == NULL || limb_count == UINT32_C(0) ||
+      limb_count > UINT32_MAX / UINT32_C(4) || fraction_limbs > limb_count ||
+      divisor == UINT32_C(0) ||
+      scratch_capacity < limb_count * UINT32_C(4)) {
+    return 0;
+  }
+  product_limbs = limb_count * UINT32_C(2);
+  lower = scratch + product_limbs;
+  upper = lower + limb_count;
+  if (!malbolge_guest_math_fixed_interval_multiply(
+          term_lower, term_upper, square_lower, square_upper, limb_count,
+          fraction_limbs, lower, upper, scratch, scratch_capacity) ||
+      !malbolge_guest_math_fixed_interval_divide_small(
+          lower, upper, limb_count, divisor, lower, upper, scratch,
+          product_limbs)) {
+    return 0;
+  }
+  copy_fixed_limbs(output_lower, lower, limb_count);
+  copy_fixed_limbs(output_upper, upper, limb_count);
+  return 1;
+}
+
 static void multiply_fixed_small(MalbolgeGuestMathFixed192 *value,
                                  uint32_t factor) {
   multiply_fixed_limbs_small(value->limbs, FIXED_192_LIMB_COUNT, factor);

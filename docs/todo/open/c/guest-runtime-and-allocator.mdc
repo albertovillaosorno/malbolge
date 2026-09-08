@@ -395,9 +395,15 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   lower endpoint. Integer authority covers 4/8/16/128 limbs and the upper-ceil
   overflow edge.
 
-  Guest-C unbounded refinement storage remains unresolved at repeated
-  tangent/Taylor orchestration; it no longer blocks dyadic input or individual
-  directed/interval arithmetic operations.
+  The repeated Taylor term is executable too: directed `term*x^2/divisor`
+  reuses the same `4*N` caller-owned workspace with no second scratch tier.
+  Exact integer evidence covers 4/8/16/128 limbs and divisors 6/20/42/72 plus
+  malformed, zero-divisor, short-scratch, and ceil-overflow failures.
+
+  Full Taylor summation now exposes the next representation boundary: partial
+  sine/cosine sums for `|midpoint|<4` can cross zero. Signed endpoint
+  accumulation is therefore required before complete tangent refinement; the
+  remaining blocker is no longer term generation or variable-width storage.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

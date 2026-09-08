@@ -634,6 +634,16 @@ succeed. Malformed intervals are rejected before arithmetic.
 Independent integer evidence covers 4/8/16/128 limbs and pins upper-bound
 overflow after a valid lower product as a nonpublishing failure.
 
+The repeated Taylor-term recurrence now composes the interval core directly.
+For a nonnegative term and `x^2` interval it evaluates directed
+`term*x^2/divisor` with the existing `4*N` workspace, then publishes only after
+both product and division bounds succeed. Fixtures at 4/8/16/128 limbs use
+recurrence divisors 6/20/42/72 and match exact integer composition.
+
+This closes variable-width term generation but not full sine/cosine summation:
+partial alternating sums for `|midpoint|<4` can cross zero, so the next runtime
+primitive must carry signed endpoints rather than forcing unsigned underflow.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

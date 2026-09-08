@@ -157,6 +157,15 @@ bounds in `2*N` scratch. Every operation rejects inverted input intervals, and
 integer authority covers 4/8/16/128 limbs plus malformed, overflow, underflow,
 and undersized-scratch failures.
 
+The shared Taylor recurrence is now executable at variable width as well.
+`malbolge_guest_math_fixed_taylor_term_interval` computes the directed enclosure
+of `term*x^2/divisor` with the same caller-owned `4*N` scratch; no additional
+workspace is introduced between multiplication and division. Integer authority
+covers 4/8/16/128 limbs with the first sine/cosine recurrence divisors
+`6/20/42/72` and pins malformed, zero-divisor, short-scratch, and ceil-overflow
+rejection. Full summation still needs signed endpoint accumulation because
+partial sine/cosine sums over the admitted `|midpoint|<4` range can cross zero.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch
