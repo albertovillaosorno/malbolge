@@ -215,6 +215,12 @@ int malbolge_guest_math_fixed256_unique_binary64(
     const MalbolgeGuestMathFixed256Interval *input, uint64_t *output_bits);
 int malbolge_guest_math_atan2_cell_midpoints(
     uint64_t output_bits, MalbolgeGuestMathAtan2CellMidpoints *output);
+int malbolge_guest_math_dyadic_fixed_limb_count(
+    const MalbolgeGuestMathDyadic *input, uint32_t fraction_bits,
+    uint32_t *required_limbs);
+int malbolge_guest_math_dyadic_write_fixed(
+    const MalbolgeGuestMathDyadic *input, uint32_t fraction_bits,
+    uint32_t *limbs, uint32_t limb_capacity);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(

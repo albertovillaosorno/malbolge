@@ -123,6 +123,14 @@ excess `2^-106` dominates the cubic atan error `<2^-156/3`. Hence the true
 angle stays above `2^-53`, whose finest neighboring midpoint uses shift 107;
 left-half-plane angles are larger still.
 
+The first caller-owned refinement workspace primitive now converts any exact
+midpoint dyadic into little-endian base-`2^32` magnitude limbs at a requested
+binary fractional precision. A separate planner returns the exact limb count
+before writing; insufficient capacity rejects without touching the buffer, and
+no guest heap or startup state is consulted. The retained workspace test checks
+exact integer reconstruction through 4,096 fractional bits and separately plans
+`UINT32_MAX` fractional bits without allocating that storage.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

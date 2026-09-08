@@ -366,7 +366,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   early, while the minimum `e=-53` non-dyadic excess `2^-106` is larger than
   its `<2^-156/3` cubic atan error; left-half-plane angles are larger.
 
-  Guest-C unbounded refinement storage remains unresolved.
+  Caller-owned refinement storage now has its first executable primitive:
+  dyadic inputs can plan and write exact little-endian `2^32` magnitude limbs
+  at caller-selected fractional precision. Insufficient capacity is
+  nonmutating, a 4,096-bit fixture reconstructs exactly, and a `UINT32_MAX`-bit
+  request can be planned without allocation. The helper has no guest-heap or
+  startup dependency.
+
+  Guest-C unbounded refinement storage remains unresolved beyond input
+  materialization; tangent arithmetic still needs variable-precision product
+  and directed-division workspace.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

@@ -1800,6 +1800,81 @@ int malbolge_guest_math_fixed256_unique_binary64(
       FIXED_256_FRACTION_BITS, output_bits);
 }
 
+static uint32_t u64_bit_length(uint64_t value) {
+  uint32_t bits = UINT32_C(0);
+  while (value != UINT64_C(0)) {
+    ++bits;
+    value >>= UINT32_C(1);
+  }
+  return bits;
+}
+
+int malbolge_guest_math_dyadic_fixed_limb_count(
+    const MalbolgeGuestMathDyadic *input, uint32_t fraction_bits,
+    uint32_t *required_limbs) {
+  uint64_t bit_count = UINT64_C(0);
+  uint64_t limbs = UINT64_C(0);
+  uint32_t numerator_bits = UINT32_C(0);
+
+  if (input == NULL || required_limbs == NULL ||
+      fraction_bits < input->denominator_shift ||
+      input->negative > UINT32_C(1)) {
+    return 0;
+  }
+  if (input->numerator == UINT64_C(0)) {
+    *required_limbs = UINT32_C(1);
+    return 1;
+  }
+  numerator_bits = u64_bit_length(input->numerator);
+  bit_count = (uint64_t)numerator_bits +
+              (uint64_t)(fraction_bits - input->denominator_shift);
+  limbs = (bit_count + UINT64_C(31)) >> UINT32_C(5);
+  if (limbs == UINT64_C(0) || limbs > UINT32_MAX) {
+    return 0;
+  }
+  *required_limbs = (uint32_t)limbs;
+  return 1;
+}
+
+int malbolge_guest_math_dyadic_write_fixed(
+    const MalbolgeGuestMathDyadic *input, uint32_t fraction_bits,
+    uint32_t *limbs, uint32_t limb_capacity) {
+  uint32_t required = UINT32_C(0);
+  uint32_t whole_shift = UINT32_C(0);
+  uint32_t bit_shift = UINT32_C(0);
+  uint32_t index = UINT32_C(0);
+  uint64_t low = UINT64_C(0);
+  uint64_t high = UINT64_C(0);
+
+  if (limbs == NULL ||
+      !malbolge_guest_math_dyadic_fixed_limb_count(input, fraction_bits,
+                                                   &required) ||
+      limb_capacity < required) {
+    return 0;
+  }
+  while (index < required) {
+    limbs[index] = UINT32_C(0);
+    ++index;
+  }
+  if (input->numerator == UINT64_C(0)) {
+    return 1;
+  }
+  whole_shift = (fraction_bits - input->denominator_shift) >> UINT32_C(5);
+  bit_shift = (fraction_bits - input->denominator_shift) & UINT32_C(31);
+  low = input->numerator << bit_shift;
+  high = bit_shift == UINT32_C(0)
+             ? UINT64_C(0)
+             : input->numerator >> (UINT32_C(64) - bit_shift);
+  limbs[whole_shift] = (uint32_t)low;
+  if (whole_shift + UINT32_C(1) < required) {
+    limbs[whole_shift + UINT32_C(1)] = (uint32_t)(low >> UINT32_C(32));
+  }
+  if (whole_shift + UINT32_C(2) < required) {
+    limbs[whole_shift + UINT32_C(2)] = (uint32_t)high;
+  }
+  return 1;
+}
+
 int malbolge_guest_math_atan2_cell_midpoints(
     uint64_t output_bits, MalbolgeGuestMathAtan2CellMidpoints *output) {
   const uint64_t magnitude = output_bits & ~BINARY64_SIGN;

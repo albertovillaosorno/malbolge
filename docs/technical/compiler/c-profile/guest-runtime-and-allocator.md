@@ -592,6 +592,17 @@ For the actual fallback path, midpoint denominator shift is globally at most
 error is below `2^-156/3`, so the exact angle remains above `2^-53`. The lower
 rounding boundary there is the finest possible one, at denominator `2^107`.
 
+Variable-precision input materialization now has a caller-owned contract rather
+than an allocator dependency. `malbolge_guest_math_dyadic_fixed_limb_count`
+plans the exact number of little-endian 32-bit limbs for a requested fractional
+precision, and `malbolge_guest_math_dyadic_write_fixed` writes only after the
+caller supplies that capacity. Short buffers reject before mutation; sign stays
+in the source dyadic and the written limbs are its exact magnitude.
+
+Tests cover 107, 128, 256, and 4,096 fractional bits and plan a `UINT32_MAX`-bit
+request without allocating it. Neither function observes guest heap/startup
+state.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.
