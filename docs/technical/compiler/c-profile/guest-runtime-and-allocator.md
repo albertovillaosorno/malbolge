@@ -474,7 +474,11 @@ If `D` has at least `2e+108` trailing zero bits, then the nonzero midpoint gap
 is at least `2^(2e+108)/(2D)` ulp, which exceeds the cubic error using
 `D<2^53`.
 The runtime checks that low-bit mask before long division; only the remaining
-geometries pay for exact quotient-remainder margin evaluation.
+geometries pay for exact quotient-remainder margin evaluation. A fixed-seed
+4,320-pair differential spans all 27 normal margin binades from `e=-27` through
+`e=-53`, with 160 independent 53-bit numerator/denominator geometries per
+binade. Exact `Fraction` expectations match the C preclassifier across both
+early-resolved and kernel-required cases.
 
 A fixed-seed million-pair stress run sampled 999,006 finite raw-word pairs after
 this change and the combined exact-plus-Q32.192 handoff resolved every one. The

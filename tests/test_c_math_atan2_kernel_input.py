@@ -62,6 +62,9 @@ LCG_INCREMENT = 1442695040888963407
 LCG_SEED = 0x4154414E325F5631
 SMALL_RATIO_LCG_SEED = 0x4154414E325F5352
 SMALL_RATIO_VECTOR_COUNT = 512
+NORMAL_MARGIN_LCG_SEED = 0x4154414E325F4D47
+NORMAL_MARGIN_CASES_PER_EXPONENT = 160
+NORMAL_MARGIN_MIN_EXPONENT = -53
 ATAN2_STRESS_SEED = 0x4154414E325F5631
 ATAN2_STRESS_PAIR_COUNT = 1_000_000
 ATAN2_STRESS_FINITE_COUNT = 999_006
@@ -873,6 +876,70 @@ int main(void) {{
 """
 
 
+def _next_normal_margin_pair(
+    state: int, exponent: int
+) -> tuple[int, int, int]:
+    while True:
+        state = (state * LCG_MULTIPLIER + LCG_INCREMENT) & ALL_BITS
+        x_significand = HIDDEN_BIT | (state & FRACTION_MASK)
+        state = (state * LCG_MULTIPLIER + LCG_INCREMENT) & ALL_BITS
+        y_significand = HIDDEN_BIT | (state & FRACTION_MASK)
+        if y_significand < x_significand:
+            x_significand, y_significand = y_significand, x_significand
+        x_bits = (0x3FF << 52) | (x_significand - HIDDEN_BIT)
+        y_bits = ((1023 + exponent) << 52) | (y_significand - HIDDEN_BIT)
+        if state & SIGN_BIT:
+            y_bits |= SIGN_BIT
+        ratio = _raw_fraction(y_bits) / _raw_fraction(x_bits)
+        if _floor_log2(ratio) == exponent and ratio <= ATAN_IDENTITY_MAX:
+            return state, y_bits, x_bits
+
+
+def _normal_margin_pairs() -> tuple[tuple[int, int], ...]:
+    state = NORMAL_MARGIN_LCG_SEED
+    pairs: list[tuple[int, int]] = []
+    for exponent in range(
+        ATAN_MARGIN_MAX_EXPONENT, NORMAL_MARGIN_MIN_EXPONENT - 1, -1
+    ):
+        for _ in range(NORMAL_MARGIN_CASES_PER_EXPONENT):
+            state, y_bits, x_bits = _next_normal_margin_pair(state, exponent)
+            pairs.append((y_bits, x_bits))
+    return tuple(pairs)
+
+
+def _normal_margin_harness_source() -> str:
+    pairs = _normal_margin_pairs()
+    rows = ",\n".join(starmap(_small_ratio_row, pairs))
+    return f"""#include \"math_transcendental_bits.h\"
+#include <stdint.h>
+typedef struct Vector {{
+  uint64_t y_bits, x_bits;
+  uint32_t status;
+  uint64_t bits;
+}} Vector;
+static const Vector vectors[] = {{
+{rows}
+}};
+int main(void) {{
+  uint32_t index = UINT32_C(0);
+  uint32_t resolved = UINT32_C(0);
+  uint32_t kernel_required = UINT32_C(0);
+  while (index < (uint32_t)(sizeof(vectors) / sizeof(vectors[0]))) {{
+    const Vector *v = &vectors[index];
+    const MalbolgeGuestMathSpecialResult result =
+        malbolge_guest_math_atan2_special(v->y_bits, v->x_bits);
+    if ((uint32_t)result.status != v->status || result.bits != v->bits) {{
+      return 21;
+    }}
+    if (v->status == UINT32_C({RESOLVED_STATUS})) ++resolved;
+    if (v->status == UINT32_C({KERNEL_REQUIRED_STATUS})) ++kernel_required;
+    ++index;
+  }}
+  return resolved != UINT32_C(0) && kernel_required != UINT32_C(0) ? 0 : 22;
+}}
+"""
+
+
 def _small_ratio_pairs() -> tuple[tuple[int, int], ...]:
     state = SMALL_RATIO_LCG_SEED
     pairs = [
@@ -1448,6 +1515,48 @@ def test_atan2_unique_rounding_retains_fixed_seed_million_pair_coverage(
     harness = tmp_path / "atan2-million-pair-stress.c"
     executable = tmp_path / "atan2-million-pair-stress"
     _ = harness.write_text(_stress_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-O2",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan2_normal_margin_gate_matches_fraction_across_all_bins(
+    tmp_path: Path,
+) -> None:
+    """Match Fraction authority across every e=-27..-53 normal margin bin."""
+    pairs = _normal_margin_pairs()
+    exponent_count = ATAN_MARGIN_MAX_EXPONENT - NORMAL_MARGIN_MIN_EXPONENT + 1
+    assert len(pairs) == NORMAL_MARGIN_CASES_PER_EXPONENT * exponent_count
+    observed_exponents = {
+        _floor_log2(_raw_fraction(y_bits) / _raw_fraction(x_bits))
+        for y_bits, x_bits in pairs
+    }
+    assert observed_exponents == set(
+        range(ATAN_MARGIN_MAX_EXPONENT, NORMAL_MARGIN_MIN_EXPONENT - 1, -1)
+    )
+
+    harness = tmp_path / "atan2-normal-margin.c"
+    executable = tmp_path / "atan2-normal-margin"
+    _ = harness.write_text(_normal_margin_harness_source(), encoding="utf-8")
     compiled = _run(
         [
             str(CLANG),

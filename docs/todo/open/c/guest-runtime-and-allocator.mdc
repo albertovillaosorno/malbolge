@@ -357,7 +357,10 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   have enough midpoint separation to skip the quotient loop. The proof uses
   `D<2^53` and the exact divisibility of the post-52-bit remainder; a fixed C
   non-dyadic vector at exponent `-29` locks the admitted path. Other geometries
-  still use the exact remainder gate.
+  still use the exact remainder gate. A fixed-seed 4,320-pair `Fraction`
+  differential covers all 27 normal margin binades `e=-27..-53` with 160
+  independent 53-bit numerator/denominator geometries each and matches every C
+  preclassifier status/result.
 
   Correctly-rounded numerical kernels and final rounding remain the lane-8
   blocker.
