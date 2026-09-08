@@ -529,10 +529,12 @@ floor/ceiling rounding. It certifies unique expected binary64 bits for all 519
 deterministic kernel pairs in about two seconds, and its 64 shared intervals
 enclose the exact Machin-plus-Fraction authority.
 
-A retained non-small kernel vector found by deterministic local refinement lies
-within `1/60000` ulp of its binary64 midpoint. Q1152 still certifies one result,
-and the Q32.192 handoff publishes those same bits. This remains bounded corpus
-evidence rather than an exhaustive full-domain proof.
+An eight-vector non-small kernel neighborhood found by deterministic local
+refinement exercises both sides of binary64 midpoints. Every vector is within
+`1/5000` ulp of its nearest midpoint, and the closest remains within `1/60000`
+ulp. Q1152 certifies every result and the Q32.192 handoff publishes those same
+bits. This remains bounded corpus evidence rather than an exhaustive full-domain
+proof.
 
 Q32.192 ambiguity still fails closed whenever no prior exact proof applies, so
 this composition does not remove the wider-precision obligation for the full

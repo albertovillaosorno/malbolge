@@ -123,6 +123,13 @@ ATAN_NEXT_SCALED_MARGIN_PAIRS = (
 )
 ATAN_KERNEL_HARD_ROUNDING_PAIRS = (
     (0xEE13F55E37E8835E, 0xEE839BA582281F10),
+    (0xEE13F55E37E8835E, 0xEE839BA582283859),
+    (0xEE13F55E37E8835E, 0xEE839BA5822851A2),
+    (0xEE13F55E37E8835E, 0xEE839BA582285673),
+    (0xEE13F55E37E8835E, 0xEE839BA582283D2A),
+    (0xEE13F55E37E8835E, 0xEE839BA5822823E1),
+    (0xEE13F55E37E8835E, 0xEE839BA582283388),
+    (0xEE13F55E37E8835E, 0xEE839BA582284CD1),
 )
 EDGE_PAIRS = (
     (0x0000000000000001, 0x3FF0000000000000),
@@ -774,19 +781,20 @@ def _binary64_rounding_cell(bits: int) -> tuple[Fraction, Fraction, Fraction]:
     )
 
 
-def _integer_oracle_midpoint_margin(y_bits: int, x_bits: int) -> Fraction:
-    lower, upper, _ = _atan2_integer_oracle_interval(y_bits, x_bits)
+def _integer_oracle_midpoint_margin_and_side(
+    y_bits: int, x_bits: int
+) -> tuple[Fraction, bool]:
+    bounds = _atan2_integer_oracle_interval(y_bits, x_bits)
     scale = 1 << ATAN2_INTEGER_ORACLE_BITS
-    interval = (Fraction(lower, scale), Fraction(upper, scale))
+    interval = (Fraction(bounds[0], scale), Fraction(bounds[1], scale))
     rounded = tuple(_nearest_binary64_bits(value) for value in interval)
     assert rounded[0] == rounded[1]
     assert rounded[0] != 0
     lower_midpoint, upper_midpoint, ulp = _binary64_rounding_cell(rounded[0])
     assert lower_midpoint <= interval[0] <= interval[1] <= upper_midpoint
-    return min(
-        interval[0] - lower_midpoint,
-        upper_midpoint - interval[1],
-    ) / ulp
+    lower_gap = (interval[0] - lower_midpoint) / ulp
+    upper_gap = (upper_midpoint - interval[1]) / ulp
+    return min(lower_gap, upper_gap), lower_gap <= upper_gap
 
 
 def _integer_oracle_unique_rounding_row(y_bits: int, x_bits: int) -> str:
@@ -1505,16 +1513,25 @@ def test_atan2_integer_oracle_encloses_fraction_authority() -> None:
         assert integer_negative == exact_negative
 
 
-def test_atan2_kernel_hard_rounding_case_matches_q1152_oracle(
+def test_atan2_kernel_hard_rounding_neighborhood_matches_q1152_oracle(
     tmp_path: Path,
 ) -> None:
-    """Retain a non-small kernel case within 1/60000 ulp of a midpoint."""
-    y_bits, x_bits = ATAN_KERNEL_HARD_ROUNDING_PAIRS[0]
-    ratio = min(_raw_fraction(y_bits), _raw_fraction(x_bits)) / max(
-        _raw_fraction(y_bits), _raw_fraction(x_bits)
-    )
-    assert ratio > ATAN_IDENTITY_MAX
-    assert _integer_oracle_midpoint_margin(y_bits, x_bits) < Fraction(1, 60_000)
+    """Retain eight non-small kernel cases close to both midpoint sides."""
+    margins: list[Fraction] = []
+    lower_sides: set[bool] = set()
+    for y_bits, x_bits in ATAN_KERNEL_HARD_ROUNDING_PAIRS:
+        ratio = min(_raw_fraction(y_bits), _raw_fraction(x_bits)) / max(
+            _raw_fraction(y_bits), _raw_fraction(x_bits)
+        )
+        assert ratio > ATAN_IDENTITY_MAX
+        margin, lower_side = _integer_oracle_midpoint_margin_and_side(
+            y_bits, x_bits
+        )
+        margins.append(margin)
+        lower_sides.add(lower_side)
+    assert min(margins) < Fraction(1, 60_000)
+    assert max(margins) < Fraction(1, 5_000)
+    assert lower_sides == {False, True}
 
     harness = tmp_path / "atan2-hard-rounding.c"
     executable = tmp_path / "atan2-hard-rounding"

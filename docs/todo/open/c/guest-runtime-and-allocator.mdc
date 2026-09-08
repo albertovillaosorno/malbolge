@@ -325,8 +325,9 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   Machin-plus-`Fraction` authority, so the larger corpus does not rely on host
   `atan2` or approximate expected values.
 
-  A retained non-small kernel vector is within `1/60000` ulp of a binary64
-  midpoint and Q32.192 still publishes the Q1152-certified bits. Wider
+  An eight-vector non-small kernel neighborhood covers both sides of binary64
+  midpoints. Every case is within `1/5000` ulp and the closest remains within
+  `1/60000` ulp; Q32.192 publishes every Q1152-certified result. Wider
   precision or a hard-to-round fallback remains required for unproved
   full-domain cases.
 
