@@ -603,6 +603,14 @@ Tests cover 107, 128, 256, and 4,096 fractional bits and plan a `UINT32_MAX`-bit
 request without allocating it. Neither function observes guest heap/startup
 state.
 
+The same caller-owned binary core now provides variable-width floor product and
+small division. A product requires exactly `2*N` scratch limbs for `N` input
+limbs, reports whether discarded fractional limbs were nonzero, and rejects any
+high overflow before result/discarded publication. Division uses bitwise
+long-division with a 64-bit remainder, accepts every nonzero `u32` divisor, and
+supports `input == output`. Independent integer fixtures cover 4/8/16/128 limbs
+and `UINT32_MAX`; insufficient product scratch and divisor zero are nonmutating.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

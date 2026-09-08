@@ -261,3 +261,230 @@ def test_dyadic_workspace_plans_before_nonmutating_capacity_failure(
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     executed = _run([str(executable)], tmp_path)
     assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+@dataclass(frozen=True)
+class ArithmeticCase:
+    """One variable-width fixed-point product and small-division fixture."""
+
+    limb_count: int
+    left: int
+    right: int
+    divisor: int
+
+
+def _pattern_integer(limb_count: int, seed: int) -> int:
+    state = seed
+    limbs: list[int] = []
+    for _ in range(limb_count):
+        state = (state * 6364136223846793005 + 1442695040888963407) & (
+            (1 << 64) - 1
+        )
+        limbs.append((state >> 16) & UINT32_MAX)
+    limbs[-1] &= 3
+    return sum(limb << (32 * index) for index, limb in enumerate(limbs))
+
+
+def _arithmetic_cases() -> tuple[ArithmeticCase, ...]:
+    widths = (4, 8, 16, 128)
+    divisors = (3, 239, 0x80000001, UINT32_MAX)
+    return tuple(
+        ArithmeticCase(
+            width,
+            _pattern_integer(width, 0x4154414E0000 + width),
+            _pattern_integer(width, 0x54414E470000 + width),
+            divisor,
+        )
+        for width, divisor in zip(widths, divisors, strict=True)
+    )
+
+
+def _c_limbs(integer: int, count: int) -> str:
+    values = tuple(
+        (integer >> (32 * index)) & UINT32_MAX for index in range(count)
+    )
+    return ", ".join(f"UINT32_C(0x{value:08x})" for value in values)
+
+
+def _arithmetic_harness_source() -> str:
+    blocks: list[str] = []
+    for case in _arithmetic_cases():
+        count = case.limb_count
+        blocks.append(
+            f"""  {{
+    uint32_t left[{count}] = {{{_c_limbs(case.left, count)}}};
+    uint32_t right[{count}] = {{{_c_limbs(case.right, count)}}};
+    uint32_t output[{count}];
+    uint32_t divide[{count}] = {{{_c_limbs(case.left, count)}}};
+    uint32_t scratch[{count * 2}];
+    uint32_t discarded = UINT32_C(0);
+    uint32_t remainder = UINT32_C(0);
+    uint32_t index = UINT32_C(0);
+    if (!malbolge_guest_math_fixed_multiply_floor(
+            left, right, UINT32_C({count}), UINT32_C({count - 1}), output,
+            scratch, UINT32_C({count * 2}), &discarded)) {{
+      return 91;
+    }}
+    (void)printf("M {count} %" PRIu32, discarded);
+    while (index < UINT32_C({count})) {{
+      (void)printf(" %08" PRIx32, output[index]);
+      ++index;
+    }}
+    (void)printf("\\n");
+    if (!malbolge_guest_math_fixed_divide_small_floor(
+            divide, UINT32_C({count}), UINT32_C({case.divisor}), divide,
+            &remainder)) {{
+      return 92;
+    }}
+    (void)printf("D {count} %" PRIu32, remainder);
+    index = UINT32_C(0);
+    while (index < UINT32_C({count})) {{
+      (void)printf(" %08" PRIx32, divide[index]);
+      ++index;
+    }}
+    (void)printf("\\n");
+  }}"""
+        )
+    body = "\n".join(blocks)
+    return f"""#include "math_transcendental_bits.h"
+#include <inttypes.h>
+#include <stdint.h>
+#include <stdio.h>
+
+int main(void) {{
+{body}
+  return 0;
+}}
+"""
+
+
+def _limbs_to_integer(items: list[str]) -> int:
+    return sum(
+        int(item, 16) << (32 * index) for index, item in enumerate(items)
+    )
+
+
+def _assert_arithmetic_records(records: tuple[list[str], ...]) -> None:
+    assert len(records) == 2 * len(_arithmetic_cases())
+    for case, product_row, divide_row in zip(
+        _arithmetic_cases(), records[::2], records[1::2], strict=True
+    ):
+        shift = 32 * (case.limb_count - 1)
+        full_product = case.left * case.right
+        expected_product = full_product >> shift
+        expected_discarded = int(full_product != expected_product << shift)
+        assert product_row[:3] == [
+            "M",
+            str(case.limb_count),
+            str(expected_discarded),
+        ]
+        assert _limbs_to_integer(product_row[3:]) == expected_product
+        expected_quotient, expected_remainder = divmod(case.left, case.divisor)
+        assert divide_row[:3] == [
+            "D",
+            str(case.limb_count),
+            str(expected_remainder),
+        ]
+        assert _limbs_to_integer(divide_row[3:]) == expected_quotient
+
+
+def test_variable_fixed_product_and_division_match_integer_authority(
+    tmp_path: Path,
+) -> None:
+    """Match Python integers through 128 caller-owned limbs."""
+    harness = tmp_path / "variable-fixed-arithmetic.c"
+    executable = tmp_path / "variable-fixed-arithmetic"
+    _ = harness.write_text(_arithmetic_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+    records = tuple(line.split() for line in executed.stdout.splitlines())
+    _assert_arithmetic_records(records)
+
+
+def _arithmetic_failure_harness_source() -> str:
+    return r"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+
+int main(void) {
+  uint32_t maximum[4] = {
+      UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX};
+  uint32_t one[4] = {UINT32_C(1), UINT32_C(0), UINT32_C(0), UINT32_C(0)};
+  uint32_t output[4] = {
+      UINT32_C(0x11111111), UINT32_C(0x22222222),
+      UINT32_C(0x33333333), UINT32_C(0x44444444)};
+  uint32_t scratch[8] = {
+      UINT32_C(9), UINT32_C(9), UINT32_C(9), UINT32_C(9),
+      UINT32_C(9), UINT32_C(9), UINT32_C(9), UINT32_C(9)};
+  uint32_t discarded = UINT32_C(0xabcdef01);
+  uint32_t remainder = UINT32_C(0x76543210);
+
+  if (malbolge_guest_math_fixed_multiply_floor(
+          maximum, maximum, UINT32_C(4), UINT32_C(0), output, scratch,
+          UINT32_C(8), &discarded) ||
+      output[0] != UINT32_C(0x11111111) ||
+      discarded != UINT32_C(0xabcdef01)) {
+    return 81;
+  }
+  if (malbolge_guest_math_fixed_multiply_floor(
+          one, one, UINT32_C(4), UINT32_C(3), output, scratch,
+          UINT32_C(7), &discarded) ||
+      output[0] != UINT32_C(0x11111111) ||
+      discarded != UINT32_C(0xabcdef01)) {
+    return 82;
+  }
+  if (malbolge_guest_math_fixed_divide_small_floor(
+          one, UINT32_C(4), UINT32_C(0), output, &remainder) ||
+      output[0] != UINT32_C(0x11111111) ||
+      remainder != UINT32_C(0x76543210)) {
+    return 83;
+  }
+  return 0;
+}
+"""
+
+
+def test_variable_fixed_arithmetic_fails_before_result_publication(
+    tmp_path: Path,
+) -> None:
+    """Reject product overflow, short scratch, and zero divisor fail closed."""
+    harness = tmp_path / "variable-fixed-failure.c"
+    executable = tmp_path / "variable-fixed-failure"
+    _ = harness.write_text(
+        _arithmetic_failure_harness_source(), encoding="utf-8"
+    )
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr

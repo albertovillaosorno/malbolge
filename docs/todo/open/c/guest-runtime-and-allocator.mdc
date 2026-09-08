@@ -373,9 +373,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   request can be planned without allocation. The helper has no guest-heap or
   startup dependency.
 
-  Guest-C unbounded refinement storage remains unresolved beyond input
-  materialization; tangent arithmetic still needs variable-precision product
-  and directed-division workspace.
+  Variable-width product and small division are now executable on the same
+  caller-owned model. Product uses caller-supplied `2*N` scratch, reports
+  discarded low limbs, and rejects high overflow before publication. Division
+  accepts every nonzero `u32` divisor and may run in place. Integer authority
+  covers 4/8/16/128 limbs, including `UINT32_MAX`, while short scratch and zero
+  divisors fail nonmutating.
+
+  Guest-C unbounded refinement storage remains unresolved at directed interval
+  orchestration and repeated tangent/Taylor refinement; it no longer blocks
+  dyadic input, full-width product, or small division individually.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

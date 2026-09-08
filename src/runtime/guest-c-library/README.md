@@ -131,6 +131,14 @@ no guest heap or startup state is consulted. The retained workspace test checks
 exact integer reconstruction through 4,096 fractional bits and separately plans
 `UINT32_MAX` fractional bits without allocating that storage.
 
+Variable-width arithmetic now extends beyond input materialization. Fixed-point
+multiplication accepts caller-owned `2*N` product scratch, returns a floor plus
+an explicit discarded-bit flag, and rejects high product overflow before
+publishing output. Small-integer floor division supports in-place quotient
+publication and every nonzero `u32` divisor. Exact Python-integer differentials
+cover 4, 8, 16, and 128 limbs, including `UINT32_MAX` division; short scratch,
+zero divisors, and overflowing products stay fail closed.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch
