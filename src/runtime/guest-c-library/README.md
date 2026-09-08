@@ -95,6 +95,13 @@ A separate authority file checks all 16 hard cases and 512 deterministic
 refinements from Q32.224. Q32.256 still fails closed on ambiguity, so the finite
 ladder does not prove the full domain.
 
+An independent final-cell certificate now avoids the atan evaluator entirely.
+For 68 retained finite pairs, C supplies only candidate bits; exact dyadic
+midpoints around each candidate are checked with 40-term directed rational
+`sin`/`cos` bounds and exact `y/x` comparison on the matching tangent branch.
+The corpus covers all four quadrants of every retained hard ratio plus near-zero
+and near-`pi/2` edges. This is bounded evidence, not yet a termination proof.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

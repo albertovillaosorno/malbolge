@@ -340,6 +340,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   `Q32.224` over 512 deterministic finite pairs. Q32.256 remains fail closed,
   so adaptive termination or a global separation proof is still required.
 
+
+  An independent midpoint-cell authority now verifies 68 C candidates without
+  using atan, pi constants, or any fixed-point/Q1152 rounding oracle. It builds
+  exact dyadic cell boundaries, encloses sine/cosine with 40 rational Taylor
+  terms, uses quadrant order across pole crossings, and otherwise compares the
+  exact input `y/x` against the directed tangent interval. The corpus covers all
+  four quadrants of each retained hard ratio plus near-zero and near-`pi/2`
+  edges. Turning this verifier shape into a terminating full-domain fallback
+  still requires durable irrationality/termination authority.
+
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies
   both midpoint sides, all transformed cases within `4e-20` ulp, all direct

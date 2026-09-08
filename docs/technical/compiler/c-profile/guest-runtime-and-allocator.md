@@ -561,6 +561,18 @@ a subinterval of Q32.224 over 512 deterministic finite pairs. Q32.256 still
 fails closed on disagreement, so a quantitative termination proof or further
 adaptive precision remains required for the full domain.
 
+A second final-rounding authority now works from candidate binary64 cells rather
+than atan intervals. It constructs both neighboring dyadic midpoints exactly,
+bounds their sine and cosine with 40 rational Taylor terms, proves the tangent
+branch from directed signs, and compares exact `y/x` only when the branch
+matches. Quadrant order handles boundaries that cross zero or a tangent pole.
+
+That midpoint certificate accepts all 64 signed quadrant variants of the 16
+retained hard ratios plus four near-zero/near-`pi/2` edges. It uses neither a pi
+constant nor any Q32.192/Q32.224/Q32.256/Q1152 rounding oracle. This establishes
+a distinct candidate-verification route, but its bounded corpus does not by
+itself prove adaptive termination for every binary64 pair.
+
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full
 binary64 domain.
