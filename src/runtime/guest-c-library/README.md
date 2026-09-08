@@ -35,9 +35,11 @@ selected-profile input/output. Formatting remains unavailable.
 Transcendental math is also still unavailable, but an internal raw-bit front
 end now resolves proved small-angle `sin`/`cos` results plus the complete
 `atan2` zero/infinity matrix. Right-half-plane ratios through `7 * 2^-29` also
-resolve when exact binary64 representation or an exact quotient-remainder
-margin proves the `atan` alternating-series error cannot cross a rounding
-midpoint.
+resolve when exact binary64
+representation or an exact quotient-remainder margin proves the `atan`
+alternating-series error cannot cross a rounding midpoint. Normal-binade margins
+below the restricted top binade now shrink with the cubic error bound rather
+than retaining one fixed threshold.
 
 The entire subnormal ratio range is also resolved, with exact midpoints forced
 to the lower neighbor by `atan(r) < r`. Other finite nonzero `atan2` inputs are

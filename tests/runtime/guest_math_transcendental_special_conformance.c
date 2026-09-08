@@ -237,5 +237,17 @@ int main(void) {
               MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED, UINT64_C(0))) {
     return 14;
   }
+  if (!expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0x3e30000000000000),
+                  UINT64_C(0x4014000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0x3e0999999999999a)) ||
+      !expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0xbe30000000000000),
+                  UINT64_C(0x4014000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0xbe0999999999999a))) {
+    return 15;
+  }
   return 0;
 }

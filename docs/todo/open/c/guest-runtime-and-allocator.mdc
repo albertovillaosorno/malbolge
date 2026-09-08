@@ -218,10 +218,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   `7 * 2^-29`, extending the earlier `2^-27` boundary by 75 percent.
 
   The alternating-series bound `r - atan(r) < r^3 / 3` is at most
-  `343/768 ulp` in the new top binade. Exact binary64 ratios are therefore
-  stable, while non-dyadic values require either a lower-rounded quotient or an
-  exact fractional remainder of at least `727/768 ulp`. Lower binades retain
-  the two-thirds margin because their error remains below one-sixth ulp.
+  `343/768 ulp` in the restricted top binade. Exact binary64 ratios are
+  therefore stable, while upper-rounded non-dyadic values there need an exact
+  fractional remainder of at least `727/768 ulp`.
+
+  Lower normal binades now use their actual cubic error scale instead of the
+  former fixed two-thirds threshold. For normalized exponent `e <= -28`, the
+  error is strictly below `2^(2e+55)/3` ulp. The integer gate checks the
+  equivalent overflow-free inequality
+  `3*gap >= ceil(2*denominator / 2^(-(2e+55)))`; below-midpoint values remain
+  immediately safe and exact midpoints remain fail closed.
 
   Subnormal ratios need no normal-binade margin gate: the maximum `atan` error
   is below `2^-1993` subnormal ulp, versus more than `2^-54` ulp minimum
@@ -310,6 +316,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   The combined handoff now consults that proof first and certifies 64/64. Wider
   precision or a hard-to-round fallback remains required for unproved
   full-domain cases.
+
+  A fixed-seed 1,000,000-pair stress run over raw binary64 words produced
+  999,097 finite pairs and the combined handoff resolved all 999,097. Before the
+  exponent-scaled margin, the same failure mode appeared frequently at large
+  exponent deltas. This retained stress is coverage evidence only; exact normal
+  midpoint closure and an exhaustive full-domain proof remain open obligations.
 
   Correctly-rounded numerical kernels and final rounding remain the lane-8
   blocker.

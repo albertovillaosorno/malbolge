@@ -299,12 +299,16 @@ earlier `2^-27` boundary. The alternating-series bound
 `0 <= r - atan(r) < r^3 / 3` remains below one-half ulp for exact binary64
 ratios throughout that interval.
 
-For non-dyadic normal ratios in the new top binade, the maximum error is
+For non-dyadic normal ratios in the restricted top binade, the maximum error is
 `343/768 ulp`. A quotient below the midpoint is always safe; an upper-rounded
 quotient is admitted only when its exact fractional remainder is at least
-`727/768 ulp`. Lower binades retain the looser two-thirds threshold because
-their error is below one-sixth ulp. The rule uses only the 53-bit denominator
-and remainder, never the rounded ratio as an accuracy oracle.
+`727/768 ulp`.
+
+Lower normal binades use the tighter exponent-scaled cubic bound. For normalized
+exponent `e <= -28`, the maximum error is strictly below `2^(2e+55)/3` ulp, so
+the required distance above a midpoint shrinks by a factor of four per binade.
+The rule uses only the 53-bit denominator and exact remainder, never the rounded
+ratio as an accuracy oracle.
 
 Subnormal ratios are fully decidable under the same bound. Their worst-case
 `atan` error is below `2^-1993` subnormal ulp, while a non-midpoint rational
@@ -425,6 +429,20 @@ is below `2^-64`, `x^3/3 < 2^-192`, so `atan(x)` is enclosed by one unit below
 the input lower endpoint and the input upper endpoint. If the lower endpoint is
 zero, positivity gives the tighter direct enclosure `[0, upper]`. This avoids
 artificial interval dependency without relaxing the proof.
+
+The raw-bit small-ratio preclassifier also scales its normal-binade rounding
+margin with the same cubic bound. For normalized exponent `e <= -28`, the
+maximum error is `2^(2e+55)/3` ulp. If the exact quotient lies above a midpoint,
+writing `gap = 2*remainder-denominator` turns the safety test into
+`3*gap >= ceil(2*denominator / 2^(-(2e+55)))`.
+
+All products stay within 64 bits; large right shifts collapse the threshold to
+one. Exact midpoint ratios remain conservative rather than being assigned a
+neighbor without separate proof.
+
+A fixed-seed million-pair stress run sampled 999,097 finite raw-word pairs after
+this change and the combined exact-plus-Q32.192 handoff resolved every one. The
+measurement is diagnostic coverage, not exhaustive correct-rounding authority.
 
 The finite-nonzero atan2 handoff now composes the certified base and residual
 intervals directly. Add branches use endpoint-wise addition; subtract branches

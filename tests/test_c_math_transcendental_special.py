@@ -47,6 +47,8 @@ COS_ONE_MIDPOINT = Fraction(1, 1 << 54)
 ATAN_TOP_BINADE_ULP = Fraction(1, 1 << 79)
 ATAN_TOP_BINADE_ERROR_ULPS = Fraction(343, 768)
 ATAN_TOP_UPPER_MARGIN = Fraction(727, 768)
+ATAN_DYNAMIC_MARGIN_MAX_EXPONENT = -28
+ATAN_DYNAMIC_MARGIN_MIN_EXPONENT = -54
 MIN_NORMAL_MAGNITUDE = Fraction(1, 1 << 1022)
 SUBNORMAL_ULP = Fraction(1, 1 << 1074)
 MIN_RATIONAL_MIDPOINT_SEPARATION = Fraction(1, 1 << 54)
@@ -80,6 +82,29 @@ def test_small_angle_taylor_bounds_fit_binary64_midpoints() -> None:
     assert MAX_SUBNORMAL_MAGNITUDE**3 / 3 < SUBNORMAL_MIDPOINT
     subnormal_error_ulps = (MIN_NORMAL_MAGNITUDE**3 / 3) / SUBNORMAL_ULP
     assert subnormal_error_ulps < MIN_RATIONAL_MIDPOINT_SEPARATION
+
+
+def test_atan_normal_margin_scales_by_binade() -> None:
+    """Shrink the upper-rounding margin with the cubic atan error bound."""
+    previous = Fraction(1, 6)
+    for exponent in range(
+        ATAN_DYNAMIC_MARGIN_MAX_EXPONENT,
+        ATAN_DYNAMIC_MARGIN_MIN_EXPONENT - 1,
+        -1,
+    ):
+        shift = -((2 * exponent) + 55)
+        error_ulps = Fraction(1, 3 * (1 << shift))
+        expected = (
+            previous
+            if exponent == ATAN_DYNAMIC_MARGIN_MAX_EXPONENT
+            else previous / 4
+        )
+        assert (
+            error_ulps.numerator,
+            error_ulps.denominator,
+        ) == (expected.numerator, expected.denominator)
+        previous = error_ulps
+    assert previous < Fraction(1, 1 << 54)
 
 
 def test_transcendental_classifier_constants_are_locked() -> None:

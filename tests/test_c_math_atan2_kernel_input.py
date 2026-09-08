@@ -723,19 +723,22 @@ def _small_ratio_pairs() -> tuple[tuple[int, int], ...]:
 
 def _small_ratio_rounding_margin_safe(ratio: Fraction) -> bool:
     exponent = _floor_log2(ratio)
-    if exponent < MIN_NORMAL_EXPONENT or exponent > ATAN_MARGIN_MAX_EXPONENT:
-        return False
-    ulp = Fraction(1, 1 << (52 - exponent))
-    scaled = ratio / ulp
-    fraction = scaled - (scaled.numerator // scaled.denominator)
-    if fraction < Fraction(1, 2):
-        return True
-    threshold = (
-        Fraction(727, 768)
-        if exponent == ATAN_MARGIN_MAX_EXPONENT
-        else Fraction(2, 3)
-    )
-    return fraction >= threshold
+    safe = False
+    if MIN_NORMAL_EXPONENT <= exponent <= ATAN_MARGIN_MAX_EXPONENT:
+        ulp = Fraction(1, 1 << (52 - exponent))
+        scaled = ratio / ulp
+        fraction = scaled - (scaled.numerator // scaled.denominator)
+        if fraction < Fraction(1, 2):
+            safe = True
+        elif fraction > Fraction(1, 2):
+            if exponent == ATAN_MARGIN_MAX_EXPONENT:
+                safe = fraction >= Fraction(727, 768)
+            else:
+                margin_shift = -((2 * exponent) + 55)
+                safe = fraction - Fraction(1, 2) >= Fraction(
+                    1, 3 * (1 << margin_shift)
+                )
+    return safe
 
 
 def _subnormal_atan_bits(ratio: Fraction, rounded: int) -> int | None:

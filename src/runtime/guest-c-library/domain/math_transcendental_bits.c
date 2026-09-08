@@ -1076,12 +1076,31 @@ static int ratio_at_most_atan_identity(
   return 0;
 }
 
+static uint64_t ceil_shift_right_u64(uint64_t value, uint32_t shift) {
+  uint64_t quotient = UINT64_C(0);
+  uint64_t mask = UINT64_C(0);
+
+  if (shift == UINT32_C(0)) {
+    return value;
+  }
+  if (shift >= UINT32_C(64)) {
+    return value == UINT64_C(0) ? UINT64_C(0) : UINT64_C(1);
+  }
+  quotient = value >> shift;
+  mask = (UINT64_C(1) << shift) - UINT64_C(1);
+  return quotient + ((value & mask) != UINT64_C(0) ? UINT64_C(1) : UINT64_C(0));
+}
+
 static int normal_ratio_rounding_margin_safe(
     const MalbolgeGuestMathAtan2KernelInput *input) {
   uint64_t numerator = input->numerator_significand;
   const uint64_t denominator = input->denominator_significand;
   uint64_t remainder = UINT64_C(0);
+  uint64_t doubled_remainder = UINT64_C(0);
+  uint64_t gap = UINT64_C(0);
+  uint64_t threshold = UINT64_C(0);
   int32_t exponent = input->exponent_delta;
+  int32_t margin_shift = INT32_C(0);
   uint32_t remaining = BINARY64_EXPONENT_SHIFT;
 
   if (numerator >= denominator) {
@@ -1098,13 +1117,21 @@ static int normal_ratio_rounding_margin_safe(
     --remaining;
     (void)ratio_fraction_bit(denominator, &remainder);
   }
-  if ((remainder << UINT32_C(1)) < denominator) {
+  doubled_remainder = remainder << UINT32_C(1);
+  if (doubled_remainder < denominator) {
     return 1;
+  }
+  if (doubled_remainder == denominator) {
+    return 0;
   }
   if (exponent == INT32_C(-27)) {
     return remainder * UINT64_C(768) >= denominator * UINT64_C(727);
   }
-  return remainder * UINT64_C(3) >= denominator * UINT64_C(2);
+  gap = doubled_remainder - denominator;
+  margin_shift = -(INT32_C(2) * exponent + INT32_C(55));
+  threshold = ceil_shift_right_u64(
+      denominator << UINT32_C(1), (uint32_t)margin_shift);
+  return gap * UINT64_C(3) >= threshold;
 }
 
 static int subnormal_atan_result(
