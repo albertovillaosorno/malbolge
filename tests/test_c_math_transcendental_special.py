@@ -84,6 +84,36 @@ def test_small_angle_taylor_bounds_fit_binary64_midpoints() -> None:
     assert subnormal_error_ulps < MIN_RATIONAL_MIDPOINT_SEPARATION
 
 
+def _midpoint_ratio_sample(state: int, trailing_zeros: int) -> tuple[int, ...]:
+    hidden = 1 << 52
+    unit = 1 << trailing_zeros
+    odd_min = (hidden + unit - 1) // unit
+    odd_max = ((1 << 53) - 1) // unit
+    first_odd = odd_min if odd_min & 1 else odd_min + 1
+    odd_count = ((odd_max - first_odd) // 2) + 1
+    state = (state * 6364136223846793005 + 1) & ((1 << 64) - 1)
+    denominator = (first_odd + 2 * (state % odd_count)) << trailing_zeros
+    numerator = ((state >> 7) % hidden) + hidden
+    normalized = numerator if numerator >= denominator else numerator << 1
+    return state, denominator, normalized, unit
+
+
+def test_normal_binary64_ratio_cannot_be_exact_midpoint() -> None:
+    """Exclude exact normal midpoints from valid 53-bit ratio geometry."""
+    state = 0x4D4944504F494E54
+    for trailing_zeros in range(1, 53):
+        for _ in range(8):
+            state, denominator, normalized, unit = _midpoint_ratio_sample(
+                state, trailing_zeros
+            )
+            quotient = (normalized << 52) // denominator
+            remainder = (normalized << 52) - quotient * denominator
+            assert (1 << 52) <= denominator < (1 << 53)
+            assert remainder % unit == 0
+            assert (denominator // 2) % unit != 0
+            assert remainder != denominator // 2
+
+
 def test_atan_normal_margin_scales_by_binade() -> None:
     """Shrink the upper-rounding margin with the cubic atan error bound."""
     previous = Fraction(1, 6)

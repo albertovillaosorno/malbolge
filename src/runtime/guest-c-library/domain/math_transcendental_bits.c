@@ -1122,6 +1122,8 @@ static int normal_ratio_rounding_margin_safe(
     return 1;
   }
   if (doubled_remainder == denominator) {
+    /* Defensive only: valid 53-bit binary64 ratio geometry cannot reach an
+       exact normal midpoint after 52 quotient bits. */
     return 0;
   }
   if (exponent == INT32_C(-27)) {

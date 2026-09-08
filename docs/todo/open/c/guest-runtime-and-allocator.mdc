@@ -320,8 +320,15 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   A fixed-seed 1,000,000-pair stress run over raw binary64 words produced
   999,097 finite pairs and the combined handoff resolved all 999,097. Before the
   exponent-scaled margin, the same failure mode appeared frequently at large
-  exponent deltas. This retained stress is coverage evidence only; exact normal
-  midpoint closure and an exhaustive full-domain proof remain open obligations.
+  exponent deltas. This retained stress is coverage evidence only; an exhaustive
+  full-domain proof remains an open obligation.
+
+  Exact normal ratio midpoints are now excluded algebraically. A normalized
+  binary64 denominator has at most 52 trailing zero bits. After 52 quotient
+  bits, its remainder is divisible by that full power of two, while a midpoint
+  remainder `D/2` has one fewer; an odd denominator has no integral midpoint
+  remainder. The defensive C midpoint branch therefore remains fail closed but
+  is unreachable for valid ratio geometry.
 
   Correctly-rounded numerical kernels and final rounding remain the lane-8
   blocker.

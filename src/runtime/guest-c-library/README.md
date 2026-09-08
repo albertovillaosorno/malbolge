@@ -69,6 +69,10 @@ identities do not fall through merely because Q32.192 cannot represent their
 tiny magnitude.
 
 The 64-pair authority is therefore 64/64 after composing both proof paths, while
-Q32.192 alone still certifies 48/64. A separate integer long-division helper
-rounds the original rational to nearest-even binary64 when a later kernel needs
-a bounded floating representation.
+Q32.192 alone still certifies 48/64. Exact normal ratio midpoints are
+algebraically impossible for valid 53-bit input geometry: after 52 quotient
+bits the remainder retains the denominator's full power-of-two divisor, while
+`D/2` has one fewer. The defensive midpoint branch remains fail closed. A
+separate integer long-division helper rounds the original rational to
+nearest-even binary64 when a later kernel needs a bounded floating
+representation.

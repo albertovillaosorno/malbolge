@@ -437,8 +437,15 @@ writing `gap = 2*remainder-denominator` turns the safety test into
 `3*gap >= ceil(2*denominator / 2^(-(2e+55)))`.
 
 All products stay within 64 bits; large right shifts collapse the threshold to
-one. Exact midpoint ratios remain conservative rather than being assigned a
-neighbor without separate proof.
+one. Exact normal midpoint ratios are now proved unreachable for valid binary64
+input geometry. If the normalized denominator has `t` trailing zero bits, then
+`t <= 52`; after 52 quotient bits the remainder is divisible by `2^t`, whereas
+an exact midpoint remainder `D/2` has only `t-1` trailing zero bits. Odd
+denominators cannot have an integer `D/2` at all.
+
+The C midpoint branch remains fail closed as a defensive invariant check rather
+than an admitted runtime case. This closes the normal exact-midpoint obligation
+without choosing a neighbor for malformed geometry.
 
 A fixed-seed million-pair stress run sampled 999,097 finite raw-word pairs after
 this change and the combined exact-plus-Q32.192 handoff resolved every one. The
