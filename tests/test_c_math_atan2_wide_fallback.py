@@ -257,17 +257,25 @@ int main(void) {{
 """
 
 
-def _atan_remainder_bound(terms: int) -> Fraction:
+def _atan_remainder_bound(value: Fraction, terms: int) -> Fraction:
     first_omitted = (2 * terms) + 1
-    return ATAN_CUT**first_omitted / first_omitted
+    return value**first_omitted / first_omitted
+
+
+def _ceil_fixed(value: Fraction, bits: int) -> Fraction:
+    scale = 1 << bits
+    scaled = value * scale
+    floor, remainder = divmod(scaled.numerator, scaled.denominator)
+    return Fraction(floor + int(remainder != 0), scale)
 
 
 def test_q224_constants_and_series_have_proved_headroom() -> None:
     """Prove wider pi and atan truncation bounds fit the Q32.224 grid."""
     lower, upper = _quarter_pi_interval()
+    encoded_cut = _ceil_fixed(ATAN_CUT, FIXED_BITS)
     assert upper - lower < Fraction(1, 1 << 232)
-    assert _atan_remainder_bound(84) >= Fraction(1, 1 << 224)
-    assert _atan_remainder_bound(85) < Fraction(1, 1 << 224)
+    assert _atan_remainder_bound(ATAN_CUT, 84) >= Fraction(1, 1 << 224)
+    assert _atan_remainder_bound(encoded_cut, 85) < Fraction(1, 1 << 224)
 
 
 def test_q224_interval_encloses_and_rounds_independent_hard_cases(

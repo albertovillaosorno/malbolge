@@ -547,8 +547,9 @@ still publishes the same certified bits for all sixteen.
 The fixed-point limb primitives are now width-parametric through eight limbs,
 and the combined handoff has a Q32.224 second stage after Q32.192 ambiguity.
 That stage uses 85 atan terms and a Machin 49/14 quarter-pi enclosure. Its exact
-rational width is below `2^-232` and whose encoded bounds occupy one Q32.224
-cell.
+rational width is below `2^-232`, and its encoded bounds occupy one Q32.224
+cell. The 85-term truncation proof is evaluated at the directed Q32.224 ceiling
+of `169/408`, not merely at the exact rational cutoff.
 
 Independent Q32.224 evidence does not consume the Q32.192 oracle. It decodes the
 16 retained positive hard pairs directly as exact binary64 rationals, applies
