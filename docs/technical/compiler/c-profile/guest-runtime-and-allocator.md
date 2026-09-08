@@ -573,6 +573,17 @@ constant nor any Q32.192/Q32.224/Q32.256/Q1152 rounding oracle. This establishes
 a distinct candidate-verification route, but its bounded corpus does not by
 itself prove adaptive termination for every binary64 pair.
 
+
+The qualitative termination fact for an adaptive version now has durable
+external provenance in
+`docs/bibliography/publications/lambert-tangent-irrationality.md`.
+Every nonzero binary64 rounding midpoint is rational, while Lambert's theorem
+excludes rational `tan(midpoint)`. Since every finite nonzero binary64 input
+ratio is rational, exact equality at a same-branch midpoint is impossible.
+This proves eventual separation for a correctly directed refinement sequence;
+it does not supply the unbounded guest-C storage policy needed to implement
+that sequence.
+
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full
 binary64 domain.

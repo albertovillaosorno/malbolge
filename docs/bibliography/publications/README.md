@@ -14,5 +14,6 @@ Repository policy, legal conclusions, or research conclusions.
 
 ## Contents
 
+- `lambert-tangent-irrationality.md`
 - `superoptimization/`
 - `verification/`

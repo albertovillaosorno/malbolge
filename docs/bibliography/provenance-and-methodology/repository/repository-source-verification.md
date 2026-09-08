@@ -154,7 +154,7 @@ architecture automatically.
 
 ### Baseline Coverage
 
-The executable bibliography audit currently validates 48 source/provenance
+The executable bibliography audit currently validates 49 source/provenance
 records, 44 required baseline records, nine exact Python validation packages,
 and 20 distinct durable external references. Durable coverage scans source,
 manifests, technical and research documentation, completed lifecycle evidence,

@@ -347,8 +347,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   terms, uses quadrant order across pole crossings, and otherwise compares the
   exact input `y/x` against the directed tangent interval. The corpus covers all
   four quadrants of each retained hard ratio plus near-zero and near-`pi/2`
-  edges. Turning this verifier shape into a terminating full-domain fallback
-  still requires durable irrationality/termination authority.
+  edges. Lambert tangent irrationality now has a canonical bibliography record:
+  a nonzero rational midpoint cannot have rational tangent, so a correctly
+  directed adaptive comparison must eventually separate it from the rational
+  binary64 input ratio.
+
+  Guest-C unbounded refinement storage remains unresolved.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies
