@@ -1092,6 +1092,22 @@ static uint64_t ceil_shift_right_u64(uint64_t value, uint32_t shift) {
   return quotient + ((value & mask) != UINT64_C(0) ? UINT64_C(1) : UINT64_C(0));
 }
 
+static int denominator_spacing_safe_without_division(
+    uint64_t denominator, int32_t exponent) {
+  uint32_t required_trailing = UINT32_C(0);
+  uint64_t mask = UINT64_C(0);
+
+  if (exponent <= BINARY64_ATAN_UNCONDITIONAL_EXPONENT) {
+    return 1;
+  }
+  if (exponent >= INT32_C(-27)) {
+    return 0;
+  }
+  required_trailing = (uint32_t)((INT32_C(2) * exponent) + INT32_C(108));
+  mask = (UINT64_C(1) << required_trailing) - UINT64_C(1);
+  return (denominator & mask) == UINT64_C(0);
+}
+
 static int normal_ratio_rounding_margin_safe(
     const MalbolgeGuestMathAtan2KernelInput *input) {
   uint64_t numerator = input->numerator_significand;
@@ -1114,7 +1130,7 @@ static int normal_ratio_rounding_margin_safe(
   if (exponent < INT32_C(-1022) || exponent > INT32_C(-27)) {
     return 0;
   }
-  if (exponent <= BINARY64_ATAN_UNCONDITIONAL_EXPONENT) {
+  if (denominator_spacing_safe_without_division(denominator, exponent)) {
     return 1;
   }
   while (remaining != UINT32_C(0)) {

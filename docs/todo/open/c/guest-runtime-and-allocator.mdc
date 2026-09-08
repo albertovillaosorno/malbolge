@@ -338,6 +338,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   The runtime now returns safe before the 52-step quotient-remainder loop for
   this entire range.
 
+  For `-53<=e<=-28`, denominators with at least `2e+108` trailing zero bits also
+  have enough midpoint separation to skip the quotient loop. The proof uses
+  `D<2^53` and the exact divisibility of the post-52-bit remainder; a fixed C
+  non-dyadic vector at exponent `-29` locks the admitted path. Other geometries
+  still use the exact remainder gate.
+
   Correctly-rounded numerical kernels and final rounding remain the lane-8
   blocker.
 - Resolved integer/scheduling boundary: version one introduces no separate

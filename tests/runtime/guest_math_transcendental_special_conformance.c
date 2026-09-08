@@ -249,5 +249,12 @@ int main(void) {
               UINT64_C(0xbe0999999999999a))) {
     return 15;
   }
+  if (!expect(malbolge_guest_math_atan2_special(
+                  UINT64_C(0x3e30000000000000),
+                  UINT64_C(0x3ff8000000000000)),
+              MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED,
+              UINT64_C(0x3e25555555555555))) {
+    return 16;
+  }
   return 0;
 }

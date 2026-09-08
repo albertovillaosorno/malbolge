@@ -50,6 +50,8 @@ ATAN_TOP_UPPER_MARGIN = Fraction(727, 768)
 ATAN_DYNAMIC_MARGIN_MAX_EXPONENT = -28
 ATAN_DYNAMIC_MARGIN_MIN_EXPONENT = -54
 ATAN_UNCONDITIONAL_EXPONENT = -54
+ATAN_SPACING_MIN_TRAILING = 2
+ATAN_SPACING_MAX_TRAILING = 52
 MIN_NORMAL_MAGNITUDE = Fraction(1, 1 << 1022)
 SUBNORMAL_ULP = Fraction(1, 1 << 1074)
 MIN_RATIONAL_MIDPOINT_SEPARATION = Fraction(1, 1 << 54)
@@ -123,6 +125,22 @@ def test_atan_lower_binades_are_unconditionally_midpoint_safe() -> None:
     assert error_ulps == Fraction(1, 3 * (1 << 53))
     assert error_ulps < minimum_midpoint_gap
     assert exponent == ATAN_DYNAMIC_MARGIN_MIN_EXPONENT
+
+
+def test_atan_denominator_spacing_can_skip_midpoint_remainder() -> None:
+    """Prove the trailing-zero shortcut for normal exponents -53 through -28."""
+    max_denominator = (1 << 53) - 1
+    for exponent in range(-53, -27):
+        margin_shift = -((2 * exponent) + 55)
+        required_trailing = (2 * exponent) + 108
+        error_ulps = Fraction(1, 3 * (1 << margin_shift))
+        separation = Fraction(1 << required_trailing, 2 * max_denominator)
+        assert (
+            ATAN_SPACING_MIN_TRAILING
+            <= required_trailing
+            <= ATAN_SPACING_MAX_TRAILING
+        )
+        assert separation > error_ulps
 
 
 def test_atan_normal_margin_scales_by_binade() -> None:

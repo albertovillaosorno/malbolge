@@ -454,6 +454,13 @@ more than `2^-54` ulp; lower binades reduce the error by another factor of four
 per exponent. The runtime therefore admits `e<=-54` immediately instead of
 executing 52 fractional long-division steps.
 
+For `-53<=e<=-28`, denominator divisibility can prove the same result early.
+If `D` has at least `2e+108` trailing zero bits, then the nonzero midpoint gap
+is at least `2^(2e+108)/(2D)` ulp, which exceeds the cubic error using
+`D<2^53`.
+The runtime checks that low-bit mask before long division; only the remaining
+geometries pay for exact quotient-remainder margin evaluation.
+
 A fixed-seed million-pair stress run sampled 999,006 finite raw-word pairs after
 this change and the combined exact-plus-Q32.192 handoff resolved every one. The
 same generator and finite count are now retained as a compiled C regression,
