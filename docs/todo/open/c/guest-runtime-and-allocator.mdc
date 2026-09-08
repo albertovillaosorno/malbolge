@@ -418,9 +418,18 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   has independent `Fraction` authority for 4/8/12/16 terms at four dyadics up to
   `4-2^-224` without host trig or pi authority.
 
-  The next blocker is tangent-midpoint comparison. It should compare the exact
-  binary64 ratio against the signed sin/cos enclosures by directed cross
-  products, avoiding a new fixed/fixed division surface.
+  Same-branch positive tangent comparison now uses exact cross products instead
+  of fixed/fixed division. The 53-bit binary64 ratio coefficients multiply
+  directed sin/cos endpoints exactly, with `exponent_delta` transferred to a
+  shift on the matching side. `2*(N+4)` scratch supports ratios from `2^-53` to
+  `2^53`; synthetic evidence pins below/equal/above outcomes and both swapped
+  directions.
+
+  The next blocker is midpoint orchestration: materialize each dyadic boundary
+  at
+  caller-selected precision, obtain signed sine/cosine enclosures, classify the
+  branch/pole, and invoke the cross-product comparator only when both angles are
+  on the same tangent branch.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

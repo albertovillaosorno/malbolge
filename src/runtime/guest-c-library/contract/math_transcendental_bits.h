@@ -289,6 +289,12 @@ int malbolge_guest_math_fixed_cos_taylor_interval(
     uint32_t *output_lower, uint32_t *output_lower_negative,
     uint32_t *output_upper, uint32_t *output_upper_negative,
     uint32_t *scratch, uint32_t scratch_capacity);
+int malbolge_guest_math_positive_ratio_tangent_compare(
+    const MalbolgeGuestMathAtan2KernelInput *ratio,
+    const uint32_t *sin_lower, const uint32_t *sin_upper,
+    const uint32_t *cos_lower, const uint32_t *cos_upper,
+    uint32_t limb_count, int32_t *comparison, uint32_t *scratch,
+    uint32_t scratch_capacity);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(

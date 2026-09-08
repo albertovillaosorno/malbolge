@@ -673,6 +673,16 @@ reused operation scratch.
 Exact `Fraction` authority checks 4/8/12/16 terms at four dyadics through
 `4-2^-224`, with no host sin/cos or pi authority.
 
+The same-branch positive tangent comparison now uses exact cross products rather
+than a fixed/fixed division surface. Kernel normalization is inverted when
+`swapped` so the comparator sees `|y/x|`; its 53-bit numerator and denominator
+multiply directed sin/cos endpoint integers exactly. `exponent_delta` becomes a
+left shift on the corresponding side, bounded to plus/minus 53 for the fallback
+path. `2*(N+4)` caller-owned limbs hold the two products.
+
+Synthetic algebraic evidence covers `2^-53`, `1/4`, `1/2`, `1`, `2`, and
+`2^53`, including the unresolved overlap/equality result.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

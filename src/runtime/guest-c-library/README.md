@@ -194,6 +194,17 @@ publishes only after the complete enclosure succeeds.
 Independent `Fraction` authority covers 4/8/12/16 terms at `1/8`, `1`, `5/2`,
 and `4 - 2^-224` without host trigonometric functions.
 
+Positive ratio/tangent comparison now avoids fixed/fixed division entirely.
+The kernel ratio is reconstructed as `|y/x|` even when its normalized input was
+swapped. Exact 53-bit significands multiply directed sin/cos endpoint integers,
+with the binary exponent moved to a left shift on the appropriate cross product.
+A `2*(N+4)` caller-owned scratch holds the two exact products; comparison
+returns `-1`, `0`, or `+1` only when the ratio lies below, overlaps, or lies
+above the tangent enclosure.
+
+Algebraic fixtures cover ratios from `2^-53` through `2^53`, both swapped
+directions, and the unresolved equality case without host trig.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

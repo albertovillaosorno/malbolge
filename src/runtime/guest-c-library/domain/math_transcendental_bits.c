@@ -1172,6 +1172,153 @@ int malbolge_guest_math_fixed_cos_taylor_interval(
       output_upper_negative, scratch, scratch_capacity);
 }
 
+static int multiply_limbs_u64_shift(
+    const uint32_t *input, uint32_t input_limbs, uint64_t factor,
+    uint32_t shift, uint32_t *output, uint32_t output_limbs) {
+  const uint32_t factor_parts[2] = {(uint32_t)factor,
+                                    (uint32_t)(factor >> UINT32_C(32))};
+  const uint32_t word_shift = shift / UINT32_C(32);
+  const uint32_t bit_shift = shift % UINT32_C(32);
+  uint32_t index = UINT32_C(0);
+  uint32_t left_index = UINT32_C(0);
+
+  if (input == NULL || output == NULL || input_limbs == UINT32_C(0) ||
+      factor == UINT64_C(0) || output_limbs < input_limbs ||
+      word_shift >= output_limbs) {
+    return 0;
+  }
+  zero_fixed_limbs(output, output_limbs);
+  while (left_index < input_limbs) {
+    uint32_t factor_index = UINT32_C(0);
+    uint64_t carry = UINT64_C(0);
+    while (factor_index < UINT32_C(2)) {
+      const uint32_t cell_index = left_index + factor_index;
+      uint64_t cell = UINT64_C(0);
+      if (cell_index >= output_limbs) {
+        if (factor_parts[factor_index] != UINT32_C(0) || carry != UINT64_C(0)) {
+          return 0;
+        }
+        ++factor_index;
+        continue;
+      }
+      cell = (uint64_t)input[left_index] * factor_parts[factor_index] +
+             (uint64_t)output[cell_index] + carry;
+      output[cell_index] = (uint32_t)cell;
+      carry = cell >> UINT32_C(32);
+      ++factor_index;
+    }
+    index = left_index + UINT32_C(2);
+    while (carry != UINT64_C(0)) {
+      uint64_t cell = UINT64_C(0);
+      if (index >= output_limbs) {
+        return 0;
+      }
+      cell = (uint64_t)output[index] + carry;
+      output[index] = (uint32_t)cell;
+      carry = cell >> UINT32_C(32);
+      ++index;
+    }
+    ++left_index;
+  }
+  if (shift != UINT32_C(0)) {
+    index = output_limbs;
+    while (index != UINT32_C(0)) {
+      uint64_t shifted = UINT64_C(0);
+      uint32_t source_index = UINT32_C(0);
+      --index;
+      if (index < word_shift) {
+        output[index] = UINT32_C(0);
+        continue;
+      }
+      source_index = index - word_shift;
+      shifted = (uint64_t)output[source_index] << bit_shift;
+      if (bit_shift != UINT32_C(0) && source_index != UINT32_C(0)) {
+        shifted |= (uint64_t)output[source_index - UINT32_C(1)] >>
+                   (UINT32_C(32) - bit_shift);
+      }
+      if ((shifted >> UINT32_C(32)) != UINT64_C(0) &&
+          index + UINT32_C(1) >= output_limbs) {
+        return 0;
+      }
+      output[index] = (uint32_t)shifted;
+    }
+  }
+  return 1;
+}
+
+int malbolge_guest_math_positive_ratio_tangent_compare(
+    const MalbolgeGuestMathAtan2KernelInput *ratio,
+    const uint32_t *sin_lower, const uint32_t *sin_upper,
+    const uint32_t *cos_lower, const uint32_t *cos_upper,
+    uint32_t limb_count, int32_t *comparison, uint32_t *scratch,
+    uint32_t scratch_capacity) {
+  uint64_t numerator = UINT64_C(0);
+  uint64_t denominator = UINT64_C(0);
+  int32_t exponent = INT32_C(0);
+  uint32_t numerator_shift = UINT32_C(0);
+  uint32_t denominator_shift = UINT32_C(0);
+  uint32_t extended_limbs = UINT32_C(0);
+  uint32_t *left = scratch;
+  uint32_t *right = NULL;
+
+  if (!valid_ratio_input(ratio) || sin_lower == NULL || sin_upper == NULL ||
+      cos_lower == NULL || cos_upper == NULL || comparison == NULL ||
+      scratch == NULL || limb_count == UINT32_C(0) ||
+      ratio->y_negative != UINT32_C(0) || ratio->x_negative != UINT32_C(0) ||
+      compare_fixed_limbs(sin_lower, sin_upper, limb_count) > 0 ||
+      compare_fixed_limbs(cos_lower, cos_upper, limb_count) > 0 ||
+      limb_count > (UINT32_MAX - UINT32_C(4)) / UINT32_C(2)) {
+    return 0;
+  }
+  if (ratio->swapped != UINT32_C(0)) {
+    numerator = ratio->denominator_significand;
+    denominator = ratio->numerator_significand;
+    exponent = -ratio->exponent_delta;
+  } else {
+    numerator = ratio->numerator_significand;
+    denominator = ratio->denominator_significand;
+    exponent = ratio->exponent_delta;
+  }
+  if (exponent < INT32_C(-53) || exponent > INT32_C(53)) {
+    return 0;
+  }
+  if (exponent < INT32_C(0)) {
+    denominator_shift = (uint32_t)(-exponent);
+  } else {
+    numerator_shift = (uint32_t)exponent;
+  }
+  extended_limbs = limb_count + UINT32_C(4);
+  if (scratch_capacity < extended_limbs * UINT32_C(2)) {
+    return 0;
+  }
+  right = left + extended_limbs;
+  *comparison = INT32_C(0);
+  if (fixed_limbs_is_zero(sin_lower, limb_count) ||
+      fixed_limbs_is_zero(cos_lower, limb_count)) {
+    return 1;
+  }
+  if (!multiply_limbs_u64_shift(cos_lower, limb_count, numerator,
+                                numerator_shift, left, extended_limbs) ||
+      !multiply_limbs_u64_shift(sin_upper, limb_count, denominator,
+                                denominator_shift, right, extended_limbs)) {
+    return 0;
+  }
+  if (compare_fixed_limbs(left, right, extended_limbs) > 0) {
+    *comparison = INT32_C(1);
+    return 1;
+  }
+  if (!multiply_limbs_u64_shift(cos_upper, limb_count, numerator,
+                                numerator_shift, left, extended_limbs) ||
+      !multiply_limbs_u64_shift(sin_lower, limb_count, denominator,
+                                denominator_shift, right, extended_limbs)) {
+    return 0;
+  }
+  if (compare_fixed_limbs(left, right, extended_limbs) < 0) {
+    *comparison = INT32_C(-1);
+  }
+  return 1;
+}
+
 int malbolge_guest_math_fixed_interval_add(
     const uint32_t *left_lower, const uint32_t *left_upper,
     const uint32_t *right_lower, const uint32_t *right_upper,
