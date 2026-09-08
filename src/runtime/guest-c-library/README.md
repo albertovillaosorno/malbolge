@@ -96,14 +96,15 @@ refinements from Q32.224. Q32.256 still fails closed on ambiguity, so the finite
 ladder does not prove the full domain.
 
 An independent final-cell certificate avoids the atan evaluator entirely. For
-580 finite pairs, C supplies only candidate bits; exact dyadic midpoints are
+4,164 finite pairs, C supplies only candidate bits; exact dyadic midpoints are
 checked with directed rational `sin`/`cos` bounds and exact `y/x` comparison on
 the matching tangent branch. Refinement tries 4, 8, 12, 16, 24, 32, then 40
 Taylor terms and fails closed while a sign or ratio remains inconclusive.
 
 The deterministic corpus uses all four quadrants of every retained hard ratio,
-four near-zero/near-`pi/2` edges, and 512 fixed-seed finite nonzero pairs. The
-first successful term counts are 124/9/289/158 at 4/8/12/16 terms respectively;
+four near-zero/near-`pi/2` edges, and 4,096 fixed-seed finite nonzero pairs. The
+first successful term counts are 1018/13/2080/1053 at 4/8/12/16 terms
+respectively;
 no retained case needs a later step. Lambert tangent irrationality supplies the
 qualitative non-equality needed for eventual exact separation, while guest-C
 unbounded refinement storage remains open.

@@ -57,7 +57,7 @@ LCG_MULTIPLIER = 6364136223846793005
 LCG_INCREMENT = 1442695040888963407
 LCG_SEED = 0x4D4944504F494E54
 ALL_BITS = (1 << 64) - 1
-ADAPTIVE_PAIR_COUNT = 512
+ADAPTIVE_PAIR_COUNT = 4096
 LOWEST_BRANCH_RANK = 0
 HIGHEST_BRANCH_RANK = 3
 
@@ -377,7 +377,7 @@ def test_first_adaptive_step_enters_monotone_alternating_tail() -> None:
 def test_atan2_candidate_cells_have_independent_midpoint_certificates(
     tmp_path: Path,
 ) -> None:
-    """Certify 580 C candidates with adaptive rational midpoint bounds."""
+    """Certify 4,164 C candidates with adaptive rational midpoint bounds."""
     harness = tmp_path / "atan2-midpoint-candidates.c"
     executable = tmp_path / "atan2-midpoint-candidates"
     _ = harness.write_text(_candidate_harness_source(), encoding="utf-8")
@@ -408,4 +408,4 @@ def test_atan2_candidate_cells_have_independent_midpoint_certificates(
         for (y_bits, x_bits), output_bits in rows
     )
     assert len(used_terms) == len(CERTIFICATE_PAIRS)
-    assert Counter(used_terms) == {4: 124, 8: 9, 12: 289, 16: 158}
+    assert Counter(used_terms) == {4: 1018, 8: 13, 12: 2080, 16: 1053}

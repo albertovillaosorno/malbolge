@@ -341,13 +341,15 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   so adaptive termination or a global separation proof is still required.
 
 
-  An independent midpoint-cell authority now verifies 580 C candidates without
+  An independent midpoint-cell authority now verifies 4,164 C candidates without
   using atan, pi constants, or any fixed-point/Q1152 rounding oracle. It builds
   exact dyadic cell boundaries, refines directed sine/cosine Taylor bounds
   through 4/8/12/16/24/32/40 terms, uses quadrant order across pole crossings,
   and otherwise compares exact `y/x` against the tangent interval. The corpus
-  adds 512 fixed-seed finite pairs to every hard-ratio quadrant and four edges;
-  first success is 124/9/289/158 cases at 4/8/12/16 terms.
+  adds 4,096 fixed-seed finite pairs to every hard-ratio quadrant and four
+  edges;
+  first success is 1018/13/2080/1053 cases at 4/8/12/16
+  terms.
 
   Lambert tangent irrationality now has a canonical bibliography record:
   a nonzero rational midpoint cannot have rational tangent, so a correctly
