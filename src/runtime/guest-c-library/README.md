@@ -222,6 +222,21 @@ strictly above its lower boundary and below its upper boundary. A one-limb probe
 on the same corpus remains unresolved as expected when the dyadic needs more
 fraction bits.
 
+Signed midpoint branch classification now extends the variable-width proof path
+to the full principal `atan2` range. Proven sine/cosine signs map boundaries to
+quadrant ranks `0..3`; positive midpoints whose signs imply the wrapped negative
+quadrant become rank `4`, while negative midpoints whose signs imply the wrapped
+positive quadrant become rank `-1`. If the input angle rank differs, ordering is
+resolved before any tangent product. Same-rank comparisons reuse exact products
+on absolute sine/cosine bounds and reverse the magnitude result when tangent is
+negative.
+
+All four sign combinations of each of the sixteen retained hard ratios certify
+both binary64 cell boundaries at eight fractional limbs and 16 terms. Synthetic
+midpoints `+1`, `-1`, `+3.5`, and `-3.5` independently pin rank ordering
+and both
+principal-range wrap adjustments without a pi constant.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

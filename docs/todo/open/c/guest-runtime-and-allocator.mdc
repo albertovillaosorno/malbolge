@@ -433,10 +433,18 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   sixteen retained positive hard cells, while a one-limb probe stays unresolved
   rather than rounding the midpoint.
 
-  The remaining midpoint blocker is signed branch/pole classification across all
-  quadrants. Negative boundaries and intervals whose cosine sign is not proven
-  must be mapped by quadrant order before same-branch tangent comparison; after
-  that, the precision/term-count policy can be made adaptive rather than fixed.
+  Signed branch/pole classification now covers all four quadrants and both
+  principal-range wraps. Proven sine/cosine signs map boundaries to ranks;
+  different ranks order immediately, while same-rank cases reuse exact absolute
+  cross products and reverse the result for negative tangent. All 64 signed
+  variants of the 16 retained hard ratios certify both cell boundaries, and
+  exact `±1`/`±3.5` dyadics pin ordinary rank order plus the `4`/`-1` wrap
+  ranks.
+
+  The remaining midpoint blocker is adaptive scheduling rather than branch
+  geometry: choose caller-owned precision and Taylor depth, retry unresolved
+  boundaries with larger capacity, and stop only once both cell boundaries are
+  strictly separated.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

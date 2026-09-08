@@ -696,6 +696,20 @@ midpoint ordering for all sixteen retained positive hard cells. A deliberately
 coarse one-limb invocation remains unresolved, pinning refinement rather than
 implicit rounding as the precision policy.
 
+Signed branch/pole classification now covers the full principal atan2 range.
+Directed sine/cosine signs assign each midpoint a quadrant rank. The two
+principal-range wrap cases extend that rank to `4` for positive boundaries past
+pi and `-1` for negative boundaries below negative pi, so different ranks are
+ordered without a tangent comparison. Same-rank cases compare absolute
+sine/cosine products and reverse the magnitude comparison when tangent is
+negative.
+
+The 16 retained hard ratios now pass through all four input sign combinations,
+for 64 signed cells whose lower and upper boundaries are both certified. Exact
+synthetic dyadics at `±1` and `±3.5` separately pin ordinary rank ordering
+and the
+principal wrap adjustments without importing pi as authority.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.
