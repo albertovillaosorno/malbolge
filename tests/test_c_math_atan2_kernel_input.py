@@ -121,6 +121,9 @@ ATAN_NEXT_SCALED_MARGIN_PAIRS = (
     (0x3E2E85C8EE731BCC, 0x3FFA1886CDC41A91),
     (0x3E259BEEF54963FE, 0x3FF422D3040472CB),
 )
+ATAN_KERNEL_HARD_ROUNDING_PAIRS = (
+    (0xEE13F55E37E8835E, 0xEE839BA582281F10),
+)
 EDGE_PAIRS = (
     (0x0000000000000001, 0x3FF0000000000000),
     (0x000FFFFFFFFFFFFF, 0x0010000000000000),
@@ -758,6 +761,32 @@ def _atan2_integer_oracle_interval(
     if plan[4] == ATAN2_RATIO_ADD:
         return base_lower + atan_lower, base_upper + atan_upper, plan[5]
     return base_lower - atan_upper, base_upper - atan_lower, plan[5]
+
+
+def _binary64_rounding_cell(bits: int) -> tuple[Fraction, Fraction, Fraction]:
+    value = _raw_fraction(bits)
+    previous = _raw_fraction(bits - 1)
+    following = _raw_fraction(bits + 1)
+    return (
+        (previous + value) / 2,
+        (value + following) / 2,
+        min(value - previous, following - value),
+    )
+
+
+def _integer_oracle_midpoint_margin(y_bits: int, x_bits: int) -> Fraction:
+    lower, upper, _ = _atan2_integer_oracle_interval(y_bits, x_bits)
+    scale = 1 << ATAN2_INTEGER_ORACLE_BITS
+    interval = (Fraction(lower, scale), Fraction(upper, scale))
+    rounded = tuple(_nearest_binary64_bits(value) for value in interval)
+    assert rounded[0] == rounded[1]
+    assert rounded[0] != 0
+    lower_midpoint, upper_midpoint, ulp = _binary64_rounding_cell(rounded[0])
+    assert lower_midpoint <= interval[0] <= interval[1] <= upper_midpoint
+    return min(
+        interval[0] - lower_midpoint,
+        upper_midpoint - interval[1],
+    ) / ulp
 
 
 def _integer_oracle_unique_rounding_row(y_bits: int, x_bits: int) -> str:
@@ -1474,6 +1503,46 @@ def test_atan2_integer_oracle_encloses_fraction_authority() -> None:
         assert Fraction(integer_lower, scale) <= exact_lower
         assert Fraction(integer_upper, scale) >= exact_upper
         assert integer_negative == exact_negative
+
+
+def test_atan2_kernel_hard_rounding_case_matches_q1152_oracle(
+    tmp_path: Path,
+) -> None:
+    """Retain a non-small kernel case within 1/60000 ulp of a midpoint."""
+    y_bits, x_bits = ATAN_KERNEL_HARD_ROUNDING_PAIRS[0]
+    ratio = min(_raw_fraction(y_bits), _raw_fraction(x_bits)) / max(
+        _raw_fraction(y_bits), _raw_fraction(x_bits)
+    )
+    assert ratio > ATAN_IDENTITY_MAX
+    assert _integer_oracle_midpoint_margin(y_bits, x_bits) < Fraction(1, 60_000)
+
+    harness = tmp_path / "atan2-hard-rounding.c"
+    executable = tmp_path / "atan2-hard-rounding"
+    _ = harness.write_text(
+        _margin_harness_source(ATAN_KERNEL_HARD_ROUNDING_PAIRS),
+        encoding="utf-8",
+    )
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
 
 
 def test_atan2_unique_rounding_matches_519_pair_integer_oracle(

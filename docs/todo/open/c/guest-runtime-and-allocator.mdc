@@ -323,8 +323,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   directed arbitrary-size integer division and certifies all 519 deterministic
   kernel pairs bit-for-bit. Its 64 shared cases enclose the exact
   Machin-plus-`Fraction` authority, so the larger corpus does not rely on host
-  `atan2` or approximate expected values. Wider precision or a hard-to-round
-  fallback remains required for unproved full-domain cases.
+  `atan2` or approximate expected values.
+
+  A retained non-small kernel vector is within `1/60000` ulp of a binary64
+  midpoint and Q32.192 still publishes the Q1152-certified bits. Wider
+  precision or a hard-to-round fallback remains required for unproved
+  full-domain cases.
 
   A fixed-seed 1,000,000-pair stress run over raw binary64 words produces
   999,006 finite pairs and the combined handoff resolves all 999,006. The exact

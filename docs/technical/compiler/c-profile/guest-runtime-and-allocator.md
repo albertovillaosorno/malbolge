@@ -525,7 +525,11 @@ A second Q1152 oracle avoids repeated `Fraction` summation by dividing every
 alternating-series term directly with arbitrary-size integers and directed
 floor/ceiling rounding. It certifies unique expected binary64 bits for all 519
 deterministic kernel pairs in about two seconds, and its 64 shared intervals
-enclose the exact Machin-plus-Fraction authority. This remains bounded corpus
+enclose the exact Machin-plus-Fraction authority.
+
+A retained non-small kernel vector found by deterministic local refinement lies
+within `1/60000` ulp of its binary64 midpoint. Q1152 still certifies one result,
+and the Q32.192 handoff publishes those same bits. This remains bounded corpus
 evidence rather than an exhaustive full-domain proof.
 
 Q32.192 ambiguity still fails closed whenever no prior exact proof applies, so
