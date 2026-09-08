@@ -205,6 +205,23 @@ above the tangent enclosure.
 Algebraic fixtures cover ratios from `2^-53` through `2^53`, both swapped
 directions, and the unresolved equality case without host trig.
 
+Positive midpoint orchestration now connects the variable-width proof path end
+to end. `malbolge_guest_math_positive_midpoint_compare` requires an exact
+positive dyadic boundary, materializes it at caller-selected whole-limb
+precision, computes signed sine/cosine Taylor enclosures, then invokes the exact
+cross-product ratio comparator only when all four trig endpoints prove the
+positive tangent branch. One caller-owned `15*N` workspace covers the dyadic,
+four trig endpoints, and reused series/product scratch. If the selected
+precision
+cannot represent the dyadic denominator exactly, the operation returns
+unresolved rather than approximating the boundary.
+
+At eight fractional limbs with 16 Taylor terms, the full C route certifies both
+midpoints of all sixteen retained positive hard-rounding cells: each angle is
+strictly above its lower boundary and below its upper boundary. A one-limb probe
+on the same corpus remains unresolved as expected when the dyadic needs more
+fraction bits.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

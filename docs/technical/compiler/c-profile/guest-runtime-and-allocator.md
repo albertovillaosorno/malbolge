@@ -683,6 +683,19 @@ path. `2*(N+4)` caller-owned limbs hold the two products.
 Synthetic algebraic evidence covers `2^-53`, `1/4`, `1/2`, `1`, `2`, and
 `2^53`, including the unresolved overlap/equality result.
 
+The positive same-branch midpoint path is now orchestrated in guest C.
+An exact positive dyadic boundary is materialized only when the caller-selected
+fractional limb count can represent its denominator. Sine/cosine Taylor
+intervals then feed the exact cross-product comparator; negative or zero-lower
+branch evidence stays unresolved rather than being coerced into a tangent
+ordering. A single `15*N` caller-owned workspace holds the input, four trig
+bounds, and reusable operation scratch.
+
+With eight fractional limbs and 16 terms, this route proves strict lower/upper
+midpoint ordering for all sixteen retained positive hard cells. A deliberately
+coarse one-limb invocation remains unresolved, pinning refinement rather than
+implicit rounding as the precision policy.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

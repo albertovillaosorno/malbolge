@@ -1319,6 +1319,78 @@ int malbolge_guest_math_positive_ratio_tangent_compare(
   return 1;
 }
 
+int malbolge_guest_math_positive_midpoint_compare(
+    const MalbolgeGuestMathAtan2KernelInput *ratio,
+    const MalbolgeGuestMathDyadic *midpoint, uint32_t fraction_limbs,
+    uint32_t terms, int32_t *comparison, uint32_t *scratch,
+    uint32_t scratch_capacity) {
+  uint32_t fraction_bits = UINT32_C(0);
+  uint32_t limb_count = UINT32_C(0);
+  uint32_t sin_lower_negative = UINT32_C(0);
+  uint32_t sin_upper_negative = UINT32_C(0);
+  uint32_t cos_lower_negative = UINT32_C(0);
+  uint32_t cos_upper_negative = UINT32_C(0);
+  int32_t staged_comparison = INT32_C(0);
+  uint32_t *input = scratch;
+  uint32_t *sin_lower = NULL;
+  uint32_t *sin_upper = NULL;
+  uint32_t *cos_lower = NULL;
+  uint32_t *cos_upper = NULL;
+  uint32_t *operation = NULL;
+
+  if (ratio == NULL || midpoint == NULL || comparison == NULL ||
+      scratch == NULL ||
+      midpoint->negative != UINT32_C(0) || midpoint->numerator == UINT64_C(0) ||
+      fraction_limbs == UINT32_C(0) ||
+      fraction_limbs > UINT32_MAX / UINT32_C(32) ||
+      fraction_limbs == UINT32_MAX || !valid_ratio_input(ratio) ||
+      ratio->y_negative != UINT32_C(0) || ratio->x_negative != UINT32_C(0)) {
+    return 0;
+  }
+  fraction_bits = fraction_limbs * UINT32_C(32);
+  limb_count = fraction_limbs + UINT32_C(1);
+  if (limb_count > UINT32_MAX / UINT32_C(15) ||
+      scratch_capacity < limb_count * UINT32_C(15)) {
+    return 0;
+  }
+  if (fraction_bits < midpoint->denominator_shift) {
+    *comparison = INT32_C(0);
+    return 1;
+  }
+  sin_lower = input + limb_count;
+  sin_upper = sin_lower + limb_count;
+  cos_lower = sin_upper + limb_count;
+  cos_upper = cos_lower + limb_count;
+  operation = cos_upper + limb_count;
+  zero_fixed_limbs(input, limb_count);
+  if (!malbolge_guest_math_dyadic_write_fixed(midpoint, fraction_bits, input,
+                                               limb_count) ||
+      !malbolge_guest_math_fixed_sin_taylor_interval(
+          input, input, limb_count, fraction_limbs, terms, sin_lower,
+          &sin_lower_negative, sin_upper, &sin_upper_negative, operation,
+          limb_count * UINT32_C(10)) ||
+      !malbolge_guest_math_fixed_cos_taylor_interval(
+          input, input, limb_count, fraction_limbs, terms, cos_lower,
+          &cos_lower_negative, cos_upper, &cos_upper_negative, operation,
+          limb_count * UINT32_C(10))) {
+    return 0;
+  }
+  if (sin_lower_negative != UINT32_C(0) ||
+      sin_upper_negative != UINT32_C(0) ||
+      cos_lower_negative != UINT32_C(0) ||
+      cos_upper_negative != UINT32_C(0)) {
+    *comparison = INT32_C(0);
+    return 1;
+  }
+  if (!malbolge_guest_math_positive_ratio_tangent_compare(
+          ratio, sin_lower, sin_upper, cos_lower, cos_upper, limb_count,
+          &staged_comparison, operation, limb_count * UINT32_C(10))) {
+    return 0;
+  }
+  *comparison = staged_comparison;
+  return 1;
+}
+
 int malbolge_guest_math_fixed_interval_add(
     const uint32_t *left_lower, const uint32_t *left_upper,
     const uint32_t *right_lower, const uint32_t *right_upper,

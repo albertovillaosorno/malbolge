@@ -425,11 +425,18 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   `2^53`; synthetic evidence pins below/equal/above outcomes and both swapped
   directions.
 
-  The next blocker is midpoint orchestration: materialize each dyadic boundary
-  at
-  caller-selected precision, obtain signed sine/cosine enclosures, classify the
-  branch/pole, and invoke the cross-product comparator only when both angles are
-  on the same tangent branch.
+  Positive same-branch midpoint orchestration is now executable end to end.
+  Exact dyadics materialize only when caller precision covers their denominator;
+  sine/cosine Taylor intervals then feed the exact cross-product comparator.
+  One `15*N` workspace carries input, four trig bounds, and reusable operation
+  scratch. Eight fractional limbs plus 16 terms certify both boundaries of all
+  sixteen retained positive hard cells, while a one-limb probe stays unresolved
+  rather than rounding the midpoint.
+
+  The remaining midpoint blocker is signed branch/pole classification across all
+  quadrants. Negative boundaries and intervals whose cosine sign is not proven
+  must be mapped by quadrant order before same-branch tangent comparison; after
+  that, the precision/term-count policy can be made adaptive rather than fixed.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies
