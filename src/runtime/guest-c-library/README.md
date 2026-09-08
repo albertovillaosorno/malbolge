@@ -69,11 +69,15 @@ exact/small-ratio preclassifier first, so values already decided by raw binary64
 identities do not fall through merely because Q32.192 cannot represent their
 tiny magnitude.
 
-The 64-pair authority is therefore 64/64 after composing both proof paths, while
-Q32.192 alone still certifies 48/64. Exact normal ratio midpoints are
-algebraically impossible for valid 53-bit input geometry: after 52 quotient
-bits the remainder retains the denominator's full power-of-two divisor, while
-`D/2` has one fewer. The defensive midpoint branch remains fail closed. A
-separate integer long-division helper rounds the original rational to
-nearest-even binary64 when a later kernel needs a bounded floating
+The 64-pair exact-rational authority is therefore 64/64 after composing both
+proof paths, while Q32.192 alone still certifies 48/64. A separate Q1152
+integer-only oracle directly bounds every series term and certifies the runtime
+result bit-for-bit for all 519 deterministic kernel pairs; the 64 shared cases
+are cross-checked against the exact `Fraction` authority.
+
+Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
+geometry: after 52 quotient bits the remainder retains the denominator's full
+power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch
+remains fail closed. A separate integer long-division helper rounds the original
+rational to nearest-even binary64 when a later kernel needs a bounded floating
 representation.

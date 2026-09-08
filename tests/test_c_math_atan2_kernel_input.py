@@ -88,6 +88,7 @@ ATAN_SERIES_TARGET_BITS = 160
 ATAN_SERIES_TERMS = 60
 ATAN_SERIES_PREVIOUS_TERMS = ATAN_SERIES_TERMS - 1
 ATAN_INTERVAL_EVALUATION_BITS = 160
+ATAN2_INTEGER_ORACLE_BITS = 1152
 ATAN_CUT_UPPER_FIXED = int(
     "6a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0b", 16
 )
@@ -221,6 +222,11 @@ def _round_quotient(numerator: int, denominator: int) -> int:
     if doubled > denominator or (doubled == denominator and quotient & 1):
         quotient += 1
     return quotient
+
+
+def _ceil_quotient(numerator: int, denominator: int) -> int:
+    quotient, remainder = divmod(numerator, denominator)
+    return quotient + int(remainder != 0)
 
 
 def _nearest_binary64_bits(value: Fraction) -> int:
@@ -661,6 +667,116 @@ int main(void) {{
     ++i;
   }}
   return 0;
+}}
+"""
+
+
+def _integer_oracle_scaled_bounds(value: Fraction) -> tuple[int, int]:
+    numerator = value.numerator << ATAN2_INTEGER_ORACLE_BITS
+    denominator = value.denominator
+    return (
+        numerator // denominator,
+        _ceil_quotient(numerator, denominator),
+    )
+
+
+@cache
+def _quarter_pi_integer_oracle_bounds() -> tuple[int, int]:
+    lower, upper = _quarter_pi_machin_interval()
+    lower_floor, _ = _integer_oracle_scaled_bounds(lower)
+    _, upper_ceil = _integer_oracle_scaled_bounds(upper)
+    return lower_floor, upper_ceil
+
+
+def _integer_oracle_term_bounds(
+    numerator: int, denominator: int, divisor: int
+) -> tuple[int, int]:
+    scaled_numerator = numerator << ATAN2_INTEGER_ORACLE_BITS
+    divided_denominator = denominator * divisor
+    return (
+        scaled_numerator // divided_denominator,
+        _ceil_quotient(scaled_numerator, divided_denominator),
+    )
+
+
+def _atan_integer_oracle_bounds(value: Fraction) -> tuple[int, int]:
+    power_numerator = value.numerator
+    power_denominator = value.denominator
+    square_numerator = power_numerator * power_numerator
+    square_denominator = power_denominator * power_denominator
+    lower = 0
+    upper = 0
+
+    for index in range(ATAN_SERIES_TERMS):
+        term_floor, term_ceil = _integer_oracle_term_bounds(
+            power_numerator, power_denominator, (2 * index) + 1
+        )
+        if index & 1:
+            lower -= term_ceil
+            upper -= term_floor
+        else:
+            lower += term_floor
+            upper += term_ceil
+        power_numerator *= square_numerator
+        power_denominator *= square_denominator
+
+    upper += _integer_oracle_term_bounds(
+        power_numerator,
+        power_denominator,
+        (2 * ATAN_SERIES_TERMS) + 1,
+    )[1]
+    return lower, upper
+
+
+def _atan2_integer_oracle_interval(
+    y_bits: int, x_bits: int
+) -> tuple[int, int, int]:
+    plan = _expected_atan2_kernel_plan(y_bits, x_bits)
+    residual = _exact_ratio_fraction(plan[0], plan[1], plan[2])
+    atan_lower, atan_upper = _atan_integer_oracle_bounds(residual)
+    quarter_lower, quarter_upper = _quarter_pi_integer_oracle_bounds()
+    base_lower = plan[3] * quarter_lower
+    base_upper = plan[3] * quarter_upper
+    if plan[4] == ATAN2_RATIO_ADD:
+        return base_lower + atan_lower, base_upper + atan_upper, plan[5]
+    return base_lower - atan_upper, base_upper - atan_lower, plan[5]
+
+
+def _integer_oracle_unique_rounding_row(y_bits: int, x_bits: int) -> str:
+    lower, upper, negative = _atan2_integer_oracle_interval(y_bits, x_bits)
+    scale = 1 << ATAN2_INTEGER_ORACLE_BITS
+    lower_bits = _nearest_binary64_bits(Fraction(lower, scale))
+    upper_bits = _nearest_binary64_bits(Fraction(upper, scale))
+    assert lower_bits == upper_bits
+    expected = lower_bits | (SIGN_BIT if negative else 0)
+    return (
+        f"  {{UINT64_C(0x{y_bits:016x}), UINT64_C(0x{x_bits:016x}), "
+        f"UINT64_C(0x{expected:016x})}}"
+    )
+
+
+def _integer_oracle_unique_rounding_harness_source() -> str:
+    pairs = _deterministic_pairs()
+    rows = ",\n".join(starmap(_integer_oracle_unique_rounding_row, pairs))
+    return f"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+typedef struct Vector {{ uint64_t y_bits, x_bits, expected_bits; }} Vector;
+static const Vector vectors[] = {{
+{rows}
+}};
+int main(void) {{
+  uint32_t i = 0;
+  while (i < (uint32_t)(sizeof(vectors) / sizeof(vectors[0]))) {{
+    uint64_t bits = UINT64_C(0xdeadbeefdeadbeef);
+    const Vector *v = &vectors[i];
+    if (!malbolge_guest_math_atan2_unique_binary64(
+            v->y_bits, v->x_bits, &bits) ||
+        bits != v->expected_bits) {{
+      return 83;
+    }}
+    ++i;
+  }}
+  return i == UINT32_C({len(pairs)}) ? 0 : 84;
 }}
 """
 
@@ -1181,6 +1297,53 @@ def test_atan2_unique_rounding_is_sound_and_conservative(
     harness = tmp_path / "atan2-unique-rounding.c"
     executable = tmp_path / "atan2-unique-rounding"
     _ = harness.write_text(_unique_rounding_harness_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_atan2_integer_oracle_encloses_fraction_authority() -> None:
+    """Cross-check Q1152 bounds against the exact Fraction oracle."""
+    scale = 1 << ATAN2_INTEGER_ORACLE_BITS
+    for y_bits, x_bits in _atan_interval_pairs():
+        integer_lower, integer_upper, integer_negative = (
+            _atan2_integer_oracle_interval(y_bits, x_bits)
+        )
+        exact_lower, exact_upper, exact_negative = _atan2_exact_interval(
+            y_bits, x_bits
+        )
+        assert Fraction(integer_lower, scale) <= exact_lower
+        assert Fraction(integer_upper, scale) >= exact_upper
+        assert integer_negative == exact_negative
+
+
+def test_atan2_unique_rounding_matches_519_pair_integer_oracle(
+    tmp_path: Path,
+) -> None:
+    """Match a Q1152 integer-only atan/Machin oracle over all 519 pairs."""
+    harness = tmp_path / "atan2-integer-oracle-rounding.c"
+    executable = tmp_path / "atan2-integer-oracle-rounding"
+    _ = harness.write_text(
+        _integer_oracle_unique_rounding_harness_source(), encoding="utf-8"
+    )
     compiled = _run(
         [
             str(CLANG),

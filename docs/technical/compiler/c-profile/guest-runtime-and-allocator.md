@@ -495,9 +495,18 @@ Against the same exact 64-pair Machin-plus-Fraction authority, all 64 true
 principal-angle intervals round uniquely. The Q32.192 enclosure by itself
 certifies 48; the other 16 are tiny right-half-plane ratios already resolved by
 the exact/small-ratio preclassifier. The combined internal handoff now checks
-that authority first and certifies all 64 bit-for-bit. Q32.192 ambiguity still
-fails closed whenever no prior exact proof applies, so this composition does not
-remove the wider-precision obligation for the full binary64 domain.
+that authority first and certifies all 64 bit-for-bit.
+
+A second Q1152 oracle avoids repeated `Fraction` summation by dividing every
+alternating-series term directly with arbitrary-size integers and directed
+floor/ceiling rounding. It certifies unique expected binary64 bits for all 519
+deterministic kernel pairs in about two seconds, and its 64 shared intervals
+enclose the exact Machin-plus-Fraction authority. This remains bounded corpus
+evidence rather than an exhaustive full-domain proof.
+
+Q32.192 ambiguity still fails closed whenever no prior exact proof applies, so
+this composition does not remove the wider-precision obligation for the full
+binary64 domain.
 
 `sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
 numerical approximation, and final correct-rounding evidence close the full
