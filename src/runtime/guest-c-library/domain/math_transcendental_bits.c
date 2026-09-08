@@ -59,7 +59,8 @@
 #define FIXED_192_LIMB_COUNT UINT32_C(7)
 #define FIXED_192_FRACTION_BITS INT32_C(192)
 #define EXACT_RATIO_COMPONENT_LIMIT UINT64_C(0x0100000000000000)
-#define FIXED_PRODUCT_LIMBS UINT32_C(14)
+#define FIXED_MAX_LIMB_COUNT UINT32_C(8)
+#define FIXED_MAX_PRODUCT_LIMBS UINT32_C(16)
 #define ATAN_SERIES_TERMS UINT32_C(60)
 
 static int is_nan(uint64_t bits) {
@@ -486,35 +487,49 @@ static const uint32_t QUARTER_PI_UPPER_192[7] = {
     UINT32_C(0xc4c6628b), UINT32_C(0x2168c234), UINT32_C(0xc90fdaa2),
     UINT32_C(0)};
 
-static void copy_fixed_192(MalbolgeGuestMathFixed192 *output,
-                           const uint32_t source[7]) {
+static void copy_fixed_limbs(uint32_t *output, const uint32_t *source,
+                             uint32_t limb_count) {
   uint32_t index = UINT32_C(0);
-  while (index < FIXED_192_LIMB_COUNT) {
-    output->limbs[index] = source[index];
+  while (index < limb_count) {
+    output[index] = source[index];
     ++index;
   }
 }
 
-static void zero_fixed_192(MalbolgeGuestMathFixed192 *value) {
+static void zero_fixed_limbs(uint32_t *value, uint32_t limb_count) {
   uint32_t index = UINT32_C(0);
-  while (index < FIXED_192_LIMB_COUNT) {
-    value->limbs[index] = UINT32_C(0);
+  while (index < limb_count) {
+    value[index] = UINT32_C(0);
     ++index;
   }
+}
+
+static void add_fixed_limbs(uint32_t *value, const uint32_t *addend,
+                            uint32_t limb_count) {
+  uint32_t index = UINT32_C(0);
+  uint32_t carry = UINT32_C(0);
+
+  while (index < limb_count) {
+    const uint64_t sum = (uint64_t)value[index] + (uint64_t)addend[index] +
+                         (uint64_t)carry;
+    value[index] = (uint32_t)sum;
+    carry = (uint32_t)(sum >> UINT32_C(32));
+    ++index;
+  }
+}
+
+static void copy_fixed_192(MalbolgeGuestMathFixed192 *output,
+                           const uint32_t source[7]) {
+  copy_fixed_limbs(output->limbs, source, FIXED_192_LIMB_COUNT);
+}
+
+static void zero_fixed_192(MalbolgeGuestMathFixed192 *value) {
+  zero_fixed_limbs(value->limbs, FIXED_192_LIMB_COUNT);
 }
 
 static void add_fixed_192(MalbolgeGuestMathFixed192 *value,
                           const MalbolgeGuestMathFixed192 *addend) {
-  uint32_t index = UINT32_C(0);
-  uint32_t carry = UINT32_C(0);
-
-  while (index < FIXED_192_LIMB_COUNT) {
-    const uint64_t sum = (uint64_t)value->limbs[index] +
-                         (uint64_t)addend->limbs[index] + (uint64_t)carry;
-    value->limbs[index] = (uint32_t)sum;
-    carry = (uint32_t)(sum >> UINT32_C(32));
-    ++index;
-  }
+  add_fixed_limbs(value->limbs, addend->limbs, FIXED_192_LIMB_COUNT);
 }
 
 int malbolge_guest_math_quarter_pi_interval(
@@ -550,27 +565,36 @@ int malbolge_guest_math_atan2_base_interval(
   return 1;
 }
 
-static void increment_fixed_192(MalbolgeGuestMathFixed192 *value) {
+static void increment_fixed_limbs(uint32_t *value, uint32_t limb_count) {
   uint32_t index = UINT32_C(0);
   uint32_t carry = UINT32_C(1);
-  while (index < FIXED_192_LIMB_COUNT && carry != UINT32_C(0)) {
-    const uint32_t previous = value->limbs[index];
-    value->limbs[index] = previous + UINT32_C(1);
-    carry = value->limbs[index] == UINT32_C(0) ? UINT32_C(1) : UINT32_C(0);
+  while (index < limb_count && carry != UINT32_C(0)) {
+    const uint32_t previous = value[index];
+    value[index] = previous + UINT32_C(1);
+    carry = value[index] == UINT32_C(0) ? UINT32_C(1) : UINT32_C(0);
     ++index;
   }
 }
 
-static void shift_fixed_192_bit(MalbolgeGuestMathFixed192 *value,
-                                uint32_t bit) {
+static void shift_fixed_limbs_bit(uint32_t *value, uint32_t limb_count,
+                                  uint32_t bit) {
   uint32_t index = UINT32_C(0);
   uint32_t carry = bit;
-  while (index < FIXED_192_LIMB_COUNT) {
-    const uint32_t next = value->limbs[index] >> UINT32_C(31);
-    value->limbs[index] = (value->limbs[index] << UINT32_C(1)) | carry;
+  while (index < limb_count) {
+    const uint32_t next = value[index] >> UINT32_C(31);
+    value[index] = (value[index] << UINT32_C(1)) | carry;
     carry = next;
     ++index;
   }
+}
+
+static void increment_fixed_192(MalbolgeGuestMathFixed192 *value) {
+  increment_fixed_limbs(value->limbs, FIXED_192_LIMB_COUNT);
+}
+
+static void shift_fixed_192_bit(MalbolgeGuestMathFixed192 *value,
+                                uint32_t bit) {
+  shift_fixed_limbs_bit(value->limbs, FIXED_192_LIMB_COUNT, bit);
 }
 
 static uint32_t divide_stream_bit(uint64_t denominator, uint64_t *remainder,
@@ -659,15 +683,19 @@ static const uint32_t ATAN_CUT_UPPER_192[7] = {
     UINT32_C(0x0a0a0a0a), UINT32_C(0x0a0a0a0a), UINT32_C(0x6a0a0a0a),
     UINT32_C(0)};
 
-static int fixed_192_is_zero(const MalbolgeGuestMathFixed192 *value) {
+static int fixed_limbs_is_zero(const uint32_t *value, uint32_t limb_count) {
   uint32_t index = UINT32_C(0);
-  while (index < FIXED_192_LIMB_COUNT) {
-    if (value->limbs[index] != UINT32_C(0)) {
+  while (index < limb_count) {
+    if (value[index] != UINT32_C(0)) {
       return 0;
     }
     ++index;
   }
   return 1;
+}
+
+static int fixed_192_is_zero(const MalbolgeGuestMathFixed192 *value) {
+  return fixed_limbs_is_zero(value->limbs, FIXED_192_LIMB_COUNT);
 }
 
 static int fixed_192_below_two_neg64(
@@ -677,79 +705,93 @@ static int fixed_192_below_two_neg64(
          value->limbs[6] == UINT32_C(0);
 }
 
-static void decrement_fixed_192(MalbolgeGuestMathFixed192 *value) {
+static void decrement_fixed_limbs(uint32_t *value, uint32_t limb_count) {
   uint32_t index = UINT32_C(0);
   uint32_t borrow = UINT32_C(1);
-  while (index < FIXED_192_LIMB_COUNT && borrow != UINT32_C(0)) {
-    const uint32_t previous = value->limbs[index];
-    value->limbs[index] = previous - UINT32_C(1);
+  while (index < limb_count && borrow != UINT32_C(0)) {
+    const uint32_t previous = value[index];
+    value[index] = previous - UINT32_C(1);
     borrow = previous == UINT32_C(0) ? UINT32_C(1) : UINT32_C(0);
     ++index;
   }
 }
 
-static int compare_fixed_192(const MalbolgeGuestMathFixed192 *left,
-                             const MalbolgeGuestMathFixed192 *right) {
-  uint32_t index = FIXED_192_LIMB_COUNT;
+static int compare_fixed_limbs(const uint32_t *left, const uint32_t *right,
+                               uint32_t limb_count) {
+  uint32_t index = limb_count;
   while (index != UINT32_C(0)) {
     --index;
-    if (left->limbs[index] < right->limbs[index]) {
+    if (left[index] < right[index]) {
       return -1;
     }
-    if (left->limbs[index] > right->limbs[index]) {
+    if (left[index] > right[index]) {
       return 1;
     }
   }
   return 0;
 }
 
-static int subtract_fixed_192(MalbolgeGuestMathFixed192 *output,
-                              const MalbolgeGuestMathFixed192 *left,
-                              const MalbolgeGuestMathFixed192 *right) {
-  MalbolgeGuestMathFixed192 staged;
+static int subtract_fixed_limbs(uint32_t *output, const uint32_t *left,
+                                const uint32_t *right, uint32_t limb_count) {
   uint32_t index = UINT32_C(0);
   uint32_t borrow = UINT32_C(0);
 
-  if (compare_fixed_192(left, right) < 0) {
+  if (compare_fixed_limbs(left, right, limb_count) < 0) {
     return 0;
   }
-  while (index < FIXED_192_LIMB_COUNT) {
-    const uint64_t subtrahend = (uint64_t)right->limbs[index] + borrow;
-    const uint64_t minuend = left->limbs[index];
-    staged.limbs[index] = (uint32_t)(minuend - subtrahend);
+  while (index < limb_count) {
+    const uint64_t subtrahend = (uint64_t)right[index] + borrow;
+    const uint64_t minuend = left[index];
+    output[index] = (uint32_t)(minuend - subtrahend);
     borrow = minuend < subtrahend ? UINT32_C(1) : UINT32_C(0);
     ++index;
   }
-  copy_fixed_192(output, staged.limbs);
   return 1;
 }
 
-static void multiply_fixed_floor(const MalbolgeGuestMathFixed192 *left,
-                                 const MalbolgeGuestMathFixed192 *right,
-                                 MalbolgeGuestMathFixed192 *output,
-                                 uint32_t *discarded) {
-  uint32_t product[14];
+static void decrement_fixed_192(MalbolgeGuestMathFixed192 *value) {
+  decrement_fixed_limbs(value->limbs, FIXED_192_LIMB_COUNT);
+}
+
+static int compare_fixed_192(const MalbolgeGuestMathFixed192 *left,
+                             const MalbolgeGuestMathFixed192 *right) {
+  return compare_fixed_limbs(left->limbs, right->limbs,
+                             FIXED_192_LIMB_COUNT);
+}
+
+static int subtract_fixed_192(MalbolgeGuestMathFixed192 *output,
+                              const MalbolgeGuestMathFixed192 *left,
+                              const MalbolgeGuestMathFixed192 *right) {
+  return subtract_fixed_limbs(output->limbs, left->limbs, right->limbs,
+                              FIXED_192_LIMB_COUNT);
+}
+
+static void multiply_fixed_limbs_floor(
+    const uint32_t *left, const uint32_t *right, uint32_t limb_count,
+    uint32_t fraction_limbs, uint32_t *output, uint32_t *discarded) {
+  uint32_t product[16];
+  const uint32_t product_limbs = limb_count * UINT32_C(2);
   uint32_t index = UINT32_C(0);
   uint32_t left_index = UINT32_C(0);
 
-  while (index < FIXED_PRODUCT_LIMBS) {
+  while (index < FIXED_MAX_PRODUCT_LIMBS) {
     product[index] = UINT32_C(0);
     ++index;
   }
-  while (left_index < FIXED_192_LIMB_COUNT) {
+  while (left_index < limb_count) {
     uint32_t right_index = UINT32_C(0);
     uint64_t carry = UINT64_C(0);
-    while (right_index < FIXED_192_LIMB_COUNT) {
+    while (right_index < limb_count) {
       const uint32_t cell_index = left_index + right_index;
-      const uint64_t cell = (uint64_t)left->limbs[left_index] *
-                                (uint64_t)right->limbs[right_index] +
+      const uint64_t cell = (uint64_t)left[left_index] *
+                                (uint64_t)right[right_index] +
                             (uint64_t)product[cell_index] + carry;
       product[cell_index] = (uint32_t)cell;
       carry = cell >> UINT32_C(32);
       ++right_index;
     }
-    index = left_index + FIXED_192_LIMB_COUNT;
-    while (carry != UINT64_C(0) && index < FIXED_PRODUCT_LIMBS) {
+    index = left_index + limb_count;
+    while (carry != UINT64_C(0) && index < product_limbs) {
       const uint64_t cell = (uint64_t)product[index] + carry;
       product[index] = (uint32_t)cell;
       carry = cell >> UINT32_C(32);
@@ -759,17 +801,26 @@ static void multiply_fixed_floor(const MalbolgeGuestMathFixed192 *left,
   }
   *discarded = UINT32_C(0);
   index = UINT32_C(0);
-  while (index < UINT32_C(6)) {
+  while (index < fraction_limbs) {
     if (product[index] != UINT32_C(0)) {
       *discarded = UINT32_C(1);
     }
     ++index;
   }
   index = UINT32_C(0);
-  while (index < FIXED_192_LIMB_COUNT) {
-    output->limbs[index] = product[index + UINT32_C(6)];
+  while (index < limb_count) {
+    output[index] = product[index + fraction_limbs];
     ++index;
   }
+}
+
+static void multiply_fixed_floor(const MalbolgeGuestMathFixed192 *left,
+                                 const MalbolgeGuestMathFixed192 *right,
+                                 MalbolgeGuestMathFixed192 *output,
+                                 uint32_t *discarded) {
+  multiply_fixed_limbs_floor(left->limbs, right->limbs,
+                             FIXED_192_LIMB_COUNT, UINT32_C(6),
+                             output->limbs, discarded);
 }
 
 static void multiply_interval_192(
@@ -784,25 +835,25 @@ static void multiply_interval_192(
   }
 }
 
-static void multiply_fixed_small(MalbolgeGuestMathFixed192 *value,
-                                 uint32_t factor) {
+static void multiply_fixed_limbs_small(uint32_t *value,
+                                       uint32_t limb_count,
+                                       uint32_t factor) {
   uint32_t index = UINT32_C(0);
   uint64_t carry = UINT64_C(0);
-  while (index < FIXED_192_LIMB_COUNT) {
-    const uint64_t product =
-        (uint64_t)value->limbs[index] * factor + carry;
-    value->limbs[index] = (uint32_t)product;
+  while (index < limb_count) {
+    const uint64_t product = (uint64_t)value[index] * factor + carry;
+    value[index] = (uint32_t)product;
     carry = product >> UINT32_C(32);
     ++index;
   }
 }
 
-static uint32_t divide_fixed_small_floor(
-    const MalbolgeGuestMathFixed192 *input, uint32_t divisor,
-    MalbolgeGuestMathFixed192 *output) {
-  uint32_t limb_index = FIXED_192_LIMB_COUNT;
+static uint32_t divide_fixed_limbs_small_floor(
+    const uint32_t *input, uint32_t limb_count, uint32_t divisor,
+    uint32_t *output) {
+  uint32_t limb_index = limb_count;
   uint32_t remainder = UINT32_C(0);
-  zero_fixed_192(output);
+  zero_fixed_limbs(output, limb_count);
   while (limb_index != UINT32_C(0)) {
     uint32_t bit_index = UINT32_C(32);
     --limb_index;
@@ -810,15 +861,27 @@ static uint32_t divide_fixed_small_floor(
       uint32_t quotient_bit = UINT32_C(0);
       --bit_index;
       remainder = (remainder << UINT32_C(1)) |
-                  ((input->limbs[limb_index] >> bit_index) & UINT32_C(1));
+                  ((input[limb_index] >> bit_index) & UINT32_C(1));
       if (remainder >= divisor) {
         remainder -= divisor;
         quotient_bit = UINT32_C(1);
       }
-      output->limbs[limb_index] |= quotient_bit << bit_index;
+      output[limb_index] |= quotient_bit << bit_index;
     }
   }
   return remainder;
+}
+
+static void multiply_fixed_small(MalbolgeGuestMathFixed192 *value,
+                                 uint32_t factor) {
+  multiply_fixed_limbs_small(value->limbs, FIXED_192_LIMB_COUNT, factor);
+}
+
+static uint32_t divide_fixed_small_floor(
+    const MalbolgeGuestMathFixed192 *input, uint32_t divisor,
+    MalbolgeGuestMathFixed192 *output) {
+  return divide_fixed_limbs_small_floor(input->limbs, FIXED_192_LIMB_COUNT,
+                                        divisor, output->limbs);
 }
 
 static void divide_interval_small(MalbolgeGuestMathFixed192Interval *value,
@@ -948,25 +1011,23 @@ int malbolge_guest_math_atan2_interval(
   return 1;
 }
 
-static uint32_t fixed_192_bit(const MalbolgeGuestMathFixed192 *value,
-                              uint32_t position) {
-  return (value->limbs[position / UINT32_C(32)] >>
-          (position % UINT32_C(32))) &
+static uint32_t fixed_limbs_bit(const uint32_t *value, uint32_t position) {
+  return (value[position / UINT32_C(32)] >> (position % UINT32_C(32))) &
          UINT32_C(1);
 }
 
-static int32_t fixed_192_high_bit(const MalbolgeGuestMathFixed192 *value) {
-  uint32_t limb_index = FIXED_192_LIMB_COUNT;
+static int32_t fixed_limbs_high_bit(const uint32_t *value,
+                                    uint32_t limb_count) {
+  uint32_t limb_index = limb_count;
   while (limb_index != UINT32_C(0)) {
     uint32_t bit_index = UINT32_C(32);
     --limb_index;
-    if (value->limbs[limb_index] == UINT32_C(0)) {
+    if (value[limb_index] == UINT32_C(0)) {
       continue;
     }
     while (bit_index != UINT32_C(0)) {
       --bit_index;
-      if (((value->limbs[limb_index] >> bit_index) & UINT32_C(1)) !=
-          UINT32_C(0)) {
+      if (((value[limb_index] >> bit_index) & UINT32_C(1)) != UINT32_C(0)) {
         return (int32_t)((limb_index * UINT32_C(32)) + bit_index);
       }
     }
@@ -974,25 +1035,38 @@ static int32_t fixed_192_high_bit(const MalbolgeGuestMathFixed192 *value) {
   return INT32_C(-1);
 }
 
-static uint32_t fixed_192_any_below(const MalbolgeGuestMathFixed192 *value,
-                                    uint32_t limit) {
+static uint32_t fixed_limbs_any_below(const uint32_t *value, uint32_t limit) {
   const uint32_t full_limbs = limit / UINT32_C(32);
   const uint32_t partial_bits = limit % UINT32_C(32);
   uint32_t limb_index = UINT32_C(0);
 
   while (limb_index < full_limbs) {
-    if (value->limbs[limb_index] != UINT32_C(0)) {
+    if (value[limb_index] != UINT32_C(0)) {
       return UINT32_C(1);
     }
     ++limb_index;
   }
   if (partial_bits != UINT32_C(0)) {
     const uint32_t mask = (UINT32_C(1) << partial_bits) - UINT32_C(1);
-    if ((value->limbs[full_limbs] & mask) != UINT32_C(0)) {
+    if ((value[full_limbs] & mask) != UINT32_C(0)) {
       return UINT32_C(1);
     }
   }
   return UINT32_C(0);
+}
+
+static uint32_t fixed_192_bit(const MalbolgeGuestMathFixed192 *value,
+                              uint32_t position) {
+  return fixed_limbs_bit(value->limbs, position);
+}
+
+static int32_t fixed_192_high_bit(const MalbolgeGuestMathFixed192 *value) {
+  return fixed_limbs_high_bit(value->limbs, FIXED_192_LIMB_COUNT);
+}
+
+static uint32_t fixed_192_any_below(const MalbolgeGuestMathFixed192 *value,
+                                    uint32_t limit) {
+  return fixed_limbs_any_below(value->limbs, limit);
 }
 
 static uint64_t fixed_192_nearest_binary64(
