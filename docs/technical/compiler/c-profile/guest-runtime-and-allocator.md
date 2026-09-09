@@ -1050,6 +1050,21 @@ multiples from 3 through one billion matches an independent Machin/`Fraction`
 reconstruction limb-for-limb. Larger finite inputs still require wider
 Payne-Hanek-style quotient/constant geometry.
 
+That wider constant geometry now has a certified Q2112 reciprocal table. Exact
+Machin arithmetic encloses pi tightly enough to determine both endpoints of the
+66-limb `2/pi` interval, whose width is two ulps. Starting at `2^31`, a finite
+binary64 has dyadic power at least `-21`; therefore a quotient half-boundary
+would approximate pi by a rational with denominator below `2^1044`.
+
+The authority computes the common continued-fraction prefix of both directed pi
+bounds and checks 626 convergents through that denominator ceiling. By
+Legendre, every closer rational would have to occur in that checked set; the
+minimum certified separation still exceeds `20*2^-2112`. This leaves roughly
+nineteen bits of safety after accounting conservatively for the reciprocal
+width and half-boundary scaling. The proof establishes quotient sufficiency of
+the Q2112 constant; the product bit extraction and Q256 residual formation are
+validated independently.
+
 The bounded reducer now composes with Q32.256 trig evaluation. Residuals are
 first converted to a nonnegative magnitude interval for the existing directed
 Taylor

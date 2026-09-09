@@ -680,6 +680,19 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   full-domain Payne-Hanek geometry and a global precision/resource argument are
   still required before `sin`/`cos` become source-available.
 
+  The full-domain Payne-Hanek constant now has a finite quotient certificate.
+  A 66-limb directed Q2112 `2/pi` interval is regenerated from Machin arithmetic
+  and is exactly two ulps wide. For the remaining `|x|>=2^31` domain,
+  binary64 structure bounds every induced half-tie rational denominator below
+  `2^1044`.
+
+  Continued fractions of the directed pi bounds retain 626 common convergents
+  through that ceiling. Legendre reduces every closer approximation to that
+  finite set, and the resulting separation proves `20*2^-2112 < delta`, with
+  about nineteen bits of conservative margin. This closes constant-width and
+  quotient-separation provenance, not yet the full product extraction/residual
+  implementation or the final full-domain precision ceiling.
+
 
   The normalized enclosures can now drive midpoint comparison directly. A
   `24*N` caller-owned path reuses the existing quadrant ranks and ratio

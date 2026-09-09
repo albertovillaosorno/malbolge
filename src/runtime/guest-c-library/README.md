@@ -267,6 +267,20 @@ re-derives both `pi/4` and `2/pi` Q256 cells, then matches every residual limb
 for 512 fixed-seed values plus binary64 neighbors of selected `pi/2` multiples.
 Magnitudes at least `2^31` remain outside this bounded reducer.
 
+Full-domain quotient selection now has independent constant authority too. A
+66-limb Q2112 `2/pi` interval is regenerated from exact Machin bounds for pi and
+occupies two Q2112 ulps. For `|x|>=2^31`, binary64 structure gives `p>=-21`, so
+any half-integer quotient tie induces a rational approximation to pi with
+reduced denominator below `2^1044`.
+
+A continued-fraction certificate checks all 626 convergents of pi up to that
+limit. Legendre's criterion then provides the fallback separation for every
+other rational, and the certified margin satisfies `20*2^-2112 < delta`. The
+factor 20 conservatively covers the two-ulp reciprocal width plus `pi<4` and
+the relevant boundary ratio below five. This proves the table is wide enough
+to select the nearest quotient for every finite binary64 input above the
+bounded Q256 region; extraction and residual transport remain separate units.
+
 The bounded residual now feeds directed trig evaluation too.
 `malbolge_guest_math_sincos_range_interval256` evaluates sine and cosine only on
 the reduced magnitude inside `pi/4`, reflects a negative or cross-zero residual,
