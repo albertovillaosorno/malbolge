@@ -470,11 +470,18 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   requirement is `UINT32_MAX` scratch limbs; the next stage fails only because
   the public capacity type cannot represent a larger workspace.
 
-  Remaining adaptive blockers are therefore higher-level: the current scheduler
-  certifies a supplied candidate but does not generate a candidate when the
-  Q192/Q224/Q256 handoff itself is ambiguous, and Lambert's qualitative
-  termination argument does not prove certification before the finite `u32`
-  capacity ceiling. Q128/16 remains bounded coverage, not a full-domain bound.
+  Q256 ambiguity now has a conservative candidate surface. Directed endpoint
+  roundings publish one cell when equal or two cells only when adjacent; wider
+  spans fail closed. A synthetic exact midpoint straddle pins the two-cell path,
+  while all 4,164 retained atan2 pairs remain one-cell proposals matching the
+  existing handoff. The candidate scheduler tries every proposed cell per stage,
+  publishes only exactly one certification, and handles negative-angle ordering.
+
+  Remaining adaptive blockers are narrower: prove that a kernel Q256 interval
+  can never need more than two binary64 candidates, or generalize proposal
+  generation beyond two cells; and show that Lambert-driven refinement certifies
+  before the finite `u32` capacity ceiling. Q128/16 remains bounded coverage,
+  not a full-domain bound.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

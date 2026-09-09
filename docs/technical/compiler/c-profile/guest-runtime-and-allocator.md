@@ -759,6 +759,30 @@ The first planner ceiling is now the `u32` scratch-capacity ABI itself. Stage
 removes a policy-sized numerical ceiling but remains a finite machine-capacity
 limit, not a proof that every binary64 input certifies before it.
 
+Candidate production no longer requires fixed-Q uniqueness. A conservative Q256
+extractor rounds the directed lower and upper endpoints independently with the
+integer nearest-even endpoint helper. Equal endpoint roundings produce one
+candidate; adjacent roundings produce two ordered candidates; wider spans fail
+closed rather than omitting possible cells. An exact synthetic midpoint straddle
+at `1 + 2^-53` pins the two-cell path, while all 4,164 retained atan2 pairs
+remain
+on the one-cell path matching the current handoff.
+
+A multi-candidate scheduler now attempts every proposed cell at each refinement
+stage. Exactly one certified cell publishes; zero certified cells advance to the
+next plan; multiple certified cells are an invariant failure. Positive and
+negative hard seeds independently pin adjacent ordering and show that Q128/16
+selects the correct cell while rejecting its neighbor. The combined
+`malbolge_guest_math_atan2_q256_refine_available` path therefore supplies a
+caller-owned proposal-plus-certification surface even when Q256 uniqueness would
+fail, subject to the conservative two-cell span check.
+
+No natural retained atan2 input currently exercises a two-cell Q256 interval, so
+that branch is not presented as observed-domain closure. Candidate extraction
+and two-cell certification are separately exact, while full-domain evidence must
+still show either that Q256 cannot span more than two cells for kernel work or
+provide a broader proposal mechanism.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

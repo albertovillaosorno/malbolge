@@ -2920,6 +2920,154 @@ int malbolge_guest_math_fixed256_unique_binary64(
       FIXED_256_FRACTION_BITS, output_bits);
 }
 
+int malbolge_guest_math_fixed256_candidates(
+    const MalbolgeGuestMathFixed256Interval *input,
+    MalbolgeGuestMathAtan2Candidates *output) {
+  MalbolgeGuestMathAtan2Candidates staged;
+  uint64_t lower_bits = UINT64_C(0);
+  uint64_t upper_bits = UINT64_C(0);
+
+  if (input == NULL || output == NULL ||
+      compare_fixed_limbs(input->lower.limbs, input->upper.limbs,
+                          FIXED_256_LIMB_COUNT) > 0) {
+    return 0;
+  }
+  lower_bits = fixed_limbs_nearest_binary64(
+      input->lower.limbs, FIXED_256_LIMB_COUNT, FIXED_256_FRACTION_BITS);
+  upper_bits = fixed_limbs_nearest_binary64(
+      input->upper.limbs, FIXED_256_LIMB_COUNT, FIXED_256_FRACTION_BITS);
+  if (upper_bits < lower_bits || upper_bits - lower_bits > UINT64_C(1)) {
+    return 0;
+  }
+  staged.count = lower_bits == upper_bits ? UINT32_C(1) : UINT32_C(2);
+  staged.bits[0] = lower_bits;
+  staged.bits[1] = upper_bits;
+  *output = staged;
+  return 1;
+}
+
+int malbolge_guest_math_atan2_q256_candidates(
+    uint64_t y_bits, uint64_t x_bits,
+    MalbolgeGuestMathAtan2Candidates *output) {
+  MalbolgeGuestMathAtan2Interval256 interval;
+  MalbolgeGuestMathAtan2Candidates staged;
+  uint64_t lower_magnitude = UINT64_C(0);
+  uint64_t upper_magnitude = UINT64_C(0);
+  uint64_t sign = UINT64_C(0);
+
+  if (output == NULL ||
+      malbolge_guest_math_atan2_special(y_bits, x_bits).status !=
+          MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED ||
+      !malbolge_guest_math_atan2_interval256(y_bits, x_bits, &interval)) {
+    return 0;
+  }
+  if (!malbolge_guest_math_fixed256_candidates(&interval.magnitude, &staged)) {
+    return 0;
+  }
+  lower_magnitude = staged.bits[0];
+  upper_magnitude = staged.bits[staged.count - UINT32_C(1)];
+  sign = interval.negative != UINT32_C(0) ? BINARY64_SIGN : UINT64_C(0);
+  if (sign == UINT64_C(0)) {
+    staged.bits[0] = lower_magnitude;
+    staged.bits[1] = upper_magnitude;
+  } else {
+    staged.bits[0] = upper_magnitude | sign;
+    staged.bits[1] = lower_magnitude | sign;
+  }
+  *output = staged;
+  return 1;
+}
+
+static int atan2_candidates_valid(
+    const MalbolgeGuestMathAtan2Candidates *candidates) {
+  if (candidates == NULL || candidates->count == UINT32_C(0) ||
+      candidates->count > UINT32_C(2)) {
+    return 0;
+  }
+  if (candidates->count == UINT32_C(1)) {
+    return 1;
+  }
+  if ((candidates->bits[0] & BINARY64_SIGN) !=
+      (candidates->bits[1] & BINARY64_SIGN)) {
+    return 0;
+  }
+  if ((candidates->bits[0] & BINARY64_SIGN) == UINT64_C(0)) {
+    return candidates->bits[1] == candidates->bits[0] + UINT64_C(1);
+  }
+  return candidates->bits[0] == candidates->bits[1] + UINT64_C(1);
+}
+
+int malbolge_guest_math_atan2_refine_candidates_available(
+    uint64_t y_bits, uint64_t x_bits,
+    const MalbolgeGuestMathAtan2Candidates *candidates, uint32_t start_stage,
+    uint32_t *scratch, uint32_t scratch_capacity,
+    MalbolgeGuestMathAtan2CandidateProgress *output) {
+  MalbolgeGuestMathAtan2CandidateProgress staged;
+  uint32_t stage = start_stage;
+
+  if (scratch == NULL || output == NULL ||
+      !atan2_candidates_valid(candidates) ||
+      malbolge_guest_math_atan2_special(y_bits, x_bits).status !=
+          MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED) {
+    return 0;
+  }
+  for (;;) {
+    uint32_t candidate_index = UINT32_C(0);
+    uint32_t certified_count = UINT32_C(0);
+    uint64_t certified_bits = UINT64_C(0);
+    if (!malbolge_guest_math_atan2_refinement_plan(stage, &staged.plan)) {
+      return 0;
+    }
+    staged.certified = UINT32_C(0);
+    staged.bits = UINT64_C(0);
+    if (scratch_capacity < staged.plan.required_scratch_limbs) {
+      *output = staged;
+      return 1;
+    }
+    while (candidate_index < candidates->count) {
+      uint32_t certified = UINT32_C(0);
+      if (!malbolge_guest_math_atan2_refinement_attempt(
+              y_bits, x_bits, candidates->bits[candidate_index],
+              staged.plan.fraction_limbs, staged.plan.terms, &certified,
+              scratch,
+              scratch_capacity)) {
+        return 0;
+      }
+      if (certified != UINT32_C(0)) {
+        ++certified_count;
+        certified_bits = candidates->bits[candidate_index];
+      }
+      ++candidate_index;
+    }
+    if (certified_count > UINT32_C(1)) {
+      return 0;
+    }
+    if (certified_count == UINT32_C(1)) {
+      staged.certified = UINT32_C(1);
+      staged.bits = certified_bits;
+      *output = staged;
+      return 1;
+    }
+    if (stage == UINT32_MAX) {
+      return 0;
+    }
+    ++stage;
+  }
+}
+
+int malbolge_guest_math_atan2_q256_refine_available(
+    uint64_t y_bits, uint64_t x_bits, uint32_t start_stage, uint32_t *scratch,
+    uint32_t scratch_capacity,
+    MalbolgeGuestMathAtan2CandidateProgress *output) {
+  MalbolgeGuestMathAtan2Candidates candidates;
+  if (!malbolge_guest_math_atan2_q256_candidates(y_bits, x_bits, &candidates)) {
+    return 0;
+  }
+  return malbolge_guest_math_atan2_refine_candidates_available(
+      y_bits, x_bits, &candidates, start_stage, scratch, scratch_capacity,
+      output);
+}
+
 static uint32_t u64_bit_length(uint64_t value) {
   uint32_t bits = UINT32_C(0);
   while (value != UINT64_C(0)) {

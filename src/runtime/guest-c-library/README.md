@@ -292,6 +292,32 @@ requesting 286331152 fractional limbs, 1145324608 terms, and exactly
 scratch requirement is not representable. This is still a finite machine limit,
 not a full-domain termination proof.
 
+Q256 can now produce conservative binary64 candidate cells even when endpoint
+rounding is not unique. The fixed interval extractor rounds both directed
+endpoints with the same integer nearest-even helper used by the unique path and
+publishes one cell when they agree or two cells only when the rounded results
+are adjacent. Any wider span or malformed interval fails before publication.
+
+A synthetic Q256 interval straddling the exact midpoint `1 + 2^-53` by one Q256
+unit yields exactly `1.0` and its next binary64 neighbor. A span whose endpoint
+roundings differ by two cells is rejected. Across the retained 4,164 atan2
+pairs,
+Q256 still produces one candidate matching the existing unique handoff; this is
+coverage rather than a claim that all Q256 atan intervals span at most two
+cells.
+
+Candidate certification composes that proposal set with the adaptive scheduler.
+At every stage all one or two ordered adjacent candidates are attempted; exactly
+one certification publishes a result, zero certifications request refinement,
+and two certifications are treated as inconsistent hard failure. Positive and
+negative hard seeds pin the reversed binary64 ordering for negative angles, and
+a manual `{correct, adjacent}` list certifies only the correct cell at Q128/16.
+
+`malbolge_guest_math_atan2_q256_refine_available` joins Q256 extraction and this
+multi-candidate scheduler for caller-owned fallback work. No natural two-cell
+Q256 atan2 input is retained yet, so the two-cell proposal geometry and the
+multi-candidate transcendental certification remain independently evidenced.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch
