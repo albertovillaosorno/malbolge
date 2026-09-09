@@ -13,7 +13,7 @@
 # - Must-Not:
 #   - Use host pi/libm or assume the bounded u64-multiple reducer covers it.
 # - Allows:
-#   - Inputs: finite raw binary64 words with magnitude at least 2^64.
+#   - Inputs: finite raw binary64 words with magnitude at least four.
 #   - Outputs: quadrant, original sign, and a directed signed Q256 residual.
 #   - Side effects: temporary native C compilation and execution only.
 # - Split-When:
@@ -21,16 +21,16 @@
 # - Merge-When:
 #   - One public full-domain sin/cos handoff subsumes both reduction paths.
 # - Summary:
-#   - Checks exact 53x2112 extraction through max-finite against Machin bounds.
+#   - Checks exact 53x2176 extraction through max-finite against Machin bounds.
 # - Description:
 #   - Fraction independently proves quotient mod four and residual containment.
 # - Usage:
 #   - Collected with repository-pinned native Clang on supported hosts.
 # - Defaults:
-#   - Inputs below 2^64 remain delegated to the bounded Q256/u64 reducer.
+#   - Inputs below four remain outside periodic reduction.
 #
 
-"""Full-domain Q2112 Payne-Hanek reduction evidence."""
+"""Full-domain Q2176 Payne-Hanek reduction evidence."""
 
 from __future__ import annotations
 
@@ -215,7 +215,7 @@ int main(void) {{
         UINT32_C(9), UINT32_C(8), {{UINT32_C(7)}}, UINT32_C(6),
         {{UINT32_C(5)}}, UINT32_C(4)}};
     const uint64_t bad[] = {{
-        UINT64_C(0x43efffffffffffff), UINT64_C(0x7ff0000000000000),
+        UINT64_C(0x400fffffffffffff), UINT64_C(0x7ff0000000000000),
         UINT64_C(0x7ff8000000000001)}};
     index = UINT32_C(0);
     while (index < UINT32_C(3)) {{
@@ -226,7 +226,7 @@ int main(void) {{
       ++index;
     }}
     if (malbolge_guest_math_sincos_payne_hanek_reduce256(
-            UINT64_C(0x43f0000000000000), 0)) return 82;
+            UINT64_C(0x4010000000000000), 0)) return 82;
   }}
   return 0;
 }}

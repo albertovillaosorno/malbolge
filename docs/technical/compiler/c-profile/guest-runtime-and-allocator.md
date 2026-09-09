@@ -1095,6 +1095,18 @@ inputs through maximum finite. The unique gate remains fail closed for any Q256
 ambiguity. These retained successes do not establish a global binary64
 precision/resource ceiling.
 
+A stronger active table removes the bounded-path residual-width growth. The
+production periodic evaluator now uses Q2176 Payne-Hanek for every finite
+`|x|>=4`. Its 68-limb `2/pi` interval is one ulp wide. Because such a binary64
+has dyadic power at least `-50`, a nearest-quotient half-boundary induces a
+reduced rational approximation to pi with denominator below `2^1073`.
+
+The Q2176 authority retains 641 common pi convergents through that ceiling and,
+with Legendre, proves the conservative `30*2^-2176` uncertainty is below every
+relevant half-boundary separation, leaving about 25 bits of margin. The old
+bounded reducer remains separately callable evidence, but Q256 trig evaluation
+no longer accumulates a multiple-scaled `pi/2` cell width before Taylor.
+
 
 A normalized midpoint comparator now composes those enclosures with the existing
 quadrant ordering and exact ratio cross-products. Its caller-owned scratch is

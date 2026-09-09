@@ -703,6 +703,20 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   work is full-domain trig refinement/final-rounding resource closure, not range
   quotient availability.
 
+  Periodic evaluation now uses Q2176 Payne-Hanek uniformly for every finite
+  `|x|>=4`. The active `2/pi` table has 68 limbs and one-ulp width. The binary64
+  lower bound gives dyadic power at least `-50`, so half-boundary rationals have
+  reduced denominator below `2^1073`; 641 common pi convergents plus Legendre
+  prove `30*2^-2176` stays below the relevant separation with about 25 bits of
+  conservative margin.
+
+  The bounded `u64` reducer remains available as separate evidence, but the
+  shared Q256 trig evaluator no longer carries its `q*width(pi/2)` residual
+  growth. Payne-Hanek now supplies the residual enclosure before Taylor across
+  the entire periodic domain. The remaining blocker is therefore the global
+  post-reduction precision/table-maker resource ceiling, not quotient selection
+  or magnitude-dependent range-reduction widening.
+
 
   The normalized enclosures can now drive midpoint comparison directly. A
   `24*N` caller-owned path reuses the existing quadrant ranks and ratio

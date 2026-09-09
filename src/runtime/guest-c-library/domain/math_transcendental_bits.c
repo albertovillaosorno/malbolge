@@ -68,8 +68,9 @@
 #define FIXED_224_FRACTION_BITS INT32_C(224)
 #define FIXED_256_LIMB_COUNT UINT32_C(9)
 #define FIXED_2112_LIMB_COUNT UINT32_C(66)
-#define PAYNE_HANEK_PRODUCT_LIMBS UINT32_C(68)
-#define PAYNE_HANEK_FRACTION_BITS UINT32_C(2112)
+#define FIXED_2176_LIMB_COUNT UINT32_C(68)
+#define PAYNE_HANEK_PRODUCT_LIMBS UINT32_C(70)
+#define PAYNE_HANEK_FRACTION_BITS UINT32_C(2176)
 #define FIXED_256_FRACTION_BITS INT32_C(256)
 #define EXACT_RATIO_COMPONENT_LIMIT UINT64_C(0x0100000000000000)
 #define FIXED_MAX_LIMB_COUNT UINT32_C(11)
@@ -3527,6 +3528,66 @@ int malbolge_guest_math_two_over_pi_interval2112(
   return 1;
 }
 
+static const uint32_t TWO_OVER_PI_LOWER_2176[68] = {
+    UINT32_C(0x2d30433b), UINT32_C(0xfa6ed577), UINT32_C(0x7c7c246a),
+    UINT32_C(0x87f12190), UINT32_C(0xcaf27f1d), UINT32_C(0x9f3a1f35),
+    UINT32_C(0x6b1e5ef8), UINT32_C(0xc33d26ef), UINT32_C(0x98327dbb),
+    UINT32_C(0x32c2de4f), UINT32_C(0x3f7e33e8), UINT32_C(0xa5ff0705),
+    UINT32_C(0x5719053e), UINT32_C(0xddaf44d1), UINT32_C(0x8b961ca6),
+    UINT32_C(0x8359c476), UINT32_C(0xdce8092a), UINT32_C(0x19c367cd),
+    UINT32_C(0x8c6b47c4), UINT32_C(0x60e27bc0), UINT32_C(0xca73a8c9),
+    UINT32_C(0x06061556), UINT32_C(0x4d732731), UINT32_C(0x8dffd880),
+    UINT32_C(0x14a06840), UINT32_C(0x6599855f), UINT32_C(0x5ee61b08),
+    UINT32_C(0xa9e39161), UINT32_C(0x9af4361d), UINT32_C(0xf0cfbc20),
+    UINT32_C(0xfc7b6bab), UINT32_C(0x56033046), UINT32_C(0x1f8d5d08),
+    UINT32_C(0x6bfb5fb1), UINT32_C(0x8a5292ea), UINT32_C(0x3d0739f7),
+    UINT32_C(0xebe5f17b), UINT32_C(0x7527bac7), UINT32_C(0x9e5fea2d),
+    UINT32_C(0x4f463f66), UINT32_C(0x27cb09b7), UINT32_C(0x6d367ecf),
+    UINT32_C(0x5a0a6d1f), UINT32_C(0xef2f118b), UINT32_C(0xde05980f),
+    UINT32_C(0x1ff897ff), UINT32_C(0xbdf9283b), UINT32_C(0x9c845f8b),
+    UINT32_C(0x835339f4), UINT32_C(0x3991d639), UINT32_C(0xb45f7e41),
+    UINT32_C(0xe99c7026), UINT32_C(0x2ebb4484), UINT32_C(0xe88235f5),
+    UINT32_C(0xb129a73e), UINT32_C(0xfe1deb1c), UINT32_C(0x09d1921c),
+    UINT32_C(0x06492eea), UINT32_C(0x424dd2e0), UINT32_C(0xb7246e3a),
+    UINT32_C(0xdebbc561), UINT32_C(0xfe5163ab), UINT32_C(0x3c439041),
+    UINT32_C(0xdb629599), UINT32_C(0xf534ddc0), UINT32_C(0xfc2757d1),
+    UINT32_C(0x4e441529), UINT32_C(0xa2f9836e)};
+static const uint32_t TWO_OVER_PI_UPPER_2176[68] = {
+    UINT32_C(0x2d30433c), UINT32_C(0xfa6ed577), UINT32_C(0x7c7c246a),
+    UINT32_C(0x87f12190), UINT32_C(0xcaf27f1d), UINT32_C(0x9f3a1f35),
+    UINT32_C(0x6b1e5ef8), UINT32_C(0xc33d26ef), UINT32_C(0x98327dbb),
+    UINT32_C(0x32c2de4f), UINT32_C(0x3f7e33e8), UINT32_C(0xa5ff0705),
+    UINT32_C(0x5719053e), UINT32_C(0xddaf44d1), UINT32_C(0x8b961ca6),
+    UINT32_C(0x8359c476), UINT32_C(0xdce8092a), UINT32_C(0x19c367cd),
+    UINT32_C(0x8c6b47c4), UINT32_C(0x60e27bc0), UINT32_C(0xca73a8c9),
+    UINT32_C(0x06061556), UINT32_C(0x4d732731), UINT32_C(0x8dffd880),
+    UINT32_C(0x14a06840), UINT32_C(0x6599855f), UINT32_C(0x5ee61b08),
+    UINT32_C(0xa9e39161), UINT32_C(0x9af4361d), UINT32_C(0xf0cfbc20),
+    UINT32_C(0xfc7b6bab), UINT32_C(0x56033046), UINT32_C(0x1f8d5d08),
+    UINT32_C(0x6bfb5fb1), UINT32_C(0x8a5292ea), UINT32_C(0x3d0739f7),
+    UINT32_C(0xebe5f17b), UINT32_C(0x7527bac7), UINT32_C(0x9e5fea2d),
+    UINT32_C(0x4f463f66), UINT32_C(0x27cb09b7), UINT32_C(0x6d367ecf),
+    UINT32_C(0x5a0a6d1f), UINT32_C(0xef2f118b), UINT32_C(0xde05980f),
+    UINT32_C(0x1ff897ff), UINT32_C(0xbdf9283b), UINT32_C(0x9c845f8b),
+    UINT32_C(0x835339f4), UINT32_C(0x3991d639), UINT32_C(0xb45f7e41),
+    UINT32_C(0xe99c7026), UINT32_C(0x2ebb4484), UINT32_C(0xe88235f5),
+    UINT32_C(0xb129a73e), UINT32_C(0xfe1deb1c), UINT32_C(0x09d1921c),
+    UINT32_C(0x06492eea), UINT32_C(0x424dd2e0), UINT32_C(0xb7246e3a),
+    UINT32_C(0xdebbc561), UINT32_C(0xfe5163ab), UINT32_C(0x3c439041),
+    UINT32_C(0xdb629599), UINT32_C(0xf534ddc0), UINT32_C(0xfc2757d1),
+    UINT32_C(0x4e441529), UINT32_C(0xa2f9836e)};
+int malbolge_guest_math_two_over_pi_interval2176(
+    MalbolgeGuestMathFixed2176Interval *output) {
+  if (output == NULL) {
+    return 0;
+  }
+  copy_fixed_limbs(output->lower.limbs, TWO_OVER_PI_LOWER_2176,
+                   FIXED_2176_LIMB_COUNT);
+  copy_fixed_limbs(output->upper.limbs, TWO_OVER_PI_UPPER_2176,
+                   FIXED_2176_LIMB_COUNT);
+  return 1;
+}
+
 static const uint32_t TWO_OVER_PI_LOWER_256[9] = {
     UINT32_C(0xdebbc561), UINT32_C(0xfe5163ab), UINT32_C(0x3c439041),
     UINT32_C(0xdb629599), UINT32_C(0xf534ddc0), UINT32_C(0xfc2757d1),
@@ -4058,24 +4119,17 @@ int malbolge_guest_math_sincos_range_interval256(
       scratch_capacity < FIXED_256_LIMB_COUNT * UINT32_C(10)) {
     return 0;
   }
-  if (magnitude_bits < BINARY64_TWO_POW_64) {
-    if (!malbolge_guest_math_sincos_range_reduce256(bits, &reduction)) {
-      return 0;
-    }
-  } else {
-    if (!malbolge_guest_math_sincos_payne_hanek_reduce256(bits, &payne_hanek)) {
-      return 0;
-    }
-    reduction.multiple = UINT64_C(0);
-    reduction.quadrant = payne_hanek.quadrant;
-    reduction.input_negative = payne_hanek.input_negative;
-    copy_fixed_256(&reduction.residual_lower,
-                   payne_hanek.residual_lower.limbs);
-    reduction.residual_lower_negative = payne_hanek.residual_lower_negative;
-    copy_fixed_256(&reduction.residual_upper,
-                   payne_hanek.residual_upper.limbs);
-    reduction.residual_upper_negative = payne_hanek.residual_upper_negative;
+  if (magnitude_bits < BINARY64_FOUR ||
+      !malbolge_guest_math_sincos_payne_hanek_reduce256(bits, &payne_hanek)) {
+    return 0;
   }
+  reduction.multiple = UINT64_C(0);
+  reduction.quadrant = payne_hanek.quadrant;
+  reduction.input_negative = payne_hanek.input_negative;
+  copy_fixed_256(&reduction.residual_lower, payne_hanek.residual_lower.limbs);
+  reduction.residual_lower_negative = payne_hanek.residual_lower_negative;
+  copy_fixed_256(&reduction.residual_upper, payne_hanek.residual_upper.limbs);
+  reduction.residual_upper_negative = payne_hanek.residual_upper_negative;
   if (!range_residual_magnitude256(&reduction, &magnitude_lower,
                                    &magnitude_upper, &sign_mode)) {
     return 0;
@@ -4390,19 +4444,19 @@ int malbolge_guest_math_sincos_payne_hanek_reduce256(
   uint32_t lower_mod4 = UINT32_C(0);
   uint32_t upper_mod4 = UINT32_C(0);
 
-  if (output == NULL || magnitude_bits < BINARY64_TWO_POW_64 ||
+  if (output == NULL || magnitude_bits < BINARY64_FOUR ||
       is_infinity(magnitude_bits) || is_nan(magnitude_bits) ||
       !positive_binary64_components(magnitude_bits, &significand, &power) ||
-      significand == UINT64_C(0) || power < INT32_C(0) ||
+      significand == UINT64_C(0) || power < INT32_C(-50) ||
       power >= (int32_t)PAYNE_HANEK_FRACTION_BITS) {
     return 0;
   }
-  shift = PAYNE_HANEK_FRACTION_BITS - (uint32_t)power;
-  if (!multiply_limbs_u64(TWO_OVER_PI_LOWER_2112,
-                          FIXED_2112_LIMB_COUNT, significand, product_lower,
+  shift = (uint32_t)((int64_t)PAYNE_HANEK_FRACTION_BITS - (int64_t)power);
+  if (!multiply_limbs_u64(TWO_OVER_PI_LOWER_2176,
+                          FIXED_2176_LIMB_COUNT, significand, product_lower,
                           PAYNE_HANEK_PRODUCT_LIMBS) ||
-      !multiply_limbs_u64(TWO_OVER_PI_UPPER_2112,
-                          FIXED_2112_LIMB_COUNT, significand, product_upper,
+      !multiply_limbs_u64(TWO_OVER_PI_UPPER_2176,
+                          FIXED_2176_LIMB_COUNT, significand, product_upper,
                           PAYNE_HANEK_PRODUCT_LIMBS) ||
       !payne_hanek_fraction_endpoint256(
           product_lower, shift, UINT32_C(1), &fraction_lower,

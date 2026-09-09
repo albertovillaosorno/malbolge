@@ -294,6 +294,16 @@ the original input sign. A 320-case deterministic corpus spans the `2^64`
 boundary through maximum finite binary64; independent Machin arithmetic agrees
 on every quadrant and its true Q256 residual is contained by every C enclosure.
 
+The periodic evaluator now uses a stronger Q2176 Payne-Hanek table for every
+finite `|x|>=4`, including the domain where the bounded reducer remains
+available separately. The 68-limb `2/pi` interval occupies one Q2176 ulp. For
+binary64 inputs at least four, the induced half-boundary rational denominator is
+below `2^1073`; 641 certified pi convergents plus Legendre prove the
+conservative
+`30*2^-2176` table uncertainty stays below that separation with about 25 bits of
+margin. This removes `q*width(pi/2)` growth from the evaluation path before
+Q256 Taylor/rounding.
+
 Periodic residuals now feed one directed trig evaluator regardless of reducer.
 `malbolge_guest_math_sincos_range_interval256` uses the bounded path below
 `2^64` and Payne-Hanek at or above `2^64`, then evaluates only the residual
