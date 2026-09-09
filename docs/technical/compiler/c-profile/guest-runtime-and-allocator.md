@@ -1107,6 +1107,16 @@ relevant half-boundary separation, leaving about 25 bits of margin. The old
 bounded reducer remains separately callable evidence, but Q256 trig evaluation
 no longer accumulates a multiple-scaled `pi/2` cell width before Taylor.
 
+Residual width is now independently bounded as well. One Q2176 reciprocal ulp
+multiplied by any finite binary64 is below `2^-1152`, far below one Q256 cell.
+Directed fractional quantization can therefore span at most two Q256 ulps.
+Because the certified `pi/2` interval is two ulps wide, has upper endpoint below
+two, and multiplies a nearest fraction of magnitude at most one half, the exact
+scaled interval is strictly narrower than five Q256 ulps.
+
+Directed product floor/ceil then gives an integer-grid width of at most six
+ulps. Product code checks that bound fail-closed before publication.
+
 
 A normalized midpoint comparator now composes those enclosures with the existing
 quadrant ordering and exact ratio cross-products. Its caller-owned scratch is

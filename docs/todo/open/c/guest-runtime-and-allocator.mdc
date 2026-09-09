@@ -717,6 +717,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   post-reduction precision/table-maker resource ceiling, not quotient selection
   or magnitude-dependent range-reduction widening.
 
+  The active reducer now also enforces a six-ulp Q256 residual-width ceiling.
+  Q2176 table uncertainty is below one Q256 cell after any finite binary64
+  multiplication; directed fraction extraction spans at most two cells. With a
+  two-ulp `pi/2` interval, `pi/2<2`, and nearest-fraction magnitude at most one
+  half, exact scaling is strictly below five ulps and final directed product
+  quantization can span at most six. A 4,103-case durable corpus reaches four
+  ulps; the runtime rejects anything above the six-ulp theorem bound.
+
 
   The normalized enclosures can now drive midpoint comparison directly. A
   `24*N` caller-owned path reuses the existing quadrant ranks and ratio

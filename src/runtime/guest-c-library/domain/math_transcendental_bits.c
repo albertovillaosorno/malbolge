@@ -4417,6 +4417,49 @@ static int scale_payne_hanek_endpoint256(
   return 1;
 }
 
+static int fixed_256_at_most_ulps(const MalbolgeGuestMathFixed256 *value,
+                                  uint32_t limit) {
+  uint32_t index = UINT32_C(1);
+  if (value == NULL || value->limbs[0] > limit) {
+    return 0;
+  }
+  while (index < FIXED_256_LIMB_COUNT) {
+    if (value->limbs[index] != UINT32_C(0)) {
+      return 0;
+    }
+    ++index;
+  }
+  return 1;
+}
+
+static int signed_fixed256_width_at_most(
+    const MalbolgeGuestMathFixed256 *lower, uint32_t lower_negative,
+    const MalbolgeGuestMathFixed256 *upper, uint32_t upper_negative,
+    uint32_t limit) {
+  MalbolgeGuestMathFixed256 width;
+  if (lower == NULL || upper == NULL || lower_negative > UINT32_C(1) ||
+      upper_negative > UINT32_C(1) ||
+      compare_signed_fixed_limbs(lower->limbs, lower_negative, upper->limbs,
+                                 upper_negative, FIXED_256_LIMB_COUNT) > 0) {
+    return 0;
+  }
+  if (lower_negative == upper_negative) {
+    if (lower_negative == UINT32_C(0)) {
+      if (!subtract_fixed_256(&width, upper, lower)) {
+        return 0;
+      }
+    } else if (!subtract_fixed_256(&width, lower, upper)) {
+      return 0;
+    }
+  } else {
+    if (!add_fixed_limbs_checked(width.limbs, lower->limbs, upper->limbs,
+                                 FIXED_256_LIMB_COUNT)) {
+      return 0;
+    }
+  }
+  return fixed_256_at_most_ulps(&width, limit);
+}
+
 static void publish_payne_hanek256(
     MalbolgeGuestMathSincosPayneHanek256 *output,
     const MalbolgeGuestMathSincosPayneHanek256 *value) {
@@ -4476,7 +4519,11 @@ int malbolge_guest_math_sincos_payne_hanek_reduce256(
   if (compare_fixed_limbs(staged.residual_lower.limbs, QUARTER_PI_UPPER_256,
                           FIXED_256_LIMB_COUNT) > 0 ||
       compare_fixed_limbs(staged.residual_upper.limbs, QUARTER_PI_UPPER_256,
-                          FIXED_256_LIMB_COUNT) > 0) {
+                          FIXED_256_LIMB_COUNT) > 0 ||
+      !signed_fixed256_width_at_most(
+          &staged.residual_lower, staged.residual_lower_negative,
+          &staged.residual_upper, staged.residual_upper_negative,
+          MALBOLGE_GUEST_MATH_PAYNE_HANEK_RESIDUAL_ULPS_MAX)) {
     return 0;
   }
   staged.quadrant = lower_mod4;

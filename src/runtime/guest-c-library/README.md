@@ -304,6 +304,16 @@ conservative
 margin. This removes `q*width(pi/2)` growth from the evaluation path before
 Q256 Taylor/rounding.
 
+The Q2176 reducer also enforces a uniform residual-width invariant. Its
+reciprocal interval induces less than one Q256 ulp before directed fractional
+quantization, so that signed fractional interval spans at most two ulps. The
+Q256 `pi/2` interval is two ulps wide, `pi/2<2`, and the nearest fraction has
+magnitude at most one half.
+
+Directed multiplication therefore yields a residual no wider than six Q256
+ulps. The reducer checks this before publication; a 4,103-case retained corpus
+reaches four ulps but the contract keeps six.
+
 Periodic residuals now feed one directed trig evaluator regardless of reducer.
 `malbolge_guest_math_sincos_range_interval256` uses the bounded path below
 `2^64` and Payne-Hanek at or above `2^64`, then evaluates only the residual
