@@ -206,6 +206,12 @@ The first retained hard seed publishes stage 2/120 limbs when only 119 are
 available, advances to stage 4/168 at 167 limbs, and certifies there with 168.
 This is fallback-policy evidence; the cheaper direct scheduler remains primary.
 
+Normalized plans have their own allocation-neutral byte query rather than being
+reinterpreted by the direct 15*N contract. Stages 0..4 translate to 288, 384,
+480, 576, and 672 bytes at alignment 4. The largest normalized plan whose byte
+extent fits in `uint32_t` is stage 44,739,239 at `0xffffffc0` bytes; the next
+plan remains valid in limbs but its byte conversion fails without publication.
+
 This height bound is exact structural evidence, not yet a quantitative
 irrationality measure for `tan(midpoint)`. Lambert still supplies only the
 non-equality/qualitative termination fact currently admitted by the repository.

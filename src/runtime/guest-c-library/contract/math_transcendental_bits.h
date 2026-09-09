@@ -515,6 +515,9 @@ int malbolge_guest_math_atan2_resume_handoff_available(
 int malbolge_guest_math_atan2_refinement_scratch_requirement(
     const MalbolgeGuestMathAtan2RefinementPlan *plan,
     MalbolgeGuestMathAtan2ScratchRequirement *output);
+int malbolge_guest_math_atan2_normalized_refinement_scratch_requirement(
+    const MalbolgeGuestMathAtan2RefinementPlan *plan,
+    MalbolgeGuestMathAtan2ScratchRequirement *output);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(

@@ -4120,11 +4120,41 @@ static int atan2_refinement_plan_matches(
          input->required_scratch_limbs == expected.required_scratch_limbs;
 }
 
+static int atan2_normalized_refinement_plan_matches(
+    const MalbolgeGuestMathAtan2RefinementPlan *input) {
+  MalbolgeGuestMathAtan2RefinementPlan expected;
+  if (input == NULL ||
+      !malbolge_guest_math_atan2_normalized_refinement_plan(input->stage,
+                                                            &expected)) {
+    return 0;
+  }
+  return input->fraction_limbs == expected.fraction_limbs &&
+         input->terms == expected.terms &&
+         input->required_scratch_limbs == expected.required_scratch_limbs;
+}
+
 int malbolge_guest_math_atan2_refinement_scratch_requirement(
     const MalbolgeGuestMathAtan2RefinementPlan *plan,
     MalbolgeGuestMathAtan2ScratchRequirement *output) {
   MalbolgeGuestMathAtan2ScratchRequirement staged;
   if (output == NULL || !atan2_refinement_plan_matches(plan) ||
+      plan->required_scratch_limbs > UINT32_MAX / UINT32_C(4)) {
+    return 0;
+  }
+  staged.limbs = plan->required_scratch_limbs;
+  staged.bytes = plan->required_scratch_limbs * UINT32_C(4);
+  staged.alignment = UINT32_C(4);
+  output->limbs = staged.limbs;
+  output->bytes = staged.bytes;
+  output->alignment = staged.alignment;
+  return 1;
+}
+
+int malbolge_guest_math_atan2_normalized_refinement_scratch_requirement(
+    const MalbolgeGuestMathAtan2RefinementPlan *plan,
+    MalbolgeGuestMathAtan2ScratchRequirement *output) {
+  MalbolgeGuestMathAtan2ScratchRequirement staged;
+  if (output == NULL || !atan2_normalized_refinement_plan_matches(plan) ||
       plan->required_scratch_limbs > UINT32_MAX / UINT32_C(4)) {
     return 0;
   }

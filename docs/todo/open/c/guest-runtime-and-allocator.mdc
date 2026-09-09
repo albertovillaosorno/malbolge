@@ -604,6 +604,13 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   certifies. This remains fallback-policy evidence rather than a scheduler
   switch.
 
+  Normalized plans now also have an allocation-neutral byte query. It validates
+  against the 24*N planner and maps stages 0..4 to 288, 384, 480, 576, and 672
+  bytes at alignment 4. Stage 44,739,239 is the last plan whose byte extent fits
+  in `uint32_t` (`0xffffffc0`); the next valid limb plan fails byte conversion
+  without publication. Direct and normalized plan queries reject each other's
+  policy, preventing silent reinterpretation of the shared plan struct.
+
   The two finite inputs to a future quantitative bound are now exposed together:
   exact reduced ratio height plus both candidate-cell midpoint shifts. A hard
   cell, its negative mirror, and a 108-bit axis-boundary cell match

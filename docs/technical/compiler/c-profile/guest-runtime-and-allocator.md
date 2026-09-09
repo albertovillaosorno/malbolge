@@ -982,6 +982,13 @@ Q128/16 120-limb plan, 167 publishes Q192/24 at 168 limbs, and 168 certifies.
 The direct scheduler remains the production path because it is cheaper on much
 of this corpus.
 
+A separate scratch-requirement query validates normalized plans against the
+24*N planner before translating them to guest byte extents. Stages 0..4 require
+288, 384, 480, 576, and 672 bytes with alignment 4. Stage 44,739,239 is the last
+normalized plan representable in a `uint32_t` byte extent (`0xffffffc0`); the
+next plan is still valid in limbs but byte conversion fails atomically. Direct
+and normalized plans are intentionally rejected by each other's byte query.
+
 This supplies the finite rational-height parameter required by any future
 quantitative Lambert/Lindemann separation bound. It does not itself lower-bound
 `|tan(midpoint)-p/q|`, so the finite resource proof remains open.

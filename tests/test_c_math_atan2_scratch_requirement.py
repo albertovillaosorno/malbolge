@@ -128,3 +128,90 @@ int main(void) {
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     executed = _run([str(executable)], tmp_path)
     assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def test_normalized_scratch_requirement_matches_guest_u32_extent(
+    tmp_path: Path,
+) -> None:
+    """Translate only normalized 24*N plans to byte extents atomically."""
+    source = r"""#include "math_transcendental_bits.h"
+#include "guest_runtime.h"
+#include <stdint.h>
+
+static int unchanged(const MalbolgeGuestMathAtan2ScratchRequirement *value) {
+  return value->limbs == UINT32_C(11) && value->bytes == UINT32_C(22) &&
+         value->alignment == UINT32_C(33);
+}
+
+int main(void) {
+  static const uint32_t stages[5] = {
+      UINT32_C(0), UINT32_C(1), UINT32_C(2), UINT32_C(3), UINT32_C(4)};
+  static const uint32_t limbs[5] = {
+      UINT32_C(72), UINT32_C(96), UINT32_C(120),
+      UINT32_C(144), UINT32_C(168)};
+  static const uint32_t bytes[5] = {
+      UINT32_C(288), UINT32_C(384), UINT32_C(480),
+      UINT32_C(576), UINT32_C(672)};
+  MalbolgeGuestMathAtan2RefinementPlan plan;
+  MalbolgeGuestMathAtan2ScratchRequirement requirement;
+  uint32_t index = UINT32_C(0);
+  if ((MALBOLGE_GUEST_HEAP_ALIGNMENT % UINT32_C(4)) != UINT32_C(0)) return 90;
+  while (index < UINT32_C(5)) {
+    if (!malbolge_guest_math_atan2_normalized_refinement_plan(
+            stages[index], &plan) ||
+        !malbolge_guest_math_atan2_normalized_refinement_scratch_requirement(
+            &plan, &requirement) || requirement.limbs != limbs[index] ||
+        requirement.bytes != bytes[index] ||
+        requirement.alignment != UINT32_C(4)) return 91;
+    ++index;
+  }
+  if (!malbolge_guest_math_atan2_normalized_refinement_plan(
+          UINT32_C(44739239), &plan) ||
+      !malbolge_guest_math_atan2_normalized_refinement_scratch_requirement(
+          &plan, &requirement) ||
+      requirement.limbs != UINT32_C(1073741808) ||
+      requirement.bytes != UINT32_C(4294967232) ||
+      requirement.alignment != UINT32_C(4)) return 92;
+  requirement.limbs = UINT32_C(11);
+  requirement.bytes = UINT32_C(22);
+  requirement.alignment = UINT32_C(33);
+  if (!malbolge_guest_math_atan2_normalized_refinement_plan(
+          UINT32_C(44739240), &plan) ||
+      malbolge_guest_math_atan2_normalized_refinement_scratch_requirement(
+          &plan, &requirement) || !unchanged(&requirement)) return 93;
+  if (!malbolge_guest_math_atan2_refinement_plan(UINT32_C(2), &plan) ||
+      malbolge_guest_math_atan2_normalized_refinement_scratch_requirement(
+          &plan, &requirement) || !unchanged(&requirement)) return 94;
+  if (!malbolge_guest_math_atan2_normalized_refinement_plan(
+          UINT32_C(2), &plan) ||
+      malbolge_guest_math_atan2_refinement_scratch_requirement(
+          &plan, &requirement) || !unchanged(&requirement)) return 95;
+  plan.terms += UINT32_C(1);
+  if (malbolge_guest_math_atan2_normalized_refinement_scratch_requirement(
+          &plan, &requirement) || !unchanged(&requirement)) return 96;
+  return 0;
+}
+"""
+    harness = tmp_path / "atan2-normalized-scratch-requirement.c"
+    executable = tmp_path / "atan2-normalized-scratch-requirement"
+    _ = harness.write_text(source, encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{MATH_CONTRACT}",
+            f"-I{RUNTIME_CONTRACT}",
+            str(SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
