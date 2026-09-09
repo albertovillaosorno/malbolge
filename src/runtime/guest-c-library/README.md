@@ -281,6 +281,19 @@ the relevant boundary ratio below five. This proves the table is wide enough
 to select the nearest quotient for every finite binary64 input above the
 bounded Q256 region; extraction and residual transport remain separate units.
 
+The full-domain extractor is now executable for finite `|x|>=2^64`.
+`malbolge_guest_math_sincos_payne_hanek_reduce256` multiplies the 53-bit
+significand by both Q2112 reciprocal endpoints into 68-limb temporaries, reads
+only the two quotient low bits plus the half/sticky region needed by
+nearest-even, and never materializes the enormous quotient itself.
+
+The same product supplies a signed fractional distance from that nearest
+integer. Directed extraction to Q256 and multiplication by the certified
+Q256 `pi/2` interval produce a residual inside `+/-pi/4`, plus `q mod 4` and
+the original input sign. A 320-case deterministic corpus spans the `2^64`
+boundary through maximum finite binary64; independent Machin arithmetic agrees
+on every quadrant and its true Q256 residual is contained by every C enclosure.
+
 The bounded residual now feeds directed trig evaluation too.
 `malbolge_guest_math_sincos_range_interval256` evaluates sine and cosine only on
 the reduced magnitude inside `pi/4`, reflects a negative or cross-zero residual,

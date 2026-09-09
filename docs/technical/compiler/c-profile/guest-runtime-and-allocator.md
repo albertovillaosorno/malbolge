@@ -1065,6 +1065,21 @@ width and half-boundary scaling. The proof establishes quotient sufficiency of
 the Q2112 constant; the product bit extraction and Q256 residual formation are
 validated independently.
 
+The corresponding full-domain extractor now covers every finite magnitude from
+`2^64` through maximum binary64. It performs an exact 53-by-2112-bit product in
+68 limbs for each reciprocal endpoint, extracts nearest-even `q mod 4` directly
+around the binary point, and derives the signed fractional distance without
+storing the high quotient bits. The Q2112 interval is narrow enough that both
+endpoints must select the same quotient by the preceding certificate.
+
+That fractional enclosure is quantized outward to Q256 and scaled by the
+existing directed `pi/2` cell, yielding a residual in `+/-pi/4`. Independent
+Machin `Fraction` arithmetic checks 320 deterministic inputs spread across the
+remaining exponent range, including maximum finite, and matches the quadrant
+while lying inside every returned residual. This closes full-domain quotient
+and residual geometry; it does not by itself prove Q256 final-rounding
+sufficiency for all inputs.
+
 The bounded reducer now composes with Q32.256 trig evaluation. Residuals are
 first converted to a nonnegative magnitude interval for the existing directed
 Taylor

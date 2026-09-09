@@ -188,6 +188,15 @@ typedef struct MalbolgeGuestMathSincosRangeReduction256 {
   uint32_t residual_upper_negative;
 } MalbolgeGuestMathSincosRangeReduction256;
 
+typedef struct MalbolgeGuestMathSincosPayneHanek256 {
+  uint32_t quadrant;
+  uint32_t input_negative;
+  MalbolgeGuestMathFixed256 residual_lower;
+  uint32_t residual_lower_negative;
+  MalbolgeGuestMathFixed256 residual_upper;
+  uint32_t residual_upper_negative;
+} MalbolgeGuestMathSincosPayneHanek256;
+
 typedef struct MalbolgeGuestMathSignedFixed256Interval {
   MalbolgeGuestMathFixed256 lower;
   uint32_t lower_negative;
@@ -389,6 +398,8 @@ int malbolge_guest_math_atan2_interval256(
     MalbolgeGuestMathAtan2Interval256 *output);
 int malbolge_guest_math_sincos_range_reduce256(
     uint64_t bits, MalbolgeGuestMathSincosRangeReduction256 *output);
+int malbolge_guest_math_sincos_payne_hanek_reduce256(
+    uint64_t bits, MalbolgeGuestMathSincosPayneHanek256 *output);
 int malbolge_guest_math_sincos_range_interval256(
     uint64_t bits, uint32_t terms, MalbolgeGuestMathSincosInterval256 *output,
     uint32_t *scratch, uint32_t scratch_capacity);

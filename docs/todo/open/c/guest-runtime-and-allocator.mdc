@@ -693,6 +693,19 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   quotient-separation provenance, not yet the full product extraction/residual
   implementation or the final full-domain precision ceiling.
 
+  The high-magnitude Payne-Hanek extractor is now executable too. Finite
+  `|x|>=2^64` inputs multiply the 53-bit significand by both 66-limb reciprocal
+  endpoints into fixed 68-limb temporaries. Nearest-even `q mod 4` is read from
+  the local integer/half/sticky bits, while the high quotient is never stored.
+
+  The fractional remainder is directed to Q256 and multiplied by the certified
+  `pi/2` cell to obtain a signed `+/-pi/4` residual. A 320-case deterministic
+  Machin oracle spans the `2^64` boundary through maximum finite and confirms
+  every quadrant plus residual containment. Together with the bounded reducer,
+  periodic quotient/residual geometry now covers all finite binary64. Remaining
+  work is full-domain trig refinement/final-rounding resource closure, not range
+  quotient availability.
+
 
   The normalized enclosures can now drive midpoint comparison directly. A
   `24*N` caller-owned path reuses the existing quadrant ranks and ratio

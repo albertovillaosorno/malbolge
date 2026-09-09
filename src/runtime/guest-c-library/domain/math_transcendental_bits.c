@@ -68,6 +68,8 @@
 #define FIXED_224_FRACTION_BITS INT32_C(224)
 #define FIXED_256_LIMB_COUNT UINT32_C(9)
 #define FIXED_2112_LIMB_COUNT UINT32_C(66)
+#define PAYNE_HANEK_PRODUCT_LIMBS UINT32_C(68)
+#define PAYNE_HANEK_FRACTION_BITS UINT32_C(2112)
 #define FIXED_256_FRACTION_BITS INT32_C(256)
 #define EXACT_RATIO_COMPONENT_LIMIT UINT64_C(0x0100000000000000)
 #define FIXED_MAX_LIMB_COUNT UINT32_C(11)
@@ -4208,6 +4210,205 @@ static uint32_t fixed_limbs_any_below(const uint32_t *value, uint32_t limit) {
     }
   }
   return UINT32_C(0);
+}
+
+static int payne_hanek_round_mod4(
+    const uint32_t *product, uint32_t shift, uint32_t *mod4,
+    uint32_t *round_up) {
+  uint32_t integer_low = UINT32_C(0);
+  uint32_t half = UINT32_C(0);
+  uint32_t sticky = UINT32_C(0);
+  uint32_t up = UINT32_C(0);
+  if (product == NULL || mod4 == NULL || round_up == NULL ||
+      shift <= UINT32_C(256) ||
+      shift + UINT32_C(1) >= PAYNE_HANEK_PRODUCT_LIMBS * UINT32_C(32)) {
+    return 0;
+  }
+  integer_low = fixed_limbs_bit(product, shift) |
+                (fixed_limbs_bit(product, shift + UINT32_C(1)) << UINT32_C(1));
+  half = fixed_limbs_bit(product, shift - UINT32_C(1));
+  sticky = fixed_limbs_any_below(product, shift - UINT32_C(1));
+  up = half != UINT32_C(0) &&
+               (sticky != UINT32_C(0) || (integer_low & UINT32_C(1)) != 0)
+           ? UINT32_C(1)
+           : UINT32_C(0);
+  *mod4 = (integer_low + up) & UINT32_C(3);
+  *round_up = up;
+  return 1;
+}
+
+static int payne_hanek_fraction_floor256(
+    const uint32_t *product, uint32_t shift, MalbolgeGuestMathFixed256 *output,
+    uint32_t *discarded) {
+  uint32_t index = UINT32_C(0);
+  if (product == NULL || output == NULL || discarded == NULL ||
+      shift < UINT32_C(256)) {
+    return 0;
+  }
+  zero_fixed_256(output);
+  while (index < UINT32_C(256)) {
+    const uint32_t source_bit = shift - UINT32_C(256) + index;
+    if (fixed_limbs_bit(product, source_bit) != UINT32_C(0)) {
+      output->limbs[index / UINT32_C(32)] |=
+          UINT32_C(1) << (index % UINT32_C(32));
+    }
+    ++index;
+  }
+  *discarded =
+      fixed_limbs_any_below(product, shift - UINT32_C(256));
+  return 1;
+}
+
+static int fraction_complement256(const MalbolgeGuestMathFixed256 *input,
+                                  MalbolgeGuestMathFixed256 *output) {
+  uint32_t index = UINT32_C(0);
+  uint64_t carry = UINT64_C(1);
+  if (input == NULL || output == NULL || fixed_256_is_zero(input)) {
+    return 0;
+  }
+  while (index < UINT32_C(8)) {
+    const uint64_t cell =
+        (uint64_t)(~input->limbs[index]) + carry;
+    output->limbs[index] = (uint32_t)cell;
+    carry = cell >> UINT32_C(32);
+    ++index;
+  }
+  output->limbs[8] = UINT32_C(0);
+  return carry == UINT64_C(0) ? 1 : 0;
+}
+
+static int payne_hanek_fraction_endpoint256(
+    const uint32_t *product, uint32_t shift, uint32_t lower_endpoint,
+    MalbolgeGuestMathFixed256 *magnitude, uint32_t *negative,
+    uint32_t *mod4) {
+  MalbolgeGuestMathFixed256 fraction;
+  uint32_t discarded = UINT32_C(0);
+  uint32_t round_up = UINT32_C(0);
+  if (magnitude == NULL || negative == NULL || mod4 == NULL ||
+      !payne_hanek_round_mod4(product, shift, mod4, &round_up) ||
+      !payne_hanek_fraction_floor256(product, shift, &fraction, &discarded)) {
+    return 0;
+  }
+  if (round_up == UINT32_C(0)) {
+    copy_fixed_256(magnitude, fraction.limbs);
+    if (lower_endpoint == UINT32_C(0) && discarded != UINT32_C(0)) {
+      increment_fixed_256(magnitude);
+    }
+    *negative = UINT32_C(0);
+    return 1;
+  }
+  if (!fraction_complement256(&fraction, magnitude)) {
+    return 0;
+  }
+  if (lower_endpoint == UINT32_C(0) && discarded != UINT32_C(0)) {
+    decrement_fixed_256(magnitude);
+  }
+  *negative = fixed_256_is_zero(magnitude) ? UINT32_C(0) : UINT32_C(1);
+  return 1;
+}
+
+static int scale_payne_hanek_endpoint256(
+    const MalbolgeGuestMathFixed256 *input, uint32_t negative,
+    uint32_t lower_endpoint, MalbolgeGuestMathFixed256 *output,
+    uint32_t *output_negative) {
+  MalbolgeGuestMathFixed256 half_pi_lower;
+  MalbolgeGuestMathFixed256 half_pi_upper;
+  uint32_t discarded = UINT32_C(0);
+  const uint32_t *factor = NULL;
+  uint32_t round_outward = UINT32_C(0);
+  if (input == NULL || output == NULL || output_negative == NULL ||
+      negative > UINT32_C(1)) {
+    return 0;
+  }
+  copy_fixed_256(&half_pi_lower, QUARTER_PI_LOWER_256);
+  copy_fixed_256(&half_pi_upper, QUARTER_PI_UPPER_256);
+  multiply_fixed_256_small(&half_pi_lower, UINT32_C(2));
+  multiply_fixed_256_small(&half_pi_upper, UINT32_C(2));
+  if (negative == UINT32_C(0)) {
+    factor = lower_endpoint != UINT32_C(0) ? half_pi_lower.limbs
+                                           : half_pi_upper.limbs;
+    round_outward = lower_endpoint == UINT32_C(0) ? UINT32_C(1) : UINT32_C(0);
+  } else {
+    factor = lower_endpoint != UINT32_C(0) ? half_pi_upper.limbs
+                                           : half_pi_lower.limbs;
+    round_outward = lower_endpoint != UINT32_C(0) ? UINT32_C(1) : UINT32_C(0);
+  }
+  multiply_fixed_limbs_floor(input->limbs, factor, FIXED_256_LIMB_COUNT,
+                             UINT32_C(8), output->limbs, &discarded);
+  if (round_outward != UINT32_C(0) && discarded != UINT32_C(0)) {
+    increment_fixed_256(output);
+  }
+  *output_negative = fixed_256_is_zero(output) ? UINT32_C(0) : negative;
+  return 1;
+}
+
+static void publish_payne_hanek256(
+    MalbolgeGuestMathSincosPayneHanek256 *output,
+    const MalbolgeGuestMathSincosPayneHanek256 *value) {
+  output->quadrant = value->quadrant;
+  output->input_negative = value->input_negative;
+  copy_fixed_256(&output->residual_lower, value->residual_lower.limbs);
+  output->residual_lower_negative = value->residual_lower_negative;
+  copy_fixed_256(&output->residual_upper, value->residual_upper.limbs);
+  output->residual_upper_negative = value->residual_upper_negative;
+}
+
+int malbolge_guest_math_sincos_payne_hanek_reduce256(
+    uint64_t bits, MalbolgeGuestMathSincosPayneHanek256 *output) {
+  const uint64_t magnitude_bits = bits & ~BINARY64_SIGN;
+  uint32_t product_lower[PAYNE_HANEK_PRODUCT_LIMBS];
+  uint32_t product_upper[PAYNE_HANEK_PRODUCT_LIMBS];
+  MalbolgeGuestMathFixed256 fraction_lower;
+  MalbolgeGuestMathFixed256 fraction_upper;
+  MalbolgeGuestMathSincosPayneHanek256 staged;
+  uint64_t significand = UINT64_C(0);
+  int32_t power = INT32_C(0);
+  uint32_t shift = UINT32_C(0);
+  uint32_t lower_negative = UINT32_C(0);
+  uint32_t upper_negative = UINT32_C(0);
+  uint32_t lower_mod4 = UINT32_C(0);
+  uint32_t upper_mod4 = UINT32_C(0);
+
+  if (output == NULL || magnitude_bits < BINARY64_TWO_POW_64 ||
+      is_infinity(magnitude_bits) || is_nan(magnitude_bits) ||
+      !positive_binary64_components(magnitude_bits, &significand, &power) ||
+      significand == UINT64_C(0) || power < INT32_C(0) ||
+      power >= (int32_t)PAYNE_HANEK_FRACTION_BITS) {
+    return 0;
+  }
+  shift = PAYNE_HANEK_FRACTION_BITS - (uint32_t)power;
+  if (!multiply_limbs_u64(TWO_OVER_PI_LOWER_2112,
+                          FIXED_2112_LIMB_COUNT, significand, product_lower,
+                          PAYNE_HANEK_PRODUCT_LIMBS) ||
+      !multiply_limbs_u64(TWO_OVER_PI_UPPER_2112,
+                          FIXED_2112_LIMB_COUNT, significand, product_upper,
+                          PAYNE_HANEK_PRODUCT_LIMBS) ||
+      !payne_hanek_fraction_endpoint256(
+          product_lower, shift, UINT32_C(1), &fraction_lower,
+          &lower_negative, &lower_mod4) ||
+      !payne_hanek_fraction_endpoint256(
+          product_upper, shift, UINT32_C(0), &fraction_upper,
+          &upper_negative, &upper_mod4) ||
+      lower_mod4 != upper_mod4 ||
+      !scale_payne_hanek_endpoint256(
+          &fraction_lower, lower_negative, UINT32_C(1),
+          &staged.residual_lower, &staged.residual_lower_negative) ||
+      !scale_payne_hanek_endpoint256(
+          &fraction_upper, upper_negative, UINT32_C(0),
+          &staged.residual_upper, &staged.residual_upper_negative)) {
+    return 0;
+  }
+  if (compare_fixed_limbs(staged.residual_lower.limbs, QUARTER_PI_UPPER_256,
+                          FIXED_256_LIMB_COUNT) > 0 ||
+      compare_fixed_limbs(staged.residual_upper.limbs, QUARTER_PI_UPPER_256,
+                          FIXED_256_LIMB_COUNT) > 0) {
+    return 0;
+  }
+  staged.quadrant = lower_mod4;
+  staged.input_negative =
+      (bits & BINARY64_SIGN) != UINT64_C(0) ? UINT32_C(1) : UINT32_C(0);
+  publish_payne_hanek256(output, &staged);
+  return 1;
 }
 
 static uint64_t fixed_limbs_nearest_binary64(const uint32_t *value,
