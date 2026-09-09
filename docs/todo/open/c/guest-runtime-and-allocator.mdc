@@ -518,6 +518,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   hard-cell certification, release, and reuse. Math remains allocator-free; the
   harness performs the bind and runtime allocation calls directly.
 
+  Test-only normalized ownership is now covered by the same heap contract. After
+  explicit bind, the retained hard seed grows 288 -> 384 -> 480 -> 576 -> 672
+  bytes, certifies at normalized stage 4, releases the block, and reuses the
+  arena. Production math still performs no allocation and lane 9 still owns the
+  startup-binding proof.
+
   Reduced input-ratio height is now exact and full-domain bounded. Every finite
   binary64 is an integer multiple of `2^-1074` with multiplier below `2^2098`,
   so reduced `|y/x|` numerator and denominator have at most 2,098 bits; the two

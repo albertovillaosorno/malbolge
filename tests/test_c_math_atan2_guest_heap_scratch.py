@@ -28,7 +28,7 @@
 # - Summary:
 #   - Grows guest-heap scratch through the current adaptive retry sequence.
 # - Description:
-#   - Proves 180 -> 240 -> 300 byte allocation growth can drive certification.
+#   - Proves direct 180/240/300 and normalized 288..672 byte growth.
 # - Usage:
 #   - Collected with repository-pinned native Clang on supported hosts.
 # - Defaults:
@@ -188,6 +188,130 @@ def test_guest_heap_can_grow_atan_refinement_scratch(tmp_path: Path) -> None:
     harness = tmp_path / "atan2-guest-heap-scratch.c"
     executable = tmp_path / "atan2-guest-heap-scratch"
     _ = harness.write_text(_source(), encoding="utf-8")
+    compiled = _run(
+        [
+            str(CLANG),
+            "-std=c23",
+            "-Wall",
+            "-Wextra",
+            "-Wpedantic",
+            "-Werror",
+            f"-I{MATH_CONTRACT}",
+            f"-I{RUNTIME_CONTRACT}",
+            str(MATH_SOURCE),
+            str(HEAP_SOURCE),
+            str(STARTUP_SOURCE),
+            str(harness),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def _normalized_source() -> str:
+    return f"""#include \"math_transcendental_bits.h\"
+#include \"guest_runtime.h\"
+#include <stddef.h>
+#include <stdint.h>
+
+static int next_requirement(
+    const MalbolgeGuestMathAtan2RefinementProgress *progress,
+    MalbolgeGuestMathAtan2ScratchRequirement *requirement) {{
+  return malbolge_guest_math_atan2_normalized_refinement_scratch_requirement(
+      &progress->plan, requirement);
+}}
+
+int main(void) {{
+  alignas(16) uint8_t arena[2048] = {{0}};
+  const uint64_t y = UINT64_C(0x{HARD_Y:016x});
+  const uint64_t x = UINT64_C(0x{HARD_X:016x});
+  uint64_t candidate = UINT64_C(0);
+  MalbolgeGuestMathAtan2RefinementPlan plan;
+  MalbolgeGuestMathAtan2RefinementProgress progress;
+  MalbolgeGuestMathAtan2ScratchRequirement requirement;
+  void *buffer = (void *)(uintptr_t)1U;
+  void *resized = NULL;
+
+  if (malbolge_guest_runtime_allocate(UINT32_C(672), &buffer) !=
+          MALBOLGE_GUEST_RUNTIME_NOT_INITIALIZED ||
+      buffer != NULL) return 101;
+  if (malbolge_guest_runtime_bind_heap(arena, (uint32_t)sizeof(arena)) !=
+      MALBOLGE_GUEST_RUNTIME_VALID) return 102;
+  if (!malbolge_guest_math_atan2_unique_binary64(y, x, &candidate) ||
+      candidate != UINT64_C(0x{HARD_EXPECTED:016x}) ||
+      !malbolge_guest_math_atan2_normalized_refinement_plan(
+          UINT32_C(0), &plan) ||
+      !malbolge_guest_math_atan2_normalized_refinement_scratch_requirement(
+          &plan, &requirement) || requirement.bytes != UINT32_C(288) ||
+      requirement.limbs != UINT32_C(72)) return 103;
+  if (malbolge_guest_runtime_allocate(requirement.bytes, &buffer) !=
+          MALBOLGE_GUEST_RUNTIME_VALID || buffer == NULL) return 104;
+
+  if (!malbolge_guest_math_atan2_normalized_refine_available(
+          y, x, candidate, UINT32_C(0), (uint32_t *)buffer,
+          requirement.limbs, &progress) || progress.certified != UINT32_C(0) ||
+      progress.plan.stage != UINT32_C(1) || !next_requirement(
+          &progress, &requirement) || requirement.bytes != UINT32_C(384) ||
+      requirement.limbs != UINT32_C(96)) return 105;
+  if (malbolge_guest_runtime_resize(buffer, requirement.bytes, &resized) !=
+          MALBOLGE_GUEST_RUNTIME_VALID || resized == NULL) return 106;
+  buffer = resized;
+
+  if (!malbolge_guest_math_atan2_normalized_refine_available(
+          y, x, candidate, progress.plan.stage, (uint32_t *)buffer,
+          requirement.limbs, &progress) || progress.certified != UINT32_C(0) ||
+      progress.plan.stage != UINT32_C(2) || !next_requirement(
+          &progress, &requirement) || requirement.bytes != UINT32_C(480) ||
+      requirement.limbs != UINT32_C(120)) return 107;
+  if (malbolge_guest_runtime_resize(buffer, requirement.bytes, &resized) !=
+          MALBOLGE_GUEST_RUNTIME_VALID || resized == NULL) return 108;
+  buffer = resized;
+
+  if (!malbolge_guest_math_atan2_normalized_refine_available(
+          y, x, candidate, progress.plan.stage, (uint32_t *)buffer,
+          requirement.limbs, &progress) || progress.certified != UINT32_C(0) ||
+      progress.plan.stage != UINT32_C(3) || !next_requirement(
+          &progress, &requirement) || requirement.bytes != UINT32_C(576) ||
+      requirement.limbs != UINT32_C(144)) return 109;
+  if (malbolge_guest_runtime_resize(buffer, requirement.bytes, &resized) !=
+          MALBOLGE_GUEST_RUNTIME_VALID || resized == NULL) return 110;
+  buffer = resized;
+
+  if (!malbolge_guest_math_atan2_normalized_refine_available(
+          y, x, candidate, progress.plan.stage, (uint32_t *)buffer,
+          requirement.limbs, &progress) || progress.certified != UINT32_C(0) ||
+      progress.plan.stage != UINT32_C(4) || !next_requirement(
+          &progress, &requirement) || requirement.bytes != UINT32_C(672) ||
+      requirement.limbs != UINT32_C(168)) return 111;
+  if (malbolge_guest_runtime_resize(buffer, requirement.bytes, &resized) !=
+          MALBOLGE_GUEST_RUNTIME_VALID || resized == NULL) return 112;
+  buffer = resized;
+
+  if (!malbolge_guest_math_atan2_normalized_refine_available(
+          y, x, candidate, progress.plan.stage, (uint32_t *)buffer,
+          requirement.limbs, &progress) || progress.certified != UINT32_C(1) ||
+      progress.plan.stage != UINT32_C(4)) return 113;
+  if (malbolge_guest_runtime_release(buffer) != MALBOLGE_GUEST_RUNTIME_VALID)
+    return 114;
+  buffer = NULL;
+  if (malbolge_guest_runtime_allocate(UINT32_C(672), &buffer) !=
+          MALBOLGE_GUEST_RUNTIME_VALID || buffer == NULL) return 115;
+  if (malbolge_guest_runtime_release(buffer) != MALBOLGE_GUEST_RUNTIME_VALID)
+    return 116;
+  return 0;
+}}
+"""
+
+
+def test_guest_heap_can_grow_normalized_atan_scratch(tmp_path: Path) -> None:
+    """Grow 288/384/480/576/672-byte normalized scratch and certify."""
+    harness = tmp_path / "atan2-normalized-guest-heap-scratch.c"
+    executable = tmp_path / "atan2-normalized-guest-heap-scratch"
+    _ = harness.write_text(_normalized_source(), encoding="utf-8")
     compiled = _run(
         [
             str(CLANG),

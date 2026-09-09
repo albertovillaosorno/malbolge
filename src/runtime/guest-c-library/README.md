@@ -566,6 +566,11 @@ ownership. Before binding, a 300-byte runtime allocation reports
 retry sequence allocates 180 bytes, resizes to 240 and 300 bytes as plans grow,
 certifies the hard cell, releases the block, and successfully allocates again.
 
+The normalized fallback has equivalent test-only heap evidence after the same
+explicit bind. Its retained hard seed grows scratch through
+288 -> 384 -> 480 -> 576 -> 672 bytes, certifies at normalized stage 4, then
+releases and reuses the arena. Production math remains allocator-free.
+
 This evidence links the byte query to real guest-heap semantics, including
 resize
 and release, but production math still never calls the allocator. The test binds

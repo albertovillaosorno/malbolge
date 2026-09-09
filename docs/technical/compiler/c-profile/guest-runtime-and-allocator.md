@@ -877,6 +877,12 @@ for
 later retries, reaches `REFINED_RESOLVED`, releases the allocation, and confirms
 that a fresh allocation succeeds afterward.
 
+The same explicitly bound heap also drives the normalized fallback without any
+production allocator dependency. The retained hard seed allocates 288 bytes,
+resizes through 384, 480, 576, and 672 bytes, certifies at normalized stage 4,
+then releases and reuses the allocation. Pre-bind allocation remains
+`NOT_INITIALIZED`.
+
 The harness calls `malbolge_guest_runtime_bind_heap`, allocation, resize, and
 release directly; the math implementation remains allocator-free. This evidence
 therefore proves compatibility with the existing guest heap once binding exists,
