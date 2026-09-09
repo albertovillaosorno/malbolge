@@ -84,8 +84,8 @@ def _atan_reciprocal_bounds(
         term *= square
     omitted = term / (2 * terms + 1)
     if terms % 2 == 0:
-        return total - omitted, total
-    return total, total + omitted
+        return total, total + omitted
+    return total - omitted, total
 
 
 def _quarter_pi_bounds() -> tuple[Fraction, Fraction]:

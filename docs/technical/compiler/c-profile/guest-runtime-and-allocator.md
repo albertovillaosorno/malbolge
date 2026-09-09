@@ -1050,6 +1050,22 @@ multiples from 3 through one billion matches an independent Machin/`Fraction`
 reconstruction limb-for-limb. Larger finite inputs still require wider
 Payne-Hanek-style quotient/constant geometry.
 
+The bounded reducer now composes with Q32.256 trig evaluation. Residuals are
+first converted to a nonnegative magnitude interval for the existing directed
+Taylor
+kernel; negative residuals reflect sine, cross-zero residuals use a symmetric
+sine enclosure and cosine's even maximum at zero, and `q mod 4` then rotates the
+two intervals. The original input sign is applied only to sine. The path reuses
+90 caller-owned scratch limbs and stages its signed outputs.
+
+Independent Machin plus 40-term rational Taylor authority encloses both final
+intervals for 83 retained values around selected `pi/2` multiples and both input
+signs. Each of those 83 sine intervals and 83 cosine intervals also rounds to a
+single binary64 word at Q256/24; the operation-selecting unique gate matches the
+explicit interval-plus-rounding composition. Any Q256 ambiguity remains a hard
+nonpublication at this bounded layer. Neither these 166 successful roundings nor
+the `2^31` reducer ceiling establish a full binary64 precision/resource bound.
+
 
 A normalized midpoint comparator now composes those enclosures with the existing
 quadrant ordering and exact ratio cross-products. Its caller-owned scratch is

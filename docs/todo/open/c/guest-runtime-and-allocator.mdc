@@ -666,6 +666,20 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   one billion. Full binary64 still needs a wider Payne-Hanek-style reducer; this
   bounded unit is not a full-domain claim.
 
+  The bounded residual is now evaluated through the directed Q32.256 sine/cosine
+  kernel and rotated by `q mod 4`; negative and cross-zero residuals are handled
+  by exact odd/even symmetry before quadrant transport. The operation uses 90
+  caller-owned scratch limbs and publishes both signed intervals atomically.
+
+  Independent Machin plus 40-term rational Taylor bounds enclose both outputs
+  for 83 retained `pi/2`-neighbor inputs across both signs. Q256/24 then rounds
+  all
+  83 sine and all 83 cosine intervals uniquely, and the final bounded gate
+  matches explicit interval-plus-rounding composition. Q256 ambiguity remains
+  fail closed. This extends correctly-rounded execution far beyond four, but
+  full-domain Payne-Hanek geometry and a global precision/resource argument are
+  still required before `sin`/`cos` become source-available.
+
 
   The normalized enclosures can now drive midpoint comparison directly. A
   `24*N` caller-owned path reuses the existing quadrant ranks and ratio

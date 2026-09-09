@@ -267,6 +267,22 @@ re-derives both `pi/4` and `2/pi` Q256 cells, then matches every residual limb
 for 512 fixed-seed values plus binary64 neighbors of selected `pi/2` multiples.
 Magnitudes at least `2^31` remain outside this bounded reducer.
 
+The bounded residual now feeds directed trig evaluation too.
+`malbolge_guest_math_sincos_range_interval256` evaluates sine and cosine only on
+the reduced magnitude inside `pi/4`, reflects a negative or cross-zero residual,
+and then applies `q mod 4` plus the original input sign. It uses the existing
+Q32.256 Taylor machinery with 90 caller-owned scratch limbs and stages both
+signed output intervals before publication.
+
+Independent 40-term rational Taylor bounds, combined with the Machin residual
+authority, enclose both rotated outputs for 83 retained neighbors of selected
+`pi/2` multiples in both signs. On that same bounded corpus, Q256 with 24 terms
+rounds uniquely for all 83 sine and all 83 cosine intervals. The separate
+`malbolge_guest_math_sincos_range_unique_binary64` gate publishes only when the
+signed endpoint rounder agrees; an ambiguous Q256 interval remains fail closed.
+This is bounded correctly-rounded evidence through `2^31`, not proof that Q256
+or this fixed reducer suffices for every binary64 input.
+
 
 A parallel midpoint comparator now consumes that normalized sin/cos path before
 the existing branch-rank and cross-product logic. It requires caller-owned

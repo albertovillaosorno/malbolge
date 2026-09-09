@@ -178,6 +178,18 @@ typedef struct MalbolgeGuestMathSincosRangeReduction256 {
   uint32_t residual_upper_negative;
 } MalbolgeGuestMathSincosRangeReduction256;
 
+typedef struct MalbolgeGuestMathSignedFixed256Interval {
+  MalbolgeGuestMathFixed256 lower;
+  uint32_t lower_negative;
+  MalbolgeGuestMathFixed256 upper;
+  uint32_t upper_negative;
+} MalbolgeGuestMathSignedFixed256Interval;
+
+typedef struct MalbolgeGuestMathSincosInterval256 {
+  MalbolgeGuestMathSignedFixed256Interval sin;
+  MalbolgeGuestMathSignedFixed256Interval cos;
+} MalbolgeGuestMathSincosInterval256;
+
 typedef struct MalbolgeGuestMathDyadic {
   uint64_t numerator;
   uint32_t denominator_shift;
@@ -365,6 +377,12 @@ int malbolge_guest_math_atan2_interval256(
     MalbolgeGuestMathAtan2Interval256 *output);
 int malbolge_guest_math_sincos_range_reduce256(
     uint64_t bits, MalbolgeGuestMathSincosRangeReduction256 *output);
+int malbolge_guest_math_sincos_range_interval256(
+    uint64_t bits, uint32_t terms, MalbolgeGuestMathSincosInterval256 *output,
+    uint32_t *scratch, uint32_t scratch_capacity);
+int malbolge_guest_math_sincos_range_unique_binary64(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    uint64_t *output_bits, uint32_t *scratch, uint32_t scratch_capacity);
 int malbolge_guest_math_fixed192_unique_binary64(
     const MalbolgeGuestMathFixed192Interval *input, uint64_t *output_bits);
 int malbolge_guest_math_fixed224_unique_binary64(
