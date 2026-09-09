@@ -1618,6 +1618,135 @@ static int signed_fixed_interval_proven_sign(
   return 0;
 }
 
+static int signed_interval_magnitude_bounds(
+    const uint32_t *lower, uint32_t lower_negative, const uint32_t *upper,
+    uint32_t upper_negative, uint32_t limb_count,
+    const uint32_t **magnitude_lower, const uint32_t **magnitude_upper);
+
+int malbolge_guest_math_fixed_sincos_double_interval(
+    const uint32_t *sin_lower, uint32_t sin_lower_negative,
+    const uint32_t *sin_upper, uint32_t sin_upper_negative,
+    const uint32_t *cos_lower, uint32_t cos_lower_negative,
+    const uint32_t *cos_upper, uint32_t cos_upper_negative,
+    uint32_t limb_count, uint32_t fraction_limbs, uint32_t *output_sin_lower,
+    uint32_t *output_sin_lower_negative, uint32_t *output_sin_upper,
+    uint32_t *output_sin_upper_negative, uint32_t *output_cos_lower,
+    uint32_t *output_cos_lower_negative, uint32_t *output_cos_upper,
+    uint32_t *output_cos_upper_negative, uint32_t *proven, uint32_t *scratch,
+    uint32_t scratch_capacity) {
+  const uint32_t *sin_magnitude_lower = NULL;
+  const uint32_t *sin_magnitude_upper = NULL;
+  const uint32_t *cos_magnitude_lower = NULL;
+  const uint32_t *cos_magnitude_upper = NULL;
+  int sin_sign = 0;
+  int cos_sign = 0;
+  uint32_t cos_lower_result_negative = UINT32_C(0);
+  uint32_t cos_upper_result_negative = UINT32_C(0);
+  uint32_t *sin_product_lower = scratch;
+  uint32_t *sin_product_upper = NULL;
+  uint32_t *cos_square_lower = NULL;
+  uint32_t *cos_square_upper = NULL;
+  uint32_t *sin_square_lower = NULL;
+  uint32_t *sin_square_upper = NULL;
+  uint32_t *cos_result_lower = NULL;
+  uint32_t *cos_result_upper = NULL;
+  uint32_t *operation = NULL;
+
+  if (sin_lower == NULL || sin_upper == NULL || cos_lower == NULL ||
+      cos_upper == NULL || output_sin_lower == NULL ||
+      output_sin_lower_negative == NULL || output_sin_upper == NULL ||
+      output_sin_upper_negative == NULL || output_cos_lower == NULL ||
+      output_cos_lower_negative == NULL || output_cos_upper == NULL ||
+      output_cos_upper_negative == NULL || proven == NULL || scratch == NULL ||
+      limb_count == UINT32_C(0) || limb_count > UINT32_MAX / UINT32_C(12) ||
+      fraction_limbs >= limb_count ||
+      scratch_capacity < limb_count * UINT32_C(12) ||
+      sin_lower_negative > UINT32_C(1) || sin_upper_negative > UINT32_C(1) ||
+      cos_lower_negative > UINT32_C(1) || cos_upper_negative > UINT32_C(1) ||
+      compare_signed_fixed_limbs(sin_lower, sin_lower_negative, sin_upper,
+                                 sin_upper_negative, limb_count) > 0 ||
+      compare_signed_fixed_limbs(cos_lower, cos_lower_negative, cos_upper,
+                                 cos_upper_negative, limb_count) > 0) {
+    return 0;
+  }
+  sin_sign = signed_interval_magnitude_bounds(
+      sin_lower, sin_lower_negative, sin_upper, sin_upper_negative, limb_count,
+      &sin_magnitude_lower, &sin_magnitude_upper);
+  cos_sign = signed_interval_magnitude_bounds(
+      cos_lower, cos_lower_negative, cos_upper, cos_upper_negative, limb_count,
+      &cos_magnitude_lower, &cos_magnitude_upper);
+  if (sin_sign == 0 || cos_sign == 0) {
+    *proven = UINT32_C(0);
+    return 1;
+  }
+
+  sin_product_upper = sin_product_lower + limb_count;
+  cos_square_lower = sin_product_upper + limb_count;
+  cos_square_upper = cos_square_lower + limb_count;
+  sin_square_lower = cos_square_upper + limb_count;
+  sin_square_upper = sin_square_lower + limb_count;
+  cos_result_lower = sin_square_upper + limb_count;
+  cos_result_upper = cos_result_lower + limb_count;
+  operation = cos_result_upper + limb_count;
+
+  if (!malbolge_guest_math_fixed_interval_multiply(
+          sin_magnitude_lower, sin_magnitude_upper, cos_magnitude_lower,
+          cos_magnitude_upper, limb_count, fraction_limbs, sin_product_lower,
+          sin_product_upper, operation, limb_count * UINT32_C(4)) ||
+      !malbolge_guest_math_fixed_add(sin_product_lower, sin_product_lower,
+                                     limb_count, cos_square_lower) ||
+      !malbolge_guest_math_fixed_add(sin_product_upper, sin_product_upper,
+                                     limb_count, cos_square_upper)) {
+    return 0;
+  }
+  copy_fixed_limbs(sin_product_lower, cos_square_lower, limb_count);
+  copy_fixed_limbs(sin_product_upper, cos_square_upper, limb_count);
+
+  if (!malbolge_guest_math_fixed_interval_multiply(
+          cos_magnitude_lower, cos_magnitude_upper, cos_magnitude_lower,
+          cos_magnitude_upper, limb_count, fraction_limbs, cos_square_lower,
+          cos_square_upper, operation, limb_count * UINT32_C(4)) ||
+      !malbolge_guest_math_fixed_interval_multiply(
+          sin_magnitude_lower, sin_magnitude_upper, sin_magnitude_lower,
+          sin_magnitude_upper, limb_count, fraction_limbs, sin_square_lower,
+          sin_square_upper, operation, limb_count * UINT32_C(4)) ||
+      !malbolge_guest_math_fixed_signed_add(
+          cos_square_lower, UINT32_C(0), sin_square_upper, UINT32_C(1),
+          limb_count, cos_result_lower, &cos_lower_result_negative) ||
+      !malbolge_guest_math_fixed_signed_add(
+          cos_square_upper, UINT32_C(0), sin_square_lower, UINT32_C(1),
+          limb_count, cos_result_upper, &cos_upper_result_negative) ||
+      compare_signed_fixed_limbs(cos_result_lower, cos_lower_result_negative,
+                                 cos_result_upper, cos_upper_result_negative,
+                                 limb_count) > 0) {
+    return 0;
+  }
+
+  if (sin_sign == cos_sign) {
+    copy_fixed_limbs(output_sin_lower, sin_product_lower, limb_count);
+    copy_fixed_limbs(output_sin_upper, sin_product_upper, limb_count);
+    *output_sin_lower_negative = UINT32_C(0);
+    *output_sin_upper_negative = UINT32_C(0);
+  } else {
+    copy_fixed_limbs(output_sin_lower, sin_product_upper, limb_count);
+    copy_fixed_limbs(output_sin_upper, sin_product_lower, limb_count);
+    *output_sin_lower_negative = fixed_limbs_is_zero(
+                                     sin_product_upper, limb_count)
+                                     ? UINT32_C(0)
+                                     : UINT32_C(1);
+    *output_sin_upper_negative = fixed_limbs_is_zero(
+                                     sin_product_lower, limb_count)
+                                     ? UINT32_C(0)
+                                     : UINT32_C(1);
+  }
+  copy_fixed_limbs(output_cos_lower, cos_result_lower, limb_count);
+  copy_fixed_limbs(output_cos_upper, cos_result_upper, limb_count);
+  *output_cos_lower_negative = cos_lower_result_negative;
+  *output_cos_upper_negative = cos_upper_result_negative;
+  *proven = UINT32_C(1);
+  return 1;
+}
+
 static int atan2_branch_rank(uint32_t y_negative, uint32_t x_negative) {
   if (y_negative != UINT32_C(0)) {
     return x_negative != UINT32_C(0) ? 0 : 1;

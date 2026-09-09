@@ -551,6 +551,17 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   denominator shift remains at most 163. A later proof must still transport its
   certified separation through those finitely many angle doublings.
 
+
+  One directed angle-doubling step is now guest-C-owned as well. Signed sin/cos
+  enclosures use only the two double-angle identities and caller-owned `12*N`
+  scratch; all endpoints are staged before publication. A proven sign crossing
+  returns `proven=0` so precision can grow, while short scratch or arithmetic
+  failure leaves outputs unchanged.
+
+  Exact dyadic tests cover 4/8/16/128 limbs and both signs. The remaining
+  transport obligation is to orchestrate up to 56 such steps from a normalized
+  small-angle enclosure.
+
   The two finite inputs to a future quantitative bound are now exposed together:
   exact reduced ratio height plus both candidate-cell midpoint shifts. A hard
   cell, its negative mirror, and a 108-bit axis-boundary cell match

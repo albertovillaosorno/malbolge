@@ -151,6 +151,15 @@ ceiling is `2^E`. At most 56 halvings are required; the normalized denominator
 shift remains at most 163 and the resulting Lambert scale ceiling is at most
 zero. This is a GCF preparation step, not itself a tangent-separation bound.
 
+
+A one-step directed transport primitive now backs that finite normalization
+route. `malbolge_guest_math_fixed_sincos_double_interval` applies
+`sin(2x)=2sin(x)cos(x)` and `cos(2x)=cos(x)^2-sin(x)^2` to signed fixed-point
+intervals. It stages all results in caller-owned `12*N` scratch and publishes
+only when both input signs are proved; a sign-crossing input returns
+`proven=0`, while malformed input, overflow, or short scratch fail without
+publication. Multi-step transport through all requested halvings remains open.
+
 This height bound is exact structural evidence, not yet a quantitative
 irrationality measure for `tan(midpoint)`. Lambert still supplies only the
 non-equality/qualitative termination fact currently admitted by the repository.

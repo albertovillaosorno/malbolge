@@ -926,6 +926,17 @@ normalized `u^2/v` scale ceiling is at most one (`E<=0`). Transporting a future
 normalized proof back through those angle doublings remains a separate
 obligation.
 
+
+The first transport step is executable. A caller-owned signed sin/cos interval
+can be doubled atomically with the algebraic double-angle identities. The
+primitive requires `12*N` scratch, stages sine product and both squares before
+publication, and returns `proven=0` when either input interval still crosses
+zero.
+
+Exact dyadic evidence covers 4/8/16/128 limbs, positive and negative quadrants,
+a zero-touching cosine output, and non-mutating unresolved/error paths.
+Iterating the step up to the 56-halving ceiling is still separate work.
+
 This supplies the finite rational-height parameter required by any future
 quantitative Lambert/Lindemann separation bound. It does not itself lower-bound
 `|tan(midpoint)-p/q|`, so the finite resource proof remains open.
