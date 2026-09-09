@@ -1019,6 +1019,21 @@ Independent `Fraction` cases cover normal parity ties, both signed underflow
 sides, subnormal ties, the normal/subnormal boundary, and ambiguous cross-zero
 or adjacent-cell intervals.
 
+The complete sub-four path now reaches final raw binary64 publication. A single
+caller-owned workspace reserves four `N`-limb endpoint arrays followed by the
+existing `20*N` normalization/refinement scratch, so stage `s` requires exactly
+`24*(s+3)` limbs. Special/preproof results bypass workspace entirely; finite
+kernel inputs below four advance through retry plans until the selected SIN or
+COS interval rounds uniquely.
+
+Independent 40-term rational Taylor bounds certify twelve final results spanning
+`0.5`, `1`, `2`, `3`, `nextdown(4)`, and negative symmetry without host trig.
+The retained stage distribution is 0/72 limbs for common cases, 1/96 for
+`cos(2)` and `sin(3)`, and 2/120 for both near-four outputs. With no workspace
+the near-four input reports stage 0/72; 96 limbs exhaust stages 0 and 1 and
+report stage 2/120; 120 limbs publishes the certified result. Magnitudes at
+least four remain outside this handoff until periodic reduction is implemented.
+
 
 A normalized midpoint comparator now composes those enclosures with the existing
 quadrant ordering and exact ratio cross-products. Its caller-owned scratch is

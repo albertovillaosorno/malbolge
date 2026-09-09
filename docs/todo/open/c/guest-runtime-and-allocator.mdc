@@ -636,6 +636,21 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   intervals. This closes the generic final-rounding primitive, not yet the
   operation-specific adaptive handoff or periodic range reduction.
 
+  The operation-specific sub-four handoff is now executable too.
+  Special/preproof results resolve without storage; ordinary `|x|<4` work uses
+  one caller-owned
+  `24*N` workspace containing four endpoint arrays plus the existing normalized
+  `20*N` scratch. The status distinguishes retry, fast resolution, and refined
+  final binary64 resolution without allocating or mutating output on hard error.
+
+  Exact 40-term `Fraction` Taylor authority certifies twelve retained SIN/COS
+  result words from `0.5` through `nextdown(4)` and negative symmetry. Common
+  cases resolve at stage 0/72 limbs, `cos(2)` and `sin(3)` at stage 1/96, and
+  near-four at stage 2/120. The near-four lifecycle pins 0-limb stage-0 retry,
+  96-limb stage-2 retry, then 120-limb publication. The remaining SIN/COS domain
+  blocker is periodic range reduction for finite `|x|>=4`, plus full-domain
+  resource/correct-rounding closure before source availability changes.
+
 
   The normalized enclosures can now drive midpoint comparison directly. A
   `24*N` caller-owned path reuses the existing quadrant ranks and ratio

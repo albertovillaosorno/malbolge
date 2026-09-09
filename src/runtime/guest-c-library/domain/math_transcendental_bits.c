@@ -1683,6 +1683,140 @@ int malbolge_guest_math_unary_sincos_refine_available(
       output_limb_capacity, scratch, scratch_capacity, output);
 }
 
+int malbolge_guest_math_sincos_binary64_refinement_plan(
+    uint32_t stage, MalbolgeGuestMathSincosBinary64Plan *output) {
+  MalbolgeGuestMathSincosRefinementPlan sincos;
+  MalbolgeGuestMathSincosBinary64Plan staged;
+  if (output == NULL ||
+      !malbolge_guest_math_dyadic_sincos_refinement_plan(stage, &sincos) ||
+      sincos.required_output_limbs > UINT32_MAX / UINT32_C(24)) {
+    return 0;
+  }
+  staged.stage = stage;
+  staged.fraction_limbs = sincos.fraction_limbs;
+  staged.terms = sincos.terms;
+  staged.required_workspace_limbs =
+      sincos.required_output_limbs * UINT32_C(24);
+  *output = staged;
+  return 1;
+}
+
+static void publish_sincos_binary64_progress(
+    MalbolgeGuestMathSincosBinary64Progress *output,
+    const MalbolgeGuestMathSincosBinary64Progress *value) {
+  output->status = value->status;
+  output->input_bits = value->input_bits;
+  output->bits = value->bits;
+  output->plan.stage = value->plan.stage;
+  output->plan.fraction_limbs = value->plan.fraction_limbs;
+  output->plan.terms = value->plan.terms;
+  output->plan.required_workspace_limbs = value->plan.required_workspace_limbs;
+}
+
+int malbolge_guest_math_unary_sincos_binary64_available(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    uint32_t start_stage, uint32_t *workspace, uint32_t workspace_capacity,
+    MalbolgeGuestMathSincosBinary64Progress *output) {
+  MalbolgeGuestMathSincosBinary64Progress staged;
+  MalbolgeGuestMathSpecialResult special;
+  uint32_t stage = start_stage;
+
+  if (output == NULL ||
+      (operation != MALBOLGE_GUEST_MATH_SIN &&
+       operation != MALBOLGE_GUEST_MATH_COS)) {
+    return 0;
+  }
+  staged.status = MALBOLGE_GUEST_MATH_SINCOS_BINARY64_RETRY;
+  staged.input_bits = bits;
+  staged.bits = UINT64_C(0);
+  staged.plan.stage = UINT32_C(0);
+  staged.plan.fraction_limbs = UINT32_C(0);
+  staged.plan.terms = UINT32_C(0);
+  staged.plan.required_workspace_limbs = UINT32_C(0);
+  special = malbolge_guest_math_unary_special(operation, bits);
+  if (special.status == MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED) {
+    staged.status = MALBOLGE_GUEST_MATH_SINCOS_BINARY64_FAST_RESOLVED;
+    staged.bits = special.bits;
+    publish_sincos_binary64_progress(output, &staged);
+    return 1;
+  }
+  if (special.status != MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED ||
+      (bits & ~BINARY64_SIGN) >= BINARY64_FOUR) {
+    return 0;
+  }
+  for (;;) {
+    MalbolgeGuestMathSincosRefinementProgress refined;
+    uint32_t *sin_lower = NULL;
+    uint32_t *sin_upper = NULL;
+    uint32_t *cos_lower = NULL;
+    uint32_t *cos_upper = NULL;
+    uint32_t *scratch = NULL;
+    uint32_t endpoint_limbs = UINT32_C(0);
+    uint32_t scratch_capacity = UINT32_C(0);
+    uint32_t sin_lower_negative = UINT32_C(0);
+    uint32_t sin_upper_negative = UINT32_C(0);
+    uint32_t cos_lower_negative = UINT32_C(0);
+    uint32_t cos_upper_negative = UINT32_C(0);
+    uint64_t rounded_bits = UINT64_C(0);
+
+    if (!malbolge_guest_math_sincos_binary64_refinement_plan(stage,
+                                                              &staged.plan)) {
+      return 0;
+    }
+    staged.status = MALBOLGE_GUEST_MATH_SINCOS_BINARY64_RETRY;
+    staged.bits = UINT64_C(0);
+    if (workspace_capacity < staged.plan.required_workspace_limbs) {
+      publish_sincos_binary64_progress(output, &staged);
+      return 1;
+    }
+    if (workspace == NULL) {
+      return 0;
+    }
+    endpoint_limbs = staged.plan.fraction_limbs + UINT32_C(1);
+    sin_lower = workspace;
+    sin_upper = sin_lower + endpoint_limbs;
+    cos_lower = sin_upper + endpoint_limbs;
+    cos_upper = cos_lower + endpoint_limbs;
+    scratch = cos_upper + endpoint_limbs;
+    scratch_capacity = staged.plan.required_workspace_limbs -
+                       endpoint_limbs * UINT32_C(4);
+    if (!malbolge_guest_math_unary_sincos_refine_available(
+            operation, bits, stage, sin_lower, &sin_lower_negative, sin_upper,
+            &sin_upper_negative, cos_lower, &cos_lower_negative, cos_upper,
+            &cos_upper_negative, endpoint_limbs, scratch, scratch_capacity,
+            &refined)) {
+      return 0;
+    }
+    if (refined.proven != UINT32_C(0)) {
+      const uint32_t *lower = operation == MALBOLGE_GUEST_MATH_SIN
+                                  ? sin_lower
+                                  : cos_lower;
+      const uint32_t *upper = operation == MALBOLGE_GUEST_MATH_SIN
+                                  ? sin_upper
+                                  : cos_upper;
+      const uint32_t lower_negative = operation == MALBOLGE_GUEST_MATH_SIN
+                                          ? sin_lower_negative
+                                          : cos_lower_negative;
+      const uint32_t upper_negative = operation == MALBOLGE_GUEST_MATH_SIN
+                                          ? sin_upper_negative
+                                          : cos_upper_negative;
+      if (malbolge_guest_math_fixed_signed_interval_unique_binary64(
+              lower, lower_negative, upper, upper_negative, endpoint_limbs,
+              staged.plan.fraction_limbs, &rounded_bits)) {
+        staged.status =
+            MALBOLGE_GUEST_MATH_SINCOS_BINARY64_REFINED_RESOLVED;
+        staged.bits = rounded_bits;
+        publish_sincos_binary64_progress(output, &staged);
+        return 1;
+      }
+    }
+    if (stage == UINT32_MAX) {
+      return 0;
+    }
+    ++stage;
+  }
+}
+
 int malbolge_guest_math_positive_ratio_tangent_compare(
     const MalbolgeGuestMathAtan2KernelInput *ratio,
     const uint32_t *sin_lower, const uint32_t *sin_upper,

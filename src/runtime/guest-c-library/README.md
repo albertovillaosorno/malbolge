@@ -237,6 +237,21 @@ signed underflow, subnormal parity ties, and the
 maximum-subnormal/minimum-normal boundary. Cross-zero and adjacent-cell
 intervals remain nonpublishing retries.
 
+A sub-four binary64 handoff now composes the whole chain. It dispatches the
+existing unary special/preproof results without workspace, then uses one
+caller-owned `24*N` buffer for four directed endpoints plus the `20*N`
+normalized refinement scratch. Stage `s` therefore needs `24*(s+3)` limbs and
+reports exact
+`RETRY`, `FAST_RESOLVED`, or `REFINED_RESOLVED` state without allocating.
+
+Exact 40-term `Fraction` Taylor bounds independently certify twelve retained
+SIN/COS results from `0.5` through `nextdown(4)` and both signs. Observed final
+rounding resolves common inputs at stage 0/72 limbs, `cos(2)` and `sin(3)` at
+stage 1/96, and both near-four results at stage 2/120. The near-four lifecycle
+also pins no-workspace stage-0 retry, 96-limb stage-2 retry, then 120-limb final
+publication. Finite `|x|>=4` remains a hard nonpublishing boundary pending
+periodic range reduction.
+
 
 A parallel midpoint comparator now consumes that normalized sin/cos path before
 the existing branch-rank and cross-product logic. It requires caller-owned

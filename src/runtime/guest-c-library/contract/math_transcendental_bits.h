@@ -244,6 +244,26 @@ typedef struct MalbolgeGuestMathSincosStorageRequirement {
   uint32_t alignment;
 } MalbolgeGuestMathSincosStorageRequirement;
 
+typedef struct MalbolgeGuestMathSincosBinary64Plan {
+  uint32_t stage;
+  uint32_t fraction_limbs;
+  uint32_t terms;
+  uint32_t required_workspace_limbs;
+} MalbolgeGuestMathSincosBinary64Plan;
+
+typedef enum MalbolgeGuestMathSincosBinary64Status {
+  MALBOLGE_GUEST_MATH_SINCOS_BINARY64_RETRY = 0,
+  MALBOLGE_GUEST_MATH_SINCOS_BINARY64_FAST_RESOLVED = 1,
+  MALBOLGE_GUEST_MATH_SINCOS_BINARY64_REFINED_RESOLVED = 2,
+} MalbolgeGuestMathSincosBinary64Status;
+
+typedef struct MalbolgeGuestMathSincosBinary64Progress {
+  MalbolgeGuestMathSincosBinary64Status status;
+  uint64_t input_bits;
+  uint64_t bits;
+  MalbolgeGuestMathSincosBinary64Plan plan;
+} MalbolgeGuestMathSincosBinary64Progress;
+
 typedef struct MalbolgeGuestMathAtan2RefinementProgress {
   uint32_t certified;
   MalbolgeGuestMathAtan2RefinementPlan plan;
@@ -490,6 +510,12 @@ int malbolge_guest_math_unary_sincos_refine_available(
     uint32_t *output_cos_upper_negative, uint32_t output_limb_capacity,
     uint32_t *scratch, uint32_t scratch_capacity,
     MalbolgeGuestMathSincosRefinementProgress *output);
+int malbolge_guest_math_sincos_binary64_refinement_plan(
+    uint32_t stage, MalbolgeGuestMathSincosBinary64Plan *output);
+int malbolge_guest_math_unary_sincos_binary64_available(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    uint32_t start_stage, uint32_t *workspace, uint32_t workspace_capacity,
+    MalbolgeGuestMathSincosBinary64Progress *output);
 int malbolge_guest_math_positive_ratio_tangent_compare(
     const MalbolgeGuestMathAtan2KernelInput *ratio,
     const uint32_t *sin_lower, const uint32_t *sin_upper,
