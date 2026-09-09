@@ -935,7 +935,15 @@ zero.
 
 Exact dyadic evidence covers 4/8/16/128 limbs, positive and negative quadrants,
 a zero-touching cosine output, and non-mutating unresolved/error paths.
-Iterating the step up to the 56-halving ceiling is still separate work.
+The transport scheduler now iterates that step across the complete structural
+ceiling. It stores four current endpoints plus the reusable `12*N` one-step
+workspace, so total caller-owned scratch is `16*N`. Counts 0..56 are accepted;
+all output publication is deferred until the final step, and any intermediate
+`proven=0` preserves caller outputs while requesting more precision.
+
+Exact three-step positive/negative cases and an unresolved second step pin both
+transport arithmetic and atomicity. Supplying 57 steps or `16*N-1` scratch is a
+non-mutating hard failure.
 
 This supplies the finite rational-height parameter required by any future
 quantitative Lambert/Lindemann separation bound. It does not itself lower-bound

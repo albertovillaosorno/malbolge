@@ -1754,6 +1754,87 @@ static int atan2_branch_rank(uint32_t y_negative, uint32_t x_negative) {
   return x_negative != UINT32_C(0) ? 3 : 2;
 }
 
+int malbolge_guest_math_fixed_sincos_double_transport(
+    const uint32_t *sin_lower, uint32_t sin_lower_negative,
+    const uint32_t *sin_upper, uint32_t sin_upper_negative,
+    const uint32_t *cos_lower, uint32_t cos_lower_negative,
+    const uint32_t *cos_upper, uint32_t cos_upper_negative,
+    uint32_t limb_count, uint32_t fraction_limbs, uint32_t doublings,
+    uint32_t *output_sin_lower, uint32_t *output_sin_lower_negative,
+    uint32_t *output_sin_upper, uint32_t *output_sin_upper_negative,
+    uint32_t *output_cos_lower, uint32_t *output_cos_lower_negative,
+    uint32_t *output_cos_upper, uint32_t *output_cos_upper_negative,
+    uint32_t *proven, uint32_t *scratch, uint32_t scratch_capacity) {
+  uint32_t index = UINT32_C(0);
+  uint32_t current_sin_lower_negative = sin_lower_negative;
+  uint32_t current_sin_upper_negative = sin_upper_negative;
+  uint32_t current_cos_lower_negative = cos_lower_negative;
+  uint32_t current_cos_upper_negative = cos_upper_negative;
+  uint32_t step_proven = UINT32_C(0);
+  uint32_t *current_sin_lower = scratch;
+  uint32_t *current_sin_upper = NULL;
+  uint32_t *current_cos_lower = NULL;
+  uint32_t *current_cos_upper = NULL;
+  uint32_t *operation = NULL;
+
+  if (sin_lower == NULL || sin_upper == NULL || cos_lower == NULL ||
+      cos_upper == NULL || output_sin_lower == NULL ||
+      output_sin_lower_negative == NULL || output_sin_upper == NULL ||
+      output_sin_upper_negative == NULL || output_cos_lower == NULL ||
+      output_cos_lower_negative == NULL || output_cos_upper == NULL ||
+      output_cos_upper_negative == NULL || proven == NULL || scratch == NULL ||
+      limb_count == UINT32_C(0) || limb_count > UINT32_MAX / UINT32_C(16) ||
+      fraction_limbs >= limb_count || doublings > UINT32_C(56) ||
+      scratch_capacity < limb_count * UINT32_C(16) ||
+      sin_lower_negative > UINT32_C(1) || sin_upper_negative > UINT32_C(1) ||
+      cos_lower_negative > UINT32_C(1) || cos_upper_negative > UINT32_C(1) ||
+      compare_signed_fixed_limbs(sin_lower, sin_lower_negative, sin_upper,
+                                 sin_upper_negative, limb_count) > 0 ||
+      compare_signed_fixed_limbs(cos_lower, cos_lower_negative, cos_upper,
+                                 cos_upper_negative, limb_count) > 0) {
+    return 0;
+  }
+  current_sin_upper = current_sin_lower + limb_count;
+  current_cos_lower = current_sin_upper + limb_count;
+  current_cos_upper = current_cos_lower + limb_count;
+  operation = current_cos_upper + limb_count;
+  copy_fixed_limbs(current_sin_lower, sin_lower, limb_count);
+  copy_fixed_limbs(current_sin_upper, sin_upper, limb_count);
+  copy_fixed_limbs(current_cos_lower, cos_lower, limb_count);
+  copy_fixed_limbs(current_cos_upper, cos_upper, limb_count);
+
+  while (index < doublings) {
+    if (!malbolge_guest_math_fixed_sincos_double_interval(
+            current_sin_lower, current_sin_lower_negative, current_sin_upper,
+            current_sin_upper_negative, current_cos_lower,
+            current_cos_lower_negative, current_cos_upper,
+            current_cos_upper_negative, limb_count, fraction_limbs,
+            current_sin_lower, &current_sin_lower_negative, current_sin_upper,
+            &current_sin_upper_negative, current_cos_lower,
+            &current_cos_lower_negative, current_cos_upper,
+            &current_cos_upper_negative, &step_proven, operation,
+            limb_count * UINT32_C(12))) {
+      return 0;
+    }
+    if (step_proven == UINT32_C(0)) {
+      *proven = UINT32_C(0);
+      return 1;
+    }
+    ++index;
+  }
+
+  copy_fixed_limbs(output_sin_lower, current_sin_lower, limb_count);
+  copy_fixed_limbs(output_sin_upper, current_sin_upper, limb_count);
+  copy_fixed_limbs(output_cos_lower, current_cos_lower, limb_count);
+  copy_fixed_limbs(output_cos_upper, current_cos_upper, limb_count);
+  *output_sin_lower_negative = current_sin_lower_negative;
+  *output_sin_upper_negative = current_sin_upper_negative;
+  *output_cos_lower_negative = current_cos_lower_negative;
+  *output_cos_upper_negative = current_cos_upper_negative;
+  *proven = UINT32_C(1);
+  return 1;
+}
+
 static int signed_interval_magnitude_bounds(
     const uint32_t *lower, uint32_t lower_negative, const uint32_t *upper,
     uint32_t upper_negative, uint32_t limb_count,

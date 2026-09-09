@@ -559,8 +559,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   failure leaves outputs unchanged.
 
   Exact dyadic tests cover 4/8/16/128 limbs and both signs. The remaining
-  transport obligation is to orchestrate up to 56 such steps from a normalized
-  small-angle enclosure.
+  The finite transport scheduler is now guest-C-owned too. Four current
+  endpoints plus the reusable one-step workspace require `16*N` caller-owned
+  scratch, and counts 0..56 are accepted. Publication remains atomic across the
+  whole chain: if a later step becomes sign-inconclusive, the scheduler returns
+  `proven=0` without exposing any earlier intermediate result.
+
+  Exact three-step cases in both signs and an unresolved-after-progress case pin
+  this behavior; 57 steps and short scratch fail without mutation. The remaining
+  integration obligation is to produce the normalized small-angle sin/cos
+  enclosure and feed it into this transport path.
 
   The two finite inputs to a future quantitative bound are now exposed together:
   exact reduced ratio height plus both candidate-cell midpoint shifts. A hard

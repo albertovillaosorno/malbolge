@@ -158,7 +158,18 @@ route. `malbolge_guest_math_fixed_sincos_double_interval` applies
 intervals. It stages all results in caller-owned `12*N` scratch and publishes
 only when both input signs are proved; a sign-crossing input returns
 `proven=0`, while malformed input, overflow, or short scratch fail without
-publication. Multi-step transport through all requested halvings remains open.
+publication.
+
+Multi-step transport is now caller-owned too:
+`malbolge_guest_math_fixed_sincos_double_transport` keeps the four current
+endpoints in scratch and reuses the one-step `12*N` operation workspace, for a
+`16*N` total. It accepts 0..56 doublings, publishes only after every requested
+step succeeds, and returns `proven=0` without touching caller outputs if a later
+step loses a proven sign.
+
+Exact evidence covers zero-step copy, three exact steps in both signs,
+unresolved-after-progress atomicity, and hard ceilings for 57 steps or short
+scratch.
 
 This height bound is exact structural evidence, not yet a quantitative
 irrationality measure for `tan(midpoint)`. Lambert still supplies only the
