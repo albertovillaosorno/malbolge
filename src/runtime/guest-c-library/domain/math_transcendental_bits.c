@@ -58,6 +58,7 @@
 #define ATAN2_ADAPTIVE_NUMERATOR_BITS_MAX UINT32_C(108)
 #define ATAN2_ADAPTIVE_DENOMINATOR_BITS_MAX UINT32_C(106)
 #define ATAN2_LAMBERT_SCALE_EXPONENT_MAX INT32_C(56)
+#define SINCOS_REDUCED_DYADIC_SHIFT_MAX UINT32_C(79)
 #define ATAN_QUARTER_REDUCTION_NUMERATOR UINT64_C(169)
 #define ATAN_QUARTER_REDUCTION_DENOMINATOR UINT64_C(408)
 #define FIXED_192_LIMB_COUNT UINT32_C(7)
@@ -205,6 +206,39 @@ MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     return resolved(BINARY64_ONE);
   }
   return kernel_required();
+}
+
+int malbolge_guest_math_unary_reduced_dyadic(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    MalbolgeGuestMathDyadic *output) {
+  const uint64_t magnitude = bits & ~BINARY64_SIGN;
+  MalbolgeGuestMathSpecialResult special;
+  MalbolgeGuestMathDyadic staged;
+  uint64_t significand = UINT64_C(0);
+  int32_t power = INT32_C(0);
+
+  if (output == NULL ||
+      (operation != MALBOLGE_GUEST_MATH_SIN &&
+       operation != MALBOLGE_GUEST_MATH_COS) ||
+      magnitude >= BINARY64_FOUR) {
+    return 0;
+  }
+  special = malbolge_guest_math_unary_special(operation, bits);
+  if (special.status != MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED ||
+      !positive_binary64_components(magnitude, &significand, &power) ||
+      significand == UINT64_C(0) || power >= INT32_C(0)) {
+    return 0;
+  }
+  staged.numerator = significand;
+  staged.denominator_shift = (uint32_t)(-power);
+  staged.negative = (bits & BINARY64_SIGN) != UINT64_C(0) ? UINT32_C(1)
+                                                           : UINT32_C(0);
+  normalize_dyadic(&staged);
+  if (staged.denominator_shift > SINCOS_REDUCED_DYADIC_SHIFT_MAX) {
+    return 0;
+  }
+  *output = staged;
+  return 1;
 }
 
 typedef struct NormalizedMagnitude {

@@ -603,6 +603,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   reduced-dyadic boundary: arbitrary binary64 range reduction and final
   correctly-rounded sin/cos publication remain open.
 
+  Raw binary64 inputs below four now bridge exactly into this scheduler after
+  the existing operation-specific small-angle preproof declines them. The
+  decoder publishes the exact reduced signed dyadic with no floating arithmetic.
+  The
+  cosine cutoff is the tight geometry: its next binary64 value has denominator
+  shift 79 after reduction, so every accepted sub-four SIN/COS input is at most
+  79. A 520-case `Fraction` differential covers both operations and signs.
+  Special/resolved inputs and `|x|>=4` reject without publication; periodic
+  range reduction beyond four remains open.
+
 
   The normalized enclosures can now drive midpoint comparison directly. A
   `24*N` caller-owned path reuses the existing quadrant ranks and ratio

@@ -295,6 +295,9 @@ typedef struct MalbolgeGuestMathAtan2ScratchRequirement {
 
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
+int malbolge_guest_math_unary_reduced_dyadic(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    MalbolgeGuestMathDyadic *output);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
     uint64_t y_bits, uint64_t x_bits);
 int malbolge_guest_math_atan2_kernel_input(

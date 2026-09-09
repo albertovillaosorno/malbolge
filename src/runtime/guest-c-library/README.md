@@ -199,6 +199,17 @@ resolves `3/4` at Q64/8 and the near-four plus deep-negative dyadics at Q128/16.
 This scheduler still starts from an already reduced dyadic: binary64 range
 reduction and correctly-rounded sin/cos publication remain separate obligations.
 
+Raw binary64 inputs below four now have an exact bridge into that reduced-dyadic
+boundary after the existing unary preproofs decline to resolve them.
+`malbolge_guest_math_unary_reduced_dyadic` decodes the 53-bit significand and
+power of two, strips denominator factors of two, preserves the input sign, and
+rejects special/resolved inputs or `|x|>=4` without publication.
+
+Because the cosine small-angle cutoff is the lower one, every accepted input has
+reduced denominator shift at most 79; `nextafter(cos_cutoff,+inf)` attains 79
+exactly. A 520-case `Fraction` differential locks the exact dyadic. Periodic
+range reduction for larger binary64 arguments remains separate.
+
 
 A parallel midpoint comparator now consumes that normalized sin/cos path before
 the existing branch-rank and cross-product logic. It requires caller-owned

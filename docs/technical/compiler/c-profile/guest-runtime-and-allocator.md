@@ -978,6 +978,21 @@ publication. `3/4` resolves at Q64/8, while the structural near-four and
 negative deep dyadics advance to Q128/16. This boundary consumes reduced dyadics
 only; full binary64 range reduction and final correct rounding remain open.
 
+The reduced-dyadic boundary is now reachable exactly from raw binary64 values
+with magnitude below four whenever the existing SIN/COS small-angle preproof for
+the requested operation returns kernel-required. The bridge decodes the raw
+significand and binary exponent, removes powers of two from the denominator,
+and publishes the signed dyadic without floating arithmetic. Resolved special
+inputs, non-finite values, zero, and magnitudes at least four reject without
+mutation.
+
+The cosine cutoff is the tight input for this geometry: its next binary64 value
+has an odd significand at power `-79`, so the accepted reduced denominator shift
+is globally at most 79 and the ceiling is attained. A deterministic 520-case
+`Fraction` differential spans both operations, signs, multiple binades, and the
+value immediately below four. This bridge is exact input conversion only; it
+does not implement periodic range reduction beyond the sub-four domain.
+
 
 A normalized midpoint comparator now composes those enclosures with the existing
 quadrant ordering and exact ratio cross-products. Its caller-owned scratch is
