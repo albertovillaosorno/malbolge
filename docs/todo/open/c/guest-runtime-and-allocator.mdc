@@ -462,12 +462,19 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   reporting. A hard seed pins Q64/8 -> Q96/12 -> Q128/16 and only certifies at
   the 75-limb third stage; a neighboring candidate remains a retry.
 
-  The remaining scheduler blocker is its Taylor-divisor representation. The
-  recurrence currently stores `(2n)(2n±1)` in one `u32`, making stage 8189 the
-  last valid plan and stage 8190 an atomic planning failure. Remove that product
-  ceiling (for example by directed division by the two factors separately)
-  before treating the schedule as capacity-limited rather than policy-limited.
-  Q128/16 remains bounded coverage, not a full-domain bound.
+  Taylor recurrence division is now factorized into the two positive
+  `(2n)`/`(2n±1)` divisors. Repeated lower-floor and upper-ceil division
+  preserves
+  enclosure and removes the former stage-8190 product ceiling without increasing
+  `4*N` recurrence scratch. The planner now reaches stage 286331150, whose exact
+  requirement is `UINT32_MAX` scratch limbs; the next stage fails only because
+  the public capacity type cannot represent a larger workspace.
+
+  Remaining adaptive blockers are therefore higher-level: the current scheduler
+  certifies a supplied candidate but does not generate a candidate when the
+  Q192/Q224/Q256 handoff itself is ambiguous, and Lambert's qualitative
+  termination argument does not prove certification before the finite `u32`
+  capacity ceiling. Q128/16 remains bounded coverage, not a full-domain bound.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

@@ -745,10 +745,19 @@ conflating memory with numerical failure.
 A hard retained seed pins the sequence Q64/8 -> Q96/12 -> Q128/16 and certifies
 only at the third stage with 75 limbs. A neighboring wrong candidate requests
 the
-next stage instead of certifying. The current planner is not yet mathematically
-unbounded: because the Taylor recurrence stores `(2n)(2n±1)` in one `u32`, stage
-8189 is valid and stage 8190 fails planning atomically. That divisor-product
-ceiling is a concrete implementation blocker, not a full-domain bound.
+next stage instead of certifying.
+
+Taylor recurrence division is now factorized. Rather than store
+`(2n)(2n±1)` in one `u32`, each directed term divides successively by the two
+positive factors. Successive lower floors and upper ceils remain valid directed
+bounds, and the existing `4*N` recurrence scratch is unchanged. The old stage
+8190 divisor-product ceiling therefore disappears.
+
+The first planner ceiling is now the `u32` scratch-capacity ABI itself. Stage
+286331150 requests 286331152 fractional limbs, 1145324608 terms, and exactly
+`UINT32_MAX` scratch limbs; stage 286331151 is rejected before publication. This
+removes a policy-sized numerical ceiling but remains a finite machine-capacity
+limit, not a proof that every binary64 input certifies before it.
 
 The qualitative termination fact for an adaptive version now has durable
 external provenance in

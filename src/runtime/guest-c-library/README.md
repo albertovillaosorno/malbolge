@@ -279,11 +279,18 @@ after exhausting 45 limbs, stage 2/Q128/16 after exhausting 60 limbs, and
 certifies stage 2 once 75 limbs are available. An adjacent wrong candidate
 remains uncertified and requests stage 3 rather than being accepted.
 
-The planner still exposes one arithmetic ceiling rather than hiding it: the
-current Taylor recurrence multiplies `(2n)(2n±1)` into one `u32`. Stage 8189
-(Q262112/32764 terms) remains valid with 122880 scratch limbs, while stage 8190
-fails planning before output mutation. This is an implementation limit to
-remove, not a termination bound.
+The Taylor recurrence no longer multiplies `(2n)(2n±1)` into one divisor.
+Each directed term first multiplies by `x^2`, then divides successively by the
+two positive `u32` factors; repeated floor on the lower endpoint and repeated
+ceil on the upper endpoint preserve enclosure. This removes the former stage
+8190 divisor-product ceiling without increasing the `4*N` recurrence scratch.
+
+Planning is now limited first by the public `u32` scratch-capacity ABI rather
+than a selected numerical precision. Stage 286331150 remains representable,
+requesting 286331152 fractional limbs, 1145324608 terms, and exactly
+`UINT32_MAX` scratch limbs; the next stage fails before publication because its
+scratch requirement is not representable. This is still a finite machine limit,
+not a full-domain termination proof.
 
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full

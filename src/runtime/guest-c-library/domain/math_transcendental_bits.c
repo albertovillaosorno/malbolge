@@ -1011,12 +1011,13 @@ static int fixed_limbs_below_small_integer(
   return value[fraction_limbs] < limit;
 }
 
-static int taylor_recurrence_divisor(uint32_t term_index, uint32_t cosine,
-                                     uint32_t *divisor) {
+static int taylor_recurrence_factors(
+    uint32_t term_index, uint32_t cosine, uint32_t *left_factor,
+    uint32_t *right_factor) {
   uint64_t left = UINT64_C(0);
   uint64_t right = UINT64_C(0);
-  uint64_t product = UINT64_C(0);
-  if (term_index == UINT32_C(0) || cosine > UINT32_C(1) || divisor == NULL) {
+  if (term_index == UINT32_C(0) || cosine > UINT32_C(1) ||
+      left_factor == NULL || right_factor == NULL) {
     return 0;
   }
   if (cosine != UINT32_C(0)) {
@@ -1026,12 +1027,43 @@ static int taylor_recurrence_divisor(uint32_t term_index, uint32_t cosine,
     left = (uint64_t)term_index * UINT64_C(2);
     right = left + UINT64_C(1);
   }
-  if (left > UINT32_MAX || right > UINT32_MAX ||
-      left > (uint64_t)UINT32_MAX / right) {
+  if (left > UINT32_MAX || right > UINT32_MAX) {
     return 0;
   }
-  product = left * right;
-  *divisor = (uint32_t)product;
+  *left_factor = (uint32_t)left;
+  *right_factor = (uint32_t)right;
+  return 1;
+}
+
+static int fixed_taylor_recurrence_interval(
+    const uint32_t *term_lower, const uint32_t *term_upper,
+    const uint32_t *square_lower, const uint32_t *square_upper,
+    uint32_t limb_count, uint32_t fraction_limbs, uint32_t left_factor,
+    uint32_t right_factor, uint32_t *output_lower, uint32_t *output_upper,
+    uint32_t *scratch, uint32_t scratch_capacity) {
+  uint32_t *operation = scratch;
+  uint32_t *product_lower = NULL;
+  uint32_t *product_upper = NULL;
+
+  if (scratch == NULL || limb_count == UINT32_C(0) ||
+      limb_count > UINT32_MAX / UINT32_C(4) ||
+      scratch_capacity < limb_count * UINT32_C(4)) {
+    return 0;
+  }
+  product_lower = operation + limb_count * UINT32_C(2);
+  product_upper = product_lower + limb_count;
+  if (!malbolge_guest_math_fixed_interval_multiply(
+          term_lower, term_upper, square_lower, square_upper, limb_count,
+          fraction_limbs, product_lower, product_upper, operation,
+          limb_count * UINT32_C(4)) ||
+      !malbolge_guest_math_fixed_interval_divide_small(
+          product_lower, product_upper, limb_count, left_factor, product_lower,
+          product_upper, operation, limb_count * UINT32_C(2)) ||
+      !malbolge_guest_math_fixed_interval_divide_small(
+          product_lower, product_upper, limb_count, right_factor, output_lower,
+          output_upper, operation, limb_count * UINT32_C(2))) {
+    return 0;
+  }
   return 1;
 }
 
@@ -1042,7 +1074,8 @@ static int fixed_taylor_series_interval(
     uint32_t *output_upper, uint32_t *output_upper_negative,
     uint32_t *scratch, uint32_t scratch_capacity) {
   uint32_t index = UINT32_C(0);
-  uint32_t divisor = UINT32_C(0);
+  uint32_t left_factor = UINT32_C(0);
+  uint32_t right_factor = UINT32_C(0);
   uint32_t sum_lower_negative = UINT32_C(0);
   uint32_t sum_upper_negative = UINT32_C(0);
   uint32_t *square_lower = scratch;
@@ -1096,11 +1129,12 @@ static int fixed_taylor_series_interval(
     const uint32_t *add_upper = term_upper;
     uint32_t add_lower_negative = negative;
     uint32_t add_upper_negative = negative;
-    if (!taylor_recurrence_divisor(index, cosine, &divisor) ||
-        !malbolge_guest_math_fixed_taylor_term_interval(
+    if (!taylor_recurrence_factors(index, cosine, &left_factor,
+                                    &right_factor) ||
+        !fixed_taylor_recurrence_interval(
             term_lower, term_upper, square_lower, square_upper, limb_count,
-            fraction_limbs, divisor, term_lower, term_upper, operation,
-            limb_count * UINT32_C(4))) {
+            fraction_limbs, left_factor, right_factor, term_lower, term_upper,
+            operation, limb_count * UINT32_C(4))) {
       return 0;
     }
     if (negative != UINT32_C(0)) {
@@ -1117,11 +1151,12 @@ static int fixed_taylor_series_interval(
     ++index;
   }
 
-  if (!taylor_recurrence_divisor(terms, cosine, &divisor) ||
-      !malbolge_guest_math_fixed_taylor_term_interval(
+  if (!taylor_recurrence_factors(terms, cosine, &left_factor,
+                                  &right_factor) ||
+      !fixed_taylor_recurrence_interval(
           term_lower, term_upper, square_lower, square_upper, limb_count,
-          fraction_limbs, divisor, term_lower, term_upper, operation,
-          limb_count * UINT32_C(4))) {
+          fraction_limbs, left_factor, right_factor, term_lower, term_upper,
+          operation, limb_count * UINT32_C(4))) {
     return 0;
   }
   zero_fixed_limbs(square_lower, limb_count);
@@ -1622,7 +1657,8 @@ int malbolge_guest_math_atan2_refinement_plan(
     uint32_t stage, MalbolgeGuestMathAtan2RefinementPlan *output) {
   MalbolgeGuestMathAtan2RefinementPlan staged;
   uint32_t limb_count = UINT32_C(0);
-  uint32_t divisor = UINT32_C(0);
+  uint32_t left_factor = UINT32_C(0);
+  uint32_t right_factor = UINT32_C(0);
 
   if (output == NULL || stage > (UINT32_MAX - UINT32_C(8)) / UINT32_C(4) ||
       stage > UINT32_MAX - UINT32_C(3)) {
@@ -1633,8 +1669,10 @@ int malbolge_guest_math_atan2_refinement_plan(
   staged.terms = stage * UINT32_C(4) + UINT32_C(8);
   limb_count = staged.fraction_limbs + UINT32_C(1);
   if (limb_count > UINT32_MAX / UINT32_C(15) ||
-      !taylor_recurrence_divisor(staged.terms, UINT32_C(0), &divisor) ||
-      !taylor_recurrence_divisor(staged.terms, UINT32_C(1), &divisor)) {
+      !taylor_recurrence_factors(staged.terms, UINT32_C(0), &left_factor,
+                                &right_factor) ||
+      !taylor_recurrence_factors(staged.terms, UINT32_C(1), &left_factor,
+                                &right_factor)) {
     return 0;
   }
   staged.required_scratch_limbs = limb_count * UINT32_C(15);

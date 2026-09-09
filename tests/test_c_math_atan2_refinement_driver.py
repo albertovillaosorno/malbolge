@@ -86,7 +86,7 @@ def _compile(source: str, tmp_path: Path, stem: str) -> Path:
 def test_refinement_plan_grows_both_dimensions_and_checks_limit(
     tmp_path: Path,
 ) -> None:
-    """Pin early plans and the current u32 Taylor-divisor planning boundary."""
+    """Pin early plans and the u32 scratch-capacity planning boundary."""
     source = r"""#include "math_transcendental_bits.h"
 #include <stdint.h>
 int main(void) {
@@ -107,12 +107,12 @@ int main(void) {
         plan.required_scratch_limbs != expected[index][3]) return 81;
     ++index;
   }
-  if (!malbolge_guest_math_atan2_refinement_plan(UINT32_C(8189), &plan) ||
-      plan.fraction_limbs != UINT32_C(8191) ||
-      plan.terms != UINT32_C(32764) ||
-      plan.required_scratch_limbs != UINT32_C(122880)) return 82;
+  if (!malbolge_guest_math_atan2_refinement_plan(UINT32_C(286331150), &plan) ||
+      plan.fraction_limbs != UINT32_C(286331152) ||
+      plan.terms != UINT32_C(1145324608) ||
+      plan.required_scratch_limbs != UINT32_MAX) return 82;
   plan = sentinel;
-  if (malbolge_guest_math_atan2_refinement_plan(UINT32_C(8190), &plan) ||
+  if (malbolge_guest_math_atan2_refinement_plan(UINT32_C(286331151), &plan) ||
       plan.stage != sentinel.stage ||
       plan.fraction_limbs != sentinel.fraction_limbs ||
       plan.terms != sentinel.terms ||
