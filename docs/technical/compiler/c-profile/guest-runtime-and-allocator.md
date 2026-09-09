@@ -967,6 +967,14 @@ exists, but the repository has not evaluated that version at
 exponent <=106. Until that calculation is retained and shown below the guest
 allocation ceiling, the public correct-rounding obligation remains open.
 
+A more specialized asymptotic result is now retained from Liang-Wang (2024).
+Their publisher metadata treats `tan(r)` for nonzero rational `r` by generalized
+continued fractions and states irrationality measure 2. This is directly aligned
+with the adaptive midpoint problem and its tight `q<2^106` denominator ceiling,
+but the reviewed source material does not expose an effective `q_0(r)` or
+constant usable as a finite guest resource bound. The result therefore narrows
+the mathematical target without closing the correct-rounding obligation.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

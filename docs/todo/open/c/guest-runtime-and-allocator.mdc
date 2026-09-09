@@ -571,6 +571,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   `H(alpha)<2^218`, inverse-denominator bits <=109, and inverse-house exponent
   <=106 is the next mathematical resource-proof obligation.
 
+
+  Liang-Wang (2024) is now retained as tangent-specific asymptotic evidence:
+  publisher metadata covers `tan(r)` for nonzero rational `r`, generalized
+  continued fractions, and irrationality measure 2. No effective threshold or
+  constant has been verified from the reviewed source, so `mu=2` is not treated
+  as a finite resource proof even with the tight adaptive denominator bound
+  `q<2^106`.
+
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies
   both midpoint sides, all transformed cases within `4e-20` ulp, all direct
