@@ -1005,6 +1005,20 @@ internal kernel boundary until a public sin/cos handoff dispatches those special
 results, performs periodic reduction for `|x|>=4`, and proves final binary64
 rounding.
 
+Final rounding now has a signed variable-width primitive. The gate accepts an
+ordered signed-magnitude interval at whole-limb binary precision and rounds each
+endpoint independently with integer nearest-ties-even arithmetic. Normal results
+use a 53-bit significand plus guard/sticky bits; values below `2^-1022` are
+quantized directly in `2^-1074` units, including half-min-subnormal underflow
+and the carry from maximum subnormal to minimum normal.
+
+A result publishes only when both rounded endpoint words are identical. Exact
+nonzero negative magnitudes retain the sign bit even when they underflow to
+negative zero, while an exact zero magnitude canonicalizes to positive zero.
+Independent `Fraction` cases cover normal parity ties, both signed underflow
+sides, subnormal ties, the normal/subnormal boundary, and ambiguous cross-zero
+or adjacent-cell intervals.
+
 
 A normalized midpoint comparator now composes those enclosures with the existing
 quadrant ordering and exact ratio cross-products. Its caller-owned scratch is

@@ -624,6 +624,18 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   dispatch those exact results first, reduce `|x|>=4`, and establish final
   correctly-rounded binary64 publication for the selected operation.
 
+  Signed variable-width interval rounding is now executable too. Integer-only
+  nearest-even quantization handles ordinary normals plus exact `2^-1074`
+  subnormal units, half-min-subnormal underflow, and the carry from maximum
+  subnormal to minimum normal. Negative nonzero values preserve signed zero on
+  underflow; exact zero canonicalizes positive.
+
+  Both directed endpoints must round to the same raw word before publication.
+  `Fraction` authority pins normal/subnormal parity ties, both signs, underflow,
+  the normal/subnormal transition, and nonpublishing cross-zero/adjacent-cell
+  intervals. This closes the generic final-rounding primitive, not yet the
+  operation-specific adaptive handoff or periodic range reduction.
+
 
   The normalized enclosures can now drive midpoint comparison directly. A
   `24*N` caller-owned path reuses the existing quadrant ranks and ratio

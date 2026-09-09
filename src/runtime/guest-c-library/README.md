@@ -224,6 +224,19 @@ reject here. A future public handoff still has to dispatch those exact results,
 reduce magnitudes at least four, and round the chosen sin or cos interval to
 binary64.
 
+Signed variable-width intervals now have an integer-only nearest-even binary64
+gate. `malbolge_guest_math_fixed_signed_interval_unique_binary64` validates
+numeric endpoint order, quantizes normal values from their top 53 bits, and uses
+exact `2^-1074` units through underflow and the subnormal-to-minimum-normal
+transition. Negative nonzero magnitudes preserve their sign even when they round
+to negative zero; exact zero is canonical positive zero.
+
+Publication occurs only when both endpoints produce the same raw binary64 word.
+Exact `Fraction` authority pins normal ties around one, half-min-subnormal ties,
+signed underflow, subnormal parity ties, and the
+maximum-subnormal/minimum-normal boundary. Cross-zero and adjacent-cell
+intervals remain nonpublishing retries.
+
 
 A parallel midpoint comparator now consumes that normalized sin/cos path before
 the existing branch-rank and cross-product logic. It requires caller-owned

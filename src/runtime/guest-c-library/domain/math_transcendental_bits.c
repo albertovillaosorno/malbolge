@@ -3688,6 +3688,153 @@ static uint64_t fixed_limbs_nearest_binary64(const uint32_t *value,
          (significand & BINARY64_FRACTION);
 }
 
+static int fixed_limbs_nearest_binary64_full(
+    const uint32_t *value, uint32_t limb_count, uint32_t fraction_bits,
+    uint64_t *output_bits) {
+  const int32_t high = fixed_limbs_high_bit(value, limb_count);
+  const int64_t exponent = (int64_t)high - (int64_t)fraction_bits;
+  uint64_t rounded = UINT64_C(0);
+
+  if (output_bits == NULL) {
+    return 0;
+  }
+  if (high < INT32_C(0)) {
+    *output_bits = UINT64_C(0);
+    return 1;
+  }
+  if (exponent > INT64_C(1023)) {
+    return 0;
+  }
+  if (exponent >= INT64_C(-1022)) {
+    uint64_t significand = UINT64_C(0);
+    uint32_t offset = UINT32_C(0);
+    int32_t guard_position = high - INT32_C(53);
+    uint32_t guard = UINT32_C(0);
+    uint32_t sticky = UINT32_C(0);
+    int64_t rounded_exponent = exponent;
+
+    while (offset < UINT32_C(53)) {
+      significand <<= UINT32_C(1);
+      if (high >= (int32_t)offset) {
+        significand |=
+            fixed_limbs_bit(value, (uint32_t)(high - (int32_t)offset));
+      }
+      ++offset;
+    }
+    if (guard_position >= INT32_C(0)) {
+      guard = fixed_limbs_bit(value, (uint32_t)guard_position);
+      sticky = fixed_limbs_any_below(value, (uint32_t)guard_position);
+    }
+    if (guard != UINT32_C(0) &&
+        (sticky != UINT32_C(0) ||
+         (significand & UINT64_C(1)) != UINT64_C(0))) {
+      ++significand;
+    }
+    if (significand == (UINT64_C(1) << UINT32_C(53))) {
+      significand >>= UINT32_C(1);
+      ++rounded_exponent;
+    }
+    if (rounded_exponent > INT64_C(1023)) {
+      return 0;
+    }
+    rounded = ((uint64_t)(rounded_exponent + INT64_C(1023))
+               << BINARY64_EXPONENT_SHIFT) |
+              (significand & BINARY64_FRACTION);
+    *output_bits = rounded;
+    return 1;
+  }
+  {
+    uint64_t subnormal = UINT64_C(0);
+    if (fraction_bits <= UINT32_C(1074)) {
+      const uint32_t left_shift = UINT32_C(1074) - fraction_bits;
+      uint32_t offset = UINT32_C(0);
+      while (offset <= (uint32_t)high) {
+        subnormal = (subnormal << UINT32_C(1)) |
+                    fixed_limbs_bit(value, (uint32_t)high - offset);
+        ++offset;
+      }
+      if (left_shift >= UINT32_C(64) ||
+          subnormal > (UINT64_MAX >> left_shift)) {
+        return 0;
+      }
+      subnormal <<= left_shift;
+    } else {
+      const uint32_t right_shift = fraction_bits - UINT32_C(1074);
+      uint32_t retained = UINT32_C(0);
+      uint32_t offset = UINT32_C(0);
+      uint32_t guard = UINT32_C(0);
+      uint32_t sticky = UINT32_C(0);
+
+      if (right_shift <= (uint32_t)high) {
+        retained = (uint32_t)high - right_shift + UINT32_C(1);
+      }
+      while (offset < retained) {
+        subnormal = (subnormal << UINT32_C(1)) |
+                    fixed_limbs_bit(value, (uint32_t)high - offset);
+        ++offset;
+      }
+      if (right_shift != UINT32_C(0) &&
+          right_shift - UINT32_C(1) <= (uint32_t)high) {
+        const uint32_t guard_position = right_shift - UINT32_C(1);
+        guard = fixed_limbs_bit(value, guard_position);
+        sticky = fixed_limbs_any_below(value, guard_position);
+      }
+      if (guard != UINT32_C(0) &&
+          (sticky != UINT32_C(0) ||
+           (subnormal & UINT64_C(1)) != UINT64_C(0))) {
+        ++subnormal;
+      }
+    }
+    if (subnormal > BINARY64_FRACTION + UINT64_C(1)) {
+      return 0;
+    }
+    rounded = subnormal == BINARY64_FRACTION + UINT64_C(1)
+                  ? BINARY64_HIDDEN_BIT
+                  : subnormal;
+  }
+  *output_bits = rounded;
+  return 1;
+}
+
+int malbolge_guest_math_fixed_signed_interval_unique_binary64(
+    const uint32_t *lower, uint32_t lower_negative, const uint32_t *upper,
+    uint32_t upper_negative, uint32_t limb_count, uint32_t fraction_limbs,
+    uint64_t *output_bits) {
+  uint64_t lower_bits = UINT64_C(0);
+  uint64_t upper_bits = UINT64_C(0);
+  uint32_t fraction_bits = UINT32_C(0);
+
+  if (lower == NULL || upper == NULL || output_bits == NULL ||
+      lower_negative > UINT32_C(1) || upper_negative > UINT32_C(1) ||
+      limb_count == UINT32_C(0) || fraction_limbs > limb_count ||
+      limb_count > (uint32_t)INT32_MAX / UINT32_C(32) ||
+      fraction_limbs > UINT32_MAX / UINT32_C(32) ||
+      compare_signed_fixed_limbs(lower, lower_negative, upper, upper_negative,
+                                 limb_count) > 0) {
+    return 0;
+  }
+  fraction_bits = fraction_limbs * UINT32_C(32);
+  if (!fixed_limbs_nearest_binary64_full(lower, limb_count, fraction_bits,
+                                         &lower_bits) ||
+      !fixed_limbs_nearest_binary64_full(upper, limb_count, fraction_bits,
+                                         &upper_bits)) {
+    return 0;
+  }
+  if (lower_negative != UINT32_C(0) &&
+      !fixed_limbs_is_zero(lower, limb_count)) {
+    lower_bits |= BINARY64_SIGN;
+  }
+  if (upper_negative != UINT32_C(0) &&
+      !fixed_limbs_is_zero(upper, limb_count)) {
+    upper_bits |= BINARY64_SIGN;
+  }
+  if (lower_bits != upper_bits) {
+    return 0;
+  }
+  *output_bits = lower_bits;
+  return 1;
+}
+
 static int fixed_limbs_unique_binary64(
     const uint32_t *lower, const uint32_t *upper, uint32_t limb_count,
     int32_t fraction_bits, uint64_t *output_bits) {

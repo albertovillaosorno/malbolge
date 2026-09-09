@@ -421,6 +421,10 @@ int malbolge_guest_math_fixed_signed_interval_add(
     uint32_t *output_lower_negative, uint32_t *output_upper,
     uint32_t *output_upper_negative, uint32_t *scratch,
     uint32_t scratch_capacity);
+int malbolge_guest_math_fixed_signed_interval_unique_binary64(
+    const uint32_t *lower, uint32_t lower_negative, const uint32_t *upper,
+    uint32_t upper_negative, uint32_t limb_count, uint32_t fraction_limbs,
+    uint64_t *output_bits);
 int malbolge_guest_math_fixed_sin_taylor_interval(
     const uint32_t *input_lower, const uint32_t *input_upper,
     uint32_t limb_count, uint32_t fraction_limbs, uint32_t terms,
