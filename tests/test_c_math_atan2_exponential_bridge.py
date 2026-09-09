@@ -49,6 +49,7 @@ EXPONENT_MASK = 0x7FF
 FRACTION_MASK = (1 << 52) - 1
 HIDDEN = 1 << 52
 HEIGHT_LIMIT = 108
+RATIONAL_DENOMINATOR_BITS_LIMIT = 106
 POLYNOMIAL_HEIGHT_EXPONENT_LIMIT = HEIGHT_LIMIT + 1
 ALPHA_HEIGHT_EXPONENT_LIMIT = 218
 INVERSE_DENOMINATOR_BITS_LIMIT = 109
@@ -57,6 +58,7 @@ CASES = (
     (0x3FEE19FA869EA9FC, 0x3FF197DD31B21770),
     (0xBFEE19FA869EA9FC, 0x3FF197DD31B21770),
     (0x3FF0000000000000, 0xBC80000000000001),
+    (0x3CA8000000000001, 0x3FF0000000000001),
 )
 
 
@@ -119,9 +121,12 @@ def _argument_bounds(midpoint: Fraction) -> tuple[int, int, int]:
     return height_exponent, alpha_numerator_bits, alpha_denominator_exponent
 
 
-def _ratio_height(y_bits: int, x_bits: int) -> int:
+def _ratio_components(y_bits: int, x_bits: int) -> tuple[int, int, int]:
     ratio = abs(_binary64(y_bits) / _binary64(x_bits))
-    return max(ratio.numerator.bit_length(), ratio.denominator.bit_length())
+    numerator_bits = ratio.numerator.bit_length()
+    denominator_bits = ratio.denominator.bit_length()
+    height_bits = max(numerator_bits, denominator_bits)
+    return numerator_bits, denominator_bits, height_bits
 
 
 def _cell_bounds(candidate: int) -> tuple[tuple[int, int, int], ...]:
@@ -155,8 +160,9 @@ int main(void) {{
     (void)printf(
         "%016" PRIx64 " %" PRIu32 " %" PRIu32 " %" PRIu32 " %" PRIu32
         " %" PRIu32 " %" PRIu32 " %" PRIu32 " %" PRIu32 " %" PRIu32
-        "\\n",
+        " %" PRIu32 "\\n",
         candidate, bounds.linear_polynomial_height_pow2_exponent_upper,
+        bounds.rational_denominator_bits,
         bounds.lower_midpoint.alpha_height_pow2_exponent_upper,
         bounds.lower_midpoint.inverse_denominator_bits,
         bounds.lower_midpoint.inverse_house_pow2_exponent_upper,
@@ -186,15 +192,18 @@ def _assert_bridge_row(pair: tuple[int, int], row: list[str]) -> None:
     candidate = int(row[0], 16)
     values = tuple(map(int, row[1:]))
     lower, upper = _cell_bounds(candidate)
-    polynomial_exponent = _ratio_height(*pair) + 1
+    _, denominator_bits, height_bits = _ratio_components(*pair)
+    polynomial_exponent = height_bits + 1
     assert values[0] == polynomial_exponent
-    assert values[1:4] == lower
-    assert values[4:7] == upper
-    assert values[7] == max(lower[0], upper[0])
-    assert values[8] == max(lower[1], upper[1])
+    assert values[1] == denominator_bits
+    assert values[2:5] == lower
+    assert values[5:8] == upper
+    assert values[8] == max(lower[0], upper[0])
+    assert values[9] == max(lower[1], upper[1])
     assert values[0] <= POLYNOMIAL_HEIGHT_EXPONENT_LIMIT
-    assert values[7] <= ALPHA_HEIGHT_EXPONENT_LIMIT
-    assert values[8] <= INVERSE_DENOMINATOR_BITS_LIMIT
+    assert values[1] <= RATIONAL_DENOMINATOR_BITS_LIMIT
+    assert values[8] <= ALPHA_HEIGHT_EXPONENT_LIMIT
+    assert values[9] <= INVERSE_DENOMINATOR_BITS_LIMIT
     assert max(lower[2], upper[2]) <= INVERSE_HOUSE_EXPONENT_LIMIT
 
 

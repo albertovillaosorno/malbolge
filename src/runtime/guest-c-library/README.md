@@ -129,7 +129,10 @@ on the subtracting side of pi/2, and `r <= 2^-55` on its adding side. Together
 with the existing zero-axis proof, any remaining kernel input has reduced ratio
 height at most 108 bits.
 
-`atan2(1,-nextafter(2^-55,+inf))` attains 108 bits. Across the retained 243
+`atan2(1,-nextafter(2^-55,+inf))` attains 108 numerator-height bits. The
+reduced rational denominator has a smaller tight ceiling of 106 bits;
+`y=0x3ca8000000000001, x=0x3ff0000000000001` attains it. Separation-parameter
+publication now fails closed above either ceiling. Across the retained 243
 kernel-required refinement cases, the observed maxima are 103 denominator bits
 and 102 numerator bits.
 
@@ -175,7 +178,9 @@ as the Fischler-Rivoal exponential-transcendence record under
 For the repository specialization `K=Q(i)`, algebraic degree `d=2`, and linear
 polynomial degree `delta=1`, the paper's stated height exponent is 11. Applied
 only to the `H(P)` term, that exponent contributes fewer than 1,199 binary
-exponent bits; the bridge factor `2b` raises the nominal subtotal to 1,308.
+exponent bits. The tight 106-bit rational-denominator ceiling makes the bridge
+factor `2b<2^107`, raising the nominal subtotal to 1,306.
+
 The paper's explicit correction and alpha-dependent constant are not yet
 instantiated, so this subtotal is not a precision/resource proof.
 

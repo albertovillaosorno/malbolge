@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from fractions import Fraction
+from itertools import starmap
 from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 
@@ -48,10 +49,13 @@ EXPONENT_MASK = 0x7FF
 FRACTION_MASK = (1 << 52) - 1
 HIDDEN = 1 << 52
 MAX_FALLBACK_MIDPOINT_SHIFT = 107
+MAX_ADAPTIVE_NUMERATOR_BITS = 108
+MAX_ADAPTIVE_DENOMINATOR_BITS = 106
 CASES = (
     (0x3FEE19FA869EA9FC, 0x3FF197DD31B21770),
     (0xBFEE19FA869EA9FC, 0x3FF197DD31B21770),
     (0x3FF0000000000000, 0xBC80000000000001),
+    (0x3CA8000000000001, 0x3FF0000000000001),
 )
 
 
@@ -196,5 +200,11 @@ def test_separation_parameters_match_exact_fraction(tmp_path: Path) -> None:
         actual_height = tuple(map(int, row[1:4]))
         actual_shifts = tuple(map(int, row[4:7]))
         assert actual_height == _height(*pair)
+        assert actual_height[0] <= MAX_ADAPTIVE_NUMERATOR_BITS
+        assert actual_height[1] <= MAX_ADAPTIVE_DENOMINATOR_BITS
         assert actual_shifts == _midpoint_shifts(candidate)
         assert actual_shifts[2] <= MAX_FALLBACK_MIDPOINT_SHIFT
+
+    heights = tuple(starmap(_height, CASES))
+    assert max(height[0] for height in heights) == MAX_ADAPTIVE_NUMERATOR_BITS
+    assert max(height[1] for height in heights) == MAX_ADAPTIVE_DENOMINATOR_BITS

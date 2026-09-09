@@ -529,8 +529,13 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   pi, `r <= 2^-53` on the subtracting side of pi/2, and `r <= 2^-55` on its
   adding side. Combined with the zero-axis proof, every remaining kernel ratio
   has height <=108 bits, and the cell just above the `2^-55` cutoff attains the
-  bound. `Fraction` matches all 243 retained kernel cases; their sampled maxima
-  are 102/103 bits.
+  bound. The reduced rational denominator has a separate tight ceiling of 106
+  bits; `y=0x3ca8000000000001, x=0x3ff0000000000001` attains it while remaining
+  kernel-required.
+
+  Separation-parameter publication now fails closed above either ceiling.
+  `Fraction` matches all 243 retained kernel cases; their sampled maxima are
+  102/103 bits.
 
   The two finite inputs to a future quantitative bound are now exposed together:
   exact reduced ratio height plus both candidate-cell midpoint shifts. A hard
@@ -542,11 +547,13 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   `t=a/b` and midpoint `m`, the Gaussian linear polynomial
   `P(X)=(a+ib)X+(a-ib)` satisfies
   `P(e^(2im))=b(e^(2im)+1)(t-tan(m))`. Guest C publishes strict power-of-two
-  bounds for `H(P)`, `H(2im)`, the algebraic denominator of `1/(2im)`, and its
-  inverse house without materializing Gaussian or shifted big integers.
+  bounds for `H(P)`, the reduced rational denominator, `H(2im)`, the algebraic
+  denominator of `1/(2im)`, and its inverse house without materializing Gaussian
+  or shifted big integers.
 
   Combined with the proven full-domain geometry, the ceilings are
-  `H(P)<2^109`, `H(2im)<2^218`, inverse-denominator bit length <=109, and
+  `H(P)<2^109`, rational denominator bits <=106, `H(2im)<2^218`,
+  inverse-denominator bit length <=109, and
   inverse-house exponent <=106. Remaining adaptive work is product policy for
   supplying/growing scratch only after lane-9 startup proves heap binding before
   user code, plus instantiation of a sourced explicit exponential/transcendence
@@ -557,8 +564,9 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   Fischler-Rivoal `arXiv:2502.17992` is now canonical bibliography evidence for
   the quantitative exponential route. In the repository's linear
   `K=Q(i), d=2, delta=1` specialization its stated height exponent is 11. The
-  known `H(P)<2^109` term and bridge factor `2b` account for a nominal 1,308
-  binary exponent bits before the theorem's explicit correction and
+  known `H(P)<2^109` term and tight `2b<2^107` bridge factor account for a
+  nominal 1,306 binary exponent bits before the theorem's explicit correction
+  and
   alpha-dependent constant. Instantiating those remaining terms at
   `H(alpha)<2^218`, inverse-denominator bits <=109, and inverse-house exponent
   <=106 is the next mathematical resource-proof obligation.

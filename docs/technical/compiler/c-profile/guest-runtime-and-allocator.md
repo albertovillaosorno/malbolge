@@ -901,9 +901,14 @@ maxima are 103 denominator bits and 102 numerator bits.
 Directed Q256 pi/4 bounds and `0 < atan(r) < r` now resolve tiny-ratio cells
 around pi and both sides of pi/2 before the kernel. Together with the existing
 zero-axis proof this gives a tight post-special height ceiling of 108 bits; the
-cell immediately above the `2^-55` adding-side cutoff attains it. This smaller
-ceiling, rather than 2,098, is the relevant rational-height parameter for any
-adaptive separation theorem.
+cell immediately above the `2^-55` adding-side cutoff attains it. The reduced
+rational denominator has a separate tight ceiling of 106 bits. The congruence
+witness `y=0x3ca8000000000001, x=0x3ff0000000000001` remains kernel-required
+with a 53-bit numerator and 106-bit denominator.
+
+Separation-parameter publication fails closed above either ceiling. These
+smaller bounds, rather than 2,098, are the relevant rational parameters
+for any adaptive separation theorem.
 
 This supplies the finite rational-height parameter required by any future
 quantitative Lambert/Lindemann separation bound. It does not itself lower-bound
@@ -931,12 +936,13 @@ form immediately gives a tangent-separation lower bound after division by
 `2b`.
 
 The bridge does not construct Gaussian big integers. From reduced ratio height
-`h` it publishes the strict ceiling `H(P)<2^(h+1)`. For each reduced dyadic
-midpoint it also bounds the usual height of `alpha=2im`, the bit length of the
-algebraic denominator of `1/alpha`, and a power-of-two ceiling for
+`h` it publishes the strict ceiling `H(P)<2^(h+1)` and separately preserves the
+reduced rational denominator bit length. For each reduced dyadic midpoint it
+also bounds the usual height of `alpha=2im`, the bit length of the algebraic
+denominator of `1/alpha`, and a power-of-two ceiling for
 `max(1,|1/alpha|)`. Under the already-proved full fallback geometry these become
-`H(P)<2^109`, `H(alpha)<2^218`, inverse-denominator bit length <=109, and
-inverse-house exponent <=106.
+`H(P)<2^109`, rational denominator bits <=106, `H(alpha)<2^218`,
+inverse-denominator bit length <=109, and inverse-house exponent <=106.
 
 Those finite parameters are small enough to make an explicit exponential
 transcendence measure a concrete candidate for the remaining resource proof.
@@ -950,8 +956,9 @@ as the Fischler-Rivoal exponential-transcendence record under
 For `K=Q(i)`, `alpha=2im`, algebraic degree `d=2`, and polynomial degree
 `delta=1`, the publication's stated height exponent specializes to 11. The
 known `H(P)<2^109` ceiling therefore makes the bare `H(P)^-11` contribution
-less than 1,199 binary exponent bits, while the additional bridge denominator
-`2b` contributes less than 109, for a nominal subtotal of 1,308.
+less than 1,199 binary exponent bits. The tight 106-bit rational denominator
+makes the additional bridge factor `2b` contribute less than 107, for a nominal
+subtotal of 1,306.
 
 That subtotal deliberately omits the paper's explicit height correction and
 alpha-dependent constant. The source states that a completely explicit version

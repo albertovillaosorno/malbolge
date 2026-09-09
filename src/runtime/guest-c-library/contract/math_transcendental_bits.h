@@ -194,6 +194,7 @@ typedef struct MalbolgeGuestMathExponentialArgumentBounds {
 
 typedef struct MalbolgeGuestMathAtan2ExponentialBridgeBounds {
   uint32_t linear_polynomial_height_pow2_exponent_upper;
+  uint32_t rational_denominator_bits;
   MalbolgeGuestMathExponentialArgumentBounds lower_midpoint;
   MalbolgeGuestMathExponentialArgumentBounds upper_midpoint;
   uint32_t alpha_height_pow2_exponent_upper;

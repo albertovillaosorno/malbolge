@@ -55,6 +55,8 @@
 #define BINARY64_SUBNORMAL_EXPONENT INT32_C(-1074)
 #define BINARY64_RATIO_MIN_EXPONENT_DELTA INT32_C(-2097)
 #define BINARY64_ATAN_UNCONDITIONAL_EXPONENT INT32_C(-54)
+#define ATAN2_ADAPTIVE_NUMERATOR_BITS_MAX UINT32_C(108)
+#define ATAN2_ADAPTIVE_DENOMINATOR_BITS_MAX UINT32_C(106)
 #define ATAN_QUARTER_REDUCTION_NUMERATOR UINT64_C(169)
 #define ATAN_QUARTER_REDUCTION_DENOMINATOR UINT64_C(408)
 #define FIXED_192_LIMB_COUNT UINT32_C(7)
@@ -3773,7 +3775,10 @@ int malbolge_guest_math_atan2_separation_parameters(
       !malbolge_guest_math_atan2_kernel_input(y_bits, x_bits, &ratio) ||
       !malbolge_guest_math_atan2_cell_midpoints(candidate_bits, &cell) ||
       !malbolge_guest_math_atan2_ratio_reduced_height(&ratio,
-                                                      &staged.ratio_height)) {
+                                                      &staged.ratio_height) ||
+      staged.ratio_height.numerator_bits > ATAN2_ADAPTIVE_NUMERATOR_BITS_MAX ||
+      staged.ratio_height.denominator_bits >
+          ATAN2_ADAPTIVE_DENOMINATOR_BITS_MAX) {
     return 0;
   }
   staged.lower_midpoint_shift = cell.lower.denominator_shift;
@@ -3859,6 +3864,7 @@ int malbolge_guest_math_atan2_exponential_bridge_bounds(
   }
   staged.linear_polynomial_height_pow2_exponent_upper =
       separation.ratio_height.height_bits + UINT32_C(1);
+  staged.rational_denominator_bits = separation.ratio_height.denominator_bits;
   staged.alpha_height_pow2_exponent_upper =
       staged.lower_midpoint.alpha_height_pow2_exponent_upper >
               staged.upper_midpoint.alpha_height_pow2_exponent_upper
@@ -3876,6 +3882,7 @@ int malbolge_guest_math_atan2_exponential_bridge_bounds(
           : staged.upper_midpoint.inverse_house_pow2_exponent_upper;
   output->linear_polynomial_height_pow2_exponent_upper =
       staged.linear_polynomial_height_pow2_exponent_upper;
+  output->rational_denominator_bits = staged.rational_denominator_bits;
   output->lower_midpoint = staged.lower_midpoint;
   output->upper_midpoint = staged.upper_midpoint;
   output->alpha_height_pow2_exponent_upper =
