@@ -49,6 +49,7 @@
 #define BINARY64_PI UINT64_C(0x400921fb54442d18)
 #define BINARY64_THREE_PI_OVER_FOUR UINT64_C(0x4002d97c7f3321d2)
 #define BINARY64_FOUR UINT64_C(0x4010000000000000)
+#define BINARY64_TWO_POW_31 UINT64_C(0x41e0000000000000)
 #define BINARY64_HIDDEN_BIT UINT64_C(0x0010000000000000)
 #define BINARY64_EXPONENT_SHIFT UINT32_C(52)
 #define BINARY64_EXPONENT_BIAS INT32_C(1023)
@@ -3462,6 +3463,14 @@ static const uint32_t QUARTER_PI_UPPER_256[9] = {
     UINT32_C(0x3b139b23), UINT32_C(0x020bbea6), UINT32_C(0x8a67cc74),
     UINT32_C(0x29024e08), UINT32_C(0x80dc1cd1), UINT32_C(0xc4c6628b),
     UINT32_C(0x2168c234), UINT32_C(0xc90fdaa2), UINT32_C(0)};
+static const uint32_t TWO_OVER_PI_LOWER_256[9] = {
+    UINT32_C(0xdebbc561), UINT32_C(0xfe5163ab), UINT32_C(0x3c439041),
+    UINT32_C(0xdb629599), UINT32_C(0xf534ddc0), UINT32_C(0xfc2757d1),
+    UINT32_C(0x4e441529), UINT32_C(0xa2f9836e), UINT32_C(0)};
+static const uint32_t TWO_OVER_PI_UPPER_256[9] = {
+    UINT32_C(0xdebbc562), UINT32_C(0xfe5163ab), UINT32_C(0x3c439041),
+    UINT32_C(0xdb629599), UINT32_C(0xf534ddc0), UINT32_C(0xfc2757d1),
+    UINT32_C(0x4e441529), UINT32_C(0xa2f9836e), UINT32_C(0)};
 static const uint32_t ATAN_CUT_UPPER_256[9] = {
     UINT32_C(0x0a0a0a0b), UINT32_C(0x0a0a0a0a), UINT32_C(0x0a0a0a0a),
     UINT32_C(0x0a0a0a0a), UINT32_C(0x0a0a0a0a), UINT32_C(0x0a0a0a0a),
@@ -3708,6 +3717,160 @@ static int atan2_base_interval_256(
                     FIXED_256_LIMB_COUNT);
     --remaining;
   }
+  return 1;
+}
+
+static int multiply_fixed_limbs_small_checked(uint32_t *value,
+                                              uint32_t limb_count,
+                                              uint32_t factor) {
+  uint32_t index = UINT32_C(0);
+  uint64_t carry = UINT64_C(0);
+  while (index < limb_count) {
+    const uint64_t product = (uint64_t)value[index] * factor + carry;
+    value[index] = (uint32_t)product;
+    carry = product >> UINT32_C(32);
+    ++index;
+  }
+  return carry == UINT64_C(0) ? 1 : 0;
+}
+
+static int fixed256_nearest_u32(const MalbolgeGuestMathFixed256 *value,
+                                uint32_t *output) {
+  const uint32_t integer = value->limbs[8];
+  const uint32_t half = value->limbs[7] >> UINT32_C(31);
+  uint32_t sticky = value->limbs[7] & UINT32_C(0x7fffffff);
+  uint32_t index = UINT32_C(0);
+  uint32_t rounded = integer;
+
+  if (output == NULL) {
+    return 0;
+  }
+  while (index < UINT32_C(7)) {
+    sticky |= value->limbs[index];
+    ++index;
+  }
+  if (half != UINT32_C(0) &&
+      (sticky != UINT32_C(0) || (integer & UINT32_C(1)) != UINT32_C(0))) {
+    if (rounded == UINT32_MAX) {
+      return 0;
+    }
+    ++rounded;
+  }
+  *output = rounded;
+  return 1;
+}
+
+static void publish_range_reduction256(
+    MalbolgeGuestMathSincosRangeReduction256 *output,
+    const MalbolgeGuestMathSincosRangeReduction256 *value) {
+  output->multiple = value->multiple;
+  output->quadrant = value->quadrant;
+  output->input_negative = value->input_negative;
+  copy_fixed_256(&output->residual_lower, value->residual_lower.limbs);
+  output->residual_lower_negative = value->residual_lower_negative;
+  copy_fixed_256(&output->residual_upper, value->residual_upper.limbs);
+  output->residual_upper_negative = value->residual_upper_negative;
+}
+
+int malbolge_guest_math_sincos_range_reduce256(
+    uint64_t bits, MalbolgeGuestMathSincosRangeReduction256 *output) {
+  const uint64_t magnitude = bits & ~BINARY64_SIGN;
+  MalbolgeGuestMathDyadic dyadic;
+  MalbolgeGuestMathFixed256 x;
+  MalbolgeGuestMathFixed256Interval reciprocal;
+  MalbolgeGuestMathFixed256Interval quotient;
+  MalbolgeGuestMathFixed256 half_pi_lower;
+  MalbolgeGuestMathFixed256 half_pi_upper;
+  MalbolgeGuestMathSincosRangeReduction256 staged;
+  uint64_t significand = UINT64_C(0);
+  int32_t power = INT32_C(0);
+  uint32_t lower_q = UINT32_C(0);
+  uint32_t upper_q = UINT32_C(0);
+  uint32_t factor = UINT32_C(0);
+  uint32_t discarded = UINT32_C(0);
+  int lower_compare = 0;
+  int upper_compare = 0;
+
+  if (output == NULL || magnitude < BINARY64_FOUR ||
+      magnitude >= BINARY64_TWO_POW_31 ||
+      !positive_binary64_components(magnitude, &significand, &power) ||
+      significand == UINT64_C(0) || power >= INT32_C(0)) {
+    return 0;
+  }
+  dyadic.numerator = significand;
+  dyadic.denominator_shift = (uint32_t)(-power);
+  dyadic.negative = UINT32_C(0);
+  normalize_dyadic(&dyadic);
+  zero_fixed_256(&x);
+  if (!malbolge_guest_math_dyadic_write_fixed(
+          &dyadic, UINT32_C(256), x.limbs, FIXED_256_LIMB_COUNT)) {
+    return 0;
+  }
+  copy_fixed_256(&reciprocal.lower, TWO_OVER_PI_LOWER_256);
+  copy_fixed_256(&reciprocal.upper, TWO_OVER_PI_UPPER_256);
+  multiply_fixed_limbs_floor(x.limbs, reciprocal.lower.limbs,
+                             FIXED_256_LIMB_COUNT, UINT32_C(8),
+                             quotient.lower.limbs, &discarded);
+  multiply_fixed_limbs_floor(x.limbs, reciprocal.upper.limbs,
+                             FIXED_256_LIMB_COUNT, UINT32_C(8),
+                             quotient.upper.limbs, &discarded);
+  if (discarded != UINT32_C(0)) {
+    increment_fixed_256(&quotient.upper);
+  }
+  if (!fixed256_nearest_u32(&quotient.lower, &lower_q) ||
+      !fixed256_nearest_u32(&quotient.upper, &upper_q) || lower_q != upper_q ||
+      lower_q > UINT32_MAX / UINT32_C(2)) {
+    return 0;
+  }
+  staged.multiple = lower_q;
+  staged.quadrant = lower_q & UINT32_C(3);
+  staged.input_negative =
+      (bits & BINARY64_SIGN) != UINT64_C(0) ? UINT32_C(1) : UINT32_C(0);
+  copy_fixed_256(&half_pi_lower, QUARTER_PI_LOWER_256);
+  copy_fixed_256(&half_pi_upper, QUARTER_PI_UPPER_256);
+  factor = lower_q * UINT32_C(2);
+  if (!multiply_fixed_limbs_small_checked(half_pi_lower.limbs,
+                                           FIXED_256_LIMB_COUNT, factor) ||
+      !multiply_fixed_limbs_small_checked(half_pi_upper.limbs,
+                                           FIXED_256_LIMB_COUNT, factor)) {
+    return 0;
+  }
+  lower_compare = compare_fixed_256(&x, &half_pi_lower);
+  upper_compare = compare_fixed_256(&x, &half_pi_upper);
+  if (upper_compare >= 0) {
+    if (!subtract_fixed_256(&staged.residual_lower, &x, &half_pi_upper) ||
+        !subtract_fixed_256(&staged.residual_upper, &x, &half_pi_lower)) {
+      return 0;
+    }
+    staged.residual_lower_negative = UINT32_C(0);
+    staged.residual_upper_negative = UINT32_C(0);
+  } else if (lower_compare <= 0) {
+    if (!subtract_fixed_256(&staged.residual_lower, &half_pi_upper, &x) ||
+        !subtract_fixed_256(&staged.residual_upper, &half_pi_lower, &x)) {
+      return 0;
+    }
+    staged.residual_lower_negative =
+        fixed_256_is_zero(&staged.residual_lower) ? UINT32_C(0) : UINT32_C(1);
+    staged.residual_upper_negative =
+        fixed_256_is_zero(&staged.residual_upper) ? UINT32_C(0) : UINT32_C(1);
+  } else {
+    if (!subtract_fixed_256(&staged.residual_lower, &half_pi_upper, &x) ||
+        !subtract_fixed_256(&staged.residual_upper, &x, &half_pi_lower)) {
+      return 0;
+    }
+    staged.residual_lower_negative =
+        fixed_256_is_zero(&staged.residual_lower) ? UINT32_C(0) : UINT32_C(1);
+    staged.residual_upper_negative = UINT32_C(0);
+  }
+  if (compare_fixed_limbs(staged.residual_lower.limbs,
+                          QUARTER_PI_UPPER_256,
+                          FIXED_256_LIMB_COUNT) > 0 ||
+      compare_fixed_limbs(staged.residual_upper.limbs,
+                          QUARTER_PI_UPPER_256,
+                          FIXED_256_LIMB_COUNT) > 0) {
+    return 0;
+  }
+  publish_range_reduction256(output, &staged);
   return 1;
 }
 

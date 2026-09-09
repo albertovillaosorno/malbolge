@@ -252,6 +252,21 @@ also pins no-workspace stage-0 retry, 96-limb stage-2 retry, then 120-limb final
 publication. Finite `|x|>=4` remains a hard nonpublishing boundary pending
 periodic range reduction.
 
+Periodic reduction now has a first bounded Q32.256 implementation. For finite
+`4 <= |x| < 2^31`, `malbolge_guest_math_sincos_range_reduce256` materializes the
+binary64 magnitude exactly, multiplies it by a directed one-cell Q256 enclosure
+of `2/pi`, and accepts the nearest integer multiple only when both quotient
+endpoints round to the same `u32`. The reciprocal cell is derived from the
+existing certified Q256 `pi/4` interval, not from a host floating constant.
+
+The selected `q` is at most 1,367,130,551 in this domain, so `2*q` and the
+Q32.256 product `q*pi/2` fit their checked 32-bit/fixed-width geometry. The
+boundary publishes `q`, `q mod 4`, the original sign, and a signed directed
+residual enclosed in `[-pi/4,+pi/4]`. Independent Machin `Fraction` authority
+re-derives both `pi/4` and `2/pi` Q256 cells, then matches every residual limb
+for 512 fixed-seed values plus binary64 neighbors of selected `pi/2` multiples.
+Magnitudes at least `2^31` remain outside this bounded reducer.
+
 
 A parallel midpoint comparator now consumes that normalized sin/cos path before
 the existing branch-rank and cross-product logic. It requires caller-owned

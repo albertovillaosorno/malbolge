@@ -651,6 +651,21 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   blocker is periodic range reduction for finite `|x|>=4`, plus full-domain
   resource/correct-rounding closure before source availability changes.
 
+  Periodic reduction now has a bounded executable first stage. Finite
+  `4 <= |x| < 2^31` values enter Q32.256 exactly, multiply by a one-cell
+  directed `2/pi` enclosure derived from the certified Q256 `pi/4` cell, and
+  publish a
+  multiple only when both quotient endpoints select the same nearest-even
+  integer. No host pi or reciprocal constant is numerical authority.
+
+  The domain keeps the selected multiple below 1,367,130,552, allowing checked
+  `u32` multiplication of the Q256 `pi/4` bounds. The output carries `q`,
+  `q mod 4`, original sign, and a directed signed residual within `+/-pi/4`.
+  Independent Machin `Fraction` arithmetic matches every residual limb for 512
+  fixed-seed inputs plus binary64 neighbors of selected `pi/2` multiples up to
+  one billion. Full binary64 still needs a wider Payne-Hanek-style reducer; this
+  bounded unit is not a full-domain claim.
+
 
   The normalized enclosures can now drive midpoint comparison directly. A
   `24*N` caller-owned path reuses the existing quadrant ranks and ratio

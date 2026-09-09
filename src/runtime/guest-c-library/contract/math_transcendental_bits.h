@@ -168,6 +168,16 @@ typedef struct MalbolgeGuestMathAtan2Interval256 {
   uint32_t negative;
 } MalbolgeGuestMathAtan2Interval256;
 
+typedef struct MalbolgeGuestMathSincosRangeReduction256 {
+  uint32_t multiple;
+  uint32_t quadrant;
+  uint32_t input_negative;
+  MalbolgeGuestMathFixed256 residual_lower;
+  uint32_t residual_lower_negative;
+  MalbolgeGuestMathFixed256 residual_upper;
+  uint32_t residual_upper_negative;
+} MalbolgeGuestMathSincosRangeReduction256;
+
 typedef struct MalbolgeGuestMathDyadic {
   uint64_t numerator;
   uint32_t denominator_shift;
@@ -353,6 +363,8 @@ int malbolge_guest_math_atan2_interval224(
 int malbolge_guest_math_atan2_interval256(
     uint64_t y_bits, uint64_t x_bits,
     MalbolgeGuestMathAtan2Interval256 *output);
+int malbolge_guest_math_sincos_range_reduce256(
+    uint64_t bits, MalbolgeGuestMathSincosRangeReduction256 *output);
 int malbolge_guest_math_fixed192_unique_binary64(
     const MalbolgeGuestMathFixed192Interval *input, uint64_t *output_bits);
 int malbolge_guest_math_fixed224_unique_binary64(

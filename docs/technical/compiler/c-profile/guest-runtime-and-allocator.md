@@ -1034,6 +1034,22 @@ the near-four input reports stage 0/72; 96 limbs exhaust stages 0 and 1 and
 report stage 2/120; 120 limbs publishes the certified result. Magnitudes at
 least four remain outside this handoff until periodic reduction is implemented.
 
+A bounded periodic-reduction boundary now handles the next magnitude region.
+For finite `4 <= |x| < 2^31`, the exact binary64 dyadic is represented in
+Q32.256 and multiplied by a directed Q256 `2/pi` interval. That reciprocal is
+the exact floor/ceil cell implied by the independently certified Q256 `pi/4`
+cell; the runtime does not admit a rounded host `2/pi` constant as authority.
+Both quotient endpoints must select the same nearest-even integer multiple.
+
+Within this bound the selected multiple is below 1,367,130,552, so twice the
+multiple fits `uint32_t` and its directed product with `pi/4` fits the 32 whole
+bits of Q32.256. Subtraction publishes an ordered signed residual around the
+nearest `q*pi/2`, bounded by `pi/4`, plus `q mod 4` and the original input sign.
+A deterministic 512-case corpus plus exact binary64 neighbors around selected
+multiples from 3 through one billion matches an independent Machin/`Fraction`
+reconstruction limb-for-limb. Larger finite inputs still require wider
+Payne-Hanek-style quotient/constant geometry.
+
 
 A normalized midpoint comparator now composes those enclosures with the existing
 quadrant ordering and exact ratio cross-products. Its caller-owned scratch is
