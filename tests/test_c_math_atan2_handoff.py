@@ -247,3 +247,73 @@ def test_handoff_refines_injected_q256_range(tmp_path: Path) -> None:
     executable = _compile(tmp_path, _adaptive_source(), "atan2-handoff-adapt")
     executed = _run([str(executable)], tmp_path)
     assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
+def _resume_source() -> str:
+    lower_bits = HARD_EXPECTED - 4096
+    upper_bits = HARD_EXPECTED + 8192
+    lower = _fixed_integer(lower_bits)
+    upper = _fixed_integer(upper_bits)
+    return f"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+static int sentinel(const MalbolgeGuestMathAtan2HandoffProgress *out) {{
+  return out->status == (MalbolgeGuestMathAtan2HandoffStatus)9 &&
+         out->bits == UINT64_C(0xcccccccccccccccc);
+}}
+int main(void) {{
+  MalbolgeGuestMathAtan2Interval256 interval = {{
+    {{{{{_limbs(lower)}}}, {{{_limbs(upper)}}}}}, UINT32_C(0)}};
+  MalbolgeGuestMathAtan2HandoffProgress first;
+  MalbolgeGuestMathAtan2HandoffProgress second;
+  MalbolgeGuestMathAtan2HandoffProgress final;
+  MalbolgeGuestMathAtan2HandoffProgress bad;
+  uint32_t scratch[75];
+  if (!malbolge_guest_math_atan2_refine_q256_interval_available(
+          UINT64_C(0x{HARD_Y:016x}), UINT64_C(0x{HARD_X:016x}), &interval,
+          UINT32_C(0), (uint32_t *)0, UINT32_C(0), &first) ||
+      first.status != MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_RETRY ||
+      first.y_bits != UINT64_C(0x{HARD_Y:016x}) ||
+      first.x_bits != UINT64_C(0x{HARD_X:016x}) ||
+      first.plan.stage != UINT32_C(0))
+    return 101;
+  if (!malbolge_guest_math_atan2_resume_handoff_available(
+          UINT64_C(0x{HARD_Y:016x}), UINT64_C(0x{HARD_X:016x}), &first,
+          scratch, UINT32_C(60), &second) ||
+      second.status != MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_RETRY ||
+      second.plan.stage != UINT32_C(2) ||
+      second.plan.required_scratch_limbs != UINT32_C(75) ||
+      second.remaining.lower_bits > UINT64_C(0x{HARD_EXPECTED:016x}) ||
+      second.remaining.upper_bits < UINT64_C(0x{HARD_EXPECTED:016x}))
+    return 102;
+  if (!malbolge_guest_math_atan2_resume_handoff_available(
+          UINT64_C(0x{HARD_Y:016x}), UINT64_C(0x{HARD_X:016x}), &second,
+          scratch, UINT32_C(75), &final) ||
+      final.status != MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_REFINED_RESOLVED ||
+      final.bits != UINT64_C(0x{HARD_EXPECTED:016x}) ||
+      final.remaining.lower_bits != UINT64_C(0x{HARD_EXPECTED:016x}) ||
+      final.remaining.upper_bits != UINT64_C(0x{HARD_EXPECTED:016x}) ||
+      final.plan.stage != UINT32_C(2))
+    return 103;
+  bad.status = (MalbolgeGuestMathAtan2HandoffStatus)9;
+  bad.bits = UINT64_C(0xcccccccccccccccc);
+  first.plan.terms += UINT32_C(1);
+  if (malbolge_guest_math_atan2_resume_handoff_available(
+          UINT64_C(0x{HARD_Y:016x}), UINT64_C(0x{HARD_X:016x}), &first,
+          scratch, UINT32_C(75), &bad) || !sentinel(&bad))
+    return 104;
+  first.plan.terms -= UINT32_C(1);
+  first.y_bits ^= UINT64_C(1);
+  if (malbolge_guest_math_atan2_resume_handoff_available(
+          UINT64_C(0x{HARD_Y:016x}), UINT64_C(0x{HARD_X:016x}), &first,
+          scratch, UINT32_C(75), &bad) || !sentinel(&bad))
+    return 105;
+  return 0;
+}}
+"""
+
+
+def test_handoff_resume_preserves_narrowed_range(tmp_path: Path) -> None:
+    """Resume the saved range and first unattempted plan with more scratch."""
+    executable = _compile(tmp_path, _resume_source(), "atan2-handoff-resume")
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr

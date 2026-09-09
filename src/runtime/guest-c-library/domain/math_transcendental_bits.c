@@ -3307,11 +3307,13 @@ static void clear_atan2_refinement_plan(
 }
 
 static void publish_atan2_handoff_progress(
-    MalbolgeGuestMathAtan2HandoffProgress *output,
-    MalbolgeGuestMathAtan2HandoffStatus status, uint64_t bits,
+    MalbolgeGuestMathAtan2HandoffProgress *output, uint64_t y_bits,
+    uint64_t x_bits, MalbolgeGuestMathAtan2HandoffStatus status, uint64_t bits,
     const MalbolgeGuestMathAtan2CandidateRange *remaining,
     const MalbolgeGuestMathAtan2RefinementPlan *plan) {
   output->status = status;
+  output->y_bits = y_bits;
+  output->x_bits = x_bits;
   output->bits = bits;
   if (remaining == NULL) {
     output->remaining.lower_bits = bits;
@@ -3370,8 +3372,8 @@ int malbolge_guest_math_atan2_refine_q256_interval_available(
   }
   if (scratch == NULL || scratch_capacity < first_plan.required_scratch_limbs) {
     publish_atan2_handoff_progress(
-        output, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_RETRY, UINT64_C(0), &range,
-        &first_plan);
+        output, y_bits, x_bits, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_RETRY,
+        UINT64_C(0), &range, &first_plan);
     return 1;
   }
   if (!malbolge_guest_math_atan2_refine_range_available(
@@ -3380,7 +3382,7 @@ int malbolge_guest_math_atan2_refine_q256_interval_available(
     return 0;
   }
   publish_atan2_handoff_progress(
-      output,
+      output, y_bits, x_bits,
       refined.certified != UINT32_C(0)
           ? MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_REFINED_RESOLVED
           : MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_RETRY,
@@ -3407,8 +3409,8 @@ int malbolge_guest_math_atan2_handoff_available(
   }
   if (special.status == MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED) {
     publish_atan2_handoff_progress(
-        output, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED, special.bits,
-        NULL, NULL);
+        output, y_bits, x_bits, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED,
+        special.bits, NULL, NULL);
     return 1;
   }
   if (!malbolge_guest_math_atan2_interval(y_bits, x_bits, &interval)) {
@@ -3420,8 +3422,8 @@ int malbolge_guest_math_atan2_handoff_available(
                   (interval.negative != UINT32_C(0) ? BINARY64_SIGN
                                                      : UINT64_C(0));
     publish_atan2_handoff_progress(
-        output, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED, signed_bits,
-        NULL, NULL);
+        output, y_bits, x_bits, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED,
+        signed_bits, NULL, NULL);
     return 1;
   }
   if (!malbolge_guest_math_atan2_interval224(y_bits, x_bits, &wide_interval)) {
@@ -3433,8 +3435,8 @@ int malbolge_guest_math_atan2_handoff_available(
                   (wide_interval.negative != UINT32_C(0) ? BINARY64_SIGN
                                                           : UINT64_C(0));
     publish_atan2_handoff_progress(
-        output, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED, signed_bits,
-        NULL, NULL);
+        output, y_bits, x_bits, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED,
+        signed_bits, NULL, NULL);
     return 1;
   }
   if (!malbolge_guest_math_atan2_interval256(y_bits, x_bits,
@@ -3447,13 +3449,58 @@ int malbolge_guest_math_atan2_handoff_available(
                   (wider_interval.negative != UINT32_C(0) ? BINARY64_SIGN
                                                            : UINT64_C(0));
     publish_atan2_handoff_progress(
-        output, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED, signed_bits,
-        NULL, NULL);
+        output, y_bits, x_bits, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED,
+        signed_bits, NULL, NULL);
     return 1;
   }
   return malbolge_guest_math_atan2_refine_q256_interval_available(
       y_bits, x_bits, &wider_interval, start_stage, scratch, scratch_capacity,
       output);
+}
+
+static int atan2_refinement_plan_matches(
+    const MalbolgeGuestMathAtan2RefinementPlan *input) {
+  MalbolgeGuestMathAtan2RefinementPlan expected;
+  if (input == NULL ||
+      !malbolge_guest_math_atan2_refinement_plan(input->stage, &expected)) {
+    return 0;
+  }
+  return input->fraction_limbs == expected.fraction_limbs &&
+         input->terms == expected.terms &&
+         input->required_scratch_limbs == expected.required_scratch_limbs;
+}
+
+int malbolge_guest_math_atan2_resume_handoff_available(
+    uint64_t y_bits, uint64_t x_bits,
+    const MalbolgeGuestMathAtan2HandoffProgress *previous, uint32_t *scratch,
+    uint32_t scratch_capacity, MalbolgeGuestMathAtan2HandoffProgress *output) {
+  MalbolgeGuestMathAtan2RangeProgress refined;
+
+  if (previous == NULL || output == NULL ||
+      previous->status != MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_RETRY ||
+      previous->y_bits != y_bits || previous->x_bits != x_bits ||
+      !atan2_refinement_plan_matches(&previous->plan)) {
+    return 0;
+  }
+  if (scratch == NULL ||
+      scratch_capacity < previous->plan.required_scratch_limbs) {
+    publish_atan2_handoff_progress(
+        output, y_bits, x_bits, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_RETRY,
+        UINT64_C(0), &previous->remaining, &previous->plan);
+    return 1;
+  }
+  if (!malbolge_guest_math_atan2_refine_range_available(
+          y_bits, x_bits, &previous->remaining, previous->plan.stage, scratch,
+          scratch_capacity, &refined)) {
+    return 0;
+  }
+  publish_atan2_handoff_progress(
+      output, y_bits, x_bits,
+      refined.certified != UINT32_C(0)
+          ? MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_REFINED_RESOLVED
+          : MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_RETRY,
+      refined.bits, &refined.remaining, &refined.plan);
+  return 1;
 }
 
 static uint32_t u64_bit_length(uint64_t value) {

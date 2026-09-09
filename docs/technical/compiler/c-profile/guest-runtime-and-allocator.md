@@ -830,6 +830,24 @@ ambiguous interval is deliberately not presented as a naturally observed atan2
 input; public exposure still depends on full-domain termination/resource
 closure.
 
+Caller-owned retry progress is now resumable without replaying the fixed ladder.
+The handoff state includes raw input identity, the narrowed binary64 candidate
+range, and the first unattempted plan. Resume validates `(y_bits,x_bits)` and
+recomputes the exact stage tuple before invoking range refinement on the saved
+range. Capacity that is still too small simply republishes the same retry state.
+
+Synthetic ambiguous evidence runs the ownership chain across three capacities:
+no scratch returns stage 0, 60 limbs advances to a narrowed stage-2 retry, and
+75
+limbs certify the retained hard cell from that saved state. Mutating the stored
+input identity or planner terms produces a nonpublishing hard failure. The range
+payload is trusted caller-owned runtime state, not an authenticated object.
+
+This completes the internal no-allocator control flow from fixed-Q evaluation to
+capacity query, narrowed retry, and resumed certification. Public integration
+still needs a policy for who supplies/grows that scratch and, independently, the
+full-domain resource/termination proof.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

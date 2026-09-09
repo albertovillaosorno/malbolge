@@ -216,6 +216,8 @@ typedef enum MalbolgeGuestMathAtan2HandoffStatus {
 
 typedef struct MalbolgeGuestMathAtan2HandoffProgress {
   MalbolgeGuestMathAtan2HandoffStatus status;
+  uint64_t y_bits;
+  uint64_t x_bits;
   uint64_t bits;
   MalbolgeGuestMathAtan2CandidateRange remaining;
   MalbolgeGuestMathAtan2RefinementPlan plan;
@@ -398,6 +400,10 @@ int malbolge_guest_math_atan2_refine_q256_interval_available(
     MalbolgeGuestMathAtan2HandoffProgress *output);
 int malbolge_guest_math_atan2_handoff_available(
     uint64_t y_bits, uint64_t x_bits, uint32_t start_stage, uint32_t *scratch,
+    uint32_t scratch_capacity, MalbolgeGuestMathAtan2HandoffProgress *output);
+int malbolge_guest_math_atan2_resume_handoff_available(
+    uint64_t y_bits, uint64_t x_bits,
+    const MalbolgeGuestMathAtan2HandoffProgress *previous, uint32_t *scratch,
     uint32_t scratch_capacity, MalbolgeGuestMathAtan2HandoffProgress *output);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);

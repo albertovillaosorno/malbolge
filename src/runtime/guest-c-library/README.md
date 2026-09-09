@@ -371,6 +371,25 @@ adaptive
 branch yet, so the injected interval is integration evidence rather than an
 observed Q256-ambiguous atan2 case.
 
+Adaptive handoff retries are now resumable caller-owned state. Progress records
+the original raw `(y_bits,x_bits)`, narrowed candidate range, and first
+unattempted refinement plan.
+`malbolge_guest_math_atan2_resume_handoff_available`
+checks the input identity and recomputes the planner tuple before continuing the
+saved range, so increasing scratch does not repeat Q192/Q224/Q256 evaluation or
+throw away binary-search progress.
+
+The injected hard interval pins an actual three-call ownership sequence: the
+first call without scratch returns stage 0; resuming that progress with 60 limbs
+narrows the range and returns stage 2; resuming only that saved state with 75
+limbs certifies the hard binary64 cell. Tampering with `(y_bits,x_bits)` or the
+saved term count is rejected before output publication.
+
+The narrowed range itself remains caller-owned internal state and is expected to
+be preserved byte-for-byte between calls; the identity/plan checks prevent
+accidental cross-input or stale-plan reuse, not hostile forgery. This is an
+internal runtime contract rather than a security boundary.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch
