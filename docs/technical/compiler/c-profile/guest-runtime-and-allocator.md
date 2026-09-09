@@ -1150,6 +1150,22 @@ Exact `Fraction` checks pin separate tight witnesses for every global ceiling.
 The bridge does not yet instantiate a quantitative theorem strongly enough to
 prove a finite precision ceiling.
 
+Theorem 1 of the retained Fischler-Rivoal source already gives qualitative
+non-equality: for nonzero rational `x`, the degree-two polynomial over `Z[i]` is
+nonzero, hence its value at `e^(ix)` cannot vanish. Arbitrarily precise directed
+refinement therefore eventually separates every rational binary64 midpoint.
+
+The direct explicit constant remains unusable as a finite guest ceiling. In the
+`d=2`, `delta=2` specialization Proposition 1 requires `p>=4`. At
+`x=max-finite`, `d(1/alpha)` has 1,024 bits and `t=1`, so `2qt>2^1024` for every
+admissible `p`. The proposition's `b` and `v` factors alone imply
+`log2(D)>2^8206`, whereas all bits in a maximum `uint32_t` byte block are fewer
+than `2^35`.
+
+This is a theorem-selection result, not a claim about actual separation. A
+stronger sin/cos-specific quantitative measure or another finite table-maker
+argument is still required.
+
 
 A normalized midpoint comparator now composes those enclosures with the existing
 quadrant ordering and exact ratio cross-products. Its caller-owned scratch is

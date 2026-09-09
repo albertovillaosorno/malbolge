@@ -344,6 +344,18 @@ The signed-zero cells are one-sided: `+0` uses `[0,2^-1075]` and `-0` uses
 for the 79, 1,024, 2,048, 27, 1,075, and 1,076 ceilings. These are structural
 transcendence inputs, not a finite table-maker separation or resource proof.
 
+The existing Fischler-Rivoal theorem makes exact midpoint equality impossible
+for these nonzero rational inputs: the quadratic is nonzero over `Z[i]`, so
+`P(e^(ix))` has a positive theorem lower bound. This supplies qualitative
+eventual separation for arbitrarily precise directed refinement.
+
+Its completely explicit Proposition 1 is not a practical resource ceiling here.
+For degree `d=2`, polynomial degree `delta=2`, every admissible `p>=4` and the
+`max-finite` input force `2qt>2^1024`; the proposition's `b`/`v` factor alone
+gives `log2(D)>2^8206`. Even granting all bits in a `uint32_t`-sized guest block
+gives fewer than `2^35`, so this comparison rules out only the direct theorem
+guarantee, not the true separation.
+
 Periodic residuals now feed one directed trig evaluator regardless of reducer.
 `malbolge_guest_math_sincos_range_interval256` uses the bounded path below
 `2^64` and Payne-Hanek at or above `2^64`, then evaluates only the residual

@@ -2,10 +2,11 @@
 
 ## Status
 
-Verified for the exponential-transcendence theorem, its linear-polynomial
-height exponent, and Proposition 1's completely explicit specialization. The
-direct repository bridge has also been evaluated and is too weak for the finite
-guest resource ceiling.
+Verified for the exponential-transcendence theorem, its degree-one and
+degree-two polynomial specializations, and Proposition 1's completely explicit
+form. Direct repository applications to both tangent and sin/cos midpoint
+bridges have been evaluated and are too weak for the finite guest resource
+ceiling.
 
 ## Subject
 
@@ -27,6 +28,12 @@ For the repository bridge, take `K=Q(i)`, `alpha=2im`, and the degree-one
 polynomial `P(X)=(a+ib)X+(a-ib)` associated with reduced rational `a/b`. Then
 `[K(alpha):Q]=2` for nonzero rational `m`, and the publication's degree-one
 height exponent is `4d^2-2d-1=11` when `d=2`.
+
+The sin/cos bridge instead takes `alpha=ix` for nonzero rational binary64 `x`
+and a degree-two polynomial over `Z[i]`. Proposition 1 therefore requires
+`p>=d*delta=4`. Theorem 1 already excludes exact equality with a rational
+rounding midpoint, but its explicit Proposition 1 constant must still be judged
+against the finite guest resource ceiling.
 
 ## Provenance
 
@@ -65,14 +72,21 @@ terms into the repository MIT license.
   exponent is `4d^2-2d-1`.
 - For the repository specialization `K=Q(i)` and rational nonzero midpoint `m`,
   `alpha=2im` has degree 2 over `Q`, so the stated exponent specializes to 11.
+- For degree-two polynomials and `d=2`, the paper states that the optimal
+  accessory parameter is `p=4d-2=6`; Proposition 1 is valid for every `p>=4`.
+- Applied to `alpha=i*max-finite`, the direct Proposition 1 denominator factor
+  is already too weak for the guest resource budget for every admissible `p`.
 
 ### Unresolved
 
-Proposition 1 is not strong enough, under the direct repository specialization,
-to prove certification before the finite guest allocation ceiling. This does
-not rule out a stronger specialized transcendence measure or say that actual
-midpoint separation is comparably small. The external theorem remains
-source-owned rather than a repository-owned proof.
+Proposition 1 is not strong enough under either direct repository bridge to
+prove certification before the finite guest allocation ceiling. For sin/cos at
+`max-finite`, the degree-two specialization has a guaranteed-bound denominator
+with `log2(D)>2^8206` before other positive factors are counted.
+
+This does not say that actual midpoint separation or required precision is
+comparably small. A stronger specialized measure remains possible, and the
+external theorem remains source-owned rather than a repository-owned proof.
 
 ## Sources
 

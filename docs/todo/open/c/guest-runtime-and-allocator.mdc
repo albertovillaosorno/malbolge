@@ -751,6 +751,18 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   tight. This closes parameterization and qualitative non-equality input for an
   exponential theorem, not the finite table-maker resource ceiling.
 
+  Fischler-Rivoal Theorem 1 now supplies the corresponding qualitative
+  non-equality: for nonzero rational `x`, neither nonzero quadratic over `Z[i]`
+  can vanish at `e^(ix)`. Thus arbitrary directed refinement eventually
+  separates every rational rounding midpoint.
+
+  Proposition 1 does not close resources. With `d=2`, `delta=2`, every
+  admissible `p>=4` and `x=max-finite` give `2qt>2^1024`; its `b`/`v`
+  denominator
+  factor alone yields `log2(D)>2^8206`. A maximum `uint32_t` guest byte block
+  contains fewer than `2^35` bits, so the direct explicit guarantee is ruled out
+  without making any claim about the true midpoint distance.
+
 
   The normalized enclosures can now drive midpoint comparison directly. A
   `24*N` caller-owned path reuses the existing quadrant ranks and ratio
