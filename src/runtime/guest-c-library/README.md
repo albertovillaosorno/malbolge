@@ -408,6 +408,21 @@ Allocation wrappers remain authority-unavailable until compiler startup proves
 heap binding before user code, so caller-owned storage remains the active math
 contract.
 
+Test-only integration now proves that the existing explicitly bound guest heap
+can satisfy the same caller-owned refinement lifecycle without changing math
+ownership. Before binding, a 300-byte runtime allocation reports
+`NOT_INITIALIZED`. After binding a 1,024-byte aligned arena, the synthetic hard
+retry sequence allocates 180 bytes, resizes to 240 and 300 bytes as plans grow,
+certifies the hard cell, releases the block, and successfully allocates again.
+
+This evidence links the byte query to real guest-heap semantics, including
+resize
+and release, but production math still never calls the allocator. The test binds
+the heap explicitly inside its own process; compiler-generated startup must
+still
+prove that equivalent binding occurs before user code before allocator-owned
+transcendental scratch or public allocation can be admitted.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

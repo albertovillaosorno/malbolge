@@ -869,6 +869,20 @@ The byte query exists so that later startup/allocator integration can request
 the
 same proven workspace geometry without duplicating arithmetic.
 
+A test-only cross-domain integration now exercises the projected scratch against
+the actual startup-bound guest heap. Allocation before an explicit bind returns
+`NOT_INITIALIZED`. After binding a 1,024-byte aligned arena, the synthetic hard
+handoff allocates its 180-byte stage-0 buffer, resizes it to 240 and 300 bytes
+for
+later retries, reaches `REFINED_RESOLVED`, releases the allocation, and confirms
+that a fresh allocation succeeds afterward.
+
+The harness calls `malbolge_guest_runtime_bind_heap`, allocation, resize, and
+release directly; the math implementation remains allocator-free. This evidence
+therefore proves compatibility with the existing guest heap once binding exists,
+but it does not satisfy the separate lane-9 obligation to emit/prove that bind
+before user code or make canonical `malloc` available.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

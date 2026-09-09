@@ -511,13 +511,18 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   largest plan whose workspace fits a `u32` guest allocation extent
   (`0xfffffff0` bytes); the next stage rejects byte projection atomically.
 
-  Remaining adaptive work is ownership/policy for supplying and growing caller
-  scratch in the eventual product path, plus a proof that Lambert-driven
-  refinement certifies before that finite allocation-capacity ceiling. The math
-  implementation still does not call allocation because canonical malloc/free
-  remain unavailable until lane-9 startup proves heap binding before user code.
-  Q128/16 remains bounded coverage, not a full-domain bound, and public atan2
-  remains unavailable.
+  Test-only integration proves the existing guest heap can implement that growth
+  policy once it is explicitly bound: pre-bind allocation is `NOT_INITIALIZED`,
+  then a 1,024-byte arena supports 180 -> 240 -> 300 byte allocate/resize
+  retries,
+  hard-cell certification, release, and reuse. Math remains allocator-free; the
+  harness performs the bind and runtime allocation calls directly.
+
+  Remaining adaptive work is product policy for supplying/growing that scratch
+  only after lane-9 startup proves heap binding before user code, plus a proof
+  that Lambert-driven refinement certifies before the finite allocation-capacity
+  ceiling. Q128/16 remains bounded coverage, not a full-domain bound, and public
+  atan2 remains unavailable.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies
