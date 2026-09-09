@@ -210,6 +210,20 @@ reduced denominator shift at most 79; `nextafter(cos_cutoff,+inf)` attains 79
 exactly. A 520-case `Fraction` differential locks the exact dyadic. Periodic
 range reduction for larger binary64 arguments remains separate.
 
+The same sub-four raw input can now enter normalized refinement directly.
+`malbolge_guest_math_unary_sincos_refine_available` composes the exact
+conversion with the dyadic scheduler and preserves its stage/proven semantics.
+Differential C evidence matches manual composition for both operations, signs,
+the first cosine kernel input, and `nextdown(4)`. A
+four-output-limb/80-scratch-limb call
+reports the pending Q128/16 five/100 plan without touching endpoints; the larger
+capacity certifies the same enclosure.
+
+Inputs already resolved by `malbolge_guest_math_unary_special` intentionally
+reject here. A future public handoff still has to dispatch those exact results,
+reduce magnitudes at least four, and round the chosen sin or cos interval to
+binary64.
+
 
 A parallel midpoint comparator now consumes that normalized sin/cos path before
 the existing branch-rank and cross-product logic. It requires caller-owned

@@ -993,6 +993,18 @@ is globally at most 79 and the ceiling is attained. A deterministic 520-case
 value immediately below four. This bridge is exact input conversion only; it
 does not implement periodic range reduction beyond the sub-four domain.
 
+A sub-four raw-input wrapper now composes this exact bridge with the dyadic
+scheduler. Its endpoint limbs, signs, proven flag, and selected stage match the
+manual two-call composition on retained SIN/COS cases. The near-four input with
+four output limbs and 80 scratch limbs reports the pending Q128/16 plan
+requiring five output limbs and 100 scratch limbs without publication; that
+exact capacity then certifies the same interval.
+
+The wrapper rejects preproof-resolved inputs deliberately. It remains an
+internal kernel boundary until a public sin/cos handoff dispatches those special
+results, performs periodic reduction for `|x|>=4`, and proves final binary64
+rounding.
+
 
 A normalized midpoint comparator now composes those enclosures with the existing
 quadrant ordering and exact ratio cross-products. Its caller-owned scratch is

@@ -1663,6 +1663,26 @@ int malbolge_guest_math_dyadic_sincos_refine_available(
   }
 }
 
+int malbolge_guest_math_unary_sincos_refine_available(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    uint32_t start_stage, uint32_t *output_sin_lower,
+    uint32_t *output_sin_lower_negative, uint32_t *output_sin_upper,
+    uint32_t *output_sin_upper_negative, uint32_t *output_cos_lower,
+    uint32_t *output_cos_lower_negative, uint32_t *output_cos_upper,
+    uint32_t *output_cos_upper_negative, uint32_t output_limb_capacity,
+    uint32_t *scratch, uint32_t scratch_capacity,
+    MalbolgeGuestMathSincosRefinementProgress *output) {
+  MalbolgeGuestMathDyadic dyadic;
+  if (!malbolge_guest_math_unary_reduced_dyadic(operation, bits, &dyadic)) {
+    return 0;
+  }
+  return malbolge_guest_math_dyadic_sincos_refine_available(
+      &dyadic, start_stage, output_sin_lower, output_sin_lower_negative,
+      output_sin_upper, output_sin_upper_negative, output_cos_lower,
+      output_cos_lower_negative, output_cos_upper, output_cos_upper_negative,
+      output_limb_capacity, scratch, scratch_capacity, output);
+}
+
 int malbolge_guest_math_positive_ratio_tangent_compare(
     const MalbolgeGuestMathAtan2KernelInput *ratio,
     const uint32_t *sin_lower, const uint32_t *sin_upper,

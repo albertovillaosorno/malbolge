@@ -606,12 +606,23 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   Raw binary64 inputs below four now bridge exactly into this scheduler after
   the existing operation-specific small-angle preproof declines them. The
   decoder publishes the exact reduced signed dyadic with no floating arithmetic.
-  The
-  cosine cutoff is the tight geometry: its next binary64 value has denominator
+  The cosine cutoff is the tight geometry: its next binary64 value has
+  denominator
   shift 79 after reduction, so every accepted sub-four SIN/COS input is at most
   79. A 520-case `Fraction` differential covers both operations and signs.
   Special/resolved inputs and `|x|>=4` reject without publication; periodic
   range reduction beyond four remains open.
+
+  Sub-four raw inputs now compose directly with normalized refinement too. The
+  wrapper produces exactly the same endpoints, signs, and stage as explicit
+  binary64-to-dyadic conversion followed by the scheduler. On `nextdown(4)`,
+  four output limbs plus 80 scratch limbs publish a Q128/16 retry requiring
+  five and 100 respectively, without endpoint mutation; the larger capacity
+  certifies.
+
+  Preproof-resolved inputs still reject intentionally. A public handoff must
+  dispatch those exact results first, reduce `|x|>=4`, and establish final
+  correctly-rounded binary64 publication for the selected operation.
 
 
   The normalized enclosures can now drive midpoint comparison directly. A
