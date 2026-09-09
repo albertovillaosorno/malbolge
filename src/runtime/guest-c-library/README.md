@@ -294,21 +294,21 @@ the original input sign. A 320-case deterministic corpus spans the `2^64`
 boundary through maximum finite binary64; independent Machin arithmetic agrees
 on every quadrant and its true Q256 residual is contained by every C enclosure.
 
-The bounded residual now feeds directed trig evaluation too.
-`malbolge_guest_math_sincos_range_interval256` evaluates sine and cosine only on
-the reduced magnitude inside `pi/4`, reflects a negative or cross-zero residual,
-and then applies `q mod 4` plus the original input sign. It uses the existing
-Q32.256 Taylor machinery with 90 caller-owned scratch limbs and stages both
-signed output intervals before publication.
+Periodic residuals now feed one directed trig evaluator regardless of reducer.
+`malbolge_guest_math_sincos_range_interval256` uses the bounded path below
+`2^64` and Payne-Hanek at or above `2^64`, then evaluates only the residual
+magnitude inside `pi/4`. Negative or cross-zero residuals use exact symmetry,
+and `q mod 4` plus the original input sign rotate the result. The shared path
+uses Q32.256 Taylor arithmetic with 90 caller-owned scratch limbs.
 
-Independent 40-term rational Taylor bounds, combined with the Machin residual
-authority, enclose both rotated outputs for 83 retained neighbors of selected
-`pi/2` multiples in both signs. On that same bounded corpus, Q256 with 24 terms
-rounds uniquely for all 83 sine and all 83 cosine intervals. The separate
-`malbolge_guest_math_sincos_range_unique_binary64` gate publishes only when the
-signed endpoint rounder agrees; an ambiguous Q256 interval remains fail closed.
-This is bounded correctly-rounded evidence through `2^31`, not proof that Q256
-or this fixed reducer suffices for every binary64 input.
+Independent 40-term rational Taylor bounds enclose both rotated outputs for 83
+bounded `pi/2` neighbors in both signs. A separate high-range composition takes
+the certified Payne-Hanek Q256 residual interval itself and proves that all of
+that interval rounds to the published sine/cosine words for eight retained
+inputs through maximum finite. The
+`malbolge_guest_math_sincos_range_unique_binary64`
+still publishes only when its signed endpoints agree; Q256 ambiguity remains
+fail closed and no global Q256 sufficiency claim is made.
 
 
 A parallel midpoint comparator now consumes that normalized sin/cos path before

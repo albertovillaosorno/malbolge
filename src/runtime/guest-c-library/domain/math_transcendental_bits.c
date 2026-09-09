@@ -4044,7 +4044,9 @@ static void publish_sincos_interval256(
 int malbolge_guest_math_sincos_range_interval256(
     uint64_t bits, uint32_t terms, MalbolgeGuestMathSincosInterval256 *output,
     uint32_t *scratch, uint32_t scratch_capacity) {
+  const uint64_t magnitude_bits = bits & ~BINARY64_SIGN;
   MalbolgeGuestMathSincosRangeReduction256 reduction;
+  MalbolgeGuestMathSincosPayneHanek256 payne_hanek;
   MalbolgeGuestMathFixed256 magnitude_lower;
   MalbolgeGuestMathFixed256 magnitude_upper;
   MalbolgeGuestMathSincosInterval256 residual;
@@ -4053,9 +4055,28 @@ int malbolge_guest_math_sincos_range_interval256(
   int32_t sign_mode = INT32_C(0);
 
   if (output == NULL || scratch == NULL || terms < UINT32_C(2) ||
-      scratch_capacity < FIXED_256_LIMB_COUNT * UINT32_C(10) ||
-      !malbolge_guest_math_sincos_range_reduce256(bits, &reduction) ||
-      !range_residual_magnitude256(&reduction, &magnitude_lower,
+      scratch_capacity < FIXED_256_LIMB_COUNT * UINT32_C(10)) {
+    return 0;
+  }
+  if (magnitude_bits < BINARY64_TWO_POW_64) {
+    if (!malbolge_guest_math_sincos_range_reduce256(bits, &reduction)) {
+      return 0;
+    }
+  } else {
+    if (!malbolge_guest_math_sincos_payne_hanek_reduce256(bits, &payne_hanek)) {
+      return 0;
+    }
+    reduction.multiple = UINT64_C(0);
+    reduction.quadrant = payne_hanek.quadrant;
+    reduction.input_negative = payne_hanek.input_negative;
+    copy_fixed_256(&reduction.residual_lower,
+                   payne_hanek.residual_lower.limbs);
+    reduction.residual_lower_negative = payne_hanek.residual_lower_negative;
+    copy_fixed_256(&reduction.residual_upper,
+                   payne_hanek.residual_upper.limbs);
+    reduction.residual_upper_negative = payne_hanek.residual_upper_negative;
+  }
+  if (!range_residual_magnitude256(&reduction, &magnitude_lower,
                                    &magnitude_upper, &sign_mode)) {
     return 0;
   }

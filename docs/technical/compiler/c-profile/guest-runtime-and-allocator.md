@@ -1080,21 +1080,20 @@ while lying inside every returned residual. This closes full-domain quotient
 and residual geometry; it does not by itself prove Q256 final-rounding
 sufficiency for all inputs.
 
-The bounded reducer now composes with Q32.256 trig evaluation. Residuals are
-first converted to a nonnegative magnitude interval for the existing directed
-Taylor
-kernel; negative residuals reflect sine, cross-zero residuals use a symmetric
-sine enclosure and cosine's even maximum at zero, and `q mod 4` then rotates the
-two intervals. The original input sign is applied only to sine. The path reuses
-90 caller-owned scratch limbs and stages its signed outputs.
+Both periodic reducers now compose with the same Q32.256 trig evaluator. The
+bounded path is selected below `2^64`; Payne-Hanek is selected at or above it.
+Their signed residual is converted to a nonnegative magnitude interval for the
+directed Taylor kernel; negative and cross-zero residuals use exact symmetry,
+and `q mod 4` rotates sine/cosine before the original sign is applied. The path
+reuses 90 caller-owned scratch limbs and stages its signed outputs.
 
-Independent Machin plus 40-term rational Taylor authority encloses both final
-intervals for 83 retained values around selected `pi/2` multiples and both input
-signs. Each of those 83 sine intervals and 83 cosine intervals also rounds to a
-single binary64 word at Q256/24; the operation-selecting unique gate matches the
-explicit interval-plus-rounding composition. Any Q256 ambiguity remains a hard
-nonpublication at this bounded layer. Neither these 166 successful roundings nor
-the `2^31` reducer ceiling establish a full binary64 precision/resource bound.
+Independent rational Taylor authority encloses both final intervals for 83
+bounded `pi/2` neighbors. A separate high-range composition consumes the
+already certified Payne-Hanek residual interval and proves that the entire Q256
+interval rounds to the published sine and cosine words for eight retained
+inputs through maximum finite. The unique gate remains fail closed for any Q256
+ambiguity. These retained successes do not establish a global binary64
+precision/resource ceiling.
 
 
 A normalized midpoint comparator now composes those enclosures with the existing

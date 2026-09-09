@@ -651,34 +651,31 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   blocker is periodic range reduction for finite `|x|>=4`, plus full-domain
   resource/correct-rounding closure before source availability changes.
 
-  Periodic reduction now has a bounded executable first stage. Finite
-  `4 <= |x| < 2^31` values enter Q32.256 exactly, multiply by a one-cell
-  directed `2/pi` enclosure derived from the certified Q256 `pi/4` cell, and
-  publish a
-  multiple only when both quotient endpoints select the same nearest-even
+  Periodic reduction has a bounded executable path for finite
+  `4 <= |x| < 2^64`. Values enter Q32.256 exactly, multiply by the directed
+  Q256 `2/pi` enclosure derived from the certified `pi/4` cell, and publish a
+  `u64` multiple only when both quotient endpoints select the same nearest-even
   integer. No host pi or reciprocal constant is numerical authority.
 
-  The domain keeps the selected multiple below 1,367,130,552, allowing checked
-  `u32` multiplication of the Q256 `pi/4` bounds. The output carries `q`,
-  `q mod 4`, original sign, and a directed signed residual within `+/-pi/4`.
-  Independent Machin `Fraction` arithmetic matches every residual limb for 512
-  fixed-seed inputs plus binary64 neighbors of selected `pi/2` multiples up to
-  one billion. Full binary64 still needs a wider Payne-Hanek-style reducer; this
-  bounded unit is not a full-domain claim.
+  The output carries `q`, `q mod 4`, original sign, and a directed signed
+  residual within `+/-pi/4`. Independent Machin `Fraction` arithmetic covers
+  deterministic inputs and binary64 neighbors of selected `pi/2` multiples
+  throughout that bounded domain. Inputs at or above `2^64` use the separate
+  Payne-Hanek extractor rather than materializing a wider quotient.
 
-  The bounded residual is now evaluated through the directed Q32.256 sine/cosine
-  kernel and rotated by `q mod 4`; negative and cross-zero residuals are handled
-  by exact odd/even symmetry before quadrant transport. The operation uses 90
-  caller-owned scratch limbs and publishes both signed intervals atomically.
+  Both periodic reducers now feed the same directed Q32.256 sine/cosine
+  kernel. Negative and cross-zero residuals use exact odd/even symmetry before
+  `q mod 4` transport; the original sign is then applied to sine. The operation
+  uses 90 caller-owned scratch limbs and publishes both signed intervals
+  atomically.
 
-  Independent Machin plus 40-term rational Taylor bounds enclose both outputs
-  for 83 retained `pi/2`-neighbor inputs across both signs. Q256/24 then rounds
-  all
-  83 sine and all 83 cosine intervals uniquely, and the final bounded gate
-  matches explicit interval-plus-rounding composition. Q256 ambiguity remains
-  fail closed. This extends correctly-rounded execution far beyond four, but
-  full-domain Payne-Hanek geometry and a global precision/resource argument are
-  still required before `sin`/`cos` become source-available.
+  Rational Taylor bounds enclose both outputs for 83 retained bounded inputs,
+  and Q256/24 rounds all 83 sine and all 83 cosine intervals uniquely. For the
+  Payne-Hanek branch, eight retained inputs through maximum finite take the
+  already certified residual enclosure and prove that its entire Q256 image
+  rounds to the published words. Q256 ambiguity remains fail closed. The
+  remaining blocker is a global precision/resource argument, not periodic range
+  availability.
 
   The full-domain Payne-Hanek constant now has a finite quotient certificate.
   A 66-limb directed Q2112 `2/pi` interval is regenerated from Machin arithmetic
