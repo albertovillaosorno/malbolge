@@ -194,6 +194,18 @@ first hard lower boundary intentionally remains `0` at Q128, preserving retry.
 A near-four boundary against `atan2(1,1)` also agrees after all 56 doublings.
 The production refinement scheduler still uses the direct comparator.
 
+A parallel normalized refinement scheduler now preserves the same open stage
+progression while accounting for its larger workspace. Stage `s` still uses
+`fraction_limbs=s+2` and `terms=4s+8`, but requires `24*(s+3)` limbs instead of
+`15*(s+3)`. Across the retained 4,164-pair corpus, 3,921 cases remain
+special and
+all 243 kernel cases certify: 211 first certify at Q128/16 (stage 2) and 32 at
+Q192/24 (stage 4), with none first certifying at stages 0, 1, or 3.
+
+The first retained hard seed publishes stage 2/120 limbs when only 119 are
+available, advances to stage 4/168 at 167 limbs, and certifies there with 168.
+This is fallback-policy evidence; the cheaper direct scheduler remains primary.
+
 This height bound is exact structural evidence, not yet a quantitative
 irrationality measure for `tan(midpoint)`. Lambert still supplies only the
 non-equality/qualitative termination fact currently admitted by the repository.

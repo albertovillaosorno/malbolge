@@ -969,6 +969,19 @@ retry.
 A near-four boundary also agrees after the full 56-step transport. This is
 differential evidence; the production scheduler has not switched paths.
 
+The normalized comparator also has a caller-owned refinement driver with the
+same
+open stage sequence as direct refinement. Its plan uses `24*(s+3)` scratch limbs
+for stage `s`; the first five requirements are 72, 96, 120, 144, and 168 limbs.
+On the retained 4,164-pair corpus, 3,921 cases are special and all 243 kernel
+cases certify through the normalized path: 211 first at Q128/16 and 32 first at
+Q192/24. No case first certifies at Q64/8, Q96/12, or Q160/20.
+
+A retained hard seed demonstrates resource-driven retry: 119 limbs publishes the
+Q128/16 120-limb plan, 167 publishes Q192/24 at 168 limbs, and 168 certifies.
+The direct scheduler remains the production path because it is cheaper on much
+of this corpus.
+
 This supplies the finite rational-height parameter required by any future
 quantitative Lambert/Lindemann separation bound. It does not itself lower-bound
 `|tan(midpoint)-p/q|`, so the finite resource proof remains open.

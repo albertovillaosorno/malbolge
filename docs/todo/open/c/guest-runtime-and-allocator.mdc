@@ -593,6 +593,17 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   A near-four boundary also agrees after the complete 56-step transport. This
   remains a parallel evidence route rather than a production scheduler switch.
 
+  A parallel normalized refinement scheduler now carries the same open stage
+  progression with its actual `24*(s+3)` scratch requirement. The first five
+  stages require 72, 96, 120, 144, and 168 limbs. Across the retained 4,164-pair
+  corpus, all 243 kernel-required cases certify: 211 first at Q128/16 and 32 at
+  Q192/24; none first certify at Q64/8, Q96/12, or Q160/20.
+
+  The first hard seed also fixes caller-owned retry at the exact workspace
+  boundaries: 119 limbs asks for stage 2/120, 167 asks for stage 4/168, and 168
+  certifies. This remains fallback-policy evidence rather than a scheduler
+  switch.
+
   The two finite inputs to a future quantitative bound are now exposed together:
   exact reduced ratio height plus both candidate-cell midpoint shifts. A hard
   cell, its negative mirror, and a 108-bit axis-boundary cell match
