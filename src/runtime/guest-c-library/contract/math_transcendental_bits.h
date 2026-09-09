@@ -223,6 +223,27 @@ typedef struct MalbolgeGuestMathAtan2RefinementPlan {
   uint32_t required_scratch_limbs;
 } MalbolgeGuestMathAtan2RefinementPlan;
 
+typedef struct MalbolgeGuestMathSincosRefinementPlan {
+  uint32_t stage;
+  uint32_t fraction_limbs;
+  uint32_t terms;
+  uint32_t required_output_limbs;
+  uint32_t required_scratch_limbs;
+} MalbolgeGuestMathSincosRefinementPlan;
+
+typedef struct MalbolgeGuestMathSincosRefinementProgress {
+  uint32_t proven;
+  MalbolgeGuestMathSincosRefinementPlan plan;
+} MalbolgeGuestMathSincosRefinementProgress;
+
+typedef struct MalbolgeGuestMathSincosStorageRequirement {
+  uint32_t output_limbs;
+  uint32_t output_bytes_each;
+  uint32_t scratch_limbs;
+  uint32_t scratch_bytes;
+  uint32_t alignment;
+} MalbolgeGuestMathSincosStorageRequirement;
+
 typedef struct MalbolgeGuestMathAtan2RefinementProgress {
   uint32_t certified;
   MalbolgeGuestMathAtan2RefinementPlan plan;
@@ -439,6 +460,20 @@ int malbolge_guest_math_dyadic_normalized_sincos_interval(
     uint32_t *output_cos_lower_negative, uint32_t *output_cos_upper,
     uint32_t *output_cos_upper_negative, uint32_t *proven, uint32_t *scratch,
     uint32_t scratch_capacity);
+int malbolge_guest_math_dyadic_sincos_refinement_plan(
+    uint32_t stage, MalbolgeGuestMathSincosRefinementPlan *output);
+int malbolge_guest_math_dyadic_sincos_refinement_storage_requirement(
+    const MalbolgeGuestMathSincosRefinementPlan *plan,
+    MalbolgeGuestMathSincosStorageRequirement *output);
+int malbolge_guest_math_dyadic_sincos_refine_available(
+    const MalbolgeGuestMathDyadic *midpoint, uint32_t start_stage,
+    uint32_t *output_sin_lower, uint32_t *output_sin_lower_negative,
+    uint32_t *output_sin_upper, uint32_t *output_sin_upper_negative,
+    uint32_t *output_cos_lower, uint32_t *output_cos_lower_negative,
+    uint32_t *output_cos_upper, uint32_t *output_cos_upper_negative,
+    uint32_t output_limb_capacity, uint32_t *scratch,
+    uint32_t scratch_capacity,
+    MalbolgeGuestMathSincosRefinementProgress *output);
 int malbolge_guest_math_positive_ratio_tangent_compare(
     const MalbolgeGuestMathAtan2KernelInput *ratio,
     const uint32_t *sin_lower, const uint32_t *sin_upper,

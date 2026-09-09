@@ -964,6 +964,20 @@ near-four case that uses the full 56-step transport. Q128 with 16 Taylor terms
 resolves those fixtures, including all 56 doublings, as coverage only. No fixed
 Q/term pair is promoted to a full-domain resource bound.
 
+Normalized dyadic sin/cos is now independently schedulable as well. Stage `s`
+requests `s+2` fractional limbs, `4s+8` terms, `s+3` limbs for each of the four
+signed endpoints, and `20*(s+3)` reusable scratch limbs. The driver tries every
+fitting stage and reports the first pending plan on output or scratch exhaustion
+without publishing partial endpoint state.
+
+The first five scratch requirements are 60, 80, 100, 120, and 140 limbs, which
+project to 240, 320, 400, 480, and 560 bytes at alignment 4. Stage 53,687,088 is
+the last plan whose scratch byte extent fits in `uint32_t` (`0xfffffff0`); stage
+53,687,089 remains a valid limb plan but its storage query rejects byte
+publication. `3/4` resolves at Q64/8, while the structural near-four and
+negative deep dyadics advance to Q128/16. This boundary consumes reduced dyadics
+only; full binary64 range reduction and final correct rounding remain open.
+
 
 A normalized midpoint comparator now composes those enclosures with the existing
 quadrant ordering and exact ratio cross-products. Its caller-owned scratch is

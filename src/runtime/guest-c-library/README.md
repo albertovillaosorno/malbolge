@@ -184,6 +184,21 @@ a negative 107-bit-shift dyadic, and the structural near-four case that performs
 all 56 doublings. Q128/16 resolves those retained cases, including the 56-step
 path, but that is bounded coverage rather than a full-domain precision ceiling.
 
+The same normalized dyadic sin/cos evaluator now has an independent stateless
+scheduler rather than being reachable only through atan2 comparison. Stage `s`
+uses `s+2` fractional limbs and `4s+8` Taylor terms. Each signed endpoint needs
+`s+3` limbs and the reusable normalization/Taylor/transport workspace needs
+`20*(s+3)` limbs. Capacity exhaustion reports the first pending plan with
+`proven=0` without touching any sin/cos endpoint.
+
+Stages 0..4 therefore require 60, 80, 100, 120, and 140 scratch limbs, or
+240, 320, 400, 480, and 560 bytes at alignment 4. Stage 53,687,088 is the last
+plan whose scratch byte extent fits in `uint32_t` (`0xfffffff0`); the next plan
+remains valid in limbs but byte projection fails atomically. Retained evidence
+resolves `3/4` at Q64/8 and the near-four plus deep-negative dyadics at Q128/16.
+This scheduler still starts from an already reduced dyadic: binary64 range
+reduction and correctly-rounded sin/cos publication remain separate obligations.
+
 
 A parallel midpoint comparator now consumes that normalized sin/cos path before
 the existing branch-rank and cross-product logic. It requires caller-owned

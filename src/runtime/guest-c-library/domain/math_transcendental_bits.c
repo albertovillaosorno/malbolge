@@ -1517,6 +1517,118 @@ static int positive_ratio_tangent_compare_internal(
   return 1;
 }
 
+int malbolge_guest_math_dyadic_sincos_refinement_plan(
+    uint32_t stage, MalbolgeGuestMathSincosRefinementPlan *output) {
+  MalbolgeGuestMathSincosRefinementPlan staged;
+  uint32_t left_factor = UINT32_C(0);
+  uint32_t right_factor = UINT32_C(0);
+
+  if (output == NULL || stage > (UINT32_MAX - UINT32_C(8)) / UINT32_C(4) ||
+      stage > UINT32_MAX - UINT32_C(3)) {
+    return 0;
+  }
+  staged.stage = stage;
+  staged.fraction_limbs = stage + UINT32_C(2);
+  staged.terms = stage * UINT32_C(4) + UINT32_C(8);
+  staged.required_output_limbs = staged.fraction_limbs + UINT32_C(1);
+  if (staged.required_output_limbs > UINT32_MAX / UINT32_C(20) ||
+      !taylor_recurrence_factors(staged.terms, UINT32_C(0), &left_factor,
+                                &right_factor) ||
+      !taylor_recurrence_factors(staged.terms, UINT32_C(1), &left_factor,
+                                &right_factor)) {
+    return 0;
+  }
+  staged.required_scratch_limbs =
+      staged.required_output_limbs * UINT32_C(20);
+  *output = staged;
+  return 1;
+}
+
+static int dyadic_sincos_refinement_plan_matches(
+    const MalbolgeGuestMathSincosRefinementPlan *input) {
+  MalbolgeGuestMathSincosRefinementPlan expected;
+  if (input == NULL || !malbolge_guest_math_dyadic_sincos_refinement_plan(
+                           input->stage, &expected)) {
+    return 0;
+  }
+  return input->fraction_limbs == expected.fraction_limbs &&
+         input->terms == expected.terms &&
+         input->required_output_limbs == expected.required_output_limbs &&
+         input->required_scratch_limbs == expected.required_scratch_limbs;
+}
+
+int malbolge_guest_math_dyadic_sincos_refinement_storage_requirement(
+    const MalbolgeGuestMathSincosRefinementPlan *plan,
+    MalbolgeGuestMathSincosStorageRequirement *output) {
+  MalbolgeGuestMathSincosStorageRequirement staged;
+  if (output == NULL || !dyadic_sincos_refinement_plan_matches(plan) ||
+      plan->required_output_limbs > UINT32_MAX / UINT32_C(4) ||
+      plan->required_scratch_limbs > UINT32_MAX / UINT32_C(4)) {
+    return 0;
+  }
+  staged.output_limbs = plan->required_output_limbs;
+  staged.output_bytes_each = plan->required_output_limbs * UINT32_C(4);
+  staged.scratch_limbs = plan->required_scratch_limbs;
+  staged.scratch_bytes = plan->required_scratch_limbs * UINT32_C(4);
+  staged.alignment = UINT32_C(4);
+  *output = staged;
+  return 1;
+}
+
+int malbolge_guest_math_dyadic_sincos_refine_available(
+    const MalbolgeGuestMathDyadic *midpoint, uint32_t start_stage,
+    uint32_t *output_sin_lower, uint32_t *output_sin_lower_negative,
+    uint32_t *output_sin_upper, uint32_t *output_sin_upper_negative,
+    uint32_t *output_cos_lower, uint32_t *output_cos_lower_negative,
+    uint32_t *output_cos_upper, uint32_t *output_cos_upper_negative,
+    uint32_t output_limb_capacity, uint32_t *scratch,
+    uint32_t scratch_capacity,
+    MalbolgeGuestMathSincosRefinementProgress *output) {
+  MalbolgeGuestMathLambertArgumentBounds bounds;
+  MalbolgeGuestMathSincosRefinementProgress staged;
+  uint32_t stage = start_stage;
+
+  if (midpoint == NULL || output_sin_lower == NULL ||
+      output_sin_lower_negative == NULL || output_sin_upper == NULL ||
+      output_sin_upper_negative == NULL || output_cos_lower == NULL ||
+      output_cos_lower_negative == NULL || output_cos_upper == NULL ||
+      output_cos_upper_negative == NULL || scratch == NULL || output == NULL ||
+      !malbolge_guest_math_dyadic_lambert_argument_bounds(midpoint, &bounds)) {
+    return 0;
+  }
+  (void)bounds;
+  for (;;) {
+    uint32_t proven = UINT32_C(0);
+    if (!malbolge_guest_math_dyadic_sincos_refinement_plan(stage,
+                                                            &staged.plan)) {
+      return 0;
+    }
+    staged.proven = UINT32_C(0);
+    if (output_limb_capacity < staged.plan.required_output_limbs ||
+        scratch_capacity < staged.plan.required_scratch_limbs) {
+      *output = staged;
+      return 1;
+    }
+    if (!malbolge_guest_math_dyadic_normalized_sincos_interval(
+            midpoint, staged.plan.fraction_limbs, staged.plan.terms,
+            output_sin_lower, output_sin_lower_negative, output_sin_upper,
+            output_sin_upper_negative, output_cos_lower,
+            output_cos_lower_negative, output_cos_upper,
+            output_cos_upper_negative, &proven, scratch, scratch_capacity)) {
+      return 0;
+    }
+    if (proven != UINT32_C(0)) {
+      staged.proven = UINT32_C(1);
+      *output = staged;
+      return 1;
+    }
+    if (stage == UINT32_MAX) {
+      return 0;
+    }
+    ++stage;
+  }
+}
+
 int malbolge_guest_math_positive_ratio_tangent_compare(
     const MalbolgeGuestMathAtan2KernelInput *ratio,
     const uint32_t *sin_lower, const uint32_t *sin_upper,
