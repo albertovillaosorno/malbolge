@@ -958,6 +958,17 @@ near-four case that uses the full 56-step transport. Q128 with 16 Taylor terms
 resolves those fixtures, including all 56 doublings, as coverage only. No fixed
 Q/term pair is promoted to a full-domain resource bound.
 
+
+A normalized midpoint comparator now composes those enclosures with the existing
+quadrant ordering and exact ratio cross-products. Its caller-owned scratch is
+`24*N`, and its result contract remains `-1/0/+1`. Q192/16 matches the direct
+comparator on both cell boundaries for all 64 signed retained hard cases, while
+a known hard lower boundary remains inconclusive at Q128 and therefore exercises
+retry.
+
+A near-four boundary also agrees after the full 56-step transport. This is
+differential evidence; the production scheduler has not switched paths.
+
 This supplies the finite rational-height parameter required by any future
 quantitative Lambert/Lindemann separation bound. It does not itself lower-bound
 `|tan(midpoint)-p/q|`, so the finite resource proof remains open.

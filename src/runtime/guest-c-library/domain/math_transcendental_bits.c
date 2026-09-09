@@ -2077,6 +2077,94 @@ int malbolge_guest_math_midpoint_compare(
   return 1;
 }
 
+int malbolge_guest_math_normalized_midpoint_compare(
+    const MalbolgeGuestMathAtan2KernelInput *ratio,
+    const MalbolgeGuestMathDyadic *midpoint, uint32_t fraction_limbs,
+    uint32_t terms, int32_t *comparison, uint32_t *scratch,
+    uint32_t scratch_capacity) {
+  uint32_t limb_count = UINT32_C(0);
+  uint32_t sin_lower_negative = UINT32_C(0);
+  uint32_t sin_upper_negative = UINT32_C(0);
+  uint32_t cos_lower_negative = UINT32_C(0);
+  uint32_t cos_upper_negative = UINT32_C(0);
+  uint32_t sincos_proven = UINT32_C(0);
+  int sin_sign = 0;
+  int cos_sign = 0;
+  int boundary_rank = 0;
+  int actual_rank = 0;
+  int32_t magnitude_comparison = INT32_C(0);
+  const uint32_t *sin_magnitude_lower = NULL;
+  const uint32_t *sin_magnitude_upper = NULL;
+  const uint32_t *cos_magnitude_lower = NULL;
+  const uint32_t *cos_magnitude_upper = NULL;
+  uint32_t *sin_lower = scratch;
+  uint32_t *sin_upper = NULL;
+  uint32_t *cos_lower = NULL;
+  uint32_t *cos_upper = NULL;
+  uint32_t *operation = NULL;
+
+  if (ratio == NULL || midpoint == NULL || comparison == NULL ||
+      scratch == NULL || !valid_ratio_input(ratio) ||
+      fraction_limbs == UINT32_C(0) || fraction_limbs == UINT32_MAX) {
+    return 0;
+  }
+  limb_count = fraction_limbs + UINT32_C(1);
+  if (limb_count > UINT32_MAX / UINT32_C(24) ||
+      scratch_capacity < limb_count * UINT32_C(24)) {
+    return 0;
+  }
+  sin_upper = sin_lower + limb_count;
+  cos_lower = sin_upper + limb_count;
+  cos_upper = cos_lower + limb_count;
+  operation = cos_upper + limb_count;
+  if (!malbolge_guest_math_dyadic_normalized_sincos_interval(
+          midpoint, fraction_limbs, terms, sin_lower, &sin_lower_negative,
+          sin_upper, &sin_upper_negative, cos_lower, &cos_lower_negative,
+          cos_upper, &cos_upper_negative, &sincos_proven, operation,
+          limb_count * UINT32_C(20))) {
+    return 0;
+  }
+  if (sincos_proven == UINT32_C(0)) {
+    *comparison = INT32_C(0);
+    return 1;
+  }
+  sin_sign = signed_interval_magnitude_bounds(
+      sin_lower, sin_lower_negative, sin_upper, sin_upper_negative, limb_count,
+      &sin_magnitude_lower, &sin_magnitude_upper);
+  cos_sign = signed_interval_magnitude_bounds(
+      cos_lower, cos_lower_negative, cos_upper, cos_upper_negative, limb_count,
+      &cos_magnitude_lower, &cos_magnitude_upper);
+  if (sin_sign == 0 || cos_sign == 0) {
+    *comparison = INT32_C(0);
+    return 1;
+  }
+  boundary_rank =
+      sin_sign < 0 ? (cos_sign < 0 ? 0 : 1) : (cos_sign < 0 ? 3 : 2);
+  if (midpoint->negative == UINT32_C(0) && boundary_rank == 0) {
+    boundary_rank = 4;
+  } else if (midpoint->negative != UINT32_C(0) && boundary_rank == 3) {
+    boundary_rank = -1;
+  }
+  actual_rank = atan2_branch_rank(ratio->y_negative, ratio->x_negative);
+  if (actual_rank < boundary_rank) {
+    *comparison = INT32_C(-1);
+    return 1;
+  }
+  if (actual_rank > boundary_rank) {
+    *comparison = INT32_C(1);
+    return 1;
+  }
+  if (!positive_ratio_tangent_compare_internal(
+          ratio, sin_magnitude_lower, sin_magnitude_upper,
+          cos_magnitude_lower, cos_magnitude_upper, limb_count, UINT32_C(0),
+          &magnitude_comparison, operation, limb_count * UINT32_C(20))) {
+    return 0;
+  }
+  *comparison = sin_sign == cos_sign ? magnitude_comparison
+                                     : -magnitude_comparison;
+  return 1;
+}
+
 int malbolge_guest_math_atan2_refinement_attempt(
     uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
     uint32_t fraction_limbs, uint32_t terms, uint32_t *certified,

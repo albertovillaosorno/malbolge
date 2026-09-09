@@ -184,6 +184,16 @@ a negative 107-bit-shift dyadic, and the structural near-four case that performs
 all 56 doublings. Q128/16 resolves those retained cases, including the 56-step
 path, but that is bounded coverage rather than a full-domain precision ceiling.
 
+
+A parallel midpoint comparator now consumes that normalized sin/cos path before
+the existing branch-rank and cross-product logic. It requires caller-owned
+`24*N` scratch and keeps the same `-1/0/+1` semantics as the direct comparator.
+Across 64 signed hard cells Q192/16 agrees exactly with the direct path; the
+first hard lower boundary intentionally remains `0` at Q128, preserving retry.
+
+A near-four boundary against `atan2(1,1)` also agrees after all 56 doublings.
+The production refinement scheduler still uses the direct comparator.
+
 This height bound is exact structural evidence, not yet a quantitative
 irrationality measure for `tan(midpoint)`. Lambert still supplies only the
 non-equality/qualitative termination fact currently admitted by the repository.

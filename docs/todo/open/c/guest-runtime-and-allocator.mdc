@@ -583,6 +583,16 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   coverage evidence only. The remaining mathematical obligation is still a
   finite quantitative separation bound, not sin/cos transport infrastructure.
 
+
+  The normalized enclosures can now drive midpoint comparison directly. A
+  `24*N` caller-owned path reuses the existing quadrant ranks and ratio
+  cross-products after normalized Taylor/transport. Q192/16 matches the direct
+  comparator on both cell boundaries for all 64 signed hard cases; the first
+  hard lower boundary still returns retry at Q128.
+
+  A near-four boundary also agrees after the complete 56-step transport. This
+  remains a parallel evidence route rather than a production scheduler switch.
+
   The two finite inputs to a future quantitative bound are now exposed together:
   exact reduced ratio height plus both candidate-cell midpoint shifts. A hard
   cell, its negative mirror, and a 108-bit axis-boundary cell match

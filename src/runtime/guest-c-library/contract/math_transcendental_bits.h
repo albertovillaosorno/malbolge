@@ -453,6 +453,11 @@ int malbolge_guest_math_midpoint_compare(
     const MalbolgeGuestMathDyadic *midpoint, uint32_t fraction_limbs,
     uint32_t terms, int32_t *comparison, uint32_t *scratch,
     uint32_t scratch_capacity);
+int malbolge_guest_math_normalized_midpoint_compare(
+    const MalbolgeGuestMathAtan2KernelInput *ratio,
+    const MalbolgeGuestMathDyadic *midpoint, uint32_t fraction_limbs,
+    uint32_t terms, int32_t *comparison, uint32_t *scratch,
+    uint32_t scratch_capacity);
 int malbolge_guest_math_atan2_refinement_attempt(
     uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
     uint32_t fraction_limbs, uint32_t terms, uint32_t *certified,
