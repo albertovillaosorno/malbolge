@@ -1127,6 +1127,29 @@ omitted-term enclosure.
 The Q256/32 path rejects anything wider than 74 ulps before publication. A
 2,052-case retained corpus reaches 40 ulps.
 
+The table-maker boundary now has a separate exponential-polynomial parameter
+surface. Let a kernel-required binary64 input be rational `x`, let an output
+rounding midpoint be `m=a/b`, and put `z=e^(ix)`. For sine,
+`P_s(X)=bX^2-2iaX-b` gives `P_s(z)=2ibz(sin(x)-m)`; for cosine,
+`P_c(X)=bX^2-2aX+b` gives `P_c(z)=2bz(cos(x)-m)`. Since `|z|=1`, a lower bound
+for either nonzero `P(e^(ix))` transfers exactly after division by `2b`.
+
+Guest C exposes the algebraic sizes without constructing the potentially
+1,024-bit numerator of `x`. After unary special cases, reduced input numerators
+have at most 1,024 bits and denominator shift at most 79. For `alpha=ix`, the
+published ceilings are `H(alpha)<2^2048`, at most 1,024 bits for the algebraic
+denominator of `1/alpha`, inverse-house exponent at most 27, and
+`d(1/alpha)*max(1,|1/alpha|)<=2^1024`.
+
+The candidate result lies in `[-1,1]`. Its exact signed cell midpoints have at
+most 54 numerator bits and denominator shift at most 1,075, so the integral
+quadratic has `H(P)<2^1076`. `+0` and `-0` intentionally use the one-sided
+cells `[0,2^-1075]` and `[-2^-1075,0]`.
+
+Exact `Fraction` checks pin separate tight witnesses for every global ceiling.
+The bridge does not yet instantiate a quantitative theorem strongly enough to
+prove a finite precision ceiling.
+
 
 A normalized midpoint comparator now composes those enclosures with the existing
 quadrant ordering and exact ratio cross-products. Its caller-owned scratch is

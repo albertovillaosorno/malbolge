@@ -59,6 +59,15 @@
 #define ATAN2_ADAPTIVE_NUMERATOR_BITS_MAX UINT32_C(108)
 #define ATAN2_ADAPTIVE_DENOMINATOR_BITS_MAX UINT32_C(106)
 #define ATAN2_LAMBERT_SCALE_EXPONENT_MAX INT32_C(56)
+#define SINCOS_EXP_INPUT_NUMERATOR_BITS_MAX UINT32_C(1024)
+#define SINCOS_EXP_INPUT_DENOMINATOR_SHIFT_MAX UINT32_C(79)
+#define SINCOS_EXP_ALPHA_HEIGHT_EXPONENT_MAX UINT32_C(2048)
+#define SINCOS_EXP_INVERSE_DENOMINATOR_BITS_MAX UINT32_C(1024)
+#define SINCOS_EXP_INVERSE_HOUSE_EXPONENT_MAX UINT32_C(27)
+#define SINCOS_EXP_INVERSE_PRODUCT_EXPONENT_MAX UINT32_C(1024)
+#define SINCOS_EXP_MIDPOINT_NUMERATOR_BITS_MAX UINT32_C(54)
+#define SINCOS_EXP_MIDPOINT_SHIFT_MAX UINT32_C(1075)
+#define SINCOS_EXP_POLYNOMIAL_HEIGHT_EXPONENT_MAX UINT32_C(1076)
 #define SINCOS_REDUCED_DYADIC_SHIFT_MAX UINT32_C(79)
 #define ATAN_QUARTER_REDUCTION_NUMERATOR UINT64_C(169)
 #define ATAN_QUARTER_REDUCTION_DENOMINATOR UINT64_C(408)
@@ -5754,6 +5763,222 @@ int malbolge_guest_math_atan2_exponential_bridge_bounds(
       staged.inverse_house_pow2_exponent_upper;
   output->inverse_denominator_house_product_pow2_exponent_upper =
       staged.inverse_denominator_house_product_pow2_exponent_upper;
+  return 1;
+}
+
+static uint32_t u64_ceil_log2_local(uint64_t value) {
+  if (value <= UINT64_C(1)) {
+    return UINT32_C(0);
+  }
+  return u64_bit_length_local(value - UINT64_C(1));
+}
+
+static int sincos_input_exponential_argument_bounds(
+    uint64_t input_bits, MalbolgeGuestMathExponentialArgumentBounds *output,
+    uint32_t *numerator_bits, uint32_t *denominator_shift) {
+  const uint64_t magnitude = input_bits & ~BINARY64_SIGN;
+  uint64_t significand = UINT64_C(0);
+  uint64_t reduced = UINT64_C(0);
+  int32_t power = INT32_C(0);
+  int32_t reduced_power = INT32_C(0);
+  uint32_t trailing = UINT32_C(0);
+  uint32_t reduced_bits = UINT32_C(0);
+  uint32_t numerator_ceil_log2 = UINT32_C(0);
+  MalbolgeGuestMathExponentialArgumentBounds staged;
+
+  if (output == NULL || numerator_bits == NULL || denominator_shift == NULL ||
+      magnitude == UINT64_C(0) || is_infinity(magnitude) || is_nan(magnitude) ||
+      !positive_binary64_components(magnitude, &significand, &power)) {
+    return 0;
+  }
+  trailing = u64_trailing_zero_count(significand);
+  reduced = significand >> trailing;
+  reduced_power = power + (int32_t)trailing;
+  reduced_bits = u64_bit_length_local(reduced);
+  numerator_ceil_log2 = u64_ceil_log2_local(reduced);
+  if (reduced_power >= INT32_C(0)) {
+    const uint32_t shift = (uint32_t)reduced_power;
+    if (reduced_bits > UINT32_MAX - shift ||
+        numerator_ceil_log2 > UINT32_MAX - shift) {
+      return 0;
+    }
+    *numerator_bits = reduced_bits + shift;
+    *denominator_shift = UINT32_C(0);
+    numerator_ceil_log2 += shift;
+  } else {
+    *numerator_bits = reduced_bits;
+    *denominator_shift = (uint32_t)(-reduced_power);
+  }
+  if (*numerator_bits > UINT32_MAX / UINT32_C(2) ||
+      *denominator_shift > (UINT32_MAX - UINT32_C(1)) / UINT32_C(2)) {
+    return 0;
+  }
+  staged.alpha_height_pow2_exponent_upper =
+      *numerator_bits * UINT32_C(2);
+  if (*denominator_shift != UINT32_C(0) &&
+      *denominator_shift * UINT32_C(2) + UINT32_C(1) >
+          staged.alpha_height_pow2_exponent_upper) {
+    staged.alpha_height_pow2_exponent_upper =
+        *denominator_shift * UINT32_C(2) + UINT32_C(1);
+  }
+  staged.inverse_denominator_bits = *numerator_bits;
+  staged.inverse_house_pow2_exponent_upper =
+      *denominator_shift >= reduced_bits
+          ? *denominator_shift - reduced_bits + UINT32_C(1)
+          : UINT32_C(0);
+  staged.inverse_denominator_house_product_pow2_exponent_upper =
+      numerator_ceil_log2 > *denominator_shift ? numerator_ceil_log2
+                                               : *denominator_shift;
+  *output = staged;
+  return 1;
+}
+
+static int sincos_binary64_cell_midpoints(
+    uint64_t output_bits, MalbolgeGuestMathAtan2CellMidpoints *output) {
+  const uint64_t magnitude = output_bits & ~BINARY64_SIGN;
+  MalbolgeGuestMathDyadic lower_positive;
+  MalbolgeGuestMathDyadic upper_positive;
+  MalbolgeGuestMathAtan2CellMidpoints staged;
+  if (output == NULL || magnitude > BINARY64_ONE) {
+    return 0;
+  }
+  if (magnitude == UINT64_C(0)) {
+    staged.lower.numerator =
+        (output_bits & BINARY64_SIGN) != UINT64_C(0) ? UINT64_C(1)
+                                                        : UINT64_C(0);
+    staged.lower.denominator_shift =
+        staged.lower.numerator != UINT64_C(0) ? UINT32_C(1075) : UINT32_C(0);
+    staged.lower.negative = staged.lower.numerator != UINT64_C(0) ? UINT32_C(1)
+                                                                  : UINT32_C(0);
+    staged.upper.numerator =
+        (output_bits & BINARY64_SIGN) != UINT64_C(0) ? UINT64_C(0)
+                                                        : UINT64_C(1);
+    staged.upper.denominator_shift =
+        staged.upper.numerator != UINT64_C(0) ? UINT32_C(1075) : UINT32_C(0);
+    staged.upper.negative = UINT32_C(0);
+  } else {
+    if (!positive_binary64_midpoint(magnitude - UINT64_C(1), magnitude,
+                                    &lower_positive) ||
+        !positive_binary64_midpoint(magnitude, magnitude + UINT64_C(1),
+                                    &upper_positive)) {
+      return 0;
+    }
+    if ((output_bits & BINARY64_SIGN) == UINT64_C(0)) {
+      staged.lower = lower_positive;
+      staged.upper = upper_positive;
+    } else {
+      staged.lower = upper_positive;
+      staged.lower.negative = UINT32_C(1);
+      staged.upper = lower_positive;
+      staged.upper.negative = UINT32_C(1);
+    }
+  }
+  output->lower.numerator = staged.lower.numerator;
+  output->lower.denominator_shift = staged.lower.denominator_shift;
+  output->lower.negative = staged.lower.negative;
+  output->upper.numerator = staged.upper.numerator;
+  output->upper.denominator_shift = staged.upper.denominator_shift;
+  output->upper.negative = staged.upper.negative;
+  return 1;
+}
+
+static uint32_t dyadic_quadratic_polynomial_height_exponent(
+    const MalbolgeGuestMathDyadic *midpoint) {
+  const uint32_t numerator_bits = u64_bit_length_local(midpoint->numerator);
+  const uint32_t component =
+      numerator_bits > midpoint->denominator_shift
+          ? numerator_bits
+          : midpoint->denominator_shift;
+  return component + UINT32_C(1);
+}
+
+int malbolge_guest_math_sincos_exponential_bridge_bounds(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t input_bits,
+    uint64_t candidate_bits,
+    MalbolgeGuestMathSincosExponentialBridgeBounds *output) {
+  const uint64_t candidate_magnitude = candidate_bits & ~BINARY64_SIGN;
+  MalbolgeGuestMathSincosExponentialBridgeBounds staged;
+  uint32_t lower_numerator_bits = UINT32_C(0);
+  uint32_t upper_numerator_bits = UINT32_C(0);
+  uint32_t lower_polynomial_height = UINT32_C(0);
+  uint32_t upper_polynomial_height = UINT32_C(0);
+
+  if (output == NULL ||
+      (operation != MALBOLGE_GUEST_MATH_SIN &&
+       operation != MALBOLGE_GUEST_MATH_COS) ||
+      malbolge_guest_math_unary_special(operation, input_bits).status !=
+          MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED ||
+      candidate_magnitude > BINARY64_ONE ||
+      !sincos_input_exponential_argument_bounds(
+          input_bits, &staged.input_argument, &staged.input_numerator_bits,
+          &staged.input_denominator_shift) ||
+      !sincos_binary64_cell_midpoints(candidate_bits, &staged.output_cell)) {
+    return 0;
+  }
+  lower_numerator_bits =
+      u64_bit_length_local(staged.output_cell.lower.numerator);
+  upper_numerator_bits =
+      u64_bit_length_local(staged.output_cell.upper.numerator);
+  staged.midpoint_numerator_bits_max =
+      lower_numerator_bits > upper_numerator_bits ? lower_numerator_bits
+                                                  : upper_numerator_bits;
+  staged.midpoint_denominator_shift_max =
+      staged.output_cell.lower.denominator_shift >
+              staged.output_cell.upper.denominator_shift
+          ? staged.output_cell.lower.denominator_shift
+          : staged.output_cell.upper.denominator_shift;
+  lower_polynomial_height = dyadic_quadratic_polynomial_height_exponent(
+      &staged.output_cell.lower);
+  upper_polynomial_height = dyadic_quadratic_polynomial_height_exponent(
+      &staged.output_cell.upper);
+  staged.quadratic_polynomial_height_pow2_exponent_upper =
+      lower_polynomial_height > upper_polynomial_height
+          ? lower_polynomial_height
+          : upper_polynomial_height;
+  if (staged.input_numerator_bits > SINCOS_EXP_INPUT_NUMERATOR_BITS_MAX ||
+      staged.input_denominator_shift >
+          SINCOS_EXP_INPUT_DENOMINATOR_SHIFT_MAX ||
+      staged.input_argument.alpha_height_pow2_exponent_upper >
+          SINCOS_EXP_ALPHA_HEIGHT_EXPONENT_MAX ||
+      staged.input_argument.inverse_denominator_bits >
+          SINCOS_EXP_INVERSE_DENOMINATOR_BITS_MAX ||
+      staged.input_argument.inverse_house_pow2_exponent_upper >
+          SINCOS_EXP_INVERSE_HOUSE_EXPONENT_MAX ||
+      staged.input_argument
+              .inverse_denominator_house_product_pow2_exponent_upper >
+          SINCOS_EXP_INVERSE_PRODUCT_EXPONENT_MAX ||
+      staged.midpoint_numerator_bits_max >
+          SINCOS_EXP_MIDPOINT_NUMERATOR_BITS_MAX ||
+      staged.midpoint_denominator_shift_max > SINCOS_EXP_MIDPOINT_SHIFT_MAX ||
+      staged.quadratic_polynomial_height_pow2_exponent_upper >
+          SINCOS_EXP_POLYNOMIAL_HEIGHT_EXPONENT_MAX) {
+    return 0;
+  }
+  output->input_numerator_bits = staged.input_numerator_bits;
+  output->input_denominator_shift = staged.input_denominator_shift;
+  output->input_argument.alpha_height_pow2_exponent_upper =
+      staged.input_argument.alpha_height_pow2_exponent_upper;
+  output->input_argument.inverse_denominator_bits =
+      staged.input_argument.inverse_denominator_bits;
+  output->input_argument.inverse_house_pow2_exponent_upper =
+      staged.input_argument.inverse_house_pow2_exponent_upper;
+  output->input_argument
+      .inverse_denominator_house_product_pow2_exponent_upper =
+      staged.input_argument
+          .inverse_denominator_house_product_pow2_exponent_upper;
+  output->output_cell.lower.numerator = staged.output_cell.lower.numerator;
+  output->output_cell.lower.denominator_shift =
+      staged.output_cell.lower.denominator_shift;
+  output->output_cell.lower.negative = staged.output_cell.lower.negative;
+  output->output_cell.upper.numerator = staged.output_cell.upper.numerator;
+  output->output_cell.upper.denominator_shift =
+      staged.output_cell.upper.denominator_shift;
+  output->output_cell.upper.negative = staged.output_cell.upper.negative;
+  output->midpoint_numerator_bits_max = staged.midpoint_numerator_bits_max;
+  output->midpoint_denominator_shift_max =
+      staged.midpoint_denominator_shift_max;
+  output->quadratic_polynomial_height_pow2_exponent_upper =
+      staged.quadratic_polynomial_height_pow2_exponent_upper;
   return 1;
 }
 

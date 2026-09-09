@@ -323,6 +323,27 @@ transport preserves those widths.
 Product code enforces 74 ulps for the Q256/32 policy before publication. A
 2,052-case retained corpus reaches 40 ulps.
 
+A separate structural query now packages the table-maker inputs for `sin` and
+`cos` without using the reduced periodic residual. For a kernel-required
+rational binary64 `x`, a rational output-cell midpoint `m=a/b`, and `z=e^(ix)`,
+the integral quadratic polynomials
+`P_s(X)=bX^2-2iaX-b` and `P_c(X)=bX^2-2aX+b` satisfy
+`P_s(z)=2ibz(sin(x)-m)` and `P_c(z)=2bz(cos(x)-m)`. Since `|z|=1`, either
+separation is exactly `|P(e^(ix))|/(2b)`.
+
+`malbolge_guest_math_sincos_exponential_bridge_bounds` publishes the exact
+signed output-cell dyadics and only integer size parameters. Kernel inputs have
+reduced numerator bit length at most 1,024 and denominator shift at most 79;
+for `alpha=ix` this gives `H(alpha)<2^2048`, inverse-denominator bit length at
+most 1,024, inverse-house exponent at most 27, and
+`d(1/alpha)*max(1,|1/alpha|)<=2^1024`. Output midpoints have numerator bit
+length at most 54 and shift at most 1,075, giving `H(P)<2^1076`.
+
+The signed-zero cells are one-sided: `+0` uses `[0,2^-1075]` and `-0` uses
+`[-2^-1075,0]`. Independent `Fraction` evidence pins separate tight witnesses
+for the 79, 1,024, 2,048, 27, 1,075, and 1,076 ceilings. These are structural
+transcendence inputs, not a finite table-maker separation or resource proof.
+
 Periodic residuals now feed one directed trig evaluator regardless of reducer.
 `malbolge_guest_math_sincos_range_interval256` uses the bounded path below
 `2^64` and Payne-Hanek at or above `2^64`, then evaluates only the residual

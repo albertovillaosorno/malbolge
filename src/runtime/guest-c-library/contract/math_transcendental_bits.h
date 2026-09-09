@@ -270,6 +270,16 @@ typedef struct MalbolgeGuestMathAtan2ExponentialBridgeBounds {
   uint32_t inverse_denominator_house_product_pow2_exponent_upper;
 } MalbolgeGuestMathAtan2ExponentialBridgeBounds;
 
+typedef struct MalbolgeGuestMathSincosExponentialBridgeBounds {
+  uint32_t input_numerator_bits;
+  uint32_t input_denominator_shift;
+  MalbolgeGuestMathExponentialArgumentBounds input_argument;
+  MalbolgeGuestMathAtan2CellMidpoints output_cell;
+  uint32_t midpoint_numerator_bits_max;
+  uint32_t midpoint_denominator_shift_max;
+  uint32_t quadratic_polynomial_height_pow2_exponent_upper;
+} MalbolgeGuestMathSincosExponentialBridgeBounds;
+
 typedef struct MalbolgeGuestMathAtan2RefinementPlan {
   uint32_t stage;
   uint32_t fraction_limbs;
@@ -447,6 +457,10 @@ int malbolge_guest_math_dyadic_exponential_argument_bounds(
 int malbolge_guest_math_atan2_exponential_bridge_bounds(
     uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
     MalbolgeGuestMathAtan2ExponentialBridgeBounds *output);
+int malbolge_guest_math_sincos_exponential_bridge_bounds(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t input_bits,
+    uint64_t candidate_bits,
+    MalbolgeGuestMathSincosExponentialBridgeBounds *output);
 int malbolge_guest_math_dyadic_fixed_limb_count(
     const MalbolgeGuestMathDyadic *input, uint32_t fraction_bits,
     uint32_t *required_limbs);

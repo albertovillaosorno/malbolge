@@ -732,6 +732,25 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   sign/quadrant transport preserves width. Product code enforces the 74-ulp
   ceiling for the Q256/32 policy, while 2,052 retained cases reach only 40.
 
+  The remaining table-maker separation now has an executable structural bridge.
+  For rational kernel input `x`, rational output midpoint `m=a/b`, and
+  `z=e^(ix)`, the quadratic identities
+  `P_s(z)=2ibz(sin(x)-m)` for `P_s(X)=bX^2-2iaX-b` and
+  `P_c(z)=2bz(cos(x)-m)` for `P_c(X)=bX^2-2aX+b` reduce either separation to
+  `|P(e^(ix))|/(2b)`.
+
+  The bridge publishes exact signed output-cell dyadics and finite algebraic
+  ceilings. Kernel `x` has reduced numerator bit length <=1,024 and denominator
+  shift <=79; `alpha=ix` has `H(alpha)<2^2048`, inverse-denominator bit length
+  <=1,024, inverse-house exponent <=27, and combined `d(1/alpha)*t<=2^1024`.
+  Output midpoints have numerator bit length <=54 and shift <=1,075, giving
+  `H(P)<2^1076`.
+
+  Signed zero is handled by one-sided cells `[0,2^-1075]` and
+  `[-2^-1075,0]`. Independent `Fraction` evidence makes the structural ceilings
+  tight. This closes parameterization and qualitative non-equality input for an
+  exponential theorem, not the finite table-maker resource ceiling.
+
 
   The normalized enclosures can now drive midpoint comparison directly. A
   `24*N` caller-owned path reuses the existing quadrant ranks and ratio
