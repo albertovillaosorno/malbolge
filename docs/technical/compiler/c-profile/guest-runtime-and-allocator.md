@@ -1048,12 +1048,16 @@ less than 1,199 binary exponent bits. The tight 106-bit rational denominator
 makes the additional bridge factor `2b` contribute less than 107, for a nominal
 subtotal of 1,306.
 
-That subtotal deliberately omits the paper's explicit height correction and
-alpha-dependent constant. The source states that a completely explicit version
-exists, but the repository has not evaluated that version at
-`H(alpha)<2^218`, inverse-denominator bit length <=54, and inverse-house
-exponent <=106. Until that calculation is retained and shown below the guest
-allocation ceiling, the public correct-rounding obligation remains open.
+The current author manuscript's Proposition 1 now supplies the completely
+explicit version. A retained deep cell has `2*q*t=2^107` for `p=2`, and the
+least-common-multiple factor prevents larger admissible `p` from reducing it.
+For `d=2`, `delta=1`, the proposition's `b` and `v` terms alone give
+`log2(D) > 6*107*2^428 > 2^437` for every `p>=2`.
+
+Even the entire maximum normalized guest allocation contains fewer than `2^35`
+bits. Therefore this direct Proposition 1 specialization is too weak to prove
+the finite guest resource ceiling. This is a statement about the theorem's
+guarantee, not about the true midpoint separation or necessary precision.
 
 A more specialized asymptotic result is now retained from Liang-Wang (2024).
 Theorem 2 of the publisher PDF states irrationality measure 2 for `tan(r)` at

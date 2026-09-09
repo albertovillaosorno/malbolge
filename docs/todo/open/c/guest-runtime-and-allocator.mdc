@@ -648,10 +648,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   `K=Q(i), d=2, delta=1` specialization its stated height exponent is 11. The
   known `H(P)<2^109` term and tight `2b<2^107` bridge factor account for a
   nominal 1,306 binary exponent bits before the theorem's explicit correction
-  and
-  alpha-dependent constant. Instantiating those remaining terms at
-  `H(alpha)<2^218`, inverse-denominator bits <=54, and inverse-house exponent
-  <=106 is the next mathematical resource-proof obligation.
+  and alpha-dependent constant.
+
+  The current explicit Proposition 1 has now been evaluated on a retained deep
+  cell: `2*q*t=2^107` at `p=2`, and larger `p` cannot reduce `q`. Its `b`/`v`
+  factor gives `log2(D) > 6*107*2^428 > 2^437` for every admissible `p>=2`,
+  versus fewer than `2^35` total bits in the maximum normalized guest
+  allocation. Thus this direct specialization cannot prove the finite resource
+  ceiling; that does not bound the actual separation or precision required.
 
 
   Liang-Wang (2024) is now retained as tangent-specific asymptotic evidence.

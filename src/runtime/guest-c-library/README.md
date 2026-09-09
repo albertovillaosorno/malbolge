@@ -260,8 +260,15 @@ only to the `H(P)` term, that exponent contributes fewer than 1,199 binary
 exponent bits. The tight 106-bit rational-denominator ceiling makes the bridge
 factor `2b<2^107`, raising the nominal subtotal to 1,306.
 
-The paper's explicit correction and alpha-dependent constant are not yet
-instantiated, so this subtotal is not a precision/resource proof.
+The completely explicit Proposition 1 is now evaluated far enough to rule out
+this direct bridge as the finite guest resource proof. For a retained deep cell,
+`2*q*t=2^107` already at `p=2`; larger `p` cannot decrease `q`. With `d=2` and
+`delta=1`, the proposition's `b` and `v` factors imply that its denominator has
+`log2(D) > 6*107*2^428 > 2^437` for every admissible `p>=2`.
+
+The largest normalized guest allocation contains fewer than `2^35` bits. This
+comparison concerns only the theorem's guaranteed lower bound: it does not say
+that the actual tangent separation requires remotely that much precision.
 
 The C substrate also owns exact candidate-cell geometry before tangent
 refinement. `malbolge_guest_math_atan2_cell_midpoints` emits both boundaries as

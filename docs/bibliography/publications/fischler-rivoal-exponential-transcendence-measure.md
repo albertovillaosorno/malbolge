@@ -2,9 +2,10 @@
 
 ## Status
 
-Verified for the stated exponential-transcendence theorem, its linear-polynomial
-height exponent, and the existence of a completely explicit specialization;
-repository-specific constant evaluation remains open.
+Verified for the exponential-transcendence theorem, its linear-polynomial
+height exponent, and Proposition 1's completely explicit specialization. The
+direct repository bridge has also been evaluated and is too weak for the finite
+guest resource ceiling.
 
 ## Subject
 
@@ -29,12 +30,10 @@ height exponent is `4d^2-2d-1=11` when `d=2`.
 
 ## Provenance
 
-The arXiv record for 2502.17992 was reviewed on 2026-09-08. The current paper
-states Theorem 1 for nonzero algebraic `alpha`, number-field coefficient ring
-`O_K`, polynomial degree at most `delta`, and a lower bound in polynomial
-height.
-It states that the constant can be made completely explicit and points to
-Proposition 1 in section 3 for that version.
+The arXiv record for 2502.17992 was reviewed on 2026-09-08. The current author
+manuscript dated 2025-11-02 was reviewed on 2026-09-09. Proposition 1 gives the
+completely explicit lower bound together with explicit `q`, `t`, `a`, `b`, `u`,
+`v`, and `psi` definitions.
 
 The introduction separately records that, for degree-one polynomials and
 `d>=2`, the smallest height exponent in this method is `4d^2-2d-1`; substituting
@@ -69,11 +68,11 @@ terms into the repository MIT license.
 
 ### Unresolved
 
-The repository has not yet instantiated Proposition 1's completely explicit
-constant for the full binary64 bridge bounds. In particular, this record does
-not prove that the resulting lower bound is strong enough to certify every
-input before the guest allocator's finite `uint32_t` byte ceiling. The source is
-also an arXiv research preprint rather than a repository-owned proof.
+Proposition 1 is not strong enough, under the direct repository specialization,
+to prove certification before the finite guest allocation ceiling. This does
+not rule out a stronger specialized transcendence measure or say that actual
+midpoint separation is comparably small. The external theorem remains
+source-owned rather than a repository-owned proof.
 
 ## Sources
 
@@ -81,3 +80,6 @@ also an arXiv research preprint rather than a repository-owned proof.
   history; accessed 2026-09-08.
 - <https://arxiv.org/html/2502.17992> - paper HTML, including Theorem 1 and the
   degree-one specialization discussed in the introduction; accessed 2026-09-08.
+- <https://rivoal.perso.math.cnrs.fr/articles/mesureexp.pdf> - current author
+  manuscript, including Proposition 1 and its explicit constants; accessed
+  2026-09-09.
