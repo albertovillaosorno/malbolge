@@ -945,6 +945,19 @@ Exact three-step positive/negative cases and an unresolved second step pin both
 transport arithmetic and atomicity. Supplying 57 steps or `16*N-1` scratch is a
 non-mutating hard failure.
 
+The complete dyadic-normalization path now composes that transport with the
+small-angle Taylor evaluator. Guest C takes a reduced signed midpoint, applies
+its canonical Lambert halving count, materializes the normalized magnitude
+exactly, encloses sine and cosine there, and doubles those signed intervals back
+to the original angle. Caller-owned scratch is `20*N`; insufficient fractional
+precision is a retry (`proven=0`) rather than a guessed enclosure.
+
+Independent rational Taylor bounds at the original angle enclose positive and
+negative 3/4, a negative denominator-shift-107 dyadic, and the structural
+near-four case that uses the full 56-step transport. Q128 with 16 Taylor terms
+resolves those fixtures, including all 56 doublings, as coverage only. No fixed
+Q/term pair is promoted to a full-domain resource bound.
+
 This supplies the finite rational-height parameter required by any future
 quantitative Lambert/Lindemann separation bound. It does not itself lower-bound
 `|tan(midpoint)-p/q|`, so the finite resource proof remains open.

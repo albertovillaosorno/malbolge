@@ -1835,6 +1835,126 @@ int malbolge_guest_math_fixed_sincos_double_transport(
   return 1;
 }
 
+int malbolge_guest_math_dyadic_normalized_sincos_interval(
+    const MalbolgeGuestMathDyadic *midpoint, uint32_t fraction_limbs,
+    uint32_t terms, uint32_t *output_sin_lower,
+    uint32_t *output_sin_lower_negative, uint32_t *output_sin_upper,
+    uint32_t *output_sin_upper_negative, uint32_t *output_cos_lower,
+    uint32_t *output_cos_lower_negative, uint32_t *output_cos_upper,
+    uint32_t *output_cos_upper_negative, uint32_t *proven, uint32_t *scratch,
+    uint32_t scratch_capacity) {
+  MalbolgeGuestMathLambertArgumentBounds bounds;
+  MalbolgeGuestMathDyadic normalized;
+  uint32_t fraction_bits = UINT32_C(0);
+  uint32_t limb_count = UINT32_C(0);
+  uint32_t sin_lower_negative = UINT32_C(0);
+  uint32_t sin_upper_negative = UINT32_C(0);
+  uint32_t cos_lower_negative = UINT32_C(0);
+  uint32_t cos_upper_negative = UINT32_C(0);
+  uint32_t transport_proven = UINT32_C(0);
+  uint32_t output_sin_lower_staged_negative = UINT32_C(0);
+  uint32_t output_sin_upper_staged_negative = UINT32_C(0);
+  uint32_t *sin_lower = scratch;
+  uint32_t *sin_upper = NULL;
+  uint32_t *cos_lower = NULL;
+  uint32_t *cos_upper = NULL;
+  uint32_t *operation = NULL;
+  uint32_t *input = NULL;
+  uint32_t *taylor_scratch = NULL;
+
+  if (midpoint == NULL || output_sin_lower == NULL ||
+      output_sin_lower_negative == NULL || output_sin_upper == NULL ||
+      output_sin_upper_negative == NULL || output_cos_lower == NULL ||
+      output_cos_lower_negative == NULL || output_cos_upper == NULL ||
+      output_cos_upper_negative == NULL || proven == NULL || scratch == NULL ||
+      fraction_limbs == UINT32_C(0) ||
+      fraction_limbs > UINT32_MAX / UINT32_C(32) ||
+      fraction_limbs == UINT32_MAX || terms < UINT32_C(2) ||
+      !malbolge_guest_math_dyadic_lambert_argument_bounds(midpoint, &bounds)) {
+    return 0;
+  }
+  fraction_bits = fraction_limbs * UINT32_C(32);
+  limb_count = fraction_limbs + UINT32_C(1);
+  if (limb_count > UINT32_MAX / UINT32_C(20) ||
+      scratch_capacity < limb_count * UINT32_C(20)) {
+    return 0;
+  }
+  if (fraction_bits < bounds.normalized_denominator_shift) {
+    *proven = UINT32_C(0);
+    return 1;
+  }
+  normalized.numerator = midpoint->numerator;
+  normalized.denominator_shift = bounds.normalized_denominator_shift;
+  normalized.negative = UINT32_C(0);
+  sin_upper = sin_lower + limb_count;
+  cos_lower = sin_upper + limb_count;
+  cos_upper = cos_lower + limb_count;
+  operation = cos_upper + limb_count;
+  input = operation;
+  taylor_scratch = input + limb_count;
+  zero_fixed_limbs(input, limb_count);
+  if (!malbolge_guest_math_dyadic_write_fixed(&normalized, fraction_bits, input,
+                                               limb_count) ||
+      !malbolge_guest_math_fixed_sin_taylor_interval(
+          input, input, limb_count, fraction_limbs, terms, sin_lower,
+          &sin_lower_negative, sin_upper, &sin_upper_negative, taylor_scratch,
+          limb_count * UINT32_C(10)) ||
+      !malbolge_guest_math_fixed_cos_taylor_interval(
+          input, input, limb_count, fraction_limbs, terms, cos_lower,
+          &cos_lower_negative, cos_upper, &cos_upper_negative, taylor_scratch,
+          limb_count * UINT32_C(10))) {
+    return 0;
+  }
+  if (signed_fixed_interval_proven_sign(
+          sin_lower, sin_lower_negative, sin_upper, sin_upper_negative,
+          limb_count) <= 0 ||
+      signed_fixed_interval_proven_sign(
+          cos_lower, cos_lower_negative, cos_upper, cos_upper_negative,
+          limb_count) <= 0) {
+    *proven = UINT32_C(0);
+    return 1;
+  }
+  if (!malbolge_guest_math_fixed_sincos_double_transport(
+          sin_lower, sin_lower_negative, sin_upper, sin_upper_negative,
+          cos_lower, cos_lower_negative, cos_upper, cos_upper_negative,
+          limb_count, fraction_limbs, bounds.normalizing_halvings, sin_lower,
+          &sin_lower_negative, sin_upper, &sin_upper_negative, cos_lower,
+          &cos_lower_negative, cos_upper, &cos_upper_negative,
+          &transport_proven, operation, limb_count * UINT32_C(16))) {
+    return 0;
+  }
+  if (transport_proven == UINT32_C(0)) {
+    *proven = UINT32_C(0);
+    return 1;
+  }
+
+  if (midpoint->negative == UINT32_C(0)) {
+    copy_fixed_limbs(output_sin_lower, sin_lower, limb_count);
+    copy_fixed_limbs(output_sin_upper, sin_upper, limb_count);
+    output_sin_lower_staged_negative = sin_lower_negative;
+    output_sin_upper_staged_negative = sin_upper_negative;
+  } else {
+    copy_fixed_limbs(output_sin_lower, sin_upper, limb_count);
+    copy_fixed_limbs(output_sin_upper, sin_lower, limb_count);
+    output_sin_lower_staged_negative =
+        fixed_limbs_is_zero(sin_upper, limb_count)
+            ? UINT32_C(0)
+            : (sin_upper_negative ^ UINT32_C(1));
+    output_sin_upper_staged_negative =
+        fixed_limbs_is_zero(sin_lower, limb_count)
+            ? UINT32_C(0)
+            : (sin_lower_negative ^ UINT32_C(1));
+  }
+  copy_fixed_limbs(output_cos_lower, cos_lower, limb_count);
+  copy_fixed_limbs(output_cos_upper, cos_upper, limb_count);
+  *output_sin_lower_negative = output_sin_lower_staged_negative;
+  *output_sin_upper_negative = output_sin_upper_staged_negative;
+  *output_cos_lower_negative = cos_lower_negative;
+  *output_cos_upper_negative = cos_upper_negative;
+  *proven = UINT32_C(1);
+  return 1;
+}
+
 static int signed_interval_magnitude_bounds(
     const uint32_t *lower, uint32_t lower_negative, const uint32_t *upper,
     uint32_t upper_negative, uint32_t limb_count,

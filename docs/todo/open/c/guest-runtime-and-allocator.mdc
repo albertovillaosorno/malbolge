@@ -570,6 +570,19 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   integration obligation is to produce the normalized small-angle sin/cos
   enclosure and feed it into this transport path.
 
+  That integration is now implemented too. A reduced signed dyadic is normalized
+  exactly, Taylor sin/cos is evaluated only at the small positive magnitude, and
+  the signed enclosure is transported back through the canonical 0..56
+  doublings. The composed path uses `20*N` caller-owned scratch; too few
+  fractional bits return `proven=0`, while invalid terms or short scratch fail
+  without publication.
+
+  Independent `Fraction` Taylor bounds at the original angle enclose `+/-3/4`,
+  a denominator-shift-107 negative dyadic, and the near-four structural case
+  that exercises all 56 doublings. Q128/16 resolves those fixtures but remains
+  coverage evidence only. The remaining mathematical obligation is still a
+  finite quantitative separation bound, not sin/cos transport infrastructure.
+
   The two finite inputs to a future quantitative bound are now exposed together:
   exact reduced ratio height plus both candidate-cell midpoint shifts. A hard
   cell, its negative mirror, and a 108-bit axis-boundary cell match

@@ -171,6 +171,19 @@ Exact evidence covers zero-step copy, three exact steps in both signs,
 unresolved-after-progress atomicity, and hard ceilings for 57 steps or short
 scratch.
 
+The normalization pipeline is now executable end to end for signed dyadic
+midpoints. `malbolge_guest_math_dyadic_normalized_sincos_interval` applies the
+Lambert halving plan to the exact dyadic, evaluates directed Taylor sin/cos only
+at that normalized small argument, and transports the enclosure back through
+all requested doublings. It uses caller-owned `20*N` scratch and keeps
+insufficient fixed precision as `proven=0`; malformed terms or short scratch
+remain non-mutating hard failures.
+
+Independent `Fraction` Taylor authority at the original angle encloses `+/-3/4`,
+a negative 107-bit-shift dyadic, and the structural near-four case that performs
+all 56 doublings. Q128/16 resolves those retained cases, including the 56-step
+path, but that is bounded coverage rather than a full-domain precision ceiling.
+
 This height bound is exact structural evidence, not yet a quantitative
 irrationality measure for `tan(midpoint)`. Lambert still supplies only the
 non-equality/qualitative termination fact currently admitted by the repository.
