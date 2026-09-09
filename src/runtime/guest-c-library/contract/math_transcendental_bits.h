@@ -179,6 +179,13 @@ typedef struct MalbolgeGuestMathAtan2CellMidpoints {
   MalbolgeGuestMathDyadic upper;
 } MalbolgeGuestMathAtan2CellMidpoints;
 
+typedef struct MalbolgeGuestMathAtan2SeparationParameters {
+  MalbolgeGuestMathRationalHeight ratio_height;
+  uint32_t lower_midpoint_shift;
+  uint32_t upper_midpoint_shift;
+  uint32_t midpoint_shift_max;
+} MalbolgeGuestMathAtan2SeparationParameters;
+
 typedef struct MalbolgeGuestMathAtan2RefinementPlan {
   uint32_t stage;
   uint32_t fraction_limbs;
@@ -286,6 +293,9 @@ int malbolge_guest_math_fixed256_candidate_range(
     MalbolgeGuestMathAtan2CandidateRange *output);
 int malbolge_guest_math_atan2_cell_midpoints(
     uint64_t output_bits, MalbolgeGuestMathAtan2CellMidpoints *output);
+int malbolge_guest_math_atan2_separation_parameters(
+    uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
+    MalbolgeGuestMathAtan2SeparationParameters *output);
 int malbolge_guest_math_dyadic_fixed_limb_count(
     const MalbolgeGuestMathDyadic *input, uint32_t fraction_bits,
     uint32_t *required_limbs);

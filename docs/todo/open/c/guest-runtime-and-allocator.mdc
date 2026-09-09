@@ -525,12 +525,18 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   exact bit lengths with binary GCD and bitwise exact division; `Fraction`
   matches all 3,167 retained kernel cases, whose maxima are 2,069/2,089 bits.
 
+  The two finite inputs to a future quantitative bound are now exposed together:
+  exact reduced ratio height plus both candidate-cell midpoint shifts. A hard
+  cell, its negative mirror, and the 2,098-bit denominator extreme match
+  independent `Fraction` reconstruction; sign-mismatched cells fail atomically.
+  The separate fallback proof still caps the relevant midpoint shift at 107.
+
   Remaining adaptive work is product policy for supplying/growing scratch only
   after lane-9 startup proves heap binding before user code, plus a quantitative
-  separation proof that turns the 2,098-bit rational-height ceiling and Lambert
-  non-equality into certification before the finite allocation-capacity ceiling.
-  Q128/16 remains bounded coverage, not a full-domain bound, and public atan2
-  remains unavailable.
+  separation inequality that turns height <=2,098, midpoint shift <=107, and
+  Lambert non-equality into certification before the finite allocation-capacity
+  ceiling. Q128/16 remains bounded coverage, not a full-domain bound, and public
+  atan2 remains unavailable.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

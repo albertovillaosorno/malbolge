@@ -3759,6 +3759,38 @@ int malbolge_guest_math_atan2_cell_midpoints(
   return 1;
 }
 
+int malbolge_guest_math_atan2_separation_parameters(
+    uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
+    MalbolgeGuestMathAtan2SeparationParameters *output) {
+  MalbolgeGuestMathAtan2KernelInput ratio;
+  MalbolgeGuestMathAtan2CellMidpoints cell;
+  MalbolgeGuestMathAtan2SeparationParameters staged;
+
+  if (output == NULL ||
+      malbolge_guest_math_atan2_special(y_bits, x_bits).status !=
+          MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED ||
+      (candidate_bits & BINARY64_SIGN) != (y_bits & BINARY64_SIGN) ||
+      !malbolge_guest_math_atan2_kernel_input(y_bits, x_bits, &ratio) ||
+      !malbolge_guest_math_atan2_cell_midpoints(candidate_bits, &cell) ||
+      !malbolge_guest_math_atan2_ratio_reduced_height(&ratio,
+                                                      &staged.ratio_height)) {
+    return 0;
+  }
+  staged.lower_midpoint_shift = cell.lower.denominator_shift;
+  staged.upper_midpoint_shift = cell.upper.denominator_shift;
+  staged.midpoint_shift_max =
+      staged.lower_midpoint_shift > staged.upper_midpoint_shift
+          ? staged.lower_midpoint_shift
+          : staged.upper_midpoint_shift;
+  output->ratio_height.numerator_bits = staged.ratio_height.numerator_bits;
+  output->ratio_height.denominator_bits = staged.ratio_height.denominator_bits;
+  output->ratio_height.height_bits = staged.ratio_height.height_bits;
+  output->lower_midpoint_shift = staged.lower_midpoint_shift;
+  output->upper_midpoint_shift = staged.upper_midpoint_shift;
+  output->midpoint_shift_max = staged.midpoint_shift_max;
+  return 1;
+}
+
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits) {
   MalbolgeGuestMathAtan2Interval interval;

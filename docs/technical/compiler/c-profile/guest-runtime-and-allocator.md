@@ -901,6 +901,19 @@ This supplies the finite rational-height parameter required by any future
 quantitative Lambert/Lindemann separation bound. It does not itself lower-bound
 `|tan(midpoint)-p/q|`, so the finite resource proof remains open.
 
+A composed separation-parameter query now joins that height to exact candidate
+cell geometry. For a kernel-required input and a candidate whose sign matches
+the
+principal atan2 result, it returns the reduced numerator/denominator/height bit
+counts plus the lower and upper dyadic midpoint denominator shifts and their
+maximum. Publication is atomic, including rejection of a sign-mismatched cell.
+
+Exact `Fraction` checks cover a retained hard cell, its negative mirror, and the
+2,098-bit min-subnormal/max-finite denominator extreme. Both rational height and
+midpoint shifts match independently. The already-proved fallback midpoint-shift
+ceiling of 107 therefore has an executable parameter surface ready for a future
+quantitative theorem, but the theorem/inequality itself remains open.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

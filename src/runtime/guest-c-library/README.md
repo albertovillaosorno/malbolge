@@ -128,6 +128,20 @@ This height bound is exact structural evidence, not yet a quantitative
 irrationality measure for `tan(midpoint)`. Lambert still supplies only the
 non-equality/qualitative termination fact currently admitted by the repository.
 
+The runtime now packages the two finite inputs to such a future bound in one
+atomic query. `malbolge_guest_math_atan2_separation_parameters` validates a
+kernel-required `(y,x)` and same-sign candidate cell, then publishes the exact
+reduced ratio height together with the denominator shifts of both dyadic cell
+midpoints and their maximum. A sign-mismatched candidate rejects without
+publication.
+
+Independent `Fraction` evidence covers a hard positive cell, its signed mirror,
+and the min-subnormal versus negative-max-finite height extreme. Reported ratio
+heights and both midpoint shifts agree exactly. These parameters remain
+structural inputs only: the existing proof that actual fallback midpoint shifts
+are at most 107 is separate from the still-missing quantitative tangent
+separation inequality.
+
 The C substrate also owns exact candidate-cell geometry before tangent
 refinement. `malbolge_guest_math_atan2_cell_midpoints` emits both boundaries as
 signed dyadics with a 64-bit numerator plus power-of-two denominator. Both
