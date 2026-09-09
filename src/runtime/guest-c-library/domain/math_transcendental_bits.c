@@ -1618,6 +1618,74 @@ int malbolge_guest_math_atan2_refinement_attempt(
   return 1;
 }
 
+int malbolge_guest_math_atan2_refinement_plan(
+    uint32_t stage, MalbolgeGuestMathAtan2RefinementPlan *output) {
+  MalbolgeGuestMathAtan2RefinementPlan staged;
+  uint32_t limb_count = UINT32_C(0);
+  uint32_t divisor = UINT32_C(0);
+
+  if (output == NULL || stage > (UINT32_MAX - UINT32_C(8)) / UINT32_C(4) ||
+      stage > UINT32_MAX - UINT32_C(3)) {
+    return 0;
+  }
+  staged.stage = stage;
+  staged.fraction_limbs = stage + UINT32_C(2);
+  staged.terms = stage * UINT32_C(4) + UINT32_C(8);
+  limb_count = staged.fraction_limbs + UINT32_C(1);
+  if (limb_count > UINT32_MAX / UINT32_C(15) ||
+      !taylor_recurrence_divisor(staged.terms, UINT32_C(0), &divisor) ||
+      !taylor_recurrence_divisor(staged.terms, UINT32_C(1), &divisor)) {
+    return 0;
+  }
+  staged.required_scratch_limbs = limb_count * UINT32_C(15);
+  *output = staged;
+  return 1;
+}
+
+int malbolge_guest_math_atan2_refine_available(
+    uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
+    uint32_t start_stage, uint32_t *scratch, uint32_t scratch_capacity,
+    MalbolgeGuestMathAtan2RefinementProgress *output) {
+  MalbolgeGuestMathAtan2RefinementProgress staged;
+  MalbolgeGuestMathAtan2KernelInput ratio;
+  MalbolgeGuestMathAtan2CellMidpoints cell;
+  const MalbolgeGuestMathSpecialResult special =
+      malbolge_guest_math_atan2_special(y_bits, x_bits);
+  uint32_t stage = start_stage;
+
+  if (scratch == NULL || output == NULL ||
+      special.status != MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED ||
+      !malbolge_guest_math_atan2_kernel_input(y_bits, x_bits, &ratio) ||
+      !malbolge_guest_math_atan2_cell_midpoints(candidate_bits, &cell)) {
+    return 0;
+  }
+  for (;;) {
+    uint32_t certified = UINT32_C(0);
+    if (!malbolge_guest_math_atan2_refinement_plan(stage, &staged.plan)) {
+      return 0;
+    }
+    staged.certified = UINT32_C(0);
+    if (scratch_capacity < staged.plan.required_scratch_limbs) {
+      *output = staged;
+      return 1;
+    }
+    if (!malbolge_guest_math_atan2_refinement_attempt(
+            y_bits, x_bits, candidate_bits, staged.plan.fraction_limbs,
+            staged.plan.terms, &certified, scratch, scratch_capacity)) {
+      return 0;
+    }
+    if (certified != UINT32_C(0)) {
+      staged.certified = UINT32_C(1);
+      *output = staged;
+      return 1;
+    }
+    if (stage == UINT32_MAX) {
+      return 0;
+    }
+    ++stage;
+  }
+}
+
 int malbolge_guest_math_fixed_interval_add(
     const uint32_t *left_lower, const uint32_t *left_upper,
     const uint32_t *right_lower, const uint32_t *right_upper,

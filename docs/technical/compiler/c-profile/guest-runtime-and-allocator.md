@@ -732,6 +732,24 @@ The distribution is intentionally coverage-only. It demonstrates independent
 precision and truncation retries but does not turn Q128/16 into a full-domain
 bound or discharge the unbounded refinement/termination obligation.
 
+A stateless caller-owned scheduler now composes the atomic refinement attempt.
+Stage `s` uses `s+2` fractional limbs, `4s+8` Taylor terms, and
+`15*(s+3)` scratch limbs. Input/candidate validation precedes capacity
+checks, so
+special or malformed work remains a hard nonpublishing failure even when scratch
+is too small. The driver executes all stages that fit and, on capacity
+exhaustion,
+publishes the first unattempted plan and its exact requirement rather than
+conflating memory with numerical failure.
+
+A hard retained seed pins the sequence Q64/8 -> Q96/12 -> Q128/16 and certifies
+only at the third stage with 75 limbs. A neighboring wrong candidate requests
+the
+next stage instead of certifying. The current planner is not yet mathematically
+unbounded: because the Taylor recurrence stores `(2n)(2n±1)` in one `u32`, stage
+8189 is valid and stage 8190 fails planning atomically. That divisor-product
+ceiling is a concrete implementation blocker, not a full-domain bound.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

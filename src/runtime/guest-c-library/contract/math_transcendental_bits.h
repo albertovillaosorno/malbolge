@@ -173,6 +173,18 @@ typedef struct MalbolgeGuestMathAtan2CellMidpoints {
   MalbolgeGuestMathDyadic upper;
 } MalbolgeGuestMathAtan2CellMidpoints;
 
+typedef struct MalbolgeGuestMathAtan2RefinementPlan {
+  uint32_t stage;
+  uint32_t fraction_limbs;
+  uint32_t terms;
+  uint32_t required_scratch_limbs;
+} MalbolgeGuestMathAtan2RefinementPlan;
+
+typedef struct MalbolgeGuestMathAtan2RefinementProgress {
+  uint32_t certified;
+  MalbolgeGuestMathAtan2RefinementPlan plan;
+} MalbolgeGuestMathAtan2RefinementProgress;
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
@@ -309,6 +321,12 @@ int malbolge_guest_math_atan2_refinement_attempt(
     uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
     uint32_t fraction_limbs, uint32_t terms, uint32_t *certified,
     uint32_t *scratch, uint32_t scratch_capacity);
+int malbolge_guest_math_atan2_refinement_plan(
+    uint32_t stage, MalbolgeGuestMathAtan2RefinementPlan *output);
+int malbolge_guest_math_atan2_refine_available(
+    uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
+    uint32_t start_stage, uint32_t *scratch, uint32_t scratch_capacity,
+    MalbolgeGuestMathAtan2RefinementProgress *output);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(

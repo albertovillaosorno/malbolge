@@ -455,10 +455,19 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   21/26/2,107/3,167. These are coverage counts only, but they pin that both
   precision and Taylor depth can independently require retry.
 
-  The remaining midpoint blocker is product adaptive scheduling: choose
-  caller-owned precision and Taylor depth, retry `certified=0` with larger
-  capacity, and stop only once both cell boundaries are strictly separated.
-  Q128/16 is not a full-domain bound.
+  Adaptive scheduling is now executable with caller-owned storage. Stage `s`
+  requests `s+2` fractional limbs, `4s+8` terms, and `15*(s+3)` scratch limbs;
+  the driver executes every fitting stage and returns the first unattempted plan
+  when capacity is exhausted. Invalid/special inputs fail before capacity
+  reporting. A hard seed pins Q64/8 -> Q96/12 -> Q128/16 and only certifies at
+  the 75-limb third stage; a neighboring candidate remains a retry.
+
+  The remaining scheduler blocker is its Taylor-divisor representation. The
+  recurrence currently stores `(2n)(2n±1)` in one `u32`, making stage 8189 the
+  last valid plan and stage 8190 an atomic planning failure. Remove that product
+  ceiling (for example by directed division by the two factors separately)
+  before treating the schedule as capacity-limited rather than policy-limited.
+  Q128/16 remains bounded coverage, not a full-domain bound.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

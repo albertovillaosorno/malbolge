@@ -267,6 +267,24 @@ pin that both dimensions can independently cause retries and that a future
 policy must grow capacity as well as Taylor depth rather than assuming either
 one is sufficient alone.
 
+Refinement scheduling is now executable and stateless. Stage `s` requests
+`s+2` fractional limbs, `4s+8` Taylor terms, and `15*(s+3)` caller-owned scratch
+limbs, so both numerical dimensions grow on every retry. The driver validates
+input and candidate geometry before capacity handling, attempts every stage that
+fits the supplied scratch, and returns either the certifying plan or the first
+unattempted plan whose exact scratch requirement exceeds capacity.
+
+A retained hard seed therefore reports stage 0/Q64/8 at 44 limbs, stage 1/Q96/12
+after exhausting 45 limbs, stage 2/Q128/16 after exhausting 60 limbs, and
+certifies stage 2 once 75 limbs are available. An adjacent wrong candidate
+remains uncertified and requests stage 3 rather than being accepted.
+
+The planner still exposes one arithmetic ceiling rather than hiding it: the
+current Taylor recurrence multiplies `(2n)(2n±1)` into one `u32`. Stage 8189
+(Q262112/32764 terms) remains valid with 122880 scratch limbs, while stage 8190
+fails planning before output mutation. This is an implementation limit to
+remove, not a termination bound.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch
