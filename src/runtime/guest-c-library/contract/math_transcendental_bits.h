@@ -223,6 +223,12 @@ typedef struct MalbolgeGuestMathAtan2HandoffProgress {
   MalbolgeGuestMathAtan2RefinementPlan plan;
 } MalbolgeGuestMathAtan2HandoffProgress;
 
+typedef struct MalbolgeGuestMathAtan2ScratchRequirement {
+  uint32_t limbs;
+  uint32_t bytes;
+  uint32_t alignment;
+} MalbolgeGuestMathAtan2ScratchRequirement;
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
@@ -405,6 +411,9 @@ int malbolge_guest_math_atan2_resume_handoff_available(
     uint64_t y_bits, uint64_t x_bits,
     const MalbolgeGuestMathAtan2HandoffProgress *previous, uint32_t *scratch,
     uint32_t scratch_capacity, MalbolgeGuestMathAtan2HandoffProgress *output);
+int malbolge_guest_math_atan2_refinement_scratch_requirement(
+    const MalbolgeGuestMathAtan2RefinementPlan *plan,
+    MalbolgeGuestMathAtan2ScratchRequirement *output);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(

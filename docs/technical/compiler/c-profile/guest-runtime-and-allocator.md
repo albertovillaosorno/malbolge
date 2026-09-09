@@ -848,6 +848,27 @@ capacity query, narrowed retry, and resumed certification. Public integration
 still needs a policy for who supplies/grows that scratch and, independently, the
 full-domain resource/termination proof.
 
+The caller-owned scratch plan now has a byte/alignment projection compatible
+with the guest allocator without depending on it. A validated refinement plan
+maps to exact `u32` limb and byte counts plus 4-byte alignment; multiplication
+by
+four is checked before output publication. The guest heap's 16-byte payload
+alignment strictly satisfies that requirement.
+
+Stages 0/1/2 project to 180/240/300 bytes. Stage 71,582,785 is the largest
+current
+plan whose limb workspace also fits the guest allocator's `u32` extent: it needs
+1,073,741,820 limbs or `0xfffffff0` bytes. Stage 71,582,786 still plans in limbs
+but byte projection rejects because the allocation extent would exceed
+`UINT32_MAX`.
+
+This projection does not make math allocator-owned. Allocation wrappers remain
+unavailable in canonical libc until lane-9 startup proves heap binding before
+user code, so the production math path still consumes caller-supplied storage.
+The byte query exists so that later startup/allocator integration can request
+the
+same proven workspace geometry without duplicating arithmetic.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

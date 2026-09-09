@@ -504,9 +504,18 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   Synthetic evidence pins no-scratch stage 0 -> 60-limb stage 2 -> 75-limb
   certification and rejects tampered identity/terms without publication.
 
+  Refinement plans now also project to exact allocation-neutral byte/alignment
+  requirements. Alignment is 4 bytes, compatible with the guest heap's 16-byte
+  payload alignment; stages 0/1/2 need 180/240/300 bytes. Stage 71,582,785 is
+  the
+  largest plan whose workspace fits a `u32` guest allocation extent
+  (`0xfffffff0` bytes); the next stage rejects byte projection atomically.
+
   Remaining adaptive work is ownership/policy for supplying and growing caller
   scratch in the eventual product path, plus a proof that Lambert-driven
-  refinement certifies before the finite `u32` workspace-capacity ceiling.
+  refinement certifies before that finite allocation-capacity ceiling. The math
+  implementation still does not call allocation because canonical malloc/free
+  remain unavailable until lane-9 startup proves heap binding before user code.
   Q128/16 remains bounded coverage, not a full-domain bound, and public atan2
   remains unavailable.
 

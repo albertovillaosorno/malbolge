@@ -3470,6 +3470,23 @@ static int atan2_refinement_plan_matches(
          input->required_scratch_limbs == expected.required_scratch_limbs;
 }
 
+int malbolge_guest_math_atan2_refinement_scratch_requirement(
+    const MalbolgeGuestMathAtan2RefinementPlan *plan,
+    MalbolgeGuestMathAtan2ScratchRequirement *output) {
+  MalbolgeGuestMathAtan2ScratchRequirement staged;
+  if (output == NULL || !atan2_refinement_plan_matches(plan) ||
+      plan->required_scratch_limbs > UINT32_MAX / UINT32_C(4)) {
+    return 0;
+  }
+  staged.limbs = plan->required_scratch_limbs;
+  staged.bytes = plan->required_scratch_limbs * UINT32_C(4);
+  staged.alignment = UINT32_C(4);
+  output->limbs = staged.limbs;
+  output->bytes = staged.bytes;
+  output->alignment = staged.alignment;
+  return 1;
+}
+
 int malbolge_guest_math_atan2_resume_handoff_available(
     uint64_t y_bits, uint64_t x_bits,
     const MalbolgeGuestMathAtan2HandoffProgress *previous, uint32_t *scratch,

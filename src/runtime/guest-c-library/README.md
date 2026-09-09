@@ -390,6 +390,24 @@ be preserved byte-for-byte between calls; the identity/plan checks prevent
 accidental cross-input or stale-plan reuse, not hostile forgery. This is an
 internal runtime contract rather than a security boundary.
 
+Refinement plans now expose an allocation-neutral storage projection.
+`malbolge_guest_math_atan2_refinement_scratch_requirement` validates a planner
+result, returns its exact 32-bit limb count, converts that count to a `u32` byte
+extent with checked multiplication by four, and reports 4-byte alignment. The
+function never observes startup or heap state.
+
+The guest heap's existing 16-byte payload alignment is therefore sufficient for
+all such scratch. Stages 0/1/2 require 180/240/300 bytes. The largest planner
+stage whose limb array is still representable as a guest allocation extent is
+stage 71,582,785: 1,073,741,820 limbs and `4,294,967,280` (`0xfffffff0`) bytes.
+Stage 71,582,786 remains a valid limb plan but byte projection rejects before
+publication because the required extent exceeds `UINT32_MAX`.
+
+This is a compatibility/query surface, not permission for math to call `malloc`.
+Allocation wrappers remain authority-unavailable until compiler startup proves
+heap binding before user code, so caller-owned storage remains the active math
+contract.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch
