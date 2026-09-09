@@ -633,8 +633,10 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
 
   Combined with the proven full-domain geometry, the ceilings are
   `H(P)<2^109`, rational denominator bits <=106, `H(2im)<2^218`,
-  inverse-denominator bit length <=109, and
-  inverse-house exponent <=106. Remaining adaptive work is product policy for
+  inverse-denominator bit length <=54, and inverse-house exponent <=106. The
+  combined quantity is tighter: `d(1/alpha)*max(1,|1/alpha|) <= 2^106`, and
+  guest C publishes that ceiling directly. Remaining adaptive work is product
+  policy for
   supplying/growing scratch only after lane-9 startup proves heap binding before
   user code, plus instantiation of a sourced explicit exponential/transcendence
   lower bound whose constant proves certification before the finite allocation
@@ -648,7 +650,7 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   nominal 1,306 binary exponent bits before the theorem's explicit correction
   and
   alpha-dependent constant. Instantiating those remaining terms at
-  `H(alpha)<2^218`, inverse-denominator bits <=109, and inverse-house exponent
+  `H(alpha)<2^218`, inverse-denominator bits <=54, and inverse-house exponent
   <=106 is the next mathematical resource-proof obligation.
 
 

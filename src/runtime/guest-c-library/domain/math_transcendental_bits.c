@@ -4424,6 +4424,7 @@ int malbolge_guest_math_dyadic_exponential_argument_bounds(
   uint32_t alpha_denominator_exponent = UINT32_C(0);
   uint32_t numerator_height_exponent = UINT32_C(0);
   uint32_t denominator_height_exponent = UINT32_C(0);
+  uint32_t alpha_numerator_ceil_log2 = UINT32_C(0);
 
   if (midpoint == NULL || output == NULL ||
       midpoint->numerator == UINT64_C(0) ||
@@ -4455,11 +4456,24 @@ int malbolge_guest_math_dyadic_exponential_argument_bounds(
           : denominator_height_exponent;
   staged.inverse_denominator_bits = alpha_numerator_bits;
   staged.inverse_house_pow2_exponent_upper = alpha_denominator_exponent;
+  if (midpoint->denominator_shift == UINT32_C(0)) {
+    alpha_numerator_ceil_log2 =
+        u64_bit_length_local(midpoint->numerator - UINT64_C(1)) + UINT32_C(1);
+  } else {
+    alpha_numerator_ceil_log2 =
+        u64_bit_length_local(midpoint->numerator - UINT64_C(1));
+  }
+  staged.inverse_denominator_house_product_pow2_exponent_upper =
+      alpha_numerator_ceil_log2 > alpha_denominator_exponent
+          ? alpha_numerator_ceil_log2
+          : alpha_denominator_exponent;
   output->alpha_height_pow2_exponent_upper =
       staged.alpha_height_pow2_exponent_upper;
   output->inverse_denominator_bits = staged.inverse_denominator_bits;
   output->inverse_house_pow2_exponent_upper =
       staged.inverse_house_pow2_exponent_upper;
+  output->inverse_denominator_house_product_pow2_exponent_upper =
+      staged.inverse_denominator_house_product_pow2_exponent_upper;
   return 1;
 }
 
@@ -4499,6 +4513,20 @@ int malbolge_guest_math_atan2_exponential_bridge_bounds(
               staged.upper_midpoint.inverse_house_pow2_exponent_upper
           ? staged.lower_midpoint.inverse_house_pow2_exponent_upper
           : staged.upper_midpoint.inverse_house_pow2_exponent_upper;
+  staged.inverse_denominator_house_product_pow2_exponent_upper =
+      staged.lower_midpoint
+                  .inverse_denominator_house_product_pow2_exponent_upper >
+              staged.upper_midpoint
+                  .inverse_denominator_house_product_pow2_exponent_upper
+          ? staged.lower_midpoint
+                .inverse_denominator_house_product_pow2_exponent_upper
+          : staged.upper_midpoint
+                .inverse_denominator_house_product_pow2_exponent_upper;
+  if (staged.inverse_denominator_bits_max > UINT32_C(54) ||
+      staged.inverse_denominator_house_product_pow2_exponent_upper >
+          UINT32_C(106)) {
+    return 0;
+  }
   output->linear_polynomial_height_pow2_exponent_upper =
       staged.linear_polynomial_height_pow2_exponent_upper;
   output->rational_denominator_bits = staged.rational_denominator_bits;
@@ -4509,6 +4537,8 @@ int malbolge_guest_math_atan2_exponential_bridge_bounds(
   output->inverse_denominator_bits_max = staged.inverse_denominator_bits_max;
   output->inverse_house_pow2_exponent_upper =
       staged.inverse_house_pow2_exponent_upper;
+  output->inverse_denominator_house_product_pow2_exponent_upper =
+      staged.inverse_denominator_house_product_pow2_exponent_upper;
   return 1;
 }
 

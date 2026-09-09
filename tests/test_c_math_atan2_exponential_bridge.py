@@ -52,8 +52,9 @@ HEIGHT_LIMIT = 108
 RATIONAL_DENOMINATOR_BITS_LIMIT = 106
 POLYNOMIAL_HEIGHT_EXPONENT_LIMIT = HEIGHT_LIMIT + 1
 ALPHA_HEIGHT_EXPONENT_LIMIT = 218
-INVERSE_DENOMINATOR_BITS_LIMIT = 109
+INVERSE_DENOMINATOR_BITS_LIMIT = 54
 INVERSE_HOUSE_EXPONENT_LIMIT = 106
+INVERSE_DENOMINATOR_HOUSE_PRODUCT_EXPONENT_LIMIT = 106
 CASES = (
     (0x3FEE19FA869EA9FC, 0x3FF197DD31B21770),
     (0xBFEE19FA869EA9FC, 0x3FF197DD31B21770),
@@ -101,10 +102,9 @@ def _next_down(bits: int) -> int:
     return bits + 1 if bits & SIGN else bits - 1
 
 
-def _argument_bounds(midpoint: Fraction) -> tuple[int, int, int]:
-    magnitude = abs(midpoint)
-    numerator = magnitude.numerator
-    denominator = magnitude.denominator
+def _argument_bounds(midpoint: Fraction) -> tuple[int, int, int, int]:
+    numerator = abs(midpoint).numerator
+    denominator = abs(midpoint).denominator
     assert denominator & (denominator - 1) == 0
     shift = denominator.bit_length() - 1
     numerator_bits = numerator.bit_length()
@@ -118,7 +118,16 @@ def _argument_bounds(midpoint: Fraction) -> tuple[int, int, int]:
         2 * alpha_numerator_bits,
         2 * alpha_denominator_exponent + 1,
     )
-    return height_exponent, alpha_numerator_bits, alpha_denominator_exponent
+    alpha_numerator = 2 * numerator if shift == 0 else numerator
+    combined_exponent = (
+        max(alpha_numerator, 1 << alpha_denominator_exponent) - 1
+    ).bit_length()
+    return (
+        height_exponent,
+        alpha_numerator_bits,
+        alpha_denominator_exponent,
+        combined_exponent,
+    )
 
 
 def _ratio_components(y_bits: int, x_bits: int) -> tuple[int, int, int]:
@@ -129,7 +138,7 @@ def _ratio_components(y_bits: int, x_bits: int) -> tuple[int, int, int]:
     return numerator_bits, denominator_bits, height_bits
 
 
-def _cell_bounds(candidate: int) -> tuple[tuple[int, int, int], ...]:
+def _cell_bounds(candidate: int) -> tuple[tuple[int, int, int, int], ...]:
     value = _binary64(candidate)
     lower = (_binary64(_next_down(candidate)) + value) / 2
     upper = (value + _binary64(_next_up(candidate))) / 2
@@ -160,28 +169,45 @@ int main(void) {{
     (void)printf(
         "%016" PRIx64 " %" PRIu32 " %" PRIu32 " %" PRIu32 " %" PRIu32
         " %" PRIu32 " %" PRIu32 " %" PRIu32 " %" PRIu32 " %" PRIu32
-        " %" PRIu32 "\\n",
+        " %" PRIu32 " %" PRIu32 " %" PRIu32 " %" PRIu32 "\\n",
         candidate, bounds.linear_polynomial_height_pow2_exponent_upper,
         bounds.rational_denominator_bits,
         bounds.lower_midpoint.alpha_height_pow2_exponent_upper,
         bounds.lower_midpoint.inverse_denominator_bits,
         bounds.lower_midpoint.inverse_house_pow2_exponent_upper,
+        bounds.lower_midpoint
+            .inverse_denominator_house_product_pow2_exponent_upper,
         bounds.upper_midpoint.alpha_height_pow2_exponent_upper,
         bounds.upper_midpoint.inverse_denominator_bits,
         bounds.upper_midpoint.inverse_house_pow2_exponent_upper,
+        bounds.upper_midpoint
+            .inverse_denominator_house_product_pow2_exponent_upper,
         bounds.alpha_height_pow2_exponent_upper,
-        bounds.inverse_denominator_bits_max);
+        bounds.inverse_denominator_bits_max,
+        bounds.inverse_denominator_house_product_pow2_exponent_upper);
     ++index;
   }}
   {{
     MalbolgeGuestMathDyadic bad = {{UINT64_C(2), UINT32_C(5), UINT32_C(0)}};
     MalbolgeGuestMathExponentialArgumentBounds sentinel = {{
-        UINT32_C(91), UINT32_C(92), UINT32_C(93)}};
+        UINT32_C(91), UINT32_C(92), UINT32_C(93), UINT32_C(94)}};
     if (malbolge_guest_math_dyadic_exponential_argument_bounds(
             &bad, &sentinel) ||
         sentinel.alpha_height_pow2_exponent_upper != UINT32_C(91) ||
         sentinel.inverse_denominator_bits != UINT32_C(92) ||
-        sentinel.inverse_house_pow2_exponent_upper != UINT32_C(93)) return 82;
+        sentinel.inverse_house_pow2_exponent_upper != UINT32_C(93) ||
+        sentinel.inverse_denominator_house_product_pow2_exponent_upper !=
+            UINT32_C(94)) return 82;
+  }}
+  {{
+    MalbolgeGuestMathDyadic deep = {{UINT64_C(1), UINT32_C(107), UINT32_C(0)}};
+    MalbolgeGuestMathExponentialArgumentBounds bounds;
+    if (!malbolge_guest_math_dyadic_exponential_argument_bounds(
+            &deep, &bounds) ||
+        bounds.inverse_denominator_bits != UINT32_C(1) ||
+        bounds.inverse_house_pow2_exponent_upper != UINT32_C(106) ||
+        bounds.inverse_denominator_house_product_pow2_exponent_upper !=
+            UINT32_C(106)) return 83;
   }}
   return 0;
 }}
@@ -196,15 +222,19 @@ def _assert_bridge_row(pair: tuple[int, int], row: list[str]) -> None:
     polynomial_exponent = height_bits + 1
     assert values[0] == polynomial_exponent
     assert values[1] == denominator_bits
-    assert values[2:5] == lower
-    assert values[5:8] == upper
-    assert values[8] == max(lower[0], upper[0])
-    assert values[9] == max(lower[1], upper[1])
+    assert values[2:6] == lower
+    assert values[6:10] == upper
+    assert values[10] == max(lower[0], upper[0])
+    assert values[11] == max(lower[1], upper[1])
+    assert values[12] == max(lower[3], upper[3])
     assert values[0] <= POLYNOMIAL_HEIGHT_EXPONENT_LIMIT
     assert values[1] <= RATIONAL_DENOMINATOR_BITS_LIMIT
-    assert values[8] <= ALPHA_HEIGHT_EXPONENT_LIMIT
-    assert values[9] <= INVERSE_DENOMINATOR_BITS_LIMIT
+    assert values[10] <= ALPHA_HEIGHT_EXPONENT_LIMIT
+    assert values[11] <= INVERSE_DENOMINATOR_BITS_LIMIT
     assert max(lower[2], upper[2]) <= INVERSE_HOUSE_EXPONENT_LIMIT
+    assert (
+        values[12] <= INVERSE_DENOMINATOR_HOUSE_PRODUCT_EXPONENT_LIMIT
+    )
 
 
 def test_exponential_bridge_bounds_match_integer_geometry(

@@ -1027,7 +1027,10 @@ also bounds the usual height of `alpha=2im`, the bit length of the algebraic
 denominator of `1/alpha`, and a power-of-two ceiling for
 `max(1,|1/alpha|)`. Under the already-proved full fallback geometry these become
 `H(P)<2^109`, rational denominator bits <=106, `H(alpha)<2^218`,
-inverse-denominator bit length <=109, and inverse-house exponent <=106.
+inverse-denominator bit length <=54, and inverse-house exponent <=106.
+
+The paired quantity needed by the explicit exponential theorem is tighter
+still: `d(1/alpha)*max(1,|1/alpha|) <= 2^106`.
 
 Those finite parameters are small enough to make an explicit exponential
 transcendence measure a concrete candidate for the remaining resource proof.
@@ -1048,7 +1051,7 @@ subtotal of 1,306.
 That subtotal deliberately omits the paper's explicit height correction and
 alpha-dependent constant. The source states that a completely explicit version
 exists, but the repository has not evaluated that version at
-`H(alpha)<2^218`, inverse-denominator bit length <=109, and inverse-house
+`H(alpha)<2^218`, inverse-denominator bit length <=54, and inverse-house
 exponent <=106. Until that calculation is retained and shown below the guest
 allocation ceiling, the public correct-rounding obligation remains open.
 

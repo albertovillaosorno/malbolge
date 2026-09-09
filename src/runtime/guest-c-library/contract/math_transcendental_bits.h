@@ -202,6 +202,7 @@ typedef struct MalbolgeGuestMathExponentialArgumentBounds {
   uint32_t alpha_height_pow2_exponent_upper;
   uint32_t inverse_denominator_bits;
   uint32_t inverse_house_pow2_exponent_upper;
+  uint32_t inverse_denominator_house_product_pow2_exponent_upper;
 } MalbolgeGuestMathExponentialArgumentBounds;
 
 typedef struct MalbolgeGuestMathAtan2ExponentialBridgeBounds {
@@ -212,6 +213,7 @@ typedef struct MalbolgeGuestMathAtan2ExponentialBridgeBounds {
   uint32_t alpha_height_pow2_exponent_upper;
   uint32_t inverse_denominator_bits_max;
   uint32_t inverse_house_pow2_exponent_upper;
+  uint32_t inverse_denominator_house_product_pow2_exponent_upper;
 } MalbolgeGuestMathAtan2ExponentialBridgeBounds;
 
 typedef struct MalbolgeGuestMathAtan2RefinementPlan {

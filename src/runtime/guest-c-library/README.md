@@ -243,9 +243,12 @@ power-of-two ceilings for the minimal-polynomial height of `alpha=2im`, the
 algebraic denominator of `1/alpha`, and `max(1,|1/alpha|)`. Combining the exact
 2,098-bit ratio-height ceiling with the separately proved fallback midpoint
 shift ceiling plus the post-special 108-bit ratio-height ceiling gives
-`H(P)<2^109`, `H(alpha)<2^218`, inverse-denominator bit length at most 109, and
-inverse-house exponent at most 106. These are resource
-parameters only; no transcendence-measure constant is assumed by guest C.
+`H(P)<2^109`, `H(alpha)<2^218`, inverse-denominator bit length at most 54,
+and inverse-house exponent at most 106.
+
+More tightly, if `t` denotes `max(1,|1/alpha|)`, then
+`d(1/alpha)*t <= 2^106`; guest C publishes this combined ceiling directly.
+These are resource parameters only, not a transcendence-measure claim.
 
 
 The quantitative source candidate is now canonicalized in
