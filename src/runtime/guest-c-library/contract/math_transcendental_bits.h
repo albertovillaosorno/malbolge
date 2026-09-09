@@ -64,6 +64,12 @@ typedef struct MalbolgeGuestMathAtan2KernelInput {
   uint32_t x_negative;
 } MalbolgeGuestMathAtan2KernelInput;
 
+typedef struct MalbolgeGuestMathRationalHeight {
+  uint32_t numerator_bits;
+  uint32_t denominator_bits;
+  uint32_t height_bits;
+} MalbolgeGuestMathRationalHeight;
+
 typedef enum MalbolgeGuestMathAtan2Base {
   MALBOLGE_GUEST_MATH_ATAN2_BASE_ZERO = 0,
   MALBOLGE_GUEST_MATH_ATAN2_BASE_HALF_PI = 1,
@@ -236,6 +242,9 @@ MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
 int malbolge_guest_math_atan2_kernel_input(
     uint64_t y_bits, uint64_t x_bits,
     MalbolgeGuestMathAtan2KernelInput *output);
+int malbolge_guest_math_atan2_ratio_reduced_height(
+    const MalbolgeGuestMathAtan2KernelInput *input,
+    MalbolgeGuestMathRationalHeight *output);
 int malbolge_guest_math_atan2_reconstruction(
     uint64_t y_bits, uint64_t x_bits,
     MalbolgeGuestMathAtan2Reconstruction *output);

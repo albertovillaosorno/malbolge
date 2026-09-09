@@ -883,6 +883,24 @@ therefore proves compatibility with the existing guest heap once binding exists,
 but it does not satisfy the separate lane-9 obligation to emit/prove that bind
 before user code or make canonical `malloc` available.
 
+The rational height of every finite input ratio is now bounded exactly rather
+than by normalized-significand heuristics. A finite binary64 value is
+`M * 2^-1074` for an integer `M` in `[1, 2^2098)`, so after reducing `|y/x|`
+both numerator and denominator have at most 2,098 bits. The two extreme
+min-subnormal/max-finite orientations attain that ceiling respectively in the
+denominator and numerator, including a kernel-required left-half-plane case.
+
+`malbolge_guest_math_atan2_ratio_reduced_height` computes the exact reduced bit
+lengths from kernel geometry without constructing the potentially 2,098-bit
+integers. It uses Stein binary GCD plus exact shift/subtract division so the new
+path does not introduce an i686 64-bit division helper. Python `Fraction`
+independently matches all 3,167 kernel-required retained cases; their sampled
+maxima are 2,089 denominator bits and 2,069 numerator bits.
+
+This supplies the finite rational-height parameter required by any future
+quantitative Lambert/Lindemann separation bound. It does not itself lower-bound
+`|tan(midpoint)-p/q|`, so the finite resource proof remains open.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

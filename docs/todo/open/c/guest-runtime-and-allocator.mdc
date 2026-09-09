@@ -518,11 +518,19 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   hard-cell certification, release, and reuse. Math remains allocator-free; the
   harness performs the bind and runtime allocation calls directly.
 
-  Remaining adaptive work is product policy for supplying/growing that scratch
-  only after lane-9 startup proves heap binding before user code, plus a proof
-  that Lambert-driven refinement certifies before the finite allocation-capacity
-  ceiling. Q128/16 remains bounded coverage, not a full-domain bound, and public
-  atan2 remains unavailable.
+  Reduced input-ratio height is now exact and full-domain bounded. Every finite
+  binary64 is an integer multiple of `2^-1074` with multiplier below `2^2098`,
+  so reduced `|y/x|` numerator and denominator have at most 2,098 bits; the two
+  min-subnormal/max-finite orientations attain the bound. Guest C computes the
+  exact bit lengths with binary GCD and bitwise exact division; `Fraction`
+  matches all 3,167 retained kernel cases, whose maxima are 2,069/2,089 bits.
+
+  Remaining adaptive work is product policy for supplying/growing scratch only
+  after lane-9 startup proves heap binding before user code, plus a quantitative
+  separation proof that turns the 2,098-bit rational-height ceiling and Lambert
+  non-equality into certification before the finite allocation-capacity ceiling.
+  Q128/16 remains bounded coverage, not a full-domain bound, and public atan2
+  remains unavailable.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

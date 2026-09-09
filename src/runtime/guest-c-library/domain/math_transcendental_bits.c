@@ -324,6 +324,131 @@ static int valid_ratio_input(const MalbolgeGuestMathAtan2KernelInput *input) {
          input->x_negative <= UINT32_C(1);
 }
 
+static uint32_t u64_bit_length_local(uint64_t value) {
+  uint32_t bits = UINT32_C(0);
+  while (value != UINT64_C(0)) {
+    ++bits;
+    value >>= UINT32_C(1);
+  }
+  return bits;
+}
+
+static uint32_t u64_trailing_zero_count(uint64_t value) {
+  uint32_t count = UINT32_C(0);
+  while (value != UINT64_C(0) && (value & UINT64_C(1)) == UINT64_C(0)) {
+    ++count;
+    value >>= UINT32_C(1);
+  }
+  return count;
+}
+
+static uint64_t u64_binary_gcd(uint64_t left, uint64_t right) {
+  uint32_t common_shift = UINT32_C(0);
+  if (left == UINT64_C(0)) {
+    return right;
+  }
+  if (right == UINT64_C(0)) {
+    return left;
+  }
+  common_shift = u64_trailing_zero_count(left | right);
+  left >>= u64_trailing_zero_count(left);
+  do {
+    right >>= u64_trailing_zero_count(right);
+    if (left > right) {
+      const uint64_t temporary = left;
+      left = right;
+      right = temporary;
+    }
+    right -= left;
+  } while (right != UINT64_C(0));
+  return left << common_shift;
+}
+
+static int u64_divide_exact(uint64_t dividend, uint64_t divisor,
+                            uint64_t *quotient) {
+  uint64_t staged = UINT64_C(0);
+  uint64_t remainder = UINT64_C(0);
+  uint32_t bit = UINT32_C(64);
+  if (divisor == UINT64_C(0) || quotient == NULL) {
+    return 0;
+  }
+  while (bit != UINT32_C(0)) {
+    --bit;
+    remainder = (remainder << UINT32_C(1)) |
+                ((dividend >> bit) & UINT64_C(1));
+    if (remainder >= divisor) {
+      remainder -= divisor;
+      staged |= UINT64_C(1) << bit;
+    }
+  }
+  if (remainder != UINT64_C(0)) {
+    return 0;
+  }
+  *quotient = staged;
+  return 1;
+}
+
+int malbolge_guest_math_atan2_ratio_reduced_height(
+    const MalbolgeGuestMathAtan2KernelInput *input,
+    MalbolgeGuestMathRationalHeight *output) {
+  MalbolgeGuestMathRationalHeight staged;
+  uint64_t numerator = UINT64_C(0);
+  uint64_t denominator = UINT64_C(0);
+  uint64_t divisor = UINT64_C(0);
+  int32_t exponent = INT32_C(0);
+  uint32_t cancellation = UINT32_C(0);
+  uint32_t shift = UINT32_C(0);
+
+  if (output == NULL || !valid_ratio_input(input)) {
+    return 0;
+  }
+  if (input->swapped != UINT32_C(0)) {
+    numerator = input->denominator_significand;
+    denominator = input->numerator_significand;
+    exponent = -input->exponent_delta;
+  } else {
+    numerator = input->numerator_significand;
+    denominator = input->denominator_significand;
+    exponent = input->exponent_delta;
+  }
+  divisor = u64_binary_gcd(numerator, denominator);
+  if (divisor == UINT64_C(0)) {
+    return 0;
+  }
+  if (!u64_divide_exact(numerator, divisor, &numerator) ||
+      !u64_divide_exact(denominator, divisor, &denominator)) {
+    return 0;
+  }
+  if (exponent >= INT32_C(0)) {
+    shift = (uint32_t)exponent;
+    cancellation = u64_trailing_zero_count(denominator);
+    if (cancellation > shift) {
+      cancellation = shift;
+    }
+    denominator >>= cancellation;
+    shift -= cancellation;
+    staged.numerator_bits = u64_bit_length_local(numerator) + shift;
+    staged.denominator_bits = u64_bit_length_local(denominator);
+  } else {
+    shift = (uint32_t)(-exponent);
+    cancellation = u64_trailing_zero_count(numerator);
+    if (cancellation > shift) {
+      cancellation = shift;
+    }
+    numerator >>= cancellation;
+    shift -= cancellation;
+    staged.numerator_bits = u64_bit_length_local(numerator);
+    staged.denominator_bits = u64_bit_length_local(denominator) + shift;
+  }
+  staged.height_bits = staged.numerator_bits > staged.denominator_bits
+                           ? staged.numerator_bits
+                           : staged.denominator_bits;
+  output->numerator_bits = staged.numerator_bits;
+  output->denominator_bits = staged.denominator_bits;
+  output->height_bits = staged.height_bits;
+  return 1;
+}
+
 static uint32_t ratio_fraction_bit(uint64_t denominator, uint64_t *remainder) {
   *remainder <<= UINT32_C(1);
   if (*remainder >= denominator) {

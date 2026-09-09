@@ -109,6 +109,25 @@ no retained case needs a later step. Lambert tangent irrationality supplies the
 qualitative non-equality needed for eventual exact separation, while guest-C
 unbounded refinement storage remains open.
 
+The exact input-ratio height needed by any quantitative separation argument is
+now guest-C-owned as well. `malbolge_guest_math_atan2_ratio_reduced_height`
+reduces the tangent comparator's actual `|y/x|` geometry with binary GCD and
+bitwise exact division, then reports exact numerator, denominator, and maximum
+bit lengths without materializing exponent shifts as giant integers. The helper
+adds no division-runtime dependency on i686.
+
+There is a tight full-domain structural ceiling of 2,098 bits. Every finite
+nonzero binary64 magnitude is an integer multiple `M * 2^-1074`, with
+`1 <= M < 2^2098`; reducing a quotient of two such values cannot increase either
+integer. `min-subnormal / -max-finite` attains a 2,098-bit denominator in the
+kernel-required left half-plane, while the reciprocal attains a 2,098-bit
+numerator. Across the retained 3,167 kernel-required refinement cases, the
+observed maxima are 2,089 denominator bits and 2,069 numerator bits.
+
+This height bound is exact structural evidence, not yet a quantitative
+irrationality measure for `tan(midpoint)`. Lambert still supplies only the
+non-equality/qualitative termination fact currently admitted by the repository.
+
 The C substrate also owns exact candidate-cell geometry before tangent
 refinement. `malbolge_guest_math_atan2_cell_midpoints` emits both boundaries as
 signed dyadics with a 64-bit numerator plus power-of-two denominator. Both
