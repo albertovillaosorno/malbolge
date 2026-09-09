@@ -935,6 +935,23 @@ transcendence measure a concrete candidate for the remaining resource proof.
 The repository has not yet instantiated the theorem-specific constant, so no
 precision ceiling follows from this bridge alone.
 
+
+A quantitative candidate now has canonical provenance in
+as the Fischler-Rivoal exponential-transcendence record under
+`docs/bibliography/publications/`.
+For `K=Q(i)`, `alpha=2im`, algebraic degree `d=2`, and polynomial degree
+`delta=1`, the publication's stated height exponent specializes to 11. The
+known `H(P)<2^2099` ceiling therefore makes the bare `H(P)^-11` contribution
+less than 23,089 binary exponent bits, while the additional bridge denominator
+`2b` contributes less than 2,099, for a nominal subtotal of 25,188.
+
+That subtotal deliberately omits the paper's explicit height correction and
+alpha-dependent constant. The source states that a completely explicit version
+exists, but the repository has not evaluated that version at
+`H(alpha)<2^218`, inverse-denominator bit length <=109, and inverse-house
+exponent <=106. Until that calculation is retained and shown below the guest
+allocation ceiling, the public correct-rounding obligation remains open.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

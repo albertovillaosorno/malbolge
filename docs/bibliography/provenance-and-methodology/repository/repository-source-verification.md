@@ -154,7 +154,7 @@ architecture automatically.
 
 ### Baseline Coverage
 
-The executable bibliography audit currently validates 49 source/provenance
+The executable bibliography audit currently validates 50 source/provenance
 records, 44 required baseline records, nine exact Python validation packages,
 and 20 distinct durable external references. Durable coverage scans source,
 manifests, technical and research documentation, completed lifecycle evidence,
@@ -219,7 +219,7 @@ record before relying on an uncovered source class.
 
 ### Retained Source Inventory
 
-The 48 other retained bibliography evidence documents reviewed by this ledger
+The 49 other retained bibliography evidence documents reviewed by this ledger
 are listed explicitly so provenance reachability is deterministic and auditable.
 
 - `docs/bibliography/languages/c.md`
@@ -252,6 +252,8 @@ are listed explicitly so provenance reachability is deterministic and auditable.
 - `docs/bibliography/provenance-and-methodology/research/acm-artifact-evaluation.md`
 <!-- jig-ignore-next-line: canonical source path is indivisible -->
 - `docs/bibliography/provenance-and-methodology/research/acm-sigsoft-empirical-standards.md`
+<!-- jig-ignore-next-line: canonical source path is indivisible -->
+- `docs/bibliography/publications/fischler-rivoal-exponential-transcendence-measure.md`
 - `docs/bibliography/publications/superoptimization/egg.md`
 - `docs/bibliography/publications/superoptimization/souper.md`
 - `docs/bibliography/publications/superoptimization/stoke.md`

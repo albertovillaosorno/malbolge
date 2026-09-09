@@ -158,6 +158,17 @@ shift ceiling gives `H(P)<2^2099`, `H(alpha)<2^218`, inverse-denominator bit
 length at most 109, and inverse-house exponent at most 106. These are resource
 parameters only; no transcendence-measure constant is assumed by guest C.
 
+
+The quantitative source candidate is now canonicalized in
+as the Fischler-Rivoal exponential-transcendence record under
+`docs/bibliography/publications/`.
+For the repository specialization `K=Q(i)`, algebraic degree `d=2`, and linear
+polynomial degree `delta=1`, the paper's stated height exponent is 11. Applied
+only to the `H(P)` term, that exponent contributes fewer than 23,089 binary
+exponent bits; the bridge factor `2b` raises the nominal subtotal to 25,188.
+The paper's explicit correction and alpha-dependent constant are not yet
+instantiated, so this subtotal is not a precision/resource proof.
+
 The C substrate also owns exact candidate-cell geometry before tangent
 refinement. `malbolge_guest_math_atan2_cell_midpoints` emits both boundaries as
 signed dyadics with a 64-bit numerator plus power-of-two denominator. Both

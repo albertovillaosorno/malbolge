@@ -547,6 +547,15 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   ceiling. Q128/16 remains bounded coverage and public atan2 remains
   unavailable.
 
+  Fischler-Rivoal `arXiv:2502.17992` is now canonical bibliography evidence for
+  the quantitative exponential route. In the repository's linear
+  `K=Q(i), d=2, delta=1` specialization its stated height exponent is 11. The
+  known `H(P)<2^2099` term and bridge factor `2b` account for a nominal 25,188
+  binary exponent bits before the theorem's explicit correction and
+  alpha-dependent constant. Instantiating those remaining terms at
+  `H(alpha)<2^218`, inverse-denominator bits <=109, and inverse-house exponent
+  <=106 is the next mathematical resource-proof obligation.
+
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies
   both midpoint sides, all transformed cases within `4e-20` ulp, all direct

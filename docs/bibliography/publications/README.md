@@ -14,6 +14,7 @@ Repository policy, legal conclusions, or research conclusions.
 
 ## Contents
 
+- `fischler-rivoal-exponential-transcendence-measure.md`
 - `lambert-tangent-irrationality.md`
 - `superoptimization/`
 - `verification/`
