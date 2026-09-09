@@ -450,9 +450,9 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   correctly left uncertified.
 
   Bounded scheduling evidence now covers all 4,164 retained pairs. It observes
-  997 pre-kernel resolutions and 3,167 kernel-required cells. At 16 terms,
-  Q64/Q96/Q128 certify 3,112/3,135/3,167; at Q128, 4/8/12/16 terms certify
-  21/26/2,107/3,167. These are coverage counts only, but they pin that both
+  3,921 pre-kernel resolutions and 243 kernel-required cells. At 16 terms,
+  Q64/Q96/Q128 certify 188/211/243; at Q128, 4/8/12/16 terms certify
+  21/26/139/243. These are coverage counts only, but they pin that both
   precision and Taylor depth can independently require retry.
 
   Adaptive scheduling is now executable with caller-owned storage. Stage `s`
@@ -521,13 +521,20 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   Reduced input-ratio height is now exact and full-domain bounded. Every finite
   binary64 is an integer multiple of `2^-1074` with multiplier below `2^2098`,
   so reduced `|y/x|` numerator and denominator have at most 2,098 bits; the two
-  min-subnormal/max-finite orientations attain the bound. Guest C computes the
-  exact bit lengths with binary GCD and bitwise exact division; `Fraction`
-  matches all 3,167 retained kernel cases, whose maxima are 2,069/2,089 bits.
+  min-subnormal/max-finite orientations attain the bound. They now resolve in an
+  axis preproof rather than reaching adaptive refinement. Guest C computes the
+  exact bit lengths with binary GCD and bitwise exact division.
+
+  Directed Q256 pi/4 bounds plus `0 < atan(r) < r` resolve `r <= 2^-52` near
+  pi, `r <= 2^-53` on the subtracting side of pi/2, and `r <= 2^-55` on its
+  adding side. Combined with the zero-axis proof, every remaining kernel ratio
+  has height <=108 bits, and the cell just above the `2^-55` cutoff attains the
+  bound. `Fraction` matches all 243 retained kernel cases; their sampled maxima
+  are 102/103 bits.
 
   The two finite inputs to a future quantitative bound are now exposed together:
   exact reduced ratio height plus both candidate-cell midpoint shifts. A hard
-  cell, its negative mirror, and the 2,098-bit denominator extreme match
+  cell, its negative mirror, and a 108-bit axis-boundary cell match
   independent `Fraction` reconstruction; sign-mismatched cells fail atomically.
   The separate fallback proof still caps the relevant midpoint shift at 107.
 
@@ -539,7 +546,7 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   inverse house without materializing Gaussian or shifted big integers.
 
   Combined with the proven full-domain geometry, the ceilings are
-  `H(P)<2^2099`, `H(2im)<2^218`, inverse-denominator bit length <=109, and
+  `H(P)<2^109`, `H(2im)<2^218`, inverse-denominator bit length <=109, and
   inverse-house exponent <=106. Remaining adaptive work is product policy for
   supplying/growing scratch only after lane-9 startup proves heap binding before
   user code, plus instantiation of a sourced explicit exponential/transcendence
@@ -550,7 +557,7 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   Fischler-Rivoal `arXiv:2502.17992` is now canonical bibliography evidence for
   the quantitative exponential route. In the repository's linear
   `K=Q(i), d=2, delta=1` specialization its stated height exponent is 11. The
-  known `H(P)<2^2099` term and bridge factor `2b` account for a nominal 25,188
+  known `H(P)<2^109` term and bridge factor `2b` account for a nominal 1,308
   binary exponent bits before the theorem's explicit correction and
   alpha-dependent constant. Instantiating those remaining terms at
   `H(alpha)<2^218`, inverse-denominator bits <=109, and inverse-house exponent

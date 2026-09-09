@@ -42,7 +42,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
 CONTRACT = ROOT / "src/runtime/guest-c-library/contract"
 SOURCE = ROOT / "src/runtime/guest-c-library/domain/math_transcendental_bits.c"
-EXPECTED_COUNTS = (997, 3167, 3112, 3135, 21, 26, 2107, 3167)
+EXPECTED_COUNTS = (3921, 243, 188, 211, 21, 26, 139, 243)
 
 
 def _run(command: list[str], cwd: Path) -> sp.CompletedProcess[str]:

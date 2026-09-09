@@ -4083,6 +4083,40 @@ static int subnormal_atan_result(
   return 1;
 }
 
+static int ratio_at_most_power_of_two(
+    const MalbolgeGuestMathAtan2KernelInput *input, int32_t exponent) {
+  if (!valid_ratio_input(input)) {
+    return 0;
+  }
+  if (input->exponent_delta < exponent) {
+    return 1;
+  }
+  if (input->exponent_delta > exponent) {
+    return 0;
+  }
+  return input->numerator_significand <= input->denominator_significand;
+}
+
+static MalbolgeGuestMathSpecialResult axis_ratio_atan2_special(
+    uint64_t y_bits, uint64_t x_bits,
+    const MalbolgeGuestMathAtan2KernelInput *input) {
+  if (input->swapped == UINT32_C(0)) {
+    if ((x_bits & BINARY64_SIGN) != UINT64_C(0) &&
+        ratio_at_most_power_of_two(input, INT32_C(-52))) {
+      return resolved(with_sign(BINARY64_PI, y_bits));
+    }
+    return kernel_required();
+  }
+  if ((x_bits & BINARY64_SIGN) == UINT64_C(0)) {
+    if (ratio_at_most_power_of_two(input, INT32_C(-53))) {
+      return resolved(with_sign(BINARY64_PI_OVER_TWO, y_bits));
+    }
+  } else if (ratio_at_most_power_of_two(input, INT32_C(-55))) {
+    return resolved(with_sign(BINARY64_PI_OVER_TWO, y_bits));
+  }
+  return kernel_required();
+}
+
 static MalbolgeGuestMathSpecialResult small_ratio_atan2_special(
     uint64_t y_bits, uint64_t x_bits) {
   MalbolgeGuestMathAtan2KernelInput input;
@@ -4090,9 +4124,14 @@ static MalbolgeGuestMathSpecialResult small_ratio_atan2_special(
   uint64_t atan_bits = UINT64_C(0);
   uint32_t exact = UINT32_C(0);
 
+  if (!malbolge_guest_math_atan2_kernel_input(y_bits, x_bits, &input)) {
+    return kernel_required();
+  }
   if ((x_bits & BINARY64_SIGN) != UINT64_C(0) ||
-      !malbolge_guest_math_atan2_kernel_input(y_bits, x_bits, &input) ||
-      input.swapped != UINT32_C(0) || !ratio_at_most_atan_identity(&input) ||
+      input.swapped != UINT32_C(0)) {
+    return axis_ratio_atan2_special(y_bits, x_bits, &input);
+  }
+  if (!ratio_at_most_atan_identity(&input) ||
       !ratio_nearest_binary64_internal(&input, &ratio_bits, &exact) ||
       ratio_bits > BINARY64_ATAN_IDENTITY_MAX) {
     return kernel_required();

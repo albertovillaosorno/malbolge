@@ -56,11 +56,11 @@ LCG_INCREMENT = 1442695040888963407
 LCG_SEED = 0x4D4944504F494E54
 LCG_COUNT = 4096
 KERNEL_REQUIRED = 2
-EXPECTED_KERNEL_COUNT = 3167
+EXPECTED_KERNEL_COUNT = 243
 EXTREME_PAIR_COUNT = 2
 FULL_DOMAIN_HEIGHT_BITS = 2098
-CORPUS_DENOMINATOR_MAX = 2089
-CORPUS_NUMERATOR_MAX = 2069
+CORPUS_DENOMINATOR_MAX = 103
+CORPUS_NUMERATOR_MAX = 102
 
 BASE_HARD = (
     (0x3FEE19FA869EA9FC, 0x3FF197DD31B21770),
@@ -230,6 +230,39 @@ def test_reduced_ratio_height_matches_fraction(tmp_path: Path) -> None:
     assert max(row[3] for row in rows) == CORPUS_DENOMINATOR_MAX
 
 
+def _direct_height_harness_source(
+    pairs: tuple[tuple[int, int], ...],
+) -> str:
+    rows = ",\n".join(
+        f"  {{UINT64_C(0x{y:016x}), UINT64_C(0x{x:016x})}}" for y, x in pairs
+    )
+    return f"""#include "math_transcendental_bits.h"
+#include <inttypes.h>
+#include <stdint.h>
+#include <stdio.h>
+typedef struct Pair {{ uint64_t y; uint64_t x; }} Pair;
+static const Pair pairs[] = {{
+{rows}
+}};
+int main(void) {{
+  uint32_t index = UINT32_C(0);
+  while (index < (uint32_t)(sizeof(pairs) / sizeof(pairs[0]))) {{
+    MalbolgeGuestMathAtan2KernelInput ratio;
+    MalbolgeGuestMathRationalHeight height;
+    if (!malbolge_guest_math_atan2_kernel_input(
+            pairs[index].y, pairs[index].x, &ratio) ||
+        !malbolge_guest_math_atan2_ratio_reduced_height(&ratio, &height))
+      return 81;
+    (void)printf("%" PRIu32 " %" PRIu32 " %" PRIu32 " %" PRIu32 "\\n",
+                 index, height.numerator_bits, height.denominator_bits,
+                 height.height_bits);
+    ++index;
+  }}
+  return 0;
+}}
+"""
+
+
 def test_binary64_ratio_height_bound_is_tight(tmp_path: Path) -> None:
     """Pin the exact 2098-bit finite-binary64 ratio height ceiling."""
     pairs = (
@@ -238,7 +271,8 @@ def test_binary64_ratio_height_bound_is_tight(tmp_path: Path) -> None:
     )
     harness = tmp_path / "atan2-rational-height-extremes.c"
     executable = tmp_path / "atan2-rational-height-extremes"
-    _ = harness.write_text(_harness_source(pairs), encoding="utf-8")
+    source = _direct_height_harness_source(pairs)
+    _ = harness.write_text(source, encoding="utf-8")
     compiled = _run(
         [
             str(CLANG),

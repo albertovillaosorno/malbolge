@@ -119,10 +119,19 @@ adds no division-runtime dependency on i686.
 There is a tight full-domain structural ceiling of 2,098 bits. Every finite
 nonzero binary64 magnitude is an integer multiple `M * 2^-1074`, with
 `1 <= M < 2^2098`; reducing a quotient of two such values cannot increase either
-integer. `min-subnormal / -max-finite` attains a 2,098-bit denominator in the
-kernel-required left half-plane, while the reciprocal attains a 2,098-bit
-numerator. Across the retained 3,167 kernel-required refinement cases, the
-observed maxima are 2,089 denominator bits and 2,069 numerator bits.
+integer. The min-subnormal/max-finite orientations attain that ceiling in the
+denominator and numerator even though the new axis preproof resolves those
+extremes before adaptive refinement.
+
+The adaptive path now has a much smaller tight ceiling. Directed Q256 pi/4
+bounds plus `0 < atan(r) < r` resolve `r <= 2^-52` next to pi, `r <= 2^-53`
+on the subtracting side of pi/2, and `r <= 2^-55` on its adding side. Together
+with the existing zero-axis proof, any remaining kernel input has reduced ratio
+height at most 108 bits.
+
+`atan2(1,-nextafter(2^-55,+inf))` attains 108 bits. Across the retained 243
+kernel-required refinement cases, the observed maxima are 103 denominator bits
+and 102 numerator bits.
 
 This height bound is exact structural evidence, not yet a quantitative
 irrationality measure for `tan(midpoint)`. Lambert still supplies only the
@@ -136,7 +145,7 @@ midpoints and their maximum. A sign-mismatched candidate rejects without
 publication.
 
 Independent `Fraction` evidence covers a hard positive cell, its signed mirror,
-and the min-subnormal versus negative-max-finite height extreme. Reported ratio
+and a 108-bit axis-boundary cell that remains kernel-required. Reported ratio
 heights and both midpoint shifts agree exactly. These parameters remain
 structural inputs only: the existing proof that actual fallback midpoint shifts
 are at most 107 is separate from the still-missing quantitative tangent
@@ -154,8 +163,9 @@ size bounds needed by such a theorem. It gives `H(P)<2^E`, plus per-midpoint
 power-of-two ceilings for the minimal-polynomial height of `alpha=2im`, the
 algebraic denominator of `1/alpha`, and `max(1,|1/alpha|)`. Combining the exact
 2,098-bit ratio-height ceiling with the separately proved fallback midpoint
-shift ceiling gives `H(P)<2^2099`, `H(alpha)<2^218`, inverse-denominator bit
-length at most 109, and inverse-house exponent at most 106. These are resource
+shift ceiling plus the post-special 108-bit ratio-height ceiling gives
+`H(P)<2^109`, `H(alpha)<2^218`, inverse-denominator bit length at most 109, and
+inverse-house exponent at most 106. These are resource
 parameters only; no transcendence-measure constant is assumed by guest C.
 
 
@@ -164,8 +174,8 @@ as the Fischler-Rivoal exponential-transcendence record under
 `docs/bibliography/publications/`.
 For the repository specialization `K=Q(i)`, algebraic degree `d=2`, and linear
 polynomial degree `delta=1`, the paper's stated height exponent is 11. Applied
-only to the `H(P)` term, that exponent contributes fewer than 23,089 binary
-exponent bits; the bridge factor `2b` raises the nominal subtotal to 25,188.
+only to the `H(P)` term, that exponent contributes fewer than 1,199 binary
+exponent bits; the bridge factor `2b` raises the nominal subtotal to 1,308.
 The paper's explicit correction and alpha-dependent constant are not yet
 instantiated, so this subtotal is not a precision/resource proof.
 
@@ -317,10 +327,10 @@ nonpublishing hard failures.
 
 A deterministic retry-distribution corpus now exercises the refinement attempt
 across signed hard cells, four edge pairs, and 4,096 finite-nonzero LCG pairs.
-Of 4,164 total pairs, 997 resolve before the kernel and 3,167 require kernel
-work. At 16 Taylor terms, Q64 certifies 3,112 kernel cells and Q96 certifies
-3,135; Q128 certifies all 3,167. Holding Q128 fixed, 4/8/12/16 terms certify
-21/26/2,107/3,167 respectively.
+Of 4,164 total pairs, 3,921 now resolve before the kernel and 243 require kernel
+work. At 16 Taylor terms, Q64 certifies 188 kernel cells and Q96 certifies 211;
+Q128 certifies all 243. Holding Q128 fixed, 4/8/12/16 terms certify
+21/26/139/243 respectively.
 
 These counts are scheduling evidence, not a precision or termination bound. They
 pin that both dimensions can independently cause retries and that a future

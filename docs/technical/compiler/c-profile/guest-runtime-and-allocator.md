@@ -724,9 +724,9 @@ which pins retry semantics independently from the current fixed-Q handoff.
 
 Bounded scheduler evidence now runs the atomic refinement attempt over 4,164
 pairs: signed hard cells, four edges, and 4,096 finite-nonzero LCG pairs. The
-population splits into 997 pre-kernel resolutions and 3,167 kernel-required
-cases. With 16 terms, Q64/Q96/Q128 certify 3,112/3,135/3,167 kernel cells. At
-Q128, 4/8/12/16 terms certify 21/26/2,107/3,167 cells.
+population now splits into 3,921 pre-kernel resolutions and 243
+kernel-required cases. With 16 terms, Q64/Q96/Q128 certify 188/211/243 kernel
+cells. At Q128, 4/8/12/16 terms certify 21/26/139/243 cells.
 
 The distribution is intentionally coverage-only. It demonstrates independent
 precision and truncation retries but does not turn Q128/16 into a full-domain
@@ -888,14 +888,22 @@ than by normalized-significand heuristics. A finite binary64 value is
 `M * 2^-1074` for an integer `M` in `[1, 2^2098)`, so after reducing `|y/x|`
 both numerator and denominator have at most 2,098 bits. The two extreme
 min-subnormal/max-finite orientations attain that ceiling respectively in the
-denominator and numerator, including a kernel-required left-half-plane case.
+denominator and numerator. They are general input-geometry witnesses; the new
+axis preproof resolves them before adaptive refinement.
 
 `malbolge_guest_math_atan2_ratio_reduced_height` computes the exact reduced bit
 lengths from kernel geometry without constructing the potentially 2,098-bit
 integers. It uses Stein binary GCD plus exact shift/subtract division so the new
 path does not introduce an i686 64-bit division helper. Python `Fraction`
-independently matches all 3,167 kernel-required retained cases; their sampled
-maxima are 2,089 denominator bits and 2,069 numerator bits.
+independently matches all 243 kernel-required retained cases; their sampled
+maxima are 103 denominator bits and 102 numerator bits.
+
+Directed Q256 pi/4 bounds and `0 < atan(r) < r` now resolve tiny-ratio cells
+around pi and both sides of pi/2 before the kernel. Together with the existing
+zero-axis proof this gives a tight post-special height ceiling of 108 bits; the
+cell immediately above the `2^-55` adding-side cutoff attains it. This smaller
+ceiling, rather than 2,098, is the relevant rational-height parameter for any
+adaptive separation theorem.
 
 This supplies the finite rational-height parameter required by any future
 quantitative Lambert/Lindemann separation bound. It does not itself lower-bound
@@ -908,8 +916,8 @@ principal atan2 result, it returns the reduced numerator/denominator/height bit
 counts plus the lower and upper dyadic midpoint denominator shifts and their
 maximum. Publication is atomic, including rejection of a sign-mismatched cell.
 
-Exact `Fraction` checks cover a retained hard cell, its negative mirror, and the
-2,098-bit min-subnormal/max-finite denominator extreme. Both rational height and
+Exact `Fraction` checks cover a retained hard cell, its negative mirror, and a
+108-bit axis-boundary kernel cell. Both rational height and
 midpoint shifts match independently. The already-proved fallback midpoint-shift
 ceiling of 107 therefore has an executable parameter surface ready for a future
 quantitative theorem, but the theorem/inequality itself remains open.
@@ -927,7 +935,7 @@ The bridge does not construct Gaussian big integers. From reduced ratio height
 midpoint it also bounds the usual height of `alpha=2im`, the bit length of the
 algebraic denominator of `1/alpha`, and a power-of-two ceiling for
 `max(1,|1/alpha|)`. Under the already-proved full fallback geometry these become
-`H(P)<2^2099`, `H(alpha)<2^218`, inverse-denominator bit length <=109, and
+`H(P)<2^109`, `H(alpha)<2^218`, inverse-denominator bit length <=109, and
 inverse-house exponent <=106.
 
 Those finite parameters are small enough to make an explicit exponential
@@ -941,9 +949,9 @@ as the Fischler-Rivoal exponential-transcendence record under
 `docs/bibliography/publications/`.
 For `K=Q(i)`, `alpha=2im`, algebraic degree `d=2`, and polynomial degree
 `delta=1`, the publication's stated height exponent specializes to 11. The
-known `H(P)<2^2099` ceiling therefore makes the bare `H(P)^-11` contribution
-less than 23,089 binary exponent bits, while the additional bridge denominator
-`2b` contributes less than 2,099, for a nominal subtotal of 25,188.
+known `H(P)<2^109` ceiling therefore makes the bare `H(P)^-11` contribution
+less than 1,199 binary exponent bits, while the additional bridge denominator
+`2b` contributes less than 109, for a nominal subtotal of 1,308.
 
 That subtotal deliberately omits the paper's explicit height correction and
 alpha-dependent constant. The source states that a completely explicit version
