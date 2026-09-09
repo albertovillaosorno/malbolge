@@ -531,12 +531,21 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   independent `Fraction` reconstruction; sign-mismatched cells fail atomically.
   The separate fallback proof still caps the relevant midpoint shift at 107.
 
-  Remaining adaptive work is product policy for supplying/growing scratch only
-  after lane-9 startup proves heap binding before user code, plus a quantitative
-  separation inequality that turns height <=2,098, midpoint shift <=107, and
-  Lambert non-equality into certification before the finite allocation-capacity
-  ceiling. Q128/16 remains bounded coverage, not a full-domain bound, and public
-  atan2 remains unavailable.
+  The exponential-transcendence bridge is now structural too. For reduced
+  `t=a/b` and midpoint `m`, the Gaussian linear polynomial
+  `P(X)=(a+ib)X+(a-ib)` satisfies
+  `P(e^(2im))=b(e^(2im)+1)(t-tan(m))`. Guest C publishes strict power-of-two
+  bounds for `H(P)`, `H(2im)`, the algebraic denominator of `1/(2im)`, and its
+  inverse house without materializing Gaussian or shifted big integers.
+
+  Combined with the proven full-domain geometry, the ceilings are
+  `H(P)<2^2099`, `H(2im)<2^218`, inverse-denominator bit length <=109, and
+  inverse-house exponent <=106. Remaining adaptive work is product policy for
+  supplying/growing scratch only after lane-9 startup proves heap binding before
+  user code, plus instantiation of a sourced explicit exponential/transcendence
+  lower bound whose constant proves certification before the finite allocation
+  ceiling. Q128/16 remains bounded coverage and public atan2 remains
+  unavailable.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies

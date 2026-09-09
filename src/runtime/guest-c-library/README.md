@@ -142,6 +142,22 @@ structural inputs only: the existing proof that actual fallback midpoint shifts
 are at most 107 is separate from the still-missing quantitative tangent
 separation inequality.
 
+
+A second structural query prepares a route through exponential transcendence.
+For a reduced comparator ratio `t=a/b` and midpoint `m`, set `z=e^(2im)` and
+`P(X)=(a+ib)X+(a-ib)` over the Gaussian integers. The exact tangent identity
+makes `P(z)=b(z+1)(t-tan(m))`, so any explicit lower bound on `|P(e^(2im))|`
+would imply `|t-tan(m)| >= |P(e^(2im))|/(2b)`.
+
+`malbolge_guest_math_atan2_exponential_bridge_bounds` publishes only integer
+size bounds needed by such a theorem. It gives `H(P)<2^E`, plus per-midpoint
+power-of-two ceilings for the minimal-polynomial height of `alpha=2im`, the
+algebraic denominator of `1/alpha`, and `max(1,|1/alpha|)`. Combining the exact
+2,098-bit ratio-height ceiling with the separately proved fallback midpoint
+shift ceiling gives `H(P)<2^2099`, `H(alpha)<2^218`, inverse-denominator bit
+length at most 109, and inverse-house exponent at most 106. These are resource
+parameters only; no transcendence-measure constant is assumed by guest C.
+
 The C substrate also owns exact candidate-cell geometry before tangent
 refinement. `malbolge_guest_math_atan2_cell_midpoints` emits both boundaries as
 signed dyadics with a 64-bit numerator plus power-of-two denominator. Both

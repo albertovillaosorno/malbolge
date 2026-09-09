@@ -914,6 +914,27 @@ midpoint shifts match independently. The already-proved fallback midpoint-shift
 ceiling of 107 therefore has an executable parameter surface ready for a future
 quantitative theorem, but the theorem/inequality itself remains open.
 
+
+The runtime also exposes the algebraic-size bridge to a linear exponential
+form. For reduced `t=a/b`, midpoint `m`, `z=e^(2im)`, and
+`P(X)=(a+ib)X+(a-ib)` in `Z[i][X]`, the tangent identity gives
+`P(z)=b(z+1)(t-tan(m))`. Since `|z+1|<=2`, a lower bound for the nonzero linear
+form immediately gives a tangent-separation lower bound after division by
+`2b`.
+
+The bridge does not construct Gaussian big integers. From reduced ratio height
+`h` it publishes the strict ceiling `H(P)<2^(h+1)`. For each reduced dyadic
+midpoint it also bounds the usual height of `alpha=2im`, the bit length of the
+algebraic denominator of `1/alpha`, and a power-of-two ceiling for
+`max(1,|1/alpha|)`. Under the already-proved full fallback geometry these become
+`H(P)<2^2099`, `H(alpha)<2^218`, inverse-denominator bit length <=109, and
+inverse-house exponent <=106.
+
+Those finite parameters are small enough to make an explicit exponential
+transcendence measure a concrete candidate for the remaining resource proof.
+The repository has not yet instantiated the theorem-specific constant, so no
+precision ceiling follows from this bridge alone.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

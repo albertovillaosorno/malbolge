@@ -186,6 +186,21 @@ typedef struct MalbolgeGuestMathAtan2SeparationParameters {
   uint32_t midpoint_shift_max;
 } MalbolgeGuestMathAtan2SeparationParameters;
 
+typedef struct MalbolgeGuestMathExponentialArgumentBounds {
+  uint32_t alpha_height_pow2_exponent_upper;
+  uint32_t inverse_denominator_bits;
+  uint32_t inverse_house_pow2_exponent_upper;
+} MalbolgeGuestMathExponentialArgumentBounds;
+
+typedef struct MalbolgeGuestMathAtan2ExponentialBridgeBounds {
+  uint32_t linear_polynomial_height_pow2_exponent_upper;
+  MalbolgeGuestMathExponentialArgumentBounds lower_midpoint;
+  MalbolgeGuestMathExponentialArgumentBounds upper_midpoint;
+  uint32_t alpha_height_pow2_exponent_upper;
+  uint32_t inverse_denominator_bits_max;
+  uint32_t inverse_house_pow2_exponent_upper;
+} MalbolgeGuestMathAtan2ExponentialBridgeBounds;
+
 typedef struct MalbolgeGuestMathAtan2RefinementPlan {
   uint32_t stage;
   uint32_t fraction_limbs;
@@ -296,6 +311,12 @@ int malbolge_guest_math_atan2_cell_midpoints(
 int malbolge_guest_math_atan2_separation_parameters(
     uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
     MalbolgeGuestMathAtan2SeparationParameters *output);
+int malbolge_guest_math_dyadic_exponential_argument_bounds(
+    const MalbolgeGuestMathDyadic *midpoint,
+    MalbolgeGuestMathExponentialArgumentBounds *output);
+int malbolge_guest_math_atan2_exponential_bridge_bounds(
+    uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
+    MalbolgeGuestMathAtan2ExponentialBridgeBounds *output);
 int malbolge_guest_math_dyadic_fixed_limb_count(
     const MalbolgeGuestMathDyadic *input, uint32_t fraction_bits,
     uint32_t *required_limbs);
