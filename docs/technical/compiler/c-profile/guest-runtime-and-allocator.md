@@ -810,6 +810,26 @@ obligation is to connect this caller-owned range search to the eventual product
 handoff and justify that increasing directed precision reaches certification
 before the finite workspace-capacity representation is exhausted.
 
+The fixed-Q and adaptive paths now meet at a caller-owned internal handoff.
+Special results and Q192/Q224/Q256 uniqueness are reported as `FAST_RESOLVED`
+and do not require a scratch pointer. When Q256 is calculable but non-unique,
+its endpoint range feeds adaptive search; insufficient capacity reports `RETRY`
+with the exact next plan, while a unique midpoint-cell certificate reports
+`REFINED_RESOLVED`.
+
+An injectable Q256-interval entry point provides independent evidence for this
+otherwise-unobserved branch. A synthetic wide interval enclosing a retained hard
+seed reports stage 0/45 limbs with no scratch, narrows and requests stage 2/75
+with 60 limbs, and certifies the retained result with 75 limbs. The real handoff
+resolves a deterministic 512-pair corpus through its fixed fast path with
+`scratch == NULL`, matching the current unique result exactly.
+
+This closes the internal control-flow gap between fixed-Q ambiguity and adaptive
+range certification without changing public libc availability. The synthetic
+ambiguous interval is deliberately not presented as a naturally observed atan2
+input; public exposure still depends on full-domain termination/resource
+closure.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

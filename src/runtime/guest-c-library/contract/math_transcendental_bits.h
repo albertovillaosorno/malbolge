@@ -208,6 +208,19 @@ typedef struct MalbolgeGuestMathAtan2RangeProgress {
   MalbolgeGuestMathAtan2RefinementPlan plan;
 } MalbolgeGuestMathAtan2RangeProgress;
 
+typedef enum MalbolgeGuestMathAtan2HandoffStatus {
+  MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_RETRY = 0,
+  MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED = 1,
+  MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_REFINED_RESOLVED = 2,
+} MalbolgeGuestMathAtan2HandoffStatus;
+
+typedef struct MalbolgeGuestMathAtan2HandoffProgress {
+  MalbolgeGuestMathAtan2HandoffStatus status;
+  uint64_t bits;
+  MalbolgeGuestMathAtan2CandidateRange remaining;
+  MalbolgeGuestMathAtan2RefinementPlan plan;
+} MalbolgeGuestMathAtan2HandoffProgress;
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
@@ -378,6 +391,14 @@ int malbolge_guest_math_atan2_refine_range_available(
 int malbolge_guest_math_atan2_q256_refine_range_available(
     uint64_t y_bits, uint64_t x_bits, uint32_t start_stage, uint32_t *scratch,
     uint32_t scratch_capacity, MalbolgeGuestMathAtan2RangeProgress *output);
+int malbolge_guest_math_atan2_refine_q256_interval_available(
+    uint64_t y_bits, uint64_t x_bits,
+    const MalbolgeGuestMathAtan2Interval256 *interval, uint32_t start_stage,
+    uint32_t *scratch, uint32_t scratch_capacity,
+    MalbolgeGuestMathAtan2HandoffProgress *output);
+int malbolge_guest_math_atan2_handoff_available(
+    uint64_t y_bits, uint64_t x_bits, uint32_t start_stage, uint32_t *scratch,
+    uint32_t scratch_capacity, MalbolgeGuestMathAtan2HandoffProgress *output);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(

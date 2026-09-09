@@ -347,6 +347,30 @@ finite Q256 endpoint range below four can be searched without materializing its
 interior cells. It still does not prove that the directed refinement reaches a
 certificate before the finite scratch-capacity ABI ceiling.
 
+The fixed-Q ladder and adaptive range search now compose through a single
+caller-owned handoff. Special cases and Q192/Q224/Q256 unique results publish a
+`FAST_RESOLVED` result without requiring scratch. Only a genuinely non-unique
+Q256 interval enters range refinement; absent or undersized scratch reports
+`RETRY` with the exact first required plan instead of converting capacity into
+hard failure.
+
+The ambiguous branch is independently injectable through
+`malbolge_guest_math_atan2_refine_q256_interval_available`, which consumes an
+already-computed directed Q256 interval. A synthetic wide interval around a
+retained hard seed pins the complete state sequence: no scratch reports
+stage-0/45-limb retry, 60 limbs preserves a narrowed range and requests
+stage-2/75 limbs, and 75 limbs publishes `REFINED_RESOLVED` with the retained
+binary64 cell. A sign-inconsistent injected interval fails before output
+mutation.
+
+The real `malbolge_guest_math_atan2_handoff_available` repeats the current fixed
+ladder explicitly so it can distinguish calculable Q256 ambiguity from hard
+failure. On 512 deterministic finite pairs it agrees with the existing fixed-Q
+handoff while requiring no scratch. No retained natural input enters its
+adaptive
+branch yet, so the injected interval is integration evidence rather than an
+observed Q256-ambiguous atan2 case.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

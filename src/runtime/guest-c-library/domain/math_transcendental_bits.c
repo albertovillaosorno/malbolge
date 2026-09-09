@@ -3298,6 +3298,164 @@ int malbolge_guest_math_atan2_q256_refine_range_available(
       y_bits, x_bits, &range, start_stage, scratch, scratch_capacity, output);
 }
 
+static void clear_atan2_refinement_plan(
+    MalbolgeGuestMathAtan2RefinementPlan *plan) {
+  plan->stage = UINT32_C(0);
+  plan->fraction_limbs = UINT32_C(0);
+  plan->terms = UINT32_C(0);
+  plan->required_scratch_limbs = UINT32_C(0);
+}
+
+static void publish_atan2_handoff_progress(
+    MalbolgeGuestMathAtan2HandoffProgress *output,
+    MalbolgeGuestMathAtan2HandoffStatus status, uint64_t bits,
+    const MalbolgeGuestMathAtan2CandidateRange *remaining,
+    const MalbolgeGuestMathAtan2RefinementPlan *plan) {
+  output->status = status;
+  output->bits = bits;
+  if (remaining == NULL) {
+    output->remaining.lower_bits = bits;
+    output->remaining.upper_bits = bits;
+  } else {
+    output->remaining.lower_bits = remaining->lower_bits;
+    output->remaining.upper_bits = remaining->upper_bits;
+  }
+  if (plan == NULL) {
+    clear_atan2_refinement_plan(&output->plan);
+  } else {
+    output->plan.stage = plan->stage;
+    output->plan.fraction_limbs = plan->fraction_limbs;
+    output->plan.terms = plan->terms;
+    output->plan.required_scratch_limbs = plan->required_scratch_limbs;
+  }
+}
+
+static int signed_atan2_range_from_q256_interval(
+    const MalbolgeGuestMathAtan2Interval256 *interval,
+    MalbolgeGuestMathAtan2CandidateRange *output) {
+  MalbolgeGuestMathAtan2CandidateRange magnitude_range;
+  if (interval == NULL || output == NULL || interval->negative > UINT32_C(1) ||
+      !malbolge_guest_math_fixed256_candidate_range(&interval->magnitude,
+                                                    &magnitude_range)) {
+    return 0;
+  }
+  if (interval->negative == UINT32_C(0)) {
+    output->lower_bits = magnitude_range.lower_bits;
+    output->upper_bits = magnitude_range.upper_bits;
+  } else {
+    output->lower_bits = magnitude_range.upper_bits | BINARY64_SIGN;
+    output->upper_bits = magnitude_range.lower_bits | BINARY64_SIGN;
+  }
+  return 1;
+}
+
+int malbolge_guest_math_atan2_refine_q256_interval_available(
+    uint64_t y_bits, uint64_t x_bits,
+    const MalbolgeGuestMathAtan2Interval256 *interval, uint32_t start_stage,
+    uint32_t *scratch, uint32_t scratch_capacity,
+    MalbolgeGuestMathAtan2HandoffProgress *output) {
+  MalbolgeGuestMathAtan2CandidateRange range;
+  MalbolgeGuestMathAtan2RefinementPlan first_plan;
+  MalbolgeGuestMathAtan2RangeProgress refined;
+  const uint32_t expected_negative =
+      (y_bits & BINARY64_SIGN) != UINT64_C(0) ? UINT32_C(1) : UINT32_C(0);
+
+  if (output == NULL || interval == NULL ||
+      interval->negative != expected_negative ||
+      malbolge_guest_math_atan2_special(y_bits, x_bits).status !=
+          MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED ||
+      !signed_atan2_range_from_q256_interval(interval, &range) ||
+      !malbolge_guest_math_atan2_refinement_plan(start_stage, &first_plan)) {
+    return 0;
+  }
+  if (scratch == NULL || scratch_capacity < first_plan.required_scratch_limbs) {
+    publish_atan2_handoff_progress(
+        output, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_RETRY, UINT64_C(0), &range,
+        &first_plan);
+    return 1;
+  }
+  if (!malbolge_guest_math_atan2_refine_range_available(
+          y_bits, x_bits, &range, start_stage, scratch, scratch_capacity,
+          &refined)) {
+    return 0;
+  }
+  publish_atan2_handoff_progress(
+      output,
+      refined.certified != UINT32_C(0)
+          ? MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_REFINED_RESOLVED
+          : MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_RETRY,
+      refined.bits, &refined.remaining, &refined.plan);
+  return 1;
+}
+
+int malbolge_guest_math_atan2_handoff_available(
+    uint64_t y_bits, uint64_t x_bits, uint32_t start_stage, uint32_t *scratch,
+    uint32_t scratch_capacity, MalbolgeGuestMathAtan2HandoffProgress *output) {
+  MalbolgeGuestMathAtan2Interval interval;
+  MalbolgeGuestMathAtan2Interval224 wide_interval;
+  MalbolgeGuestMathAtan2Interval256 wider_interval;
+  MalbolgeGuestMathSpecialResult special;
+  uint64_t magnitude_bits = UINT64_C(0);
+  uint64_t signed_bits = UINT64_C(0);
+
+  if (output == NULL) {
+    return 0;
+  }
+  special = malbolge_guest_math_atan2_special(y_bits, x_bits);
+  if (special.status == MALBOLGE_GUEST_MATH_SPECIAL_INVALID) {
+    return 0;
+  }
+  if (special.status == MALBOLGE_GUEST_MATH_SPECIAL_RESOLVED) {
+    publish_atan2_handoff_progress(
+        output, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED, special.bits,
+        NULL, NULL);
+    return 1;
+  }
+  if (!malbolge_guest_math_atan2_interval(y_bits, x_bits, &interval)) {
+    return 0;
+  }
+  if (malbolge_guest_math_fixed192_unique_binary64(&interval.magnitude,
+                                                    &magnitude_bits)) {
+    signed_bits = magnitude_bits |
+                  (interval.negative != UINT32_C(0) ? BINARY64_SIGN
+                                                     : UINT64_C(0));
+    publish_atan2_handoff_progress(
+        output, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED, signed_bits,
+        NULL, NULL);
+    return 1;
+  }
+  if (!malbolge_guest_math_atan2_interval224(y_bits, x_bits, &wide_interval)) {
+    return 0;
+  }
+  if (malbolge_guest_math_fixed224_unique_binary64(&wide_interval.magnitude,
+                                                    &magnitude_bits)) {
+    signed_bits = magnitude_bits |
+                  (wide_interval.negative != UINT32_C(0) ? BINARY64_SIGN
+                                                          : UINT64_C(0));
+    publish_atan2_handoff_progress(
+        output, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED, signed_bits,
+        NULL, NULL);
+    return 1;
+  }
+  if (!malbolge_guest_math_atan2_interval256(y_bits, x_bits,
+                                             &wider_interval)) {
+    return 0;
+  }
+  if (malbolge_guest_math_fixed256_unique_binary64(&wider_interval.magnitude,
+                                                    &magnitude_bits)) {
+    signed_bits = magnitude_bits |
+                  (wider_interval.negative != UINT32_C(0) ? BINARY64_SIGN
+                                                           : UINT64_C(0));
+    publish_atan2_handoff_progress(
+        output, MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_FAST_RESOLVED, signed_bits,
+        NULL, NULL);
+    return 1;
+  }
+  return malbolge_guest_math_atan2_refine_q256_interval_available(
+      y_bits, x_bits, &wider_interval, start_stage, scratch, scratch_capacity,
+      output);
+}
+
 static uint32_t u64_bit_length(uint64_t value) {
   uint32_t bits = UINT32_C(0);
   while (value != UINT64_C(0)) {
