@@ -67,9 +67,13 @@ static int emit(const MalbolgeGuestMathDyadic *value) {
   MalbolgeGuestMathLambertArgumentBounds bounds;
   if (!malbolge_guest_math_dyadic_lambert_argument_bounds(value, &bounds))
     return 0;
-  (void)printf("%" PRIu32 " %" PRIu32 " %" PRId32 "\n",
+  (void)printf("%" PRIu32 " %" PRIu32 " %" PRId32 " %" PRIu32
+               " %" PRIu32 " %" PRId32 "\n",
                bounds.numerator_bits, bounds.denominator_shift,
-               bounds.square_over_denominator_pow2_exponent_upper);
+               bounds.square_over_denominator_pow2_exponent_upper,
+               bounds.normalizing_halvings,
+               bounds.normalized_denominator_shift,
+               bounds.normalized_scale_pow2_exponent_upper);
   return 1;
 }
 
@@ -85,7 +89,8 @@ int main(void) {
   MalbolgeGuestMathDyadic invalid_shift = {
       UINT64_C(3), UINT32_C(108), UINT32_C(0)};
   MalbolgeGuestMathLambertArgumentBounds sentinel = {
-      UINT32_C(91), UINT32_C(92), INT32_C(93)};
+      UINT32_C(91), UINT32_C(92), INT32_C(93), UINT32_C(94),
+      UINT32_C(95), INT32_C(96)};
 
   if (!emit(&near_four) || !emit(&deep)) return 81;
   if (malbolge_guest_math_dyadic_lambert_argument_bounds(
@@ -96,7 +101,10 @@ int main(void) {
       sentinel.denominator_shift != UINT32_C(92) ||
       malbolge_guest_math_dyadic_lambert_argument_bounds(
           &invalid_shift, &sentinel) ||
-      sentinel.square_over_denominator_pow2_exponent_upper != INT32_C(93))
+      sentinel.square_over_denominator_pow2_exponent_upper != INT32_C(93) ||
+      sentinel.normalizing_halvings != UINT32_C(94) ||
+      sentinel.normalized_denominator_shift != UINT32_C(95) ||
+      sentinel.normalized_scale_pow2_exponent_upper != INT32_C(96))
     return 82;
   return 0;
 }
@@ -133,4 +141,7 @@ def test_lambert_argument_scale_matches_exact_bit_geometry(
     rows = [
         tuple(map(int, line.split())) for line in executed.stdout.splitlines()
     ]
-    assert rows == [(54, 52, MAX_SCALE_EXPONENT), (54, 107, 1)]
+    assert rows == [
+        (54, 52, MAX_SCALE_EXPONENT, 56, 108, 0),
+        (54, 107, 1, 1, 108, 0),
+    ]

@@ -145,7 +145,11 @@ attained structurally near the upper angle binades. A 54-bit numerator over
 `2^107` instead has ceiling 1.
 
 This isolates the exponential factor that a future explicit continued-fraction
-growth/error proof must dominate; it is not itself a tangent-separation bound.
+growth/error proof must dominate. The same query now publishes a canonical
+normalization plan: halve the angle `max(E,0)` times when the strict scale
+ceiling is `2^E`. At most 56 halvings are required; the normalized denominator
+shift remains at most 163 and the resulting Lambert scale ceiling is at most
+zero. This is a GCF preparation step, not itself a tangent-separation bound.
 
 This height bound is exact structural evidence, not yet a quantitative
 irrationality measure for `tan(midpoint)`. Lambert still supplies only the

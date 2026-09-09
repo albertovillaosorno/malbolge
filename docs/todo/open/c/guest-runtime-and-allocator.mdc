@@ -542,8 +542,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   cell boundary `m=u/v`, guest C publishes numerator bits, denominator shift,
   and a strict ceiling for `u^2/v`. Binary64 cell geometry gives the global
   structural bound `u^2/v < 2^56`; ceiling 56 is attained near the upper angle
-  binades. This replaces the much looser use of `v<=2^107` when estimating the
+  binades.
+
+  This replaces the much looser use of `v<=2^107` when estimating the
   exponential factor that continued-fraction factorial growth must absorb.
+  Guest C now also publishes the canonical normalization plan: at most 56 angle
+  halvings make the strict Lambert scale ceiling nonpositive, while the dyadic
+  denominator shift remains at most 163. A later proof must still transport its
+  certified separation through those finitely many angle doublings.
 
   The two finite inputs to a future quantitative bound are now exposed together:
   exact reduced ratio height plus both candidate-cell midpoint shifts. A hard

@@ -183,6 +183,9 @@ typedef struct MalbolgeGuestMathLambertArgumentBounds {
   uint32_t numerator_bits;
   uint32_t denominator_shift;
   int32_t square_over_denominator_pow2_exponent_upper;
+  uint32_t normalizing_halvings;
+  uint32_t normalized_denominator_shift;
+  int32_t normalized_scale_pow2_exponent_upper;
 } MalbolgeGuestMathLambertArgumentBounds;
 
 typedef struct MalbolgeGuestMathAtan2SeparationParameters {

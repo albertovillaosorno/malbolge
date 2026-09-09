@@ -3785,10 +3785,27 @@ int malbolge_guest_math_dyadic_lambert_argument_bounds(
   staged.square_over_denominator_pow2_exponent_upper =
       (int32_t)(UINT32_C(2) * numerator_bits) -
       (int32_t)midpoint->denominator_shift;
+  staged.normalizing_halvings =
+      staged.square_over_denominator_pow2_exponent_upper > INT32_C(0)
+          ? (uint32_t)staged.square_over_denominator_pow2_exponent_upper
+          : UINT32_C(0);
+  if (staged.normalizing_halvings > UINT32_C(56) ||
+      staged.denominator_shift > UINT32_MAX - staged.normalizing_halvings) {
+    return 0;
+  }
+  staged.normalized_denominator_shift =
+      staged.denominator_shift + staged.normalizing_halvings;
+  staged.normalized_scale_pow2_exponent_upper =
+      staged.square_over_denominator_pow2_exponent_upper -
+      (int32_t)staged.normalizing_halvings;
   output->numerator_bits = staged.numerator_bits;
   output->denominator_shift = staged.denominator_shift;
   output->square_over_denominator_pow2_exponent_upper =
       staged.square_over_denominator_pow2_exponent_upper;
+  output->normalizing_halvings = staged.normalizing_halvings;
+  output->normalized_denominator_shift = staged.normalized_denominator_shift;
+  output->normalized_scale_pow2_exponent_upper =
+      staged.normalized_scale_pow2_exponent_upper;
   return 1;
 }
 
