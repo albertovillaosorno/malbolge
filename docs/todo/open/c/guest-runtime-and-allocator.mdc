@@ -572,12 +572,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   <=106 is the next mathematical resource-proof obligation.
 
 
-  Liang-Wang (2024) is now retained as tangent-specific asymptotic evidence:
-  publisher metadata covers `tan(r)` for nonzero rational `r`, generalized
-  continued fractions, and irrationality measure 2. No effective threshold or
-  constant has been verified from the reviewed source, so `mu=2` is not treated
-  as a finite resource proof even with the tight adaptive denominator bound
-  `q<2^106`.
+  Liang-Wang (2024) is now retained as tangent-specific asymptotic evidence.
+  Theorem 2 gives irrationality measure 2 for `tan(r)` at nonzero rational `r`.
+  Theorem 3 has the needed power-law lower-bound shape, but uses hidden
+  Vinogradov constants throughout, and Remark 2 transfers the argument to the
+  tangent theorem. Until that constant is made explicit for the dyadic midpoint
+  family, `mu=2` is not a finite resource proof even with `q<2^106`.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies
