@@ -910,6 +910,17 @@ Separation-parameter publication fails closed above either ceiling. These
 smaller bounds, rather than 2,098, are the relevant rational parameters
 for any adaptive separation theorem.
 
+
+Lambert-specific argument geometry is now executable too. For a reduced dyadic
+candidate midpoint `m=u/v`, the runtime publishes a strict power-of-two ceiling
+for `u^2/v`. Candidate-cell numerators fit in 54 bits, and the exact dyadic
+shifts imply `u^2/v < 2^56` throughout `|m|<4`; ceiling 56 is attained near the
+upper angle binades. Deep 107-bit midpoint denominators have a much smaller
+scale.
+
+This is the exponential factor in the Lambert-GCF recurrence and is kept
+separate from the input rational denominator bound `q<2^106`.
+
 This supplies the finite rational-height parameter required by any future
 quantitative Lambert/Lindemann separation bound. It does not itself lower-bound
 `|tan(midpoint)-p/q|`, so the finite resource proof remains open.

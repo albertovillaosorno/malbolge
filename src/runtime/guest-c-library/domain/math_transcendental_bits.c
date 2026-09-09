@@ -57,6 +57,7 @@
 #define BINARY64_ATAN_UNCONDITIONAL_EXPONENT INT32_C(-54)
 #define ATAN2_ADAPTIVE_NUMERATOR_BITS_MAX UINT32_C(108)
 #define ATAN2_ADAPTIVE_DENOMINATOR_BITS_MAX UINT32_C(106)
+#define ATAN2_LAMBERT_SCALE_EXPONENT_MAX INT32_C(56)
 #define ATAN_QUARTER_REDUCTION_NUMERATOR UINT64_C(169)
 #define ATAN_QUARTER_REDUCTION_DENOMINATOR UINT64_C(408)
 #define FIXED_192_LIMB_COUNT UINT32_C(7)
@@ -3761,6 +3762,36 @@ int malbolge_guest_math_atan2_cell_midpoints(
   return 1;
 }
 
+int malbolge_guest_math_dyadic_lambert_argument_bounds(
+    const MalbolgeGuestMathDyadic *midpoint,
+    MalbolgeGuestMathLambertArgumentBounds *output) {
+  MalbolgeGuestMathLambertArgumentBounds staged;
+  uint32_t numerator_bits = UINT32_C(0);
+
+  if (midpoint == NULL || output == NULL ||
+      midpoint->numerator == UINT64_C(0) ||
+      midpoint->negative > UINT32_C(1) ||
+      (midpoint->denominator_shift != UINT32_C(0) &&
+       (midpoint->numerator & UINT64_C(1)) == UINT64_C(0))) {
+    return 0;
+  }
+  numerator_bits = u64_bit_length_local(midpoint->numerator);
+  if (numerator_bits > UINT32_C(54) ||
+      midpoint->denominator_shift > UINT32_C(107)) {
+    return 0;
+  }
+  staged.numerator_bits = numerator_bits;
+  staged.denominator_shift = midpoint->denominator_shift;
+  staged.square_over_denominator_pow2_exponent_upper =
+      (int32_t)(UINT32_C(2) * numerator_bits) -
+      (int32_t)midpoint->denominator_shift;
+  output->numerator_bits = staged.numerator_bits;
+  output->denominator_shift = staged.denominator_shift;
+  output->square_over_denominator_pow2_exponent_upper =
+      staged.square_over_denominator_pow2_exponent_upper;
+  return 1;
+}
+
 int malbolge_guest_math_atan2_separation_parameters(
     uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
     MalbolgeGuestMathAtan2SeparationParameters *output) {
@@ -3787,12 +3818,31 @@ int malbolge_guest_math_atan2_separation_parameters(
       staged.lower_midpoint_shift > staged.upper_midpoint_shift
           ? staged.lower_midpoint_shift
           : staged.upper_midpoint_shift;
+  if (!malbolge_guest_math_dyadic_lambert_argument_bounds(
+          &cell.lower, &staged.lower_lambert) ||
+      !malbolge_guest_math_dyadic_lambert_argument_bounds(
+          &cell.upper, &staged.upper_lambert)) {
+    return 0;
+  }
+  staged.lambert_scale_pow2_exponent_upper =
+      staged.lower_lambert.square_over_denominator_pow2_exponent_upper >
+              staged.upper_lambert.square_over_denominator_pow2_exponent_upper
+          ? staged.lower_lambert.square_over_denominator_pow2_exponent_upper
+          : staged.upper_lambert.square_over_denominator_pow2_exponent_upper;
+  if (staged.lambert_scale_pow2_exponent_upper >
+      ATAN2_LAMBERT_SCALE_EXPONENT_MAX) {
+    return 0;
+  }
   output->ratio_height.numerator_bits = staged.ratio_height.numerator_bits;
   output->ratio_height.denominator_bits = staged.ratio_height.denominator_bits;
   output->ratio_height.height_bits = staged.ratio_height.height_bits;
   output->lower_midpoint_shift = staged.lower_midpoint_shift;
   output->upper_midpoint_shift = staged.upper_midpoint_shift;
   output->midpoint_shift_max = staged.midpoint_shift_max;
+  output->lower_lambert = staged.lower_lambert;
+  output->upper_lambert = staged.upper_lambert;
+  output->lambert_scale_pow2_exponent_upper =
+      staged.lambert_scale_pow2_exponent_upper;
   return 1;
 }
 

@@ -136,6 +136,17 @@ publication now fails closed above either ceiling. Across the retained 243
 kernel-required refinement cases, the observed maxima are 103 denominator bits
 and 102 numerator bits.
 
+
+Lambert-GCF argument geometry is now explicit as well. For a reduced dyadic cell
+boundary `m=u/v`, guest C publishes numerator bits, denominator shift, and a
+strict power-of-two ceiling for `u^2/v`. Candidate-cell geometry keeps `u`
+within 54 bits and gives the full `<4` angle range `u^2/v < 2^56`; ceiling 56 is
+attained structurally near the upper angle binades. A 54-bit numerator over
+`2^107` instead has ceiling 1.
+
+This isolates the exponential factor that a future explicit continued-fraction
+growth/error proof must dominate; it is not itself a tangent-separation bound.
+
 This height bound is exact structural evidence, not yet a quantitative
 irrationality measure for `tan(midpoint)`. Lambert still supplies only the
 non-equality/qualitative termination fact currently admitted by the repository.

@@ -179,11 +179,20 @@ typedef struct MalbolgeGuestMathAtan2CellMidpoints {
   MalbolgeGuestMathDyadic upper;
 } MalbolgeGuestMathAtan2CellMidpoints;
 
+typedef struct MalbolgeGuestMathLambertArgumentBounds {
+  uint32_t numerator_bits;
+  uint32_t denominator_shift;
+  int32_t square_over_denominator_pow2_exponent_upper;
+} MalbolgeGuestMathLambertArgumentBounds;
+
 typedef struct MalbolgeGuestMathAtan2SeparationParameters {
   MalbolgeGuestMathRationalHeight ratio_height;
   uint32_t lower_midpoint_shift;
   uint32_t upper_midpoint_shift;
   uint32_t midpoint_shift_max;
+  MalbolgeGuestMathLambertArgumentBounds lower_lambert;
+  MalbolgeGuestMathLambertArgumentBounds upper_lambert;
+  int32_t lambert_scale_pow2_exponent_upper;
 } MalbolgeGuestMathAtan2SeparationParameters;
 
 typedef struct MalbolgeGuestMathExponentialArgumentBounds {
@@ -309,6 +318,9 @@ int malbolge_guest_math_fixed256_candidate_range(
     MalbolgeGuestMathAtan2CandidateRange *output);
 int malbolge_guest_math_atan2_cell_midpoints(
     uint64_t output_bits, MalbolgeGuestMathAtan2CellMidpoints *output);
+int malbolge_guest_math_dyadic_lambert_argument_bounds(
+    const MalbolgeGuestMathDyadic *midpoint,
+    MalbolgeGuestMathLambertArgumentBounds *output);
 int malbolge_guest_math_atan2_separation_parameters(
     uint64_t y_bits, uint64_t x_bits, uint64_t candidate_bits,
     MalbolgeGuestMathAtan2SeparationParameters *output);

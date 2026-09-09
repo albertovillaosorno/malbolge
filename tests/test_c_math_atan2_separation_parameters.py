@@ -156,12 +156,16 @@ int main(void) {{
   {{
     MalbolgeGuestMathAtan2SeparationParameters sentinel = {{
       {{UINT32_C(11), UINT32_C(12), UINT32_C(13)}},
-      UINT32_C(14), UINT32_C(15), UINT32_C(16)}};
+      UINT32_C(14), UINT32_C(15), UINT32_C(16),
+      {{UINT32_C(17), UINT32_C(18), INT32_C(19)}},
+      {{UINT32_C(20), UINT32_C(21), INT32_C(22)}}, INT32_C(23)}};
     if (malbolge_guest_math_atan2_separation_parameters(
             pairs[0].y, pairs[0].x, UINT64_C(0xbfe6a53b6b0b8e47),
             &sentinel) ||
         sentinel.ratio_height.numerator_bits != UINT32_C(11) ||
-        sentinel.midpoint_shift_max != UINT32_C(16)) return 82;
+        sentinel.midpoint_shift_max != UINT32_C(16) ||
+        sentinel.lower_lambert.numerator_bits != UINT32_C(17) ||
+        sentinel.lambert_scale_pow2_exponent_upper != INT32_C(23)) return 82;
   }}
   return 0;
 }}

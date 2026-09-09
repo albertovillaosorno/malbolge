@@ -537,6 +537,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   `Fraction` matches all 243 retained kernel cases; their sampled maxima are
   102/103 bits.
 
+
+  Lambert-GCF argument geometry is now explicit too. For every reduced dyadic
+  cell boundary `m=u/v`, guest C publishes numerator bits, denominator shift,
+  and a strict ceiling for `u^2/v`. Binary64 cell geometry gives the global
+  structural bound `u^2/v < 2^56`; ceiling 56 is attained near the upper angle
+  binades. This replaces the much looser use of `v<=2^107` when estimating the
+  exponential factor that continued-fraction factorial growth must absorb.
+
   The two finite inputs to a future quantitative bound are now exposed together:
   exact reduced ratio height plus both candidate-cell midpoint shifts. A hard
   cell, its negative mirror, and a 108-bit axis-boundary cell match
