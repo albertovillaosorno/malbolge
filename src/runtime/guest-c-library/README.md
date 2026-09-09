@@ -314,6 +314,15 @@ Directed multiplication therefore yields a residual no wider than six Q256
 ulps. The reducer checks this before publication; a 4,103-case retained corpus
 reaches four ulps but the contract keeps six.
 
+The periodic rounding gate now evaluates 32 Taylor terms at the same 90-limb
+scratch size. With `|r|<4/5`, the first omitted sine/cosine terms are below one
+Q256 ulp. An integer recurrence for every directed multiply/divide gives a
+74-ulp sine ceiling and a 71-ulp cosine ceiling after Taylor; quadrant/sign
+transport preserves those widths.
+
+Product code enforces 74 ulps for the Q256/32 policy before publication. A
+2,052-case retained corpus reaches 40 ulps.
+
 Periodic residuals now feed one directed trig evaluator regardless of reducer.
 `malbolge_guest_math_sincos_range_interval256` uses the bounded path below
 `2^64` and Payne-Hanek at or above `2^64`, then evaluates only the residual

@@ -1117,6 +1117,16 @@ scaled interval is strictly narrower than five Q256 ulps.
 Directed product floor/ceil then gives an integer-grid width of at most six
 ulps. Product code checks that bound fail-closed before publication.
 
+The fixed periodic gate now uses 32 Taylor terms with no scratch increase.
+Because `|r|<4/5`, term 32 is already below one Q256 ulp for both series.
+Starting from the six-ulp residual, directed squaring is at most eleven ulps;
+propagating integer widths through every multiply and the two recurrence
+divisors yields a 74-ulp sine bound and a 71-ulp cosine bound including the
+omitted-term enclosure.
+
+The Q256/32 path rejects anything wider than 74 ulps before publication. A
+2,052-case retained corpus reaches 40 ulps.
+
 
 A normalized midpoint comparator now composes those enclosures with the existing
 quadrant ordering and exact ratio cross-products. Its caller-owned scratch is

@@ -162,7 +162,8 @@ int main(void) {{
     uint64_t manual_sin = UINT64_C(0), manual_cos = UINT64_C(0);
     MalbolgeGuestMathSincosInterval256 interval;
     if (!malbolge_guest_math_sincos_range_interval256(
-            cases[index], UINT32_C(24), &interval, scratch, UINT32_C(90)))
+            cases[index], MALBOLGE_GUEST_MATH_PERIODIC_TAYLOR_TERMS,
+            &interval, scratch, UINT32_C(90)))
       return 80;
     if (!malbolge_guest_math_fixed_signed_interval_unique_binary64(
             interval.sin.lower.limbs, interval.sin.lower_negative,

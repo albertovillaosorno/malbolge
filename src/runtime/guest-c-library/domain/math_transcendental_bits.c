@@ -4095,6 +4095,11 @@ static int range_residual_magnitude256(
   return 0;
 }
 
+static int signed_fixed256_width_at_most(
+    const MalbolgeGuestMathFixed256 *lower, uint32_t lower_negative,
+    const MalbolgeGuestMathFixed256 *upper, uint32_t upper_negative,
+    uint32_t limit);
+
 static void publish_sincos_interval256(
     MalbolgeGuestMathSincosInterval256 *output,
     const MalbolgeGuestMathSincosInterval256 *value) {
@@ -4186,6 +4191,17 @@ int malbolge_guest_math_sincos_range_interval256(
     signed_fixed256_interval_negate(&temporary, &rotated.sin);
     signed_fixed256_interval_copy(&rotated.sin, &temporary);
   }
+  if (terms == MALBOLGE_GUEST_MATH_PERIODIC_TAYLOR_TERMS &&
+      (!signed_fixed256_width_at_most(
+           &rotated.sin.lower, rotated.sin.lower_negative, &rotated.sin.upper,
+           rotated.sin.upper_negative,
+           MALBOLGE_GUEST_MATH_PERIODIC_INTERVAL_ULPS_MAX) ||
+       !signed_fixed256_width_at_most(
+           &rotated.cos.lower, rotated.cos.lower_negative, &rotated.cos.upper,
+           rotated.cos.upper_negative,
+           MALBOLGE_GUEST_MATH_PERIODIC_INTERVAL_ULPS_MAX))) {
+    return 0;
+  }
   publish_sincos_interval256(output, &rotated);
   return 1;
 }
@@ -4201,7 +4217,8 @@ int malbolge_guest_math_sincos_range_unique_binary64(
       (operation != MALBOLGE_GUEST_MATH_SIN &&
        operation != MALBOLGE_GUEST_MATH_COS) ||
       !malbolge_guest_math_sincos_range_interval256(
-          bits, UINT32_C(24), &interval, scratch, scratch_capacity)) {
+          bits, MALBOLGE_GUEST_MATH_PERIODIC_TAYLOR_TERMS, &interval, scratch,
+          scratch_capacity)) {
     return 0;
   }
   selected = operation == MALBOLGE_GUEST_MATH_SIN ? &interval.sin

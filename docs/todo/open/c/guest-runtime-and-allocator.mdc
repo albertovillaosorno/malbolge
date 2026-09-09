@@ -670,7 +670,7 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   atomically.
 
   Rational Taylor bounds enclose both outputs for 83 retained bounded inputs,
-  and Q256/24 rounds all 83 sine and all 83 cosine intervals uniquely. For the
+  and Q256/32 rounds all 83 sine and all 83 cosine intervals uniquely. For the
   Payne-Hanek branch, eight retained inputs through maximum finite take the
   already certified residual enclosure and prove that its entire Q256 image
   rounds to the published words. Q256 ambiguity remains fail closed. The
@@ -724,6 +724,13 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   half, exact scaling is strictly below five ulps and final directed product
   quantization can span at most six. A 4,103-case durable corpus reaches four
   ulps; the runtime rejects anything above the six-ulp theorem bound.
+
+  The periodic final-rounding gate now uses 32 Taylor terms without increasing
+  its 90-limb scratch. `|r|<4/5` puts the first omitted sine/cosine terms below
+  one Q256 ulp. Integer width propagation from the six-ulp residual gives 74
+  ulps for sine and 71 for cosine after all directed recurrence operations;
+  sign/quadrant transport preserves width. Product code enforces the 74-ulp
+  ceiling for the Q256/32 policy, while 2,052 retained cases reach only 40.
 
 
   The normalized enclosures can now drive midpoint comparison directly. A
