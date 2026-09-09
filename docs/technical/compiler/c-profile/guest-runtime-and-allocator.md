@@ -783,6 +783,33 @@ and two-cell certification are separately exact, while full-domain evidence must
 still show either that Q256 cannot span more than two cells for kernel work or
 provide a broader proposal mechanism.
 
+Candidate proposal is no longer bounded to one or two cells. Q256 endpoint
+roundings also define an ordered binary64 range; negative intervals reverse
+their
+magnitude endpoints into angular order. A monotone integer key (`bits` for
+positive cells, complemented bits for negative cells) supports one binary-search
+implementation for both signs.
+
+At each probed cell, directed comparisons against its two dyadic midpoints yield
+four outcomes: below, certified interior, above, or inconclusive. Below/above
+strictly shrink the candidate range at the current stage. Inconclusive bounds
+preserve the narrowed range and advance the precision/depth plan. Certification
+publishes only the single cell whose lower midpoint is strictly below the angle
+and whose upper midpoint is strictly above it.
+
+Synthetic evidence uses a Q256 interval whose endpoint roundings differ by two,
+so the one/two-cell extractor rejects it while range extraction retains all
+three
+possible cells. A skewed 12,289-cell range around a hard input is reduced to at
+most five cells by Q64/8 and reaches the exact result at Q128/16 in both angle
+signs. The Q256 range wrapper then composes endpoint extraction and adaptive
+binary search directly.
+
+Candidate-count closure is therefore no longer required. The remaining global
+obligation is to connect this caller-owned range search to the eventual product
+handoff and justify that increasing directed precision reaches certification
+before the finite workspace-capacity representation is exhausted.
+
 The qualitative termination fact for an adaptive version now has durable
 external provenance in
 `docs/bibliography/publications/lambert-tangent-irrationality.md`.

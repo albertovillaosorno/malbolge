@@ -196,6 +196,18 @@ typedef struct MalbolgeGuestMathAtan2CandidateProgress {
   MalbolgeGuestMathAtan2RefinementPlan plan;
 } MalbolgeGuestMathAtan2CandidateProgress;
 
+typedef struct MalbolgeGuestMathAtan2CandidateRange {
+  uint64_t lower_bits;
+  uint64_t upper_bits;
+} MalbolgeGuestMathAtan2CandidateRange;
+
+typedef struct MalbolgeGuestMathAtan2RangeProgress {
+  uint32_t certified;
+  uint64_t bits;
+  MalbolgeGuestMathAtan2CandidateRange remaining;
+  MalbolgeGuestMathAtan2RefinementPlan plan;
+} MalbolgeGuestMathAtan2RangeProgress;
+
 MalbolgeGuestMathSpecialResult malbolge_guest_math_unary_special(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits);
 MalbolgeGuestMathSpecialResult malbolge_guest_math_atan2_special(
@@ -239,6 +251,9 @@ int malbolge_guest_math_fixed256_unique_binary64(
 int malbolge_guest_math_fixed256_candidates(
     const MalbolgeGuestMathFixed256Interval *input,
     MalbolgeGuestMathAtan2Candidates *output);
+int malbolge_guest_math_fixed256_candidate_range(
+    const MalbolgeGuestMathFixed256Interval *input,
+    MalbolgeGuestMathAtan2CandidateRange *output);
 int malbolge_guest_math_atan2_cell_midpoints(
     uint64_t output_bits, MalbolgeGuestMathAtan2CellMidpoints *output);
 int malbolge_guest_math_dyadic_fixed_limb_count(
@@ -352,6 +367,17 @@ int malbolge_guest_math_atan2_refine_candidates_available(
 int malbolge_guest_math_atan2_q256_refine_available(
     uint64_t y_bits, uint64_t x_bits, uint32_t start_stage, uint32_t *scratch,
     uint32_t scratch_capacity, MalbolgeGuestMathAtan2CandidateProgress *output);
+int malbolge_guest_math_atan2_q256_candidate_range(
+    uint64_t y_bits, uint64_t x_bits,
+    MalbolgeGuestMathAtan2CandidateRange *output);
+int malbolge_guest_math_atan2_refine_range_available(
+    uint64_t y_bits, uint64_t x_bits,
+    const MalbolgeGuestMathAtan2CandidateRange *range, uint32_t start_stage,
+    uint32_t *scratch, uint32_t scratch_capacity,
+    MalbolgeGuestMathAtan2RangeProgress *output);
+int malbolge_guest_math_atan2_q256_refine_range_available(
+    uint64_t y_bits, uint64_t x_bits, uint32_t start_stage, uint32_t *scratch,
+    uint32_t scratch_capacity, MalbolgeGuestMathAtan2RangeProgress *output);
 int malbolge_guest_math_atan2_unique_binary64(
     uint64_t y_bits, uint64_t x_bits, uint64_t *output_bits);
 int malbolge_guest_math_ratio_nearest_binary64(

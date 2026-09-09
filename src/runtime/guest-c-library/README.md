@@ -318,6 +318,35 @@ multi-candidate scheduler for caller-owned fallback work. No natural two-cell
 Q256 atan2 input is retained yet, so the two-cell proposal geometry and the
 multi-candidate transcendental certification remain independently evidenced.
 
+Q256 candidate production now also has an unbounded-by-cell-count range form.
+`malbolge_guest_math_fixed256_candidate_range` publishes the nearest-even
+roundings of the directed endpoints without requiring them to be adjacent; for a
+negative atan2 interval the endpoints are reversed into increasing angular
+order.
+The earlier one/two-cell extractor remains a conservative convenience, not a
+completeness requirement.
+
+Adaptive range refinement maps positive binary64 bits directly to monotone keys
+and negative bits through bitwise complement, so the same integer binary search
+works on both signs. Each probed cell compares the real angle against its lower
+and upper dyadic midpoints. Strictly-below/above classifications discard half
+the
+range at the current stage; an inconclusive directed comparison advances Taylor
+precision without discarding cells; strict interior ordering certifies the cell.
+
+A synthetic Q256 interval spanning three rounding cells is represented as the
+range `1.0 .. 0x3ff0000000000002` even though the two-candidate extractor
+rejects
+it. A deliberately skewed 12,289-cell range around a retained hard seed shrinks
+to at most five cells at Q64/8 and certifies the exact cell at Q128/16, for both
+positive and negative angles. The Q256 range wrapper composes endpoint proposals
+with this binary-search scheduler using the same caller-owned scratch.
+
+This removes candidate-count enumeration as an adaptive blocker: any same-sign
+finite Q256 endpoint range below four can be searched without materializing its
+interior cells. It still does not prove that the directed refinement reaches a
+certificate before the finite scratch-capacity ABI ceiling.
+
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full
 power-of-two divisor, while `D/2` has one fewer. The defensive midpoint branch

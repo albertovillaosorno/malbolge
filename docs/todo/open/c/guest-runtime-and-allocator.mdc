@@ -477,11 +477,19 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   existing handoff. The candidate scheduler tries every proposed cell per stage,
   publishes only exactly one certification, and handles negative-angle ordering.
 
-  Remaining adaptive blockers are narrower: prove that a kernel Q256 interval
-  can never need more than two binary64 candidates, or generalize proposal
-  generation beyond two cells; and show that Lambert-driven refinement certifies
-  before the finite `u32` capacity ceiling. Q128/16 remains bounded coverage,
-  not a full-domain bound.
+  Q256 proposal generation now generalizes beyond two cells. Endpoint roundings
+  define an ordered same-sign binary64 range; complemented keys give negative
+  angles the same monotone search order. Directed lower/upper midpoint results
+  binary-search strict halves at the current stage and preserve the narrowed
+  range when precision is inconclusive. A synthetic three-cell Q256 span and a
+  skewed 12,289-cell positive/negative search pin this path; Q64 reduces the
+  hard
+  range to at most five cells and Q128/16 certifies the exact result.
+
+  Candidate-count closure is therefore no longer a blocker. Remaining adaptive
+  work is product integration of caller-owned range refinement and a proof that
+  Lambert-driven refinement certifies before the finite `u32` workspace-capacity
+  ceiling. Q128/16 remains bounded coverage, not a full-domain bound.
 
   Deterministic continued-fraction midpoint proposals now retain separate
   eight-vector transformed and direct-atan sets. Q1152 independently certifies
