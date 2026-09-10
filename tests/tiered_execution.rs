@@ -2928,7 +2928,9 @@ fn profile_invalid_native_program() -> RegionEffectProgram {
 fn profile_capacity_overflow_native_program()
 -> Result<RegionEffectProgram, String> {
     let mut program = native_program();
-    let address = current_profile().memory_words();
+    let address = target_profile(&program.profile_id)
+        .ok_or_else(|| String::from("bootstrap fixture profile is missing"))?
+        .memory_words();
     let effect = program
         .effects
         .first_mut()
@@ -7136,7 +7138,8 @@ fn normative_trace_sequence_selects_mixed_exact_direct_steps()
             }]
         || first_trace.decoded != Some(b'*')
         || second_trace.decoded != Some(b'<')
-        || second_trace.output != Some(0xd6)
+        || second_trace.output
+            != Some(second_trace.before.registers.accumulator.to_le_bytes()[0])
     {
         let detail = format!("traces={traces:?} programs={programs:?}");
         return Err(format!("direct sequence VM evidence mismatch: {detail}"));
