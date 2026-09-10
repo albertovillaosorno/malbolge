@@ -45,6 +45,10 @@ bound remains useful only when generously rejecting theorem routes.
   gives irrationality measure 2 for tangent at nonzero rational arguments, but
   its power-law statement uses implicit constants that cannot be turned into a
   guest precision ceiling as published.
+<!-- jig-ignore-next-line: canonical bibliography path is indivisible -->
+- [Ernvall-Hytonen, Leppala, and Matala-aho exponential lower bound](../../bibliography/publications/ernvall-hytonen-leppala-matala-aho-exponential-lower-bound.md)
+  is fully explicit over imaginary quadratic fields. Its `m>=2` threshold is
+  now instantiated on the guest bridge and is far beyond the guest budget.
 - Lambert's tangent irrationality argument supplies qualitative non-equality;
   the guest midpoint comparator already relies only on directed rational
   enclosures and does not assume an approximate host `atan2` oracle.
@@ -102,6 +106,18 @@ This negative result is important: improving implementation constants around
 that direct specialization cannot bridge more than four hundred exponent bits
 of scale. Any useful theorem specialization must change the quantitative
 structure, not merely tighten a small multiplicative factor.
+
+The imaginary-quadratic Baker-type route of Ernvall-Hytonen, Leppala, and
+Matala-aho is also explicit but does not close the product. Theorem 2.1 requires
+`m>=2`; padding the two-term guest linear form with a distinct zero-coefficient
+exponential is admissible. On the retained deep midpoint, `alpha=2im` has
+denominator `2^105`.
+
+The paper's own `g2`, `e0`, `gamma`, and `H0` definitions then force
+`log2(H0)>2^34020`. Since the theorem denominator contains at least `H0`, its
+guaranteed separation is already vastly below what the largest guest refinement
+can resolve. This rejects the published theorem as-is without rejecting a
+genuinely specialized `m=1` argument.
 
 ### Irrationality-measure baseline
 
@@ -165,6 +181,8 @@ The present evidence answers the narrow necessity question:
   engineering closure.
 - The direct explicit Fischler-Rivoal specialization is quantitatively unusable
   for the guest ceiling.
+- The explicit imaginary-quadratic `m>=2` Baker-type threshold is even farther
+  outside the guest ceiling on the retained deep midpoint.
 - The retained Liang-Wang result is qualitatively promising but not executable
   as a resource proof until its hidden constants are made explicit for the
   required family.

@@ -254,6 +254,8 @@ are listed explicitly so provenance reachability is deterministic and auditable.
 - `docs/bibliography/provenance-and-methodology/research/acm-sigsoft-empirical-standards.md`
 <!-- jig-ignore-next-line: canonical source path is indivisible -->
 - `docs/bibliography/publications/fischler-rivoal-exponential-transcendence-measure.md`
+<!-- jig-ignore-next-line: canonical bibliography path is indivisible -->
+- `docs/bibliography/publications/ernvall-hytonen-leppala-matala-aho-exponential-lower-bound.md`
 <!-- jig-ignore-next-line: canonical source path is indivisible -->
 - `docs/bibliography/publications/lefevre-ly-zimmermann-binary64-trigonometric-hard-cases.md`
 - `docs/bibliography/publications/liang-wang-tangent-irrationality-measure.md`

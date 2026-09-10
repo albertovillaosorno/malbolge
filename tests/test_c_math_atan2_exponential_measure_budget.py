@@ -46,6 +46,9 @@ EXPONENT_MASK = 0x7FF
 DEEP_CANDIDATE = 0x3CA8000000000000
 NORMALIZED_MAX_GUEST_BYTES = 0xFFFFFFC0
 THEOREM_LOG2_DENOMINATOR_BIT_LENGTH = 438
+EHLM_MIN_EXPONENTIAL_COUNT = 2
+EHLM_ALPHA_DENOMINATOR_SHIFT = 105
+EHLM_LOG_GAMMA_BASE2_LOWER = 34020
 
 
 def _binary64_fraction(bits: int) -> Fraction:
@@ -111,3 +114,29 @@ def test_direct_fischler_rivoal_bound_exceeds_guest_resource_budget() -> None:
     guest_storage_bits = NORMALIZED_MAX_GUEST_BYTES * 8
     assert guest_storage_bits < 1 << 35
     assert theorem_log2_denominator_lower > guest_storage_bits
+
+
+def test_imaginary_quadratic_baker_threshold_exceeds_guest_budget() -> None:
+    """Reject the published m>=2 Baker threshold for the deep guest cell."""
+    lower, upper = _cell_midpoints(DEEP_CANDIDATE)
+    for midpoint in (lower, upper):
+        alpha = 2 * abs(midpoint)
+        assert alpha.denominator == 1 << EHLM_ALPHA_DENOMINATOR_SHIFT
+
+    # Pad the guest two-term form with a distinct exponential whose coefficient
+    # is zero. Theorem 2.1 permits zero coefficients but requires m>=2. Its
+    # g2 is at least the denominator 2^105 of alpha=2im. Since
+    # e0 >= 3*sqrt(log(g2)) and log(gamma)=(3*m*e0)^2,
+    # log(gamma) >= 81*m^2*105*log(2) = 34020*log(2).
+    m = EHLM_MIN_EXPONENTIAL_COUNT
+    log_gamma_base2_lower = 81 * m * m * EHLM_ALPHA_DENOMINATOR_SHIFT
+    assert log_gamma_base2_lower == EHLM_LOG_GAMMA_BASE2_LOWER
+
+    # H0 >= exp(gamma*log(gamma)/2). From gamma>=2^34020,
+    # log2(H0) >= 17010*2^34020, so even the threshold factor alone
+    # requires enormously more separation bits than one guest allocation.
+    log2_h0_lower = (log_gamma_base2_lower // 2) << log_gamma_base2_lower
+    guest_storage_bits = NORMALIZED_MAX_GUEST_BYTES * 8
+    assert log2_h0_lower > 1 << EHLM_LOG_GAMMA_BASE2_LOWER
+    assert guest_storage_bits < 1 << 35
+    assert log2_h0_lower > guest_storage_bits

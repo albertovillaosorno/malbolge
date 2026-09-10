@@ -15,6 +15,7 @@ Repository policy, legal conclusions, or research conclusions.
 ## Contents
 
 - `fischler-rivoal-exponential-transcendence-measure.md`
+- `ernvall-hytonen-leppala-matala-aho-exponential-lower-bound.md`
 - `lefevre-ly-zimmermann-binary64-trigonometric-hard-cases.md`
 - `lambert-tangent-irrationality.md`
 - `superoptimization/`

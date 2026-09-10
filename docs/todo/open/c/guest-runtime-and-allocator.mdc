@@ -891,6 +891,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   allocation. Thus this direct specialization cannot prove the finite resource
   ceiling; that does not bound the actual separation or precision required.
 
+  The explicit imaginary-quadratic Baker-type theorem of Ernvall-Hytonen,
+  Leppala, and Matala-aho is also ruled out as published. Padding the two-term
+  guest bridge to its required `m=2`, the same deep midpoint has `alpha=2im`
+  denominator `2^105`; the theorem's own threshold definitions imply
+  `log2(H0)>2^34020`. Its guaranteed separation is therefore far below the
+  `<2^35`-bit guest allocation ceiling before additional denominator factors.
+  This does not rule out a separately explicit `m=1` specialization.
+
 
   Liang-Wang (2024) is now retained as tangent-specific asymptotic evidence.
   Theorem 2 gives irrationality measure 2 for `tan(r)` at nonzero rational `r`.
