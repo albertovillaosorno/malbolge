@@ -2581,10 +2581,10 @@ id = "state-graph-region-consumed-input-guard"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-region-consumed-input-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "same-root verified profile regions with exact opaque geometry/cursor/remaining-input suffix and otherwise equal non-memory state"
+domain = "verified profile regions with exact geometry/cursor/input suffix/non-memory state and arbitrary validated memory roots"
 mechanism = "validated-input-rebinding-plus-consumed-prefix-aware-live-in-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
-evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_drops_only_consumed_input_prefix"]
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_drops_only_consumed_input_prefix", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_irrelevant_independent_base_change"]
 
 [[correspondence]]
 id = "state-graph-verified-transform-hoist"
@@ -2631,11 +2631,11 @@ id = "state-graph-region-dependency-guard"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-region-dependency-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "verified exact-state region reused inside the same immutable lineage with identical non-memory state"
+domain = "verified region candidates with identical future non-memory state and arbitrary validated memory roots"
 # jig-ignore-next-line: indivisible reviewed identifier
 mechanism = "irrelevant-memory-variation-direct-vm-equivalence-and-live-in-rejection"
 # jig-ignore-next-line: indivisible reviewed identifier
-evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_region_across_irrelevant_memory", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rejects_live_in_memory_change"]
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_region_across_irrelevant_memory", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_irrelevant_independent_base_change", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rejects_live_in_memory_change"]
 
 [[correspondence]]
 id = "state-graph-tiered-region-deopt"

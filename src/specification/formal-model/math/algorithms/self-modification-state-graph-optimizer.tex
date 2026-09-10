@@ -362,9 +362,11 @@ verification fails. Reads dominated by an earlier verified region write do not
 constrain entry memory because the region supplies their value before they are
 observed.
 
-Let $N(s)$ be exact non-memory state within the same immutable profile, input,
-and root lineage. A verified region with exact entry $e$ admits a reduced
-candidate $s$ when
+Let $N(s)$ be exact future non-memory state: canonical profile and opaque
+geometry, input cursor/suffix, output, registers, and termination. It
+deliberately contains no memory-root identity. A verified region with exact
+entry $e$ admits a
+reduced candidate $s$ when
 \begin{equation}
   G_{\tau}(s,e)
   \Longleftrightarrow
@@ -396,9 +398,10 @@ shortcut rejection.
 
 \section{Consumed-input-aware region guard}
 
-Let $N_F(s,e)$ require equal canonical profile, opaque geometry, shared memory
-root, input cursor, remaining input suffix, output, registers, and termination,
-while allowing bytes strictly before the common cursor to differ. Combining the
+Let $N_F(s,e)$ require equal canonical profile, opaque geometry, input cursor,
+remaining input suffix, output, registers, and termination, while allowing both
+memory roots and bytes strictly before the common cursor to differ. Combining
+the
 proved profile consumed-prefix projection with the read-before-write memory set
 gives
 \begin{equation}
@@ -408,10 +411,11 @@ gives
   \forall(a,v)\in L(\tau),\ M_s[a]=v.
   \label{eq:state-graph-region-consumed-input-guard}
 \end{equation}
-The guard remains same-root and keeps the opaque execution-geometry token exact;
-it does not infer hidden input policy or equate unrelated memory roots. A
-candidate input replacement is admitted only after runtime checkpoint validation
-under that token.
+The guard keeps the opaque execution-geometry token exact but places no equality
+requirement on the memory root. Memory authority comes only from $L(\tau)$:
+every live-in must match exactly, while all other valid candidate memory is
+preserved or overwritten by verified effects. Candidate checkpoints remain
+individually validated under the same trusted geometry token.
 
 The executable correspondence verifies a minimum-width \texttt{utO}
 source,

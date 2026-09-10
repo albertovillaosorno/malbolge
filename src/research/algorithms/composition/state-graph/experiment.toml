@@ -183,11 +183,12 @@ next_risk = "native-code-artifact-integration"
 
 [reduction.region_consumed_input_guard]
 baseline = "full-input-allocation-lineage-guard"
-candidate = "content-equivalent-root-consumed-prefix-aware-dependency-guard"
+candidate = "arbitrary-root-consumed-prefix-aware-dependency-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "validated content-equal roots with exact geometry/cursor/suffix/state"
+domain = "validated roots with exact geometry/cursor/suffix/non-memory state"
 consumed_prefix = "future-irrelevant"
 remaining_suffix = "exact"
+memory_root = "unconstrained-except-verified-live-ins"
 rejection_condition = "suffix change or existing dependency-guard mismatch"
 
 [reduction.verified_transform_hoist]

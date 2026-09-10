@@ -38,9 +38,10 @@
 //! Verification evidence for exact-state guarded future native regions.
 
 use malbolge::{
-    ProfileMachine, ProfileMachineError, ProfileMemoryDelta,
-    ProfileMemoryWrite, ProfileStepTrace, RunOutcome, StepOutcome, Termination,
-    current_profile, verify_minimum_jump_rotate_crazy_halt_profile_width,
+    ProfileMachine, ProfileMachineError, ProfileMachineState,
+    ProfileMemoryDelta, ProfileMemoryWrite, ProfileStepTrace, RunOutcome,
+    StepOutcome, Termination, current_profile,
+    verify_minimum_jump_rotate_crazy_halt_profile_width,
     verify_minimum_straight_line_io_profile_width,
 };
 
@@ -278,6 +279,51 @@ fn dependency_guard_reuses_equal_independent_root() -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+#[test]
+fn dependency_guard_reuses_irrelevant_independent_base_change()
+-> Result<(), String> {
+    let machine =
+        ProfileMachine::from_source(current_profile(), CURRENT_SOURCE, vec![
+            0x41,
+        ])
+        .map_err(|error| format!("base-change region load failed: {error}"))?;
+    let checkpoint = machine.snapshot_state();
+    let entry = IndexedMachineState::from_checkpoint(&checkpoint)
+        .map_err(|error| format!("base-change entry failed: {error:?}"))?;
+    let verified = ExactRegionCertificate::record(&entry, REGION_BUDGET)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| format!("base-change verify failed: {error:?}"))?;
+    let address = irrelevant_address(&verified)?;
+    let index = usize::try_from(address)
+        .map_err(|error| format!("base-change address failed: {error}"))?;
+    let mut memory = checkpoint.memory().to_vec();
+    let slot = memory
+        .get_mut(index)
+        .ok_or_else(|| String::from("base-change address missing"))?;
+    let before = *slot;
+    let after = changed_word(before);
+    *slot = after;
+    let variant = ProfileMachineState::new_with_geometry(
+        checkpoint.geometry(),
+        memory,
+        checkpoint.registers(),
+        checkpoint.io().clone(),
+    )
+    .map_err(|error| format!("base-change checkpoint failed: {error}"))?;
+    let candidate = IndexedMachineState::from_checkpoint(&variant)
+        .map_err(|error| format!("base-change candidate failed: {error:?}"))?;
+    if verified.accepts_entry(&candidate) {
+        return Err(String::from("exact guard accepted changed base root"));
+    }
+    if !verified
+        .accepts_dependency_entry(&candidate)
+        .map_err(|error| format!("base-change guard failed: {error:?}"))?
+    {
+        return Err(String::from("dependency guard rejected irrelevant base"));
+    }
+    validate_dependency_shortcut(&verified, &candidate, address, after)
 }
 
 #[test]

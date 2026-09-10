@@ -200,8 +200,11 @@ Verified regions now derive a reduced memory guard by ordered read-before-write
 analysis over the VM-provided semantic read set and exact memory delta. A cell
 is
 a live-in dependency only when the region reads it before any earlier verified
-region write dominates that address. The guard still requires exact non-memory
-state and the same immutable lineage. After it passes, verified after-values are
+region write dominates that address. The guard still requires exact future
+non-memory state, but memory-root identity is no longer a precondition.
+
+The verifier-derived live-ins are the complete memory authority for that bounded
+region. After the guard passes, after-values are
 applied to the candidate while memory outside the verified write set is
 preserved. `tests/r.rs` proves an irrelevant-memory variant fails the exact
 guard
@@ -209,10 +212,18 @@ but safely reuses the region and matches direct VM execution exactly; changing a
 
 live-in dependency fails closed.
 
+
+The dependency guard now also crosses unequal base roots when their differences
+are outside the verified live-in set. A fixture changes one word directly in a
+separately validated N15 base checkpoint at an address absent from both live-ins
+and writes. The candidate takes the shortcut, preserves that base-owned value,
+and matches direct normative execution. Live-in equality, not root identity, is
+therefore the bounded region's memory precondition.
+
 The reduced region guard now consumes the proved profile input-prefix reduction.
-It still requires the same profile, opaque geometry, exact indexed-memory base
-content, cursor, remaining input suffix, output, registers, and termination, but
-no longer pins
+It still requires the same profile, opaque geometry, cursor, remaining input
+suffix, output, registers, and termination, but no longer constrains memory-root
+identity and no longer pins
 identity to bytes strictly before that cursor. Input rebinding is independently
 validated through a complete profile checkpoint before the shared-root research
 state is reused; a changed unconsumed suffix remains a guard miss.

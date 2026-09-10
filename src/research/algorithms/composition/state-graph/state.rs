@@ -275,16 +275,18 @@ impl IndexedMachineState {
 
     /// Returns future equality for non-memory state after consumed input bytes.
     ///
-    /// Profile, opaque geometry, memory root, cursor, remaining input suffix,
-    /// output, registers, and termination remain exact. Bytes strictly before
-    /// the common cursor are deliberately excluded by the proved profile
-    /// consumed-input-prefix reduction.
+    /// Profile, opaque geometry, cursor, remaining input suffix, output,
+    /// registers, and termination remain exact. Memory is deliberately excluded
+    /// because verified region live-ins separately guard every future-relevant
+    /// read-before-write value. Bytes strictly before the common cursor are
+    /// also excluded by the proved profile consumed-input-prefix reduction.
     #[must_use]
     pub fn future_non_memory_eq(&self, other: &Self) -> bool {
-        self.shares_memory_lineage(other)
+        self.geometry == other.geometry
+            && ptr::eq(self.profile, other.profile)
             && self.input_cursor == other.input_cursor
             && self.input.get(self.input_cursor..)
-                == other.input.get(other.input_cursor..)
+                == other.input.get(self.input_cursor..)
             && self.output.exact_output_eq(&other.output)
             && self.registers == other.registers
             && self.termination == other.termination

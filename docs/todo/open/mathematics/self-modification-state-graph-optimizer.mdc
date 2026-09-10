@@ -167,10 +167,15 @@ VM evidence.
   those live-ins admits an irrelevant-memory variant that exact state equality
   rejects; verified effects preserve that irrelevant memory and match direct VM
   execution exactly. Changing a live-in fails closed.
+- The dependency guard now drops memory-root identity as a region precondition.
+  A separately validated N15 base changes one word absent from live-ins/writes;
+  the shortcut preserves it and equals direct normative execution. Thus bounded
+  region memory authority is exactly the verifier-derived live-in set, while a
+  changed live-in still fails closed.
 - The native-region dependency guard now integrates consumed-input-prefix
   equivalence. It preserves exact opaque geometry, cursor, remaining suffix,
-  output, registers, termination, exact base-memory content, and live-in values
-  while
+  output, registers, termination, and live-in values while allowing memory roots
+  themselves to differ and
   allowing already-consumed bytes to differ after validated input rebinding. A
   changed unconsumed suffix fails closed.
 - Verified region effects now hoist already-proved rotate/crazy results out of

@@ -413,10 +413,11 @@ memory only when no earlier region write dominates that read. Repeated live-in
 reads must agree exactly. No opcode decoder or heuristic dependency model exists
 in the research layer.
 
-Runtime admission requires exact non-memory state and exact immutable
-profile/geometry/base-root content, then checks only the derived live-in memory
-values. Independent but byte/word-identical host allocations are admissible;
-allocation identity itself is not semantic authority.
+Runtime admission requires exact future non-memory state and canonical
+profile/geometry, then checks only the derived live-in memory values.
+Memory-root
+identity and equality outside those live-ins are not preconditions for bounded
+region reuse.
 The shortcut applies verified after-values to the candidate's indexed memory
 without requiring the certificate's original `before` at write-only locations;
 this preserves candidate differences outside the verified write set. The
@@ -427,6 +428,16 @@ value.
 
 Changing the first live-in dependency fails the guard and returns
 `DependencyGuardMismatch`.
+
+
+The reduced dependency guard now removes memory-root identity entirely. A
+separately validated N15 checkpoint changes one base-memory word at an address
+absent from both verifier-derived live-ins and verified writes. Despite the
+unequal root, the candidate takes the shortcut, preserves that unrelated value,
+and reaches the exact same complete exit as direct normative execution. A
+live-in change still fails closed, so this widens representation freedom without
+widening
+the semantic dependency set.
 
 This is the first demonstrated semantic state-collapse useful to native reuse,
 not merely a storage optimization. Post-commit evidence at `1988f14` measures an
@@ -447,8 +458,8 @@ retaining the same verifier and deoptimization boundary.
 
 
 The dependency guard now consumes the proved profile input-prefix reduction
-instead of requiring one identical full-input allocation. Within exact
-profile/opaque-geometry/base-memory content it compares the committed cursor and
+instead of requiring one identical full-input allocation. With canonical
+profile/opaque geometry it compares the committed cursor and
 remaining suffix exactly, together with output, registers, termination, and the
 existing read-before-write memory live-ins. A validated `utO` state changes both
 already-consumed bytes and still takes the verified halt shortcut; changing the
