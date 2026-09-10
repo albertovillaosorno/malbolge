@@ -38,15 +38,13 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from pathlib import Path
 from typing import cast
 
 import pytest
-from scripts.validate import c_abi
-from scripts.validate import c_libc
-from scripts.validate import c_libc_source
+from scripts.validate import c_abi, c_libc, c_libc_source
 
 ROOT = Path(__file__).resolve().parents[1]
 LIBC_PATH = ROOT / "docs/technical/specification/c-libc-v1.json"
@@ -56,17 +54,20 @@ MEMORY = LIBC_ROOT / "domain/memory.c"
 STRING = LIBC_ROOT / "domain/string.c"
 MATH_EXACT = LIBC_ROOT / "domain/math_exact.c"
 MATH_SQRT = LIBC_ROOT / "domain/math_sqrt.c"
+MATH_SINCOS = LIBC_ROOT / "domain/math_sincos.c"
 MATH_TRANS_SPECIAL = LIBC_ROOT / "domain/math_transcendental_bits.c"
 MATH_INTERNAL = LIBC_ROOT / "contract"
 MATH_TRANS_HARNESS = (
     ROOT / "tests/runtime/guest_math_transcendental_special_conformance.c"
 )
+MATH_SINCOS_HARNESS = ROOT / "tests/runtime/guest_math_sincos_conformance.c"
 MATH_ATAN2_INPUT_HARNESS = (
     ROOT / "tests/runtime/guest_math_atan2_kernel_input_conformance.c"
 )
 ACCEPTED = ROOT / "tests/tidy/libc/accepted/libc_memory_string.c"
 ACCEPTED_MATH = ROOT / "tests/tidy/libc/accepted/libc_math_exact.c"
 ACCEPTED_SQRT = ROOT / "tests/tidy/libc/accepted/libc_math_sqrt.c"
+ACCEPTED_SINCOS = ROOT / "tests/tidy/libc/accepted/libc_math_sincos.c"
 REJECTED = ROOT / "tests/tidy/libc-rejected"
 HARNESS = ROOT / "tests/tidy/libc/guest_libc_harness.c"
 CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
@@ -89,6 +90,7 @@ WINDOWS_ABI_TARGETS = (
 WASM_TARGET_MACHINERY = frozenset({"__stack_pointer"})
 EXPECTED_AVAILABLE = frozenset({
     "ceil",
+    "cos",
     "fabs",
     "floor",
     "memcmp",
@@ -100,19 +102,18 @@ EXPECTED_AVAILABLE = frozenset({
     "strcpy",
     "strlen",
     "strncpy",
+    "sin",
     "sqrt",
     "trunc",
 })
 EXPECTED_UNAVAILABLE = frozenset({
     "atan2",
     "calloc",
-    "cos",
     "free",
     "getchar",
     "malloc",
     "putchar",
     "realloc",
-    "sin",
     "snprintf",
     "vsnprintf",
 })
@@ -169,7 +170,7 @@ SOURCE_REJECTIONS = (
     (
         "libc_math_unavailable.c",
         c_libc_source.DIAGNOSTIC_UNAVAILABLE,
-        "sin",
+        "atan2",
     ),
     (
         "libc_system_forbidden.c",
@@ -276,10 +277,12 @@ def test_executable_guest_libc_compiles_for_frontend_target() -> None:
         STRING,
         MATH_EXACT,
         MATH_SQRT,
+        MATH_SINCOS,
         MATH_TRANS_SPECIAL,
         ACCEPTED,
         ACCEPTED_MATH,
         ACCEPTED_SQRT,
+        ACCEPTED_SINCOS,
     ):
         completed = _run(
             [
@@ -315,6 +318,29 @@ def test_transcendental_special_cases_execute_without_libm(
     )
     assert compiled.returncode == 0, compiled.stderr
 
+    completed = _run([str(executable)], ROOT)
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_public_sincos_executes_without_host_libm(tmp_path: Path) -> None:
+    """Execute public sine/cosine through special and numerical paths."""
+    _require_clang()
+    executable = tmp_path / "public-sincos"
+    compiled = _run(
+        [
+            str(CLANG),
+            *STRICT_C,
+            f"-I{INCLUDE}",
+            f"-I{MATH_INTERNAL}",
+            str(MATH_TRANS_SPECIAL),
+            str(MATH_SINCOS),
+            str(MATH_SINCOS_HARNESS),
+            "-o",
+            str(executable),
+        ],
+        ROOT,
+    )
+    assert compiled.returncode == 0, compiled.stderr
     completed = _run([str(executable)], ROOT)
     assert completed.returncode == 0, completed.stderr
 
@@ -468,7 +494,15 @@ def test_guest_libc_executes_without_host_crt(tmp_path: Path) -> None:
             pytest.skip(f"repository-pinned tool is unavailable: {tool.name}")
 
     objects: list[Path] = []
-    for source in (MEMORY, STRING, MATH_EXACT, MATH_SQRT, HARNESS):
+    for source in (
+        MEMORY,
+        STRING,
+        MATH_EXACT,
+        MATH_SQRT,
+        MATH_TRANS_SPECIAL,
+        MATH_SINCOS,
+        HARNESS,
+    ):
         output = tmp_path / f"{source.stem}.obj"
         compiled = _run(
             [
@@ -512,7 +546,12 @@ def test_guest_libc_executes_without_host_crt(tmp_path: Path) -> None:
 def test_manual_validator_runs_libc_preflight_before_tidy() -> None:
     """Admit available routines and reject unavailable allocation calls."""
     _require_clang()
-    for accepted_source in (ACCEPTED, ACCEPTED_MATH, ACCEPTED_SQRT):
+    for accepted_source in (
+        ACCEPTED,
+        ACCEPTED_MATH,
+        ACCEPTED_SQRT,
+        ACCEPTED_SINCOS,
+    ):
         accepted = _run(
             [sys.executable, str(VALIDATOR), str(accepted_source)],
             ROOT,

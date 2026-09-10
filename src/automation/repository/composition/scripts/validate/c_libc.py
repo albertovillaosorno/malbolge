@@ -35,12 +35,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
-from pathlib import Path
 import sys
-from typing import Never
-from typing import cast
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Never, cast
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -71,6 +70,7 @@ GUEST_HEADERS = ("math.h", "stdio.h", "stdlib.h", "string.h")
 UNAVAILABLE_HEADERS = ("stdbit.h",)
 AVAILABLE_ROUTINES = (
     "ceil",
+    "cos",
     "fabs",
     "floor",
     "memcmp",
@@ -82,19 +82,18 @@ AVAILABLE_ROUTINES = (
     "strcpy",
     "strlen",
     "strncpy",
+    "sin",
     "sqrt",
     "trunc",
 )
 UNAVAILABLE_ROUTINES = (
     "atan2",
     "calloc",
-    "cos",
     "free",
     "getchar",
     "malloc",
     "putchar",
     "realloc",
-    "sin",
     "snprintf",
     "vsnprintf",
 )

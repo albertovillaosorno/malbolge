@@ -98,6 +98,11 @@ parts:
     kind: domain
     language: c
     responsibility: Reduce transcendental inputs and certify fixed intervals.
+  - id: part-0013
+    path: domain/math_sincos.c
+    kind: domain
+    language: c
+    responsibility: Publish correctly rounded deterministic binary64 sin/cos.
 projects: []
 tests: []
 graph:

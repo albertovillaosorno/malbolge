@@ -1189,8 +1189,9 @@ least 65 bits of margin before the nearest rounding boundary.
 
 This is a finite-domain engineering certificate backed by an exhaustive
 published TMD computation, not an empirical random-search assumption. It closes
-the periodic sine/cosine precision question while leaving public libc wiring and
-the bivariate `atan2` resource proof as separate obligations.
+the periodic sine/cosine precision question. Public libc wiring now composes
+that proof with the fixed sub-four Q512 certificate; the bivariate `atan2`
+resource proof remains separate.
 
 The table-maker boundary now has a separate exponential-polynomial parameter
 surface. Let a kernel-required binary64 input be rational `x`, let an output
@@ -1347,9 +1348,10 @@ This proves eventual separation for a correctly directed refinement sequence;
 it does not supply the unbounded guest-C storage policy needed to implement
 that sequence.
 
-`sin`, `cos`, and `atan2` remain source-unavailable until range reduction,
-numerical approximation, and final correct-rounding evidence close the full
-binary64 domain.
+`sin` and `cos` are now source-available and implemented entirely as guest C.
+They use fixed automatic scratch and never depend on guest heap initialization
+or host libm. `atan2` remains source-unavailable pending its bivariate finite
+resource proof.
 
 Version one needs no separate guest scheduler or ordinary-integer-helper API:
 integer operations are explicit typed-IR semantics for lane-9 lowering, and the

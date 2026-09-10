@@ -23,7 +23,7 @@
 // - Summary:
 //   - Version-one deterministic binary64 math contract.
 // - Description:
-//   - Proved exact/sqrt routines execute as guest C; transcendental work is
+//   - Proved exact/sqrt/sin/cos routines execute as guest C; atan2 remains
 //     gated.
 // - Usage:
 //   - Included by guest source; unavailable calls still fail preflight.

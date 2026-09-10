@@ -28,7 +28,8 @@
 // - Usage:
 //   - Consumed by guest-libc compile and manual-validator regressions.
 // - Defaults:
-//   - Sin, cos, and atan2 remain contracted-unavailable.
+//   - Atan2 remains contracted-unavailable; sin/cos have separate positive
+//     evidence.
 //
 
 //! Positive source coverage for canonical binary64 guest square root.

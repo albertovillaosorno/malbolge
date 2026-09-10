@@ -122,6 +122,20 @@
       "signature": "double sqrt(double)",
       "implementation": "guest-c",
       "semantics": "binary64-nearest-ties-even-canonical-nan"
+    },
+    {
+      "name": "sin",
+      "header": "math.h",
+      "signature": "double sin(double)",
+      "implementation": "guest-c",
+      "semantics": "binary64-correctly-rounded-canonical-nan"
+    },
+    {
+      "name": "cos",
+      "header": "math.h",
+      "signature": "double cos(double)",
+      "implementation": "guest-c",
+      "semantics": "binary64-correctly-rounded-canonical-nan"
     }
   ],
   "contracted_unavailable": [
@@ -179,20 +193,6 @@
       "header": "stdio.h",
       "signature": "int vsnprintf(char *,size_t,const char *,va_list)",
       "semantics": "locale-free-canonical-formatting-va-list",
-      "owner": "guest-runtime-and-allocator"
-    },
-    {
-      "name": "sin",
-      "header": "math.h",
-      "signature": "double sin(double)",
-      "semantics": "binary64-correctly-rounded-canonical-nan",
-      "owner": "guest-runtime-and-allocator"
-    },
-    {
-      "name": "cos",
-      "header": "math.h",
-      "signature": "double cos(double)",
-      "semantics": "binary64-correctly-rounded-canonical-nan",
       "owner": "guest-runtime-and-allocator"
     },
     {

@@ -155,6 +155,17 @@ static int test_sqrt(void) {
   return 0;
 }
 
+static int test_sincos(void) {
+  const uint64_t one = UINT64_C(0x3ff0000000000000);
+  if (double_bits(sin(double_from_bits(one))) !=
+          UINT64_C(0x3feaed548f090cee) ||
+      double_bits(cos(double_from_bits(one))) !=
+          UINT64_C(0x3fe14a280fb5068c)) {
+    return 1;
+  }
+  return 0;
+}
+
 static int same_bytes(const unsigned char *left, const unsigned char *right,
                       size_t count) {
   return memcmp(left, right, count) == 0;
@@ -205,6 +216,12 @@ int probe_entry(void) {
     const int sqrt_result = test_sqrt();
     if (sqrt_result != 0) {
       return 20 + sqrt_result;
+    }
+  }
+  {
+    const int sincos_result = test_sincos();
+    if (sincos_result != 0) {
+      return 30 + sincos_result;
     }
   }
   return 0;
