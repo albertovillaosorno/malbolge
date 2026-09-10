@@ -426,6 +426,16 @@ interpreted verified-effect application with a real native code artifact while
 retaining the same verifier and deoptimization boundary.
 
 
+The dependency guard now consumes the proved profile input-prefix reduction
+instead of requiring one identical full-input allocation. Within the same
+profile/opaque-geometry/memory-root lineage it compares the committed cursor and
+remaining suffix exactly, together with output, registers, termination, and the
+existing read-before-write memory live-ins. A validated `utO` state changes both
+already-consumed bytes and still takes the verified halt shortcut; changing the
+unconsumed third byte fails the guard. Input replacement itself is revalidated
+through the runtime checkpoint constructor before the shared-root research state
+is admitted.
+
 The invariant-transform objective is now bounded by verifier specialization
 rather than a new arithmetic optimizer. A theorem-verified jump/rotate/crazy
 region is replayed normatively once; its verified effect sequence then carries

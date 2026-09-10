@@ -2567,6 +2567,16 @@ mechanism = "materialization-independent-branch-equality-and-long-history"
 evidence = ["tests/function/algorithms/domain/state-graph/o.rs::independent_equal_branches_compare_exactly", "tests/function/algorithms/domain/state-graph/o.rs::different_output_branches_remain_distinct", "tests/function/algorithms/domain/state-graph/o.rs::long_append_history_materializes_without_prefix_loss", "tests/function/algorithms/domain/state-graph/s.rs::current_trace_reconstructs_and_replay_deduplicates"]
 
 [[correspondence]]
+id = "state-graph-region-consumed-input-guard"
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-region-consumed-input-guard"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "same-root verified profile regions with exact opaque geometry/cursor/remaining-input suffix and otherwise equal non-memory state"
+mechanism = "validated-input-rebinding-plus-consumed-prefix-aware-live-in-guard"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_drops_only_consumed_input_prefix"]
+
+[[correspondence]]
 id = "state-graph-verified-transform-hoist"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-verified-transform-hoist"

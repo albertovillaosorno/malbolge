@@ -172,6 +172,15 @@ shortcut_operations_per_sample = 4096
 verdict = "promote-dependency-guard-and-shortcut-baseline"
 next_risk = "native-code-artifact-integration"
 
+[reduction.region_consumed_input_guard]
+baseline = "full-input-allocation-lineage-guard"
+candidate = "same-root-consumed-prefix-aware-dependency-guard"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "validated same-root states with exact opaque geometry, cursor, remaining suffix, output, registers, and termination"
+consumed_prefix = "future-irrelevant"
+remaining_suffix = "exact"
+rejection_condition = "remaining-suffix change or any existing dependency-guard mismatch"
+
 [reduction.verified_transform_hoist]
 baseline = "normative-profile-rotate-and-crazy-recomputation"
 candidate = "verifier-recorded-effect-replay"

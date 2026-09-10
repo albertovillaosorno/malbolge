@@ -39,8 +39,9 @@
 
 use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMemoryDelta,
-    ProfileMemoryWrite, ProfileStepTrace, RunOutcome, current_profile,
-    verify_minimum_jump_rotate_crazy_halt_profile_width,
+    ProfileMemoryWrite, ProfileStepTrace, RunOutcome, StepOutcome, Termination,
+    current_profile, verify_minimum_jump_rotate_crazy_halt_profile_width,
+    verify_minimum_straight_line_io_profile_width,
 };
 
 use crate::indexed_state::IndexedMachineState;
@@ -54,6 +55,11 @@ const REGION_BUDGET: usize = 8;
 const REJECTING_SOURCE: &[u8] = b"b'";
 const TRANSFORM_SOURCE: &[u8] = b"(&<;:9K";
 const TRANSFORM_BUDGET: usize = 6;
+const INPUT_GUARD_SOURCE: &[u8] = b"utO";
+const INPUT_GUARD_SUFFIX: u8 = 0x33;
+
+type InputGuardRegion =
+    Result<(IndexedMachineState, VerifiedExactRegion), String>;
 
 const fn changed_word(value: u32) -> u32 {
     let incremented = value.saturating_add(1);
@@ -495,4 +501,80 @@ fn verified_region_hoists_rotate_and_crazy_results() -> Result<(), String> {
         ));
     }
     validate_dependency_shortcut(&region, &candidate, address, after)
+}
+
+fn consumed_input_guard_region() -> InputGuardRegion {
+    let geometry = verify_minimum_straight_line_io_profile_width(
+        current_profile(),
+        INPUT_GUARD_SOURCE,
+    )
+    .map_err(|error| format!("input-guard width verification: {error}"))?;
+    let mut machine = ProfileMachine::from_verified_source(&geometry, vec![
+        0x11,
+        0x7a,
+        INPUT_GUARD_SUFFIX,
+    ])
+    .map_err(|error| format!("input-guard load failed: {error}"))?;
+    for _step in 0..2usize {
+        let outcome = machine
+            .step()
+            .map_err(|error| format!("input-guard prefix step: {error}"))?;
+        if outcome != StepOutcome::Continued {
+            return Err(format!(
+                "input-guard stopped before region: {outcome:?}"
+            ));
+        }
+    }
+    let entry = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| format!("input-guard entry failed: {error:?}"))?;
+    let region = ExactRegionCertificate::record(&entry, 1)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| {
+            format!("input-guard region verify failed: {error:?}")
+        })?;
+    Ok((entry, region))
+}
+
+#[test]
+fn dependency_guard_drops_only_consumed_input_prefix() -> Result<(), String> {
+    let (entry, region) = consumed_input_guard_region()?;
+    let candidate = entry
+        .with_validated_input(vec![0x22, 0x99, INPUT_GUARD_SUFFIX])
+        .map_err(|error| format!("input-guard candidate failed: {error:?}"))?;
+    if entry.exact_non_memory_eq(&candidate) {
+        return Err(String::from(
+            "exact guard ignored replaced consumed input",
+        ));
+    }
+    if !region
+        .accepts_dependency_entry(&candidate)
+        .map_err(|error| format!("input-guard dependency check: {error:?}"))?
+    {
+        return Err(String::from("dependency guard retained consumed prefix"));
+    }
+    let execution = region
+        .execute_or_deopt(&candidate)
+        .map_err(|error| format!("input-guard shortcut failed: {error:?}"))?;
+    let expected = RunOutcome::Terminated {
+        reason: Termination::HaltInstruction,
+        steps: 1,
+    };
+    if execution.tier() != RegionExecutionTier::VerifiedShortcut
+        || execution.outcome() != expected
+    {
+        return Err(String::from("consumed-prefix candidate did not shortcut"));
+    }
+    let changed_suffix =
+        entry.with_validated_input(vec![0x22, 0x99, 0x44]).map_err(
+            |error| format!("input-guard suffix variant failed: {error:?}"),
+        )?;
+    if region
+        .accepts_dependency_entry(&changed_suffix)
+        .map_err(|error| format!("input-guard suffix check: {error:?}"))?
+    {
+        return Err(String::from(
+            "dependency guard ignored remaining input suffix",
+        ));
+    }
+    Ok(())
 }

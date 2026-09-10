@@ -198,6 +198,14 @@ but safely reuses the region and matches direct VM execution exactly; changing a
 
 live-in dependency fails closed.
 
+The reduced region guard now consumes the proved profile input-prefix reduction.
+It still requires the same profile, opaque geometry, indexed-memory root,
+cursor,
+remaining input suffix, output, registers, and termination, but no longer pins
+identity to bytes strictly before that cursor. Input rebinding is independently
+validated through a complete profile checkpoint before the shared-root research
+state is reused; a changed unconsumed suffix remains a guard miss.
+
 The verified effect path also supplies the objective's transform-hoist boundary.
 A theorem-verified `(&<;:9K` region contains both rotate and crazy; after exact
 replay verifies their results, the shortcut applies recorded after-values and

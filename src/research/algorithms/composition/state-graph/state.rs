@@ -274,6 +274,23 @@ impl IndexedMachineState {
         })
     }
 
+    /// Returns future equality for non-memory state after consumed input bytes.
+    ///
+    /// Profile, opaque geometry, memory root, cursor, remaining input suffix,
+    /// output, registers, and termination remain exact. Bytes strictly before
+    /// the common cursor are deliberately excluded by the proved profile
+    /// consumed-input-prefix reduction.
+    #[must_use]
+    pub fn future_non_memory_eq(&self, other: &Self) -> bool {
+        self.shares_memory_lineage(other)
+            && self.input_cursor == other.input_cursor
+            && self.input.get(self.input_cursor..)
+                == other.input.get(other.input_cursor..)
+            && self.output.exact_output_eq(&other.output)
+            && self.registers == other.registers
+            && self.termination == other.termination
+    }
+
     /// Materializes one complete validated checkpoint for oracle comparison.
     ///
     /// # Errors
@@ -395,9 +412,13 @@ impl IndexedMachineState {
     }
 
     fn shares_lineage(&self, other: &Self) -> bool {
+        self.shares_memory_lineage(other)
+            && Arc::ptr_eq(&self.input, &other.input)
+    }
+
+    fn shares_memory_lineage(&self, other: &Self) -> bool {
         self.geometry == other.geometry
             && ptr::eq(self.profile, other.profile)
-            && Arc::ptr_eq(&self.input, &other.input)
             && self.memory.shares_root(&other.memory)
     }
 
@@ -441,6 +462,49 @@ impl IndexedMachineState {
             return Err(IndexedStateError::BeforeObservationMismatch);
         }
         Ok(())
+    }
+
+    /// Rebinds only deterministic input after runtime validation.
+    ///
+    /// This research helper is intentionally not a fast path: it materializes
+    /// the current state so `ProfileMachineState::new_with_geometry` can
+    /// independently revalidate the opaque geometry's input-domain policy. The
+    /// returned state then keeps the original indexed-memory root and output
+    /// lineage while replacing the validated immutable input allocation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IndexedStateError`] when input/cursor/geometry validation or
+    /// oracle materialization fails.
+    pub fn with_validated_input(
+        &self,
+        input: Vec<u8>,
+    ) -> Result<Self, IndexedStateError> {
+        let io = ProfileMachineIoState::new(
+            input.clone(),
+            self.input_cursor,
+            self.output.materialize(),
+            self.termination,
+        )?;
+        let _validated = ProfileMachineState::new_with_geometry(
+            self.geometry,
+            self.memory.materialize()?,
+            self.registers,
+            io,
+        )?;
+        let input_arc = Arc::<[u8]>::from(input);
+        Ok(Self {
+            geometry: self.geometry,
+            input: Arc::clone(&input_arc),
+            input_cursor: self.input_cursor,
+            input_digest: hash_bytes(FNV_OFFSET, &input_arc),
+            memory: self.memory.clone(),
+            output: self.output.clone(),
+            profile: self.profile,
+            profile_digest: self.profile_digest,
+            registers: self.registers,
+            termination: self.termination,
+        })
     }
 }
 

@@ -354,6 +354,34 @@ produce identical complete exit checkpoints, and the irrelevant difference is
 preserved. A second fixture changes a live-in value and requires both guard and
 shortcut rejection.
 
+\section{Consumed-input-aware region guard}
+
+Let $N_F(s,e)$ require equal canonical profile, opaque geometry, shared memory
+root, input cursor, remaining input suffix, output, registers, and termination,
+while allowing bytes strictly before the common cursor to differ. Combining the
+proved profile consumed-prefix projection with the read-before-write memory set
+gives
+\begin{equation}
+  G^F_{\tau}(s,e)
+  \Longleftrightarrow
+  N_F(s,e)\ \land\
+  \forall(a,v)\in L(\tau),\ M_s[a]=v.
+  \label{eq:state-graph-region-consumed-input-guard}
+\end{equation}
+The guard remains same-root and keeps the opaque execution-geometry token exact;
+it does not infer hidden input policy or equate unrelated memory roots. A
+candidate input replacement is admitted only after runtime checkpoint validation
+under that token.
+
+The executable correspondence verifies a minimum-width \texttt{utO}
+source,
+executes both input steps, records the following halt region, and then changes
+both already-consumed bytes while preserving a third unconsumed byte. Exact
+full-input lineage equality rejects the variant, while $G^F_{\tau}$ admits it
+and
+takes the verified shortcut. Changing the unconsumed third byte must fail the
+same guard.
+
 \section{Verifier-hoisted rotate and crazy effects}
 
 For a verified region trace sequence $\tau$, let $P(\tau)$ be the ordered effect
