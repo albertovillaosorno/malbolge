@@ -1032,7 +1032,24 @@ The retained stage distribution is 0/72 limbs for common cases, 1/96 for
 `cos(2)` and `sin(3)`, and 2/120 for both near-four outputs. With no workspace
 the near-four input reports stage 0/72; 96 limbs exhaust stages 0 and 1 and
 report stage 2/120; 120 limbs publishes the certified result. Magnitudes at
-least four remain outside this handoff until periodic reduction is implemented.
+least four remain outside this handoff; the independent Payne-Hanek path owns
+periodic evaluation.
+
+A fixed Q512/64 direct-Taylor gate now closes the sub-four resource ceiling. The
+exact input occupies a 17-limb Q512 value and the evaluator uses 187
+caller-owned scratch limbs. Conservative integer width propagation gives at
+most 135 sine
+and 139 cosine ulps of directed roundoff. Including the first omitted term,
+both final intervals are strictly narrower than `2^-460`; product code enforces
+the equivalent `<2^52` Q512-ulp bound.
+
+The same global binary64 TMD authority also closes final rounding here. Exact
+Machin bounds place every binary64 input more than `2^-53` from `pi` and more
+than `2^-54` from `pi/2` at the relevant zeros. Combined with the small-angle
+preproof, every non-special sub-four sine/cosine output has magnitude above
+`2^-55`, so its ulp is at least `2^-107`. The 68/66 TMD maxima therefore give
+absolute midpoint floors `2^-177` and `2^-175`; Q512 leaves at least 283 bits of
+margin before either boundary.
 
 A bounded periodic-reduction boundary now handles the next magnitude region.
 For finite `4 <= |x| < 2^31`, the exact binary64 dyadic is represented in

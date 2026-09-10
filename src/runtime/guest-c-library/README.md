@@ -249,8 +249,24 @@ SIN/COS results from `0.5` through `nextdown(4)` and both signs. Observed final
 rounding resolves common inputs at stage 0/72 limbs, `cos(2)` and `sin(3)` at
 stage 1/96, and both near-four results at stage 2/120. The near-four lifecycle
 also pins no-workspace stage-0 retry, 96-limb stage-2 retry, then 120-limb final
-publication. Finite `|x|>=4` remains a hard nonpublishing boundary pending
-periodic range reduction.
+publication. Finite `|x|>=4` remains a hard nonpublishing boundary for this
+adaptive handoff; periodic evaluation is owned by the separate Payne-Hanek path.
+
+A fixed sub-four Q512 gate now supplies the finite resource proof needed for
+public wiring. It evaluates the exact binary64 magnitude directly with 64
+Taylor terms in a 17-limb Q512 format and uses 187 caller-owned scratch limbs.
+Directed roundoff contributes at most 135 sine ulps and 139 cosine ulps; after
+the first omitted term, either final interval is strictly narrower than
+`2^-460`. Product code checks the equivalent `<2^52` Q512-ulp ceiling before
+publication.
+
+Machin bounds put the nearest binary64 to `pi` more than `2^-53` away and the
+nearest binary64 to `pi/2` more than `2^-54` away. Together with the existing
+small-angle preproof this keeps every non-special sub-four output magnitude
+above `2^-55`, hence its binary64 ulp is at least `2^-107`. The global 68/66-bit
+TMD maxima then place rounding boundaries no closer than `2^-177` for sine and
+`2^-175` for cosine. Q512 therefore retains at least 283 bits of sub-four
+margin; public symbol availability remains a separate integration step.
 
 Periodic reduction now has a first bounded Q32.256 implementation. For finite
 `4 <= |x| < 2^31`, `malbolge_guest_math_sincos_range_reduce256` materializes the

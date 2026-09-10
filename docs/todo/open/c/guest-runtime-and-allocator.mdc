@@ -647,9 +647,22 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   result words from `0.5` through `nextdown(4)` and negative symmetry. Common
   cases resolve at stage 0/72 limbs, `cos(2)` and `sin(3)` at stage 1/96, and
   near-four at stage 2/120. The near-four lifecycle pins 0-limb stage-0 retry,
-  96-limb stage-2 retry, then 120-limb publication. The remaining SIN/COS domain
-  blocker is periodic range reduction for finite `|x|>=4`, plus full-domain
-  resource/correct-rounding closure before source availability changes.
+  96-limb stage-2 retry, then 120-limb publication. This adaptive path remains
+  useful evidence; fixed public-resource policy is now supplied separately.
+
+  Sub-four resource closure now uses a fixed Q512/64 direct-Taylor gate. Exact
+  input materialization plus 187 scratch limbs yields at most 135 sine and 139
+  cosine ulps of directed roundoff; including the omitted term keeps either
+  final interval below `2^-460`. Machin arithmetic places binary64 inputs more
+  than `2^-53` from `pi` and `2^-54` from `pi/2` at the only relevant nonzero
+  roots. After the small-angle preproof every non-special output is therefore
+  above `2^-55`, with binary64 ulp at least `2^-107`.
+
+  Applying the source-owned global 68/66 TMD maxima gives sub-four rounding
+  floors `2^-177` for sine and `2^-175` for cosine, leaving at least 283 bits of
+  Q512 margin. Together with the already closed periodic certificate, SIN/COS
+  numerical resource/correct-rounding evidence is complete; public libc wiring
+  is now the remaining lane-8 integration step for these two symbols.
 
   Periodic reduction has a bounded executable path for finite
   `4 <= |x| < 2^64`. Values enter Q32.256 exactly, multiply by the directed

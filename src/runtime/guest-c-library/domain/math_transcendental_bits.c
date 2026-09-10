@@ -4720,32 +4720,47 @@ static int fixed_512_at_most_ulps(const MalbolgeGuestMathFixed512 *value,
   return 1;
 }
 
-static int signed_fixed512_width_at_most(
+static int signed_fixed512_width(
     const MalbolgeGuestMathFixed512 *lower, uint32_t lower_negative,
     const MalbolgeGuestMathFixed512 *upper, uint32_t upper_negative,
-    uint32_t limit) {
-  MalbolgeGuestMathFixed512 width;
-  if (lower == NULL || upper == NULL || lower_negative > UINT32_C(1) ||
-      upper_negative > UINT32_C(1) ||
+    MalbolgeGuestMathFixed512 *width) {
+  if (lower == NULL || upper == NULL || width == NULL ||
+      lower_negative > UINT32_C(1) || upper_negative > UINT32_C(1) ||
       compare_signed_fixed_limbs(lower->limbs, lower_negative, upper->limbs,
                                  upper_negative, FIXED_512_LIMB_COUNT) > 0) {
     return 0;
   }
   if (lower_negative == upper_negative) {
     if (lower_negative == UINT32_C(0)) {
-      if (!subtract_fixed_limbs(width.limbs, upper->limbs, lower->limbs,
-                                FIXED_512_LIMB_COUNT)) {
-        return 0;
-      }
-    } else if (!subtract_fixed_limbs(width.limbs, lower->limbs, upper->limbs,
-                                     FIXED_512_LIMB_COUNT)) {
-      return 0;
+      return subtract_fixed_limbs(width->limbs, upper->limbs, lower->limbs,
+                                  FIXED_512_LIMB_COUNT);
     }
-  } else if (!add_fixed_limbs_checked(width.limbs, lower->limbs, upper->limbs,
-                                      FIXED_512_LIMB_COUNT)) {
-    return 0;
+    return subtract_fixed_limbs(width->limbs, lower->limbs, upper->limbs,
+                                FIXED_512_LIMB_COUNT);
   }
-  return fixed_512_at_most_ulps(&width, limit);
+  return add_fixed_limbs_checked(width->limbs, lower->limbs, upper->limbs,
+                                 FIXED_512_LIMB_COUNT);
+}
+
+static int signed_fixed512_width_at_most(
+    const MalbolgeGuestMathFixed512 *lower, uint32_t lower_negative,
+    const MalbolgeGuestMathFixed512 *upper, uint32_t upper_negative,
+    uint32_t limit) {
+  MalbolgeGuestMathFixed512 width;
+  return signed_fixed512_width(lower, lower_negative, upper, upper_negative,
+                               &width) &&
+         fixed_512_at_most_ulps(&width, limit);
+}
+
+static int signed_fixed512_width_below_power_of_two(
+    const MalbolgeGuestMathFixed512 *lower, uint32_t lower_negative,
+    const MalbolgeGuestMathFixed512 *upper, uint32_t upper_negative,
+    uint32_t exponent) {
+  MalbolgeGuestMathFixed512 width;
+  return signed_fixed512_width(lower, lower_negative, upper, upper_negative,
+                               &width) &&
+         fixed_limbs_bit_length_wide(width.limbs, FIXED_512_LIMB_COUNT) <=
+             exponent;
 }
 
 static void publish_payne_hanek512(
@@ -4835,6 +4850,93 @@ static void signed_fixed512_interval_negate(
   output->upper_negative = fixed_512_is_zero(&input->lower)
                                ? UINT32_C(0)
                                : (input->lower_negative ^ UINT32_C(1));
+}
+
+static void publish_sincos_interval512(
+    MalbolgeGuestMathSincosInterval512 *output,
+    const MalbolgeGuestMathSincosInterval512 *value);
+
+static int subfour_sincos_interval512(
+    uint64_t bits, MalbolgeGuestMathSincosInterval512 *output,
+    uint32_t *scratch, uint32_t scratch_capacity) {
+  MalbolgeGuestMathDyadic dyadic;
+  MalbolgeGuestMathSincosInterval512 staged;
+  uint32_t *input = scratch;
+  uint32_t *operation = NULL;
+
+  if (output == NULL || scratch == NULL ||
+      scratch_capacity < MALBOLGE_GUEST_MATH_SUBFOUR_Q512_SCRATCH_LIMBS ||
+      !malbolge_guest_math_unary_reduced_dyadic(
+          MALBOLGE_GUEST_MATH_COS, bits, &dyadic)) {
+    return 0;
+  }
+  dyadic.negative = UINT32_C(0);
+  operation = input + FIXED_512_LIMB_COUNT;
+  zero_fixed_limbs(input, FIXED_512_LIMB_COUNT);
+  if (!malbolge_guest_math_dyadic_write_fixed(
+          &dyadic, UINT32_C(512), input, FIXED_512_LIMB_COUNT) ||
+      !malbolge_guest_math_fixed_sin_taylor_interval(
+          input, input, FIXED_512_LIMB_COUNT, UINT32_C(16),
+          MALBOLGE_GUEST_MATH_SUBFOUR_Q512_TAYLOR_TERMS,
+          staged.sin.lower.limbs, &staged.sin.lower_negative,
+          staged.sin.upper.limbs, &staged.sin.upper_negative, operation,
+          FIXED_512_LIMB_COUNT * UINT32_C(10)) ||
+      !malbolge_guest_math_fixed_cos_taylor_interval(
+          input, input, FIXED_512_LIMB_COUNT, UINT32_C(16),
+          MALBOLGE_GUEST_MATH_SUBFOUR_Q512_TAYLOR_TERMS,
+          staged.cos.lower.limbs, &staged.cos.lower_negative,
+          staged.cos.upper.limbs, &staged.cos.upper_negative, operation,
+          FIXED_512_LIMB_COUNT * UINT32_C(10))) {
+    return 0;
+  }
+  if ((bits & BINARY64_SIGN) != UINT64_C(0)) {
+    MalbolgeGuestMathSignedFixed512Interval temporary;
+    signed_fixed512_interval_negate(&temporary, &staged.sin);
+    signed_fixed512_interval_copy(&staged.sin, &temporary);
+  }
+  if (!signed_fixed512_width_below_power_of_two(
+          &staged.sin.lower, staged.sin.lower_negative, &staged.sin.upper,
+          staged.sin.upper_negative,
+          MALBOLGE_GUEST_MATH_SUBFOUR_Q512_WIDTH_ULP_BITS_MAX) ||
+      !signed_fixed512_width_below_power_of_two(
+          &staged.cos.lower, staged.cos.lower_negative, &staged.cos.upper,
+          staged.cos.upper_negative,
+          MALBOLGE_GUEST_MATH_SUBFOUR_Q512_WIDTH_ULP_BITS_MAX)) {
+    return 0;
+  }
+  publish_sincos_interval512(output, &staged);
+  return 1;
+}
+
+int malbolge_guest_math_sincos_subfour_interval512(
+    uint64_t bits, MalbolgeGuestMathSincosInterval512 *output,
+    uint32_t *scratch, uint32_t scratch_capacity) {
+  return subfour_sincos_interval512(bits, output, scratch, scratch_capacity);
+}
+
+int malbolge_guest_math_sincos_subfour_unique_binary64_q512(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    uint64_t *output_bits, uint32_t *scratch, uint32_t scratch_capacity) {
+  MalbolgeGuestMathSincosInterval512 interval;
+  const MalbolgeGuestMathSignedFixed512Interval *selected = NULL;
+  uint64_t staged = UINT64_C(0);
+
+  if (output_bits == NULL ||
+      (operation != MALBOLGE_GUEST_MATH_SIN &&
+       operation != MALBOLGE_GUEST_MATH_COS) ||
+      !subfour_sincos_interval512(bits, &interval, scratch, scratch_capacity)) {
+    return 0;
+  }
+  selected = operation == MALBOLGE_GUEST_MATH_SIN ? &interval.sin
+                                                   : &interval.cos;
+  if (!malbolge_guest_math_fixed_signed_interval_unique_binary64(
+          selected->lower.limbs, selected->lower_negative,
+          selected->upper.limbs, selected->upper_negative,
+          FIXED_512_LIMB_COUNT, UINT32_C(16), &staged)) {
+    return 0;
+  }
+  *output_bits = staged;
+  return 1;
 }
 
 static int payne_hanek_residual_magnitude512(

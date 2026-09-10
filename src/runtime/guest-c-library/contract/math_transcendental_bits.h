@@ -162,6 +162,9 @@ typedef struct MalbolgeGuestMathAtan2Interval224 {
 #define MALBOLGE_GUEST_MATH_PERIODIC_INTERVAL_ULPS_MAX UINT32_C(74)
 #define MALBOLGE_GUEST_MATH_PERIODIC_Q256_SCRATCH_LIMBS UINT32_C(90)
 #define MALBOLGE_GUEST_MATH_PERIODIC_Q512_TAYLOR_TERMS UINT32_C(48)
+#define MALBOLGE_GUEST_MATH_SUBFOUR_Q512_TAYLOR_TERMS UINT32_C(64)
+#define MALBOLGE_GUEST_MATH_SUBFOUR_Q512_SCRATCH_LIMBS UINT32_C(187)
+#define MALBOLGE_GUEST_MATH_SUBFOUR_Q512_WIDTH_ULP_BITS_MAX UINT32_C(52)
 #define MALBOLGE_GUEST_MATH_PERIODIC_Q512_SCRATCH_LIMBS UINT32_C(170)
 
 typedef struct MalbolgeGuestMathFixed256 {
@@ -484,6 +487,12 @@ int malbolge_guest_math_sincos_range_interval256(
 int malbolge_guest_math_sincos_range_interval512(
     uint64_t bits, uint32_t terms, MalbolgeGuestMathSincosInterval512 *output,
     uint32_t *scratch, uint32_t scratch_capacity);
+int malbolge_guest_math_sincos_subfour_interval512(
+    uint64_t bits, MalbolgeGuestMathSincosInterval512 *output,
+    uint32_t *scratch, uint32_t scratch_capacity);
+int malbolge_guest_math_sincos_subfour_unique_binary64_q512(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    uint64_t *output_bits, uint32_t *scratch, uint32_t scratch_capacity);
 int malbolge_guest_math_sincos_range_unique_binary64_q512(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
     uint64_t *output_bits, uint32_t *scratch, uint32_t scratch_capacity);
