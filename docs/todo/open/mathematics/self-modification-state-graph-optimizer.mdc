@@ -167,11 +167,12 @@ VM evidence.
   those live-ins admits an irrelevant-memory variant that exact state equality
   rejects; verified effects preserve that irrelevant memory and match direct VM
   execution exactly. Changing a live-in fails closed.
-- Prior committed-output contents are now future-irrelevant for verified region
-  reuse when starting output length is unchanged. A minimum-width `uCar_L`
-  fixture changes the first emitted byte, then proves the remaining region
-  preserves that candidate prefix and appends exactly the normative future byte.
-  A length mismatch still fails closed under the current absolute-length IR.
+- Prior committed-output history is now future-irrelevant for verified region
+  reuse, including its absolute length. A minimum-width `uCar_L` fixture replays
+  one verified output-emitting region from one- and two-byte candidate prefixes;
+  both preserve candidate history and append the normative future byte. Absolute
+  IR lengths remain verifier evidence while verified replay rebases 0/+1 deltas.
+  The verified portable artifact path independently proves the length rebase.
 - The dependency guard now drops memory-root identity as a region precondition.
   A separately validated N15 base changes one word absent from live-ins/writes;
   the shortcut preserves it and equals direct normative execution. Thus bounded
@@ -179,8 +180,8 @@ VM evidence.
   changed live-in still fails closed.
 - The native-region dependency guard now integrates consumed-input-prefix
   equivalence. It preserves exact opaque geometry, cursor, remaining suffix,
-  output length, registers, termination, and live-in values while allowing prior
-  output contents and memory roots themselves to differ. It also allows
+  registers, termination, and live-in values while allowing prior output
+  history and memory roots themselves to differ. It also allows
   already-consumed bytes to differ after validated input rebinding. A
   changed unconsumed suffix fails closed.
 - Verified region effects now hoist already-proved rotate/crazy results out of

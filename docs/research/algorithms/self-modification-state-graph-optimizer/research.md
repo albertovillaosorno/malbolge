@@ -414,9 +414,9 @@ reads must agree exactly. No opcode decoder or heuristic dependency model exists
 in the research layer.
 
 Runtime admission requires canonical profile/geometry, exact future input,
-registers, termination, and committed-output length, then checks only derived
-live-in memory values. Prior output bytes, memory-root identity, and memory
-outside those live-ins are not preconditions for bounded region reuse.
+registers, and termination, then checks only derived live-in memory values.
+Prior output content/length, memory-root identity, and memory outside those
+live-ins are not preconditions for bounded region reuse.
 The shortcut applies verified after-values to the candidate's indexed memory
 without requiring the certificate's original `before` at write-only locations;
 this preserves candidate differences outside the verified write set. The
@@ -430,14 +430,17 @@ Changing the first live-in dependency fails the guard and returns
 
 
 Committed output now receives the same causal-state treatment. After the first
-output of minimum-width `uCar_L`, a candidate replaces the historical byte but
-keeps output length one. The remaining verified input/output/halt region accepts
-that candidate, appends the same second byte as direct normative execution, and
-preserves the candidate-owned prefix exactly.
+output of minimum-width `uCar_L`, candidates replace the history with
+prefixes of
+one and two bytes. The remaining verified input/output/halt region accepts both,
+appends the same second input byte as direct normative execution, and preserves
+each candidate-owned prefix exactly.
 
-A different starting length is still rejected because current effect
-observations encode absolute output lengths. Relative-length rebasing remains a
-separate possible reduction.
+Absolute `EffectOp` output lengths remain verifier evidence. Verified replay
+checks their intrinsic zero-or-one delta and rebases that delta to the
+candidate,
+so neither previous output bytes nor their length constrain future execution. A
+verified portable artifact independently exercises the different-length case.
 
 The reduced dependency guard now removes memory-root identity entirely. A
 separately validated N15 checkpoint changes one base-memory word at an address
@@ -469,8 +472,8 @@ retaining the same verifier and deoptimization boundary.
 The dependency guard now consumes the proved profile input-prefix reduction
 instead of requiring one identical full-input allocation. With canonical
 profile/opaque geometry it compares the committed cursor and
-remaining suffix exactly, together with output length, registers, termination,
-and the existing read-before-write memory live-ins. A validated `utO` state
+remaining suffix exactly, together with registers, termination, and the
+existing read-before-write memory live-ins. A validated `utO` state
 changes both
 already-consumed bytes and still takes the verified halt shortcut; changing the
 unconsumed third byte fails the guard. Input replacement itself is revalidated

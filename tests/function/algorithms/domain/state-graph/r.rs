@@ -287,60 +287,58 @@ fn checkpoint_with_output(
     .map_err(|error| format!("output replacement checkpoint failed: {error}"))
 }
 
-#[test]
-fn dependency_guard_ignores_equal_length_output_prefix_contents()
--> Result<(), String> {
-    let (checkpoint, verified) = output_prefix_region_fixture()?;
-    let changed_checkpoint = checkpoint_with_output(&checkpoint, vec![0x5a])?;
-    let candidate = IndexedMachineState::from_checkpoint(&changed_checkpoint)
+fn validate_output_history_rebase(
+    checkpoint: &ProfileMachineState,
+    verified: &VerifiedExactRegion,
+    prefix: Vec<u8>,
+    expected_output: &[u8],
+) -> Result<(), String> {
+    let candidate_checkpoint = checkpoint_with_output(checkpoint, prefix)?;
+    let candidate = IndexedMachineState::from_checkpoint(&candidate_checkpoint)
         .map_err(|error| {
-        format!("output-prefix candidate failed: {error:?}")
-    })?;
+            format!("output-rebase candidate failed: {error:?}")
+        })?;
     if verified.accepts_entry(&candidate) {
-        return Err(String::from("exact guard ignored prior output bytes"));
+        return Err(String::from("exact guard ignored output history"));
     }
     if !verified
         .accepts_dependency_entry(&candidate)
-        .map_err(|error| format!("output-prefix guard failed: {error:?}"))?
+        .map_err(|error| format!("output-rebase guard failed: {error:?}"))?
     {
-        return Err(String::from(
-            "dependency guard retained prior output bytes",
-        ));
+        return Err(String::from("dependency guard retained output history"));
     }
-
     let shortcut = verified
         .apply_dependency_shortcut(&candidate)
-        .map_err(|error| format!("output-prefix shortcut failed: {error:?}"))?;
-    let mut direct = ProfileMachine::from_snapshot(changed_checkpoint);
-    let direct_outcome = direct
+        .map_err(|error| format!("output-rebase shortcut failed: {error:?}"))?;
+    let mut direct_machine =
+        ProfileMachine::from_snapshot(candidate_checkpoint);
+    let direct_outcome = direct_machine
         .run(verified.step_budget())
-        .map_err(|error| format!("output-prefix direct run failed: {error}"))?;
+        .map_err(|error| format!("output-rebase direct run failed: {error}"))?;
     let shortcut_checkpoint =
         shortcut.materialize_checkpoint().map_err(|error| {
-            format!("output-prefix shortcut materialize failed: {error:?}")
+            format!("output-rebase shortcut materialize failed: {error:?}")
         })?;
     if direct_outcome != verified.outcome()
-        || shortcut_checkpoint != direct.snapshot_state()
-        || shortcut_checkpoint.io().output() != [0x5a, 0x3c]
+        || shortcut_checkpoint != direct_machine.snapshot_state()
+        || shortcut_checkpoint.io().output() != expected_output
     {
         return Err(String::from(
-            "output-prefix shortcut diverged from candidate-owned history",
+            "rebased output shortcut diverged from normative VM",
         ));
     }
-
-    let longer_checkpoint =
-        checkpoint_with_output(&checkpoint, vec![0x5a, 0x5b])?;
-    let longer = IndexedMachineState::from_checkpoint(&longer_checkpoint)
-        .map_err(|error| {
-            format!("output-length candidate failed: {error:?}")
-        })?;
-    if verified
-        .accepts_dependency_entry(&longer)
-        .map_err(|error| format!("output-length guard failed: {error:?}"))?
-    {
-        return Err(String::from("dependency guard ignored output length"));
-    }
     Ok(())
+}
+
+#[test]
+fn dependency_guard_rebases_output_history() -> Result<(), String> {
+    let (checkpoint, verified) = output_prefix_region_fixture()?;
+    validate_output_history_rebase(&checkpoint, &verified, vec![0x5a], &[
+        0x5a, 0x3c,
+    ])?;
+    validate_output_history_rebase(&checkpoint, &verified, vec![0x5a, 0x5b], &[
+        0x5a, 0x5b, 0x3c,
+    ])
 }
 
 #[test]

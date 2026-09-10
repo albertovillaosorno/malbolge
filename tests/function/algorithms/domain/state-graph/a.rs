@@ -33,8 +33,9 @@
 //! Verification fixtures for portable region effect artifacts.
 
 use malbolge::{
-    ProfileMachine, ProfileMemoryDelta, ProfileMemoryWrite,
-    RegionEffectProgram, TraceInput, current_profile,
+    ProfileMachine, ProfileMachineIoState, ProfileMachineState,
+    ProfileMemoryDelta, ProfileMemoryWrite, RegionEffectProgram, TraceInput,
+    current_profile, verify_minimum_straight_line_io_profile_width,
 };
 
 use crate::indexed_state::IndexedMachineState;
@@ -174,6 +175,70 @@ fn artifact_shortcut_matches_verified_region_on_reduced_guard()
     {
         return Err(String::from(
             "artifact shortcut differs from verified region",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn artifact_shortcut_rebases_output_history() -> Result<(), String> {
+    let geometry = verify_minimum_straight_line_io_profile_width(
+        current_profile(),
+        b"uCar_L",
+    )
+    .map_err(|error| format!("artifact output geometry failed: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&geometry, vec![0xa5, 0x3c])
+            .map_err(|error| format!("artifact output load failed: {error}"))?;
+    let _prefix = machine
+        .run(3)
+        .map_err(|error| format!("artifact output setup failed: {error}"))?;
+    let checkpoint = machine.snapshot_state();
+    let entry = IndexedMachineState::from_checkpoint(&checkpoint)
+        .map_err(|error| format!("artifact output entry failed: {error:?}"))?;
+    let region = ExactRegionCertificate::record(&entry, 3)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| format!("artifact output region failed: {error:?}"))?;
+    let artifact = UntrustedRegionArtifact::from_verified_region(&region)
+        .verify_against(&region)
+        .map_err(|error| {
+            format!("artifact output admission failed: {error:?}")
+        })?;
+    let io = ProfileMachineIoState::new(
+        checkpoint.io().input().to_vec(),
+        checkpoint.io().input_consumed(),
+        vec![0x5a, 0x5b],
+        checkpoint.io().termination(),
+    )
+    .map_err(|error| format!("artifact output IO failed: {error}"))?;
+    let changed = ProfileMachineState::new_with_geometry(
+        checkpoint.geometry(),
+        checkpoint.memory().to_vec(),
+        checkpoint.registers(),
+        io,
+    )
+    .map_err(|error| format!("artifact output checkpoint failed: {error}"))?;
+    let candidate =
+        IndexedMachineState::from_checkpoint(&changed).map_err(|error| {
+            format!("artifact output candidate failed: {error:?}")
+        })?;
+    let result = artifact.execute_or_deopt(&candidate).map_err(|error| {
+        format!("artifact output execution failed: {error:?}")
+    })?;
+    let mut direct = ProfileMachine::from_snapshot(changed);
+    let direct_outcome = direct
+        .run(region.step_budget())
+        .map_err(|error| format!("artifact output direct failed: {error}"))?;
+    let actual = result.state().materialize_checkpoint().map_err(|error| {
+        format!("artifact output materialize failed: {error:?}")
+    })?;
+    if result.tier() != RegionExecutionTier::VerifiedShortcut
+        || result.outcome() != direct_outcome
+        || actual != direct.snapshot_state()
+        || actual.io().output() != [0x5a, 0x5b, 0x3c]
+    {
+        return Err(String::from(
+            "artifact output rebasing differs from normative VM",
         ));
     }
     Ok(())

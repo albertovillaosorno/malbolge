@@ -169,7 +169,8 @@ read_authority = "ProfileStepTrace.memory_reads"
 write_authority = "ProfileStepTrace.memory_delta"
 memory_root_identity_required = false
 output_prefix_content_required = false
-output_length_required = true
+output_length_required = false
+output_delta_authority = "verified-zero-or-one"
 verified_writes_preserve_unwritten_candidate_memory = true
 reduction_goal = "increase-safe-region-reuse"
 
@@ -189,7 +190,17 @@ prior_output_content = "future-irrelevant"
 output_length = "exact-current-effect-ir-bookkeeping"
 future_output = "candidate-prefix-plus-verified-appends"
 rejection_condition = "starting output length mismatch"
-next_risk = "relative-output-length-effect-rebasing"
+next_risk = "closed-by-region-output-length-rebase"
+
+[reduction.region_output_length_rebase]
+baseline = "equal-absolute-starting-output-length"
+candidate = "arbitrary-candidate-output-history-plus-verified-relative-deltas"
+absolute_output_lengths = "verification-evidence-only"
+verified_output_delta = "zero-or-one-per-effect"
+prior_output_length = "future-irrelevant"
+future_output = "candidate-prefix-plus-verified-appends"
+rejection_condition = "intrinsically-invalid-verified-output-delta"
+next_risk = "native-code-artifact-integration"
 
 [reduction.region_consumed_input_guard]
 baseline = "full-input-allocation-lineage-guard"

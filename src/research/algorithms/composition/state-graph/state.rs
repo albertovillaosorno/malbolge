@@ -176,23 +176,30 @@ impl IndexedMachineState {
         })
     }
 
-    /// Applies one verifier-admitted compact effect to this exact lineage.
+    /// Applies one verifier-admitted compact effect with rebased output length.
+    ///
+    /// Exact verifier observations remain artifact evidence, but their absolute
+    /// output offset is historical. This path validates the effect's own output
+    /// delta and applies that delta relative to the candidate's output history.
     ///
     /// # Errors
     ///
-    /// Returns [`IndexedStateError`] when the before observation, deterministic
-    /// input/output evolution, or indexed memory invariant disagrees.
+    /// Returns [`IndexedStateError`] when live before-state fields,
+    /// deterministic I/O evolution, or indexed memory invariants disagree.
     pub(crate) fn apply_verified_effect(
         &self,
         effect: &EffectOp,
     ) -> Result<Self, IndexedStateError> {
-        self.validate_before_observation(effect.before)?;
+        self.validate_rebased_before_observation(effect.before)?;
+        Self::validate_verified_output_delta(effect)?;
         let input_cursor = self.next_input_cursor_effect(
             effect.input,
             effect.after.input_consumed,
         )?;
-        let output =
-            self.next_output_effect(effect.output, effect.after.output_len)?;
+        let output = effect.output.map_or_else(
+            || self.output.clone(),
+            |byte| self.output.append(byte),
+        );
         let memory = self.memory.apply_verified(effect.memory_delta)?;
         Ok(Self {
             geometry: self.geometry,
@@ -275,11 +282,11 @@ impl IndexedMachineState {
 
     /// Returns future equality for non-memory state after consumed input bytes.
     ///
-    /// Profile, opaque geometry, cursor, remaining input suffix, output length,
-    /// registers, and termination remain exact. Prior output bytes and memory
-    /// are deliberately excluded because only output length participates in
-    /// trace bookkeeping and memory is guarded by verified live-ins.
-    /// Bytes strictly before the common cursor are
+    /// Profile, opaque geometry, cursor, remaining input suffix, registers, and
+    /// termination remain exact. Prior output bytes, output length, and memory
+    /// are deliberately excluded: verified effect application rebases output
+    /// deltas, while memory is guarded by verified live-ins. Bytes strictly
+    /// before the common cursor are
     /// also excluded by the proved profile consumed-input-prefix reduction.
     #[must_use]
     pub fn future_non_memory_eq(&self, other: &Self) -> bool {
@@ -288,7 +295,6 @@ impl IndexedMachineState {
             && self.input_cursor == other.input_cursor
             && self.input.get(self.input_cursor..)
                 == other.input.get(self.input_cursor..)
-            && self.output.len() == other.output.len()
             && self.registers == other.registers
             && self.termination == other.termination
     }
@@ -467,6 +473,31 @@ impl IndexedMachineState {
             || before.termination != self.termination
         {
             return Err(IndexedStateError::BeforeObservationMismatch);
+        }
+        Ok(())
+    }
+
+    fn validate_rebased_before_observation(
+        &self,
+        before: ProfileMachineObservation,
+    ) -> Result<(), IndexedStateError> {
+        let input_matches = before.input_consumed == self.input_cursor;
+        let registers_match = before.registers == self.registers;
+        let termination_matches = before.termination == self.termination;
+        if !input_matches || !registers_match || !termination_matches {
+            return Err(IndexedStateError::BeforeObservationMismatch);
+        }
+        Ok(())
+    }
+
+    fn validate_verified_output_delta(
+        effect: &EffectOp,
+    ) -> Result<(), IndexedStateError> {
+        let delta = usize::from(effect.output.is_some());
+        if effect.before.output_len.checked_add(delta)
+            != Some(effect.after.output_len)
+        {
+            return Err(IndexedStateError::OutputTraceMismatch);
         }
         Ok(())
     }

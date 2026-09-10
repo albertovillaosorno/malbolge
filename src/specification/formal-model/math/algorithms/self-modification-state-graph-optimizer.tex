@@ -363,9 +363,9 @@ constrain entry memory because the region supplies their value before they are
 observed.
 
 Let $N(s)$ be exact future non-memory state: canonical profile and opaque
-geometry, input cursor/suffix, committed-output length, registers, and
-termination. It contains neither memory-root identity nor committed-output
-prefix contents. A verified region with exact entry $e$ admits a
+geometry, input cursor/suffix, registers, and termination. It contains neither
+memory-root identity nor committed-output history. A verified region with exact
+entry $e$ admits a
 reduced candidate $s$ when
 \begin{equation}
   G_{\tau}(s,e)
@@ -407,28 +407,47 @@ define
   \Longleftrightarrow |O(s_1)|=|O(s_2)|.
   \label{eq:state-graph-region-output-prefix-content}
 \end{equation}
-Equal length keeps every verified before/after output-length observation
-aligned,
-while the candidate's prior bytes remain candidate-owned. If the verified region
-emits suffix $Y$, both shortcut and normative execution from candidate $s$
-produce $O(s)\Vert Y$; no byte of the verifier entry prefix is copied into the
-candidate. A different starting length is rejected because the current portable
-effect IR records absolute output lengths.
+Equal length is the first sufficient reduction: the candidate's prior bytes
+remain candidate-owned and a verified emitted suffix $Y$ produces
+$O(s)\Vert Y$. No verifier-entry prefix byte is copied into the candidate. The
+next result removes even this equal-length restriction by rebasing only verified
+output deltas.
 
 The executable fixture uses the verified source \texttt{uCar\_L}. It executes
 its first input, no-op, and output steps, then records the remaining input,
-output, and halt region. Before replay it replaces the committed byte with a
-different single byte. Exact entry equality rejects the candidate, while the
-dependency guard admits it and reproduces normative output; a two-byte prefix is
-rejected.
+output, and halt region. Replacing the committed byte by a different single byte
+preserves normative shortcut behavior and establishes this fixed-length case.
+
+\section{Verified output-length rebasing}
+
+For verified effect $e_i$, define $d_i=1$ when it emits one byte and $d_i=0$
+otherwise. Exact verifier replay already proves
+$e_i.\mathrm{afterLen}=e_i.\mathrm{beforeLen}+d_i$. For any candidate output
+history $O$, replay therefore uses candidate-relative lengths
+\begin{equation}
+  \ell'_0=|O|,\qquad
+  \ell'_{i+1}=\ell'_i+d_i,\qquad
+  O'=O\Vert Y,
+  \label{eq:state-graph-region-output-length-rebase}
+\end{equation}
+where $Y$ is the ordered byte suffix emitted by the verified region. Absolute
+verifier lengths remain immutable artifact evidence, but verified application
+checks only their intrinsic zero-or-one delta and rebases that delta onto the
+candidate. Thus neither prior output content nor prior output length is a causal
+region-guard field.
+
+The executable correspondence reuses the same verified \texttt{uCar\_L}
+region from candidate prefixes of one and two bytes. Both shortcuts preserve the
+complete candidate prefix, append the normative future byte, and equal direct VM
+execution. A separately verified portable region artifact repeats the two-byte
+case, proving that artifact replay uses the same rebased semantics.
 
 \section{Consumed-input-aware region guard}
 
 Let $N_F(s,e)$ require equal canonical profile, opaque geometry, input cursor,
-remaining input suffix, output length, registers, and termination, while
-allowing
-memory roots, prior output contents, and bytes strictly before the common cursor
-to differ. Combining the
+remaining input suffix, registers, and termination, while allowing memory roots,
+all prior output history, and bytes strictly before the common cursor to differ.
+Combining the
 proved profile consumed-prefix projection with the read-before-write memory set
 gives
 \begin{equation}

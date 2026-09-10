@@ -2581,17 +2581,27 @@ id = "state-graph-region-output-prefix-content"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-region-output-prefix-content"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "verified live profile regions with equal prior-output length and otherwise passing dependency guard"
+domain = "verified live regions with equal prior-output length and otherwise passing dependency guard"
 mechanism = "candidate-owned-output-prefix-plus-output-emitting-normative-equivalence"
 # jig-ignore-next-line: indivisible reviewed identifier
-evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_ignores_equal_length_output_prefix_contents"]
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rebases_output_history"]
+
+[[correspondence]]
+id = "state-graph-region-output-length-rebase"
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-region-output-length-rebase"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "verified live regions with arbitrary committed-output history and otherwise passing dependency guard"
+mechanism = "verified-zero-or-one-output-delta-rebased-onto-candidate-history"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rebases_output_history", "tests/function/algorithms/domain/state-graph/a.rs::artifact_shortcut_rebases_output_history"]
 
 [[correspondence]]
 id = "state-graph-region-consumed-input-guard"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-region-consumed-input-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "verified regions with exact geometry/cursor/input suffix/output length/registers/termination and arbitrary memory roots/past output bytes"
+domain = "verified regions with exact geometry/cursor/input suffix/registers/termination and arbitrary memory/output histories"
 mechanism = "validated-input-rebinding-plus-consumed-prefix-aware-live-in-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
 evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_drops_only_consumed_input_prefix", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_irrelevant_independent_base_change"]
@@ -2645,7 +2655,7 @@ domain = "verified region candidates with identical future non-memory state and 
 # jig-ignore-next-line: indivisible reviewed identifier
 mechanism = "irrelevant-memory-variation-direct-vm-equivalence-and-live-in-rejection"
 # jig-ignore-next-line: indivisible reviewed identifier
-evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_region_across_irrelevant_memory", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_irrelevant_independent_base_change", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_ignores_equal_length_output_prefix_contents", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rejects_live_in_memory_change"]
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_region_across_irrelevant_memory", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_irrelevant_independent_base_change", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rebases_output_history", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rejects_live_in_memory_change"]
 
 [[correspondence]]
 id = "state-graph-tiered-region-deopt"
