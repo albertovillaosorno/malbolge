@@ -351,6 +351,21 @@ transport preserves those widths.
 Product code enforces 74 ulps for the Q256/32 policy before publication. A
 2,052-case retained corpus reaches 40 ulps.
 
+
+The periodic binary64 Table Maker's Dilemma is now closed by finite external
+authority rather than a new transcendence theorem. Lefevre, Ly, and Zimmermann's
+ARITH 2026 exhaustive result gives global maxima of 68 identical bits after the
+round bit for sine and 66 for cosine. A snapshot-bound reproduction of the
+CORE-MATH `wc(e, parity)` construction covers all 1,022 periodic binary64
+binades and keeps the nearest relevant `pi/2` residual above `2^-61`.
+
+Therefore a near-zero periodic result has magnitude above `2^-62` and binary64
+ulp at least `2^-114`. The published TMD rule then places every sine rounding
+boundary at least `2^-184` away and every cosine boundary at least `2^-182`
+away. The Q256/32 interval is narrower than `2^-249`, leaving at least 65 bits
+of margin. This closes periodic Q256 precision for binary64 sine/cosine; it does
+not apply to bivariate `atan2` or by itself expose the public libc functions.
+
 A separate structural query now packages the table-maker inputs for `sin` and
 `cos` without using the reduced periodic residual. For a kernel-required
 rational binary64 `x`, a rational output-cell midpoint `m=a/b`, and `z=e^(ix)`,

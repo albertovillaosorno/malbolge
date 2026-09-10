@@ -36,10 +36,8 @@ from __future__ import annotations
 
 from os import stat_result
 from pathlib import Path
-from stat import S_IFDIR
-from stat import S_IFLNK
-from typing import TYPE_CHECKING
-from typing import cast
+from stat import S_IFDIR, S_IFLNK
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -50,7 +48,7 @@ from scripts.validate import bibliography as validator
 
 ROOT = Path(__file__).resolve().parents[1]
 C_RECORD = ROOT / "docs" / "bibliography" / "languages" / "c.md"
-EXPECTED_RECORDS = 51
+EXPECTED_RECORDS = 52
 EXPECTED_BASELINE = 44
 EXPECTED_VALIDATION_PACKAGES = 9
 EXPECTED_DURABLE_REFERENCES = 20

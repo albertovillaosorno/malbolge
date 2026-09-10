@@ -1155,6 +1155,26 @@ omitted-term enclosure.
 The Q256/32 path rejects anything wider than 74 ulps before publication. A
 2,052-case retained corpus reaches 40 ulps.
 
+
+Finite binary64 Table Maker's Dilemma evidence now closes the periodic precision
+ceiling without requiring a new effective transcendence theorem. The exhaustive
+ARITH 2026 result of Lefevre, Ly, and Zimmermann gives maximal post-round-bit
+runs of 68 for sine and 66 for cosine. The repository binds the reviewed
+CORE-MATH snapshot by commit and SHA-256 and reproduces its continued-fraction
+`wc(e, parity)` construction across all 1,022 periodic binary64 binades.
+
+That reproduction places every relevant closest-to-`pi/2` residual above
+`2^-61`. Since `|sin(r)|>|r|/2` on the reduced interval, any periodic output
+near zero has magnitude above `2^-62`, so its binary64 ulp is at least `2^-114`.
+The TMD separation is consequently at least `2^-184` for sine and `2^-182` for
+cosine. The Q256/32 directed interval is narrower than `2^-249`, giving at
+least 65 bits of margin before the nearest rounding boundary.
+
+This is a finite-domain engineering certificate backed by an exhaustive
+published TMD computation, not an empirical random-search assumption. It closes
+the periodic sine/cosine precision question while leaving public libc wiring and
+the bivariate `atan2` resource proof as separate obligations.
+
 The table-maker boundary now has a separate exponential-polynomial parameter
 surface. Let a kernel-required binary64 input be rational `x`, let an output
 rounding midpoint be `m=a/b`, and put `z=e^(ix)`. For sine,

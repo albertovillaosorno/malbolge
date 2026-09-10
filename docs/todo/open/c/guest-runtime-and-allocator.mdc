@@ -763,6 +763,21 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   sign/quadrant transport preserves width. Product code enforces the 74-ulp
   ceiling for the Q256/32 policy, while 2,052 retained cases reach only 40.
 
+
+  The periodic SIN/COS Table Maker's Dilemma resource ceiling is now closed by
+  finite binary64 evidence rather than by a new transcendence theorem. ARITH
+  2026 exhaustive results bound the maximal post-round-bit run at 68 bits for
+  sine and 66 for cosine. A commit/hash-bound CORE-MATH reproduction checks all
+  1,022 periodic binades and keeps the closest relevant `pi/2` residual above
+  `2^-61`.
+
+  Consequently periodic outputs near zero have magnitude above `2^-62` and ulp
+  at least `2^-114`; the corresponding rounding-boundary floors are `2^-184`
+  for sine and `2^-182` for cosine. Q256/32 is narrower than `2^-249`, leaving
+  at least 65 bits of margin. This closes periodic precision/resource evidence
+  for SIN/COS. Public libc integration remains to be wired, and the result does
+  not transfer to bivariate ATAN2.
+
   The remaining table-maker separation now has an executable structural bridge.
   For rational kernel input `x`, rational output midpoint `m=a/b`, and
   `z=e^(ix)`, the quadratic identities
