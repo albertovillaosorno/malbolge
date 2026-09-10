@@ -185,11 +185,11 @@ being useless under the guest memory contract.
 
 ## Conclusion
 
-The mathematics is promoted to P2 because finite global separation/resource
-closure is the remaining correctness gate for public `atan2`. The **paper is
-not** the gate: publication waits for `publication-grade-paper-pipeline`, and a
-complete independently justified finite-domain certificate may close the
-product without a new theorem.
+Finite global separation/resource closure remains a P2 guest-runtime
+engineering problem because it is the remaining correctness gate for public
+`atan2`. The **paper is P5 and is not the gate**: publication waits for
+`publication-grade-paper-pipeline`, and a complete independently justified
+finite-domain certificate may close the product without a new theorem.
 
 The next accepted result must either instantiate a materially stronger explicit
 bound below the guest resource ceiling or prove a complete finite certificate.

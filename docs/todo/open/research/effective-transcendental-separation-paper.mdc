@@ -1,12 +1,13 @@
 ---
 id: "effective-transcendental-separation-paper"
-status: "active"
+status: "pending"
 lane: "19"
-priority: "p2"
+priority: "p5"
 area: "research"
 task: "TODO - Effective transcendental separation paper"
 contract: "docs/research/methodology/publication-pipeline.md"
 depends_on:
+  - "publication-grade-paper-pipeline"
   - "repository-bibliography-taxonomy-and-citation-provenance"
 adr_paths:
   - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
@@ -51,10 +52,10 @@ mathematics paper rather than an implicit product-engineering prerequisite.
   failures; those are starting material, not a completed theorem.
 - Any future executable algorithm derived from a new theorem follows the
   research algorithm-mirror policy before product adoption.
-- Active P2 research is recorded in
-  `docs/research/studies/effective-transcendental-separation.md`. The
-  `publication-grade-paper-pipeline` remains a later publication dependency,
-  not a prerequisite for doing or validating the mathematics.
+- Product-specific finite-closure research is retained in
+  `docs/research/studies/effective-transcendental-separation.md`; this paper
+  TODO
+  remains a P5 publication concern and does not gate the guest runtime.
 - If no materially stronger effective theorem is obtained, this TODO remains
   open without preventing product completion through separately justified
   finite-domain engineering evidence.
