@@ -41,7 +41,7 @@ at
 `src/optimization/accelerator/application/accelerator/profile_run.py` extends
 the same hardware-neutral boundary to
 validated single-word-modular ternary geometries, including the current
-14-trit/4,782,969-word profile.
+15-trit/14,348,907-word profile.
 `src/optimization/accelerator/application/accelerator/work_ports.py` adds
 immutable
 candidate-evaluation, search, and verification-assist request/result protocols.
@@ -1673,8 +1673,8 @@ fails explicitly without changing correctness rules.
 - `tests/vm/cuda_run.rs` checks complete resident classic bounded-run results,
   including every final memory word, against normative Rust.
 - `tests/vm/cuda_profile_run.rs` checks eight complete current-profile outcomes,
-  including every one of the 4,782,969 final memory words, against normative
-  Rust.
+  including every one of the currently selected 14,348,907 final memory words,
+  against normative Rust.
 - A live synthetic five-trit/243-word CUDA test proves resident kernel
   generation
   is geometry-driven rather than fixed to the published 10/14-trit profiles.

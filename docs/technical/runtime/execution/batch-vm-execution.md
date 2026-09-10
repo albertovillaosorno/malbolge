@@ -75,9 +75,9 @@ resident classic and current-profile bounded execution. Each resident CUDA work
 item owns one complete profile-sized memory image plus independent registers and
 I/O and performs its explicit step budget on device; there is no guest-visible
 parallelism or shared guest state. `tests/vm/cuda_run.rs` compares all 59,049
-classic words, while `tests/vm/cuda_profile_run.rs` compares all 4,782,969
-current
-words and complete observable state to normative Rust.
+classic words, while `tests/vm/cuda_profile_run.rs` binds canonical
+`current_profile()` and compares all 14,348,907 current words plus complete
+observable state to normative Rust.
 
 `execute_batch_with_backend` and `execute_profile_batch_with_backend` expose
 hardware-neutral best-effort product routes. Source/profile admission stays on
@@ -145,23 +145,25 @@ returning one input-ordered `BatchExecutionOrigin` per request:
 exposed
 for each origin. This separates configured backend intent from actual execution;
 a benchmark or accelerator claim must not label a fallback item as backend work.
+
 The existing non-report APIs remain compatibility wrappers that discard only
 this
 provenance. Live classic and current-profile CUDA integration tests now require
 at least one completion to be accepted with `Backend` origin before their
 product
 route counts as exercised, then compare complete results with the sequential CPU
-
 baseline.
+
 The original retained current-profile CUDA matrix reached about 40.08 VMs/s at
 batch 32 for a 64-step complete-snapshot workload. Shared-memory device
 replication now raises the retained batch-32 result to about 51.67 VMs/s while
 preserving private mutable memory per VM. A separate resident-session matrix
 keeps complete state on-device across repeated segments and reaches about
 2.00 million 64-step segments/s at batch 128, but its timed region excludes
-setup, observation, and snapshots. Reusable validated profile inputs now avoid
-rescanning the full 4,782,969-word image on each call; the retained validated
+setup, observation, and snapshots.
 
+Reusable validated profile inputs in the retained N14 measurement avoid
+rescanning the full 4,782,969-word image on each call; that historical validated
 input matrix reaches about 93.68 complete-snapshot VMs/s at batch 32. The
 direct-snapshot path now downloads device memory into final result arrays
 without
@@ -200,8 +202,7 @@ deterministically without changing guest-visible state silently.
   termination, step counts, resumption, and atomic rejection.
 - `tests/vm/cuda_profile_run.rs` verifies resident `malbolge-2026` execution
   against normative `ProfileMachine` across eight edge/real-program cases and
-  every
-  one of the 4,782,969 final memory words.
+  every one of the currently selected 14,348,907 final memory words.
 - `tests/vm/batch_backend.rs` verifies input-ordered origin reports for accepted
   backend checkpoints, whole-batch/malformed fallback, and admission rejection.
   Live CUDA product-route tests additionally fail when a CUDA worker runs but no

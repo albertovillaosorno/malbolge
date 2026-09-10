@@ -23,7 +23,7 @@
 // - Summary:
 //   - Proves current checkpoints use exact collision-safe graph identity.
 // - Description:
-//   - Exercises 4,782,969-word checkpoints without weakening equality.
+//   - Exercises 14,348,907-word checkpoints without weakening equality.
 // - Usage:
 //   - Composed by `tests/state_graph_research.rs`.
 // - Defaults:

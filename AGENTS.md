@@ -47,7 +47,7 @@ resource ceilings or interpreter defects into permanent current-language
 constraints.
 
 Repository-root `malbolge.json` is the target-profile identity authority. Schema
-v2 selects the 14-trit `malbolge-2026` profile as current, retains
+v2 selects the 15-trit `malbolge-2026` profile as current, retains
 `malbolge-2026.1`, `malbolge-2026.2`, and `malbolge-2026.3` as immutable
 versioned identities,
 and preserves `malbolge-1998` as frozen historical conformance. The current
@@ -62,8 +62,8 @@ The safe Rust runtime has two explicit interpreters. `Machine` and
 `safe-rust-classic`; they must never silently execute `malbolge-2026` through
 the ten-trit loader. `ProfileMachine` is the normative profile-driven
 interpreter
-and preflights against `safe-rust-profiled`, currently up to 14 trits and
-4,782,969 words. The checked-in Rust descriptors are generated from
+and preflights against `safe-rust-profiled`, currently up to 15 trits and
+14,348,907 words. The checked-in Rust descriptors are generated from
 `malbolge.json` and must remain byte-exact with the validator renderer.
 Profile fingerprints use `malbolge-profile-v1`; profile ID/version/geometry and
 semantics are hashed, while registry `kind` is intentionally excluded so a

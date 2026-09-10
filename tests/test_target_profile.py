@@ -42,6 +42,9 @@ from scripts.validate import target_profile as validator
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_PATH = ROOT / "malbolge.json"
+TARGET_PROFILE_CONTRACT = (
+    ROOT / "docs/technical/specification/target-profile.md"
+)
 CURRENT_PROFILE = "malbolge-2026"
 CURRENT_VERSION = "2026"
 TRANSITION_PROFILE = "malbolge-2026.3"
@@ -61,6 +64,10 @@ INTERPRETER_INPUT = "/"
 INTERPRETER_OUTPUT = "<"
 SPECIFICATION_INPUT = "<"
 SPECIFICATION_OUTPUT = "/"
+VERSIONED_N14_DOC = "`N = 14`, 4,782,969-word"
+STALE_CURRENT_GEOMETRY_DOC = (
+    "same interpreter-compatible I/O and geometry as the annual current"
+)
 
 
 def _canonical_text() -> str:
@@ -188,6 +195,19 @@ def test_current_profile_geometry_view_matches_canonical_document() -> None:
     assert geometry.eof_word == CURRENT_EOF
     assert geometry.input_instruction == INTERPRETER_INPUT
     assert geometry.output_instruction == INTERPRETER_OUTPUT
+
+
+def test_target_profile_contract_tracks_selected_geometry() -> None:
+    """The owning human contract cannot lag the selected profile geometry."""
+    text = TARGET_PROFILE_CONTRACT.read_text(encoding="utf-8")
+    implementation = text.split(
+        "### Implementation Status", maxsplit=1
+    )[1].split("## Invariants", maxsplit=1)[0]
+    assert f"N = {CURRENT_TRITS}" in implementation
+    assert f"{CURRENT_WORDS:,}" in implementation
+    assert f"{CURRENT_EOF:,}" in implementation
+    assert VERSIONED_N14_DOC in implementation
+    assert STALE_CURRENT_GEOMETRY_DOC not in implementation
 
 
 def test_profile_file_rejects_invalid_utf8(tmp_path: Path) -> None:

@@ -475,7 +475,7 @@ successful trusted artifacts that are strictly narrower than the canonical
 profile and whose hidden input policy admits the exact input.
 `ProfileMachine::from_adaptive_source` uses that artifact when construction
 succeeds and otherwise returns to canonical `from_source`. QP/empty and
-`ubO`/byte input select N=10, while `ubO`/empty remains N=14.
+`ubO`/byte input select N=10, while `ubO`/empty remains canonical N15.
 
 The CLI now exposes this selection as an explicit current-profile policy rather
 than changing the default. With `MALBOLGE_PROFILE_ADAPTIVE_WIDTH=1`, QP/empty

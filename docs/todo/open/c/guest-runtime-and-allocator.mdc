@@ -75,7 +75,7 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   preflights the entire canonical chain. Invalid later metadata rejects before
   earlier state or result publication changes.
 - Implemented byte-stream evidence: profile input words `0..255` map to C byte
-  values, profile EOF `4,782,968` maps to `-1`, impossible intermediate words
+  values, profile EOF `14,348,906` maps to `-1`, impossible intermediate words
   fail explicitly, and output consumes the low eight bits without host stdio.
 - Implemented conformance evidence: `tests/test_guest_runtime_c.py` compiles the
   independent C vectors with strict warnings for i686, x86-64, and AArch64

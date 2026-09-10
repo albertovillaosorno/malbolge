@@ -150,7 +150,7 @@ step contributes at most two changed address/value records independent of the
 size of $M_0$.
 
 The current-profile executable correspondence starts from one complete
-4,782,969-word checkpoint, applies only \texttt{ProfileMemoryDelta} values
+14,348,907-word checkpoint, applies only \texttt{ProfileMemoryDelta} values
 emitted by
 real traced execution, and after every step materializes the persistent view and
 requires exact equality with the runtime's complete checkpoint memory. A
@@ -438,9 +438,9 @@ when
     H_p(E_p(q_1))=H_p(E_p(q_2))\;\land\;q_1=q_2.
   \label{eq:state-graph-profile-collision-safe-merge}
 \end{equation}
-The current-profile fixture exercises complete 14-trit checkpoints containing
-4,782,969 words. Exact replay deduplicates, while a deliberately constant digest
-still keeps checkpoints with different input distinct. This establishes a
+The current-profile fixture exercises complete 15-trit checkpoints containing
+14,348,907 words. Exact replay deduplicates, while a deliberately constant
+digest still keeps checkpoints with different input distinct. This establishes a
 correctness baseline only; copying/hashing complete current checkpoints is not a
 claimed production-performance strategy.
 

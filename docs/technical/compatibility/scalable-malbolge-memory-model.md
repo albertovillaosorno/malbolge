@@ -206,9 +206,9 @@ falls back to 59,049 words, or borrows host pointer behavior.
 - `src/interoperability/profile-compatibility/contract/scalable-memory-evidence.json`
   retains the exact tracked source
   hash, source-byte proxy, candidate capacities, and selected profile.
-- `tests/vm/profile_machine.rs` executes the full 4,782,969-word current
+- `tests/vm/profile_machine.rs` executes the full 14,348,907-word current
   profile,
-  verifies addresses above 59,048, and checks 14-trit crazy/rotate effects
+  verifies addresses above 59,048, and checks 15-trit crazy/rotate effects
   against
   independent scalar formulas.
 - The same Rust suite executes `ProfileMachine` under `malbolge-1998` and
@@ -217,7 +217,7 @@ falls back to 59,049 words, or borrows host pointer behavior.
   against the classic `Machine`.
 - `tests/vm/profile_tracing.rs` locks current-profile trace identity, current
   EOF,
-  trace inertness, and atomic rejection from a real 14-trit recurrence target.
+  trace inertness, and atomic rejection from a real N15 recurrence target.
 
 ## References
 

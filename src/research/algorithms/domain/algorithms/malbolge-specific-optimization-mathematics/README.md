@@ -197,8 +197,11 @@ Ordered sextuples have
 leaves one of eleven Young stabilizers acting on 52 residual scalar labels; this
 factorization reproduces the full Burnside sequence through mass 14.
 
-The pure S6 counting theory now extends one mathematical mass beyond the
-current 14-trit product profile. At ambiguity mass 15, direct S6 Burnside
+The pure S6 counting theory covers ambiguity mass 15, matching the current
+N15 product width. When first derived, this was one mathematical mass beyond the
+then-current N14 profile.
+
+At ambiguity mass 15, direct S6 Burnside
 arithmetic gives 6,113,218,719,516 endpoint-unordered classes. Independently,
 the eleven Young-stratum contributions sum to the same integer exactly. The
 ratio from mass 14 is about 5.180954, while the ordered stars-and-bars quotient

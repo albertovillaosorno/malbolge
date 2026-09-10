@@ -23,14 +23,14 @@
 // - Merge-When:
 //   - Merge when classic/profile differential evidence gains one shared suite.
 // - Summary:
-//   - Proves 14-trit execution and 10-trit equivalence without host-width
+//   - Proves 15-trit execution and 10-trit equivalence without host-width
 //   - drift.
 // - Description:
 //   - Uses scalar ternary formulas as an independent current-profile oracle.
 // - Usage:
 //   - Composed by `tests/vm.rs` under the normal Cargo integration test target.
 // - Defaults:
-//   - Current profile uses one full 4,782,969-word execution fixture.
+//   - Current profile uses one full 14,348,907-word execution fixture.
 //
 
 //! Profile-driven scalable VM execution and classic differential fixtures.

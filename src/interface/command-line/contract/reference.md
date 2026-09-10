@@ -40,8 +40,8 @@ historical-profile capsules ignore this setting.
 
 When adaptive selection finds no strictly narrower proof, construction remains
 canonical. For example, a current-profile QP capsule with empty input selects
-N=10, while the checked-in `ubO` capsules have empty input and stay at N=14
-because their narrow input/output/halt proof requires `MinimumLength(1)`.
+N=10, while the checked-in `ubO` capsules have empty input and stay at canonical
+N15 because their narrow input/output/halt proof requires `MinimumLength(1)`.
 
 Resident-worker execution is independently opt-in. The composition root can bind
 a trusted MBPRN2 worker by setting `MALBOLGE_PROFILE_RESIDENT_WORKER` to its

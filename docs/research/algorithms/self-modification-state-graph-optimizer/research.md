@@ -111,12 +111,12 @@ The exact baseline now also consumes the runtime-owned
 `ProfileMachineState` checkpoint directly. `profile.rs` indexes the complete
 validated checkpoint by profile fingerprint, I/O state, registers, and every
 profile memory word; a then-current `malbolge-2026.2` replay deduplicates and a
-forced
-constant digest does not merge checkpoints with different input. This extends
-the
-correctness oracle to 4,782,969-word current states without duplicating
-checkpoint
-validation.
+forced constant digest does not merge checkpoints with different input. This
+established the correctness oracle over the then-current
+4,782,969-word N14 states without duplicating checkpoint validation. The
+executable fixtures now consume canonical `current_profile()` and therefore
+exercise N15; the retained benchmark numbers below remain historical N14
+evidence.
 
 The exact current checkpoint cost is now measured independently at commit
 `2c2365f`. Fifteen post-warmup samples per operation give medians of 7,194,700

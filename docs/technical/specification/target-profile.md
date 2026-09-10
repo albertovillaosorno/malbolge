@@ -36,18 +36,18 @@ Schema version 2 is implemented in repository-root `malbolge.json`. It contains
 an immutable `malbolge-1998` historical-conformance profile, retains
 `malbolge-2026.1`, `malbolge-2026.2`, and `malbolge-2026.3` as immutable
 versioned identities, and selects the year-only `malbolge-2026` as
-the current language profile. The current profile
-uses the scalable 14-trit single-word ternary geometry defined by the
-scalable-memory contract: 4,782,969 word values and the same number of directly
-addressed memory words.
+the current language profile. The current profile uses the scalable
+`N = 15` single-word ternary geometry defined by the scalable-memory contract:
+14,348,907 word values and the same number of directly addressed memory words,
+with EOF word 14,348,906.
 
 I/O opcode assignment is versioned profile semantics. `malbolge-1998` and the
 current `malbolge-2026` use interpreter-compatible `/` input and `<` output.
 The already published `malbolge-2026.1` and `malbolge-2026.2` identities retain
 their specification-first `<` input and `/` output assignment. The published
-`malbolge-2026.3` compatibility identity retains the same interpreter-compatible
-I/O and geometry as the annual current profile, but remains a distinct immutable
-artifact identity. The current
+`malbolge-2026.3` compatibility identity retains the same
+interpreter-compatible I/O assignment but its immutable `N = 14`, 4,782,969-word
+geometry; it remains distinct from the annual current profile. The current
 profile does not inherit historical C undefined behavior, non-progress as a
 modern termination policy, or the ten-trit resource ceiling merely because its
 

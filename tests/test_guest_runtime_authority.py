@@ -53,6 +53,9 @@ INTRINSIC_HEADER = (
 )
 FRAME_SOURCE = ROOT / "src/runtime/guest-runtime/domain/frame.c"
 HEAP_SOURCE = ROOT / "src/runtime/guest-runtime/domain/heap.c"
+GUEST_RUNTIME_DOC = (
+    ROOT / "docs/technical/compiler/c-profile/guest-runtime-and-allocator.md"
+)
 
 RUNTIME_ID = "malbolge-guest-runtime-v1"
 ABI_ID = "malbolge-c32-v1"
@@ -385,6 +388,18 @@ def test_runtime_constants_match_abi_and_current_profile() -> None:
     assert semantics["output_modulus"] == OUTPUT_MODULUS
     assert semantics["input_instruction"] == INPUT_INSTRUCTION
     assert semantics["output_instruction"] == OUTPUT_INSTRUCTION
+
+
+def test_guest_runtime_doc_tracks_current_profile_eof() -> None:
+    """The guest-runtime contract cannot retain an obsolete current EOF."""
+    profile = load_object(PROFILE_PATH)
+    current_name = cast("str", profile["current_profile"])
+    profiles = cast("dict[str, object]", profile["profiles"])
+    current = cast("dict[str, object]", profiles[current_name])
+    semantics = cast("dict[str, object]", current["semantics"])
+    eof_word = cast("int", semantics["eof_word"])
+    contract = GUEST_RUNTIME_DOC.read_text(encoding="utf-8")
+    assert f"EOF word `{eof_word:,}` maps to `-1`" in contract
 
 
 def test_frame_codec_offsets_match_c_abi_authority() -> None:

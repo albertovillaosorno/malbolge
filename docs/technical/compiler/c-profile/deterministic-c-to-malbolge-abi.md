@@ -67,9 +67,9 @@ that reports a different version fails closed before guest source analysis.
 root `malbolge.json` authority. Validation fails when the ABI manifest and the
 canonical current-profile selection disagree.
 
-The current profile has 14-trit Malbolge words, modulus and memory extent
-4,782,969 words, `/` as the input instruction, `<` as the output instruction,
-EOF word 4,782,968, and byte output modulo 256. These Malbolge machine facts do
+The current profile has 15-trit Malbolge words, modulus and memory extent
+14,348,907 words, `/` as the input instruction, `<` as the output instruction,
+EOF word 14,348,906, and byte output modulo 256. These Malbolge machine facts do
 not change the C scalar widths below. C objects live in the compiler/runtime's
 logical byte-addressed model and are lowered into selected-profile resources.
 

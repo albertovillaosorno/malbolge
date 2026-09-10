@@ -39,6 +39,7 @@ import json
 from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from typing import cast
 
 import pytest
 from scripts.validate import c_abi
@@ -46,6 +47,12 @@ from scripts.validate import c_abi_source
 
 ROOT = Path(__file__).resolve().parents[1]
 ABI_PATH = ROOT / "docs/technical/specification/c-abi-v1.json"
+PROFILE_PATH = ROOT / "malbolge.json"
+ABI_CONTRACT_DOC = (
+    ROOT
+    / "docs/technical/compiler/c-profile"
+    / "deterministic-c-to-malbolge-abi.md"
+)
 ACCEPTED = ROOT / "tests/tidy/accepted"
 REJECTED = ROOT / "tests/tidy/rejected"
 CLANG_TIDY = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang-tidy.bin"
@@ -85,6 +92,22 @@ def test_canonical_abi_is_closed_and_bound_to_current_profile() -> None:
     assert projection.pointer_bits == c_abi.POINTER_BITS
     assert projection.max_alignment == c_abi.MAX_ALIGNMENT
     assert projection.stack_alignment == c_abi.STACK_ALIGNMENT
+
+
+def test_c_abi_contract_tracks_current_profile_geometry() -> None:
+    """The ABI prose consumes current geometry instead of freezing old N14."""
+    profile_text = PROFILE_PATH.read_text(encoding="utf-8")
+    profile = cast("dict[str, object]", json.loads(profile_text))
+    current_name = cast("str", profile["current_profile"])
+    profiles = cast("dict[str, object]", profile["profiles"])
+    current = cast("dict[str, object]", profiles[current_name])
+    word = cast("dict[str, object]", current["word"])
+    memory = cast("dict[str, object]", current["memory"])
+    semantics = cast("dict[str, object]", current["semantics"])
+    contract = ABI_CONTRACT_DOC.read_text(encoding="utf-8")
+    assert f"{word['trits']}-trit Malbolge words" in contract
+    assert f"{memory['words']:,} words" in contract
+    assert f"EOF word {semantics['eof_word']:,}" in contract
 
 
 def test_duplicate_abi_keys_fail_closed() -> None:

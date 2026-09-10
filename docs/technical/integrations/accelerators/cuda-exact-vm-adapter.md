@@ -134,8 +134,9 @@ and atomic transition rules.
 
 `tests/vm/cuda_profile_run.rs` obtains geometry exclusively from canonical Rust
 `current_profile()` and compares eight complete `malbolge-2026` cases against
-`ProfileMachine`. The RTX 4060 / `sm_89` differential compares every one of the
-4,782,969 final memory words plus registers, input/output, termination, step
+`ProfileMachine`, including all 14,348,907 words selected today. The retained
+RTX 4060 / `sm_89` differential was captured under the then-current N14 profile
+and compares all 4,782,969 words plus registers, input/output, termination, step
 counts, and rejection details. Cases cover the real six-step current program
 with
 input and EOF, rejected jump atomicity, non-graphical termination,
@@ -1392,9 +1393,9 @@ fails explicitly without changing correctness rules.
   1 redistributables.
 - Compact classic-step differential evidence covers VM state/I/O/mutation trace
   projections and atomic rejection. Resident classic evidence compares complete
-  59,049-word states; scalable resident evidence compares complete
-  4,782,969-word
-  current-profile states against normative Rust. Product-level batch routing, an
+  59,049-word states; the executable scalable suite binds canonical
+  `current_profile()`, while retained N14 evidence compares complete
+  4,782,969-word states against normative Rust. Product-level batch routing, an
   RTX 4060 current-profile baseline, device-side shared initialization,
   validated-memory, direct-snapshot, and persistent-session evidence are
   retained.

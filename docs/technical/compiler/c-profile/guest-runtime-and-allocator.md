@@ -77,7 +77,7 @@ them; decoding stages all fields and validates before mutating its output.
 Native return addresses and native stack metadata never enter this codec.
 
 The byte-stream domain has no host I/O. Current-profile input words `0..255` map
-to C `int` values, EOF word `4,782,968` maps to `-1`, impossible intermediate
+to C `int` values, EOF word `14,348,906` maps to `-1`, impossible intermediate
 words are rejected, and output is the low eight bits of the supplied C value.
 
 Guest startup now has an explicit one-time heap-binding domain. Allocation
