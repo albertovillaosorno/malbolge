@@ -34,12 +34,29 @@
 
 use std::collections::BTreeMap;
 
-use malbolge::{ProfileExecutionGeometry, ProfileMachineState, Termination};
+use malbolge::{
+    ProfileExecutionGeometry, ProfileMachineState, ProfileRegisters,
+    Termination,
+};
 
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
 const FNV_PRIME: u64 = 1_099_511_628_211;
 
 type ProfileDigestFunction = fn(&ProfileMachineState) -> u64;
+
+/// Reduced profile future key that omits only consumed input-prefix contents.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileFutureInputSnapshot {
+    geometry: ProfileExecutionGeometry,
+    input_consumed: usize,
+    memory: Box<[u32]>,
+    output: Box<[u8]>,
+    profile_fingerprint: Box<str>,
+    profile_id: Box<str>,
+    registers: ProfileRegisters,
+    remaining_input: Box<[u8]>,
+    termination: Option<Termination>,
+}
 
 /// Reduced future key for an already terminated profile checkpoint.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -68,6 +85,8 @@ pub struct ProfileStateGraph {
 /// Failure while indexing an exact profile checkpoint.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProfileStateGraphError {
+    /// A validated checkpoint exposed an impossible input cursor.
+    InputCursorOutOfRange,
     /// Unique checkpoint count exceeded the stable identifier domain.
     NodeIdentityOverflow,
     /// Terminal projection was requested from a live checkpoint.
@@ -170,6 +189,38 @@ impl Default for ProfileStateGraph {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Builds a reduced profile key by dropping consumed input-prefix contents.
+///
+/// The exact opaque geometry token remains part of the key, preserving any
+/// hidden input-domain restriction independently admitted by profile-width
+/// verification.
+///
+/// # Errors
+///
+/// Returns [`ProfileStateGraphError::InputCursorOutOfRange`] if a checkpoint
+/// violates the runtime-owned input cursor invariant.
+pub fn profile_future_input_snapshot(
+    state: &ProfileMachineState,
+) -> Result<ProfileFutureInputSnapshot, ProfileStateGraphError> {
+    let io = state.io();
+    let cursor = io.input_consumed();
+    let remaining_input = io
+        .input()
+        .get(cursor..)
+        .ok_or(ProfileStateGraphError::InputCursorOutOfRange)?;
+    Ok(ProfileFutureInputSnapshot {
+        geometry: state.geometry(),
+        input_consumed: cursor,
+        memory: state.memory().into(),
+        output: io.output().into(),
+        profile_fingerprint: state.profile().fingerprint().into(),
+        profile_id: state.profile().id().into(),
+        registers: state.registers(),
+        remaining_input: remaining_input.into(),
+        termination: io.termination(),
+    })
 }
 
 /// Builds a reduced future key for an already terminated profile checkpoint.

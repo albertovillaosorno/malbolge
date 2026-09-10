@@ -100,6 +100,18 @@ bytes, applies one common second byte that overwrites `A`, and proves the
 reduced
 keys are equal both before and after the common future halt.
 
+The consumed-input-prefix reduction now covers validated profile checkpoints as
+well. `profile_future_input_snapshot` retains the exact opaque execution
+geometry
+token, cursor, remaining suffix, output, registers, memory, termination, and
+canonical profile identity while dropping only bytes strictly before the cursor.
+The minimum-width `utO` profile fixture exhausts all 256 first-byte values
+with a
+common second byte; after two committed input transitions the reduced keys
+agree,
+and the following normative halt preserves that convergence. Geometry admission
+is never reconstructed or weakened by the research projection.
+
 The terminal-state reduction now covers validated profile checkpoints as well as
 classic machines. A profile terminal key retains exact canonical profile,
 admitted execution geometry, committed output, and termination while dropping
@@ -180,8 +192,9 @@ Each experiment must narrow these threats before drawing a conclusion.
 
 Accept exact-state deduplication as the conservative graph baseline and admit
 the exact baseline for both classic and validated current-profile checkpoints,
-plus two structural reductions: consumed input-prefix contents are
-future-irrelevant when cursor/suffix stay exact, and already-terminated states
+plus two structural reductions across their proved classic/profile domains:
+consumed input-prefix contents are future-irrelevant when geometry/cursor/suffix
+stay exact, and already-terminated states
 may drop dead memory/register/input state while retaining
 profile/output/termination. Do not yet promote live memory/register/output
 reductions or a native-execution shortcut. Each further reduction must

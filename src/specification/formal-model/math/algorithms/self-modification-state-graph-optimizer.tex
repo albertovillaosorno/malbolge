@@ -500,6 +500,32 @@ input and after the following halt. This correspondence establishes the
 reduction only for consumed-prefix content; it does not justify dropping the
 cursor or any remaining input byte.
 
+\section{Profile consumed input prefix reduction}
+
+Let $q$ be a validated profile checkpoint carrying canonical profile fingerprint
+$f$, opaque admitted geometry $g$, input $I$, committed cursor $i$, output $O$,
+registers $(A,C,D)$, termination $\tau$, and exact $W_g$-word memory $M$. The
+profile machine reads future input only at the current cursor; it never reads
+bytes strictly before $i$ again. Define
+\begin{equation}
+  F_{p,I}(q)=\left(
+    f,g,A,C,D,i,I[i\ldots],O,\tau,M[0],\ldots,M[W_g-1]
+  \right).
+  \label{eq:state-graph-profile-consumed-input-prefix}
+\end{equation}
+The opaque geometry token remains exact, including any hidden input-domain
+restriction previously admitted by trusted width verification. The reduction is
+therefore defined only between individually validated checkpoints carrying the
+same geometry; it does not reconstruct or weaken that admission.
+
+The executable correspondence verifies the straight-line \texttt{utO} profile
+source (input, input, halt) at its minimum admitted geometry. It exhausts all
+256
+first-byte values with one common second byte, executes both input transitions,
+and requires identical $F_{p,I}$ keys before the common halt and again after it.
+Changing the cursor, remaining suffix, geometry, or any other live component is
+outside this reduction.
+
 \section{Terminal-state reduction}
 
 Once $\tau\neq\varnothing$, the normative machine returns the same termination

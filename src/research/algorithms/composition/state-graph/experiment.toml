@@ -28,6 +28,14 @@ candidate = "drop-consumed-input-prefix-content"
 domain = "same cursor, same remaining input suffix, otherwise exact-equal state"
 first_byte_domain = 256
 
+[reduction.profile_consumed_input_prefix]
+baseline = "complete-validated-profile-checkpoint"
+candidate = "drop-consumed-input-prefix-content"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "same opaque geometry, cursor, remaining suffix, and otherwise exact profile state"
+first_byte_domain = 256
+future_execution = "normative-profile-halt"
+
 [reduction.terminal_state]
 baseline = "exact-state"
 candidate = "drop-dead-state-after-termination"

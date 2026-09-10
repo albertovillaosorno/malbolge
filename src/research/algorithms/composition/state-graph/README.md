@@ -21,6 +21,13 @@ before the cursor. `exact.rs` exhausts all 256 possible consumed first bytes in
 a
 converging two-input fixture before accepting this reduction.
 
+`profile_future_input_snapshot` extends consumed-prefix reduction to validated
+profile checkpoints without weakening adaptive-width authority. It retains the
+exact opaque geometry token, cursor, remaining suffix, output, registers,
+memory,
+termination, and canonical profile identity. A minimum-width `utO` fixture
+exhausts all 256 first bytes and converges before and after the common halt.
+
 `profile_terminal_future_snapshot` extends the same dead-state reasoning to a
 validated profile checkpoint. It retains canonical profile identity, opaque
 execution geometry, committed output, and termination, while input, registers,

@@ -2438,6 +2438,16 @@ mechanism = "structural-reduction-plus-exhaustive-byte-fixture"
 evidence = ["tests/function/algorithms/domain/state-graph/exact.rs::consumed_input_prefix_is_future_irrelevant"]
 
 [[correspondence]]
+id = "state-graph-profile-consumed-input-prefix"
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-profile-consumed-input-prefix"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "validated profile checkpoints with exact opaque geometry/cursor/suffix and otherwise equal live state, varying only consumed input-prefix contents"
+mechanism = "structural-profile-reduction-plus-exhaustive-first-byte-future-halt"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/c.rs::profile_consumed_input_prefix_is_future_irrelevant"]
+
+[[correspondence]]
 id = "state-graph-terminal-state"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-terminal-state"

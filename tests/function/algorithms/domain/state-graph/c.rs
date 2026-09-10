@@ -36,14 +36,19 @@ use malbolge::{
     ProfileMachine, ProfileMachineIoState, ProfileMachineState,
     ProfileRegisters, StepOutcome, Termination, current_profile,
     verify_minimum_initial_halt_profile_width,
+    verify_minimum_straight_line_io_profile_width,
 };
 
 use crate::profile_graph::{
-    ProfileStateGraph, ProfileStateGraphError, ProfileTerminalFutureSnapshot,
-    constant_profile_collision_digest, profile_terminal_future_snapshot,
+    ProfileFutureInputSnapshot, ProfileStateGraph, ProfileStateGraphError,
+    ProfileTerminalFutureSnapshot, constant_profile_collision_digest,
+    profile_future_input_snapshot, profile_terminal_future_snapshot,
 };
 
 const CURRENT_SOURCE: &[u8] = b"(=%`qL";
+const PROFILE_INPUT_PREFIX_SOURCE: &[u8] = b"utO";
+const PROFILE_INPUT_STEPS: usize = 2;
+const SHARED_SECOND_INPUT: u8 = 0x7a;
 
 fn current_checkpoint(input: u8) -> Result<ProfileMachineState, String> {
     let machine =
@@ -125,6 +130,22 @@ fn terminal_variant(
     .map_err(|error| format!("profile terminal state failed: {error}"))
 }
 
+fn check_profile_input_reference(
+    expected: &mut Option<ProfileFutureInputSnapshot>,
+    observed: ProfileFutureInputSnapshot,
+) -> Result<(), String> {
+    match expected {
+        Some(reference) if reference != &observed => Err(String::from(
+            "profile consumed input prefix remained future-relevant",
+        )),
+        Some(_reference) => Ok(()),
+        None => {
+            *expected = Some(observed);
+            Ok(())
+        },
+    }
+}
+
 fn check_profile_terminal_reference(
     expected: &mut Option<ProfileTerminalFutureSnapshot>,
     observed: ProfileTerminalFutureSnapshot,
@@ -182,6 +203,55 @@ fn terminated_profile_drops_dead_memory_registers_and_input()
         {
             return Err(String::from("profile terminal future state changed"));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn profile_consumed_input_prefix_is_future_irrelevant() -> Result<(), String> {
+    let verified = verify_minimum_straight_line_io_profile_width(
+        current_profile(),
+        PROFILE_INPUT_PREFIX_SOURCE,
+    )
+    .map_err(|error| format!("profile input-prefix width failed: {error}"))?;
+    let mut before_halt = None;
+    let mut after_halt = None;
+    for first_byte in u8::MIN..=u8::MAX {
+        let input = vec![first_byte, SHARED_SECOND_INPUT];
+        let mut machine = ProfileMachine::from_verified_source(
+            &verified, input,
+        )
+        .map_err(|error| format!("profile input-prefix load: {error}"))?;
+        for _step in 0..PROFILE_INPUT_STEPS {
+            let outcome = machine.step().map_err(|error| {
+                format!("profile input-prefix step: {error}")
+            })?;
+            if outcome != StepOutcome::Continued {
+                return Err(format!(
+                    "profile input-prefix stopped early: {outcome:?}"
+                ));
+            }
+        }
+        let checkpoint = machine.snapshot_state();
+        if checkpoint.io().input_consumed() != PROFILE_INPUT_STEPS {
+            return Err(String::from("profile input cursor did not reach two"));
+        }
+        let pre_halt = profile_future_input_snapshot(&checkpoint)
+            .map_err(|error| format!("profile future projection: {error:?}"))?;
+        check_profile_input_reference(&mut before_halt, pre_halt)?;
+        let outcome = machine
+            .step()
+            .map_err(|error| format!("profile future halt: {error}"))?;
+        if outcome != StepOutcome::Terminated(Termination::HaltInstruction) {
+            return Err(format!(
+                "profile future fixture did not halt: {outcome:?}"
+            ));
+        }
+        let post_halt = profile_future_input_snapshot(
+            &machine.snapshot_state(),
+        )
+        .map_err(|error| format!("profile post-halt projection: {error:?}"))?;
+        check_profile_input_reference(&mut after_halt, post_halt)?;
     }
     Ok(())
 }
