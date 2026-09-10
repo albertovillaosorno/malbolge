@@ -1028,7 +1028,7 @@ Rust integration sends nine complete classic resident states through a binary
 worker and compares all 59,049 memory words plus registers, I/O, termination,
 step counts, and atomic rejection. A scalable integration separately supplies
 canonical geometry from Rust `current_profile()` and compares eight complete
-`malbolge-2026.2` outcomes across all 4,782,969 final memory words, including
+`malbolge-2026` outcomes across all 14,348,907 final memory words, including
 real
 I/O, EOF, non-graphical termination, rejected jump atomicity, maximum-pointer
 wrap, bounded budget exhaustion, live checkpoint resumption, and

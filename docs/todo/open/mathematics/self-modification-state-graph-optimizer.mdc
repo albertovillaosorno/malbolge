@@ -68,7 +68,7 @@ VM evidence.
 - `memory.rs` now represents current memory as one shared complete root plus
   exact trace patches. Every patch validates `before`, empty deltas add no
   depth,
-  and stepwise materialization matches the runtime's complete 4,782,969-word
+  and stepwise materialization matches the runtime's complete 14,348,907-word
   checkpoint after every traced step. Performance/compaction remains open.
 - Post-commit depth evidence keeps latest-hit reads near 18 ns through depth
   4096, while root misses rise to 20751.17 ns/op. A high-depth fit is
