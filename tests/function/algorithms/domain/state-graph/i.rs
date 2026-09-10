@@ -46,6 +46,15 @@ const PATCH_BASE: u32 = 1_024;
 const ROOT_ONLY_ADDRESS: u32 = 17;
 const STEP_BUDGET: usize = 8;
 
+const fn shifted_word(value: u32, offset: u32, modulus: u32) -> u32 {
+    let shifted = value.saturating_add(offset);
+    if shifted >= modulus {
+        shifted.saturating_sub(modulus)
+    } else {
+        shifted
+    }
+}
+
 #[test]
 fn current_trace_deltas_reconstruct_every_indexed_checkpoint()
 -> Result<(), String> {
@@ -223,6 +232,78 @@ fn reverted_override_returns_to_canonical_root_identity() -> Result<(), String>
     }
     if !reverted.exact_memory_eq(&root) {
         return Err(String::from("indexed reverted memory is not exact root"));
+    }
+    Ok(())
+}
+
+fn apply_indexed_writes<const N: usize>(
+    mut memory: IndexedProfileMemory,
+    writes: [(u32, u32); N],
+) -> Result<IndexedProfileMemory, String> {
+    for (address, after) in writes {
+        let before = memory.read(address).map_err(|error| {
+            format!("indexed history read failed: {error:?}")
+        })?;
+        memory = memory
+            .apply(ProfileMemoryDelta {
+                data: Some(ProfileMemoryWrite { address, after, before }),
+                encryption: None,
+            })
+            .map_err(|error| {
+                format!("indexed history write failed: {error:?}")
+            })?;
+    }
+    Ok(memory)
+}
+
+#[test]
+fn divergent_write_histories_converge_to_exact_indexed_memory()
+-> Result<(), String> {
+    let machine =
+        ProfileMachine::from_source(current_profile(), b"QP", Vec::new())
+            .map_err(|error| {
+                format!("indexed history fixture failed: {error}")
+            })?;
+    let root = IndexedProfileMemory::from_state(&machine.snapshot_state())
+        .map_err(|error| format!("indexed history root failed: {error:?}"))?;
+    let first_address = PATCH_BASE;
+    let second_address = PATCH_BASE.saturating_add(1);
+    let first_base = root.read(first_address).map_err(|error| {
+        format!("indexed first history read failed: {error:?}")
+    })?;
+    let second_base = root.read(second_address).map_err(|error| {
+        format!("indexed second history read failed: {error:?}")
+    })?;
+    let modulus = current_profile().word_modulus();
+    let first_mid = shifted_word(first_base, 1, modulus);
+    let first_final = shifted_word(first_base, 2, modulus);
+    let second_mid = shifted_word(second_base, 1, modulus);
+    let second_final = shifted_word(second_base, 2, modulus);
+    let direct = apply_indexed_writes(root.clone(), [
+        (first_address, first_final),
+        (second_address, second_final),
+    ])?;
+    let staged = apply_indexed_writes(root, [
+        (second_address, second_mid),
+        (first_address, first_mid),
+        (second_address, second_final),
+        (first_address, first_final),
+    ])?;
+    if direct.patch_count() != 2 || staged.patch_count() != 4 {
+        return Err(String::from("indexed histories did not remain distinct"));
+    }
+    if direct.overlay_digest() != staged.overlay_digest()
+        || !direct.exact_memory_eq(&staged)
+        || direct
+            .materialize()
+            .map_err(|error| format!("direct materialize: {error:?}"))?
+            != staged
+                .materialize()
+                .map_err(|error| format!("staged materialize: {error:?}"))?
+    {
+        return Err(String::from(
+            "divergent indexed histories did not converge exactly",
+        ));
     }
     Ok(())
 }

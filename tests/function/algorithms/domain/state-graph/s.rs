@@ -36,8 +36,9 @@
 //! Correctness fixtures for incremental exact indexed-state identity.
 
 use malbolge::{
-    ProfileMachine, ProfileStepTrace, StepOutcome, current_profile,
-    decode_profile_instruction, verify_minimum_initial_halt_profile_width,
+    ProfileMachine, ProfileMemoryDelta, ProfileMemoryWrite, ProfileStepTrace,
+    StepOutcome, current_profile, decode_profile_instruction,
+    verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_jump_code_halt_profile_width,
     verify_minimum_jump_code_io_halt_profile_width,
@@ -54,6 +55,15 @@ use crate::indexed_state::{
 
 const CURRENT_SOURCE: &[u8] = b"(=%`qL";
 const STEP_BUDGET: usize = 8;
+
+const fn shifted_word(value: u32, offset: u32, modulus: u32) -> u32 {
+    let shifted = value.saturating_add(offset);
+    if shifted >= modulus {
+        shifted.saturating_sub(modulus)
+    } else {
+        shifted
+    }
+}
 
 fn encoded_profile_instruction(
     decoded: u8,
@@ -678,4 +688,82 @@ fn independently_constructed_root_is_foreign_lineage() -> Result<(), String> {
     } else {
         Err(format!("foreign lineage was not rejected: {result:?}"))
     }
+}
+
+fn apply_state_writes<const N: usize>(
+    mut state: IndexedMachineState,
+    writes: [(u32, u32); N],
+) -> Result<IndexedMachineState, String> {
+    for (address, after) in writes {
+        let before = state.memory_word(address).map_err(|error| {
+            format!("indexed graph history read failed: {error:?}")
+        })?;
+        state = state
+            .apply_memory_delta(ProfileMemoryDelta {
+                data: Some(ProfileMemoryWrite { address, after, before }),
+                encryption: None,
+            })
+            .map_err(|error| {
+                format!("indexed graph history write: {error:?}")
+            })?;
+    }
+    Ok(state)
+}
+
+#[test]
+fn equivalent_mutation_histories_deduplicate_incremental_state()
+-> Result<(), String> {
+    let machine =
+        ProfileMachine::from_source(current_profile(), b"QP", Vec::new())
+            .map_err(|error| {
+                format!("indexed history graph fixture: {error}")
+            })?;
+    let seed = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| format!("indexed history graph root: {error:?}"))?;
+    let first_address = 1_024u32;
+    let second_address = first_address.saturating_add(1);
+    let first_base = seed.memory_word(first_address).map_err(|error| {
+        format!("indexed history graph first read: {error:?}")
+    })?;
+    let second_base = seed.memory_word(second_address).map_err(|error| {
+        format!("indexed history graph second read: {error:?}")
+    })?;
+    let modulus = current_profile().word_modulus();
+    let first_mid = shifted_word(first_base, 1, modulus);
+    let first_final = shifted_word(first_base, 2, modulus);
+    let second_mid = shifted_word(second_base, 1, modulus);
+    let second_final = shifted_word(second_base, 2, modulus);
+    let direct = apply_state_writes(seed.clone(), [
+        (first_address, first_final),
+        (second_address, second_final),
+    ])?;
+    let staged = apply_state_writes(seed.clone(), [
+        (second_address, second_mid),
+        (first_address, first_mid),
+        (second_address, second_final),
+        (first_address, first_final),
+    ])?;
+    if direct.state_digest() != staged.state_digest()
+        || !direct.exact_state_eq(&staged)
+    {
+        return Err(String::from(
+            "equivalent histories kept distinct state identity",
+        ));
+    }
+    let mut graph = IndexedStateGraph::new(seed);
+    let direct_id = graph.observe(direct).map_err(|error| {
+        format!("indexed direct history observe: {error:?}")
+    })?;
+    let staged_id = graph.observe(staged).map_err(|error| {
+        format!("indexed staged history observe: {error:?}")
+    })?;
+    if direct_id != staged_id
+        || graph.node_count() != 2
+        || graph.deduplicated_observations() != 1
+    {
+        return Err(String::from(
+            "equivalent mutation histories did not deduplicate",
+        ));
+    }
+    Ok(())
 }

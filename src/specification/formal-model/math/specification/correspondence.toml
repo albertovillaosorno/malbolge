@@ -2507,6 +2507,16 @@ mechanism = "stepwise-materialization-distinct-overrides-and-before-validation"
 evidence = ["tests/function/algorithms/domain/state-graph/i.rs::current_trace_deltas_reconstruct_every_indexed_checkpoint", "tests/function/algorithms/domain/state-graph/i.rs::distinct_overrides_preserve_root_and_latest_reads", "tests/function/algorithms/domain/state-graph/i.rs::forged_before_value_is_rejected_by_index"]
 
 [[correspondence]]
+id = "state-graph-mutation-history-convergence"
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-mutation-history-convergence"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "same-root current-profile indexed states reached by distinct exact memory-delta histories with equal final memory and non-memory state"
+mechanism = "divergent-write-order-and-intermediate-values-plus-exact-graph-dedup"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/i.rs::divergent_write_histories_converge_to_exact_indexed_memory", "tests/function/algorithms/domain/state-graph/s.rs::equivalent_mutation_histories_deduplicate_incremental_state"]
+
+[[correspondence]]
 id = "state-graph-incremental-identity"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-incremental-identity"

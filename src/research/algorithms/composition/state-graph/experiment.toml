@@ -84,6 +84,13 @@ samples_per_case = 15
 verdict = "promote-current-profile-memory-candidate"
 next_risk = "exact-state-identity-without-full-materialization"
 
+[reduction.mutation_history_convergence]
+baseline = "history-distinct-persistent-delta-paths"
+candidate = "same-root-final-memory-canonical-state"
+domain = "exact admitted deltas with equal final memory and non-memory state"
+history_metadata_semantic = false
+rejection_condition = "equal final memory retains distinct exact graph identity"
+
 [reduction.incremental_state_identity]
 baseline = "complete-checkpoint-hash-and-equality-per-observation"
 candidate = "lineage-bound-incremental-digest-plus-exact-canonical-state"

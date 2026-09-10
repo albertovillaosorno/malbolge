@@ -102,6 +102,12 @@ VM evidence.
   microseconds at depth 4096. The radix is promoted as the current-profile
   memory
   candidate; exact incremental identity/dedup is now the blocker.
+- Mutation-history convergence is now explicit: a two-patch direct indexed
+  path and a four-patch staged path with reversed address order and distinct
+  intermediate values reach the same final two-cell memory map. Canonical
+  overlay digests and exact state equality agree, and the incremental graph
+  reuses one node. Patch history is therefore non-semantic on the proved
+  same-root/equal-non-memory domain.
 - `state.rs` now binds incremental state identity to one immutable
   profile/input/root lineage, evolves state exclusively from public traces, and
   materializes every current step back to the exact runtime checkpoint. Digest

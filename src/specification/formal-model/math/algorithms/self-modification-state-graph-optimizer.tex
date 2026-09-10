@@ -186,6 +186,31 @@ The executable correspondence reconstructs every checkpoint of current traced
 execution exactly, inserts 4096 distinct overrides while preserving both latest
 overrides and untouched-root reads, and rejects a forged \texttt{before} value.
 
+\section{Mutation-history convergence}
+
+Let $H_1$ and $H_2$ be two finite sequences of admitted exact memory deltas
+starting from the same immutable root $M_0$. Let $I(H)$ denote the resulting
+indexed memory view and let $\operatorname{mem}(I)$ be its complete current
+memory mapping. The radix overlay records only final deviations from $M_0$;
+patch count, write order, and overwritten intermediate values are not semantic
+state. Therefore
+\begin{equation}
+  \operatorname{mem}(I(H_1))=\operatorname{mem}(I(H_2))
+  \Longrightarrow I(H_1)\equiv_M I(H_2),
+  \label{eq:state-graph-mutation-history-convergence}
+\end{equation}
+where $\equiv_M$ is exact indexed-memory equality under the same root. If the
+non-memory components of two incremental states are also equal inside that
+lineage, their complete state keys and bucket digests are equal and graph
+observation must reuse one node after exact confirmation.
+
+The executable correspondence constructs a two-write direct history and a
+four-write staged history with reversed address order and distinct intermediate
+values. Both finish at the same two overrides. The tests require different patch
+counts, equal materialized memory, equal canonical overlay digests, exact state
+equality, and one shared graph node identity. Any retained history artifact that
+changes exact identity rejects this reduction.
+
 \section{Incremental exact state identity}
 
 Fix one execution lineage $L$ consisting of one canonical profile, one immutable

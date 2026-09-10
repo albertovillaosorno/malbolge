@@ -90,8 +90,15 @@ new
 override. At depth 4096 the linked root miss is
 24.12 microseconds versus
 20.70 ns for the radix (~1165x ratio).
-The remaining blocker is exact indexed-memory identity/dedup without full
-materialization.
+
+The radix also erases irrelevant write history from exact memory identity.
+A two-patch direct path and a four-patch staged path with reversed write order
+and distinct intermediate values converge to the same final overrides, canonical
+overlay digest, exact incremental state, and graph node. Patch history remains
+cost/provenance evidence rather than semantic identity on this same-root domain.
+
+The remaining blocker at this historical point was exact indexed-memory
+identity/dedup without full materialization.
 
 `state.rs` closes the per-observation full-checkpoint identity bottleneck for
 one

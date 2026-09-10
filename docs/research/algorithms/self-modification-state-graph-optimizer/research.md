@@ -229,6 +229,15 @@ linked root miss is 24118.75 ns/op, about
 two-cell radix apply measures 1665.06 ns/op versus a
 6.79 ms full snapshot clone.
 
+Mutation history now has an explicit convergence result rather than only a
+single write-then-revert example. Two same-root indexed histories are
+constructed
+with different patch counts, write order, and intermediate values but the same
+final two-cell memory map. Exact indexed-memory equality and the incremental
+bucket digest agree, and `IndexedStateGraph` reuses one node after exact state
+confirmation. Patch history therefore remains provenance/cost evidence, not
+semantic graph identity, on this admitted same-root domain.
+
 This is still a representation microbenchmark, not end-to-end VM throughput.
 The next correctness/performance boundary is exact state identity. Current
 `ProfileStateGraph` hashes and compares complete checkpoints; the radix
