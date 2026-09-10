@@ -19,15 +19,6 @@ labels belong here.
 
 ## P2 — Compiler, runtime, and accelerator core
 
-### TODO - Historical-interpreter fallback capsule
-
-Design an extended `.malbolge` container recognized by modern runtimes while the
-1998 loader sees only a valid classic fallback, ideally using whitespace
-metadata that the original loader ignores.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/compatibility/historical-interpreter-fallback-capsule.mdc](docs/todo/open/compatibility/historical-interpreter-fallback-capsule.mdc)
-
 ### TODO - Native x86-64 and AArch64 backends
 
 Implement native-code emitters for x86-64 and AArch64 behind one execution-IR

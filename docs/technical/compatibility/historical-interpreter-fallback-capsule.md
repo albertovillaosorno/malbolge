@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Completed version-one compatibility capsule
 
 ## Purpose
 

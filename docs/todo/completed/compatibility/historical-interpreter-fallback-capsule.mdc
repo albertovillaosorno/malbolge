@@ -1,6 +1,6 @@
 ---
 id: "historical-interpreter-fallback-capsule"
-status: "active"
+status: "completed"
 lane: "8"
 priority: "p2"
 area: "compatibility"
