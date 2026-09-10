@@ -160,6 +160,7 @@ typedef struct MalbolgeGuestMathAtan2Interval224 {
 #define MALBOLGE_GUEST_MATH_PAYNE_HANEK_512_RESIDUAL_ULPS_MAX UINT32_C(6)
 #define MALBOLGE_GUEST_MATH_PERIODIC_TAYLOR_TERMS UINT32_C(32)
 #define MALBOLGE_GUEST_MATH_PERIODIC_INTERVAL_ULPS_MAX UINT32_C(74)
+#define MALBOLGE_GUEST_MATH_PERIODIC_Q256_SCRATCH_LIMBS UINT32_C(90)
 #define MALBOLGE_GUEST_MATH_PERIODIC_Q512_TAYLOR_TERMS UINT32_C(48)
 #define MALBOLGE_GUEST_MATH_PERIODIC_Q512_SCRATCH_LIMBS UINT32_C(170)
 
@@ -255,6 +256,20 @@ typedef struct MalbolgeGuestMathSincosInterval512 {
   MalbolgeGuestMathSignedFixed512Interval sin;
   MalbolgeGuestMathSignedFixed512Interval cos;
 } MalbolgeGuestMathSincosInterval512;
+
+typedef enum MalbolgeGuestMathSincosPeriodicStatus {
+  MALBOLGE_GUEST_MATH_SINCOS_PERIODIC_RETRY = 0,
+  MALBOLGE_GUEST_MATH_SINCOS_PERIODIC_Q256_RESOLVED = 1,
+  MALBOLGE_GUEST_MATH_SINCOS_PERIODIC_Q512_RESOLVED = 2,
+  MALBOLGE_GUEST_MATH_SINCOS_PERIODIC_Q512_UNRESOLVED = 3,
+} MalbolgeGuestMathSincosPeriodicStatus;
+
+typedef struct MalbolgeGuestMathSincosPeriodicProgress {
+  MalbolgeGuestMathSincosPeriodicStatus status;
+  uint64_t input_bits;
+  uint64_t bits;
+  uint32_t required_scratch_limbs;
+} MalbolgeGuestMathSincosPeriodicProgress;
 
 typedef struct MalbolgeGuestMathDyadic {
   uint64_t numerator;
@@ -472,6 +487,14 @@ int malbolge_guest_math_sincos_range_interval512(
 int malbolge_guest_math_sincos_range_unique_binary64_q512(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
     uint64_t *output_bits, uint32_t *scratch, uint32_t scratch_capacity);
+int malbolge_guest_math_sincos_refine_q256_interval512_available(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    const MalbolgeGuestMathSincosInterval256 *interval, uint32_t *scratch,
+    uint32_t scratch_capacity, MalbolgeGuestMathSincosPeriodicProgress *output);
+int malbolge_guest_math_sincos_periodic_handoff_available(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    uint32_t *scratch, uint32_t scratch_capacity,
+    MalbolgeGuestMathSincosPeriodicProgress *output);
 int malbolge_guest_math_sincos_range_unique_binary64(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
     uint64_t *output_bits, uint32_t *scratch, uint32_t scratch_capacity);

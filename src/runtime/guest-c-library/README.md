@@ -332,6 +332,16 @@ Rational composition evidence covers both operations, both signs, the `2^64`
 boundary, and maximum finite. Q512 ambiguity remains a clean nonpublication
 rather than a correctness claim.
 
+A fixed periodic handoff now makes the two precision levels explicit. It first
+asks for 90 scratch limbs and tries Q256/32; an ambiguous Q256 interval asks for
+170 limbs and retries at Q512/48. A separately callable interval handoff lets
+already-computed Q256 evidence resume without recomputing that first layer.
+
+The retained lifecycle uses `sin(4)` for the real Q256 result and a deliberately
+wide synthetic Q256 interval only to exercise the Q512 transition. The
+synthetic interval is not claimed to occur naturally. If Q512 itself remains
+ambiguous, the status is `Q512_UNRESOLVED` and no result word is published.
+
 The periodic rounding gate now evaluates 32 Taylor terms at the same 90-limb
 scratch size. With `|r|<4/5`, the first omitted sine/cosine terms are below one
 Q256 ulp. An integer recurrence for every directed multiply/divide gives a

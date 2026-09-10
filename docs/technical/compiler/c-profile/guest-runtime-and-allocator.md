@@ -1134,6 +1134,16 @@ rotation and input-sign transport are staged before publication. The Q512
 binary64 gate remains conservative: only identical nearest-even endpoint words
 publish; any ambiguity returns without claiming a result.
 
+Periodic precision selection now has an explicit fixed handoff. Q256/32 is the
+90-limb first attempt; only an ambiguous Q256 interval advances to Q512/48 and
+its 170-limb requirement. A companion entry point accepts a staged Q256
+interval so resource retry can resume without repeating that first evaluation.
+
+Lifecycle evidence resolves real `sin(4)` at Q256, then injects a deliberately
+wide Q256 interval solely to exercise retry at 169 limbs and Q512 resolution at
+170. This is synthetic transition evidence, not a discovered table-maker case.
+Q512 ambiguity has its own unresolved status and never publishes a result.
+
 
 The fixed periodic gate now uses 32 Taylor terms with no scratch increase.
 Because `|r|<4/5`, term 32 is already below one Q256 ulp for both series.

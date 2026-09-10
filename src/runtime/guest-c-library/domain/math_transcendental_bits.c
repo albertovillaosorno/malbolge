@@ -4990,6 +4990,122 @@ int malbolge_guest_math_sincos_range_unique_binary64_q512(
   return 1;
 }
 
+static int valid_sincos_interval256(
+    const MalbolgeGuestMathSincosInterval256 *interval) {
+  if (interval == NULL || interval->sin.lower_negative > UINT32_C(1) ||
+      interval->sin.upper_negative > UINT32_C(1) ||
+      interval->cos.lower_negative > UINT32_C(1) ||
+      interval->cos.upper_negative > UINT32_C(1)) {
+    return 0;
+  }
+  return compare_signed_fixed_limbs(
+             interval->sin.lower.limbs, interval->sin.lower_negative,
+             interval->sin.upper.limbs, interval->sin.upper_negative,
+             FIXED_256_LIMB_COUNT) <= 0 &&
+         compare_signed_fixed_limbs(
+             interval->cos.lower.limbs, interval->cos.lower_negative,
+             interval->cos.upper.limbs, interval->cos.upper_negative,
+             FIXED_256_LIMB_COUNT) <= 0;
+}
+
+static void publish_sincos_periodic_progress(
+    MalbolgeGuestMathSincosPeriodicProgress *output, uint64_t input_bits,
+    MalbolgeGuestMathSincosPeriodicStatus status, uint64_t bits,
+    uint32_t required_scratch_limbs) {
+  output->status = status;
+  output->input_bits = input_bits;
+  output->bits = bits;
+  output->required_scratch_limbs = required_scratch_limbs;
+}
+
+int malbolge_guest_math_sincos_refine_q256_interval512_available(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    const MalbolgeGuestMathSincosInterval256 *interval, uint32_t *scratch,
+    uint32_t scratch_capacity,
+    MalbolgeGuestMathSincosPeriodicProgress *output) {
+  const MalbolgeGuestMathSignedFixed256Interval *selected256 = NULL;
+  MalbolgeGuestMathSincosInterval512 interval512;
+  const MalbolgeGuestMathSignedFixed512Interval *selected512 = NULL;
+  uint64_t result_bits = UINT64_C(0);
+
+  if (output == NULL || !valid_sincos_interval256(interval) ||
+      (operation != MALBOLGE_GUEST_MATH_SIN &&
+       operation != MALBOLGE_GUEST_MATH_COS) ||
+      (bits & ~BINARY64_SIGN) < BINARY64_FOUR ||
+      malbolge_guest_math_unary_special(operation, bits).status !=
+          MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED) {
+    return 0;
+  }
+  selected256 = operation == MALBOLGE_GUEST_MATH_SIN ? &interval->sin
+                                                       : &interval->cos;
+  if (malbolge_guest_math_fixed_signed_interval_unique_binary64(
+          selected256->lower.limbs, selected256->lower_negative,
+          selected256->upper.limbs, selected256->upper_negative,
+          FIXED_256_LIMB_COUNT, UINT32_C(8), &result_bits)) {
+    publish_sincos_periodic_progress(
+        output, bits, MALBOLGE_GUEST_MATH_SINCOS_PERIODIC_Q256_RESOLVED,
+        result_bits, MALBOLGE_GUEST_MATH_PERIODIC_Q256_SCRATCH_LIMBS);
+    return 1;
+  }
+  if (scratch == NULL ||
+      scratch_capacity < MALBOLGE_GUEST_MATH_PERIODIC_Q512_SCRATCH_LIMBS) {
+    publish_sincos_periodic_progress(
+        output, bits, MALBOLGE_GUEST_MATH_SINCOS_PERIODIC_RETRY, UINT64_C(0),
+        MALBOLGE_GUEST_MATH_PERIODIC_Q512_SCRATCH_LIMBS);
+    return 1;
+  }
+  if (!malbolge_guest_math_sincos_range_interval512(
+          bits, MALBOLGE_GUEST_MATH_PERIODIC_Q512_TAYLOR_TERMS, &interval512,
+          scratch, scratch_capacity)) {
+    return 0;
+  }
+  selected512 = operation == MALBOLGE_GUEST_MATH_SIN ? &interval512.sin
+                                                       : &interval512.cos;
+  if (malbolge_guest_math_fixed_signed_interval_unique_binary64(
+          selected512->lower.limbs, selected512->lower_negative,
+          selected512->upper.limbs, selected512->upper_negative,
+          FIXED_512_LIMB_COUNT, UINT32_C(16), &result_bits)) {
+    publish_sincos_periodic_progress(
+        output, bits, MALBOLGE_GUEST_MATH_SINCOS_PERIODIC_Q512_RESOLVED,
+        result_bits, MALBOLGE_GUEST_MATH_PERIODIC_Q512_SCRATCH_LIMBS);
+    return 1;
+  }
+  publish_sincos_periodic_progress(
+      output, bits, MALBOLGE_GUEST_MATH_SINCOS_PERIODIC_Q512_UNRESOLVED,
+      UINT64_C(0), MALBOLGE_GUEST_MATH_PERIODIC_Q512_SCRATCH_LIMBS);
+  return 1;
+}
+
+int malbolge_guest_math_sincos_periodic_handoff_available(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    uint32_t *scratch, uint32_t scratch_capacity,
+    MalbolgeGuestMathSincosPeriodicProgress *output) {
+  MalbolgeGuestMathSincosInterval256 interval;
+
+  if (output == NULL ||
+      (operation != MALBOLGE_GUEST_MATH_SIN &&
+       operation != MALBOLGE_GUEST_MATH_COS) ||
+      (bits & ~BINARY64_SIGN) < BINARY64_FOUR ||
+      malbolge_guest_math_unary_special(operation, bits).status !=
+          MALBOLGE_GUEST_MATH_SPECIAL_KERNEL_REQUIRED) {
+    return 0;
+  }
+  if (scratch == NULL ||
+      scratch_capacity < MALBOLGE_GUEST_MATH_PERIODIC_Q256_SCRATCH_LIMBS) {
+    publish_sincos_periodic_progress(
+        output, bits, MALBOLGE_GUEST_MATH_SINCOS_PERIODIC_RETRY, UINT64_C(0),
+        MALBOLGE_GUEST_MATH_PERIODIC_Q256_SCRATCH_LIMBS);
+    return 1;
+  }
+  if (!malbolge_guest_math_sincos_range_interval256(
+          bits, MALBOLGE_GUEST_MATH_PERIODIC_TAYLOR_TERMS, &interval, scratch,
+          scratch_capacity)) {
+    return 0;
+  }
+  return malbolge_guest_math_sincos_refine_q256_interval512_available(
+      operation, bits, &interval, scratch, scratch_capacity, output);
+}
+
 static uint64_t fixed_limbs_nearest_binary64(const uint32_t *value,
                                              uint32_t limb_count,
                                              int32_t fraction_bits) {
