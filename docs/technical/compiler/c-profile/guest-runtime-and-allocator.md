@@ -1127,6 +1127,13 @@ A 96-case `Fraction` corpus through maximum finite reaches four ulps. This
 creates a higher-precision periodic retry layer; it is not a proof that Q512 is
 sufficient for every final rounding cell.
 
+The Q512 residual also has an executable trig image. Forty-eight Taylor terms
+make both first omitted terms smaller than `2^-512` throughout `|r|<4/5`, and
+the variable-width interval kernel requires 170 caller-owned limbs. Quadrant
+rotation and input-sign transport are staged before publication. The Q512
+binary64 gate remains conservative: only identical nearest-even endpoint words
+publish; any ambiguity returns without claiming a result.
+
 
 The fixed periodic gate now uses 32 Taylor terms with no scratch increase.
 Because `|r|<4/5`, term 32 is already below one Q256 ulp for both series.

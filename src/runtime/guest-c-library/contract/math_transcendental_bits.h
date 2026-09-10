@@ -160,6 +160,8 @@ typedef struct MalbolgeGuestMathAtan2Interval224 {
 #define MALBOLGE_GUEST_MATH_PAYNE_HANEK_512_RESIDUAL_ULPS_MAX UINT32_C(6)
 #define MALBOLGE_GUEST_MATH_PERIODIC_TAYLOR_TERMS UINT32_C(32)
 #define MALBOLGE_GUEST_MATH_PERIODIC_INTERVAL_ULPS_MAX UINT32_C(74)
+#define MALBOLGE_GUEST_MATH_PERIODIC_Q512_TAYLOR_TERMS UINT32_C(48)
+#define MALBOLGE_GUEST_MATH_PERIODIC_Q512_SCRATCH_LIMBS UINT32_C(170)
 
 typedef struct MalbolgeGuestMathFixed256 {
   uint32_t limbs[MALBOLGE_GUEST_MATH_FIXED_256_LIMBS];
@@ -241,6 +243,18 @@ typedef struct MalbolgeGuestMathSincosInterval256 {
   MalbolgeGuestMathSignedFixed256Interval sin;
   MalbolgeGuestMathSignedFixed256Interval cos;
 } MalbolgeGuestMathSincosInterval256;
+
+typedef struct MalbolgeGuestMathSignedFixed512Interval {
+  MalbolgeGuestMathFixed512 lower;
+  uint32_t lower_negative;
+  MalbolgeGuestMathFixed512 upper;
+  uint32_t upper_negative;
+} MalbolgeGuestMathSignedFixed512Interval;
+
+typedef struct MalbolgeGuestMathSincosInterval512 {
+  MalbolgeGuestMathSignedFixed512Interval sin;
+  MalbolgeGuestMathSignedFixed512Interval cos;
+} MalbolgeGuestMathSincosInterval512;
 
 typedef struct MalbolgeGuestMathDyadic {
   uint64_t numerator;
@@ -452,6 +466,12 @@ int malbolge_guest_math_sincos_payne_hanek_reduce512(
 int malbolge_guest_math_sincos_range_interval256(
     uint64_t bits, uint32_t terms, MalbolgeGuestMathSincosInterval256 *output,
     uint32_t *scratch, uint32_t scratch_capacity);
+int malbolge_guest_math_sincos_range_interval512(
+    uint64_t bits, uint32_t terms, MalbolgeGuestMathSincosInterval512 *output,
+    uint32_t *scratch, uint32_t scratch_capacity);
+int malbolge_guest_math_sincos_range_unique_binary64_q512(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    uint64_t *output_bits, uint32_t *scratch, uint32_t scratch_capacity);
 int malbolge_guest_math_sincos_range_unique_binary64(
     MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
     uint64_t *output_bits, uint32_t *scratch, uint32_t scratch_capacity);

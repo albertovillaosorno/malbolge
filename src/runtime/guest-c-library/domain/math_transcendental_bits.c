@@ -4815,6 +4815,181 @@ int malbolge_guest_math_sincos_payne_hanek_reduce512(
   return 1;
 }
 
+static void signed_fixed512_interval_copy(
+    MalbolgeGuestMathSignedFixed512Interval *output,
+    const MalbolgeGuestMathSignedFixed512Interval *input) {
+  copy_fixed_512(&output->lower, input->lower.limbs);
+  output->lower_negative = input->lower_negative;
+  copy_fixed_512(&output->upper, input->upper.limbs);
+  output->upper_negative = input->upper_negative;
+}
+
+static void signed_fixed512_interval_negate(
+    MalbolgeGuestMathSignedFixed512Interval *output,
+    const MalbolgeGuestMathSignedFixed512Interval *input) {
+  copy_fixed_512(&output->lower, input->upper.limbs);
+  output->lower_negative = fixed_512_is_zero(&input->upper)
+                               ? UINT32_C(0)
+                               : (input->upper_negative ^ UINT32_C(1));
+  copy_fixed_512(&output->upper, input->lower.limbs);
+  output->upper_negative = fixed_512_is_zero(&input->lower)
+                               ? UINT32_C(0)
+                               : (input->lower_negative ^ UINT32_C(1));
+}
+
+static int payne_hanek_residual_magnitude512(
+    const MalbolgeGuestMathSincosPayneHanek512 *reduction,
+    MalbolgeGuestMathFixed512 *lower, MalbolgeGuestMathFixed512 *upper,
+    int32_t *sign_mode) {
+  if (reduction == NULL || lower == NULL || upper == NULL ||
+      sign_mode == NULL ||
+      reduction->residual_lower_negative > UINT32_C(1) ||
+      reduction->residual_upper_negative > UINT32_C(1) ||
+      compare_signed_fixed_limbs(
+          reduction->residual_lower.limbs,
+          reduction->residual_lower_negative,
+          reduction->residual_upper.limbs,
+          reduction->residual_upper_negative, FIXED_512_LIMB_COUNT) > 0) {
+    return 0;
+  }
+  if (reduction->residual_lower_negative == UINT32_C(0) &&
+      reduction->residual_upper_negative == UINT32_C(0)) {
+    copy_fixed_512(lower, reduction->residual_lower.limbs);
+    copy_fixed_512(upper, reduction->residual_upper.limbs);
+    *sign_mode = INT32_C(1);
+    return 1;
+  }
+  if (reduction->residual_lower_negative != UINT32_C(0) &&
+      reduction->residual_upper_negative != UINT32_C(0)) {
+    copy_fixed_512(lower, reduction->residual_upper.limbs);
+    copy_fixed_512(upper, reduction->residual_lower.limbs);
+    *sign_mode = INT32_C(-1);
+    return 1;
+  }
+  if (reduction->residual_lower_negative != UINT32_C(0) &&
+      reduction->residual_upper_negative == UINT32_C(0)) {
+    zero_fixed_512(lower);
+    if (compare_fixed_limbs(reduction->residual_lower.limbs,
+                            reduction->residual_upper.limbs,
+                            FIXED_512_LIMB_COUNT) >= 0) {
+      copy_fixed_512(upper, reduction->residual_lower.limbs);
+    } else {
+      copy_fixed_512(upper, reduction->residual_upper.limbs);
+    }
+    *sign_mode = INT32_C(0);
+    return 1;
+  }
+  return 0;
+}
+
+static void publish_sincos_interval512(
+    MalbolgeGuestMathSincosInterval512 *output,
+    const MalbolgeGuestMathSincosInterval512 *value) {
+  signed_fixed512_interval_copy(&output->sin, &value->sin);
+  signed_fixed512_interval_copy(&output->cos, &value->cos);
+}
+
+int malbolge_guest_math_sincos_range_interval512(
+    uint64_t bits, uint32_t terms, MalbolgeGuestMathSincosInterval512 *output,
+    uint32_t *scratch, uint32_t scratch_capacity) {
+  MalbolgeGuestMathSincosPayneHanek512 reduction;
+  MalbolgeGuestMathFixed512 magnitude_lower;
+  MalbolgeGuestMathFixed512 magnitude_upper;
+  MalbolgeGuestMathSincosInterval512 residual;
+  MalbolgeGuestMathSincosInterval512 rotated;
+  MalbolgeGuestMathSignedFixed512Interval temporary;
+  int32_t sign_mode = INT32_C(0);
+
+  if (output == NULL || scratch == NULL || terms < UINT32_C(2) ||
+      scratch_capacity < FIXED_512_LIMB_COUNT * UINT32_C(10) ||
+      !malbolge_guest_math_sincos_payne_hanek_reduce512(bits, &reduction) ||
+      !payne_hanek_residual_magnitude512(
+          &reduction, &magnitude_lower, &magnitude_upper, &sign_mode)) {
+    return 0;
+  }
+  if (!malbolge_guest_math_fixed_sin_taylor_interval(
+          magnitude_lower.limbs, magnitude_upper.limbs,
+          FIXED_512_LIMB_COUNT, UINT32_C(16), terms,
+          residual.sin.lower.limbs, &residual.sin.lower_negative,
+          residual.sin.upper.limbs, &residual.sin.upper_negative, scratch,
+          FIXED_512_LIMB_COUNT * UINT32_C(10)) ||
+      !malbolge_guest_math_fixed_cos_taylor_interval(
+          magnitude_lower.limbs, magnitude_upper.limbs,
+          FIXED_512_LIMB_COUNT, UINT32_C(16), terms,
+          residual.cos.lower.limbs, &residual.cos.lower_negative,
+          residual.cos.upper.limbs, &residual.cos.upper_negative, scratch,
+          FIXED_512_LIMB_COUNT * UINT32_C(10))) {
+    return 0;
+  }
+  if (residual.sin.lower_negative != UINT32_C(0) ||
+      residual.sin.upper_negative != UINT32_C(0) ||
+      residual.cos.lower_negative != UINT32_C(0) ||
+      residual.cos.upper_negative != UINT32_C(0)) {
+    return 0;
+  }
+  if (sign_mode < INT32_C(0)) {
+    signed_fixed512_interval_negate(&temporary, &residual.sin);
+    signed_fixed512_interval_copy(&residual.sin, &temporary);
+  } else if (sign_mode == INT32_C(0)) {
+    copy_fixed_512(&residual.sin.lower, residual.sin.upper.limbs);
+    residual.sin.lower_negative =
+        fixed_512_is_zero(&residual.sin.lower) ? UINT32_C(0) : UINT32_C(1);
+  }
+  switch (reduction.quadrant) {
+    case UINT32_C(0):
+      signed_fixed512_interval_copy(&rotated.sin, &residual.sin);
+      signed_fixed512_interval_copy(&rotated.cos, &residual.cos);
+      break;
+    case UINT32_C(1):
+      signed_fixed512_interval_copy(&rotated.sin, &residual.cos);
+      signed_fixed512_interval_negate(&rotated.cos, &residual.sin);
+      break;
+    case UINT32_C(2):
+      signed_fixed512_interval_negate(&rotated.sin, &residual.sin);
+      signed_fixed512_interval_negate(&rotated.cos, &residual.cos);
+      break;
+    case UINT32_C(3):
+      signed_fixed512_interval_negate(&rotated.sin, &residual.cos);
+      signed_fixed512_interval_copy(&rotated.cos, &residual.sin);
+      break;
+    default:
+      return 0;
+  }
+  if (reduction.input_negative != UINT32_C(0)) {
+    signed_fixed512_interval_negate(&temporary, &rotated.sin);
+    signed_fixed512_interval_copy(&rotated.sin, &temporary);
+  }
+  publish_sincos_interval512(output, &rotated);
+  return 1;
+}
+
+int malbolge_guest_math_sincos_range_unique_binary64_q512(
+    MalbolgeGuestMathUnaryOperation operation, uint64_t bits,
+    uint64_t *output_bits, uint32_t *scratch, uint32_t scratch_capacity) {
+  MalbolgeGuestMathSincosInterval512 interval;
+  const MalbolgeGuestMathSignedFixed512Interval *selected = NULL;
+  uint64_t staged = UINT64_C(0);
+
+  if (output_bits == NULL ||
+      (operation != MALBOLGE_GUEST_MATH_SIN &&
+       operation != MALBOLGE_GUEST_MATH_COS) ||
+      !malbolge_guest_math_sincos_range_interval512(
+          bits, MALBOLGE_GUEST_MATH_PERIODIC_Q512_TAYLOR_TERMS, &interval,
+          scratch, scratch_capacity)) {
+    return 0;
+  }
+  selected = operation == MALBOLGE_GUEST_MATH_SIN ? &interval.sin
+                                                   : &interval.cos;
+  if (!malbolge_guest_math_fixed_signed_interval_unique_binary64(
+          selected->lower.limbs, selected->lower_negative,
+          selected->upper.limbs, selected->upper_negative,
+          FIXED_512_LIMB_COUNT, UINT32_C(16), &staged)) {
+    return 0;
+  }
+  *output_bits = staged;
+  return 1;
+}
+
 static uint64_t fixed_limbs_nearest_binary64(const uint32_t *value,
                                              uint32_t limb_count,
                                              int32_t fraction_bits) {

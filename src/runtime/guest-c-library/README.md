@@ -321,12 +321,16 @@ six-ulp residual ceiling at Q512; a 96-case corpus through maximum finite
 reaches four ulps. Q256 remains the first periodic attempt, and Q512 is
 refinement substrate rather than a claimed global precision ceiling.
 
-A fixed Q512 refinement boundary now reuses the same Q2176 quotient decision.
-Its 17-limb `pi/2` interval is regenerated from Machin arithmetic and occupies
-one Q512 ulp. Directed fractional extraction and scaling retain the same
-six-ulp residual ceiling at Q512; a 96-case corpus through maximum finite
-reaches four ulps. Q256 remains the first periodic attempt, and Q512 is
-refinement substrate rather than a claimed global precision ceiling.
+That residual now feeds a fixed Q512 trig evaluator. Forty-eight directed
+Taylor terms leave both first omitted terms below one Q512 cell for
+`|r|<4/5`; the generic variable-width kernel uses exactly 170 caller-owned
+scratch limbs. `malbolge_guest_math_sincos_range_unique_binary64_q512`
+publishes only when the selected signed Q512 endpoints round to the same raw
+binary64 word.
+
+Rational composition evidence covers both operations, both signs, the `2^64`
+boundary, and maximum finite. Q512 ambiguity remains a clean nonpublication
+rather than a correctness claim.
 
 The periodic rounding gate now evaluates 32 Taylor terms at the same 90-limb
 scratch size. With `|r|<4/5`, the first omitted sine/cosine terms are below one

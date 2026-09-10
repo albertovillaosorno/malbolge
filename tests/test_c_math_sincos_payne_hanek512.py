@@ -34,9 +34,9 @@
 
 from __future__ import annotations
 
-import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from fractions import Fraction
 from pathlib import Path
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 
 ROOT = Path(__file__).resolve().parents[1]
 CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
