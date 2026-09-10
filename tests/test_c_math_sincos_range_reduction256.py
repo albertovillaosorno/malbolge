@@ -9,16 +9,16 @@
 #
 # Boundary-Contract:
 # - Owns:
-#   - Q32.256 periodic sin/cos reduction for finite 4 <= |x| < 2^31.
+#   - Q256 periodic sin/cos reduction for finite 4 <= |x| < 2^64.
 # - Must-Not:
 #   - Use host pi/libm as quotient or residual authority.
 #   - Claim this bounded Q256 reducer covers the full binary64 domain.
 # - Allows:
 #   - Inputs: raw binary64 words in the bounded reduction domain.
-#   - Outputs: exact u32 multiple/quadrant plus a directed signed Q256 residual.
+#   - Outputs: exact u64 multiple/quadrant plus a directed signed Q256 residual.
 #   - Side effects: temporary native C compilation and execution only.
 # - Split-When:
-#   - Full Payne-Hanek-style reduction needs wider quotient/constant geometry.
+#   - Inputs at least 2^64 need Payne-Hanek-style quotient/constant geometry.
 # - Merge-When:
 #   - A full-domain periodic reducer subsumes this bounded Q256 path.
 # - Summary:
@@ -51,10 +51,10 @@ EXPONENT_MASK = 0x7FF
 FRACTION_MASK = (1 << 52) - 1
 HIDDEN = 1 << 52
 FOUR = 0x4010000000000000
-TWO31 = 0x41E0000000000000
+TWO64 = 0x43F0000000000000
 MAX_FINITE = 0x7FEFFFFFFFFFFFFF
 MASK64 = (1 << 64) - 1
-MULTIPLE_LIMIT = 1_367_130_552
+MULTIPLE_LIMIT = 1 << 64
 CASE_COUNT = 512
 
 
@@ -208,12 +208,26 @@ def _expected(bits: int) -> tuple[int, int, int, int, int, int]:
 def _manual_bits() -> tuple[int, ...]:
     quarter_lo, quarter_hi = _quarter_pi_bounds()
     half_mid = quarter_lo + quarter_hi
-    words: set[int] = {FOUR, FOUR + 1, TWO31 - 1}
-    for multiple in (3, 4, 5, 7, 17, 1000, 1_000_000, 1_000_000_000):
+    words: set[int] = {FOUR, FOUR + 1, TWO64 - 1}
+    for multiple in (
+        3,
+        4,
+        5,
+        7,
+        17,
+        1000,
+        1_000_000,
+        1_000_000_000,
+        1 << 32,
+        1_000_000_000_000,
+        1_000_000_000_000_000,
+        1_000_000_000_000_000_000,
+        11_000_000_000_000_000_000,
+    ):
         center = _nearest_binary64_bits(multiple * half_mid)
         for delta in (-2, -1, 0, 1, 2):
             magnitude = center + delta
-            if FOUR <= magnitude < TWO31:
+            if FOUR <= magnitude < TWO64:
                 words.add(magnitude)
                 words.add(magnitude | SIGN)
     return tuple(sorted(words))
@@ -222,11 +236,14 @@ def _manual_bits() -> tuple[int, ...]:
 def _cases() -> tuple[int, ...]:
     state = 0xC0FFEE123456789A
     rows = list(_manual_bits())
-    span = TWO31 - FOUR
-    while len(rows) < len(_manual_bits()) + CASE_COUNT:
+    target = len(_manual_bits()) + CASE_COUNT
+    while len(rows) < target:
         state = (state * 6364136223846793005 + 1442695040888963407) & MASK64
-        magnitude = FOUR + state % span
-        rows.append(magnitude | (SIGN if state & 1 else 0))
+        exponent = 1025 + ((state >> 58) % 62)
+        fraction = state & FRACTION_MASK
+        magnitude = (exponent << 52) | fraction
+        if FOUR <= magnitude < TWO64:
+            rows.append(magnitude | (SIGN if state & 1 else 0))
     return tuple(rows)
 
 
@@ -249,8 +266,8 @@ int main(void) {{
     uint32_t limb = UINT32_C(0);
     if (!malbolge_guest_math_sincos_range_reduce256(cases[index], &r))
       return 80;
-    (void)printf("%016" PRIx64 " %u %u %u %u ", cases[index], r.multiple,
-                 r.quadrant, r.residual_lower_negative,
+    (void)printf("%016" PRIx64 " %" PRIu64 " %u %u %u ", cases[index],
+                 r.multiple, r.quadrant, r.residual_lower_negative,
                  r.residual_upper_negative);
     limb = MALBOLGE_GUEST_MATH_FIXED_256_LIMBS;
     while (limb != UINT32_C(0)) {{
@@ -325,7 +342,7 @@ def test_q256_range_reduction_matches_fraction_machin(tmp_path: Path) -> None:
 
 
 def test_q256_range_reduction_rejects_outside_domain(tmp_path: Path) -> None:
-    """Keep sub-four, 2^31, infinity, and null-output cases nonpublishing."""
+    """Keep sub-four, 2^64, infinity, and null-output cases nonpublishing."""
     harness = tmp_path / "range-reduction-reject.c"
     executable = tmp_path / "range-reduction-reject"
     _ = harness.write_text(
@@ -333,15 +350,15 @@ def test_q256_range_reduction_rejects_outside_domain(tmp_path: Path) -> None:
 #include <stdint.h>
 int main(void) {
   MalbolgeGuestMathSincosRangeReduction256 out = {
-      UINT32_C(99), UINT32_C(98), UINT32_C(97), {{UINT32_C(96)}},
+      UINT64_C(99), UINT32_C(98), UINT32_C(97), {{UINT32_C(96)}},
       UINT32_C(95), {{UINT32_C(94)}}, UINT32_C(93)};
   const uint64_t bad[] = {
-      UINT64_C(0x400fffffffffffff), UINT64_C(0x41e0000000000000),
+      UINT64_C(0x400fffffffffffff), UINT64_C(0x43f0000000000000),
       UINT64_C(0x7ff0000000000000)};
   uint32_t i = UINT32_C(0);
   while (i < UINT32_C(3)) {
     if (malbolge_guest_math_sincos_range_reduce256(bad[i], &out) ||
-        out.multiple != UINT32_C(99) || out.quadrant != UINT32_C(98) ||
+        out.multiple != UINT64_C(99) || out.quadrant != UINT32_C(98) ||
         out.residual_lower.limbs[0] != UINT32_C(96) ||
         out.residual_upper.limbs[0] != UINT32_C(94)) return 80;
     ++i;

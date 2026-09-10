@@ -15,7 +15,7 @@
 # - Allows:
 #   - Inputs: global TMD maxima, exact binary64 cells, and Machin pi bounds.
 #   - Outputs: a fixed Q512/64 sub-four correct-rounding precision ceiling.
-# - Side effects: none.
+#   - Side effects: none.
 # - Split-When:
 #   - Another format or function needs an independent hard-case certificate.
 # - Merge-When:
@@ -51,6 +51,14 @@ HIDDEN = 1 << 52
 EXPONENT_BIAS = 1023
 ATAN5_TERMS = 180
 ATAN239_TERMS = 60
+PI_HALF_SQUARE_LIMIT = 3
+OUTPUT_MAGNITUDE_FLOOR_BITS = 55
+OUTPUT_ULP_FLOOR_BITS = 107
+SIN_BOUNDARY_BITS = 177
+COS_BOUNDARY_BITS = 175
+Q512_ERROR_BITS = 460
+SIN_MARGIN_BITS = 283
+COS_MARGIN_BITS = 285
 
 
 def _factorial(value: int) -> int:
@@ -124,10 +132,14 @@ def test_q512_64_subfour_interval_has_fixed_absolute_width_ceiling() -> None:
     """Bound directed roundoff plus the first omitted alternating term."""
     sin_widths = _roundoff_widths(cosine=False)
     cos_widths = _roundoff_widths(cosine=True)
-    assert sum(sin_widths[:POLICY_TERMS]) + sin_widths[POLICY_TERMS] == 135
-    assert sum(cos_widths[:POLICY_TERMS]) + cos_widths[POLICY_TERMS] == 139
-    assert SIN_ROUNDOFF_ULPS == 135
-    assert COS_ROUNDOFF_ULPS == 139
+    assert (
+        sum(sin_widths[:POLICY_TERMS]) + sin_widths[POLICY_TERMS]
+        == SIN_ROUNDOFF_ULPS
+    )
+    assert (
+        sum(cos_widths[:POLICY_TERMS]) + cos_widths[POLICY_TERMS]
+        == COS_ROUNDOFF_ULPS
+    )
 
     q512_ulp = Fraction(1, 1 << Q512_BITS)
     sin_tail = Fraction(1 << (2 * 129), _factorial(129))
@@ -153,17 +165,16 @@ def test_subfour_zero_separation_and_global_tmd_leave_large_margin() -> None:
     # the only zero below four and the nearest input is more than 2^-54 away.
     # On a distance below one, |sin(r)| > |r|/2 by r-r^3/6. Farther from the
     # cosine zero the magnitude is vastly larger, so 2^-55 is a shared floor.
-    assert (pi_upper / 2) ** 2 < 3
+    assert (pi_upper / 2) ** 2 < PI_HALF_SQUARE_LIMIT
     assert pi_lower - Fraction(5, 2) > Fraction(1, 2)
-    output_magnitude_floor_bits = 55
-    output_ulp_floor_bits = output_magnitude_floor_bits + 52
-    assert output_ulp_floor_bits == 107
+    output_ulp_floor_bits = OUTPUT_MAGNITUDE_FLOOR_BITS + 52
+    assert output_ulp_floor_bits == OUTPUT_ULP_FLOOR_BITS
 
     sin_boundary_bits = output_ulp_floor_bits + SIN_MAX_IDENTICAL_BITS + 2
     cos_boundary_bits = output_ulp_floor_bits + COS_MAX_IDENTICAL_BITS + 2
-    assert sin_boundary_bits == 177
-    assert cos_boundary_bits == 175
+    assert sin_boundary_bits == SIN_BOUNDARY_BITS
+    assert cos_boundary_bits == COS_BOUNDARY_BITS
     q512_error_bits = Q512_BITS - WIDTH_ULP_BITS_MAX
-    assert q512_error_bits == 460
-    assert q512_error_bits - sin_boundary_bits >= 283
-    assert q512_error_bits - cos_boundary_bits >= 285
+    assert q512_error_bits == Q512_ERROR_BITS
+    assert q512_error_bits - sin_boundary_bits >= SIN_MARGIN_BITS
+    assert q512_error_bits - cos_boundary_bits >= COS_MARGIN_BITS

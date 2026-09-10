@@ -3,9 +3,9 @@
 ## Status
 
 Implemented for `malbolge-libc-v1`. Memory, narrow-string, exact binary64
-`fabs`/`floor`/`ceil`/`trunc`, and canonical nearest-ties-even `sqrt` are
-executable guest C today. Allocation, byte streams, formatting, and the
-remaining transcendental math stay versioned but unavailable until their
+`fabs`/`floor`/`ceil`/`trunc`, canonical nearest-ties-even `sqrt`, and
+correctly rounded binary64 `sin`/`cos` are executable guest C today. Allocation,
+byte streams, formatting, and `atan2` stay versioned but unavailable until their
 runtime/integration gates complete.
 
 ## Purpose
@@ -77,8 +77,8 @@ The guest library owns four version-one headers:
 - `<string.h>` declares the executable memory and narrow-string subset;
 - `<stdlib.h>` declares only the contracted allocation subset;
 - `<stdio.h>` declares only byte I/O and bounded formatting;
-- `<math.h>` declares the executable exact/`sqrt` subset and contracted
-  transcendental binary64 subset.
+- `<math.h>` declares the executable exact/`sqrt`/`sin`/`cos` subset and
+  contracted binary64 `atan2`.
 
 Guest headers intentionally retain stable declarations for both executable and
 unavailable routines. A source may include them in any build configuration, but
@@ -88,17 +88,20 @@ exposed.
 
 ### Executable routines
 
-Fourteen routines are executable ordinary guest C today:
+Sixteen routines are executable ordinary guest C today:
 
 - `memcpy`, `memmove`, `memset`, and `memcmp`;
-- `strlen`, `strcmp`, `strcpy`, `strncpy`, and `strcat`; and
-- `fabs`, `floor`, `ceil`, and `trunc` for exact binary64 operations; and
-- `sqrt` with ABI-fixed nearest-ties-even rounding and canonical NaN.
+- `strlen`, `strcmp`, `strcpy`, `strncpy`, and `strcat`;
+- `fabs`, `floor`, `ceil`, and `trunc` for exact binary64 operations;
+- `sqrt` with ABI-fixed nearest-ties-even rounding and canonical NaN; and
+- `sin` and `cos` with correctly rounded binary64 results and canonical NaN.
 
 Memory/string declarations live in `contract/include/string.h`; implementations
 live in `domain/memory.c` and `domain/string.c`. Math declarations live in
 `contract/include/math.h`; exact operations use `domain/math_exact.c` and the
-proved square-root algorithm uses `domain/math_sqrt.c`. The
+proved square-root algorithm uses `domain/math_sqrt.c`; correctly rounded sine
+and cosine use `domain/math_sincos.c` over the certified transcendental
+substrate. The
 memory/string implementations are freestanding byte loops. `memmove` uses
 the version-one guest `uintptr_t` pointer encoding to choose copy direction;
 `memcmp` and `strcmp` compare unsigned byte values and return a deterministic
@@ -120,7 +123,7 @@ emit `MALBOLGE-LIBC-001` until lane 8 supplies executable guest implementations:
 - allocation: `malloc`, `calloc`, `realloc`, and `free`;
 - byte streams: `getchar` and `putchar`;
 - bounded formatting: `snprintf` and `vsnprintf`;
-- transcendental binary64 math: `sin`, `cos`, and `atan2`.
+- transcendental binary64 math: `atan2`.
 
 Allocation is specified as guest-heap behavior rather than a host allocation
 service. Byte streams use the deterministic byte-I/O semantics already owned by
@@ -204,11 +207,12 @@ while still preventing accidental execution through host libraries.
 - source-defined forbidden-name spellings are not false positives;
 - declaration-only headers do not imply routine availability;
 - the manual validator runs libc preflight before clang-tidy;
-- on Windows, a pinned-Clang no-CRT executable exercises all 14 available
+- on Windows, a pinned-Clang no-CRT executable exercises all 16 available
   routines and exits successfully;
 - an independent 274-pattern rational differential locks exact binary64 math,
   while a separate 532-pattern arbitrary-precision integer-square-root
-  differential locks canonical `sqrt`;
+  differential locks canonical `sqrt`; public `sin`/`cos` bit fixtures exercise
+  special, sub-four, and periodic paths through maximum finite binary64;
 - memory/string objects have no undefined symbols; Windows math objects expose
   only the expected MSVC float marker, while wasm32 math objects expose only
   target stack machinery and no callable library dependency.

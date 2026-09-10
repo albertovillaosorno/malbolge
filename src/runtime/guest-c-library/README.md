@@ -273,20 +273,21 @@ margin.
 Public `sin` and `cos` now dispatch through this fixed sub-four gate or the
 periodic Payne-Hanek gate without guest allocation or host libm fallback.
 
-Periodic reduction now has a first bounded Q32.256 implementation. For finite
-`4 <= |x| < 2^31`, `malbolge_guest_math_sincos_range_reduce256` materializes the
+Periodic reduction has a bounded Q256 implementation. For finite
+`4 <= |x| < 2^64`, `malbolge_guest_math_sincos_range_reduce256` materializes the
 binary64 magnitude exactly, multiplies it by a directed one-cell Q256 enclosure
 of `2/pi`, and accepts the nearest integer multiple only when both quotient
-endpoints round to the same `u32`. The reciprocal cell is derived from the
+endpoints round to the same `uint64_t`. The reciprocal cell is derived from the
 existing certified Q256 `pi/4` interval, not from a host floating constant.
 
-The selected `q` is at most 1,367,130,551 in this domain, so `2*q` and the
-Q32.256 product `q*pi/2` fit their checked 32-bit/fixed-width geometry. The
-boundary publishes `q`, `q mod 4`, the original sign, and a signed directed
-residual enclosed in `[-pi/4,+pi/4]`. Independent Machin `Fraction` authority
-re-derives both `pi/4` and `2/pi` Q256 cells, then matches every residual limb
-for 512 fixed-seed values plus binary64 neighbors of selected `pi/2` multiples.
-Magnitudes at least `2^31` remain outside this bounded reducer.
+The selected `q` fits `uint64_t`, and its directed `q*pi/2` product uses the
+widened fixed-point workspace needed across that domain. The boundary publishes
+`q`, `q mod 4`, the original sign, and a signed directed residual enclosed in
+`[-pi/4,+pi/4]`. Independent Machin `Fraction` authority re-derives both `pi/4`
+and `2/pi` Q256 cells, then matches every residual limb for 512 fixed-seed
+values plus binary64 neighbors of selected `pi/2` multiples through
+`11,000,000,000,000,000,000`. Magnitudes at least `2^64` use the Payne-Hanek
+reducer.
 
 Full-domain quotient selection now has independent constant authority too. A
 66-limb Q2112 `2/pi` interval is regenerated from exact Machin bounds for pi and

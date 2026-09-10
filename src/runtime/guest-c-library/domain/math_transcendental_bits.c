@@ -9,7 +9,7 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Exact pre-kernel reduction for future sin, cos, and atan2 routines.
+//   - Exact pre-kernel reduction for public sin/cos and future atan2.
 // - Must-Not:
 //   - Approximate finite transcendental results or call host floating helpers.
 // - Allows:
@@ -25,12 +25,12 @@
 // - Description:
 //   - Adds proved small-ratio atan identities before exact kernel geometry.
 // - Usage:
-//   - Internal only while public transcendental routines remain unavailable.
+//   - Internal substrate for public sin/cos; public atan2 remains unavailable.
 // - Defaults:
 //   - Ordinary finite inputs remain unresolved and never receive an estimate.
 //
 
-//! Representation-only exact edge cases for future transcendental guest math.
+//! Representation-only exact edge cases and reduction for transcendental guest math.
 
 #include "../contract/math_transcendental_bits.h"
 

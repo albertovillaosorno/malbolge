@@ -1052,19 +1052,19 @@ absolute midpoint floors `2^-177` and `2^-175`; Q512 leaves at least 283 bits of
 margin before either boundary.
 
 A bounded periodic-reduction boundary now handles the next magnitude region.
-For finite `4 <= |x| < 2^31`, the exact binary64 dyadic is represented in
+For finite `4 <= |x| < 2^64`, the exact binary64 dyadic is represented in
 Q32.256 and multiplied by a directed Q256 `2/pi` interval. That reciprocal is
 the exact floor/ceil cell implied by the independently certified Q256 `pi/4`
 cell; the runtime does not admit a rounded host `2/pi` constant as authority.
 Both quotient endpoints must select the same nearest-even integer multiple.
 
-Within this bound the selected multiple is below 1,367,130,552, so twice the
-multiple fits `uint32_t` and its directed product with `pi/4` fits the 32 whole
-bits of Q32.256. Subtraction publishes an ordered signed residual around the
+Within this bound the selected multiple fits `uint64_t`; its directed product
+with `pi/2` fits the widened fixed-point workspace used by the bounded reducer.
+Subtraction publishes an ordered signed residual around the
 nearest `q*pi/2`, bounded by `pi/4`, plus `q mod 4` and the original input sign.
 A deterministic 512-case corpus plus exact binary64 neighbors around selected
-multiples from 3 through one billion matches an independent Machin/`Fraction`
-reconstruction limb-for-limb. Larger finite inputs still require wider
+multiples from 3 through `11,000,000,000,000,000,000` matches an independent
+Machin/`Fraction` reconstruction limb-for-limb. Inputs at or above `2^64` use
 Payne-Hanek-style quotient/constant geometry.
 
 That wider constant geometry now has a certified Q2112 reciprocal table. Exact
@@ -1360,7 +1360,7 @@ startup binding and byte-I/O intrinsic realization are likewise lane-9 target
 work over the stable identities defined here. The canonical promoted-block
 varargs cursor is now implemented; source `va_list` bridging remains lane-9
 compiler-lowering work. Remaining lane-8 algorithm work is correctly-rounded
-`sin`, `cos`, and `atan2`.
+`atan2`.
 
 ## Invariants
 

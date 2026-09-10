@@ -11,7 +11,7 @@
 // - Owns:
 //   - Positive source-preflight evidence for exact available guest math.
 // - Must-Not:
-//   - Reference unavailable trigonometric routines or host libm state.
+//   - Reference unavailable atan2 or host libm state.
 // - Allows:
 //   - Inputs: fixed binary64 values and exact math calls.
 //   - Outputs: one deterministic arithmetic combination.
@@ -27,7 +27,7 @@
 // - Usage:
 //   - Consumed by guest-libc compile and manual-validator regressions.
 // - Defaults:
-//   - Inexact and transcendental math remains contracted-unavailable.
+//   - Atan2 remains contracted-unavailable; sin/cos have separate evidence.
 //
 
 //! Positive source coverage for exact binary64 guest math.

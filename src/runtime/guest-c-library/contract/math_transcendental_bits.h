@@ -26,7 +26,7 @@
 // - Description:
 //   - Resolves proved cases and encloses reduced atan values in fixed point.
 // - Usage:
-//   - Internal guest-libc substrate; public sin/cos/atan2 remain gated.
+//   - Internal substrate for public sin/cos; public atan2 remains gated.
 // - Defaults:
 //   - Finite values outside proved exact cases report kernel-required.
 //   - Rejected atan2 kernel inputs never mutate caller-owned output geometry.
