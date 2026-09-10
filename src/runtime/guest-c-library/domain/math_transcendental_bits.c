@@ -60,6 +60,7 @@
 #define ATAN2_ADAPTIVE_NUMERATOR_BITS_MAX UINT32_C(108)
 #define ATAN2_ADAPTIVE_DENOMINATOR_BITS_MAX UINT32_C(106)
 #define ATAN2_LAMBERT_SCALE_EXPONENT_MAX INT32_C(56)
+#define ATAN2_LAMBERT_NORMALIZED_SHIFT_MAX UINT32_C(108)
 #define SINCOS_EXP_INPUT_NUMERATOR_BITS_MAX UINT32_C(1024)
 #define SINCOS_EXP_INPUT_DENOMINATOR_SHIFT_MAX UINT32_C(79)
 #define SINCOS_EXP_ALPHA_HEIGHT_EXPONENT_MAX UINT32_C(2048)
@@ -6221,6 +6222,10 @@ int malbolge_guest_math_dyadic_lambert_argument_bounds(
   }
   staged.normalized_denominator_shift =
       staged.denominator_shift + staged.normalizing_halvings;
+  if (staged.normalized_denominator_shift >
+      ATAN2_LAMBERT_NORMALIZED_SHIFT_MAX) {
+    return 0;
+  }
   staged.normalized_scale_pow2_exponent_upper =
       staged.square_over_denominator_pow2_exponent_upper -
       (int32_t)staged.normalizing_halvings;

@@ -43,6 +43,7 @@ CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
 CONTRACT = ROOT / "src/runtime/guest-c-library/contract"
 SOURCE = ROOT / "src/runtime/guest-c-library/domain/math_transcendental_bits.c"
 MAX_SCALE_EXPONENT = 56
+MAX_NORMALIZED_DENOMINATOR_SHIFT = 108
 
 
 def _run(command: list[str], cwd: Path) -> sp.CompletedProcess[str]:
@@ -142,6 +143,24 @@ def test_lambert_argument_scale_matches_exact_bit_geometry(
         tuple(map(int, line.split())) for line in executed.stdout.splitlines()
     ]
     assert rows == [
-        (54, 52, MAX_SCALE_EXPONENT, 56, 108, 0),
-        (54, 107, 1, 1, 108, 0),
+        (54, 52, MAX_SCALE_EXPONENT, 56, MAX_NORMALIZED_DENOMINATOR_SHIFT, 0),
+        (54, 107, 1, 1, MAX_NORMALIZED_DENOMINATOR_SHIFT, 0),
     ]
+
+
+def test_lambert_normalized_shift_uses_joint_geometry() -> None:
+    """Prove normalization is bounded by max(s, 2*bitlen(u)), not 107+56."""
+    accepted: list[int] = []
+    for numerator_bits in range(1, 55):
+        for denominator_shift in range(108):
+            scale_exponent = 2 * numerator_bits - denominator_shift
+            halvings = max(scale_exponent, 0)
+            if halvings > MAX_SCALE_EXPONENT:
+                continue
+            normalized_shift = denominator_shift + halvings
+            accepted.append(normalized_shift)
+            assert normalized_shift == max(
+                denominator_shift, 2 * numerator_bits
+            )
+            assert normalized_shift <= MAX_NORMALIZED_DENOMINATOR_SHIFT
+    assert max(accepted) == MAX_NORMALIZED_DENOMINATOR_SHIFT

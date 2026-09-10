@@ -28,6 +28,15 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/c/guest-runtime-and-allocator.mdc](docs/todo/open/c/guest-runtime-and-allocator.mdc)
 
+### TODO - Effective transcendental separation paper
+
+Reserve any genuinely new compact effective separation theorem for an
+independent mathematics paper, and keep that research explicitly non-blocking
+for product engineering backed by separately justified finite-domain evidence.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/research/effective-transcendental-separation-paper.mdc](docs/todo/open/research/effective-transcendental-separation-paper.mdc)
+
 ### TODO - Historical-interpreter fallback capsule
 
 Design an extended `.malbolge` container recognized by modern runtimes while the
@@ -452,12 +461,3 @@ classification.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/malbolge-machine-model-and-c-compilation-paper.mdc](docs/todo/open/research/malbolge-machine-model-and-c-compilation-paper.mdc)
-
-### TODO - Effective transcendental separation paper
-
-Reserve any genuinely new compact effective separation theorem for an
-independent mathematics paper, and keep that research explicitly non-blocking
-for product engineering backed by separately justified finite-domain evidence.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/research/effective-transcendental-separation-paper.mdc](docs/todo/open/research/effective-transcendental-separation-paper.mdc)

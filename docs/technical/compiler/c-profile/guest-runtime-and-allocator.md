@@ -927,7 +927,7 @@ scale.
 This is the exponential factor in the Lambert-GCF recurrence and is kept
 separate from the input rational denominator bound `q<2^106`. The query also
 publishes the canonical halving count `max(E,0)`: no candidate boundary needs
-more than 56 halvings, the normalized dyadic shift stays at most 163, and the
+more than 56 halvings, the normalized dyadic shift stays at most 108, and the
 normalized `u^2/v` scale ceiling is at most one (`E<=0`). Transporting a future
 normalized proof back through those angle doublings remains a separate
 obligation.

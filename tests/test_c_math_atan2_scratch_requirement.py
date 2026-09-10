@@ -167,6 +167,8 @@ int main(void) {
   }
   if (!malbolge_guest_math_atan2_normalized_refinement_plan(
           UINT32_C(44739239), &plan) ||
+      plan.fraction_limbs != UINT32_C(44739241) ||
+      plan.terms != UINT32_C(178956964) ||
       !malbolge_guest_math_atan2_normalized_refinement_scratch_requirement(
           &plan, &requirement) ||
       requirement.limbs != UINT32_C(1073741808) ||

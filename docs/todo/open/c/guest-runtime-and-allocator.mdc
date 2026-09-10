@@ -954,8 +954,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   effects are lane-9 realization work. This lane supplies their stable binder,
   wrapper, frame, and intrinsic identities unchanged and does not make itself
   depend on its downstream consumer merely to flip source availability.
-- Remaining lane-8 algorithm work: correctly-rounded `atan2`. Public `sin` and
-  `cos` are now available after finite binary64 TMD/resource closure.
+- Remaining lane-8 algorithm work: correctly-rounded `atan2`. Its global
+  termination/resource obligation is being attacked by the P2
+  `effective-transcendental-separation-paper` research, but a separately
+  complete finite-domain certificate is equally acceptable; the manuscript is
+  not a product dependency. Public `sin` and `cos` are now available after
+  finite binary64 TMD/resource closure.
 
   Source `va_list` bridging remains downstream compiler-lowering integration
   work over the implemented canonical cursor. Wide `%ls` remains unavailable
