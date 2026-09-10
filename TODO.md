@@ -441,3 +441,23 @@ engineering work.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/publication-grade-paper-pipeline.mdc](docs/todo/open/research/publication-grade-paper-pipeline.mdc)
+
+
+### TODO - Malbolge machine-model and C compilation paper
+
+Publish the systems/compiler result using a formal ternary self-modifying
+abstract-machine model for the compilation target while preserving "esoteric
+programming language" as historical terminology rather than the main technical
+classification.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/research/malbolge-machine-model-and-c-compilation-paper.mdc](docs/todo/open/research/malbolge-machine-model-and-c-compilation-paper.mdc)
+
+### TODO - Effective transcendental separation paper
+
+Reserve any genuinely new compact effective separation theorem for an
+independent mathematics paper, and keep that research explicitly non-blocking
+for product engineering backed by separately justified finite-domain evidence.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/research/effective-transcendental-separation-paper.mdc](docs/todo/open/research/effective-transcendental-separation-paper.mdc)

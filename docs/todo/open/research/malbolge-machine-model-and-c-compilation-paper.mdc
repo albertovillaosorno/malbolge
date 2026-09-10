@@ -1,0 +1,61 @@
+---
+id: "malbolge-machine-model-and-c-compilation-paper"
+status: "pending"
+lane: "18"
+priority: "p5"
+area: "research"
+task: "TODO - Malbolge machine-model and C compilation paper"
+contract: "docs/research/methodology/publication-pipeline.md"
+depends_on:
+  - "publication-grade-paper-pipeline"
+  - "historical-capability-demonstration"
+  - "turnkey-c-to-malbolge-toolchain"
+adr_paths:
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+scope:
+  - "docs/research/"
+  - "docs/bibliography/"
+  - "benchmarks/research/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Malbolge machine-model and C compilation paper
+
+## Objective
+
+Publish the systems/compiler result as a reproducible study of compiling a
+modern deterministic C profile to Malbolge's versioned execution model, using
+an explicit abstract-machine description rather than relying on the historical
+"esoteric programming language" label as the technical model.
+
+## Acceptance
+
+- Historical sources and repository specifications distinguish the traditional
+  language label from the formal object used by the compiler and runtime.
+- The paper models the target as a ternary, writable-code abstract machine with
+  position-dependent decode, the normative crazy operation, post-instruction
+  encryption/self-modification, and versioned execution geometry.
+- The paper does not claim that Malbolge is literally "not a language"; it
+  explains why an ISA/abstract-machine framing is more useful for compilation,
+  verification, and reproducible execution while preserving historical usage.
+- The systems claim centers on deterministic C-to-Malbolge compilation,
+  execution, verification, substantial-program evidence, and the limits of the
+  supported profile rather than on novelty claims about cryptographic hardware.
+- Comparisons to encrypted-memory processors, ASLR, enclaves, or
+  cryptographically protected execution are used only when a cited source
+  supports the specific analogy; they are not asserted as semantic equivalence.
+- The declared evidence is reproducible and separates measured capability from
+  interpretation, historical framing, and broader Church-Turing commentary.
+- Completion of the separate effective-transcendental-separation paper is not a
+  prerequisite for this paper or for ordinary product engineering.
+
+## Evidence
+
+- Primary target semantics come from the versioned Malbolge specifications,
+  execution traces, differential VM evidence, and compiler artifacts already
+  governed by the repository.
+- Required systems evidence includes the turnkey C workflow, substantial
+  generated programs, provenance-preserving historical comparison, resource
+  accounting, and explicit threats to validity.
+- The paper pipeline owns publication packaging; this TODO owns the thesis and
+  evidence boundary for the systems/compiler paper.

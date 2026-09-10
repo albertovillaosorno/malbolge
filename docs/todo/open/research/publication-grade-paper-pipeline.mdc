@@ -48,6 +48,13 @@ engineering work.
   undocumented workaround required for this objective to function.
 - Evidence is durable enough to move this TODO to `docs/todo/completed/` and
   remove the exact TODO heading without losing unfinished intent.
+- The pipeline supports two independent outputs rather than forcing one paper:
+  the Malbolge machine-model/C-compilation systems paper and, only if a
+  genuinely new effective theorem exists, a separate transcendental-separation
+  paper.
+- The mathematics-paper track is not a prerequisite for the systems paper or
+  for ordinary product completion through independently justified engineering
+  evidence.
 
 ## Evidence
 

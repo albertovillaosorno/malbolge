@@ -1,0 +1,56 @@
+---
+id: "effective-transcendental-separation-paper"
+status: "pending"
+lane: "18"
+priority: "p5"
+area: "research"
+task: "TODO - Effective transcendental separation paper"
+contract: "docs/research/methodology/publication-pipeline.md"
+depends_on:
+  - "publication-grade-paper-pipeline"
+  - "repository-bibliography-taxonomy-and-citation-provenance"
+adr_paths:
+  - "docs/research/adr/research-evidence-and-algorithm-mirror.md"
+scope:
+  - "docs/research/"
+  - "docs/bibliography/"
+  - "algorithms/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Effective transcendental separation paper
+
+## Objective
+
+Keep any genuinely new effective Diophantine/transcendence result needed to
+bound rational or dyadic trigonometric midpoint separation as an independent
+mathematics paper rather than an implicit product-engineering prerequisite.
+
+## Acceptance
+
+- A paper is attempted only if the work proves a new explicit, computable
+  separation theorem with fully instantiated constants, not merely an
+  asymptotic irrationality measure or a Vinogradov-notation bound.
+- The theorem statement identifies its exact domain, height/denominator
+  parameters, numerical constants, proof dependencies, and independently
+  reproducible verification of the resulting finite bound.
+- Existing Liang-Wang, Fischler-Rivoal, Lambert, and related results are cited
+  according to their actual effective or ineffective scope; no hidden constant
+  is silently promoted to an executable resource ceiling.
+- Negative results remain publishable evidence: a proof that a known explicit
+  theorem is far too weak for the desired computational budget is retained as
+  such rather than recast as a new separation theorem.
+- This research TODO is explicitly non-blocking for the compiler, guest libc,
+  the Malbolge systems paper, and engineering use of independently exhaustive
+  finite binary64 Table Maker's Dilemma results.
+
+## Evidence
+
+- Current repository evidence already records the structural tangent and
+  sine/cosine exponential bridges and the direct explicit-theorem budget
+  failures; those are starting material, not a completed theorem.
+- Any future executable algorithm derived from a new theorem follows the
+  research algorithm-mirror policy before product adoption.
+- If no materially stronger effective theorem is obtained, this TODO remains
+  open without preventing product completion through separately justified
+  finite-domain engineering evidence.
