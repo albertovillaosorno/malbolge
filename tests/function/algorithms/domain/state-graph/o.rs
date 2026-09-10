@@ -68,6 +68,24 @@ fn different_output_branches_remain_distinct() -> Result<(), String> {
 }
 
 #[test]
+fn independently_allocated_equal_bases_compare_exactly() -> Result<(), String> {
+    let left = PersistentOutput::from_bytes(b"independent-output");
+    let right = PersistentOutput::from_bytes(b"independent-output");
+    if !left.exact_output_eq(&right) {
+        return Err(String::from(
+            "independent equal output bases did not compare exactly",
+        ));
+    }
+    let different = PersistentOutput::from_bytes(b"independent-outpuu");
+    if left.exact_output_eq(&different) {
+        return Err(String::from(
+            "independent different output bases compared equal",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn long_append_history_materializes_without_prefix_loss() -> Result<(), String>
 {
     let root = PersistentOutput::from_bytes(b"seed");

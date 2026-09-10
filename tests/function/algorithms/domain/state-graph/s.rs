@@ -36,9 +36,9 @@
 //! Correctness fixtures for incremental exact indexed-state identity.
 
 use malbolge::{
-    ProfileMachine, ProfileMemoryDelta, ProfileMemoryWrite, ProfileStepTrace,
-    StepOutcome, current_profile, decode_profile_instruction,
-    verify_minimum_initial_halt_profile_width,
+    ProfileMachine, ProfileMachineState, ProfileMemoryDelta,
+    ProfileMemoryWrite, ProfileStepTrace, StepOutcome, current_profile,
+    decode_profile_instruction, verify_minimum_initial_halt_profile_width,
     verify_minimum_input_output_halt_profile_width,
     verify_minimum_jump_code_halt_profile_width,
     verify_minimum_jump_code_io_halt_profile_width,
@@ -667,26 +667,79 @@ fn forced_digest_collision_never_merges_distinct_states() -> Result<(), String>
 }
 
 #[test]
-fn independently_constructed_root_is_foreign_lineage() -> Result<(), String> {
+fn independently_constructed_equal_roots_deduplicate() -> Result<(), String> {
     let machine = ProfileMachine::from_source(
         current_profile(),
         CURRENT_SOURCE,
         Vec::new(),
     )
-    .map_err(|error| format!("indexed lineage fixture failed: {error}"))?;
+    .map_err(|error| format!("indexed equal-root fixture failed: {error}"))?;
     let checkpoint = machine.snapshot_state();
-    let seed = IndexedMachineState::from_checkpoint(&checkpoint)
-        .map_err(|error| format!("indexed lineage seed failed: {error:?}"))?;
-    let foreign =
+    let seed =
         IndexedMachineState::from_checkpoint(&checkpoint).map_err(|error| {
-            format!("indexed lineage foreign failed: {error:?}")
+            format!("indexed equal-root seed failed: {error:?}")
+        })?;
+    let independent = IndexedMachineState::from_checkpoint(&checkpoint)
+        .map_err(|error| {
+            format!("indexed equal-root independent failed: {error:?}")
+        })?;
+    if !seed.exact_state_eq(&independent) {
+        return Err(String::from(
+            "equal independent roots lost exact semantic identity",
+        ));
+    }
+    let mut graph = IndexedStateGraph::new(seed);
+    let node = graph.observe(independent).map_err(|error| {
+        format!("equal independent root observe failed: {error:?}")
+    })?;
+    if node.value() != 0
+        || graph.node_count() != 1
+        || graph.deduplicated_observations() != 1
+    {
+        return Err(String::from(
+            "equal independent roots did not deduplicate",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn independently_constructed_unequal_root_is_foreign_lineage()
+-> Result<(), String> {
+    let machine = ProfileMachine::from_source(
+        current_profile(),
+        CURRENT_SOURCE,
+        Vec::new(),
+    )
+    .map_err(|error| format!("indexed unequal-root fixture failed: {error}"))?;
+    let checkpoint = machine.snapshot_state();
+    let seed =
+        IndexedMachineState::from_checkpoint(&checkpoint).map_err(|error| {
+            format!("indexed unequal-root seed failed: {error:?}")
+        })?;
+    let mut memory = checkpoint.memory().to_vec();
+    let address = 1_024usize;
+    let slot = memory
+        .get_mut(address)
+        .ok_or_else(|| String::from("unequal-root mutation address missing"))?;
+    *slot = shifted_word(*slot, 1, current_profile().word_modulus());
+    let changed = ProfileMachineState::new_with_geometry(
+        checkpoint.geometry(),
+        memory,
+        checkpoint.registers(),
+        checkpoint.io().clone(),
+    )
+    .map_err(|error| format!("unequal-root checkpoint invalid: {error}"))?;
+    let foreign =
+        IndexedMachineState::from_checkpoint(&changed).map_err(|error| {
+            format!("indexed unequal-root state failed: {error:?}")
         })?;
     let mut graph = IndexedStateGraph::new(seed);
     let result = graph.observe(foreign);
     if result == Err(IndexedStateGraphError::ForeignLineage) {
         Ok(())
     } else {
-        Err(format!("foreign lineage was not rejected: {result:?}"))
+        Err(format!("unequal root was not rejected: {result:?}"))
     }
 }
 

@@ -14,7 +14,8 @@
 //   - Replace runtime memory or claim support beyond the 24-bit research bound.
 // - Allows:
 //   - Inputs: validated profile checkpoints and exact profile memory deltas.
-//   - Outputs: shared-root indexed reads, patches, and oracle materialization.
+//   - Outputs: indexed reads, exact cross-root equality, patches, and oracle
+//   - materialization.
 //   - Side effects: process-local allocation only.
 // - Split-When:
 //   - Split when a generalized profile-width radix needs independent ownership.
@@ -22,7 +23,7 @@
 //   - Merge when production state graphs adopt the proved indexed
 //   - representation.
 // - Summary:
-//   - Adds a four-level 64-way persistent override index above one shared root.
+//   - Adds a four-level 64-way persistent overlay with exact root semantics.
 // - Description:
 //   - Reads have bounded radix depth independent of patch-history length.
 // - Usage:
@@ -163,11 +164,15 @@ impl IndexedProfileMemory {
         self.apply_delta(delta, false)
     }
 
-    /// Returns whether two views have exactly equal canonical overlays and
-    /// root.
+    /// Returns whether two views have exactly equal base content and
+    /// canonical overlays.
+    ///
+    /// Shared root allocations are an O(1) fast path. Independently allocated
+    /// roots compare every base word exactly, so cross-root admission pays the
+    /// complete-root cost without adding work to ordinary state construction.
     #[must_use]
     pub fn exact_memory_eq(&self, other: &Self) -> bool {
-        self.shares_root(other)
+        self.same_base_content(other)
             && overlays_equal(self.overlay.as_ref(), other.overlay.as_ref())
     }
 
@@ -246,6 +251,18 @@ impl IndexedProfileMemory {
             .get(index)
             .copied()
             .ok_or(IndexedMemoryError::IndexInvariant)
+    }
+
+    /// Returns whether two immutable roots contain exactly the same words.
+    ///
+    /// Pointer identity is the common O(1) path. Cross-allocation comparison
+    /// checks length and exact slice equality; no digest can authorize root
+    /// identity.
+    #[must_use]
+    pub fn same_base_content(&self, other: &Self) -> bool {
+        self.shares_root(other)
+            || (self.base.len() == other.base.len()
+                && self.base.as_ref() == other.base.as_ref())
     }
 
     /// Returns whether two views share the exact immutable root allocation.

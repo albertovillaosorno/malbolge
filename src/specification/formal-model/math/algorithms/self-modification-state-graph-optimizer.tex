@@ -211,10 +211,48 @@ counts, equal materialized memory, equal canonical overlay digests, exact state
 equality, and one shared graph node identity. Any retained history artifact that
 changes exact identity rejects this reduction.
 
+\section{Cross-root immutable-content equivalence}
+
+Let $B(r)$ be the immutable base-memory word sequence owned by indexed root $r$.
+Allocation identity is an acceleration fact, not semantic state. Define
+\begin{equation}
+  \begin{aligned}
+    r_1\equiv_B r_2
+    \quad\Longleftrightarrow\quad
+    &\operatorname{ptr}(r_1)=\operatorname{ptr}(r_2) \\
+    &{}\lor\bigl(|B(r_1)|=|B(r_2)| \\
+    &\qquad\land
+      \forall a<|B(r_1)|,\ B(r_1)[a]=B(r_2)[a]\bigr).
+  \end{aligned}
+  \label{eq:state-graph-cross-root-content-equivalence}
+\end{equation}
+The pointer branch is the ordinary constant-time fast path. Only an
+independently
+allocated candidate enters the complete-word comparison. No hash or digest can
+establish $\equiv_B$. Consequently, equal base contents plus equal canonical
+overlays denote the same current memory even when their owning allocations are
+different; a single unequal base word rejects the semantic lineage.
+
+Committed output follows the same principle. Shared base/tail pointers
+accelerate
+ordinary equality, while independently represented histories with equal
+length/digest still compare their exact materialized byte sequences before they
+are accepted as equal.
+
+The executable correspondence constructs two indexed states independently from
+one N15 checkpoint and requires exact graph deduplication, then changes one
+valid
+base-memory word in a separately validated checkpoint and requires
+\texttt{ForeignLineage}. A verified region is also replayed from an
+independently
+constructed equal root and its shortcut exit must equal the normative profile
+VM.
+
 \section{Incremental exact state identity}
 
-Fix one execution lineage $L$ consisting of one canonical profile, one immutable
-input allocation, and one immutable complete memory root. Let $I(s)$ be the
+Fix one semantic execution lineage $L$ consisting of one canonical profile,
+one exact deterministic input sequence, and one immutable base-memory content
+equivalence class under $\equiv_B$. Let $I(s)$ be the
 canonical indexed-memory overlay, $O(s)$ committed output, $R(s)$ registers,
 $t(s)$ termination, and $p(s)$ consumed-input cursor. The incremental state key
 is
@@ -225,9 +263,10 @@ is
   \label{eq:state-graph-incremental-identity}
 \end{equation}
 Profile, input bytes, and complete root memory are omitted from the changing key
-only because lineage membership requires exact shared immutable allocations for
-all three semantic authorities. A state from another lineage is rejected rather
-than compared by rescanning the root.
+because lineage admission confirms them exactly. Shared allocations are fast
+paths, while independently allocated equal input/root content remains admissible
+only after exact comparison. Unequal immutable content is rejected before graph
+merge.
 
 A constant-size digest combines immutable profile/input digests, input cursor,
 incremental output digest, registers, termination, and the canonical radix
@@ -248,8 +287,9 @@ The executable correspondence evolves the incremental state exclusively from
 public \texttt{ProfileStepTrace} records, materializes every state back to a
 complete
 runtime checkpoint, and requires exact equality. It also forces every state into
-one digest bucket and proves distinct states remain distinct, while an
-independently reconstructed checkpoint root is rejected as foreign lineage.
+one digest bucket and proves distinct states remain distinct. Independently
+constructed equal checkpoint roots deduplicate after exact content confirmation,
+while a separately validated one-word root change remains foreign lineage.
 
 \section{Persistent committed output}
 

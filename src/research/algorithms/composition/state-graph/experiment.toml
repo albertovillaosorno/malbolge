@@ -106,10 +106,18 @@ domain = "exact admitted deltas with equal final memory and non-memory state"
 history_metadata_semantic = false
 rejection_condition = "equal final memory retains distinct exact graph identity"
 
+[reduction.cross_root_content_equivalence]
+baseline = "immutable-root-allocation-identity"
+candidate = "exact-immutable-base-content-equivalence"
+shared_allocation_fast_path = true
+independent_root_fallback = "length-plus-exact-word-sequence"
+digest_authority = false
+rejection_condition = "unequal base word or immutable profile/input mismatch"
+
 [reduction.incremental_state_identity]
 baseline = "complete-checkpoint-hash-and-equality-per-observation"
 candidate = "lineage-bound-incremental-digest-plus-exact-canonical-state"
-foreign_lineage = "fail-closed"
+foreign_lineage = "reject-unequal-immutable-content"
 digest_role = "bucket-only"
 collision_confirmation = "exact-state-equality"
 materialization_role = "oracle-only"
@@ -160,6 +168,7 @@ candidate = "exact-non-memory-plus-read-before-write-live-in-memory"
 read_authority = "ProfileStepTrace.memory_reads"
 write_authority = "ProfileStepTrace.memory_delta"
 lineage_must_match = true
+lineage_root_identity = "exact-base-content-not-allocation"
 verified_writes_preserve_unwritten_candidate_memory = true
 reduction_goal = "increase-safe-region-reuse"
 
@@ -174,12 +183,12 @@ next_risk = "native-code-artifact-integration"
 
 [reduction.region_consumed_input_guard]
 baseline = "full-input-allocation-lineage-guard"
-candidate = "same-root-consumed-prefix-aware-dependency-guard"
+candidate = "content-equivalent-root-consumed-prefix-aware-dependency-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "validated same-root states with exact opaque geometry, cursor, remaining suffix, output, registers, and termination"
+domain = "validated content-equal roots with exact geometry/cursor/suffix/state"
 consumed_prefix = "future-irrelevant"
 remaining_suffix = "exact"
-rejection_condition = "remaining-suffix change or any existing dependency-guard mismatch"
+rejection_condition = "suffix change or existing dependency-guard mismatch"
 
 [reduction.verified_transform_hoist]
 baseline = "normative-profile-rotate-and-crazy-recomputation"

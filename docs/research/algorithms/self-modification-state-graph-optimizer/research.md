@@ -266,12 +266,11 @@ must gain deterministic incremental identity and collision-confirming equality
 without re-materializing all 4,782,969 words per observation.
 
 The next identity candidate is now executable in `state.rs`. One incremental
-graph
-is explicitly bound to a single immutable profile/input/memory-root lineage.
-Changing state consists only of input cursor, committed output, registers,
-termination, and canonical radix overlay. Input/profile/root identity therefore
-uses shared allocations instead of repeated complete comparisons; independently
-constructed roots fail closed as foreign lineage.
+graph is bound to exact immutable profile/input/base-memory content rather than
+the accidental identity of host allocations. Changing state consists only of
+input cursor, committed output, registers, termination, and canonical radix
+overlay. Shared input/root allocations remain the constant-time ordinary path;
+independently allocated roots require exact complete base-content confirmation.
 
 State evolution consumes only public `ProfileStepTrace` records. Input/output
 observations are checked against the current incremental state, memory uses the
@@ -282,6 +281,23 @@ a forced constant digest does not merge distinct states, while exact replay
 returns the same node ID. Performance remains unclaimed until this graph is
 
 benchmarked directly against `ProfileStateGraph` full-checkpoint insert/replay.
+
+
+Cross-root admission now removes the final allocation-identity artifact from
+this exact-state model. Two states independently reconstructed from the same N15
+checkpoint compare equal and deduplicate to one graph node. A separately
+validated checkpoint with one changed base-memory word remains `ForeignLineage`.
+The implementation deliberately rejected a construction-time whole-root digest
+because it would charge every ordinary root; instead shared `Arc` identity stays
+O(1) and only an independent-root admission performs the complete exact scan.
+
+No hash authorizes equality. The same representation rule now applies to
+committed output. Shared persistent
+bases/tails retain their incremental shortcut, while independently allocated
+histories with matching length/digest compare materialized bytes exactly. A
+verified region constructed from one root also accepts an independently
+constructed equal root and its dependency shortcut reproduces the normative VM
+exit exactly.
 
 Post-commit state-identity measurement at `f317f3e` removes complete checkpoint
 hash/equality from the expected graph fast path. Incremental trace application
@@ -397,15 +413,19 @@ memory only when no earlier region write dominates that read. Repeated live-in
 reads must agree exactly. No opcode decoder or heuristic dependency model exists
 in the research layer.
 
-Runtime admission still requires exact non-memory state and the same immutable
-profile/input/root lineage, then checks only the derived live-in memory values.
+Runtime admission requires exact non-memory state and exact immutable
+profile/geometry/base-root content, then checks only the derived live-in memory
+values. Independent but byte/word-identical host allocations are admissible;
+allocation identity itself is not semantic authority.
 The shortcut applies verified after-values to the candidate's indexed memory
 without requiring the certificate's original `before` at write-only locations;
 this preserves candidate differences outside the verified write set. The
 end-to-end fixture changes such an irrelevant cell: exact entry equality rejects
 the state, the dependency guard accepts it, and shortcut/direct normative runs
 produce identical complete exit checkpoints while preserving the irrelevant
-value. Changing the first live-in dependency fails the guard and returns
+value.
+
+Changing the first live-in dependency fails the guard and returns
 `DependencyGuardMismatch`.
 
 This is the first demonstrated semantic state-collapse useful to native reuse,
@@ -427,8 +447,8 @@ retaining the same verifier and deoptimization boundary.
 
 
 The dependency guard now consumes the proved profile input-prefix reduction
-instead of requiring one identical full-input allocation. Within the same
-profile/opaque-geometry/memory-root lineage it compares the committed cursor and
+instead of requiring one identical full-input allocation. Within exact
+profile/opaque-geometry/base-memory content it compares the committed cursor and
 remaining suffix exactly, together with output, registers, termination, and the
 existing read-before-write memory live-ins. A validated `utO` state changes both
 already-consumed bytes and still takes the verified halt shortcut; changing the

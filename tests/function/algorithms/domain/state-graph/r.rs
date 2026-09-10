@@ -238,6 +238,49 @@ fn rejected_transition_never_records_verified_region() -> Result<(), String> {
 }
 
 #[test]
+fn dependency_guard_reuses_equal_independent_root() -> Result<(), String> {
+    let machine =
+        ProfileMachine::from_source(current_profile(), CURRENT_SOURCE, vec![
+            0x41,
+        ])
+        .map_err(|error| format!("cross-root region load failed: {error}"))?;
+    let checkpoint = machine.snapshot_state();
+    let entry =
+        IndexedMachineState::from_checkpoint(&checkpoint).map_err(|error| {
+            format!("cross-root region entry failed: {error:?}")
+        })?;
+    let verified = ExactRegionCertificate::record(&entry, REGION_BUDGET)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| {
+            format!("cross-root region verify failed: {error:?}")
+        })?;
+    let candidate =
+        IndexedMachineState::from_checkpoint(&checkpoint).map_err(|error| {
+            format!("cross-root independent state failed: {error:?}")
+        })?;
+    let shortcut = verified
+        .apply_dependency_shortcut(&candidate)
+        .map_err(|error| format!("cross-root shortcut failed: {error:?}"))?;
+    let mut direct = ProfileMachine::from_snapshot(checkpoint);
+    let direct_outcome = direct
+        .run(verified.step_budget())
+        .map_err(|error| format!("cross-root direct run failed: {error}"))?;
+    if direct_outcome != verified.outcome() {
+        return Err(String::from("cross-root region outcome changed"));
+    }
+    let shortcut_checkpoint =
+        shortcut.materialize_checkpoint().map_err(|error| {
+            format!("cross-root shortcut materialize failed: {error:?}")
+        })?;
+    if shortcut_checkpoint != direct.snapshot_state() {
+        return Err(String::from(
+            "cross-root shortcut differs from normative VM",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn dependency_guard_reuses_region_across_irrelevant_memory()
 -> Result<(), String> {
     let machine =

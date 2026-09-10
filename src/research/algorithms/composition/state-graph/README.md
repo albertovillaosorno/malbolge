@@ -114,16 +114,27 @@ The remaining blocker at this historical point was exact indexed-memory
 identity/dedup without full materialization.
 
 `state.rs` closes the per-observation full-checkpoint identity bottleneck for
-one
-execution lineage. It stores immutable input/root lineage by shared `Arc`,
-evolves
-all changing fields from public `ProfileStepTrace`, keeps output and radix
-digests incrementally, and uses the resulting constant-size digest only for
-bucket selection. Exact output/scalar/radix equality still confirms every merge.
-Foreign roots fail closed instead of triggering a complete memory comparison.
-`tests/s.rs` reconstructs every current checkpoint exactly, forces digest
+one semantic execution lineage. Shared input/root allocations remain the O(1)
+ordinary path, while independently allocated roots may enter the same lineage
+only after exact immutable base-content comparison. Input bytes and committed
+output likewise remain exact semantic authority rather than allocation identity.
+All changing fields evolve from public `ProfileStepTrace`; constant-size digests
+remain bucket filters only.
 
-collisions, and verifies exact replay deduplication.
+`tests/s.rs` reconstructs every current checkpoint,
+forces digest collisions, verifies exact replay, deduplicates equal independent
+roots, and rejects a separately validated one-word root difference.
+
+
+Cross-root equality is intentionally a cold boundary rather than a new per-step
+cost. `IndexedProfileMemory::same_base_content` first accepts shared `Arc` roots
+in O(1); only independent allocations compare the complete root word sequence.
+No root digest is introduced.
+
+`PersistentOutput` uses the analogous rule: shared
+history is incremental, while independent representations fall back to exact
+materialized bytes. A verified-region fixture confirms the same equal-root
+candidate can take the dependency shortcut and still match the normative VM.
 
 Post-commit identity evidence at `f317f3e` promotes the lineage-bound
 incremental
@@ -199,9 +210,9 @@ but safely reuses the region and matches direct VM execution exactly; changing a
 live-in dependency fails closed.
 
 The reduced region guard now consumes the proved profile input-prefix reduction.
-It still requires the same profile, opaque geometry, indexed-memory root,
-cursor,
-remaining input suffix, output, registers, and termination, but no longer pins
+It still requires the same profile, opaque geometry, exact indexed-memory base
+content, cursor, remaining input suffix, output, registers, and termination, but
+no longer pins
 identity to bytes strictly before that cursor. Input rebinding is independently
 validated through a complete profile checkpoint before the shared-root research
 state is reused; a changed unconsumed suffix remains a guard miss.

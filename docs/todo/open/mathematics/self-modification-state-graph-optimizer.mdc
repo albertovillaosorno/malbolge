@@ -116,12 +116,19 @@ VM evidence.
   overlay digests and exact state equality agree, and the incremental graph
   reuses one node. Patch history is therefore non-semantic on the proved
   same-root/equal-non-memory domain.
-- `state.rs` now binds incremental state identity to one immutable
-  profile/input/root lineage, evolves state exclusively from public traces, and
+- `state.rs` now binds incremental state identity to one immutable semantic
+  profile/input/base-memory lineage, evolves state from public traces, and
   materializes every current step back to the exact runtime checkpoint. Digest
   is bucket-only: forced constant collisions keep distinct states separate and
-  exact replay deduplicates. Independently allocated roots fail closed instead
-  of triggering complete-root comparison. Post-commit performance is next.
+  exact replay deduplicates. Independently allocated roots with exactly equal
+  base content now deduplicate after a cold complete-root comparison; a one-word
+  root difference remains foreign. Shared-root observation stays the O(1) path.
+- Cross-root semantic identity is now explicit: host allocation identity is not
+  state. Shared input/memory/output allocations retain pointer fast paths, while
+  independent equal roots compare exact base words and independent output
+  representations compare exact bytes. No root digest authorizes equality. A
+  verified region also reuses an independently allocated equal root and matches
+  normative execution; unequal root content fails closed.
 - Post-commit identity evidence at `f317f3e` measures incremental trace apply at
   923.78 ns/op, new-state observation at
   535.82 ns/op, and exact replay at
@@ -162,7 +169,8 @@ VM evidence.
   execution exactly. Changing a live-in fails closed.
 - The native-region dependency guard now integrates consumed-input-prefix
   equivalence. It preserves exact opaque geometry, cursor, remaining suffix,
-  output, registers, termination, same memory root, and live-in values while
+  output, registers, termination, exact base-memory content, and live-in values
+  while
   allowing already-consumed bytes to differ after validated input rebinding. A
   changed unconsumed suffix fails closed.
 - Verified region effects now hoist already-proved rotate/crazy results out of

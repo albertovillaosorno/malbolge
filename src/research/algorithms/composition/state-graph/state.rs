@@ -12,27 +12,26 @@
 //   - Incremental exact state identity over one indexed-memory execution
 //   - lineage.
 // - Must-Not:
-//   - Merge on digest alone or compare unrelated full roots implicitly.
+//   - Merge on digest alone or treat allocation identity as semantic identity.
 // - Allows:
 //   - Inputs: validated profile checkpoints and exact public step traces.
 //   - Outputs: incremental states, exact graph IDs, and oracle checkpoints.
 //   - Side effects: process-local allocation only.
 // - Split-When:
-//   - Split when cross-lineage content-addressed roots gain independent
-//   - evidence.
+//   - Split when cross-root interning or admission caching gains independent
+//   - ownership.
 // - Merge-When:
 //   - Merge when production graph/native tiers own the same exact state
 //   - identity.
 // - Summary:
 //   - Deduplicates indexed states without per-observation full-memory hashing.
 // - Description:
-//   - Digests bucket candidates; shared lineage plus exact fields confirm
-//   - merges.
+//   - Digests bucket candidates; exact semantic content confirms all merges.
 // - Usage:
 //   - Research candidate composed by `tests/state_graph_research.rs`.
 // - Defaults:
-//   - Foreign root/input lineages fail closed rather than trigger full
-//   - compares.
+//   - Shared allocations are O(1) shortcuts; independent roots require exact
+//   - content comparison before reuse.
 //
 
 //! Incremental collision-safe state identity above bounded radix memory.
@@ -76,7 +75,7 @@ pub struct IndexedMachineState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct IndexedNodeId(u32);
 
-/// Collision-confirmed state graph bound to one immutable root/input lineage.
+/// Collision-confirmed state graph bound to one immutable semantic lineage.
 #[derive(Clone, Debug)]
 pub struct IndexedStateGraph {
     buckets: BTreeMap<u64, Vec<IndexedNodeId>>,
@@ -106,7 +105,7 @@ pub enum IndexedStateError {
 /// Failure while adding one incremental state to a lineage-bound graph.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IndexedStateGraphError {
-    /// A candidate does not share the graph's immutable input and memory root.
+    /// A candidate differs in immutable profile, input, or base-memory content.
     ForeignLineage,
     /// Stable node IDs exhausted their u32 domain.
     NodeIdentityOverflow,
@@ -229,12 +228,12 @@ impl IndexedMachineState {
             && self.termination == other.termination
     }
 
-    /// Returns exact equality inside the same immutable execution lineage.
+    /// Returns exact equality across representation-equivalent lineages.
     #[must_use]
     pub fn exact_state_eq(&self, other: &Self) -> bool {
         self.geometry == other.geometry
             && ptr::eq(self.profile, other.profile)
-            && Arc::ptr_eq(&self.input, &other.input)
+            && self.same_input_content(other)
             && self.input_cursor == other.input_cursor
             && self.output.exact_output_eq(&other.output)
             && self.registers == other.registers
@@ -411,15 +410,20 @@ impl IndexedMachineState {
         self.profile.id()
     }
 
+    fn same_input_content(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.input, &other.input)
+            || (self.input_digest == other.input_digest
+                && self.input.as_ref() == other.input.as_ref())
+    }
+
     fn shares_lineage(&self, other: &Self) -> bool {
-        self.shares_memory_lineage(other)
-            && Arc::ptr_eq(&self.input, &other.input)
+        self.shares_memory_lineage(other) && self.same_input_content(other)
     }
 
     fn shares_memory_lineage(&self, other: &Self) -> bool {
         self.geometry == other.geometry
             && ptr::eq(self.profile, other.profile)
-            && self.memory.shares_root(&other.memory)
+            && self.memory.same_base_content(&other.memory)
     }
 
     /// Returns a deterministic constant-size bucket digest for this state.
@@ -570,8 +574,8 @@ impl IndexedStateGraph {
     ///
     /// # Errors
     ///
-    /// Returns [`IndexedStateGraphError`] for foreign root/input lineage or
-    /// node identifier exhaustion.
+    /// Returns [`IndexedStateGraphError`] for unequal immutable semantic
+    /// content or node identifier exhaustion.
     pub fn observe(
         &mut self,
         state: IndexedMachineState,

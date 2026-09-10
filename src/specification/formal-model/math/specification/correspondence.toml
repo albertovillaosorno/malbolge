@@ -2537,15 +2537,25 @@ mechanism = "divergent-write-order-and-intermediate-values-plus-exact-graph-dedu
 evidence = ["tests/function/algorithms/domain/state-graph/i.rs::divergent_write_histories_converge_to_exact_indexed_memory", "tests/function/algorithms/domain/state-graph/s.rs::equivalent_mutation_histories_deduplicate_incremental_state"]
 
 [[correspondence]]
+id = "state-graph-cross-root-content-equivalence"
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-cross-root-content-equivalence"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "current-profile indexed states whose immutable base-memory roots may use independent allocations"
+mechanism = "pointer-fast-path-otherwise-exact-complete-root-content-confirmation"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/s.rs::independently_constructed_equal_roots_deduplicate", "tests/function/algorithms/domain/state-graph/s.rs::independently_constructed_unequal_root_is_foreign_lineage", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_equal_independent_root"]
+
+[[correspondence]]
 id = "state-graph-incremental-identity"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-incremental-identity"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "one canonical profile/input/root execution lineage using current-profile indexed memory"
+domain = "one canonical profile with exact input/base-memory semantic lineage using current-profile indexed memory"
 # jig-ignore-next-line: indivisible reviewed identifier
 mechanism = "trace-evolution-full-checkpoint-reconstruction-and-lineage-rejection"
 # jig-ignore-next-line: indivisible reviewed identifier
-evidence = ["tests/function/algorithms/domain/state-graph/s.rs::current_trace_reconstructs_and_replay_deduplicates", "tests/function/algorithms/domain/state-graph/s.rs::independently_constructed_root_is_foreign_lineage"]
+evidence = ["tests/function/algorithms/domain/state-graph/s.rs::current_trace_reconstructs_and_replay_deduplicates", "tests/function/algorithms/domain/state-graph/s.rs::independently_constructed_equal_roots_deduplicate", "tests/function/algorithms/domain/state-graph/s.rs::independently_constructed_unequal_root_is_foreign_lineage"]
 
 [[correspondence]]
 id = "state-graph-incremental-collision-guard"
@@ -2564,7 +2574,7 @@ label = "eq:state-graph-persistent-output"
 domain = "one lineage output prefix plus append-only committed byte histories"
 mechanism = "materialization-independent-branch-equality-and-long-history"
 # jig-ignore-next-line: indivisible reviewed identifier
-evidence = ["tests/function/algorithms/domain/state-graph/o.rs::independent_equal_branches_compare_exactly", "tests/function/algorithms/domain/state-graph/o.rs::different_output_branches_remain_distinct", "tests/function/algorithms/domain/state-graph/o.rs::long_append_history_materializes_without_prefix_loss", "tests/function/algorithms/domain/state-graph/s.rs::current_trace_reconstructs_and_replay_deduplicates"]
+evidence = ["tests/function/algorithms/domain/state-graph/o.rs::independent_equal_branches_compare_exactly", "tests/function/algorithms/domain/state-graph/o.rs::independently_allocated_equal_bases_compare_exactly", "tests/function/algorithms/domain/state-graph/o.rs::different_output_branches_remain_distinct", "tests/function/algorithms/domain/state-graph/o.rs::long_append_history_materializes_without_prefix_loss", "tests/function/algorithms/domain/state-graph/s.rs::current_trace_reconstructs_and_replay_deduplicates"]
 
 [[correspondence]]
 id = "state-graph-region-consumed-input-guard"

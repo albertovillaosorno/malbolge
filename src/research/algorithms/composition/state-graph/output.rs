@@ -77,16 +77,22 @@ impl PersistentOutput {
         self.digest
     }
 
-    /// Returns exact output equality inside one shared immutable base lineage.
+    /// Returns exact semantic equality for committed output histories.
+    ///
+    /// Shared base/tail allocations keep the ordinary comparison incremental.
+    /// Independent representations use length and digest only as rejection
+    /// filters before exact materialized-byte comparison.
     #[must_use]
     pub fn exact_output_eq(&self, other: &Self) -> bool {
-        if !Arc::ptr_eq(&self.base, &other.base)
-            || self.len != other.len
-            || self.digest != other.digest
-        {
+        if self.len != other.len || self.digest != other.digest {
             return false;
         }
-        tails_equal(self.tail.as_ref(), other.tail.as_ref())
+        if Arc::ptr_eq(&self.base, &other.base)
+            && tails_equal(self.tail.as_ref(), other.tail.as_ref())
+        {
+            return true;
+        }
+        self.materialize() == other.materialize()
     }
 
     /// Constructs one immutable output lineage from existing committed bytes.
