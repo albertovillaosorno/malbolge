@@ -38,9 +38,9 @@
 //! Verification evidence for exact-state guarded future native regions.
 
 use malbolge::{
-    ProfileMachine, ProfileMachineError, ProfileMachineState,
-    ProfileMemoryDelta, ProfileMemoryWrite, ProfileStepTrace, RunOutcome,
-    StepOutcome, Termination, current_profile,
+    ProfileMachine, ProfileMachineError, ProfileMachineIoState,
+    ProfileMachineState, ProfileMemoryDelta, ProfileMemoryWrite,
+    ProfileStepTrace, RunOutcome, StepOutcome, Termination, current_profile,
     verify_minimum_jump_rotate_crazy_halt_profile_width,
     verify_minimum_straight_line_io_profile_width,
 };
@@ -61,6 +61,8 @@ const INPUT_GUARD_SUFFIX: u8 = 0x33;
 
 type InputGuardRegion =
     Result<(IndexedMachineState, VerifiedExactRegion), String>;
+type OutputPrefixRegion =
+    Result<(ProfileMachineState, VerifiedExactRegion), String>;
 
 const fn changed_word(value: u32) -> u32 {
     let incremented = value.saturating_add(1);
@@ -236,6 +238,109 @@ fn rejected_transition_never_records_verified_region() -> Result<(), String> {
             Err(format!("rejected transition certificate result: {other:?}"))
         },
     }
+}
+
+fn output_prefix_region_fixture() -> OutputPrefixRegion {
+    let geometry = verify_minimum_straight_line_io_profile_width(
+        current_profile(),
+        b"uCar_L",
+    )
+    .map_err(|error| format!("output-prefix geometry failed: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&geometry, vec![0xa5, 0x3c])
+            .map_err(|error| format!("output-prefix load failed: {error}"))?;
+    let prefix_outcome = machine
+        .run(3)
+        .map_err(|error| format!("output-prefix setup failed: {error}"))?;
+    if prefix_outcome != (RunOutcome::BudgetExhausted { steps: 3 })
+        || machine.output() != [0xa5]
+        || machine.input_consumed() != 1
+    {
+        return Err(String::from("output-prefix setup drifted"));
+    }
+    let checkpoint = machine.snapshot_state();
+    let entry = IndexedMachineState::from_checkpoint(&checkpoint)
+        .map_err(|error| format!("output-prefix entry failed: {error:?}"))?;
+    let verified = ExactRegionCertificate::record(&entry, 3)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| format!("output-prefix verify failed: {error:?}"))?;
+    Ok((checkpoint, verified))
+}
+
+fn checkpoint_with_output(
+    checkpoint: &ProfileMachineState,
+    output: Vec<u8>,
+) -> Result<ProfileMachineState, String> {
+    let io = ProfileMachineIoState::new(
+        checkpoint.io().input().to_vec(),
+        checkpoint.io().input_consumed(),
+        output,
+        checkpoint.io().termination(),
+    )
+    .map_err(|error| format!("output replacement IO failed: {error}"))?;
+    ProfileMachineState::new_with_geometry(
+        checkpoint.geometry(),
+        checkpoint.memory().to_vec(),
+        checkpoint.registers(),
+        io,
+    )
+    .map_err(|error| format!("output replacement checkpoint failed: {error}"))
+}
+
+#[test]
+fn dependency_guard_ignores_equal_length_output_prefix_contents()
+-> Result<(), String> {
+    let (checkpoint, verified) = output_prefix_region_fixture()?;
+    let changed_checkpoint = checkpoint_with_output(&checkpoint, vec![0x5a])?;
+    let candidate = IndexedMachineState::from_checkpoint(&changed_checkpoint)
+        .map_err(|error| {
+        format!("output-prefix candidate failed: {error:?}")
+    })?;
+    if verified.accepts_entry(&candidate) {
+        return Err(String::from("exact guard ignored prior output bytes"));
+    }
+    if !verified
+        .accepts_dependency_entry(&candidate)
+        .map_err(|error| format!("output-prefix guard failed: {error:?}"))?
+    {
+        return Err(String::from(
+            "dependency guard retained prior output bytes",
+        ));
+    }
+
+    let shortcut = verified
+        .apply_dependency_shortcut(&candidate)
+        .map_err(|error| format!("output-prefix shortcut failed: {error:?}"))?;
+    let mut direct = ProfileMachine::from_snapshot(changed_checkpoint);
+    let direct_outcome = direct
+        .run(verified.step_budget())
+        .map_err(|error| format!("output-prefix direct run failed: {error}"))?;
+    let shortcut_checkpoint =
+        shortcut.materialize_checkpoint().map_err(|error| {
+            format!("output-prefix shortcut materialize failed: {error:?}")
+        })?;
+    if direct_outcome != verified.outcome()
+        || shortcut_checkpoint != direct.snapshot_state()
+        || shortcut_checkpoint.io().output() != [0x5a, 0x3c]
+    {
+        return Err(String::from(
+            "output-prefix shortcut diverged from candidate-owned history",
+        ));
+    }
+
+    let longer_checkpoint =
+        checkpoint_with_output(&checkpoint, vec![0x5a, 0x5b])?;
+    let longer = IndexedMachineState::from_checkpoint(&longer_checkpoint)
+        .map_err(|error| {
+            format!("output-length candidate failed: {error:?}")
+        })?;
+    if verified
+        .accepts_dependency_entry(&longer)
+        .map_err(|error| format!("output-length guard failed: {error:?}"))?
+    {
+        return Err(String::from("dependency guard ignored output length"));
+    }
+    Ok(())
 }
 
 #[test]

@@ -413,11 +413,10 @@ memory only when no earlier region write dominates that read. Repeated live-in
 reads must agree exactly. No opcode decoder or heuristic dependency model exists
 in the research layer.
 
-Runtime admission requires exact future non-memory state and canonical
-profile/geometry, then checks only the derived live-in memory values.
-Memory-root
-identity and equality outside those live-ins are not preconditions for bounded
-region reuse.
+Runtime admission requires canonical profile/geometry, exact future input,
+registers, termination, and committed-output length, then checks only derived
+live-in memory values. Prior output bytes, memory-root identity, and memory
+outside those live-ins are not preconditions for bounded region reuse.
 The shortcut applies verified after-values to the candidate's indexed memory
 without requiring the certificate's original `before` at write-only locations;
 this preserves candidate differences outside the verified write set. The
@@ -429,6 +428,16 @@ value.
 Changing the first live-in dependency fails the guard and returns
 `DependencyGuardMismatch`.
 
+
+Committed output now receives the same causal-state treatment. After the first
+output of minimum-width `uCar_L`, a candidate replaces the historical byte but
+keeps output length one. The remaining verified input/output/halt region accepts
+that candidate, appends the same second byte as direct normative execution, and
+preserves the candidate-owned prefix exactly.
+
+A different starting length is still rejected because current effect
+observations encode absolute output lengths. Relative-length rebasing remains a
+separate possible reduction.
 
 The reduced dependency guard now removes memory-root identity entirely. A
 separately validated N15 checkpoint changes one base-memory word at an address
@@ -460,8 +469,9 @@ retaining the same verifier and deoptimization boundary.
 The dependency guard now consumes the proved profile input-prefix reduction
 instead of requiring one identical full-input allocation. With canonical
 profile/opaque geometry it compares the committed cursor and
-remaining suffix exactly, together with output, registers, termination, and the
-existing read-before-write memory live-ins. A validated `utO` state changes both
+remaining suffix exactly, together with output length, registers, termination,
+and the existing read-before-write memory live-ins. A validated `utO` state
+changes both
 already-consumed bytes and still takes the verified halt shortcut; changing the
 unconsumed third byte fails the guard. Input replacement itself is revalidated
 through the runtime checkpoint constructor before the shared-root research state

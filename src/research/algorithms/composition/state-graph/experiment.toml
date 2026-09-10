@@ -167,8 +167,9 @@ baseline = "verified-exact-entry-state-guard"
 candidate = "exact-non-memory-plus-read-before-write-live-in-memory"
 read_authority = "ProfileStepTrace.memory_reads"
 write_authority = "ProfileStepTrace.memory_delta"
-lineage_must_match = true
-lineage_root_identity = "exact-base-content-not-allocation"
+memory_root_identity_required = false
+output_prefix_content_required = false
+output_length_required = true
 verified_writes_preserve_unwritten_candidate_memory = true
 reduction_goal = "increase-safe-region-reuse"
 
@@ -180,6 +181,15 @@ dependency_guard_operations_per_sample = 16384
 shortcut_operations_per_sample = 4096
 verdict = "promote-dependency-guard-and-shortcut-baseline"
 next_risk = "native-code-artifact-integration"
+
+[reduction.region_output_prefix_content]
+baseline = "exact-committed-output-history"
+candidate = "equal-output-length-with-candidate-owned-prefix"
+prior_output_content = "future-irrelevant"
+output_length = "exact-current-effect-ir-bookkeeping"
+future_output = "candidate-prefix-plus-verified-appends"
+rejection_condition = "starting output length mismatch"
+next_risk = "relative-output-length-effect-rebasing"
 
 [reduction.region_consumed_input_guard]
 baseline = "full-input-allocation-lineage-guard"

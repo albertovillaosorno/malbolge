@@ -201,7 +201,8 @@ analysis over the VM-provided semantic read set and exact memory delta. A cell
 is
 a live-in dependency only when the region reads it before any earlier verified
 region write dominates that address. The guard still requires exact future
-non-memory state, but memory-root identity is no longer a precondition.
+non-memory state, except that prior committed-output bytes are reduced to their
+length. Memory-root identity is also not a precondition.
 
 The verifier-derived live-ins are the complete memory authority for that bounded
 region. After the guard passes, after-values are
@@ -212,6 +213,14 @@ but safely reuses the region and matches direct VM execution exactly; changing a
 
 live-in dependency fails closed.
 
+Prior committed-output content is now removed from the live-region guard as
+well. A minimum-width `uCar_L` fixture records a region after its first output,
+replaces
+that already emitted byte while preserving length, and then executes a region
+that emits again. The dependency shortcut preserves the candidate prefix,
+appends the same future byte as the normative VM, and reaches the exact
+candidate checkpoint. A different starting output length still fails because
+effect IR observations currently carry absolute lengths.
 
 The dependency guard now also crosses unequal base roots when their differences
 are outside the verified live-in set. A fixture changes one word directly in a
@@ -222,8 +231,8 @@ therefore the bounded region's memory precondition.
 
 The reduced region guard now consumes the proved profile input-prefix reduction.
 It still requires the same profile, opaque geometry, cursor, remaining input
-suffix, output, registers, and termination, but no longer constrains memory-root
-identity and no longer pins
+suffix, output length, registers, and termination, but no longer constrains
+memory-root identity, prior output bytes, or
 identity to bytes strictly before that cursor. Input rebinding is independently
 validated through a complete profile checkpoint before the shared-root research
 state is reused; a changed unconsumed suffix remains a guard miss.

@@ -167,6 +167,11 @@ VM evidence.
   those live-ins admits an irrelevant-memory variant that exact state equality
   rejects; verified effects preserve that irrelevant memory and match direct VM
   execution exactly. Changing a live-in fails closed.
+- Prior committed-output contents are now future-irrelevant for verified region
+  reuse when starting output length is unchanged. A minimum-width `uCar_L`
+  fixture changes the first emitted byte, then proves the remaining region
+  preserves that candidate prefix and appends exactly the normative future byte.
+  A length mismatch still fails closed under the current absolute-length IR.
 - The dependency guard now drops memory-root identity as a region precondition.
   A separately validated N15 base changes one word absent from live-ins/writes;
   the shortcut preserves it and equals direct normative execution. Thus bounded
@@ -174,9 +179,9 @@ VM evidence.
   changed live-in still fails closed.
 - The native-region dependency guard now integrates consumed-input-prefix
   equivalence. It preserves exact opaque geometry, cursor, remaining suffix,
-  output, registers, termination, and live-in values while allowing memory roots
-  themselves to differ and
-  allowing already-consumed bytes to differ after validated input rebinding. A
+  output length, registers, termination, and live-in values while allowing prior
+  output contents and memory roots themselves to differ. It also allows
+  already-consumed bytes to differ after validated input rebinding. A
   changed unconsumed suffix fails closed.
 - Verified region effects now hoist already-proved rotate/crazy results out of
   shortcut execution. A theorem-verified jump/rotate/crazy region contains both

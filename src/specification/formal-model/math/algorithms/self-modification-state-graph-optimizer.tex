@@ -363,9 +363,9 @@ constrain entry memory because the region supplies their value before they are
 observed.
 
 Let $N(s)$ be exact future non-memory state: canonical profile and opaque
-geometry, input cursor/suffix, output, registers, and termination. It
-deliberately contains no memory-root identity. A verified region with exact
-entry $e$ admits a
+geometry, input cursor/suffix, committed-output length, registers, and
+termination. It contains neither memory-root identity nor committed-output
+prefix contents. A verified region with exact entry $e$ admits a
 reduced candidate $s$ when
 \begin{equation}
   G_{\tau}(s,e)
@@ -396,12 +396,39 @@ produce identical complete exit checkpoints, and the irrelevant difference is
 preserved. A second fixture changes a live-in value and requires both guard and
 shortcut rejection.
 
+\section{Committed-output-prefix content reduction}
+
+Let $O(s)$ be bytes already committed before a verified live region begins.
+Profile execution never reads those bytes; output instructions only append one
+new byte and report the resulting absolute length. For region-guard purposes
+define
+\begin{equation}
+  O(s_1)\equiv_F O(s_2)
+  \Longleftrightarrow |O(s_1)|=|O(s_2)|.
+  \label{eq:state-graph-region-output-prefix-content}
+\end{equation}
+Equal length keeps every verified before/after output-length observation
+aligned,
+while the candidate's prior bytes remain candidate-owned. If the verified region
+emits suffix $Y$, both shortcut and normative execution from candidate $s$
+produce $O(s)\Vert Y$; no byte of the verifier entry prefix is copied into the
+candidate. A different starting length is rejected because the current portable
+effect IR records absolute output lengths.
+
+The executable fixture uses the verified source \texttt{uCar\_L}. It executes
+its first input, no-op, and output steps, then records the remaining input,
+output, and halt region. Before replay it replaces the committed byte with a
+different single byte. Exact entry equality rejects the candidate, while the
+dependency guard admits it and reproduces normative output; a two-byte prefix is
+rejected.
+
 \section{Consumed-input-aware region guard}
 
 Let $N_F(s,e)$ require equal canonical profile, opaque geometry, input cursor,
-remaining input suffix, output, registers, and termination, while allowing both
-memory roots and bytes strictly before the common cursor to differ. Combining
-the
+remaining input suffix, output length, registers, and termination, while
+allowing
+memory roots, prior output contents, and bytes strictly before the common cursor
+to differ. Combining the
 proved profile consumed-prefix projection with the read-before-write memory set
 gives
 \begin{equation}
