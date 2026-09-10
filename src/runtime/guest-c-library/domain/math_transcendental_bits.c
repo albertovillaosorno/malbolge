@@ -76,14 +76,15 @@
 #define FIXED_224_LIMB_COUNT UINT32_C(8)
 #define FIXED_224_FRACTION_BITS INT32_C(224)
 #define FIXED_256_LIMB_COUNT UINT32_C(9)
+#define FIXED_512_LIMB_COUNT UINT32_C(17)
 #define FIXED_2112_LIMB_COUNT UINT32_C(66)
 #define FIXED_2176_LIMB_COUNT UINT32_C(68)
 #define PAYNE_HANEK_PRODUCT_LIMBS UINT32_C(70)
 #define PAYNE_HANEK_FRACTION_BITS UINT32_C(2176)
 #define FIXED_256_FRACTION_BITS INT32_C(256)
 #define EXACT_RATIO_COMPONENT_LIMIT UINT64_C(0x0100000000000000)
-#define FIXED_MAX_LIMB_COUNT UINT32_C(11)
-#define FIXED_MAX_PRODUCT_LIMBS UINT32_C(22)
+#define FIXED_MAX_LIMB_COUNT UINT32_C(17)
+#define FIXED_MAX_PRODUCT_LIMBS UINT32_C(34)
 #define RANGE_256_LIMB_COUNT UINT32_C(11)
 #define RANGE_256_FRACTION_LIMBS UINT32_C(8)
 #define ATAN_SERIES_TERMS UINT32_C(60)
@@ -3597,6 +3598,33 @@ int malbolge_guest_math_two_over_pi_interval2176(
   return 1;
 }
 
+static const uint32_t HALF_PI_LOWER_512[17] = {
+    UINT32_C(0xdaa3848b), UINT32_C(0x9fc26ada), UINT32_C(0xe4be286e),
+    UINT32_C(0x605614db), UINT32_C(0x9a748636), UINT32_C(0xdf2a3367),
+    UINT32_C(0x1c6809bb), UINT32_C(0xa29410f3), UINT32_C(0x76273644),
+    UINT32_C(0x04177d4c), UINT32_C(0x14cf98e8), UINT32_C(0x52049c11),
+    UINT32_C(0x01b839a2), UINT32_C(0x898cc517), UINT32_C(0x42d18469),
+    UINT32_C(0x921fb544), UINT32_C(0x00000001)};
+static const uint32_t HALF_PI_UPPER_512[17] = {
+    UINT32_C(0xdaa3848c), UINT32_C(0x9fc26ada), UINT32_C(0xe4be286e),
+    UINT32_C(0x605614db), UINT32_C(0x9a748636), UINT32_C(0xdf2a3367),
+    UINT32_C(0x1c6809bb), UINT32_C(0xa29410f3), UINT32_C(0x76273644),
+    UINT32_C(0x04177d4c), UINT32_C(0x14cf98e8), UINT32_C(0x52049c11),
+    UINT32_C(0x01b839a2), UINT32_C(0x898cc517), UINT32_C(0x42d18469),
+    UINT32_C(0x921fb544), UINT32_C(0x00000001)};
+
+int malbolge_guest_math_half_pi_interval512(
+    MalbolgeGuestMathFixed512Interval *output) {
+  if (output == NULL) {
+    return 0;
+  }
+  copy_fixed_limbs(output->lower.limbs, HALF_PI_LOWER_512,
+                   FIXED_512_LIMB_COUNT);
+  copy_fixed_limbs(output->upper.limbs, HALF_PI_UPPER_512,
+                   FIXED_512_LIMB_COUNT);
+  return 1;
+}
+
 static const uint32_t TWO_OVER_PI_LOWER_256[9] = {
     UINT32_C(0xdebbc561), UINT32_C(0xfe5163ab), UINT32_C(0x3c439041),
     UINT32_C(0xdb629599), UINT32_C(0xf534ddc0), UINT32_C(0xfc2757d1),
@@ -4556,6 +4584,234 @@ int malbolge_guest_math_sincos_payne_hanek_reduce256(
   staged.input_negative =
       (bits & BINARY64_SIGN) != UINT64_C(0) ? UINT32_C(1) : UINT32_C(0);
   publish_payne_hanek256(output, &staged);
+  return 1;
+}
+
+static void copy_fixed_512(MalbolgeGuestMathFixed512 *output,
+                           const uint32_t source[17]) {
+  copy_fixed_limbs(output->limbs, source, FIXED_512_LIMB_COUNT);
+}
+
+static void zero_fixed_512(MalbolgeGuestMathFixed512 *value) {
+  zero_fixed_limbs(value->limbs, FIXED_512_LIMB_COUNT);
+}
+
+static void increment_fixed_512(MalbolgeGuestMathFixed512 *value) {
+  increment_fixed_limbs(value->limbs, FIXED_512_LIMB_COUNT);
+}
+
+static void decrement_fixed_512(MalbolgeGuestMathFixed512 *value) {
+  decrement_fixed_limbs(value->limbs, FIXED_512_LIMB_COUNT);
+}
+
+static int fixed_512_is_zero(const MalbolgeGuestMathFixed512 *value) {
+  return fixed_limbs_is_zero(value->limbs, FIXED_512_LIMB_COUNT);
+}
+
+static int payne_hanek_fraction_floor512(
+    const uint32_t *product, uint32_t shift, MalbolgeGuestMathFixed512 *output,
+    uint32_t *discarded) {
+  uint32_t index = UINT32_C(0);
+  if (product == NULL || output == NULL || discarded == NULL ||
+      shift < UINT32_C(512)) {
+    return 0;
+  }
+  zero_fixed_512(output);
+  while (index < UINT32_C(512)) {
+    const uint32_t source_bit = shift - UINT32_C(512) + index;
+    if (fixed_limbs_bit(product, source_bit) != UINT32_C(0)) {
+      output->limbs[index / UINT32_C(32)] |=
+          UINT32_C(1) << (index % UINT32_C(32));
+    }
+    ++index;
+  }
+  *discarded = fixed_limbs_any_below(product, shift - UINT32_C(512));
+  return 1;
+}
+
+static int fraction_complement512(const MalbolgeGuestMathFixed512 *input,
+                                  MalbolgeGuestMathFixed512 *output) {
+  uint32_t index = UINT32_C(0);
+  uint64_t carry = UINT64_C(1);
+  if (input == NULL || output == NULL || fixed_512_is_zero(input)) {
+    return 0;
+  }
+  while (index < UINT32_C(16)) {
+    const uint64_t cell = (uint64_t)(~input->limbs[index]) + carry;
+    output->limbs[index] = (uint32_t)cell;
+    carry = cell >> UINT32_C(32);
+    ++index;
+  }
+  output->limbs[16] = UINT32_C(0);
+  return carry == UINT64_C(0) ? 1 : 0;
+}
+
+static int payne_hanek_fraction_endpoint512(
+    const uint32_t *product, uint32_t shift, uint32_t lower_endpoint,
+    MalbolgeGuestMathFixed512 *magnitude, uint32_t *negative,
+    uint32_t *mod4) {
+  MalbolgeGuestMathFixed512 fraction;
+  uint32_t discarded = UINT32_C(0);
+  uint32_t round_up = UINT32_C(0);
+  if (magnitude == NULL || negative == NULL || mod4 == NULL ||
+      !payne_hanek_round_mod4(product, shift, mod4, &round_up) ||
+      !payne_hanek_fraction_floor512(product, shift, &fraction, &discarded)) {
+    return 0;
+  }
+  if (round_up == UINT32_C(0)) {
+    copy_fixed_512(magnitude, fraction.limbs);
+    if (lower_endpoint == UINT32_C(0) && discarded != UINT32_C(0)) {
+      increment_fixed_512(magnitude);
+    }
+    *negative = UINT32_C(0);
+    return 1;
+  }
+  if (!fraction_complement512(&fraction, magnitude)) {
+    return 0;
+  }
+  if (lower_endpoint == UINT32_C(0) && discarded != UINT32_C(0)) {
+    decrement_fixed_512(magnitude);
+  }
+  *negative = fixed_512_is_zero(magnitude) ? UINT32_C(0) : UINT32_C(1);
+  return 1;
+}
+
+static int scale_payne_hanek_endpoint512(
+    const MalbolgeGuestMathFixed512 *input, uint32_t negative,
+    uint32_t lower_endpoint, MalbolgeGuestMathFixed512 *output,
+    uint32_t *output_negative) {
+  uint32_t discarded = UINT32_C(0);
+  const uint32_t *factor = NULL;
+  uint32_t round_outward = UINT32_C(0);
+  if (input == NULL || output == NULL || output_negative == NULL ||
+      negative > UINT32_C(1)) {
+    return 0;
+  }
+  if (negative == UINT32_C(0)) {
+    factor = lower_endpoint != UINT32_C(0) ? HALF_PI_LOWER_512
+                                           : HALF_PI_UPPER_512;
+    round_outward = lower_endpoint == UINT32_C(0) ? UINT32_C(1) : UINT32_C(0);
+  } else {
+    factor = lower_endpoint != UINT32_C(0) ? HALF_PI_UPPER_512
+                                           : HALF_PI_LOWER_512;
+    round_outward = lower_endpoint != UINT32_C(0) ? UINT32_C(1) : UINT32_C(0);
+  }
+  multiply_fixed_limbs_floor(input->limbs, factor, FIXED_512_LIMB_COUNT,
+                             UINT32_C(16), output->limbs, &discarded);
+  if (round_outward != UINT32_C(0) && discarded != UINT32_C(0)) {
+    increment_fixed_512(output);
+  }
+  *output_negative = fixed_512_is_zero(output) ? UINT32_C(0) : negative;
+  return 1;
+}
+
+static int fixed_512_at_most_ulps(const MalbolgeGuestMathFixed512 *value,
+                                  uint32_t limit) {
+  uint32_t index = UINT32_C(1);
+  if (value == NULL || value->limbs[0] > limit) {
+    return 0;
+  }
+  while (index < FIXED_512_LIMB_COUNT) {
+    if (value->limbs[index] != UINT32_C(0)) {
+      return 0;
+    }
+    ++index;
+  }
+  return 1;
+}
+
+static int signed_fixed512_width_at_most(
+    const MalbolgeGuestMathFixed512 *lower, uint32_t lower_negative,
+    const MalbolgeGuestMathFixed512 *upper, uint32_t upper_negative,
+    uint32_t limit) {
+  MalbolgeGuestMathFixed512 width;
+  if (lower == NULL || upper == NULL || lower_negative > UINT32_C(1) ||
+      upper_negative > UINT32_C(1) ||
+      compare_signed_fixed_limbs(lower->limbs, lower_negative, upper->limbs,
+                                 upper_negative, FIXED_512_LIMB_COUNT) > 0) {
+    return 0;
+  }
+  if (lower_negative == upper_negative) {
+    if (lower_negative == UINT32_C(0)) {
+      if (!subtract_fixed_limbs(width.limbs, upper->limbs, lower->limbs,
+                                FIXED_512_LIMB_COUNT)) {
+        return 0;
+      }
+    } else if (!subtract_fixed_limbs(width.limbs, lower->limbs, upper->limbs,
+                                     FIXED_512_LIMB_COUNT)) {
+      return 0;
+    }
+  } else if (!add_fixed_limbs_checked(width.limbs, lower->limbs, upper->limbs,
+                                      FIXED_512_LIMB_COUNT)) {
+    return 0;
+  }
+  return fixed_512_at_most_ulps(&width, limit);
+}
+
+static void publish_payne_hanek512(
+    MalbolgeGuestMathSincosPayneHanek512 *output,
+    const MalbolgeGuestMathSincosPayneHanek512 *value) {
+  output->quadrant = value->quadrant;
+  output->input_negative = value->input_negative;
+  copy_fixed_512(&output->residual_lower, value->residual_lower.limbs);
+  output->residual_lower_negative = value->residual_lower_negative;
+  copy_fixed_512(&output->residual_upper, value->residual_upper.limbs);
+  output->residual_upper_negative = value->residual_upper_negative;
+}
+
+int malbolge_guest_math_sincos_payne_hanek_reduce512(
+    uint64_t bits, MalbolgeGuestMathSincosPayneHanek512 *output) {
+  const uint64_t magnitude_bits = bits & ~BINARY64_SIGN;
+  uint32_t product_lower[PAYNE_HANEK_PRODUCT_LIMBS];
+  uint32_t product_upper[PAYNE_HANEK_PRODUCT_LIMBS];
+  MalbolgeGuestMathFixed512 fraction_lower;
+  MalbolgeGuestMathFixed512 fraction_upper;
+  MalbolgeGuestMathSincosPayneHanek512 staged;
+  uint64_t significand = UINT64_C(0);
+  int32_t power = INT32_C(0);
+  uint32_t shift = UINT32_C(0);
+  uint32_t lower_negative = UINT32_C(0);
+  uint32_t upper_negative = UINT32_C(0);
+  uint32_t lower_mod4 = UINT32_C(0);
+  uint32_t upper_mod4 = UINT32_C(0);
+
+  if (output == NULL || magnitude_bits < BINARY64_FOUR ||
+      is_infinity(magnitude_bits) || is_nan(magnitude_bits) ||
+      !positive_binary64_components(magnitude_bits, &significand, &power) ||
+      significand == UINT64_C(0) || power < INT32_C(-50) ||
+      power >= (int32_t)PAYNE_HANEK_FRACTION_BITS) {
+    return 0;
+  }
+  shift = (uint32_t)((int64_t)PAYNE_HANEK_FRACTION_BITS - (int64_t)power);
+  if (!multiply_limbs_u64(TWO_OVER_PI_LOWER_2176,
+                          FIXED_2176_LIMB_COUNT, significand, product_lower,
+                          PAYNE_HANEK_PRODUCT_LIMBS) ||
+      !multiply_limbs_u64(TWO_OVER_PI_UPPER_2176,
+                          FIXED_2176_LIMB_COUNT, significand, product_upper,
+                          PAYNE_HANEK_PRODUCT_LIMBS) ||
+      !payne_hanek_fraction_endpoint512(
+          product_lower, shift, UINT32_C(1), &fraction_lower,
+          &lower_negative, &lower_mod4) ||
+      !payne_hanek_fraction_endpoint512(
+          product_upper, shift, UINT32_C(0), &fraction_upper,
+          &upper_negative, &upper_mod4) ||
+      lower_mod4 != upper_mod4 ||
+      !scale_payne_hanek_endpoint512(
+          &fraction_lower, lower_negative, UINT32_C(1),
+          &staged.residual_lower, &staged.residual_lower_negative) ||
+      !scale_payne_hanek_endpoint512(
+          &fraction_upper, upper_negative, UINT32_C(0),
+          &staged.residual_upper, &staged.residual_upper_negative) ||
+      !signed_fixed512_width_at_most(
+          &staged.residual_lower, staged.residual_lower_negative,
+          &staged.residual_upper, staged.residual_upper_negative,
+          MALBOLGE_GUEST_MATH_PAYNE_HANEK_512_RESIDUAL_ULPS_MAX)) {
+    return 0;
+  }
+  staged.quadrant = lower_mod4;
+  staged.input_negative =
+      (bits & BINARY64_SIGN) != UINT64_C(0) ? UINT32_C(1) : UINT32_C(0);
+  publish_payne_hanek512(output, &staged);
   return 1;
 }
 

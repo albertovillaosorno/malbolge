@@ -153,9 +153,11 @@ typedef struct MalbolgeGuestMathAtan2Interval224 {
 } MalbolgeGuestMathAtan2Interval224;
 
 #define MALBOLGE_GUEST_MATH_FIXED_256_LIMBS UINT32_C(9)
+#define MALBOLGE_GUEST_MATH_FIXED_512_LIMBS UINT32_C(17)
 #define MALBOLGE_GUEST_MATH_FIXED_2112_LIMBS UINT32_C(66)
 #define MALBOLGE_GUEST_MATH_FIXED_2176_LIMBS UINT32_C(68)
 #define MALBOLGE_GUEST_MATH_PAYNE_HANEK_RESIDUAL_ULPS_MAX UINT32_C(6)
+#define MALBOLGE_GUEST_MATH_PAYNE_HANEK_512_RESIDUAL_ULPS_MAX UINT32_C(6)
 #define MALBOLGE_GUEST_MATH_PERIODIC_TAYLOR_TERMS UINT32_C(32)
 #define MALBOLGE_GUEST_MATH_PERIODIC_INTERVAL_ULPS_MAX UINT32_C(74)
 
@@ -167,6 +169,15 @@ typedef struct MalbolgeGuestMathFixed256Interval {
   MalbolgeGuestMathFixed256 lower;
   MalbolgeGuestMathFixed256 upper;
 } MalbolgeGuestMathFixed256Interval;
+
+typedef struct MalbolgeGuestMathFixed512 {
+  uint32_t limbs[MALBOLGE_GUEST_MATH_FIXED_512_LIMBS];
+} MalbolgeGuestMathFixed512;
+
+typedef struct MalbolgeGuestMathFixed512Interval {
+  MalbolgeGuestMathFixed512 lower;
+  MalbolgeGuestMathFixed512 upper;
+} MalbolgeGuestMathFixed512Interval;
 
 typedef struct MalbolgeGuestMathFixed2112 {
   uint32_t limbs[MALBOLGE_GUEST_MATH_FIXED_2112_LIMBS];
@@ -209,6 +220,15 @@ typedef struct MalbolgeGuestMathSincosPayneHanek256 {
   MalbolgeGuestMathFixed256 residual_upper;
   uint32_t residual_upper_negative;
 } MalbolgeGuestMathSincosPayneHanek256;
+
+typedef struct MalbolgeGuestMathSincosPayneHanek512 {
+  uint32_t quadrant;
+  uint32_t input_negative;
+  MalbolgeGuestMathFixed512 residual_lower;
+  uint32_t residual_lower_negative;
+  MalbolgeGuestMathFixed512 residual_upper;
+  uint32_t residual_upper_negative;
+} MalbolgeGuestMathSincosPayneHanek512;
 
 typedef struct MalbolgeGuestMathSignedFixed256Interval {
   MalbolgeGuestMathFixed256 lower;
@@ -404,6 +424,8 @@ int malbolge_guest_math_two_over_pi_interval2112(
     MalbolgeGuestMathFixed2112Interval *output);
 int malbolge_guest_math_two_over_pi_interval2176(
     MalbolgeGuestMathFixed2176Interval *output);
+int malbolge_guest_math_half_pi_interval512(
+    MalbolgeGuestMathFixed512Interval *output);
 int malbolge_guest_math_atan2_base_interval(
     MalbolgeGuestMathAtan2QuarterPiBase base,
     MalbolgeGuestMathFixed192Interval *output);
@@ -425,6 +447,8 @@ int malbolge_guest_math_sincos_range_reduce256(
     uint64_t bits, MalbolgeGuestMathSincosRangeReduction256 *output);
 int malbolge_guest_math_sincos_payne_hanek_reduce256(
     uint64_t bits, MalbolgeGuestMathSincosPayneHanek256 *output);
+int malbolge_guest_math_sincos_payne_hanek_reduce512(
+    uint64_t bits, MalbolgeGuestMathSincosPayneHanek512 *output);
 int malbolge_guest_math_sincos_range_interval256(
     uint64_t bits, uint32_t terms, MalbolgeGuestMathSincosInterval256 *output,
     uint32_t *scratch, uint32_t scratch_capacity);

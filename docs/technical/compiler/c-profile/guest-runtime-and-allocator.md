@@ -1117,6 +1117,17 @@ scaled interval is strictly narrower than five Q256 ulps.
 Directed product floor/ceil then gives an integer-grid width of at most six
 ulps. Product code checks that bound fail-closed before publication.
 
+The same quotient geometry now supports a fixed Q512 refinement residual. A
+17-limb directed `pi/2` interval regenerated from Machin arithmetic is one Q512
+ulp wide. The Q2176 reciprocal uncertainty remains below one Q512 cell after
+any binary64 multiplication, so directed extraction and scaling preserve a
+six-ulp Q512 residual ceiling.
+
+A 96-case `Fraction` corpus through maximum finite reaches four ulps. This
+creates a higher-precision periodic retry layer; it is not a proof that Q512 is
+sufficient for every final rounding cell.
+
+
 The fixed periodic gate now uses 32 Taylor terms with no scratch increase.
 Because `|r|<4/5`, term 32 is already below one Q256 ulp for both series.
 Starting from the six-ulp residual, directed squaring is at most eleven ulps;

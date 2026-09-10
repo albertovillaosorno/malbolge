@@ -314,6 +314,20 @@ Directed multiplication therefore yields a residual no wider than six Q256
 ulps. The reducer checks this before publication; a 4,103-case retained corpus
 reaches four ulps but the contract keeps six.
 
+A fixed Q512 refinement boundary now reuses the same Q2176 quotient decision.
+Its 17-limb `pi/2` interval is regenerated from Machin arithmetic and occupies
+one Q512 ulp. Directed fractional extraction and scaling retain the same
+six-ulp residual ceiling at Q512; a 96-case corpus through maximum finite
+reaches four ulps. Q256 remains the first periodic attempt, and Q512 is
+refinement substrate rather than a claimed global precision ceiling.
+
+A fixed Q512 refinement boundary now reuses the same Q2176 quotient decision.
+Its 17-limb `pi/2` interval is regenerated from Machin arithmetic and occupies
+one Q512 ulp. Directed fractional extraction and scaling retain the same
+six-ulp residual ceiling at Q512; a 96-case corpus through maximum finite
+reaches four ulps. Q256 remains the first periodic attempt, and Q512 is
+refinement substrate rather than a claimed global precision ceiling.
+
 The periodic rounding gate now evaluates 32 Taylor terms at the same 90-limb
 scratch size. With `|r|<4/5`, the first omitted sine/cosine terms are below one
 Q256 ulp. An integer recurrence for every directed multiply/divide gives a
