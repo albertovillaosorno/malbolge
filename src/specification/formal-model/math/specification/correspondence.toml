@@ -2448,6 +2448,16 @@ mechanism = "structural-reduction-with-diverse-terminal-fixtures"
 evidence = ["tests/function/algorithms/domain/state-graph/exact.rs::terminal_state_drops_dead_details", "tests/function/algorithms/domain/state-graph/exact.rs::terminal_projection_rejects_live_machine"]
 
 [[correspondence]]
+id = "state-graph-profile-terminal-state"
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-profile-terminal-state"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "validated terminated profile checkpoints sharing exact profile, admitted geometry, output, and termination"
+mechanism = "dead-memory-register-input-variation-plus-repeated-terminal-restoration"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/c.rs::terminated_profile_drops_dead_memory_registers_and_input"]
+
+[[correspondence]]
 id = "state-graph-profile-checkpoint"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-profile-checkpoint"

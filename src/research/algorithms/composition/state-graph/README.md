@@ -21,6 +21,12 @@ before the cursor. `exact.rs` exhausts all 256 possible consumed first bytes in
 a
 converging two-input fixture before accepting this reduction.
 
+`profile_terminal_future_snapshot` extends the same dead-state reasoning to a
+validated profile checkpoint. It retains canonical profile identity, opaque
+execution geometry, committed output, and termination, while input, registers,
+and memory become dead after termination. Restored variant checkpoints prove the
+same termination repeats without mutation; live checkpoints are rejected.
+
 The second admitted reduction is `terminal_future_snapshot`. For an already
 terminated classic machine it retains only profile identity, committed output,
 and termination reason; memory/register/input state is dead for future requests.

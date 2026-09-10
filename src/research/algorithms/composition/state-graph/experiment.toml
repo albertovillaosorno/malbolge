@@ -34,6 +34,13 @@ candidate = "drop-dead-state-after-termination"
 # jig-ignore-next-line: indivisible reviewed identifier
 domain = "terminated state with exact profile, output prefix, and termination reason"
 
+[reduction.profile_terminal_state]
+baseline = "complete-validated-profile-checkpoint"
+candidate = "profile-geometry-output-termination-only"
+domain = "already-terminated validated profile checkpoints"
+dropped = "input-memory-registers"
+live_state = "reject"
+
 [profile_baseline]
 profile = "malbolge-2026.2"
 memory_words = 4782969

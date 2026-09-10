@@ -100,6 +100,13 @@ bytes, applies one common second byte that overwrites `A`, and proves the
 reduced
 keys are equal both before and after the common future halt.
 
+The terminal-state reduction now covers validated profile checkpoints as well as
+classic machines. A profile terminal key retains exact canonical profile,
+admitted execution geometry, committed output, and termination while dropping
+input, registers, and memory. Valid same-geometry variants with all three dead
+components changed converge to one key, and restored machines return the same
+termination without mutating their checkpoints. Live profile states fail closed.
+
 A second structural reduction is also admitted for already terminated states.
 `terminal_future_snapshot` keeps profile identity, committed output prefix, and
 termination reason while dropping memory, registers, and input state. Fixtures

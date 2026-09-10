@@ -519,6 +519,24 @@ values, and input while preserving profile/output/termination and verifies the
 same $F_{\tau}$ plus stable repeated termination. A live machine is rejected by
 the terminal projection rather than being coerced into this reduced domain.
 
+\section{Profile terminal-state reduction}
+
+Let $q$ be a validated profile checkpoint with stable termination
+$\tau\neq\varnothing$, canonical profile identity $f$, admitted execution
+geometry $g$, and committed output $O$. Profile execution returns $\tau$ before
+fetching code whenever termination is already present. Define
+\begin{equation}
+  F_{p,\tau}(q)=\left(f,g,O,\tau\right).
+  \label{eq:state-graph-profile-terminal-state}
+\end{equation}
+Input bytes/cursor, registers, and memory are omitted only after termination;
+profile identity, opaque admitted geometry, committed output, and termination
+remain exact authorities. The executable correspondence constructs several
+validated same-geometry terminal checkpoints with distinct memory, registers,
+and input. Their reduced keys are equal, restoring each checkpoint preserves the
+complete state, and another step returns the same halt reason without mutation.
+A live checkpoint is rejected from this projection.
+
 \section{Reduction research boundary}
 
 A proposed reduced key $R(s)$ is not trusted merely because it hashes or groups

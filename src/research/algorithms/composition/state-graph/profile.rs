@@ -34,12 +34,22 @@
 
 use std::collections::BTreeMap;
 
-use malbolge::{ProfileMachineState, Termination};
+use malbolge::{ProfileExecutionGeometry, ProfileMachineState, Termination};
 
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
 const FNV_PRIME: u64 = 1_099_511_628_211;
 
 type ProfileDigestFunction = fn(&ProfileMachineState) -> u64;
+
+/// Reduced future key for an already terminated profile checkpoint.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProfileTerminalFutureSnapshot {
+    geometry: ProfileExecutionGeometry,
+    output: Box<[u8]>,
+    profile_fingerprint: Box<str>,
+    profile_id: Box<str>,
+    termination: Termination,
+}
 
 /// Stable node identifier inside one exact profile-state graph.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -60,6 +70,8 @@ pub struct ProfileStateGraph {
 pub enum ProfileStateGraphError {
     /// Unique checkpoint count exceeded the stable identifier domain.
     NodeIdentityOverflow,
+    /// Terminal projection was requested from a live checkpoint.
+    StateNotTerminated,
 }
 
 impl ProfileNodeId {
@@ -158,6 +170,27 @@ impl Default for ProfileStateGraph {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Builds a reduced future key for an already terminated profile checkpoint.
+///
+/// # Errors
+///
+/// Returns [`ProfileStateGraphError::StateNotTerminated`] for a live state.
+pub fn profile_terminal_future_snapshot(
+    state: &ProfileMachineState,
+) -> Result<ProfileTerminalFutureSnapshot, ProfileStateGraphError> {
+    let termination = state
+        .io()
+        .termination()
+        .ok_or(ProfileStateGraphError::StateNotTerminated)?;
+    Ok(ProfileTerminalFutureSnapshot {
+        geometry: state.geometry(),
+        output: state.io().output().into(),
+        profile_fingerprint: state.profile().fingerprint().into(),
+        profile_id: state.profile().id().into(),
+        termination,
+    })
 }
 
 /// Digest function deliberately mapping every profile checkpoint to one bucket.

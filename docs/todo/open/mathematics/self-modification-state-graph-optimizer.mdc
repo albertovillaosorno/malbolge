@@ -53,6 +53,11 @@ VM evidence.
   14,348,907-word replay deduplicates, and forced digest collision keeps unequal
   current checkpoints separate. This is correctness evidence, not a storage or
   throughput claim.
+- Terminal future-state reduction now extends to validated profile checkpoints:
+  exact profile identity, admitted geometry, output, and termination remain in
+  the key while input, registers, and memory are proved dead after termination.
+  Valid variants converge and repeated restored execution returns the same
+  termination without mutation; live checkpoints fail closed.
 - A 15-sample post-commit benchmark measures the full current baseline at
   7.19 ms median snapshot clone, 26.24 ms prepared insert, and 30.76 ms exact
   replay on the recorded host. This rejects full checkpoint copy/hash as the
