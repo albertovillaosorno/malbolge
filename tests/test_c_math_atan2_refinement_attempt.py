@@ -183,10 +183,15 @@ int main(void) {{
       certified != UINT32_C(9)) return 94;
   certified = UINT32_C(9);
   if (malbolge_guest_math_atan2_refinement_attempt(
+          y, x, UINT64_C(0x3c9fffffffffffff),
+          UINT32_C({FRACTION_LIMBS}), UINT32_C({TERMS}), &certified, scratch,
+          UINT32_C({SCRATCH_LIMBS})) || certified != UINT32_C(9)) return 95;
+  certified = UINT32_C(9);
+  if (malbolge_guest_math_atan2_refinement_attempt(
           UINT64_C(0x3ff0000000000000), UINT64_C(0x3ff0000000000000),
           UINT64_C(0x3fe921fb54442d18), UINT32_C({FRACTION_LIMBS}),
           UINT32_C({TERMS}), &certified, scratch, UINT32_C({SCRATCH_LIMBS})) ||
-      certified != UINT32_C(9)) return 95;
+      certified != UINT32_C(9)) return 96;
   return 0;
 }}
 """

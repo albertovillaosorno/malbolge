@@ -32,10 +32,14 @@ also implemented over stable declaration-only byte intrinsics, but remain
 unavailable until downstream lowering proves those intrinsic identities execute
 selected-profile input/output. Formatting remains unavailable.
 
-Public `sin` and `cos` are now available; `atan2` remains unavailable. The
-internal raw-bit front
-end now resolves proved small-angle `sin`/`cos` results plus the complete
-`atan2` zero/infinity matrix. Right-half-plane ratios through `7 * 2^-29` also
+Public `sin` and `cos` are now available. The `atan2` numerical path has a
+finite correct-rounding/resource proof, while its source routine remains
+contracted-unavailable until lane-9 startup can supply the proved caller-owned
+scratch without a hidden host allocator.
+
+The internal raw-bit front end resolves proved small-angle `sin`/`cos` results
+plus the complete `atan2` zero/infinity matrix. Right-half-plane ratios through
+`7 * 2^-29` also
 resolve when exact binary64
 representation or an exact quotient-remainder margin proves the `atan`
 alternating-series error cannot cross a rounding midpoint. Normal-binade margins
@@ -107,8 +111,9 @@ four near-zero/near-`pi/2` edges, and 4,096 fixed-seed finite nonzero pairs. The
 first successful term counts are 1018/13/2080/1053 at 4/8/12/16 terms
 respectively;
 no retained case needs a later step. Lambert tangent irrationality supplies the
-qualitative non-equality needed for eventual exact separation, while guest-C
-unbounded refinement storage remains open.
+qualitative non-equality needed for eventual exact separation. At that milestone
+finite refinement storage remained open; the later explicit product bound closes
+it.
 
 The exact input-ratio height needed by any quantitative separation argument is
 now guest-C-owned as well. `malbolge_guest_math_atan2_ratio_reduced_height`
@@ -699,12 +704,12 @@ two positive `u32` factors; repeated floor on the lower endpoint and repeated
 ceil on the upper endpoint preserve enclosure. This removes the former stage
 8190 divisor-product ceiling without increasing the `4*N` recurrence scratch.
 
-Planning is now limited first by the public `u32` scratch-capacity ABI rather
-than a selected numerical precision. Stage 286331150 remains representable,
-requesting 286331152 fractional limbs, 1145324608 terms, and exactly
-`UINT32_MAX` scratch limbs; the next stage fails before publication because its
-scratch requirement is not representable. This is still a finite machine limit,
-not a full-domain termination proof.
+At this scheduler milestone, planning was limited first by the public `u32`
+scratch-capacity ABI rather than a selected numerical precision. Stage 286331150
+remains representable, requesting 286331152 fractional limbs, 1145324608 terms,
+and exactly `UINT32_MAX` scratch limbs; the next stage fails before publication
+because its scratch requirement is not representable. This was a machine limit,
+not yet the later full-domain termination proof.
 
 Q256 can now produce conservative binary64 candidate cells even when endpoint
 rounding is not unique. The fixed interval extractor rounds both directed
@@ -841,6 +846,28 @@ the heap explicitly inside its own process; compiler-generated startup must
 still
 prove that equivalent binding occurs before user code before allocator-owned
 transcendental scratch or public allocation can be admitted.
+
+The direct `atan2` fallback now has a finite product ceiling rather than an
+open-ended scheduler. Every kernel-required true angle has magnitude at least
+`2^-53`; Q256 candidate ranges are intersected with `[2^-53,4)` before adaptive
+search, and every direct single/two-cell/range entry rejects candidates outside
+that domain. Its finest possible candidate midpoint therefore has denominator
+`2^107`.
+
+Nesterenko-Waldschmidt Main Theorem 1, specialized to the Gaussian ratio target,
+gives a conservative separation exponent below 338,383,232 binary bits. The
+contracted maximum direct stage is 10,574,490: Q338,383,744 with 42,297,968
+Taylor terms, 158,617,395 scratch limbs, and 634,469,580 bytes. Conservative
+interval-width propagation needs fewer than 140 additional guard bits, leaving
+more than 370 bits of proof margin. Direct refinement rejects a start stage
+above that ceiling and treats inconclusiveness at the ceiling as an internal
+invariant failure; the theorem proves that path unreachable for valid admitted
+geometry.
+
+This completes lane-8 correctly-rounded `atan2` numerics. Production math
+remains allocator-free: lane 9 owns startup binding and any policy that supplies
+the caller-owned scratch before changing `atan2` from contracted-unavailable to
+source-available.
 
 Exact normal ratio midpoints are algebraically impossible for valid 53-bit input
 geometry: after 52 quotient bits the remainder retains the denominator's full

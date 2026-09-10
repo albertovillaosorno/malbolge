@@ -85,23 +85,35 @@ int main(void) {
     ++index;
   }
   if (!malbolge_guest_math_atan2_refinement_plan(
+          MALBOLGE_GUEST_MATH_ATAN2_PROVED_REFINEMENT_STAGE, &plan) ||
+      plan.fraction_limbs * UINT32_C(32) !=
+          MALBOLGE_GUEST_MATH_ATAN2_PROVED_FRACTION_BITS ||
+      plan.terms != MALBOLGE_GUEST_MATH_ATAN2_PROVED_TERMS ||
+      plan.required_scratch_limbs !=
+          MALBOLGE_GUEST_MATH_ATAN2_PROVED_SCRATCH_LIMBS ||
+      !malbolge_guest_math_atan2_refinement_scratch_requirement(
+          &plan, &requirement) ||
+      requirement.limbs != MALBOLGE_GUEST_MATH_ATAN2_PROVED_SCRATCH_LIMBS ||
+      requirement.bytes != MALBOLGE_GUEST_MATH_ATAN2_PROVED_SCRATCH_BYTES ||
+      requirement.alignment != UINT32_C(4)) return 82;
+  if (!malbolge_guest_math_atan2_refinement_plan(
           UINT32_C(71582785), &plan) ||
       !malbolge_guest_math_atan2_refinement_scratch_requirement(
           &plan, &requirement) ||
       requirement.limbs != UINT32_C(1073741820) ||
       requirement.bytes != UINT32_C(4294967280) ||
-      requirement.alignment != UINT32_C(4)) return 82;
+      requirement.alignment != UINT32_C(4)) return 83;
   requirement.limbs = UINT32_C(11);
   requirement.bytes = UINT32_C(22);
   requirement.alignment = UINT32_C(33);
   if (!malbolge_guest_math_atan2_refinement_plan(
           UINT32_C(71582786), &plan) ||
       malbolge_guest_math_atan2_refinement_scratch_requirement(
-          &plan, &requirement) || !unchanged(&requirement)) return 83;
-  if (!malbolge_guest_math_atan2_refinement_plan(UINT32_C(2), &plan)) return 84;
+          &plan, &requirement) || !unchanged(&requirement)) return 84;
+  if (!malbolge_guest_math_atan2_refinement_plan(UINT32_C(2), &plan)) return 85;
   plan.terms += UINT32_C(1);
   if (malbolge_guest_math_atan2_refinement_scratch_requirement(
-          &plan, &requirement) || !unchanged(&requirement)) return 85;
+          &plan, &requirement) || !unchanged(&requirement)) return 86;
   return 0;
 }
 """

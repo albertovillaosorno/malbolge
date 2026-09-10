@@ -1,6 +1,6 @@
 ---
 id: "guest-runtime-and-allocator"
-status: "active"
+status: "completed"
 lane: "8"
 priority: "p2"
 area: "c"
@@ -851,8 +851,9 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   without publication. Direct and normalized plan queries reject each other's
   policy, preventing silent reinterpretation of the shared plan struct.
 
-  The two finite inputs to a future quantitative bound are now exposed together:
-  exact reduced ratio height plus both candidate-cell midpoint shifts. A hard
+  At this intermediate milestone, the two finite inputs to the later
+  quantitative bound were exposed together: exact reduced ratio height plus both
+  candidate-cell midpoint shifts. A hard
   cell, its negative mirror, and a 108-bit axis-boundary cell match
   independent `Fraction` reconstruction; sign-mismatched cells fail atomically.
   The separate fallback proof still caps the relevant midpoint shift at 107.
@@ -869,13 +870,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   `H(P)<2^109`, rational denominator bits <=106, `H(2im)<2^218`,
   inverse-denominator bit length <=54, and inverse-house exponent <=106. The
   combined quantity is tighter: `d(1/alpha)*max(1,|1/alpha|) <= 2^106`, and
-  guest C publishes that ceiling directly. Remaining adaptive work is product
-  policy for
-  supplying/growing scratch only after lane-9 startup proves heap binding before
-  user code, plus instantiation of a sourced explicit exponential/transcendence
-  lower bound whose constant proves certification before the finite allocation
-  ceiling. Q128/16 remains bounded coverage and public atan2 remains
-  unavailable.
+  guest C publishes that ceiling directly.
+
+  At this intermediate milestone the remaining numerical work was an explicit
+  exponential/transcendence lower bound plus a finite product scratch ceiling.
+  The later Nesterenko-Waldschmidt and candidate-domain evidence below closes
+  both obligations. Public `atan2`
+  remains an integration-gated lane-9 concern rather than unfinished lane-8
+  numerics.
 
   Fischler-Rivoal `arXiv:2502.17992` is now canonical bibliography evidence for
   the quantitative exponential route. In the repository's linear
@@ -905,11 +907,14 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   `beta=2im`, conservative parameters `D=2`, `log A=109`, `log B=107`, and
   `E=e` give a separation exponent below 338,383,232 binary bits. Direct
   refinement stage 10,574,490 provides Q338,383,744 with 634,469,580 bytes of
-  scratch; directed Taylor-width propagation needs fewer than 139 guard bits,
-  leaving more than 370 bits beyond that requirement. The remaining global
-  handoff proof is now candidate-probe geometry, not transcendental separation:
-  every Q256 range probe that can remain inconclusive must be shown to retain
-  the same midpoint-height ceiling or be narrowed before this bound is invoked.
+  scratch; conservative directed Taylor-width propagation needs fewer than 140
+  guard bits, leaving more than 370 bits beyond that requirement.
+
+  Candidate geometry is closed too: Q256 ranges are intersected with
+  `[2^-53,4)`, and every adaptive direct entry rejects probes outside that
+  product domain. Thus every searched midpoint has denominator shift at most
+  107, so the explicit bound applies uniformly. Direct retries stop at the
+  proved stage rather than remaining open-ended.
 
   Liang-Wang (2024) is now retained as tangent-specific asymptotic evidence.
   Theorem 2 gives irrationality measure 2 for `tan(r)` at nonzero rational `r`.
@@ -961,8 +966,8 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   binades `e=-27..-53` with 160 independent 53-bit numerator/denominator
   geometries each and matches every C preclassifier status/result.
 
-  Correctly-rounded numerical kernels and final rounding remain the lane-8
-  blocker.
+  Before the final separation step below, correctly-rounded numerical kernels
+  and final rounding were the last lane-8 blocker.
 - Resolved integer/scheduling boundary: version one introduces no separate
   guest helper ABI for ordinary integer arithmetic or scheduling. Integer
   operations are explicit typed-IR semantics consumed by lane 9; the selected
@@ -973,11 +978,12 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   effects are lane-9 realization work. This lane supplies their stable binder,
   wrapper, frame, and intrinsic identities unchanged and does not make itself
   depend on its downstream consumer merely to flip source availability.
-- Remaining lane-8 algorithm work: correctly-rounded `atan2`. Its global
-  termination/resource obligation must close through product-specific finite
-  evidence; the optional `effective-transcendental-separation-paper` is P5 and
-  is not a product dependency. Public `sin` and `cos` are now available after
-  finite binary64 TMD/resource closure.
+- Completed lane-8 algorithm evidence: correctly-rounded `atan2` now has a
+  finite product-specific separation and direct-refinement ceiling. The
+  optional `effective-transcendental-separation-paper` remains P5 and is not a
+  product dependency. Public `sin` and `cos` are available; `atan2` source
+  availability remains a lane-9 startup/scratch integration decision over this
+  completed caller-owned numerical contract.
 
   Source `va_list` bridging remains downstream compiler-lowering integration
   work over the implemented canonical cursor. Wide `%ls` remains unavailable

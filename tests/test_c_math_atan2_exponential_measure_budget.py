@@ -61,7 +61,7 @@ NW_DIRECT_STAGE = 10_574_490
 NW_DIRECT_FRACTION_BITS = 338_383_744
 NW_DIRECT_TERMS = 42_297_968
 NW_DIRECT_SCRATCH_BYTES = 634_469_580
-NW_REQUIRED_GUARD_BITS = 139
+NW_REQUIRED_GUARD_BITS = 140
 NW_FIELD_DEGREE = 2
 NW_MAIN_THEOREM_CONSTANT = 211
 NW_RATIO_NUMERATOR_BITS_MAX = 108
@@ -191,8 +191,8 @@ def test_nesterenko_waldschmidt_bound_fits_direct_refinement_budget() -> None:
 
     # The direct scheduler has P=32*(stage+2), T=4*stage+8=P/8.  At |m|<4,
     # exact Taylor terms are below 11.  Directed multiplication/division gives
-    # <=8 QP ulps of width per retained term after the explicitly bounded first
-    # recurrences, so the complete Taylor enclosure is <(8*T+9) ulps.  The
+    # <=16 QP ulps of width per retained term under a conservative interval
+    # recurrence, so the complete Taylor enclosure is <(16*T+17) ulps.  The
     # selected T is large enough that the omitted term is below one QP ulp.
     stage = NW_DIRECT_STAGE
     fraction_bits = 32 * (stage + 2)
@@ -200,11 +200,11 @@ def test_nesterenko_waldschmidt_bound_fits_direct_refinement_budget() -> None:
     assert fraction_bits == NW_DIRECT_FRACTION_BITS
     assert terms == NW_DIRECT_TERMS == fraction_bits // 8
     assert terms >= 1 << 16
-    assert 8 * terms + 9 < 1 << 29
+    assert 16 * terms + 17 < 1 << 30
 
     # Both reduced cross-product coefficients sum to <2^109.  Thus the final
-    # comparator uncertainty is <2^138 QP ulps.  The exponential identity gives
-    # |a*cos(m)-b*sin(m)| > 2^-(B+1), leaving far more than the required 139
+    # comparator uncertainty is <2^139 QP ulps.  The exponential identity gives
+    # |a*cos(m)-b*sin(m)| > 2^-(B+1), leaving far more than the required 140
     # guard bits.  The same theorem with alpha=+/-1 proves the sin/cos signs.
     assert fraction_bits - NW_BINARY_EXPONENT_UPPER == NW_STAGE_MARGIN_BITS
     assert NW_STAGE_MARGIN_BITS > NW_REQUIRED_GUARD_BITS

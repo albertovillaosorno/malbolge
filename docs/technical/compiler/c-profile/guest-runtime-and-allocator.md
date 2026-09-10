@@ -2,7 +2,7 @@
 
 ## Status
 
-Active implementation
+Completed lane-8 runtime semantics and numerical implementation
 
 ## Purpose
 
@@ -1264,8 +1264,9 @@ next plan is still valid in limbs but byte conversion fails atomically. Direct
 and normalized plans are intentionally rejected by each other's byte query.
 
 This supplies the finite rational-height parameter required by any future
-quantitative Lambert/Lindemann separation bound. It does not itself lower-bound
-`|tan(midpoint)-p/q|`, so the finite resource proof remains open.
+quantitative Lambert/Lindemann separation bound. At this stage it did not itself
+lower-bound `|tan(midpoint)-p/q|`; the later explicit exponential specialization
+closes that resource proof.
 
 A composed separation-parameter query now joins that height to exact candidate
 cell geometry. For a kernel-required input and a candidate whose sign matches
@@ -1275,10 +1276,11 @@ counts plus the lower and upper dyadic midpoint denominator shifts and their
 maximum. Publication is atomic, including rejection of a sign-mismatched cell.
 
 Exact `Fraction` checks cover a retained hard cell, its negative mirror, and a
-108-bit axis-boundary kernel cell. Both rational height and
-midpoint shifts match independently. The already-proved fallback midpoint-shift
-ceiling of 107 therefore has an executable parameter surface ready for a future
-quantitative theorem, but the theorem/inequality itself remains open.
+108-bit axis-boundary kernel cell. Both rational height and midpoint shifts
+match independently. At that milestone the already-proved fallback
+midpoint-shift ceiling of 107 supplied the parameter surface for the
+quantitative theorem; the
+final specialization below closes the then-open inequality.
 
 
 The runtime also exposes the algebraic-size bridge to a linear exponential
@@ -1300,10 +1302,10 @@ inverse-denominator bit length <=54, and inverse-house exponent <=106.
 The paired quantity needed by the explicit exponential theorem is tighter
 still: `d(1/alpha)*max(1,|1/alpha|) <= 2^106`.
 
-Those finite parameters are small enough to make an explicit exponential
-transcendence measure a concrete candidate for the remaining resource proof.
-The repository has not yet instantiated the theorem-specific constant, so no
-precision ceiling follows from this bridge alone.
+Those finite parameters made an explicit exponential transcendence measure a
+concrete candidate for the then-open resource proof. The later
+Nesterenko-Waldschmidt specialization instantiates the needed constant; this
+bridge alone remains only structural evidence.
 
 
 A quantitative candidate now has canonical provenance in
@@ -1344,14 +1346,36 @@ external provenance in
 Every nonzero binary64 rounding midpoint is rational, while Lambert's theorem
 excludes rational `tan(midpoint)`. Since every finite nonzero binary64 input
 ratio is rational, exact equality at a same-branch midpoint is impossible.
-This proves eventual separation for a correctly directed refinement sequence;
-it does not supply the unbounded guest-C storage policy needed to implement
-that sequence.
+This proves eventual separation for a correctly directed refinement sequence.
 
-`sin` and `cos` are now source-available and implemented entirely as guest C.
-They use fixed automatic scratch and never depend on guest heap initialization
-or host libm. `atan2` remains source-unavailable pending its bivariate finite
-resource proof.
+At that milestone it did not supply a finite guest-C storage ceiling; the final
+Nesterenko-Waldschmidt specialization below supplies that bound.
+
+The final `atan2` resource step is now closed. Every kernel-required true angle
+has magnitude at least `2^-53`; Q256 candidate production intersects its range
+with `[2^-53,4)`, and every adaptive direct entry rejects candidates outside the
+same domain. All binary64 cells searched by the product handoff therefore have
+midpoint denominator shift at most 107.
+
+Nesterenko-Waldschmidt Main Theorem 1 applies to every such probe with the
+already-certified 108/106-bit reduced ratio. Conservative parameters `D=2`,
+`log A=109`, `log B=107`, and `E=e` give a separation exponent below
+338,383,232 binary bits. Direct stage 10,574,490 supplies Q338,383,744,
+42,297,968 terms, and 158,617,395 caller-owned scratch limbs
+(634,469,580 bytes). A conservative directed-width recurrence requires fewer
+than 140 guard bits, so the fixed stage has more than 370 bits of margin.
+
+The direct refinement APIs enforce that proved stage as a hard maximum. Falling
+through it inconclusively is an internal invariant failure rather than an
+unbounded retry; the theorem makes that branch unreachable for valid candidate
+geometry. The bound is allocation-neutral and does not make math call the guest
+heap.
+
+`sin` and `cos` are source-available and implemented entirely as guest C. They
+use fixed automatic scratch and never depend on guest heap initialization or
+host libm. Correctly-rounded `atan2` numerics are now complete, but the source
+routine remains contracted-unavailable until lane-9 startup can supply its
+proved caller-owned scratch without introducing a hidden host allocation path.
 
 Version one needs no separate guest scheduler or ordinary-integer-helper API:
 integer operations are explicit typed-IR semantics for lane-9 lowering, and the
@@ -1359,8 +1383,7 @@ selected target profile is sequential with no guest thread surface. Allocation
 startup binding and byte-I/O intrinsic realization are likewise lane-9 target
 work over the stable identities defined here. The canonical promoted-block
 varargs cursor is now implemented; source `va_list` bridging remains lane-9
-compiler-lowering work. Remaining lane-8 algorithm work is correctly-rounded
-`atan2`.
+compiler-lowering work. No lane-8 numerical algorithm work remains.
 
 ## Invariants
 

@@ -19,15 +19,6 @@ labels belong here.
 
 ## P2 — Compiler, runtime, and accelerator core
 
-### TODO - Guest runtime and allocator
-
-Implement startup, calling convention, frames, allocation, streams, integer
-helpers, strings, deterministic math helpers, scheduling primitives, and other
-runtime facilities as code that ultimately executes under Malbolge semantics.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/c/guest-runtime-and-allocator.mdc](docs/todo/open/c/guest-runtime-and-allocator.mdc)
-
 ### TODO - Historical-interpreter fallback capsule
 
 Design an extended `.malbolge` container recognized by modern runtimes while the

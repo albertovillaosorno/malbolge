@@ -6,7 +6,8 @@ Implemented for `malbolge-libc-v1`. Memory, narrow-string, exact binary64
 `fabs`/`floor`/`ceil`/`trunc`, canonical nearest-ties-even `sqrt`, and
 correctly rounded binary64 `sin`/`cos` are executable guest C today. Allocation,
 byte streams, formatting, and `atan2` stay versioned but unavailable until their
-runtime/integration gates complete.
+integration gates complete. The `atan2` numerical proof is complete; its
+remaining gate is lane-9 startup ownership of the proved caller-owned scratch.
 
 ## Purpose
 
@@ -29,9 +30,9 @@ This contract governs:
 - `tests/tidy/libc/` and `tests/tidy/libc-rejected/` as executable boundary
   fixtures.
 
-This contract lane does not own heap/stream integration, formatting, or the
-remaining correctly-rounded transcendental `libm` algorithms. Those facilities
-remain owned by `guest-runtime-and-allocator`.
+This contract lane does not own heap/stream integration, formatting, or runtime
+scratch/startup realization. Those facilities consume the completed
+`guest-runtime-and-allocator` semantics downstream.
 
 ## Current Behavior
 

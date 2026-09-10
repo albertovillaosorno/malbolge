@@ -249,6 +249,44 @@ def test_handoff_refines_injected_q256_range(tmp_path: Path) -> None:
     assert executed.returncode == 0, executed.stdout + executed.stderr
 
 
+def _domain_clip_source() -> str:
+    below = _fixed_integer(0x3C90000000000000)
+    minimum = _fixed_integer(0x3CA0000000000000)
+    return f"""#include "math_transcendental_bits.h"
+#include <stdint.h>
+#define SIGN UINT64_C(0x8000000000000000)
+#define MIN UINT64_C(0x3ca0000000000000)
+static int run(uint64_t y, uint32_t negative) {{
+  MalbolgeGuestMathAtan2Interval256 interval = {{
+    {{{{{_limbs(below)}}}, {{{_limbs(minimum)}}}}}, negative}};
+  MalbolgeGuestMathAtan2HandoffProgress out;
+  const uint64_t expected = MIN | (negative != UINT32_C(0) ? SIGN : 0);
+  if (!malbolge_guest_math_atan2_refine_q256_interval_available(
+          y, UINT64_C(0x{HARD_X:016x}), &interval, UINT32_C(0),
+          (uint32_t *)0, UINT32_C(0), &out) ||
+      out.status != MALBOLGE_GUEST_MATH_ATAN2_HANDOFF_RETRY ||
+      out.remaining.lower_bits != expected ||
+      out.remaining.upper_bits != expected ||
+      out.plan.stage != UINT32_C(0)) return 0;
+  return 1;
+}}
+int main(void) {{
+  if (!run(UINT64_C(0x{HARD_Y:016x}), UINT32_C(0))) return 91;
+  if (!run(UINT64_C(0x{(HARD_Y | SIGN):016x}), UINT32_C(1))) return 92;
+  return 0;
+}}
+"""
+
+
+def test_handoff_clips_q256_range_to_proved_candidate_domain(
+    tmp_path: Path,
+) -> None:
+    """Intersect injected endpoint ranges with the globally proved domain."""
+    executable = _compile(tmp_path, _domain_clip_source(), "atan2-domain-clip")
+    executed = _run([str(executable)], tmp_path)
+    assert executed.returncode == 0, executed.stdout + executed.stderr
+
+
 def _resume_source() -> str:
     lower_bits = HARD_EXPECTED - 4096
     upper_bits = HARD_EXPECTED + 8192

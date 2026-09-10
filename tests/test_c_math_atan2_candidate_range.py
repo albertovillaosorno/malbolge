@@ -216,6 +216,18 @@ int main(void) {
   if (malbolge_guest_math_atan2_refine_range_available(
           y, x, &range, UINT32_C(0), scratch, UINT32_C(75), &progress) ||
       progress.certified != UINT32_C(7)) return 112;
+  range.lower_bits = UINT64_C(0x3c9fffffffffffff);
+  range.upper_bits = UINT64_C(0x3ca0000000000000);
+  if (malbolge_guest_math_atan2_refine_range_available(
+          y, x, &range, UINT32_C(0), scratch, UINT32_C(75), &progress) ||
+      progress.certified != UINT32_C(7)) return 113;
+  range.lower_bits = UINT64_C(0x3fe0000000000000);
+  range.upper_bits = UINT64_C(0x3fe0000000000001);
+  if (malbolge_guest_math_atan2_refine_range_available(
+          y, x, &range,
+          MALBOLGE_GUEST_MATH_ATAN2_PROVED_REFINEMENT_STAGE + UINT32_C(1),
+          scratch, UINT32_C(75), &progress) ||
+      progress.certified != UINT32_C(7)) return 114;
   return 0;
 }
 """

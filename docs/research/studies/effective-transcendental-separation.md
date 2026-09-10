@@ -2,7 +2,7 @@
 
 ## Status
 
-Active mathematical study
+Product closure complete; optional publication study remains
 
 ## Research Question
 
@@ -28,7 +28,7 @@ representable plan is stage 44,739,239: 44,739,241 fractional limbs provide
 `24*N` scratch occupies `0xffffffc0` bytes. The looser `<2^35` total-storage
 bound remains useful only when generously rejecting theorem routes.
 
-- Status: Active mathematical study
+- Status: Product closure complete; optional publication remains
 - Record type: Study
 - Planning identity: `effective-transcendental-separation-paper`
 - Last reviewed: 2026-09-10
@@ -219,8 +219,10 @@ The present evidence answers the narrow necessity question:
   as a resource proof until its hidden constants are made explicit for the
   required family.
 
-No claim is made yet that the Lambert specialization will meet the resource
-ceiling. That is the active proof attempt.
+The product no longer depends on the Lambert specialization. The explicit
+Nesterenko-Waldschmidt route fits the direct scheduler, and candidate-domain
+intersection makes its midpoint-height hypothesis uniform across adaptive
+search. Lambert-specific improvement remains optional publication research.
 
 ## Threats to Validity
 
@@ -241,9 +243,10 @@ engineering problem because it is the remaining correctness gate for public
 `publication-grade-paper-pipeline`, and a complete independently justified
 finite-domain certificate may close the product without a new theorem.
 
-The next accepted result must either instantiate a materially stronger explicit
-bound below the guest resource ceiling or prove a complete finite certificate.
-Until then, `atan2` remains unavailable rather than weakening correct rounding.
+The accepted product result is now the explicit Nesterenko-Waldschmidt bound
+below the guest resource ceiling plus the adaptive candidate-domain proof.
+`atan2` remains source-unavailable only for downstream lane-9 scratch/startup
+integration, not because correct-rounding termination is unresolved.
 
 ## References
 
