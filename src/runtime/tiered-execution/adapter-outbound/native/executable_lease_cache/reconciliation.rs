@@ -32,7 +32,13 @@
 
 //! Explicit reclamation and keyed release retry for executable leases.
 
-use super::*;
+use super::{
+    Arc, Display, FormatResult, Formatter, NativeExecutableMemoryAdapter,
+    NativeExecutableSequenceCacheUsage, NativeExecutableSequenceKey,
+    NativeExecutableSequenceLeaseCacheValue,
+    NativeExecutableSequenceReleaseFailure, NativeExecutableSequenceWeight,
+    VecDeque, release_native_executable_sequence,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 enum LeaseCacheReconcileOutcome<E> {

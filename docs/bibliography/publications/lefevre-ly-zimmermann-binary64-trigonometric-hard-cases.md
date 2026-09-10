@@ -97,5 +97,6 @@ source-integration evidence to compose with the external finite TMD result.
   describing the exhaustive search and full TMD result; accessed 2026-09-09.
 - <https://homepages.loria.fr/PZimmermann/talks/module4.pdf> - binary64 TMD
   maxima and precision implication; accessed 2026-09-09.
+<!-- jig-ignore-next-line: immutable source URL -->
 - <https://github.com/Cactus-proj/core-math/tree/887cab6f26c5c40a5d03ce4b5968d3e15e29d884> - exact CORE-MATH snapshot used
   for artifact and generator provenance; accessed 2026-09-09.

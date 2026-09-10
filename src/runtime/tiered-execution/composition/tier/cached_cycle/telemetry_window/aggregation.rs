@@ -32,7 +32,12 @@
 
 //! Exact arithmetic for cached-retry telemetry retention.
 
-use super::*;
+use super::{
+    NativeContinuationCachedRetryTelemetry,
+    NativeContinuationCachedRetryTelemetryObservation,
+    NativeContinuationCachedRetryTelemetryWindowCounter,
+    NativeContinuationCachedRetryTelemetryWindowError,
+};
 
 pub(super) fn add_telemetry(
     left: NativeContinuationCachedRetryTelemetry,

@@ -32,7 +32,10 @@
 
 //! Typed direct-native failure contracts.
 
-use super::*;
+use super::{
+    CoffAdmissionError, Display, FormatResult, Formatter, NativeIdentityError,
+    PortableProfileRequirementError,
+};
 
 /// Failure while emitting or verifying the direct deoptimization stub.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

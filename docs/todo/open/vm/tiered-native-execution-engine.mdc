@@ -62,8 +62,10 @@ baseline; native tiers are accelerators of identical observable behavior.
 - Active foundation: `src/runtime/virtual-machine/domain/execution_ir.rs` owns
   portable effect IR v3
   (`EffectOp`, `MemoryLiveIn`, and `RegionEffectProgram`) and re-exports the
-  VM-owned `TargetProfileRequirement` without creating a Rust crate boundary.
-  State-graph research reprojects verifier traces into this IR,
+  VM-owned `TargetProfileRequirement`. The tiered composition root is registered
+  as the non-distribution `tiered_execution_validation` Cargo binary target so
+  Jig resolves its production crate root without changing the behavioral test
+  harness. State-graph research reprojects verifier traces into this IR,
   rejects tampered profile-ID/fingerprint/version/features/geometry,
   live-in/budget/outcome/effect fields, and preserves
   deterministic interpreter deoptimization on guard miss.

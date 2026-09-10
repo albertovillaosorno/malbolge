@@ -33,8 +33,11 @@ as product code. It
 defines `EffectOp`, `MemoryLiveIn`, and `RegionEffectProgram`, and re-exports
 the
 VM-owned `TargetProfileRequirement` under the existing responsibility-oriented
-topology. Cargo composition uses explicit paths rather than introducing a
-language-shaped crate boundary.
+topology. `src/runtime/tiered-execution/composition/lib.rs` is registered as the
+non-distribution `tiered_execution_validation` Cargo binary target so Jig can
+resolve the exact production crate root. The existing integration test remains
+the executable behavioral harness; the validation target exists only to compile
+and analyze the product module tree under normal non-test semantics.
 
 State-graph verification projects normative `ProfileStepTrace` records into that
 IR only after exact region verification. An untrusted portable artifact must

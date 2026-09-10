@@ -33,7 +33,14 @@
 
 //! Transactional resident-limit changes for shared executable leases.
 
-use super::*;
+use super::{
+    Display, FormatResult, Formatter, LeaseCacheVictimOutcome,
+    NativeExecutableMemoryAdapter, NativeExecutableSequenceCacheLimits,
+    NativeExecutableSequenceKey, NativeExecutableSequenceLeaseCache,
+    NativeExecutableSequenceLeaseCacheBlock,
+    NativeExecutableSequenceLeaseCacheEntryReleaseFailure,
+    process_lease_cache_victim, reconciliation,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 struct LeaseCacheReconfigurationContext {

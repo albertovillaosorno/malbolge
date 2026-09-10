@@ -32,7 +32,10 @@
 
 //! Verified artifact and plan value types.
 
-use super::*;
+use super::{
+    Arc, HostIsa, HostOperatingSystem, NativeArtifactCache, NativeArtifactKey,
+    StructurallyAdmittedNativeObjectArtifact,
+};
 
 /// Direct native template selected for one portable IR program.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

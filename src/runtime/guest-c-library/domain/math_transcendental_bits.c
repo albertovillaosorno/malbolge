@@ -30,7 +30,8 @@
 //   - Ordinary finite inputs remain unresolved and never receive an estimate.
 //
 
-//! Representation-only exact edge cases and reduction for transcendental guest math.
+//! Representation-only exact edge cases and reduction for transcendental guest
+//! math.
 
 #include "../contract/math_transcendental_bits.h"
 

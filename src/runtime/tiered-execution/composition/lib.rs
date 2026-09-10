@@ -26,7 +26,7 @@
 // - Description:
 //   - Mirrors the product wiring exercised by the integration-test crate.
 // - Usage:
-//   - Consumed by repository architecture analysis and future crate packaging.
+//   - Registered as a Cargo validation root for architecture analysis.
 // - Defaults:
 //   - Every production module has one same-function logical parent.
 //
@@ -115,3 +115,6 @@ pub mod retry_policy;
 pub mod retry_router;
 #[path = "tier/retry_turn.rs"]
 pub mod retry_turn;
+
+/// Empty entry point for the Cargo/Jig architecture-validation target.
+fn main() {}

@@ -1,4 +1,11 @@
 # Repository LaTeX parsing vocabulary. Jig owns the strict warning profile.
+# Jig invokes ChkTeX with -g0 -v0, so define the selected output format
+# locally instead of relying on an unversioned host-global resource file.
+OutFormat
+{
+    %f%b%l%b%c%b%n%b%m!n
+}
+
 CmdLine { -q }
 
 # Commands that intentionally consume following source whitespace.

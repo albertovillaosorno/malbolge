@@ -48,7 +48,17 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::sync::Arc;
 
 pub use artifact::*;
-use coff::*;
+use coff::{
+    canonical_coff, crazy_coff, execution_geometry_crazy_coff,
+    execution_geometry_initial_halt_coff,
+    execution_geometry_initial_jump_data_coff, execution_geometry_input_coff,
+    execution_geometry_jump_code_coff, execution_geometry_jump_data_coff,
+    execution_geometry_no_operation_coff, execution_geometry_output_coff,
+    execution_geometry_rotate_coff, halt_fetch_coff, halt_registers_coff,
+    initial_halt_coff, input_coff, is_zero_observation, jump_code_coff,
+    jump_data_coff, no_operation_coff, non_graphical_coff, output_coff,
+    rotate_coff,
+};
 pub use emit::{
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_execution_geometry_crazy_coff,
@@ -96,7 +106,37 @@ pub use plan::{
     select_verified_execution_geometry_direct_native,
 };
 pub use sequence::*;
-use shape::*;
+use shape::{
+    validate_crazy_program, validate_crazy_target,
+    validate_execution_geometry_crazy_program,
+    validate_execution_geometry_crazy_target,
+    validate_execution_geometry_initial_halt_program,
+    validate_execution_geometry_initial_halt_target,
+    validate_execution_geometry_initial_jump_data_program,
+    validate_execution_geometry_initial_jump_data_target,
+    validate_execution_geometry_input_program,
+    validate_execution_geometry_input_target,
+    validate_execution_geometry_jump_code_program,
+    validate_execution_geometry_jump_code_target,
+    validate_execution_geometry_jump_data_program,
+    validate_execution_geometry_jump_data_target,
+    validate_execution_geometry_no_operation_program,
+    validate_execution_geometry_no_operation_target,
+    validate_execution_geometry_output_program,
+    validate_execution_geometry_output_target,
+    validate_execution_geometry_rotate_program,
+    validate_execution_geometry_rotate_target, validate_halt_fetch_program,
+    validate_halt_fetch_target, validate_halt_registers_program,
+    validate_halt_registers_target, validate_initial_halt_program,
+    validate_initial_halt_target, validate_input_program,
+    validate_input_target, validate_jump_code_program,
+    validate_jump_code_target, validate_jump_data_program,
+    validate_jump_data_target, validate_no_operation_program,
+    validate_no_operation_target, validate_non_graphical_program,
+    validate_non_graphical_target, validate_output_program,
+    validate_output_target, validate_rotate_program, validate_rotate_target,
+    validate_target,
+};
 pub use verify::{
     verify_direct_crazy, verify_direct_deopt_stub,
     verify_direct_execution_geometry_crazy,

@@ -37,7 +37,16 @@
 
 use malbolge::RunOutcome;
 
-use super::*;
+use super::{
+    Display, FormatResult, Formatter, NativeContinuationRetryExecution,
+    NativeContinuationRetryExecutionFailure,
+    NativeContinuationRetryExecutionFailureParts,
+    NativeContinuationRetryRebaseEvidence, NativeContinuationRetryTransfer,
+    NativeContinuationRetryTransferError, NativeContinuationScheduleSuspension,
+    NativeInterpreterContinuationReason, NativeSequenceExecutionFailure,
+    NativeSequenceExecutionOutcome, ProfileMachineState,
+    VerifiedDirectSequencePlan,
+};
 use crate::execution_native::NativeInterpreterContinuationError;
 use crate::interpreter_handoff::{
     NativeInterpreterHandoff, NativeInterpreterHandoffAdmissionError,

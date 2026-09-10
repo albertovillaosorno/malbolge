@@ -33,7 +33,12 @@
 
 //! Transactional weighted-limit reconfiguration for executable sequences.
 
-use super::*;
+use super::{
+    Display, FormatResult, Formatter, NativeExecutableMemoryAdapter,
+    NativeExecutableSequenceCache, NativeExecutableSequenceCacheInvariantError,
+    NativeExecutableSequenceCacheLimits, NativeExecutableSequenceKey,
+    NativeExecutableSequenceReleaseFailure, release_native_executable_sequence,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 enum NativeExecutableSequenceCacheReconfigurationFailureCause<E> {

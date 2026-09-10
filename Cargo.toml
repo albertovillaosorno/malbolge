@@ -44,6 +44,13 @@ members = ["."]
 [lib]
 path = "src/runtime/virtual-machine/composition/lib.rs"
 
+[[bin]]
+name = "tiered_execution_validation"
+path = "src/runtime/tiered-execution/composition/lib.rs"
+test = false
+bench = false
+doc = false
+
 [workspace.lints.rust]
 # Compiler warnings are binary failures. Unsafe Rust is categorically outside
 # Jig's implementation contract.

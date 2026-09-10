@@ -33,7 +33,13 @@
 
 //! Transactional capacity changes for cached-retry telemetry retention.
 
-use super::*;
+use super::{
+    NativeContinuationCachedRetryTelemetry,
+    NativeContinuationCachedRetryTelemetryObservation,
+    NativeContinuationCachedRetryTelemetryWindow,
+    NativeContinuationCachedRetryTelemetryWindowError, NonZeroUsize,
+    subtract_telemetry,
+};
 
 /// Exact published result of one caller-requested capacity transition.
 #[derive(Clone, Debug, Eq, PartialEq)]

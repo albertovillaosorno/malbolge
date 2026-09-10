@@ -39,7 +39,18 @@ use super::plan::{
     prepare_verified_direct_target,
     prepare_verified_execution_geometry_direct_target,
 };
-use super::*;
+use super::{
+    Arc, DirectHost, DirectSelectionError, Display, EffectOp,
+    ExecutionGeometryDirectSelectionError,
+    ExecutionGeometryRegionEffectProgram, FormatResult, Formatter, HostIsa,
+    HostOperatingSystem, NativeArtifactKey,
+    ProfileExecutionGeometryRequirement, ProfileMachineObservation,
+    RegionEffectProgram, RunOutcome, RuntimeCapability,
+    VerifiedDirectNativeArtifact, VerifiedDirectNativeCache,
+    VerifiedExecutionGeometryNativeArtifact,
+    VerifiedExecutionGeometryNativeCache,
+    select_verified_execution_geometry_direct_native,
+};
 
 /// Failure while composing exact one-step programs into one direct sequence.
 #[derive(Clone, Debug, Eq, PartialEq)]

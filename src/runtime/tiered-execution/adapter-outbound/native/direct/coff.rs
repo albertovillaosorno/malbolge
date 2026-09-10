@@ -32,7 +32,30 @@
 
 //! Canonical COFF construction for direct-native templates.
 
-use super::*;
+use super::{
+    COFF_HEADER_BYTES, COFF_SECTION_BYTES, COFF_SYMBOL_BYTES,
+    DirectCodeWriteCommit, DirectCrazyError, DirectCrazyGuard,
+    DirectCrazyProgram, DirectDeoptError, DirectEntryObservation,
+    DirectExecutionGeometryCrazyError, DirectExecutionGeometryInitialHaltError,
+    DirectExecutionGeometryInitialJumpDataError,
+    DirectExecutionGeometryInputError, DirectExecutionGeometryJumpCodeError,
+    DirectExecutionGeometryJumpDataError,
+    DirectExecutionGeometryNoOperationError,
+    DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
+    DirectFetchedCellGuard, DirectFetchedTerminalProgram, DirectHaltFetchError,
+    DirectHaltRegistersError, DirectInitialHaltError,
+    DirectInitialJumpDataProgram, DirectInputError, DirectInputGuard,
+    DirectInputProgram, DirectJumpCodeError, DirectJumpCodeGuard,
+    DirectJumpCodeProgram, DirectJumpDataError, DirectJumpDataGuard,
+    DirectJumpDataProgram, DirectNoOperationError, DirectNoOperationProgram,
+    DirectNonGraphicalError, DirectOutputError, DirectOutputProgram,
+    DirectRotateError, DirectRotateGuard, DirectRotateProgram, HostIsa,
+    IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64, IMAGE_SCN_ARM64_TEXT,
+    IMAGE_SCN_PROFILE_METADATA, IMAGE_SCN_X86_TEXT, IMAGE_SYM_CLASS_EXTERNAL,
+    IMAGE_SYM_DTYPE_FUNCTION, NativeArtifactKey, ProfileMachineObservation,
+    ProfileRegisters, REQUIRED_ENTRY, aarch64, canonical_profile_metadata,
+    x86_64,
+};
 
 pub(super) fn canonical_coff(
     key: &NativeArtifactKey,

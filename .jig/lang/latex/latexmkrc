@@ -1,1 +1,12 @@
 # Repository-owned latexmk configuration.
+
+use Cwd qw(getcwd);
+my $jig_repository_root = getcwd();
+my $jig_tex_root = "$jig_repository_root/.dependencies/tex-tools";
+my $jig_texinputs = join(
+    ':',
+    "$jig_tex_root/pgfplots/usr/share/texlive/texmf-dist/tex//",
+    "$jig_tex_root/pgf/usr/share/texlive/texmf-dist/tex//",
+    $ENV{'TEXINPUTS'} // '',
+);
+$ENV{'TEXINPUTS'} = $jig_texinputs;
