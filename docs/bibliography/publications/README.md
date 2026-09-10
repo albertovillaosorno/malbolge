@@ -18,5 +18,6 @@ Repository policy, legal conclusions, or research conclusions.
 - `ernvall-hytonen-leppala-matala-aho-exponential-lower-bound.md`
 - `lefevre-ly-zimmermann-binary64-trigonometric-hard-cases.md`
 - `lambert-tangent-irrationality.md`
+- `nesterenko-waldschmidt-exponential-approximation.md`
 - `superoptimization/`
 - `verification/`

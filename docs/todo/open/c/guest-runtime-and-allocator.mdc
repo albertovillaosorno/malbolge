@@ -900,6 +900,17 @@ runtime facilities as code that ultimately executes under Malbolge semantics.
   This does not rule out a separately explicit `m=1` specialization.
 
 
+  Nesterenko-Waldschmidt Main Theorem 1 now supplies a positive explicit
+  product bound. For the Gaussian target associated with a reduced ratio and
+  `beta=2im`, conservative parameters `D=2`, `log A=109`, `log B=107`, and
+  `E=e` give a separation exponent below 338,383,232 binary bits. Direct
+  refinement stage 10,574,490 provides Q338,383,744 with 634,469,580 bytes of
+  scratch; directed Taylor-width propagation needs fewer than 139 guard bits,
+  leaving more than 370 bits beyond that requirement. The remaining global
+  handoff proof is now candidate-probe geometry, not transcendental separation:
+  every Q256 range probe that can remain inconclusive must be shown to retain
+  the same midpoint-height ceiling or be narrowed before this bound is invoked.
+
   Liang-Wang (2024) is now retained as tangent-specific asymptotic evidence.
   Theorem 2 gives irrationality measure 2 for `tan(r)` at nonzero rational `r`.
   Theorem 3 has the needed power-law lower-bound shape, but uses hidden

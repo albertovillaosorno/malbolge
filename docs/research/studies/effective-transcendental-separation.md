@@ -52,6 +52,10 @@ bound remains useful only when generously rejecting theorem routes.
 - Lambert's tangent irrationality argument supplies qualitative non-equality;
   the guest midpoint comparator already relies only on directed rational
   enclosures and does not assume an approximate host `atan2` oracle.
+<!-- jig-ignore-next-line: canonical bibliography path is indivisible -->
+- [Nesterenko-Waldschmidt exponential approximation](../../bibliography/publications/nesterenko-waldschmidt-exponential-approximation.md)
+  gives the explicit two-algebraic-number estimate that matches the guest
+  exponential bridge directly. Its instantiated bound fits guest resources.
 
 ## Hypothesis
 
@@ -118,6 +122,34 @@ The paper's own `g2`, `e0`, `gamma`, and `H0` definitions then force
 guaranteed separation is already vastly below what the largest guest refinement
 can resolve. This rejects the published theorem as-is without rejecting a
 genuinely specialized `m=1` argument.
+
+### Explicit product-fitting bound
+
+Nesterenko-Waldschmidt Main Theorem 1 closes the previously missing quantitative
+step for every fallback midpoint satisfying the proved 107-bit shift ceiling.
+For reduced `t=a/b`, use `alpha=-(a-ib)/(a+ib)`, `beta=2im`, and
+`theta=beta`. The field is exactly `Q(i)`, hence `D=2`.
+
+The 108/106-bit ratio ceilings give `h(alpha)<109`; the midpoint geometry gives
+`h(beta)<107`. Taking `log A=109`, `log B=107`, and `E=e`, deliberately coarse
+elementary logarithm bounds put the theorem exponent below `169,191,616` in
+natural-base units and therefore below `338,383,232` binary bits. The identity
+`|P(e^(2im))|=2|a*cos(m)-b*sin(m)|` transfers this directly to the tangent
+cross-product used by the runtime.
+
+The existing direct directed-Taylor evaluator also fits. Stage 10,574,490 has
+Q338,383,744 precision, 42,297,968 retained terms, and 634,469,580 bytes of
+scratch. A closed width recurrence bounds each retained term by eight
+fixed-point ulps, the complete trig enclosure by fewer than `2^29` ulps, and
+ratio weighting
+by fewer than another 109 bits. The 512-bit precision margin therefore exceeds
+the 139 guard bits required for strict cross-product separation.
+
+This closes the separation and evaluator-capacity question for bounded fallback
+midpoints. The remaining handoff obligation is narrower: prove that every Q256
+candidate-range probe that can remain inconclusive reaches the same midpoint
+height family, or deterministically narrow such probes before invoking the
+global stage ceiling.
 
 ### Irrationality-measure baseline
 
