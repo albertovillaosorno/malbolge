@@ -36,8 +36,10 @@ from __future__ import annotations
 
 from os import stat_result
 from pathlib import Path
-from stat import S_IFDIR, S_IFLNK
-from typing import TYPE_CHECKING, cast
+from stat import S_IFDIR
+from stat import S_IFLNK
+from typing import TYPE_CHECKING
+from typing import cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable

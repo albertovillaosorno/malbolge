@@ -38,13 +38,15 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from pathlib import Path
 from typing import cast
 
 import pytest
-from scripts.validate import c_abi, c_libc, c_libc_source
+from scripts.validate import c_abi
+from scripts.validate import c_libc
+from scripts.validate import c_libc_source
 
 ROOT = Path(__file__).resolve().parents[1]
 LIBC_PATH = ROOT / "docs/technical/specification/c-libc-v1.json"

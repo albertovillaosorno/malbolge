@@ -35,11 +35,12 @@
 
 from __future__ import annotations
 
-import json
-import sys
 from dataclasses import dataclass
+import json
 from pathlib import Path
-from typing import Never, cast
+import sys
+from typing import Never
+from typing import cast
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]

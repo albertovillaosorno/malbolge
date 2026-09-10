@@ -24,7 +24,7 @@
 # - Summary:
 #   - Factors every surviving ratio denominator into odd and dyadic parts.
 # - Description:
-#   - Fraction proves the factorization; C pins branch-surviving tight witnesses.
+#   - Fraction proves factorization; C pins branch-surviving tight witnesses.
 # - Usage:
 #   - Collected with repository-pinned native Clang on supported hosts.
 # - Defaults:
@@ -35,9 +35,10 @@
 
 from __future__ import annotations
 
-import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from fractions import Fraction
+from itertools import starmap
 from pathlib import Path
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 
 ROOT = Path(__file__).resolve().parents[1]
 CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
@@ -190,11 +191,13 @@ def test_factorization_witnesses_survive_special_path(tmp_path: Path) -> None:
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     executed = _run([str(executable)], tmp_path)
     assert executed.returncode == 0, executed.stdout + executed.stderr
-    rows = tuple(tuple(map(int, line.split())) for line in executed.stdout.splitlines())
+    rows = tuple(
+        tuple(map(int, line.split())) for line in executed.stdout.splitlines()
+    )
     assert len(rows) == len(CASES)
     assert all(row[0] == KERNEL_REQUIRED for row in rows)
 
-    shapes = tuple(_denominator_shape(*pair) for pair in CASES)
+    shapes = tuple(starmap(_denominator_shape, CASES))
     assert shapes[0] == (1, POSITIVE_DIRECT_DYADIC_MAX)
     assert rows[0][1:3] == (0, 0)
     assert shapes[1] == (1, NEGATIVE_DIRECT_DYADIC_MAX)

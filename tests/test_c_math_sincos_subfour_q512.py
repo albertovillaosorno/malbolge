@@ -34,9 +34,9 @@
 
 from __future__ import annotations
 
-import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from fractions import Fraction
 from pathlib import Path
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 
 ROOT = Path(__file__).resolve().parents[1]
 CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
@@ -49,6 +49,7 @@ HIDDEN = 1 << 52
 EXPONENT_BIAS = 1023
 Q512 = 1 << 512
 ORACLE_TERMS = 90
+POLICY_HEADER = "terms=64 scratch=187 widthbits=52"
 SIN = 1
 COS = 2
 CASES = (
@@ -171,7 +172,7 @@ def _source() -> str:
         f"  {{UINT32_C({operation}), UINT64_C(0x{bits:016x})}}"
         for operation, bits in CASES
     )
-    return f'''#include "math_transcendental_bits.h"
+    return f"""#include "math_transcendental_bits.h"
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -237,12 +238,28 @@ int main(void) {{
   }}
   return 0;
 }}
-'''
+"""
 
 
 def _signed(magnitude: str, negative: str) -> int:
     value = int(magnitude, 16)
     return -value if int(negative) else value
+
+
+def _assert_record(
+    operation: int,
+    bits: int,
+    row: tuple[str, ...],
+) -> None:
+    lower, upper, expected_bits = _oracle(operation, bits)
+    assert int(row[0]) == operation
+    assert int(row[1], 16) == bits
+    assert int(row[2], 16) == expected_bits
+    offset = 3 if operation == SIN else 7
+    c_lower = Fraction(_signed(row[offset + 1], row[offset]), Q512)
+    c_upper = Fraction(_signed(row[offset + 3], row[offset + 2]), Q512)
+    assert c_lower <= lower <= upper <= c_upper
+    assert (c_upper - c_lower) < Fraction(1, 1 << 460)
 
 
 def test_subfour_q512_contains_fraction_and_rounds_uniquely(
@@ -264,16 +281,8 @@ def test_subfour_q512_contains_fraction_and_rounds_uniquely(
     executed = _run([str(binary)], tmp_path)
     assert executed.returncode == 0, executed.stdout + executed.stderr
     lines = executed.stdout.splitlines()
-    assert lines[0] == "terms=64 scratch=187 widthbits=52"
+    assert lines[0] == POLICY_HEADER
     records = tuple(tuple(line.split()) for line in lines[1:])
     assert len(records) == len(CASES)
     for (operation, bits), row in zip(CASES, records, strict=True):
-        lower, upper, expected_bits = _oracle(operation, bits)
-        assert int(row[0]) == operation
-        assert int(row[1], 16) == bits
-        assert int(row[2], 16) == expected_bits
-        offset = 3 if operation == SIN else 7
-        c_lower = Fraction(_signed(row[offset + 1], row[offset]), Q512)
-        c_upper = Fraction(_signed(row[offset + 3], row[offset + 2]), Q512)
-        assert c_lower <= lower <= upper <= c_upper
-        assert (c_upper - c_lower) < Fraction(1, 1 << 460)
+        _assert_record(operation, bits, row)

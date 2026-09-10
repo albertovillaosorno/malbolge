@@ -35,6 +35,10 @@
 from __future__ import annotations
 
 from fractions import Fraction
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 SIN_MAX_IDENTICAL_BITS = 68
 COS_MAX_IDENTICAL_BITS = 66
@@ -52,6 +56,14 @@ COS_WORST_BITS = 0x7516AC5B262CA1FF
 PERIODIC_RESIDUAL_FLOOR_BITS = 61
 OUTPUT_MAGNITUDE_FLOOR_BITS = 62
 OUTPUT_ULP_FLOOR_BITS = 114
+SIN_BOUNDARY_BITS = 184
+COS_BOUNDARY_BITS = 182
+Q256_WIDTH_BITS = 7
+Q256_ERROR_BITS = 249
+SIN_MARGIN_BITS = 65
+COS_MARGIN_BITS = 67
+SIN_PRECISION_BOUND_BITS = 123
+COS_PRECISION_BOUND_BITS = 121
 
 
 def _atan_bounds(denominator: int, terms: int) -> tuple[Fraction, Fraction]:
@@ -75,7 +87,7 @@ def _pi_bounds() -> tuple[Fraction, Fraction]:
     return 16 * a5_lo - 4 * a239_hi, 16 * a5_hi - 4 * a239_lo
 
 
-def _convergents(value: Fraction):  # type: ignore[no-untyped-def]
+def _convergents(value: Fraction) -> Iterator[tuple[int, int]]:
     previous_num, numerator = 0, 1
     previous_den, denominator = 1, 0
     while value.denominator != 1:
@@ -98,7 +110,9 @@ def _wc_candidate(
         1 << max(BINARY64_PRECISION - exponent, 0),
     )
     best = None
-    for numerator, denominator in _convergents(scale / half_pi):
+    for candidate_num, candidate_den in _convergents(scale / half_pi):
+        numerator = candidate_num
+        denominator = candidate_den
         while denominator < SIGNIFICAND_MIN:
             numerator *= 2
             denominator *= 2
@@ -115,9 +129,10 @@ def _absolute_residual_lower(
     exponent: int,
     multiple: int,
     significand: int,
-    pi_lower: Fraction,
-    pi_upper: Fraction,
+    *,
+    pi_bounds: tuple[Fraction, Fraction],
 ) -> Fraction:
+    pi_lower, pi_upper = pi_bounds
     scale = Fraction(
         1 << max(exponent - BINARY64_PRECISION, 0),
         1 << max(BINARY64_PRECISION - exponent, 0),
@@ -132,7 +147,8 @@ def _absolute_residual_lower(
     return Fraction(0)
 
 
-def test_core_math_wc_reproduction_keeps_periodic_outputs_away_from_zero() -> None:
+def test_core_math_wc_reproduction_keeps_periodic_outputs_away_from_zero(
+) -> None:
     """Reproduce the source-owned closest-per-binade construction."""
     pi_lower, pi_upper = _pi_bounds()
     half_pi = (pi_lower + pi_upper) / 4
@@ -148,14 +164,15 @@ def test_core_math_wc_reproduction_keeps_periodic_outputs_away_from_zero() -> No
                 exponent,
                 multiple,
                 significand,
-                pi_lower,
-                pi_upper,
+                pi_bounds=(pi_lower, pi_upper),
             )
             assert residual > 0
             if minimum is None or residual < minimum:
                 minimum = residual
             raw_exponent = exponent - 1 + 1023
-            witnesses.add((raw_exponent << 52) | (significand - SIGNIFICAND_MIN))
+            witnesses.add(
+                (raw_exponent << 52) | (significand - SIGNIFICAND_MIN)
+            )
     assert minimum is not None
     assert minimum > Fraction(1, 1 << PERIODIC_RESIDUAL_FLOOR_BITS)
     assert SIN_WORST_BITS in witnesses
@@ -171,14 +188,20 @@ def test_exhaustive_tmd_bound_dominates_q256_periodic_error() -> None:
     assert OUTPUT_ULP_FLOOR_BITS == OUTPUT_MAGNITUDE_FLOOR_BITS + 52
     sin_boundary_bits = SIN_MAX_IDENTICAL_BITS + 2 + OUTPUT_ULP_FLOOR_BITS
     cos_boundary_bits = COS_MAX_IDENTICAL_BITS + 2 + OUTPUT_ULP_FLOOR_BITS
-    assert sin_boundary_bits == 184
-    assert cos_boundary_bits == 182
+    assert sin_boundary_bits == SIN_BOUNDARY_BITS
+    assert cos_boundary_bits == COS_BOUNDARY_BITS
     # The directed Q256/32 interval is at most 74 cells: 74 < 2^7, so its
     # absolute width is <2^-249, at least 65 bits below the sine boundary floor.
-    q256_error_bits = Q256_BITS - 7
-    assert Q256_FINAL_ULPS_MAX < 1 << 7
-    assert q256_error_bits == 249
-    assert q256_error_bits - sin_boundary_bits >= 65
-    assert q256_error_bits - cos_boundary_bits >= 67
-    assert BINARY64_PRECISION + SIN_MAX_IDENTICAL_BITS + 2 == 123
-    assert BINARY64_PRECISION + COS_MAX_IDENTICAL_BITS + 2 == 121
+    q256_error_bits = Q256_BITS - Q256_WIDTH_BITS
+    assert Q256_FINAL_ULPS_MAX < 1 << Q256_WIDTH_BITS
+    assert q256_error_bits == Q256_ERROR_BITS
+    assert q256_error_bits - sin_boundary_bits >= SIN_MARGIN_BITS
+    assert q256_error_bits - cos_boundary_bits >= COS_MARGIN_BITS
+    assert (
+        BINARY64_PRECISION + SIN_MAX_IDENTICAL_BITS + 2
+        == SIN_PRECISION_BOUND_BITS
+    )
+    assert (
+        BINARY64_PRECISION + COS_MAX_IDENTICAL_BITS + 2
+        == COS_PRECISION_BOUND_BITS
+    )
