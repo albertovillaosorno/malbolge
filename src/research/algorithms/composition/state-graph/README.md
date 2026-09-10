@@ -198,6 +198,13 @@ but safely reuses the region and matches direct VM execution exactly; changing a
 
 live-in dependency fails closed.
 
+The verified effect path also supplies the objective's transform-hoist boundary.
+A theorem-verified `(&<;:9K` region contains both rotate and crazy; after exact
+replay verifies their results, the shortcut applies recorded after-values and
+memory deltas rather than recomputing either ternary transform. An irrelevant
+memory variant passes the dependency guard and remains byte-for-byte equal to
+direct normative execution, including preservation of that unrelated cell.
+
 `artifact.rs` is the portable effect-IR trust-boundary bridge. Its untrusted
 `RegionEffectProgram` is product-owned by
 `src/runtime/virtual-machine/domain/execution_ir.rs` and carries

@@ -426,6 +426,17 @@ interpreted verified-effect application with a real native code artifact while
 retaining the same verifier and deoptimization boundary.
 
 
+The invariant-transform objective is now bounded by verifier specialization
+rather than a new arithmetic optimizer. A theorem-verified jump/rotate/crazy
+region is replayed normatively once; its verified effect sequence then carries
+the exact rotate/crazy results. Under the same read-before-write dependency
+guard, shortcut execution applies those after-values and deltas without
+recomputing either ternary transform.
+
+A memory difference absent from both live-ins and writes survives the shortcut,
+and the complete exit equals direct profile-VM execution from that variant. A
+live-in change remains a guard miss rather than a speculative hoist.
+
 The deoptimization boundary is now executable as well. `execute_or_deopt()` does
 not treat a dependency-guard miss as an error: it reconstructs the candidate
 checkpoint, runs the normative profile VM for the verified region budget,

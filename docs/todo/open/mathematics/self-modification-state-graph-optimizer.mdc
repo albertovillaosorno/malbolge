@@ -160,6 +160,11 @@ VM evidence.
   those live-ins admits an irrelevant-memory variant that exact state equality
   rejects; verified effects preserve that irrelevant memory and match direct VM
   execution exactly. Changing a live-in fails closed.
+- Verified region effects now hoist already-proved rotate/crazy results out of
+  shortcut execution. A theorem-verified jump/rotate/crazy region contains both
+  transforms; exact replay supplies their after-values/deltas, and an
+  irrelevant-memory candidate reuses those effects while matching complete
+  normative execution. Live-in changes still fail the dependency guard.
 - Post-commit dependency-region evidence at `1988f14` measures exact/dependency
   guard hits at 60.57/106.88 ns, dependency miss at 72.22 ns,
   verified shortcut application at 6.88 microseconds, and a

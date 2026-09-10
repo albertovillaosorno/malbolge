@@ -2567,6 +2567,16 @@ mechanism = "materialization-independent-branch-equality-and-long-history"
 evidence = ["tests/function/algorithms/domain/state-graph/o.rs::independent_equal_branches_compare_exactly", "tests/function/algorithms/domain/state-graph/o.rs::different_output_branches_remain_distinct", "tests/function/algorithms/domain/state-graph/o.rs::long_append_history_materializes_without_prefix_loss", "tests/function/algorithms/domain/state-graph/s.rs::current_trace_reconstructs_and_replay_deduplicates"]
 
 [[correspondence]]
+id = "state-graph-verified-transform-hoist"
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-verified-transform-hoist"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "verifier-admitted profile regions containing rotate and crazy under a passing exact non-memory/read-before-write live-in guard"
+mechanism = "normative-trace-effect-specialization-plus-irrelevant-memory-differential"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::verified_region_hoists_rotate_and_crazy_results"]
+
+[[correspondence]]
 id = "state-graph-exact-region-certificate"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-exact-region-certificate"

@@ -40,6 +40,7 @@
 use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMemoryDelta,
     ProfileMemoryWrite, ProfileStepTrace, RunOutcome, current_profile,
+    verify_minimum_jump_rotate_crazy_halt_profile_width,
 };
 
 use crate::indexed_state::IndexedMachineState;
@@ -51,6 +52,8 @@ use crate::region_certificate::{
 const CURRENT_SOURCE: &[u8] = b"(=%`qL";
 const REGION_BUDGET: usize = 8;
 const REJECTING_SOURCE: &[u8] = b"b'";
+const TRANSFORM_SOURCE: &[u8] = b"(&<;:9K";
+const TRANSFORM_BUDGET: usize = 6;
 
 const fn changed_word(value: u32) -> u32 {
     let incremented = value.saturating_add(1);
@@ -95,7 +98,7 @@ fn validate_dependency_shortcut(
         })?,
     );
     let direct_outcome = direct
-        .run(REGION_BUDGET)
+        .run(verified.step_budget())
         .map_err(|error| format!("dependency direct run failed: {error}"))?;
     if direct_outcome != verified.outcome() {
         return Err(String::from("dependency shortcut outcome changed"));
@@ -443,4 +446,53 @@ fn tiered_region_deopt_propagates_normative_rejection() -> Result<(), String> {
         ) if expected_error == observed_error => Ok(()),
         other => Err(format!("tier rejection mismatch: {other:?}")),
     }
+}
+
+#[test]
+fn verified_region_hoists_rotate_and_crazy_results() -> Result<(), String> {
+    let geometry = verify_minimum_jump_rotate_crazy_halt_profile_width(
+        current_profile(),
+        TRANSFORM_SOURCE,
+    )
+    .map_err(|error| format!("transform-hoist width verification: {error}"))?;
+    let machine =
+        ProfileMachine::from_verified_source(&geometry, Vec::new())
+            .map_err(|error| format!("transform-hoist load failed: {error}"))?;
+    let entry = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| format!("transform-hoist entry failed: {error:?}"))?;
+    let region = ExactRegionCertificate::record(&entry, TRANSFORM_BUDGET)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| format!("transform-hoist verify failed: {error:?}"))?;
+    let decoded: Vec<u8> = region
+        .traces()
+        .iter()
+        .filter_map(|trace| trace.decoded)
+        .collect();
+    if !decoded.contains(&b'*') || !decoded.contains(&b'p') {
+        return Err(format!(
+            "transform-hoist trace lacks rotate/crazy: {decoded:?}"
+        ));
+    }
+    let address = irrelevant_address(&region)?;
+    let before = entry.memory_word(address).map_err(|error| {
+        format!("transform-hoist irrelevant read: {error:?}")
+    })?;
+    let after = changed_word(before);
+    let candidate = entry
+        .apply_memory_delta(ProfileMemoryDelta {
+            data: Some(ProfileMemoryWrite { address, after, before }),
+            encryption: None,
+        })
+        .map_err(|error| {
+            format!("transform-hoist variant failed: {error:?}")
+        })?;
+    if !region
+        .accepts_dependency_entry(&candidate)
+        .map_err(|error| format!("transform-hoist guard failed: {error:?}"))?
+    {
+        return Err(String::from(
+            "transform-hoist guard rejected irrelevant memory",
+        ));
+    }
+    validate_dependency_shortcut(&region, &candidate, address, after)
 }

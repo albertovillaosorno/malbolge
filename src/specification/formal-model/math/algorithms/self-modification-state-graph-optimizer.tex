@@ -354,6 +354,35 @@ produce identical complete exit checkpoints, and the irrelevant difference is
 preserved. A second fixture changes a live-in value and requires both guard and
 shortcut rejection.
 
+\section{Verifier-hoisted rotate and crazy effects}
+
+For a verified region trace sequence $\tau$, let $P(\tau)$ be the ordered effect
+projection containing each trace's exact before/after observations, committed
+memory delta, and I/O effects. Once verification has established
+$T^{\leq n}(e)=(x,o,\tau)$, the rotate and crazy values inside $P(\tau)$ are
+already normative results rather than new optimizer calculations. For any
+candidate $s$ admitted by the read-before-write guard,
+\begin{equation}
+  G_{\tau}(s,e)\land
+  \{*,p\}\subseteq\operatorname{decoded}(\tau)
+  \Longrightarrow
+  \operatorname{applyEffects}_{P(\tau)}(s)=T^{\leq n}(s).
+  \label{eq:state-graph-verified-transform-hoist}
+\end{equation}
+The shortcut therefore may hoist the verified rotate/crazy computation out of
+the hot execution path: it commits the verifier-recorded after-values and memory
+deltas instead of calling the ternary transform functions again. This does not
+make transform arithmetic an unverified constant-folding authority. Certificate
+admission still comes from exact normative replay, and any changed live-in must
+miss the guard and deoptimize.
+
+The executable correspondence uses a theorem-verified jump/rotate/crazy source,
+requires its admitted trace to contain both decoded \texttt{*} and \texttt{p},
+changes one
+memory cell absent from the live-in and write sets, and compares the complete
+shortcut exit with direct normative execution from that variant. The irrelevant
+cell must remain candidate-owned.
+
 \section{Verified exact-state region shortcut}
 
 Let $T$ be the deterministic normative profile-machine transition relation and

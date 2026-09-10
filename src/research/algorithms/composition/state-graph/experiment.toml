@@ -172,6 +172,15 @@ shortcut_operations_per_sample = 4096
 verdict = "promote-dependency-guard-and-shortcut-baseline"
 next_risk = "native-code-artifact-integration"
 
+[reduction.verified_transform_hoist]
+baseline = "normative-profile-rotate-and-crazy-recomputation"
+candidate = "verifier-recorded-effect-replay"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "verified region containing rotate and crazy with passing exact non-memory/read-before-write dependency guard"
+transform_result_authority = "normative-verifier-trace"
+irrelevant_memory = "preserve-candidate-value"
+rejection_condition = "live-in mismatch or shortcut/direct checkpoint divergence"
+
 [reduction.tiered_region_deopt]
 baseline = "dependency-guard-shortcut-or-explicit-error"
 candidate = "verified-shortcut-or-normative-interpreter-fallback"
