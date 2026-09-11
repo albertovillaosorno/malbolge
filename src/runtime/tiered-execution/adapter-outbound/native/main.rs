@@ -248,9 +248,11 @@ pub use invocation::{
     NativeRegionInvocationError, NativeRegionInvocationOutcome,
     NativeRegionMutationSurface, PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
+    PreparedRegisterMaskedHaltFetchInvocation,
     PreparedVerifiedDirectInvocation,
     PreparedVerifiedExecutionGeometryInvocation, VerifiedDirectInvocationError,
     VerifiedExecutionGeometryInvocationError,
+    VerifiedRegisterMaskedInvocationError,
 };
 pub use lifecycle::{
     NativeExecutableLifecycleError, NativeExecutableMappingId,
@@ -263,7 +265,7 @@ pub use lifecycle::{
 pub use loader::{
     NativeExecutableLoadPolicy, NativeExecutablePermission,
     VerifiedDirectLoadError, VerifiedDirectLoadImage,
-    VerifiedExecutionGeometryLoadImage,
+    VerifiedExecutionGeometryLoadImage, VerifiedRegisterMaskedLoadImage,
 };
 use malbolge::{
     PortableProfileRequirementError, ProfileMachineObservation,

@@ -620,20 +620,29 @@ baseline; native tiers are accelerators of identical observable behavior.
   the parent. Durable/cross-process leasing, object fusion, direct
   branch chains, a concrete FFI shim, adaptive cache policy, and async/product
   scheduling remain out.
-- Portable v6 now crosses identity without gaining host-code authority.
-  Complete v6 identity retains register live-ins/write masks, rejects
-  mask-dropping legacy construction, and keeps cache invalidation mask-exact.
+- Portable v6 now crosses identity, semantic admission, verified host-object
+  construction, and non-executable load/invocation preparation. Complete v6
+  identity retains register live-ins/write masks, rejects mask-dropping legacy
+  construction, and keeps cache invalidation mask-exact.
 - `admit_register_masked_direct_native()` applies canonical-profile and
   `002`/`001` preflight before independently admitting only a normative one-step
   halt-fetch with C-only register live-in and no register writes. Extra
   live-ins/writes fail as unsupported while mask cardinality fails identity.
-- `direct-register-masked-halt-fetch` revision 1 now emits and independently
+- `direct-register-masked-halt-fetch` revision 1 emits and independently
   verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
-  The code guards C, required memory, the fetched cell, and prior termination;
-  dead A and I/O-history evidence do not change `.text`. Its verified wrapper is
-  deliberately outside load/invocation enums, so v6 still has no executable
-  authority. The next slice is mask-preserving load/invocation admission;
-  v6-to-v3/v4 projection remains forbidden.
+  The code
+  guards C, required memory, the fetched cell, and prior termination; dead A and
+  I/O-history evidence do not change `.text`.
+- `VerifiedRegisterMaskedLoadImage` now proves relocation-free/aligned v6 code
+  without allocating executable memory.
+- `PreparedRegisterMaskedHaltFetchInvocation` admits a rebased caller
+  observation: A, D, and I/O cursors may differ while C, fetched-cell live-in,
+  required capacity, running termination, and cursor bounds remain exact.
+  Applied completion changes only termination and guard miss rolls back
+  atomically. These types remain outside lifecycle/platform/runner enums, so v6
+  still has no callable execution authority. The next slice is a dedicated
+  mask-preserving executable lifecycle/runner; v6-to-v3/v4 projection remains
+  forbidden.
 - Remaining fused-region emission plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and

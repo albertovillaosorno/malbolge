@@ -183,8 +183,18 @@ halt-fetch with C-only register live-in and no register writes.
 x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the required
 memory extent, the fetched code cell, and prior termination before committing
 `HaltInstruction`; A, D, and I/O history are not guarded. Independent object
-verification reconstructs the full v6 key and canonical bytes, while the
-verified wrapper remains outside existing executable load/invocation enums.
+verification reconstructs the full v6 key and canonical bytes.
+
+`VerifiedRegisterMaskedLoadImage` now extracts that verified object as a
+relocation-free, ISA-aligned image under the shared strict W^X policy without
+making it executable. `PreparedRegisterMaskedHaltFetchInvocation` binds the
+image to a caller observation where dead A, D, and I/O cursors may be rebased.
+C, the fetched-cell live-in, memory capacity, running termination, and buffer
+cursor validity remain fail-closed.
+
+Applied completion preserves the rebased dead state and changes only
+termination; guard miss reuses the common atomic rollback contract. These v6
+types remain outside executable lifecycle and runner authority.
 
 The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while

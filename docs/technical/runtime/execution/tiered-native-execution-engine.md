@@ -1970,11 +1970,24 @@ cell, and prior termination only. Tests prove dead A and I/O-history changes
 produce distinct v6 keys but identical `.text`, and independent verification
 rejects target or object-byte drift.
 
-The verified v6 wrapper is intentionally absent from legacy direct-artifact,
-load-image, executable, and invocation enums. The next boundary is executable
-load/invocation admission that preserves reduced dependency/rebase semantics.
-Projecting v6 into v3/v4 remains forbidden, so unsupported v6 execution stays
-fail-closed.
+The verified v6 wrapper remains intentionally absent from legacy direct-artifact
+and executable enums. `VerifiedRegisterMaskedLoadImage` separately proves the
+verified COFF is relocation-free and ISA-aligned under the strict W^X load
+policy; it does not allocate executable memory.
+
+`PreparedRegisterMaskedHaltFetchInvocation` separately owns the first rebased
+v6 call contract. It accepts caller A, D, input cursor, and output length that
+differ from the trace because the admitted halt does not read or write them. C,
+required memory, the fetched-cell live-in, running termination, and cursor
+bounds remain mandatory. Successful admission preserves every rebased field and
+changes only termination to `HaltInstruction`; guard miss uses the shared atomic
+snapshot/rollback boundary.
+
+No v6 executable lifecycle, platform load, callable entrypoint, or native runner
+exists yet. That specialized lifecycle/runner boundary is next; it must retain
+this v6 type separation rather than route through full-observation legacy
+invocation. Projecting v6 into v3/v4 remains forbidden, so unsupported v6
+execution stays fail-closed.
 
 Combined-region emission, native-retry orchestration beyond bounded
 process-local cached cycles, asynchronous/product scheduling, executable-memory

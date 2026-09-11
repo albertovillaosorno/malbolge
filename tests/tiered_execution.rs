@@ -259,6 +259,7 @@ use execution_native::{
     NativeSequenceExecutionOutcome, NativeTerminationTag,
     PreflightedExecutionTier, PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
+    PreparedRegisterMaskedHaltFetchInvocation,
     PreparedVerifiedDirectInvocation,
     PreparedVerifiedExecutionGeometryInvocation,
     ReadyExecutionGeometryNativeExecutable,
@@ -269,6 +270,8 @@ use execution_native::{
     VerifiedDirectLoadError, VerifiedDirectLoadImage,
     VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
     VerifiedExecutionGeometryLoadImage, VerifiedExecutionGeometryNativeCache,
+    VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+    VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     admit_register_masked_direct_native, compile_preflighted_clang_c23,
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_execution_geometry_crazy_coff,
@@ -1828,6 +1831,37 @@ fn register_masked_halt_fetch_target(isa: HostIsa) -> NativeTargetIdentity {
     })
 }
 
+fn verified_register_masked_halt_fetch(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<VerifiedRegisterMaskedHaltFetchNativeObjectArtifact, String> {
+    let artifact = emit_direct_register_masked_halt_fetch_coff(
+        program,
+        register_masked_halt_fetch_target(isa),
+    )
+    .map_err(|error| format!("v6 {isa:?} halt emit failed: {error}"))?;
+    verify_direct_register_masked_halt_fetch(&artifact, program)
+        .map_err(|error| format!("v6 {isa:?} halt verify failed: {error}"))
+}
+
+fn register_masked_halt_memory(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<Vec<u32>, String> {
+    let words = usize::try_from(program.required_memory_words())
+        .map_err(|error| format!("v6 required memory conversion: {error}"))?;
+    let mut memory = vec![0u32; words];
+    for live_in in &program.memory_live_ins {
+        let address = usize::try_from(live_in.address).map_err(|error| {
+            format!("v6 live-in address conversion: {error}")
+        })?;
+        let cell = memory.get_mut(address).ok_or_else(|| {
+            String::from("v6 live-in exceeds required memory")
+        })?;
+        *cell = live_in.value;
+    }
+    Ok(memory)
+}
+
 fn target(
     os: HostOperatingSystem,
     isa: HostIsa,
@@ -2356,6 +2390,357 @@ fn register_masked_v6_halt_verifier_rejects_object_and_target_drift()
     ) != Err(DirectRegisterMaskedHaltFetchError::TargetFeatures)
     {
         return Err(String::from("v6 halt admitted unsupported CPU feature"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_load_image_is_separate_and_relocation_free()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = verified_register_masked_halt_fetch(&program, isa)?;
+        let image = VerifiedRegisterMaskedLoadImage::new(&artifact).map_err(
+            |error| format!("v6 {isa:?} load image failed: {error}"),
+        )?;
+        let expected_alignment = match isa {
+            HostIsa::AArch64 => 4,
+            HostIsa::X86_64 => 1,
+        };
+        let policy = image.policy();
+        if image.code() != direct_object_text(artifact.object())?
+            || image.entry_code() != image.code()
+            || image.entry_offset() != 0
+            || image.allocation_len() != image.code().len()
+            || image.host_isa() != isa
+            || image.key() != artifact.key()
+            || image.minimum_instruction_alignment() != expected_alignment
+            || image.target() != artifact.key().target()
+            || image.target_triple() != artifact.target_triple()
+            || policy.initial_permissions()
+                != NativeExecutablePermission::ReadWrite
+            || policy.final_permissions()
+                != NativeExecutablePermission::ReadExecute
+            || !policy.requires_instruction_sync()
+        {
+            return Err(format!("v6 {isa:?} load-image contract drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_halt_invocation_rebases_dead_state() -> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let source_entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    let mut entry = source_entry;
+    entry.registers.accumulator = 0x1234_5678;
+    entry.registers.data_pointer = u32::MAX;
+    entry.input_consumed = 3;
+    entry.output_len = 4;
+    let expected = ProfileMachineObservation {
+        termination: Some(Termination::HaltInstruction),
+        ..entry
+    };
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [9u8, 8, 7, 6, 5];
+    let mut output = [0xa1u8, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6];
+    let entry_output = output;
+    let mut invocation = PreparedRegisterMaskedHaltFetchInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 rebased halt preparation failed: {error}"))?;
+    if invocation.artifact() != &artifact
+        || invocation.object() != artifact.object()
+        || invocation.load_image().key() != artifact.key()
+        || invocation.expected_observation() != expected
+        || invocation.target() != artifact.key().target()
+        || invocation.target_triple() != artifact.target_triple()
+        || invocation.state_mut_ptr().is_null()
+    {
+        return Err(String::from("v6 rebased invocation binding drifted"));
+    }
+    invocation.apply_expected_for_test();
+    let outcome = invocation
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| {
+            format!("v6 rebased halt completion failed: {error}")
+        })?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != entry_memory
+        || output != entry_output
+    {
+        return Err(String::from(
+            "v6 halt did not preserve rebased dead state",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_halt_invocation_rejects_live_register_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let source_entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    let mut wrong_c = source_entry;
+    wrong_c.registers.code_pointer = wrong_c
+        .registers
+        .code_pointer
+        .checked_add(1)
+        .ok_or_else(|| String::from("v6 code pointer cannot increment"))?;
+    let mut memory = register_masked_halt_memory(&program)?;
+    let input = [];
+    let mut output = [];
+    if !matches!(
+        PreparedRegisterMaskedHaltFetchInvocation::new(
+            &artifact,
+            &program,
+            wrong_c,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ),
+        Err(VerifiedRegisterMaskedInvocationError::EntryCodePointer {
+            expected,
+            observed,
+        }) if expected == source_entry.registers.code_pointer
+            && observed == wrong_c.registers.code_pointer
+    ) {
+        return Err(String::from("v6 invocation admitted changed C live-in"));
+    }
+
+    let mut terminated = source_entry;
+    terminated.termination = Some(Termination::NonGraphicalCell);
+    if !matches!(
+        PreparedRegisterMaskedHaltFetchInvocation::new(
+            &artifact,
+            &program,
+            terminated,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ),
+        Err(VerifiedRegisterMaskedInvocationError::EntryTermination)
+    ) {
+        return Err(String::from("v6 invocation admitted terminated entry"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_halt_invocation_rejects_fetched_cell_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let source_entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    let live_in = program
+        .memory_live_ins
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 halt live-in missing"))?;
+    let address = usize::try_from(live_in.address)
+        .map_err(|error| format!("v6 live-in address conversion: {error}"))?;
+    let mut memory = register_masked_halt_memory(&program)?;
+    let cell = memory
+        .get_mut(address)
+        .ok_or_else(|| String::from("v6 live-in address exceeds memory"))?;
+    *cell ^= 1;
+    let input = [];
+    let mut output = [];
+    if !matches!(
+        PreparedRegisterMaskedHaltFetchInvocation::new(
+            &artifact,
+            &program,
+            source_entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ),
+        Err(VerifiedRegisterMaskedInvocationError::Invocation(
+            NativeRegionInvocationError::EntryMemory {
+                address: observed_address,
+                expected,
+                observed,
+            },
+        )) if observed_address == live_in.address
+            && expected == live_in.value
+            && observed == (live_in.value ^ 1)
+    ) {
+        return Err(String::from("v6 invocation admitted fetched-cell drift"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_halt_invocation_rejects_invalid_rebased_cursors()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let source_entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    let input = [1u8, 2];
+    let mut output = [0u8; 2];
+
+    let mut input_drift = source_entry;
+    input_drift.input_consumed = input.len().saturating_add(1);
+    let mut memory = register_masked_halt_memory(&program)?;
+    if !matches!(
+        PreparedRegisterMaskedHaltFetchInvocation::new(
+            &artifact,
+            &program,
+            input_drift,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ),
+        Err(VerifiedRegisterMaskedInvocationError::Invocation(
+            NativeRegionInvocationError::CallFrame(
+                NativeRegionCallFrameError::InputConsumed,
+            ),
+        ))
+    ) {
+        return Err(String::from(
+            "v6 invocation admitted invalid input cursor",
+        ));
+    }
+
+    let mut output_drift = source_entry;
+    output_drift.output_len = output.len().saturating_add(1);
+    if !matches!(
+        PreparedRegisterMaskedHaltFetchInvocation::new(
+            &artifact,
+            &program,
+            output_drift,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ),
+        Err(VerifiedRegisterMaskedInvocationError::Invocation(
+            NativeRegionInvocationError::CallFrame(
+                NativeRegionCallFrameError::OutputLength,
+            ),
+        ))
+    ) {
+        return Err(String::from(
+            "v6 invocation admitted invalid output cursor",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_halt_invocation_is_capacity_and_identity_exact()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    let required = program.required_memory_words();
+    let required_usize = usize::try_from(required)
+        .map_err(|error| format!("v6 required memory conversion: {error}"))?;
+    let mut short_memory = vec![0u32; required_usize.saturating_sub(1)];
+    let input = [];
+    let mut output = [];
+    if !matches!(
+        PreparedRegisterMaskedHaltFetchInvocation::new(
+            &artifact,
+            &program,
+            entry,
+            NativeRegionBuffers::new(&mut short_memory, &input, &mut output),
+        ),
+        Err(VerifiedRegisterMaskedInvocationError::Invocation(
+            NativeRegionInvocationError::MemoryCapacity {
+                available,
+                required: observed_required,
+            },
+        )) if available == required_usize.saturating_sub(1)
+            && observed_required == required
+    ) {
+        return Err(String::from("v6 invocation admitted short memory"));
+    }
+
+    let mut drift = program.clone();
+    let effect = drift
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?;
+    effect.before.registers.accumulator ^= 1;
+    effect.after.registers.accumulator ^= 1;
+    let mut memory = register_masked_halt_memory(&program)?;
+    if !matches!(
+        PreparedRegisterMaskedHaltFetchInvocation::new(
+            &artifact,
+            &drift,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ),
+        Err(VerifiedRegisterMaskedInvocationError::ArtifactIdentity)
+    ) {
+        return Err(String::from("v6 invocation admitted artifact-key drift"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_halt_guard_miss_restores_snapshot() -> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let mut invocation = PreparedRegisterMaskedHaltFetchInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 rollback preparation failed: {error}"))?;
+    let mutation = entry_memory
+        .first()
+        .copied()
+        .unwrap_or_default()
+        .wrapping_add(1);
+    if !invocation.write_memory_for_test(0, mutation) {
+        return Err(String::from("v6 rollback fixture has no memory"));
+    }
+    let result = invocation.complete(NativeRegionStatus::GuardMiss.code());
+    if !matches!(
+        result,
+        Err(VerifiedRegisterMaskedInvocationError::Invocation(
+            NativeRegionInvocationError::NonAppliedMutation {
+                status: NativeRegionStatus::GuardMiss,
+                surface: NativeRegionMutationSurface::Memory,
+            },
+        ))
+    ) || memory != entry_memory
+    {
+        return Err(String::from("v6 guard miss failed atomic rollback"));
     }
     Ok(())
 }
