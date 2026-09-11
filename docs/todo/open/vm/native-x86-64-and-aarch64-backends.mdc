@@ -103,8 +103,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   and non-graphical terminal objects on both ISAs with reduced C/live-in guards.
   The non-graphical artifact has distinct relocation-free image and rebased
   prepared-call evidence. Dedicated lifecycle typestates admit exact copy,
-  same-mapping RX transition, and full-range synchronization, but no platform
-  loader or runner accepts the resulting ready state.
+  same-mapping RX transition, and full-range synchronization. A dedicated
+  platform path now loads/releases that ready state transactionally with cleanup
+  and retry ownership, while invocation binding and runner authority remain
+  absent.
 
   Native ABI revision 1 now has one format-neutral Rust `repr(C)` call frame.
   Its tested 80-byte size and field offsets match both reviewed encoder

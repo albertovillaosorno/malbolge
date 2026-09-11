@@ -300,10 +300,15 @@ pub use platform::{
     RegisterMaskedNativeExecutableLoadResult,
     RegisterMaskedNativeExecutableReleaseFailure,
     RegisterMaskedNativeExecutableReleaseResult,
+    RegisterMaskedNonGraphicalNativeExecutableLoadResult,
+    RegisterMaskedNonGraphicalNativeExecutableReleaseFailure,
+    RegisterMaskedNonGraphicalNativeExecutableReleaseResult,
     load_execution_geometry_native_executable, load_native_executable,
     load_register_masked_native_executable,
+    load_register_masked_non_graphical_native_executable,
     release_execution_geometry_native_executable, release_native_executable,
     release_register_masked_native_executable,
+    release_register_masked_non_graphical_native_executable,
 };
 pub use register_masked_lease_cache::{
     RegisterMaskedNativeLease, RegisterMaskedNativeLeaseCache,

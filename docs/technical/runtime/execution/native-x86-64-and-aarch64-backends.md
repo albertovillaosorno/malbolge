@@ -207,9 +207,12 @@ reduced guard sequence over C, exact required memory extent, `memory[C]`, and
 prior termination while complete v6 identity still preserves masked semantics.
 The non-graphical artifact has a distinct relocation-free image and rebased
 prepared-call type that validates exact `NonGraphicalCell` application or atomic
-guard miss. Dedicated lifecycle typestates now admit exact copy, same-mapping
-RX transition, and full-range synchronization without granting platform loading
-or runner authority.
+guard miss. Dedicated lifecycle typestates admit exact copy, same-mapping RX
+transition, and full-range synchronization.
+
+A non-graphical-specific platform path now owns transactional allocation,
+cleanup, and release retry while runner and invocation-binding authority remain
+absent.
 
 The native call-frame ABI now has a format-neutral Rust authority in
 `native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used

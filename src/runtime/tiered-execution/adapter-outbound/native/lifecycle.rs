@@ -1035,7 +1035,7 @@ pub(super) fn validate_execution_geometry_writable_mapping(
     validate_execution_geometry_mapping_ranges(image, mapping)
 }
 
-fn validate_register_masked_non_graphical_writable_mapping(
+pub(super) fn validate_register_masked_non_graphical_writable_mapping(
     image: &VerifiedRegisterMaskedNonGraphicalLoadImage,
     mapping: NativeExecutableMappingReport,
 ) -> Result<(), NativeExecutableLifecycleError> {

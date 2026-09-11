@@ -194,13 +194,16 @@ halt executable lifecycle.
 `VerifiedRegisterMaskedNonGraphicalLoadImage` now feeds distinct `Staged`,
 `Sealed`, and `Ready` lifecycle typestates. They admit exact writable copy,
 same-mapping RX protection, and full-range instruction synchronization while
-retaining complete v6 identity and cleanup evidence. No platform adapter accepts
-the non-graphical image or ready state.
+retaining complete v6 identity and cleanup evidence.
+
+The shared platform port now has a non-graphical-specific load/release path. It
+transactionally allocates, copies, protects, synchronizes, and cleans up the
+distinct ready type, preserving release-failure ownership for exact retry.
 
 `PreparedRegisterMaskedNonGraphicalInvocation` binds exact v6 identity, C and
 fetched-cell live-ins, rebased dead state, and atomic Applied/GuardMiss
-completion. It exposes no executable binding; platform loading, runners,
-residency, and sequences remain halt-only.
+completion. It still exposes no executable binding; runners, residency, and
+sequence execution remain halt-only.
 
 `VerifiedRegisterMaskedLoadImage` now extracts that verified object as a
 relocation-free, ISA-aligned image under the shared strict W^X policy without
