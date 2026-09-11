@@ -113,7 +113,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   composes exact load/call/release with cleanup and release-retry evidence.
 
   A dedicated owner reuses the exact non-graphical mapping across rebased calls
-  and runner failure. Lease-cache and sequence authority remain absent.
+  and runner failure. A distinct single-resident lease cache preserves exact
+  identity, no-I/O hits, live-lease blocking, and cleanup retry ownership.
+  Multi-entry cache and sequence authority remain absent.
 
   Native ABI revision 1 now has one format-neutral Rust `repr(C)` call frame.
   Its tested 80-byte size and field offsets match both reviewed encoder

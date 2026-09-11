@@ -287,6 +287,12 @@ use execution_native::{
     RegisterMaskedNativeSequencePlan, RegisterMaskedNativeSequencePlanError,
     RegisterMaskedNonGraphicalNativeExecutableOwner,
     RegisterMaskedNonGraphicalNativeOwnerExecutionFailure,
+    RegisterMaskedNonGraphicalNativeOwnerLoadFailure,
+    RegisterMaskedNonGraphicalNativeResidentCacheAcquireFailure,
+    RegisterMaskedNonGraphicalNativeResidentCacheDisposition,
+    RegisterMaskedNonGraphicalNativeResidentCacheRelease,
+    RegisterMaskedNonGraphicalNativeResidentLease,
+    RegisterMaskedNonGraphicalNativeResidentLeaseCache,
     RegisterMaskedNonGraphicalNativeRunner,
     StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
     StagedRegisterMaskedNativeExecutable,
@@ -817,6 +823,11 @@ struct RegisterMaskedSequencePlanFixture {
     plan: RegisterMaskedNativeSequencePlan,
     program: RegisterMaskedRegionEffectProgram,
 }
+
+type NonGraphicalResidentAcquireFailure =
+    RegisterMaskedNonGraphicalNativeResidentCacheAcquireFailure<
+        FakeNativeAdapterOperation,
+    >;
 
 type RegisterMaskedHaltVariant = (
     RegisterMaskedRegionEffectProgram,
@@ -2458,6 +2469,80 @@ fn execute_register_masked_non_graphical_owner_applied(
     } else {
         Err(String::from(
             "v6 non-graphical owner rebased execution drifted",
+        ))
+    }
+}
+
+fn release_non_graphical_resident_after_leases(
+    cache: &mut RegisterMaskedNonGraphicalNativeResidentLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    loaded_operations: &[FakeNativeAdapterOperation],
+    leases: (
+        RegisterMaskedNonGraphicalNativeResidentLease,
+        RegisterMaskedNonGraphicalNativeResidentLease,
+    ),
+) -> Result<(), String> {
+    if cache
+        .release_if_unleased(adapter)
+        .map_err(|error| format!("v6 non-graphical leased release: {error}"))?
+        != (RegisterMaskedNonGraphicalNativeResidentCacheRelease::Leased {
+            leases: 2,
+        })
+        || adapter.operations.as_slice() != loaded_operations
+    {
+        return Err(String::from(
+            "v6 non-graphical live leases did not block release",
+        ));
+    }
+    drop(leases);
+    let released = cache.release_if_unleased(adapter).map_err(|error| {
+        format!("v6 non-graphical resident release: {error}")
+    })?;
+    if released
+        == RegisterMaskedNonGraphicalNativeResidentCacheRelease::Released
+        && !cache.has_resident()
+        && adapter.operations.last()
+            == Some(&FakeNativeAdapterOperation::Release)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical unleased resident did not release",
+        ))
+    }
+}
+
+fn execute_register_masked_non_graphical_lease_applied(
+    lease: &RegisterMaskedNonGraphicalNativeResidentLease,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<usize, String> {
+    let mut entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical lease effect missing"))?
+        .before;
+    entry.registers.accumulator = 71;
+    entry.registers.data_pointer = 81;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_program_memory(program)?;
+    let mut runner = FakeRegisterMaskedNonGraphicalNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = lease
+        .execute(
+            &mut runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| {
+            format!("v6 non-graphical resident lease execution failed: {error}")
+        })?;
+    if matches!(outcome, NativeRegionInvocationOutcome::Applied(_)) {
+        Ok(runner.mapping_ids.len())
+    } else {
+        Err(String::from(
+            "v6 non-graphical resident lease did not apply",
         ))
     }
 }
@@ -5774,6 +5859,196 @@ fn register_masked_v6_owner_recovers_after_runner_failure() -> TieredTestResult
     owner
         .release(&mut adapter)
         .map_err(|release| format!("v6 reusable owner release: {release}"))
+}
+
+#[test]
+fn register_masked_v6_non_graphical_resident_cache_hits_without_adapter_work()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(161)?,
+        native_executable_address(0x16100)?,
+    );
+    let mut cache = RegisterMaskedNonGraphicalNativeResidentLeaseCache::new();
+    let first =
+        cache
+            .ensure(&mut adapter, &program, &artifact)
+            .map_err(|error| {
+                format!("v6 non-graphical resident insert: {error}")
+            })?;
+    let first_disposition = first.disposition();
+    let first_lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let second = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 non-graphical resident hit: {error}"))?;
+    let second_disposition = second.disposition();
+    let second_lease = second.into_lease();
+    let mapping_count = execute_register_masked_non_graphical_lease_applied(
+        &first_lease,
+        &program,
+    )?;
+    if first_disposition
+        != RegisterMaskedNonGraphicalNativeResidentCacheDisposition::Inserted
+        || second_disposition
+            != RegisterMaskedNonGraphicalNativeResidentCacheDisposition::Hit
+        || !first_lease.shares_resident_with(&second_lease)
+        || cache.resident_lease_count() != 2
+        || mapping_count != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 non-graphical resident hit or execution drifted",
+        ));
+    }
+    release_non_graphical_resident_after_leases(
+        &mut cache,
+        &mut adapter,
+        &loaded_operations,
+        (first_lease, second_lease),
+    )
+}
+
+#[test]
+fn register_masked_v6_non_graphical_resident_cache_rejects_different_identity()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let variant = register_masked_non_graphical_dead_state_variant(&program)?;
+    let variant_artifact =
+        verified_register_masked_non_graphical(&variant, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(162)?,
+        native_executable_address(0x16200)?,
+    );
+    let mut cache = RegisterMaskedNonGraphicalNativeResidentLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 non-graphical resident seed: {error}"))?;
+    let lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let Err(error) = cache.ensure(&mut adapter, &variant, &variant_artifact)
+    else {
+        return Err(String::from(
+            "v6 non-graphical resident replaced a different identity",
+        ));
+    };
+    if error.as_ref() != &NonGraphicalResidentAcquireFailure::IdentityOccupied
+        || adapter.operations != loaded_operations
+        || cache.resident_lease_count() != 1
+    {
+        return Err(String::from(
+            "v6 non-graphical resident identity rejection drifted",
+        ));
+    }
+    drop(lease);
+    if cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|release_error| {
+            format!("v6 non-graphical identity cleanup: {release_error}")
+        })?
+        != RegisterMaskedNonGraphicalNativeResidentCacheRelease::Released
+    {
+        return Err(String::from(
+            "v6 non-graphical identity cleanup did not release",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_resident_cache_release_failure_retries()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(163)?,
+        native_executable_address(0x16300)?,
+    )
+    .with_release_failures(1);
+    let mut cache = RegisterMaskedNonGraphicalNativeResidentLeaseCache::new();
+    let acquisition =
+        cache
+            .ensure(&mut adapter, &program, &artifact)
+            .map_err(|error| {
+                format!("v6 non-graphical resident retry seed: {error}")
+            })?;
+    drop(acquisition);
+    let Err(failure) = cache.release_if_unleased(&mut adapter) else {
+        return Err(String::from(
+            "v6 non-graphical resident release failure was ignored",
+        ));
+    };
+    if cache.has_resident()
+        || failure.executable().key() != artifact.key()
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from(
+            "v6 non-graphical resident release lost retry ownership",
+        ));
+    }
+    failure.retry(&mut adapter).map_err(|error| {
+        format!("v6 non-graphical resident release retry failed: {error}")
+    })?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from(
+            "v6 non-graphical resident release retry count drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_resident_load_failure_is_atomic()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(164)?,
+        native_executable_address(0x16400)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut cache = RegisterMaskedNonGraphicalNativeResidentLeaseCache::new();
+    let Err(error) = cache.ensure(&mut adapter, &program, &artifact) else {
+        return Err(String::from(
+            "v6 non-graphical resident ignored load failure",
+        ));
+    };
+    match error.as_ref() {
+        NonGraphicalResidentAcquireFailure::Load(owner_error) => {
+            if !matches!(
+                owner_error.as_ref(),
+                RegisterMaskedNonGraphicalNativeOwnerLoadFailure::Load(_)
+            ) {
+                return Err(String::from(
+                    "v6 non-graphical resident load failure lost cause",
+                ));
+            }
+        },
+        NonGraphicalResidentAcquireFailure::IdentityOccupied => {
+            return Err(String::from(
+                "v6 non-graphical resident load failure misclassified",
+            ));
+        },
+    }
+    if cache.has_resident()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from(
+            "v6 non-graphical failed load published partial residency",
+        ));
+    }
+    Ok(())
 }
 
 #[test]

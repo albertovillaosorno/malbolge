@@ -9,7 +9,7 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Reusable v6 executable ownership and one exact halt resident lease slot.
+//   - Reusable v6 executable ownership and exact terminal resident lease slots.
 // - Must-Not:
 //   - Project v6 authority into legacy/v5 types or release live leased
 //     mappings.
@@ -28,9 +28,9 @@
 // - Summary:
 //   - Reuses one exact v6 mapping without weakening mask-aware identity.
 // - Description:
-//   - Halt-only Arc leases are immutable and block release while retained.
+//   - Terminal-specific Arc leases are immutable and block release while held.
 // - Usage:
-//   - Load a terminal owner directly; halt owners may enter the lease cache.
+//   - Load terminal owners directly or acquire their separate resident leases.
 // - Defaults:
 //   - Hits and lease clone/drop perform no executable-memory adapter
 //     operations.
@@ -251,6 +251,84 @@ pub type RegisterMaskedNativeResidentCacheReleaseResult<MemoryError> = Result<
     Box<RegisterMaskedNativeExecutableReleaseFailure<MemoryError>>,
 >;
 
+/// Whether one non-graphical lease acquisition loaded or reused the resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedNonGraphicalNativeResidentCacheDisposition {
+    /// The exact resident already existed and was leased without adapter work.
+    Hit,
+    /// The exact resident was loaded and published into the empty slot.
+    Inserted,
+}
+
+/// Failure while acquiring one exact non-graphical resident lease.
+#[derive(Debug, Eq, PartialEq)]
+pub enum RegisterMaskedNonGraphicalNativeResidentCacheAcquireFailure<
+    MemoryError,
+> {
+    /// A different exact non-graphical identity already owns the slot.
+    IdentityOccupied,
+    /// Loading the requested resident owner failed.
+    Load(Box<RegisterMaskedNonGraphicalNativeOwnerLoadFailure<MemoryError>>),
+}
+
+/// Explicit result of attempting to release the non-graphical resident.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedNonGraphicalNativeResidentCacheRelease {
+    /// External leases still retain the resident mapping.
+    Leased {
+        /// Number of external lease owners blocking release.
+        leases: usize,
+    },
+    /// No resident mapping exists.
+    Missing,
+    /// The unleased resident mapping released successfully.
+    Released,
+}
+
+/// One immutable external lease of the exact non-graphical resident.
+#[derive(Clone, Debug)]
+pub struct RegisterMaskedNonGraphicalNativeResidentLease {
+    resident: Arc<RegisterMaskedNonGraphicalNativeExecutableOwner>,
+}
+
+/// Lease plus whether the non-graphical resident was inserted or reused.
+#[derive(Debug)]
+pub struct RegisterMaskedNonGraphicalNativeResidentCacheAcquisition {
+    disposition: RegisterMaskedNonGraphicalNativeResidentCacheDisposition,
+    lease: RegisterMaskedNonGraphicalNativeResidentLease,
+}
+
+/// Single exact resident slot for cloneable non-graphical v6 leases.
+#[derive(Debug, Default)]
+pub struct RegisterMaskedNonGraphicalNativeResidentLeaseCache {
+    resident: Option<Arc<RegisterMaskedNonGraphicalNativeExecutableOwner>>,
+}
+
+/// Result of acquiring one exact non-graphical resident lease.
+pub type RegisterMaskedNonGraphicalNativeResidentCacheAcquireResult<
+    MemoryError,
+> = Result<
+    RegisterMaskedNonGraphicalNativeResidentCacheAcquisition,
+    Box<
+        RegisterMaskedNonGraphicalNativeResidentCacheAcquireFailure<
+            MemoryError,
+        >,
+    >,
+>;
+
+/// Result of releasing the non-graphical resident after leases are gone.
+pub type RegisterMaskedNonGraphicalNativeResidentCacheReleaseResult<
+    MemoryError,
+> = Result<
+    RegisterMaskedNonGraphicalNativeResidentCacheRelease,
+    Box<RegisterMaskedNonGraphicalNativeExecutableReleaseFailure<MemoryError>>,
+>;
+
+type NonGraphicalCacheAcquireFailure<MemoryError> =
+    RegisterMaskedNonGraphicalNativeResidentCacheAcquireFailure<MemoryError>;
+type NonGraphicalCacheDisposition =
+    RegisterMaskedNonGraphicalNativeResidentCacheDisposition;
+
 impl<MemoryError: Display> Display
     for RegisterMaskedNativeOwnerLoadFailure<MemoryError>
 {
@@ -330,6 +408,19 @@ impl<MemoryError: Display> Display
         match self {
             Self::IdentityOccupied => f.write_str(
                 "different register-masked identity already resident",
+            ),
+            Self::Load(error) => Display::fmt(error, f),
+        }
+    }
+}
+
+impl<MemoryError: Display> Display
+    for RegisterMaskedNonGraphicalNativeResidentCacheAcquireFailure<MemoryError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self {
+            Self::IdentityOccupied => f.write_str(
+                "different non-graphical v6 identity already resident",
             ),
             Self::Load(error) => Display::fmt(error, f),
         }
@@ -789,6 +880,186 @@ impl RegisterMaskedNativeResidentLeaseCache {
                 Ok(RegisterMaskedNativeResidentCacheRelease::Leased {
                     leases: remaining_leases,
                 })
+            },
+        }
+    }
+
+    /// Returns the number of external leases retaining the resident mapping.
+    #[must_use]
+    pub fn resident_lease_count(&self) -> usize {
+        self.resident
+            .as_ref()
+            .map_or(0, |resident| Arc::strong_count(resident).saturating_sub(1))
+    }
+}
+impl RegisterMaskedNonGraphicalNativeResidentCacheAcquisition {
+    /// Returns whether this acquisition loaded or reused the resident mapping.
+    #[must_use]
+    pub const fn disposition(
+        &self,
+    ) -> RegisterMaskedNonGraphicalNativeResidentCacheDisposition {
+        self.disposition
+    }
+
+    /// Consumes this acquisition and returns its immutable external lease.
+    #[must_use]
+    pub fn into_lease(self) -> RegisterMaskedNonGraphicalNativeResidentLease {
+        self.lease
+    }
+
+    /// Returns the immutable lease retained by this acquisition.
+    #[must_use]
+    pub const fn lease(
+        &self,
+    ) -> &RegisterMaskedNonGraphicalNativeResidentLease {
+        &self.lease
+    }
+}
+
+impl RegisterMaskedNonGraphicalNativeResidentLease {
+    /// Executes through the resident non-graphical mapping without adapter
+    /// work.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact preparation, runner, binding, or completion failure.
+    pub fn execute<Runner>(
+        &self,
+        runner: &mut Runner,
+        entry: ProfileMachineObservation,
+        buffers: NativeRegionBuffers<'_>,
+    ) -> RegisterMaskedNonGraphicalNativeOwnerExecutionResult<Runner::Error>
+    where
+        Runner: RegisterMaskedNonGraphicalNativeRunner,
+    {
+        self.resident.execute(runner, entry, buffers)
+    }
+
+    /// Returns the exact resident non-graphical v6 native key.
+    #[must_use]
+    pub fn key(&self) -> &NativeArtifactKey {
+        self.resident.key()
+    }
+
+    /// Returns exact synchronized weight reported by the resident owner.
+    #[must_use]
+    pub fn resident_weight(&self) -> RegisterMaskedNativeResidentWeight {
+        self.resident.resident_weight()
+    }
+
+    /// Reports whether two leases share the same resident owner allocation.
+    #[must_use]
+    pub fn shares_resident_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.resident, &other.resident)
+    }
+
+    /// Returns all strong owners, including the cache resident owner.
+    #[must_use]
+    pub fn strong_owner_count(&self) -> usize {
+        Arc::strong_count(&self.resident)
+    }
+}
+
+impl RegisterMaskedNonGraphicalNativeResidentLeaseCache {
+    /// Loads or reuses one exact non-graphical v6 resident as an immutable
+    /// lease.
+    ///
+    /// A different identity cannot replace the resident through this
+    /// single-slot boundary; release the old resident explicitly first.
+    ///
+    /// # Errors
+    ///
+    /// Returns identity occupancy or exact owner-loading failure.
+    pub fn ensure<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        program: &RegisterMaskedRegionEffectProgram,
+        artifact: &VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
+    ) -> RegisterMaskedNonGraphicalNativeResidentCacheAcquireResult<
+        Adapter::Error,
+    >
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        if let Some(resident) = &self.resident {
+            if resident.program() != program || resident.artifact() != artifact
+            {
+                return Err(Box::new(
+                    NonGraphicalCacheAcquireFailure::IdentityOccupied,
+                ));
+            }
+            return Ok(
+                RegisterMaskedNonGraphicalNativeResidentCacheAcquisition {
+                    disposition: NonGraphicalCacheDisposition::Hit,
+                    lease: RegisterMaskedNonGraphicalNativeResidentLease {
+                        resident: Arc::clone(resident),
+                    },
+                },
+            );
+        }
+        let loaded = RegisterMaskedNonGraphicalNativeExecutableOwner::load(
+            adapter, program, artifact,
+        )
+        .map_err(|error| {
+            Box::new(NonGraphicalCacheAcquireFailure::Load(error))
+        })?;
+        let resident = Arc::new(loaded);
+        let lease = RegisterMaskedNonGraphicalNativeResidentLease {
+            resident: Arc::clone(&resident),
+        };
+        self.resident = Some(resident);
+        Ok(RegisterMaskedNonGraphicalNativeResidentCacheAcquisition {
+            disposition: NonGraphicalCacheDisposition::Inserted,
+            lease,
+        })
+    }
+
+    /// Reports whether one exact non-graphical mapping is currently resident.
+    #[must_use]
+    pub const fn has_resident(&self) -> bool {
+        self.resident.is_some()
+    }
+
+    /// Constructs one empty single-resident non-graphical lease cache.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { resident: None }
+    }
+
+    /// Releases the resident only when no external lease remains.
+    ///
+    /// Live leases block adapter release. Cleanup failure empties the cache and
+    /// transfers exact ready-executable retry ownership through the failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact non-graphical cleanup retry ownership on release failure.
+    pub fn release_if_unleased<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+    ) -> RegisterMaskedNonGraphicalNativeResidentCacheReleaseResult<
+        Adapter::Error,
+    >
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        use RegisterMaskedNonGraphicalNativeResidentCacheRelease as Release;
+
+        let Some(resident) = self.resident.take() else {
+            return Ok(Release::Missing);
+        };
+        let leases = Arc::strong_count(&resident).saturating_sub(1);
+        if leases > 0 {
+            self.resident = Some(resident);
+            return Ok(Release::Leased { leases });
+        }
+        match Arc::try_unwrap(resident) {
+            Ok(owner) => owner.release(adapter).map(|()| Release::Released),
+            Err(retained) => {
+                let remaining_leases =
+                    Arc::strong_count(&retained).saturating_sub(1);
+                self.resident = Some(retained);
+                Ok(Release::Leased { leases: remaining_leases })
             },
         }
     }

@@ -218,7 +218,11 @@ on runner or completion failure.
 One-shot orchestration now composes exact load, bind, call, completion, and
 release while retaining cleanup and release-retry evidence. A dedicated reusable
 owner retains that exact non-graphical mapping across rebased calls and runner
-failure without remapping. Lease-cache and sequence authority remain absent.
+failure without remapping.
+
+A distinct single-resident lease cache shares that owner on exact hits, blocks
+release while leased, rejects different identity, and transfers cleanup retry
+ownership. Multi-entry cache and sequence authority remain absent.
 
 The native call-frame ABI now has a format-neutral Rust authority in
 `native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used
