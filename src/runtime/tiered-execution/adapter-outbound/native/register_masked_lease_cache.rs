@@ -14,13 +14,13 @@
 //   - Project v6 authority into legacy/v5 types, refresh FIFO age on hits, or
 //     release mappings while external leases remain.
 // - Allows:
-//   - Inputs: exact v6 programs/artifacts, fixed weighted limits, and a memory
-//     adapter.
+//   - Inputs: exact v6 programs/artifacts, caller-selected weighted limits, and
+//     a memory adapter.
 //   - Outputs: cloneable leases, active/retired residency, eviction evidence,
 //     and keyed retryable cleanup ownership.
 //   - Side effects: executable load/release only through the supplied adapter.
 // - Split-When:
-//   - Dynamic limit reconfiguration or durable/cross-process residency gains
+//   - Durable/cross-process residency or asynchronous lease waiting gains
 //     independent ownership.
 // - Merge-When:
 //   - One general register-masked executable store subsumes single and
@@ -32,8 +32,8 @@
 //   - Active lookup and retired leased residency are separate queues whose
 //     exact weights share one capacity account.
 // - Usage:
-//   - Ensure exact residents, return/drop leases, reconcile retired mappings,
-//     and release all explicitly.
+//   - Ensure exact residents, reconfigure limits, return/drop leases, reconcile
+//     retired mappings, and release all explicitly.
 // - Defaults:
 //   - Hits and lease clone/drop perform no adapter work; eviction is oldest
 //     active first.
@@ -41,12 +41,20 @@
 
 //! Weighted multi-entry FIFO lease cache for register-masked v6 executables.
 
+#[path = "register_masked_lease_cache/reconfiguration.rs"]
+mod reconfiguration;
+
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use malbolge::{ProfileMachineObservation, RegisterMaskedRegionEffectProgram};
+pub use reconfiguration::{
+    RegisterMaskedNativeLeaseCacheReconfiguration,
+    RegisterMaskedNativeLeaseCacheReconfigurationFailure,
+    RegisterMaskedNativeLeaseCacheReconfigurationResult,
+};
 
 use super::direct::VerifiedRegisterMaskedHaltFetchNativeObjectArtifact;
 use super::executable_cache_capacity::{
@@ -964,6 +972,43 @@ impl RegisterMaskedNativeLeaseCache {
             }
         }
         reconciliation_result(released_keys, retained_keys, failures)
+    }
+
+    /// Publishes new weighted resident limits after active FIFO processing.
+    ///
+    /// Expansion and already-satisfied requests publish without adapter work.
+    /// Shrink removes active lookup authority oldest-first, immediately
+    /// releases unleased entries, and retires live leased entries without
+    /// reducing their resident weight. Existing retired entries are never
+    /// reclaimed implicitly.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact resident blockage or keyed release ownership while the
+    /// previous limits remain published.
+    pub fn reconfigure_limits<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        requested_limits: NativeExecutableSequenceCacheLimits,
+    ) -> RegisterMaskedNativeLeaseCacheReconfigurationResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let previous_limits = self.limits;
+        let (evicted_keys, retired_keys) =
+            reconfiguration::evict_for_reconfiguration(
+                self,
+                adapter,
+                requested_limits,
+                previous_limits,
+            )?;
+        self.limits = requested_limits;
+        Ok(reconfiguration::published(
+            evicted_keys,
+            retired_keys,
+            requested_limits,
+            previous_limits,
+        ))
     }
 
     /// Removes all active lookup authority and reclaims every unleased

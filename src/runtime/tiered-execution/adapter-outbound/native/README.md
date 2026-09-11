@@ -233,8 +233,14 @@ or reconciliation.
 
 A blocked miss cleans its loaded candidate, invalidation and full drain preserve
 live leases, and failed eviction/reconciliation release transfers keyed
-ready-executable ownership for exact retry. Dynamic limit reconfiguration,
-durable storage, and cross-process leases remain outside.
+ready-executable ownership for exact retry. `reconfigure_limits()` publishes
+expansion or already-fitting requests without adapter work and shrinks through
+active FIFO release/retirement. Live leased victims keep their exact weight
+charged; prior retired entries are not reconciled implicitly.
+
+Blockage or cleanup failure keeps the previous limits published and returns
+exact evidence for idempotent retry. Durable storage and cross-process leases
+remain outside.
 
 `RegisterMaskedNativeSequencePlan` now validates the complete ordered v6 chain
 before mapping: non-empty/count exactness and one-effect v6 shape; canonical

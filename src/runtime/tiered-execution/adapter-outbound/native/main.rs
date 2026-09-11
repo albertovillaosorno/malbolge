@@ -310,6 +310,9 @@ pub use register_masked_lease_cache::{
     RegisterMaskedNativeLeaseCacheLoadResult,
     RegisterMaskedNativeLeaseCacheReconciliation,
     RegisterMaskedNativeLeaseCacheReconciliationResult,
+    RegisterMaskedNativeLeaseCacheReconfiguration,
+    RegisterMaskedNativeLeaseCacheReconfigurationFailure,
+    RegisterMaskedNativeLeaseCacheReconfigurationResult,
     RegisterMaskedNativeLeaseCacheReleaseFailure,
     RegisterMaskedNativeLeaseCacheUsage,
 };

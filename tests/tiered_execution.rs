@@ -267,7 +267,9 @@ use execution_native::{
     ReadyExecutionGeometryNativeExecutableSequence, ReadyNativeExecutable,
     ReadyNativeExecutableSequence, ReadyRegisterMaskedNativeExecutable,
     RegisterMaskedDirectAdmissionErrorKind,
-    RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLeaseCache,
+    RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLease,
+    RegisterMaskedNativeLeaseCache, RegisterMaskedNativeLeaseCacheAcquisition,
+    RegisterMaskedNativeLeaseCacheEntryReleaseFailure,
     RegisterMaskedNativeLeaseCacheInvalidation,
     RegisterMaskedNativeOwnerExecutionFailure,
     RegisterMaskedNativeOwnerLoadFailure,
@@ -618,6 +620,9 @@ type LeaseCacheFixture = (
     NativeExecutableSequenceLeaseCache,
     FakeNativeExecutableAdapter,
 );
+
+type RegisterMaskedMultiCacheFixture =
+    (FakeNativeExecutableAdapter, RegisterMaskedNativeLeaseCache);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FakeNativeAdapterOperation {
@@ -2011,6 +2016,54 @@ fn register_masked_halt_variant(
     let artifact =
         verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
     Ok((program, artifact))
+}
+
+fn register_masked_multi_cache_fixture(
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<RegisterMaskedMultiCacheFixture, String> {
+    let adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_id_value)?,
+        native_executable_address(base_address)?,
+    );
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("zero multi-cache capacity"))?;
+    Ok((adapter, RegisterMaskedNativeLeaseCache::new(capacity)))
+}
+
+fn register_masked_single_entry_limits()
+-> Result<NativeExecutableSequenceCacheLimits, String> {
+    NonZeroUsize::new(1)
+        .map(NativeExecutableSequenceCacheLimits::new)
+        .ok_or_else(|| String::from("zero shrink capacity"))
+}
+
+fn seed_register_masked_multi_cache(
+    adapter: &mut FakeNativeExecutableAdapter,
+    cache: &mut RegisterMaskedNativeLeaseCache,
+    variants: [&RegisterMaskedHaltVariant; 2],
+) -> TieredTestResult {
+    for variant in variants {
+        drop(
+            cache
+                .ensure(adapter, &variant.0, &variant.1)
+                .map_err(|error| {
+                    format!("v6 multi-cache seed failed: {error}")
+                })?,
+        );
+    }
+    Ok(())
+}
+
+fn lease_register_masked_variant(
+    adapter: &mut FakeNativeExecutableAdapter,
+    cache: &mut RegisterMaskedNativeLeaseCache,
+    variant: &RegisterMaskedHaltVariant,
+) -> Result<RegisterMaskedNativeLease, String> {
+    cache
+        .ensure(adapter, &variant.0, &variant.1)
+        .map(RegisterMaskedNativeLeaseCacheAcquisition::into_lease)
+        .map_err(|error| format!("v6 multi-cache lease failed: {error}"))
 }
 
 fn register_masked_sequence_plan_fixture()
@@ -4426,6 +4479,213 @@ fn register_masked_v6_multi_cache_invalidation_waits_for_lease()
     } else {
         Err(String::from("v6 invalidation reconciliation drifted"))
     }
+}
+
+#[test]
+fn register_masked_v6_multi_cache_reconfiguration_expands_without_adapter_work()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_halt_variant(13)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(164)?,
+        native_executable_address(0x16400)?,
+    );
+    let mut cache = RegisterMaskedNativeLeaseCache::new(
+        NonZeroUsize::new(1).ok_or_else(|| String::from("zero capacity"))?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &program, &artifact)
+            .map_err(|error| format!("v6 expansion seed failed: {error}"))?,
+    );
+    let previous = cache.limits();
+    let requested = NativeExecutableSequenceCacheLimits::new(
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero expansion"))?,
+    );
+    let operations = adapter.operations.clone();
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 expansion failed: {error}"))?;
+    if result.limit_transition() != (previous, requested)
+        || !result.evicted_keys().is_empty()
+        || !result.retired_keys().is_empty()
+        || cache.limits() != requested
+        || adapter.operations != operations
+    {
+        return Err(String::from("v6 expansion performed unexpected work"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_result| ())
+        .map_err(|error| format!("v6 expansion cleanup failed: {error}"))
+}
+
+#[test]
+fn register_masked_v6_multi_cache_reconfiguration_shrinks_mapped_bytes_fifo()
+-> TieredTestResult {
+    let (program_a, artifact_a) = register_masked_halt_variant(14)?;
+    let (program_b, artifact_b) = register_masked_halt_variant(15)?;
+    let key_a = artifact_a.key().clone();
+    let key_b = artifact_b.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(165)?,
+        native_executable_address(0x16500)?,
+    )
+    .with_mapped_len_overrides(vec![4096, 4096]);
+    let entry_limit =
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero capacity"))?;
+    let mut cache = RegisterMaskedNativeLeaseCache::new(entry_limit);
+    seed_register_masked_multi_cache(&mut adapter, &mut cache, [
+        &(program_a, artifact_a),
+        &(program_b, artifact_b),
+    ])?;
+    let previous = cache.limits();
+    let requested = NativeExecutableSequenceCacheLimits::new(entry_limit)
+        .with_mapped_byte_limit(
+            NonZeroUsize::new(4096)
+                .ok_or_else(|| String::from("zero byte limit"))?,
+        );
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 byte shrink failed: {error}"))?;
+    if result.limit_transition() != (previous, requested)
+        || result.evicted_keys() != [key_a]
+        || !result.retired_keys().is_empty()
+        || cache.keys().cloned().collect::<Vec<_>>() != [key_b]
+        || cache.usage().entries() != 1
+        || cache.usage().mapped_bytes() != 4096
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 mapped-byte shrink drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_result| ())
+        .map_err(|error| format!("v6 byte-shrink cleanup failed: {error}"))
+}
+
+#[test]
+fn register_masked_v6_multi_cache_reconfiguration_blocks_live_shrink()
+-> TieredTestResult {
+    let (program_a, artifact_a) = register_masked_halt_variant(16)?;
+    let (program_b, artifact_b) = register_masked_halt_variant(17)?;
+    let key_a = artifact_a.key().clone();
+    let key_b = artifact_b.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_multi_cache_fixture(166, 0x16600)?;
+    let lease_a = lease_register_masked_variant(
+        &mut adapter,
+        &mut cache,
+        &(program_a, artifact_a),
+    )?;
+    let lease_b = lease_register_masked_variant(
+        &mut adapter,
+        &mut cache,
+        &(program_b, artifact_b),
+    )?;
+    let previous = cache.limits();
+    let requested = register_masked_single_entry_limits()?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, requested) else {
+        return Err(String::from("v6 live shrink unexpectedly published"));
+    };
+    let block = failure
+        .block()
+        .ok_or_else(|| String::from("v6 live shrink lost blocker"))?;
+    if failure.limit_transition() != (previous, requested)
+        || failure.evicted_keys() != [key_a.clone(), key_b.clone()]
+        || failure.retired_keys() != [key_a.clone(), key_b.clone()]
+        || block.limits() != requested
+        || block.retired_keys() != [key_a.clone(), key_b.clone()]
+        || block.usage().entries() != 2
+        || cache.limits() != previous
+        || cache.active_len() != 0
+        || cache.retired_len() != 2
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("v6 live shrink blockage drifted"));
+    }
+    drop((lease_a, lease_b));
+    let reconciled = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|error| format!("v6 live-shrink reconcile failed: {error}"))?;
+    if reconciled.released_keys() != [key_a, key_b]
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 live-shrink reconciliation drifted"));
+    }
+    let attempts = adapter.release_attempts;
+    let published = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 live-shrink retry failed: {error}"))?;
+    if published.limit_transition() == (previous, requested)
+        && cache.limits() == requested
+        && adapter.release_attempts == attempts
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 live-shrink retry was not idempotent"))
+    }
+}
+
+#[test]
+fn register_masked_v6_multi_cache_reconfiguration_transfers_release_retry()
+-> TieredTestResult {
+    let (program_a, artifact_a) = register_masked_halt_variant(18)?;
+    let (program_b, artifact_b) = register_masked_halt_variant(19)?;
+    let key_a = artifact_a.key().clone();
+    let key_b = artifact_b.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_multi_cache_fixture(167, 0x16700)?;
+    adapter = adapter.with_release_failure_at(1);
+    seed_register_masked_multi_cache(&mut adapter, &mut cache, [
+        &(program_a, artifact_a),
+        &(program_b, artifact_b),
+    ])?;
+    let previous = cache.limits();
+    let requested = register_masked_single_entry_limits()?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, requested) else {
+        return Err(String::from(
+            "v6 failed release shrink unexpectedly published",
+        ));
+    };
+    if failure.limit_transition() != (previous, requested)
+        || failure.evicted_keys() != [key_a.clone()]
+        || failure
+            .release_failure()
+            .map(RegisterMaskedNativeLeaseCacheEntryReleaseFailure::key)
+            != Some(&key_a)
+        || cache.limits() != previous
+        || cache.keys().cloned().collect::<Vec<_>>() != [key_b]
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 shrink release failure drifted"));
+    }
+    let keyed = failure
+        .into_release_failure()
+        .ok_or_else(|| String::from("v6 shrink release owner missing"))?;
+    keyed
+        .into_failure()
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 shrink release retry failed: {error}"))?;
+    let attempts = adapter.release_attempts;
+    let published =
+        cache
+            .reconfigure_limits(&mut adapter, requested)
+            .map_err(|error| {
+                format!("v6 shrink publication retry failed: {error}")
+            })?;
+    if published.limit_transition() != (previous, requested)
+        || !published.evicted_keys().is_empty()
+        || cache.limits() != requested
+        || adapter.release_attempts != attempts
+    {
+        return Err(String::from("v6 shrink retry repeated cleanup"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_result| ())
+        .map_err(|error| format!("v6 retry-shrink cleanup failed: {error}"))
 }
 
 #[test]
