@@ -53,6 +53,7 @@ mod platform;
 mod profile_metadata;
 mod register_masked_lease_cache;
 mod register_masked_non_graphical_lease_cache;
+mod register_masked_non_graphical_loaded_sequence;
 mod register_masked_non_graphical_sequence;
 mod register_masked_resident;
 mod register_masked_sequence;
@@ -355,6 +356,14 @@ pub use register_masked_non_graphical_lease_cache::{
     RegisterMaskedNonGraphicalLeaseCacheReleaseResult,
     RegisterMaskedNonGraphicalLeaseCacheReleaseSummary,
     RegisterMaskedNonGraphicalLeaseCacheUsage,
+};
+pub use register_masked_non_graphical_loaded_sequence::{
+    LoadedRegisterMaskedNonGraphicalNativeSequence,
+    RegisterMaskedNonGraphicalNativeSequenceLoadFailure,
+    RegisterMaskedNonGraphicalNativeSequenceLoadResult,
+    RegisterMaskedNonGraphicalNativeSequenceReleaseFailure,
+    RegisterMaskedNonGraphicalNativeSequenceReleaseResult,
+    load_register_masked_non_graphical_native_sequence,
 };
 pub use register_masked_non_graphical_sequence::{
     RegisterMaskedNonGraphicalNativeSequencePlan,

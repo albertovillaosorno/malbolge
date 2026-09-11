@@ -130,8 +130,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A distinct non-graphical sequence plan now validates count, one-effect v6
   shape, canonical profile/observation continuity, common target, exact artifact
   identity, and termination only at the final position before any mapping.
-  Current terminal coverage admits one executable semantic step. Loaded sequence
-  ownership, runner execution, and reverse release remain absent.
+  Current terminal coverage admits one executable semantic step. A separate
+  loaded owner maps the complete plan only after all owner loads succeed, keeps
+  exact mapped-weight evidence, and releases in reverse with aggregate retry.
+  Runner execution and buffer mutation remain absent.
 
   Native ABI revision 1 now has one format-neutral Rust `repr(C)` call frame.
   Its tested 80-byte size and field offsets match both reviewed encoder

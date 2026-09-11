@@ -246,8 +246,11 @@ retry. The cache itself does not execute sequences.
 admission without mapping authority. It validates exact count, one-effect v6
 shape, canonical profile/observation continuity, common target, complete
 artifact identity, and no termination before a later position. Current
-non-graphical terminal coverage therefore admits one executable semantic step;
-loaded ownership, runner execution, and reverse release remain absent.
+non-graphical terminal coverage therefore admits one executable semantic step.
+
+A separate loaded owner maps every admitted step only after complete success,
+reports exact mapped weight, and releases in reverse with aggregate retry
+ownership. Runner execution and buffer mutation remain absent.
 
 `VerifiedRegisterMaskedLoadImage` now extracts that verified object as a
 relocation-free, ISA-aligned image under the shared strict W^X policy without

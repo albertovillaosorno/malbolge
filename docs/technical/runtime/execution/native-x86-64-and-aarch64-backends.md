@@ -241,8 +241,12 @@ A distinct non-graphical sequence plan now validates complete ordered topology
 and exact artifact identity before any executable mapping may be allocated. It
 checks count, one-effect v6 shape, profile and observation continuity, common
 target identity, and termination only at the final position. Current terminal
-coverage admits one executable semantic step; loaded ownership, execution, and
-release remain outside this plan boundary.
+coverage admits one executable semantic step.
+
+A separate loaded owner maps the complete admitted plan transactionally, retains
+exact mapped weight, and releases mappings in reverse while preserving aggregate
+retry ownership. Runner execution and buffer mutation remain outside this loaded
+boundary.
 
 The native call-frame ABI now has a format-neutral Rust authority in
 `native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used

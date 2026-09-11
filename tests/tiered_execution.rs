@@ -343,6 +343,7 @@ use execution_native::{
     load_execution_geometry_native_executable, load_native_executable,
     load_register_masked_native_executable,
     load_register_masked_non_graphical_native_executable,
+    load_register_masked_non_graphical_native_sequence,
     load_verified_execution_geometry_native_sequence,
     load_verified_native_sequence, lower_clang_c23,
     lower_preflighted_clang_c23, release_execution_geometry_native_executable,
@@ -832,6 +833,11 @@ struct RegisterMaskedSequencePlanFixture {
 
 type NonGraphicalSequencePlanError =
     RegisterMaskedNonGraphicalNativeSequencePlanError;
+
+type NonGraphicalLoadedSequenceFixture = (
+    RegisterMaskedNonGraphicalNativeSequencePlan,
+    RegisterMaskedRegionEffectProgram,
+);
 
 type NonGraphicalResidentAcquireFailure =
     RegisterMaskedNonGraphicalNativeResidentCacheAcquireFailure<
@@ -7779,6 +7785,144 @@ fn register_masked_v6_non_graphical_sequence_plan_rejects_identity_drift()
     } else {
         Err(String::from(
             "v6 non-graphical sequence ignored artifact identity drift",
+        ))
+    }
+}
+
+fn register_masked_non_graphical_loaded_sequence_fixture()
+-> Result<NonGraphicalLoadedSequenceFixture, String> {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let plan = RegisterMaskedNonGraphicalNativeSequencePlan::new(
+        from_ref(&program),
+        from_ref(&artifact),
+    )
+    .map_err(|error| format!("v6 non-graphical loaded plan: {error}"))?;
+    Ok((plan, program))
+}
+
+#[test]
+fn register_masked_v6_non_graphical_sequence_loads_and_releases()
+-> TieredTestResult {
+    let (plan, _program) =
+        register_masked_non_graphical_loaded_sequence_fixture()?;
+    let mapped_len = 12_288;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(184)?,
+        native_executable_address(0x18400)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let loaded =
+        load_register_masked_non_graphical_native_sequence(&plan, &mut adapter)
+            .map_err(|error| {
+                format!("v6 non-graphical sequence load: {error}")
+            })?;
+    if loaded.len() != 1
+        || loaded.is_empty()
+        || loaded.mapped_bytes() != Some(mapped_len)
+        || loaded.plan() != &plan
+    {
+        return Err(String::from(
+            "v6 non-graphical loaded sequence ownership drifted",
+        ));
+    }
+    loaded.release(&mut adapter).map_err(|error| {
+        format!("v6 non-graphical sequence release: {error}")
+    })?;
+    if adapter.operations.last() == Some(&FakeNativeAdapterOperation::Release) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical loaded sequence did not release",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_non_graphical_sequence_load_failure_is_atomic()
+-> TieredTestResult {
+    let (plan, _program) =
+        register_masked_non_graphical_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(185)?,
+        native_executable_address(0x18500)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let Err(error) =
+        load_register_masked_non_graphical_native_sequence(&plan, &mut adapter)
+    else {
+        return Err(String::from(
+            "v6 non-graphical sequence ignored load failure",
+        ));
+    };
+    if error.index() != 0
+        || error.loaded_count() != 0
+        || error.cleanup_failure().is_some()
+        || !matches!(
+            error.owner_failure(),
+            RegisterMaskedNonGraphicalNativeOwnerLoadFailure::Load(_)
+        )
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from(
+            "v6 non-graphical sequence load failure evidence drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_sequence_release_failure_retries()
+-> TieredTestResult {
+    let (plan, _program) =
+        register_masked_non_graphical_loaded_sequence_fixture()?;
+    let expected_key = plan
+        .artifacts()
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical retry artifact missing"))?
+        .key()
+        .clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(186)?,
+        native_executable_address(0x18600)?,
+    )
+    .with_release_failures(1);
+    let loaded =
+        load_register_masked_non_graphical_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 non-graphical retry load: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from(
+            "v6 non-graphical sequence ignored release failure",
+        ));
+    };
+    if failure.attempted_count() != 1
+        || failure.released_count() != 0
+        || failure.failed_count() != 1
+        || failure
+            .failures()
+            .first()
+            .map(|item| item.executable().key())
+            != Some(&expected_key)
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from(
+            "v6 non-graphical sequence release evidence drifted",
+        ));
+    }
+    failure.retry(&mut adapter).map_err(|error| {
+        format!("v6 non-graphical sequence release retry: {error}")
+    })?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical sequence release retry count drifted",
         ))
     }
 }
