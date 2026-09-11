@@ -1192,6 +1192,108 @@ impl From<NativeIdentityError> for DirectInitialHaltError {
         Self::Identity(error)
     }
 }
+/// Stable category for register-masked v6 semantic admission failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RegisterMaskedDirectAdmissionErrorKind {
+    /// Complete v6 identity cannot be constructed without losing mask evidence.
+    Identity,
+    /// Selected runtime cannot implement the admitted profile requirement.
+    Profile,
+    /// Portable profile envelope is not canonical for its declared identity.
+    ProfileRequirement,
+    /// No reviewed v6 semantic shape admits this program.
+    UnsupportedProgram,
+}
+
+/// Failure while admitting one register-masked v6 direct shape.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RegisterMaskedDirectAdmissionError<'requirement> {
+    identity: Option<NativeIdentityError>,
+    kind: RegisterMaskedDirectAdmissionErrorKind,
+    profile: Option<Box<PortableProfileRequirementError<'requirement>>>,
+}
+
+impl<'requirement> RegisterMaskedDirectAdmissionError<'requirement> {
+    pub(super) const fn identity(error: NativeIdentityError) -> Self {
+        Self {
+            identity: Some(error),
+            kind: RegisterMaskedDirectAdmissionErrorKind::Identity,
+            profile: None,
+        }
+    }
+
+    /// Returns the exact identity failure when identity construction failed.
+    #[must_use]
+    pub const fn identity_error(&self) -> Option<NativeIdentityError> {
+        self.identity
+    }
+
+    /// Returns the stable admission failure category.
+    #[must_use]
+    pub const fn kind(&self) -> RegisterMaskedDirectAdmissionErrorKind {
+        self.kind
+    }
+
+    pub(super) fn profile(
+        error: PortableProfileRequirementError<'requirement>,
+    ) -> Self {
+        Self {
+            identity: None,
+            kind: RegisterMaskedDirectAdmissionErrorKind::Profile,
+            profile: Some(Box::new(error)),
+        }
+    }
+
+    /// Returns the exact portable profile failure when preflight failed.
+    #[must_use]
+    pub fn profile_error(
+        &self,
+    ) -> Option<&PortableProfileRequirementError<'requirement>> {
+        self.profile.as_deref()
+    }
+
+    pub(super) const fn profile_requirement() -> Self {
+        Self {
+            identity: None,
+            kind: RegisterMaskedDirectAdmissionErrorKind::ProfileRequirement,
+            profile: None,
+        }
+    }
+
+    pub(super) const fn unsupported_program() -> Self {
+        Self {
+            identity: None,
+            kind: RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram,
+            profile: None,
+        }
+    }
+}
+
+impl Display for RegisterMaskedDirectAdmissionError<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        match self.kind {
+            RegisterMaskedDirectAdmissionErrorKind::Identity => {
+                f.write_str("register-masked v6 identity construction failed")
+            },
+            RegisterMaskedDirectAdmissionErrorKind::Profile => {
+                if let Some(error) = self.profile.as_deref() {
+                    Display::fmt(error, f)
+                } else {
+                    f.write_str("register-masked v6 profile preflight failed")
+                }
+            },
+            RegisterMaskedDirectAdmissionErrorKind::ProfileRequirement => f
+                .write_str(
+                    "register-masked v6 profile requirement is not canonical",
+                ),
+            RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram => f
+                .write_str(
+                    "register-masked v6 has no reviewed direct semantic shape",
+                ),
+        }
+    }
+}
+
 /// Failure while selecting/emitting/verifying one direct native template.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DirectSelectionError<'requirement> {

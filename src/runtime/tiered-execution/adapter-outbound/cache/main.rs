@@ -42,7 +42,7 @@ use std::sync::Arc;
 use malbolge::{
     ExecutionGeometryRegionEffectProgram, IrEncodingError,
     ProfileExecutionGeometryRequirement, RegionEffectProgram,
-    TargetProfileRequirement,
+    RegisterMaskedRegionEffectProgram, TargetProfileRequirement,
 };
 
 const FNV_OFFSET: u64 = 14_695_981_039_346_656_037;
@@ -382,6 +382,19 @@ impl NativeArtifactKey {
         Self::with_execution_geometry_digest(program, target, fnv_bytes)
     }
 
+    /// Constructs one native reuse key from register-masked v6 IR.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeIdentityError`] when the region exceeds its declared
+    /// profile capacity or complete v6 canonicalization fails.
+    pub fn new_register_masked(
+        program: &RegisterMaskedRegionEffectProgram,
+        target: NativeTargetIdentity,
+    ) -> Result<Self, NativeIdentityError> {
+        Self::with_register_masked_digest(program, target, fnv_bytes)
+    }
+
     /// Returns the exact host/backend assumptions inside this key.
     #[must_use]
     pub const fn target(&self) -> &NativeTargetIdentity {
@@ -411,6 +424,22 @@ impl NativeArtifactKey {
         let ir = RegionEffectIdentity::with_execution_geometry_digest(
             program, digest,
         )?;
+        let mut key_bytes = target.canonical_bytes()?;
+        key_bytes.extend_from_slice(ir.canonical_bytes());
+        Ok(Self {
+            bucket_digest: digest(&key_bytes),
+            ir,
+            target,
+        })
+    }
+
+    fn with_register_masked_digest(
+        program: &RegisterMaskedRegionEffectProgram,
+        target: NativeTargetIdentity,
+        digest: BucketDigestFunction,
+    ) -> Result<Self, NativeIdentityError> {
+        let ir =
+            RegionEffectIdentity::with_register_masked_digest(program, digest)?;
         let mut key_bytes = target.canonical_bytes()?;
         key_bytes.extend_from_slice(ir.canonical_bytes());
         Ok(Self {
@@ -541,6 +570,18 @@ impl RegionEffectIdentity {
         Self::with_execution_geometry_digest(program, fnv_bytes)
     }
 
+    /// Constructs canonical identity from register-masked v6 IR.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeIdentityError`] when the region exceeds its declared
+    /// profile capacity or complete v6 canonicalization fails.
+    pub fn new_register_masked(
+        program: &RegisterMaskedRegionEffectProgram,
+    ) -> Result<Self, NativeIdentityError> {
+        Self::with_register_masked_digest(program, fnv_bytes)
+    }
+
     /// Returns the canonical profile fingerprint bound into this IR.
     #[must_use]
     pub fn profile_fingerprint(&self) -> &str {
@@ -607,6 +648,29 @@ impl RegionEffectIdentity {
             profile_id: Arc::from(program.profile_id()),
             profile_requirement: program.profile_requirement().clone(),
             required_memory_words: program.required_memory_words(),
+        })
+    }
+
+    fn with_register_masked_digest(
+        program: &RegisterMaskedRegionEffectProgram,
+        digest: BucketDigestFunction,
+    ) -> Result<Self, NativeIdentityError> {
+        let required_memory_words = program.required_memory_words();
+        if required_memory_words > program.profile_requirement.memory_words {
+            return Err(NativeIdentityError::ProfileCapacity);
+        }
+        let canonical = program.canonical_bytes()?;
+        Ok(Self {
+            bucket_digest: digest(&canonical),
+            canonical_bytes: Arc::from(canonical),
+            execution_geometry: None,
+            format_version: program.format_version(),
+            profile_fingerprint: Arc::from(
+                program.profile_fingerprint.as_str(),
+            ),
+            profile_id: Arc::from(program.profile_id.as_str()),
+            profile_requirement: program.profile_requirement.clone(),
+            required_memory_words,
         })
     }
 }

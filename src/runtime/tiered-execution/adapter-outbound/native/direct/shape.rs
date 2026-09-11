@@ -79,11 +79,12 @@ use super::{
     DirectNoOperationError, DirectNoOperationProgram, DirectNonGraphicalError,
     DirectOutputCommit, DirectOutputError, DirectOutputProgram,
     DirectRotateCommit, DirectRotateError, DirectRotateProgram,
-    EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EffectOp,
-    ExecutionGeometryRegionEffectProgram, HostOperatingSystem, MemoryLiveIn,
-    NATIVE_REGION_ABI_REVISION, NativeTargetIdentity,
+    EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EFFECT_IR_REGISTER_MASK_VERSION,
+    EffectOp, ExecutionGeometryRegionEffectProgram, HostOperatingSystem,
+    MemoryLiveIn, NATIVE_REGION_ABI_REVISION, NativeTargetIdentity,
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
-    ProfileRegisters, RegionEffectProgram, RunOutcome, Termination, TraceInput,
+    ProfileRegisterSet, ProfileRegisters, RegionEffectProgram,
+    RegisterMaskedRegionEffectProgram, RunOutcome, Termination, TraceInput,
     decode_profile_instruction, encrypt_profile_cell,
     is_canonical_effect_ir_version, is_zero_observation,
     profile_cell_decodes_to_no_operation, profile_cell_is_graphical,
@@ -138,7 +139,17 @@ pub(super) fn fetched_terminal_program(
 ) -> Option<DirectFetchedTerminalProgram> {
     if !direct_program_header_supported(program)
         || !program.fits_declared_profile_capacity()
-        || program.step_budget != 1
+    {
+        return None;
+    }
+    fetched_terminal_program_semantics(program, reason)
+}
+
+fn fetched_terminal_program_semantics(
+    program: &RegionEffectProgram,
+    reason: Termination,
+) -> Option<DirectFetchedTerminalProgram> {
+    if program.step_budget != 1
         || program.memory_live_ins.len() != 1
         || program.effects.len() != 1
         || program.outcome != (RunOutcome::Terminated { reason, steps: 1 })
@@ -1021,6 +1032,40 @@ pub(super) fn validate_halt_fetch_program(
     let selected =
         fetched_terminal_program(program, Termination::HaltInstruction)
             .ok_or(DirectHaltFetchError::ProgramShape)?;
+    if decode_profile_instruction(
+        selected.live_in.value,
+        selected.observation.registers.code_pointer,
+    ) == Some(b'v')
+    {
+        Ok(selected)
+    } else {
+        Err(DirectHaltFetchError::ProgramShape)
+    }
+}
+
+pub(super) fn validate_register_masked_halt_fetch_program(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<DirectFetchedTerminalProgram, DirectHaltFetchError> {
+    let expected_reads = ProfileRegisterSet {
+        accumulator: false,
+        code_pointer: true,
+        data_pointer: false,
+    };
+    if program.format_version() != EFFECT_IR_REGISTER_MASK_VERSION
+        || program.register_live_ins != expected_reads
+        || program.register_writes.len() != program.effects.len()
+        || program.register_writes.first().copied()
+            != Some(ProfileRegisterSet::default())
+        || u32::try_from(program.profile_requirement.memory_words).is_err()
+        || !program.fits_declared_profile_capacity()
+    {
+        return Err(DirectHaltFetchError::ProgramShape);
+    }
+    let selected = fetched_terminal_program_semantics(
+        &program.program,
+        Termination::HaltInstruction,
+    )
+    .ok_or(DirectHaltFetchError::ProgramShape)?;
     if decode_profile_instruction(
         selected.live_in.value,
         selected.observation.registers.code_pointer,

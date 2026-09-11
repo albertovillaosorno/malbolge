@@ -86,11 +86,12 @@ use emit::{
 };
 pub use error::*;
 use malbolge::{
-    EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EffectOp,
-    ExecutionGeometryRegionEffectProgram, MemoryLiveIn,
+    EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EFFECT_IR_REGISTER_MASK_VERSION,
+    EffectOp, ExecutionGeometryRegionEffectProgram, MemoryLiveIn,
     PortableProfileRequirementError, ProfileExecutionGeometryRequirement,
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
-    ProfileRegisters, RegionEffectProgram, RunOutcome, RuntimeCapability,
+    ProfileRegisterSet, ProfileRegisters, RegionEffectProgram,
+    RegisterMaskedRegionEffectProgram, RunOutcome, RuntimeCapability,
     TargetProfileRequirement, Termination, TraceInput,
     decode_profile_instruction, encrypt_profile_cell,
     is_canonical_effect_ir_version, preflight_portable_profile_requirement,
@@ -100,7 +101,7 @@ use malbolge::{
 };
 use plan::target_triple;
 pub use plan::{
-    ExecutionGeometryDirectSelectionError,
+    ExecutionGeometryDirectSelectionError, admit_register_masked_direct_native,
     select_cached_preflighted_execution_tier,
     select_preflighted_execution_tier, select_verified_direct_native,
     select_verified_execution_geometry_direct_native,
@@ -134,8 +135,8 @@ use shape::{
     validate_jump_data_target, validate_no_operation_program,
     validate_no_operation_target, validate_non_graphical_program,
     validate_non_graphical_target, validate_output_program,
-    validate_output_target, validate_rotate_program, validate_rotate_target,
-    validate_target,
+    validate_output_target, validate_register_masked_halt_fetch_program,
+    validate_rotate_program, validate_rotate_target, validate_target,
 };
 pub use verify::{
     verify_direct_crazy, verify_direct_deopt_stub,

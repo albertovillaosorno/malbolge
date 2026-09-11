@@ -34,7 +34,7 @@
 
 use super::{
     Arc, HostIsa, HostOperatingSystem, NativeArtifactCache, NativeArtifactKey,
-    StructurallyAdmittedNativeObjectArtifact,
+    RegionEffectIdentity, StructurallyAdmittedNativeObjectArtifact,
 };
 
 /// Direct native template selected for one portable IR program.
@@ -64,6 +64,34 @@ pub enum DirectNativeKind {
     Output,
     /// Exact non-aliasing one-step rotate transition.
     Rotate,
+}
+
+/// Semantically admitted register-masked v6 shape without host-code authority.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedRegisterMaskedDirectAdmission {
+    identity: RegionEffectIdentity,
+    kind: DirectNativeKind,
+}
+
+impl VerifiedRegisterMaskedDirectAdmission {
+    /// Returns the complete canonical v6 identity, including register masks.
+    #[must_use]
+    pub const fn identity(&self) -> &RegionEffectIdentity {
+        &self.identity
+    }
+
+    /// Returns the reviewed direct shape admitted by v6 semantics.
+    #[must_use]
+    pub const fn kind(&self) -> DirectNativeKind {
+        self.kind
+    }
+
+    pub(super) const fn new(
+        identity: RegionEffectIdentity,
+        kind: DirectNativeKind,
+    ) -> Self {
+        Self { identity, kind }
+    }
 }
 
 /// Exact host surface considered by direct native planning.

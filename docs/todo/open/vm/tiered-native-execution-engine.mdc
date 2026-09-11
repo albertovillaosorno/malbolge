@@ -620,13 +620,17 @@ baseline; native tiers are accelerators of identical observable behavior.
   the parent. Durable/cross-process leasing, object fusion, direct
   branch chains, a concrete FFI shim, adaptive cache policy, and async/product
   scheduling remain out.
-- The completed state-graph prerequisite now hands portable v6 to this
-  milestone. Native identity/admission does not yet consume
-  `RegisterMaskedRegionEffectProgram`; existing direct/cache APIs accept the
-  older program/geometry forms. V6 must retain its complete canonical bytes and
-  register masks in cache/artifact identity before any native selector may gain
-  authority over it. Projecting v6 down to v3/v4 would discard correctness-
-  relevant mask identity and is therefore not an admissible compatibility path.
+- Portable v6 now crosses identity without gaining host-code authority.
+  Complete v6 identity retains register live-ins/write masks, rejects
+  mask-dropping legacy construction, and keeps cache invalidation mask-exact.
+- `admit_register_masked_direct_native()` applies canonical-profile and
+  `002`/`001` preflight before independently admitting only a normative one-step
+  halt-fetch with C-only register live-in and no register writes. Extra
+  live-ins/writes fail as unsupported while mask cardinality fails identity. The
+  returned certificate carries kind plus full v6 identity only: no target,
+  object, loader, or invocation authority. The next slice is target-bound v6
+  emission/verification that must honor the reduced masks; v6-to-v3/v4
+  projection remains forbidden.
 - Remaining fused-region emission plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and

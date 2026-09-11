@@ -67,30 +67,31 @@ reloading `malbolge.json`, but does not replace profile identity/fingerprint or
 verifier admission.
 
 `src/runtime/tiered-execution/adapter-outbound/cache/main.rs` now owns
-collision-safe native artifact identity and
-caller-owned process-local reuse storage. `RegionEffectProgram` has a versioned
-layout-independent canonical byte encoding, frozen by an independently rendered
-fixture. Raw canonical transport may preserve a profile-capacity-inconsistent
-untrusted envelope for deterministic rejection, but `RegionEffectIdentity` and
-`NativeArtifactKey` return typed `NativeIdentityError::ProfileCapacity` before
-hashing or artifact construction. Native keys retain the exact profile
-ID/fingerprint plus the transported requirement envelope and additionally bind
-host
-OS, x86-64/AArch64 ISA, backend identity/revision, native ABI revision, and
-sorted
-required features. `RegionEffectIdentity` and `NativeArtifactKey` exclude the
+collision-safe native artifact identity and caller-owned process-local reuse
+storage. Portable IR has a versioned, layout-independent canonical byte
+encoding. `RegionEffectIdentity` and `NativeArtifactKey` accept v3/v4 ordinary
+IR, explicit-geometry v5, and the complete register-masked v6 wrapper. V6
+identity includes entry register live-ins and every per-effect write mask.
 
-derived digest from `Eq`. `NativeArtifactCache<Value>` uses FNV-1a only to
-choose
-the preferred bucket, then confirms full key equality and searches other buckets
-when an equal key carries a different accelerator digest. Equal identities
-remain
-one entry across digest changes; forced-collision distinct entries remain
-independent. Store equality compares the logical exact key/value mapping and
-omits
-bucket placement, so accelerator layout is never observable identity. The store
+The ordinary constructor rejects an inner format-6 payload, preventing a
+mask-dropping downgrade. Raw canonical transport may preserve a
+profile-capacity-inconsistent untrusted envelope for deterministic rejection,
+but identity construction returns typed `NativeIdentityError::ProfileCapacity`
+before hashing or artifact construction. Native keys retain the exact profile
+ID/fingerprint plus the transported requirement envelope and bind host OS,
+x86-64/AArch64 ISA, backend identity/revision, native ABI revision, and sorted
+required features.
 
-performs no persistence, eviction, synchronization, or semantic admission.
+`RegionEffectIdentity` and `NativeArtifactKey` exclude the derived digest from
+`Eq`. `NativeArtifactCache<Value>` uses FNV-1a only to choose the preferred
+bucket, then confirms full key equality and searches other buckets when an equal
+key carries a different accelerator digest. Equal identities remain one entry
+across digest changes; forced-collision distinct entries remain independent.
+Store equality compares the logical exact key/value mapping and omits bucket
+placement, so accelerator layout is never observable identity.
+
+The store performs no persistence, eviction, synchronization, or semantic
+admission.
 
 `src/runtime/tiered-execution/adapter-outbound/native/main.rs` now owns the
 first host-code artifact boundary. The
@@ -773,12 +774,25 @@ Tests cover byte and EOF input through N10 input-then-halt, N10/N11 geometry
 mixing, suspension/resume, zero budget, and later-step forgery; no native
 artifact identity or execution authority is introduced.
 
-Native identity can now represent v5 without granting execution by itself.
+Native identity can represent v5 and v6 without granting execution by itself.
 `RegionEffectIdentity::new_execution_geometry()` retains the complete canonical
-v5 bytes plus the explicit execution geometry, and
-`NativeArtifactKey::new_execution_geometry()` combines that identity with the
-ordinary host/backend assumptions. MBPF v5 metadata carries the unchanged
-canonical profile envelope followed by the explicit N/capacity pair.
+v5 bytes plus explicit execution geometry. The register-masked v6 constructor
+retains complete canonical bytes including its entry live-ins and ordered write
+masks; `NativeArtifactKey::new_register_masked()` adds the ordinary host/backend
+assumptions without projecting v6 into v3/v4. Cache insertion and exact-region
+invalidation therefore distinguish artifacts that differ only by one mask.
+
+MBPF v5 metadata continues to carry the unchanged canonical profile envelope
+followed by the explicit N/capacity pair; no MBPF/native v6 execution authority
+is introduced by cache identity.
+
+The first v6 semantic admission is deliberately earlier than host planning.
+`VerifiedRegisterMaskedDirectAdmission` binds the complete v6 identity to one
+reviewed `HaltFetch` shape derived from a normative canonical-profile trace. It
+requires exactly C as the register live-in and an empty committed-write mask,
+while reusing the existing halt-fetch effect/fetch semantics after the v6 gate.
+The admission preserves required-profile diagnostic precedence and cannot mint a
+`NativeArtifactKey`, COFF artifact, executable image, or callable entrypoint.
 
 N10 and N11 therefore remain distinct under full cache equality even when their
 canonical profile identity is the same. Existing v3/v4 constructors retain no
@@ -1935,12 +1949,23 @@ outside.
 
 ### Remaining Implementation
 
-The immediate prerequisite handoff is portable effect IR v6. Existing native
-cache identity, selectors, invocation, and direct templates consume v3/v4 or the
-separate v5 geometry wrapper and must not acquire v6 authority by discarding its
-register masks. Native v6 admission first needs exact identity over the complete
-v6 canonical bytes plus mask-preserving semantic admission; unsupported v6
-therefore remains fail-closed until that boundary exists.
+Portable v6 now has exact cache identity and one host-independent semantic
+admission, but no native execution authority. The
+`admit_register_masked_direct_native()` boundary first preserves canonical
+profile identity and `MALBOLGE-PROFILE-002` then `MALBOLGE-PROFILE-001`
+preflight. It constructs complete v6 identity and currently admits only a real
+one-step halt-fetch whose normative register evidence is C-only live-in with no
+writes. Extra live-ins/writes are unsupported and malformed mask cardinality
+fails identity.
+
+The certificate exposes only `HaltFetch` plus complete v6 identity; it has no
+host target, object, executable-memory, or invocation power.
+
+Profile metadata, direct emitters/verifiers, loaders, and invocation still
+consume v3/v4 or the separate v5 geometry wrapper. The next v6 boundary must
+bind one target and machine-code artifact while honoring reduced masks rather
+than silently restoring full-register/history guards. Projecting v6 into v3/v4
+remains forbidden, and unsupported v6 execution therefore stays fail-closed.
 
 Combined-region emission, native-retry orchestration beyond bounded
 process-local cached cycles, asynchronous/product scheduling, executable-memory

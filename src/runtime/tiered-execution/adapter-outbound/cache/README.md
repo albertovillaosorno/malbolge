@@ -31,12 +31,16 @@ canonical IR bytes and every target assumption remain part of `Eq`, so a digest
 collision cannot authorize native reuse. A future serialized cache may add a
 cryptographic content address without changing this correctness rule.
 
-`RegionEffectIdentity` accepts every canonical portable IR version implemented
-by `RegionEffectProgram::canonical_bytes()` and retains the exact format version
-alongside those bytes. Unknown versions fail canonicalization before hashing. It
-also requires `RegionEffectProgram::fits_declared_profile_capacity()` and
-returns typed `NativeIdentityError::ProfileCapacity` for an oversized region.
-These are structural identity invariants, not verifier acceptance of effects.
+`RegionEffectIdentity` has explicit constructors for each admitted portable
+identity shape. Ordinary v3/v4 use `RegionEffectProgram`, v5 preserves explicit
+execution geometry, and v6 preserves the complete
+`RegisterMaskedRegionEffectProgram` canonical bytes including entry live-ins and
+per-effect register-write masks. The legacy constructor deliberately rejects a
+v6 inner payload, so callers cannot acquire identity by discarding its wrapper.
+
+All forms reject addressing beyond their declared capacity before reuse. These
+are structural identity invariants, not verifier acceptance of effects or native
+execution authority.
 
 `NativeArtifactKey` combines the complete canonical IR identity with
 `NativeTargetIdentity`: operating-system family, host ISA, backend ID/revision,

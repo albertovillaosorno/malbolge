@@ -172,6 +172,14 @@ canonical object; a one-byte opcode mutation remains structurally valid but
 fails semantic admission. This establishes an executable native tier that is
 correct by always falling back before direct region-effect selection is trusted.
 
+Register-masked effect IR v6 now has a separate host-independent admission
+boundary. `admit_register_masked_direct_native()` preserves full v6 identity and
+required-profile preflight, then admits only the normative one-step graphical
+halt-fetch with C-only register live-in and no register writes. The returned
+certificate contains no host target or machine-code artifact; emit, load, and
+invocation remain fail-closed for v6 until a mask-preserving backend is
+reviewed.
+
 The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while
 `direct-halt-fetch`, `direct-non-graphical`, and `direct-no-operation` use

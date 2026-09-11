@@ -260,12 +260,13 @@ use execution_native::{
     PreparedVerifiedExecutionGeometryInvocation,
     ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutableSequence, ReadyNativeExecutable,
-    ReadyNativeExecutableSequence, StagedExecutionGeometryNativeExecutable,
-    StagedNativeExecutable, UntrustedNativeObjectArtifact,
-    VerifiedDirectInvocationError, VerifiedDirectLoadError,
-    VerifiedDirectLoadImage, VerifiedDirectNativeCache,
-    VerifiedDirectSequencePlan, VerifiedExecutionGeometryLoadImage,
-    VerifiedExecutionGeometryNativeCache, compile_preflighted_clang_c23,
+    ReadyNativeExecutableSequence, RegisterMaskedDirectAdmissionErrorKind,
+    StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
+    UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
+    VerifiedDirectLoadError, VerifiedDirectLoadImage,
+    VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
+    VerifiedExecutionGeometryLoadImage, VerifiedExecutionGeometryNativeCache,
+    admit_register_masked_direct_native, compile_preflighted_clang_c23,
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
@@ -503,14 +504,15 @@ use leased_retry::{
     NativeContinuationLeasedRetryExecutionFailure,
 };
 use malbolge::{
-    EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EFFECT_IR_VERSION,
-    EFFECT_IR_WIDE_PROFILE_VERSION, EffectOp,
+    EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EFFECT_IR_REGISTER_MASK_VERSION,
+    EFFECT_IR_VERSION, EFFECT_IR_WIDE_PROFILE_VERSION, EffectOp,
     ExecutionGeometryRegionEffectProgram, IrEncodingError, MemoryLiveIn,
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
     ProfileMachineObservation, ProfileMachineState, ProfileMemoryDelta,
-    ProfileMemoryRead, ProfileMemoryWrite, ProfileRegisters,
-    ProfileRequirementErrorKind, ProfileStepTrace, RegionEffectProgram,
-    RunOutcome, RuntimeCapability, StepOutcome, StepProgramProjectionError,
+    ProfileMemoryRead, ProfileMemoryWrite, ProfileRegisterSet,
+    ProfileRegisters, ProfileRequirementErrorKind, ProfileStepTrace,
+    RegionEffectProgram, RegisterMaskedRegionEffectProgram, RunOutcome,
+    RuntimeCapability, StepOutcome, StepProgramProjectionError,
     TargetProfileRequirement, Termination, TraceInput, current_profile,
     decode_profile_instruction, historical_profile, preflight_profile,
     preflight_runtime_requirement, safe_rust_classic_capability,
@@ -582,6 +584,8 @@ type CrazyTheoremSequenceTriple = (
     Box<gclru::CrazyTheoremSequence>,
     Box<gclru::CrazyTheoremSequence>,
 );
+
+type TieredTestResult = Result<(), String>;
 
 type DirectSelectionCase =
     (RegionEffectProgram, DirectNativeKind, &'static str);
@@ -1772,6 +1776,42 @@ fn program() -> RegionEffectProgram {
     }
 }
 
+fn register_masked_program() -> RegisterMaskedRegionEffectProgram {
+    let mut program = program();
+    program.format_version = EFFECT_IR_REGISTER_MASK_VERSION;
+    RegisterMaskedRegionEffectProgram {
+        program,
+        register_live_ins: ProfileRegisterSet {
+            accumulator: false,
+            code_pointer: true,
+            data_pointer: true,
+        },
+        register_writes: vec![ProfileRegisterSet {
+            accumulator: true,
+            code_pointer: true,
+            data_pointer: false,
+        }],
+    }
+}
+
+fn canonical_register_masked_halt_program()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    let mut machine =
+        ProfileMachine::from_source(current_profile(), b"QP", Vec::new())
+            .map_err(|error| format!("v6 halt fixture load failed: {error}"))?;
+    let mut recorded = None;
+    let outcome = machine
+        .step_traced(&mut |trace: &ProfileStepTrace| recorded = Some(*trace))
+        .map_err(|error| format!("v6 halt fixture step failed: {error}"))?;
+    if outcome != StepOutcome::Terminated(Termination::HaltInstruction) {
+        return Err(String::from("v6 halt fixture did not terminate"));
+    }
+    let trace =
+        recorded.ok_or_else(|| String::from("v6 halt trace missing"))?;
+    RegisterMaskedRegionEffectProgram::from_profile_step_trace(&trace)
+        .map_err(|error| format!("v6 halt projection failed: {error:?}"))
+}
+
 fn target(
     os: HostOperatingSystem,
     isa: HostIsa,
@@ -1965,6 +2005,232 @@ fn native_identity_binds_explicit_execution_geometry_v5() -> Result<(), String>
     } else {
         Err(String::from("IR v5 geometry identities collided in cache"))
     }
+}
+
+#[test]
+fn native_identity_binds_complete_register_masked_v6() -> Result<(), String> {
+    let program = register_masked_program();
+    let canonical = program
+        .canonical_bytes()
+        .map_err(|error| format!("IR v6 canonical bytes failed: {error:?}"))?;
+    let identity = RegionEffectIdentity::new_register_masked(&program)
+        .map_err(|error| format!("IR v6 region identity failed: {error:?}"))?;
+    if identity.format_version() != EFFECT_IR_REGISTER_MASK_VERSION
+        || identity.execution_geometry().is_some()
+        || identity.canonical_bytes() != canonical
+        || identity.required_memory_words() != program.required_memory_words()
+    {
+        return Err(String::from("IR v6 region identity lost mask payload"));
+    }
+
+    let mut live_in_variant = program.clone();
+    live_in_variant.register_live_ins.accumulator = true;
+    let live_in_identity = RegionEffectIdentity::new_register_masked(
+        &live_in_variant,
+    )
+    .map_err(|error| format!("IR v6 live-in identity failed: {error:?}"))?;
+    if identity == live_in_identity {
+        return Err(String::from("IR v6 identity ignored register live-ins"));
+    }
+
+    let mut write_variant = program.clone();
+    let write_mask =
+        write_variant.register_writes.first_mut().ok_or_else(|| {
+            String::from("IR v6 fixture has no register write mask")
+        })?;
+    write_mask.data_pointer = true;
+    let target = NativeTargetIdentity::new(base_target_config());
+    let base_key =
+        NativeArtifactKey::new_register_masked(&program, target.clone())
+            .map_err(|error| format!("IR v6 base key failed: {error:?}"))?;
+    let write_key =
+        NativeArtifactKey::new_register_masked(&write_variant, target)
+            .map_err(|error| {
+                format!("IR v6 write-mask key failed: {error:?}")
+            })?;
+    if base_key == write_key || base_key.ir() != &identity {
+        return Err(String::from("IR v6 key ignored complete mask identity"));
+    }
+    let mut cache = NativeArtifactCache::default();
+    let _base = cache.insert(base_key, "base");
+    let _write = cache.insert(write_key.clone(), "write");
+    if cache.len() != 2 {
+        return Err(String::from("IR v6 mask identities collided in cache"));
+    }
+    if cache.remove_region(&identity) != 1
+        || cache.len() != 1
+        || cache.get(&write_key) != Some(&"write")
+    {
+        return Err(String::from("IR v6 invalidation ignored mask identity"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_identity_fails_closed_without_complete_wrapper()
+-> Result<(), String> {
+    let program = register_masked_program();
+    let target = NativeTargetIdentity::new(base_target_config());
+    let unsupported = NativeIdentityError::Encoding(
+        IrEncodingError::UnsupportedFormatVersion,
+    );
+    if RegionEffectIdentity::new(&program.program) != Err(unsupported)
+        || NativeArtifactKey::new(&program.program, target.clone())
+            != Err(unsupported)
+    {
+        return Err(String::from(
+            "IR v6 payload downgraded through legacy key",
+        ));
+    }
+
+    let mut missing_mask = program.clone();
+    let _removed = missing_mask.register_writes.pop();
+    let mismatch = NativeIdentityError::Encoding(
+        IrEncodingError::RegisterMaskCountMismatch,
+    );
+    if RegionEffectIdentity::new_register_masked(&missing_mask) != Err(mismatch)
+        || NativeArtifactKey::new_register_masked(&missing_mask, target)
+            != Err(mismatch)
+    {
+        return Err(String::from("IR v6 incomplete masks acquired identity"));
+    }
+
+    let mut oversized = program;
+    oversized.program.profile_requirement.memory_words = 1;
+    if RegionEffectIdentity::new_register_masked(&oversized)
+        != Err(NativeIdentityError::ProfileCapacity)
+    {
+        return Err(String::from("IR v6 oversized region acquired identity"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_halt_admission_uses_normative_masks() -> TieredTestResult
+{
+    let program = canonical_register_masked_halt_program()?;
+    let admission = admit_register_masked_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 halt admission failed: {error}"))?;
+    let identity = RegionEffectIdentity::new_register_masked(&program)
+        .map_err(|error| format!("v6 halt identity failed: {error:?}"))?;
+    if admission.kind() != DirectNativeKind::HaltFetch
+        || admission.identity() != &identity
+    {
+        return Err(String::from("v6 halt admission lost semantic identity"));
+    }
+
+    let mut extra_live_in = program.clone();
+    extra_live_in.register_live_ins.accumulator = true;
+    let Err(extra_live_error) = admit_register_masked_direct_native(
+        &extra_live_in,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from(
+            "v6 halt admitted invented accumulator live-in",
+        ));
+    };
+    if extra_live_error.kind()
+        != RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    {
+        return Err(String::from("v6 extra live-in failed at wrong boundary"));
+    }
+
+    let mut invented_write = program;
+    let write_mask = invented_write
+        .register_writes
+        .first_mut()
+        .ok_or_else(|| String::from("v6 halt write mask missing"))?;
+    write_mask.code_pointer = true;
+    let Err(invented_write_error) = admit_register_masked_direct_native(
+        &invented_write,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from("v6 halt admitted invented register write"));
+    };
+    if invented_write_error.kind()
+        != RegisterMaskedDirectAdmissionErrorKind::UnsupportedProgram
+    {
+        return Err(String::from("v6 invented write failed at wrong boundary"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_admission_preserves_preflight_precedence()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+
+    let mut capacity = program.clone();
+    let live_in = capacity
+        .program
+        .memory_live_ins
+        .first_mut()
+        .ok_or_else(|| String::from("v6 halt live-in missing"))?;
+    live_in.address = current_profile().memory_words();
+    let Err(capacity_error) = admit_register_masked_direct_native(
+        &capacity,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from("v6 over-capacity program was admitted"));
+    };
+    let profile_error = capacity_error.profile_error().ok_or_else(|| {
+        String::from("v6 over-capacity program bypassed profile preflight")
+    })?;
+    if capacity_error.kind() != RegisterMaskedDirectAdmissionErrorKind::Profile
+        || profile_error.kind()
+            != ProfileRequirementErrorKind::ProfileCapacityExceeded
+        || profile_error.code() != "MALBOLGE-PROFILE-002"
+    {
+        return Err(String::from("v6 profile-002 precedence drifted"));
+    }
+
+    let Err(runtime_admission_error) = admit_register_masked_direct_native(
+        &program,
+        safe_rust_classic_capability(),
+    ) else {
+        return Err(String::from(
+            "v6 current profile was admitted by classic runtime",
+        ));
+    };
+    let runtime_error =
+        runtime_admission_error.profile_error().ok_or_else(|| {
+            String::from("v6 runtime mismatch bypassed profile preflight")
+        })?;
+    if runtime_admission_error.kind()
+        != RegisterMaskedDirectAdmissionErrorKind::Profile
+        || runtime_error.kind()
+            != ProfileRequirementErrorKind::RuntimeCapabilityMissing
+        || runtime_error.code() != "MALBOLGE-PROFILE-001"
+    {
+        return Err(String::from("v6 profile-001 precedence drifted"));
+    }
+
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_admission_rejects_incomplete_mask_identity()
+-> TieredTestResult {
+    let mut program = canonical_register_masked_halt_program()?;
+    let _removed = program.register_writes.pop();
+    let Err(mask_error) = admit_register_masked_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+    ) else {
+        return Err(String::from("v6 incomplete mask set was admitted"));
+    };
+    if mask_error.kind() != RegisterMaskedDirectAdmissionErrorKind::Identity
+        || mask_error.identity_error()
+            != Some(NativeIdentityError::Encoding(
+                IrEncodingError::RegisterMaskCountMismatch,
+            ))
+    {
+        return Err(String::from("v6 mask identity failure drifted"));
+    }
+    Ok(())
 }
 
 #[test]

@@ -72,16 +72,18 @@ use super::{
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
     DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
     DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
-    DirectJumpDataError, DirectNoOperationError, DirectNonGraphicalError,
-    DirectOutputError, DirectRotateError, DirectSelectionError, Display,
-    ExecutionGeometryDirectNativeKind, ExecutionGeometryRegionEffectProgram,
-    FormatResult, Formatter, HostIsa, HostOperatingSystem,
-    NATIVE_REGION_ABI_REVISION, NativeArtifactKey, NativeIdentityError,
-    NativeTargetConfig, NativeTargetIdentity, PreflightedExecutionTier,
-    RegionEffectIdentity, RegionEffectProgram, RuntimeCapability,
-    TargetProfileRequirement, VerifiedDirectNativeArtifact,
+    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
+    DirectNonGraphicalError, DirectOutputError, DirectRotateError,
+    DirectSelectionError, Display, ExecutionGeometryDirectNativeKind,
+    ExecutionGeometryRegionEffectProgram, FormatResult, Formatter, HostIsa,
+    HostOperatingSystem, NATIVE_REGION_ABI_REVISION, NativeArtifactKey,
+    NativeIdentityError, NativeTargetConfig, NativeTargetIdentity,
+    PreflightedExecutionTier, RegionEffectIdentity, RegionEffectProgram,
+    RegisterMaskedDirectAdmissionError, RegisterMaskedRegionEffectProgram,
+    RuntimeCapability, TargetProfileRequirement, VerifiedDirectNativeArtifact,
     VerifiedDirectNativeCache, VerifiedExecutionGeometryNativeArtifact,
-    VerifiedExecutionGeometryNativeCache, emit_direct_crazy_with_key,
+    VerifiedExecutionGeometryNativeCache,
+    VerifiedRegisterMaskedDirectAdmission, emit_direct_crazy_with_key,
     emit_direct_deopt_with_key, emit_direct_execution_geometry_crazy_coff,
     emit_direct_execution_geometry_initial_halt_coff,
     emit_direct_execution_geometry_initial_jump_data_coff,
@@ -115,8 +117,9 @@ use super::{
     validate_jump_data_target, validate_no_operation_program,
     validate_no_operation_target, validate_non_graphical_program,
     validate_non_graphical_target, validate_output_program,
-    validate_output_target, validate_rotate_program, validate_rotate_target,
-    validate_target, verify_direct_crazy, verify_direct_deopt_stub,
+    validate_output_target, validate_register_masked_halt_fetch_program,
+    validate_rotate_program, validate_rotate_target, validate_target,
+    verify_direct_crazy, verify_direct_deopt_stub,
     verify_direct_execution_geometry_crazy,
     verify_direct_execution_geometry_initial_halt,
     verify_direct_execution_geometry_initial_jump_data,
@@ -749,6 +752,48 @@ fn emit_verified_no_operation(
     let verified = verify_direct_no_operation(&artifact, program)
         .map_err(|error| DirectSelectionError::NoOperation(Box::new(error)))?;
     Ok(VerifiedDirectNativeArtifact::NoOperation(verified))
+}
+
+/// Admits one reviewed register-masked v6 semantic shape without host code.
+///
+/// Canonical profile identity and portable profile/runtime preflight run before
+/// v6 identity or shape admission. The returned value carries complete v6
+/// identity plus the reviewed semantic kind only; it grants no host target,
+/// native object, executable-memory, or invocation authority.
+///
+/// # Errors
+///
+/// Returns [`RegisterMaskedDirectAdmissionError`] when profile admission,
+/// complete v6 identity, or the reviewed mask-preserving shape check fails.
+pub fn admit_register_masked_direct_native<'requirement>(
+    program: &'requirement RegisterMaskedRegionEffectProgram,
+    runtime: &'static RuntimeCapability,
+) -> Result<
+    VerifiedRegisterMaskedDirectAdmission,
+    RegisterMaskedDirectAdmissionError<'requirement>,
+> {
+    if !program
+        .profile_requirement
+        .is_canonical_for(&program.profile_id)
+    {
+        return Err(RegisterMaskedDirectAdmissionError::profile_requirement());
+    }
+    preflight_portable_profile_requirement(
+        &program.profile_id,
+        &program.profile_requirement,
+        program.required_memory_words(),
+        runtime,
+    )
+    .map_err(RegisterMaskedDirectAdmissionError::profile)?;
+    let identity = RegionEffectIdentity::new_register_masked(program)
+        .map_err(RegisterMaskedDirectAdmissionError::identity)?;
+    if validate_register_masked_halt_fetch_program(program).is_ok() {
+        return Ok(VerifiedRegisterMaskedDirectAdmission::new(
+            identity,
+            DirectNativeKind::HaltFetch,
+        ));
+    }
+    Err(RegisterMaskedDirectAdmissionError::unsupported_program())
 }
 
 /// Selects and independently verifies one reviewed explicit-geometry template.
