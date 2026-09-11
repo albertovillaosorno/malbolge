@@ -39,13 +39,17 @@ use super::invocation::{
     NativeRegionInvocationOutcome, PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
-    PreparedRegisterMaskedNativeInvocation, PreparedVerifiedDirectInvocation,
+    PreparedRegisterMaskedNativeInvocation,
+    PreparedRegisterMaskedNonGraphicalInvocation,
+    PreparedRegisterMaskedNonGraphicalNativeInvocation,
+    PreparedVerifiedDirectInvocation,
     PreparedVerifiedExecutionGeometryInvocation, VerifiedDirectInvocationError,
     VerifiedRegisterMaskedInvocationError,
 };
 use super::lifecycle::{
     NativeExecutableReleaseRequest, ReadyExecutionGeometryNativeExecutable,
     ReadyNativeExecutable, ReadyRegisterMaskedNativeExecutable,
+    ReadyRegisterMaskedNonGraphicalNativeExecutable,
 };
 use super::platform::{
     NativeExecutableLoadFailure, NativeExecutableMemoryAdapter,
@@ -144,6 +148,25 @@ pub struct RegisterMaskedLoadedExecutionFailure<RunnerError> {
 pub type RegisterMaskedLoadedExecutionResult<RunnerError> = Result<
     NativeRegionInvocationOutcome,
     Box<RegisterMaskedLoadedExecutionFailure<RunnerError>>,
+>;
+
+#[derive(Debug, Eq, PartialEq)]
+enum RegisterMaskedNonGraphicalNativeCallFailure<RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(VerifiedRegisterMaskedInvocationError),
+    Runner(Box<RunnerError>),
+}
+
+/// Failure while executing one loaded non-graphical register-masked v6 call.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RegisterMaskedNonGraphicalLoadedExecutionFailure<RunnerError> {
+    cause: RegisterMaskedNonGraphicalNativeCallFailure<RunnerError>,
+}
+
+/// Result of one loaded verified non-graphical register-masked v6 call.
+pub type RegisterMaskedNonGraphicalLoadedExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<RegisterMaskedNonGraphicalLoadedExecutionFailure<RunnerError>>,
 >;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -264,6 +287,32 @@ pub trait RegisterMaskedNativeRunner {
     fn run(
         &mut self,
         invocation: &mut PreparedRegisterMaskedNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error>;
+}
+
+/// Caller-owned implementation of one exact non-graphical v6 call.
+///
+/// This port receives only a view constructed after complete non-graphical v6
+/// image/executable identity binding and cannot accept halt-only call views.
+pub trait RegisterMaskedNonGraphicalNativeRunner {
+    /// Stable runner-specific failure.
+    type Error;
+
+    /// Calls one exact synchronized non-graphical v6 executable.
+    ///
+    /// The implementation may inspect entry address, mapping identity, and the
+    /// mutable ABI state pointer. It must not retain borrowed state after
+    /// return.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runner's stable call failure.
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedNonGraphicalNativeInvocation<
+            '_,
+            '_,
+        >,
     ) -> Result<i32, Self::Error>;
 }
 
@@ -389,6 +438,68 @@ impl<RunnerError> RegisterMaskedLoadedExecutionFailure<RunnerError> {
             RegisterMaskedNativeCallFailure::Runner(error) => Some(error),
             RegisterMaskedNativeCallFailure::Binding(_)
             | RegisterMaskedNativeCallFailure::Completion(_) => None,
+        }
+    }
+}
+
+impl<RunnerError>
+    RegisterMaskedNonGraphicalLoadedExecutionFailure<RunnerError>
+{
+    /// Returns exact ready-image binding failure, when v6 identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            RegisterMaskedNonGraphicalNativeCallFailure::Binding(error) => {
+                Some(*error)
+            },
+            RegisterMaskedNonGraphicalNativeCallFailure::Completion(_)
+            | RegisterMaskedNonGraphicalNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns non-graphical v6 result-admission failure.
+    #[must_use]
+    pub const fn completion_error(
+        &self,
+    ) -> Option<VerifiedRegisterMaskedInvocationError> {
+        match &self.cause {
+            RegisterMaskedNonGraphicalNativeCallFailure::Completion(error) => {
+                Some(*error)
+            },
+            RegisterMaskedNonGraphicalNativeCallFailure::Binding(_)
+            | RegisterMaskedNonGraphicalNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact call phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match &self.cause {
+            RegisterMaskedNonGraphicalNativeCallFailure::Binding(_) => {
+                NativeExecutableExecutionPhase::Bind
+            },
+            RegisterMaskedNonGraphicalNativeCallFailure::Completion(_) => {
+                NativeExecutableExecutionPhase::Complete
+            },
+            RegisterMaskedNonGraphicalNativeCallFailure::Runner(_) => {
+                NativeExecutableExecutionPhase::Run
+            },
+        }
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            RegisterMaskedNonGraphicalNativeCallFailure::Runner(error) => {
+                Some(error)
+            },
+            RegisterMaskedNonGraphicalNativeCallFailure::Binding(_)
+            | RegisterMaskedNonGraphicalNativeCallFailure::Completion(_) => {
+                None
+            },
         }
     }
 }
@@ -895,6 +1006,51 @@ where
     bound.complete(raw_status).map_err(|error| {
         Box::new(ExecutionGeometryLoadedExecutionFailure {
             cause: ExecutionGeometryNativeCallFailure::Completion(error),
+        })
+    })
+}
+
+/// Binds, runs, and admits one non-graphical v6 call against a loaded mapping.
+///
+/// Runner failure restores the complete rebased entry snapshot. Completion
+/// rejection performs the same restoration through the invocation contract.
+/// This function neither loads nor releases executable memory.
+///
+/// # Errors
+///
+/// Returns [`RegisterMaskedNonGraphicalLoadedExecutionFailure`] for binding,
+/// runner, or completion failure.
+pub fn execute_loaded_verified_register_masked_non_graphical_native<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyRegisterMaskedNonGraphicalNativeExecutable,
+    prepared: PreparedRegisterMaskedNonGraphicalInvocation<'_, '_>,
+) -> RegisterMaskedNonGraphicalLoadedExecutionResult<Runner::Error>
+where
+    Runner: RegisterMaskedNonGraphicalNativeRunner,
+{
+    let mut bound = prepared.bind_executable(executable).map_err(|error| {
+        Box::new(RegisterMaskedNonGraphicalLoadedExecutionFailure {
+            cause: RegisterMaskedNonGraphicalNativeCallFailure::Binding(error),
+        })
+    })?;
+    let raw_status = match runner.run(&mut bound) {
+        Ok(status) => status,
+        Err(error) => {
+            bound.abort();
+            return Err(Box::new(
+                RegisterMaskedNonGraphicalLoadedExecutionFailure {
+                    cause: RegisterMaskedNonGraphicalNativeCallFailure::Runner(
+                        Box::new(error),
+                    ),
+                },
+            ));
+        },
+    };
+    bound.complete(raw_status).map_err(|error| {
+        Box::new(RegisterMaskedNonGraphicalLoadedExecutionFailure {
+            cause: RegisterMaskedNonGraphicalNativeCallFailure::Completion(
+                error,
+            ),
         })
     })
 }

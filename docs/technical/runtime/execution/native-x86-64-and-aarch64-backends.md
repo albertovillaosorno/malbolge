@@ -211,8 +211,9 @@ guard miss. Dedicated lifecycle typestates admit exact copy, same-mapping RX
 transition, and full-range synchronization.
 
 A non-graphical-specific platform path owns transactional allocation, cleanup,
-and release retry. Exact ready-image equality now admits a distinct bound call
-view, but no runner consumes it.
+and release retry. Exact ready-image equality admits a distinct bound call view.
+A dedicated runner now executes only that view and restores the rebased snapshot
+on runner or completion failure; one-shot transaction authority remains absent.
 
 The native call-frame ABI now has a format-neutral Rust authority in
 `native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used
