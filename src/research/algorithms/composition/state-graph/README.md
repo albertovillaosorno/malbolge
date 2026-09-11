@@ -255,3 +255,11 @@ Only the verified artifact type may execute; guard miss retains the same
 
 normative deoptimization path. Research remains the verifier/oracle bridge. This
 is not yet architecture machine code or a stable cross-process cache format.
+
+The remaining minimal-state question is register liveness. The normative trace
+currently publishes exact memory-read authority but no equivalent read/write
+roles for A, C, or D, so region guards deliberately retain all three registers.
+A future reduction must first add transition-engine register-access evidence and
+then derive read-before-write live-ins from that authority. Research must not
+re-decode opcodes to guess those dependencies; real host-code emission remains
+owned by the native-backend TODO.

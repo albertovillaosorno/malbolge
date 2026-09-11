@@ -529,3 +529,11 @@ schema
 as product code; research
 consumes it rather than defining a second effect type. The next boundary is an
 independently validated host-code artifact.
+
+After output rebasing, register identity is the next unresolved causal-state
+boundary. `ProfileStepTrace` already publishes semantic memory reads from the
+transition engine, but it has no equivalent register read/write evidence. The
+research guard therefore continues to require exact A/C/D values rather than
+inferring liveness from decoded opcodes. The next admissible reduction must add
+normative register-access authority first and derive register live-ins from it;
+architecture host-code integration stays with the separate native-backend TODO.

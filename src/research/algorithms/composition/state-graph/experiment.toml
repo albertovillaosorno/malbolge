@@ -200,7 +200,7 @@ verified_output_delta = "zero-or-one-per-effect"
 prior_output_length = "future-irrelevant"
 future_output = "candidate-prefix-plus-verified-appends"
 rejection_condition = "intrinsically-invalid-verified-output-delta"
-next_risk = "native-code-artifact-integration"
+next_risk = "normative-register-live-in-trace-authority"
 
 [reduction.region_consumed_input_guard]
 baseline = "full-input-allocation-lineage-guard"
