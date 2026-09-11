@@ -39,7 +39,8 @@ use super::direct::{
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
     DirectEntryObservation, DirectFetchedCellGuard, DirectInputCommit,
     DirectInputGuard, DirectJumpCodeGuard, DirectJumpDataGuard,
-    DirectOutputCommit, DirectRotateCommit, DirectRotateGuard,
+    DirectOutputCommit, DirectRegisterMaskedHaltFetchGuard, DirectRotateCommit,
+    DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -130,6 +131,39 @@ pub(super) fn halt_fetch_code(
     guard: DirectFetchedCellGuard,
 ) -> Option<Vec<u8>> {
     fetched_termination_code(observation, guard, 1)
+}
+
+/// Encodes v6 halt fetch using only its declared C register dependency.
+#[must_use]
+pub(super) fn register_masked_halt_fetch_code(
+    guard: DirectRegisterMaskedHaltFetchGuard,
+) -> Option<Vec<u8>> {
+    let code_offset = memory_byte_offset(guard.code_pointer)?;
+    let mut code = Vec::with_capacity(96);
+    let mut guard_jumps = Vec::with_capacity(6);
+    code.extend_from_slice(&[0xb8, 0x01, 0x00, 0x00, 0x00, 0x48, 0x85, 0xc9]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x74);
+    push_u32_guard(&mut code, &mut guard_jumps, 0x44, guard.code_pointer);
+    code.extend_from_slice(&[0x48, 0x83, 0x39, 0x00]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x74);
+    code.extend_from_slice(&[0x48, 0x8b, 0x51, 0x08, 0x49, 0xb8]);
+    code.extend_from_slice(&guard.required_memory_words.to_le_bytes());
+    code.extend_from_slice(&[0x4c, 0x39, 0xc2]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x72);
+    code.extend_from_slice(&[0x48, 0x8b, 0x11]);
+    push_direct_memory_guard(
+        &mut code,
+        &mut guard_jumps,
+        code_offset,
+        guard.live_in_value,
+    );
+    code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
+    push_guard_jump(&mut code, &mut guard_jumps, 0x75);
+    code.extend_from_slice(&[0xc6, 0x41, 0x4c, 0x01, 0x31, 0xc0, 0xc3]);
+    let guard_miss = code.len();
+    code.push(0xc3);
+    patch_guard_jumps(&mut code, &guard_jumps, guard_miss)?;
+    Some(code)
 }
 
 /// Encodes exact non-graphical fetch preflight and termination commit.

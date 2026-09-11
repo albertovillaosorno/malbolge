@@ -43,9 +43,11 @@ use super::{
     DirectHaltFetchError, DirectHaltRegistersError, DirectInitialHaltError,
     DirectInputError, DirectJumpCodeError, DirectJumpDataError,
     DirectNoOperationError, DirectNonGraphicalError, DirectOutputError,
-    DirectRotateError, ExecutionGeometryRegionEffectProgram, NativeArtifactKey,
-    RegionEffectProgram, UntrustedNativeObjectArtifact,
-    VerifiedCrazyNativeObjectArtifact, VerifiedDeoptNativeObjectArtifact,
+    DirectRegisterMaskedHaltFetchError, DirectRotateError,
+    ExecutionGeometryRegionEffectProgram, NativeArtifactKey,
+    RegionEffectProgram, RegisterMaskedRegionEffectProgram,
+    UntrustedNativeObjectArtifact, VerifiedCrazyNativeObjectArtifact,
+    VerifiedDeoptNativeObjectArtifact,
     VerifiedExecutionGeometryCrazyNativeObjectArtifact,
     VerifiedExecutionGeometryInitialHaltNativeObjectArtifact,
     VerifiedExecutionGeometryInitialJumpDataNativeObjectArtifact,
@@ -61,16 +63,18 @@ use super::{
     VerifiedJumpCodeNativeObjectArtifact, VerifiedJumpDataNativeObjectArtifact,
     VerifiedNoOperationNativeObjectArtifact,
     VerifiedNonGraphicalNativeObjectArtifact,
-    VerifiedOutputNativeObjectArtifact, VerifiedRotateNativeObjectArtifact,
-    canonical_coff, crazy_coff, execution_geometry_crazy_coff,
-    execution_geometry_initial_halt_coff,
+    VerifiedOutputNativeObjectArtifact,
+    VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+    VerifiedRotateNativeObjectArtifact, canonical_coff, crazy_coff,
+    execution_geometry_crazy_coff, execution_geometry_initial_halt_coff,
     execution_geometry_initial_jump_data_coff, execution_geometry_input_coff,
     execution_geometry_jump_code_coff, execution_geometry_jump_data_coff,
     execution_geometry_no_operation_coff, execution_geometry_output_coff,
     execution_geometry_rotate_coff, halt_fetch_coff, halt_registers_coff,
     initial_halt_coff, input_coff, jump_code_coff, jump_data_coff,
-    no_operation_coff, non_graphical_coff, output_coff, rotate_coff,
-    structurally_admit_coff, validate_crazy_program, validate_crazy_target,
+    no_operation_coff, non_graphical_coff, output_coff,
+    register_masked_halt_fetch_coff, rotate_coff, structurally_admit_coff,
+    validate_crazy_program, validate_crazy_target,
     validate_execution_geometry_crazy_program,
     validate_execution_geometry_crazy_target,
     validate_execution_geometry_initial_halt_program,
@@ -97,8 +101,9 @@ use super::{
     validate_jump_data_target, validate_no_operation_program,
     validate_no_operation_target, validate_non_graphical_program,
     validate_non_graphical_target, validate_output_program,
-    validate_output_target, validate_rotate_program, validate_rotate_target,
-    validate_target,
+    validate_output_target, validate_register_masked_halt_fetch_program,
+    validate_register_masked_halt_fetch_target, validate_rotate_program,
+    validate_rotate_target, validate_target,
 };
 
 /// Promotes only the exact canonical deopt-only object to semantic authority.
@@ -467,6 +472,41 @@ pub fn verify_direct_halt_fetch(
         return Err(DirectHaltFetchError::ObjectBytes);
     }
     Ok(VerifiedHaltFetchNativeObjectArtifact { artifact: admitted })
+}
+
+/// Promotes only the canonical mask-aware v6 halt-fetch object.
+///
+/// This verifier does not make the object loadable or callable.
+///
+/// # Errors
+///
+/// Returns [`DirectRegisterMaskedHaltFetchError`] for v6 shape, target,
+/// identity, COFF, or canonical-byte mismatch.
+pub fn verify_direct_register_masked_halt_fetch(
+    artifact: &UntrustedNativeObjectArtifact,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<
+    VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+    DirectRegisterMaskedHaltFetchError,
+> {
+    let selected = validate_register_masked_halt_fetch_program(program)
+        .map_err(|_error| DirectRegisterMaskedHaltFetchError::ProgramShape)?;
+    validate_register_masked_halt_fetch_target(artifact.key().target())?;
+    let expected_key = NativeArtifactKey::new_register_masked(
+        program,
+        artifact.key().target().clone(),
+    )?;
+    if artifact.key() != &expected_key {
+        return Err(DirectRegisterMaskedHaltFetchError::ProgramShape);
+    }
+    let admitted = structurally_admit_coff(artifact)?;
+    let expected = register_masked_halt_fetch_coff(artifact.key(), selected)?;
+    if admitted.object() != expected {
+        return Err(DirectRegisterMaskedHaltFetchError::ObjectBytes);
+    }
+    Ok(VerifiedRegisterMaskedHaltFetchNativeObjectArtifact {
+        artifact: admitted,
+    })
 }
 
 /// Promotes only the exact canonical initial-halt object for its exact IR.

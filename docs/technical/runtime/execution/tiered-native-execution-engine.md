@@ -119,10 +119,11 @@ identity proves provenance of the claim, not semantic correctness of
 compiler-produced machine code.
 
 `src/runtime/tiered-execution/adapter-outbound/native/profile_metadata.rs` is
-the single private owner of the versioned MBPF payload. MBPF v3 mirrors effect
-IR v3 with a `u32` profile-capacity field; MBPF v4 mirrors effect IR v4 with a
-`u64` capacity field. Bootstrap/direct emitters and COFF admission consume the
-encoding without becoming authoritative over the schema.
+the single private owner of the versioned MBPF payload. MBPF v3 keeps a `u32`
+profile-capacity field, while v4, v5, and v6 carry capacity as `u64`. V5 adds
+explicit execution geometry; v6 retains the profile envelope and derived
+footprint for its complete register-masked IR key. Emitters and COFF admission
+consume the encoding without becoming authoritative over the schema.
 
 `src/runtime/tiered-execution/adapter-outbound/native/coff.rs` now provides a
 second, independent structural gate for
@@ -135,14 +136,14 @@ targets are defined inside the same object. ARM64's compiler-generated `.rdata`
 constant relocations therefore remain valid while host-library dependencies fail
 closed.
 
-Direct backends and `clang-c23-bootstrap` revision 2 additionally
-require one initialized, read-only, non-relocated `.mbprof` section. Its MBPF
-version follows the IR identity: v3 stores profile capacity as `u32`, v4 as
-`u64`, and both bind profile ID, fingerprint, published version, stable
-features,
-word trits, and exact derived `u64` region memory retained by the native key.
-Missing or mismatched required metadata, including a
-same-profile footprint mismatch, fails before semantic admission.
+Direct backends and `clang-c23-bootstrap` revision 2 additionally require one
+initialized, read-only, non-relocated `.mbprof` section. Its MBPF version
+follows
+the IR identity; every version binds profile ID, fingerprint, published version,
+stable features, word trits, and exact derived `u64` region memory retained by
+the native key. V3 stores profile capacity as `u32`; v4/v5/v6 store it as `u64`,
+and v5 also binds explicit execution geometry. Missing or mismatched metadata
+fails before semantic admission.
 
 Schema version is not the state-applying execution ceiling. Bootstrap, direct
 shape admission, and native invocation accept canonical IR/MBPF v3 or v4 when
@@ -1958,14 +1959,22 @@ one-step halt-fetch whose normative register evidence is C-only live-in with no
 writes. Extra live-ins/writes are unsupported and malformed mask cardinality
 fails identity.
 
-The certificate exposes only `HaltFetch` plus complete v6 identity; it has no
-host target, object, executable-memory, or invocation power.
+The host-independent certificate exposes only `HaltFetch` plus complete v6
+identity. It still has no target, object, executable-memory, or invocation
+power.
 
-Profile metadata, direct emitters/verifiers, loaders, and invocation still
-consume v3/v4 or the separate v5 geometry wrapper. The next v6 boundary must
-bind one target and machine-code artifact while honoring reduced masks rather
-than silently restoring full-register/history guards. Projecting v6 into v3/v4
-remains forbidden, and unsupported v6 execution therefore stays fail-closed.
+`direct-register-masked-halt-fetch` revision 1 now supplies the first target-
+bound v6 artifact on Windows x86-64/AArch64. MBPF v6 preserves the profile
+identity/footprint, while machine code guards C, required memory, the fetched
+cell, and prior termination only. Tests prove dead A and I/O-history changes
+produce distinct v6 keys but identical `.text`, and independent verification
+rejects target or object-byte drift.
+
+The verified v6 wrapper is intentionally absent from legacy direct-artifact,
+load-image, executable, and invocation enums. The next boundary is executable
+load/invocation admission that preserves reduced dependency/rebase semantics.
+Projecting v6 into v3/v4 remains forbidden, so unsupported v6 execution stays
+fail-closed.
 
 Combined-region emission, native-retry orchestration beyond bounded
 process-local cached cycles, asynchronous/product scheduling, executable-memory

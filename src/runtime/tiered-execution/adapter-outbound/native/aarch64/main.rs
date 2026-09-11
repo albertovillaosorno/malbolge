@@ -39,7 +39,8 @@ use super::direct::{
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
     DirectEntryObservation, DirectFetchedCellGuard, DirectInputCommit,
     DirectInputGuard, DirectJumpCodeGuard, DirectJumpDataGuard,
-    DirectOutputCommit, DirectRotateCommit, DirectRotateGuard,
+    DirectOutputCommit, DirectRegisterMaskedHaltFetchGuard, DirectRotateCommit,
+    DirectRotateGuard,
 };
 
 /// Returns the canonical no-state-change guard-miss stub.
@@ -157,6 +158,46 @@ pub(super) fn halt_fetch_code(
     guard: DirectFetchedCellGuard,
 ) -> Option<Vec<u8>> {
     fetched_termination_code(observation, guard, 1)
+}
+
+/// Encodes v6 halt fetch using only its declared C register dependency.
+#[must_use]
+pub(super) fn register_masked_halt_fetch_code(
+    guard: DirectRegisterMaskedHaltFetchGuard,
+) -> Option<Vec<u8>> {
+    let mut words = Vec::with_capacity(40);
+    let mut guard_branches = Vec::with_capacity(6);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0000);
+    push_u32_guard(
+        &mut words,
+        &mut guard_branches,
+        0xb940_4408,
+        guard.code_pointer,
+    );
+    words.push(0xf940_0008);
+    push_guard_branch(&mut words, &mut guard_branches, 0xb400_0008);
+    words.push(0xf940_040a);
+    push_u64_x9(&mut words, guard.required_memory_words)?;
+    words.push(0xeb09_015f);
+    push_guard_branch(&mut words, &mut guard_branches, 0x5400_0003);
+    push_indexed_memory_guard(
+        &mut words,
+        &mut guard_branches,
+        guard.code_pointer,
+        guard.live_in_value,
+    );
+    words.push(0x3941_3009);
+    push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
+    words.extend_from_slice(&[
+        0x5280_002a,
+        0x3901_300a,
+        0x2a1f_03e0,
+        0xd65f_03c0,
+    ]);
+    let guard_miss = words.len();
+    words.extend_from_slice(&[0x5280_0020, 0xd65f_03c0]);
+    patch_guard_branches(&mut words, &guard_branches, guard_miss)?;
+    Some(encode_words(&words))
 }
 
 /// Encodes exact non-graphical fetch preflight and termination commit.

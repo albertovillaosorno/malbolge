@@ -57,7 +57,7 @@ use coff::{
     execution_geometry_rotate_coff, halt_fetch_coff, halt_registers_coff,
     initial_halt_coff, input_coff, is_zero_observation, jump_code_coff,
     jump_data_coff, no_operation_coff, non_graphical_coff, output_coff,
-    rotate_coff,
+    register_masked_halt_fetch_coff, rotate_coff,
 };
 pub use emit::{
     emit_direct_crazy_coff, emit_direct_deopt_coff,
@@ -74,7 +74,7 @@ pub use emit::{
     emit_direct_input_coff, emit_direct_jump_code_coff,
     emit_direct_jump_data_coff, emit_direct_no_operation_coff,
     emit_direct_non_graphical_coff, emit_direct_output_coff,
-    emit_direct_rotate_coff,
+    emit_direct_register_masked_halt_fetch_coff, emit_direct_rotate_coff,
 };
 use emit::{
     emit_direct_crazy_with_key, emit_direct_deopt_with_key,
@@ -136,7 +136,8 @@ use shape::{
     validate_no_operation_target, validate_non_graphical_program,
     validate_non_graphical_target, validate_output_program,
     validate_output_target, validate_register_masked_halt_fetch_program,
-    validate_rotate_program, validate_rotate_target, validate_target,
+    validate_register_masked_halt_fetch_target, validate_rotate_program,
+    validate_rotate_target, validate_target,
 };
 pub use verify::{
     verify_direct_crazy, verify_direct_deopt_stub,
@@ -152,7 +153,8 @@ pub use verify::{
     verify_direct_halt_registers, verify_direct_initial_halt,
     verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
     verify_direct_no_operation, verify_direct_non_graphical,
-    verify_direct_output, verify_direct_rotate,
+    verify_direct_output, verify_direct_register_masked_halt_fetch,
+    verify_direct_rotate,
 };
 
 use super::profile_metadata::canonical_profile_metadata;
@@ -241,6 +243,11 @@ pub const DIRECT_HALT_REGISTERS_BACKEND_REVISION: u32 = 5;
 pub const DIRECT_HALT_FETCH_BACKEND_ID: &str = "direct-halt-fetch";
 /// Direct graphical halt-fetch code-generation revision.
 pub const DIRECT_HALT_FETCH_BACKEND_REVISION: u32 = 2;
+/// Backend identity for register-masked v6 graphical halt fetch.
+pub const DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID: &str =
+    "direct-register-masked-halt-fetch";
+/// Register-masked v6 halt-fetch code-generation revision.
+pub const DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION: u32 = 1;
 
 /// Backend identity for exact non-graphical fetch termination.
 pub const DIRECT_NON_GRAPHICAL_BACKEND_ID: &str = "direct-non-graphical";
@@ -301,6 +308,13 @@ pub(super) struct DirectCodeWriteCommit {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct DirectFetchedCellGuard {
+    pub(super) live_in_value: u32,
+    pub(super) required_memory_words: u64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct DirectRegisterMaskedHaltFetchGuard {
+    pub(super) code_pointer: u32,
     pub(super) live_in_value: u32,
     pub(super) required_memory_words: u64,
 }

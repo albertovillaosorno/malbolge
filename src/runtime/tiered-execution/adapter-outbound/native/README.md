@@ -128,9 +128,11 @@ trust to otherwise unverified effects.
 
 `profile_metadata.rs` owns the target-neutral MBPF payload encoding shared by
 bootstrap source, direct object construction, and structural validation. MBPF v3
-matches effect IR v3 and keeps the frozen `u32` profile-capacity field; MBPF v4
-matches effect IR v4 and carries that capacity as `u64`. Object parsing and code
-generation consume this schema without becoming authoritative over it.
+keeps the frozen `u32` profile-capacity field; v4, v5, and v6 carry capacity as
+`u64`. V5 additionally carries explicit execution geometry, while v6 retains the
+profile envelope and exact derived footprint for its complete masked IR key.
+Object parsing and code generation consume this schema without becoming
+authoritative over it.
 
 `coff.rs` adds a narrower structural gate for Windows bootstrap objects. It
 parses the object bytes directly in safe Rust, checks x86-64/AArch64 machine
@@ -172,13 +174,17 @@ canonical object; a one-byte opcode mutation remains structurally valid but
 fails semantic admission. This establishes an executable native tier that is
 correct by always falling back before direct region-effect selection is trusted.
 
-Register-masked effect IR v6 now has a separate host-independent admission
+Register-masked effect IR v6 now crosses a separate host-independent admission
 boundary. `admit_register_masked_direct_native()` preserves full v6 identity and
 required-profile preflight, then admits only the normative one-step graphical
-halt-fetch with C-only register live-in and no register writes. The returned
-certificate contains no host target or machine-code artifact; emit, load, and
-invocation remain fail-closed for v6 until a mask-preserving backend is
-reviewed.
+halt-fetch with C-only register live-in and no register writes.
+
+`direct-register-masked-halt-fetch` revision 1 binds that shape to Windows
+x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the required
+memory extent, the fetched code cell, and prior termination before committing
+`HaltInstruction`; A, D, and I/O history are not guarded. Independent object
+verification reconstructs the full v6 key and canonical bytes, while the
+verified wrapper remains outside existing executable load/invocation enums.
 
 The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while

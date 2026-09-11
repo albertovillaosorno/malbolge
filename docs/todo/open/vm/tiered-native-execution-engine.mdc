@@ -626,11 +626,14 @@ baseline; native tiers are accelerators of identical observable behavior.
 - `admit_register_masked_direct_native()` applies canonical-profile and
   `002`/`001` preflight before independently admitting only a normative one-step
   halt-fetch with C-only register live-in and no register writes. Extra
-  live-ins/writes fail as unsupported while mask cardinality fails identity. The
-  returned certificate carries kind plus full v6 identity only: no target,
-  object, loader, or invocation authority. The next slice is target-bound v6
-  emission/verification that must honor the reduced masks; v6-to-v3/v4
-  projection remains forbidden.
+  live-ins/writes fail as unsupported while mask cardinality fails identity.
+- `direct-register-masked-halt-fetch` revision 1 now emits and independently
+  verifies Windows x86-64/AArch64 COFF under the complete v6 key and MBPF v6.
+  The code guards C, required memory, the fetched cell, and prior termination;
+  dead A and I/O-history evidence do not change `.text`. Its verified wrapper is
+  deliberately outside load/invocation enums, so v6 still has no executable
+  authority. The next slice is mask-preserving load/invocation admission;
+  v6-to-v3/v4 projection remains forbidden.
 - Remaining fused-region emission plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and

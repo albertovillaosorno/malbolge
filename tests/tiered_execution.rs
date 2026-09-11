@@ -209,6 +209,8 @@ use execution_native::{
     DIRECT_NO_OPERATION_BACKEND_ID, DIRECT_NO_OPERATION_BACKEND_REVISION,
     DIRECT_NON_GRAPHICAL_BACKEND_ID, DIRECT_NON_GRAPHICAL_BACKEND_REVISION,
     DIRECT_OUTPUT_BACKEND_ID, DIRECT_OUTPUT_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION,
     DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
     DirectCacheDisposition, DirectCrazyError, DirectDeoptError,
     DirectExecutionGeometryCrazyError, DirectExecutionGeometryInitialHaltError,
@@ -219,7 +221,8 @@ use execution_native::{
     DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
     DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
     DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
-    DirectNonGraphicalError, DirectOutputError, DirectRotateError,
+    DirectNonGraphicalError, DirectOutputError,
+    DirectRegisterMaskedHaltFetchError, DirectRotateError,
     DirectSelectionError, DirectSequenceError,
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError,
@@ -281,7 +284,8 @@ use execution_native::{
     emit_direct_input_coff, emit_direct_jump_code_coff,
     emit_direct_jump_data_coff, emit_direct_no_operation_coff,
     emit_direct_non_graphical_coff, emit_direct_output_coff,
-    emit_direct_rotate_coff, execute_cached_verified_native_sequence,
+    emit_direct_register_masked_halt_fetch_coff, emit_direct_rotate_coff,
+    execute_cached_verified_native_sequence,
     execute_loaded_cached_verified_native_sequence,
     execute_loaded_verified_execution_geometry_native,
     execute_loaded_verified_execution_geometry_sequence,
@@ -315,7 +319,8 @@ use execution_native::{
     verify_direct_halt_registers, verify_direct_initial_halt,
     verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
     verify_direct_no_operation, verify_direct_non_graphical,
-    verify_direct_output, verify_direct_rotate,
+    verify_direct_output, verify_direct_register_masked_halt_fetch,
+    verify_direct_rotate,
 };
 use geometry_interpreter_handoff::{
     ExecutionGeometryContinuationAdmissionError,
@@ -1812,6 +1817,17 @@ fn canonical_register_masked_halt_program()
         .map_err(|error| format!("v6 halt projection failed: {error:?}"))
 }
 
+fn register_masked_halt_fetch_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID),
+        backend_revision: DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
 fn target(
     os: HostOperatingSystem,
     isa: HostIsa,
@@ -2229,6 +2245,117 @@ fn register_masked_v6_admission_rejects_incomplete_mask_identity()
             ))
     {
         return Err(String::from("v6 mask identity failure drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_halt_objects_honor_reduced_guard_surface()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let mut dead_state_variant = program.clone();
+    let effect = dead_state_variant
+        .program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?;
+    effect.before.registers.accumulator = 1;
+    effect.after.registers.accumulator = 1;
+    effect.before.input_consumed = 3;
+    effect.after.input_consumed = 3;
+    effect.before.output_len = 4;
+    effect.after.output_len = 4;
+
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let target = register_masked_halt_fetch_target(isa);
+        let artifact = emit_direct_register_masked_halt_fetch_coff(
+            &program,
+            target.clone(),
+        )
+        .map_err(|error| format!("v6 {isa:?} halt emit failed: {error}"))?;
+        let variant = emit_direct_register_masked_halt_fetch_coff(
+            &dead_state_variant,
+            target,
+        )
+        .map_err(|error| {
+            format!("v6 {isa:?} dead-state emit failed: {error}")
+        })?;
+        if artifact.key() == variant.key()
+            || direct_object_text(artifact.object())?
+                != direct_object_text(variant.object())?
+            || !artifact
+                .object()
+                .windows(6)
+                .any(|window| window == b"MBPF ")
+        {
+            return Err(format!("v6 {isa:?} mask-aware object drifted"));
+        }
+        let verified =
+            verify_direct_register_masked_halt_fetch(&artifact, &program)
+                .map_err(|error| {
+                    format!("v6 {isa:?} halt verify failed: {error}")
+                })?;
+        if verified.key() != artifact.key()
+            || verified.object() != artifact.object()
+            || verified.target_triple() != artifact.target_triple()
+        {
+            return Err(format!("v6 {isa:?} verified identity drifted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_halt_verifier_rejects_object_and_target_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact = emit_direct_register_masked_halt_fetch_coff(
+        &program,
+        register_masked_halt_fetch_target(HostIsa::X86_64),
+    )
+    .map_err(|error| format!("v6 halt baseline emit failed: {error}"))?;
+    let mut object = artifact.object().to_vec();
+    let text_start = usize::try_from(read_fixture_u32(&object, 40)?)
+        .map_err(|error| format!("v6 text start conversion: {error}"))?;
+    let first = object
+        .get_mut(text_start)
+        .ok_or_else(|| String::from("v6 halt text missing"))?;
+    *first ^= 1;
+    let tampered = UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        object,
+        artifact.target_triple(),
+    );
+    if verify_direct_register_masked_halt_fetch(&tampered, &program)
+        != Err(DirectRegisterMaskedHaltFetchError::ObjectBytes)
+    {
+        return Err(String::from("v6 halt verifier admitted byte drift"));
+    }
+
+    let mut target = register_masked_halt_fetch_target(HostIsa::X86_64);
+    let mut config = NativeTargetConfig {
+        backend_id: String::from(target.backend_id()),
+        backend_revision: target.backend_revision().saturating_add(1),
+        host_isa: target.host_isa(),
+        host_os: target.host_os(),
+        native_abi_revision: target.native_abi_revision(),
+        required_features: target.required_features().to_vec(),
+    };
+    target = NativeTargetIdentity::new(config.clone());
+    if emit_direct_register_masked_halt_fetch_coff(&program, target)
+        != Err(DirectRegisterMaskedHaltFetchError::TargetBackend)
+    {
+        return Err(String::from("v6 halt admitted obsolete backend revision"));
+    }
+    config.backend_revision =
+        DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION;
+    config.required_features.push(String::from("avx2"));
+    if emit_direct_register_masked_halt_fetch_coff(
+        &program,
+        NativeTargetIdentity::new(config),
+    ) != Err(DirectRegisterMaskedHaltFetchError::TargetFeatures)
+    {
+        return Err(String::from("v6 halt admitted unsupported CPU feature"));
     }
     Ok(())
 }

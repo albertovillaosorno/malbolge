@@ -686,6 +686,65 @@ impl From<NativeIdentityError> for DirectHaltFetchError {
     }
 }
 
+/// Failure while emitting or verifying register-masked v6 halt fetch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectRegisterMaskedHaltFetchError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this v6 program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical mask-aware halt-fetch object.
+    ObjectBytes,
+    /// Register-masked IR is outside the reviewed halt-fetch subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this v6 contract.
+    TargetBackend,
+    /// Register-masked halt-fetch has no CPU feature specializations.
+    TargetFeatures,
+    /// Register-masked halt-fetch currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectRegisterMaskedHaltFetchError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => {
+                "register-masked halt-fetch COFF structure was rejected"
+            },
+            Self::Identity(_error) => {
+                "register-masked halt-fetch identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "register-masked halt-fetch object differs from canonical bytes"
+            },
+            Self::ProgramShape => {
+                "register-masked IR is outside direct halt-fetch subset"
+            },
+            Self::TargetBackend => {
+                "target does not select register-masked halt-fetch backend"
+            },
+            Self::TargetFeatures => {
+                "register-masked halt-fetch backend requires no CPU features"
+            },
+            Self::TargetFormat => {
+                "register-masked halt-fetch backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectRegisterMaskedHaltFetchError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectRegisterMaskedHaltFetchError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying direct non-graphical termination.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectNonGraphicalError {
