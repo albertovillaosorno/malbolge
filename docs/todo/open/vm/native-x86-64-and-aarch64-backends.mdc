@@ -109,8 +109,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
   Exact ready-image equality admits a distinct bound call view. A dedicated
   non-graphical runner now admits exact Applied/GuardMiss outcomes and restores
-  the rebased snapshot on runner or completion failure. One-shot transaction,
-  residency, and sequence authority remain absent.
+  the rebased snapshot on runner or completion failure. One-shot orchestration
+  composes exact load/call/release with cleanup and release-retry evidence.
+  Residency and sequence authority remain absent.
 
   Native ABI revision 1 now has one format-neutral Rust `repr(C)` call frame.
   Its tested 80-byte size and field offsets match both reviewed encoder

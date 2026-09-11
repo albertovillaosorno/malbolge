@@ -212,8 +212,12 @@ transition, and full-range synchronization.
 
 A non-graphical-specific platform path owns transactional allocation, cleanup,
 and release retry. Exact ready-image equality admits a distinct bound call view.
-A dedicated runner now executes only that view and restores the rebased snapshot
-on runner or completion failure; one-shot transaction authority remains absent.
+A dedicated runner executes only that view and restores the rebased snapshot
+on runner or completion failure.
+
+One-shot orchestration now composes exact load, bind, call, completion, and
+release while retaining cleanup and release-retry evidence. Residency and
+sequence authority remain absent.
 
 The native call-frame ABI now has a format-neutral Rust authority in
 `native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used

@@ -323,6 +323,7 @@ use execution_native::{
     execute_loaded_verified_register_masked_non_graphical_native,
     execute_verified_native, execute_verified_native_sequence,
     execute_verified_register_masked_native,
+    execute_verified_register_masked_non_graphical_native,
     load_cached_verified_execution_geometry_native_sequence,
     load_cached_verified_native_sequence,
     load_execution_geometry_native_executable, load_native_executable,
@@ -2198,6 +2199,15 @@ fn register_masked_native_fixture(
     let ready = load_register_masked_native_executable(&mut adapter, &image)
         .map_err(|error| format!("v6 fixture platform load failed: {error}"))?;
     Ok(RegisterMaskedNativeFixture { adapter, artifact, ready })
+}
+
+const fn register_masked_non_graphical_applied_outcome(
+    entry: ProfileMachineObservation,
+) -> NativeRegionInvocationOutcome {
+    NativeRegionInvocationOutcome::Applied(ProfileMachineObservation {
+        termination: Some(Termination::NonGraphicalCell),
+        ..entry
+    })
 }
 
 fn register_masked_non_graphical_dead_state_variant(
@@ -4912,6 +4922,238 @@ fn register_masked_v6_loaded_runner_completion_drift_rolls_back()
     release_register_masked_native_executable(&mut adapter, ready).map_err(
         |release| format!("v6 completion-drift release failed: {release}"),
     )?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_transaction_applies_and_releases()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?
+        .before;
+    let expected = ProfileMachineObservation {
+        termination: Some(Termination::NonGraphicalCell),
+        ..entry
+    };
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_program_memory(&program)?;
+    let prepared = PreparedRegisterMaskedNonGraphicalInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 non-graphical transaction prep: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(154)?,
+        native_executable_address(0x15400)?,
+    );
+    let mut runner = FakeRegisterMaskedNonGraphicalNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_verified_register_masked_non_graphical_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    )
+    .map_err(|error| format!("v6 non-graphical transaction: {error:?}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || runner.calls != 1
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from(
+            "v6 non-graphical transaction success evidence drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_transaction_load_failure_skips_call()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?
+        .before;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedNonGraphicalInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 non-graphical load-failure prep: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(155)?,
+        native_executable_address(0x15500)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut runner = FakeRegisterMaskedNonGraphicalNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_verified_register_masked_non_graphical_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 non-graphical transaction ignored load failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Load
+        || error.load_failure().map(NativeExecutableLoadFailure::phase)
+            != Some(NativeExecutableLoadPhase::Copy)
+        || runner.calls != 0
+        || memory != entry_memory
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from(
+            "v6 non-graphical transaction load failure drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_transaction_runner_failure_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?
+        .before;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedNonGraphicalInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 non-graphical runner-failure prep: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(156)?,
+        native_executable_address(0x15600)?,
+    );
+    let mut runner = FakeRegisterMaskedNonGraphicalNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = execute_verified_register_masked_non_graphical_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 non-graphical transaction ignored runner failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || runner.calls != 1
+        || memory != entry_memory
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from(
+            "v6 non-graphical transaction runner failure drifted",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_transaction_release_failure_retries()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?
+        .before;
+    let expected = register_masked_non_graphical_applied_outcome(entry);
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_program_memory(&program)?;
+    let prepared = PreparedRegisterMaskedNonGraphicalInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 non-graphical release-failure prep: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(157)?,
+        native_executable_address(0x15700)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeRegisterMaskedNonGraphicalNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let Err(error) = execute_verified_register_masked_non_graphical_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from(
+            "v6 non-graphical transaction ignored release failure",
+        ));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Release
+        || error.committed_outcome() != Some(expected)
+        || error.release_failure().is_none()
+        || runner.calls != 1
+    {
+        return Err(String::from(
+            "v6 non-graphical transaction release failure drifted",
+        ));
+    }
+    let failure = error.into_release_failure().ok_or_else(|| {
+        String::from("v6 non-graphical retryable release missing")
+    })?;
+    failure.retry(&mut adapter).map_err(|retry| {
+        format!("v6 non-graphical transaction retry: {retry}")
+    })?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from(
+            "v6 non-graphical transaction release retry count drifted",
+        ));
+    }
     Ok(())
 }
 

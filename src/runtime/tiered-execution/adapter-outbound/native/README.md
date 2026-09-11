@@ -208,8 +208,13 @@ image before producing the distinct bound non-graphical invocation view.
 `RegisterMaskedNonGraphicalNativeRunner` now receives only that bound view. The
 loaded-call wrapper admits exact Applied/GuardMiss results, restores the rebased
 snapshot on runner or completion failure, and rejects ready-image drift before
-runner entry. One-shot transactions, residency, and sequence execution remain
-halt-only.
+runner entry.
+
+`execute_verified_register_masked_non_graphical_native()` now composes exact
+load, bind, run, completion, and release. Load/call failures restore the rebased
+snapshot and attempt cleanup; final release failure preserves both the committed
+outcome and exact ready mapping for retry. Residency and sequence execution
+remain halt-only.
 
 `VerifiedRegisterMaskedLoadImage` now extracts that verified object as a
 relocation-free, ISA-aligned image under the shared strict W^X policy without

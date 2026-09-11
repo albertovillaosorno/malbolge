@@ -369,12 +369,15 @@ pub use runner::{
     RegisterMaskedNativeRunner,
     RegisterMaskedNonGraphicalLoadedExecutionFailure,
     RegisterMaskedNonGraphicalLoadedExecutionResult,
+    RegisterMaskedNonGraphicalNativeExecutionFailure,
+    RegisterMaskedNonGraphicalNativeExecutionResult,
     RegisterMaskedNonGraphicalNativeRunner,
     execute_loaded_verified_execution_geometry_native,
     execute_loaded_verified_native,
     execute_loaded_verified_register_masked_native,
     execute_loaded_verified_register_masked_non_graphical_native,
     execute_verified_native, execute_verified_register_masked_native,
+    execute_verified_register_masked_non_graphical_native,
 };
 pub use sequence_continuation::{
     NativeInterpreterContinuation, NativeInterpreterContinuationError,
