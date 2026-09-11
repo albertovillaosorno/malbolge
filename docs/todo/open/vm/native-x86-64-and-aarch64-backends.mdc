@@ -105,8 +105,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   prepared-call evidence. Dedicated lifecycle typestates admit exact copy,
   same-mapping RX transition, and full-range synchronization. A dedicated
   platform path now loads/releases that ready state transactionally with cleanup
-  and retry ownership, while invocation binding and runner authority remain
-  absent.
+  and retry ownership.
+
+  Exact ready-image equality now admits a distinct bound call view, while runner
+  authority remains absent.
 
   Native ABI revision 1 now has one format-neutral Rust `repr(C)` call frame.
   Its tested 80-byte size and field offsets match both reviewed encoder

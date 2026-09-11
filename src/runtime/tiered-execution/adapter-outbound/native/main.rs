@@ -258,6 +258,7 @@ pub use invocation::{
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,
     PreparedRegisterMaskedNonGraphicalInvocation,
+    PreparedRegisterMaskedNonGraphicalNativeInvocation,
     PreparedVerifiedDirectInvocation,
     PreparedVerifiedExecutionGeometryInvocation, VerifiedDirectInvocationError,
     VerifiedExecutionGeometryInvocationError,

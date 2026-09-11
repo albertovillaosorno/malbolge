@@ -3868,6 +3868,124 @@ fn register_masked_v6_platform_cleans_up_copy_failure() -> TieredTestResult {
 }
 
 #[test]
+fn register_masked_v6_non_graphical_binding_retains_exact_ready()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedNonGraphicalLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 non-graphical binding image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(149)?,
+        native_executable_address(0x14900)?,
+    );
+    let ready = load_register_masked_non_graphical_native_executable(
+        &mut adapter,
+        &image,
+    )
+    .map_err(|error| format!("v6 non-graphical binding load: {error}"))?;
+    let mut entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?
+        .before;
+    entry.registers.accumulator = 0x1122_3344;
+    entry.registers.data_pointer = 0x5566_7788;
+    let mut memory = register_masked_program_memory(&program)?;
+    let input = [];
+    let mut output = [];
+    let prepared = PreparedRegisterMaskedNonGraphicalInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 non-graphical binding prepare: {error}"))?;
+    let mut bound = prepared
+        .bind_executable(&ready)
+        .map_err(|error| format!("v6 non-graphical binding failed: {error}"))?;
+    if bound.executable() != &ready
+        || bound.entry_address() != ready.entry_address()
+        || bound.mapping_id() != ready.mapping().mapping_id()
+        || bound.state_mut_ptr().is_null()
+    {
+        return Err(String::from("v6 non-graphical bound identity drifted"));
+    }
+    drop(bound);
+    release_register_masked_non_graphical_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| format!("v6 non-graphical binding release: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_binding_rejects_different_ready()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let mut variant = program.clone();
+    let effect = variant.effects.first_mut().ok_or_else(|| {
+        String::from("v6 non-graphical variant missing effect")
+    })?;
+    effect.before.registers.accumulator ^= 1;
+    effect.after.registers.accumulator ^= 1;
+    let variant_artifact =
+        verified_register_masked_non_graphical(&variant, HostIsa::X86_64)?;
+    let variant_image =
+        VerifiedRegisterMaskedNonGraphicalLoadImage::new(&variant_artifact)
+            .map_err(|error| {
+                format!("v6 non-graphical variant image: {error}")
+            })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(150)?,
+        native_executable_address(0x15000)?,
+    );
+    let ready = load_register_masked_non_graphical_native_executable(
+        &mut adapter,
+        &variant_image,
+    )
+    .map_err(|error| format!("v6 non-graphical variant load: {error}"))?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?
+        .before;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let prepared = PreparedRegisterMaskedNonGraphicalInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 non-graphical mismatch prepare: {error}"))?;
+    if !matches!(
+        prepared.bind_executable(&ready),
+        Err(NativeExecutableInvocationBindingError::ExecutableIdentity)
+    ) {
+        return Err(String::from(
+            "v6 non-graphical binding admitted different ready image",
+        ));
+    }
+    if memory != entry_memory {
+        return Err(String::from(
+            "v6 non-graphical binding failure changed caller memory",
+        ));
+    }
+    release_register_masked_non_graphical_native_executable(
+        &mut adapter,
+        ready,
+    )
+    .map_err(|error| format!("v6 non-graphical mismatch release: {error}"))?;
+    Ok(())
+}
+
+#[test]
 fn register_masked_v6_non_graphical_platform_loads_and_releases()
 -> TieredTestResult {
     let program = canonical_register_masked_non_graphical_program()?;

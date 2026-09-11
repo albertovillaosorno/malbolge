@@ -58,6 +58,7 @@ use super::direct::{
 use super::lifecycle::{
     NativeExecutableMappingId, ReadyExecutionGeometryNativeExecutable,
     ReadyNativeExecutable, ReadyRegisterMaskedNativeExecutable,
+    ReadyRegisterMaskedNonGraphicalNativeExecutable,
 };
 use super::loader::{
     VerifiedDirectLoadError, VerifiedDirectLoadImage,
@@ -290,6 +291,19 @@ pub struct PreparedExecutionGeometryNativeInvocation<'buffers, 'executable> {
 #[derive(Debug)]
 pub struct PreparedRegisterMaskedNativeInvocation<'buffers, 'executable> {
     executable: &'executable ReadyRegisterMaskedNativeExecutable,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
+/// Bound view of one exact non-graphical v6 call and synchronized mapping.
+///
+/// No runner consumes this type yet. It proves only exact image identity plus
+/// one borrow-scoped ABI call contract.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedNonGraphicalNativeInvocation<
+    'buffers,
+    'executable,
+> {
+    executable: &'executable ReadyRegisterMaskedNonGraphicalNativeExecutable,
     invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
@@ -548,6 +562,35 @@ impl<'artifact, 'buffers>
         &self,
     ) -> &VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact {
         self.artifact
+    }
+
+    /// Binds this exact call to one synchronized non-graphical v6 executable.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableInvocationBindingError`] when executable image
+    /// identity differs. Failure restores the complete rebased entry snapshot.
+    pub fn bind_executable<'executable>(
+        self,
+        executable:
+            &'executable ReadyRegisterMaskedNonGraphicalNativeExecutable,
+    ) -> Result<
+        PreparedRegisterMaskedNonGraphicalNativeInvocation<
+            'buffers,
+            'executable,
+        >,
+        NativeExecutableInvocationBindingError,
+    > {
+        if self.load_image() != executable.image() {
+            self.abort();
+            return Err(
+                NativeExecutableInvocationBindingError::ExecutableIdentity,
+            );
+        }
+        Ok(PreparedRegisterMaskedNonGraphicalNativeInvocation::new(
+            executable,
+            self.invocation,
+        ))
     }
 
     /// Admits one raw status through the rebased non-graphical contract.
@@ -865,6 +908,62 @@ impl PreparedRegisterMaskedNativeInvocation<'_, '_> {
     }
 
     /// Simulates one foreign guest-memory mutation for rollback tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn write_memory_for_test(
+        &mut self,
+        address: usize,
+        value: u32,
+    ) -> bool {
+        self.invocation.write_memory_for_test(address, value)
+    }
+}
+
+impl<'buffers, 'executable>
+    PreparedRegisterMaskedNonGraphicalNativeInvocation<'buffers, 'executable>
+{
+    /// Simulates the exact non-graphical transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Returns the synchronized non-zero non-graphical v6 entrypoint.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized executable retained by this view.
+    #[must_use]
+    pub const fn executable(
+        &self,
+    ) -> &ReadyRegisterMaskedNonGraphicalNativeExecutable {
+        self.executable
+    }
+
+    /// Returns the exact platform mapping identity retained by this view.
+    #[must_use]
+    pub const fn mapping_id(&self) -> NativeExecutableMappingId {
+        self.executable.mapping().mapping_id()
+    }
+
+    pub(crate) const fn new(
+        executable:
+            &'executable ReadyRegisterMaskedNonGraphicalNativeExecutable,
+        invocation: PreparedNativeRegionInvocation<'buffers>,
+    ) -> Self {
+        Self { executable, invocation }
+    }
+
+    /// Returns the mutable ABI state pointer for a future dedicated runner.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Simulates one guest-memory mutation for rollback tests.
     #[cfg(test)]
     #[doc(hidden)]
     pub fn write_memory_for_test(

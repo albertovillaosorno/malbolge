@@ -202,8 +202,10 @@ distinct ready type, preserving release-failure ownership for exact retry.
 
 `PreparedRegisterMaskedNonGraphicalInvocation` binds exact v6 identity, C and
 fetched-cell live-ins, rebased dead state, and atomic Applied/GuardMiss
-completion. It still exposes no executable binding; runners, residency, and
-sequence execution remain halt-only.
+completion. `bind_executable()` now requires exact equality with the dedicated
+ready image before producing the distinct bound non-graphical invocation view.
+No runner consumes that bound view; residency and sequence execution remain
+halt-only.
 
 `VerifiedRegisterMaskedLoadImage` now extracts that verified object as a
 relocation-free, ISA-aligned image under the shared strict W^X policy without

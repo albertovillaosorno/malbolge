@@ -210,9 +210,9 @@ prepared-call type that validates exact `NonGraphicalCell` application or atomic
 guard miss. Dedicated lifecycle typestates admit exact copy, same-mapping RX
 transition, and full-range synchronization.
 
-A non-graphical-specific platform path now owns transactional allocation,
-cleanup, and release retry while runner and invocation-binding authority remain
-absent.
+A non-graphical-specific platform path owns transactional allocation, cleanup,
+and release retry. Exact ready-image equality now admits a distinct bound call
+view, but no runner consumes it.
 
 The native call-frame ABI now has a format-neutral Rust authority in
 `native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used
