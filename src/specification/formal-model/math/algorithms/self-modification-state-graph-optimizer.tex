@@ -484,35 +484,58 @@ complete candidate prefix, append the normative future byte, and equal direct VM
 execution. A separately verified portable region artifact repeats the two-byte
 case, proving that artifact replay uses the same rebased semantics.
 
-\section{Consumed-input-aware region guard}
+\section{Bounded input-observation region guard}
 
-Let $N_F(s,e)$ require equal canonical profile, opaque geometry, input cursor,
-remaining input suffix, registers, and termination, while allowing memory roots,
-all prior output history, and bytes strictly before the common cursor to differ.
-Combining the
-proved profile consumed-prefix projection with the read-before-write memory set
-gives
+Let a verifier-admitted region carry traces
+$\tau=(t_0,\ldots,t_{n-1})$ and let $J(t_j)$ be the trace input observation:
+none, one concrete byte $b$, or EOF. For candidate input $I_s$ with exact entry
+cursor $\kappa_0=i$, define the bounded input predicate by the recursive rule
+\begin{equation}
+  B_I(\tau,s)\Longleftrightarrow
+  \forall j<n:\quad
+  \begin{cases}
+    J(t_j)=\varnothing
+      &\Rightarrow \kappa_{j+1}=\kappa_j,\\
+    J(t_j)=\operatorname{Byte}(b)
+      &\Rightarrow I_s[\kappa_j]=b\ \land\
+        \kappa_{j+1}=\kappa_j+1,\\
+    J(t_j)=\operatorname{EOF}
+      &\Rightarrow \kappa_j=|I_s|\ \land\
+        \kappa_{j+1}=\kappa_j.
+  \end{cases}
+  \label{eq:state-graph-region-bounded-input-observation}
+\end{equation}
+Only input observations actually reached by the bounded verified region appear
+in
+$B_I$. Therefore bytes after its last consumed byte are unconstrained unless a
+verified EOF observation proves that the stream must end at that cursor.
+
+Let $N_F(s,e,\tau)$ require equal canonical profile, opaque geometry, exact
+entry
+input cursor, termination, and equality only for register live-ins
+$L_Q(\tau)$. It deliberately excludes prior output history, input bytes, and
+memory-root identity. Combining the bounded input predicate with the proved
+register and memory dependency sets gives
 \begin{equation}
   G^F_{\tau}(s,e)
   \Longleftrightarrow
-  N_F(s,e)\ \land\
+  N_F(s,e,\tau)\ \land\ B_I(\tau,s)\ \land\
   \forall(a,v)\in L(\tau),\ M_s[a]=v.
   \label{eq:state-graph-region-consumed-input-guard}
 \end{equation}
-The guard keeps the opaque execution-geometry token exact but places no equality
-requirement on the memory root. Memory authority comes only from $L(\tau)$:
-every live-in must match exactly, while all other valid candidate memory is
-preserved or overwritten by verified effects. Candidate checkpoints remain
-individually validated under the same trusted geometry token.
+The guard keeps opaque execution geometry and the entry cursor exact. Memory
+authority comes only from $L(\tau)$, register authority comes only from
+$L_Q(\tau)$, and input authority comes only from $B_I$. Candidate checkpoints
+remain individually validated under the same trusted geometry token.
 
-The executable correspondence verifies a minimum-width \texttt{utO}
-source,
-executes both input steps, records the following halt region, and then changes
-both already-consumed bytes while preserving a third unconsumed byte. Exact
-full-input lineage equality rejects the variant, while $G^F_{\tau}$ admits it
-and
-takes the verified shortcut. Changing the unconsumed third byte must fail the
-same guard.
+The executable correspondence verifies a minimum-width \texttt{utO} region.
+A two-input region accepts candidates whose first two observed bytes agree while
+a later unread byte is changed or absent; changing the second observed byte is a
+guard miss. After those two inputs, the one-step halt region accepts arbitrary
+unobserved tail changes because it performs no input observation. A separate
+EOF-input region rejects a candidate with an available byte and deoptimizes to
+the normative VM. Portable v6 artifact execution repeats the changed-tail
+shortcut and observed-byte deoptimization cases.
 
 \section{Verifier-hoisted rotate and crazy effects}
 

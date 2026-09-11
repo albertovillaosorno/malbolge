@@ -218,14 +218,18 @@ mask_tamper = "fail-closed"
 next_risk = "native-v6-register-mask-admission"
 
 [reduction.region_consumed_input_guard]
-baseline = "full-input-allocation-lineage-guard"
-candidate = "arbitrary-root-consumed-prefix-aware-dependency-guard"
+baseline = "exact-remaining-input-suffix"
+candidate = "bounded-trace-input-observation-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "validated roots with exact geometry/cursor/suffix/non-memory state"
+domain = "validated roots with exact profile/geometry/cursor/termination plus verifier-derived register/input/memory dependencies"
 consumed_prefix = "future-irrelevant"
-remaining_suffix = "exact"
+observed_bytes = "exact-in-trace-order"
+unobserved_tail = "future-irrelevant"
+eof_observation = "requires-exact-exhaustion-at-simulated-cursor"
 memory_root = "unconstrained-except-verified-live-ins"
-rejection_condition = "suffix change or existing dependency-guard mismatch"
+rejection_condition = "observed-byte-or-eof mismatch or existing dependency mismatch"
+portable_authority = "EffectOp.input-v6-existing-field"
+next_risk = "input-cursor-rebasing"
 
 [reduction.verified_transform_hoist]
 baseline = "normative-profile-rotate-and-crazy-recomputation"

@@ -230,13 +230,15 @@ and writes. The candidate takes the shortcut, preserves that base-owned value,
 and matches direct normative execution. Live-in equality, not root identity, is
 therefore the bounded region's memory precondition.
 
-The reduced region guard now consumes the proved profile input-prefix reduction.
-It still requires the same profile, opaque geometry, cursor, remaining input
-suffix, registers, and termination, but no longer constrains memory-root
-identity, prior output history, or
-identity to bytes strictly before that cursor. Input rebinding is independently
-validated through a complete profile checkpoint before the shared-root research
-state is reused; a changed unconsumed suffix remains a guard miss.
+The reduced region guard now strengthens the profile input-prefix reduction to
+bounded input observations. Profile, opaque geometry, entry cursor, termination,
+and register live-ins remain explicit dependencies, but input content is checked
+only against the verified region's ordered `TraceInput` events. Concrete bytes
+advance a simulated cursor; EOF requires exact exhaustion there.
+
+A later unread tail may differ or be absent, while changing an observed byte
+remains a guard miss. Input rebinding is independently validated through a
+complete profile checkpoint before the research state is reused.
 
 The verified effect path also supplies the objective's transform-hoist boundary.
 A theorem-verified `(&<;:9K` region contains both rotate and crazy; after exact
@@ -271,5 +273,6 @@ that same change because A is live-in.
 Portable IR v6 carries the regional live-in mask and one register-write mask per
 effect. Artifact admission reprojects both masks exactly and rejects mask or
 cardinality tampering. V3/v4/v5 identities remain frozen, and existing native
-backends deliberately do not admit v6; host-code emission stays with the native
-backend TODO.
+backends deliberately do not admit v6. Its existing per-effect `TraceInput`
+field supplies bounded input authority without another schema version; host-code
+emission stays with the native backend TODO.

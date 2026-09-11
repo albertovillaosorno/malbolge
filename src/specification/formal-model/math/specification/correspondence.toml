@@ -2597,14 +2597,24 @@ mechanism = "verified-zero-or-one-output-delta-rebased-onto-candidate-history"
 evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rebases_output_history", "tests/function/algorithms/domain/state-graph/a.rs::artifact_shortcut_rebases_output_history"]
 
 [[correspondence]]
+id = "state-graph-region-bounded-input-observation"
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-region-bounded-input-observation"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "verified bounded profile regions with exact entry cursor and trace-owned Byte/EOF input observations"
+mechanism = "trace-input-cursor-simulation-with-unobserved-tail-elision"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_ignores_input_unobserved_by_region", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_requires_only_bounded_input_bytes", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_preserves_verified_eof_observation", "tests/function/algorithms/domain/state-graph/a.rs::artifact_v6_guards_only_bounded_input_observations"]
+
+[[correspondence]]
 id = "state-graph-region-consumed-input-guard"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-region-consumed-input-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "verified regions with exact geometry/cursor/input suffix/registers/termination and arbitrary memory/output histories"
-mechanism = "validated-input-rebinding-plus-consumed-prefix-aware-live-in-guard"
+domain = "verified regions with exact profile/geometry/cursor/termination, verifier-derived register/input/memory dependencies, and arbitrary other histories"
+mechanism = "bounded-input-register-memory-live-in-dependency-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
-evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_drops_only_consumed_input_prefix", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_irrelevant_independent_base_change"]
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_ignores_input_unobserved_by_region", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_requires_only_bounded_input_bytes", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_preserves_verified_eof_observation", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_irrelevant_independent_base_change"]
 
 [[correspondence]]
 id = "state-graph-verified-transform-hoist"

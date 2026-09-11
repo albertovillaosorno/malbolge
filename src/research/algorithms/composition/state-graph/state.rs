@@ -300,12 +300,12 @@ impl IndexedMachineState {
             && self.termination == other.termination
     }
 
-    /// Returns reduced future equality under verifier-derived register
-    /// live-ins.
+    /// Returns reduced future equality excluding bounded input observations.
     ///
-    /// This is identical to [`Self::future_non_memory_eq`] except registers not
-    /// selected by `register_live_ins` are intentionally ignored. Callers must
-    /// pair this guard with verifier-proven per-effect register-write masks.
+    /// Profile, opaque geometry, exact input cursor, selected register
+    /// live-ins, and termination remain guard authority. Input bytes are
+    /// intentionally excluded here and must be checked separately against
+    /// the verifier-owned `TraceInput` sequence before shortcut execution.
     #[must_use]
     pub fn future_non_memory_eq_with_register_live_ins(
         &self,
@@ -315,14 +315,34 @@ impl IndexedMachineState {
         self.geometry == other.geometry
             && ptr::eq(self.profile, other.profile)
             && self.input_cursor == other.input_cursor
-            && self.input.get(self.input_cursor..)
-                == other.input.get(self.input_cursor..)
             && registers_match(
                 self.registers,
                 other.registers,
                 register_live_ins,
             )
             && self.termination == other.termination
+    }
+
+    /// Checks only input observations consumed by one verified bounded region.
+    ///
+    /// `None` performs no input read, `Byte` requires the exact byte at the
+    /// simulated cursor and advances it, and `EndOfInput` requires the cursor
+    /// to equal the candidate input length. Bytes never observed by the region
+    /// are deliberately ignored.
+    #[must_use]
+    pub fn matches_verified_input_sequence<Inputs>(
+        &self,
+        inputs: Inputs,
+    ) -> bool
+    where
+        Inputs: IntoIterator<Item = Option<TraceInput>>,
+    {
+        inputs
+            .into_iter()
+            .try_fold(self.input_cursor, |cursor, input| {
+                verified_input_cursor(&self.input, cursor, input)
+            })
+            .is_some()
     }
 
     /// Materializes one complete validated checkpoint for oracle comparison.
@@ -793,6 +813,23 @@ fn hash_usize(mut hash: u64, value: usize) -> u64 {
         hash = hash_byte(hash, byte);
     }
     hash
+}
+
+fn verified_input_cursor(
+    input: &[u8],
+    cursor: usize,
+    observed: Option<TraceInput>,
+) -> Option<usize> {
+    match observed {
+        None => Some(cursor),
+        Some(TraceInput::Byte(byte))
+            if input.get(cursor).copied() == Some(byte) =>
+        {
+            cursor.checked_add(1)
+        },
+        Some(TraceInput::EndOfInput) if cursor == input.len() => Some(cursor),
+        Some(TraceInput::Byte(_) | TraceInput::EndOfInput) => None,
+    }
 }
 
 const fn registers_match(

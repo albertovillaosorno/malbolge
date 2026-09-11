@@ -469,16 +469,17 @@ interpreted verified-effect application with a real native code artifact while
 retaining the same verifier and deoptimization boundary.
 
 
-The dependency guard now consumes the proved profile input-prefix reduction
-instead of requiring one identical full-input allocation. With canonical
-profile/opaque geometry it compares the committed cursor and
-remaining suffix exactly, together with registers, termination, and the
-existing read-before-write memory live-ins. A validated `utO` state
-changes both
-already-consumed bytes and still takes the verified halt shortcut; changing the
-unconsumed third byte fails the guard. Input replacement itself is revalidated
-through the runtime checkpoint constructor before the shared-root research state
-is admitted.
+The dependency guard now strengthens the earlier consumed-prefix result to a
+bounded input-observation relation. The entry cursor remains exact, but the
+candidate input is checked only against verifier-owned `TraceInput` events
+actually reached by the region. `Byte(b)` requires that byte at the simulated
+cursor and advances it; `EndOfInput` requires exact exhaustion at that point.
+Bytes after the last observed input are unconstrained when no EOF is observed.
+
+A two-input `utO` region therefore accepts a changed or absent later tail while
+rejecting a changed observed byte; the following halt region ignores the tail
+entirely. An EOF mismatch is a guard miss and deoptimizes normatively rather
+than failing during shortcut application.
 
 The invariant-transform objective is now bounded by verifier specialization
 rather than a new arithmetic optimizer. A theorem-verified jump/rotate/crazy
@@ -550,5 +551,8 @@ write mask per effect. The artifact verifier independently reprojects both from
 normative traces; tampered masks and missing per-effect masks fail closed.
 Frozen
 v3/v4 encodings and the separate v5 geometry wrapper remain unchanged, and v6
-is deliberately not admitted by existing native backends yet. Host-code
-integration remains owned by the separate native-backend TODO.
+is deliberately not admitted by existing native backends yet.
+
+The existing per-effect `TraceInput` payload is also sufficient portable
+authority for the bounded input guard, so this reduction does not require a v7
+schema. Host-code integration remains owned by the separate native-backend TODO.

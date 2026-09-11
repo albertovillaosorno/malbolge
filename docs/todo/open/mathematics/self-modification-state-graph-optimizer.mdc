@@ -178,12 +178,12 @@ VM evidence.
   the shortcut preserves it and equals direct normative execution. Thus bounded
   region memory authority is exactly the verifier-derived live-in set, while a
   changed live-in still fails closed.
-- The native-region dependency guard now integrates consumed-input-prefix
-  equivalence. It preserves exact opaque geometry, cursor, remaining suffix,
-  registers, termination, and live-in values while allowing prior output
-  history and memory roots themselves to differ. It also allows
-  already-consumed bytes to differ after validated input rebinding. A
-  changed unconsumed suffix fails closed.
+- The native-region dependency guard now uses bounded input observations instead
+  of exact remaining-suffix equality. Entry cursor stays exact; only verified
+  `TraceInput::Byte` values and EOF observations constrain candidate input.
+  Unobserved tail bytes may differ or be absent, while an observed-byte or EOF
+  mismatch fails the guard and deoptimizes normatively. V6 already carries the
+  required per-effect input evidence, so no new portable schema is needed.
 - Verified region effects now hoist already-proved rotate/crazy results out of
   shortcut execution. A theorem-verified jump/rotate/crazy region contains both
   transforms; exact replay supplies their after-values/deltas, and an

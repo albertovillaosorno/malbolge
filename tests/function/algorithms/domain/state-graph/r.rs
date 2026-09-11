@@ -41,7 +41,7 @@ use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
     ProfileMachineState, ProfileMemoryDelta, ProfileMemoryWrite,
     ProfileRegisterSet, ProfileRegisters, ProfileStepTrace, RunOutcome,
-    StepOutcome, Termination, current_profile,
+    StepOutcome, current_profile,
     verify_minimum_jump_rotate_crazy_halt_profile_width,
     verify_minimum_straight_line_io_profile_width,
 };
@@ -58,7 +58,6 @@ const REJECTING_SOURCE: &[u8] = b"b'";
 const TRANSFORM_SOURCE: &[u8] = b"(&<;:9K";
 const TRANSFORM_BUDGET: usize = 6;
 const INPUT_GUARD_SOURCE: &[u8] = b"utO";
-const INPUT_GUARD_SUFFIX: u8 = 0x33;
 
 type InputGuardRegion =
     Result<(IndexedMachineState, VerifiedExactRegion), String>;
@@ -830,12 +829,9 @@ fn consumed_input_guard_region() -> InputGuardRegion {
         INPUT_GUARD_SOURCE,
     )
     .map_err(|error| format!("input-guard width verification: {error}"))?;
-    let mut machine = ProfileMachine::from_verified_source(&geometry, vec![
-        0x11,
-        0x7a,
-        INPUT_GUARD_SUFFIX,
-    ])
-    .map_err(|error| format!("input-guard load failed: {error}"))?;
+    let mut machine =
+        ProfileMachine::from_verified_source(&geometry, vec![0x11, 0x7a, 0x33])
+            .map_err(|error| format!("input-guard load failed: {error}"))?;
     for _step in 0..2usize {
         let outcome = machine
             .step()
@@ -856,46 +852,145 @@ fn consumed_input_guard_region() -> InputGuardRegion {
     Ok((entry, region))
 }
 
-#[test]
-fn dependency_guard_drops_only_consumed_input_prefix() -> Result<(), String> {
-    let (entry, region) = consumed_input_guard_region()?;
-    let candidate = entry
-        .with_validated_input(vec![0x22, 0x99, INPUT_GUARD_SUFFIX])
-        .map_err(|error| format!("input-guard candidate failed: {error:?}"))?;
-    if entry.exact_non_memory_eq(&candidate) {
-        return Err(String::from(
-            "exact guard ignored replaced consumed input",
-        ));
-    }
-    if !region
-        .accepts_dependency_entry(&candidate)
-        .map_err(|error| format!("input-guard dependency check: {error:?}"))?
-    {
-        return Err(String::from("dependency guard retained consumed prefix"));
-    }
+fn initial_input_guard_region(
+    input: Vec<u8>,
+    budget: usize,
+) -> InputGuardRegion {
+    let geometry = verify_minimum_straight_line_io_profile_width(
+        current_profile(),
+        INPUT_GUARD_SOURCE,
+    )
+    .map_err(|error| format!("bounded-input width verification: {error}"))?;
+    let machine = ProfileMachine::from_verified_source(&geometry, input)
+        .map_err(|error| format!("bounded-input load failed: {error}"))?;
+    let entry = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| format!("bounded-input entry failed: {error:?}"))?;
+    let region = ExactRegionCertificate::record(&entry, budget)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| {
+            format!("bounded-input region verify failed: {error:?}")
+        })?;
+    Ok((entry, region))
+}
+
+fn validate_region_execution_matches_direct(
+    region: &VerifiedExactRegion,
+    candidate: &IndexedMachineState,
+    expected_tier: RegionExecutionTier,
+) -> Result<(), String> {
     let execution = region
-        .execute_or_deopt(&candidate)
-        .map_err(|error| format!("input-guard shortcut failed: {error:?}"))?;
-    let expected = RunOutcome::Terminated {
-        reason: Termination::HaltInstruction,
-        steps: 1,
-    };
-    if execution.tier() != RegionExecutionTier::VerifiedShortcut
-        || execution.outcome() != expected
+        .execute_or_deopt(candidate)
+        .map_err(|error| format!("input execution failed: {error:?}"))?;
+    let mut direct = ProfileMachine::from_snapshot(
+        candidate.materialize_checkpoint().map_err(|error| {
+            format!("input candidate materialize failed: {error:?}")
+        })?,
+    );
+    let direct_outcome = direct
+        .run(region.step_budget())
+        .map_err(|error| format!("input direct run failed: {error}"))?;
+    let observed =
+        execution
+            .state()
+            .materialize_checkpoint()
+            .map_err(|error| {
+                format!("input result materialize failed: {error:?}")
+            })?;
+    if execution.tier() != expected_tier
+        || execution.outcome() != direct_outcome
+        || observed != direct.snapshot_state()
     {
-        return Err(String::from("consumed-prefix candidate did not shortcut"));
-    }
-    let changed_suffix =
-        entry.with_validated_input(vec![0x22, 0x99, 0x44]).map_err(
-            |error| format!("input-guard suffix variant failed: {error:?}"),
-        )?;
-    if region
-        .accepts_dependency_entry(&changed_suffix)
-        .map_err(|error| format!("input-guard suffix check: {error:?}"))?
-    {
-        return Err(String::from(
-            "dependency guard ignored remaining input suffix",
-        ));
+        return Err(String::from("input region diverged from normative VM"));
     }
     Ok(())
+}
+
+#[test]
+fn dependency_guard_ignores_input_unobserved_by_region() -> Result<(), String> {
+    let (entry, region) = consumed_input_guard_region()?;
+    let changed_tail = entry
+        .with_validated_input(vec![0x22, 0x99, 0x44])
+        .map_err(|error| format!("input-tail candidate failed: {error:?}"))?;
+    let absent_tail = entry
+        .with_validated_input(vec![0x22, 0x99])
+        .map_err(|error| format!("input-tail truncation failed: {error:?}"))?;
+    for candidate in [&changed_tail, &absent_tail] {
+        if entry.exact_non_memory_eq(candidate)
+            || !region
+                .accepts_dependency_entry(candidate)
+                .map_err(|error| {
+                    format!("input-tail dependency check failed: {error:?}")
+                })?
+        {
+            return Err(String::from(
+                "no-input region retained unobserved input bytes",
+            ));
+        }
+        validate_region_execution_matches_direct(
+            &region,
+            candidate,
+            RegionExecutionTier::VerifiedShortcut,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn dependency_guard_requires_only_bounded_input_bytes() -> Result<(), String> {
+    let (entry, region) =
+        initial_input_guard_region(vec![0x11, 0x7a, 0x33], 2)?;
+    let changed_tail = entry
+        .with_validated_input(vec![0x11, 0x7a, 0x44])
+        .map_err(|error| format!("bounded tail candidate failed: {error:?}"))?;
+    let absent_tail =
+        entry
+            .with_validated_input(vec![0x11, 0x7a])
+            .map_err(|error| {
+                format!("bounded tail truncation failed: {error:?}")
+            })?;
+    for candidate in [&changed_tail, &absent_tail] {
+        if !region
+            .accepts_dependency_entry(candidate)
+            .map_err(|error| format!("bounded input guard failed: {error:?}"))?
+        {
+            return Err(String::from(
+                "bounded input guard retained unread tail",
+            ));
+        }
+        validate_region_execution_matches_direct(
+            &region,
+            candidate,
+            RegionExecutionTier::VerifiedShortcut,
+        )?;
+    }
+    let changed_observed =
+        entry.with_validated_input(vec![0x11, 0x55, 0x44]).map_err(
+            |error| format!("observed input candidate failed: {error:?}"),
+        )?;
+    if region
+        .accepts_dependency_entry(&changed_observed)
+        .map_err(|error| format!("observed input guard failed: {error:?}"))?
+    {
+        return Err(String::from("bounded input guard ignored observed byte"));
+    }
+    Ok(())
+}
+
+#[test]
+fn dependency_guard_preserves_verified_eof_observation() -> Result<(), String> {
+    let (entry, region) = one_step_region(b"uP", Vec::new())?;
+    let byte_available = entry
+        .with_validated_input(vec![0x41])
+        .map_err(|error| format!("EOF candidate failed: {error:?}"))?;
+    if region
+        .accepts_dependency_entry(&byte_available)
+        .map_err(|error| format!("EOF dependency guard failed: {error:?}"))?
+    {
+        return Err(String::from("EOF guard accepted available input byte"));
+    }
+    validate_region_execution_matches_direct(
+        &region,
+        &byte_available,
+        RegionExecutionTier::InterpreterFallback,
+    )
 }

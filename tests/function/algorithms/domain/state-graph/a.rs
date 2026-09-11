@@ -43,6 +43,7 @@ use malbolge::{
 use crate::indexed_state::IndexedMachineState;
 use crate::region_artifact::{
     RegionArtifactVerificationError, UntrustedRegionArtifact,
+    VerifiedRegionArtifact,
 };
 use crate::region_certificate::{
     ExactRegionCertificate, RegionExecutionTier, VerifiedExactRegion,
@@ -244,6 +245,79 @@ fn artifact_shortcut_rebases_output_history() -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn validate_artifact_input_candidate(
+    artifact: &VerifiedRegionArtifact,
+    region: &VerifiedExactRegion,
+    candidate: &IndexedMachineState,
+    expected_tier: RegionExecutionTier,
+) -> Result<(), String> {
+    let result = artifact.execute_or_deopt(candidate).map_err(|error| {
+        format!("artifact input execution failed: {error:?}")
+    })?;
+    let mut direct = ProfileMachine::from_snapshot(
+        candidate.materialize_checkpoint().map_err(|error| {
+            format!("artifact input checkpoint failed: {error:?}")
+        })?,
+    );
+    let direct_outcome = direct
+        .run(region.step_budget())
+        .map_err(|error| format!("artifact input direct failed: {error}"))?;
+    let actual = result
+        .state()
+        .materialize_checkpoint()
+        .map_err(|error| format!("artifact input result failed: {error:?}"))?;
+    if result.tier() != expected_tier
+        || result.outcome() != direct_outcome
+        || actual != direct.snapshot_state()
+    {
+        return Err(String::from("artifact input path diverged from VM"));
+    }
+    Ok(())
+}
+
+#[test]
+fn artifact_v6_guards_only_bounded_input_observations() -> Result<(), String> {
+    let geometry = verify_minimum_straight_line_io_profile_width(
+        current_profile(),
+        b"utO",
+    )
+    .map_err(|error| format!("artifact input geometry failed: {error}"))?;
+    let machine =
+        ProfileMachine::from_verified_source(&geometry, vec![0x11, 0x7a, 0x33])
+            .map_err(|error| format!("artifact input load failed: {error}"))?;
+    let entry = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| format!("artifact input entry failed: {error:?}"))?;
+    let region = ExactRegionCertificate::record(&entry, 2)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| format!("artifact input region failed: {error:?}"))?;
+    let artifact = UntrustedRegionArtifact::from_verified_region(&region)
+        .verify_against(&region)
+        .map_err(|error| {
+            format!("artifact input admission failed: {error:?}")
+        })?;
+
+    let changed_tail = entry
+        .with_validated_input(vec![0x11, 0x7a, 0x44])
+        .map_err(|error| format!("artifact input tail failed: {error:?}"))?;
+    validate_artifact_input_candidate(
+        &artifact,
+        &region,
+        &changed_tail,
+        RegionExecutionTier::VerifiedShortcut,
+    )?;
+
+    let changed_observed =
+        entry.with_validated_input(vec![0x11, 0x55, 0x44]).map_err(
+            |error| format!("artifact observed input failed: {error:?}"),
+        )?;
+    validate_artifact_input_candidate(
+        &artifact,
+        &region,
+        &changed_observed,
+        RegionExecutionTier::InterpreterFallback,
+    )
 }
 
 fn check_v6_identity(source: &UntrustedRegionArtifact) -> Result<(), String> {

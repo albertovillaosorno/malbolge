@@ -275,6 +275,8 @@ impl VerifiedExactRegion {
         if !self.entry.future_non_memory_eq_with_register_live_ins(
             candidate,
             self.register_dependencies,
+        ) || !candidate.matches_verified_input_sequence(
+            self.traces.iter().map(|trace| trace.input),
         ) {
             return Ok(false);
         }
