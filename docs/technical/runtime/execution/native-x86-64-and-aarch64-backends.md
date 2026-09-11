@@ -245,8 +245,11 @@ coverage admits one executable semantic step.
 
 A separate loaded owner maps the complete admitted plan transactionally, retains
 exact mapped weight, and releases mappings in reverse while preserving aggregate
-retry ownership. Runner execution and buffer mutation remain outside this loaded
-boundary.
+retry ownership. A dedicated loaded-sequence execution boundary calls only the
+non-graphical runner through retained owners and performs no adapter work.
+Applied or guard-miss outcomes carry exact progress, while current-step failure
+retains indexed evidence and rolls back through the owner contract. Explicit
+release remains separate.
 
 The native call-frame ABI now has a format-neutral Rust authority in
 `native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used

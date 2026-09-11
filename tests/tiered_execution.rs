@@ -298,6 +298,8 @@ use execution_native::{
     RegisterMaskedNonGraphicalNativeResidentLease,
     RegisterMaskedNonGraphicalNativeResidentLeaseCache,
     RegisterMaskedNonGraphicalNativeRunner,
+    RegisterMaskedNonGraphicalNativeSequenceExecutionFailure,
+    RegisterMaskedNonGraphicalNativeSequenceOutcome,
     RegisterMaskedNonGraphicalNativeSequencePlan,
     RegisterMaskedNonGraphicalNativeSequencePlanError,
     StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
@@ -330,6 +332,7 @@ use execution_native::{
     emit_direct_register_masked_non_graphical_coff, emit_direct_rotate_coff,
     execute_cached_verified_native_sequence,
     execute_loaded_cached_verified_native_sequence,
+    execute_loaded_register_masked_non_graphical_native_sequence,
     execute_loaded_verified_execution_geometry_native,
     execute_loaded_verified_execution_geometry_sequence,
     execute_loaded_verified_native_sequence,
@@ -7789,6 +7792,33 @@ fn register_masked_v6_non_graphical_sequence_plan_rejects_identity_drift()
     }
 }
 
+fn assert_non_graphical_sequence_runner_failure(
+    failure: &RegisterMaskedNonGraphicalNativeSequenceExecutionFailure<
+        FakeNativeRunnerError,
+    >,
+    entry: ProfileMachineObservation,
+    memory_unchanged: bool,
+    residency_unchanged: bool,
+) -> TieredTestResult {
+    if failure.completed_steps() == 0
+        && failure.step_index() == 0
+        && failure.resume_index() == 0
+        && failure.observation() == entry
+        && matches!(
+            failure.execution_failure(),
+            RegisterMaskedNonGraphicalNativeOwnerExecutionFailure::Execution(_)
+        )
+        && memory_unchanged
+        && residency_unchanged
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical sequence runner rollback drifted",
+        ))
+    }
+}
+
 fn register_masked_non_graphical_loaded_sequence_fixture()
 -> Result<NonGraphicalLoadedSequenceFixture, String> {
     let program = canonical_register_masked_non_graphical_program()?;
@@ -7925,6 +7955,176 @@ fn register_masked_v6_non_graphical_sequence_release_failure_retries()
             "v6 non-graphical sequence release retry count drifted",
         ))
     }
+}
+
+#[test]
+fn register_masked_v6_non_graphical_sequence_executes_rebased_terminal()
+-> TieredTestResult {
+    let (plan, program) =
+        register_masked_non_graphical_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(187)?,
+        native_executable_address(0x18700)?,
+    );
+    let loaded =
+        load_register_masked_non_graphical_native_sequence(&plan, &mut adapter)
+            .map_err(|error| {
+                format!("v6 non-graphical execute load: {error}")
+            })?;
+    let loaded_operations = adapter.operations.clone();
+    let mut entry = plan.entry();
+    entry.registers.accumulator = 131;
+    entry.registers.data_pointer = 141;
+    entry.input_consumed = 1;
+    entry.output_len = 1;
+    let input = [1u8, 2];
+    let mut output = [9u8, 8];
+    let mut memory = register_masked_program_memory(&program)?;
+    let mut runner = FakeRegisterMaskedNonGraphicalNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_register_masked_non_graphical_native_sequence(
+        &loaded,
+        &mut runner,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 non-graphical sequence execute: {error}"))?;
+    let expected = ProfileMachineObservation {
+        termination: Some(Termination::NonGraphicalCell),
+        ..entry
+    };
+    if outcome
+        != (RegisterMaskedNonGraphicalNativeSequenceOutcome::Applied {
+            observation: expected,
+            steps: 1,
+        })
+        || outcome.completed_steps() != 1
+        || outcome.resume_index() != 1
+        || outcome.observation() != expected
+        || runner.calls != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 non-graphical sequence applied outcome drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 non-graphical execute release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_non_graphical_sequence_guard_miss_is_atomic()
+-> TieredTestResult {
+    let (plan, program) =
+        register_masked_non_graphical_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(188)?,
+        native_executable_address(0x18800)?,
+    );
+    let loaded =
+        load_register_masked_non_graphical_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("v6 non-graphical guard load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let mut entry = plan.entry();
+    entry.registers.accumulator = 151;
+    entry.registers.data_pointer = 161;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let mut runner = FakeRegisterMaskedNonGraphicalNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let outcome = execute_loaded_register_masked_non_graphical_native_sequence(
+        &loaded,
+        &mut runner,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 non-graphical guard execute: {error}"))?;
+    if outcome
+        != (RegisterMaskedNonGraphicalNativeSequenceOutcome::GuardMiss {
+            index: 0,
+            observation: entry,
+        })
+        || outcome.completed_steps() != 0
+        || outcome.resume_index() != 0
+        || memory != entry_memory
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 non-graphical sequence guard-miss boundary drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 non-graphical guard release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_non_graphical_sequence_runner_failure_reuses_mapping()
+-> TieredTestResult {
+    let (plan, program) =
+        register_masked_non_graphical_loaded_sequence_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(189)?,
+        native_executable_address(0x18900)?,
+    );
+    let loaded =
+        load_register_masked_non_graphical_native_sequence(&plan, &mut adapter)
+            .map_err(|error| format!("sequence reusable load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let mut entry = plan.entry();
+    entry.registers.accumulator = 171;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let mut failing = FakeRegisterMaskedNonGraphicalNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) =
+        execute_loaded_register_masked_non_graphical_native_sequence(
+            &loaded,
+            &mut failing,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+    else {
+        return Err(String::from(
+            "v6 non-graphical sequence runner failure was ignored",
+        ));
+    };
+    assert_non_graphical_sequence_runner_failure(
+        failure.as_ref(),
+        entry,
+        memory == entry_memory,
+        adapter.operations == loaded_operations,
+    )?;
+    let mut succeeding = FakeRegisterMaskedNonGraphicalNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    let outcome = execute_loaded_register_masked_non_graphical_native_sequence(
+        &loaded,
+        &mut succeeding,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 non-graphical reusable execute: {error}"))?;
+    if !matches!(
+        outcome,
+        RegisterMaskedNonGraphicalNativeSequenceOutcome::Applied { .. }
+    ) || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "v6 non-graphical sequence remapped after runner failure",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 non-graphical reusable release: {error}"))
 }
 
 #[test]

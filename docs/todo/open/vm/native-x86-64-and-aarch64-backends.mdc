@@ -133,7 +133,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Current terminal coverage admits one executable semantic step. A separate
   loaded owner maps the complete plan only after all owner loads succeed, keeps
   exact mapped-weight evidence, and releases in reverse with aggregate retry.
-  Runner execution and buffer mutation remain absent.
+
+  A dedicated loaded-sequence executor now calls only the non-graphical runner
+  through retained owners without adapter work. Applied/GuardMiss and indexed
+  failure evidence preserve exact progress; current-step failure rolls back and
+  leaves the loaded mapping reusable. Explicit release remains separate.
 
   Native ABI revision 1 now has one format-neutral Rust `repr(C)` call frame.
   Its tested 80-byte size and field offsets match both reviewed encoder

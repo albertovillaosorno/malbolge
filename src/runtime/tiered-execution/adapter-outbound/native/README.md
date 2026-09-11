@@ -250,7 +250,12 @@ non-graphical terminal coverage therefore admits one executable semantic step.
 
 A separate loaded owner maps every admitted step only after complete success,
 reports exact mapped weight, and releases in reverse with aggregate retry
-ownership. Runner execution and buffer mutation remain absent.
+ownership. `execute_loaded_register_masked_non_graphical_native_sequence()`
+runs those retained mappings in semantic order only through the dedicated
+non-graphical runner. Applied and guard-miss outcomes retain exact progress;
+current-step failure restores through the owner contract and leaves the mapping
+reusable. Loading and release remain explicit adapter operations outside
+execution.
 
 `VerifiedRegisterMaskedLoadImage` now extracts that verified object as a
 relocation-free, ISA-aligned image under the shared strict W^X policy without
