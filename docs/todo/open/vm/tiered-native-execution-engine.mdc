@@ -663,6 +663,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   with immutable `Arc` leases. Exact hits do not remap, different identity
   cannot replace implicitly, live leases block release, and cleanup failure
   transfers exact ready-executable retry ownership.
+- `RegisterMaskedNativeLeaseCache` adds fixed weighted multi-entry v6 residency.
+  Exact hits preserve FIFO age without adapter work; misses load before capacity
+  processing, unleased oldest residents release, and leased victims retire while
+  retaining exact entry/mapping/byte usage. Blocked candidates clean up, exact
+  invalidation/full drain preserve live leases, and reconciliation or keyed
+  retry owns every deferred/failed release. Dynamic limit reconfiguration,
+  durable storage, and cross-process leasing remain outside this slice.
 - `RegisterMaskedNativeSequencePlan` now validates the complete ordered v6 chain
   before mapping: count/shape, canonical profile, observation continuity,
   common target, exact artifact identity, and no terminal prefix. Full load
@@ -671,9 +678,9 @@ baseline; native tiers are accelerators of identical observable behavior.
   retryable.
   Halt-fetch is still the only admitted v6 template, so current valid sequences
   are one terminal step and a second halt is rejected rather than batched.
-- V6 still lacks multi-entry resident/eviction policy and wider mask-aware
-  template coverage. Those are the next slices; v6-to-v3/v4 projection remains
-  forbidden.
+- V6 still lacks wider mask-aware template coverage; that is the next semantic
+  slice. Dynamic resident-limit reconfiguration remains a separate cache-policy
+  extension, and v6-to-v3/v4 projection remains forbidden.
 - Remaining fused-region emission plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and

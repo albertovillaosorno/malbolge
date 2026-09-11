@@ -13,7 +13,8 @@
 // - Must-Not:
 //   - Load, release, invoke, or retain executable mapping ownership.
 // - Allows:
-//   - Inputs: ready executable sequences and caller-selected positive limits.
+//   - Inputs: ready executable sequences, exact resident weights, and
+//     caller-selected positive limits.
 //   - Outputs: exact weights, usage snapshots, and capacity rejection evidence.
 //   - Side effects: none.
 // - Split-When:
@@ -31,7 +32,7 @@
 //   - Entry count is bounded; mapping and byte limits are optional.
 //
 
-//! Weighted capacity values for loaded executable sequence caches.
+//! Weighted capacity values shared by loaded executable resident caches.
 
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::NonZeroUsize;
@@ -191,6 +192,13 @@ impl NativeExecutableSequenceCacheLimits {
 }
 
 impl NativeExecutableSequenceWeight {
+    pub(super) const fn from_parts(
+        mapped_bytes: usize,
+        mappings: usize,
+    ) -> Self {
+        Self { mapped_bytes, mappings }
+    }
+
     pub(super) fn from_sequence(
         sequence: &ReadyNativeExecutableSequence,
     ) -> Result<Self, NativeExecutableSequenceCacheCapacityError> {

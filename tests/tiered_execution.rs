@@ -267,7 +267,8 @@ use execution_native::{
     ReadyExecutionGeometryNativeExecutableSequence, ReadyNativeExecutable,
     ReadyNativeExecutableSequence, ReadyRegisterMaskedNativeExecutable,
     RegisterMaskedDirectAdmissionErrorKind,
-    RegisterMaskedNativeExecutableOwner,
+    RegisterMaskedNativeExecutableOwner, RegisterMaskedNativeLeaseCache,
+    RegisterMaskedNativeLeaseCacheInvalidation,
     RegisterMaskedNativeOwnerExecutionFailure,
     RegisterMaskedNativeOwnerLoadFailure,
     RegisterMaskedNativeResidentCacheAcquireFailure,
@@ -770,6 +771,11 @@ struct RegisterMaskedSequencePlanFixture {
     plan: RegisterMaskedNativeSequencePlan,
     program: RegisterMaskedRegionEffectProgram,
 }
+
+type RegisterMaskedHaltVariant = (
+    RegisterMaskedRegionEffectProgram,
+    VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+);
 
 struct NativeHandoffFixture {
     continuation: NativeInterpreterContinuation,
@@ -1990,6 +1996,21 @@ fn register_masked_owner_fixture(
     )
     .map_err(|error| format!("v6 owner fixture load failed: {error}"))?;
     Ok(RegisterMaskedOwnerFixture { adapter, owner, program })
+}
+
+fn register_masked_halt_variant(
+    accumulator_delta: u32,
+) -> Result<RegisterMaskedHaltVariant, String> {
+    let mut program = canonical_register_masked_halt_program()?;
+    let effect = program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 variant has no effect"))?;
+    effect.before.registers.accumulator ^= accumulator_delta;
+    effect.after.registers.accumulator ^= accumulator_delta;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    Ok((program, artifact))
 }
 
 fn register_masked_sequence_plan_fixture()
@@ -4037,6 +4058,374 @@ fn register_masked_v6_resident_cache_load_failure_publishes_nothing()
         return Err(String::from("v6 failed load published partial residency"));
     }
     Ok(())
+}
+
+#[test]
+fn register_masked_v6_multi_cache_hits_without_remap() -> TieredTestResult {
+    let (program, artifact) = register_masked_halt_variant(1)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(152)?,
+        native_executable_address(0x15200)?,
+    );
+    let mut cache = RegisterMaskedNativeLeaseCache::new(
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero capacity"))?,
+    );
+    let first = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 multi-cache insert failed: {error}"))?;
+    if first.disposition().is_hit() {
+        return Err(String::from("v6 multi-cache first insert reported hit"));
+    }
+    let first_lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let second = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 multi-cache hit failed: {error}"))?;
+    let second_is_hit = second.disposition().is_hit();
+    let second_lease = second.into_lease();
+    if !second_is_hit
+        || !first_lease.shares_resident_with(&second_lease)
+        || cache.active_len() != 1
+        || cache.resident_len() != 1
+        || cache.usage().entries() != 1
+        || cache.usage().mappings() != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 multi-cache hit or usage drifted"));
+    }
+    drop((first_lease, second_lease));
+    let cleanup = cache.release_all(&mut adapter).map_err(|error| {
+        format!("v6 multi-cache hit cleanup failed: {error}")
+    })?;
+    if !cleanup.retained_keys().is_empty() {
+        return Err(String::from("v6 multi-cache hit cleanup retained keys"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_multi_cache_rejects_same_key_evidence_drift()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_halt_variant(11)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(162)?,
+        native_executable_address(0x16200)?,
+    );
+    let mut cache = RegisterMaskedNativeLeaseCache::new(
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero capacity"))?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &program, &artifact)
+            .map_err(|error| format!("v6 same-key seed failed: {error}"))?,
+    );
+    let loaded_operations = adapter.operations.clone();
+    let mut drifted_program = program;
+    let effect = drifted_program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 same-key drift has no effect"))?;
+    effect.before.registers.accumulator ^= 1;
+    effect.after.registers.accumulator ^= 1;
+    let Err(error) = cache.ensure(&mut adapter, &drifted_program, &artifact)
+    else {
+        return Err(String::from("v6 same-key evidence drift was admitted"));
+    };
+    if !matches!(
+        error.load_failure(),
+        Some(RegisterMaskedNativeOwnerLoadFailure::ArtifactIdentity)
+    ) || cache.active_len() != 1
+        || cache.resident_len() != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 same-key rejection changed residency"));
+    }
+    let cleanup = cache
+        .release_all(&mut adapter)
+        .map_err(|failure| format!("v6 same-key cleanup failed: {failure}"))?;
+    if cleanup.retained_keys().is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("v6 same-key cleanup retained keys"))
+    }
+}
+
+#[test]
+fn register_masked_v6_multi_cache_release_all_keeps_live_resident()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_halt_variant(12)?;
+    let key = artifact.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(163)?,
+        native_executable_address(0x16300)?,
+    );
+    let mut cache = RegisterMaskedNativeLeaseCache::new(
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero capacity"))?,
+    );
+    let acquisition = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 release-all seed failed: {error}"))?;
+    let lease = acquisition.into_lease();
+    let drained = cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 release-all pass failed: {error}"))?;
+    if drained.released_keys().is_empty()
+        && drained.retained_keys() == [key.clone()]
+        && cache.active_len() == 0
+        && cache.retired_len() == 1
+        && cache.usage().entries() == 1
+        && adapter.release_attempts == 0
+    {
+        let returned =
+            cache.return_lease(&mut adapter, lease).map_err(|error| {
+                format!("v6 release-all return failed: {error}")
+            })?;
+        if returned.released_keys() == [key]
+            && returned.retained_keys().is_empty()
+            && cache.is_empty()
+            && cache.usage().entries() == 0
+            && adapter.release_attempts == 1
+        {
+            return Ok(());
+        }
+    }
+    Err(String::from("v6 release-all live residency drifted"))
+}
+
+#[test]
+fn register_masked_v6_multi_cache_evicts_unleased_fifo() -> TieredTestResult {
+    let (program_a, artifact_a) = register_masked_halt_variant(2)?;
+    let (program_b, artifact_b) = register_masked_halt_variant(3)?;
+    let (program_c, artifact_c) = register_masked_halt_variant(4)?;
+    let key_a = artifact_a.key().clone();
+    let key_b = artifact_b.key().clone();
+    let key_c = artifact_c.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(153)?,
+        native_executable_address(0x15300)?,
+    );
+    let mut cache = RegisterMaskedNativeLeaseCache::new(
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero capacity"))?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &program_a, &artifact_a)
+            .map_err(|error| {
+                format!("v6 multi-cache A insert failed: {error}")
+            })?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &program_b, &artifact_b)
+            .map_err(|error| {
+                format!("v6 multi-cache B insert failed: {error}")
+            })?,
+    );
+    let third = cache
+        .ensure(&mut adapter, &program_c, &artifact_c)
+        .map_err(|error| format!("v6 multi-cache C insert failed: {error}"))?;
+    let disposition = third.disposition();
+    if disposition.evicted_keys() != [key_a]
+        || !disposition.retired_keys().is_empty()
+        || cache.keys().cloned().collect::<Vec<_>>() != [key_b, key_c]
+        || cache.usage().entries() != 2
+        || cache.usage().mappings() != 2
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 multi-cache FIFO eviction drifted"));
+    }
+    drop(third);
+    let cleanup = cache.release_all(&mut adapter).map_err(|error| {
+        format!("v6 multi-cache FIFO cleanup failed: {error}")
+    })?;
+    if !cleanup.retained_keys().is_empty() {
+        return Err(String::from("v6 multi-cache FIFO cleanup retained keys"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_multi_cache_live_retirement_blocks_capacity()
+-> TieredTestResult {
+    let (program_a, artifact_a) = register_masked_halt_variant(5)?;
+    let (program_b, artifact_b) = register_masked_halt_variant(6)?;
+    let key_a = artifact_a.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(156)?,
+        native_executable_address(0x15600)?,
+    );
+    let mut cache = RegisterMaskedNativeLeaseCache::new(
+        NonZeroUsize::new(1).ok_or_else(|| String::from("zero capacity"))?,
+    );
+    let first = cache
+        .ensure(&mut adapter, &program_a, &artifact_a)
+        .map_err(|error| format!("v6 live resident insert failed: {error}"))?;
+    let lease = first.into_lease();
+    let Err(blocked) = cache.ensure(&mut adapter, &program_b, &artifact_b)
+    else {
+        return Err(String::from("v6 live resident failed to block capacity"));
+    };
+    let block = blocked
+        .block()
+        .ok_or_else(|| String::from("v6 lease blockage lost block evidence"))?;
+    if blocked.evicted_keys() != [key_a.clone()]
+        || blocked.retired_keys() != [key_a.clone()]
+        || block.retired_keys() != [key_a.clone()]
+        || block.usage().entries() != 1
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 lease blockage accounting drifted"));
+    }
+    let reconciled = cache
+        .return_lease(&mut adapter, lease)
+        .map_err(|error| format!("v6 lease return failed: {error}"))?;
+    if reconciled.released_keys() != [key_a]
+        || !reconciled.retained_keys().is_empty()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 retired lease reconciliation drifted"));
+    }
+    let second = cache
+        .ensure(&mut adapter, &program_b, &artifact_b)
+        .map_err(|error| format!("v6 insert after return failed: {error}"))?;
+    drop(second);
+    let cleanup = cache
+        .release_all(&mut adapter)
+        .map_err(|error| format!("v6 post-return cleanup failed: {error}"))?;
+    if !cleanup.retained_keys().is_empty() {
+        return Err(String::from("v6 post-return cleanup retained keys"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_multi_cache_rejects_oversize_mapping() -> TieredTestResult
+{
+    let (program, artifact) = register_masked_halt_variant(7)?;
+    let mapped_len = 4096;
+    let byte_limit = NonZeroUsize::new(1024)
+        .ok_or_else(|| String::from("zero byte limit"))?;
+    let limits = NativeExecutableSequenceCacheLimits::new(
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero capacity"))?,
+    )
+    .with_mapped_byte_limit(byte_limit);
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(158)?,
+        native_executable_address(0x15800)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let mut cache = RegisterMaskedNativeLeaseCache::with_limits(limits);
+    let Err(error) = cache.ensure(&mut adapter, &program, &artifact) else {
+        return Err(String::from("v6 oversize mapping entered cache"));
+    };
+    if error.capacity_error()
+        != Some(NativeExecutableSequenceCacheCapacityError::MappedBytes {
+            required: mapped_len,
+            limit: byte_limit,
+        })
+        || error.candidate_cleanup_failure().is_some()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 oversize cleanup evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_multi_cache_eviction_failure_transfers_retry()
+-> TieredTestResult {
+    let (program_a, artifact_a) = register_masked_halt_variant(8)?;
+    let (program_b, artifact_b) = register_masked_halt_variant(9)?;
+    let key_a = artifact_a.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(159)?,
+        native_executable_address(0x15900)?,
+    )
+    .with_release_failure_at(1);
+    let mut cache = RegisterMaskedNativeLeaseCache::new(
+        NonZeroUsize::new(1).ok_or_else(|| String::from("zero capacity"))?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &program_a, &artifact_a)
+            .map_err(|error| {
+                format!("v6 retry resident insert failed: {error}")
+            })?,
+    );
+    let Err(error) = cache.ensure(&mut adapter, &program_b, &artifact_b) else {
+        return Err(String::from("v6 eviction release failure was ignored"));
+    };
+    if error.evicted_keys() != [key_a.clone()]
+        || error.release_failure().is_none()
+        || error.candidate_cleanup_failure().is_some()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from("v6 eviction failure ownership drifted"));
+    }
+    let releases = error.into_release_failures();
+    if releases.eviction_failure().is_none()
+        || releases.candidate_failure().is_some()
+    {
+        return Err(String::from("v6 keyed eviction retry split drifted"));
+    }
+    let retry = releases
+        .retry(&mut adapter)
+        .map_err(|failure| format!("v6 eviction retry failed: {failure}"))?;
+    if retry.released_keys() != [key_a] || adapter.release_attempts != 3 {
+        return Err(String::from("v6 eviction retry result drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_multi_cache_invalidation_waits_for_lease()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_halt_variant(10)?;
+    let key = artifact.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(161)?,
+        native_executable_address(0x16100)?,
+    );
+    let mut cache = RegisterMaskedNativeLeaseCache::new(
+        NonZeroUsize::new(2).ok_or_else(|| String::from("zero capacity"))?,
+    );
+    let acquisition = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 invalidation seed failed: {error}"))?;
+    let lease = acquisition.into_lease();
+    let invalidation =
+        cache.invalidate_key(&mut adapter, &key).map_err(|error| {
+            format!("v6 invalidation failed: {}", error.failure())
+        })?;
+    if invalidation
+        != (RegisterMaskedNativeLeaseCacheInvalidation::Retired { leases: 1 })
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("v6 leased invalidation drifted"));
+    }
+    let reconciled = cache
+        .return_lease(&mut adapter, lease)
+        .map_err(|error| format!("v6 invalidation return failed: {error}"))?;
+    if reconciled.released_keys() == [key]
+        && cache.is_empty()
+        && adapter.release_attempts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 invalidation reconciliation drifted"))
+    }
 }
 
 #[test]

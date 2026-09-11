@@ -51,6 +51,7 @@ mod lifecycle;
 mod loader;
 mod platform;
 mod profile_metadata;
+mod register_masked_lease_cache;
 mod register_masked_resident;
 mod register_masked_sequence;
 mod runner;
@@ -293,6 +294,24 @@ pub use platform::{
     load_register_masked_native_executable,
     release_execution_geometry_native_executable, release_native_executable,
     release_register_masked_native_executable,
+};
+pub use register_masked_lease_cache::{
+    RegisterMaskedNativeLease, RegisterMaskedNativeLeaseCache,
+    RegisterMaskedNativeLeaseCacheAcquisition,
+    RegisterMaskedNativeLeaseCacheBlock,
+    RegisterMaskedNativeLeaseCacheCapacityError,
+    RegisterMaskedNativeLeaseCacheDisposition,
+    RegisterMaskedNativeLeaseCacheEntryReleaseFailure,
+    RegisterMaskedNativeLeaseCacheInvalidation,
+    RegisterMaskedNativeLeaseCacheInvalidationResult,
+    RegisterMaskedNativeLeaseCacheLimits,
+    RegisterMaskedNativeLeaseCacheLoadFailure,
+    RegisterMaskedNativeLeaseCacheLoadReleaseFailures,
+    RegisterMaskedNativeLeaseCacheLoadResult,
+    RegisterMaskedNativeLeaseCacheReconciliation,
+    RegisterMaskedNativeLeaseCacheReconciliationResult,
+    RegisterMaskedNativeLeaseCacheReleaseFailure,
+    RegisterMaskedNativeLeaseCacheUsage,
 };
 pub use register_masked_resident::{
     RegisterMaskedNativeExecutableOwner,

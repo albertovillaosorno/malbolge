@@ -21,8 +21,8 @@
 //   - cleanup ownership.
 //   - Side effects: executable load/release only through the supplied adapter.
 // - Split-When:
-//   - Multi-entry policy, v6 sequences, or durable/cross-process ownership
-//     lands.
+//   - Durable/cross-process ownership or a general v6 executable store gains
+//     independent lifecycle policy.
 // - Merge-When:
 //   - One general mask-aware executable store subsumes single-resident reuse.
 // - Summary:

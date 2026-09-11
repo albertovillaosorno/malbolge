@@ -2028,6 +2028,23 @@ identity is rejected without replacement, and live leases block release.
 Cleanup failure removes cache authority and transfers the exact ready executable
 for retry.
 
+`RegisterMaskedNativeLeaseCache` now owns the first fixed weighted multi-entry
+v6 resident policy. Active residents retain exact program, artifact, key,
+mapping, and mapped-byte weight under FIFO lookup authority. Hits clone the same
+`Arc`
+without refreshing age or touching the adapter. Misses load completely before
+capacity processing; oldest unleased residents release, while live leased
+victims retire without reducing resident usage.
+
+Entry, mapping, and mapped-byte limits share the existing overflow-safe capacity
+arithmetic. If retired weight blocks a miss, the loaded candidate is released
+and the failure exposes exact evicted/retired keys, limits, and usage. Exact
+invalidation and full drain retire live leases, explicit lease return or
+reconciliation releases newly unleased residents, and release failures leave
+cache authority while retaining keyed ready-executable ownership for retry.
+Fixed limits are immutable for this slice; dynamic v6 limit reconfiguration,
+durable storage, and cross-process leasing remain separate policy boundaries.
+
 `RegisterMaskedNativeSequencePlan` now admits complete v6 sequence topology
 before executable-memory work. Program/artifact count, one-effect v6 shape,
 canonical profile identity, adjacent observations, common native target, exact
@@ -2043,9 +2060,9 @@ semantic template, so every currently valid sequence is one terminal step and a
 second halt is rejected as `TerminationBeforeEnd`; this boundary does not claim
 multistep guest execution before a nonterminal v6 template exists.
 
-Multi-entry resident/eviction policy and broader register-masked template
-coverage remain open. Those are separate reviewed boundaries; unsupported v6
-execution remains fail-closed.
+Broader register-masked template coverage remains open. Dynamic resident-limit
+reconfiguration is a separate cache-policy extension; unsupported v6 execution
+remains fail-closed.
 
 Combined-region emission, native-retry orchestration beyond bounded
 process-local cached cycles, asynchronous/product scheduling, executable-memory

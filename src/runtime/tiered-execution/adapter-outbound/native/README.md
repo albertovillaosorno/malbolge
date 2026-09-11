@@ -224,6 +224,18 @@ slot with immutable `Arc` leases. Exact hits do not remap, a different identity
 cannot replace the resident implicitly, live leases block release, and cleanup
 failure transfers the exact ready executable for retry.
 
+`RegisterMaskedNativeLeaseCache` adds fixed-limit multi-entry v6 residency
+without weakening that exact ownership. Active lookup is FIFO and exact hits
+preserve age without adapter work. Entry, mapping, and mapped-byte limits use
+admitted mapping reports; oldest unleased residents release immediately, while
+leased victims retire and keep their exact weight charged until explicit return
+or reconciliation.
+
+A blocked miss cleans its loaded candidate, invalidation and full drain preserve
+live leases, and failed eviction/reconciliation release transfers keyed
+ready-executable ownership for exact retry. Dynamic limit reconfiguration,
+durable storage, and cross-process leases remain outside.
+
 `RegisterMaskedNativeSequencePlan` now validates the complete ordered v6 chain
 before mapping: non-empty/count exactness and one-effect v6 shape; canonical
 profile continuity, exact trace observation chaining, common native target,
@@ -233,8 +245,8 @@ all owners only after every mapping succeeds; loaded execution reports exact
 Applied/GuardMiss/failure progress and explicit reverse release retains retry
 ownership. Because halt-fetch is still the only admitted v6 template, every
 currently executable plan has one terminal step; two halts are rejected as a
-terminated prefix rather than treated as an artificial batch. Multi-entry
-resident policy and wider mask-aware templates remain outside this boundary.
+terminated prefix rather than treated as an artificial batch. Wider mask-aware
+templates remain outside this sequence boundary.
 
 The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while
