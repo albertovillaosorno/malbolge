@@ -556,6 +556,35 @@ impl VerifiedRegisterMaskedHaltFetchNativeObjectArtifact {
     }
 }
 
+/// Verified v6 non-graphical object with reduced register/history guards.
+///
+/// This value is intentionally separate from the loadable halt-fetch wrapper so
+/// semantic object verification cannot grant executable-memory authority.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact {
+    pub(super) artifact: StructurallyAdmittedNativeObjectArtifact,
+}
+
+impl VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact {
+    /// Returns the complete v6 native artifact key.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.artifact.key()
+    }
+
+    /// Returns the exact independently verified COFF bytes.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the exact Windows target triple bound into this artifact.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+}
+
 /// Native object proven to implement exact-observation one-step halt.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VerifiedHaltRegistersNativeObjectArtifact {

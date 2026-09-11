@@ -212,6 +212,8 @@ use execution_native::{
     DIRECT_OUTPUT_BACKEND_ID, DIRECT_OUTPUT_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_REVISION,
     DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
     DirectCacheDisposition, DirectCrazyError, DirectDeoptError,
     DirectExecutionGeometryCrazyError, DirectExecutionGeometryInitialHaltError,
@@ -223,8 +225,8 @@ use execution_native::{
     DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
     DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
     DirectNonGraphicalError, DirectOutputError,
-    DirectRegisterMaskedHaltFetchError, DirectRotateError,
-    DirectSelectionError, DirectSequenceError,
+    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
+    DirectRotateError, DirectSelectionError, DirectSequenceError,
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError,
     ExecutionGeometryLoadedSequenceAdmissionError,
@@ -302,7 +304,8 @@ use execution_native::{
     emit_direct_input_coff, emit_direct_jump_code_coff,
     emit_direct_jump_data_coff, emit_direct_no_operation_coff,
     emit_direct_non_graphical_coff, emit_direct_output_coff,
-    emit_direct_register_masked_halt_fetch_coff, emit_direct_rotate_coff,
+    emit_direct_register_masked_halt_fetch_coff,
+    emit_direct_register_masked_non_graphical_coff, emit_direct_rotate_coff,
     execute_cached_verified_native_sequence,
     execute_loaded_cached_verified_native_sequence,
     execute_loaded_verified_execution_geometry_native,
@@ -341,7 +344,7 @@ use execution_native::{
     verify_direct_input, verify_direct_jump_code, verify_direct_jump_data,
     verify_direct_no_operation, verify_direct_non_graphical,
     verify_direct_output, verify_direct_register_masked_halt_fetch,
-    verify_direct_rotate,
+    verify_direct_register_masked_non_graphical, verify_direct_rotate,
 };
 use geometry_interpreter_handoff::{
     ExecutionGeometryContinuationAdmissionError,
@@ -1922,6 +1925,28 @@ fn canonical_register_masked_halt_program()
         .map_err(|error| format!("v6 halt projection failed: {error:?}"))
 }
 
+fn canonical_register_masked_non_graphical_program()
+-> Result<RegisterMaskedRegionEffectProgram, String> {
+    let mut program = canonical_register_masked_halt_program()?;
+    let live_in = program
+        .program
+        .memory_live_ins
+        .first_mut()
+        .ok_or_else(|| String::from("v6 non-graphical live-in missing"))?;
+    live_in.value = 0;
+    let effect = program
+        .program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?;
+    effect.after.termination = Some(Termination::NonGraphicalCell);
+    program.program.outcome = RunOutcome::Terminated {
+        reason: Termination::NonGraphicalCell,
+        steps: 1,
+    };
+    Ok(program)
+}
+
 fn register_masked_halt_fetch_target(isa: HostIsa) -> NativeTargetIdentity {
     NativeTargetIdentity::new(NativeTargetConfig {
         backend_id: String::from(DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID),
@@ -1931,6 +1956,101 @@ fn register_masked_halt_fetch_target(isa: HostIsa) -> NativeTargetIdentity {
         native_abi_revision: NATIVE_REGION_ABI_REVISION,
         required_features: Vec::new(),
     })
+}
+
+fn register_masked_non_graphical_target(isa: HostIsa) -> NativeTargetIdentity {
+    NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(
+            DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
+        ),
+        backend_revision: DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_REVISION,
+        host_isa: isa,
+        host_os: HostOperatingSystem::Windows,
+        native_abi_revision: NATIVE_REGION_ABI_REVISION,
+        required_features: Vec::new(),
+    })
+}
+
+const fn register_masked_non_graphical_commit(isa: HostIsa) -> &'static [u8] {
+    match isa {
+        HostIsa::X86_64 => &[0xc6, 0x41, 0x4c, 0x02, 0x31, 0xc0, 0xc3],
+        HostIsa::AArch64 => &[0x4a, 0x00, 0x80, 0x52, 0x0a, 0x30, 0x01, 0x39],
+    }
+}
+
+fn assert_register_masked_non_graphical_object(
+    program: &RegisterMaskedRegionEffectProgram,
+    dead_state_variant: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> TieredTestResult {
+    let target = register_masked_non_graphical_target(isa);
+    let artifact =
+        emit_direct_register_masked_non_graphical_coff(program, target.clone())
+            .map_err(|error| {
+                format!("v6 {isa:?} non-graphical emit failed: {error}")
+            })?;
+    let variant = emit_direct_register_masked_non_graphical_coff(
+        dead_state_variant,
+        target,
+    )
+    .map_err(|error| {
+        format!("v6 {isa:?} non-graphical variant failed: {error}")
+    })?;
+    if artifact.key() == variant.key() {
+        return Err(format!(
+            "v6 {isa:?} non-graphical dead state kept identical key"
+        ));
+    }
+    let text = direct_object_text(artifact.object())?;
+    if text != direct_object_text(variant.object())? {
+        return Err(format!(
+            "v6 {isa:?} non-graphical dead state changed machine text"
+        ));
+    }
+    let commit = register_masked_non_graphical_commit(isa);
+    if !text.windows(commit.len()).any(|window| window == commit) {
+        return Err(format!(
+            "v6 {isa:?} non-graphical termination commit missing"
+        ));
+    }
+    if !artifact
+        .object()
+        .windows(6)
+        .any(|window| window == b"MBPF\x06\0")
+    {
+        return Err(format!("v6 {isa:?} object lost MBPF v6 marker"));
+    }
+    let verified =
+        verify_direct_register_masked_non_graphical(&artifact, program)
+            .map_err(|error| {
+                format!("v6 {isa:?} non-graphical verify failed: {error}")
+            })?;
+    if verified.key() != artifact.key()
+        || verified.object() != artifact.object()
+        || verified.target_triple() != artifact.target_triple()
+    {
+        return Err(format!(
+            "v6 {isa:?} non-graphical verified identity drifted"
+        ));
+    }
+    Ok(())
+}
+
+fn tamper_first_direct_text_byte(
+    artifact: &UntrustedNativeObjectArtifact,
+) -> Result<UntrustedNativeObjectArtifact, String> {
+    let mut object = artifact.object().to_vec();
+    let text_start = usize::try_from(read_fixture_u32(&object, 40)?)
+        .map_err(|error| format!("direct text start conversion: {error}"))?;
+    let first = object
+        .get_mut(text_start)
+        .ok_or_else(|| String::from("direct text missing"))?;
+    *first ^= 1;
+    Ok(UntrustedNativeObjectArtifact::from_emitter_output(
+        artifact.key().clone(),
+        object,
+        artifact.target_triple(),
+    ))
 }
 
 fn verified_register_masked_halt_fetch(
@@ -2490,23 +2610,7 @@ fn register_masked_v6_halt_admission_uses_normative_masks() -> TieredTestResult
 #[test]
 fn register_masked_v6_non_graphical_admission_preserves_masked_identity()
 -> TieredTestResult {
-    let mut program = canonical_register_masked_halt_program()?;
-    let live_in = program
-        .program
-        .memory_live_ins
-        .first_mut()
-        .ok_or_else(|| String::from("v6 non-graphical live-in missing"))?;
-    live_in.value = 0;
-    let effect = program
-        .program
-        .effects
-        .first_mut()
-        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?;
-    effect.after.termination = Some(Termination::NonGraphicalCell);
-    program.program.outcome = RunOutcome::Terminated {
-        reason: Termination::NonGraphicalCell,
-        steps: 1,
-    };
+    let program = canonical_register_masked_non_graphical_program()?;
 
     let admission = admit_register_masked_direct_native(
         &program,
@@ -2599,6 +2703,90 @@ fn register_masked_v6_admission_rejects_incomplete_mask_identity()
             ))
     {
         return Err(String::from("v6 mask identity failure drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_objects_honor_reduced_guard_surface()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let mut dead_state_variant = program.clone();
+    let effect = dead_state_variant
+        .program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?;
+    effect.before.registers.accumulator = 7;
+    effect.after.registers.accumulator = 7;
+    effect.before.input_consumed = 3;
+    effect.after.input_consumed = 3;
+    effect.before.output_len = 4;
+    effect.after.output_len = 4;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        assert_register_masked_non_graphical_object(
+            &program,
+            &dead_state_variant,
+            isa,
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_verifier_rejects_drift() -> TieredTestResult
+{
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact = emit_direct_register_masked_non_graphical_coff(
+        &program,
+        register_masked_non_graphical_target(HostIsa::X86_64),
+    )
+    .map_err(|error| {
+        format!("v6 non-graphical baseline emit failed: {error}")
+    })?;
+    let tampered = tamper_first_direct_text_byte(&artifact)?;
+    if verify_direct_register_masked_non_graphical(&tampered, &program)
+        != Err(DirectRegisterMaskedNonGraphicalError::ObjectBytes)
+    {
+        return Err(String::from(
+            "v6 non-graphical verifier admitted byte drift",
+        ));
+    }
+
+    let target = register_masked_non_graphical_target(HostIsa::X86_64);
+    let obsolete = NativeTargetIdentity::new(NativeTargetConfig {
+        backend_id: String::from(target.backend_id()),
+        backend_revision: target.backend_revision().saturating_add(1),
+        host_isa: target.host_isa(),
+        host_os: target.host_os(),
+        native_abi_revision: target.native_abi_revision(),
+        required_features: target.required_features().to_vec(),
+    });
+    if emit_direct_register_masked_non_graphical_coff(&program, obsolete)
+        != Err(DirectRegisterMaskedNonGraphicalError::TargetBackend)
+    {
+        return Err(String::from(
+            "v6 non-graphical admitted obsolete backend revision",
+        ));
+    }
+    if emit_direct_register_masked_non_graphical_coff(
+        &program,
+        register_masked_halt_fetch_target(HostIsa::X86_64),
+    ) != Err(DirectRegisterMaskedNonGraphicalError::TargetBackend)
+    {
+        return Err(String::from(
+            "v6 non-graphical crossed halt backend identity",
+        ));
+    }
+    let halt = canonical_register_masked_halt_program()?;
+    if emit_direct_register_masked_non_graphical_coff(
+        &halt,
+        register_masked_non_graphical_target(HostIsa::X86_64),
+    ) != Err(DirectRegisterMaskedNonGraphicalError::ProgramShape)
+    {
+        return Err(String::from(
+            "v6 non-graphical backend admitted graphical halt",
+        ));
     }
     Ok(())
 }

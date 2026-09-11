@@ -64,6 +64,8 @@ use super::{
     DIRECT_OUTPUT_BACKEND_ID, DIRECT_OUTPUT_BACKEND_REVISION,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_ID,
     DIRECT_REGISTER_MASKED_HALT_FETCH_BACKEND_REVISION,
+    DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID,
+    DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_REVISION,
     DIRECT_ROTATE_BACKEND_ID, DIRECT_ROTATE_BACKEND_REVISION,
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyError,
     DirectCrazyProgram, DirectDeoptError, DirectExecutionGeometryCrazyError,
@@ -80,11 +82,11 @@ use super::{
     DirectJumpCodeProgram, DirectJumpDataError, DirectJumpDataProgram,
     DirectNoOperationError, DirectNoOperationProgram, DirectNonGraphicalError,
     DirectOutputCommit, DirectOutputError, DirectOutputProgram,
-    DirectRegisterMaskedHaltFetchError, DirectRotateCommit, DirectRotateError,
-    DirectRotateProgram, EFFECT_IR_EXECUTION_GEOMETRY_VERSION,
-    EFFECT_IR_REGISTER_MASK_VERSION, EffectOp,
-    ExecutionGeometryRegionEffectProgram, HostOperatingSystem, MemoryLiveIn,
-    NATIVE_REGION_ABI_REVISION, NativeTargetIdentity,
+    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
+    DirectRotateCommit, DirectRotateError, DirectRotateProgram,
+    EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EFFECT_IR_REGISTER_MASK_VERSION,
+    EffectOp, ExecutionGeometryRegionEffectProgram, HostOperatingSystem,
+    MemoryLiveIn, NATIVE_REGION_ABI_REVISION, NativeTargetIdentity,
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryWrite,
     ProfileRegisterSet, ProfileRegisters, RegionEffectProgram,
     RegisterMaskedRegionEffectProgram, RunOutcome, Termination, TraceInput,
@@ -1087,17 +1089,18 @@ pub(super) fn validate_register_masked_halt_fetch_program(
 
 pub(super) fn validate_register_masked_non_graphical_program(
     program: &RegisterMaskedRegionEffectProgram,
-) -> Result<DirectFetchedTerminalProgram, DirectNonGraphicalError> {
+) -> Result<DirectFetchedTerminalProgram, DirectRegisterMaskedNonGraphicalError>
+{
     if !register_masked_terminal_masks_supported(program) {
-        return Err(DirectNonGraphicalError::ProgramShape);
+        return Err(DirectRegisterMaskedNonGraphicalError::ProgramShape);
     }
     let selected = fetched_terminal_program_semantics(
         &program.program,
         Termination::NonGraphicalCell,
     )
-    .ok_or(DirectNonGraphicalError::ProgramShape)?;
+    .ok_or(DirectRegisterMaskedNonGraphicalError::ProgramShape)?;
     if profile_cell_is_graphical(selected.live_in.value) {
-        Err(DirectNonGraphicalError::ProgramShape)
+        Err(DirectRegisterMaskedNonGraphicalError::ProgramShape)
     } else {
         Ok(selected)
     }
@@ -1136,6 +1139,25 @@ pub(super) fn validate_register_masked_halt_fetch_target(
     }
     if !target.required_features().is_empty() {
         return Err(DirectRegisterMaskedHaltFetchError::TargetFeatures);
+    }
+    Ok(())
+}
+
+pub(super) fn validate_register_masked_non_graphical_target(
+    target: &NativeTargetIdentity,
+) -> Result<(), DirectRegisterMaskedNonGraphicalError> {
+    if target.host_os() != HostOperatingSystem::Windows {
+        return Err(DirectRegisterMaskedNonGraphicalError::TargetFormat);
+    }
+    if target.backend_id() != DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_ID
+        || target.backend_revision()
+            != DIRECT_REGISTER_MASKED_NON_GRAPHICAL_BACKEND_REVISION
+        || target.native_abi_revision() != NATIVE_REGION_ABI_REVISION
+    {
+        return Err(DirectRegisterMaskedNonGraphicalError::TargetBackend);
+    }
+    if !target.required_features().is_empty() {
+        return Err(DirectRegisterMaskedNonGraphicalError::TargetFeatures);
     }
     Ok(())
 }

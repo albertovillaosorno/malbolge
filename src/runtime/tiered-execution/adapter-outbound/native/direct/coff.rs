@@ -49,13 +49,13 @@ use super::{
     DirectJumpCodeProgram, DirectJumpDataError, DirectJumpDataGuard,
     DirectJumpDataProgram, DirectNoOperationError, DirectNoOperationProgram,
     DirectNonGraphicalError, DirectOutputError, DirectOutputProgram,
-    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedHaltFetchGuard,
-    DirectRotateError, DirectRotateGuard, DirectRotateProgram, HostIsa,
-    IMAGE_FILE_MACHINE_AMD64, IMAGE_FILE_MACHINE_ARM64, IMAGE_SCN_ARM64_TEXT,
-    IMAGE_SCN_PROFILE_METADATA, IMAGE_SCN_X86_TEXT, IMAGE_SYM_CLASS_EXTERNAL,
-    IMAGE_SYM_DTYPE_FUNCTION, NativeArtifactKey, ProfileMachineObservation,
-    ProfileRegisters, REQUIRED_ENTRY, aarch64, canonical_profile_metadata,
-    x86_64,
+    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
+    DirectRegisterMaskedTerminalGuard, DirectRotateError, DirectRotateGuard,
+    DirectRotateProgram, HostIsa, IMAGE_FILE_MACHINE_AMD64,
+    IMAGE_FILE_MACHINE_ARM64, IMAGE_SCN_ARM64_TEXT, IMAGE_SCN_PROFILE_METADATA,
+    IMAGE_SCN_X86_TEXT, IMAGE_SYM_CLASS_EXTERNAL, IMAGE_SYM_DTYPE_FUNCTION,
+    NativeArtifactKey, ProfileMachineObservation, ProfileRegisters,
+    REQUIRED_ENTRY, aarch64, canonical_profile_metadata, x86_64,
 };
 
 pub(super) fn canonical_coff(
@@ -428,7 +428,7 @@ pub(super) fn register_masked_halt_fetch_coff(
     key: &NativeArtifactKey,
     selected: DirectFetchedTerminalProgram,
 ) -> Result<Vec<u8>, DirectRegisterMaskedHaltFetchError> {
-    let guard = DirectRegisterMaskedHaltFetchGuard {
+    let guard = DirectRegisterMaskedTerminalGuard {
         code_pointer: selected.observation.registers.code_pointer,
         live_in_value: selected.live_in.value,
         required_memory_words: key.ir().required_memory_words(),
@@ -440,6 +440,24 @@ pub(super) fn register_masked_halt_fetch_coff(
     .ok_or(DirectRegisterMaskedHaltFetchError::ObjectBytes)?;
     build_minimal_coff(key, &text)
         .ok_or(DirectRegisterMaskedHaltFetchError::ObjectBytes)
+}
+
+pub(super) fn register_masked_non_graphical_coff(
+    key: &NativeArtifactKey,
+    selected: DirectFetchedTerminalProgram,
+) -> Result<Vec<u8>, DirectRegisterMaskedNonGraphicalError> {
+    let guard = DirectRegisterMaskedTerminalGuard {
+        code_pointer: selected.observation.registers.code_pointer,
+        live_in_value: selected.live_in.value,
+        required_memory_words: key.ir().required_memory_words(),
+    };
+    let text = match key.target().host_isa() {
+        HostIsa::AArch64 => aarch64::register_masked_non_graphical_code(guard),
+        HostIsa::X86_64 => x86_64::register_masked_non_graphical_code(guard),
+    }
+    .ok_or(DirectRegisterMaskedNonGraphicalError::ObjectBytes)?;
+    build_minimal_coff(key, &text)
+        .ok_or(DirectRegisterMaskedNonGraphicalError::ObjectBytes)
 }
 
 pub(super) fn non_graphical_coff(

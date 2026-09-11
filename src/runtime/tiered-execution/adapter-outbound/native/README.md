@@ -177,14 +177,20 @@ correct by always falling back before direct region-effect selection is trusted.
 Register-masked effect IR v6 now crosses a separate host-independent admission
 boundary. `admit_register_masked_direct_native()` preserves full v6 identity and
 required-profile preflight, then admits the normative C-only/no-write one-step
-graphical halt-fetch and non-graphical terminal-fetch shapes. Host-code
-promotion remains limited to the graphical halt-fetch shape.
+graphical halt-fetch and non-graphical terminal-fetch shapes.
 
-`direct-register-masked-halt-fetch` revision 1 binds that shape to Windows
-x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the required
-memory extent, the fetched code cell, and prior termination before committing
-`HaltInstruction`; A, D, and I/O history are not guarded. Independent object
-verification reconstructs the full v6 key and canonical bytes.
+`direct-register-masked-halt-fetch` revision 1 binds the graphical shape to
+Windows x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the
+required memory extent, the fetched code cell, and prior termination before
+committing `HaltInstruction`; A and I/O history are not guarded directly.
+Independent object verification reconstructs the full v6 key and canonical
+bytes.
+
+`direct-register-masked-non-graphical` revision 1 binds the non-graphical shape
+to the same two ISAs and reduced guard sequence, committing only
+`NonGraphicalCell`. Its distinct verified artifact wrapper has no load-image or
+invocation constructor, so semantic object promotion does not grant executable
+authority. Loader, runner, residency, and sequence support remain halt-only.
 
 `VerifiedRegisterMaskedLoadImage` now extracts that verified object as a
 relocation-free, ISA-aligned image under the shared strict W^X policy without

@@ -745,6 +745,65 @@ impl From<NativeIdentityError> for DirectRegisterMaskedHaltFetchError {
     }
 }
 
+/// Failure while emitting or verifying register-masked v6 non-graphical fetch.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectRegisterMaskedNonGraphicalError {
+    /// Structural COFF admission rejected the candidate.
+    Coff(CoffAdmissionError),
+    /// Native artifact identity cannot be constructed from this v6 program.
+    Identity(NativeIdentityError),
+    /// Object bytes differ from the canonical mask-aware terminal object.
+    ObjectBytes,
+    /// Register-masked IR is outside the reviewed non-graphical subset.
+    ProgramShape,
+    /// Target backend/revision/native ABI is not this v6 contract.
+    TargetBackend,
+    /// Register-masked non-graphical has no CPU feature specializations.
+    TargetFeatures,
+    /// Register-masked non-graphical currently emits Windows COFF only.
+    TargetFormat,
+}
+
+impl Display for DirectRegisterMaskedNonGraphicalError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(match self {
+            Self::Coff(_error) => {
+                "register-masked non-graphical COFF structure was rejected"
+            },
+            Self::Identity(_error) => {
+                "register-masked non-graphical identity construction failed"
+            },
+            Self::ObjectBytes => {
+                "register-masked non-graphical object bytes differ"
+            },
+            Self::ProgramShape => {
+                "register-masked IR is outside direct non-graphical subset"
+            },
+            Self::TargetBackend => {
+                "target does not select register-masked non-graphical backend"
+            },
+            Self::TargetFeatures => {
+                "register-masked non-graphical backend requires no CPU features"
+            },
+            Self::TargetFormat => {
+                "register-masked non-graphical backend requires Windows COFF"
+            },
+        })
+    }
+}
+
+impl From<CoffAdmissionError> for DirectRegisterMaskedNonGraphicalError {
+    fn from(error: CoffAdmissionError) -> Self {
+        Self::Coff(error)
+    }
+}
+
+impl From<NativeIdentityError> for DirectRegisterMaskedNonGraphicalError {
+    fn from(error: NativeIdentityError) -> Self {
+        Self::Identity(error)
+    }
+}
+
 /// Failure while emitting or verifying direct non-graphical termination.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DirectNonGraphicalError {

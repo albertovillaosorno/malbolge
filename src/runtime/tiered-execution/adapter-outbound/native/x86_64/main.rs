@@ -39,7 +39,7 @@ use super::direct::{
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
     DirectEntryObservation, DirectFetchedCellGuard, DirectInputCommit,
     DirectInputGuard, DirectJumpCodeGuard, DirectJumpDataGuard,
-    DirectOutputCommit, DirectRegisterMaskedHaltFetchGuard, DirectRotateCommit,
+    DirectOutputCommit, DirectRegisterMaskedTerminalGuard, DirectRotateCommit,
     DirectRotateGuard,
 };
 
@@ -136,7 +136,22 @@ pub(super) fn halt_fetch_code(
 /// Encodes v6 halt fetch using only its declared C register dependency.
 #[must_use]
 pub(super) fn register_masked_halt_fetch_code(
-    guard: DirectRegisterMaskedHaltFetchGuard,
+    guard: DirectRegisterMaskedTerminalGuard,
+) -> Option<Vec<u8>> {
+    register_masked_terminal_code(guard, 1)
+}
+
+/// Encodes v6 non-graphical fetch using only declared C dependency.
+#[must_use]
+pub(super) fn register_masked_non_graphical_code(
+    guard: DirectRegisterMaskedTerminalGuard,
+) -> Option<Vec<u8>> {
+    register_masked_terminal_code(guard, 2)
+}
+
+fn register_masked_terminal_code(
+    guard: DirectRegisterMaskedTerminalGuard,
+    termination_tag: u8,
 ) -> Option<Vec<u8>> {
     let code_offset = memory_byte_offset(guard.code_pointer)?;
     let mut code = Vec::with_capacity(96);
@@ -159,7 +174,15 @@ pub(super) fn register_masked_halt_fetch_code(
     );
     code.extend_from_slice(&[0x80, 0x79, 0x4c, 0x00]);
     push_guard_jump(&mut code, &mut guard_jumps, 0x75);
-    code.extend_from_slice(&[0xc6, 0x41, 0x4c, 0x01, 0x31, 0xc0, 0xc3]);
+    code.extend_from_slice(&[
+        0xc6,
+        0x41,
+        0x4c,
+        termination_tag,
+        0x31,
+        0xc0,
+        0xc3,
+    ]);
     let guard_miss = code.len();
     code.push(0xc3);
     patch_guard_jumps(&mut code, &guard_jumps, guard_miss)?;

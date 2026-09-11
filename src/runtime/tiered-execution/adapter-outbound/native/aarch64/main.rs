@@ -39,7 +39,7 @@ use super::direct::{
     DirectCodeWriteCommit, DirectCrazyCommit, DirectCrazyGuard,
     DirectEntryObservation, DirectFetchedCellGuard, DirectInputCommit,
     DirectInputGuard, DirectJumpCodeGuard, DirectJumpDataGuard,
-    DirectOutputCommit, DirectRegisterMaskedHaltFetchGuard, DirectRotateCommit,
+    DirectOutputCommit, DirectRegisterMaskedTerminalGuard, DirectRotateCommit,
     DirectRotateGuard,
 };
 
@@ -163,7 +163,22 @@ pub(super) fn halt_fetch_code(
 /// Encodes v6 halt fetch using only its declared C register dependency.
 #[must_use]
 pub(super) fn register_masked_halt_fetch_code(
-    guard: DirectRegisterMaskedHaltFetchGuard,
+    guard: DirectRegisterMaskedTerminalGuard,
+) -> Option<Vec<u8>> {
+    register_masked_terminal_code(guard, 1)
+}
+
+/// Encodes v6 non-graphical fetch using only declared C dependency.
+#[must_use]
+pub(super) fn register_masked_non_graphical_code(
+    guard: DirectRegisterMaskedTerminalGuard,
+) -> Option<Vec<u8>> {
+    register_masked_terminal_code(guard, 2)
+}
+
+fn register_masked_terminal_code(
+    guard: DirectRegisterMaskedTerminalGuard,
+    termination_tag: u32,
 ) -> Option<Vec<u8>> {
     let mut words = Vec::with_capacity(40);
     let mut guard_branches = Vec::with_capacity(6);
@@ -189,7 +204,7 @@ pub(super) fn register_masked_halt_fetch_code(
     words.push(0x3941_3009);
     push_guard_branch(&mut words, &mut guard_branches, 0x3500_0009);
     words.extend_from_slice(&[
-        0x5280_002a,
+        movz_w10(termination_tag),
         0x3901_300a,
         0x2a1f_03e0,
         0xd65f_03c0,
