@@ -116,11 +116,11 @@ synchronization, and hardening remain adapters rather than VM semantics.
   and runner failure. A distinct single-resident lease cache preserves exact
   identity, no-I/O hits, live-lease blocking, and cleanup retry ownership.
 
-  A separate fixed-limit multi-entry cache keeps exact-hit FIFO age, evicts
-  oldest unleased active residents, retains live leased entries in place, and
-  transfers weighted-capacity or cleanup evidence without widening halt cache
-  types. Retirement, invalidation, reconfiguration, and sequence authority
-  remain absent from this non-graphical cache.
+  A separate fixed-limit multi-entry cache keeps exact-hit FIFO age and handles
+  active misses oldest-first without widening halt cache types. Unleased victims
+  release while live victims retire with exact weight charged until explicit
+  return or reconciliation; invalidation and full drain preserve that boundary.
+  Reconfiguration and sequence authority remain absent from this cache.
 
   Native ABI revision 1 now has one format-neutral Rust `repr(C)` call frame.
   Its tested 80-byte size and field offsets match both reviewed encoder

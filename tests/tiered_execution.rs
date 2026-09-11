@@ -285,7 +285,8 @@ use execution_native::{
     RegisterMaskedNativeResidentLease, RegisterMaskedNativeResidentLeaseCache,
     RegisterMaskedNativeRunner, RegisterMaskedNativeSequenceOutcome,
     RegisterMaskedNativeSequencePlan, RegisterMaskedNativeSequencePlanError,
-    RegisterMaskedNonGraphicalLeaseCache,
+    RegisterMaskedNonGraphicalLease, RegisterMaskedNonGraphicalLeaseCache,
+    RegisterMaskedNonGraphicalLeaseCacheInvalidation,
     RegisterMaskedNonGraphicalNativeExecutableOwner,
     RegisterMaskedNonGraphicalNativeOwnerExecutionFailure,
     RegisterMaskedNonGraphicalNativeOwnerLoadFailure,
@@ -829,6 +830,11 @@ type NonGraphicalResidentAcquireFailure =
     RegisterMaskedNonGraphicalNativeResidentCacheAcquireFailure<
         FakeNativeAdapterOperation,
     >;
+
+type RegisterMaskedNonGraphicalMultiCacheFixture = (
+    FakeNativeExecutableAdapter,
+    RegisterMaskedNonGraphicalLeaseCache,
+);
 
 type RegisterMaskedNonGraphicalVariant = (
     RegisterMaskedRegionEffectProgram,
@@ -6255,18 +6261,49 @@ fn register_masked_v6_resident_cache_load_failure_publishes_nothing()
     Ok(())
 }
 
+fn register_masked_non_graphical_multi_cache_fixture(
+    mapping_id_value: u64,
+    base_address: usize,
+    entry_limit: usize,
+) -> Result<RegisterMaskedNonGraphicalMultiCacheFixture, String> {
+    let entry_capacity = NonZeroUsize::new(entry_limit)
+        .ok_or_else(|| String::from("zero non-graphical cache capacity"))?;
+    Ok((
+        FakeNativeExecutableAdapter::new(
+            native_executable_mapping_id(mapping_id_value)?,
+            native_executable_address(base_address)?,
+        ),
+        RegisterMaskedNonGraphicalLeaseCache::new(entry_capacity),
+    ))
+}
+
+fn return_non_graphical_retired_lease(
+    cache: &mut RegisterMaskedNonGraphicalLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    lease: RegisterMaskedNonGraphicalLease,
+    key: &NativeArtifactKey,
+) -> Result<(), String> {
+    let reconciled = cache
+        .return_lease(adapter, lease)
+        .map_err(|error| format!("v6 non-graphical lease return: {error}"))?;
+    if reconciled.released_keys() == [key.clone()]
+        && reconciled.retained_keys().is_empty()
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical retired lease did not reconcile",
+        ))
+    }
+}
+
 #[test]
 fn register_masked_v6_non_graphical_multi_cache_hits_without_remap()
 -> TieredTestResult {
     let (program, artifact) = register_masked_non_graphical_cache_variant(1)?;
     let key = artifact.key().clone();
-    let mut adapter = FakeNativeExecutableAdapter::new(
-        native_executable_mapping_id(170)?,
-        native_executable_address(0x17000)?,
-    );
-    let capacity = NonZeroUsize::new(2)
-        .ok_or_else(|| String::from("zero non-graphical cache capacity"))?;
-    let mut cache = RegisterMaskedNonGraphicalLeaseCache::new(capacity);
+    let (mut adapter, mut cache) =
+        register_masked_non_graphical_multi_cache_fixture(170, 0x17000, 2)?;
     let first = cache
         .ensure(&mut adapter, &program, &artifact)
         .map_err(|error| format!("v6 non-graphical cache insert: {error}"))?;
@@ -6285,6 +6322,7 @@ fn register_masked_v6_non_graphical_multi_cache_hits_without_remap()
     if !second_is_hit
         || !first_lease.shares_resident_with(&second_lease)
         || cache.active_len() != 1
+        || cache.resident_len() != 1
         || cache.usage().entries() != 1
         || adapter.operations != loaded_operations
     {
@@ -6292,28 +6330,35 @@ fn register_masked_v6_non_graphical_multi_cache_hits_without_remap()
             "v6 non-graphical cache hit remapped or changed usage",
         ));
     }
-    let retained = cache
+    let drained = cache
         .release_all(&mut adapter)
         .map_err(|error| format!("v6 non-graphical leased drain: {error}"))?;
-    if retained.released_keys().is_empty()
-        && retained.retained_keys() == [key.clone()]
-        && adapter.operations == loaded_operations
+    if !drained.released_keys().is_empty()
+        || drained.retained_keys() != [key.clone()]
+        || cache.active_len() != 0
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.operations != loaded_operations
     {
-        drop((first_lease, second_lease));
-        let released = cache
-            .release_all(&mut adapter)
-            .map_err(|error| format!("v6 non-graphical drain: {error}"))?;
-        if released.released_keys() == [key]
-            && released.retained_keys().is_empty()
-            && cache.is_empty()
-            && cache.usage().entries() == 0
-        {
-            return Ok(());
-        }
+        return Err(String::from(
+            "v6 non-graphical live drain retirement drifted",
+        ));
     }
-    Err(String::from(
-        "v6 non-graphical cache explicit release drifted",
-    ))
+    drop(first_lease);
+    return_non_graphical_retired_lease(
+        &mut cache,
+        &mut adapter,
+        second_lease,
+        &key,
+    )?;
+    if cache.is_empty()
+        && cache.usage().entries() == 0
+        && adapter.release_attempts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 non-graphical retired state drifted"))
+    }
 }
 
 #[test]
@@ -6370,7 +6415,7 @@ fn register_masked_v6_non_graphical_multi_cache_rejects_same_key_drift()
 }
 
 #[test]
-fn register_masked_v6_non_graphical_multi_cache_skips_leased_fifo()
+fn register_masked_v6_non_graphical_multi_cache_retires_leased_fifo()
 -> TieredTestResult {
     let (program_a, artifact_a) =
         register_masked_non_graphical_cache_variant(2)?;
@@ -6381,13 +6426,8 @@ fn register_masked_v6_non_graphical_multi_cache_skips_leased_fifo()
     let key_a = artifact_a.key().clone();
     let key_b = artifact_b.key().clone();
     let key_c = artifact_c.key().clone();
-    let mut adapter = FakeNativeExecutableAdapter::new(
-        native_executable_mapping_id(171)?,
-        native_executable_address(0x17100)?,
-    );
-    let capacity = NonZeroUsize::new(2)
-        .ok_or_else(|| String::from("zero non-graphical cache capacity"))?;
-    let mut cache = RegisterMaskedNonGraphicalLeaseCache::new(capacity);
+    let (mut adapter, mut cache) =
+        register_masked_non_graphical_multi_cache_fixture(171, 0x17100, 2)?;
     let first = cache
         .ensure(&mut adapter, &program_a, &artifact_a)
         .map_err(|error| format!("v6 non-graphical cache A: {error}"))?;
@@ -6400,16 +6440,33 @@ fn register_masked_v6_non_graphical_multi_cache_skips_leased_fifo()
     let third = cache
         .ensure(&mut adapter, &program_c, &artifact_c)
         .map_err(|error| format!("v6 non-graphical cache C: {error}"))?;
-    if third.disposition().evicted_keys() != [key_b]
-        || cache.keys().cloned().collect::<Vec<_>>() != [key_a, key_c]
+    if third.disposition().evicted_keys() != [key_a.clone(), key_b]
+        || third.disposition().retired_keys() != [key_a.clone()]
+        || cache.keys().cloned().collect::<Vec<_>>() != [key_c]
+        || cache.retired_keys().cloned().collect::<Vec<_>>() != [key_a.clone()]
         || cache.usage().entries() != 2
         || adapter.release_attempts != 1
     {
         return Err(String::from(
-            "v6 non-graphical cache unleased FIFO eviction drifted",
+            "v6 non-graphical leased FIFO retirement drifted",
         ));
     }
-    drop((leased_a, third));
+    drop(third);
+    return_non_graphical_retired_lease(
+        &mut cache,
+        &mut adapter,
+        leased_a,
+        &key_a,
+    )?;
+    if cache.active_len() != 1
+        || cache.retired_len() != 0
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from(
+            "v6 non-graphical FIFO retirement did not reconcile",
+        ));
+    }
     let cleanup = cache
         .release_all(&mut adapter)
         .map_err(|error| format!("v6 non-graphical FIFO cleanup: {error}"))?;
@@ -6430,13 +6487,8 @@ fn register_masked_v6_non_graphical_multi_cache_live_lease_blocks()
     let (program_b, artifact_b) =
         register_masked_non_graphical_cache_variant(6)?;
     let key_a = artifact_a.key().clone();
-    let mut adapter = FakeNativeExecutableAdapter::new(
-        native_executable_mapping_id(172)?,
-        native_executable_address(0x17200)?,
-    );
-    let capacity = NonZeroUsize::new(1)
-        .ok_or_else(|| String::from("zero non-graphical cache capacity"))?;
-    let mut cache = RegisterMaskedNonGraphicalLeaseCache::new(capacity);
+    let (mut adapter, mut cache) =
+        register_masked_non_graphical_multi_cache_fixture(172, 0x17200, 1)?;
     let first = cache
         .ensure(&mut adapter, &program_a, &artifact_a)
         .map_err(|error| format!("v6 non-graphical live seed: {error}"))?;
@@ -6449,26 +6501,44 @@ fn register_masked_v6_non_graphical_multi_cache_live_lease_blocks()
     let block = error.block().ok_or_else(|| {
         String::from("v6 non-graphical block evidence missing")
     })?;
-    if block.leased_keys() != [key_a.clone()]
+    if block.retired_keys() != [key_a.clone()]
         || block.usage().entries() != 1
-        || !error.evicted_keys().is_empty()
+        || error.evicted_keys() != [key_a.clone()]
+        || error.retired_keys() != [key_a.clone()]
         || error.candidate_cleanup_failure().is_some()
-        || cache.keys().cloned().collect::<Vec<_>>() != [key_a]
+        || cache.active_len() != 0
+        || cache.retired_keys().cloned().collect::<Vec<_>>() != [key_a.clone()]
         || adapter.release_attempts != 1
     {
         return Err(String::from(
             "v6 non-graphical live-lease blockage drifted",
         ));
     }
-    drop(lease);
-    let cleanup = cache.release_all(&mut adapter).map_err(|failure| {
-        format!("v6 non-graphical block cleanup: {failure}")
-    })?;
-    if cleanup.retained_keys().is_empty() && cache.is_empty() {
-        Ok(())
-    } else {
-        Err(String::from("v6 non-graphical block cleanup retained key"))
+    let reconciled =
+        cache
+            .return_lease(&mut adapter, lease)
+            .map_err(|return_error| {
+                format!("v6 non-graphical block return: {return_error}")
+            })?;
+    if reconciled.released_keys() != [key_a]
+        || cache.usage().entries() != 0
+        || !cache.is_empty()
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from(
+            "v6 non-graphical blocked resident did not reconcile",
+        ));
     }
+    let second = cache
+        .ensure(&mut adapter, &program_b, &artifact_b)
+        .map_err(|insert_error| {
+            format!("v6 non-graphical post-block insert: {insert_error}")
+        })?;
+    drop(second);
+    cache
+        .release_all(&mut adapter)
+        .map(|_summary| ())
+        .map_err(|failure| format!("v6 non-graphical block cleanup: {failure}"))
 }
 
 #[test]
@@ -6518,11 +6588,12 @@ fn register_masked_v6_non_graphical_multi_cache_eviction_failure_retries()
     let (program_b, artifact_b) =
         register_masked_non_graphical_cache_variant(9)?;
     let key_a = artifact_a.key().clone();
+    let key_b = artifact_b.key().clone();
     let mut adapter = FakeNativeExecutableAdapter::new(
         native_executable_mapping_id(174)?,
         native_executable_address(0x17400)?,
     )
-    .with_release_failure_at(1);
+    .with_release_failures(2);
     let capacity = NonZeroUsize::new(1)
         .ok_or_else(|| String::from("zero non-graphical cache capacity"))?;
     let mut cache = RegisterMaskedNonGraphicalLeaseCache::new(capacity);
@@ -6537,8 +6608,9 @@ fn register_masked_v6_non_graphical_multi_cache_eviction_failure_retries()
         ));
     };
     if error.evicted_keys() != [key_a.clone()]
+        || !error.retired_keys().is_empty()
         || error.release_failure().is_none()
-        || error.candidate_cleanup_failure().is_some()
+        || error.candidate_cleanup_failure().is_none()
         || !cache.is_empty()
         || cache.usage().entries() != 0
         || adapter.release_attempts != 2
@@ -6547,18 +6619,13 @@ fn register_masked_v6_non_graphical_multi_cache_eviction_failure_retries()
             "v6 non-graphical eviction failure ownership drifted",
         ));
     }
-    let retry = error
-        .into_release_failures()
-        .into_eviction_failure()
-        .ok_or_else(|| String::from("v6 non-graphical eviction retry missing"))?
-        .retry(&mut adapter)
-        .map_err(|failure| {
-            format!(
-                "v6 non-graphical eviction retry retained requested key: {}",
-                failure.key() == &key_a,
-            )
-        })?;
-    if retry == key_a && adapter.release_attempts == 3 {
+    let retried = error.into_release_failures().retry(&mut adapter).map_err(
+        |failure| format!("v6 non-graphical eviction retry failed: {failure}"),
+    )?;
+    if retried.released_keys() == [key_a, key_b]
+        && retried.retained_keys().is_empty()
+        && adapter.release_attempts == 4
+    {
         Ok(())
     } else {
         Err(String::from(
@@ -6590,7 +6657,8 @@ fn register_masked_v6_non_graphical_multi_cache_release_failure_retries()
             "v6 non-graphical release-all failure was ignored",
         ));
     };
-    if !failure.released_keys().is_empty()
+    if failure.failures().len() != 1
+        || !failure.released_keys().is_empty()
         || !failure.retained_keys().is_empty()
         || !cache.is_empty()
         || cache.usage().entries() != 0
@@ -6600,27 +6668,140 @@ fn register_masked_v6_non_graphical_multi_cache_release_failure_retries()
             "v6 non-graphical release-all failure ownership drifted",
         ));
     }
-    let mut failures = failure.into_failures();
-    if failures.len() != 1 {
-        return Err(String::from(
-            "v6 non-graphical release-all retry count drifted",
-        ));
-    }
-    let retry = failures
-        .pop()
-        .ok_or_else(|| String::from("v6 non-graphical release retry missing"))?
-        .retry(&mut adapter)
-        .map_err(|retry_failure| {
-            format!(
-                "v6 non-graphical release retry retained requested key: {}",
-                retry_failure.key() == &key,
-            )
-        })?;
-    if retry == key && adapter.release_attempts == 2 {
+    let retried = failure.retry(&mut adapter).map_err(|retry_failure| {
+        format!("v6 non-graphical release retry failed: {retry_failure}")
+    })?;
+    if retried.released_keys() == [key]
+        && retried.retained_keys().is_empty()
+        && adapter.release_attempts == 2
+    {
         Ok(())
     } else {
         Err(String::from(
             "v6 non-graphical release retry result drifted",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_non_graphical_multi_cache_invalidation_retires_lease()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_non_graphical_cache_variant(12)?;
+    let key = artifact.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(177)?,
+        native_executable_address(0x17700)?,
+    );
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("zero non-graphical cache capacity"))?;
+    let mut cache = RegisterMaskedNonGraphicalLeaseCache::new(capacity);
+    let acquisition =
+        cache
+            .ensure(&mut adapter, &program, &artifact)
+            .map_err(|error| {
+                format!("v6 non-graphical invalidation seed: {error}")
+            })?;
+    let lease = acquisition.into_lease();
+    let invalidated =
+        cache.invalidate_key(&mut adapter, &key).map_err(|error| {
+            format!("v6 non-graphical invalidation: {}", error.failure())
+        })?;
+    if invalidated
+        != (RegisterMaskedNonGraphicalLeaseCacheInvalidation::Retired {
+            leases: 1,
+        })
+        || cache.active_len() != 0
+        || cache.retired_keys().cloned().collect::<Vec<_>>() != [key.clone()]
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from(
+            "v6 non-graphical leased invalidation drifted",
+        ));
+    }
+    if cache.invalidate_key(&mut adapter, &key).map_err(|error| {
+        format!("v6 non-graphical missing invalidation: {}", error.failure())
+    })? != RegisterMaskedNonGraphicalLeaseCacheInvalidation::Missing
+    {
+        return Err(String::from(
+            "v6 non-graphical retired identity remained active",
+        ));
+    }
+    let reconciled =
+        cache.return_lease(&mut adapter, lease).map_err(|error| {
+            format!("v6 non-graphical invalidation return: {error}")
+        })?;
+    if reconciled.released_keys() == [key]
+        && cache.is_empty()
+        && cache.usage().entries() == 0
+        && adapter.release_attempts == 1
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical invalidation reconciliation drifted",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_non_graphical_multi_cache_retries_multiple_releases()
+-> TieredTestResult {
+    let (program_a, artifact_a) =
+        register_masked_non_graphical_cache_variant(13)?;
+    let (program_b, artifact_b) =
+        register_masked_non_graphical_cache_variant(14)?;
+    let key_a = artifact_a.key().clone();
+    let key_b = artifact_b.key().clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(178)?,
+        native_executable_address(0x17800)?,
+    )
+    .with_release_failures(2);
+    let capacity = NonZeroUsize::new(2)
+        .ok_or_else(|| String::from("zero non-graphical cache capacity"))?;
+    let mut cache = RegisterMaskedNonGraphicalLeaseCache::new(capacity);
+    drop(
+        cache
+            .ensure(&mut adapter, &program_a, &artifact_a)
+            .map_err(|error| {
+                format!("v6 non-graphical aggregate A: {error}")
+            })?,
+    );
+    drop(
+        cache
+            .ensure(&mut adapter, &program_b, &artifact_b)
+            .map_err(|error| {
+                format!("v6 non-graphical aggregate B: {error}")
+            })?,
+    );
+    let Err(failure) = cache.release_all(&mut adapter) else {
+        return Err(String::from(
+            "v6 non-graphical aggregate release failures were ignored",
+        ));
+    };
+    if failure.failures().len() != 2
+        || !failure.released_keys().is_empty()
+        || !failure.retained_keys().is_empty()
+        || !cache.is_empty()
+        || cache.usage().entries() != 0
+        || adapter.release_attempts != 2
+    {
+        return Err(String::from(
+            "v6 non-graphical aggregate failure evidence drifted",
+        ));
+    }
+    let retried = failure.retry(&mut adapter).map_err(|retry_failure| {
+        format!("v6 non-graphical aggregate retry failed: {retry_failure}")
+    })?;
+    if retried.released_keys() == [key_a, key_b]
+        && retried.retained_keys().is_empty()
+        && adapter.release_attempts == 4
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical aggregate retry result drifted",
         ))
     }
 }

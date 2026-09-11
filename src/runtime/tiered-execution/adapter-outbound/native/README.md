@@ -227,12 +227,15 @@ publishes nothing, and failed release transfers exact retry ownership.
 
 `RegisterMaskedNonGraphicalLeaseCache` now adds fixed-limit multi-entry
 residency without widening the halt cache. Exact hits preserve FIFO age and do
-no adapter work; misses evict the oldest unleased active residents, live leased
-entries stay active and charged, mapped-byte/mapping limits reject oversize
-candidates, and release failures transfer exact keyed retry ownership. Explicit
-release drains only unleased entries. Retirement, invalidation, dynamic
-reconfiguration, and sequence execution remain absent from this non-graphical
-cache.
+no adapter work; misses process active FIFO entries oldest-first, releasing
+unleased residents and retiring live leased residents while their exact weight
+remains charged. Explicit invalidation uses the same release-or-retire rule,
+`release_all()` ends all active lookup authority, and lease return or explicit
+reconciliation reclaims retired mappings.
+
+Oversize candidates fail closed, and both insertion cleanup and reconciliation
+preserve aggregate keyed retry ownership. Dynamic reconfiguration and sequence
+execution remain absent from this non-graphical cache.
 
 `VerifiedRegisterMaskedLoadImage` now extracts that verified object as a
 relocation-free, ISA-aligned image under the shared strict W^X policy without

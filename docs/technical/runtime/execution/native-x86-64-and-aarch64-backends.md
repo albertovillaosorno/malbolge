@@ -224,11 +224,13 @@ A distinct single-resident lease cache shares that owner on exact hits, blocks
 release while leased, rejects different identity, and transfers cleanup retry
 ownership.
 
-A separate fixed-limit multi-entry cache preserves exact-hit FIFO age, evicts
-oldest unleased active residents, keeps live leases active and charged, rejects
-oversize weighted candidates, and transfers keyed release retry ownership.
-Retirement, invalidation, dynamic reconfiguration, and sequence authority remain
-absent from the non-graphical cache.
+A separate fixed-limit multi-entry cache preserves exact-hit FIFO age and
+processes active misses oldest-first. Unleased victims release immediately while
+live victims retire and remain charged until explicit lease return or
+reconciliation; invalidation and full release use the same ownership boundary.
+Oversize candidates fail closed, and aggregate cleanup failure preserves keyed
+retry ownership. Dynamic reconfiguration and sequence authority remain absent
+from the non-graphical cache.
 
 The native call-frame ABI now has a format-neutral Rust authority in
 `native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used
