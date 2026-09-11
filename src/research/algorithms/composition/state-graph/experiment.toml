@@ -200,7 +200,19 @@ verified_output_delta = "zero-or-one-per-effect"
 prior_output_length = "future-irrelevant"
 future_output = "candidate-prefix-plus-verified-appends"
 rejection_condition = "intrinsically-invalid-verified-output-delta"
-next_risk = "normative-register-live-in-trace-authority"
+next_risk = "verified-register-write-rebasing-and-portable-ir-mask"
+
+[reduction.region_register_live_ins]
+baseline = "exact-a-c-d-entry-registers"
+candidate = "normative-read-before-write-register-live-ins"
+read_authority = "ProfileStepTrace.register_accesses.reads"
+write_authority = "ProfileStepTrace.register_accesses.writes"
+rejected_transition_writes = "empty"
+derived_fixture_halt = "C"
+derived_fixture_input = "C,D"
+derived_fixture_output = "A,C,D"
+guard_status = "not-yet-reduced"
+blocker = "verified-register-write-rebasing-and-portable-ir-mask"
 
 [reduction.region_consumed_input_guard]
 baseline = "full-input-allocation-lineage-guard"

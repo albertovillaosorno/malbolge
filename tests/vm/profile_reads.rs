@@ -9,23 +9,23 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Semantic profile-memory read-role conformance for every instruction
+//   - Semantic profile memory/register access conformance for every instruction
 //   - family.
 // - Must-Not:
 //   - Infer private transition plans or count diagnostic/instrumentation reads.
 // - Allows:
 //   - Inputs: public profile state construction and traced single-step
 //   - execution.
-//   - Outputs: exact fetch/data/encryption read records, including rejection.
+//   - Outputs: exact memory/register access records, including rejection.
 //   - Side effects: test-process allocation only.
 // - Split-When:
-//   - Split when a future profile schema adds another semantic memory-read
+//   - Split when a future profile schema adds another semantic access
 //   - role.
 // - Merge-When:
 //   - Merge when read roles become ordinary profile-tracing conformance
 //   - fixtures.
 // - Summary:
-//   - Proves trace read roles come from the normative profile transition
+//   - Proves trace access roles come from the normative profile transition
 //   - engine.
 // - Description:
 //   - Covers all instruction families plus rejected jump encryption atomically.
@@ -35,12 +35,13 @@
 //   - Fetch always occurs for live state; data/encryption exist only when read.
 //
 
-//! Exact semantic memory-read role fixtures for current-profile execution.
+//! Exact semantic access-role fixtures for current-profile execution.
 
 use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
     ProfileMachineState, ProfileMemoryRead, ProfileMemoryReads,
-    ProfileRegisters, ProfileStepTrace, current_profile,
+    ProfileRegisterAccesses, ProfileRegisterSet, ProfileRegisters,
+    ProfileStepTrace, current_profile,
 };
 
 use super::{TestResult, check_equal, normalize_result};
@@ -54,59 +55,98 @@ const ENCRYPTION_TARGET: u32 = 2;
 const GRAPHICAL_TARGET: u32 = 68;
 const INPUT: u8 = 0x41;
 
+const REGISTERS_NONE: ProfileRegisterSet = ProfileRegisterSet {
+    accumulator: false,
+    code_pointer: false,
+    data_pointer: false,
+};
+const REGISTERS_C: ProfileRegisterSet = ProfileRegisterSet {
+    accumulator: false,
+    code_pointer: true,
+    data_pointer: false,
+};
+const REGISTERS_CD: ProfileRegisterSet = ProfileRegisterSet {
+    accumulator: false,
+    code_pointer: true,
+    data_pointer: true,
+};
+const REGISTERS_ACD: ProfileRegisterSet = ProfileRegisterSet {
+    accumulator: true,
+    code_pointer: true,
+    data_pointer: true,
+};
+
 const CASES: &[ReadCase] = &[
     ReadCase {
         cell: b'>',
         data_read: true,
         encryption_address: Some(CODE_ADDRESS),
+        register_reads: REGISTERS_ACD,
+        register_writes: REGISTERS_ACD,
         rejection: false,
     },
     ReadCase {
         cell: b'Q',
         data_read: false,
         encryption_address: None,
+        register_reads: REGISTERS_C,
+        register_writes: REGISTERS_NONE,
         rejection: false,
     },
     ReadCase {
         cell: b'c',
         data_read: false,
         encryption_address: Some(CODE_ADDRESS),
+        register_reads: REGISTERS_ACD,
+        register_writes: REGISTERS_CD,
         rejection: false,
     },
     ReadCase {
         cell: b'b',
         data_read: true,
         encryption_address: Some(ENCRYPTION_TARGET),
+        register_reads: REGISTERS_CD,
+        register_writes: REGISTERS_CD,
         rejection: false,
     },
     ReadCase {
         cell: b'(',
         data_read: true,
         encryption_address: Some(CODE_ADDRESS),
+        register_reads: REGISTERS_CD,
+        register_writes: REGISTERS_CD,
         rejection: false,
     },
     ReadCase {
         cell: b'D',
         data_read: false,
         encryption_address: Some(CODE_ADDRESS),
+        register_reads: REGISTERS_CD,
+        register_writes: REGISTERS_CD,
         rejection: false,
     },
     ReadCase {
         cell: b'u',
         data_read: false,
         encryption_address: Some(CODE_ADDRESS),
+        register_reads: REGISTERS_CD,
+        register_writes: REGISTERS_ACD,
         rejection: false,
     },
     ReadCase {
         cell: b'\'',
         data_read: true,
         encryption_address: Some(CODE_ADDRESS),
+        register_reads: REGISTERS_CD,
+        register_writes: REGISTERS_ACD,
         rejection: false,
     },
     ReadCase {
         cell: b'b',
         data_read: true,
         encryption_address: Some(ENCRYPTION_TARGET),
+        register_reads: REGISTERS_CD,
+        register_writes: REGISTERS_NONE,
         rejection: true,
     },
 ];
@@ -116,6 +156,8 @@ struct ReadCase {
     cell: u8,
     data_read: bool,
     encryption_address: Option<u32>,
+    register_reads: ProfileRegisterSet,
+    register_writes: ProfileRegisterSet,
     rejection: bool,
 }
 
@@ -194,13 +236,12 @@ fn expected_reads(case: ReadCase) -> ProfileMemoryReads {
 }
 
 #[test]
-fn current_instruction_families_report_exact_semantic_memory_reads()
--> TestResult {
+fn current_instruction_families_report_exact_semantic_accesses() -> TestResult {
     for case in CASES {
         let mut machine = case_machine(*case)?;
         let mut observed = None;
         let result = machine.step_traced(&mut |trace: &ProfileStepTrace| {
-            observed = Some(trace.memory_reads);
+            observed = Some((trace.memory_reads, trace.register_accesses));
         });
         if case.rejection {
             check_equal(
@@ -214,15 +255,33 @@ fn current_instruction_families_report_exact_semantic_memory_reads()
         } else {
             let _outcome = normalize_result(result)?;
         }
-        let reads = observed.ok_or_else(|| {
-            String::from("missing semantic memory-read trace")
-        })?;
+        let (reads, register_accesses) = observed
+            .ok_or_else(|| String::from("missing semantic access trace"))?;
         let expected = expected_reads(*case);
         check_equal(&reads, &expected, "semantic memory-read roles")?;
         check_equal(
             &reads.read_count(),
             &expected.read_count(),
             "semantic memory-read count",
+        )?;
+        let expected_registers = ProfileRegisterAccesses {
+            reads: case.register_reads,
+            writes: case.register_writes,
+        };
+        check_equal(
+            &register_accesses,
+            &expected_registers,
+            "semantic register accesses",
+        )?;
+        check_equal(
+            &register_accesses.reads.register_count(),
+            &case.register_reads.register_count(),
+            "semantic register-read count",
+        )?;
+        check_equal(
+            &register_accesses.writes.register_count(),
+            &case.register_writes.register_count(),
+            "semantic register-write count",
         )?;
     }
     Ok(())

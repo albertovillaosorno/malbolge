@@ -38,8 +38,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use malbolge::{
-    ProfileMachine, ProfileMachineError, ProfileMemoryRead, ProfileStepTrace,
-    RunOutcome,
+    ProfileMachine, ProfileMachineError, ProfileMemoryRead, ProfileRegisterSet,
+    ProfileStepTrace, RunOutcome,
 };
 
 use crate::indexed_state::{IndexedMachineState, IndexedStateError};
@@ -85,6 +85,7 @@ pub struct VerifiedExactRegion {
     exit: IndexedMachineState,
     memory_dependencies: Vec<RegionMemoryDependency>,
     outcome: RunOutcome,
+    register_dependencies: ProfileRegisterSet,
     step_budget: usize,
     traces: Vec<ProfileStepTrace>,
 }
@@ -226,11 +227,14 @@ impl ExactRegionCertificate {
             return Err(ExactRegionError::VerificationMismatch);
         }
         let memory_dependencies = derive_memory_dependencies(&replay.traces)?;
+        let register_dependencies =
+            derive_register_dependencies(&replay.traces);
         Ok(VerifiedExactRegion {
             entry: self.entry.clone(),
             exit: self.exit.clone(),
             memory_dependencies,
             outcome: self.outcome,
+            register_dependencies,
             step_budget: self.step_budget,
             traces: self.traces.clone(),
         })
@@ -375,6 +379,12 @@ impl VerifiedExactRegion {
         self.outcome
     }
 
+    /// Returns verifier-derived entry-register live-ins.
+    #[must_use]
+    pub const fn register_dependencies(&self) -> ProfileRegisterSet {
+        self.register_dependencies
+    }
+
     /// Returns the verifier-recorded semantic step budget for this region.
     #[must_use]
     pub const fn step_budget(&self) -> usize {
@@ -433,4 +443,28 @@ fn derive_memory_dependencies(
         .into_iter()
         .map(|(address, value)| RegionMemoryDependency { address, value })
         .collect())
+}
+
+fn derive_register_dependencies(
+    traces: &[ProfileStepTrace],
+) -> ProfileRegisterSet {
+    let mut dependencies = ProfileRegisterSet::default();
+    let mut written = ProfileRegisterSet::default();
+    for trace in traces {
+        let reads = trace.register_accesses.reads;
+        if reads.accumulator && !written.accumulator {
+            dependencies.accumulator = true;
+        }
+        if reads.code_pointer && !written.code_pointer {
+            dependencies.code_pointer = true;
+        }
+        if reads.data_pointer && !written.data_pointer {
+            dependencies.data_pointer = true;
+        }
+        let writes = trace.register_accesses.writes;
+        written.accumulator |= writes.accumulator;
+        written.code_pointer |= writes.code_pointer;
+        written.data_pointer |= writes.data_pointer;
+    }
+    dependencies
 }

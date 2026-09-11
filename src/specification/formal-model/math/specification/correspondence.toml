@@ -2634,7 +2634,17 @@ label = "eq:state-graph-profile-read-bound"
 domain = "one current-profile normative step across every instruction family and rejected jump encryption"
 mechanism = "exact-transition-engine-read-role-address-value-fixtures"
 # jig-ignore-next-line: indivisible reviewed identifier
-evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exact_semantic_memory_reads"]
+evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exact_semantic_accesses"]
+
+[[correspondence]]
+id = "state-graph-region-register-live-in"
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-region-register-live-in"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "verified current-profile region traces with normative register read sets and committed register write sets"
+mechanism = "ordered-register-read-before-write-live-in-derivation"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exact_semantic_accesses", "tests/function/algorithms/domain/state-graph/r.rs::register_live_ins_derive_only_from_normative_access_evidence"]
 
 [[correspondence]]
 id = "state-graph-region-live-in"
@@ -2644,7 +2654,7 @@ label = "eq:state-graph-region-live-in"
 domain = "verified current-profile region traces with exact semantic memory reads and committed memory deltas"
 mechanism = "ordered-read-before-write-live-in-derivation"
 # jig-ignore-next-line: indivisible reviewed identifier
-evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exact_semantic_memory_reads", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_region_across_irrelevant_memory", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rejects_live_in_memory_change"]
+evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exact_semantic_accesses", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_region_across_irrelevant_memory", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rejects_live_in_memory_change"]
 
 [[correspondence]]
 id = "state-graph-region-dependency-guard"

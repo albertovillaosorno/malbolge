@@ -235,7 +235,8 @@ pub use profile_resident_wire::{
 };
 pub use profile_trace::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
-    ProfileMemoryReads, ProfileMemoryWrite, ProfileStepTrace,
+    ProfileMemoryReads, ProfileMemoryWrite, ProfileRegisterAccesses,
+    ProfileRegisterSet, ProfileStepTrace,
 };
 pub use profile_width::{
     ProfileExecutionGeometry, ProfileWidthProofKind,

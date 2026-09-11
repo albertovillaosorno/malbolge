@@ -530,10 +530,18 @@ as product code; research
 consumes it rather than defining a second effect type. The next boundary is an
 independently validated host-code artifact.
 
-After output rebasing, register identity is the next unresolved causal-state
-boundary. `ProfileStepTrace` already publishes semantic memory reads from the
-transition engine, but it has no equivalent register read/write evidence. The
-research guard therefore continues to require exact A/C/D values rather than
-inferring liveness from decoded opcodes. The next admissible reduction must add
-normative register-access authority first and derive register live-ins from it;
-architecture host-code integration stays with the separate native-backend TODO.
+Register liveness now has transition-engine authority. `ProfileStepTrace`
+publishes semantic A/C/D read sets and only successfully committed register
+writes; rejected transitions publish no writes. The all-instruction fixture
+checks those sets alongside existing memory-read evidence. Research derives
+register live-ins by ordered read-before-write analysis without decoding
+opcodes: one-step halt requires only C, input requires C/D, and output requires
+A/C/D.
+
+This does not yet relax the execution guard. Portable `EffectOp` retains
+absolute before/after register observations but no verified register-write mask,
+so applying a region to candidate-owned non-live registers would currently copy
+certificate register values. The next reduction must prove candidate-relative
+register write rebasing and carry sufficient verified write authority through
+the portable artifact. Host-code integration remains owned by the separate
+native-backend TODO.

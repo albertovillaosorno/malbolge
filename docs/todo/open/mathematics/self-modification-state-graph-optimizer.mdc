@@ -200,12 +200,14 @@ VM evidence.
   normative VM for the same verified budget and rebuild the original incremental
   lineage from real traces. Valid fallback, shortcut, and typed-rejection cases
   all match their normative baselines exactly.
-- Register liveness remains deliberately unresolved. The normative trace exposes
-  exact memory reads but no analogous A/C/D read/write authority, so the reduced
-  guard still keeps all three registers exact. The next mathematics slice is to
-  publish normative register-access evidence and derive register live-ins by the
-  same read-before-write rule; research code must not infer them from opcodes.
-  Host-code emission remains owned by the separate native-backend TODO.
+- `ProfileStepTrace::register_accesses` now publishes normative A/C/D reads and
+  successfully committed writes; rejected transitions expose no writes. The
+  all-instruction fixture checks exact sets, and region verification derives
+  register live-ins by read-before-write without decoding opcodes. One-step
+  halt, input, and output derive C, C/D, and A/C/D respectively. The execution
+  guard remains exact-register until verified register-write rebasing and a
+  portable artifact write mask are proved; host-code emission stays with the
+  native TODO.
 - `artifact.rs` now defines portable effect IR v3 as an explicitly untrusted
   artifact. Independent admission reprojects profile identity, live-ins, budget,
   outcome, and every compact state effect from the verified region. Tamper

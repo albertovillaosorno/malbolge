@@ -396,6 +396,31 @@ produce identical complete exit checkpoints, and the irrelevant difference is
 preserved. A second fixture changes a live-in value and requires both guard and
 shortcut rejection.
 
+\section{Register live-in derivation}
+
+Let $Q=\{A,C,D\}$ be the profile register identities. For verified step $t_i$,
+let $R_Q(t_i)$ be the register-read set published by the normative transition
+engine and $W_Q(t_i)$ its successfully committed register-write set. Writes are
+commit evidence: rejected transitions publish no writes. The region register
+live-in set is
+\begin{equation}
+  L_Q(\tau)=\left\{q\in Q\;\middle|\;
+    q\in R_Q(t_i)\ \land\
+    q\notin\bigcup_{j<i}W_Q(t_j)
+  \right\}.
+  \label{eq:state-graph-region-register-live-in}
+\end{equation}
+This is dependency evidence, not yet a reduced execution guard. Portable
+$\mathrm{EffectOp}$ still carries absolute before/after register observations
+without a verified write mask, so shortcut application continues to require
+exact entry registers until candidate-relative register effects are separately
+proved.
+
+The executable correspondence covers every current instruction family plus a
+rejected jump. One-step regions then derive $\{C\}$ for halt, $\{C,D\}$ for
+input, and $\{A,C,D\}$ for output without re-decoding an opcode in the research
+layer.
+
 \section{Committed-output-prefix content reduction}
 
 Let $O(s)$ be bytes already committed before a verified live region begins.

@@ -256,10 +256,14 @@ Only the verified artifact type may execute; guard miss retains the same
 normative deoptimization path. Research remains the verifier/oracle bridge. This
 is not yet architecture machine code or a stable cross-process cache format.
 
-The remaining minimal-state question is register liveness. The normative trace
-currently publishes exact memory-read authority but no equivalent read/write
-roles for A, C, or D, so region guards deliberately retain all three registers.
-A future reduction must first add transition-engine register-access evidence and
-then derive read-before-write live-ins from that authority. Research must not
-re-decode opcodes to guess those dependencies; real host-code emission remains
-owned by the native-backend TODO.
+Register liveness now derives from normative transition evidence rather than
+opcode inference. `ProfileStepTrace::register_accesses` publishes semantic
+A/C/D reads and successfully committed writes; rejected transitions expose no
+writes. Ordered read-before-write derivation yields C for a halt region, C/D for
+input, and A/C/D for output.
+
+The execution guard intentionally still keeps all entry registers exact.
+`EffectOp` has absolute before/after register observations but no verified write
+mask, so candidate-relative register preservation is not yet portable artifact
+semantics. That write-mask/rebasing proof is the next minimal-state boundary;
+real host-code emission remains owned by the native-backend TODO.

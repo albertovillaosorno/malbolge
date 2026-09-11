@@ -75,6 +75,51 @@ pub struct ProfileMemoryReads {
     pub fetch: Option<ProfileMemoryRead>,
 }
 
+/// Register identities touched by one normative profile transition.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProfileRegisterSet {
+    /// Accumulator register `A` participates in the represented access set.
+    pub accumulator: bool,
+    /// Code-pointer register `C` participates in the represented access set.
+    pub code_pointer: bool,
+    /// Data-pointer register `D` participates in the represented access set.
+    pub data_pointer: bool,
+}
+
+impl ProfileRegisterSet {
+    /// Returns how many distinct register identities are represented.
+    #[must_use]
+    pub const fn register_count(self) -> usize {
+        let accumulator = if self.accumulator {
+            1usize
+        } else {
+            0usize
+        };
+        let code_pointer = if self.code_pointer {
+            1usize
+        } else {
+            0usize
+        };
+        let data_pointer = if self.data_pointer {
+            1usize
+        } else {
+            0usize
+        };
+        accumulator
+            .saturating_add(code_pointer)
+            .saturating_add(data_pointer)
+    }
+}
+
+/// Semantic register reads and committed writes for one requested step.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProfileRegisterAccesses {
+    /// Register values actually read by the normative transition engine.
+    pub reads: ProfileRegisterSet,
+    /// Register identities committed by a successful transition.
+    pub writes: ProfileRegisterSet,
+}
+
 impl ProfileMemoryReads {
     /// Returns the number of semantic read operations represented by this step.
     #[must_use]
@@ -154,6 +199,8 @@ pub struct ProfileStepTrace {
     pub output: Option<u8>,
     /// Exact canonical profile identity for the observed machine.
     pub profile: &'static ProfileDescriptor,
+    /// Semantic register reads and committed writes for this requested step.
+    pub register_accesses: ProfileRegisterAccesses,
     /// Exact public result returned by the requested step.
     pub result: Result<StepOutcome, ProfileMachineError>,
 }

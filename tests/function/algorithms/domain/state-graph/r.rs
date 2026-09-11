@@ -40,8 +40,8 @@
 use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
     ProfileMachineState, ProfileMemoryDelta, ProfileMemoryWrite,
-    ProfileStepTrace, RunOutcome, StepOutcome, Termination, current_profile,
-    verify_minimum_jump_rotate_crazy_halt_profile_width,
+    ProfileRegisterSet, ProfileStepTrace, RunOutcome, StepOutcome, Termination,
+    current_profile, verify_minimum_jump_rotate_crazy_halt_profile_width,
     verify_minimum_straight_line_io_profile_width,
 };
 
@@ -218,6 +218,51 @@ fn tampered_certificate_fails_normative_reverification() -> Result<(), String> {
         Err(ExactRegionError::VerificationMismatch) => Ok(()),
         other => Err(format!("tampered region certificate result: {other:?}")),
     }
+}
+
+fn one_step_register_dependencies(
+    source: &[u8],
+    input: Vec<u8>,
+) -> Result<ProfileRegisterSet, String> {
+    let machine = ProfileMachine::from_source(current_profile(), source, input)
+        .map_err(|error| format!("register-live-in load failed: {error}"))?;
+    let entry = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| format!("register-live-in entry failed: {error:?}"))?;
+    let region = ExactRegionCertificate::record(&entry, 1)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| {
+            format!("register-live-in verify failed: {error:?}")
+        })?;
+    Ok(region.register_dependencies())
+}
+
+#[test]
+fn register_live_ins_derive_only_from_normative_access_evidence()
+-> Result<(), String> {
+    let halt = one_step_register_dependencies(b"QP", Vec::new())?;
+    let input = one_step_register_dependencies(b"uP", vec![0x41])?;
+    let output = one_step_register_dependencies(b"cP", Vec::new())?;
+    let c_only = ProfileRegisterSet {
+        accumulator: false,
+        code_pointer: true,
+        data_pointer: false,
+    };
+    let cd = ProfileRegisterSet {
+        accumulator: false,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    let acd = ProfileRegisterSet {
+        accumulator: true,
+        code_pointer: true,
+        data_pointer: true,
+    };
+    if halt != c_only || input != cd || output != acd {
+        let details =
+            format!("halt={halt:?} input={input:?} output={output:?}");
+        return Err(format!("register live-ins drifted: {details}"));
+    }
+    Ok(())
 }
 
 #[test]
