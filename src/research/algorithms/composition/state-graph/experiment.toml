@@ -200,7 +200,7 @@ verified_output_delta = "zero-or-one-per-effect"
 prior_output_length = "future-irrelevant"
 future_output = "candidate-prefix-plus-verified-appends"
 rejection_condition = "intrinsically-invalid-verified-output-delta"
-next_risk = "verified-register-write-rebasing-and-portable-ir-mask"
+next_risk = "native-v6-register-mask-admission"
 
 [reduction.region_register_live_ins]
 baseline = "exact-a-c-d-entry-registers"
@@ -211,8 +211,11 @@ rejected_transition_writes = "empty"
 derived_fixture_halt = "C"
 derived_fixture_input = "C,D"
 derived_fixture_output = "A,C,D"
-guard_status = "not-yet-reduced"
-blocker = "verified-register-write-rebasing-and-portable-ir-mask"
+guard_status = "reduced-by-register-live-ins"
+write_rebase = "candidate-registers-preserved-except-verified-writes"
+portable_ir = "v6-register-live-in-and-per-effect-write-masks"
+mask_tamper = "fail-closed"
+next_risk = "native-v6-register-mask-admission"
 
 [reduction.region_consumed_input_guard]
 baseline = "full-input-allocation-lineage-guard"

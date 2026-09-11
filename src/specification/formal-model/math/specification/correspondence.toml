@@ -2647,6 +2647,17 @@ mechanism = "ordered-register-read-before-write-live-in-derivation"
 evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exact_semantic_accesses", "tests/function/algorithms/domain/state-graph/r.rs::register_live_ins_derive_only_from_normative_access_evidence"]
 
 [[correspondence]]
+id = "state-graph-region-register-rebase"
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-region-register-rebase"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "verified regions with normative register live-ins/write masks and otherwise passing dependency guard"
+# jig-ignore-next-line: indivisible reviewed identifier
+mechanism = "live-in-only-entry-register-guard-plus-candidate-relative-verified-write-mask"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/vm/profile_reads.rs::current_instruction_families_report_exact_semantic_accesses", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rebases_only_non_live_in_registers", "tests/function/algorithms/domain/state-graph/a.rs::artifact_v6_rebases_dead_register_and_rejects_mask_tampering"]
+
+[[correspondence]]
 id = "state-graph-region-live-in"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-region-live-in"

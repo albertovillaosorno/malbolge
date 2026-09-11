@@ -40,8 +40,9 @@
 use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
     ProfileMachineState, ProfileMemoryDelta, ProfileMemoryWrite,
-    ProfileRegisterSet, ProfileStepTrace, RunOutcome, StepOutcome, Termination,
-    current_profile, verify_minimum_jump_rotate_crazy_halt_profile_width,
+    ProfileRegisterSet, ProfileRegisters, ProfileStepTrace, RunOutcome,
+    StepOutcome, Termination, current_profile,
+    verify_minimum_jump_rotate_crazy_halt_profile_width,
     verify_minimum_straight_line_io_profile_width,
 };
 
@@ -63,6 +64,7 @@ type InputGuardRegion =
     Result<(IndexedMachineState, VerifiedExactRegion), String>;
 type OutputPrefixRegion =
     Result<(ProfileMachineState, VerifiedExactRegion), String>;
+type OneStepRegion = Result<(IndexedMachineState, VerifiedExactRegion), String>;
 
 const fn changed_word(value: u32) -> u32 {
     let incremented = value.saturating_add(1);
@@ -261,6 +263,88 @@ fn register_live_ins_derive_only_from_normative_access_evidence()
         let details =
             format!("halt={halt:?} input={input:?} output={output:?}");
         return Err(format!("register live-ins drifted: {details}"));
+    }
+    Ok(())
+}
+
+fn one_step_region(source: &[u8], input: Vec<u8>) -> OneStepRegion {
+    let machine = ProfileMachine::from_source(current_profile(), source, input)
+        .map_err(|error| format!("register-rebase load failed: {error}"))?;
+    let entry = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| format!("register-rebase entry failed: {error:?}"))?;
+    let region = ExactRegionCertificate::record(&entry, 1)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| format!("register-rebase verify failed: {error:?}"))?;
+    Ok((entry, region))
+}
+
+fn changed_accumulator(
+    entry: &IndexedMachineState,
+) -> Result<IndexedMachineState, String> {
+    let checkpoint = entry.materialize_checkpoint().map_err(|error| {
+        format!("register-rebase checkpoint failed: {error:?}")
+    })?;
+    let before = checkpoint.registers();
+    entry
+        .with_validated_registers(ProfileRegisters {
+            accumulator: changed_word(before.accumulator),
+            code_pointer: before.code_pointer,
+            data_pointer: before.data_pointer,
+        })
+        .map_err(|error| format!("register-rebase candidate failed: {error:?}"))
+}
+
+#[test]
+fn dependency_guard_rebases_only_non_live_in_registers() -> Result<(), String> {
+    let (input_entry, input_region) = one_step_region(b"uP", vec![0x41])?;
+    let input_candidate = changed_accumulator(&input_entry)?;
+    if input_region.register_dependencies().accumulator
+        || !input_region
+            .accepts_dependency_entry(&input_candidate)
+            .map_err(|error| {
+                format!("input register guard failed: {error:?}")
+            })?
+    {
+        return Err(String::from("input region retained dead accumulator"));
+    }
+    let execution =
+        input_region
+            .execute_or_deopt(&input_candidate)
+            .map_err(|error| {
+                format!("input register shortcut failed: {error:?}")
+            })?;
+    let candidate_checkpoint =
+        input_candidate.materialize_checkpoint().map_err(|error| {
+            format!("input candidate materialize failed: {error:?}")
+        })?;
+    let mut direct = ProfileMachine::from_snapshot(candidate_checkpoint);
+    let direct_outcome = direct
+        .run(1)
+        .map_err(|error| format!("input register direct failed: {error}"))?;
+    let shortcut =
+        execution
+            .state()
+            .materialize_checkpoint()
+            .map_err(|error| {
+                format!("input shortcut materialize failed: {error:?}")
+            })?;
+    if execution.tier() != RegionExecutionTier::VerifiedShortcut
+        || execution.outcome() != direct_outcome
+        || shortcut != direct.snapshot_state()
+    {
+        return Err(String::from("input register rebase diverged from VM"));
+    }
+
+    let (output_entry, output_region) = one_step_region(b"cP", Vec::new())?;
+    let output_candidate = changed_accumulator(&output_entry)?;
+    if !output_region.register_dependencies().accumulator
+        || output_region
+            .accepts_dependency_entry(&output_candidate)
+            .map_err(|error| {
+                format!("output register guard failed: {error:?}")
+            })?
+    {
+        return Err(String::from("output region ignored live accumulator"));
     }
     Ok(())
 }

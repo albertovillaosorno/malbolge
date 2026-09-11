@@ -43,8 +43,8 @@ use std::sync::Arc;
 use malbolge::{
     EffectOp, ProfileDescriptor, ProfileExecutionGeometry, ProfileMachineError,
     ProfileMachineIoState, ProfileMachineObservation, ProfileMachineState,
-    ProfileMemoryDelta, ProfileRegisters, ProfileStepTrace, Termination,
-    TraceInput,
+    ProfileMemoryDelta, ProfileRegisterSet, ProfileRegisters, ProfileStepTrace,
+    Termination, TraceInput,
 };
 
 use crate::indexed::{IndexedMemoryError, IndexedProfileMemory};
@@ -176,21 +176,14 @@ impl IndexedMachineState {
         })
     }
 
-    /// Applies one verifier-admitted compact effect with rebased output length.
-    ///
-    /// Exact verifier observations remain artifact evidence, but their absolute
-    /// output offset is historical. This path validates the effect's own output
-    /// delta and applies that delta relative to the candidate's output history.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`IndexedStateError`] when live before-state fields,
-    /// deterministic I/O evolution, or indexed memory invariants disagree.
-    pub(crate) fn apply_verified_effect(
+    pub(crate) fn apply_verified_masked_effect(
         &self,
         effect: &EffectOp,
+        register_writes: ProfileRegisterSet,
     ) -> Result<Self, IndexedStateError> {
-        self.validate_rebased_before_observation(effect.before)?;
+        self.validate_rebased_before_observation_without_registers(
+            effect.before,
+        )?;
         Self::validate_verified_output_delta(effect)?;
         let input_cursor = self.next_input_cursor_effect(
             effect.input,
@@ -201,6 +194,11 @@ impl IndexedMachineState {
             |byte| self.output.append(byte),
         );
         let memory = self.memory.apply_verified(effect.memory_delta)?;
+        let registers = apply_register_writes(
+            self.registers,
+            effect.after.registers,
+            register_writes,
+        );
         Ok(Self {
             geometry: self.geometry,
             input: Arc::clone(&self.input),
@@ -210,7 +208,7 @@ impl IndexedMachineState {
             output,
             profile: self.profile,
             profile_digest: self.profile_digest,
-            registers: effect.after.registers,
+            registers,
             termination: effect.after.termination,
         })
     }
@@ -222,7 +220,10 @@ impl IndexedMachineState {
         if !ptr::eq(self.profile, trace.profile) {
             return Err(IndexedStateError::ProfileMismatch);
         }
-        self.apply_verified_effect(&EffectOp::from_trace(trace))
+        self.apply_verified_masked_effect(
+            &EffectOp::from_trace(trace),
+            trace.register_accesses.writes,
+        )
     }
 
     /// Returns exact equality for all state except mutable memory overrides.
@@ -296,6 +297,31 @@ impl IndexedMachineState {
             && self.input.get(self.input_cursor..)
                 == other.input.get(self.input_cursor..)
             && self.registers == other.registers
+            && self.termination == other.termination
+    }
+
+    /// Returns reduced future equality under verifier-derived register
+    /// live-ins.
+    ///
+    /// This is identical to [`Self::future_non_memory_eq`] except registers not
+    /// selected by `register_live_ins` are intentionally ignored. Callers must
+    /// pair this guard with verifier-proven per-effect register-write masks.
+    #[must_use]
+    pub fn future_non_memory_eq_with_register_live_ins(
+        &self,
+        other: &Self,
+        register_live_ins: ProfileRegisterSet,
+    ) -> bool {
+        self.geometry == other.geometry
+            && ptr::eq(self.profile, other.profile)
+            && self.input_cursor == other.input_cursor
+            && self.input.get(self.input_cursor..)
+                == other.input.get(self.input_cursor..)
+            && registers_match(
+                self.registers,
+                other.registers,
+                register_live_ins,
+            )
             && self.termination == other.termination
     }
 
@@ -477,14 +503,13 @@ impl IndexedMachineState {
         Ok(())
     }
 
-    fn validate_rebased_before_observation(
+    fn validate_rebased_before_observation_without_registers(
         &self,
         before: ProfileMachineObservation,
     ) -> Result<(), IndexedStateError> {
         let input_matches = before.input_consumed == self.input_cursor;
-        let registers_match = before.registers == self.registers;
         let termination_matches = before.termination == self.termination;
-        if !input_matches || !registers_match || !termination_matches {
+        if !input_matches || !termination_matches {
             return Err(IndexedStateError::BeforeObservationMismatch);
         }
         Ok(())
@@ -541,6 +566,47 @@ impl IndexedMachineState {
             profile: self.profile,
             profile_digest: self.profile_digest,
             registers: self.registers,
+            termination: self.termination,
+        })
+    }
+
+    /// Rebinds profile registers after canonical checkpoint validation.
+    ///
+    /// This research helper materializes memory/output so the normative state
+    /// constructor independently rejects any register outside the admitted
+    /// geometry. The persistent memory/input/output representations are then
+    /// reused unchanged.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IndexedStateError`] when materialization or normative register
+    /// validation fails.
+    pub fn with_validated_registers(
+        &self,
+        registers: ProfileRegisters,
+    ) -> Result<Self, IndexedStateError> {
+        let io = ProfileMachineIoState::new(
+            self.input.to_vec(),
+            self.input_cursor,
+            self.output.materialize(),
+            self.termination,
+        )?;
+        let _validated = ProfileMachineState::new_with_geometry(
+            self.geometry,
+            self.memory.materialize()?,
+            registers,
+            io,
+        )?;
+        Ok(Self {
+            geometry: self.geometry,
+            input: Arc::clone(&self.input),
+            input_cursor: self.input_cursor,
+            input_digest: self.input_digest,
+            memory: self.memory.clone(),
+            output: self.output.clone(),
+            profile: self.profile,
+            profile_digest: self.profile_digest,
+            registers,
             termination: self.termination,
         })
     }
@@ -664,6 +730,30 @@ pub const fn constant_indexed_collision_digest(
     0
 }
 
+const fn apply_register_writes(
+    current: ProfileRegisters,
+    verified_after: ProfileRegisters,
+    writes: ProfileRegisterSet,
+) -> ProfileRegisters {
+    ProfileRegisters {
+        accumulator: if writes.accumulator {
+            verified_after.accumulator
+        } else {
+            current.accumulator
+        },
+        code_pointer: if writes.code_pointer {
+            verified_after.code_pointer
+        } else {
+            current.code_pointer
+        },
+        data_pointer: if writes.data_pointer {
+            verified_after.data_pointer
+        } else {
+            current.data_pointer
+        },
+    }
+}
+
 fn hash_byte(hash: u64, value: u8) -> u64 {
     (hash ^ u64::from(value)).wrapping_mul(FNV_PRIME)
 }
@@ -703,4 +793,16 @@ fn hash_usize(mut hash: u64, value: usize) -> u64 {
         hash = hash_byte(hash, byte);
     }
     hash
+}
+
+const fn registers_match(
+    expected: ProfileRegisters,
+    observed: ProfileRegisters,
+    live_ins: ProfileRegisterSet,
+) -> bool {
+    (!live_ins.accumulator || expected.accumulator == observed.accumulator)
+        && (!live_ins.code_pointer
+            || expected.code_pointer == observed.code_pointer)
+        && (!live_ins.data_pointer
+            || expected.data_pointer == observed.data_pointer)
 }

@@ -37,12 +37,13 @@
 
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter, Result as FormatResult};
+use std::ops::{Deref, DerefMut};
 
 use crate::machine::{RunOutcome, StepOutcome, Termination};
 use crate::profile::{ProfileDescriptor, TargetProfileRequirement};
 use crate::profile_trace::{
     ProfileMachineObservation, ProfileMemoryDelta, ProfileMemoryRead,
-    ProfileMemoryWrite, ProfileStepTrace,
+    ProfileMemoryWrite, ProfileRegisterSet, ProfileStepTrace,
 };
 use crate::profile_width::ProfileExecutionGeometry;
 use crate::semantic_width::SEMANTIC_WIDTH_MINIMUM_TRITS;
@@ -54,6 +55,8 @@ pub const EFFECT_IR_VERSION: u16 = 3;
 pub const EFFECT_IR_WIDE_PROFILE_VERSION: u16 = 4;
 /// Portable effect-IR schema carrying explicit verified execution geometry.
 pub const EFFECT_IR_EXECUTION_GEOMETRY_VERSION: u16 = 5;
+/// Portable effect-IR schema carrying verified register dependency masks.
+pub const EFFECT_IR_REGISTER_MASK_VERSION: u16 = 6;
 const IR_MAGIC: &[u8; 4] = b"MBIR";
 
 /// One architecture-neutral state-changing operation from a verified VM step.
@@ -212,6 +215,22 @@ pub struct ExecutionGeometryRegionEffectProgram {
     program: RegionEffectProgram,
 }
 
+/// V6 portable region program with verifier-derived register dependency masks.
+///
+/// The embedded [`RegionEffectProgram`] keeps the exact v3/v4 effect payload
+/// shape. V6 adds one entry-register live-in mask plus one committed-write mask
+/// per effect without changing any frozen legacy encoding.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RegisterMaskedRegionEffectProgram {
+    /// Ordinary portable effect payload and profile metadata.
+    pub program: RegionEffectProgram,
+    /// Registers whose entry values are read before any region write dominates
+    /// them.
+    pub register_live_ins: ProfileRegisterSet,
+    /// Exact committed register-write set for each ordered effect.
+    pub register_writes: Vec<ProfileRegisterSet>,
+}
+
 impl EffectOp {
     /// Projects one normative VM trace to the portable state-changing subset.
     #[must_use]
@@ -234,6 +253,8 @@ pub enum IrEncodingError {
     /// IR v3 cannot encode a profile capacity wider than its unsigned 32-bit
     /// field.
     ProfileMemoryWordsOverflow,
+    /// V6 has a different number of register-write masks and effects.
+    RegisterMaskCountMismatch,
     /// The declared effect-IR format version has no canonical encoder.
     UnsupportedFormatVersion,
 }
@@ -421,6 +442,92 @@ impl ExecutionGeometryRegionEffectProgram {
     #[must_use]
     pub const fn step_budget(&self) -> usize {
         self.program.step_budget
+    }
+}
+
+impl Deref for RegisterMaskedRegionEffectProgram {
+    type Target = RegionEffectProgram;
+
+    fn deref(&self) -> &Self::Target {
+        &self.program
+    }
+}
+
+impl DerefMut for RegisterMaskedRegionEffectProgram {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.program
+    }
+}
+
+impl RegisterMaskedRegionEffectProgram {
+    /// Renders canonical v6 bytes with explicit register dependency masks.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`IrEncodingError::RegisterMaskCountMismatch`] if one ordered
+    /// effect lacks exactly one write mask, or an ordinary encoding error for
+    /// unrepresentable lengths/profile metadata.
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>, IrEncodingError> {
+        if self.program.format_version != EFFECT_IR_REGISTER_MASK_VERSION {
+            return Err(IrEncodingError::UnsupportedFormatVersion);
+        }
+        if self.program.effects.len() != self.register_writes.len() {
+            return Err(IrEncodingError::RegisterMaskCountMismatch);
+        }
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(IR_MAGIC);
+        push_u16(&mut bytes, EFFECT_IR_REGISTER_MASK_VERSION);
+        push_bytes(&mut bytes, self.program.profile_id.as_bytes())?;
+        push_bytes(&mut bytes, self.program.profile_fingerprint.as_bytes())?;
+        push_profile_requirement(
+            &mut bytes,
+            &self.program.profile_requirement,
+            EFFECT_IR_REGISTER_MASK_VERSION,
+        )?;
+        push_usize(&mut bytes, self.program.step_budget)?;
+        push_run_outcome(&mut bytes, self.program.outcome)?;
+        push_usize(&mut bytes, self.program.memory_live_ins.len())?;
+        for live_in in &self.program.memory_live_ins {
+            push_u32(&mut bytes, live_in.address);
+            push_u32(&mut bytes, live_in.value);
+        }
+        push_register_set(&mut bytes, self.register_live_ins);
+        push_usize(&mut bytes, self.program.effects.len())?;
+        for (effect, writes) in
+            self.program.effects.iter().zip(&self.register_writes)
+        {
+            push_effect(&mut bytes, *effect)?;
+            push_register_set(&mut bytes, *writes);
+        }
+        Ok(bytes)
+    }
+
+    /// Returns the fixed register-mask IR schema version.
+    #[must_use]
+    pub const fn format_version(&self) -> u16 {
+        self.program.format_version
+    }
+
+    /// Projects one complete canonical-geometry trace to portable v6 IR.
+    ///
+    /// Register reads become the one-step entry live-in mask and committed
+    /// writes become the effect write mask. The result remains untrusted until
+    /// an independent verifier admits the trace/program relationship.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StepProgramProjectionError`] on the same malformed/rejected
+    /// trace evidence rejected by ordinary one-step projection.
+    pub fn from_profile_step_trace(
+        trace: &ProfileStepTrace,
+    ) -> Result<Self, StepProgramProjectionError> {
+        let mut program = RegionEffectProgram::from_profile_step_trace(trace)?;
+        program.format_version = EFFECT_IR_REGISTER_MASK_VERSION;
+        Ok(Self {
+            program,
+            register_live_ins: trace.register_accesses.reads,
+            register_writes: vec![trace.register_accesses.writes],
+        })
     }
 }
 
@@ -749,12 +856,27 @@ fn push_profile_requirement(
             push_u32(output, memory_words);
         },
         EFFECT_IR_WIDE_PROFILE_VERSION
-        | EFFECT_IR_EXECUTION_GEOMETRY_VERSION => {
+        | EFFECT_IR_EXECUTION_GEOMETRY_VERSION
+        | EFFECT_IR_REGISTER_MASK_VERSION => {
             push_u64(output, requirement.memory_words);
         },
         _ => return Err(IrEncodingError::UnsupportedFormatVersion),
     }
     Ok(())
+}
+
+fn push_register_set(output: &mut Vec<u8>, registers: ProfileRegisterSet) {
+    let mut mask = 0u8;
+    if registers.accumulator {
+        mask |= 1;
+    }
+    if registers.code_pointer {
+        mask |= 2;
+    }
+    if registers.data_pointer {
+        mask |= 4;
+    }
+    output.push(mask);
 }
 
 fn push_run_outcome(

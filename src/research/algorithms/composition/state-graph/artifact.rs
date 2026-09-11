@@ -36,7 +36,8 @@
 //! Portable untrusted-to-verified region effect artifact boundary.
 
 use malbolge::{
-    EFFECT_IR_VERSION, EffectOp, MemoryLiveIn, RegionEffectProgram, RunOutcome,
+    EFFECT_IR_REGISTER_MASK_VERSION, EffectOp, MemoryLiveIn,
+    RegionEffectProgram, RegisterMaskedRegionEffectProgram, RunOutcome,
     TargetProfileRequirement,
 };
 
@@ -48,13 +49,13 @@ use crate::region_certificate::{
 /// Untrusted portable region artifact requiring verifier comparison.
 #[derive(Clone, Debug)]
 pub struct UntrustedRegionArtifact {
-    program: RegionEffectProgram,
+    program: RegisterMaskedRegionEffectProgram,
 }
 
 /// Verified portable effect artifact bound to one verifier-produced region.
 #[derive(Clone, Debug)]
 pub struct VerifiedRegionArtifact {
-    program: RegionEffectProgram,
+    program: RegisterMaskedRegionEffectProgram,
     region: VerifiedExactRegion,
 }
 
@@ -97,7 +98,9 @@ impl RegionArtifactExecutionResult {
 impl UntrustedRegionArtifact {
     /// Builds an explicitly untrusted artifact from caller-supplied IR.
     #[must_use]
-    pub const fn from_untrusted_parts(program: RegionEffectProgram) -> Self {
+    pub const fn from_untrusted_parts(
+        program: RegisterMaskedRegionEffectProgram,
+    ) -> Self {
         Self { program }
     }
 
@@ -108,37 +111,13 @@ impl UntrustedRegionArtifact {
     #[must_use]
     pub fn from_verified_region(region: &VerifiedExactRegion) -> Self {
         Self {
-            program: RegionEffectProgram {
-                effects: region
-                    .traces()
-                    .iter()
-                    .map(EffectOp::from_trace)
-                    .collect(),
-                format_version: EFFECT_IR_VERSION,
-                memory_live_ins: region
-                    .memory_dependencies()
-                    .iter()
-                    .map(|dependency| MemoryLiveIn {
-                        address: dependency.address,
-                        value: dependency.value,
-                    })
-                    .collect(),
-                outcome: region.outcome(),
-                profile_fingerprint: String::from(
-                    region.entry().profile_fingerprint(),
-                ),
-                profile_id: String::from(region.entry().profile_id()),
-                profile_requirement: TargetProfileRequirement::from_descriptor(
-                    region.entry().profile_descriptor(),
-                ),
-                step_budget: region.step_budget(),
-            },
+            program: projected_program(region),
         }
     }
 
     /// Returns the untrusted product-owned IR for transport or mutation.
     #[must_use]
-    pub const fn program(&self) -> &RegionEffectProgram {
+    pub const fn program(&self) -> &RegisterMaskedRegionEffectProgram {
         &self.program
     }
 
@@ -152,27 +131,7 @@ impl UntrustedRegionArtifact {
         &self,
         region: &VerifiedExactRegion,
     ) -> Result<VerifiedRegionArtifact, RegionArtifactVerificationError> {
-        let expected = RegionEffectProgram {
-            effects: region.traces().iter().map(EffectOp::from_trace).collect(),
-            format_version: EFFECT_IR_VERSION,
-            memory_live_ins: region
-                .memory_dependencies()
-                .iter()
-                .map(|dependency| MemoryLiveIn {
-                    address: dependency.address,
-                    value: dependency.value,
-                })
-                .collect(),
-            outcome: region.outcome(),
-            profile_fingerprint: String::from(
-                region.entry().profile_fingerprint(),
-            ),
-            profile_id: String::from(region.entry().profile_id()),
-            profile_requirement: TargetProfileRequirement::from_descriptor(
-                region.entry().profile_descriptor(),
-            ),
-            step_budget: region.step_budget(),
-        };
+        let expected = projected_program(region);
         if self.program != expected {
             return Err(RegionArtifactVerificationError::VerificationMismatch);
         }
@@ -204,13 +163,53 @@ impl VerifiedRegionArtifact {
             });
         }
         let mut state = candidate.clone();
-        for effect in &self.program.effects {
-            state = state.apply_verified_effect(effect)?;
+        for (effect, writes) in self
+            .program
+            .program
+            .effects
+            .iter()
+            .zip(&self.program.register_writes)
+        {
+            state = state.apply_verified_masked_effect(effect, *writes)?;
         }
         Ok(RegionArtifactExecutionResult {
             outcome: self.region.outcome(),
             state,
             tier: RegionExecutionTier::VerifiedShortcut,
         })
+    }
+}
+
+fn projected_program(
+    region: &VerifiedExactRegion,
+) -> RegisterMaskedRegionEffectProgram {
+    RegisterMaskedRegionEffectProgram {
+        program: RegionEffectProgram {
+            effects: region.traces().iter().map(EffectOp::from_trace).collect(),
+            format_version: EFFECT_IR_REGISTER_MASK_VERSION,
+            memory_live_ins: region
+                .memory_dependencies()
+                .iter()
+                .map(|dependency| MemoryLiveIn {
+                    address: dependency.address,
+                    value: dependency.value,
+                })
+                .collect(),
+            outcome: region.outcome(),
+            profile_fingerprint: String::from(
+                region.entry().profile_fingerprint(),
+            ),
+            profile_id: String::from(region.entry().profile_id()),
+            profile_requirement: TargetProfileRequirement::from_descriptor(
+                region.entry().profile_descriptor(),
+            ),
+            step_budget: region.step_budget(),
+        },
+        register_live_ins: region.register_dependencies(),
+        register_writes: region
+            .traces()
+            .iter()
+            .map(|trace| trace.register_accesses.writes)
+            .collect(),
     }
 }

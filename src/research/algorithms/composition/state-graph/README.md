@@ -201,7 +201,7 @@ analysis over the VM-provided semantic read set and exact memory delta. A cell
 is
 a live-in dependency only when the region reads it before any earlier verified
 region write dominates that address. The guard still requires exact future
-input/register/termination state. Prior
+input/termination state and verifier-derived register live-ins. Prior
 committed-output content and length are both excluded, and memory-root identity
 is also not a precondition.
 
@@ -262,8 +262,14 @@ A/C/D reads and successfully committed writes; rejected transitions expose no
 writes. Ordered read-before-write derivation yields C for a halt region, C/D for
 input, and A/C/D for output.
 
-The execution guard intentionally still keeps all entry registers exact.
-`EffectOp` has absolute before/after register observations but no verified write
-mask, so candidate-relative register preservation is not yet portable artifact
-semantics. That write-mask/rebasing proof is the next minimal-state boundary;
-real host-code emission remains owned by the native-backend TODO.
+The execution guard now compares only verifier-derived register live-ins.
+Verified replay preserves candidate-owned values for registers absent from each
+committed write mask, while written registers take their normatively verified
+after-values. Input therefore admits a changed dead accumulator; output rejects
+that same change because A is live-in.
+
+Portable IR v6 carries the regional live-in mask and one register-write mask per
+effect. Artifact admission reprojects both masks exactly and rejects mask or
+cardinality tampering. V3/v4/v5 identities remain frozen, and existing native
+backends deliberately do not admit v6; host-code emission stays with the native
+backend TODO.

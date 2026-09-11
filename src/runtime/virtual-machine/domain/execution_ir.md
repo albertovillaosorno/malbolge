@@ -28,6 +28,10 @@ future AOT and JIT backends after deterministic verifier admission.
   canonical profile requirement and adds an explicit execution-geometry field.
 - `ExecutionGeometryRegionEffectProgram`: v5 trace projection and canonical byte
   transport. No native consumer accepts this type yet.
+- `EFFECT_IR_REGISTER_MASK_VERSION`: portable v6 identity carrying verifier
+  register live-ins and committed per-effect write masks.
+- `RegisterMaskedRegionEffectProgram`: v6 wrapper over the frozen ordinary
+  effect payload. Existing native consumers do not accept this type yet.
 
 ## Does Not Own
 
@@ -72,7 +76,7 @@ traces. `ExecutionGeometryRegionEffectProgram::from_profile_step_trace()`
 accepts the same complete trace and binds its exact visible geometry into v5
 without changing canonical profile identity.
 
-### Canonical identity encoding v3, v4, and v5
+### Canonical identity encoding v3 through v6
 
 `RegionEffectProgram::canonical_bytes()` is the byte authority for cache/native
 identity. It starts with ASCII `MBIR`, then the `u16` IR version. All integers
@@ -118,6 +122,17 @@ explicit execution geometry as one `u8` word-trit width plus one little-endian
 profile requirement remains current canonical N15. The v5 wrapper is a separate
 portable type: native cache, lowering, direct templates, invocation, and
 legacy native-continuation APIs still consume only `RegionEffectProgram`.
+
+V6 is likewise a separate portable wrapper. It keeps the ordinary effect payload
+unchanged, then adds one register-live-in bit mask for the region and one
+committed register-write bit mask after each encoded effect. A/C/D use bits
+0/1/2 respectively. The number of write masks must equal the effect count or
+canonical encoding fails.
+
+Existing v3/v4 bytes and v5 geometry bytes therefore remain byte-for-byte
+stable.
+`is_canonical_effect_ir_version()` still admits only the native-supported v3/v4
+`RegionEffectProgram` versions.
 
 A separate geometry interpreter path may consume one or more ordered v5 steps
 only when a validated checkpoint supplies the opaque geometry token. Every

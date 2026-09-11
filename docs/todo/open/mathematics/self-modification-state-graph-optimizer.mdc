@@ -204,18 +204,23 @@ VM evidence.
   successfully committed writes; rejected transitions expose no writes. The
   all-instruction fixture checks exact sets, and region verification derives
   register live-ins by read-before-write without decoding opcodes. One-step
-  halt, input, and output derive C, C/D, and A/C/D respectively. The execution
-  guard remains exact-register until verified register-write rebasing and a
-  portable artifact write mask are proved; host-code emission stays with the
-  native TODO.
-- `artifact.rs` now defines portable effect IR v3 as an explicitly untrusted
+  halt, input, and output derive C, C/D, and A/C/D respectively. The dependency
+  guard now compares only those live-ins, and verified replay preserves
+  candidate registers not named by each committed write mask.
+- Portable effect IR v6 carries the regional register-live-in mask plus one
+  committed write mask per effect. Artifact admission reprojects both masks from
+  verified traces and rejects value/count tampering. Input safely reuses a
+  changed dead accumulator while output rejects the same live-in change. Frozen
+  v3/v4/v5 identities and existing native admission remain unchanged; native v6
+  execution belongs to the separate backend TODO.
+- `artifact.rs` now consumes portable effect IR v6 as an explicitly untrusted
   artifact. Independent admission reprojects profile identity, live-ins, budget,
   outcome, and every compact state effect from the verified region. Tamper
   fixtures now mutate effect before/after observations, input, output, and
   memory delta independently in addition to metadata/effect-count changes;
   every claim
   fails exact reprojection. Admitted shortcut/deopt results equal the
-  verified-region baseline. Production `execution/ir/` owns effect IR v3;
+  verified-region baseline. Production `execution/ir/` owns effect IR v6;
 
   host-code artifacts remain open.
 

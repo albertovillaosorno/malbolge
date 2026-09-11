@@ -272,7 +272,10 @@ impl VerifiedExactRegion {
         &self,
         candidate: &IndexedMachineState,
     ) -> Result<bool, ExactRegionError> {
-        if !self.entry.future_non_memory_eq(candidate) {
+        if !self.entry.future_non_memory_eq_with_register_live_ins(
+            candidate,
+            self.register_dependencies,
+        ) {
             return Ok(false);
         }
         for dependency in &self.memory_dependencies {

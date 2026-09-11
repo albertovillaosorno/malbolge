@@ -410,16 +410,33 @@ live-in set is
   \right\}.
   \label{eq:state-graph-region-register-live-in}
 \end{equation}
-This is dependency evidence, not yet a reduced execution guard. Portable
-$\mathrm{EffectOp}$ still carries absolute before/after register observations
-without a verified write mask, so shortcut application continues to require
-exact entry registers until candidate-relative register effects are separately
-proved.
-
 The executable correspondence covers every current instruction family plus a
 rejected jump. One-step regions then derive $\{C\}$ for halt, $\{C,D\}$ for
 input, and $\{A,C,D\}$ for output without re-decoding an opcode in the research
 layer.
+
+For a verified region entry $e$ and candidate $s$, register compatibility needs
+only equality on $L_Q(\tau)$. Verified effect $t_i$ then updates exactly its
+committed register-write set while preserving candidate-owned values elsewhere:
+\begin{equation}
+  \begin{aligned}
+  G_Q(s,e) &\Longleftrightarrow
+    \forall q\in L_Q(\tau),\;r_s[q]=r_e[q],\\
+  r'_{i+1}[q] &=
+    \begin{cases}
+      r_{t_i,\mathrm{after}}[q], & q\in W_Q(t_i),\\
+      r'_i[q], & q\notin W_Q(t_i).
+    \end{cases}
+  \end{aligned}
+  \label{eq:state-graph-region-register-rebase}
+\end{equation}
+The ordinary exact trace remains unchanged. Portable IR v6 carries
+$L_Q(\tau)$ and one $W_Q(t_i)$ mask per effect; the verifier independently
+reprojects both before shortcut execution. A changed dead accumulator is
+admitted
+for a one-step input region and matches normative execution, while the same
+change is rejected for output because $A\in L_Q(\tau)$. Mask tampering and mask
+cardinality mismatch fail closed.
 
 \section{Committed-output-prefix content reduction}
 

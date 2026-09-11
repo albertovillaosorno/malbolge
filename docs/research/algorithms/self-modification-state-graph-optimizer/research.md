@@ -538,10 +538,17 @@ register live-ins by ordered read-before-write analysis without decoding
 opcodes: one-step halt requires only C, input requires C/D, and output requires
 A/C/D.
 
-This does not yet relax the execution guard. Portable `EffectOp` retains
-absolute before/after register observations but no verified register-write mask,
-so applying a region to candidate-owned non-live registers would currently copy
-certificate register values. The next reduction must prove candidate-relative
-register write rebasing and carry sufficient verified write authority through
-the portable artifact. Host-code integration remains owned by the separate
-native-backend TODO.
+Register liveness now reduces the execution guard as well. Candidate registers
+are compared only on the verifier-derived live-in set; each verified effect then
+copies only the registers named by its committed-write mask and preserves all
+other candidate-owned registers. A one-step input region therefore accepts a
+different entry accumulator and still matches normative execution, while output
+rejects the same change because it reads the accumulator before any write.
+
+Portable IR v6 carries the regional register-live-in mask plus one committed
+write mask per effect. The artifact verifier independently reprojects both from
+normative traces; tampered masks and missing per-effect masks fail closed.
+Frozen
+v3/v4 encodings and the separate v5 geometry wrapper remain unchanged, and v6
+is deliberately not admitted by existing native backends yet. Host-code
+integration remains owned by the separate native-backend TODO.

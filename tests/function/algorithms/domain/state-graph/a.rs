@@ -33,9 +33,11 @@
 //! Verification fixtures for portable region effect artifacts.
 
 use malbolge::{
-    ProfileMachine, ProfileMachineIoState, ProfileMachineState,
-    ProfileMemoryDelta, ProfileMemoryWrite, RegionEffectProgram, TraceInput,
-    current_profile, verify_minimum_straight_line_io_profile_width,
+    EFFECT_IR_REGISTER_MASK_VERSION, IrEncodingError, ProfileMachine,
+    ProfileMachineIoState, ProfileMachineState, ProfileMemoryDelta,
+    ProfileMemoryWrite, ProfileRegisters, RegionEffectProgram,
+    RegisterMaskedRegionEffectProgram, TraceInput, current_profile,
+    verify_minimum_straight_line_io_profile_width,
 };
 
 use crate::indexed_state::IndexedMachineState;
@@ -244,6 +246,104 @@ fn artifact_shortcut_rebases_output_history() -> Result<(), String> {
     Ok(())
 }
 
+fn check_v6_identity(source: &UntrustedRegionArtifact) -> Result<(), String> {
+    let bytes = source
+        .program()
+        .canonical_bytes()
+        .map_err(|error| format!("artifact v6 encoding failed: {error:?}"))?;
+    if source.program().format_version() != EFFECT_IR_REGISTER_MASK_VERSION
+        || bytes.get(..6) != Some(b"MBIR\x06\x00")
+        || malbolge::is_canonical_effect_ir_version(
+            EFFECT_IR_REGISTER_MASK_VERSION,
+        )
+    {
+        return Err(String::from("artifact register-mask v6 identity drifted"));
+    }
+    Ok(())
+}
+
+fn check_v6_register_mask_tampering(
+    source: &UntrustedRegionArtifact,
+    region: &VerifiedExactRegion,
+) -> Result<(), String> {
+    let mut live_in_tamper = source.program().clone();
+    live_in_tamper.register_live_ins.accumulator = true;
+    check_rejected(live_in_tamper, region, "register live-ins")?;
+
+    let mut write_tamper = source.program().clone();
+    let writes = write_tamper.register_writes.first_mut().ok_or_else(|| {
+        String::from("artifact v6 has no register-write mask")
+    })?;
+    writes.accumulator = false;
+    check_rejected(write_tamper, region, "register writes")?;
+
+    let mut count_tamper = source.program().clone();
+    let _removed = count_tamper.register_writes.pop();
+    if count_tamper.canonical_bytes()
+        != Err(IrEncodingError::RegisterMaskCountMismatch)
+    {
+        return Err(String::from("artifact v6 encoded missing write mask"));
+    }
+    check_rejected(count_tamper, region, "register write count")
+}
+
+#[test]
+fn artifact_v6_rebases_dead_register_and_rejects_mask_tampering()
+-> Result<(), String> {
+    let machine =
+        ProfileMachine::from_source(current_profile(), b"uP", vec![0x41])
+            .map_err(|error| {
+                format!("artifact register load failed: {error}")
+            })?;
+    let checkpoint = machine.snapshot_state();
+    let entry =
+        IndexedMachineState::from_checkpoint(&checkpoint).map_err(|error| {
+            format!("artifact register entry failed: {error:?}")
+        })?;
+    let region = ExactRegionCertificate::record(&entry, 1)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| {
+            format!("artifact register region failed: {error:?}")
+        })?;
+    let source = UntrustedRegionArtifact::from_verified_region(&region);
+    check_v6_identity(&source)?;
+    let artifact = source.verify_against(&region).map_err(|error| {
+        format!("artifact register admission failed: {error:?}")
+    })?;
+    let registers = checkpoint.registers();
+    let candidate = entry
+        .with_validated_registers(ProfileRegisters {
+            accumulator: changed_word(registers.accumulator),
+            code_pointer: registers.code_pointer,
+            data_pointer: registers.data_pointer,
+        })
+        .map_err(|error| {
+            format!("artifact register candidate failed: {error:?}")
+        })?;
+    let result = artifact.execute_or_deopt(&candidate).map_err(|error| {
+        format!("artifact register execution failed: {error:?}")
+    })?;
+    let mut direct = ProfileMachine::from_snapshot(
+        candidate.materialize_checkpoint().map_err(|error| {
+            format!("artifact register materialize: {error:?}")
+        })?,
+    );
+    let direct_outcome = direct
+        .run(1)
+        .map_err(|error| format!("artifact register direct failed: {error}"))?;
+    let actual = result.state().materialize_checkpoint().map_err(|error| {
+        format!("artifact register result failed: {error:?}")
+    })?;
+    if result.tier() != RegionExecutionTier::VerifiedShortcut
+        || result.outcome() != direct_outcome
+        || actual != direct.snapshot_state()
+    {
+        return Err(String::from("artifact register rebase diverged from VM"));
+    }
+
+    check_v6_register_mask_tampering(&source, &region)
+}
+
 #[test]
 fn artifact_verifier_rejects_effect_tampering() -> Result<(), String> {
     let (_entry, region) = verified_fixture()?;
@@ -377,7 +477,7 @@ fn artifact_verifier_rejects_metadata_tampering() -> Result<(), String> {
 }
 
 fn check_rejected(
-    program: RegionEffectProgram,
+    program: RegisterMaskedRegionEffectProgram,
     region: &VerifiedExactRegion,
     field: &str,
 ) -> Result<(), String> {
