@@ -60,10 +60,12 @@ baseline; native tiers are accelerators of identical observable behavior.
 - Prerequisite completion evidence: `safe-rust-malbolge-vm`,
   `self-modification-state-graph-optimizer`.
 - Active foundation: `src/runtime/virtual-machine/domain/execution_ir.rs` owns
-  portable effect IR v3
-  (`EffectOp`, `MemoryLiveIn`, and `RegionEffectProgram`) and re-exports the
-  VM-owned `TargetProfileRequirement`. The tiered composition root is registered
-  as the non-distribution `tiered_execution_validation` Cargo binary target so
+  the portable effect-IR family. Frozen v3/v4 remain ordinary
+  `RegionEffectProgram`, v5 adds explicit execution geometry, and v6 adds
+  verifier-derived register live-ins/write masks while retaining exact effect
+  evidence. The module also re-exports the VM-owned `TargetProfileRequirement`.
+- The tiered composition root is registered as the non-distribution
+  `tiered_execution_validation` Cargo binary target so
   Jig resolves its production crate root without changing the behavioral test
   harness. State-graph research reprojects verifier traces into this IR,
   rejects tampered profile-ID/fingerprint/version/features/geometry,
@@ -618,6 +620,13 @@ baseline; native tiers are accelerators of identical observable behavior.
   the parent. Durable/cross-process leasing, object fusion, direct
   branch chains, a concrete FFI shim, adaptive cache policy, and async/product
   scheduling remain out.
+- The completed state-graph prerequisite now hands portable v6 to this
+  milestone. Native identity/admission does not yet consume
+  `RegisterMaskedRegionEffectProgram`; existing direct/cache APIs accept the
+  older program/geometry forms. V6 must retain its complete canonical bytes and
+  register masks in cache/artifact identity before any native selector may gain
+  authority over it. Projecting v6 down to v3/v4 would discard correctness-
+  relevant mask identity and is therefore not an admissible compatibility path.
 - Remaining fused-region emission plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and

@@ -27,13 +27,17 @@ This document governs the following declared TODO scope:
 
 ### Implemented Foundation
 
-`src/runtime/virtual-machine/domain/execution_ir.rs` now owns portable effect
-IR v3
-as product code. It
-defines `EffectOp`, `MemoryLiveIn`, and `RegionEffectProgram`, and re-exports
-the
-VM-owned `TargetProfileRequirement` under the existing responsibility-oriented
-topology. `src/runtime/tiered-execution/composition/lib.rs` is registered as the
+`src/runtime/virtual-machine/domain/execution_ir.rs` now owns the portable
+effect-IR family as product code. Frozen v3/v4 use `RegionEffectProgram`, v5
+adds explicit execution geometry, and v6 adds verifier-derived register
+live-ins plus committed-write masks without changing the frozen encodings.
+`EffectOp` retains exact input/output/memory evidence, and the module re-exports
+the VM-owned `TargetProfileRequirement` under the existing
+responsibility-oriented topology.
+
+The state-graph prerequisite now supplies a completed v6 verifier/replay
+boundary. The tiered composition root at
+`src/runtime/tiered-execution/composition/lib.rs` is registered as the
 non-distribution `tiered_execution_validation` Cargo binary target so Jig can
 resolve the exact production crate root. The existing integration test remains
 the executable behavioral harness; the validation target exists only to compile
@@ -1930,6 +1934,13 @@ policy, linking, executable memory, invocation, and performance policy remain
 outside.
 
 ### Remaining Implementation
+
+The immediate prerequisite handoff is portable effect IR v6. Existing native
+cache identity, selectors, invocation, and direct templates consume v3/v4 or the
+separate v5 geometry wrapper and must not acquire v6 authority by discarding its
+register masks. Native v6 admission first needs exact identity over the complete
+v6 canonical bytes plus mask-preserving semantic admission; unsupported v6
+therefore remains fail-closed until that boundary exists.
 
 Combined-region emission, native-retry orchestration beyond bounded
 process-local cached cycles, asynchronous/product scheduling, executable-memory
