@@ -873,6 +873,32 @@ fn initial_input_guard_region(
     Ok((entry, region))
 }
 
+fn rebind_input_cursor(
+    entry: &IndexedMachineState,
+    input: Vec<u8>,
+    input_cursor: usize,
+) -> Result<IndexedMachineState, String> {
+    let checkpoint = entry.materialize_checkpoint().map_err(|error| {
+        format!("cursor-rebase checkpoint failed: {error:?}")
+    })?;
+    let io = ProfileMachineIoState::new(
+        input,
+        input_cursor,
+        checkpoint.io().output().to_vec(),
+        checkpoint.io().termination(),
+    )
+    .map_err(|error| format!("cursor-rebase IO failed: {error}"))?;
+    let rebound = ProfileMachineState::new_with_geometry(
+        checkpoint.geometry(),
+        checkpoint.memory().to_vec(),
+        checkpoint.registers(),
+        io,
+    )
+    .map_err(|error| format!("cursor-rebase state failed: {error}"))?;
+    IndexedMachineState::from_checkpoint(&rebound)
+        .map_err(|error| format!("cursor-rebase index failed: {error:?}"))
+}
+
 fn validate_region_execution_matches_direct(
     region: &VerifiedExactRegion,
     candidate: &IndexedMachineState,
@@ -974,6 +1000,70 @@ fn dependency_guard_requires_only_bounded_input_bytes() -> Result<(), String> {
         return Err(String::from("bounded input guard ignored observed byte"));
     }
     Ok(())
+}
+
+#[test]
+fn dependency_guard_rebases_input_cursor_from_candidate() -> Result<(), String>
+{
+    let (entry, region) =
+        initial_input_guard_region(vec![0x11, 0x7a, 0x33], 2)?;
+    let candidate =
+        rebind_input_cursor(&entry, vec![0xee, 0xdd, 0x11, 0x7a, 0x44], 2)?;
+    if !region
+        .accepts_dependency_entry(&candidate)
+        .map_err(|error| format!("cursor-rebase guard failed: {error:?}"))?
+    {
+        return Err(String::from(
+            "cursor-rebase guard retained absolute cursor",
+        ));
+    }
+    validate_region_execution_matches_direct(
+        &region,
+        &candidate,
+        RegionExecutionTier::VerifiedShortcut,
+    )?;
+    let changed_observed =
+        rebind_input_cursor(&entry, vec![0xee, 0xdd, 0x11, 0x55, 0x44], 2)?;
+    if region
+        .accepts_dependency_entry(&changed_observed)
+        .map_err(|error| {
+            format!("cursor-rebase observed guard failed: {error:?}")
+        })?
+    {
+        return Err(String::from(
+            "cursor rebase ignored relative observed byte",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn dependency_guard_rebases_eof_to_candidate_cursor() -> Result<(), String> {
+    let (entry, region) = one_step_region(b"uP", Vec::new())?;
+    let candidate_eof = rebind_input_cursor(&entry, vec![0xaa, 0xbb], 2)?;
+    if !region
+        .accepts_dependency_entry(&candidate_eof)
+        .map_err(|error| format!("rebased EOF guard failed: {error:?}"))?
+    {
+        return Err(String::from("rebased EOF retained absolute cursor"));
+    }
+    validate_region_execution_matches_direct(
+        &region,
+        &candidate_eof,
+        RegionExecutionTier::VerifiedShortcut,
+    )?;
+    let candidate_not_eof = rebind_input_cursor(&entry, vec![0xaa, 0xbb], 1)?;
+    if region
+        .accepts_dependency_entry(&candidate_not_eof)
+        .map_err(|error| format!("rebased non-EOF guard failed: {error:?}"))?
+    {
+        return Err(String::from("rebased EOF accepted available byte"));
+    }
+    validate_region_execution_matches_direct(
+        &region,
+        &candidate_not_eof,
+        RegionExecutionTier::InterpreterFallback,
+    )
 }
 
 #[test]

@@ -2601,17 +2601,27 @@ id = "state-graph-region-bounded-input-observation"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-region-bounded-input-observation"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "verified bounded profile regions with exact entry cursor and trace-owned Byte/EOF input observations"
+domain = "verified bounded profile regions with candidate-relative trace-owned Byte/EOF input observations"
 mechanism = "trace-input-cursor-simulation-with-unobserved-tail-elision"
 # jig-ignore-next-line: indivisible reviewed identifier
-evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_ignores_input_unobserved_by_region", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_requires_only_bounded_input_bytes", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_preserves_verified_eof_observation", "tests/function/algorithms/domain/state-graph/a.rs::artifact_v6_guards_only_bounded_input_observations"]
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_ignores_input_unobserved_by_region", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_requires_only_bounded_input_bytes", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_preserves_verified_eof_observation", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rebases_input_cursor_from_candidate", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rebases_eof_to_candidate_cursor", "tests/function/algorithms/domain/state-graph/a.rs::artifact_v6_guards_only_bounded_input_observations"]
+
+[[correspondence]]
+id = "state-graph-region-input-cursor-rebase"
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-region-input-cursor-rebase"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "verified profile regions replayed from arbitrary validated candidate input cursors satisfying relative Byte/EOF observations"
+mechanism = "verified-zero-or-one-input-delta-rebased-onto-candidate-cursor"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rebases_input_cursor_from_candidate", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rebases_eof_to_candidate_cursor", "tests/function/algorithms/domain/state-graph/a.rs::artifact_v6_rebases_input_cursor_from_candidate"]
 
 [[correspondence]]
 id = "state-graph-region-consumed-input-guard"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-region-consumed-input-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
-domain = "verified regions with exact profile/geometry/cursor/termination, verifier-derived register/input/memory dependencies, and arbitrary other histories"
+domain = "verified regions with exact profile/geometry/termination, verifier-derived register/input/memory dependencies, and arbitrary input/output histories"
 mechanism = "bounded-input-register-memory-live-in-dependency-guard"
 # jig-ignore-next-line: indivisible reviewed identifier
 evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_ignores_input_unobserved_by_region", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_requires_only_bounded_input_bytes", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_preserves_verified_eof_observation", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_irrelevant_independent_base_change"]

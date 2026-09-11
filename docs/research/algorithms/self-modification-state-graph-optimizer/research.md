@@ -470,16 +470,27 @@ retaining the same verifier and deoptimization boundary.
 
 
 The dependency guard now strengthens the earlier consumed-prefix result to a
-bounded input-observation relation. The entry cursor remains exact, but the
-candidate input is checked only against verifier-owned `TraceInput` events
-actually reached by the region. `Byte(b)` requires that byte at the simulated
-cursor and advances it; `EndOfInput` requires exact exhaustion at that point.
+bounded input-observation relation. Candidate input is checked only against
+verifier-owned `TraceInput` events actually reached by the region. `Byte(b)`
+requires that byte at the simulated cursor and advances it; `EndOfInput`
+requires exact exhaustion at that point.
 Bytes after the last observed input are unconstrained when no EOF is observed.
 
 A two-input `utO` region therefore accepts a changed or absent later tail while
 rejecting a changed observed byte; the following halt region ignores the tail
 entirely. An EOF mismatch is a guard miss and deoptimizes normatively rather
 than failing during shortcut application.
+
+
+Absolute input cursor is now rebased as well. Exact verifier observations still
+prove that each `Byte` advances `input_consumed` by one while no-input and EOF
+advance it by zero, but shortcut execution applies that delta from the
+candidate's validated cursor. A `utO` certificate recorded at cursor zero reuses
+from cursor two when the same two relative bytes follow and reaches cursor four
+exactly like the normative VM. EOF likewise replays from a different absolute
+cursor only when that candidate cursor is at exhaustion.
+
+Portable v6 repeats the cursor-shifted shortcut without a schema change.
 
 The invariant-transform objective is now bounded by verifier specialization
 rather than a new arithmetic optimizer. A theorem-verified jump/rotate/crazy

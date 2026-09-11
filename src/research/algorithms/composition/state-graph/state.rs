@@ -184,11 +184,10 @@ impl IndexedMachineState {
         self.validate_rebased_before_observation_without_registers(
             effect.before,
         )?;
+        Self::validate_verified_input_delta(effect)?;
         Self::validate_verified_output_delta(effect)?;
-        let input_cursor = self.next_input_cursor_effect(
-            effect.input,
-            effect.after.input_consumed,
-        )?;
+        let input_cursor =
+            self.next_rebased_input_cursor_effect(effect.input)?;
         let output = effect.output.map_or_else(
             || self.output.clone(),
             |byte| self.output.append(byte),
@@ -302,10 +301,10 @@ impl IndexedMachineState {
 
     /// Returns reduced future equality excluding bounded input observations.
     ///
-    /// Profile, opaque geometry, exact input cursor, selected register
-    /// live-ins, and termination remain guard authority. Input bytes are
-    /// intentionally excluded here and must be checked separately against
-    /// the verifier-owned `TraceInput` sequence before shortcut execution.
+    /// Profile, opaque geometry, selected register live-ins, and termination
+    /// remain guard authority. Absolute input cursor and input bytes are
+    /// intentionally excluded here; verified replay rebases cursor deltas and
+    /// checks `TraceInput` observations relative to the candidate cursor.
     #[must_use]
     pub fn future_non_memory_eq_with_register_live_ins(
         &self,
@@ -314,7 +313,6 @@ impl IndexedMachineState {
     ) -> bool {
         self.geometry == other.geometry
             && ptr::eq(self.profile, other.profile)
-            && self.input_cursor == other.input_cursor
             && registers_match(
                 self.registers,
                 other.registers,
@@ -447,6 +445,14 @@ impl IndexedMachineState {
         )
     }
 
+    fn next_rebased_input_cursor_effect(
+        &self,
+        input: Option<TraceInput>,
+    ) -> Result<usize, IndexedStateError> {
+        verified_input_cursor(&self.input, self.input_cursor, input)
+            .ok_or(IndexedStateError::InputTraceMismatch)
+    }
+
     /// Returns the canonical profile descriptor bound to this state lineage.
     #[must_use]
     pub const fn profile_descriptor(&self) -> &'static ProfileDescriptor {
@@ -527,10 +533,21 @@ impl IndexedMachineState {
         &self,
         before: ProfileMachineObservation,
     ) -> Result<(), IndexedStateError> {
-        let input_matches = before.input_consumed == self.input_cursor;
-        let termination_matches = before.termination == self.termination;
-        if !input_matches || !termination_matches {
+        if before.termination != self.termination {
             return Err(IndexedStateError::BeforeObservationMismatch);
+        }
+        Ok(())
+    }
+
+    fn validate_verified_input_delta(
+        effect: &EffectOp,
+    ) -> Result<(), IndexedStateError> {
+        let delta =
+            usize::from(matches!(effect.input, Some(TraceInput::Byte(_))));
+        if effect.before.input_consumed.checked_add(delta)
+            != Some(effect.after.input_consumed)
+        {
+            return Err(IndexedStateError::InputTraceMismatch);
         }
         Ok(())
     }

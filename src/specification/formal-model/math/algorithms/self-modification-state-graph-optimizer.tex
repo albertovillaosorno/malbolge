@@ -488,8 +488,9 @@ case, proving that artifact replay uses the same rebased semantics.
 
 Let a verifier-admitted region carry traces
 $\tau=(t_0,\ldots,t_{n-1})$ and let $J(t_j)$ be the trace input observation:
-none, one concrete byte $b$, or EOF. For candidate input $I_s$ with exact entry
-cursor $\kappa_0=i$, define the bounded input predicate by the recursive rule
+none, one concrete byte $b$, or EOF. For candidate input $I_s$ and one chosen
+starting cursor $\kappa_0$, define the bounded input predicate by the recursive
+rule
 \begin{equation}
   B_I(\tau,s)\Longleftrightarrow
   \forall j<n:\quad
@@ -510,23 +511,40 @@ in
 $B_I$. Therefore bytes after its last consumed byte are unconstrained unless a
 verified EOF observation proves that the stream must end at that cursor.
 
-Let $N_F(s,e,\tau)$ require equal canonical profile, opaque geometry, exact
-entry
-input cursor, termination, and equality only for register live-ins
-$L_Q(\tau)$. It deliberately excludes prior output history, input bytes, and
-memory-root identity. Combining the bounded input predicate with the proved
+\section{Verified input-cursor rebasing}
+
+For each verified trace effect let $d_j=1$ exactly when
+$J(t_j)=\operatorname{Byte}(b)$ and $d_j=0$ for no input or EOF. Exact verifier
+replay proves the absolute observation delta
+$t_j.\mathrm{afterConsumed}=t_j.\mathrm{beforeConsumed}+d_j$. Shortcut replay
+keeps that proof but starts from the candidate cursor $i_s$:
+\begin{equation}
+  \kappa'_0=i_s,\qquad
+  \kappa'_{j+1}=\kappa'_j+d_j,\qquad
+  B_I^R(\tau,s)=B_I(\tau,s;\kappa'_0).
+  \label{eq:state-graph-region-input-cursor-rebase}
+\end{equation}
+Thus the verifier's absolute cursor values remain immutable artifact evidence,
+but the candidate's past consumption count is not a causal region precondition.
+Concrete bytes and EOF are still checked at the rebased cursor through
+$B_I^R$.
+
+Let $N_F(s,e,\tau)$ require equal canonical profile, opaque geometry,
+termination, and equality only for register live-ins $L_Q(\tau)$. It
+deliberately excludes prior output history, absolute input cursor/input bytes,
+and memory-root identity. Combining the rebased input predicate with the proved
 register and memory dependency sets gives
 \begin{equation}
   G^F_{\tau}(s,e)
   \Longleftrightarrow
-  N_F(s,e,\tau)\ \land\ B_I(\tau,s)\ \land\
+  N_F(s,e,\tau)\ \land\ B_I^R(\tau,s)\ \land\
   \forall(a,v)\in L(\tau),\ M_s[a]=v.
   \label{eq:state-graph-region-consumed-input-guard}
 \end{equation}
-The guard keeps opaque execution geometry and the entry cursor exact. Memory
-authority comes only from $L(\tau)$, register authority comes only from
-$L_Q(\tau)$, and input authority comes only from $B_I$. Candidate checkpoints
-remain individually validated under the same trusted geometry token.
+The guard keeps opaque execution geometry exact. Memory authority comes only
+from $L(\tau)$, register authority comes only from $L_Q(\tau)$, and input
+authority comes only from $B_I^R$. Candidate checkpoints remain individually
+validated under the same trusted geometry token.
 
 The executable correspondence verifies a minimum-width \texttt{utO} region.
 A two-input region accepts candidates whose first two observed bytes agree while
@@ -534,8 +552,10 @@ a later unread byte is changed or absent; changing the second observed byte is a
 guard miss. After those two inputs, the one-step halt region accepts arbitrary
 unobserved tail changes because it performs no input observation. A separate
 EOF-input region rejects a candidate with an available byte and deoptimizes to
-the normative VM. Portable v6 artifact execution repeats the changed-tail
-shortcut and observed-byte deoptimization cases.
+the normative VM. Cursor-rebase fixtures additionally replay the same two-input
+certificate from candidate cursor two and replay verified EOF at candidate
+cursor two; both match direct normative execution. Portable v6 artifact
+execution repeats bounded-tail and cursor-rebase shortcuts.
 
 \section{Verifier-hoisted rotate and crazy effects}
 

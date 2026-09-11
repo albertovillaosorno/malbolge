@@ -247,6 +247,32 @@ fn artifact_shortcut_rebases_output_history() -> Result<(), String> {
     Ok(())
 }
 
+fn rebind_artifact_input_cursor(
+    entry: &IndexedMachineState,
+    input: Vec<u8>,
+    input_cursor: usize,
+) -> Result<IndexedMachineState, String> {
+    let checkpoint = entry.materialize_checkpoint().map_err(|error| {
+        format!("artifact cursor checkpoint failed: {error:?}")
+    })?;
+    let io = ProfileMachineIoState::new(
+        input,
+        input_cursor,
+        checkpoint.io().output().to_vec(),
+        checkpoint.io().termination(),
+    )
+    .map_err(|error| format!("artifact cursor IO failed: {error}"))?;
+    let rebound = ProfileMachineState::new_with_geometry(
+        checkpoint.geometry(),
+        checkpoint.memory().to_vec(),
+        checkpoint.registers(),
+        io,
+    )
+    .map_err(|error| format!("artifact cursor state failed: {error}"))?;
+    IndexedMachineState::from_checkpoint(&rebound)
+        .map_err(|error| format!("artifact cursor index failed: {error:?}"))
+}
+
 fn validate_artifact_input_candidate(
     artifact: &VerifiedRegionArtifact,
     region: &VerifiedExactRegion,
@@ -317,6 +343,39 @@ fn artifact_v6_guards_only_bounded_input_observations() -> Result<(), String> {
         &region,
         &changed_observed,
         RegionExecutionTier::InterpreterFallback,
+    )
+}
+
+#[test]
+fn artifact_v6_rebases_input_cursor_from_candidate() -> Result<(), String> {
+    let geometry = verify_minimum_straight_line_io_profile_width(
+        current_profile(),
+        b"utO",
+    )
+    .map_err(|error| format!("artifact cursor geometry failed: {error}"))?;
+    let machine =
+        ProfileMachine::from_verified_source(&geometry, vec![0x11, 0x7a, 0x33])
+            .map_err(|error| format!("artifact cursor load failed: {error}"))?;
+    let entry = IndexedMachineState::from_checkpoint(&machine.snapshot_state())
+        .map_err(|error| format!("artifact cursor entry failed: {error:?}"))?;
+    let region = ExactRegionCertificate::record(&entry, 2)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| format!("artifact cursor region failed: {error:?}"))?;
+    let artifact = UntrustedRegionArtifact::from_verified_region(&region)
+        .verify_against(&region)
+        .map_err(|error| {
+            format!("artifact cursor admission failed: {error:?}")
+        })?;
+    let candidate = rebind_artifact_input_cursor(
+        &entry,
+        vec![0xee, 0xdd, 0x11, 0x7a, 0x44],
+        2,
+    )?;
+    validate_artifact_input_candidate(
+        &artifact,
+        &region,
+        &candidate,
+        RegionExecutionTier::VerifiedShortcut,
     )
 }
 

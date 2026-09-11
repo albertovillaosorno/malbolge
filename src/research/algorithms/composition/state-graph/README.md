@@ -231,14 +231,22 @@ and matches direct normative execution. Live-in equality, not root identity, is
 therefore the bounded region's memory precondition.
 
 The reduced region guard now strengthens the profile input-prefix reduction to
-bounded input observations. Profile, opaque geometry, entry cursor, termination,
-and register live-ins remain explicit dependencies, but input content is checked
-only against the verified region's ordered `TraceInput` events. Concrete bytes
+bounded input observations. Profile, opaque geometry, termination, and register
+live-ins remain explicit dependencies, but input content is checked only against
+the verified region's ordered `TraceInput` events. Concrete bytes
 advance a simulated cursor; EOF requires exact exhaustion there.
 
 A later unread tail may differ or be absent, while changing an observed byte
 remains a guard miss. Input rebinding is independently validated through a
 complete profile checkpoint before the research state is reused.
+
+
+Absolute input cursor is also verifier bookkeeping rather than a live-region
+precondition. Verified effect application proves the certificate's intrinsic
+zero-or-one cursor delta and applies it from the candidate cursor; byte and EOF
+checks are evaluated there. Two-input and EOF fixtures start at different
+candidate cursors and still match direct VM execution, while a relative observed
+byte mismatch deoptimizes.
 
 The verified effect path also supplies the objective's transform-hoist boundary.
 A theorem-verified `(&<;:9K` region contains both rotate and crazy; after exact
