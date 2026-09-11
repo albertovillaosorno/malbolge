@@ -621,7 +621,7 @@ baseline; native tiers are accelerators of identical observable behavior.
   branch chains, a concrete FFI shim, adaptive cache policy, and async/product
   scheduling remain out.
 - Portable v6 now crosses identity, semantic admission, verified host-object
-  construction, and non-executable load/invocation preparation. Complete v6
+  construction, executable lifecycle, and loaded invocation. Complete v6
   identity retains register live-ins/write masks, rejects mask-dropping legacy
   construction, and keeps cache invalidation mask-exact.
 - `admit_register_masked_direct_native()` applies canonical-profile and
@@ -639,10 +639,25 @@ baseline; native tiers are accelerators of identical observable behavior.
   observation: A, D, and I/O cursors may differ while C, fetched-cell live-in,
   required capacity, running termination, and cursor bounds remain exact.
   Applied completion changes only termination and guard miss rolls back
-  atomically. These types remain outside lifecycle/platform/runner enums, so v6
-  still has no callable execution authority. The next slice is a dedicated
-  mask-preserving executable lifecycle/runner; v6-to-v3/v4 projection remains
-  forbidden.
+  atomically.
+- Dedicated v6 `Staged`/`Sealed`/`Ready` typestates now carry that exact image
+  through RW copy, RX protection, instruction synchronization, and retryable
+  release. The shared platform adapter returns only the v6-ready type.
+- Exact ready-image binding now produces only
+  `PreparedRegisterMaskedNativeInvocation`; the separate
+  `RegisterMaskedNativeRunner` port cannot be reached through legacy or v5
+  runner types. Loaded Applied preserves rebased dead state, GuardMiss is
+  atomic,
+  runner/completion failures restore the complete snapshot, and a different v6
+  key fails before runner entry.
+- `execute_verified_register_masked_native()` now owns the complete one-shot
+  v6 load/bind/run/admit/release transaction. Load/call failure restores rebased
+  caller state and attempts cleanup; final release failure retains both
+  committed
+  outcome and exact ready executable for retry.
+- V6 still lacks reusable mapping ownership, sequence/cache execution
+  integration, and wider mask-aware template coverage. Those are the next
+  slices; v6-to-v3/v4 projection remains forbidden.
 - Remaining fused-region emission plus cache-aware AOT/JIT
   policy beyond verified direct process-local reuse, durable cache
   serialization/storage/eviction, executable-memory policy, invocation, and

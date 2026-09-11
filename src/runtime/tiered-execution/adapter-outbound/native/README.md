@@ -193,8 +193,29 @@ C, the fetched-cell live-in, memory capacity, running termination, and buffer
 cursor validity remain fail-closed.
 
 Applied completion preserves the rebased dead state and changes only
-termination; guard miss reuses the common atomic rollback contract. These v6
-types remain outside executable lifecycle and runner authority.
+termination; guard miss reuses the common atomic rollback contract.
+
+Register-masked v6 now has dedicated `Staged`, `Sealed`, and `Ready` executable
+typestates over `VerifiedRegisterMaskedLoadImage`. The shared platform adapter
+still owns RW allocation, exact copy, RW-to-RX protection, instruction sync, and
+release, but its v6 entrypoint returns only
+`ReadyRegisterMaskedNativeExecutable`.
+
+`PreparedRegisterMaskedHaltFetchInvocation::bind_executable()` requires exact
+v6 load-image equality before producing
+`PreparedRegisterMaskedNativeInvocation`.
+The separate `RegisterMaskedNativeRunner` port can see the synchronized entry,
+mapping identity, and ABI pointer only through that bound view. Loaded execution
+keeps rebased state on Applied/GuardMiss and restores it on runner or completion
+failure; a different v6 key fails before runner entry.
+
+`execute_verified_register_masked_native()` now owns the complete one-shot v6
+load/bind/run/admit/release transaction. Load or call failure restores the
+rebased
+snapshot and attempts exact cleanup; release failure after a committed result
+retains both that outcome and the exact ready v6 executable for retry. Reusable
+mapping ownership, sequence execution, and wider mask-aware templates remain
+outside this boundary.
 
 The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while

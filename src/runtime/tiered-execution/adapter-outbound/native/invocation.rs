@@ -56,7 +56,7 @@ use super::direct::{
 };
 use super::lifecycle::{
     NativeExecutableMappingId, ReadyExecutionGeometryNativeExecutable,
-    ReadyNativeExecutable,
+    ReadyNativeExecutable, ReadyRegisterMaskedNativeExecutable,
 };
 use super::loader::{
     VerifiedDirectLoadError, VerifiedDirectLoadImage,
@@ -265,6 +265,16 @@ pub struct PreparedRegisterMaskedHaltFetchInvocation<'artifact, 'buffers> {
 #[derive(Debug)]
 pub struct PreparedExecutionGeometryNativeInvocation<'buffers, 'executable> {
     executable: &'executable ReadyExecutionGeometryNativeExecutable,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
+/// Runner-facing view of one exact register-masked v6 halt call.
+///
+/// Construction is crate-owned after complete v6 load-image and synchronized
+/// executable identity agree.
+#[derive(Debug)]
+pub struct PreparedRegisterMaskedNativeInvocation<'buffers, 'executable> {
+    executable: &'executable ReadyRegisterMaskedNativeExecutable,
     invocation: PreparedNativeRegionInvocation<'buffers>,
 }
 
@@ -525,6 +535,32 @@ impl<'artifact, 'buffers>
         self.artifact
     }
 
+    /// Binds this exact v6 call to one synchronized register-masked executable.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableInvocationBindingError`] when the executable
+    /// retains any different code, entry, key, target, or load policy. Binding
+    /// failure restores the complete rebased entry snapshot.
+    pub fn bind_executable<'executable>(
+        self,
+        executable: &'executable ReadyRegisterMaskedNativeExecutable,
+    ) -> Result<
+        PreparedRegisterMaskedNativeInvocation<'buffers, 'executable>,
+        NativeExecutableInvocationBindingError,
+    > {
+        if self.load_image() != executable.image() {
+            self.abort();
+            return Err(
+                NativeExecutableInvocationBindingError::ExecutableIdentity,
+            );
+        }
+        Ok(PreparedRegisterMaskedNativeInvocation::new(
+            executable,
+            self.invocation,
+        ))
+    }
+
     /// Admits one raw native status through the rebased v6 halt contract.
     ///
     /// # Errors
@@ -640,6 +676,75 @@ impl<'artifact, 'buffers>
     #[must_use]
     pub const fn target_triple(&self) -> &'static str {
         self.artifact.target_triple()
+    }
+
+    /// Simulates one foreign guest-memory mutation for rollback tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn write_memory_for_test(
+        &mut self,
+        address: usize,
+        value: u32,
+    ) -> bool {
+        self.invocation.write_memory_for_test(address, value)
+    }
+}
+
+impl PreparedRegisterMaskedNativeInvocation<'_, '_> {
+    /// Restores the complete rebased entry snapshot after runner failure.
+    pub(crate) fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Simulates the exact allowed v6 halt transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Admits one raw status through the exact rebased v6 call contract.
+    pub(crate) fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<
+        NativeRegionInvocationOutcome,
+        VerifiedRegisterMaskedInvocationError,
+    > {
+        self.invocation
+            .complete(raw_status)
+            .map_err(VerifiedRegisterMaskedInvocationError::Invocation)
+    }
+
+    /// Returns the synchronized non-zero register-masked v6 entrypoint.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized v6 executable retained by this view.
+    #[must_use]
+    pub const fn executable(&self) -> &ReadyRegisterMaskedNativeExecutable {
+        self.executable
+    }
+
+    /// Returns the exact platform mapping identity retained by this view.
+    #[must_use]
+    pub const fn mapping_id(&self) -> NativeExecutableMappingId {
+        self.executable.mapping().mapping_id()
+    }
+
+    pub(crate) const fn new<'buffers, 'executable>(
+        executable: &'executable ReadyRegisterMaskedNativeExecutable,
+        invocation: PreparedNativeRegionInvocation<'buffers>,
+    ) -> PreparedRegisterMaskedNativeInvocation<'buffers, 'executable> {
+        PreparedRegisterMaskedNativeInvocation { executable, invocation }
+    }
+
+    /// Returns the mutable ABI state pointer for the caller-owned v6 runner.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
     }
 
     /// Simulates one foreign guest-memory mutation for rollback tests.

@@ -1950,14 +1950,16 @@ outside.
 
 ### Remaining Implementation
 
-Portable v6 now has exact cache identity and one host-independent semantic
-admission, but no native execution authority. The
+Portable v6 now has exact cache identity, host-independent semantic admission,
+and one loaded native-execution boundary. The
 `admit_register_masked_direct_native()` boundary first preserves canonical
 profile identity and `MALBOLGE-PROFILE-002` then `MALBOLGE-PROFILE-001`
 preflight. It constructs complete v6 identity and currently admits only a real
 one-step halt-fetch whose normative register evidence is C-only live-in with no
-writes. Extra live-ins/writes are unsupported and malformed mask cardinality
-fails identity.
+writes.
+
+Extra live-ins/writes are unsupported and malformed mask cardinality fails
+identity. No v6-to-v3/v4 projection is permitted.
 
 The host-independent certificate exposes only `HaltFetch` plus complete v6
 identity. It still has no target, object, executable-memory, or invocation
@@ -1983,11 +1985,39 @@ bounds remain mandatory. Successful admission preserves every rebased field and
 changes only termination to `HaltInstruction`; guard miss uses the shared atomic
 snapshot/rollback boundary.
 
-No v6 executable lifecycle, platform load, callable entrypoint, or native runner
-exists yet. That specialized lifecycle/runner boundary is next; it must retain
-this v6 type separation rather than route through full-observation legacy
-invocation. Projecting v6 into v3/v4 remains forbidden, so unsupported v6
-execution stays fail-closed.
+V6 executable lifecycle now has its own `StagedRegisterMaskedNativeExecutable`,
+`SealedRegisterMaskedNativeExecutable`, and
+`ReadyRegisterMaskedNativeExecutable` typestates. They retain the exact v6 load
+image through copied-byte admission, same-mapping RW-to-RX transition, full-code
+instruction synchronization, entry-range/alignment checks, and retryable
+release.
+
+`load_register_masked_native_executable()` reuses the caller-owned platform
+adapter and existing phase-tagged cleanup evidence, but returns only the
+v6-ready
+type. The v6 ready type is not a `ReadyNativeExecutable` or a
+`ReadyExecutionGeometryNativeExecutable`.
+
+`PreparedRegisterMaskedHaltFetchInvocation::bind_executable()` requires exact
+v6 load-image equality before a call gains runner-facing authority. A distinct
+v6 key can share identical `.text` while still failing this bind before the
+runner is called.
+
+`RegisterMaskedNativeRunner` is a separate caller-owned port. Its
+`PreparedRegisterMaskedNativeInvocation` exposes entrypoint, mapping identity,
+and ABI state only after exact v6 binding. Loaded execution restores the rebased
+entry snapshot on runner or completion failure, preserves an atomic GuardMiss,
+and admits Applied only when every rebased field survives except termination.
+
+`execute_verified_register_masked_native()` now supplies one complete one-shot
+v6 transaction: load, exact bind, dedicated runner call, result admission, and
+release. Load/call failures restore the prepared rebased snapshot and attempt
+exact mapping cleanup; a final release failure retains the committed outcome and
+exact ready v6 executable for retry.
+
+No reusable v6 mapping owner, sequence/cache execution integration, or broader
+register-masked template family exists yet. Those are the next reviewed
+boundaries; unsupported v6 execution remains fail-closed.
 
 Combined-region emission, native-retry orchestration beyond bounded
 process-local cached cycles, asynchronous/product scheduling, executable-memory

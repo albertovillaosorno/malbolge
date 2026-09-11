@@ -249,7 +249,7 @@ pub use invocation::{
     NativeRegionMutationSurface, PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
-    PreparedVerifiedDirectInvocation,
+    PreparedRegisterMaskedNativeInvocation, PreparedVerifiedDirectInvocation,
     PreparedVerifiedExecutionGeometryInvocation, VerifiedDirectInvocationError,
     VerifiedExecutionGeometryInvocationError,
     VerifiedRegisterMaskedInvocationError,
@@ -258,9 +258,11 @@ pub use lifecycle::{
     NativeExecutableLifecycleError, NativeExecutableMappingId,
     NativeExecutableMappingReport, NativeExecutableReleaseRequest,
     NativeInstructionSyncReport, ReadyExecutionGeometryNativeExecutable,
-    ReadyNativeExecutable, SealedExecutionGeometryNativeExecutable,
-    SealedNativeExecutable, StagedExecutionGeometryNativeExecutable,
-    StagedNativeExecutable,
+    ReadyNativeExecutable, ReadyRegisterMaskedNativeExecutable,
+    SealedExecutionGeometryNativeExecutable, SealedNativeExecutable,
+    SealedRegisterMaskedNativeExecutable,
+    StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
+    StagedRegisterMaskedNativeExecutable,
 };
 pub use loader::{
     NativeExecutableLoadPolicy, NativeExecutablePermission,
@@ -282,8 +284,13 @@ pub use platform::{
     NativeExecutableLoadResult, NativeExecutableMemoryAdapter,
     NativeExecutableOperationEvidenceError, NativeExecutableReleaseFailure,
     NativeExecutableReleaseResult, NativeInstructionSyncRequest,
+    RegisterMaskedNativeExecutableLoadResult,
+    RegisterMaskedNativeExecutableReleaseFailure,
+    RegisterMaskedNativeExecutableReleaseResult,
     load_execution_geometry_native_executable, load_native_executable,
+    load_register_masked_native_executable,
     release_execution_geometry_native_executable, release_native_executable,
+    release_register_masked_native_executable,
 };
 pub use runner::{
     ExecutionGeometryLoadedExecutionFailure,
@@ -291,8 +298,13 @@ pub use runner::{
     NativeExecutableExecutionFailure, NativeExecutableExecutionPhase,
     NativeExecutableExecutionResult, NativeExecutableRunner,
     NativeLoadedExecutionFailure, NativeLoadedExecutionResult,
+    RegisterMaskedLoadedExecutionFailure, RegisterMaskedLoadedExecutionResult,
+    RegisterMaskedNativeExecutionFailure, RegisterMaskedNativeExecutionResult,
+    RegisterMaskedNativeRunner,
     execute_loaded_verified_execution_geometry_native,
-    execute_loaded_verified_native, execute_verified_native,
+    execute_loaded_verified_native,
+    execute_loaded_verified_register_masked_native, execute_verified_native,
+    execute_verified_register_masked_native,
 };
 pub use sequence_continuation::{
     NativeInterpreterContinuation, NativeInterpreterContinuationError,

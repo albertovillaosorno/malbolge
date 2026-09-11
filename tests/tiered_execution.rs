@@ -237,12 +237,12 @@ use execution_native::{
     NATIVE_REGION_TERMINATION_OFFSET, NativeArtifactError,
     NativeExecutableAllocationRequest, NativeExecutableCodeCopyReport,
     NativeExecutableExecutionPhase, NativeExecutableInvocationBindingError,
-    NativeExecutableLifecycleError, NativeExecutableLoadPhase,
-    NativeExecutableMappingId, NativeExecutableMappingReport,
-    NativeExecutableMemoryAdapter, NativeExecutableOperationEvidenceError,
-    NativeExecutablePermission, NativeExecutableReleaseRequest,
-    NativeExecutableRunner, NativeExecutableSequenceCache,
-    NativeExecutableSequenceCacheCapacityError,
+    NativeExecutableLifecycleError, NativeExecutableLoadFailure,
+    NativeExecutableLoadPhase, NativeExecutableMappingId,
+    NativeExecutableMappingReport, NativeExecutableMemoryAdapter,
+    NativeExecutableOperationEvidenceError, NativeExecutablePermission,
+    NativeExecutableReleaseRequest, NativeExecutableRunner,
+    NativeExecutableSequenceCache, NativeExecutableSequenceCacheCapacityError,
     NativeExecutableSequenceCacheDisposition,
     NativeExecutableSequenceCacheLimits, NativeExecutableSequenceKey,
     NativeExecutableSequenceLease, NativeExecutableSequenceLeaseCache,
@@ -260,16 +260,18 @@ use execution_native::{
     PreflightedExecutionTier, PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
-    PreparedVerifiedDirectInvocation,
+    PreparedRegisterMaskedNativeInvocation, PreparedVerifiedDirectInvocation,
     PreparedVerifiedExecutionGeometryInvocation,
     ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutableSequence, ReadyNativeExecutable,
-    ReadyNativeExecutableSequence, RegisterMaskedDirectAdmissionErrorKind,
+    ReadyNativeExecutableSequence, ReadyRegisterMaskedNativeExecutable,
+    RegisterMaskedDirectAdmissionErrorKind, RegisterMaskedNativeRunner,
     StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
-    UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
-    VerifiedDirectLoadError, VerifiedDirectLoadImage,
-    VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
-    VerifiedExecutionGeometryLoadImage, VerifiedExecutionGeometryNativeCache,
+    StagedRegisterMaskedNativeExecutable, UntrustedNativeObjectArtifact,
+    VerifiedDirectInvocationError, VerifiedDirectLoadError,
+    VerifiedDirectLoadImage, VerifiedDirectNativeCache,
+    VerifiedDirectSequencePlan, VerifiedExecutionGeometryLoadImage,
+    VerifiedExecutionGeometryNativeCache,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     admit_register_masked_direct_native, compile_preflighted_clang_c23,
@@ -292,16 +294,19 @@ use execution_native::{
     execute_loaded_cached_verified_native_sequence,
     execute_loaded_verified_execution_geometry_native,
     execute_loaded_verified_execution_geometry_sequence,
-    execute_loaded_verified_native_sequence, execute_verified_native,
-    execute_verified_native_sequence,
+    execute_loaded_verified_native_sequence,
+    execute_loaded_verified_register_masked_native, execute_verified_native,
+    execute_verified_native_sequence, execute_verified_register_masked_native,
     load_cached_verified_execution_geometry_native_sequence,
     load_cached_verified_native_sequence,
     load_execution_geometry_native_executable, load_native_executable,
+    load_register_masked_native_executable,
     load_verified_execution_geometry_native_sequence,
     load_verified_native_sequence, lower_clang_c23,
     lower_preflighted_clang_c23, release_execution_geometry_native_executable,
     release_execution_geometry_native_executable_sequence,
     release_native_executable, release_native_executable_sequence,
+    release_register_masked_native_executable,
     select_cached_preflighted_execution_tier,
     select_cached_verified_direct_sequence,
     select_cached_verified_execution_geometry_direct_sequence,
@@ -711,6 +716,15 @@ struct FakeExecutionGeometrySequenceRunner {
 }
 
 #[derive(Debug)]
+struct FakeRegisterMaskedNativeRunner {
+    behavior: FakeNativeRunnerBehavior,
+    calls: usize,
+    entry_addresses: Vec<NonZeroUsize>,
+    mapping_ids: Vec<NativeExecutableMappingId>,
+    state_pointers_non_null: Vec<bool>,
+}
+
+#[derive(Debug)]
 struct FakeNativeExecutableRunner {
     behavior: FakeNativeRunnerBehavior,
     calls: usize,
@@ -728,6 +742,12 @@ struct FakeNativeSequenceRunner {
 }
 
 #[derive(Debug)]
+struct RegisterMaskedNativeFixture {
+    adapter: FakeNativeExecutableAdapter,
+    artifact: VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
+    ready: ReadyRegisterMaskedNativeExecutable,
+}
+
 struct NativeHandoffFixture {
     continuation: NativeInterpreterContinuation,
     input: Vec<u8>,
@@ -1072,6 +1092,18 @@ impl FakeExecutionGeometrySequenceRunner {
             calls: 0,
             entry_addresses: Vec::new(),
             mapping_ids: Vec::new(),
+        }
+    }
+}
+
+impl FakeRegisterMaskedNativeRunner {
+    const fn new(behavior: FakeNativeRunnerBehavior) -> Self {
+        Self {
+            behavior,
+            calls: 0,
+            entry_addresses: Vec::new(),
+            mapping_ids: Vec::new(),
+            state_pointers_non_null: Vec::new(),
         }
     }
 }
@@ -1538,6 +1570,42 @@ impl ExecutionGeometryNativeRunner for FakeExecutionGeometrySequenceRunner {
     }
 }
 
+impl RegisterMaskedNativeRunner for FakeRegisterMaskedNativeRunner {
+    type Error = FakeNativeRunnerError;
+
+    fn run(
+        &mut self,
+        invocation: &mut PreparedRegisterMaskedNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error> {
+        self.calls = self.calls.saturating_add(1);
+        self.entry_addresses.push(invocation.entry_address());
+        self.mapping_ids.push(invocation.mapping_id());
+        self.state_pointers_non_null
+            .push(!invocation.state_mut_ptr().is_null());
+        match self.behavior {
+            FakeNativeRunnerBehavior::Applied => {
+                invocation.apply_expected_for_test();
+                Ok(NativeRegionStatus::Applied.code())
+            },
+            FakeNativeRunnerBehavior::CompletionDrift => {
+                invocation.apply_expected_for_test();
+                if invocation.write_memory_for_test(0, 999) {
+                    Ok(NativeRegionStatus::Applied.code())
+                } else {
+                    Err(FakeNativeRunnerError::Call)
+                }
+            },
+            FakeNativeRunnerBehavior::FailureAfterMutation => {
+                let _mutated = invocation.write_memory_for_test(0, 999);
+                Err(FakeNativeRunnerError::Call)
+            },
+            FakeNativeRunnerBehavior::GuardMiss => {
+                Ok(NativeRegionStatus::GuardMiss.code())
+            },
+        }
+    }
+}
+
 impl NativeExecutableRunner for FakeNativeExecutableRunner {
     type Error = FakeNativeRunnerError;
 
@@ -1860,6 +1928,25 @@ fn register_masked_halt_memory(
         *cell = live_in.value;
     }
     Ok(memory)
+}
+
+fn register_masked_native_fixture(
+    program: &RegisterMaskedRegionEffectProgram,
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<RegisterMaskedNativeFixture, String> {
+    let artifact =
+        verified_register_masked_halt_fetch(program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 fixture load image failed: {error}"))?;
+    let mapping_id = native_executable_mapping_id(mapping_id_value)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        mapping_id,
+        native_executable_address(base_address)?,
+    );
+    let ready = load_register_masked_native_executable(&mut adapter, &image)
+        .map_err(|error| format!("v6 fixture platform load failed: {error}"))?;
+    Ok(RegisterMaskedNativeFixture { adapter, artifact, ready })
 }
 
 fn target(
@@ -2741,6 +2828,762 @@ fn register_masked_v6_halt_guard_miss_restores_snapshot() -> TieredTestResult {
     ) || memory != entry_memory
     {
         return Err(String::from("v6 guard miss failed atomic rollback"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_lifecycle_retains_exact_identity() -> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 lifecycle image failed: {error}"))?;
+    let mapping_id = native_executable_mapping_id(121)?;
+    let base = native_executable_address(0x12100)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let staged = StagedRegisterMaskedNativeExecutable::stage(
+        &image,
+        writable,
+        image.code(),
+    )
+    .map_err(|error| format!("v6 lifecycle stage failed: {error}"))?;
+    let ready = staged
+        .admit_read_execute(NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadExecute,
+        ))
+        .map_err(|error| format!("v6 lifecycle protect failed: {error}"))?
+        .admit_instruction_sync(NativeInstructionSyncReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+        ))
+        .map_err(|error| format!("v6 lifecycle sync failed: {error}"))?;
+    if ready.key() != artifact.key()
+        || ready.image() != &image
+        || ready.mapping().mapping_id() != mapping_id
+        || ready.entry_address() != base
+        || ready.target() != artifact.key().target()
+        || ready.release_request().mapping_id() != mapping_id
+    {
+        return Err(String::from("v6 lifecycle changed exact identity"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_lifecycle_rejects_copied_code_drift() -> TieredTestResult
+{
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 lifecycle drift image failed: {error}"))?;
+    let mapping = NativeExecutableMappingReport::new(
+        native_executable_mapping_id(122)?,
+        native_executable_address(0x12200)?,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let mut copied = image.code().to_vec();
+    let first = copied
+        .first_mut()
+        .ok_or_else(|| String::from("v6 lifecycle code unexpectedly empty"))?;
+    *first ^= 1;
+    if StagedRegisterMaskedNativeExecutable::stage(&image, mapping, &copied)
+        != Err(NativeExecutableLifecycleError::CodeImage)
+    {
+        return Err(String::from("v6 lifecycle admitted copied-code drift"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_platform_loads_and_releases_exact_image()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 platform image failed: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(123)?,
+        native_executable_address(0x12300)?,
+    );
+    let ready = load_register_masked_native_executable(&mut adapter, &image)
+        .map_err(|error| format!("v6 platform load failed: {error}"))?;
+    if ready.key() != artifact.key()
+        || ready.image() != &image
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+            ]
+    {
+        return Err(String::from("v6 platform load evidence drifted"));
+    }
+    let release = ready.release_request();
+    release_register_masked_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 platform release failed: {error}"))?;
+    if adapter.release_requests != [release]
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from("v6 platform release evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_platform_cleans_up_copy_failure() -> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 cleanup image failed: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(124)?,
+        native_executable_address(0x12400)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let Err(error) =
+        load_register_masked_native_executable(&mut adapter, &image)
+    else {
+        return Err(String::from("v6 copy failure was ignored"));
+    };
+    if error.phase() != NativeExecutableLoadPhase::Copy
+        || error.adapter_error() != Some(&FakeNativeAdapterOperation::Copy)
+        || error.release_error().is_some()
+        || error.release_request() != adapter.release_requests.first().copied()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 copy failure cleanup evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_lifecycle_rejects_mapping_identity_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 mapping-drift image failed: {error}"))?;
+    let mapping_id = native_executable_mapping_id(130)?;
+    let base = native_executable_address(0x13000)?;
+    let writable = NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let staged = StagedRegisterMaskedNativeExecutable::stage(
+        &image,
+        writable,
+        image.code(),
+    )
+    .map_err(|error| format!("v6 mapping-drift stage failed: {error}"))?;
+    let other_id = native_executable_mapping_id(131)?;
+    if staged.admit_read_execute(NativeExecutableMappingReport::new(
+        other_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    )) != Err(NativeExecutableLifecycleError::MappingIdentity)
+    {
+        return Err(String::from("v6 lifecycle admitted mapping-id drift"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_lifecycle_rejects_sync_range_drift() -> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 sync-drift image failed: {error}"))?;
+    let mapping_id = native_executable_mapping_id(132)?;
+    let base = native_executable_address(0x13200)?;
+    let staged = StagedRegisterMaskedNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadWrite,
+        ),
+        image.code(),
+    )
+    .map_err(|error| format!("v6 sync-drift stage failed: {error}"))?;
+    let sealed = staged
+        .admit_read_execute(NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadExecute,
+        ))
+        .map_err(|error| format!("v6 sync-drift protect failed: {error}"))?;
+    let short = image.allocation_len().saturating_sub(1);
+    if sealed.admit_instruction_sync(NativeInstructionSyncReport::new(
+        mapping_id, base, short,
+    )) != Err(NativeExecutableLifecycleError::SynchronizationRange)
+    {
+        return Err(String::from("v6 lifecycle admitted sync-range drift"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_release_failure_retains_exact_ready_for_retry()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 release-retry image failed: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(133)?,
+        native_executable_address(0x13300)?,
+    )
+    .with_release_failures(1);
+    let ready = load_register_masked_native_executable(&mut adapter, &image)
+        .map_err(|error| format!("v6 release-retry load failed: {error}"))?;
+    let expected_key = ready.key().clone();
+    let expected_mapping = ready.mapping();
+    let Err(failure) =
+        release_register_masked_native_executable(&mut adapter, ready)
+    else {
+        return Err(String::from("v6 release failure was ignored"));
+    };
+    if failure.error() != &FakeNativeAdapterOperation::Release
+        || failure.executable().key() != &expected_key
+        || failure.executable().mapping() != expected_mapping
+    {
+        return Err(String::from("v6 release failure lost ready identity"));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("v6 release retry failed: {error}"))?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from("v6 release retry count drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_loaded_runner_applies_rebased_halt() -> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let RegisterMaskedNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_native_fixture(&program, 125, 0x12500)?;
+    let mut entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    entry.registers.accumulator = 0x1234_5678;
+    entry.registers.data_pointer = u32::MAX;
+    entry.input_consumed = 2;
+    entry.output_len = 3;
+    let expected = ProfileMachineObservation {
+        termination: Some(Termination::HaltInstruction),
+        ..entry
+    };
+    let input = [1u8, 2, 3, 4];
+    let mut output = [9u8, 8, 7, 6];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let entry_output = output;
+    let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 loaded preparation failed: {error}"))?;
+    let mut runner =
+        FakeRegisterMaskedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = execute_loaded_verified_register_masked_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("v6 loaded execution failed: {error:?}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != entry_memory
+        || output != entry_output
+        || runner.calls != 1
+        || runner.entry_addresses != [ready.entry_address()]
+        || runner.mapping_ids != [ready.mapping().mapping_id()]
+        || runner.state_pointers_non_null != [true]
+    {
+        return Err(String::from("v6 loaded runner changed rebased semantics"));
+    }
+    release_register_masked_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 loaded release failed: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_loaded_runner_rejects_different_ready_identity()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let mut variant = program.clone();
+    let effect = variant
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?;
+    effect.before.registers.accumulator ^= 1;
+    effect.after.registers.accumulator ^= 1;
+    let RegisterMaskedNativeFixture {
+        mut adapter,
+        artifact: _variant_artifact,
+        ready,
+    } = register_masked_native_fixture(&variant, 126, 0x12600)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 mismatch preparation failed: {error}"))?;
+    let mut runner =
+        FakeRegisterMaskedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let Err(error) = execute_loaded_verified_register_masked_native(
+        &mut runner,
+        &ready,
+        prepared,
+    ) else {
+        return Err(String::from("v6 mismatched ready executable was invoked"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Bind
+        || error.binding_error()
+            != Some(NativeExecutableInvocationBindingError::ExecutableIdentity)
+        || runner.calls != 0
+        || memory != entry_memory
+    {
+        return Err(String::from("v6 ready-identity rejection drifted"));
+    }
+    release_register_masked_native_executable(&mut adapter, ready)
+        .map_err(|release| format!("v6 mismatch release failed: {release}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_loaded_runner_failure_restores_rebased_snapshot()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let RegisterMaskedNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_native_fixture(&program, 127, 0x12700)?;
+    let mut entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    entry.registers.accumulator = 77;
+    entry.registers.data_pointer = 88;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 rollback preparation failed: {error}"))?;
+    let mut runner = FakeRegisterMaskedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = execute_loaded_verified_register_masked_native(
+        &mut runner,
+        &ready,
+        prepared,
+    ) else {
+        return Err(String::from("v6 runner failure was ignored"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || runner.calls != 1
+        || memory != entry_memory
+    {
+        return Err(String::from("v6 runner failure did not roll back"));
+    }
+    release_register_masked_native_executable(&mut adapter, ready)
+        .map_err(|release| format!("v6 rollback release failed: {release}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_loaded_runner_guard_miss_preserves_rebased_snapshot()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let RegisterMaskedNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_native_fixture(&program, 128, 0x12800)?;
+    let mut entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    entry.registers.accumulator = 0xaaaa_5555;
+    entry.registers.data_pointer = 0x1020_3040;
+    entry.input_consumed = 1;
+    entry.output_len = 2;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let entry_output = output;
+    let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 guard-miss preparation failed: {error}"))?;
+    let mut runner = FakeRegisterMaskedNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let outcome = execute_loaded_verified_register_masked_native(
+        &mut runner,
+        &ready,
+        prepared,
+    )
+    .map_err(|error| format!("v6 guard-miss execution failed: {error:?}"))?;
+    if outcome != NativeRegionInvocationOutcome::GuardMiss
+        || memory != entry_memory
+        || output != entry_output
+        || runner.calls != 1
+    {
+        return Err(String::from("v6 guard miss changed rebased snapshot"));
+    }
+    release_register_masked_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("v6 guard-miss release failed: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_loaded_runner_completion_drift_rolls_back()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let RegisterMaskedNativeFixture {
+        mut adapter,
+        artifact,
+        ready,
+    } = register_masked_native_fixture(&program, 129, 0x12900)?;
+    let mut entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    entry.registers.accumulator = 17;
+    entry.registers.data_pointer = 29;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 completion-drift preparation failed: {error}")
+    })?;
+    let mut runner = FakeRegisterMaskedNativeRunner::new(
+        FakeNativeRunnerBehavior::CompletionDrift,
+    );
+    let Err(error) = execute_loaded_verified_register_masked_native(
+        &mut runner,
+        &ready,
+        prepared,
+    ) else {
+        return Err(String::from("v6 completion drift was admitted"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Complete
+        || !matches!(
+            error.completion_error(),
+            Some(VerifiedRegisterMaskedInvocationError::Invocation(
+                NativeRegionInvocationError::AppliedMemory { .. },
+            ))
+        )
+        || runner.calls != 1
+        || memory != entry_memory
+    {
+        return Err(String::from("v6 completion drift did not roll back"));
+    }
+    release_register_masked_native_executable(&mut adapter, ready).map_err(
+        |release| format!("v6 completion-drift release failed: {release}"),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_transaction_applies_and_releases() -> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let mut entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    entry.registers.accumulator = 0x44;
+    entry.registers.data_pointer = 0x55;
+    entry.input_consumed = 1;
+    entry.output_len = 1;
+    let expected = ProfileMachineObservation {
+        termination: Some(Termination::HaltInstruction),
+        ..entry
+    };
+    let input = [1u8, 2];
+    let mut output = [9u8, 8];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let entry_output = output;
+    let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 transaction preparation failed: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(134)?,
+        native_executable_address(0x13400)?,
+    );
+    let mut runner =
+        FakeRegisterMaskedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = execute_verified_register_masked_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    )
+    .map_err(|error| format!("v6 transaction failed: {error}"))?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != entry_memory
+        || output != entry_output
+        || runner.calls != 1
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 transaction success evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_transaction_load_failure_skips_call() -> TieredTestResult
+{
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 load-failure preparation failed: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(135)?,
+        native_executable_address(0x13500)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut runner =
+        FakeRegisterMaskedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let Err(error) = execute_verified_register_masked_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from("v6 transaction ignored load failure"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Load
+        || error.load_failure().map(NativeExecutableLoadFailure::phase)
+            != Some(NativeExecutableLoadPhase::Copy)
+        || runner.calls != 0
+        || memory != entry_memory
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 transaction load failure drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_transaction_runner_failure_rolls_back_and_releases()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let mut entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    entry.registers.accumulator = 0x66;
+    entry.registers.data_pointer = 0x77;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 runner-failure preparation failed: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(136)?,
+        native_executable_address(0x13600)?,
+    );
+    let mut runner = FakeRegisterMaskedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = execute_verified_register_masked_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from("v6 transaction ignored runner failure"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || error.release_failure().is_some()
+        || error.release_request().is_none()
+        || runner.calls != 1
+        || memory != entry_memory
+        || adapter.operations.last()
+            != Some(&FakeNativeAdapterOperation::Release)
+    {
+        return Err(String::from("v6 transaction runner failure drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_transaction_release_failure_retains_commit_and_retry()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
+        .before;
+    let expected =
+        NativeRegionInvocationOutcome::Applied(ProfileMachineObservation {
+            termination: Some(Termination::HaltInstruction),
+            ..entry
+        });
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 release-failure preparation failed: {error}")
+    })?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(137)?,
+        native_executable_address(0x13700)?,
+    )
+    .with_release_failures(1);
+    let mut runner =
+        FakeRegisterMaskedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let Err(error) = execute_verified_register_masked_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from("v6 transaction ignored release failure"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Release
+        || error.committed_outcome() != Some(expected)
+        || error.release_failure().is_none()
+        || error.release_request().is_none()
+        || runner.calls != 1
+    {
+        return Err(String::from("v6 committed release evidence drifted"));
+    }
+    let release_failure = error.into_release_failure().ok_or_else(|| {
+        String::from("v6 committed release failure lost retry ownership")
+    })?;
+    if release_failure.executable().key() != artifact.key() {
+        return Err(String::from("v6 committed release lost exact key"));
+    }
+    release_failure.retry(&mut adapter).map_err(|retry| {
+        format!("v6 committed release retry failed: {retry}")
+    })?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from("v6 committed release retry count drifted"));
     }
     Ok(())
 }
