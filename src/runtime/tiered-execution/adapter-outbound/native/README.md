@@ -188,9 +188,15 @@ bytes.
 
 `direct-register-masked-non-graphical` revision 1 binds the non-graphical shape
 to the same two ISAs and reduced guard sequence, committing only
-`NonGraphicalCell`. Its distinct verified artifact wrapper has no load-image or
-invocation constructor, so semantic object promotion does not grant executable
-authority. Loader, runner, residency, and sequence support remain halt-only.
+`NonGraphicalCell`. Its distinct verified artifact wrapper remains outside the
+halt executable lifecycle.
+
+`VerifiedRegisterMaskedNonGraphicalLoadImage` proves relocation-free, aligned
+code without being accepted by any platform typestate.
+`PreparedRegisterMaskedNonGraphicalInvocation` binds exact v6 identity, C and
+fetched-cell live-ins, rebased dead state, and atomic Applied/GuardMiss
+completion. It exposes no executable binding; platform loading, runners,
+residency, and sequences remain halt-only.
 
 `VerifiedRegisterMaskedLoadImage` now extracts that verified object as a
 relocation-free, ISA-aligned image under the shared strict W^X policy without

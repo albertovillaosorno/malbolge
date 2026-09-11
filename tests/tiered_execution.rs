@@ -263,7 +263,9 @@ use execution_native::{
     PreflightedExecutionTier, PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
-    PreparedRegisterMaskedNativeInvocation, PreparedVerifiedDirectInvocation,
+    PreparedRegisterMaskedNativeInvocation,
+    PreparedRegisterMaskedNonGraphicalInvocation,
+    PreparedVerifiedDirectInvocation,
     PreparedVerifiedExecutionGeometryInvocation,
     ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutableSequence, ReadyNativeExecutable,
@@ -289,6 +291,8 @@ use execution_native::{
     VerifiedExecutionGeometryNativeCache,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
+    VerifiedRegisterMaskedNonGraphicalLoadImage,
+    VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
     admit_register_masked_direct_native, compile_preflighted_clang_c23,
     emit_direct_crazy_coff, emit_direct_deopt_coff,
     emit_direct_execution_geometry_crazy_coff,
@@ -2066,7 +2070,23 @@ fn verified_register_masked_halt_fetch(
         .map_err(|error| format!("v6 {isa:?} halt verify failed: {error}"))
 }
 
-fn register_masked_halt_memory(
+fn verified_register_masked_non_graphical(
+    program: &RegisterMaskedRegionEffectProgram,
+    isa: HostIsa,
+) -> Result<VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact, String> {
+    let artifact = emit_direct_register_masked_non_graphical_coff(
+        program,
+        register_masked_non_graphical_target(isa),
+    )
+    .map_err(|error| {
+        format!("v6 {isa:?} non-graphical emit failed: {error}")
+    })?;
+    verify_direct_register_masked_non_graphical(&artifact, program).map_err(
+        |error| format!("v6 {isa:?} non-graphical verify failed: {error}"),
+    )
+}
+
+fn register_masked_program_memory(
     program: &RegisterMaskedRegionEffectProgram,
 ) -> Result<Vec<u32>, String> {
     let words = usize::try_from(program.required_memory_words())
@@ -2208,7 +2228,7 @@ fn execute_register_masked_owner_applied(
     let input = [1u8, 2, 3];
     let mut output = [9u8, 8, 7];
     let entry_output = output;
-    let mut memory = register_masked_halt_memory(program)?;
+    let mut memory = register_masked_program_memory(program)?;
     let entry_memory = memory.clone();
     let outcome = owner
         .execute(
@@ -2242,7 +2262,7 @@ fn execute_register_masked_lease_applied(
     entry.registers.data_pointer = 81;
     let input = [];
     let mut output = [];
-    let mut memory = register_masked_halt_memory(program)?;
+    let mut memory = register_masked_program_memory(program)?;
     let mut runner =
         FakeRegisterMaskedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
     let outcome = lease
@@ -2903,6 +2923,235 @@ fn register_masked_v6_halt_verifier_rejects_object_and_target_drift()
 }
 
 #[test]
+fn register_masked_v6_non_graphical_load_image_stays_non_executable()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = verified_register_masked_non_graphical(&program, isa)?;
+        let image = VerifiedRegisterMaskedNonGraphicalLoadImage::new(&artifact)
+            .map_err(|error| {
+                format!("v6 {isa:?} non-graphical image failed: {error}")
+            })?;
+        let expected_alignment = match isa {
+            HostIsa::AArch64 => 4,
+            HostIsa::X86_64 => 1,
+        };
+        let policy = image.policy();
+        if image.code() != direct_object_text(artifact.object())?
+            || image.entry_code() != image.code()
+            || image.entry_offset() != 0
+            || image.allocation_len() != image.code().len()
+            || image.host_isa() != isa
+            || image.key() != artifact.key()
+            || image.minimum_instruction_alignment() != expected_alignment
+            || image.target() != artifact.key().target()
+            || image.target_triple() != artifact.target_triple()
+            || policy.initial_permissions()
+                != NativeExecutablePermission::ReadWrite
+            || policy.final_permissions()
+                != NativeExecutablePermission::ReadExecute
+            || !policy.requires_instruction_sync()
+        {
+            return Err(format!(
+                "v6 {isa:?} non-graphical load-image contract drifted"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_invocation_rebases_dead_state()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let source_entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?
+        .before;
+    let mut entry = source_entry;
+    entry.registers.accumulator = 0x1234_5678;
+    entry.registers.data_pointer = u32::MAX;
+    entry.input_consumed = 3;
+    entry.output_len = 4;
+    let expected = ProfileMachineObservation {
+        termination: Some(Termination::NonGraphicalCell),
+        ..entry
+    };
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [9u8, 8, 7, 6, 5];
+    let mut output = [0xa1u8, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6];
+    let entry_output = output;
+    let mut invocation = PreparedRegisterMaskedNonGraphicalInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| format!("v6 non-graphical prepare failed: {error}"))?;
+    if invocation.artifact() != &artifact
+        || invocation.object() != artifact.object()
+        || invocation.load_image().key() != artifact.key()
+        || invocation.expected_observation() != expected
+        || invocation.target() != artifact.key().target()
+        || invocation.target_triple() != artifact.target_triple()
+        || invocation.state_mut_ptr().is_null()
+    {
+        return Err(String::from("v6 non-graphical preparation drifted"));
+    }
+    invocation.apply_expected_for_test();
+    let outcome = invocation
+        .complete(NativeRegionStatus::Applied.code())
+        .map_err(|error| {
+            format!("v6 non-graphical completion failed: {error}")
+        })?;
+    if outcome != NativeRegionInvocationOutcome::Applied(expected)
+        || memory != entry_memory
+        || output != entry_output
+    {
+        return Err(String::from("v6 non-graphical rebased state drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_invocation_rejects_changed_c()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let source_entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?
+        .before;
+    let mut wrong_c = source_entry;
+    wrong_c.registers.code_pointer =
+        wrong_c.registers.code_pointer.wrapping_add(1);
+    let mut memory = register_masked_program_memory(&program)?;
+    let input = [];
+    let mut output = [];
+    if !matches!(
+        PreparedRegisterMaskedNonGraphicalInvocation::new(
+            &artifact,
+            &program,
+            wrong_c,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ),
+        Err(VerifiedRegisterMaskedInvocationError::EntryCodePointer {
+            expected,
+            observed,
+        }) if expected == source_entry.registers.code_pointer
+            && observed == wrong_c.registers.code_pointer
+    ) {
+        return Err(String::from("v6 non-graphical admitted changed C"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_invocation_rejects_cell_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?
+        .before;
+    let live_in = program
+        .memory_live_ins
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 non-graphical live-in missing"))?;
+    let address = usize::try_from(live_in.address)
+        .map_err(|error| format!("v6 live-in address conversion: {error}"))?;
+    let mut memory = register_masked_program_memory(&program)?;
+    let cell = memory.get_mut(address).ok_or_else(|| {
+        String::from("v6 non-graphical live-in exceeds memory")
+    })?;
+    *cell ^= 1;
+    let input = [];
+    let mut output = [];
+    if !matches!(
+        PreparedRegisterMaskedNonGraphicalInvocation::new(
+            &artifact,
+            &program,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        ),
+        Err(VerifiedRegisterMaskedInvocationError::Invocation(
+            NativeRegionInvocationError::EntryMemory {
+                address: observed_address,
+                expected,
+                observed,
+            },
+        )) if observed_address == live_in.address
+            && expected == live_in.value
+            && observed == (live_in.value ^ 1)
+    ) {
+        return Err(String::from(
+            "v6 non-graphical invocation admitted cell drift",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_guard_miss_restores_snapshot()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?
+        .before;
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let input = [];
+    let mut output = [];
+    let mut invocation = PreparedRegisterMaskedNonGraphicalInvocation::new(
+        &artifact,
+        &program,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    )
+    .map_err(|error| {
+        format!("v6 non-graphical rollback prep failed: {error}")
+    })?;
+    let mutation = entry_memory
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("v6 non-graphical rollback has no memory"))?
+        .wrapping_add(1);
+    if !invocation.write_memory_for_test(0, mutation) {
+        return Err(String::from("v6 non-graphical rollback has no memory"));
+    }
+    let result = invocation.complete(NativeRegionStatus::GuardMiss.code());
+    if !matches!(
+        result,
+        Err(VerifiedRegisterMaskedInvocationError::Invocation(
+            NativeRegionInvocationError::NonAppliedMutation {
+                status: NativeRegionStatus::GuardMiss,
+                surface: NativeRegionMutationSurface::Memory,
+            },
+        ))
+    ) || memory != entry_memory
+    {
+        return Err(String::from(
+            "v6 non-graphical guard miss failed rollback",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
 fn register_masked_v6_load_image_is_separate_and_relocation_free()
 -> TieredTestResult {
     let program = canonical_register_masked_halt_program()?;
@@ -2956,7 +3205,7 @@ fn register_masked_v6_halt_invocation_rebases_dead_state() -> TieredTestResult {
         termination: Some(Termination::HaltInstruction),
         ..entry
     };
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let input = [9u8, 8, 7, 6, 5];
     let mut output = [0xa1u8, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6];
@@ -3012,7 +3261,7 @@ fn register_masked_v6_halt_invocation_rejects_live_register_drift()
         .code_pointer
         .checked_add(1)
         .ok_or_else(|| String::from("v6 code pointer cannot increment"))?;
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let input = [];
     let mut output = [];
     if !matches!(
@@ -3065,7 +3314,7 @@ fn register_masked_v6_halt_invocation_rejects_fetched_cell_drift()
         .ok_or_else(|| String::from("v6 halt live-in missing"))?;
     let address = usize::try_from(live_in.address)
         .map_err(|error| format!("v6 live-in address conversion: {error}"))?;
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let cell = memory
         .get_mut(address)
         .ok_or_else(|| String::from("v6 live-in address exceeds memory"))?;
@@ -3110,7 +3359,7 @@ fn register_masked_v6_halt_invocation_rejects_invalid_rebased_cursors()
 
     let mut input_drift = source_entry;
     input_drift.input_consumed = input.len().saturating_add(1);
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     if !matches!(
         PreparedRegisterMaskedHaltFetchInvocation::new(
             &artifact,
@@ -3193,7 +3442,7 @@ fn register_masked_v6_halt_invocation_is_capacity_and_identity_exact()
         .ok_or_else(|| String::from("v6 halt fixture has no effect"))?;
     effect.before.registers.accumulator ^= 1;
     effect.after.registers.accumulator ^= 1;
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     if !matches!(
         PreparedRegisterMaskedHaltFetchInvocation::new(
             &artifact,
@@ -3218,7 +3467,7 @@ fn register_masked_v6_halt_guard_miss_restores_snapshot() -> TieredTestResult {
         .first()
         .ok_or_else(|| String::from("v6 halt fixture has no effect"))?
         .before;
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let input = [];
     let mut output = [];
@@ -3531,7 +3780,7 @@ fn register_masked_v6_loaded_runner_applies_rebased_halt() -> TieredTestResult {
     };
     let input = [1u8, 2, 3, 4];
     let mut output = [9u8, 8, 7, 6];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let entry_output = output;
     let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
@@ -3589,7 +3838,7 @@ fn register_masked_v6_loaded_runner_rejects_different_ready_identity()
         .before;
     let input = [];
     let mut output = [];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
         &artifact,
@@ -3638,7 +3887,7 @@ fn register_masked_v6_loaded_runner_failure_restores_rebased_snapshot()
     entry.registers.data_pointer = 88;
     let input = [];
     let mut output = [];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
         &artifact,
@@ -3689,7 +3938,7 @@ fn register_masked_v6_loaded_runner_guard_miss_preserves_rebased_snapshot()
     entry.output_len = 2;
     let input = [1u8, 2, 3];
     let mut output = [9u8, 8, 7];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let entry_output = output;
     let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
@@ -3738,7 +3987,7 @@ fn register_masked_v6_loaded_runner_completion_drift_rolls_back()
     entry.registers.data_pointer = 29;
     let input = [];
     let mut output = [];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
         &artifact,
@@ -3797,7 +4046,7 @@ fn register_masked_v6_transaction_applies_and_releases() -> TieredTestResult {
     };
     let input = [1u8, 2];
     let mut output = [9u8, 8];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let entry_output = output;
     let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
@@ -3850,7 +4099,7 @@ fn register_masked_v6_transaction_load_failure_skips_call() -> TieredTestResult
         .before;
     let input = [];
     let mut output = [];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
         &artifact,
@@ -3905,7 +4154,7 @@ fn register_masked_v6_transaction_runner_failure_rolls_back_and_releases()
     entry.registers.data_pointer = 0x77;
     let input = [];
     let mut output = [];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
         &artifact,
@@ -3962,7 +4211,7 @@ fn register_masked_v6_transaction_release_failure_retains_commit_and_retry()
         });
     let input = [];
     let mut output = [];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let prepared = PreparedRegisterMaskedHaltFetchInvocation::new(
         &artifact,
         &program,
@@ -4115,7 +4364,7 @@ fn register_masked_v6_owner_recovers_after_runner_failure() -> TieredTestResult
     entry.registers.data_pointer = 61;
     let input = [];
     let mut output = [];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let mut failing = FakeRegisterMaskedNativeRunner::new(
         FakeNativeRunnerBehavior::FailureAfterMutation,
@@ -5035,7 +5284,7 @@ fn register_masked_v6_sequence_load_execute_release_rebased_halt()
     entry.output_len = 2;
     let input = [1u8, 2, 3];
     let mut output = [9u8, 8, 7];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let mut runner =
         FakeRegisterMaskedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
     let outcome = loaded
@@ -5090,7 +5339,7 @@ fn register_masked_v6_sequence_guard_miss_preserves_rebased_entry()
     entry.registers.data_pointer = 101;
     let input = [];
     let mut output = [];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let mut runner = FakeRegisterMaskedNativeRunner::new(
         FakeNativeRunnerBehavior::GuardMiss,
@@ -5139,7 +5388,7 @@ fn register_masked_v6_sequence_runner_failure_rolls_back_and_reuses_mapping()
     entry.registers.data_pointer = 121;
     let input = [];
     let mut output = [];
-    let mut memory = register_masked_halt_memory(&program)?;
+    let mut memory = register_masked_program_memory(&program)?;
     let entry_memory = memory.clone();
     let mut failing = FakeRegisterMaskedNativeRunner::new(
         FakeNativeRunnerBehavior::FailureAfterMutation,

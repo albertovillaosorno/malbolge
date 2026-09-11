@@ -201,6 +201,14 @@ ABI
 capacity guard before any dereference. All eight instruction families now
 have reviewed one-step direct templates.
 
+Register-masked effect IR v6 now has reviewed C-only/no-write terminal shapes
+for graphical halt fetch and non-graphical fetch. Both x86-64 and AArch64 use a
+reduced guard sequence over C, exact required memory extent, `memory[C]`, and
+prior termination while complete v6 identity still preserves masked semantics.
+The non-graphical artifact has a distinct relocation-free image and rebased
+prepared-call type that validates exact `NonGraphicalCell` application or atomic
+guard miss, but no platform lifecycle or runner accepts that image.
+
 The native call-frame ABI now has a format-neutral Rust authority in
 `native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used
 by both encoders, including offsets 0, 8, 16, 24, 32, 40, 48, 56, 64, 68,
