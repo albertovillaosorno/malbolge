@@ -235,7 +235,14 @@ Explicit weighted-limit reconfiguration publishes expansion or already-fit
 requests without adapter work and shrinks active FIFO authority through the same
 release-or-retire path. Existing retired mappings are never reconciled
 implicitly; blockage or release failure retains the previous limits and exact
-retry evidence. Sequence authority remains absent from the non-graphical cache.
+retry evidence. The cache itself does not gain sequence execution authority.
+
+A distinct non-graphical sequence plan now validates complete ordered topology
+and exact artifact identity before any executable mapping may be allocated. It
+checks count, one-effect v6 shape, profile and observation continuity, common
+target identity, and termination only at the final position. Current terminal
+coverage admits one executable semantic step; loaded ownership, execution, and
+release remain outside this plan boundary.
 
 The native call-frame ABI now has a format-neutral Rust authority in
 `native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used

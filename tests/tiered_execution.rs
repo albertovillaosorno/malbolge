@@ -298,6 +298,8 @@ use execution_native::{
     RegisterMaskedNonGraphicalNativeResidentLease,
     RegisterMaskedNonGraphicalNativeResidentLeaseCache,
     RegisterMaskedNonGraphicalNativeRunner,
+    RegisterMaskedNonGraphicalNativeSequencePlan,
+    RegisterMaskedNonGraphicalNativeSequencePlanError,
     StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
     StagedRegisterMaskedNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
@@ -827,6 +829,9 @@ struct RegisterMaskedSequencePlanFixture {
     plan: RegisterMaskedNativeSequencePlan,
     program: RegisterMaskedRegionEffectProgram,
 }
+
+type NonGraphicalSequencePlanError =
+    RegisterMaskedNonGraphicalNativeSequencePlanError;
 
 type NonGraphicalResidentAcquireFailure =
     RegisterMaskedNonGraphicalNativeResidentCacheAcquireFailure<
@@ -7668,6 +7673,114 @@ fn register_masked_v6_multi_cache_reconfiguration_transfers_release_retry()
         .release_all(&mut adapter)
         .map(|_result| ())
         .map_err(|error| format!("v6 retry-shrink cleanup failed: {error}"))
+}
+
+#[test]
+fn register_masked_v6_non_graphical_sequence_plan_admits_terminal_step()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let plan = RegisterMaskedNonGraphicalNativeSequencePlan::new(
+        from_ref(&program),
+        from_ref(&artifact),
+    )
+    .map_err(|error| format!("v6 non-graphical sequence plan: {error}"))?;
+    let effect = program.effects.first().ok_or_else(|| {
+        String::from("v6 non-graphical sequence effect missing")
+    })?;
+    if plan.len() == 1
+        && !plan.is_empty()
+        && plan.entry() == effect.before
+        && plan.exit() == effect.after
+        && plan.programs() == from_ref(&program)
+        && plan.artifacts() == from_ref(&artifact)
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical sequence plan admission drifted",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_non_graphical_sequence_plan_rejects_empty_and_count()
+-> TieredTestResult {
+    let empty = RegisterMaskedNonGraphicalNativeSequencePlan::new(&[], &[]);
+    if empty != Err(RegisterMaskedNonGraphicalNativeSequencePlanError::Empty) {
+        return Err(String::from(
+            "v6 non-graphical sequence admitted empty plan",
+        ));
+    }
+    let program = canonical_register_masked_non_graphical_program()?;
+    let count = RegisterMaskedNonGraphicalNativeSequencePlan::new(
+        from_ref(&program),
+        &[],
+    );
+    if count
+        == Err(
+            RegisterMaskedNonGraphicalNativeSequencePlanError::ArtifactCount {
+                programs: 1,
+                artifacts: 0,
+            },
+        )
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical sequence ignored artifact count drift",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_non_graphical_sequence_rejects_terminal_prefix()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let programs = [program.clone(), program];
+    let artifacts = [artifact.clone(), artifact];
+    let result = RegisterMaskedNonGraphicalNativeSequencePlan::new(
+        &programs, &artifacts,
+    );
+    if result
+        == Err(NonGraphicalSequencePlanError::TerminationBeforeEnd { index: 0 })
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical sequence admitted terminal prefix",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_non_graphical_sequence_plan_rejects_identity_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let mut variant = program;
+    let effect = variant.effects.first_mut().ok_or_else(|| {
+        String::from("v6 non-graphical sequence variant effect missing")
+    })?;
+    effect.before.registers.accumulator ^= 1;
+    effect.after.registers.accumulator ^= 1;
+    let result = RegisterMaskedNonGraphicalNativeSequencePlan::new(
+        from_ref(&variant),
+        from_ref(&artifact),
+    );
+    if result
+        == Err(NonGraphicalSequencePlanError::ArtifactIdentity { index: 0 })
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical sequence ignored artifact identity drift",
+        ))
+    }
 }
 
 #[test]

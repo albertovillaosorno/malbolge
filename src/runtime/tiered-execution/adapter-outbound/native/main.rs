@@ -53,6 +53,7 @@ mod platform;
 mod profile_metadata;
 mod register_masked_lease_cache;
 mod register_masked_non_graphical_lease_cache;
+mod register_masked_non_graphical_sequence;
 mod register_masked_resident;
 mod register_masked_sequence;
 mod runner;
@@ -354,6 +355,10 @@ pub use register_masked_non_graphical_lease_cache::{
     RegisterMaskedNonGraphicalLeaseCacheReleaseResult,
     RegisterMaskedNonGraphicalLeaseCacheReleaseSummary,
     RegisterMaskedNonGraphicalLeaseCacheUsage,
+};
+pub use register_masked_non_graphical_sequence::{
+    RegisterMaskedNonGraphicalNativeSequencePlan,
+    RegisterMaskedNonGraphicalNativeSequencePlanError,
 };
 pub use register_masked_resident::{
     RegisterMaskedNativeExecutableOwner,

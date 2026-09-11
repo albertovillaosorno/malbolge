@@ -240,7 +240,14 @@ Explicit weighted-limit reconfiguration now publishes expansion or already-fit
 requests without adapter work. Shrink processes active FIFO authority through
 the same release-or-retire path while prior retired mappings remain untouched;
 blockage or cleanup failure retains the previous limits and exact evidence for
-retry. Sequence execution remains absent from this non-graphical cache.
+retry. The cache itself does not execute sequences.
+
+`RegisterMaskedNonGraphicalNativeSequencePlan` adds plan-only sequence
+admission without mapping authority. It validates exact count, one-effect v6
+shape, canonical profile/observation continuity, common target, complete
+artifact identity, and no termination before a later position. Current
+non-graphical terminal coverage therefore admits one executable semantic step;
+loaded ownership, runner execution, and reverse release remain absent.
 
 `VerifiedRegisterMaskedLoadImage` now extracts that verified object as a
 relocation-free, ISA-aligned image under the shared strict W^X policy without
