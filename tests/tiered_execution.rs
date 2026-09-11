@@ -2488,6 +2488,47 @@ fn register_masked_v6_halt_admission_uses_normative_masks() -> TieredTestResult
 }
 
 #[test]
+fn register_masked_v6_non_graphical_admission_preserves_masked_identity()
+-> TieredTestResult {
+    let mut program = canonical_register_masked_halt_program()?;
+    let live_in = program
+        .program
+        .memory_live_ins
+        .first_mut()
+        .ok_or_else(|| String::from("v6 non-graphical live-in missing"))?;
+    live_in.value = 0;
+    let effect = program
+        .program
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 non-graphical effect missing"))?;
+    effect.after.termination = Some(Termination::NonGraphicalCell);
+    program.program.outcome = RunOutcome::Terminated {
+        reason: Termination::NonGraphicalCell,
+        steps: 1,
+    };
+
+    let admission = admit_register_masked_direct_native(
+        &program,
+        safe_rust_profiled_capability(),
+    )
+    .map_err(|error| format!("v6 non-graphical admission failed: {error}"))?;
+    let identity = RegionEffectIdentity::new_register_masked(&program)
+        .map_err(|error| {
+            format!("v6 non-graphical identity failed: {error:?}")
+        })?;
+    if admission.kind() == DirectNativeKind::NonGraphical
+        && admission.identity() == &identity
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical admission lost masked identity",
+        ))
+    }
+}
+
+#[test]
 fn register_masked_v6_admission_preserves_preflight_precedence()
 -> TieredTestResult {
     let program = canonical_register_masked_halt_program()?;

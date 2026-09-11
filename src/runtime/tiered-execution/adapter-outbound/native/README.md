@@ -176,8 +176,9 @@ correct by always falling back before direct region-effect selection is trusted.
 
 Register-masked effect IR v6 now crosses a separate host-independent admission
 boundary. `admit_register_masked_direct_native()` preserves full v6 identity and
-required-profile preflight, then admits only the normative one-step graphical
-halt-fetch with C-only register live-in and no register writes.
+required-profile preflight, then admits the normative C-only/no-write one-step
+graphical halt-fetch and non-graphical terminal-fetch shapes. Host-code
+promotion remains limited to the graphical halt-fetch shape.
 
 `direct-register-masked-halt-fetch` revision 1 binds that shape to Windows
 x86-64/AArch64 objects and MBPF v6. Its machine code guards only C, the required

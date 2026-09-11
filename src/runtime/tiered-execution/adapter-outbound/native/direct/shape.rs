@@ -1046,22 +1046,27 @@ pub(super) fn validate_halt_fetch_program(
     }
 }
 
-pub(super) fn validate_register_masked_halt_fetch_program(
+fn register_masked_terminal_masks_supported(
     program: &RegisterMaskedRegionEffectProgram,
-) -> Result<DirectFetchedTerminalProgram, DirectHaltFetchError> {
+) -> bool {
     let expected_reads = ProfileRegisterSet {
         accumulator: false,
         code_pointer: true,
         data_pointer: false,
     };
-    if program.format_version() != EFFECT_IR_REGISTER_MASK_VERSION
-        || program.register_live_ins != expected_reads
-        || program.register_writes.len() != program.effects.len()
-        || program.register_writes.first().copied()
-            != Some(ProfileRegisterSet::default())
-        || u32::try_from(program.profile_requirement.memory_words).is_err()
-        || !program.fits_declared_profile_capacity()
-    {
+    program.format_version() == EFFECT_IR_REGISTER_MASK_VERSION
+        && program.register_live_ins == expected_reads
+        && program.register_writes.len() == program.effects.len()
+        && program.register_writes.first().copied()
+            == Some(ProfileRegisterSet::default())
+        && u32::try_from(program.profile_requirement.memory_words).is_ok()
+        && program.fits_declared_profile_capacity()
+}
+
+pub(super) fn validate_register_masked_halt_fetch_program(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<DirectFetchedTerminalProgram, DirectHaltFetchError> {
+    if !register_masked_terminal_masks_supported(program) {
         return Err(DirectHaltFetchError::ProgramShape);
     }
     let selected = fetched_terminal_program_semantics(
@@ -1077,6 +1082,24 @@ pub(super) fn validate_register_masked_halt_fetch_program(
         Ok(selected)
     } else {
         Err(DirectHaltFetchError::ProgramShape)
+    }
+}
+
+pub(super) fn validate_register_masked_non_graphical_program(
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<DirectFetchedTerminalProgram, DirectNonGraphicalError> {
+    if !register_masked_terminal_masks_supported(program) {
+        return Err(DirectNonGraphicalError::ProgramShape);
+    }
+    let selected = fetched_terminal_program_semantics(
+        &program.program,
+        Termination::NonGraphicalCell,
+    )
+    .ok_or(DirectNonGraphicalError::ProgramShape)?;
+    if profile_cell_is_graphical(selected.live_in.value) {
+        Err(DirectNonGraphicalError::ProgramShape)
+    } else {
+        Ok(selected)
     }
 }
 
