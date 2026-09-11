@@ -52,6 +52,7 @@ mod loader;
 mod platform;
 mod profile_metadata;
 mod register_masked_resident;
+mod register_masked_sequence;
 mod runner;
 mod sequence_continuation;
 mod sequence_runner;
@@ -307,6 +308,17 @@ pub use register_masked_resident::{
     RegisterMaskedNativeResidentCacheReleaseResult,
     RegisterMaskedNativeResidentLease, RegisterMaskedNativeResidentLeaseCache,
     RegisterMaskedNativeResidentWeight,
+};
+pub use register_masked_sequence::{
+    LoadedRegisterMaskedNativeSequence,
+    RegisterMaskedNativeSequenceExecutionFailure,
+    RegisterMaskedNativeSequenceExecutionResult,
+    RegisterMaskedNativeSequenceLoadFailure,
+    RegisterMaskedNativeSequenceLoadResult,
+    RegisterMaskedNativeSequenceOutcome, RegisterMaskedNativeSequencePlan,
+    RegisterMaskedNativeSequencePlanError,
+    RegisterMaskedNativeSequenceReleaseFailure,
+    RegisterMaskedNativeSequenceReleaseResult,
 };
 pub use runner::{
     ExecutionGeometryLoadedExecutionFailure,

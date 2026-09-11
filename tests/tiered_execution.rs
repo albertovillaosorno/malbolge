@@ -120,6 +120,7 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::NonZeroUsize;
 use std::panic::resume_unwind;
 use std::path::Path;
+use std::slice::from_ref;
 use std::str::from_utf8;
 use std::sync::{Arc, Barrier, mpsc};
 use std::thread;
@@ -273,12 +274,14 @@ use execution_native::{
     RegisterMaskedNativeResidentCacheDisposition,
     RegisterMaskedNativeResidentCacheRelease,
     RegisterMaskedNativeResidentLease, RegisterMaskedNativeResidentLeaseCache,
-    RegisterMaskedNativeRunner, StagedExecutionGeometryNativeExecutable,
-    StagedNativeExecutable, StagedRegisterMaskedNativeExecutable,
-    UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
-    VerifiedDirectLoadError, VerifiedDirectLoadImage,
-    VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
-    VerifiedExecutionGeometryLoadImage, VerifiedExecutionGeometryNativeCache,
+    RegisterMaskedNativeRunner, RegisterMaskedNativeSequenceOutcome,
+    RegisterMaskedNativeSequencePlan, RegisterMaskedNativeSequencePlanError,
+    StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
+    StagedRegisterMaskedNativeExecutable, UntrustedNativeObjectArtifact,
+    VerifiedDirectInvocationError, VerifiedDirectLoadError,
+    VerifiedDirectLoadImage, VerifiedDirectNativeCache,
+    VerifiedDirectSequencePlan, VerifiedExecutionGeometryLoadImage,
+    VerifiedExecutionGeometryNativeCache,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     admit_register_masked_direct_native, compile_preflighted_clang_c23,
@@ -759,6 +762,12 @@ struct RegisterMaskedNativeFixture {
 struct RegisterMaskedOwnerFixture {
     adapter: FakeNativeExecutableAdapter,
     owner: RegisterMaskedNativeExecutableOwner,
+    program: RegisterMaskedRegionEffectProgram,
+}
+
+#[derive(Debug)]
+struct RegisterMaskedSequencePlanFixture {
+    plan: RegisterMaskedNativeSequencePlan,
     program: RegisterMaskedRegionEffectProgram,
 }
 
@@ -1981,6 +1990,19 @@ fn register_masked_owner_fixture(
     )
     .map_err(|error| format!("v6 owner fixture load failed: {error}"))?;
     Ok(RegisterMaskedOwnerFixture { adapter, owner, program })
+}
+
+fn register_masked_sequence_plan_fixture()
+-> Result<RegisterMaskedSequencePlanFixture, String> {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let plan = RegisterMaskedNativeSequencePlan::new(
+        from_ref(&program),
+        from_ref(&artifact),
+    )
+    .map_err(|error| format!("v6 sequence plan fixture failed: {error}"))?;
+    Ok(RegisterMaskedSequencePlanFixture { plan, program })
 }
 
 fn execute_register_masked_owner_applied(
@@ -4015,6 +4037,346 @@ fn register_masked_v6_resident_cache_load_failure_publishes_nothing()
         return Err(String::from("v6 failed load published partial residency"));
     }
     Ok(())
+}
+
+#[test]
+fn register_masked_v6_sequence_plan_admits_single_terminal_step()
+-> TieredTestResult {
+    let RegisterMaskedSequencePlanFixture { plan, program } =
+        register_masked_sequence_plan_fixture()?;
+    let effect = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 sequence fixture has no effect"))?;
+    if plan.len() != 1
+        || plan.is_empty()
+        || plan.entry() != effect.before
+        || plan.exit() != effect.after
+        || plan.programs() != from_ref(&program)
+        || plan.artifacts().len() != 1
+    {
+        return Err(String::from("v6 sequence single-step plan drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_sequence_plan_rejects_empty_and_count_drift()
+-> TieredTestResult {
+    let empty = RegisterMaskedNativeSequencePlan::new(&[], &[]);
+    if empty != Err(RegisterMaskedNativeSequencePlanError::Empty) {
+        return Err(String::from("v6 sequence admitted empty plan"));
+    }
+    let program = canonical_register_masked_halt_program()?;
+    let count = RegisterMaskedNativeSequencePlan::new(from_ref(&program), &[]);
+    if count
+        != Err(RegisterMaskedNativeSequencePlanError::ArtifactCount {
+            programs: 1,
+            artifacts: 0,
+        })
+    {
+        return Err(String::from("v6 sequence ignored artifact count drift"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_sequence_rejects_terminal_prefix() -> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let programs = [program.clone(), program];
+    let artifacts = [artifact.clone(), artifact];
+    let result = RegisterMaskedNativeSequencePlan::new(&programs, &artifacts);
+    if result
+        != Err(
+            RegisterMaskedNativeSequencePlanError::TerminationBeforeEnd {
+                index: 0,
+            },
+        )
+    {
+        return Err(String::from("v6 sequence admitted terminal prefix"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_sequence_plan_rejects_artifact_identity_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let mut variant = program;
+    let effect = variant
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 sequence variant has no effect"))?;
+    effect.before.registers.accumulator ^= 1;
+    effect.after.registers.accumulator ^= 1;
+    let result = RegisterMaskedNativeSequencePlan::new(
+        from_ref(&variant),
+        from_ref(&artifact),
+    );
+    if result
+        != Err(RegisterMaskedNativeSequencePlanError::ArtifactIdentity {
+            index: 0,
+        })
+    {
+        return Err(String::from(
+            "v6 sequence ignored exact artifact identity",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_sequence_load_execute_release_rebased_halt()
+-> TieredTestResult {
+    let RegisterMaskedSequencePlanFixture { plan, program } =
+        register_masked_sequence_plan_fixture()?;
+    let mapped_len = 12_288;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(147)?,
+        native_executable_address(0x14700)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let loaded = plan
+        .load(&mut adapter)
+        .map_err(|error| format!("v6 sequence load failed: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    if loaded.len() != 1
+        || loaded.mapped_bytes() != Some(mapped_len)
+        || loaded.plan() != &plan
+    {
+        return Err(String::from("v6 loaded sequence ownership drifted"));
+    }
+    let mut entry = plan.entry();
+    entry.registers.accumulator = 73;
+    entry.registers.data_pointer = 83;
+    entry.input_consumed = 2;
+    entry.output_len = 2;
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let mut runner =
+        FakeRegisterMaskedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = loaded
+        .execute(
+            &mut runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 sequence execute failed: {error}"))?;
+    let expected = ProfileMachineObservation {
+        termination: Some(Termination::HaltInstruction),
+        ..entry
+    };
+    if outcome
+        != (RegisterMaskedNativeSequenceOutcome::Applied {
+            observation: expected,
+            steps: 1,
+        })
+        || outcome.completed_steps() != 1
+        || outcome.resume_index() != 1
+        || outcome.observation() != expected
+        || runner.calls != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 loaded sequence applied outcome drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 sequence release failed: {error}"))?;
+    if adapter.operations.last() == Some(&FakeNativeAdapterOperation::Release) {
+        Ok(())
+    } else {
+        Err(String::from("v6 sequence did not release explicitly"))
+    }
+}
+
+#[test]
+fn register_masked_v6_sequence_guard_miss_preserves_rebased_entry()
+-> TieredTestResult {
+    let RegisterMaskedSequencePlanFixture { plan, program } =
+        register_masked_sequence_plan_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(148)?,
+        native_executable_address(0x14800)?,
+    );
+    let loaded = plan
+        .load(&mut adapter)
+        .map_err(|error| format!("v6 guard sequence load failed: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let mut entry = plan.entry();
+    entry.registers.accumulator = 91;
+    entry.registers.data_pointer = 101;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let mut runner = FakeRegisterMaskedNativeRunner::new(
+        FakeNativeRunnerBehavior::GuardMiss,
+    );
+    let outcome = loaded
+        .execute(
+            &mut runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| {
+            format!("v6 guard sequence execute failed: {error}")
+        })?;
+    if outcome
+        != (RegisterMaskedNativeSequenceOutcome::GuardMiss {
+            index: 0,
+            observation: entry,
+        })
+        || outcome.completed_steps() != 0
+        || outcome.resume_index() != 0
+        || memory != entry_memory
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 sequence guard-miss boundary drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 guard sequence release failed: {error}"))
+}
+
+#[test]
+fn register_masked_v6_sequence_runner_failure_rolls_back_and_reuses_mapping()
+-> TieredTestResult {
+    let RegisterMaskedSequencePlanFixture { plan, program } =
+        register_masked_sequence_plan_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(149)?,
+        native_executable_address(0x14900)?,
+    );
+    let loaded = plan.load(&mut adapter).map_err(|error| {
+        format!("v6 reusable sequence load failed: {error}")
+    })?;
+    let loaded_operations = adapter.operations.clone();
+    let mut entry = plan.entry();
+    entry.registers.accumulator = 111;
+    entry.registers.data_pointer = 121;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let mut failing = FakeRegisterMaskedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(execution_error) = loaded.execute(
+        &mut failing,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v6 sequence runner failure was ignored"));
+    };
+    if execution_error.completed_steps() != 0
+        || execution_error.step_index() != 0
+        || execution_error.resume_index() != 0
+        || execution_error.observation() != entry
+        || memory != entry_memory
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 sequence failure rollback drifted"));
+    }
+    let mut succeeding =
+        FakeRegisterMaskedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = loaded
+        .execute(
+            &mut succeeding,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| {
+            format!("v6 reusable sequence retry failed: {error}")
+        })?;
+    if !matches!(outcome, RegisterMaskedNativeSequenceOutcome::Applied { .. })
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 sequence remapped after runner failure"));
+    }
+    loaded.release(&mut adapter).map_err(|release_error| {
+        format!("v6 reusable sequence release failed: {release_error}")
+    })
+}
+
+#[test]
+fn register_masked_v6_sequence_load_failure_publishes_no_owner()
+-> TieredTestResult {
+    let RegisterMaskedSequencePlanFixture { plan, .. } =
+        register_masked_sequence_plan_fixture()?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(150)?,
+        native_executable_address(0x15000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let Err(error) = plan.load(&mut adapter) else {
+        return Err(String::from("v6 sequence ignored platform load failure"));
+    };
+    if error.index() != 0
+        || error.loaded_count() != 0
+        || error.cleanup_failure().is_some()
+        || !matches!(
+            error.owner_failure(),
+            RegisterMaskedNativeOwnerLoadFailure::Load(_)
+        )
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 sequence load failure evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_sequence_release_failure_retains_exact_retry()
+-> TieredTestResult {
+    let RegisterMaskedSequencePlanFixture { plan, .. } =
+        register_masked_sequence_plan_fixture()?;
+    let expected_key = plan
+        .artifacts()
+        .first()
+        .ok_or_else(|| String::from("v6 sequence retry artifact missing"))?
+        .key()
+        .clone();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(151)?,
+        native_executable_address(0x15100)?,
+    )
+    .with_release_failures(1);
+    let loaded = plan
+        .load(&mut adapter)
+        .map_err(|error| format!("v6 release sequence load failed: {error}"))?;
+    let Err(failure) = loaded.release(&mut adapter) else {
+        return Err(String::from("v6 sequence release failure was ignored"));
+    };
+    if failure.attempted_count() != 1
+        || failure.released_count() != 0
+        || failure.failed_count() != 1
+        || failure
+            .failures()
+            .first()
+            .map(|item| item.executable().key())
+            != Some(&expected_key)
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 sequence release retry evidence drifted"));
+    }
+    failure.retry(&mut adapter).map_err(|error| {
+        format!("v6 sequence release retry failed: {error}")
+    })?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("v6 sequence release retry count drifted"))
+    }
 }
 
 #[test]

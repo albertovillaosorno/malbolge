@@ -2028,9 +2028,24 @@ identity is rejected without replacement, and live leases block release.
 Cleanup failure removes cache authority and transfers the exact ready executable
 for retry.
 
-V6 sequence execution, multi-entry resident/eviction policy, and broader
-register-masked template coverage remain open. Those are separate reviewed
-boundaries; unsupported v6 execution remains fail-closed.
+`RegisterMaskedNativeSequencePlan` now admits complete v6 sequence topology
+before executable-memory work. Program/artifact count, one-effect v6 shape,
+canonical profile identity, adjacent observations, common native target, exact
+artifact key, and terminal-prefix legality are all checked before load. Loading
+publishes a reusable sequence only after every owner is ready, and a later load
+failure cleans the ready prefix in reverse with retryable aggregate ownership.
+
+Loaded sequence execution carries the actual rebased observation forward,
+returns exact Applied or GuardMiss progress, and preserves current-step rollback
+on hard failure. Explicit reverse release attempts every mapping and retains
+failed ready executables only for retry. Halt-fetch remains the sole admitted v6
+semantic template, so every currently valid sequence is one terminal step and a
+second halt is rejected as `TerminationBeforeEnd`; this boundary does not claim
+multistep guest execution before a nonterminal v6 template exists.
+
+Multi-entry resident/eviction policy and broader register-masked template
+coverage remain open. Those are separate reviewed boundaries; unsupported v6
+execution remains fail-closed.
 
 Combined-region emission, native-retry orchestration beyond bounded
 process-local cached cycles, asynchronous/product scheduling, executable-memory

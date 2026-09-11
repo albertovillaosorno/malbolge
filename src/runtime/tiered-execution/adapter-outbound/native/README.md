@@ -222,9 +222,19 @@ runner failure rolls back the call while leaving the mapping reusable.
 `RegisterMaskedNativeResidentLeaseCache` adds one exact process-local resident
 slot with immutable `Arc` leases. Exact hits do not remap, a different identity
 cannot replace the resident implicitly, live leases block release, and cleanup
-failure transfers the exact ready executable for retry. V6 sequences,
-multi-entry resident policy, and wider mask-aware templates remain outside this
-boundary.
+failure transfers the exact ready executable for retry.
+
+`RegisterMaskedNativeSequencePlan` now validates the complete ordered v6 chain
+before mapping: non-empty/count exactness and one-effect v6 shape; canonical
+profile continuity, exact trace observation chaining, common native target,
+exact artifact identity, and no termination before a later position. Loading
+publishes
+all owners only after every mapping succeeds; loaded execution reports exact
+Applied/GuardMiss/failure progress and explicit reverse release retains retry
+ownership. Because halt-fetch is still the only admitted v6 template, every
+currently executable plan has one terminal step; two halts are rejected as a
+terminated prefix rather than treated as an artificial batch. Multi-entry
+resident policy and wider mask-aware templates remain outside this boundary.
 
 The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while
