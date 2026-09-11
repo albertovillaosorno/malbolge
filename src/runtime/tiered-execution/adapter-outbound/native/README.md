@@ -213,8 +213,13 @@ runner entry.
 `execute_verified_register_masked_non_graphical_native()` now composes exact
 load, bind, run, completion, and release. Load/call failures restore the rebased
 snapshot and attempt cleanup; final release failure preserves both the committed
-outcome and exact ready mapping for retry. Residency and sequence execution
-remain halt-only.
+outcome and exact ready mapping for retry.
+
+`RegisterMaskedNonGraphicalNativeExecutableOwner` retains one exact program,
+verified artifact, and synchronized mapping for repeated rebased non-graphical
+calls without adapter work. Runner failure rolls back the call while preserving
+that owner for reuse, and resident weight comes from the platform mapping. Lease
+cache and sequence execution remain halt-only.
 
 `VerifiedRegisterMaskedLoadImage` now extracts that verified object as a
 relocation-free, ISA-aligned image under the shared strict W^X policy without

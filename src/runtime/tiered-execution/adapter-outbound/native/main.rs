@@ -346,6 +346,12 @@ pub use register_masked_resident::{
     RegisterMaskedNativeResidentCacheReleaseResult,
     RegisterMaskedNativeResidentLease, RegisterMaskedNativeResidentLeaseCache,
     RegisterMaskedNativeResidentWeight,
+    RegisterMaskedNonGraphicalNativeExecutableOwner,
+    RegisterMaskedNonGraphicalNativeOwnerExecutionFailure,
+    RegisterMaskedNonGraphicalNativeOwnerExecutionResult,
+    RegisterMaskedNonGraphicalNativeOwnerLoadFailure,
+    RegisterMaskedNonGraphicalNativeOwnerLoadResult,
+    RegisterMaskedNonGraphicalNativeOwnerReleaseResult,
 };
 pub use register_masked_sequence::{
     LoadedRegisterMaskedNativeSequence,

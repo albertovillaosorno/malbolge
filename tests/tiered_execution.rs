@@ -285,6 +285,8 @@ use execution_native::{
     RegisterMaskedNativeResidentLease, RegisterMaskedNativeResidentLeaseCache,
     RegisterMaskedNativeRunner, RegisterMaskedNativeSequenceOutcome,
     RegisterMaskedNativeSequencePlan, RegisterMaskedNativeSequencePlanError,
+    RegisterMaskedNonGraphicalNativeExecutableOwner,
+    RegisterMaskedNonGraphicalNativeOwnerExecutionFailure,
     RegisterMaskedNonGraphicalNativeRunner,
     StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
     StagedRegisterMaskedNativeExecutable,
@@ -800,6 +802,13 @@ struct RegisterMaskedNonGraphicalNativeFixture {
 struct RegisterMaskedOwnerFixture {
     adapter: FakeNativeExecutableAdapter,
     owner: RegisterMaskedNativeExecutableOwner,
+    program: RegisterMaskedRegionEffectProgram,
+}
+
+#[derive(Debug)]
+struct RegisterMaskedNonGraphicalOwnerFixture {
+    adapter: FakeNativeExecutableAdapter,
+    owner: RegisterMaskedNonGraphicalNativeExecutableOwner,
     program: RegisterMaskedRegionEffectProgram,
 }
 
@@ -2269,6 +2278,28 @@ fn register_masked_owner_fixture(
     Ok(RegisterMaskedOwnerFixture { adapter, owner, program })
 }
 
+fn register_masked_non_graphical_owner_fixture(
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<RegisterMaskedNonGraphicalOwnerFixture, String> {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_id_value)?,
+        native_executable_address(base_address)?,
+    );
+    let owner = RegisterMaskedNonGraphicalNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| {
+        format!("v6 non-graphical owner fixture load failed: {error}")
+    })?;
+    Ok(RegisterMaskedNonGraphicalOwnerFixture { adapter, owner, program })
+}
+
 fn register_masked_halt_variant(
     accumulator_delta: u32,
 ) -> Result<RegisterMaskedHaltVariant, String> {
@@ -2372,6 +2403,62 @@ fn execute_register_masked_owner_applied(
         Ok(())
     } else {
         Err(String::from("v6 owner rebased execution drifted"))
+    }
+}
+
+fn assert_non_graphical_owner_run_failure(
+    error: &RegisterMaskedNonGraphicalNativeOwnerExecutionFailure<
+        FakeNativeRunnerError,
+    >,
+) -> Result<(), String> {
+    match error {
+        RegisterMaskedNonGraphicalNativeOwnerExecutionFailure::Execution(
+            failure,
+        ) if failure.phase() == NativeExecutableExecutionPhase::Run => Ok(()),
+        RegisterMaskedNonGraphicalNativeOwnerExecutionFailure::Execution(_) => {
+            Err(String::from(
+                "v6 non-graphical owner runner failure lost run phase",
+            ))
+        },
+        RegisterMaskedNonGraphicalNativeOwnerExecutionFailure::Preparation(
+            _,
+        ) => Err(String::from(
+            "v6 non-graphical owner runner failure became preparation",
+        )),
+    }
+}
+
+fn execute_register_masked_non_graphical_owner_applied(
+    owner: &RegisterMaskedNonGraphicalNativeExecutableOwner,
+    runner: &mut FakeRegisterMaskedNonGraphicalNativeRunner,
+    program: &RegisterMaskedRegionEffectProgram,
+    entry: ProfileMachineObservation,
+) -> Result<(), String> {
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_program_memory(program)?;
+    let entry_memory = memory.clone();
+    let outcome = owner
+        .execute(
+            runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| {
+            format!("v6 non-graphical owner execution failed: {error}")
+        })?;
+    let expected =
+        NativeRegionInvocationOutcome::Applied(ProfileMachineObservation {
+            termination: Some(Termination::NonGraphicalCell),
+            ..entry
+        });
+    if outcome == expected && memory == entry_memory && output == entry_output {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical owner rebased execution drifted",
+        ))
     }
 }
 
@@ -5387,6 +5474,157 @@ fn register_masked_v6_transaction_release_failure_retains_commit_and_retry()
         return Err(String::from("v6 committed release retry count drifted"));
     }
     Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_owner_reuses_mapping_across_rebased_calls()
+-> TieredTestResult {
+    let RegisterMaskedNonGraphicalOwnerFixture {
+        mut adapter,
+        owner,
+        program,
+    } = register_masked_non_graphical_owner_fixture(158, 0x15800)?;
+    let loaded_operations = adapter.operations.clone();
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != owner.executable().mapping().mapped_len()
+        || weight.mappings() != 1
+        || owner.key() != owner.artifact().key()
+    {
+        return Err(String::from(
+            "v6 non-graphical owner weight or identity drifted",
+        ));
+    }
+    let source_entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical owner effect missing"))?
+        .before;
+    let mut runner = FakeRegisterMaskedNonGraphicalNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    for (accumulator, data_pointer, input_consumed, output_len) in
+        [(11, 21, 1, 1), (31, 41, 2, 2)]
+    {
+        let mut entry = source_entry;
+        entry.registers.accumulator = accumulator;
+        entry.registers.data_pointer = data_pointer;
+        entry.input_consumed = input_consumed;
+        entry.output_len = output_len;
+        execute_register_masked_non_graphical_owner_applied(
+            &owner,
+            &mut runner,
+            &program,
+            entry,
+        )?;
+    }
+    let mapping_id = owner.executable().mapping().mapping_id();
+    if adapter.operations != loaded_operations
+        || runner.calls != 2
+        || runner.mapping_ids != [mapping_id, mapping_id]
+    {
+        return Err(String::from(
+            "v6 non-graphical owner remapped or changed mapping identity",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 non-graphical owner release: {error}"))?;
+    if adapter.operations.last() == Some(&FakeNativeAdapterOperation::Release) {
+        Ok(())
+    } else {
+        Err(String::from(
+            "v6 non-graphical owner release was not explicit",
+        ))
+    }
+}
+
+#[test]
+fn register_masked_v6_non_graphical_owner_weight_uses_platform_mapping()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let mapped_len = 16_384;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(159)?,
+        native_executable_address(0x15900)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let owner = RegisterMaskedNonGraphicalNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 non-graphical weighted owner: {error}"))?;
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != mapped_len
+        || weight.mappings() != 1
+        || mapped_len <= owner.executable().image().allocation_len()
+    {
+        return Err(String::from(
+            "v6 non-graphical owner used artifact size for resident weight",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 non-graphical weighted release: {error}"))
+}
+
+#[test]
+fn register_masked_v6_non_graphical_owner_recovers_after_runner_failure()
+-> TieredTestResult {
+    let RegisterMaskedNonGraphicalOwnerFixture {
+        mut adapter,
+        owner,
+        program,
+    } = register_masked_non_graphical_owner_fixture(160, 0x16000)?;
+    let loaded_operations = adapter.operations.clone();
+    let mut entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 non-graphical owner effect missing"))?
+        .before;
+    entry.registers.accumulator = 51;
+    entry.registers.data_pointer = 61;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_program_memory(&program)?;
+    let entry_memory = memory.clone();
+    let mut failing = FakeRegisterMaskedNonGraphicalNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = owner.execute(
+        &mut failing,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from(
+            "v6 non-graphical owner runner failure was ignored",
+        ));
+    };
+    assert_non_graphical_owner_run_failure(error.as_ref())?;
+    if memory != entry_memory || adapter.operations != loaded_operations {
+        return Err(String::from(
+            "v6 non-graphical owner failure changed residency",
+        ));
+    }
+    let mut succeeding = FakeRegisterMaskedNonGraphicalNativeRunner::new(
+        FakeNativeRunnerBehavior::Applied,
+    );
+    execute_register_masked_non_graphical_owner_applied(
+        &owner,
+        &mut succeeding,
+        &program,
+        entry,
+    )?;
+    if adapter.operations != loaded_operations {
+        return Err(String::from(
+            "v6 non-graphical owner remapped after runner failure",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|release| format!("v6 non-graphical owner release: {release}"))
 }
 
 #[test]

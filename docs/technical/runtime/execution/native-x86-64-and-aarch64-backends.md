@@ -216,8 +216,9 @@ A dedicated runner executes only that view and restores the rebased snapshot
 on runner or completion failure.
 
 One-shot orchestration now composes exact load, bind, call, completion, and
-release while retaining cleanup and release-retry evidence. Residency and
-sequence authority remain absent.
+release while retaining cleanup and release-retry evidence. A dedicated reusable
+owner retains that exact non-graphical mapping across rebased calls and runner
+failure without remapping. Lease-cache and sequence authority remain absent.
 
 The native call-frame ABI now has a format-neutral Rust authority in
 `native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used
