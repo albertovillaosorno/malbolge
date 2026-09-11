@@ -268,10 +268,13 @@ pub use lifecycle::{
     NativeExecutableMappingReport, NativeExecutableReleaseRequest,
     NativeInstructionSyncReport, ReadyExecutionGeometryNativeExecutable,
     ReadyNativeExecutable, ReadyRegisterMaskedNativeExecutable,
+    ReadyRegisterMaskedNonGraphicalNativeExecutable,
     SealedExecutionGeometryNativeExecutable, SealedNativeExecutable,
     SealedRegisterMaskedNativeExecutable,
+    SealedRegisterMaskedNonGraphicalNativeExecutable,
     StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
     StagedRegisterMaskedNativeExecutable,
+    StagedRegisterMaskedNonGraphicalNativeExecutable,
 };
 pub use loader::{
     NativeExecutableLoadPolicy, NativeExecutablePermission,

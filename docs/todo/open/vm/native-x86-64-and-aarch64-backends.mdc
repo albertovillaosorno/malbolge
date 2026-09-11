@@ -102,8 +102,9 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Register-masked v6 now has reviewed graphical halt
   and non-graphical terminal objects on both ISAs with reduced C/live-in guards.
   The non-graphical artifact has distinct relocation-free image and rebased
-  prepared-call evidence, but no platform lifecycle or runner accepts it;
-  executable v6 authority remains halt-only.
+  prepared-call evidence. Dedicated lifecycle typestates admit exact copy,
+  same-mapping RX transition, and full-range synchronization, but no platform
+  loader or runner accepts the resulting ready state.
 
   Native ABI revision 1 now has one format-neutral Rust `repr(C)` call frame.
   Its tested 80-byte size and field offsets match both reviewed encoder

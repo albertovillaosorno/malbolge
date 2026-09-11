@@ -191,8 +191,12 @@ to the same two ISAs and reduced guard sequence, committing only
 `NonGraphicalCell`. Its distinct verified artifact wrapper remains outside the
 halt executable lifecycle.
 
-`VerifiedRegisterMaskedNonGraphicalLoadImage` proves relocation-free, aligned
-code without being accepted by any platform typestate.
+`VerifiedRegisterMaskedNonGraphicalLoadImage` now feeds distinct `Staged`,
+`Sealed`, and `Ready` lifecycle typestates. They admit exact writable copy,
+same-mapping RX protection, and full-range instruction synchronization while
+retaining complete v6 identity and cleanup evidence. No platform adapter accepts
+the non-graphical image or ready state.
+
 `PreparedRegisterMaskedNonGraphicalInvocation` binds exact v6 identity, C and
 fetched-cell live-ins, rebased dead state, and atomic Applied/GuardMiss
 completion. It exposes no executable binding; platform loading, runners,

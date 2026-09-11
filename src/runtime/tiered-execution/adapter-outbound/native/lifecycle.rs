@@ -39,6 +39,7 @@ use std::num::{NonZeroU64, NonZeroUsize};
 use super::loader::{
     NativeExecutablePermission, VerifiedDirectLoadImage,
     VerifiedExecutionGeometryLoadImage, VerifiedRegisterMaskedLoadImage,
+    VerifiedRegisterMaskedNonGraphicalLoadImage,
 };
 use crate::execution_cache::{NativeArtifactKey, NativeTargetIdentity};
 
@@ -155,6 +156,28 @@ pub struct SealedRegisterMaskedNativeExecutable {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct StagedRegisterMaskedNativeExecutable {
     image: VerifiedRegisterMaskedLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Exact RX mapping for one non-graphical register-masked v6 image.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReadyRegisterMaskedNonGraphicalNativeExecutable {
+    entry_address: NonZeroUsize,
+    image: VerifiedRegisterMaskedNonGraphicalLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Non-graphical v6 mapping admitted after its RW-to-RX transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SealedRegisterMaskedNonGraphicalNativeExecutable {
+    image: VerifiedRegisterMaskedNonGraphicalLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Verified non-graphical v6 bytes admitted in writable staging memory.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StagedRegisterMaskedNonGraphicalNativeExecutable {
+    image: VerifiedRegisterMaskedNonGraphicalLoadImage,
     mapping: NativeExecutableMappingReport,
 }
 
@@ -600,6 +623,158 @@ impl StagedRegisterMaskedNativeExecutable {
     }
 }
 
+impl ReadyRegisterMaskedNonGraphicalNativeExecutable {
+    /// Returns the non-zero non-graphical v6 native entrypoint address.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.entry_address
+    }
+
+    /// Returns the exact verified non-graphical v6 load image.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedRegisterMaskedNonGraphicalLoadImage {
+        &self.image
+    }
+
+    /// Returns the complete retained v6 artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.image.key()
+    }
+
+    /// Returns the exact synchronized mapping report.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+
+    /// Returns exact cleanup evidence for this mapping.
+    #[must_use]
+    pub const fn release_request(&self) -> NativeExecutableReleaseRequest {
+        NativeExecutableReleaseRequest::from_mapping(self.mapping)
+    }
+
+    /// Returns exact target assumptions retained by this lifecycle state.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.image.target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.image.target_triple()
+    }
+}
+
+impl SealedRegisterMaskedNonGraphicalNativeExecutable {
+    /// Admits synchronization of the complete non-graphical v6 code range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] when mapping identity or the
+    /// synchronized range differs from the exact image.
+    pub fn admit_instruction_sync(
+        self,
+        report: NativeInstructionSyncReport,
+    ) -> Result<
+        ReadyRegisterMaskedNonGraphicalNativeExecutable,
+        NativeExecutableLifecycleError,
+    > {
+        if report.mapping_id() != self.mapping.mapping_id() {
+            return Err(NativeExecutableLifecycleError::MappingIdentity);
+        }
+        if report.start_address() != self.mapping.base_address()
+            || report.byte_len() != self.image.allocation_len()
+        {
+            return Err(NativeExecutableLifecycleError::SynchronizationRange);
+        }
+        let entry_address = register_masked_non_graphical_entry_address(
+            &self.image,
+            self.mapping,
+        )?;
+        Ok(ReadyRegisterMaskedNonGraphicalNativeExecutable {
+            entry_address,
+            image: self.image,
+            mapping: self.mapping,
+        })
+    }
+
+    /// Returns the exact verified non-graphical v6 image.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedRegisterMaskedNonGraphicalLoadImage {
+        &self.image
+    }
+
+    /// Returns the exact read-execute mapping report retained by this state.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+}
+
+impl StagedRegisterMaskedNonGraphicalNativeExecutable {
+    /// Admits the exact RW-to-RX transition for this same mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] when mapping identity or
+    /// final permissions differ.
+    pub fn admit_read_execute(
+        self,
+        mapping: NativeExecutableMappingReport,
+    ) -> Result<
+        SealedRegisterMaskedNonGraphicalNativeExecutable,
+        NativeExecutableLifecycleError,
+    > {
+        if !same_mapping(self.mapping, mapping) {
+            return Err(NativeExecutableLifecycleError::MappingIdentity);
+        }
+        if mapping.permissions() != self.image.policy().final_permissions() {
+            return Err(NativeExecutableLifecycleError::Permissions);
+        }
+        Ok(SealedRegisterMaskedNonGraphicalNativeExecutable {
+            image: self.image,
+            mapping,
+        })
+    }
+
+    /// Returns the exact verified non-graphical v6 image.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedRegisterMaskedNonGraphicalLoadImage {
+        &self.image
+    }
+
+    /// Returns the exact writable mapping report retained by this state.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+
+    /// Admits copied non-graphical v6 code in one writable mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] for permission, bytes,
+    /// alignment, capacity, address, or entry-range drift.
+    pub fn stage(
+        image: &VerifiedRegisterMaskedNonGraphicalLoadImage,
+        mapping: NativeExecutableMappingReport,
+        copied_code: &[u8],
+    ) -> Result<Self, NativeExecutableLifecycleError> {
+        validate_register_masked_non_graphical_writable_mapping(
+            image, mapping,
+        )?;
+        if copied_code != image.code() {
+            return Err(NativeExecutableLifecycleError::CodeImage);
+        }
+        Ok(Self {
+            image: image.clone(),
+            mapping,
+        })
+    }
+}
+
 impl StagedNativeExecutable {
     /// Admits the exact RW-to-RX transition for this same mapping.
     ///
@@ -745,6 +920,26 @@ impl ReadyNativeExecutable {
     }
 }
 
+fn register_masked_non_graphical_entry_address(
+    image: &VerifiedRegisterMaskedNonGraphicalLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<NonZeroUsize, NativeExecutableLifecycleError> {
+    let value = mapping
+        .base_address()
+        .get()
+        .checked_add(image.entry_offset())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    let code_end = mapping
+        .base_address()
+        .get()
+        .checked_add(image.allocation_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    if value >= code_end {
+        return Err(NativeExecutableLifecycleError::EntryRange);
+    }
+    NonZeroUsize::new(value).ok_or(NativeExecutableLifecycleError::EntryRange)
+}
+
 fn register_masked_entry_address(
     image: &VerifiedRegisterMaskedLoadImage,
     mapping: NativeExecutableMappingReport,
@@ -840,6 +1035,25 @@ pub(super) fn validate_execution_geometry_writable_mapping(
     validate_execution_geometry_mapping_ranges(image, mapping)
 }
 
+fn validate_register_masked_non_graphical_writable_mapping(
+    image: &VerifiedRegisterMaskedNonGraphicalLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    if mapping.permissions() != image.policy().initial_permissions() {
+        return Err(NativeExecutableLifecycleError::Permissions);
+    }
+    if mapping.mapped_len() < image.allocation_len() {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    if !is_aligned(
+        mapping.base_address().get(),
+        image.minimum_instruction_alignment(),
+    ) {
+        return Err(NativeExecutableLifecycleError::MappingAlignment);
+    }
+    validate_register_masked_non_graphical_mapping_ranges(image, mapping)
+}
+
 pub(super) fn validate_register_masked_writable_mapping(
     image: &VerifiedRegisterMaskedLoadImage,
     mapping: NativeExecutableMappingReport,
@@ -896,6 +1110,27 @@ fn validate_execution_geometry_mapping_ranges(
         return Err(NativeExecutableLifecycleError::MappingCapacity);
     }
     let _entry = execution_geometry_entry_address(image, mapping)?;
+    Ok(())
+}
+
+fn validate_register_masked_non_graphical_mapping_ranges(
+    image: &VerifiedRegisterMaskedNonGraphicalLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    let mapping_end = mapping
+        .base_address()
+        .get()
+        .checked_add(mapping.mapped_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    let code_end = mapping
+        .base_address()
+        .get()
+        .checked_add(image.allocation_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    if code_end > mapping_end {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    let _entry = register_masked_non_graphical_entry_address(image, mapping)?;
     Ok(())
 }
 

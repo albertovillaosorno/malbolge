@@ -284,11 +284,12 @@ use execution_native::{
     RegisterMaskedNativeRunner, RegisterMaskedNativeSequenceOutcome,
     RegisterMaskedNativeSequencePlan, RegisterMaskedNativeSequencePlanError,
     StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
-    StagedRegisterMaskedNativeExecutable, UntrustedNativeObjectArtifact,
-    VerifiedDirectInvocationError, VerifiedDirectLoadError,
-    VerifiedDirectLoadImage, VerifiedDirectNativeCache,
-    VerifiedDirectSequencePlan, VerifiedExecutionGeometryLoadImage,
-    VerifiedExecutionGeometryNativeCache,
+    StagedRegisterMaskedNativeExecutable,
+    StagedRegisterMaskedNonGraphicalNativeExecutable,
+    UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
+    VerifiedDirectLoadError, VerifiedDirectLoadImage,
+    VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
+    VerifiedExecutionGeometryLoadImage, VerifiedExecutionGeometryNativeCache,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
@@ -3498,6 +3499,223 @@ fn register_masked_v6_halt_guard_miss_restores_snapshot() -> TieredTestResult {
     ) || memory != entry_memory
     {
         return Err(String::from("v6 guard miss failed atomic rollback"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_lifecycle_retains_identity()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedNonGraphicalLoadImage::new(&artifact)
+        .map_err(|error| {
+            format!("v6 non-graphical lifecycle image: {error}")
+        })?;
+    let mapping_id = native_executable_mapping_id(140)?;
+    let base = native_executable_address(0x14000)?;
+    let staged = StagedRegisterMaskedNonGraphicalNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadWrite,
+        ),
+        image.code(),
+    )
+    .map_err(|error| format!("v6 non-graphical lifecycle stage: {error}"))?;
+    let ready = staged
+        .admit_read_execute(NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadExecute,
+        ))
+        .map_err(|error| format!("v6 non-graphical lifecycle seal: {error}"))?
+        .admit_instruction_sync(NativeInstructionSyncReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+        ))
+        .map_err(|error| format!("v6 non-graphical lifecycle sync: {error}"))?;
+    if ready.key() != artifact.key()
+        || ready.image() != &image
+        || ready.mapping().mapping_id() != mapping_id
+        || ready.entry_address() != base
+        || ready.target() != artifact.key().target()
+        || ready.target_triple() != artifact.target_triple()
+        || ready.release_request().mapping_id() != mapping_id
+    {
+        return Err(String::from(
+            "v6 non-graphical lifecycle changed exact identity",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_lifecycle_rejects_code_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedNonGraphicalLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 non-graphical drift image: {error}"))?;
+    let mapping = NativeExecutableMappingReport::new(
+        native_executable_mapping_id(141)?,
+        native_executable_address(0x14100)?,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    );
+    let mut copied = image.code().to_vec();
+    let first = copied.first_mut().ok_or_else(|| {
+        String::from("v6 non-graphical lifecycle code unexpectedly empty")
+    })?;
+    *first ^= 1;
+    if StagedRegisterMaskedNonGraphicalNativeExecutable::stage(
+        &image, mapping, &copied,
+    ) != Err(NativeExecutableLifecycleError::CodeImage)
+    {
+        return Err(String::from(
+            "v6 non-graphical lifecycle admitted copied-code drift",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_lifecycle_rejects_mapping_shape()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::AArch64)?;
+    let image = VerifiedRegisterMaskedNonGraphicalLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 non-graphical mapping image: {error}"))?;
+    let mapping_id = native_executable_mapping_id(142)?;
+    let base = native_executable_address(0x14200)?;
+    let short = image.allocation_len().saturating_sub(1);
+    if StagedRegisterMaskedNonGraphicalNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            short,
+            NativeExecutablePermission::ReadWrite,
+        ),
+        image.code(),
+    ) != Err(NativeExecutableLifecycleError::MappingCapacity)
+    {
+        return Err(String::from(
+            "v6 non-graphical lifecycle admitted short mapping",
+        ));
+    }
+    let unaligned = native_executable_address(base.get().saturating_add(2))?;
+    if StagedRegisterMaskedNonGraphicalNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            unaligned,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadWrite,
+        ),
+        image.code(),
+    ) != Err(NativeExecutableLifecycleError::MappingAlignment)
+    {
+        return Err(String::from(
+            "v6 non-graphical lifecycle admitted unaligned mapping",
+        ));
+    }
+    if StagedRegisterMaskedNonGraphicalNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadExecute,
+        ),
+        image.code(),
+    ) != Err(NativeExecutableLifecycleError::Permissions)
+    {
+        return Err(String::from(
+            "v6 non-graphical lifecycle admitted non-writable staging",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_lifecycle_rejects_mapping_drift()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedNonGraphicalLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 non-graphical mapping drift: {error}"))?;
+    let mapping_id = native_executable_mapping_id(143)?;
+    let base = native_executable_address(0x14300)?;
+    let staged = StagedRegisterMaskedNonGraphicalNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadWrite,
+        ),
+        image.code(),
+    )
+    .map_err(|error| format!("v6 non-graphical mapping stage: {error}"))?;
+    if staged.admit_read_execute(NativeExecutableMappingReport::new(
+        native_executable_mapping_id(144)?,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    )) != Err(NativeExecutableLifecycleError::MappingIdentity)
+    {
+        return Err(String::from(
+            "v6 non-graphical lifecycle admitted mapping drift",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_non_graphical_lifecycle_rejects_sync_range()
+-> TieredTestResult {
+    let program = canonical_register_masked_non_graphical_program()?;
+    let artifact =
+        verified_register_masked_non_graphical(&program, HostIsa::X86_64)?;
+    let image = VerifiedRegisterMaskedNonGraphicalLoadImage::new(&artifact)
+        .map_err(|error| format!("v6 non-graphical sync image: {error}"))?;
+    let mapping_id = native_executable_mapping_id(145)?;
+    let base = native_executable_address(0x14500)?;
+    let sealed = StagedRegisterMaskedNonGraphicalNativeExecutable::stage(
+        &image,
+        NativeExecutableMappingReport::new(
+            mapping_id,
+            base,
+            image.allocation_len(),
+            NativeExecutablePermission::ReadWrite,
+        ),
+        image.code(),
+    )
+    .map_err(|error| format!("v6 non-graphical sync stage: {error}"))?
+    .admit_read_execute(NativeExecutableMappingReport::new(
+        mapping_id,
+        base,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadExecute,
+    ))
+    .map_err(|error| format!("v6 non-graphical sync seal: {error}"))?;
+    let short = image.allocation_len().saturating_sub(1);
+    if sealed.admit_instruction_sync(NativeInstructionSyncReport::new(
+        mapping_id, base, short,
+    )) != Err(NativeExecutableLifecycleError::SynchronizationRange)
+    {
+        return Err(String::from(
+            "v6 non-graphical lifecycle admitted short sync",
+        ));
     }
     Ok(())
 }
