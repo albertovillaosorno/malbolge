@@ -286,6 +286,8 @@ use execution_native::{
     RegisterMaskedNativeRunner, RegisterMaskedNativeSequenceOutcome,
     RegisterMaskedNativeSequencePlan, RegisterMaskedNativeSequencePlanError,
     RegisterMaskedNonGraphicalLease, RegisterMaskedNonGraphicalLeaseCache,
+    RegisterMaskedNonGraphicalLeaseCacheAcquisition,
+    RegisterMaskedNonGraphicalLeaseCacheEntryReleaseFailure,
     RegisterMaskedNonGraphicalLeaseCacheInvalidation,
     RegisterMaskedNonGraphicalNativeExecutableOwner,
     RegisterMaskedNonGraphicalNativeOwnerExecutionFailure,
@@ -6277,6 +6279,37 @@ fn register_masked_non_graphical_multi_cache_fixture(
     ))
 }
 
+fn register_masked_non_graphical_single_entry_limits()
+-> Result<NativeExecutableSequenceCacheLimits, String> {
+    NonZeroUsize::new(1)
+        .map(NativeExecutableSequenceCacheLimits::new)
+        .ok_or_else(|| String::from("zero non-graphical single-entry limit"))
+}
+
+fn seed_register_masked_non_graphical_multi_cache(
+    adapter: &mut FakeNativeExecutableAdapter,
+    cache: &mut RegisterMaskedNonGraphicalLeaseCache,
+    variants: [&RegisterMaskedNonGraphicalVariant; 2],
+) -> Result<(), String> {
+    for (program, artifact) in variants {
+        drop(cache.ensure(adapter, program, artifact).map_err(|error| {
+            format!("v6 non-graphical reconfiguration seed: {error}")
+        })?);
+    }
+    Ok(())
+}
+
+fn lease_register_masked_non_graphical_variant(
+    adapter: &mut FakeNativeExecutableAdapter,
+    cache: &mut RegisterMaskedNonGraphicalLeaseCache,
+    variant: &RegisterMaskedNonGraphicalVariant,
+) -> Result<RegisterMaskedNonGraphicalLease, String> {
+    cache
+        .ensure(adapter, &variant.0, &variant.1)
+        .map(RegisterMaskedNonGraphicalLeaseCacheAcquisition::into_lease)
+        .map_err(|error| format!("v6 non-graphical lease seed: {error}"))
+}
+
 fn return_non_graphical_retired_lease(
     cache: &mut RegisterMaskedNonGraphicalLeaseCache,
     adapter: &mut FakeNativeExecutableAdapter,
@@ -6803,6 +6836,262 @@ fn register_masked_v6_non_graphical_multi_cache_retries_multiple_releases()
         Err(String::from(
             "v6 non-graphical aggregate retry result drifted",
         ))
+    }
+}
+
+#[test]
+fn register_masked_v6_non_graphical_multi_cache_reconfiguration_expands_no_io()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_non_graphical_cache_variant(20)?;
+    let (mut adapter, mut cache) =
+        register_masked_non_graphical_multi_cache_fixture(179, 0x17900, 1)?;
+    drop(
+        cache
+            .ensure(&mut adapter, &program, &artifact)
+            .map_err(|error| {
+                format!("v6 non-graphical expansion seed: {error}")
+            })?,
+    );
+    let previous = cache.limits();
+    let requested = NativeExecutableSequenceCacheLimits::new(
+        NonZeroUsize::new(2)
+            .ok_or_else(|| String::from("zero non-graphical expansion"))?,
+    );
+    let operations = adapter.operations.clone();
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 non-graphical expansion: {error}"))?;
+    if result.limit_transition() != (previous, requested)
+        || !result.evicted_keys().is_empty()
+        || !result.retired_keys().is_empty()
+        || cache.limits() != requested
+        || adapter.operations != operations
+    {
+        return Err(String::from(
+            "v6 non-graphical expansion performed unexpected work",
+        ));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_summary| ())
+        .map_err(|error| format!("v6 non-graphical expansion cleanup: {error}"))
+}
+
+#[test]
+fn register_masked_v6_non_graphical_multi_cache_reconfiguration_shrinks_bytes()
+-> TieredTestResult {
+    let variant_a = register_masked_non_graphical_cache_variant(21)?;
+    let variant_b = register_masked_non_graphical_cache_variant(22)?;
+    let key_a = variant_a.1.key().clone();
+    let key_b = variant_b.1.key().clone();
+    let (base_adapter, mut cache) =
+        register_masked_non_graphical_multi_cache_fixture(180, 0x18000, 2)?;
+    let mut adapter = base_adapter.with_mapped_len_overrides(vec![4096, 4096]);
+    seed_register_masked_non_graphical_multi_cache(
+        &mut adapter,
+        &mut cache,
+        [&variant_a, &variant_b],
+    )?;
+    let previous = cache.limits();
+    let requested = NativeExecutableSequenceCacheLimits::new(cache.capacity())
+        .with_mapped_byte_limit(
+            NonZeroUsize::new(4096)
+                .ok_or_else(|| String::from("zero non-graphical byte limit"))?,
+        );
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 non-graphical byte shrink: {error}"))?;
+    if result.limit_transition() != (previous, requested)
+        || result.evicted_keys() != [key_a]
+        || !result.retired_keys().is_empty()
+        || cache.keys().cloned().collect::<Vec<_>>() != [key_b]
+        || cache.usage().mapped_bytes() != 4096
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 non-graphical byte shrink drifted"));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_summary| ())
+        .map_err(|error| format!("v6 non-graphical byte cleanup: {error}"))
+}
+
+#[test]
+fn register_masked_v6_non_graphical_multi_cache_reconfiguration_blocks_live()
+-> TieredTestResult {
+    let variant_a = register_masked_non_graphical_cache_variant(23)?;
+    let variant_b = register_masked_non_graphical_cache_variant(24)?;
+    let key_a = variant_a.1.key().clone();
+    let key_b = variant_b.1.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_non_graphical_multi_cache_fixture(181, 0x18100, 2)?;
+    let lease_a = lease_register_masked_non_graphical_variant(
+        &mut adapter,
+        &mut cache,
+        &variant_a,
+    )?;
+    let lease_b = lease_register_masked_non_graphical_variant(
+        &mut adapter,
+        &mut cache,
+        &variant_b,
+    )?;
+    let previous = cache.limits();
+    let requested = register_masked_non_graphical_single_entry_limits()?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, requested) else {
+        return Err(String::from("v6 non-graphical live shrink published"));
+    };
+    let block = failure
+        .block()
+        .ok_or_else(|| String::from("v6 non-graphical live blocker missing"))?;
+    if failure.limit_transition() != (previous, requested)
+        || failure.evicted_keys() != [key_a.clone(), key_b.clone()]
+        || failure.retired_keys() != [key_a.clone(), key_b.clone()]
+        || block.retired_keys() != [key_a.clone(), key_b.clone()]
+        || cache.limits() != previous
+        || cache.active_len() != 0
+        || cache.retired_len() != 2
+        || adapter.release_attempts != 0
+    {
+        return Err(String::from("v6 non-graphical live shrink drifted"));
+    }
+    drop((lease_a, lease_b));
+    let reconciled = cache
+        .reconcile_retired(&mut adapter)
+        .map_err(|error| format!("v6 non-graphical live reconcile: {error}"))?;
+    if reconciled.released_keys() != [key_a, key_b] {
+        return Err(String::from("v6 non-graphical live reclaim drifted"));
+    }
+    let attempts = adapter.release_attempts;
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 non-graphical live retry: {error}"))?;
+    if result.limit_transition() == (previous, requested)
+        && cache.limits() == requested
+        && adapter.release_attempts == attempts
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 non-graphical live retry repeated work"))
+    }
+}
+
+#[test]
+fn register_masked_v6_non_graphical_multi_cache_reconfiguration_retry_release()
+-> TieredTestResult {
+    let variant_a = register_masked_non_graphical_cache_variant(25)?;
+    let variant_b = register_masked_non_graphical_cache_variant(26)?;
+    let key_a = variant_a.1.key().clone();
+    let key_b = variant_b.1.key().clone();
+    let (base_adapter, mut cache) =
+        register_masked_non_graphical_multi_cache_fixture(182, 0x18200, 2)?;
+    let mut adapter = base_adapter.with_release_failure_at(1);
+    seed_register_masked_non_graphical_multi_cache(
+        &mut adapter,
+        &mut cache,
+        [&variant_a, &variant_b],
+    )?;
+    let previous = cache.limits();
+    let requested = register_masked_non_graphical_single_entry_limits()?;
+    let Err(failure) = cache.reconfigure_limits(&mut adapter, requested) else {
+        return Err(String::from("v6 non-graphical failed shrink published"));
+    };
+    if failure.limit_transition() != (previous, requested)
+        || failure.evicted_keys() != [key_a.clone()]
+        || failure
+            .release_failure()
+            .map(RegisterMaskedNonGraphicalLeaseCacheEntryReleaseFailure::key)
+            != Some(&key_a)
+        || cache.limits() != previous
+        || cache.keys().cloned().collect::<Vec<_>>() != [key_b]
+        || cache.usage().entries() != 1
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 non-graphical shrink failure drifted"));
+    }
+    let keyed = failure
+        .into_release_failure()
+        .ok_or_else(|| String::from("v6 non-graphical shrink owner missing"))?;
+    let retried_key = keyed.retry(&mut adapter).map_err(|retry_failure| {
+        format!(
+            "v6 non-graphical shrink retry retained key: {}",
+            retry_failure.key() == &key_a,
+        )
+    })?;
+    if retried_key != key_a {
+        return Err(String::from("v6 non-graphical shrink retry key drifted"));
+    }
+    let attempts = adapter.release_attempts;
+    let result = cache
+        .reconfigure_limits(&mut adapter, requested)
+        .map_err(|error| format!("v6 non-graphical publish retry: {error}"))?;
+    if result.limit_transition() != (previous, requested)
+        || !result.evicted_keys().is_empty()
+        || cache.limits() != requested
+        || adapter.release_attempts != attempts
+    {
+        return Err(String::from(
+            "v6 non-graphical shrink retry repeated work",
+        ));
+    }
+    cache
+        .release_all(&mut adapter)
+        .map(|_summary| ())
+        .map_err(|error| format!("v6 non-graphical shrink cleanup: {error}"))
+}
+
+#[test]
+fn register_masked_v6_non_graphical_multi_cache_reconfiguration_skips_retired()
+-> TieredTestResult {
+    let (program, artifact) = register_masked_non_graphical_cache_variant(27)?;
+    let key = artifact.key().clone();
+    let (mut adapter, mut cache) =
+        register_masked_non_graphical_multi_cache_fixture(183, 0x18300, 1)?;
+    let lease = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 non-graphical retired seed: {error}"))?
+        .into_lease();
+    let invalidated =
+        cache.invalidate_key(&mut adapter, &key).map_err(|error| {
+            format!("v6 non-graphical retired invalidate: {error:?}")
+        })?;
+    if invalidated
+        != (RegisterMaskedNonGraphicalLeaseCacheInvalidation::Retired {
+            leases: 1,
+        })
+    {
+        return Err(String::from("v6 non-graphical seed did not retire"));
+    }
+    drop(lease);
+    let previous = cache.limits();
+    let requested = NativeExecutableSequenceCacheLimits::new(
+        NonZeroUsize::new(2).ok_or_else(|| {
+            String::from("zero non-graphical retired expansion")
+        })?,
+    );
+    let operations = adapter.operations.clone();
+    let result =
+        cache
+            .reconfigure_limits(&mut adapter, requested)
+            .map_err(|error| {
+                format!("v6 non-graphical retired expansion: {error}")
+            })?;
+    if result.limit_transition() != (previous, requested)
+        || cache.retired_len() != 1
+        || cache.usage().entries() != 1
+        || adapter.operations != operations
+    {
+        return Err(String::from(
+            "v6 non-graphical reconfigure reclaimed retired",
+        ));
+    }
+    let reconciled =
+        cache.reconcile_retired(&mut adapter).map_err(|error| {
+            format!("v6 non-graphical retired reconcile: {error}")
+        })?;
+    if reconciled.released_keys() == [key] && cache.is_empty() {
+        Ok(())
+    } else {
+        Err(String::from("v6 non-graphical explicit reclaim drifted"))
     }
 }
 

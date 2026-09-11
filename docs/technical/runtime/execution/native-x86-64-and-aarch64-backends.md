@@ -229,8 +229,13 @@ processes active misses oldest-first. Unleased victims release immediately while
 live victims retire and remain charged until explicit lease return or
 reconciliation; invalidation and full release use the same ownership boundary.
 Oversize candidates fail closed, and aggregate cleanup failure preserves keyed
-retry ownership. Dynamic reconfiguration and sequence authority remain absent
-from the non-graphical cache.
+retry ownership.
+
+Explicit weighted-limit reconfiguration publishes expansion or already-fit
+requests without adapter work and shrinks active FIFO authority through the same
+release-or-retire path. Existing retired mappings are never reconciled
+implicitly; blockage or release failure retains the previous limits and exact
+retry evidence. Sequence authority remains absent from the non-graphical cache.
 
 The native call-frame ABI now has a format-neutral Rust authority in
 `native/abi.rs`. `NativeRegionState` fixes the 80-byte `repr(C)` layout used

@@ -120,7 +120,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   active misses oldest-first without widening halt cache types. Unleased victims
   release while live victims retire with exact weight charged until explicit
   return or reconciliation; invalidation and full drain preserve that boundary.
-  Reconfiguration and sequence authority remain absent from this cache.
+
+  Explicit weighted-limit reconfiguration now expands without adapter work and
+  shrinks active FIFO authority through the same release-or-retire path. Prior
+  retired entries are never reclaimed implicitly, and failed publication keeps
+  the previous limits plus exact blocker or cleanup retry evidence. Sequence
+  authority remains absent from this non-graphical cache.
 
   Native ABI revision 1 now has one format-neutral Rust `repr(C)` call frame.
   Its tested 80-byte size and field offsets match both reviewed encoder

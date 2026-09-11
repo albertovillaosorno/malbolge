@@ -9,33 +9,37 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Fixed-limit multi-entry FIFO residency for exact non-graphical v6 owners.
+//   - Weighted FIFO residency and limit publication for non-graphical v6.
 // - Must-Not:
 //   - Project authority into halt caches/sequences, reconcile retirement
 //     implicitly on hit/miss, or refresh FIFO age on hits.
 // - Allows:
-//   - Inputs: exact non-graphical v6 programs/artifacts, fixed weighted limits,
-//     and a memory adapter.
+//   - Inputs: exact non-graphical v6 programs/artifacts, published limits, and
+//     a memory adapter.
 //   - Outputs: cloneable leases, active/retired residency, eviction/block
 //     evidence, and keyed retryable cleanup ownership.
 //   - Side effects: executable load/release only through the supplied adapter.
 // - Split-When:
-//   - Dynamic reconfiguration or sequence execution needs independent policy.
+//   - Sequence execution or asynchronous lease waiting needs independent
+//     policy.
 // - Merge-When:
 //   - One reviewed terminal-kind executable store subsumes parallel caches.
 // - Summary:
-//   - Reuses exact non-graphical v6 mappings under fixed weighted FIFO limits.
+//   - Reuses exact non-graphical v6 mappings under explicit weighted limits.
 // - Description:
 //   - Active lookup and retired leased residency are separate queues whose
 //     exact weights share one fixed capacity account.
 // - Usage:
-//   - Ensure exact residents, invalidate, return leases, reconcile retirement,
-//     and release all explicitly.
+//   - Ensure residents, reconfigure limits, invalidate, return/reconcile
+//     leases, and release all explicitly.
 // - Defaults:
 //   - Hits and lease clone/drop perform no adapter work.
 //
 
-//! Fixed-limit multi-entry lease cache for non-graphical register-masked v6.
+//! Weighted multi-entry lease cache for non-graphical register-masked v6.
+
+#[path = "register_masked_non_graphical_lease_cache/reconfiguration.rs"]
+mod reconfiguration;
 
 use std::collections::VecDeque;
 use std::fmt::{Display, Formatter, Result as FormatResult};
@@ -43,6 +47,11 @@ use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use malbolge::{ProfileMachineObservation, RegisterMaskedRegionEffectProgram};
+pub use reconfiguration::{
+    RegisterMaskedNonGraphicalLeaseCacheReconfiguration,
+    RegisterMaskedNonGraphicalLeaseCacheReconfigurationFailure,
+    RegisterMaskedNonGraphicalLeaseCacheReconfigurationResult,
+};
 
 use super::direct::VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact;
 use super::executable_cache_capacity::{
@@ -69,6 +78,9 @@ type EntryReleaseFailure<E> =
     RegisterMaskedNonGraphicalLeaseCacheEntryReleaseFailure<E>;
 
 type CacheInvalidation = RegisterMaskedNonGraphicalLeaseCacheInvalidation;
+
+type CacheReconfigurationResult<E> =
+    RegisterMaskedNonGraphicalLeaseCacheReconfigurationResult<E>;
 
 #[derive(Debug)]
 struct CacheValue {
@@ -210,7 +222,7 @@ pub struct RegisterMaskedNonGraphicalLeaseCacheReleaseFailure<E> {
     retained_keys: Vec<NativeArtifactKey>,
 }
 
-/// Fixed weighted capacity limits for this non-graphical resident cache.
+/// Published weighted capacity limits for this non-graphical resident cache.
 pub type RegisterMaskedNonGraphicalLeaseCacheLimits =
     NativeExecutableSequenceCacheLimits;
 
@@ -879,7 +891,7 @@ impl RegisterMaskedNonGraphicalLeaseCache {
         self.active.iter().map(|entry| &entry.key)
     }
 
-    /// Returns every caller-selected fixed resident capacity limit.
+    /// Returns the currently published resident capacity limits.
     #[must_use]
     pub const fn limits(&self) -> RegisterMaskedNonGraphicalLeaseCacheLimits {
         self.limits
@@ -988,6 +1000,43 @@ impl RegisterMaskedNonGraphicalLeaseCache {
         reconciliation_result(released_keys, retained_keys, failures)
     }
 
+    /// Publishes new weighted resident limits after active FIFO processing.
+    ///
+    /// Expansion and already-satisfied requests publish without adapter work.
+    /// Shrink removes active lookup authority oldest-first, immediately
+    /// releases unleased entries, and retires live leased entries without
+    /// reducing their resident weight. Existing retired entries are never
+    /// reclaimed implicitly.
+    ///
+    /// # Errors
+    ///
+    /// Returns exact resident blockage or keyed release ownership while the
+    /// previous limits remain published.
+    pub fn reconfigure_limits<Adapter>(
+        &mut self,
+        adapter: &mut Adapter,
+        requested_limits: NativeExecutableSequenceCacheLimits,
+    ) -> CacheReconfigurationResult<Adapter::Error>
+    where
+        Adapter: NativeExecutableMemoryAdapter,
+    {
+        let previous_limits = self.limits;
+        let (evicted_keys, retired_keys) =
+            reconfiguration::evict_for_reconfiguration(
+                self,
+                adapter,
+                requested_limits,
+                previous_limits,
+            )?;
+        self.limits = requested_limits;
+        Ok(reconfiguration::published(
+            evicted_keys,
+            retired_keys,
+            requested_limits,
+            previous_limits,
+        ))
+    }
+
     /// Removes all active lookup authority and reclaims every unleased
     /// resident.
     ///
@@ -1047,7 +1096,7 @@ impl RegisterMaskedNonGraphicalLeaseCache {
         self.usage
     }
 
-    /// Constructs an empty cache with explicit fixed weighted limits.
+    /// Constructs an empty cache with explicit initial weighted limits.
     #[must_use]
     pub const fn with_limits(
         limits: NativeExecutableSequenceCacheLimits,

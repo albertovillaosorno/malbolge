@@ -234,8 +234,13 @@ remains charged. Explicit invalidation uses the same release-or-retire rule,
 reconciliation reclaims retired mappings.
 
 Oversize candidates fail closed, and both insertion cleanup and reconciliation
-preserve aggregate keyed retry ownership. Dynamic reconfiguration and sequence
-execution remain absent from this non-graphical cache.
+preserve aggregate keyed retry ownership.
+
+Explicit weighted-limit reconfiguration now publishes expansion or already-fit
+requests without adapter work. Shrink processes active FIFO authority through
+the same release-or-retire path while prior retired mappings remain untouched;
+blockage or cleanup failure retains the previous limits and exact evidence for
+retry. Sequence execution remains absent from this non-graphical cache.
 
 `VerifiedRegisterMaskedLoadImage` now extracts that verified object as a
 relocation-free, ISA-aligned image under the shared strict W^X policy without
