@@ -463,10 +463,12 @@ microseconds versus 889.60 microseconds for a prepared normative VM
 run of the same bounded region, about 129.36x on this host. Certificate
 verification remains deliberately expensive at 8.78 ms and is
 not a hot-path operation. These are region microbenchmarks, not an end-to-end
-native-tier claim. Dependency guards and verified effects are promoted as the
-correctness/performance baseline; the next research risk is replacing the
-interpreted verified-effect application with a real native code artifact while
-retaining the same verifier and deoptimization boundary.
+native-tier claim.
+
+Dependency guards and verified effects are promoted as the
+correctness/performance baseline. At that measurement point, native artifact
+integration was the next handoff; it is owned by the downstream tiered/native
+milestones while this research continues to define the guard boundary.
 
 
 The dependency guard now strengthens the earlier consumed-prefix result to a
@@ -539,8 +541,8 @@ format.
 `src/runtime/virtual-machine/domain/execution_ir.rs` now owns that portable
 schema
 as product code; research
-consumes it rather than defining a second effect type. The next boundary is an
-independently validated host-code artifact.
+consumes it rather than defining a second effect type. Independently validated
+host-code artifacts are owned by the downstream tiered/native milestones.
 
 Register liveness now has transition-engine authority. `ProfileStepTrace`
 publishes semantic A/C/D read sets and only successfully committed register
@@ -567,3 +569,28 @@ is deliberately not admitted by existing native backends yet.
 The existing per-effect `TraceInput` payload is also sufficient portable
 authority for the bounded input guard, so this reduction does not require a v7
 schema. Host-code integration remains owned by the separate native-backend TODO.
+
+### Live-region dependency closure
+
+The final closure audit composes the independently proved reductions instead of
+assuming they commute. Under one fixed opaque execution-geometry authority, a
+live verified region retains only termination liveness, normative memory and
+register read-before-write live-ins, and relative `TraceInput` byte/EOF
+observations. Verified effect replay is candidate-relative for memory writes,
+register writes, output appends, and input cursor deltas.
+
+One fixture changes all eliminated dimensions simultaneously: memory-root
+representation plus a non-live word, a non-live accumulator, prior output,
+consumed input history, absolute input cursor, and unread input tail. It still
+takes the shortcut and equals the direct profile VM. Negative fixtures preserve
+the opposite boundary: changing a memory/register live-in, an observed input or
+EOF condition, live-versus-terminated state, or the opaque geometry authority
+prevents shortcut admission.
+
+"Minimal" here is scoped to the verifier's normative trace abstraction. It means
+no candidate state outside those reported dependencies participates in the
+bounded guard. It does not claim that a future value-specific theorem could
+never prove an individual observed dependency algebraically irrelevant for a
+particular value. Host-code emission, native v6 admission, broader future
+profile capacities, and end-to-end native performance remain owned by their
+runtime/backend/performance TODOs rather than this research milestone.

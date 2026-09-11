@@ -37,14 +37,6 @@ host failure without publishing an incomplete final `.malbolge` artifact.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/compiler/resumable-compilation-progress-sidecars.mdc](docs/todo/open/compiler/resumable-compilation-progress-sidecars.mdc)
 
-### TODO - Self-modification state-graph optimizer
-
-Model executable Malbolge regions as versioned state-transition graphs whose
-nodes capture only semantically relevant code/data state.
-
-<!-- MarkdownLint-disable-next-line MD013 MD044 -->
-[docs/todo/open/mathematics/self-modification-state-graph-optimizer.mdc](docs/todo/open/mathematics/self-modification-state-graph-optimizer.mdc)
-
 ### TODO - Tiered native execution engine
 
 Build a tiered execution engine instead of choosing between interpretation, AOT,

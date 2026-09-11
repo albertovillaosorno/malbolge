@@ -255,6 +255,17 @@ memory deltas rather than recomputing either ternary transform. An irrelevant
 memory variant passes the dependency guard and remains byte-for-byte equal to
 direct normative execution, including preservation of that unrelated cell.
 
+The composed live-region closure now treats opaque execution geometry as a fixed
+proof-domain authority and reduces dynamic candidate state to liveness plus
+verifier-derived memory/register live-ins and relative input observations.
+Prior output, absolute input cursor, consumed/unobserved input, memory-root
+identity, non-live memory/registers, and mutation history may all vary together.
+A combined fixture changes every one of those future-irrelevant dimensions and
+still matches direct normative execution; separate negatives retain termination,
+opaque geometry, memory/register live-ins, and observed byte/EOF boundaries.
+This is minimality relative to the normative trace dependency abstraction, not a
+claim that value-specific algebraic dependencies can never be reduced further.
+
 `artifact.rs` is the portable effect-IR trust-boundary bridge. Its untrusted
 `RegionEffectProgram` is product-owned by
 `src/runtime/virtual-machine/domain/execution_ir.rs` and carries

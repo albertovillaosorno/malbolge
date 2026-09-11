@@ -362,11 +362,11 @@ verification fails. Reads dominated by an earlier verified region write do not
 constrain entry memory because the region supplies their value before they are
 observed.
 
-Let $N(s)$ be exact future non-memory state: canonical profile and opaque
-geometry, input cursor/suffix, registers, and termination. It contains neither
-memory-root identity nor committed-output history. A verified region with exact
-entry $e$ admits a
-reduced candidate $s$ when
+For this first memory-only reduction, let $N(s)$ retain the then-exact future
+non-memory state: canonical profile and opaque geometry, input cursor/suffix,
+registers, and termination. It contains neither memory-root identity nor
+committed-output history. Later sections further reduce those retained fields.
+A verified region with exact entry $e$ admits a reduced candidate $s$ when
 \begin{equation}
   G_{\tau}(s,e)
   \Longleftrightarrow
@@ -556,6 +556,51 @@ the normative VM. Cursor-rebase fixtures additionally replay the same two-input
 certificate from candidate cursor two and replay verified EOF at candidate
 cursor two; both match direct normative execution. Portable v6 artifact
 execution repeats bounded-tail and cursor-rebase shortcuts.
+
+\section{Composed live-region dependency basis}
+
+Fix one verifier-admitted opaque execution geometry $g$ and one verified live
+region trace $\tau$ whose entry termination is empty. Geometry is the proof and
+profile authority for this equivalence domain rather than a candidate state
+coordinate. Define the composed live-region dependency predicate
+\begin{equation}
+  \begin{aligned}
+  D_{\tau}(s,e)\Longleftrightarrow{}&
+    g_s=g_e=g\ \land\ \operatorname{term}(s)=\varnothing\\
+    &\land\ B_I^R(\tau,s)\\
+    &\land\ \forall q\in L_Q(\tau),\ r_s[q]=r_e[q]\\
+    &\land\ \forall(a,v)\in L(\tau),\ M_s[a]=v.
+  \end{aligned}
+  \label{eq:state-graph-live-region-dependency-basis}
+\end{equation}
+For an admitted certificate $C$ over $e$, verifier-owned effect replay then
+preserves every candidate component outside committed writes/appends and gives
+\[
+  \operatorname{verify}(C)\land D_{\tau}(s,e)
+  \Longrightarrow
+  \operatorname{shortcut}_C(s)=T^{\leq n}(s).
+\]
+Prior output content/length, absolute input cursor, consumed input history,
+unobserved input tail, memory-root identity, non-live memory, non-live
+registers,
+and mutation history are therefore absent from the bounded live-region guard.
+
+This is a minimality claim relative to the admitted normative trace abstraction,
+not a value-specific algebraic minimization theorem. Memory/register coordinates
+remain only when the transition engine reports a read before a dominating write;
+input remains only when the verified trace observes a byte or EOF. Liveness is
+retained because a terminated candidate returns before fetch, while the opaque
+geometry token is an external proof-domain authority and is not weakened by this
+research.
+
+The executable closure fixture changes all proved future-irrelevant dimensions
+simultaneously: independent memory representation plus one non-live word,
+non-live accumulator, prior output, consumed input history, absolute cursor, and
+unobserved input tail. The dependency guard still takes the verified shortcut
+and reaches the exact normative checkpoint. Separate negative fixtures require
+guard misses for changed memory/register live-ins, observed input/EOF, terminal
+state, and a distinct opaque geometry token even when its visible width and
+capacity match.
 
 \section{Verifier-hoisted rotate and crazy effects}
 

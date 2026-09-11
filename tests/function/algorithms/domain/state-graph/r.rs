@@ -41,9 +41,10 @@ use malbolge::{
     ProfileMachine, ProfileMachineError, ProfileMachineIoState,
     ProfileMachineState, ProfileMemoryDelta, ProfileMemoryWrite,
     ProfileRegisterSet, ProfileRegisters, ProfileStepTrace, RunOutcome,
-    StepOutcome, current_profile,
+    StepOutcome, Termination, current_profile,
     verify_minimum_jump_rotate_crazy_halt_profile_width,
     verify_minimum_straight_line_io_profile_width,
+    verify_straight_line_io_profile_width,
 };
 
 use crate::indexed_state::IndexedMachineState;
@@ -64,6 +65,7 @@ type InputGuardRegion =
 type OutputPrefixRegion =
     Result<(ProfileMachineState, VerifiedExactRegion), String>;
 type OneStepRegion = Result<(IndexedMachineState, VerifiedExactRegion), String>;
+type ClosureCandidate = Result<(IndexedMachineState, u32, u32), String>;
 
 const fn changed_word(value: u32) -> u32 {
     let incremented = value.saturating_add(1);
@@ -344,6 +346,165 @@ fn dependency_guard_rebases_only_non_live_in_registers() -> Result<(), String> {
             })?
     {
         return Err(String::from("output region ignored live accumulator"));
+    }
+    Ok(())
+}
+
+fn all_irrelevant_dimensions_candidate(
+    entry: &IndexedMachineState,
+    region: &VerifiedExactRegion,
+) -> ClosureCandidate {
+    let checkpoint = entry
+        .materialize_checkpoint()
+        .map_err(|error| format!("closure checkpoint failed: {error:?}"))?;
+    let address = irrelevant_address(region)?;
+    let mut memory = checkpoint.memory().to_vec();
+    let index = usize::try_from(address)
+        .map_err(|_error| String::from("closure address conversion failed"))?;
+    let slot = memory
+        .get_mut(index)
+        .ok_or_else(|| String::from("closure irrelevant address missing"))?;
+    let changed_memory = changed_word(*slot);
+    *slot = changed_memory;
+    let registers = checkpoint.registers();
+    let changed_accumulator = changed_word(registers.accumulator);
+    let io = ProfileMachineIoState::new(
+        vec![0xaa, 0xbb, 0x41, 0x99],
+        2,
+        vec![0x90, 0x91],
+        None,
+    )
+    .map_err(|error| format!("closure IO failed: {error}"))?;
+    let candidate = ProfileMachineState::new_with_geometry(
+        checkpoint.geometry(),
+        memory,
+        ProfileRegisters {
+            accumulator: changed_accumulator,
+            code_pointer: registers.code_pointer,
+            data_pointer: registers.data_pointer,
+        },
+        io,
+    )
+    .map_err(|error| format!("closure candidate checkpoint failed: {error}"))?;
+    let indexed =
+        IndexedMachineState::from_checkpoint(&candidate).map_err(|error| {
+            format!("closure candidate index failed: {error:?}")
+        })?;
+    Ok((indexed, address, changed_memory))
+}
+
+#[test]
+fn dependency_guard_composes_all_proved_future_irrelevance()
+-> Result<(), String> {
+    let (entry, region) = one_step_region(b"uP", vec![0x41, 0x33])?;
+    if region.register_dependencies().accumulator {
+        return Err(String::from("closure fixture unexpectedly reads entry A"));
+    }
+    let (candidate, address, changed_memory) =
+        all_irrelevant_dimensions_candidate(&entry, &region)?;
+    if entry.exact_state_eq(&candidate) {
+        return Err(String::from("closure candidate remained exact-equal"));
+    }
+    if !region
+        .accepts_dependency_entry(&candidate)
+        .map_err(|error| {
+            format!("closure dependency guard failed: {error:?}")
+        })?
+    {
+        return Err(String::from("closure guard retained irrelevant history"));
+    }
+    validate_dependency_shortcut(&region, &candidate, address, changed_memory)
+}
+
+#[test]
+fn dependency_guard_retains_live_termination_state() -> Result<(), String> {
+    let (entry, region) = one_step_region(b"uP", vec![0x41])?;
+    let checkpoint = entry
+        .materialize_checkpoint()
+        .map_err(|error| format!("termination checkpoint failed: {error:?}"))?;
+    let io = ProfileMachineIoState::new(
+        checkpoint.io().input().to_vec(),
+        checkpoint.io().input_consumed(),
+        checkpoint.io().output().to_vec(),
+        Some(Termination::HaltInstruction),
+    )
+    .map_err(|error| format!("termination IO failed: {error}"))?;
+    let terminated = ProfileMachineState::new_with_geometry(
+        checkpoint.geometry(),
+        checkpoint.memory().to_vec(),
+        checkpoint.registers(),
+        io,
+    )
+    .map_err(|error| format!("termination candidate failed: {error}"))?;
+    let candidate = IndexedMachineState::from_checkpoint(&terminated)
+        .map_err(|error| format!("termination index failed: {error:?}"))?;
+    if region
+        .accepts_dependency_entry(&candidate)
+        .map_err(|error| format!("termination guard failed: {error:?}"))?
+    {
+        return Err(String::from("live region accepted terminated candidate"));
+    }
+    validate_region_execution_matches_direct(
+        &region,
+        &candidate,
+        RegionExecutionTier::InterpreterFallback,
+    )
+}
+
+#[test]
+fn dependency_guard_preserves_opaque_geometry_authority() -> Result<(), String>
+{
+    let profile = current_profile();
+    let source = b"uCar_L";
+    let verified_geometry = verify_straight_line_io_profile_width(
+        profile,
+        source,
+        profile.word_trits(),
+    )
+    .map_err(|error| format!("geometry authority verify failed: {error}"))?;
+    let machine =
+        ProfileMachine::from_verified_source(&verified_geometry, vec![
+            0xa5, 0x3c,
+        ])
+        .map_err(|error| format!("geometry authority load failed: {error}"))?;
+    let restricted = machine.snapshot_state();
+    let entry =
+        IndexedMachineState::from_checkpoint(&restricted).map_err(|error| {
+            format!("geometry authority entry failed: {error:?}")
+        })?;
+    let region = ExactRegionCertificate::record(&entry, 1)
+        .and_then(|certificate| certificate.verify())
+        .map_err(|error| {
+            format!("geometry authority region failed: {error:?}")
+        })?;
+    let canonical = ProfileMachineState::new(
+        profile,
+        restricted.memory().to_vec(),
+        restricted.registers(),
+        restricted.io().clone(),
+    )
+    .map_err(|error| format!("canonical geometry candidate failed: {error}"))?;
+    if restricted.geometry().memory_words()
+        != canonical.geometry().memory_words()
+        || restricted.geometry().word_trits()
+            != canonical.geometry().word_trits()
+        || restricted.geometry() == canonical.geometry()
+    {
+        return Err(String::from(
+            "geometry authority fixture did not isolate token",
+        ));
+    }
+    let candidate =
+        IndexedMachineState::from_checkpoint(&canonical).map_err(|error| {
+            format!("canonical geometry index failed: {error:?}")
+        })?;
+    if region
+        .accepts_dependency_entry(&candidate)
+        .map_err(|error| {
+            format!("geometry authority guard failed: {error:?}")
+        })?
+    {
+        return Err(String::from("dependency guard crossed opaque geometry"));
     }
     Ok(())
 }

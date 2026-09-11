@@ -1,6 +1,6 @@
 ---
 id: "self-modification-state-graph-optimizer"
-status: "active"
+status: "completed"
 lane: "8"
 priority: "p2"
 area: "mathematics"
@@ -98,18 +98,19 @@ VM evidence.
   committed output, and termination reason; varied memory/register/input
   fixtures
   converge and live machines fail closed outside this domain.
-- Wider-profile radix geometry, broader mutation-history collapse,
-  code-generation integration, and end-to-end performance claims remain active
-  research and
-  must be falsified independently against the exact baseline.
+- At that earlier radix milestone, wider-profile geometry, broader
+  mutation-history collapse, code-generation integration, and end-to-end
+  performance were intentionally unclaimed. The current milestone later closes
+  its trace-relative state reduction; backend and performance work has separate
+  ownership.
 - Post-commit radix evidence at `ec459d0` keeps latest/root reads near 20--25
   ns through 4096 distinct overrides; depth-4096 root fallback is
   20.70 ns versus
   24118.75 ns for the linked chain. One new
   indexed override remains near 1.16
   microseconds at depth 4096. The radix is promoted as the current-profile
-  memory
-  candidate; exact incremental identity/dedup is now the blocker.
+  memory candidate. At that historical point, exact incremental
+  identity/dedup was the next blocker; later evidence below closes it.
 - Mutation-history convergence is now explicit: a two-patch direct indexed
   path and a four-patch staged path with reversed address order and distinct
   intermediate values reach the same final two-cell memory map. Canonical
@@ -134,8 +135,9 @@ VM evidence.
   535.82 ns/op, and exact replay at
   406.67 ns/op. Complete-checkpoint insert/replay
   are 26.29/30.48 ms
-  in the same run. Incremental identity is promoted; append-only output storage
-  is now the remaining obvious history-sized state update.
+  in the same run. Incremental identity was promoted there, with append-only
+  output storage recorded as the next history-sized state update; later evidence
+  below closes that step.
 - `output.rs` replaces complete-output `Vec` copying with a shared immutable
   prefix plus one tail node per committed byte while preserving exact output in
   the state key. Independent equal/different branches compare correctly, a
@@ -144,7 +146,8 @@ VM evidence.
 - Post-commit output evidence at `1d229d0` keeps persistent append near
   108--145 ns from empty through 256 KiB histories, while complete-vector
   clone/push grows to 20.83 microseconds at 256 KiB (about 144x). Persistent
-  output is promoted; the next research boundary is native-region safety/guards.
+  output was promoted there, with native-region safety/guards as the next
+  research boundary later closed below.
 - `region.rs` now supplies the first verifier-admitted shortcut class:
   untrusted exact-state certificates are normatively re-executed and must match
   exact exit/outcome/traces before promotion. Runtime reuse requires exact entry
@@ -193,8 +196,9 @@ VM evidence.
   guard hits at 60.57/106.88 ns, dependency miss at 72.22 ns,
   verified shortcut application at 6.88 microseconds, and a
   prepared direct normative region run at 889.60 microseconds. The
-  shortcut is about 129.36x faster on the recorded host. Guard reduction is
-  promoted for broader safe reuse; native code artifact integration is next.
+  shortcut is about 129.36x faster on the recorded host. Guard reduction was
+  promoted for broader safe reuse; native code artifact integration was handed
+  to the downstream tiered/native milestones.
 - `execute_or_deopt()` now fixes the tier-selection semantics before native
   emission: passing dependency guards use verified effects; guard misses run the
   normative VM for the same verified budget and rebuild the original incremental
@@ -213,16 +217,24 @@ VM evidence.
   changed dead accumulator while output rejects the same live-in change. Frozen
   v3/v4/v5 identities and existing native admission remain unchanged; native v6
   execution belongs to the separate backend TODO.
+- The live-region closure audit now composes every admitted reduction under one
+  fixed opaque geometry authority. Dynamic guard state is liveness plus
+  verifier-derived memory/register live-ins and relative byte/EOF observations.
+  A single candidate changes root/non-live memory, dead A, output history,
+  consumed input, absolute cursor, and unread tail simultaneously and still
+  matches normative execution, while separate negatives preserve every retained
+  boundary. Minimality is explicitly scoped to normative trace dependencies;
+  native v6 admission and end-to-end backend performance remain downstream.
 - `artifact.rs` now consumes portable effect IR v6 as an explicitly untrusted
-  artifact. Independent admission reprojects profile identity, live-ins, budget,
+  artifact; independent admission reprojects profile identity, live-ins, budget,
   outcome, and every compact state effect from the verified region. Tamper
-  fixtures now mutate effect before/after observations, input, output, and
-  memory delta independently in addition to metadata/effect-count changes;
-  every claim
-  fails exact reprojection. Admitted shortcut/deopt results equal the
-  verified-region baseline. Production `execution/ir/` owns effect IR v6;
-
-  host-code artifacts remain open.
+  fixtures mutate effect before/after observations, input, output, memory delta,
+  metadata, and effect count, with every changed claim failing exact
+  reprojection.
+  Admitted shortcut/deopt results equal the verified-region baseline. Production
+  `execution/ir/` owns effect IR v6; host-code artifacts and native v6 admission
+  are downstream runtime/backend work rather than unresolved state-graph
+  research.
 
 ## Acceptance
 
@@ -254,11 +266,11 @@ VM evidence.
   `machine-checked-mathematical-correspondence`,
   `malbolge-specific-optimization-mathematics`, `safe-rust-malbolge-vm`,
   `algorithm-research-mirror-and-local-output-contract`.
-- Exact-state baseline evidence is reproducible and machine-linked. Research
-  evidence for reduced keys, merge rules, native-region safety, and performance
-  remains open and must retain negative/null outcomes.
-- Mathematical evidence currently covers classic/current exact identity,
-  collision-safe merging, classic/profile consumed-input-prefix reduction,
-  and classic/profile terminal dead-state reduction. Any further reduced
-  equivalence must add
-  its own labelled equation and executable correspondence before use.
+- Exact-state baseline, reduced-key, merge, dependency-guard, and portable
+  artifact evidence is reproducible and machine-linked. Negative/null outcomes
+  remain preserved in the research record.
+- Mathematical evidence covers exact identity/collision safety, mutation-history
+  convergence, terminal dead-state reduction, memory/register live-ins,
+  candidate-relative output and input replay, cross-root reuse, transform
+  hoisting, and the composed live-region dependency basis. Future value-specific
+  reductions require their own labelled equation and executable correspondence.

@@ -2627,6 +2627,16 @@ mechanism = "bounded-input-register-memory-live-in-dependency-guard"
 evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_ignores_input_unobserved_by_region", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_requires_only_bounded_input_bytes", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_preserves_verified_eof_observation", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_reuses_irrelevant_independent_base_change"]
 
 [[correspondence]]
+id = "state-graph-live-region-dependency-basis"
+tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
+label = "eq:state-graph-live-region-dependency-basis"
+# jig-ignore-next-line: indivisible reviewed identifier
+domain = "verified live profile regions under one exact opaque geometry authority and normative trace-derived dependency abstraction"
+mechanism = "composed-memory-register-relative-input-live-in-guard-with-candidate-relative-effect-replay"
+# jig-ignore-next-line: indivisible reviewed identifier
+evidence = ["tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_composes_all_proved_future_irrelevance", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_retains_live_termination_state", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_preserves_opaque_geometry_authority", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rejects_live_in_memory_change", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_rebases_only_non_live_in_registers", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_requires_only_bounded_input_bytes", "tests/function/algorithms/domain/state-graph/r.rs::dependency_guard_preserves_verified_eof_observation"]
+
+[[correspondence]]
 id = "state-graph-verified-transform-hoist"
 tex = "src/specification/formal-model/math/algorithms/self-modification-state-graph-optimizer.tex"
 label = "eq:state-graph-verified-transform-hoist"
