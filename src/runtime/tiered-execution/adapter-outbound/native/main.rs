@@ -51,6 +51,7 @@ mod lifecycle;
 mod loader;
 mod platform;
 mod profile_metadata;
+mod register_masked_resident;
 mod runner;
 mod sequence_continuation;
 mod sequence_runner;
@@ -291,6 +292,21 @@ pub use platform::{
     load_register_masked_native_executable,
     release_execution_geometry_native_executable, release_native_executable,
     release_register_masked_native_executable,
+};
+pub use register_masked_resident::{
+    RegisterMaskedNativeExecutableOwner,
+    RegisterMaskedNativeOwnerExecutionFailure,
+    RegisterMaskedNativeOwnerExecutionResult,
+    RegisterMaskedNativeOwnerLoadFailure, RegisterMaskedNativeOwnerLoadResult,
+    RegisterMaskedNativeOwnerReleaseResult,
+    RegisterMaskedNativeResidentCacheAcquireFailure,
+    RegisterMaskedNativeResidentCacheAcquireResult,
+    RegisterMaskedNativeResidentCacheAcquisition,
+    RegisterMaskedNativeResidentCacheDisposition,
+    RegisterMaskedNativeResidentCacheRelease,
+    RegisterMaskedNativeResidentCacheReleaseResult,
+    RegisterMaskedNativeResidentLease, RegisterMaskedNativeResidentLeaseCache,
+    RegisterMaskedNativeResidentWeight,
 };
 pub use runner::{
     ExecutionGeometryLoadedExecutionFailure,

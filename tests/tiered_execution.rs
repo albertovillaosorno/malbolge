@@ -265,13 +265,20 @@ use execution_native::{
     ReadyExecutionGeometryNativeExecutable,
     ReadyExecutionGeometryNativeExecutableSequence, ReadyNativeExecutable,
     ReadyNativeExecutableSequence, ReadyRegisterMaskedNativeExecutable,
-    RegisterMaskedDirectAdmissionErrorKind, RegisterMaskedNativeRunner,
-    StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
-    StagedRegisterMaskedNativeExecutable, UntrustedNativeObjectArtifact,
-    VerifiedDirectInvocationError, VerifiedDirectLoadError,
-    VerifiedDirectLoadImage, VerifiedDirectNativeCache,
-    VerifiedDirectSequencePlan, VerifiedExecutionGeometryLoadImage,
-    VerifiedExecutionGeometryNativeCache,
+    RegisterMaskedDirectAdmissionErrorKind,
+    RegisterMaskedNativeExecutableOwner,
+    RegisterMaskedNativeOwnerExecutionFailure,
+    RegisterMaskedNativeOwnerLoadFailure,
+    RegisterMaskedNativeResidentCacheAcquireFailure,
+    RegisterMaskedNativeResidentCacheDisposition,
+    RegisterMaskedNativeResidentCacheRelease,
+    RegisterMaskedNativeResidentLease, RegisterMaskedNativeResidentLeaseCache,
+    RegisterMaskedNativeRunner, StagedExecutionGeometryNativeExecutable,
+    StagedNativeExecutable, StagedRegisterMaskedNativeExecutable,
+    UntrustedNativeObjectArtifact, VerifiedDirectInvocationError,
+    VerifiedDirectLoadError, VerifiedDirectLoadImage,
+    VerifiedDirectNativeCache, VerifiedDirectSequencePlan,
+    VerifiedExecutionGeometryLoadImage, VerifiedExecutionGeometryNativeCache,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedInvocationError, VerifiedRegisterMaskedLoadImage,
     admit_register_masked_direct_native, compile_preflighted_clang_c23,
@@ -746,6 +753,13 @@ struct RegisterMaskedNativeFixture {
     adapter: FakeNativeExecutableAdapter,
     artifact: VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     ready: ReadyRegisterMaskedNativeExecutable,
+}
+
+#[derive(Debug)]
+struct RegisterMaskedOwnerFixture {
+    adapter: FakeNativeExecutableAdapter,
+    owner: RegisterMaskedNativeExecutableOwner,
+    program: RegisterMaskedRegionEffectProgram,
 }
 
 struct NativeHandoffFixture {
@@ -1947,6 +1961,88 @@ fn register_masked_native_fixture(
     let ready = load_register_masked_native_executable(&mut adapter, &image)
         .map_err(|error| format!("v6 fixture platform load failed: {error}"))?;
     Ok(RegisterMaskedNativeFixture { adapter, artifact, ready })
+}
+
+fn register_masked_owner_fixture(
+    mapping_id_value: u64,
+    base_address: usize,
+) -> Result<RegisterMaskedOwnerFixture, String> {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_id_value)?,
+        native_executable_address(base_address)?,
+    );
+    let owner = RegisterMaskedNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 owner fixture load failed: {error}"))?;
+    Ok(RegisterMaskedOwnerFixture { adapter, owner, program })
+}
+
+fn execute_register_masked_owner_applied(
+    owner: &RegisterMaskedNativeExecutableOwner,
+    runner: &mut FakeRegisterMaskedNativeRunner,
+    program: &RegisterMaskedRegionEffectProgram,
+    entry: ProfileMachineObservation,
+) -> Result<(), String> {
+    let input = [1u8, 2, 3];
+    let mut output = [9u8, 8, 7];
+    let entry_output = output;
+    let mut memory = register_masked_halt_memory(program)?;
+    let entry_memory = memory.clone();
+    let outcome = owner
+        .execute(
+            runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| format!("v6 owner execution failed: {error}"))?;
+    let expected =
+        NativeRegionInvocationOutcome::Applied(ProfileMachineObservation {
+            termination: Some(Termination::HaltInstruction),
+            ..entry
+        });
+    if outcome == expected && memory == entry_memory && output == entry_output {
+        Ok(())
+    } else {
+        Err(String::from("v6 owner rebased execution drifted"))
+    }
+}
+
+fn execute_register_masked_lease_applied(
+    lease: &RegisterMaskedNativeResidentLease,
+    program: &RegisterMaskedRegionEffectProgram,
+) -> Result<usize, String> {
+    let mut entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 resident lease has no effect"))?
+        .before;
+    entry.registers.accumulator = 71;
+    entry.registers.data_pointer = 81;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_halt_memory(program)?;
+    let mut runner =
+        FakeRegisterMaskedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = lease
+        .execute(
+            &mut runner,
+            entry,
+            NativeRegionBuffers::new(&mut memory, &input, &mut output),
+        )
+        .map_err(|error| {
+            format!("v6 resident lease execution failed: {error}")
+        })?;
+    if matches!(outcome, NativeRegionInvocationOutcome::Applied(_)) {
+        Ok(runner.mapping_ids.len())
+    } else {
+        Err(String::from("v6 resident lease did not apply"))
+    }
 }
 
 fn target(
@@ -3584,6 +3680,339 @@ fn register_masked_v6_transaction_release_failure_retains_commit_and_retry()
     })?;
     if adapter.release_attempts != 2 {
         return Err(String::from("v6 committed release retry count drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_owner_reuses_mapping_across_rebased_calls()
+-> TieredTestResult {
+    let RegisterMaskedOwnerFixture {
+        mut adapter,
+        owner,
+        program,
+    } = register_masked_owner_fixture(140, 0x14000)?;
+    let loaded_operations = adapter.operations.clone();
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != owner.executable().mapping().mapped_len()
+        || weight.mappings() != 1
+        || owner.key() != owner.artifact().key()
+    {
+        return Err(String::from("v6 owner weight or identity drifted"));
+    }
+    let source_entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 owner fixture has no effect"))?
+        .before;
+    let mut runner =
+        FakeRegisterMaskedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    for (accumulator, data_pointer, input_consumed, output_len) in
+        [(11, 21, 1, 1), (31, 41, 2, 2)]
+    {
+        let mut entry = source_entry;
+        entry.registers.accumulator = accumulator;
+        entry.registers.data_pointer = data_pointer;
+        entry.input_consumed = input_consumed;
+        entry.output_len = output_len;
+        execute_register_masked_owner_applied(
+            &owner,
+            &mut runner,
+            &program,
+            entry,
+        )?;
+    }
+    let mapping_id = owner.executable().mapping().mapping_id();
+    if adapter.operations != loaded_operations
+        || runner.calls != 2
+        || runner.mapping_ids != [mapping_id, mapping_id]
+    {
+        return Err(String::from(
+            "v6 owner remapped or changed mapping identity",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 owner release failed: {error}"))?;
+    if adapter.operations.last() == Some(&FakeNativeAdapterOperation::Release) {
+        Ok(())
+    } else {
+        Err(String::from("v6 owner release was not explicit"))
+    }
+}
+
+#[test]
+fn register_masked_v6_owner_weight_uses_platform_mapping() -> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let mapped_len = 16_384;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(146)?,
+        native_executable_address(0x14600)?,
+    )
+    .with_mapped_len_overrides(vec![mapped_len]);
+    let owner = RegisterMaskedNativeExecutableOwner::load(
+        &mut adapter,
+        &program,
+        &artifact,
+    )
+    .map_err(|error| format!("v6 weighted owner load failed: {error}"))?;
+    let weight = owner.resident_weight();
+    if weight.mapped_bytes() != mapped_len
+        || weight.mappings() != 1
+        || mapped_len <= owner.executable().image().allocation_len()
+    {
+        return Err(String::from(
+            "v6 owner used artifact size for resident weight",
+        ));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|error| format!("v6 weighted owner release failed: {error}"))
+}
+
+#[test]
+fn register_masked_v6_owner_recovers_after_runner_failure() -> TieredTestResult
+{
+    let RegisterMaskedOwnerFixture {
+        mut adapter,
+        owner,
+        program,
+    } = register_masked_owner_fixture(141, 0x14100)?;
+    let loaded_operations = adapter.operations.clone();
+    let mut entry = program
+        .effects
+        .first()
+        .ok_or_else(|| String::from("v6 reusable owner has no effect"))?
+        .before;
+    entry.registers.accumulator = 51;
+    entry.registers.data_pointer = 61;
+    let input = [];
+    let mut output = [];
+    let mut memory = register_masked_halt_memory(&program)?;
+    let entry_memory = memory.clone();
+    let mut failing = FakeRegisterMaskedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(error) = owner.execute(
+        &mut failing,
+        entry,
+        NativeRegionBuffers::new(&mut memory, &input, &mut output),
+    ) else {
+        return Err(String::from("v6 owner runner failure was ignored"));
+    };
+    match error.as_ref() {
+        RegisterMaskedNativeOwnerExecutionFailure::Execution(failure)
+            if failure.phase() == NativeExecutableExecutionPhase::Run => {},
+        RegisterMaskedNativeOwnerExecutionFailure::Execution(_) => {
+            return Err(String::from("v6 owner runner failure lost run phase"));
+        },
+        RegisterMaskedNativeOwnerExecutionFailure::Preparation(_) => {
+            return Err(String::from(
+                "v6 owner runner failure became preparation",
+            ));
+        },
+    }
+    if memory != entry_memory || adapter.operations != loaded_operations {
+        return Err(String::from("v6 owner runner failure changed residency"));
+    }
+    let mut succeeding =
+        FakeRegisterMaskedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    execute_register_masked_owner_applied(
+        &owner,
+        &mut succeeding,
+        &program,
+        entry,
+    )?;
+    if adapter.operations != loaded_operations {
+        return Err(String::from("v6 owner remapped after runner failure"));
+    }
+    owner
+        .release(&mut adapter)
+        .map_err(|release| format!("v6 reusable owner release: {release}"))
+}
+
+#[test]
+fn register_masked_v6_resident_cache_hits_without_adapter_work()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(142)?,
+        native_executable_address(0x14200)?,
+    );
+    let mut cache = RegisterMaskedNativeResidentLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 resident insert failed: {error}"))?;
+    let first_disposition = first.disposition();
+    let first_lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let second = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 resident hit failed: {error}"))?;
+    let second_disposition = second.disposition();
+    let second_lease = second.into_lease();
+    let lease_mapping_count =
+        execute_register_masked_lease_applied(&first_lease, &program)?;
+    if first_disposition
+        != RegisterMaskedNativeResidentCacheDisposition::Inserted
+        || second_disposition
+            != RegisterMaskedNativeResidentCacheDisposition::Hit
+        || !first_lease.shares_resident_with(&second_lease)
+        || cache.resident_lease_count() != 2
+        || lease_mapping_count != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 resident hit or lease execution drifted"));
+    }
+    if cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|error| format!("v6 leased release check failed: {error}"))?
+        != (RegisterMaskedNativeResidentCacheRelease::Leased { leases: 2 })
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("v6 live leases did not block release"));
+    }
+    drop((first_lease, second_lease));
+    let released = cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|error| format!("v6 resident release failed: {error}"))?;
+    if released == RegisterMaskedNativeResidentCacheRelease::Released
+        && !cache.has_resident()
+        && adapter.operations.last()
+            == Some(&FakeNativeAdapterOperation::Release)
+    {
+        Ok(())
+    } else {
+        Err(String::from("v6 unleased resident did not release"))
+    }
+}
+
+#[test]
+fn register_masked_v6_resident_cache_rejects_different_identity()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let mut variant = program.clone();
+    let effect = variant
+        .effects
+        .first_mut()
+        .ok_or_else(|| String::from("v6 resident variant has no effect"))?;
+    effect.before.registers.accumulator ^= 1;
+    effect.after.registers.accumulator ^= 1;
+    let variant_artifact =
+        verified_register_masked_halt_fetch(&variant, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(143)?,
+        native_executable_address(0x14300)?,
+    );
+    let mut cache = RegisterMaskedNativeResidentLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 resident seed failed: {error}"))?;
+    let lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let Err(error) = cache.ensure(&mut adapter, &variant, &variant_artifact)
+    else {
+        return Err(String::from("v6 resident replaced a different identity"));
+    };
+    if error.as_ref()
+        != &RegisterMaskedNativeResidentCacheAcquireFailure::IdentityOccupied
+        || adapter.operations != loaded_operations
+        || cache.resident_lease_count() != 1
+    {
+        return Err(String::from("v6 resident identity rejection drifted"));
+    }
+    drop(lease);
+    if cache
+        .release_if_unleased(&mut adapter)
+        .map_err(|release| format!("v6 resident identity cleanup: {release}"))?
+        != RegisterMaskedNativeResidentCacheRelease::Released
+    {
+        return Err(String::from(
+            "v6 resident identity cleanup did not release",
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_resident_cache_release_failure_transfers_retry()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(144)?,
+        native_executable_address(0x14400)?,
+    )
+    .with_release_failures(1);
+    let mut cache = RegisterMaskedNativeResidentLeaseCache::new();
+    let acquisition = cache
+        .ensure(&mut adapter, &program, &artifact)
+        .map_err(|error| format!("v6 resident retry seed failed: {error}"))?;
+    drop(acquisition);
+    let Err(failure) = cache.release_if_unleased(&mut adapter) else {
+        return Err(String::from("v6 resident release failure was ignored"));
+    };
+    if cache.has_resident()
+        || failure.executable().key() != artifact.key()
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from("v6 resident release lost retry ownership"));
+    }
+    failure.retry(&mut adapter).map_err(|error| {
+        format!("v6 resident release retry failed: {error}")
+    })?;
+    if adapter.release_attempts != 2 {
+        return Err(String::from("v6 resident release retry count drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn register_masked_v6_resident_cache_load_failure_publishes_nothing()
+-> TieredTestResult {
+    let program = canonical_register_masked_halt_program()?;
+    let artifact =
+        verified_register_masked_halt_fetch(&program, HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(145)?,
+        native_executable_address(0x14500)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut cache = RegisterMaskedNativeResidentLeaseCache::new();
+    let Err(error) = cache.ensure(&mut adapter, &program, &artifact) else {
+        return Err(String::from("v6 resident ignored load failure"));
+    };
+    match error.as_ref() {
+        RegisterMaskedNativeResidentCacheAcquireFailure::Load(owner_error) => {
+            if !matches!(
+                owner_error.as_ref(),
+                RegisterMaskedNativeOwnerLoadFailure::Load(_)
+            ) {
+                return Err(String::from(
+                    "v6 resident load failure lost cause",
+                ));
+            }
+        },
+        RegisterMaskedNativeResidentCacheAcquireFailure::IdentityOccupied => {
+            return Err(String::from("v6 resident load failure misclassified"));
+        },
+    }
+    if cache.has_resident()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("v6 failed load published partial residency"));
     }
     Ok(())
 }

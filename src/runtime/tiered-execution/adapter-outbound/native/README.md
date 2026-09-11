@@ -211,11 +211,20 @@ failure; a different v6 key fails before runner entry.
 
 `execute_verified_register_masked_native()` now owns the complete one-shot v6
 load/bind/run/admit/release transaction. Load or call failure restores the
-rebased
-snapshot and attempts exact cleanup; release failure after a committed result
-retains both that outcome and the exact ready v6 executable for retry. Reusable
-mapping ownership, sequence execution, and wider mask-aware templates remain
-outside this boundary.
+rebased snapshot and attempts exact cleanup; release failure after a committed
+result retains both that outcome and the exact ready v6 executable for retry.
+
+`RegisterMaskedNativeExecutableOwner` now retains one exact program, verified
+artifact, and synchronized mapping for repeated rebased halt calls without
+adapter work. Its resident weight comes from the exact mapping report, and a
+runner failure rolls back the call while leaving the mapping reusable.
+
+`RegisterMaskedNativeResidentLeaseCache` adds one exact process-local resident
+slot with immutable `Arc` leases. Exact hits do not remap, a different identity
+cannot replace the resident implicitly, live leases block release, and cleanup
+failure transfers the exact ready executable for retry. V6 sequences,
+multi-entry resident policy, and wider mask-aware templates remain outside this
+boundary.
 
 The deopt and initial-halt backends remain revision 4. The wider
 `direct-halt-registers` observation contract is revision 5, while

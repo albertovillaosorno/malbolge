@@ -735,6 +735,25 @@ impl<RunnerError: Display> Display
 }
 
 impl<RunnerError: Display> Display
+    for RegisterMaskedLoadedExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "loaded v6 execution failed during {}: ", self.phase())?;
+        match &self.cause {
+            RegisterMaskedNativeCallFailure::Binding(error) => {
+                write!(f, "binding: {error}")
+            },
+            RegisterMaskedNativeCallFailure::Completion(error) => {
+                write!(f, "completion: {error}")
+            },
+            RegisterMaskedNativeCallFailure::Runner(error) => {
+                write!(f, "runner: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
     for NativeLoadedExecutionFailure<RunnerError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {

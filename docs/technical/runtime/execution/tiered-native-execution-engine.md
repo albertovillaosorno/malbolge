@@ -2015,8 +2015,21 @@ release. Load/call failures restore the prepared rebased snapshot and attempt
 exact mapping cleanup; a final release failure retains the committed outcome and
 exact ready v6 executable for retry.
 
-No reusable v6 mapping owner, sequence/cache execution integration, or broader
-register-masked template family exists yet. Those are the next reviewed
+`RegisterMaskedNativeExecutableOwner` now retains one exact v6 program,
+verified artifact, and synchronized mapping for repeated rebased halt calls.
+Each call reuses the dedicated v6 preparation/binding/runner path without
+executable-memory adapter work, while exact mapped weight comes from the
+retained
+mapping report.
+
+`RegisterMaskedNativeResidentLeaseCache` adds one exact process-local resident
+slot with immutable `Arc` leases. Exact hits reuse the same owner, different
+identity is rejected without replacement, and live leases block release.
+Cleanup failure removes cache authority and transfers the exact ready executable
+for retry.
+
+V6 sequence execution, multi-entry resident/eviction policy, and broader
+register-masked template coverage remain open. Those are separate reviewed
 boundaries; unsupported v6 execution remains fail-closed.
 
 Combined-region emission, native-retry orchestration beyond bounded
