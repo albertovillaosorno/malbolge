@@ -437,16 +437,23 @@ completion failure.
 
 One-shot fused orchestration now composes exact load, bind, run, completion, and
 release. Load/call failure restores the complete region entry and retains
-cleanup
-failure separately from the primary cause; final-release failure preserves the
-committed Applied or GuardMiss outcome plus the exact ready mapping for retry.
+cleanup failure separately from the primary cause; final-release failure keeps
+the committed Applied or GuardMiss outcome plus the exact ready mapping for
+retry.
 
 `DirectFusedNativeExecutableOwner` now retains one verified fused artifact and
 one synchronized mapping for repeated whole-region calls without adapter work.
 Runner or completion failure rolls back only that call while the owner remains
 reusable; resident weight comes from the platform mapping, and explicit release
-retains exact retry ownership. Fused leases, caches, and sequence ownership
-remain absent.
+retains exact retry ownership.
+
+`DirectFusedNativeResidentLeaseCache` adds one exact process-local resident
+slot.
+Exact artifact hits clone immutable `Arc` leases without adapter work, a
+different artifact cannot replace the resident implicitly, live leases block
+release, failed load publishes nothing, and failed release transfers exact ready
+retry ownership. Multi-entry fused eviction/retirement, reconfiguration, and
+sequence ownership remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

@@ -231,7 +231,12 @@ synchronization, and hardening remain adapters rather than VM semantics.
   synchronized mapping for repeated whole-region calls without adapter work.
   Runner/completion failure leaves residency reusable, mapping-reported capacity
   defines resident weight, and explicit release preserves exact retry ownership.
-  Fused leases, caches, and sequence ownership remain absent.
+
+  A distinct single-resident fused lease cache shares that owner only on exact
+  artifact hits, with no adapter work. Different identity cannot replace the
+  slot, live leases block release, failed load publishes nothing, and failed
+  release transfers exact retry ownership. Multi-entry fused eviction,
+  retirement, reconfiguration, and sequence ownership remain absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

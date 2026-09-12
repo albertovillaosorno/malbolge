@@ -223,7 +223,11 @@ use execution_native::{
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
     DirectFusedInvocationError, DirectFusedNativeExecutableOwner,
-    DirectFusedNativeOwnerExecutionFailure, DirectFusedNativeRunner,
+    DirectFusedNativeOwnerExecutionFailure, DirectFusedNativeOwnerLoadFailure,
+    DirectFusedNativeResidentCacheAcquireFailure,
+    DirectFusedNativeResidentCacheDisposition,
+    DirectFusedNativeResidentCacheRelease, DirectFusedNativeResidentLease,
+    DirectFusedNativeResidentLeaseCache, DirectFusedNativeRunner,
     DirectFusedSequenceAdmissionError, DirectFusedSequenceObjectError,
     DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
     DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
@@ -14797,6 +14801,213 @@ fn fused_direct_sequence_owner_weight_uses_platform_mapping()
     owner
         .release(&mut adapter)
         .map_err(|error| format!("fused weighted owner release: {error}"))
+}
+
+fn release_fused_resident_after_leases(
+    cache: &mut DirectFusedNativeResidentLeaseCache,
+    adapter: &mut FakeNativeExecutableAdapter,
+    loaded_operations: &[FakeNativeAdapterOperation],
+    leases: (
+        DirectFusedNativeResidentLease,
+        DirectFusedNativeResidentLease,
+    ),
+) -> Result<(), String> {
+    let blocked = cache
+        .release_if_unleased(adapter)
+        .map_err(|error| format!("fused resident leased release: {error}"))?;
+    if blocked != (DirectFusedNativeResidentCacheRelease::Leased { leases: 2 })
+        || adapter.operations.as_slice() != loaded_operations
+    {
+        return Err(String::from("fused live leases did not block release"));
+    }
+    drop(leases);
+    let released = cache
+        .release_if_unleased(adapter)
+        .map_err(|error| format!("fused resident release: {error}"))?;
+    if released == DirectFusedNativeResidentCacheRelease::Released
+        && !cache.has_resident()
+        && adapter.operations.last()
+            == Some(&FakeNativeAdapterOperation::Release)
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused unleased resident did not release"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_resident_cache_hits_without_adapter_work()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(774)?,
+        native_executable_address(0x1e_0000)?,
+    );
+    let mut cache = DirectFusedNativeResidentLeaseCache::new();
+    let first = cache
+        .ensure(&mut adapter, &artifact)
+        .map_err(|error| format!("fused resident insert: {error}"))?;
+    let first_disposition = first.disposition();
+    let first_lease = first.into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let second = cache
+        .ensure(&mut adapter, &artifact)
+        .map_err(|error| format!("fused resident hit: {error}"))?;
+    let second_disposition = second.disposition();
+    let second_lease = second.into_lease();
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = first_lease
+        .execute(
+            &mut runner,
+            NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+        )
+        .map_err(|error| format!("fused resident lease execute: {error}"))?;
+    if first_disposition != DirectFusedNativeResidentCacheDisposition::Inserted
+        || second_disposition != DirectFusedNativeResidentCacheDisposition::Hit
+        || !first_lease.shares_resident_with(&second_lease)
+        || first_lease.key() != artifact.key()
+        || first_lease.resident_weight().mappings() != 1
+        || first_lease.strong_owner_count() != 3
+        || cache.resident_lease_count() != 2
+        || outcome
+            != NativeRegionInvocationOutcome::Applied(
+                artifact.admission().source_plan().exit(),
+            )
+        || memory != fixture.final_memory
+        || output != fixture.final_output
+        || runner.calls != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("fused resident hit or execution drifted"));
+    }
+    release_fused_resident_after_leases(
+        &mut cache,
+        &mut adapter,
+        &loaded_operations,
+        (first_lease, second_lease),
+    )
+}
+
+#[test]
+fn fused_direct_sequence_resident_cache_rejects_different_identity()
+-> Result<(), String> {
+    let x86_artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let arm_artifact = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(775)?,
+        native_executable_address(0x1f_0000)?,
+    );
+    let mut cache = DirectFusedNativeResidentLeaseCache::new();
+    let lease = cache
+        .ensure(&mut adapter, &x86_artifact)
+        .map_err(|error| format!("fused resident identity seed: {error}"))?
+        .into_lease();
+    let loaded_operations = adapter.operations.clone();
+    let Err(error) = cache.ensure(&mut adapter, &arm_artifact) else {
+        return Err(String::from(
+            "fused resident replaced a different identity",
+        ));
+    };
+    if error.as_ref()
+        != &DirectFusedNativeResidentCacheAcquireFailure::IdentityOccupied
+        || adapter.operations != loaded_operations
+        || cache.resident_lease_count() != 1
+    {
+        return Err(String::from("fused resident identity rejection drifted"));
+    }
+    drop(lease);
+    if cache.release_if_unleased(&mut adapter).map_err(|release| {
+        format!("fused resident identity cleanup: {release}")
+    })? == DirectFusedNativeResidentCacheRelease::Released
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "fused resident identity cleanup did not release",
+        ))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_resident_cache_release_failure_retries()
+-> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(776)?,
+        native_executable_address(0x20_0000)?,
+    )
+    .with_release_failures(1);
+    let mut cache = DirectFusedNativeResidentLeaseCache::new();
+    let acquisition = cache
+        .ensure(&mut adapter, &artifact)
+        .map_err(|error| format!("fused resident retry seed: {error}"))?;
+    drop(acquisition);
+    let Err(failure) = cache.release_if_unleased(&mut adapter) else {
+        return Err(String::from("fused resident release failure was ignored"));
+    };
+    if cache.has_resident()
+        || failure.executable().key() != artifact.key()
+        || adapter.release_attempts != 1
+    {
+        return Err(String::from(
+            "fused resident release lost retry ownership",
+        ));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("fused resident release retry: {error}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("fused resident release retry count drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_resident_cache_load_failure_is_atomic()
+-> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(777)?,
+        native_executable_address(0x21_0000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut cache = DirectFusedNativeResidentLeaseCache::new();
+    let Err(error) = cache.ensure(&mut adapter, &artifact) else {
+        return Err(String::from("fused resident ignored load failure"));
+    };
+    match error.as_ref() {
+        DirectFusedNativeResidentCacheAcquireFailure::Load(owner_error) => {
+            if !matches!(
+                owner_error.as_ref(),
+                DirectFusedNativeOwnerLoadFailure::Load(_)
+            ) {
+                return Err(String::from("fused resident load cause drifted"));
+            }
+        },
+        DirectFusedNativeResidentCacheAcquireFailure::IdentityOccupied => {
+            return Err(String::from(
+                "fused resident load failure misclassified",
+            ));
+        },
+    }
+    if cache.has_resident()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from(
+            "fused failed load published partial residency",
+        ));
+    }
+    Ok(())
 }
 
 #[test]
