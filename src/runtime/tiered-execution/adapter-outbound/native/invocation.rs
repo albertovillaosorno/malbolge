@@ -51,9 +51,13 @@ use super::abi::{
 };
 use super::direct::{
     DirectNativeKind, ExecutionGeometryDirectNativeKind,
-    VerifiedDirectNativeArtifact, VerifiedExecutionGeometryNativeArtifact,
+    VerifiedDirectFusedSequenceObjectArtifact, VerifiedDirectNativeArtifact,
+    VerifiedExecutionGeometryNativeArtifact,
     VerifiedRegisterMaskedHaltFetchNativeObjectArtifact,
     VerifiedRegisterMaskedNonGraphicalNativeObjectArtifact,
+};
+use super::fused_sequence::{
+    DirectFusedSequenceAdmissionError, admit_fused_direct_sequence,
 };
 use super::lifecycle::{
     NativeExecutableMappingId, ReadyExecutionGeometryNativeExecutable,
@@ -61,14 +65,17 @@ use super::lifecycle::{
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
 };
 use super::loader::{
-    VerifiedDirectLoadError, VerifiedDirectLoadImage,
-    VerifiedExecutionGeometryLoadImage, VerifiedRegisterMaskedLoadImage,
+    VerifiedDirectFusedLoadImage, VerifiedDirectLoadError,
+    VerifiedDirectLoadImage, VerifiedExecutionGeometryLoadImage,
+    VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
 };
 use crate::execution_cache::{
     NativeArtifactKey, NativeIdentityError, NativeTargetIdentity,
 };
 
+type DirectFusedEffectEndpoints = (EffectOp, EffectOp);
+type DirectFusedExpectedSnapshots = (Vec<u32>, Vec<u8>);
 type NativeRegionBufferParts<'buffers> =
     (&'buffers mut [u32], &'buffers [u8], &'buffers mut [u8]);
 type PreparedRegionInvocation<'buffers> =
@@ -170,7 +177,7 @@ pub enum NativeRegionInvocationError {
     Observation(NativeRegionObservationError),
     /// Output cursor movement disagrees with the declared output effect.
     OutputTransition,
-    /// The program is not one complete canonical effect.
+    /// The program does not match the required canonical invocation shape.
     ProgramShape,
     /// Native code returned an unknown status integer.
     Status(NativeRegionStatusError),
@@ -189,6 +196,19 @@ pub struct NativeRegionBuffers<'buffers> {
 pub enum NativeExecutableInvocationBindingError {
     /// Executable image identity differs from the prepared call image.
     ExecutableIdentity,
+}
+
+/// Failure while preparing one verified fused region call.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DirectFusedInvocationError {
+    /// Retained one-step provenance no longer reconstructs fused admission.
+    Admission(DirectFusedSequenceAdmissionError),
+    /// Reconstructed admission differs from the verified fused artifact.
+    ArtifactIdentity,
+    /// Borrowed buffers or completion violate exact whole-region semantics.
+    Invocation(NativeRegionInvocationError),
+    /// Verified fused COFF could not become one relocation-free load image.
+    Load(VerifiedDirectLoadError),
 }
 
 /// Failure while binding one verified direct artifact to one exact call.
@@ -240,6 +260,18 @@ pub enum VerifiedRegisterMaskedInvocationError {
     Invocation(NativeRegionInvocationError),
     /// Verified v6 COFF could not become one relocation-free load image.
     Load(VerifiedDirectLoadError),
+}
+
+/// One verified fused artifact bound to one whole-region ABI transition.
+///
+/// This value deliberately has no synchronized-executable binding or runner
+/// authority. It proves exact multieffect application and atomic guard-miss
+/// semantics over caller-owned buffers.
+#[derive(Debug)]
+pub struct PreparedDirectFusedInvocation<'artifact, 'buffers> {
+    artifact: &'artifact VerifiedDirectFusedSequenceObjectArtifact,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+    load_image: VerifiedDirectFusedLoadImage,
 }
 
 /// One exact verified v5 artifact bound to one prepared ABI transition.
@@ -358,6 +390,21 @@ impl Display for NativeExecutableInvocationBindingError {
     }
 }
 
+impl DirectFusedInvocationError {
+    const fn message(self) -> &'static str {
+        match self {
+            Self::Admission(_) => {
+                "verified fused invocation admission reconstruction failed"
+            },
+            Self::ArtifactIdentity => {
+                "verified fused artifact identity differs from admission"
+            },
+            Self::Invocation(_) => "verified fused invocation contract failed",
+            Self::Load(_) => "verified fused load-image preparation failed",
+        }
+    }
+}
+
 impl VerifiedDirectInvocationError {
     const fn message(self) -> &'static str {
         match self {
@@ -406,6 +453,12 @@ impl VerifiedRegisterMaskedInvocationError {
     }
 }
 
+impl Display for DirectFusedInvocationError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        f.write_str(self.message())
+    }
+}
+
 impl Display for VerifiedExecutionGeometryInvocationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         f.write_str(self.message())
@@ -447,7 +500,7 @@ impl NativeRegionInvocationError {
             Self::OutputTransition => {
                 "native output transition is inconsistent"
             },
-            Self::ProgramShape => "native program is not one canonical effect",
+            Self::ProgramShape => "native program shape is not canonical",
             Self::Status(_) => "native status is unknown",
         }
     }
@@ -456,6 +509,128 @@ impl NativeRegionInvocationError {
 impl Display for NativeRegionInvocationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
         f.write_str(self.message())
+    }
+}
+
+impl<'artifact, 'buffers> PreparedDirectFusedInvocation<'artifact, 'buffers> {
+    /// Restores the complete whole-region entry snapshot.
+    pub fn abort(self) {
+        self.invocation.abort();
+    }
+
+    /// Simulates the exact complete fused transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Returns the exact semantically verified fused artifact.
+    #[must_use]
+    pub const fn artifact(&self) -> &VerifiedDirectFusedSequenceObjectArtifact {
+        self.artifact
+    }
+
+    /// Admits one raw status through the exact whole-region call contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DirectFusedInvocationError::Invocation`] when the
+    /// foreign result differs from exact full-region application or mutates on
+    /// a guard miss. Every rejection restores the complete region entry.
+    pub fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<NativeRegionInvocationOutcome, DirectFusedInvocationError> {
+        self.invocation
+            .complete(raw_status)
+            .map_err(DirectFusedInvocationError::Invocation)
+    }
+
+    /// Returns the exact successful whole-region exit observation.
+    #[must_use]
+    pub const fn expected_observation(&self) -> ProfileMachineObservation {
+        self.invocation.expected_observation()
+    }
+
+    /// Returns relocation-free fused evidence that remains non-executable.
+    #[must_use]
+    pub const fn load_image(&self) -> &VerifiedDirectFusedLoadImage {
+        &self.load_image
+    }
+
+    /// Prepares one verified fused artifact over caller-owned region buffers.
+    ///
+    /// Retained source provenance is independently recomposed before the fused
+    /// program may describe a call. The borrow-scoped invocation then validates
+    /// region-entry live-ins/capacity and replays every ordered effect into the
+    /// only accepted successful memory/output/state snapshots.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DirectFusedInvocationError`] for admission/key drift,
+    /// non-loadable fused COFF, invalid multieffect shape, or caller-buffer
+    /// disagreement.
+    pub fn new(
+        artifact: &'artifact VerifiedDirectFusedSequenceObjectArtifact,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, DirectFusedInvocationError> {
+        let admission =
+            admit_fused_direct_sequence(artifact.admission().source_plan())
+                .map_err(DirectFusedInvocationError::Admission)?;
+        if artifact.admission() != &admission
+            || artifact.key() != admission.key()
+        {
+            return Err(DirectFusedInvocationError::ArtifactIdentity);
+        }
+        let load_image = VerifiedDirectFusedLoadImage::new(artifact)
+            .map_err(DirectFusedInvocationError::Load)?;
+        let invocation = PreparedNativeRegionInvocation::new_direct_fused(
+            admission.program(),
+            buffers,
+        )
+        .map_err(DirectFusedInvocationError::Invocation)?;
+        Ok(Self {
+            artifact,
+            invocation,
+            load_image,
+        })
+    }
+
+    /// Returns canonical verified COFF bytes for the prepared fused artifact.
+    #[must_use]
+    pub fn object(&self) -> &[u8] {
+        self.artifact.object()
+    }
+
+    /// Returns the mutable ABI state pointer for contract-only completion
+    /// tests.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Returns exact target assumptions bound to this prepared fused call.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.artifact.key().target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.artifact.target_triple()
+    }
+
+    /// Simulates one guest-memory mutation for rollback tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn write_memory_for_test(
+        &mut self,
+        address: usize,
+        value: u32,
+    ) -> bool {
+        self.invocation.write_memory_for_test(address, value)
     }
 }
 
@@ -1456,6 +1631,50 @@ impl<'buffers> PreparedNativeRegionInvocation<'buffers> {
         )
     }
 
+    /// Prepares one exact verified fused multieffect region.
+    fn new_direct_fused(
+        program: &RegionEffectProgram,
+        buffers: NativeRegionBuffers<'buffers>,
+    ) -> Result<Self, NativeRegionInvocationError> {
+        let (first, last) = direct_fused_endpoints(program)?;
+        let NativeRegionBuffers { input, memory, output } = buffers;
+        let required = program.required_memory_words();
+        if u64::try_from(memory.len())
+            .map_or(true, |available| available < required)
+        {
+            return Err(NativeRegionInvocationError::MemoryCapacity {
+                available: memory.len(),
+                required,
+            });
+        }
+        validate_live_ins(&program.memory_live_ins, memory)?;
+        let entry_memory = memory.to_vec();
+        let entry_output = output.to_vec();
+        let (expected_memory, expected_output) = derive_direct_fused_expected(
+            program,
+            input,
+            &entry_memory,
+            &entry_output,
+        )?;
+        let frame =
+            NativeRegionCallFrame::new(memory, input, output, first.before)
+                .map_err(NativeRegionInvocationError::CallFrame)?;
+        let entry_state = *frame.state();
+        let expected_state = entry_state
+            .with_observation(last.after)
+            .map_err(NativeRegionInvocationError::CallFrame)?;
+        Ok(Self {
+            entry_memory,
+            entry_output,
+            entry_state,
+            expected_memory,
+            expected_observation: last.after,
+            expected_output,
+            expected_state,
+            frame,
+        })
+    }
+
     /// Prepares one exact explicit-geometry crazy ABI transition.
     ///
     /// The direct v5 verifier owns crazy semantics. This crate-private
@@ -1990,6 +2209,62 @@ fn prepare_verified_execution_geometry_region<'buffers>(
         },
     };
     result.map_err(VerifiedExecutionGeometryInvocationError::Invocation)
+}
+
+fn direct_fused_endpoints(
+    program: &RegionEffectProgram,
+) -> Result<DirectFusedEffectEndpoints, NativeRegionInvocationError> {
+    let Some(first) = program.effects.first().copied() else {
+        return Err(NativeRegionInvocationError::ProgramShape);
+    };
+    let Some(last) = program.effects.last().copied() else {
+        return Err(NativeRegionInvocationError::ProgramShape);
+    };
+    let steps = program.effects.len();
+    let expected_outcome = last
+        .after
+        .termination
+        .map_or(RunOutcome::BudgetExhausted { steps }, |reason| {
+            RunOutcome::Terminated { reason, steps }
+        });
+    if steps < 2
+        || !is_canonical_effect_ir_version(program.format_version)
+        || u32::try_from(program.profile_requirement.memory_words).is_err()
+        || program.step_budget != steps
+        || program.outcome != expected_outcome
+        || first.before.termination.is_some()
+    {
+        return Err(NativeRegionInvocationError::ProgramShape);
+    }
+    let mut previous_after = None;
+    for (index, effect) in program.effects.iter().copied().enumerate() {
+        if previous_after.is_some_and(|after| after != effect.before) {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        }
+        let is_final = index == steps.saturating_sub(1);
+        if !is_final && effect.after.termination.is_some() {
+            return Err(NativeRegionInvocationError::ProgramShape);
+        }
+        previous_after = Some(effect.after);
+    }
+    Ok((first, last))
+}
+
+fn derive_direct_fused_expected(
+    program: &RegionEffectProgram,
+    input: &[u8],
+    entry_memory: &[u32],
+    entry_output: &[u8],
+) -> Result<DirectFusedExpectedSnapshots, NativeRegionInvocationError> {
+    let mut expected_memory = entry_memory.to_vec();
+    let mut expected_output = entry_output.to_vec();
+    for effect in program.effects.iter().copied() {
+        validate_input(effect, input)?;
+        apply_write(&mut expected_memory, effect.memory_delta.data)?;
+        apply_write(&mut expected_memory, effect.memory_delta.encryption)?;
+        expected_output = derive_expected_output(effect, &expected_output)?;
+    }
+    Ok((expected_memory, expected_output))
 }
 
 fn exact_effect(

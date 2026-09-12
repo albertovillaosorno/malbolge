@@ -206,7 +206,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   evidence, and failed explicit release retains the fused ready mapping for
   retry.
 
-  Prepared fused invocation, runner, and execution transaction authority remain
+  A fused-specific prepared invocation now independently reconstructs retained
+  admission, validates whole-region entry buffers, and sequentially derives the
+  exact final memory/output/state snapshots from every fused effect. Applied
+  completion must match that complete region result; guard miss is atomic, and
+  every rejected completion restores the full region entry.
+
+  Fused executable binding, runner, and execution transaction authority remain
   absent.
 
   Cache-aware sequence planning

@@ -263,9 +263,10 @@ pub use fused_sequence::{
     admit_fused_direct_sequence,
 };
 pub use invocation::{
-    NativeExecutableInvocationBindingError, NativeRegionBuffers,
-    NativeRegionInvocationError, NativeRegionInvocationOutcome,
-    NativeRegionMutationSurface, PreparedExecutionGeometryNativeInvocation,
+    DirectFusedInvocationError, NativeExecutableInvocationBindingError,
+    NativeRegionBuffers, NativeRegionInvocationError,
+    NativeRegionInvocationOutcome, NativeRegionMutationSurface,
+    PreparedDirectFusedInvocation, PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,

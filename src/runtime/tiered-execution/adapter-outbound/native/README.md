@@ -417,7 +417,13 @@ A fused-specific platform path now runs allocate, copy, RW-to-RX protect, full
 instruction sync, and explicit release through the caller-owned memory adapter.
 Every post-allocation failure attempts exact cleanup while preserving primary
 and cleanup evidence separately, and failed explicit release retains the exact
-ready executable for retry. Prepared invocation, runner, and execution
+ready executable for retry.
+
+`PreparedDirectFusedInvocation` now reconstructs retained fused admission before
+borrowing caller buffers, validates the whole region entry, and replays every
+ordered effect into the only accepted final state/memory/output snapshots. Exact
+application and mutation-free guard miss are admitted; every rejected completion
+restores the complete region entry. Executable binding, runner, and execution
 transaction authority remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate

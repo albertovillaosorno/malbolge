@@ -222,13 +222,14 @@ use execution_native::{
     DirectExecutionGeometryInputError, DirectExecutionGeometryJumpDataError,
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
-    DirectFusedSequenceAdmissionError, DirectFusedSequenceObjectError,
-    DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
-    DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
-    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
-    DirectNonGraphicalError, DirectOutputError,
-    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
-    DirectRotateError, DirectSelectionError, DirectSequenceError,
+    DirectFusedInvocationError, DirectFusedSequenceAdmissionError,
+    DirectFusedSequenceObjectError, DirectHaltFetchError,
+    DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
+    DirectInputError, DirectJumpCodeError, DirectJumpDataError,
+    DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
+    DirectOutputError, DirectRegisterMaskedHaltFetchError,
+    DirectRegisterMaskedNonGraphicalError, DirectRotateError,
+    DirectSelectionError, DirectSequenceError,
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError,
     ExecutionGeometryLoadedSequenceAdmissionError,
@@ -262,7 +263,8 @@ use execution_native::{
     NativeRegionInvocationError, NativeRegionInvocationOutcome,
     NativeRegionMutationSurface, NativeRegionStatus,
     NativeSequenceExecutionOutcome, NativeTerminationTag,
-    PreflightedExecutionTier, PreparedExecutionGeometryNativeInvocation,
+    PreflightedExecutionTier, PreparedDirectFusedInvocation,
+    PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation, PreparedNativeRegionInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,
@@ -13938,6 +13940,161 @@ fn fused_direct_writable_mapping(
         image.allocation_len(),
         NativeExecutablePermission::ReadWrite,
     ))
+}
+
+#[test]
+fn fused_direct_sequence_invocation_applies_whole_region() -> Result<(), String>
+{
+    let fixture = direct_normative_sequence_fixture()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = verified_fused_direct_sequence_object(isa)?;
+        let expected = artifact.admission().source_plan().exit();
+        let mut memory = fixture.initial_memory.clone();
+        let mut output = fixture.initial_output.clone();
+        let mut prepared = PreparedDirectFusedInvocation::new(
+            &artifact,
+            NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+        )
+        .map_err(|error| format!("fused invocation prepare: {error}"))?;
+        if prepared.artifact() != &artifact
+            || prepared.expected_observation() != expected
+            || prepared.load_image().key() != artifact.key()
+            || prepared.object() != artifact.object()
+            || prepared.target() != artifact.key().target()
+            || prepared.target_triple() != artifact.target_triple()
+            || prepared.state_mut_ptr().is_null()
+        {
+            return Err(format!(
+                "fused invocation identity drifted on {isa:?}"
+            ));
+        }
+        prepared.apply_expected_for_test();
+        let outcome = prepared
+            .complete(NativeRegionStatus::Applied.code())
+            .map_err(|error| format!("fused invocation complete: {error}"))?;
+        if outcome != NativeRegionInvocationOutcome::Applied(expected)
+            || memory != fixture.final_memory
+            || output != fixture.final_output
+        {
+            return Err(format!("fused invocation result drifted on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_invocation_guard_miss_is_atomic() -> Result<(), String>
+{
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let prepared = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("fused guard prepare: {error}"))?;
+    let outcome = prepared
+        .complete(NativeRegionStatus::GuardMiss.code())
+        .map_err(|error| format!("fused guard complete: {error}"))?;
+    if outcome == NativeRegionInvocationOutcome::GuardMiss
+        && memory == fixture.initial_memory
+        && output == fixture.initial_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused guard miss changed whole-region entry"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_invocation_rolls_back_applied_drift()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let write = artifact
+        .admission()
+        .program()
+        .effects
+        .iter()
+        .find_map(|effect| effect.memory_delta.data)
+        .ok_or_else(|| String::from("fused fixture omitted data write"))?;
+    let address = usize::try_from(write.address)
+        .map_err(|error| format!("fused write address: {error}"))?;
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut prepared = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("fused rollback prepare: {error}"))?;
+    prepared.apply_expected_for_test();
+    let drifted = write.after ^ 1;
+    if !prepared.write_memory_for_test(address, drifted) {
+        return Err(String::from("fused rollback address disappeared"));
+    }
+    let result = prepared.complete(NativeRegionStatus::Applied.code());
+    if matches!(
+        result,
+        Err(DirectFusedInvocationError::Invocation(
+            NativeRegionInvocationError::AppliedMemory {
+                address: observed_address,
+                observed,
+                ..
+            }
+        )) if observed_address == address && observed == drifted
+    ) && memory == fixture.initial_memory
+        && output == fixture.initial_output
+    {
+        Ok(())
+    } else {
+        Err(String::from(
+            "fused applied drift did not restore region entry",
+        ))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_invocation_rejects_live_in() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let live_in = artifact
+        .admission()
+        .program()
+        .memory_live_ins
+        .first()
+        .copied()
+        .ok_or_else(|| String::from("fused fixture omitted entry live-in"))?;
+    let address = usize::try_from(live_in.address)
+        .map_err(|error| format!("fused live-in address: {error}"))?;
+    let observed = live_in.value ^ 1;
+    let mut memory = fixture.initial_memory.clone();
+    *memory
+        .get_mut(address)
+        .ok_or_else(|| String::from("fused live-in address is absent"))? =
+        observed;
+    let mut output = fixture.initial_output.clone();
+    let result = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    );
+    if matches!(
+        result,
+        Err(DirectFusedInvocationError::Invocation(
+            NativeRegionInvocationError::EntryMemory {
+                address: rejected,
+                expected,
+                observed: rejected_value,
+            }
+        )) if rejected == live_in.address
+            && expected == live_in.value
+            && rejected_value == observed
+    ) && output == fixture.initial_output
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused entry live-in drift was admitted"))
+    }
 }
 
 #[test]

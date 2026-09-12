@@ -326,8 +326,15 @@ RX transition, and full-code instruction synchronization while retaining fused
 identity and release evidence. A fused-specific platform path now performs the
 same caller-owned allocate/copy/protect/sync transaction, releases after every
 post-allocation failure, preserves cleanup failure with the primary cause, and
-retains exact ready state for explicit-release retry. Fused invocation remains
-absent.
+retains exact ready state for explicit-release retry.
+
+A fused-specific prepared invocation now independently reconstructs admission
+from retained verified one-step provenance, validates whole-region entry
+live-ins and capacity, and sequentially derives exact final memory, output, and
+ABI state from every fused effect. Applied completion must match that complete
+region snapshot; guard miss must preserve the complete entry, and every rejected
+completion rolls back atomically. Executable binding and fused runner authority
+remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -508,11 +515,12 @@ Reviewed direct terminal, no-op, jump-code,
 jump-data, rotate, crazy, input, and output emitters/verifiers are
 implemented for both ISAs; the first atomic fused rotate/output object is also
 emitted, independently verified, and extracted as a relocation-free load image
-on both ISAs, with dedicated safe lifecycle typestates and transactional
-platform loading through synchronized RX readiness. Wider fused-template
-coverage, fused invocation integration, concrete executable-memory and
-foreign-call adapters, runtime integration, and concrete instruction-cache
-synchronization remain incomplete.
+on both ISAs, with dedicated safe lifecycle typestates, transactional platform
+loading through synchronized RX readiness, and a borrow-scoped whole-region
+prepared invocation contract. Wider fused-template coverage, fused executable
+binding/runner integration, concrete executable-memory and foreign-call
+adapters, runtime integration, and concrete instruction-cache synchronization
+remain incomplete.
 
 ## Invariants
 
