@@ -304,6 +304,9 @@ use malbolge::{
     preflight_portable_profile_requirement,
 };
 pub use platform::{
+    DirectFusedNativeExecutableLoadResult,
+    DirectFusedNativeExecutableReleaseFailure,
+    DirectFusedNativeExecutableReleaseResult,
     ExecutionGeometryNativeExecutableLoadResult,
     ExecutionGeometryNativeExecutableReleaseFailure,
     ExecutionGeometryNativeExecutableReleaseResult,
@@ -318,9 +321,11 @@ pub use platform::{
     RegisterMaskedNonGraphicalNativeExecutableLoadResult,
     RegisterMaskedNonGraphicalNativeExecutableReleaseFailure,
     RegisterMaskedNonGraphicalNativeExecutableReleaseResult,
+    load_direct_fused_native_executable,
     load_execution_geometry_native_executable, load_native_executable,
     load_register_masked_native_executable,
     load_register_masked_non_graphical_native_executable,
+    release_direct_fused_native_executable,
     release_execution_geometry_native_executable, release_native_executable,
     release_register_masked_native_executable,
     release_register_masked_non_graphical_native_executable,

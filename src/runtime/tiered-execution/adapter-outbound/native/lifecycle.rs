@@ -1206,7 +1206,7 @@ const fn same_mapping(
         && left.mapping_id().get() == right.mapping_id().get()
 }
 
-fn validate_direct_fused_writable_mapping(
+pub(super) fn validate_direct_fused_writable_mapping(
     image: &VerifiedDirectFusedLoadImage,
     mapping: NativeExecutableMappingReport,
 ) -> Result<(), NativeExecutableLifecycleError> {

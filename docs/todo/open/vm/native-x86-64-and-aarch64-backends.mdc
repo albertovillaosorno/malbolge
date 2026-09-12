@@ -200,8 +200,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   RW-to-RX/full-sync policy. Dedicated fused lifecycle typestates admit exact
   copy, same-mapping RX transition, and full-range instruction synchronization.
 
-  No fused platform loader, prepared invocation, runner, or execution
-  transaction consumes the ready state yet.
+  A fused-specific platform path now transactionally allocates, copies,
+  protects, synchronizes, and explicitly releases that ready state through the
+  existing caller-owned adapter. Post-allocation failure preserves exact cleanup
+  evidence, and failed explicit release retains the fused ready mapping for
+  retry.
+
+  Prepared fused invocation, runner, and execution transaction authority remain
+  absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

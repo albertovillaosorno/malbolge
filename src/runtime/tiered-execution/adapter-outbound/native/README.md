@@ -413,8 +413,12 @@ the strict RW-to-RX/full-sync policy. Distinct fused `Staged`, `Sealed`, and
 `Ready` typestates then admit exact copy, same-mapping RX transition, and
 full-range instruction synchronization.
 
-No platform loader, prepared invocation, runner, or execution transaction
-accepts the fused ready state yet.
+A fused-specific platform path now runs allocate, copy, RW-to-RX protect, full
+instruction sync, and explicit release through the caller-owned memory adapter.
+Every post-allocation failure attempts exact cleanup while preserving primary
+and cleanup evidence separately, and failed explicit release retains the exact
+ready executable for retry. Prepared invocation, runner, and execution
+transaction authority remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

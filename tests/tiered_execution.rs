@@ -345,14 +345,15 @@ use execution_native::{
     execute_verified_register_masked_native,
     execute_verified_register_masked_non_graphical_native,
     load_cached_verified_execution_geometry_native_sequence,
-    load_cached_verified_native_sequence,
+    load_cached_verified_native_sequence, load_direct_fused_native_executable,
     load_execution_geometry_native_executable, load_native_executable,
     load_register_masked_native_executable,
     load_register_masked_non_graphical_native_executable,
     load_register_masked_non_graphical_native_sequence,
     load_verified_execution_geometry_native_sequence,
     load_verified_native_sequence, lower_clang_c23,
-    lower_preflighted_clang_c23, release_execution_geometry_native_executable,
+    lower_preflighted_clang_c23, release_direct_fused_native_executable,
+    release_execution_geometry_native_executable,
     release_execution_geometry_native_executable_sequence,
     release_native_executable, release_native_executable_sequence,
     release_register_masked_native_executable,
@@ -14033,6 +14034,163 @@ fn fused_direct_sequence_lifecycle_rejects_copy_and_sync_drift()
         Ok(())
     } else {
         Err(String::from("fused lifecycle admitted short sync range"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_platform_loads_and_releases_both_isas()
+-> Result<(), String> {
+    for (index, isa) in
+        [HostIsa::X86_64, HostIsa::AArch64].into_iter().enumerate()
+    {
+        let artifact = verified_fused_direct_sequence_object(isa)?;
+        let image = VerifiedDirectFusedLoadImage::new(&artifact)
+            .map_err(|error| format!("fused platform image: {error}"))?;
+        let mapping_value = 720u64
+            .checked_add(
+                u64::try_from(index).map_err(|error| error.to_string())?,
+            )
+            .ok_or_else(|| {
+                String::from("fused platform mapping id overflow")
+            })?;
+        let base_value = 0x60_000usize
+            .checked_add(index * 0x10_000)
+            .ok_or_else(|| String::from("fused platform base overflow"))?;
+        let mut adapter = FakeNativeExecutableAdapter::new(
+            native_executable_mapping_id(mapping_value)?,
+            native_executable_address(base_value)?,
+        );
+        let ready = load_direct_fused_native_executable(&mut adapter, &image)
+            .map_err(|error| format!("fused platform load: {error}"))?;
+        if ready.key() != artifact.key()
+            || ready.image() != &image
+            || adapter.operations
+                != [
+                    FakeNativeAdapterOperation::Allocate,
+                    FakeNativeAdapterOperation::Copy,
+                    FakeNativeAdapterOperation::Protect,
+                    FakeNativeAdapterOperation::Synchronize,
+                ]
+        {
+            return Err(format!("fused platform load drifted on {isa:?}"));
+        }
+        let release = ready.release_request();
+        release_direct_fused_native_executable(&mut adapter, ready)
+            .map_err(|error| format!("fused platform release: {error}"))?;
+        if adapter.release_requests != [release]
+            || adapter.operations.last()
+                != Some(&FakeNativeAdapterOperation::Release)
+        {
+            return Err(format!("fused platform release drifted on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_platform_cleans_up_copy_failure() -> Result<(), String>
+{
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let image = VerifiedDirectFusedLoadImage::new(&artifact)
+        .map_err(|error| format!("fused cleanup image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(730)?,
+        native_executable_address(0x80_000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let Err(failure) =
+        load_direct_fused_native_executable(&mut adapter, &image)
+    else {
+        return Err(String::from("fused copy failure was ignored"));
+    };
+    if failure.phase() != NativeExecutableLoadPhase::Copy
+        || failure.adapter_error() != Some(&FakeNativeAdapterOperation::Copy)
+        || failure.release_error().is_some()
+        || failure.release_request()
+            != adapter.release_requests.first().copied()
+        || adapter.operations
+            != [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        return Err(String::from("fused copy cleanup evidence drifted"));
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_retains_cleanup_failure() -> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let image = VerifiedDirectFusedLoadImage::new(&artifact)
+        .map_err(|error| format!("fused cleanup retry image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(732)?,
+        native_executable_address(0xa0_000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy)
+    .with_release_failures(1);
+    let Err(failure) =
+        load_direct_fused_native_executable(&mut adapter, &image)
+    else {
+        return Err(String::from("fused cleanup failure was ignored"));
+    };
+    if failure.phase() != NativeExecutableLoadPhase::Copy
+        || failure.adapter_error() != Some(&FakeNativeAdapterOperation::Copy)
+        || failure.release_error() != Some(&FakeNativeAdapterOperation::Release)
+        || !failure.cleanup_pending()
+        || failure.release_request()
+            != adapter.release_requests.first().copied()
+    {
+        return Err(String::from("fused cleanup failure evidence drifted"));
+    }
+    let retried = failure.retry_cleanup(&mut adapter);
+    if retried.phase() == NativeExecutableLoadPhase::Copy
+        && retried.adapter_error() == Some(&FakeNativeAdapterOperation::Copy)
+        && retried.release_error().is_none()
+        && !retried.cleanup_pending()
+        && adapter.release_attempts == 2
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused cleanup retry changed primary evidence"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_release_failure_retries_exact_ready()
+-> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let image = VerifiedDirectFusedLoadImage::new(&artifact)
+        .map_err(|error| format!("fused release retry image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(731)?,
+        native_executable_address(0x90_000)?,
+    )
+    .with_release_failures(1);
+    let ready = load_direct_fused_native_executable(&mut adapter, &image)
+        .map_err(|error| format!("fused release retry load: {error}"))?;
+    let expected_key = ready.key().clone();
+    let expected_mapping = ready.mapping();
+    let Err(failure) =
+        release_direct_fused_native_executable(&mut adapter, ready)
+    else {
+        return Err(String::from("fused release failure was ignored"));
+    };
+    if failure.error() != &FakeNativeAdapterOperation::Release
+        || failure.executable().key() != &expected_key
+        || failure.executable().mapping() != expected_mapping
+    {
+        return Err(String::from("fused release retry lost exact ready state"));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|error| format!("fused release retry: {error}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("fused release retry count drifted"))
     }
 }
 
