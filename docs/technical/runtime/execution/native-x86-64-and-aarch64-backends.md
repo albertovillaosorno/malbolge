@@ -391,8 +391,13 @@ A dedicated loaded-sequence execution
 boundary calls only the fused runner through retained owners and performs no
 adapter work. Applied outcomes advance exact source semantic-step progress;
 guard miss or current-region failure resumes before the complete current fused
-region and leaves residency reusable. One-shot fused sequence orchestration and
-sequence-cache integration remain absent.
+region and leaves residency reusable.
+
+One-shot fused sequence orchestration now composes full-plan load, loaded
+execution, and aggregate release. Load/execution failure keeps cleanup retry
+evidence separate from semantic failure, while final-release failure preserves
+the committed Applied or GuardMiss outcome. Fused sequence-cache integration
+remains absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -575,10 +580,10 @@ implemented for both ISAs; the first atomic fused rotate/output object is also
 emitted, independently verified, and extracted as a relocation-free load image
 on both ISAs, with dedicated safe lifecycle typestates, transactional platform
 loading through synchronized RX readiness, and a borrow-scoped whole-region
-prepared invocation contract. Wider fused-template coverage, one-shot fused
-sequence orchestration/cache integration, concrete executable-memory and
-foreign-call adapters, runtime integration, and concrete instruction-cache
-synchronization remain incomplete.
+prepared invocation contract. Wider fused-template coverage, fused
+sequence-cache integration, concrete executable-memory and foreign-call
+adapters, runtime integration, and concrete instruction-cache synchronization
+remain incomplete.
 
 ## Invariants
 

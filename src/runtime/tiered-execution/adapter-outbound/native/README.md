@@ -480,8 +480,12 @@ A dedicated loaded-sequence executor calls only the fused
 runner through retained owners and performs no adapter work. Applied outcomes
 advance exact source semantic-step progress; guard miss or current-region
 failure resumes before that whole fused region and leaves the mapping reusable.
-One-shot fused sequence orchestration and sequence-cache integration remain
-absent.
+
+One-shot fused sequence orchestration now composes full-plan load, loaded
+execution, and aggregate release. Load/execution failure keeps cleanup retry
+evidence separate from semantic failure, while final-release failure preserves
+the committed Applied or GuardMiss outcome. Fused sequence-cache integration
+remains absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

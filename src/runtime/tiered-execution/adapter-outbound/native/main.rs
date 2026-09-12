@@ -53,6 +53,7 @@ mod fused_resident_cache;
 mod fused_sequence;
 mod fused_sequence_execution;
 mod fused_sequence_plan;
+mod fused_sequence_transaction;
 mod invocation;
 mod lifecycle;
 mod loader;
@@ -317,6 +318,11 @@ pub use fused_sequence_execution::{
 };
 pub use fused_sequence_plan::{
     DirectFusedNativeSequencePlan, DirectFusedNativeSequencePlanError,
+};
+pub use fused_sequence_transaction::{
+    DirectFusedNativeSequenceTransactionFailure,
+    DirectFusedNativeSequenceTransactionResult,
+    execute_direct_fused_native_sequence,
 };
 pub use invocation::{
     DirectFusedInvocationError, NativeExecutableInvocationBindingError,
