@@ -345,8 +345,8 @@ use execution_native::{
     execute_loaded_verified_native_sequence,
     execute_loaded_verified_register_masked_native,
     execute_loaded_verified_register_masked_non_graphical_native,
-    execute_verified_native, execute_verified_native_sequence,
-    execute_verified_register_masked_native,
+    execute_verified_direct_fused_native, execute_verified_native,
+    execute_verified_native_sequence, execute_verified_register_masked_native,
     execute_verified_register_masked_non_graphical_native,
     load_cached_verified_execution_geometry_native_sequence,
     load_cached_verified_native_sequence, load_direct_fused_native_executable,
@@ -14373,6 +14373,254 @@ fn fused_direct_sequence_loaded_runner_completion_drift_rolls_back()
         Ok(())
     } else {
         Err(String::from("fused completion drift did not roll back"))
+    }
+}
+
+fn assert_fused_transaction_applied(
+    isa: HostIsa,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(isa)?;
+    let expected = artifact.admission().source_plan().exit();
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_value)?,
+        native_executable_address(base_value)?,
+    );
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let prepared = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("fused transaction prepare: {error}"))?;
+    let outcome = execute_verified_direct_fused_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    )
+    .map_err(|error| format!("fused transaction failed: {error}"))?;
+    if outcome == NativeRegionInvocationOutcome::Applied(expected)
+        && memory == fixture.final_memory
+        && output == fixture.final_output
+        && runner.calls == 1
+        && adapter.operations
+            == [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Protect,
+                FakeNativeAdapterOperation::Synchronize,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        Ok(())
+    } else {
+        Err(format!("fused transaction result drifted on {isa:?}"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_transaction_applies_both_isas() -> Result<(), String> {
+    assert_fused_transaction_applied(HostIsa::X86_64, 760, 0x14_0000)?;
+    assert_fused_transaction_applied(HostIsa::AArch64, 761, 0x15_0000)
+}
+
+#[test]
+fn fused_direct_sequence_transaction_guard_miss_releases() -> Result<(), String>
+{
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(762)?,
+        native_executable_address(0x16_0000)?,
+    );
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::GuardMiss);
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let prepared = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("fused guard transaction prepare: {error}"))?;
+    let outcome = execute_verified_direct_fused_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    )
+    .map_err(|error| format!("fused guard transaction: {error}"))?;
+    if outcome == NativeRegionInvocationOutcome::GuardMiss
+        && memory == fixture.initial_memory
+        && output == fixture.initial_output
+        && runner.calls == 1
+        && adapter.operations.last()
+            == Some(&FakeNativeAdapterOperation::Release)
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused guard transaction drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_transaction_load_failure_restores()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(763)?,
+        native_executable_address(0x17_0000)?,
+    )
+    .with_failure(FakeNativeAdapterOperation::Copy);
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let prepared = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("fused load-failure prepare: {error}"))?;
+    let Err(error) = execute_verified_direct_fused_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from("fused transaction ignored load failure"));
+    };
+    if error.phase() == NativeExecutableExecutionPhase::Load
+        && error.load_failure().map(NativeExecutableLoadFailure::phase)
+            == Some(NativeExecutableLoadPhase::Copy)
+        && error.committed_outcome().is_none()
+        && error.release_failure().is_none()
+        && runner.calls == 0
+        && memory == fixture.initial_memory
+        && output == fixture.initial_output
+        && adapter.operations
+            == [
+                FakeNativeAdapterOperation::Allocate,
+                FakeNativeAdapterOperation::Copy,
+                FakeNativeAdapterOperation::Release,
+            ]
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused transaction load failure drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_transaction_runner_cleanup_retries()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(764)?,
+        native_executable_address(0x18_0000)?,
+    )
+    .with_release_failures(1);
+    let mut runner = FakeDirectFusedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let prepared = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("fused runner cleanup prepare: {error}"))?;
+    let Err(error) = execute_verified_direct_fused_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from("fused runner failure was ignored"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Run
+        || error.runner_error() != Some(&FakeNativeRunnerError::Call)
+        || error.committed_outcome().is_some()
+        || error.release_failure().is_none()
+        || memory != fixture.initial_memory
+        || output != fixture.initial_output
+    {
+        return Err(String::from("fused runner cleanup evidence drifted"));
+    }
+    let request = error.release_request().ok_or_else(|| {
+        String::from("fused runner cleanup release request missing")
+    })?;
+    let failure = (*error).into_release_failure().ok_or_else(|| {
+        String::from("fused runner cleanup retry state missing")
+    })?;
+    if failure.executable().release_request() != request {
+        return Err(String::from("fused cleanup executable identity drifted"));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|retry| format!("fused runner cleanup retry: {retry}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("fused runner cleanup retry count drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_transaction_release_failure_retries()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let artifact = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let expected = NativeRegionInvocationOutcome::Applied(
+        artifact.admission().source_plan().exit(),
+    );
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(765)?,
+        native_executable_address(0x19_0000)?,
+    )
+    .with_release_failures(1);
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let prepared = PreparedDirectFusedInvocation::new(
+        &artifact,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("fused release-failure prepare: {error}"))?;
+    let Err(error) = execute_verified_direct_fused_native(
+        &mut adapter,
+        &mut runner,
+        prepared,
+    ) else {
+        return Err(String::from("fused final release failure was ignored"));
+    };
+    if error.phase() != NativeExecutableExecutionPhase::Release
+        || error.committed_outcome() != Some(expected)
+        || error.release_failure().is_none()
+        || memory != fixture.final_memory
+        || output != fixture.final_output
+        || runner.calls != 1
+    {
+        return Err(String::from("fused committed release evidence drifted"));
+    }
+    let request = error.release_request().ok_or_else(|| {
+        String::from("fused committed release request missing")
+    })?;
+    let failure = (*error).into_release_failure().ok_or_else(|| {
+        String::from("fused committed release retry state missing")
+    })?;
+    if failure.executable().release_request() != request {
+        return Err(String::from("fused committed retry identity drifted"));
+    }
+    failure
+        .retry(&mut adapter)
+        .map_err(|retry| format!("fused committed release retry: {retry}"))?;
+    if adapter.release_attempts == 2 {
+        Ok(())
+    } else {
+        Err(String::from("fused committed release retry count drifted"))
     }
 }
 

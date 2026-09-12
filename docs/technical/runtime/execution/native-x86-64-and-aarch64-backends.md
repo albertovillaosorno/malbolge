@@ -343,8 +343,14 @@ whole-region entry before failing.
 A dedicated fused runner now accepts only that bound whole-region view. Loaded
 execution performs no adapter work, admits exact Applied or GuardMiss outcomes,
 and restores the complete region entry on runner or completion failure while
-retaining exact Bind/Run/Complete failure evidence. One-shot fused
-load/call/release orchestration remains absent.
+retaining exact Bind/Run/Complete failure evidence.
+
+One-shot fused orchestration now composes exact load, bind, run, completion, and
+release. Load or call failure restores the complete region entry and retains
+cleanup failure independently from the primary cause. Final-release failure
+preserves the committed Applied or GuardMiss outcome plus the exact ready
+mapping
+for retry. Reusable fused ownership and cache authority remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied

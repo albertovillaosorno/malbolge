@@ -433,8 +433,14 @@ state pointer; image mismatch restores the complete region entry before failing.
 A dedicated `DirectFusedNativeRunner` now receives only that bound whole-region
 view. Loaded execution performs no memory-adapter work, admits exact Applied or
 GuardMiss outcomes, and restores the complete region entry on runner or
-completion failure. A one-shot fused load/call/release transaction remains
-absent.
+completion failure.
+
+One-shot fused orchestration now composes exact load, bind, run, completion, and
+release. Load/call failure restores the complete region entry and retains
+cleanup
+failure separately from the primary cause; final-release failure preserves the
+committed Applied or GuardMiss outcome plus the exact ready mapping for retry.
+Reusable fused ownership and cache authority remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

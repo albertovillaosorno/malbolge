@@ -220,8 +220,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A dedicated fused runner now receives only that bound whole-region view.
   Loaded execution performs no adapter work, preserves exact Bind/Run/Complete
   failure evidence, and restores the complete region entry after runner or
-  completion failure. One-shot fused load/call/release orchestration remains
-  absent.
+  completion failure.
+
+  One-shot fused orchestration now composes exact load, bind, run, completion,
+  and release. Pre-commit failure restores the full region entry while keeping
+  cleanup failure separate; final-release failure preserves the committed
+  outcome and exact ready mapping for retry. Reusable fused ownership and cache
+  authority remain absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

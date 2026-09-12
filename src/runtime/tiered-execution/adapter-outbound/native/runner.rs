@@ -55,13 +55,15 @@ use super::lifecycle::{
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
 };
 use super::platform::{
-    NativeExecutableLoadFailure, NativeExecutableMemoryAdapter,
-    NativeExecutableReleaseFailure,
+    DirectFusedNativeExecutableReleaseFailure, NativeExecutableLoadFailure,
+    NativeExecutableMemoryAdapter, NativeExecutableReleaseFailure,
     RegisterMaskedNativeExecutableReleaseFailure,
     RegisterMaskedNonGraphicalNativeExecutableReleaseFailure,
-    load_native_executable, load_register_masked_native_executable,
+    load_direct_fused_native_executable, load_native_executable,
+    load_register_masked_native_executable,
     load_register_masked_non_graphical_native_executable,
-    release_native_executable, release_register_masked_native_executable,
+    release_direct_fused_native_executable, release_native_executable,
+    release_register_masked_native_executable,
     release_register_masked_non_graphical_native_executable,
 };
 
@@ -193,6 +195,37 @@ pub type RegisterMaskedNonGraphicalLoadedExecutionResult<RunnerError> = Result<
     NativeRegionInvocationOutcome,
     Box<RegisterMaskedNonGraphicalLoadedExecutionFailure<RunnerError>>,
 >;
+
+#[derive(Debug, Eq, PartialEq)]
+enum DirectFusedNativeExecutionFailureCause<MemoryError, RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(DirectFusedInvocationError),
+    Load(Box<NativeExecutableLoadFailure<MemoryError>>),
+    Release(NativeRegionInvocationOutcome),
+    Runner(Box<RunnerError>),
+}
+
+/// Phase-tagged fused transaction failure with cleanup and commit evidence.
+#[derive(Debug, Eq, PartialEq)]
+pub struct DirectFusedNativeExecutionFailure<MemoryError, RunnerError> {
+    cause: DirectFusedNativeExecutionFailureCause<MemoryError, RunnerError>,
+    phase: NativeExecutableExecutionPhase,
+    release_failure:
+        Option<Box<DirectFusedNativeExecutableReleaseFailure<MemoryError>>>,
+    release_request: Option<NativeExecutableReleaseRequest>,
+}
+
+/// Result of one complete fused load/call/admission/release transaction.
+pub type DirectFusedNativeExecutionResult<MemoryError, RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<DirectFusedNativeExecutionFailure<MemoryError, RunnerError>>,
+>;
+
+type DirectFusedNativeAdapterExecutionResult<MemoryAdapter, Runner> =
+    DirectFusedNativeExecutionResult<
+        <MemoryAdapter as NativeExecutableMemoryAdapter>::Error,
+        <Runner as DirectFusedNativeRunner>::Error,
+    >;
 
 #[derive(Debug, Eq, PartialEq)]
 enum NonGraphicalNativeExecutionFailureCause<MemoryError, RunnerError> {
@@ -704,6 +737,32 @@ impl<RunnerError> NativeLoadedExecutionFailure<RunnerError> {
     }
 }
 
+impl<RunnerError> DirectFusedNativeCallFailure<RunnerError> {
+    fn into_cause<MemoryError>(
+        self,
+    ) -> DirectFusedNativeExecutionFailureCause<MemoryError, RunnerError> {
+        match self {
+            Self::Binding(error) => {
+                DirectFusedNativeExecutionFailureCause::Binding(error)
+            },
+            Self::Completion(error) => {
+                DirectFusedNativeExecutionFailureCause::Completion(error)
+            },
+            Self::Runner(error) => {
+                DirectFusedNativeExecutionFailureCause::Runner(error)
+            },
+        }
+    }
+
+    const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match self {
+            Self::Binding(_) => NativeExecutableExecutionPhase::Bind,
+            Self::Completion(_) => NativeExecutableExecutionPhase::Complete,
+            Self::Runner(_) => NativeExecutableExecutionPhase::Run,
+        }
+    }
+}
+
 impl<RunnerError> RegisterMaskedNativeCallFailure<RunnerError> {
     fn into_cause<MemoryError>(
         self,
@@ -779,6 +838,117 @@ impl<RunnerError> NativeExecutableCallFailure<RunnerError> {
             Self::Binding(_) => NativeExecutableExecutionPhase::Bind,
             Self::Completion(_) => NativeExecutableExecutionPhase::Complete,
             Self::Runner(_) => NativeExecutableExecutionPhase::Run,
+        }
+    }
+}
+
+impl<MemoryError, RunnerError>
+    DirectFusedNativeExecutionFailure<MemoryError, RunnerError>
+{
+    /// Returns exact ready-image binding failure, when identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            DirectFusedNativeExecutionFailureCause::Binding(error) => {
+                Some(*error)
+            },
+            DirectFusedNativeExecutionFailureCause::Completion(_)
+            | DirectFusedNativeExecutionFailureCause::Load(_)
+            | DirectFusedNativeExecutionFailureCause::Release(_)
+            | DirectFusedNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Returns the outcome committed before final fused release failed.
+    #[must_use]
+    pub const fn committed_outcome(
+        &self,
+    ) -> Option<NativeRegionInvocationOutcome> {
+        match &self.cause {
+            DirectFusedNativeExecutionFailureCause::Release(outcome) => {
+                Some(*outcome)
+            },
+            DirectFusedNativeExecutionFailureCause::Binding(_)
+            | DirectFusedNativeExecutionFailureCause::Completion(_)
+            | DirectFusedNativeExecutionFailureCause::Load(_)
+            | DirectFusedNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Returns fused completion failure after the runner returned.
+    #[must_use]
+    pub const fn completion_error(&self) -> Option<DirectFusedInvocationError> {
+        match &self.cause {
+            DirectFusedNativeExecutionFailureCause::Completion(error) => {
+                Some(*error)
+            },
+            DirectFusedNativeExecutionFailureCause::Binding(_)
+            | DirectFusedNativeExecutionFailureCause::Load(_)
+            | DirectFusedNativeExecutionFailureCause::Release(_)
+            | DirectFusedNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Consumes this failure and returns retryable fused mapping cleanup.
+    #[must_use]
+    pub fn into_release_failure(
+        self,
+    ) -> Option<DirectFusedNativeExecutableReleaseFailure<MemoryError>> {
+        self.release_failure.map(|failure| *failure)
+    }
+
+    /// Returns fused executable loading failure, when no ready image was made.
+    #[must_use]
+    pub const fn load_failure(
+        &self,
+    ) -> Option<&NativeExecutableLoadFailure<MemoryError>> {
+        match &self.cause {
+            DirectFusedNativeExecutionFailureCause::Load(error) => Some(error),
+            DirectFusedNativeExecutionFailureCause::Binding(_)
+            | DirectFusedNativeExecutionFailureCause::Completion(_)
+            | DirectFusedNativeExecutionFailureCause::Release(_)
+            | DirectFusedNativeExecutionFailureCause::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact fused transaction phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        self.phase
+    }
+
+    /// Returns failed cleanup retaining the fused ready executable for retry.
+    #[must_use]
+    pub const fn release_failure(
+        &self,
+    ) -> Option<&DirectFusedNativeExecutableReleaseFailure<MemoryError>> {
+        match &self.release_failure {
+            Some(error) => Some(error),
+            None => None,
+        }
+    }
+
+    /// Returns the exact mapping release request attempted after loading.
+    #[must_use]
+    pub const fn release_request(
+        &self,
+    ) -> Option<NativeExecutableReleaseRequest> {
+        self.release_request
+    }
+
+    /// Returns external fused runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            DirectFusedNativeExecutionFailureCause::Runner(error) => {
+                Some(error)
+            },
+            DirectFusedNativeExecutionFailureCause::Binding(_)
+            | DirectFusedNativeExecutionFailureCause::Completion(_)
+            | DirectFusedNativeExecutionFailureCause::Load(_)
+            | DirectFusedNativeExecutionFailureCause::Release(_) => None,
         }
     }
 }
@@ -1127,6 +1297,39 @@ impl<MemoryError, RunnerError>
     }
 }
 
+impl<MemoryError: Display, RunnerError: Display> Display
+    for DirectFusedNativeExecutionFailure<MemoryError, RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "fused native execution failed during {}: ", self.phase)?;
+        match &self.cause {
+            DirectFusedNativeExecutionFailureCause::Binding(error) => {
+                write!(f, "binding: {error}")?;
+            },
+            DirectFusedNativeExecutionFailureCause::Completion(error) => {
+                write!(f, "completion: {error}")?;
+            },
+            DirectFusedNativeExecutionFailureCause::Load(error) => {
+                write!(f, "loading: {error}")?;
+            },
+            DirectFusedNativeExecutionFailureCause::Release(outcome) => {
+                let label = match outcome {
+                    NativeRegionInvocationOutcome::Applied(_) => "applied",
+                    NativeRegionInvocationOutcome::GuardMiss => "guard-miss",
+                };
+                write!(f, "committed {label} outcome could not release")?;
+            },
+            DirectFusedNativeExecutionFailureCause::Runner(error) => {
+                write!(f, "runner: {error}")?;
+            },
+        }
+        if let Some(release_failure) = &self.release_failure {
+            write!(f, "; {release_failure}")?;
+        }
+        Ok(())
+    }
+}
+
 impl<RunnerError: Display> Display
     for DirectFusedLoadedExecutionFailure<RunnerError>
 {
@@ -1410,6 +1613,80 @@ fn non_graphical_load_failure<MemoryError, RunnerError>(
         phase: NativeExecutableExecutionPhase::Load,
         release_failure: None,
         release_request,
+    }
+}
+
+fn direct_fused_load_failure<MemoryError, RunnerError>(
+    error: NativeExecutableLoadFailure<MemoryError>,
+) -> DirectFusedNativeExecutionFailure<MemoryError, RunnerError> {
+    let release_request = error.release_request();
+    DirectFusedNativeExecutionFailure {
+        cause: DirectFusedNativeExecutionFailureCause::Load(Box::new(error)),
+        phase: NativeExecutableExecutionPhase::Load,
+        release_failure: None,
+        release_request,
+    }
+}
+
+/// Loads, binds, runs, admits, and releases one fused whole-region call.
+///
+/// Load/call failures restore the complete prepared region entry and attempt
+/// exact mapping cleanup. A release failure after a committed result retains
+/// both the outcome and exact ready fused executable for retry.
+///
+/// # Errors
+///
+/// Returns [`DirectFusedNativeExecutionFailure`] with phase-specific primary
+/// and cleanup evidence.
+pub fn execute_verified_direct_fused_native<MemoryAdapter, Runner>(
+    memory_adapter: &mut MemoryAdapter,
+    runner: &mut Runner,
+    prepared: PreparedDirectFusedInvocation<'_, '_>,
+) -> DirectFusedNativeAdapterExecutionResult<MemoryAdapter, Runner>
+where
+    MemoryAdapter: NativeExecutableMemoryAdapter,
+    Runner: DirectFusedNativeRunner,
+{
+    let executable = match load_direct_fused_native_executable(
+        memory_adapter,
+        prepared.load_image(),
+    ) {
+        Ok(executable) => executable,
+        Err(error) => {
+            prepared.abort();
+            return Err(Box::new(direct_fused_load_failure(error)));
+        },
+    };
+    let release_request = executable.release_request();
+    let outcome = match run_direct_fused_prepared(runner, &executable, prepared)
+    {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let phase = error.phase();
+            let release_failure = release_direct_fused_native_executable(
+                memory_adapter,
+                executable,
+            )
+            .err()
+            .map(Box::new);
+            return Err(Box::new(DirectFusedNativeExecutionFailure {
+                cause: error.into_cause(),
+                phase,
+                release_failure,
+                release_request: Some(release_request),
+            }));
+        },
+    };
+    match release_direct_fused_native_executable(memory_adapter, executable) {
+        Ok(()) => Ok(outcome),
+        Err(release_failure) => {
+            Err(Box::new(DirectFusedNativeExecutionFailure {
+                cause: DirectFusedNativeExecutionFailureCause::Release(outcome),
+                phase: NativeExecutableExecutionPhase::Release,
+                release_failure: Some(Box::new(release_failure)),
+                release_request: Some(release_request),
+            }))
+        },
     }
 }
 
