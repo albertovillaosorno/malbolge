@@ -362,8 +362,14 @@ A distinct single-resident fused lease cache now shares that exact owner through
 immutable `Arc` leases. Exact artifact hits perform no adapter work, different
 identity cannot replace the occupied slot, live leases block release, failed
 load publishes nothing, and failed release transfers the exact ready mapping for
-retry. Multi-entry fused eviction/retirement, reconfiguration, and sequence
-ownership remain absent.
+retry.
+
+A separate fixed-limit fused lease cache now keeps multiple exact owners under
+entry, mapping, and mapped-byte limits. Hits preserve FIFO age without adapter
+work; misses evict oldest unleased residents, while live leases stay active and
+charged and blocked candidates clean themselves. Explicit drain and eviction
+failure transfer exact keyed retry ownership. Retirement, invalidation, dynamic
+reconfiguration, and fused sequence ownership remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied

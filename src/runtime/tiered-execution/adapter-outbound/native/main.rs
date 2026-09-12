@@ -46,6 +46,7 @@ mod executable_cache;
 mod executable_cache_capacity;
 mod executable_lease_cache;
 mod executable_sequence;
+mod fused_lease_cache;
 mod fused_resident;
 mod fused_resident_cache;
 mod fused_sequence;
@@ -258,6 +259,20 @@ pub use executable_sequence::{
     load_verified_native_sequence,
     release_execution_geometry_native_executable_sequence,
     release_native_executable_sequence,
+};
+pub use fused_lease_cache::{
+    DirectFusedNativeLease, DirectFusedNativeLeaseCache,
+    DirectFusedNativeLeaseCacheAcquisition, DirectFusedNativeLeaseCacheBlock,
+    DirectFusedNativeLeaseCacheCapacityError,
+    DirectFusedNativeLeaseCacheDisposition,
+    DirectFusedNativeLeaseCacheEntryReleaseFailure,
+    DirectFusedNativeLeaseCacheLimits, DirectFusedNativeLeaseCacheLoadFailure,
+    DirectFusedNativeLeaseCacheLoadReleaseFailures,
+    DirectFusedNativeLeaseCacheLoadResult,
+    DirectFusedNativeLeaseCacheReleaseFailure,
+    DirectFusedNativeLeaseCacheReleaseResult,
+    DirectFusedNativeLeaseCacheReleaseSummary,
+    DirectFusedNativeLeaseCacheUsage,
 };
 pub use fused_resident::{
     DirectFusedNativeExecutableOwner, DirectFusedNativeOwnerExecutionFailure,

@@ -448,12 +448,19 @@ reusable; resident weight comes from the platform mapping, and explicit release
 retains exact retry ownership.
 
 `DirectFusedNativeResidentLeaseCache` adds one exact process-local resident
-slot.
-Exact artifact hits clone immutable `Arc` leases without adapter work, a
+slot. Exact artifact hits clone immutable `Arc` leases without adapter work, a
 different artifact cannot replace the resident implicitly, live leases block
 release, failed load publishes nothing, and failed release transfers exact ready
-retry ownership. Multi-entry fused eviction/retirement, reconfiguration, and
-sequence ownership remain absent.
+retry ownership.
+
+`DirectFusedNativeLeaseCache` adds fixed weighted multi-entry residency. Exact
+hits preserve FIFO age without adapter work; misses evict the oldest unleased
+resident until entry/mapping/byte limits fit. Live leases remain active and
+charged, and blocked candidates clean themselves. Explicit drain and eviction
+failure return exact keyed retry ownership.
+
+Retirement, invalidation, dynamic reconfiguration, and fused sequence ownership
+remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

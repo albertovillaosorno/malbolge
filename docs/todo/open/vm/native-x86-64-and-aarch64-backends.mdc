@@ -235,8 +235,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   A distinct single-resident fused lease cache shares that owner only on exact
   artifact hits, with no adapter work. Different identity cannot replace the
   slot, live leases block release, failed load publishes nothing, and failed
-  release transfers exact retry ownership. Multi-entry fused eviction,
-  retirement, reconfiguration, and sequence ownership remain absent.
+  release transfers exact retry ownership.
+
+  A separate fixed-limit fused lease cache now keeps multiple exact owners under
+  entry, mapping, and mapped-byte limits. Exact hits preserve FIFO age; misses
+  evict oldest unleased residents while live leases remain active and charged.
+  Blocked candidates clean themselves, and eviction/drain failures preserve
+  keyed retry ownership. Retirement, invalidation, dynamic reconfiguration, and
+  fused sequence ownership remain absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only
