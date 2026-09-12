@@ -222,13 +222,13 @@ use execution_native::{
     DirectExecutionGeometryInputError, DirectExecutionGeometryJumpDataError,
     DirectExecutionGeometryNoOperationError,
     DirectExecutionGeometryOutputError, DirectExecutionGeometryRotateError,
-    DirectFusedSequenceAdmissionError, DirectHaltFetchError,
-    DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
-    DirectInputError, DirectJumpCodeError, DirectJumpDataError,
-    DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
-    DirectOutputError, DirectRegisterMaskedHaltFetchError,
-    DirectRegisterMaskedNonGraphicalError, DirectRotateError,
-    DirectSelectionError, DirectSequenceError,
+    DirectFusedSequenceAdmissionError, DirectFusedSequenceObjectError,
+    DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
+    DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
+    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
+    DirectNonGraphicalError, DirectOutputError,
+    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
+    DirectRotateError, DirectSelectionError, DirectSequenceError,
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError,
     ExecutionGeometryLoadedSequenceAdmissionError,
@@ -332,7 +332,7 @@ use execution_native::{
     emit_direct_non_graphical_coff, emit_direct_output_coff,
     emit_direct_register_masked_halt_fetch_coff,
     emit_direct_register_masked_non_graphical_coff, emit_direct_rotate_coff,
-    execute_cached_verified_native_sequence,
+    emit_fused_direct_sequence_coff, execute_cached_verified_native_sequence,
     execute_loaded_cached_verified_native_sequence,
     execute_loaded_register_masked_non_graphical_native_sequence,
     execute_loaded_verified_execution_geometry_native,
@@ -378,6 +378,7 @@ use execution_native::{
     verify_direct_no_operation, verify_direct_non_graphical,
     verify_direct_output, verify_direct_register_masked_halt_fetch,
     verify_direct_register_masked_non_graphical, verify_direct_rotate,
+    verify_fused_direct_sequence,
 };
 use geometry_interpreter_handoff::{
     ExecutionGeometryContinuationAdmissionError,
@@ -13759,6 +13760,74 @@ fn fused_direct_sequence_keeps_host_identity_out_of_portable_region()
     } else {
         Ok(())
     }
+}
+
+#[test]
+fn fused_direct_sequence_emits_and_verifies_both_isas() -> Result<(), String> {
+    let programs = direct_normative_sequence_programs()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("fused source select: {error}"))?;
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("fused identity admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("fused emit: {error}"))?;
+        let verified = verify_fused_direct_sequence(&candidate, &admission)
+            .map_err(|error| format!("fused verify: {error}"))?;
+        if candidate.key() != admission.key()
+            || verified.key() != admission.key()
+            || verified.admission() != &admission
+            || verified.object() != candidate.object()
+            || verified.target_triple() != candidate.target_triple()
+            || verified.object().is_empty()
+        {
+            return Err(String::from(
+                "fused candidate lost exact identity or verification evidence",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_verifier_rejects_text_drift() -> Result<(), String> {
+    const TEXT_START: usize = 20 + (2 * 40);
+    let programs = direct_normative_sequence_programs()?;
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let plan = select_verified_direct_sequence(
+            &programs,
+            safe_rust_profiled_capability(),
+            HostOperatingSystem::Windows,
+            isa,
+        )
+        .map_err(|error| format!("fused drift source: {error}"))?;
+        let admission = admit_fused_direct_sequence(&plan)
+            .map_err(|error| format!("fused drift admit: {error}"))?;
+        let candidate = emit_fused_direct_sequence_coff(&admission)
+            .map_err(|error| format!("fused drift emit: {error}"))?;
+        let mut object = candidate.object().to_vec();
+        let byte = object
+            .get_mut(TEXT_START)
+            .ok_or_else(|| String::from("fused COFF omitted text bytes"))?;
+        *byte ^= 1;
+        let changed = UntrustedNativeObjectArtifact::from_emitter_output(
+            candidate.key().clone(),
+            object,
+            candidate.target_triple(),
+        );
+        let result = verify_fused_direct_sequence(&changed, &admission);
+        if result != Err(DirectFusedSequenceObjectError::ObjectBytes) {
+            return Err(String::from(
+                "fused byte verifier accepted structurally valid text drift",
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[test]

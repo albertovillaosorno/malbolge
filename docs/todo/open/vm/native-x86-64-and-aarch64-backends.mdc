@@ -187,9 +187,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   deopt and partial sequences fail closed.
 
   A fused admission boundary now derives one canonical multieffect region with
-  dependency-aware entry live-ins,
-  a distinct region-wide artifact key, and retained source-plan/sequence-key
-  provenance. It rejects single-step aliasing and emits no fused object bytes.
+  dependency-aware entry live-ins, a distinct region-wide artifact key, and
+  retained source-plan/sequence-key provenance. It rejects single-step aliasing.
+
+  The retained rotate/output region now emits one atomic reviewed x86-64 or
+  AArch64 COFF candidate whose complete guard set precedes every store. Semantic
+  promotion reconstructs admission, structurally admits COFF, regenerates the
+  canonical object, and rejects text-byte drift. Fused load/invocation authority
+  remains absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

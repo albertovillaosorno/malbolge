@@ -115,10 +115,9 @@ impl Display for DirectFusedSequenceAdmissionError {
                 "fused direct sequence memory dependency at step {index}, \
                  address {address}",
             ),
-            Self::SequenceLength { steps } => write!(
-                f,
-                "fused direct sequence requires two steps; received {steps}",
-            ),
+            Self::SequenceLength { steps } => {
+                write!(f, "fused direct sequence has {steps} source steps")
+            },
             Self::ProgramShape { index } => write!(
                 f,
                 "fused direct sequence lost one-step shape at step {index}",
@@ -223,7 +222,7 @@ fn admit_write(
 ) -> Result<(), DirectFusedSequenceAdmissionError> {
     if current
         .get(&write.address)
-        .is_some_and(|value| *value != write.before)
+        .is_none_or(|value| *value != write.before)
     {
         return Err(DirectFusedSequenceAdmissionError::MemoryDependency {
             address: write.address,

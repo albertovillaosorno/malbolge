@@ -39,6 +39,7 @@ mod artifact;
 mod coff;
 mod emit;
 mod error;
+mod fused;
 mod plan;
 mod sequence;
 mod shape;
@@ -87,6 +88,7 @@ use emit::{
     emit_direct_output_with_key, emit_direct_rotate_with_key,
 };
 pub use error::*;
+pub use fused::*;
 use malbolge::{
     EFFECT_IR_EXECUTION_GEOMETRY_VERSION, EFFECT_IR_REGISTER_MASK_VERSION,
     EffectOp, ExecutionGeometryRegionEffectProgram, MemoryLiveIn,
@@ -391,6 +393,15 @@ pub(super) struct DirectRotateCommit {
     pub(super) encrypted_value: u32,
     pub(super) next_code_pointer: u32,
     pub(super) next_data_pointer: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) struct DirectFusedRotateOutputTemplate<'live_ins> {
+    pub(super) live_ins: &'live_ins [MemoryLiveIn],
+    pub(super) observation: DirectEntryObservation,
+    pub(super) output: DirectOutputCommit,
+    pub(super) required_memory_words: u64,
+    pub(super) rotate: DirectRotateCommit,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

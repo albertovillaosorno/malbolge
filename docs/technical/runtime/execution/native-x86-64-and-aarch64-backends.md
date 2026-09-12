@@ -305,12 +305,17 @@ is selected. The retained rotate/output fixture yields two reviewed artifacts on
 both ISAs and rejects empty, discontinuous, profile-mixed, hidden-deopt, and
 post-termination sequences.
 
-`DirectFusedSequenceAdmission` can now derive one canonical multieffect region
-from that already verified plan. Ordered memory
-evidence becomes exact region-entry live-ins; a distinct revision-1 fused target
-binds the region-wide `NativeArtifactKey` while the complete source plan and
-ordered `NativeExecutableSequenceKey` remain provenance. Single-step plans are
-rejected, and no fused object bytes or fused-object verifier exist yet.
+`DirectFusedSequenceAdmission` derives one canonical multieffect region from
+that already verified plan. Ordered memory evidence becomes exact region-entry
+live-ins; a distinct revision-1 fused target binds the region-wide
+`NativeArtifactKey`, while the complete source plan and ordered sequence key
+remain provenance. Single-step plans are rejected.
+
+The first fused emitter covers the retained rotate/output region on x86-64 and
+AArch64. Every fused guard completes before the first store, and independent
+semantic promotion reconstructs admission, structurally admits COFF, rebuilds
+canonical bytes, and rejects text-byte drift. Fused loading and invocation are
+still absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -484,12 +489,15 @@ branch chain, or a concrete foreign-call shim.
 
 This does not complete this TODO. The bootstrap deliberately delegates
 instruction selection to Clang and stores compiler output only as an
-`UntrustedNativeObjectArtifact`. Clang-produced structurally admitted COFF
-remains semantically untrusted. Reviewed direct terminal, no-op, jump-code,
+`UntrustedNativeObjectArtifact`.
+
+Clang-produced structurally admitted COFF remains semantically untrusted.
+Reviewed direct terminal, no-op, jump-code,
 jump-data, rotate, crazy, input, and output emitters/verifiers are
-implemented for both ISAs; fused-region emission,
-executable loading, the unsafe foreign-call boundary, runtime integration, and
-instruction-cache synchronization remain unimplemented.
+implemented for both ISAs; the first atomic fused rotate/output object is also
+emitted and independently verified on both ISAs. Wider fused-template coverage,
+fused loading/invocation, concrete executable-memory and foreign-call adapters,
+runtime integration, and instruction-cache synchronization remain incomplete.
 
 ## Invariants
 
