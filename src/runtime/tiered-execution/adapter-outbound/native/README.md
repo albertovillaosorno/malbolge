@@ -423,8 +423,14 @@ ready executable for retry.
 borrowing caller buffers, validates the whole region entry, and replays every
 ordered effect into the only accepted final state/memory/output snapshots. Exact
 application and mutation-free guard miss are admitted; every rejected completion
-restores the complete region entry. Executable binding, runner, and execution
-transaction authority remain absent.
+restores the complete region entry.
+
+Exact `VerifiedDirectFusedLoadImage` equality now binds that prepared call to
+one
+synchronized `ReadyDirectFusedNativeExecutable`. The bound view exposes only the
+exact entry address, mapping identity, executable evidence, and borrowed ABI
+state pointer; image mismatch restores the complete region entry before failing.
+Fused runner and execution-transaction authority remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

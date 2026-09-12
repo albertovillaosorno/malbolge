@@ -212,8 +212,10 @@ synchronization, and hardening remain adapters rather than VM semantics.
   completion must match that complete region result; guard miss is atomic, and
   every rejected completion restores the full region entry.
 
-  Fused executable binding, runner, and execution transaction authority remain
-  absent.
+  Exact fused load-image equality now binds that prepared call to one
+  synchronized ready executable. The bound view exposes only exact entry/mapping
+  identity plus the borrowed ABI state pointer; mismatch restores the complete
+  region entry. Fused runner and execution transaction authority remain absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

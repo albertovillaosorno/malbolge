@@ -333,8 +333,12 @@ from retained verified one-step provenance, validates whole-region entry
 live-ins and capacity, and sequentially derives exact final memory, output, and
 ABI state from every fused effect. Applied completion must match that complete
 region snapshot; guard miss must preserve the complete entry, and every rejected
-completion rolls back atomically. Executable binding and fused runner authority
-remain absent.
+completion rolls back atomically.
+
+Exact fused load-image equality now binds that prepared call to one synchronized
+ready fused executable. The bound view retains only exact mapping/entry evidence
+and the borrow-scoped ABI state pointer; image mismatch restores the complete
+whole-region entry before failing. Fused runner authority remains absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied

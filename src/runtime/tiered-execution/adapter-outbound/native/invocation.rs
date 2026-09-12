@@ -60,8 +60,9 @@ use super::fused_sequence::{
     DirectFusedSequenceAdmissionError, admit_fused_direct_sequence,
 };
 use super::lifecycle::{
-    NativeExecutableMappingId, ReadyExecutionGeometryNativeExecutable,
-    ReadyNativeExecutable, ReadyRegisterMaskedNativeExecutable,
+    NativeExecutableMappingId, ReadyDirectFusedNativeExecutable,
+    ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
+    ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
 };
 use super::loader::{
@@ -306,6 +307,16 @@ pub struct PreparedRegisterMaskedNonGraphicalInvocation<'artifact, 'buffers> {
     load_image: VerifiedRegisterMaskedNonGraphicalLoadImage,
 }
 
+/// Bound view of one exact fused whole-region call and synchronized mapping.
+///
+/// No runner consumes this type yet. It proves only exact fused image identity
+/// plus one borrow-scoped multieffect ABI call contract.
+#[derive(Debug)]
+pub struct PreparedDirectFusedNativeInvocation<'buffers, 'executable> {
+    executable: &'executable ReadyDirectFusedNativeExecutable,
+    invocation: PreparedNativeRegionInvocation<'buffers>,
+}
+
 /// Runner-facing view of one checkpoint-bound explicit-geometry call.
 ///
 /// Construction and completion are crate-owned so the public runner port cannot
@@ -529,6 +540,31 @@ impl<'artifact, 'buffers> PreparedDirectFusedInvocation<'artifact, 'buffers> {
     #[must_use]
     pub const fn artifact(&self) -> &VerifiedDirectFusedSequenceObjectArtifact {
         self.artifact
+    }
+
+    /// Binds this exact fused call to one synchronized executable image.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableInvocationBindingError`] when executable image
+    /// identity differs. Failure restores the complete whole-region entry.
+    pub fn bind_executable<'executable>(
+        self,
+        executable: &'executable ReadyDirectFusedNativeExecutable,
+    ) -> Result<
+        PreparedDirectFusedNativeInvocation<'buffers, 'executable>,
+        NativeExecutableInvocationBindingError,
+    > {
+        if self.load_image() != executable.image() {
+            self.abort();
+            return Err(
+                NativeExecutableInvocationBindingError::ExecutableIdentity,
+            );
+        }
+        Ok(PreparedDirectFusedNativeInvocation::new(
+            executable,
+            self.invocation,
+        ))
     }
 
     /// Admits one raw status through the exact whole-region call contract.
@@ -1083,6 +1119,59 @@ impl PreparedRegisterMaskedNativeInvocation<'_, '_> {
     }
 
     /// Simulates one foreign guest-memory mutation for rollback tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn write_memory_for_test(
+        &mut self,
+        address: usize,
+        value: u32,
+    ) -> bool {
+        self.invocation.write_memory_for_test(address, value)
+    }
+}
+
+impl<'buffers, 'executable>
+    PreparedDirectFusedNativeInvocation<'buffers, 'executable>
+{
+    /// Simulates the exact fused transition for contract tests.
+    #[cfg(test)]
+    #[doc(hidden)]
+    pub fn apply_expected_for_test(&mut self) {
+        self.invocation.apply_expected_for_test();
+    }
+
+    /// Returns the synchronized non-zero fused entrypoint.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.executable.entry_address()
+    }
+
+    /// Returns the exact synchronized fused executable retained by this view.
+    #[must_use]
+    pub const fn executable(&self) -> &ReadyDirectFusedNativeExecutable {
+        self.executable
+    }
+
+    /// Returns the exact platform mapping identity retained by this view.
+    #[must_use]
+    pub const fn mapping_id(&self) -> NativeExecutableMappingId {
+        self.executable.mapping().mapping_id()
+    }
+
+    pub(crate) const fn new(
+        executable: &'executable ReadyDirectFusedNativeExecutable,
+        invocation: PreparedNativeRegionInvocation<'buffers>,
+    ) -> Self {
+        Self { executable, invocation }
+    }
+
+    /// Returns the mutable ABI state pointer for a future dedicated runner.
+    #[must_use]
+    pub const fn state_mut_ptr(&mut self) -> *mut NativeRegionState {
+        self.invocation.state_mut_ptr()
+    }
+
+    /// Simulates one guest-memory mutation for rollback tests.
     #[cfg(test)]
     #[doc(hidden)]
     pub fn write_memory_for_test(

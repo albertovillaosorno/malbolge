@@ -13983,6 +13983,94 @@ fn fused_direct_sequence_invocation_applies_whole_region() -> Result<(), String>
 }
 
 #[test]
+fn fused_direct_sequence_binding_accepts_exact_ready() -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    for (index, isa) in
+        [HostIsa::X86_64, HostIsa::AArch64].into_iter().enumerate()
+    {
+        let artifact = verified_fused_direct_sequence_object(isa)?;
+        let image = VerifiedDirectFusedLoadImage::new(&artifact)
+            .map_err(|error| format!("fused binding image: {error}"))?;
+        let mapping_value = 740u64
+            .checked_add(
+                u64::try_from(index).map_err(|error| error.to_string())?,
+            )
+            .ok_or_else(|| String::from("fused binding mapping overflow"))?;
+        let base_value = 0xb0_000usize
+            .checked_add(index * 0x10_000)
+            .ok_or_else(|| String::from("fused binding base overflow"))?;
+        let mut adapter = FakeNativeExecutableAdapter::new(
+            native_executable_mapping_id(mapping_value)?,
+            native_executable_address(base_value)?,
+        );
+        let ready = load_direct_fused_native_executable(&mut adapter, &image)
+            .map_err(|error| format!("fused binding load: {error}"))?;
+        let operations_after_load = adapter.operations.len();
+        let mut memory = fixture.initial_memory.clone();
+        let mut output = fixture.initial_output.clone();
+        let prepared = PreparedDirectFusedInvocation::new(
+            &artifact,
+            NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+        )
+        .map_err(|error| format!("fused binding prepare: {error}"))?;
+        let mut bound = prepared
+            .bind_executable(&ready)
+            .map_err(|error| format!("fused binding failed: {error}"))?;
+        if bound.entry_address() != ready.entry_address()
+            || bound.executable() != &ready
+            || bound.mapping_id() != ready.mapping().mapping_id()
+            || bound.state_mut_ptr().is_null()
+            || adapter.operations.len() != operations_after_load
+        {
+            return Err(format!("fused bound identity drifted on {isa:?}"));
+        }
+        drop(bound);
+        release_direct_fused_native_executable(&mut adapter, ready)
+            .map_err(|error| format!("fused binding release: {error}"))?;
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_binding_rejects_different_ready() -> Result<(), String>
+{
+    let fixture = direct_normative_sequence_fixture()?;
+    let x86_artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let arm_artifact = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let arm_image = VerifiedDirectFusedLoadImage::new(&arm_artifact)
+        .map_err(|error| format!("fused mismatch image: {error}"))?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(742)?,
+        native_executable_address(0xd0_000)?,
+    );
+    let ready = load_direct_fused_native_executable(&mut adapter, &arm_image)
+        .map_err(|error| format!("fused mismatch load: {error}"))?;
+    let operations_after_load = adapter.operations.len();
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut prepared = PreparedDirectFusedInvocation::new(
+        &x86_artifact,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("fused mismatch prepare: {error}"))?;
+    prepared.apply_expected_for_test();
+    if !matches!(
+        prepared.bind_executable(&ready),
+        Err(NativeExecutableInvocationBindingError::ExecutableIdentity)
+    ) || memory != fixture.initial_memory
+        || output != fixture.initial_output
+        || adapter.operations.len() != operations_after_load
+    {
+        return Err(String::from(
+            "fused binding mismatch lost atomic entry restoration",
+        ));
+    }
+    release_direct_fused_native_executable(&mut adapter, ready)
+        .map_err(|error| format!("fused mismatch release: {error}"))?;
+    Ok(())
+}
+
+#[test]
 fn fused_direct_sequence_invocation_guard_miss_is_atomic() -> Result<(), String>
 {
     let fixture = direct_normative_sequence_fixture()?;
