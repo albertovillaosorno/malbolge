@@ -250,7 +250,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
 
   Pre-existing retired residents are never reconciled implicitly; blocked or
   failed publication keeps the previous limits plus exact blocker or keyed retry
-  evidence. Fused sequence ownership remains absent.
+  evidence.
+
+  A distinct fused-region sequence plan now reconstructs every verified fused
+  admission before admitting an ordered common-target/profile chain. Exact
+  exit-to-entry continuity, total source semantic steps, regional entry/exit,
+  and complete outcome are retained without mapping authority. Loaded fused
+  sequence ownership, execution, and release remain absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

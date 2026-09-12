@@ -467,7 +467,12 @@ through the same release-or-retire path.
 Pre-existing retired residents are never reconciled implicitly. Blocked or
 failed publication keeps the previous limits plus exact blocker or keyed retry
 evidence.
-Fused sequence ownership remains absent.
+
+A distinct fused-region sequence plan now reconstructs every retained admission
+and admits only common-target/profile chains with exact exit-to-entry
+continuity. It retains region count, source semantic-step total, exact
+entry/exit, and complete outcome before any mapping. Loaded fused sequence
+ownership, execution, and release remain absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

@@ -231,6 +231,7 @@ use execution_native::{
     DirectFusedNativeResidentCacheDisposition,
     DirectFusedNativeResidentCacheRelease, DirectFusedNativeResidentLease,
     DirectFusedNativeResidentLeaseCache, DirectFusedNativeRunner,
+    DirectFusedNativeSequencePlan, DirectFusedNativeSequencePlanError,
     DirectFusedSequenceAdmissionError, DirectFusedSequenceObjectError,
     DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
     DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
@@ -15841,6 +15842,81 @@ fn fused_direct_sequence_multi_cache_reconfiguration_skips_retired()
         Ok(())
     } else {
         Err(String::from("fused explicit reclaim drifted"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_plan_admits_single_region_both_isas()
+-> Result<(), String> {
+    for isa in [HostIsa::X86_64, HostIsa::AArch64] {
+        let artifact = verified_fused_direct_sequence_object(isa)?;
+        let source = artifact.admission().source_plan();
+        let plan = DirectFusedNativeSequencePlan::new(from_ref(&artifact))
+            .map_err(|error| format!("fused sequence plan {isa:?}: {error}"))?;
+        if plan.len() != 1
+            || plan.is_empty()
+            || plan.semantic_steps() != 2
+            || source.len() != 2
+            || plan.entry() != source.entry()
+            || plan.exit() != source.exit()
+            || plan.outcome() != source.outcome()
+            || plan.artifacts() != from_ref(&artifact)
+        {
+            return Err(format!(
+                "fused sequence plan evidence drifted: {isa:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_plan_rejects_empty() -> Result<(), String> {
+    let Err(error) = DirectFusedNativeSequencePlan::new(&[]) else {
+        return Err(String::from("empty fused sequence plan was admitted"));
+    };
+    if error == DirectFusedNativeSequencePlanError::Empty {
+        Ok(())
+    } else {
+        Err(format!("fused empty plan error drifted: {error}"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_plan_rejects_discontinuous_duplicate()
+-> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let Err(error) =
+        DirectFusedNativeSequencePlan::new(&[artifact.clone(), artifact])
+    else {
+        return Err(String::from(
+            "discontinuous fused sequence plan was admitted",
+        ));
+    };
+    if error
+        == (DirectFusedNativeSequencePlanError::ObservationChain { index: 1 })
+    {
+        Ok(())
+    } else {
+        Err(format!("fused continuity error drifted: {error}"))
+    }
+}
+
+#[test]
+fn fused_direct_sequence_plan_rejects_target_drift() -> Result<(), String> {
+    let x86 = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let arm = verified_fused_direct_sequence_object(HostIsa::AArch64)?;
+    let Err(error) = DirectFusedNativeSequencePlan::new(&[x86, arm]) else {
+        return Err(String::from(
+            "mixed-target fused sequence plan was admitted",
+        ));
+    };
+    if error
+        == (DirectFusedNativeSequencePlanError::TargetMismatch { index: 1 })
+    {
+        Ok(())
+    } else {
+        Err(format!("fused target error drifted: {error}"))
     }
 }
 

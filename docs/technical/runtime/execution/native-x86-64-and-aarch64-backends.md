@@ -377,7 +377,13 @@ shrinks active FIFO authority through the same release-or-retire path.
 
 Pre-existing retired residents are never reconciled implicitly; blocked or
 failed publication keeps the previous limits plus exact blocker or keyed retry
-evidence. Fused sequence ownership remains absent.
+evidence.
+
+A distinct fused-region sequence plan now reconstructs each verified fused
+admission before admitting an ordered common-target/profile chain. Exact
+exit-to-entry continuity, total source semantic steps, regional entry/exit, and
+the complete outcome are retained without mapping authority. Loaded fused
+sequence ownership, execution, and release remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -560,10 +566,9 @@ implemented for both ISAs; the first atomic fused rotate/output object is also
 emitted, independently verified, and extracted as a relocation-free load image
 on both ISAs, with dedicated safe lifecycle typestates, transactional platform
 loading through synchronized RX readiness, and a borrow-scoped whole-region
-prepared invocation contract. Wider fused-template coverage, fused executable
-binding/runner integration, concrete executable-memory and foreign-call
-adapters, runtime integration, and concrete instruction-cache synchronization
-remain incomplete.
+prepared invocation contract. Wider fused-template coverage, loaded multi-region
+ownership, concrete executable-memory and foreign-call adapters, runtime
+integration, and concrete instruction-cache synchronization remain incomplete.
 
 ## Invariants
 
