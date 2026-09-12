@@ -460,9 +460,14 @@ unleased victims and retiring leased victims while their exact weight remains
 charged.
 
 Explicit invalidation, full drain, lease return, and retired reconciliation end
-lookup authority without hidden reclamation. Blocked candidates clean
-up themselves, and release failures transfer exact keyed retry ownership.
-Dynamic reconfiguration and fused sequence ownership remain absent.
+lookup authority without hidden reclamation. Weighted-limit reconfiguration
+now publishes expansion without adapter work and shrinks active FIFO authority
+through the same release-or-retire path.
+
+Pre-existing retired residents are never reconciled implicitly. Blocked or
+failed publication keeps the previous limits plus exact blocker or keyed retry
+evidence.
+Fused sequence ownership remains absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

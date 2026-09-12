@@ -244,9 +244,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   charged.
 
   Explicit invalidation, full drain, lease return, and retired reconciliation
-  preserve that boundary without implicit reclamation on hit or miss. Blocked
-  candidates clean themselves, and release failures preserve keyed retry
-  ownership. Dynamic reconfiguration and fused sequence ownership remain absent.
+  preserve that boundary without implicit reclamation on hit or miss. Weighted
+  limit reconfiguration now publishes expansion without adapter work and shrinks
+  active FIFO authority through the same release-or-retire path.
+
+  Pre-existing retired residents are never reconciled implicitly; blocked or
+  failed publication keeps the previous limits plus exact blocker or keyed retry
+  evidence. Fused sequence ownership remains absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

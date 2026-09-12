@@ -372,9 +372,12 @@ weight stays charged.
 
 Explicit invalidation, full drain, lease return, and retired reconciliation
 preserve that ownership boundary without implicit reclamation on hit or miss.
-Blocked candidates clean themselves, and release failures transfer exact keyed
-retry ownership. Dynamic reconfiguration and fused sequence ownership remain
-absent.
+Weighted-limit reconfiguration now publishes expansion without adapter work and
+shrinks active FIFO authority through the same release-or-retire path.
+
+Pre-existing retired residents are never reconciled implicitly; blocked or
+failed publication keeps the previous limits plus exact blocker or keyed retry
+evidence. Fused sequence ownership remains absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
