@@ -434,7 +434,8 @@ pub use register_masked_sequence::{
     RegisterMaskedNativeSequenceReleaseResult,
 };
 pub use runner::{
-    ExecutionGeometryLoadedExecutionFailure,
+    DirectFusedLoadedExecutionFailure, DirectFusedLoadedExecutionResult,
+    DirectFusedNativeRunner, ExecutionGeometryLoadedExecutionFailure,
     ExecutionGeometryLoadedExecutionResult, ExecutionGeometryNativeRunner,
     NativeExecutableExecutionFailure, NativeExecutableExecutionPhase,
     NativeExecutableExecutionResult, NativeExecutableRunner,
@@ -447,6 +448,7 @@ pub use runner::{
     RegisterMaskedNonGraphicalNativeExecutionFailure,
     RegisterMaskedNonGraphicalNativeExecutionResult,
     RegisterMaskedNonGraphicalNativeRunner,
+    execute_loaded_verified_direct_fused_native,
     execute_loaded_verified_execution_geometry_native,
     execute_loaded_verified_native,
     execute_loaded_verified_register_masked_native,

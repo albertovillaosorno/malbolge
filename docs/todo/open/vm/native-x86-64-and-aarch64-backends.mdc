@@ -215,7 +215,13 @@ synchronization, and hardening remain adapters rather than VM semantics.
   Exact fused load-image equality now binds that prepared call to one
   synchronized ready executable. The bound view exposes only exact entry/mapping
   identity plus the borrowed ABI state pointer; mismatch restores the complete
-  region entry. Fused runner and execution transaction authority remain absent.
+  region entry.
+
+  A dedicated fused runner now receives only that bound whole-region view.
+  Loaded execution performs no adapter work, preserves exact Bind/Run/Complete
+  failure evidence, and restores the complete region entry after runner or
+  completion failure. One-shot fused load/call/release orchestration remains
+  absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

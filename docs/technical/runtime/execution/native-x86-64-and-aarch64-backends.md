@@ -338,7 +338,13 @@ completion rolls back atomically.
 Exact fused load-image equality now binds that prepared call to one synchronized
 ready fused executable. The bound view retains only exact mapping/entry evidence
 and the borrow-scoped ABI state pointer; image mismatch restores the complete
-whole-region entry before failing. Fused runner authority remains absent.
+whole-region entry before failing.
+
+A dedicated fused runner now accepts only that bound whole-region view. Loaded
+execution performs no adapter work, admits exact Applied or GuardMiss outcomes,
+and restores the complete region entry on runner or completion failure while
+retaining exact Bind/Run/Complete failure evidence. One-shot fused
+load/call/release orchestration remains absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied

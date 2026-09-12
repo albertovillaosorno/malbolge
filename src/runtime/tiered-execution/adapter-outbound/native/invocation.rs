@@ -1133,11 +1133,26 @@ impl PreparedRegisterMaskedNativeInvocation<'_, '_> {
 impl<'buffers, 'executable>
     PreparedDirectFusedNativeInvocation<'buffers, 'executable>
 {
+    /// Restores the complete whole-region entry after runner failure.
+    pub(crate) fn abort(self) {
+        self.invocation.abort();
+    }
+
     /// Simulates the exact fused transition for contract tests.
     #[cfg(test)]
     #[doc(hidden)]
     pub fn apply_expected_for_test(&mut self) {
         self.invocation.apply_expected_for_test();
+    }
+
+    /// Admits one raw status through the bound whole-region call contract.
+    pub(crate) fn complete(
+        self,
+        raw_status: i32,
+    ) -> Result<NativeRegionInvocationOutcome, DirectFusedInvocationError> {
+        self.invocation
+            .complete(raw_status)
+            .map_err(DirectFusedInvocationError::Invocation)
     }
 
     /// Returns the synchronized non-zero fused entrypoint.

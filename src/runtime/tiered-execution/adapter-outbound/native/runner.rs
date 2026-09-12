@@ -35,8 +35,10 @@
 use std::fmt::{Display, Formatter, Result as FormatResult};
 
 use super::invocation::{
-    NativeExecutableInvocationBindingError, NativeRegionInvocationError,
-    NativeRegionInvocationOutcome, PreparedExecutionGeometryNativeInvocation,
+    DirectFusedInvocationError, NativeExecutableInvocationBindingError,
+    NativeRegionInvocationError, NativeRegionInvocationOutcome,
+    PreparedDirectFusedInvocation, PreparedDirectFusedNativeInvocation,
+    PreparedExecutionGeometryNativeInvocation,
     PreparedNativeExecutableInvocation,
     PreparedRegisterMaskedHaltFetchInvocation,
     PreparedRegisterMaskedNativeInvocation,
@@ -47,8 +49,9 @@ use super::invocation::{
     VerifiedRegisterMaskedInvocationError,
 };
 use super::lifecycle::{
-    NativeExecutableReleaseRequest, ReadyExecutionGeometryNativeExecutable,
-    ReadyNativeExecutable, ReadyRegisterMaskedNativeExecutable,
+    NativeExecutableReleaseRequest, ReadyDirectFusedNativeExecutable,
+    ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
+    ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
 };
 use super::platform::{
@@ -114,6 +117,25 @@ enum NativeExecutableCallFailure<RunnerError> {
     Completion(Box<VerifiedDirectInvocationError>),
     Runner(Box<RunnerError>),
 }
+
+#[derive(Debug, Eq, PartialEq)]
+enum DirectFusedNativeCallFailure<RunnerError> {
+    Binding(NativeExecutableInvocationBindingError),
+    Completion(DirectFusedInvocationError),
+    Runner(Box<RunnerError>),
+}
+
+/// Failure while executing one verified fused call against a loaded mapping.
+#[derive(Debug, Eq, PartialEq)]
+pub struct DirectFusedLoadedExecutionFailure<RunnerError> {
+    cause: DirectFusedNativeCallFailure<RunnerError>,
+}
+
+/// Result of one loaded verified fused whole-region call.
+pub type DirectFusedLoadedExecutionResult<RunnerError> = Result<
+    NativeRegionInvocationOutcome,
+    Box<DirectFusedLoadedExecutionFailure<RunnerError>>,
+>;
 
 #[derive(Debug, Eq, PartialEq)]
 enum ExecutionGeometryNativeCallFailure<RunnerError> {
@@ -294,10 +316,39 @@ type LoadedNativeExecutionResult<'artifact, 'buffers, MemoryAdapter, Runner> =
         >,
     >;
 
+type DirectFusedNativeCallResult<Runner> = Result<
+    NativeRegionInvocationOutcome,
+    DirectFusedNativeCallFailure<<Runner as DirectFusedNativeRunner>::Error>,
+>;
+
 type NativeExecutableCallResult<Runner> = Result<
     NativeRegionInvocationOutcome,
     NativeExecutableCallFailure<<Runner as NativeExecutableRunner>::Error>,
 >;
+
+/// Caller-owned implementation of one exact fused whole-region call.
+///
+/// This port receives only a view constructed after fused semantic preparation
+/// and synchronized executable identity have both been admitted.
+pub trait DirectFusedNativeRunner {
+    /// Stable runner-specific failure.
+    type Error;
+
+    /// Calls one exact synchronized fused executable and returns its raw ABI
+    /// status.
+    ///
+    /// The implementation may inspect entry address, mapping identity, and the
+    /// mutable ABI state pointer. It must not retain borrowed state after
+    /// return.
+    ///
+    /// # Errors
+    ///
+    /// Returns the runner's stable call failure.
+    fn run(
+        &mut self,
+        invocation: &mut PreparedDirectFusedNativeInvocation<'_, '_>,
+    ) -> Result<i32, Self::Error>;
+}
 
 /// Caller-owned implementation of one checkpoint-bound v5 entrypoint call.
 ///
@@ -391,6 +442,56 @@ pub trait NativeExecutableRunner {
         &mut self,
         invocation: &mut PreparedNativeExecutableInvocation<'_, '_, '_>,
     ) -> Result<i32, Self::Error>;
+}
+
+impl<RunnerError> DirectFusedLoadedExecutionFailure<RunnerError> {
+    /// Returns exact ready-image binding failure, when identity disagreed.
+    #[must_use]
+    pub const fn binding_error(
+        &self,
+    ) -> Option<NativeExecutableInvocationBindingError> {
+        match &self.cause {
+            DirectFusedNativeCallFailure::Binding(error) => Some(*error),
+            DirectFusedNativeCallFailure::Completion(_)
+            | DirectFusedNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns fused result-admission failure after the runner returned.
+    #[must_use]
+    pub const fn completion_error(&self) -> Option<DirectFusedInvocationError> {
+        match &self.cause {
+            DirectFusedNativeCallFailure::Completion(error) => Some(*error),
+            DirectFusedNativeCallFailure::Binding(_)
+            | DirectFusedNativeCallFailure::Runner(_) => None,
+        }
+    }
+
+    /// Returns the exact call phase that failed.
+    #[must_use]
+    pub const fn phase(&self) -> NativeExecutableExecutionPhase {
+        match &self.cause {
+            DirectFusedNativeCallFailure::Binding(_) => {
+                NativeExecutableExecutionPhase::Bind
+            },
+            DirectFusedNativeCallFailure::Completion(_) => {
+                NativeExecutableExecutionPhase::Complete
+            },
+            DirectFusedNativeCallFailure::Runner(_) => {
+                NativeExecutableExecutionPhase::Run
+            },
+        }
+    }
+
+    /// Returns external runner failure, when the call mechanism failed.
+    #[must_use]
+    pub const fn runner_error(&self) -> Option<&RunnerError> {
+        match &self.cause {
+            DirectFusedNativeCallFailure::Runner(error) => Some(error),
+            DirectFusedNativeCallFailure::Binding(_)
+            | DirectFusedNativeCallFailure::Completion(_) => None,
+        }
+    }
 }
 
 impl<RunnerError> ExecutionGeometryLoadedExecutionFailure<RunnerError> {
@@ -1027,6 +1128,25 @@ impl<MemoryError, RunnerError>
 }
 
 impl<RunnerError: Display> Display
+    for DirectFusedLoadedExecutionFailure<RunnerError>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
+        write!(f, "loaded fused execution failed during {}: ", self.phase())?;
+        match &self.cause {
+            DirectFusedNativeCallFailure::Binding(error) => {
+                write!(f, "binding: {error}")
+            },
+            DirectFusedNativeCallFailure::Completion(error) => {
+                write!(f, "completion: {error}")
+            },
+            DirectFusedNativeCallFailure::Runner(error) => {
+                write!(f, "runner: {error}")
+            },
+        }
+    }
+}
+
+impl<RunnerError: Display> Display
     for ExecutionGeometryLoadedExecutionFailure<RunnerError>
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatResult {
@@ -1167,6 +1287,28 @@ impl<MemoryError: Display, RunnerError: Display> Display
         }
         Ok(())
     }
+}
+
+/// Binds, runs, and admits one fused call against an already loaded mapping.
+///
+/// Runner failure restores the complete whole-region entry snapshot. Completion
+/// rejection performs the same restoration through the fused invocation
+/// contract. This function neither loads nor releases executable memory.
+///
+/// # Errors
+///
+/// Returns [`DirectFusedLoadedExecutionFailure`] for binding, runner, or
+/// completion failure.
+pub fn execute_loaded_verified_direct_fused_native<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyDirectFusedNativeExecutable,
+    prepared: PreparedDirectFusedInvocation<'_, '_>,
+) -> DirectFusedLoadedExecutionResult<Runner::Error>
+where
+    Runner: DirectFusedNativeRunner,
+{
+    run_direct_fused_prepared(runner, executable, prepared)
+        .map_err(|cause| Box::new(DirectFusedLoadedExecutionFailure { cause }))
 }
 
 /// Binds, runs, and admits one verified-v5 call against a loaded mapping.
@@ -1419,6 +1561,29 @@ where
             }))
         },
     }
+}
+
+fn run_direct_fused_prepared<Runner>(
+    runner: &mut Runner,
+    executable: &ReadyDirectFusedNativeExecutable,
+    prepared: PreparedDirectFusedInvocation<'_, '_>,
+) -> DirectFusedNativeCallResult<Runner>
+where
+    Runner: DirectFusedNativeRunner,
+{
+    let mut bound = prepared
+        .bind_executable(executable)
+        .map_err(DirectFusedNativeCallFailure::Binding)?;
+    let raw_status = match runner.run(&mut bound) {
+        Ok(status) => status,
+        Err(error) => {
+            bound.abort();
+            return Err(DirectFusedNativeCallFailure::Runner(Box::new(error)));
+        },
+    };
+    bound
+        .complete(raw_status)
+        .map_err(DirectFusedNativeCallFailure::Completion)
 }
 
 fn run_register_masked_non_graphical_prepared<Runner>(

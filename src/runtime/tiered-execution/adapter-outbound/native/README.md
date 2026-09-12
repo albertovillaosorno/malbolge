@@ -426,11 +426,15 @@ application and mutation-free guard miss are admitted; every rejected completion
 restores the complete region entry.
 
 Exact `VerifiedDirectFusedLoadImage` equality now binds that prepared call to
-one
-synchronized `ReadyDirectFusedNativeExecutable`. The bound view exposes only the
-exact entry address, mapping identity, executable evidence, and borrowed ABI
+one synchronized `ReadyDirectFusedNativeExecutable`. The bound view exposes only
+the exact entry address, mapping identity, executable evidence, and borrowed ABI
 state pointer; image mismatch restores the complete region entry before failing.
-Fused runner and execution-transaction authority remain absent.
+
+A dedicated `DirectFusedNativeRunner` now receives only that bound whole-region
+view. Loaded execution performs no memory-adapter work, admits exact Applied or
+GuardMiss outcomes, and restores the complete region entry on runner or
+completion failure. A one-shot fused load/call/release transaction remains
+absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption
