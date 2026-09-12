@@ -409,8 +409,12 @@ exact equality. A structurally valid text-byte mutation fails this verifier.
 
 `VerifiedDirectFusedLoadImage` now reparses only that verified fused object,
 rejects relocations, validates ISA alignment, and retains exact key/triple plus
-the strict RW-to-RX/full-sync policy. No lifecycle, mapping, invocation, or
-runner API accepts the fused image yet.
+the strict RW-to-RX/full-sync policy. Distinct fused `Staged`, `Sealed`, and
+`Ready` typestates then admit exact copy, same-mapping RX transition, and
+full-range instruction synchronization.
+
+No platform loader, prepared invocation, runner, or execution transaction
+accepts the fused ready state yet.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

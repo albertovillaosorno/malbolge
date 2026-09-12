@@ -279,14 +279,15 @@ pub use invocation::{
 pub use lifecycle::{
     NativeExecutableLifecycleError, NativeExecutableMappingId,
     NativeExecutableMappingReport, NativeExecutableReleaseRequest,
-    NativeInstructionSyncReport, ReadyExecutionGeometryNativeExecutable,
-    ReadyNativeExecutable, ReadyRegisterMaskedNativeExecutable,
+    NativeInstructionSyncReport, ReadyDirectFusedNativeExecutable,
+    ReadyExecutionGeometryNativeExecutable, ReadyNativeExecutable,
+    ReadyRegisterMaskedNativeExecutable,
     ReadyRegisterMaskedNonGraphicalNativeExecutable,
-    SealedExecutionGeometryNativeExecutable, SealedNativeExecutable,
-    SealedRegisterMaskedNativeExecutable,
+    SealedDirectFusedNativeExecutable, SealedExecutionGeometryNativeExecutable,
+    SealedNativeExecutable, SealedRegisterMaskedNativeExecutable,
     SealedRegisterMaskedNonGraphicalNativeExecutable,
-    StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
-    StagedRegisterMaskedNativeExecutable,
+    StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
+    StagedNativeExecutable, StagedRegisterMaskedNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
 };
 pub use loader::{

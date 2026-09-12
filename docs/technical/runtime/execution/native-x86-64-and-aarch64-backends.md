@@ -319,8 +319,12 @@ canonical bytes, and rejects text-byte drift.
 `VerifiedDirectFusedLoadImage` now extracts the relocation-free fused entry
 without granting execution authority. It retains exact key/triple identity,
 validates ISA alignment, rejects machine drift or relocations, and requires the
-same strict RW-to-RX plus instruction-sync policy. Fused lifecycle and
-invocation remain absent.
+same strict RW-to-RX plus instruction-sync policy.
+
+Distinct fused lifecycle typestates now admit exact writable copy, same-mapping
+RX transition, and full-code instruction synchronization while retaining fused
+identity and release evidence. Platform orchestration and fused invocation
+remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -501,7 +505,8 @@ Reviewed direct terminal, no-op, jump-code,
 jump-data, rotate, crazy, input, and output emitters/verifiers are
 implemented for both ISAs; the first atomic fused rotate/output object is also
 emitted, independently verified, and extracted as a relocation-free load image
-on both ISAs. Wider fused-template coverage, fused lifecycle/invocation,
+on both ISAs, with dedicated safe lifecycle typestates through synchronized RX
+readiness. Wider fused-template coverage, fused platform/invocation integration,
 concrete executable-memory and foreign-call adapters, runtime integration, and
 instruction-cache synchronization remain incomplete.
 

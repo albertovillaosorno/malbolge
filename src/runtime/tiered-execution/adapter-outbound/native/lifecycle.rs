@@ -37,8 +37,9 @@ use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::num::{NonZeroU64, NonZeroUsize};
 
 use super::loader::{
-    NativeExecutablePermission, VerifiedDirectLoadImage,
-    VerifiedExecutionGeometryLoadImage, VerifiedRegisterMaskedLoadImage,
+    NativeExecutablePermission, VerifiedDirectFusedLoadImage,
+    VerifiedDirectLoadImage, VerifiedExecutionGeometryLoadImage,
+    VerifiedRegisterMaskedLoadImage,
     VerifiedRegisterMaskedNonGraphicalLoadImage,
 };
 use crate::execution_cache::{NativeArtifactKey, NativeTargetIdentity};
@@ -112,6 +113,33 @@ pub struct SealedNativeExecutable {
 pub struct ReadyNativeExecutable {
     entry_address: NonZeroUsize,
     image: VerifiedDirectLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+type DirectFusedReadyResult =
+    Result<ReadyDirectFusedNativeExecutable, NativeExecutableLifecycleError>;
+type DirectFusedSealedResult =
+    Result<SealedDirectFusedNativeExecutable, NativeExecutableLifecycleError>;
+
+/// Exact RX mapping for one verified fused direct load image.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReadyDirectFusedNativeExecutable {
+    entry_address: NonZeroUsize,
+    image: VerifiedDirectFusedLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Fused direct mapping admitted after its RW-to-RX permission transition.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SealedDirectFusedNativeExecutable {
+    image: VerifiedDirectFusedLoadImage,
+    mapping: NativeExecutableMappingReport,
+}
+
+/// Verified fused direct bytes admitted in one writable staging mapping.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StagedDirectFusedNativeExecutable {
+    image: VerifiedDirectFusedLoadImage,
     mapping: NativeExecutableMappingReport,
 }
 
@@ -323,6 +351,148 @@ impl Display for NativeExecutableLifecycleError {
             Self::SynchronizationRange => {
                 "native executable synchronization range drifted"
             },
+        })
+    }
+}
+
+impl ReadyDirectFusedNativeExecutable {
+    /// Returns the non-zero fused native entrypoint address.
+    #[must_use]
+    pub const fn entry_address(&self) -> NonZeroUsize {
+        self.entry_address
+    }
+
+    /// Returns the exact verified fused load image retained by this executable.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedDirectFusedLoadImage {
+        &self.image
+    }
+
+    /// Returns the complete retained fused artifact identity.
+    #[must_use]
+    pub const fn key(&self) -> &NativeArtifactKey {
+        self.image.key()
+    }
+
+    /// Returns the exact synchronized mapping report.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+
+    /// Returns exact cleanup evidence for this fused mapping.
+    #[must_use]
+    pub const fn release_request(&self) -> NativeExecutableReleaseRequest {
+        NativeExecutableReleaseRequest::from_mapping(self.mapping)
+    }
+
+    /// Returns exact target assumptions retained by this fused executable.
+    #[must_use]
+    pub const fn target(&self) -> &NativeTargetIdentity {
+        self.image.target()
+    }
+
+    /// Returns the exact selected Windows target triple.
+    #[must_use]
+    pub const fn target_triple(&self) -> &'static str {
+        self.image.target_triple()
+    }
+}
+
+impl SealedDirectFusedNativeExecutable {
+    /// Admits synchronization of the complete fused code range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] when mapping identity or the
+    /// synchronized range differs from the exact fused image.
+    pub fn admit_instruction_sync(
+        self,
+        report: NativeInstructionSyncReport,
+    ) -> DirectFusedReadyResult {
+        if report.mapping_id() != self.mapping.mapping_id() {
+            return Err(NativeExecutableLifecycleError::MappingIdentity);
+        }
+        if report.start_address() != self.mapping.base_address()
+            || report.byte_len() != self.image.allocation_len()
+        {
+            return Err(NativeExecutableLifecycleError::SynchronizationRange);
+        }
+        let entry_address =
+            direct_fused_entry_address(&self.image, self.mapping)?;
+        Ok(ReadyDirectFusedNativeExecutable {
+            entry_address,
+            image: self.image,
+            mapping: self.mapping,
+        })
+    }
+
+    /// Returns the exact verified fused load image retained by this state.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedDirectFusedLoadImage {
+        &self.image
+    }
+
+    /// Returns the exact read-execute mapping report retained by this state.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+}
+
+impl StagedDirectFusedNativeExecutable {
+    /// Admits the exact RW-to-RX transition for this same fused mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] when mapping identity or
+    /// final permissions differ.
+    pub fn admit_read_execute(
+        self,
+        mapping: NativeExecutableMappingReport,
+    ) -> DirectFusedSealedResult {
+        if !same_mapping(self.mapping, mapping) {
+            return Err(NativeExecutableLifecycleError::MappingIdentity);
+        }
+        if mapping.permissions() != self.image.policy().final_permissions() {
+            return Err(NativeExecutableLifecycleError::Permissions);
+        }
+        Ok(SealedDirectFusedNativeExecutable {
+            image: self.image,
+            mapping,
+        })
+    }
+
+    /// Returns the exact verified fused image retained by this state.
+    #[must_use]
+    pub const fn image(&self) -> &VerifiedDirectFusedLoadImage {
+        &self.image
+    }
+
+    /// Returns the exact writable mapping report retained by this state.
+    #[must_use]
+    pub const fn mapping(&self) -> NativeExecutableMappingReport {
+        self.mapping
+    }
+
+    /// Admits exact copied fused code in one writable platform mapping.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NativeExecutableLifecycleError`] for permission, bytes,
+    /// alignment, capacity, address, or entry-range drift.
+    pub fn stage(
+        image: &VerifiedDirectFusedLoadImage,
+        mapping: NativeExecutableMappingReport,
+        copied_code: &[u8],
+    ) -> Result<Self, NativeExecutableLifecycleError> {
+        validate_direct_fused_writable_mapping(image, mapping)?;
+        if copied_code != image.code() {
+            return Err(NativeExecutableLifecycleError::CodeImage);
+        }
+        Ok(Self {
+            image: image.clone(),
+            mapping,
         })
     }
 }
@@ -960,6 +1130,26 @@ fn register_masked_entry_address(
     NonZeroUsize::new(value).ok_or(NativeExecutableLifecycleError::EntryRange)
 }
 
+fn direct_fused_entry_address(
+    image: &VerifiedDirectFusedLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<NonZeroUsize, NativeExecutableLifecycleError> {
+    let value = mapping
+        .base_address()
+        .get()
+        .checked_add(image.entry_offset())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    let code_end = mapping
+        .base_address()
+        .get()
+        .checked_add(image.allocation_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    if value >= code_end {
+        return Err(NativeExecutableLifecycleError::EntryRange);
+    }
+    NonZeroUsize::new(value).ok_or(NativeExecutableLifecycleError::EntryRange)
+}
+
 fn execution_geometry_entry_address(
     image: &VerifiedExecutionGeometryLoadImage,
     mapping: NativeExecutableMappingReport,
@@ -1014,6 +1204,25 @@ const fn same_mapping(
     left.base_address().get() == right.base_address().get()
         && left.mapped_len() == right.mapped_len()
         && left.mapping_id().get() == right.mapping_id().get()
+}
+
+fn validate_direct_fused_writable_mapping(
+    image: &VerifiedDirectFusedLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    if mapping.permissions() != image.policy().initial_permissions() {
+        return Err(NativeExecutableLifecycleError::Permissions);
+    }
+    if mapping.mapped_len() < image.allocation_len() {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    if !is_aligned(
+        mapping.base_address().get(),
+        image.minimum_instruction_alignment(),
+    ) {
+        return Err(NativeExecutableLifecycleError::MappingAlignment);
+    }
+    validate_direct_fused_mapping_ranges(image, mapping)
 }
 
 pub(super) fn validate_execution_geometry_writable_mapping(
@@ -1090,6 +1299,27 @@ pub(super) fn validate_writable_mapping(
         return Err(NativeExecutableLifecycleError::MappingAlignment);
     }
     validate_mapping_ranges(image, mapping)
+}
+
+fn validate_direct_fused_mapping_ranges(
+    image: &VerifiedDirectFusedLoadImage,
+    mapping: NativeExecutableMappingReport,
+) -> Result<(), NativeExecutableLifecycleError> {
+    let mapping_end = mapping
+        .base_address()
+        .get()
+        .checked_add(mapping.mapped_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    let code_end = mapping
+        .base_address()
+        .get()
+        .checked_add(image.allocation_len())
+        .ok_or(NativeExecutableLifecycleError::AddressOverflow)?;
+    if code_end > mapping_end {
+        return Err(NativeExecutableLifecycleError::MappingCapacity);
+    }
+    let _entry = direct_fused_entry_address(image, mapping)?;
+    Ok(())
 }
 
 fn validate_execution_geometry_mapping_ranges(

@@ -304,8 +304,8 @@ use execution_native::{
     RegisterMaskedNonGraphicalNativeSequenceOutcome,
     RegisterMaskedNonGraphicalNativeSequencePlan,
     RegisterMaskedNonGraphicalNativeSequencePlanError,
-    StagedExecutionGeometryNativeExecutable, StagedNativeExecutable,
-    StagedRegisterMaskedNativeExecutable,
+    StagedDirectFusedNativeExecutable, StagedExecutionGeometryNativeExecutable,
+    StagedNativeExecutable, StagedRegisterMaskedNativeExecutable,
     StagedRegisterMaskedNonGraphicalNativeExecutable,
     UntrustedNativeObjectArtifact, VerifiedDirectFusedLoadImage,
     VerifiedDirectInvocationError, VerifiedDirectLoadError,
@@ -13923,6 +13923,116 @@ fn fused_direct_sequence_load_image_rejects_relocations() -> Result<(), String>
         Ok(())
     } else {
         Err(String::from("fused load image admitted relocations"))
+    }
+}
+
+fn fused_direct_writable_mapping(
+    image: &VerifiedDirectFusedLoadImage,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<NativeExecutableMappingReport, String> {
+    Ok(NativeExecutableMappingReport::new(
+        native_executable_mapping_id(mapping_value)?,
+        native_executable_address(base_value)?,
+        image.allocation_len(),
+        NativeExecutablePermission::ReadWrite,
+    ))
+}
+
+#[test]
+fn fused_direct_sequence_lifecycle_admits_both_isas() -> Result<(), String> {
+    for (index, isa) in
+        [HostIsa::X86_64, HostIsa::AArch64].into_iter().enumerate()
+    {
+        let artifact = verified_fused_direct_sequence_object(isa)?;
+        let image = VerifiedDirectFusedLoadImage::new(&artifact)
+            .map_err(|error| format!("fused lifecycle image: {error}"))?;
+        let base_value = 0x20_000usize + (index * 0x10_000);
+        let writable = fused_direct_writable_mapping(
+            &image,
+            700 + u64::try_from(index).map_err(|error| error.to_string())?,
+            base_value,
+        )?;
+        let staged = StagedDirectFusedNativeExecutable::stage(
+            &image,
+            writable,
+            image.code(),
+        )
+        .map_err(|error| format!("fused stage: {error}"))?;
+        let readable = NativeExecutableMappingReport::new(
+            writable.mapping_id(),
+            writable.base_address(),
+            writable.mapped_len(),
+            NativeExecutablePermission::ReadExecute,
+        );
+        let sealed = staged
+            .admit_read_execute(readable)
+            .map_err(|error| format!("fused seal: {error}"))?;
+        let ready = sealed
+            .admit_instruction_sync(NativeInstructionSyncReport::new(
+                readable.mapping_id(),
+                readable.base_address(),
+                image.allocation_len(),
+            ))
+            .map_err(|error| format!("fused sync: {error}"))?;
+        if ready.image() != &image
+            || ready.key() != artifact.key()
+            || ready.mapping() != readable
+            || ready.entry_address() != readable.base_address()
+            || ready.target() != artifact.key().target()
+            || ready.target_triple() != artifact.target_triple()
+        {
+            return Err(format!("fused lifecycle drifted on {isa:?}"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn fused_direct_sequence_lifecycle_rejects_copy_and_sync_drift()
+-> Result<(), String> {
+    let artifact = verified_fused_direct_sequence_object(HostIsa::X86_64)?;
+    let image = VerifiedDirectFusedLoadImage::new(&artifact)
+        .map_err(|error| format!("fused lifecycle image: {error}"))?;
+    let writable = fused_direct_writable_mapping(&image, 711, 0x40_000)?;
+    let mut copied = image.code().to_vec();
+    let first = copied
+        .first_mut()
+        .ok_or_else(|| String::from("fused lifecycle code was empty"))?;
+    *first ^= 1;
+    if StagedDirectFusedNativeExecutable::stage(&image, writable, &copied)
+        != Err(NativeExecutableLifecycleError::CodeImage)
+    {
+        return Err(String::from("fused lifecycle admitted copied-byte drift"));
+    }
+    let staged = StagedDirectFusedNativeExecutable::stage(
+        &image,
+        writable,
+        image.code(),
+    )
+    .map_err(|error| format!("fused lifecycle stage: {error}"))?;
+    let readable = NativeExecutableMappingReport::new(
+        writable.mapping_id(),
+        writable.base_address(),
+        writable.mapped_len(),
+        NativeExecutablePermission::ReadExecute,
+    );
+    let sealed = staged
+        .admit_read_execute(readable)
+        .map_err(|error| format!("fused lifecycle seal: {error}"))?;
+    let short_len = image
+        .allocation_len()
+        .checked_sub(1)
+        .ok_or_else(|| String::from("fused lifecycle image too small"))?;
+    if sealed.admit_instruction_sync(NativeInstructionSyncReport::new(
+        readable.mapping_id(),
+        readable.base_address(),
+        short_len,
+    )) == Err(NativeExecutableLifecycleError::SynchronizationRange)
+    {
+        Ok(())
+    } else {
+        Err(String::from("fused lifecycle admitted short sync range"))
     }
 }
 
