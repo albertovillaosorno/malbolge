@@ -474,7 +474,14 @@ continuity. It retains region count, source semantic-step total, exact
 entry/exit, and complete outcome before any mapping. A separate loaded owner
 now publishes only after every exact fused region maps successfully, retains
 exact mapped-byte evidence, and releases mappings in reverse with aggregate
-retry ownership. Ordered fused runner execution remains absent.
+retry ownership.
+
+A dedicated loaded-sequence executor calls only the fused
+runner through retained owners and performs no adapter work. Applied outcomes
+advance exact source semantic-step progress; guard miss or current-region
+failure resumes before that whole fused region and leaves the mapping reusable.
+One-shot fused sequence orchestration and sequence-cache integration remain
+absent.
 
 The retained two-step fixture is produced by the normative VM from a rotate
 followed by output. Trace projection deduplicates repeated fetch/encryption

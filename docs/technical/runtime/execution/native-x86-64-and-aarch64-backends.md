@@ -384,9 +384,15 @@ admission before admitting an ordered common-target/profile chain. Exact
 exit-to-entry continuity, total source semantic steps, regional entry/exit, and
 the complete outcome are retained without mapping authority. A separate
 loaded owner now publishes only after every exact fused region maps
-successfully,
-retains exact mapped-byte evidence, and releases mappings in reverse with
-aggregate retry ownership. Ordered fused runner execution remains absent.
+successfully, retains exact mapped-byte evidence, and releases mappings in
+reverse with aggregate retry ownership.
+
+A dedicated loaded-sequence execution
+boundary calls only the fused runner through retained owners and performs no
+adapter work. Applied outcomes advance exact source semantic-step progress;
+guard miss or current-region failure resumes before the complete current fused
+region and leaves residency reusable. One-shot fused sequence orchestration and
+sequence-cache integration remain absent.
 
 Safe sequence execution now runs those reviewed
 one-step artifacts in order through the loader/runner transaction. Applied
@@ -569,10 +575,10 @@ implemented for both ISAs; the first atomic fused rotate/output object is also
 emitted, independently verified, and extracted as a relocation-free load image
 on both ISAs, with dedicated safe lifecycle typestates, transactional platform
 loading through synchronized RX readiness, and a borrow-scoped whole-region
-prepared invocation contract. Wider fused-template coverage, ordered loaded
-fused-sequence execution, concrete executable-memory and foreign-call adapters,
-runtime integration, and concrete instruction-cache synchronization remain
-incomplete.
+prepared invocation contract. Wider fused-template coverage, one-shot fused
+sequence orchestration/cache integration, concrete executable-memory and
+foreign-call adapters, runtime integration, and concrete instruction-cache
+synchronization remain incomplete.
 
 ## Invariants
 

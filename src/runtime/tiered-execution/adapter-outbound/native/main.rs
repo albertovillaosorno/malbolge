@@ -51,6 +51,7 @@ mod fused_loaded_sequence;
 mod fused_resident;
 mod fused_resident_cache;
 mod fused_sequence;
+mod fused_sequence_execution;
 mod fused_sequence_plan;
 mod invocation;
 mod lifecycle;
@@ -307,6 +308,12 @@ pub use fused_sequence::{
     DIRECT_FUSED_SEQUENCE_BACKEND_ID, DIRECT_FUSED_SEQUENCE_BACKEND_REVISION,
     DirectFusedSequenceAdmission, DirectFusedSequenceAdmissionError,
     admit_fused_direct_sequence,
+};
+pub use fused_sequence_execution::{
+    DirectFusedNativeSequenceExecutionFailure,
+    DirectFusedNativeSequenceExecutionOutcome,
+    DirectFusedNativeSequenceExecutionResult,
+    execute_loaded_direct_fused_native_sequence,
 };
 pub use fused_sequence_plan::{
     DirectFusedNativeSequencePlan, DirectFusedNativeSequencePlanError,

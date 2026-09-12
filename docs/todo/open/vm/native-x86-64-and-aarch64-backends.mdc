@@ -258,8 +258,14 @@ synchronization, and hardening remain adapters rather than VM semantics.
   and complete outcome are retained without mapping authority. A separate
   loaded owner now publishes only after every exact fused region maps
   successfully, retains exact mapped-byte evidence, and releases mappings in
-  reverse with aggregate retry ownership. Ordered fused runner execution remains
-  absent.
+  reverse with aggregate retry ownership.
+
+  A dedicated loaded-sequence executor
+  calls only the fused runner through retained owners without adapter work.
+  Applied outcomes advance exact source semantic-step progress; guard miss or
+  current-region failure resumes before that whole fused region and leaves the
+  mapping reusable. One-shot fused sequence orchestration and sequence-cache
+  integration remain absent.
 
   Cache-aware sequence planning
   preserves exact-hit `Arc` identity, stages verified misses, and inserts only

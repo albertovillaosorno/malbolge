@@ -212,6 +212,12 @@ impl LoadedDirectFusedNativeSequence {
         })
     }
 
+    /// Returns retained owners to the sibling fused sequence executor only.
+    #[must_use]
+    pub(super) fn owners(&self) -> &[DirectFusedNativeExecutableOwner] {
+        &self.owners
+    }
+
     /// Returns the exact admitted plan retained beside the mappings.
     #[must_use]
     pub const fn plan(&self) -> &DirectFusedNativeSequencePlan {

@@ -231,14 +231,15 @@ use execution_native::{
     DirectFusedNativeResidentCacheDisposition,
     DirectFusedNativeResidentCacheRelease, DirectFusedNativeResidentLease,
     DirectFusedNativeResidentLeaseCache, DirectFusedNativeRunner,
-    DirectFusedNativeSequencePlan, DirectFusedNativeSequencePlanError,
-    DirectFusedSequenceAdmissionError, DirectFusedSequenceObjectError,
-    DirectHaltFetchError, DirectHaltRegistersError, DirectHost,
-    DirectInitialHaltError, DirectInputError, DirectJumpCodeError,
-    DirectJumpDataError, DirectNativeKind, DirectNoOperationError,
-    DirectNonGraphicalError, DirectOutputError,
-    DirectRegisterMaskedHaltFetchError, DirectRegisterMaskedNonGraphicalError,
-    DirectRotateError, DirectSelectionError, DirectSequenceError,
+    DirectFusedNativeSequenceExecutionOutcome, DirectFusedNativeSequencePlan,
+    DirectFusedNativeSequencePlanError, DirectFusedSequenceAdmissionError,
+    DirectFusedSequenceObjectError, DirectHaltFetchError,
+    DirectHaltRegistersError, DirectHost, DirectInitialHaltError,
+    DirectInputError, DirectJumpCodeError, DirectJumpDataError,
+    DirectNativeKind, DirectNoOperationError, DirectNonGraphicalError,
+    DirectOutputError, DirectRegisterMaskedHaltFetchError,
+    DirectRegisterMaskedNonGraphicalError, DirectRotateError,
+    DirectSelectionError, DirectSequenceError,
     ExecutionGeometryDirectNativeKind, ExecutionGeometryDirectSelectionError,
     ExecutionGeometryDirectSequenceError,
     ExecutionGeometryLoadedSequenceAdmissionError,
@@ -347,6 +348,7 @@ use execution_native::{
     emit_direct_register_masked_non_graphical_coff, emit_direct_rotate_coff,
     emit_fused_direct_sequence_coff, execute_cached_verified_native_sequence,
     execute_loaded_cached_verified_native_sequence,
+    execute_loaded_direct_fused_native_sequence,
     execute_loaded_register_masked_non_graphical_native_sequence,
     execute_loaded_verified_direct_fused_native,
     execute_loaded_verified_execution_geometry_native,
@@ -16030,6 +16032,213 @@ fn fused_direct_sequence_loaded_release_failure_retries() -> Result<(), String>
     } else {
         Err(String::from("fused sequence release retry count drifted"))
     }
+}
+
+fn assert_fused_loaded_sequence_exec_applied(
+    isa: HostIsa,
+    mapping_value: u64,
+    base_value: usize,
+) -> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = fused_direct_loaded_sequence_plan(isa)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(mapping_value)?,
+        native_executable_address(base_value)?,
+    );
+    let loaded = load_direct_fused_native_sequence(&plan, &mut adapter)
+        .map_err(|error| format!("fused sequence exec load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = execute_loaded_direct_fused_native_sequence(
+        &loaded,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("fused sequence exec: {error}"))?;
+    if outcome
+        != (DirectFusedNativeSequenceExecutionOutcome::Applied {
+            observation: plan.exit(),
+            regions: 1,
+            semantic_steps: 2,
+        })
+        || outcome.completed_regions() != 1
+        || outcome.completed_steps() != 2
+        || outcome.observation() != plan.exit()
+        || outcome.resume_region() != 1
+        || outcome.resume_step() != 2
+        || memory != fixture.final_memory
+        || output != fixture.final_output
+        || runner.calls != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(format!(
+            "fused loaded sequence execution drifted: {isa:?}"
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("fused sequence exec release: {error}"))
+}
+
+#[test]
+fn fused_direct_loaded_sequence_exec_applies_both_isas() -> Result<(), String> {
+    assert_fused_loaded_sequence_exec_applied(HostIsa::X86_64, 794, 0x32_0000)?;
+    assert_fused_loaded_sequence_exec_applied(HostIsa::AArch64, 795, 0x33_0000)
+}
+
+#[test]
+fn fused_direct_loaded_sequence_exec_guard_miss_resumes_region_entry()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = fused_direct_loaded_sequence_plan(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(796)?,
+        native_executable_address(0x34_0000)?,
+    );
+    let loaded = load_direct_fused_native_sequence(&plan, &mut adapter)
+        .map_err(|error| format!("fused guard sequence load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut runner =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::GuardMiss);
+    let outcome = execute_loaded_direct_fused_native_sequence(
+        &loaded,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("fused guard sequence exec: {error}"))?;
+    if outcome
+        != (DirectFusedNativeSequenceExecutionOutcome::GuardMiss {
+            region_index: 0,
+            resume_step: 0,
+            observation: plan.entry(),
+        })
+        || outcome.completed_regions() != 0
+        || outcome.completed_steps() != 0
+        || outcome.resume_region() != 0
+        || outcome.resume_step() != 0
+        || memory != fixture.initial_memory
+        || output != fixture.initial_output
+        || runner.calls != 1
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from(
+            "fused sequence guard resume evidence drifted",
+        ));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("fused guard sequence release: {error}"))
+}
+
+#[test]
+fn fused_direct_loaded_sequence_exec_runner_failure_reuses_mapping()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = fused_direct_loaded_sequence_plan(HostIsa::X86_64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(797)?,
+        native_executable_address(0x35_0000)?,
+    );
+    let loaded = load_direct_fused_native_sequence(&plan, &mut adapter)
+        .map_err(|error| format!("fused failure sequence load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut failing = FakeDirectFusedNativeRunner::new(
+        FakeNativeRunnerBehavior::FailureAfterMutation,
+    );
+    let Err(failure) = execute_loaded_direct_fused_native_sequence(
+        &loaded,
+        &mut failing,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    ) else {
+        return Err(String::from("fused sequence runner failure was ignored"));
+    };
+    if failure.completed_regions() != 0
+        || failure.completed_steps() != 0
+        || failure.region_index() != 0
+        || failure.resume_step() != 0
+        || failure.observation() != plan.entry()
+        || !matches!(
+            failure.execution_failure(),
+            DirectFusedNativeOwnerExecutionFailure::Execution(error)
+                if error.phase() == NativeExecutableExecutionPhase::Run
+        )
+        || memory != fixture.initial_memory
+        || output != fixture.initial_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("fused sequence failure progress drifted"));
+    }
+    let mut succeeding =
+        FakeDirectFusedNativeRunner::new(FakeNativeRunnerBehavior::Applied);
+    let outcome = execute_loaded_direct_fused_native_sequence(
+        &loaded,
+        &mut succeeding,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    )
+    .map_err(|error| format!("fused sequence reuse exec: {error}"))?;
+    if outcome.completed_steps() != 2
+        || memory != fixture.final_memory
+        || output != fixture.final_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("fused sequence mapping was not reusable"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("fused sequence reuse release: {error}"))
+}
+
+#[test]
+fn fused_direct_loaded_sequence_exec_completion_drift_rolls_back()
+-> Result<(), String> {
+    let fixture = direct_normative_sequence_fixture()?;
+    let plan = fused_direct_loaded_sequence_plan(HostIsa::AArch64)?;
+    let mut adapter = FakeNativeExecutableAdapter::new(
+        native_executable_mapping_id(798)?,
+        native_executable_address(0x36_0000)?,
+    );
+    let loaded = load_direct_fused_native_sequence(&plan, &mut adapter)
+        .map_err(|error| format!("fused drift sequence load: {error}"))?;
+    let loaded_operations = adapter.operations.clone();
+    let mut memory = fixture.initial_memory.clone();
+    let mut output = fixture.initial_output.clone();
+    let mut runner = FakeDirectFusedNativeRunner::new(
+        FakeNativeRunnerBehavior::CompletionDrift,
+    );
+    let Err(failure) = execute_loaded_direct_fused_native_sequence(
+        &loaded,
+        &mut runner,
+        NativeRegionBuffers::new(&mut memory, &fixture.input, &mut output),
+    ) else {
+        return Err(String::from(
+            "fused sequence completion drift was admitted",
+        ));
+    };
+    if failure.completed_regions() != 0
+        || failure.completed_steps() != 0
+        || failure.region_index() != 0
+        || failure.resume_step() != 0
+        || !matches!(
+            failure.execution_failure(),
+            DirectFusedNativeOwnerExecutionFailure::Execution(error)
+                if error.phase() == NativeExecutableExecutionPhase::Complete
+        )
+        || memory != fixture.initial_memory
+        || output != fixture.initial_output
+        || adapter.operations != loaded_operations
+    {
+        return Err(String::from("fused sequence completion rollback drifted"));
+    }
+    loaded
+        .release(&mut adapter)
+        .map_err(|error| format!("fused drift sequence release: {error}"))
 }
 
 #[test]
